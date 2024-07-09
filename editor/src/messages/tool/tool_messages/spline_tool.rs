@@ -205,7 +205,7 @@ impl Fsm for SplineToolFsmState {
 				responses.add(DocumentMessage::DeselectAllLayers);
 
 				let parent = document.new_layer_parent(true);
-				let transform = document.network_interface.document_metadata().transform_to_viewport(parent);
+				let transform = document.metadata().transform_to_viewport(parent);
 
 				let snapped_position = input.mouse.position;
 
@@ -218,7 +218,7 @@ impl Fsm for SplineToolFsmState {
 
 				let nodes = {
 					let node_type = resolve_document_node_type("Spline").expect("Spline node does not exist");
-					let node = node_type.to_document_node_default_inputs([None, Some(NodeInput::value(TaggedValue::VecDVec2(Vec::new()), false))], Default::default());
+					let node = node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::VecDVec2(Vec::new()), false))]);
 
 					HashMap::from([(NodeId(0), node)])
 				};
@@ -234,7 +234,7 @@ impl Fsm for SplineToolFsmState {
 					return SplineToolFsmState::Ready;
 				};
 				let snapped_position = input.mouse.position;
-				let transform = document.network_interface.document_metadata().transform_to_viewport(layer);
+				let transform = document.metadata().transform_to_viewport(layer);
 				let pos = transform.inverse().transform_point2(snapped_position);
 
 				if let Some(last_pos) = tool_data.points.last() {
@@ -253,7 +253,7 @@ impl Fsm for SplineToolFsmState {
 					return SplineToolFsmState::Ready;
 				};
 				let snapped_position = input.mouse.position; // tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
-				let transform = document.network_interface.document_metadata().transform_to_viewport(layer);
+				let transform = document.metadata().transform_to_viewport(layer);
 				let pos = transform.inverse().transform_point2(snapped_position);
 				tool_data.next_point = pos;
 
@@ -330,7 +330,7 @@ fn update_spline(document: &DocumentMessageHandler, tool_data: &SplineToolData, 
 
 	let Some(layer) = tool_data.layer else { return };
 
-	let Some(node_id) = graph_modification_utils::NodeGraphLayer::new(layer, document.network()).upstream_node_id_from_name("Spline") else {
+	let Some(node_id) = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface).upstream_node_id_from_name("Spline") else {
 		return;
 	};
 	responses.add_front(NodeGraphMessage::SetInputValue { node_id, input_index: 1, value });

@@ -274,8 +274,8 @@ impl PathToolData {
 
 	fn update_insertion(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, mouse_position: DVec2) -> PathToolFsmState {
 		if let Some(closed_segment) = &mut self.segment {
-			closed_segment.update_closest_point(&document.network_interface.document_metadata(), mouse_position);
-			if closed_segment.too_far(mouse_position, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE, &document.network_interface.document_metadata()) {
+			closed_segment.update_closest_point(&document.metadata(), mouse_position);
+			if closed_segment.too_far(mouse_position, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE, &document.metadata()) {
 				self.end_insertion(shape_editor, responses, InsertEndKind::Abort)
 			} else {
 				PathToolFsmState::InsertPoint
@@ -345,7 +345,7 @@ impl PathToolData {
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 			}
 			self.drag_start_pos = input.mouse.position;
-			self.previous_mouse_position = document.network_interface.document_metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
 			shape_editor.select_connected_anchors(document, layer, input.mouse.position);
 
 			PathToolFsmState::Dragging
@@ -353,7 +353,7 @@ impl PathToolData {
 		// Start drawing a box
 		else {
 			self.drag_start_pos = input.mouse.position;
-			self.previous_mouse_position = document.network_interface.document_metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
 
 			PathToolFsmState::DrawingBox
 		}
@@ -380,7 +380,7 @@ impl PathToolData {
 		}
 		selected_points.points.extend(additional_selected_points);
 
-		let viewport_to_document = document.network_interface.document_metadata().document_to_viewport.inverse();
+		let viewport_to_document = document.metadata().document_to_viewport.inverse();
 		self.previous_mouse_position = viewport_to_document.transform_point2(input.mouse.position - selected_points.offset);
 	}
 
@@ -394,7 +394,7 @@ impl PathToolData {
 				ManipulatorAngle::Mixed => false,
 			});
 			if colinear {
-				shape_editor.disable_colinear_handles_state_on_selected(&document.metadata, &document.network, responses);
+				shape_editor.disable_colinear_handles_state_on_selected(&document.network_interface, responses);
 			} else {
 				shape_editor.convert_selected_manipulators_to_colinear_handles(responses, document);
 			}
@@ -413,11 +413,11 @@ impl PathToolData {
 
 	fn drag(&mut self, equidistant: bool, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
 		// Move the selected points with the mouse
-		let previous_mouse = document.network_interface.document_metadata().document_to_viewport.transform_point2(self.previous_mouse_position);
+		let previous_mouse = document.metadata().document_to_viewport.transform_point2(self.previous_mouse_position);
 		let snapped_delta = shape_editor.snap(&mut self.snap_manager, document, input, previous_mouse);
 		let handle_lengths = if equidistant { None } else { self.opposing_handle_lengths.take() };
 		shape_editor.move_selected_points(handle_lengths, &document, snapped_delta, equidistant, responses);
-		self.previous_mouse_position += document.metadata.document_to_viewport.inverse().transform_vector2(snapped_delta);
+		self.previous_mouse_position += document.metadata().document_to_viewport.inverse().transform_vector2(snapped_delta);
 	}
 }
 
@@ -434,7 +434,7 @@ impl Fsm for PathToolFsmState {
 		match (self, event) {
 			(_, PathToolMessage::SelectionChanged) => {
 				// Set the newly targeted layers to visible
-				let target_layers = document.selected_nodes.selected_layers(document.network_interface.document_metadata()).collect();
+				let target_layers = document.selected_nodes.selected_layers(document.metadata()).collect();
 				shape_editor.set_selected_layers(target_layers);
 
 				responses.add(OverlaysMessage::Draw);
@@ -585,7 +585,7 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::DragStop { equidistant }) => {
 				let equidistant = input.keyboard.get(equidistant as usize);
 
-				let nearest_point = shape_editor.find_nearest_point_indices(&document.network, &document.metadata, input.mouse.position, SELECTION_THRESHOLD);
+				let nearest_point = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD);
 
 				if let Some((layer, nearest_point)) = nearest_point {
 					if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD && !equidistant {
@@ -672,7 +672,7 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::ManipulatorMakeHandlesFree) => {
 				responses.add(DocumentMessage::StartTransaction);
-				shape_editor.disable_colinear_handles_state_on_selected(&document.metadata, &document.network, responses);
+				shape_editor.disable_colinear_handles_state_on_selected(&document.network_interface, responses);
 				responses.add(DocumentMessage::CommitTransaction);
 				PathToolFsmState::Ready
 			}

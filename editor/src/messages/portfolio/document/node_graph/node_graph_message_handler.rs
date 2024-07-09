@@ -263,7 +263,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				for (node_id, node_template) in copied_nodes {
 					// Shift duplicated node
-					// document_node.metadata.position += IVec2::splat(2);
+					// document_node.metadata().position += IVec2::splat(2);
 
 					// Insert new node into graph
 					responses.add(NodeGraphMessage::InsertNode {
@@ -546,7 +546,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					self.initial_disconnecting = true;
 					self.disconnecting = Some(clicked_input);
 
-					let Some(output_connector) = network_interface.get_output_connector_from_input_connector(clicked_input) else {
+					let Some(output_connector) = network_interface.get_upstream_output_connector(clicked_input) else {
 						log::error!("Could not upstream find node {node_id} when moving existing wire");
 						return;
 					};
@@ -975,7 +975,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				// 			.map(|(_, node)| {
 				// 				format!(
 				// 					"metadata: DocumentNodeMetadata {{ position: glam::IVec2::new({}, {}) }}, // {}",
-				// 					node.metadata.position.x, node.metadata.position.y, node.name
+				// 					node.metadata().position.x, node.metadata().position.y, node.name
 				// 				)
 				// 			})
 				// 			.collect::<Vec<_>>()

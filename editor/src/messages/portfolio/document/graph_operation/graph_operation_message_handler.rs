@@ -123,7 +123,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				// // Put the Boolean Operation where the output layer is located, since this is the correct shift relative to its left input chain
 				// responses.add(GraphOperationMessage::SetNodePosition {
 				// 	node_id: boolean_operation_node_id,
-				// 	position: upper_layer_node.metadata.position,
+				// 	position: upper_layer_node.metadata().position,
 				// });
 
 				// // After the previous step, the Boolean Operation node is overlapping the upper layer, so we need to shift and its entire chain to the left by its width plus some padding
@@ -320,7 +320,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					log::error!("Failed to find node {node_id} when setting position");
 					return;
 				};
-				node.metadata.position = position;
+				node.metadata().position = position;
 				node_graph.update_click_target(node_id, document_network, Vec::new());
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);

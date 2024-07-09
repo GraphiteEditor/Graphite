@@ -10,10 +10,10 @@ pub fn should_extend(document: &DocumentMessageHandler, goal: DVec2, tolerance: 
 	let mut best = None;
 	let mut best_distance_squared = tolerance * tolerance;
 
-	for layer in document.selected_nodes.selected_layers(document.network_interface.document_metadata()) {
-		let viewspace = document.network_interface.document_metadata().transform_to_viewport(layer);
+	for layer in document.selected_nodes.selected_layers(document.metadata()) {
+		let viewspace = document.metadata().transform_to_viewport(layer);
 
-		let vector_data = document.network_interface.document_metadata().compute_modified_vector(layer, document.network_interface)?;
+		let vector_data = document.metadata().compute_modified_vector(layer, document.network_interface)?;
 		for id in vector_data.single_connected_points() {
 			let Some(point) = vector_data.point_domain.position_from_id(id) else { continue };
 

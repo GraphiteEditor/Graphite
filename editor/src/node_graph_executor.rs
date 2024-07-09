@@ -474,7 +474,7 @@ impl NodeGraphExecutor {
 
 		let render_config = RenderConfig {
 			viewport: Footprint {
-				transform: document.network_interface.document_metadata().document_to_viewport,
+				transform: document.metadata().document_to_viewport,
 				resolution: viewport_resolution,
 				..Default::default()
 			},
@@ -501,12 +501,12 @@ impl NodeGraphExecutor {
 
 		// Calculate the bounding box of the region to be exported
 		let bounds = match export_config.bounds {
-			ExportBounds::AllArtwork => document.network_interface.document_metadata().document_bounds_document_space(!export_config.transparent_background),
+			ExportBounds::AllArtwork => document.metadata().document_bounds_document_space(!export_config.transparent_background),
 			ExportBounds::Selection => document
 				.network_interface
 				.document_metadata()
 				.selected_bounds_document_space(!export_config.transparent_background, &document.selected_nodes),
-			ExportBounds::Artboard(id) => document.network_interface.document_metadata().bounding_box_document(id),
+			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;
 		let size = bounds[1] - bounds[0];
@@ -588,14 +588,14 @@ impl NodeGraphExecutor {
 						Ok(output) => output,
 						Err(e) => {
 							// Clear the click targets while the graph is in an un-renderable state
-							document.metadata.update_from_monitor(HashMap::new(), HashMap::new());
+							document.network_interface.document_metadata_mut().update_from_monitor(HashMap::new(), HashMap::new());
 
 							return Err(format!("Node graph evaluation failed:\n{e}"));
 						}
 					};
 
-					document.metadata.update_transforms(new_upstream_transforms);
-					document.metadata.update_from_monitor(new_click_targets, new_vector_modify);
+					document.network_interface.document_metadata_mut().update_transforms(new_upstream_transforms);
+					document.network_interface.document_metadata_mut().update_from_monitor(new_click_targets, new_vector_modify);
 
 					let execution_context = self.futures.remove(&execution_id).ok_or_else(|| "Invalid generation ID".to_string())?;
 					if let Some(export_config) = execution_context.export_config {

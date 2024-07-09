@@ -555,7 +555,12 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = createNode)]
 	pub fn create_node(&self, node_type: String, x: i32, y: i32) {
 		let id = NodeId(generate_uuid());
-		let message = NodeGraphMessage::CreateNode { node_id: Some(id), node_type, input_override: vec![], use_document_network: false };
+		let message = NodeGraphMessage::CreateNode {
+			node_id: Some(id),
+			node_type,
+			input_override: vec![],
+			use_document_network: false,
+		};
 		// TODO: Move node to location and run auto layout system
 		self.dispatch(message);
 	}
@@ -716,10 +721,10 @@ impl EditorHandle {
 
 		let mut updated_nodes = HashSet::new();
 		let document = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap();
-		document.metadata.load_structure(&document.network);
+		document.metadata().load_structure(&document.network_interface);
 		for node in document.network.nodes.iter().filter(|(_, d)| d.name == "Merge").map(|(id, _)| *id).collect::<Vec<_>>() {
-			let layer = LayerNodeIdentifier::new(node, &document.network);
-			if document.metadata.is_folder(layer) {
+			let layer = LayerNodeIdentifier::new(node, &document.network_interface);
+			if document.metadata().is_folder(layer) {
 				continue;
 			}
 

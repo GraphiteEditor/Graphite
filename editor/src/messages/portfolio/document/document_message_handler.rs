@@ -331,7 +331,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::DocumentStructureChanged => {
 				self.update_layers_panel_options_bar_widgets(responses);
 
-				self.metadata.load_structure(&self.document_network());
+				self.metadata().load_structure(&self.document_network());
 				let data_buffer: RawBuffer = self.serialize_root();
 				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
 			}
@@ -517,7 +517,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let get_last_elements = binding.iter().map(|x| x.last().expect("empty path")).collect::<Vec<_>>();
 
 				// TODO: The `.collect()` is necessary to avoid borrowing issues with `self`. See if this can be avoided to improve performance.
-				let ordered_last_elements = self.metadata.all_layers().filter(|layer| get_last_elements.contains(&layer)).rev().collect::<Vec<_>>();
+				let ordered_last_elements = self.metadata().all_layers().filter(|layer| get_last_elements.contains(&layer)).rev().collect::<Vec<_>>();
 				for layer_to_move in ordered_last_elements {
 					if insert_index > 0
 						&& layer_to_move
@@ -948,7 +948,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 					// Move child_layer stack x position to folder stack
 					let child_layer_node = self.document_network().nodes.get(&child_layer.to_node()).expect("Child node should always exist for layer");
-					let offset = folder_node.metadata.position - child_layer_node.metadata.position;
+					let offset = folder_node.metadata().position - child_layer_node.metadata().position;
 					responses.add(GraphOperationMessage::ShiftUpstream {
 						node_id: child_layer.to_node(),
 						shift: offset,
@@ -999,11 +999,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 							.nodes
 							.get(&child_layer.to_node())
 							.expect("Last child layer should always exist for last child layer id");
-						let target_distance = bottom_of_stack.metadata.position.y - top_of_stack.metadata.position.y;
+						let target_distance = bottom_of_stack.metadata().position.y - top_of_stack.metadata().position.y;
 
 						let folder_node = self.document_network().nodes.get(&folder.to_node()).expect("Folder node should always exist");
 						let upstream_sibling_node = self.document_network().nodes.get(&upstream_sibling_id).expect("Upstream sibling node should always exist");
-						let current_distance = upstream_sibling_node.metadata.position.y - folder_node.metadata.position.y;
+						let current_distance = upstream_sibling_node.metadata().position.y - folder_node.metadata().position.y;
 
 						let y_offset = target_distance - current_distance + 3;
 						responses.add(GraphOperationMessage::ShiftUpstream {
@@ -1030,7 +1030,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(DocumentMessage::RenderScrollbars);
 
 				if !self.graph_view_overlay_open {
-					self.metadata.document_to_viewport = transform;
+					self.metadata().document_to_viewport = transform;
 
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				} else {
@@ -1121,26 +1121,30 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 impl DocumentMessageHandler {
 	/// Runs an intersection test with all layers and a viewport space quad
 	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
-		let document_quad = self.metadata.document_to_viewport.inverse() * viewport_quad;
+		let document_quad = self.metadata().document_to_viewport.inverse() * viewport_quad;
 		self.metadata
 			.all_layers()
 			.filter(|&layer| self.selected_nodes.layer_visible(layer, &self.network_interface))
 			.filter(|&layer| !self.selected_nodes.layer_locked(layer, &self.network_interface))
 			.filter(|&layer| !self.network_interface.is_artboard(&layer.to_node()))
-			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
-			.filter(move |(layer, target)| target.iter().any(move |target| target.intersect_rectangle(document_quad, self.metadata.transform_to_document(*layer))))
+			.filter_map(|layer| self.metadata().click_target(layer).map(|targets| (layer, targets)))
+			.filter(move |(layer, target)| {
+				target
+					.iter()
+					.any(move |target| target.intersect_rectangle(document_quad, self.metadata().transform_to_document(*layer)))
+			})
 			.map(|(layer, _)| layer)
 	}
 
 	/// Find all of the layers that were clicked on from a viewport space location
 	pub fn click_xray(&self, viewport_location: DVec2) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
-		let point = self.metadata.document_to_viewport.inverse().transform_point2(viewport_location);
+		let point = self.metadata().document_to_viewport.inverse().transform_point2(viewport_location);
 		self.metadata
 			.all_layers()
 			.filter(|&layer| self.selected_nodes.layer_visible(layer, &self.network_interface))
 			.filter(|&layer| !self.selected_nodes.layer_locked(layer, &self.network_interface))
-			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
-			.filter(move |(layer, target)| target.iter().any(|target: &d| target.intersect_point(point, self.metadata.transform_to_document(*layer))))
+			.filter_map(|layer| self.metadata().click_target(layer).map(|targets| (layer, targets)))
+			.filter(move |(layer, target)| target.iter().any(|target: &d| target.intersect_point(point, self.metadata().transform_to_document(*layer))))
 			.map(|(layer, _)| layer)
 	}
 
@@ -1187,14 +1191,14 @@ impl DocumentMessageHandler {
 	pub fn selected_visible_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
 		self.selected_nodes
 			.selected_visible_layers(&self.network_interface)
-			.filter_map(|layer| self.metadata.bounding_box_viewport(layer))
+			.filter_map(|layer| self.metadata().bounding_box_viewport(layer))
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
 	}
 
 	pub fn selected_visible_and_unlock_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
 		self.selected_nodes
 			.selected_visible_and_unlocked_layers(self.metadata(), &self.network_interface)
-			.filter_map(|layer| self.metadata.bounding_box_viewport(layer))
+			.filter_map(|layer| self.metadata().bounding_box_viewport(layer))
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
 	}
 
@@ -1203,7 +1207,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn metadata(&self) -> &DocumentMetadata {
-		&self.metadata
+		&self.network_interface.document_metadata()
 	}
 
 	pub fn serialize_document(&self) -> String {

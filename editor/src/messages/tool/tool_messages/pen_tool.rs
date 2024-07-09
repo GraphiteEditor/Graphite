@@ -241,7 +241,7 @@ impl PenToolData {
 
 		// Break the control
 		let Some(last_pos) = self.latest_point().map(|point| point.pos) else { return };
-		let transform = document.network_interface.document_metadata().document_to_viewport * transform;
+		let transform = document.metadata().document_to_viewport * transform;
 		let on_top = transform.transform_point2(self.next_point).distance_squared(transform.transform_point2(last_pos)) < crate::consts::SNAP_POINT_TOLERANCE.powi(2);
 		if on_top {
 			if let Some(point) = self.latest_point_mut() {
@@ -269,9 +269,9 @@ impl PenToolData {
 		// Get close path
 		let mut end = None;
 		let layer = self.layer?;
-		let vector_data = document.metadata.compute_modified_vector(layer, &document.network)?;
+		let vector_data = document.metadata().compute_modified_vector(layer, &document.network_interface)?;
 		let start = self.latest_point()?.id;
-		let transform = document.metadata.document_to_viewport * transform;
+		let transform = document.metadata().document_to_viewport * transform;
 		for id in vector_data.single_connected_points().filter(|&point| point != start) {
 			let Some(pos) = vector_data.point_domain.position_from_id(id) else { continue };
 			let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(next_point));
@@ -348,7 +348,7 @@ impl PenToolData {
 	fn compute_snapped_angle(&mut self, snap_data: SnapData, transform: DAffine2, colinear: bool, mouse: DVec2, relative: Option<DVec2>, neighbor: bool) -> DVec2 {
 		let ModifierState { snap_angle, lock_angle, .. } = self.modifiers;
 		let document = snap_data.document;
-		let mut document_pos = document.network_interface.document_metadata().document_to_viewport.inverse().transform_point2(mouse);
+		let mut document_pos = document.metadata().document_to_viewport.inverse().transform_point2(mouse);
 		let snap = &mut self.snap_manager;
 
 		let neighbors = relative.filter(|_| neighbor).map_or(Vec::new(), |neighbor| vec![neighbor]);
@@ -426,16 +426,13 @@ impl Fsm for PenToolFsmState {
 			..
 		} = tool_action_data;
 
-		let mut transform = tool_data
-			.layer
-			.map(|layer| document.network_interface.document_metadata().transform_to_document(layer))
-			.unwrap_or_default();
+		let mut transform = tool_data.layer.map(|layer| document.metadata().transform_to_document(layer)).unwrap_or_default();
 
 		if !transform.inverse().is_finite() {
 			let parent_transform = tool_data
 				.layer
-				.and_then(|layer| layer.parent(document.network_interface.document_metadata()))
-				.map(|layer| document.network_interface.document_metadata().transform_to_document(layer));
+				.and_then(|layer| layer.parent(document.metadata()))
+				.map(|layer| document.metadata().transform_to_document(layer));
 
 			transform = parent_transform.unwrap_or(DAffine2::IDENTITY);
 		}
@@ -458,7 +455,7 @@ impl Fsm for PenToolFsmState {
 				self
 			}
 			(_, PenToolMessage::Overlays(mut overlay_context)) => {
-				let transform = document.metadata.document_to_viewport * transform;
+				let transform = document.metadata().document_to_viewport * transform;
 				if let (Some((start, handle_start)), Some(handle_end)) = (tool_data.latest_point().map(|point| (point.pos, point.handle_start)), tool_data.handle_end) {
 					let handles = BezierHandles::Cubic { handle_start, handle_end };
 					let bezier = Bezier {
@@ -526,7 +523,7 @@ impl Fsm for PenToolFsmState {
 					// New path layer
 					let nodes = {
 						let node_type = resolve_document_node_type("Path").expect("Path node does not exist");
-						HashMap::from([(NodeId(0), node_type.to_document_node_default_inputs([], Default::default()))])
+						HashMap::from([(NodeId(0), node_type.default_node_template())])
 					};
 
 					let parent = document.new_layer_parent(true);
@@ -538,7 +535,7 @@ impl Fsm for PenToolFsmState {
 					// Generate first point
 					let id = PointId::generate();
 					let transform = document.metadata().transform_to_document(parent);
-					let point = SnapCandidatePoint::handle(document.metadata.document_to_viewport.inverse().transform_point2(input.mouse.position));
+					let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 					let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, None, false);
 					let pos = transform.inverse().transform_point2(snapped.snapped_point_document);
 					let modification_type = VectorModificationType::InsertPoint { id, position: pos };

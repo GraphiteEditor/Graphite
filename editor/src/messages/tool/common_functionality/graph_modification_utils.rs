@@ -46,7 +46,8 @@ pub fn new_svg_layer(svg: String, transform: glam::DAffine2, id: NodeId, parent:
 	});
 	LayerNodeIdentifier::new_unchecked(id)
 }
-pub fn new_custom(id: NodeId, nodes: HashMap<NodeId, DocumentNode>, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
+
+pub fn new_custom(id: NodeId, nodes: HashMap<NodeId, NodeTemplate>, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
 	responses.add(GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index: -1 });
 	responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
 	LayerNodeIdentifier::new_unchecked(id)
@@ -162,8 +163,8 @@ pub fn get_stroke_width(layer: LayerNodeIdentifier, network_interface: &NodeNetw
 }
 
 /// Checks if a specified layer uses an upstream node matching the given name.
-pub fn is_layer_fed_by_node_of_name(layer: LayerNodeIdentifier, document_network: &NodeNetwork, node_name: &str) -> bool {
-	NodeGraphLayer::new(layer, document_network).find_node_inputs(node_name).is_some()
+pub fn is_layer_fed_by_node_of_name(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, node_name: &str) -> bool {
+	NodeGraphLayer::new(layer, network_interface).find_node_inputs(node_name).is_some()
 }
 
 /// An immutable reference to a layer within the document node graph for easy access.

@@ -173,7 +173,7 @@ impl Fsm for LineToolFsmState {
 				self
 			}
 			(LineToolFsmState::Ready, LineToolMessage::DragStart) => {
-				let point = SnapCandidatePoint::handle(document.network_interface.document_metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
+				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, None, false);
 				tool_data.drag_start = snapped.snapped_point_document;
 
@@ -181,13 +181,12 @@ impl Fsm for LineToolFsmState {
 
 				let nodes = {
 					let node_type = resolve_document_node_type("Line").expect("Line node does not exist");
-					let node = node_type.to_document_node_default_inputs(
+					let node = node_type.node_template_input_override(
 						[
 							None,
 							Some(NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false)),
 							Some(NodeInput::value(TaggedValue::DVec2(DVec2::X), false)),
 						],
-						Default::default(),
 					);
 
 					HashMap::from([(NodeId(0), node)])
@@ -296,7 +295,7 @@ impl Fsm for LineToolFsmState {
 }
 
 fn generate_transform(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: bool, snap_angle: bool, center: bool) -> Message {
-	let document_to_viewport = snap_data.document.network_interface.document_metadata().document_to_viewport;
+	let document_to_viewport = snap_data.document.metadata().document_to_viewport;
 	let mut document_points = [tool_data.drag_start, document_to_viewport.inverse().transform_point2(tool_data.drag_current)];
 
 	let mut angle = -(document_points[1] - document_points[0]).angle_between(DVec2::X);

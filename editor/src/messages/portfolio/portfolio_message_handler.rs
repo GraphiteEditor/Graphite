@@ -186,7 +186,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				let copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
 					let binding = active_document
 						.network_interface
-						.shallowest_unique_layers(active_document.selected_nodes.selected_layers(active_document.network_interface.document_metadata()));
+						.shallowest_unique_layers(active_document.selected_nodes.selected_layers(active_document.metadata()));
 
 					let get_last_elements: Vec<_> = binding.iter().map(|x| x.last().expect("empty path")).collect();
 
@@ -221,7 +221,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 						buffer.push(CopyBufferEntry {
 							nodes: active_document.network_interface.copy_nodes(&copy_ids, true).collect(),
-							selected: active_document.selected_nodes.selected_layers_contains(layer, active_document.network_interface.document_metadata()),
+							selected: active_document.selected_nodes.selected_layers_contains(layer, active_document.metadata()),
 							visible: active_document.selected_nodes.layer_visible(layer, &active_document.network_interface),
 							locked: active_document.selected_nodes.layer_locked(layer, &active_document.network_interface),
 							collapsed: false,
@@ -590,7 +590,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			common.extend(document.actions());
 
 			// Extend with actions that must have a selected layer
-			if document.selected_nodes.selected_layers(document.network_interface.document_metadata()).next().is_some() {
+			if document.selected_nodes.selected_layers(document.metadata()).next().is_some() {
 				common.extend(actions!(PortfolioMessageDiscriminant;
 					Copy,
 					Cut,

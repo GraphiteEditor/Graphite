@@ -209,9 +209,8 @@ impl Fsm for RectangleToolFsmState {
 
 				let nodes = {
 					let node_type = resolve_document_node_type("Rectangle").expect("Rectangle node does not exist");
-					let node = node_type.to_document_node_default_inputs(
+					let node = node_type.node_template_input_override(
 						[None, Some(NodeInput::value(TaggedValue::F64(1.), false)), Some(NodeInput::value(TaggedValue::F64(1.), false))],
-						Default::default(),
 					);
 
 					HashMap::from([(NodeId(0), node)])

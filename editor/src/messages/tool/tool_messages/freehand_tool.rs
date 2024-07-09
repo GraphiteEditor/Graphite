@@ -245,7 +245,7 @@ impl Fsm for FreehandToolFsmState {
 			}
 			(FreehandToolFsmState::Drawing, FreehandToolMessage::PointerMove) => {
 				if let Some(layer) = tool_data.layer {
-					let transform = document.network_interface.document_metadata().transform_to_viewport(layer);
+					let transform = document.metadata().transform_to_viewport(layer);
 					let position = transform.inverse().transform_point2(input.mouse.position);
 
 					extend_path_with_next_segment(tool_data, position, responses);

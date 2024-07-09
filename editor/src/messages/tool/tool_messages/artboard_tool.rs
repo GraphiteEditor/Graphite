@@ -119,7 +119,7 @@ impl ArtboardToolData {
 
 		let Some(layer) = self.selected_artboard else { return };
 
-		if let Some(bounds) = document.metadata.bounding_box_with_transform(layer, document.metadata.transform_to_document(layer)) {
+		if let Some(bounds) = document.metadata().bounding_box_with_transform(layer, document.metadata().transform_to_document(layer)) {
 			snapping::get_bbox_points(Quad::from_box(bounds), &mut self.snap_candidates, snapping::BBoxSnapValues::ARTBOARD, document);
 		}
 	}
@@ -144,7 +144,7 @@ impl ArtboardToolData {
 	fn hovered_artboard(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) -> Option<LayerNodeIdentifier> {
 		document
 			.click_xray(input.mouse.position)
-			.filter(|&layer| document.network.nodes.get(&layer.to_node()).map_or(false, |document_node| document_node.is_artboard()))
+			.filter(|&layer| document.network_interface.is_artboard(&layer.to_node()))
 			.next()
 	}
 
@@ -154,10 +154,10 @@ impl ArtboardToolData {
 		if let Some(intersection) = Self::hovered_artboard(document, input) {
 			self.selected_artboard = Some(intersection);
 
-			if let Some(bounds) = document.network_interface.document_metadata().bounding_box_document(intersection) {
+			if let Some(bounds) = document.metadata().bounding_box_document(intersection) {
 				let bounding_box_manager = self.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 				bounding_box_manager.bounds = bounds;
-				bounding_box_manager.transform = document.network_interface.document_metadata().document_to_viewport;
+				bounding_box_manager.transform = document.metadata().document_to_viewport;
 			}
 
 			responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: vec![intersection.to_node()] });
@@ -220,13 +220,10 @@ impl Fsm for ArtboardToolFsmState {
 		match (self, event) {
 			(state, ArtboardToolMessage::Overlays(mut overlay_context)) => {
 				if state != ArtboardToolFsmState::Drawing {
-					if let Some(bounds) = tool_data
-						.selected_artboard
-						.and_then(|layer| document.network_interface.document_metadata().bounding_box_document(layer))
-					{
+					if let Some(bounds) = tool_data.selected_artboard.and_then(|layer| document.metadata().bounding_box_document(layer)) {
 						let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 						bounding_box_manager.bounds = bounds;
-						bounding_box_manager.transform = document.network_interface.document_metadata().document_to_viewport;
+						bounding_box_manager.transform = document.metadata().document_to_viewport;
 
 						bounding_box_manager.render_overlays(&mut overlay_context);
 					} else {
@@ -466,7 +463,7 @@ impl Fsm for ArtboardToolFsmState {
 			(_, ArtboardToolMessage::UpdateSelectedArtboard) => {
 				tool_data.selected_artboard = document
 					.selected_nodes
-					.selected_layers(document.network_interface.document_metadata())
+					.selected_layers(document.metadata())
 					.find(|layer| document.network_interface.is_artboard(&layer.to_node()));
 				self
 			}

@@ -17,7 +17,7 @@ pub struct Resize {
 impl Resize {
 	/// Starts a resize, assigning the snap targets and snapping the starting position.
 	pub fn start(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {
-		let root_transform = document.network_interface.document_metadata().document_to_viewport;
+		let root_transform = document.metadata().document_to_viewport;
 		let point = SnapCandidatePoint::handle(root_transform.inverse().transform_point2(input.mouse.position));
 		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input), &point, None, false);
 		self.drag_start = snapped.snapped_point_document;
@@ -25,7 +25,7 @@ impl Resize {
 
 	/// Calculate the drag start position in viewport space.
 	pub fn viewport_drag_start(&self, document: &DocumentMessageHandler) -> DVec2 {
-		let root_transform = document.network_interface.document_metadata().document_to_viewport;
+		let root_transform = document.metadata().document_to_viewport;
 		root_transform.transform_point2(self.drag_start)
 	}
 
@@ -44,7 +44,7 @@ impl Resize {
 
 		let start = self.viewport_drag_start(document);
 		let mouse = input.mouse.position;
-		let to_viewport = document.network_interface.document_metadata().document_to_viewport;
+		let to_viewport = document.metadata().document_to_viewport;
 		let document_mouse = to_viewport.inverse().transform_point2(mouse);
 		let mut points_viewport = [start, mouse];
 		let ignore = if let Some(layer) = self.layer { vec![layer] } else { vec![] };

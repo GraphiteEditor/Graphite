@@ -646,9 +646,9 @@ impl NodeNetwork {
 	// pub fn push_node_to_document_network(&mut self, mut node: DocumentNode) -> NodeId {
 	// 	let id = NodeId(self.nodes.len().try_into().expect("Too many nodes in network"));
 	// 	// Set the correct position for the new node
-	// 	if node.metadata.position == IVec2::default() {
-	// 		if let Some(pos) = self.get_root_node().and_then(|root_node| self.nodes.get(&root_node.id)).map(|n| n.metadata.position) {
-	// 			node.metadata.position = pos + IVec2::new(8, 0);
+	// 	if node.metadata().position == IVec2::default() {
+	// 		if let Some(pos) = self.get_root_node().and_then(|root_node| self.nodes.get(&root_node.id)).map(|n| n.metadata().position) {
+	// 			node.metadata().position = pos + IVec2::new(8, 0);
 	// 		}
 	// 	}
 	// 	if !self.exports.is_empty() {
@@ -917,13 +917,6 @@ impl NodeNetwork {
 
 			// Match the document node input and the inputs of the inner network
 			for (nested_node_id, mut nested_node) in inner_network.nodes.into_iter() {
-				if nested_node.name == "To Artboard" {
-					let label_index = 1;
-					let label = if !node.alias.is_empty() { node.alias.clone() } else { node.name.clone() };
-					let label_input = NodeInput::value(TaggedValue::String(label), false);
-					nested_node.inputs[label_index] = label_input;
-				}
-
 				for (nested_input_index, nested_input) in nested_node.clone().inputs.iter().enumerate() {
 					if let NodeInput::Network { import_index, .. } = nested_input {
 						let parent_input = node.inputs.get(*import_index).expect(&format!("Import index {} should always exist", import_index));

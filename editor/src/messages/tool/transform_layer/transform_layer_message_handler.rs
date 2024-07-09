@@ -46,7 +46,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 		let selected_layers = document
 			.selected_nodes
-			.selected_layers(document.network_interface.document_metadata())
+			.selected_layers(document.metadata())
 			.filter(|&layer| document.network_interface.is_visible(layer.to_node(), true) && !document.network_interface.is_locked(&layer.to_node()))
 			.collect::<Vec<_>>();
 
@@ -69,10 +69,10 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 			if using_path_tool {
 				if let Some(vector_data) = selected_layers
 					.first()
-					.and_then(|&layer| document.network_interface.document_metadata().compute_modified_vector(layer, &document.network_interface))
+					.and_then(|&layer| document.metadata().compute_modified_vector(layer, &document.network_interface))
 				{
 					*selected.original_transforms = OriginalTransforms::default();
-					let viewspace = document.network_interface.document_metadata().transform_to_viewport(selected_layers[0]);
+					let viewspace = document.metadata().transform_to_viewport(selected_layers[0]);
 
 					let mut point_count: usize = 0;
 					let get_location = |point: &ManipulatorPointId| point.get_position(&vector_data).map(|position| viewspace.transform_point2(position));
@@ -214,7 +214,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				self.mouse_position = input.mouse.position;
 			}
 			TransformLayerMessage::SelectionChanged => {
-				let target_layers = document.selected_nodes.selected_layers(document.network_interface.document_metadata()).collect();
+				let target_layers = document.selected_nodes.selected_layers(document.metadata()).collect();
 				shape_editor.set_selected_layers(target_layers);
 			}
 			TransformLayerMessage::TypeBackspace => self.transform_operation.grs_typed(self.typing.type_backspace(), &mut selected, self.snap),
