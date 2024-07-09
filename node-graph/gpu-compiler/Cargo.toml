@@ -9,25 +9,29 @@ default = []
 profiling = ["nvtx"]
 serde = ["graphene-core/serde", "glam/serde"]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-graphene-core = { workspace = true, features = ["async", "std", "alloc"] }
+# Local dependencies
 graph-craft = { path = "../graph-craft", features = ["serde"] }
 gpu-executor = { path = "../gpu-executor" }
+
+# Workspace dependencies
+graphene-core = { workspace = true, features = ["async", "std", "alloc"] }
 dyn-any = { workspace = true, features = ["log-bad-types", "rc", "glam"] }
 num-traits = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }
 glam = { workspace = true }
 base64 = { workspace = true }
-
 bytemuck = { workspace = true }
-nvtx = { version = "1.1.1", optional = true }
 tempfile = { workspace = true }
+anyhow = { workspace = true }
+serde_json = { workspace = true }
+
+# Required dependencies
+tera = { version = "1.17.1" }
 spirv-builder = { version = "0.9", default-features = false, features = [
 	"use-installed-tools",
 ] }
-tera = { version = "1.17.1" }
-anyhow = { workspace = true }
-serde_json = { workspace = true }
+
+# Optional dependencies
+nvtx = { version = "1.1.1", optional = true }
