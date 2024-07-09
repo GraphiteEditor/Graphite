@@ -2,7 +2,7 @@
 name = "graphite-editor"
 publish = false
 version = "0.0.0"
-rust-version = "1.66.0"
+rust-version = "1.70.0"
 authors = ["Graphite Authors <contact@graphite.rs>"]
 edition = "2021"
 readme = "../README.md"
@@ -12,6 +12,7 @@ license = "Apache-2.0"
 
 [features]
 default = ["wasm"]
+wasm = ["wasm-bindgen", "graphene-std/wasm", "wasm-bindgen-futures"]
 gpu = [
 	"interpreted-executor/gpu",
 	"graphene-std/gpu",
@@ -23,34 +24,31 @@ quantization = [
 	"graphene-std/quantization",
 	"interpreted-executor/quantization",
 ]
-wasm = ["wasm-bindgen", "graphene-std/wasm", "wasm-bindgen-futures"]
 
 [dependencies]
-js-sys = "0.3.67"
+# Local dependencies
+graphite-proc-macros = { path = "../proc-macros" }
+graph-craft = { path = "../node-graph/graph-craft" }
+interpreted-executor = { path = "../node-graph/interpreted-executor" }
+graphene-core = { path = "../node-graph/gcore" }
+graphene-std = { path = "../node-graph/gstd", features = ["serde"] }
+
+# Workspace dependencies
+js-sys = { workspace = true }
 log = { workspace = true }
 bitflags = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-graphite-proc-macros = { path = "../proc-macros" }
 bezier-rs = { workspace = true }
 glam = { workspace = true, features = ["serde", "debug-glam-assert"] }
 derivative = { workspace = true }
 specta.workspace = true
 image = { workspace = true, features = ["bmp", "png"] }
-graph-craft = { path = "../node-graph/graph-craft" }
-wgpu-executor = { path = "../node-graph/wgpu-executor", optional = true }
-gpu-executor = { path = "../node-graph/gpu-executor", optional = true }
-interpreted-executor = { path = "../node-graph/interpreted-executor" }
 dyn-any = { workspace = true }
-graphene-core = { path = "../node-graph/gcore" }
-graphene-std = { path = "../node-graph/gstd", features = ["serde"] }
-num_enum = "0.6.1"
+num_enum = { workspace = true }
 usvg = { workspace = true }
-wasm-bindgen = { workspace = true, optional = true }
-wasm-bindgen-futures = { workspace = true, optional = true }
-# Remove when `core::cell::LazyCell` is stabilized (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>)
-once_cell = "1.13.0"
+once_cell = { workspace = true }
 web-sys = { workspace = true, features = [
 	"Document",
 	"DomRect",
@@ -60,9 +58,17 @@ web-sys = { workspace = true, features = [
 	"TextMetrics",
 ] }
 
+# Optional local dependencies
+wgpu-executor = { path = "../node-graph/wgpu-executor", optional = true }
+gpu-executor = { path = "../node-graph/gpu-executor", optional = true }
+
+# Optional workspace dependencies
+wasm-bindgen = { workspace = true, optional = true }
+wasm-bindgen-futures = { workspace = true, optional = true }
 
 [dev-dependencies]
-env_logger = "0.10"
+# Workspace dependencies
+env_logger = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
 
