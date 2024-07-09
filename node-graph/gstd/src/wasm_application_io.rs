@@ -337,7 +337,7 @@ fn render_canvas(
 	canvas.set_height(resolution.y);
 	let usvg_tree = data.to_usvg_tree(resolution, [min, max]);
 
-	if let Some(exec) = editor.application_io.gpu_executor() {
+	if let Some(exec) = editor.application_io.as_ref().unwrap().gpu_executor() {
 		todo!()
 	} else {
 		let pixmap_size = usvg_tree.size.to_int_size();
