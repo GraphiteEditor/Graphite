@@ -25,7 +25,7 @@ glam = ["dep:glam"]
 
 [dependencies]
 # Optional local dependencies
-dyn-any-derive = { path = "derive", version = "0.3.0", optional = true }
+dyn-any-derive = { path = "derive", optional = true }
 
 # Optional dependencies
 log = { version = "0.4", optional = true }

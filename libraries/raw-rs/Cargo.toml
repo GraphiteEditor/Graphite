@@ -25,7 +25,7 @@ num_enum = "0.7.2"
 thiserror = "1.0"
 
 # Optional dependencies
-libraw-rs = { version = "0.0.4", optional = true }
+libraw-rs = { version = "0.0.4", optional = true } # Should be a dev dependency, but Cargo currently doesn't allow optional dev dependencies
 
 [dev-dependencies]
 # Required dependencies
