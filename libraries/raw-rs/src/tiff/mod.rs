@@ -106,7 +106,7 @@ impl Ifd {
 		})
 	}
 
-	fn next_ifd<R: Read + Seek>(&self, file: &mut TiffRead<R>) -> Result<Self, TiffError> {
+	fn _next_ifd<R: Read + Seek>(&self, file: &mut TiffRead<R>) -> Result<Self, TiffError> {
 		Ifd::new_from_offset(file, self.next_ifd_offset.unwrap_or(0))
 	}
 

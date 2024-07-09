@@ -293,8 +293,8 @@ async fn brush(image: ImageFrame<Color>, bounds: ImageFrame<Color>, strokes: Vec
 	let image_bbox = Bbox::from_transform(image.transform).to_axis_aligned_bbox();
 	let bbox = if image_bbox.size().length() < 0.1 { stroke_bbox } else { stroke_bbox.union(&image_bbox) };
 
-	let mut draw_strokes: Vec<_> = strokes.iter().cloned().filter(|s| !matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore)).collect();
-	let erase_restore_strokes: Vec<_> = strokes.iter().cloned().filter(|s| matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore)).collect();
+	let mut draw_strokes: Vec<_> = strokes.iter().filter(|&s| !matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore)).cloned().collect();
+	let erase_restore_strokes: Vec<_> = strokes.iter().filter(|&s| matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore)).cloned().collect();
 
 	let mut brush_plan = cache.compute_brush_plan(image, &draw_strokes);
 

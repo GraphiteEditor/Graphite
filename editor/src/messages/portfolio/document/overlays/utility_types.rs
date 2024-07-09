@@ -196,7 +196,7 @@ impl OverlayContext {
 		}
 	}
 
-	pub fn outline<'a>(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
+	pub fn outline(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
 		self.render_context.begin_path();
 		for subpath in subpaths {
 			let subpath = subpath.borrow();

@@ -17,7 +17,7 @@ use std::cell::RefCell;
 // use std::sync::Mutex;
 
 thread_local! {
-	static EDITOR: RefCell<Option<Editor>> = RefCell::new(None);
+	static EDITOR: RefCell<Option<Editor>> = const { RefCell::new(None) };
 }
 
 // async fn respond_to(id: Path<String>) -> impl IntoResponse {

@@ -287,11 +287,11 @@ impl NodeRuntime {
 
 			let introspected_data_output = introspected_data
 				.downcast_ref::<IORecord<Footprint, graphene_core::GraphicElement>>()
-				.and_then(|io_data| Some(IntrospectedData::GraphicElement(&io_data.output)))
+				.map(|io_data| IntrospectedData::GraphicElement(&io_data.output))
 				.or_else(|| {
 					introspected_data
 						.downcast_ref::<IORecord<Footprint, graphene_core::Artboard>>()
-						.and_then(|io_data| Some(IntrospectedData::Artboard(&io_data.output)))
+						.map(|io_data| IntrospectedData::Artboard(&io_data.output))
 				});
 
 			let graphic_element = match introspected_data_output {

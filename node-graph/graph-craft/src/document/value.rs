@@ -10,6 +10,7 @@ use graphene_core::{Color, Node, Type};
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
+use std::fmt::Display;
 use std::hash::Hash;
 pub use std::sync::Arc;
 
@@ -173,17 +174,7 @@ tagged_value! {
 	BooleanOperation(graphene_core::vector::misc::BooleanOperation),
 }
 
-impl<'a> TaggedValue {
-	pub fn to_string(&self) -> String {
-		match self {
-			TaggedValue::String(x) => x.to_string(),
-			TaggedValue::U32(x) => x.to_string(),
-			TaggedValue::U64(x) => x.to_string(),
-			TaggedValue::F64(x) => x.to_string(),
-			TaggedValue::Bool(x) => x.to_string(),
-			_ => panic!("Cannot convert to string"),
-		}
-	}
+impl TaggedValue {
 	pub fn to_primitive_string(&self) -> String {
 		match self {
 			TaggedValue::None => "()".to_string(),
@@ -195,6 +186,19 @@ impl<'a> TaggedValue {
 			TaggedValue::BlendMode(x) => "BlendMode::".to_string() + &x.to_string(),
 			TaggedValue::Color(x) => format!("Color {x:?}"),
 			_ => panic!("Cannot convert to primitive string"),
+		}
+	}
+}
+
+impl Display for TaggedValue {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			TaggedValue::String(x) => f.write_str(x),
+			TaggedValue::U32(x) => f.write_fmt(format_args!("{x}")),
+			TaggedValue::U64(x) => f.write_fmt(format_args!("{x}")),
+			TaggedValue::F64(x) => f.write_fmt(format_args!("{x}")),
+			TaggedValue::Bool(x) => f.write_fmt(format_args!("{x}")),
+			_ => panic!("Cannot convert to string"),
 		}
 	}
 }

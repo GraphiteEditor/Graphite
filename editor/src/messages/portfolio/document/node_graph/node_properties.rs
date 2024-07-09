@@ -166,13 +166,13 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 				.unit(" px")
 				.on_update(update_value(
 					move |x: &NumberInput| {
-						let (offset, scale) = (move |x: f64| -> (DVec2, DVec2) {
-							let diff = DVec2::new(top_left.x - x, 0.);
+						let (offset, scale) = {
+							let diff = DVec2::new(top_left.x - x.value.unwrap_or_default(), 0.);
 							(top_left - diff, bounds)
-						})(x.value.unwrap_or_default());
+						};
 
 						let footprint = Footprint {
-							transform: DAffine2::from_scale_angle_translation(scale.into(), 0., offset.into()),
+							transform: DAffine2::from_scale_angle_translation(scale, 0., offset),
 							resolution: (oversample * scale).as_uvec2(),
 							..footprint
 						};
@@ -190,13 +190,13 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 				.unit(" px")
 				.on_update(update_value(
 					move |x: &NumberInput| {
-						let (offset, scale) = (move |y: f64| -> (DVec2, DVec2) {
-							let diff = DVec2::new(0., top_left.y - y);
+						let (offset, scale) = {
+							let diff = DVec2::new(0., top_left.y - x.value.unwrap_or_default());
 							(top_left - diff, bounds)
-						})(x.value.unwrap_or_default());
+						};
 
 						let footprint = Footprint {
-							transform: DAffine2::from_scale_angle_translation(scale.into(), 0., offset.into()),
+							transform: DAffine2::from_scale_angle_translation(scale, 0., offset),
 							resolution: (oversample * scale).as_uvec2(),
 							..footprint
 						};
@@ -216,10 +216,10 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 				.unit(" px")
 				.on_update(update_value(
 					move |x: &NumberInput| {
-						let (offset, scale) = (move |x: f64| -> (DVec2, DVec2) { (top_left, DVec2::new(x, bounds.y)) })(x.value.unwrap_or_default());
+						let (offset, scale) = (top_left, DVec2::new(x.value.unwrap_or_default(), bounds.y));
 
 						let footprint = Footprint {
-							transform: DAffine2::from_scale_angle_translation(scale.into(), 0., offset.into()),
+							transform: DAffine2::from_scale_angle_translation(scale, 0., offset),
 							resolution: (oversample * scale).as_uvec2(),
 							..footprint
 						};
@@ -237,10 +237,10 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 				.unit(" px")
 				.on_update(update_value(
 					move |x: &NumberInput| {
-						let (offset, scale) = (move |y: f64| -> (DVec2, DVec2) { (top_left, DVec2::new(bounds.x, y)) })(x.value.unwrap_or_default());
+						let (offset, scale) = (top_left, DVec2::new(bounds.x, x.value.unwrap_or_default()));
 
 						let footprint = Footprint {
-							transform: DAffine2::from_scale_angle_translation(scale.into(), 0., offset.into()),
+							transform: DAffine2::from_scale_angle_translation(scale, 0., offset),
 							resolution: (oversample * scale).as_uvec2(),
 							..footprint
 						};
@@ -255,7 +255,7 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 		]);
 
 		resolution_widgets.push(
-			NumberInput::new(Some((footprint.resolution.as_dvec2() / bounds).x as f64 * 100.))
+			NumberInput::new(Some((footprint.resolution.as_dvec2() / bounds).x * 100.))
 				.label("Resolution")
 				.unit("%")
 				.on_update(update_value(
@@ -2003,8 +2003,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 						node.1
 							.inputs
 							.iter()
-							.find(|node_input| if let NodeInput::Network { import_index, .. } = node_input { *import_index == 0 } else { false })
-							.is_some()
+							.any(|node_input| if let NodeInput::Network { import_index, .. } = node_input { *import_index == 0 } else { false })
 					})
 					.map(|(node_id, _)| node_id)
 					.copied()
@@ -2460,7 +2459,7 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 		return vec![LayoutGroup::Row { widgets: widgets_first_row }];
 	};
 	let fill2 = fill.clone();
-	let backup_color_fill: Fill = backup_color.clone().into();
+	let backup_color_fill: Fill = (*backup_color).into();
 	let backup_gradient_fill: Fill = backup_gradient.clone().into();
 
 	widgets_first_row.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -2479,7 +2478,7 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 						Fill::Solid(color) => NodeGraphMessage::SetInputValue {
 							node_id,
 							input_index: backup_color_index,
-							value: TaggedValue::OptionalColor(Some(color.clone())),
+							value: TaggedValue::OptionalColor(Some(*color)),
 						}
 						.into(),
 						Fill::Gradient(gradient) => NodeGraphMessage::SetInputValue {
