@@ -590,8 +590,8 @@ pub struct NoisePatternNode<
 	cellular_jitter: CellularJitter,
 }
 
-#[allow(clippy::too_many_arguments)]
 #[node_macro::node_fn(NoisePatternNode)]
+#[allow(clippy::too_many_arguments)]
 fn noise_pattern(
 	_no_primary_input: (),
 	dimensions: UVec2,

@@ -167,7 +167,7 @@ impl Dispatcher {
 					if let Some(document) = self.message_handlers.portfolio_message_handler.active_document() {
 						let data = ToolMessageData {
 							document_id: self.message_handlers.portfolio_message_handler.active_document_id().unwrap(),
-							document: document,
+							document,
 							input: &self.message_handlers.input_preprocessor_message_handler,
 							persistent_data: &self.message_handlers.portfolio_message_handler.persistent_data,
 							node_graph: &self.message_handlers.portfolio_message_handler.executor,
@@ -451,7 +451,8 @@ mod test {
 			let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
 			portfolio
 				.executor
-				.submit_node_graph_evaluation(portfolio.documents.get_mut(&portfolio.active_document_id.unwrap()).unwrap(), glam::UVec2::ONE);
+				.submit_node_graph_evaluation(portfolio.documents.get_mut(&portfolio.active_document_id.unwrap()).unwrap(), glam::UVec2::ONE)
+				.expect("submit_node_graph_evaluation failed");
 			crate::node_graph_executor::run_node_graph().await;
 			let mut messages = VecDeque::new();
 			editor.poll_node_graph_evaluation(&mut messages).expect("Graph should render");

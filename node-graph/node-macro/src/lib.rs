@@ -141,11 +141,14 @@ fn node_new_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 		args.push(Type::Verbatim(quote::quote!(#ident)));
 	}
 
+	let function_attributes = &function.attrs;
+
 	let struct_generics_iter = struct_generics.iter();
 	quote::quote! {
 		#[automatically_derived]
 		impl <#(#args),*> #node_name<#(#args),*>
 		{
+			#(#function_attributes)*
 			pub const fn new(#(#parameter_idents: #struct_generics_iter),*) -> Self{
 				Self {
 					#(#parameter_idents,)*

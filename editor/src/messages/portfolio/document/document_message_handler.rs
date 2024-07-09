@@ -187,7 +187,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					node_graph_ptz: &mut self.node_graph_ptz,
 					graph_view_overlay_open: self.graph_view_overlay_open,
 					node_graph_handler: &self.node_graph_handler,
-					node_graph_to_viewport: &self.node_graph_to_viewport.entry(self.node_graph_handler.network.clone()).or_insert(DAffine2::IDENTITY),
+					node_graph_to_viewport: self.node_graph_to_viewport.entry(self.node_graph_handler.network.clone()).or_insert(DAffine2::IDENTITY),
 				};
 
 				self.navigation_handler.process_message(message, responses, data);
@@ -221,7 +221,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						collapsed: &mut self.collapsed,
 						ipp,
 						graph_view_overlay_open: self.graph_view_overlay_open,
-						node_graph_to_viewport: &self.node_graph_to_viewport.entry(self.node_graph_handler.network.clone()).or_insert(DAffine2::IDENTITY),
+						node_graph_to_viewport: self.node_graph_to_viewport.entry(self.node_graph_handler.network.clone()).or_insert(DAffine2::IDENTITY),
 					},
 				);
 			}
@@ -384,7 +384,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				// TODO: Update click targets when node graph is closed so that this is not necessary
 				if self.graph_view_overlay_open {
-					self.node_graph_handler.update_all_click_targets(&mut self.network, self.node_graph_handler.network.clone())
+					self.node_graph_handler.update_all_click_targets(&self.network, self.node_graph_handler.network.clone())
 				}
 
 				responses.add(FrontendMessage::TriggerGraphViewOverlay { open });
@@ -606,7 +606,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					// Reconnect layer_to_move to new parent at insert index.
 					responses.add(GraphOperationMessage::InsertNodeAtStackIndex {
 						node_id: layer_to_move.to_node(),
-						parent: parent,
+						parent,
 						insert_index,
 					});
 				}
@@ -1047,13 +1047,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					});
 
 					// Get the node that feeds into the primary input for the folder (if it exists)
-					if let Some(NodeInput::Node { node_id, .. }) = self.network.nodes.get(&folder.to_node()).expect("Folder should always exist").inputs.get(0) {
+					if let Some(NodeInput::Node { node_id, .. }) = self.network.nodes.get(&folder.to_node()).expect("Folder should always exist").inputs.first() {
 						let upstream_sibling_id = *node_id;
 
 						// Get the node at the bottom of the first layer node stack
 						let mut last_child_node_id = child_layer.to_node();
 						loop {
-							let Some(NodeInput::Node { node_id, .. }) = self.network.nodes.get(&last_child_node_id).expect("Child node should always exist").inputs.get(0) else {
+							let Some(NodeInput::Node { node_id, .. }) = self.network.nodes.get(&last_child_node_id).expect("Child node should always exist").inputs.first() else {
 								break;
 							};
 							last_child_node_id = *node_id;
@@ -1276,7 +1276,7 @@ impl DocumentMessageHandler {
 		self.selected_nodes
 			.selected_nodes(network)
 			.filter_map(|node| {
-				let Some(node_metadata) = self.node_graph_handler.node_metadata.get(&node) else {
+				let Some(node_metadata) = self.node_graph_handler.node_metadata.get(node) else {
 					log::debug!("Could not get click target for node {node}");
 					return None;
 				};
@@ -1437,7 +1437,7 @@ impl DocumentMessageHandler {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		// If there is no history return and don't broadcast SelectionChanged
-		let Some(network) = self.document_undo_history.pop_back() else { return None };
+		let network = self.document_undo_history.pop_back()?;
 
 		responses.add(BroadcastEvent::SelectionChanged);
 
@@ -1460,7 +1460,7 @@ impl DocumentMessageHandler {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		// If there is no history return and don't broadcast SelectionChanged
-		let Some(network) = self.document_redo_history.pop_back() else { return None };
+		let network = self.document_redo_history.pop_back()?;
 
 		responses.add(BroadcastEvent::SelectionChanged);
 
@@ -1480,9 +1480,9 @@ impl DocumentMessageHandler {
 		};
 
 		for (node_id, current_node) in &network.nodes {
-			if let Some(previous_node) = previous_nested_network.nodes.get(&node_id) {
+			if let Some(previous_node) = previous_nested_network.nodes.get(node_id) {
 				if previous_node.alias == current_node.alias
-					&& previous_node.inputs.iter().map(|node_input| node_input.is_exposed()).count() == current_node.inputs.iter().map(|node_input| node_input.is_exposed()).count()
+					&& previous_node.inputs.iter().filter(|node_input| node_input.is_exposed()).count() == current_node.inputs.iter().filter(|node_input| node_input.is_exposed()).count()
 					&& previous_node.is_layer == current_node.is_layer
 					&& previous_node.metadata.position == current_node.metadata.position
 				{
@@ -1542,9 +1542,7 @@ impl DocumentMessageHandler {
 		};
 
 		// Downstream layer should always exist
-		let Some((downstream_layer_node_id, downstream_layer_is_parent)) = downstream_layer else {
-			return None;
-		};
+		let (downstream_layer_node_id, downstream_layer_is_parent) = downstream_layer?;
 
 		// Horizontal traversal if layer_to_move is the top of its layer stack, primary traversal if not
 		let flow_type = if downstream_layer_is_parent { FlowType::HorizontalFlow } else { FlowType::PrimaryFlow };
@@ -2105,11 +2103,12 @@ impl DocumentMessageHandler {
 
 fn root_network() -> NodeNetwork {
 	{
-		let mut network = NodeNetwork::default();
-		network.exports = vec![NodeInput::Value {
-			tagged_value: TaggedValue::ArtboardGroup(graphene_core::ArtboardGroup::EMPTY),
-			exposed: true,
-		}];
-		network
+		NodeNetwork {
+			exports: vec![NodeInput::Value {
+				tagged_value: TaggedValue::ArtboardGroup(graphene_core::ArtboardGroup::EMPTY),
+				exposed: true,
+			}],
+			..Default::default()
+		}
 	}
 }

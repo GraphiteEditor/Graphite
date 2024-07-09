@@ -71,7 +71,7 @@ fn execute_shader<I: Pod + Send + Sync, O: Pod + Send + Sync>(
 	let dest_buffer = create_buffer(dest_data, alloc).expect("failed to create buffer");
 
 	let compute_pipeline = ComputePipeline::new(device.clone(), entry_point, &(), None, |_| {}).expect("failed to create compute pipeline");
-	let layout = compute_pipeline.layout().set_layouts().get(0).unwrap();
+	let layout = compute_pipeline.layout().set_layouts().first().unwrap();
 	let dalloc = StandardDescriptorSetAllocator::new(device.clone());
 	let set = PersistentDescriptorSet::new(
 		&dalloc,

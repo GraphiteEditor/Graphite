@@ -139,7 +139,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 			NavigationMessage::CanvasPanMouseWheel { use_y_as_x } => {
 				let delta = match use_y_as_x {
 					false => -ipp.mouse.scroll_delta.as_dvec2(),
-					true => (-ipp.mouse.scroll_delta.y as f64, 0.).into(),
+					true => (-ipp.mouse.scroll_delta.y, 0.).into(),
 				} * VIEWPORT_SCROLL_RATE;
 				responses.add(NavigationMessage::CanvasPan { delta });
 			}

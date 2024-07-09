@@ -243,7 +243,7 @@ impl TextToolData {
 			color: Some(color),
 			transform,
 		});
-		self.new_text = text.clone();
+		self.new_text.clone_from(text);
 		Some(())
 	}
 

@@ -270,7 +270,7 @@ impl PrimitiveType for TypeIfd {
 
 	fn read_primitive<R: Read + Seek>(the_type: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
 		let offset = TypeLong::read_primitive(the_type, file)?;
-		Ok(Ifd::new_from_offset(file, offset)?)
+		Ifd::new_from_offset(file, offset)
 	}
 }
 
@@ -284,7 +284,7 @@ impl<T: PrimitiveType> TagType for T {
 	type Output = T::Output;
 
 	fn read<R: Read + Seek>(file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
-		let the_type = IfdTagType::try_from(file.read_u16()?).map_err(|_| TiffError::InvalidType)?;
+		let the_type = IfdTagType::from(file.read_u16()?);
 		let count = file.read_u32()?;
 
 		if count != 1 {
@@ -313,7 +313,7 @@ impl<T: PrimitiveType> TagType for Array<T> {
 	type Output = Vec<T::Output>;
 
 	fn read<R: Read + Seek>(file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
-		let the_type = IfdTagType::try_from(file.read_u16()?).map_err(|_| TiffError::InvalidType)?;
+		let the_type = IfdTagType::from(file.read_u16()?);
 		let count = file.read_u32()?;
 
 		let size = T::get_size(the_type).ok_or(TiffError::InvalidType)?;
@@ -334,7 +334,7 @@ impl<T: PrimitiveType, const N: usize> TagType for ConstArray<T, N> {
 	type Output = [T::Output; N];
 
 	fn read<R: Read + Seek>(file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
-		let the_type = IfdTagType::try_from(file.read_u16()?).map_err(|_| TiffError::InvalidType)?;
+		let the_type = IfdTagType::from(file.read_u16()?);
 		let count = file.read_u32()?;
 
 		if count != N.try_into()? {
