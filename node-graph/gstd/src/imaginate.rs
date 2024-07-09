@@ -6,7 +6,7 @@ use glam::{DVec2, U64Vec2};
 use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginatePreferences, ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus, ImaginateTerminationHandle};
 use graphene_core::application_io::NodeGraphUpdateMessage;
 use graphene_core::raster::{Color, Image, Luma, Pixel};
-use image::{DynamicImage, ImageBuffer, ImageOutputFormat};
+use image::{DynamicImage, ImageBuffer, ImageFormat};
 use reqwest::Url;
 
 const PROGRESS_EVERY_N_STEPS: u32 = 5;
@@ -468,7 +468,7 @@ fn image_to_base64<P: Pixel>(image: Image<P>) -> Result<String, Error> {
 	};
 
 	let mut png_data = std::io::Cursor::new(vec![]);
-	image.write_to(&mut png_data, ImageOutputFormat::Png).map_err(Error::ImageEncode)?;
+	image.write_to(&mut png_data, ImageFormat::Png).map_err(Error::ImageEncode)?;
 	Ok(BASE64_STANDARD.encode(png_data.into_inner()))
 }
 

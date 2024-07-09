@@ -151,7 +151,7 @@ impl Image<Color> {
 		let (data, width, height) = self.to_flat_u8();
 		let mut png = Vec::new();
 		let encoder = ::image::codecs::png::PngEncoder::new(&mut png);
-		encoder.write_image(&data, width, height, ::image::ColorType::Rgba8).expect("failed to encode image as png");
+		encoder.write_image(&data, width, height, ::image::ExtendedColorType::Rgba8).expect("failed to encode image as png");
 		png
 	}
 }
