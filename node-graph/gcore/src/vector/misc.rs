@@ -18,23 +18,23 @@ pub enum BooleanOperation {
 	SubtractBack,
 	Intersect,
 	Difference,
-	Divide,
+	// Divide,
 }
 
 impl BooleanOperation {
-	pub fn list() -> [BooleanOperation; 6] {
+	pub fn list() -> [BooleanOperation; 5] {
 		[
 			BooleanOperation::Union,
 			BooleanOperation::SubtractFront,
 			BooleanOperation::SubtractBack,
 			BooleanOperation::Intersect,
 			BooleanOperation::Difference,
-			BooleanOperation::Divide,
+			// BooleanOperation::Divide,
 		]
 	}
 
-	pub fn icons() -> [&'static str; 6] {
-		["BooleanUnion", "BooleanSubtractFront", "BooleanSubtractBack", "BooleanIntersect", "BooleanDifference", "BooleanDivide"]
+	pub fn icons() -> [&'static str; 5] {
+		["BooleanUnion", "BooleanSubtractFront", "BooleanSubtractBack", "BooleanIntersect", "BooleanDifference"]
 	}
 }
 
@@ -46,7 +46,7 @@ impl core::fmt::Display for BooleanOperation {
 			BooleanOperation::SubtractBack => write!(f, "Subtract Back"),
 			BooleanOperation::Intersect => write!(f, "Intersect"),
 			BooleanOperation::Difference => write!(f, "Difference"),
-			BooleanOperation::Divide => write!(f, "Divide"),
+			// BooleanOperation::Divide => write!(f, "Divide"),
 		}
 	}
 }

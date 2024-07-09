@@ -40,7 +40,6 @@ async fn binary_boolean_operation_node<Fut: Future<Output = VectorData>>(
 			BooleanOperation::SubtractBack => boolean_subtract(upper_path_string, lower_path_string),
 			BooleanOperation::Intersect => boolean_intersect(upper_path_string, lower_path_string),
 			BooleanOperation::Difference => boolean_difference(upper_path_string, lower_path_string),
-			BooleanOperation::Divide => boolean_divide(upper_path_string, lower_path_string),
 		}
 	};
 
@@ -215,31 +214,38 @@ fn boolean_operation_node(graphic_group: GraphicGroup, boolean_operation: Boolea
 				// Subtract the area where they intersect at least once from the union of all vector data
 				let union = boolean_operation_on_vector_data(vector_data.clone(), BooleanOperation::Union);
 				boolean_operation_on_vector_data(vec![union, any_intersection], BooleanOperation::SubtractFront)
-			}
-			BooleanOperation::Divide => {
-				let mut vector_data = vector_data.into_iter().rev();
-				let mut result = vector_data.next().unwrap_or(VectorData::empty());
-				let mut second_vector_data = Some(vector_data.next().unwrap_or(VectorData::empty()));
+			} // BooleanOperation::Divide => {
+			  // 		let mut vector_data = vector_data.into_iter().rev();
+			  // 		let mut result = vector_data.next().unwrap_or(VectorData::empty());
+			  // 		let mut second_vector_data = Some(vector_data.next().unwrap_or(VectorData::empty()));
 
-				// For each vector data, set the result to the division of that data and the result
-				while let Some(lower_vector_data) = second_vector_data {
-					let transform_of_lower_into_space_of_upper = result.transform.inverse() * lower_vector_data.transform;
+			  // 		// For each vector data, set the result to the division of that data and the result
+			  // 		while let Some(lower_vector_data) = second_vector_data {
+			  // 			let transform_of_lower_into_space_of_upper = result.transform.inverse() * lower_vector_data.transform;
 
-					let upper_path_string = to_svg_string(&result, DAffine2::IDENTITY);
-					let lower_path_string = to_svg_string(&lower_vector_data, transform_of_lower_into_space_of_upper);
+			  // 			let upper_path_string = to_svg_string(&result, DAffine2::IDENTITY);
+			  // 			let lower_path_string = to_svg_string(&lower_vector_data, transform_of_lower_into_space_of_upper);
 
-					#[allow(unused_unsafe)]
-					let boolean_operation_string = unsafe { boolean_divide(upper_path_string, lower_path_string) };
-					let boolean_union_result = from_svg_string(&boolean_operation_string);
+			  // 			// let boolean_operation_string = unsafe { boolean_divide(upper_path_string, lower_path_string) };
+			  // 			// let boolean_union_result = from_svg_string(&boolean_operation_string);
 
-					result.colinear_manipulators = boolean_union_result.colinear_manipulators;
-					result.point_domain = boolean_union_result.point_domain;
-					result.segment_domain = boolean_union_result.segment_domain;
-					result.region_domain = boolean_union_result.region_domain;
-					second_vector_data = vector_data.next();
-				}
-				result
-			}
+			  // 			//#[allow(unused_unsafe)]
+			  // 			// Concatenation in Rust does not fix the issue with the lines being buggy for more than 2 shapes. Note: this does not apply transforms correctly
+			  // 			let difference = boolean_operation_on_vector_data(vec![result.clone(), lower_vector_data.clone()], BooleanOperation::Difference);
+			  // 			let intersect = boolean_operation_on_vector_data(vec![result.clone(), lower_vector_data.clone()], BooleanOperation::Intersect);
+			  // 			let mut offset_transform = DAffine2::IDENTITY;
+			  // 			offset_transform.translation += (DVec2::new(0.1, 0.1));
+			  // 			let boolean_operation_string = to_svg_string(&difference, offset_transform) + &to_svg_string(&intersect, DAffine2::IDENTITY);
+			  // 			let boolean_union_result = from_svg_string(&boolean_operation_string);
+
+			  // 			result.colinear_manipulators = boolean_union_result.colinear_manipulators;
+			  // 			result.point_domain = boolean_union_result.point_domain;
+			  // 			result.segment_domain = boolean_union_result.segment_domain;
+			  // 			result.region_domain = boolean_union_result.region_domain;
+			  // 			second_vector_data = vector_data.next();
+			  // 		}
+			  // 		result
+			  // 	}
 		}
 	}
 
@@ -321,6 +327,4 @@ extern "C" {
 	fn boolean_intersect(path1: String, path2: String) -> String;
 	#[wasm_bindgen(js_name = booleanDifference)]
 	fn boolean_difference(path1: String, path2: String) -> String;
-	#[wasm_bindgen(js_name = booleanDivide)]
-	fn boolean_divide(path1: String, path2: String) -> String;
 }
