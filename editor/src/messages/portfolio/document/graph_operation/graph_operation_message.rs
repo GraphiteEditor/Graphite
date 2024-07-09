@@ -49,9 +49,6 @@ pub enum GraphOperationMessage {
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
-	InsertBooleanOperation {
-		operation: BooleanOperation,
-	},
 	InsertNodeBetween {
 		// Post node
 		post_node_id: NodeId,
