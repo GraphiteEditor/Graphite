@@ -412,7 +412,7 @@ impl Fsm for TextToolFsmState {
 			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text }) => {
 				responses.add(NodeGraphMessage::SetQualifiedInputValue {
 					node_id: graph_modification_utils::get_text_id(tool_data.layer, &document.network).unwrap(),
-					input_index: 1,
+					input_index: 0,
 					value: TaggedValue::String(new_text),
 				});
 

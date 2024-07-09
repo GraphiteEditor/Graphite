@@ -2240,8 +2240,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Vector",
 			implementation: DocumentNodeImplementation::proto("graphene_core::text::TextGeneratorNode<_, _, _>"),
 			inputs: vec![
-				DocumentInputType::none(),
 				DocumentInputType::value("Text", TaggedValue::String("Lorem ipsum".to_string()), false),
+				DocumentInputType::new("editor-api", FrontendGraphDataType::General, NodeInput::Scope("editor-api".into())),
 				DocumentInputType::value(
 					"Font",
 					TaggedValue::Font(Font::new(graphene_core::consts::DEFAULT_FONT_FAMILY.into(), graphene_core::consts::DEFAULT_FONT_STYLE.into())),

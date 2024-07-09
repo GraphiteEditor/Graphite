@@ -1123,6 +1123,18 @@ impl NodeNetwork {
 		are_inputs_used
 	}
 
+	pub fn resolve_scope_inputs(&mut self) {
+		for node in self.nodes.values_mut() {
+			for input in node.inputs.iter_mut() {
+				if let NodeInput::Scope(key) = input {
+					let (import_id, _ty) = self.scope_injections.get(key.as_ref()).expect("Tried to import a non existent key from scope");
+					// TODO use correct output index
+					*input = NodeInput::node(*import_id, 0);
+				}
+			}
+		}
+	}
+
 	/// Remove all nodes that contain [`DocumentNodeImplementation::Network`] by moving the nested nodes into the parent network.
 	pub fn flatten(&mut self, node_id: NodeId) {
 		self.flatten_with_fns(node_id, merge_ids, || NodeId(generate_uuid()))
@@ -1257,6 +1269,7 @@ impl NodeNetwork {
 							NodeInput::Value { .. } => unreachable!("Value inputs should have been replaced with value nodes"),
 							NodeInput::Inline(_) => (),
 							NodeInput::Scope(ref key) => {
+								log::debug!("flattening scope: {}", key);
 								let (import_id, ty) = self.scope_injections.get(key.as_ref()).expect("Tried to import a non existent key from scope");
 								// TODO use correct output index
 								nested_node.inputs[nested_input_index] = NodeInput::node(*import_id, 0);

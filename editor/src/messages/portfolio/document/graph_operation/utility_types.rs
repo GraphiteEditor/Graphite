@@ -320,8 +320,8 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn insert_text(&mut self, text: String, font: Font, size: f64, layer: NodeId) {
 		let text = resolve_document_node_type("Text").expect("Text node does not exist").to_document_node(
 			[
-				NodeInput::network(graph_craft::concrete!(graphene_std::wasm_application_io::WasmEditorApi), 0),
 				NodeInput::value(TaggedValue::String(text), false),
+				NodeInput::Scope("editor-api".into()),
 				NodeInput::value(TaggedValue::Font(font), false),
 				NodeInput::value(TaggedValue::F64(size), false),
 			],

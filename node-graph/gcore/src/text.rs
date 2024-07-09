@@ -9,14 +9,14 @@ pub use to_path::*;
 
 use crate::Node;
 
-pub struct TextGeneratorNode<Text, FontName, Size> {
-	text: Text,
+pub struct TextGeneratorNode<Editor, FontName, Size> {
+	editor: Editor,
 	font_name: FontName,
 	font_size: Size,
 }
 
 #[node_fn(TextGeneratorNode)]
-fn generate_text<'a: 'input, T>(editor: &'a EditorApi<T>, text: String, font_name: Font, font_size: f64) -> crate::vector::VectorData {
+fn generate_text<'a: 'input, T: 'a>(text: String, editor: &'a EditorApi<T>, font_name: Font, font_size: f64) -> crate::vector::VectorData {
 	let buzz_face = editor.font_cache.get(&font_name).map(|data| load_face(data));
 	crate::vector::VectorData::from_subpaths(to_path(&text, buzz_face, font_size, None), false)
 }
