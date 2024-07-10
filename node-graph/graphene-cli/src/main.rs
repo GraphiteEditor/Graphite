@@ -42,7 +42,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		device.poll(wgpu::Maintain::Poll);
 	});
 
-	let editor_api = WasmEditorApi {
+	let _editor_api = WasmEditorApi {
 		font_cache: FontCache::default(),
 		application_io: Some(application_io.into()),
 		node_graph_message_sender: Box::new(UpdateLogger {}),

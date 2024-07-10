@@ -322,7 +322,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let text = resolve_document_node_type("Text").expect("Text node does not exist").to_document_node(
 			[
 				NodeInput::value(TaggedValue::String(text), false),
-				NodeInput::Scope("editor-api".into()),
+				NodeInput::scope("editor-api"),
 				NodeInput::value(TaggedValue::Font(font), false),
 				NodeInput::value(TaggedValue::F64(size), false),
 			],

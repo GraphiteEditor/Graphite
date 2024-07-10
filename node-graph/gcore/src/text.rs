@@ -2,7 +2,6 @@ mod font_cache;
 mod to_path;
 
 use crate::application_io::EditorApi;
-use alloc::sync::Arc;
 pub use font_cache::*;
 use node_macro::node_fn;
 pub use to_path::*;

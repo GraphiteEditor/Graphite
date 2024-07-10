@@ -20,7 +20,6 @@ use graphene_core::transform::{Footprint, Transform};
 use graphene_core::vector::style::ViewMode;
 use graphene_core::vector::VectorData;
 use graphene_core::{Color, GraphicElement, SurfaceFrame};
-use graphene_std::application_io::EditorApi;
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypes};
 
@@ -220,7 +219,7 @@ impl NodeRuntime {
 		// Required to ensure that the appropriate proto nodes are reinserted when the Editor API changes.
 		let mut graph_input_hash = DefaultHasher::new();
 		editor_api.font_cache.hash(&mut graph_input_hash);
-		let font_hash_code = graph_input_hash.finish();
+		let _font_hash_code = graph_input_hash.finish();
 		graph.hash(&mut graph_input_hash);
 		let hash_code = graph_input_hash.finish();
 
@@ -598,7 +597,7 @@ impl NodeGraphExecutor {
 						transform,
 					} = execution_response;
 
-					responses.extend(existing_responses.into_iter().map(|m| m.into()));
+					responses.extend(existing_responses.into_iter().map(Into::into));
 					responses.add(NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors });
 					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(OverlaysMessage::Draw);

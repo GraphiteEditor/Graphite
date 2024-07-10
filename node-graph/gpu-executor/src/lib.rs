@@ -1,13 +1,12 @@
-use bytemuck::{Pod, Zeroable};
+use dyn_any::{StaticType, StaticTypeSized};
+use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle};
+use graphene_core::raster::{Image, ImageFrame, Pixel, SRGBA8};
 use graphene_core::*;
 
 use anyhow::Result;
-use dyn_any::{StaticType, StaticTypeSized};
+use bytemuck::{Pod, Zeroable};
 use futures::Future;
 use glam::{DAffine2, UVec3};
-use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle};
-use graphene_core::raster::{Image, ImageFrame, Pixel, SRGBA8};
-
 use std::borrow::Cow;
 use std::pin::Pin;
 use std::sync::Arc;

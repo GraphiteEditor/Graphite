@@ -433,7 +433,8 @@ mod test {
 			init_logger();
 			let mut editor = Editor::create();
 
-			// Use this for running under miri
+			// UNCOMMENT THIS FOR RUNNING UNDER MIRI
+			//
 			// let files = [
 			// 	include_str!("../../demo-artwork/isometric-fountain.graphite"),
 			// 	include_str!("../../demo-artwork/just-a-potted-cactus.graphite"),
@@ -455,7 +456,7 @@ mod test {
 
 				let responses = editor.handle_message(PortfolioMessage::OpenDocumentFile {
 					document_name: document_name.into(),
-					document_serialized_content: document_serialized_content.to_string(),
+					document_serialized_content: document_serialized_content.into(),
 				});
 
 				// Check if the graph renders

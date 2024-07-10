@@ -4,6 +4,7 @@ mod executor;
 pub use context::Context;
 use dyn_any::{DynAny, StaticType};
 pub use executor::GpuExecutor;
+pub use gpu_executor::ShaderIO;
 use gpu_executor::{ComputePassDimensions, Shader, ShaderInput, StorageBufferOptions, TextureBufferOptions, TextureBufferType, ToStorageBuffer, ToUniformBuffer};
 use graphene_core::Type;
 
@@ -11,12 +12,11 @@ use anyhow::{bail, Result};
 use futures::Future;
 use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle};
 
-use std::cell::Cell;
 use std::pin::Pin;
 use std::sync::Arc;
 
 use wgpu::util::DeviceExt;
-use wgpu::{Buffer, BufferDescriptor, CommandBuffer, ShaderModule, SurfaceConfiguration, SurfaceError, Texture, TextureView};
+use wgpu::{Buffer, BufferDescriptor, CommandBuffer, ShaderModule, SurfaceError, Texture, TextureView};
 
 #[cfg(target_arch = "wasm32")]
 use web_sys::HtmlCanvasElement;
@@ -43,8 +43,6 @@ impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<&'a EditorApi<T>> for &
 }
 
 pub type WgpuSurface<'window> = Arc<SurfaceHandle<wgpu::Surface<'window>>>;
-
-pub use gpu_executor::ShaderIO;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]

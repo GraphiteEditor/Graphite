@@ -1,8 +1,6 @@
-use crate::raster::ImageFrame;
 use crate::text::FontCache;
 use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::style::ViewMode;
-use crate::{Color, Node};
 
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
 
@@ -13,7 +11,6 @@ use core::hash::{Hash, Hasher};
 use core::pin::Pin;
 use core::ptr::addr_of;
 use glam::DAffine2;
-use spirv_std::image::ImageCoordinate;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

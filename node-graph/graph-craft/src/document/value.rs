@@ -6,7 +6,6 @@ use crate::wasm_application_io::WasmEditorApi;
 
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
-use graphene_core::text::FontCache;
 use graphene_core::{Color, Node, Type};
 
 use dyn_any::DynAny;
@@ -64,7 +63,7 @@ macro_rules! tagged_value {
 					$( Self::$identifier(_) => concrete!($ty), )*
 					Self::RenderOutput(_) => concrete!(RenderOutput),
 					Self::SurfaceFrame(_) => concrete!(graphene_core::SurfaceFrame),
-					Self::EditorApi(x) => concrete!(&WasmEditorApi)
+					Self::EditorApi(_) => concrete!(&WasmEditorApi)
 				}
 			}
 			/// Attempts to downcast the dynamic type to a tagged value

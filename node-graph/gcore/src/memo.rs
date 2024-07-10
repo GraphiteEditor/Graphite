@@ -4,7 +4,6 @@ use core::future::Future;
 #[cfg(feature = "alloc")]
 use alloc::sync::Arc;
 use core::cell::Cell;
-use core::marker::PhantomData;
 use core::pin::Pin;
 
 /// Caches the output of a given Node and acts as a proxy
@@ -46,7 +45,7 @@ impl<T, CachedNode> MemoNode<T, CachedNode> {
 }
 
 /// Caches the output of a given Node and acts as a proxy.
-/// In contrast to the relgular `MemoNode`. This node ignores all input.
+/// In contrast to the regular `MemoNode`. This node ignores all input.
 /// Using this node might result in the document not updating properly,
 /// use with caution.
 #[derive(Default)]
@@ -135,87 +134,5 @@ where
 impl<I, T, N> MonitorNode<I, T, N> {
 	pub const fn new(node: N) -> MonitorNode<I, T, N> {
 		MonitorNode { io: Cell::new(None), node }
-	}
-}
-
-// Caches the output of a given Node and acts as a proxy
-/// It provides two modes of operation, it can either be set
-/// when calling the node with a `Some<T>` variant or the last
-/// value that was added is returned when calling it with `None`
-#[derive(Default)]
-pub struct LetNode<T> {
-	// We have to use an append only data structure to make sure the references
-	// to the cache entries are always valid
-	// TODO: We only ever access the last value so there is not really a reason for us
-	// to store the previous entries. This should be reworked in the future
-	cache: Cell<Option<T>>,
-}
-impl<'i, T: 'i + Clone> Node<'i, Option<T>> for LetNode<T> {
-	type Output = T;
-	fn eval(&'i self, input: Option<T>) -> Self::Output {
-		if let Some(input) = input {
-			self.cache.set(Some(input.clone()));
-			input
-		} else {
-			let value = self.cache.take();
-			self.cache.set(value.clone());
-			value.expect("LetNode was not initialized. This can happen if you try to evaluate a node that depends on the EditorApi in the node_registry")
-		}
-	}
-	fn reset(&self) {
-		self.cache.set(None);
-	}
-}
-
-impl<T> LetNode<T> {
-	pub fn new() -> LetNode<T> {
-		LetNode { cache: Default::default() }
-	}
-}
-
-/// Caches the output of a given Node and acts as a proxy
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct EndLetNode<Input, Parameter> {
-	input: Input,
-	parameter: PhantomData<Parameter>,
-}
-impl<'i, T: 'i, Parameter: 'i + From<T>, Input> Node<'i, T> for EndLetNode<Input, Parameter>
-where
-	Input: Node<'i, Parameter>,
-{
-	type Output = <Input>::Output;
-	fn eval(&'i self, t: T) -> Self::Output {
-		let result = self.input.eval(Parameter::from(t));
-		result
-	}
-}
-
-impl<Input, Parameter> EndLetNode<Input, Parameter> {
-	pub const fn new(input: Input) -> EndLetNode<Input, Parameter> {
-		EndLetNode { input, parameter: PhantomData }
-	}
-}
-
-pub use crate::ops::SomeNode as InitNode;
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct RefNode<T, Let> {
-	let_node: Let,
-	_t: PhantomData<T>,
-}
-
-impl<'i, T: 'i, Let> Node<'i, ()> for RefNode<T, Let>
-where
-	Let: for<'a> Node<'a, Option<T>>,
-{
-	type Output = <Let as Node<'i, Option<T>>>::Output;
-	fn eval(&'i self, _: ()) -> Self::Output {
-		self.let_node.eval(None)
-	}
-}
-
-impl<Let, T> RefNode<T, Let> {
-	pub const fn new(let_node: Let) -> RefNode<T, Let> {
-		RefNode { let_node, _t: PhantomData }
 	}
 }

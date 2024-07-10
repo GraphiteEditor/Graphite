@@ -1,12 +1,15 @@
+use super::context::Context;
+
+use dyn_any::StaticTypeSized;
+
+use bytemuck::Pod;
+use std::borrow::Cow;
+use std::error::Error;
+use std::pin::Pin;
 use std::sync::Arc;
-use std::{borrow::Cow, error::Error};
 use wgpu::util::DeviceExt;
 
-use super::context::Context;
-use bytemuck::Pod;
-use dyn_any::StaticTypeSized;
-// use graph_craft::{graphene_compiler::Executor, proto::LocalFuture};
-// pub type LocalFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
+pub type LocalFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
 
 #[derive(Debug)]
 pub struct GpuExecutor<'a, I: StaticTypeSized, O> {
@@ -16,7 +19,7 @@ pub struct GpuExecutor<'a, I: StaticTypeSized, O> {
 	_phantom: std::marker::PhantomData<(I, O)>,
 }
 
-impl<'a, I: StaticTypeSized, O> GpuExecutor<'a, I, O> {
+impl<'a, I: StaticTypeSized + Sync + Pod + Send, O: StaticTypeSized + Send + Sync + Pod> GpuExecutor<'a, I, O> {
 	pub fn new(context: Context, shader: Cow<'a, [u32]>, entry_point: String) -> anyhow::Result<Self> {
 		Ok(Self {
 			context,
@@ -25,20 +28,18 @@ impl<'a, I: StaticTypeSized, O> GpuExecutor<'a, I, O> {
 			_phantom: std::marker::PhantomData,
 		})
 	}
+
+	pub fn execute(&self, input: Vec<I>) -> LocalFuture<Result<Vec<O>, Box<dyn Error>>> {
+		let context = &self.context;
+		let future = execute_shader(context.device.clone(), context.queue.clone(), self.shader.to_vec(), input, self.entry_point.clone());
+		Box::pin(async move {
+			let result = future.await;
+
+			let result: Vec<O> = result.ok_or_else(|| String::from("Failed to execute shader"))?;
+			Ok(result)
+		})
+	}
 }
-
-// impl<'a, I: StaticTypeSized + Sync + Pod + Send, O: StaticTypeSized + Send + Sync + Pod> Executor<Vec<I>, Vec<O>> for GpuExecutor<'a, I, O> {
-// 	fn execute(&self, input: Vec<I>) -> LocalFuture<Result<Vec<O>, Box<dyn Error>>> {
-// 		let context = &self.context;
-// 		let future = execute_shader(context.device.clone(), context.queue.clone(), self.shader.to_vec(), input, self.entry_point.clone());
-// 		Box::pin(async move {
-// 			let result = future.await;
-
-// 			let result: Vec<O> = result.ok_or_else(|| String::from("Failed to execute shader"))?;
-// 			Ok(result)
-// 		})
-// 	}
-// }
 
 async fn execute_shader<I: Pod + Send + Sync, O: Pod + Send + Sync>(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>, shader: Vec<u32>, data: Vec<I>, entry_point: String) -> Option<Vec<O>> {
 	// Loads the shader from WGSL

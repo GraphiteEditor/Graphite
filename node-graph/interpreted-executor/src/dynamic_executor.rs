@@ -7,7 +7,6 @@ use graph_craft::graphene_compiler::Executor;
 use graph_craft::proto::{ConstructionArgs, GraphError, LocalFuture, NodeContainer, ProtoNetwork, ProtoNode, SharedNodeContainer, TypeErasedBox, TypingContext};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
 use graph_craft::Type;
-use graphene_std::value::ValueNode;
 
 use std::collections::{HashMap, HashSet};
 use std::error::Error;

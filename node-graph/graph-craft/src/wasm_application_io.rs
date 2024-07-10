@@ -1,41 +1,30 @@
 use dyn_any::StaticType;
-use graphene_core::application_io::{ApplicationError, ApplicationIo, ExportFormat, RenderConfig, ResourceFuture, SurfaceHandle, SurfaceHandleFrame, SurfaceId};
-use graphene_core::raster::bbox::Bbox;
-use graphene_core::raster::Image;
-use graphene_core::raster::{color::SRGBA8, ImageFrame};
-use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
-use graphene_core::transform::{Footprint, TransformMut};
-use graphene_core::Color;
-use graphene_core::Node;
+#[cfg(target_arch = "wasm32")]
+use graphene_core::application_io::SurfaceHandleFrame;
+use graphene_core::application_io::{ApplicationError, ApplicationIo, ResourceFuture, SurfaceHandle, SurfaceId};
 #[cfg(feature = "wgpu")]
 use wgpu_executor::WgpuExecutor;
-
-use base64::Engine;
-use glam::DAffine2;
 
 use core::future::Future;
 #[cfg(target_arch = "wasm32")]
 use js_sys::{Object, Reflect};
-#[cfg(target_arch = "wasm32")]
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::marker::PhantomData;
 use std::pin::Pin;
+#[cfg(target_arch = "wasm32")]
 use std::sync::atomic::AtomicU64;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::Mutex;
 #[cfg(feature = "tokio")]
 use tokio::io::AsyncReadExt;
 #[cfg(target_arch = "wasm32")]
-use wasm_bindgen::JsValue;
+use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
-use wasm_bindgen::{Clamped, JsCast};
+use wasm_bindgen::JsValue;
 #[cfg(target_arch = "wasm32")]
 use web_sys::window;
 #[cfg(target_arch = "wasm32")]
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
-
-#[cfg(any(feature = "resvg", feature = "vello"))]
-pub struct Canvas(CanvasRenderingContext2d);
+use web_sys::HtmlCanvasElement;
 
 #[derive(Debug, Default)]
 pub struct WasmApplicationIo {

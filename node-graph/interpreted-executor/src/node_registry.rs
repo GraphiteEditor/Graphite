@@ -183,7 +183,6 @@ macro_rules! raster_node {
 // TODO: turn into hashmap
 fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> {
 	let node_types: Vec<Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)>> = vec![
-		// register_node!(graphene_core::ops::IdentityNode, input: Any<'_>, params: []),
 		vec![(
 			ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode"),
 			|_| Box::pin(async move { FutureWrapperNode::new(IdentityNode::new()).into_type_erased() }),
@@ -197,7 +196,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_core::ops::AddPairNode, input: (u32, u32), params: []),
 		register_node!(graphene_core::ops::AddPairNode, input: (u32, &u32), params: []),
 		register_node!(graphene_core::ops::CloneNode<_>, input: &ImageFrame<Color>, params: []),
-		// register_node!(graphene_core::ops::CloneNode<_>, input: &WasmEditorApi, params: []),
 		register_node!(graphene_core::ops::AddNode<_>, input: u32, params: [u32]),
 		register_node!(graphene_core::ops::AddNode<_>, input: &u32, params: [u32]),
 		register_node!(graphene_core::ops::AddNode<_>, input: u32, params: [&u32]),

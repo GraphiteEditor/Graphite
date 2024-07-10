@@ -478,15 +478,23 @@ impl NodeInput {
 	pub const fn node(node_id: NodeId, output_index: usize) -> Self {
 		Self::Node { node_id, output_index, lambda: false }
 	}
+
 	pub const fn lambda(node_id: NodeId, output_index: usize) -> Self {
 		Self::Node { node_id, output_index, lambda: true }
 	}
+
 	pub const fn value(tagged_value: TaggedValue, exposed: bool) -> Self {
 		Self::Value { tagged_value, exposed }
 	}
+
 	pub const fn network(import_type: Type, import_index: usize) -> Self {
 		Self::Network { import_type, import_index }
 	}
+
+	pub fn scope(key: impl Into<Cow<'static, str>>) -> Self {
+		Self::Scope(key.into())
+	}
+
 	fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId) {
 		if let &mut NodeInput::Node { node_id, output_index, lambda } = self {
 			*self = NodeInput::Node {
@@ -496,6 +504,7 @@ impl NodeInput {
 			}
 		}
 	}
+
 	pub fn is_exposed(&self) -> bool {
 		match self {
 			NodeInput::Node { .. } => true,
@@ -505,6 +514,7 @@ impl NodeInput {
 			NodeInput::Scope(_) => true,
 		}
 	}
+
 	pub fn ty(&self) -> Type {
 		match self {
 			NodeInput::Node { .. } => unreachable!("ty() called on NodeInput::Node"),
@@ -514,6 +524,7 @@ impl NodeInput {
 			NodeInput::Scope(_) => unreachable!("ty() called on NodeInput::Scope"),
 		}
 	}
+
 	pub fn as_value(&self) -> Option<&TaggedValue> {
 		if let NodeInput::Value { tagged_value, .. } = self {
 			Some(tagged_value)
@@ -521,6 +532,7 @@ impl NodeInput {
 			None
 		}
 	}
+
 	pub fn as_node(&self) -> Option<NodeId> {
 		if let NodeInput::Node { node_id, .. } = self {
 			Some(*node_id)
@@ -673,8 +685,7 @@ pub struct NodeNetwork {
 	#[serde(default = "default_export_metadata")]
 	pub exports_metadata: (NodeId, IVec2),
 
-	/// A network may expose nodes as constants which can by used by other nodes using a
-	/// `NodeInput::Scope(key)``
+	/// A network may expose nodes as constants which can by used by other nodes using a `NodeInput::Scope(key)`.
 	#[serde(default)]
 	pub scope_injections: HashMap<String, (NodeId, Type)>,
 }
@@ -1270,7 +1281,7 @@ impl NodeNetwork {
 							NodeInput::Inline(_) => (),
 							NodeInput::Scope(ref key) => {
 								log::debug!("flattening scope: {}", key);
-								let (import_id, ty) = self.scope_injections.get(key.as_ref()).expect("Tried to import a non existent key from scope");
+								let (import_id, _ty) = self.scope_injections.get(key.as_ref()).expect("Tried to import a non existent key from scope");
 								// TODO use correct output index
 								nested_node.inputs[nested_input_index] = NodeInput::node(*import_id, 0);
 							}

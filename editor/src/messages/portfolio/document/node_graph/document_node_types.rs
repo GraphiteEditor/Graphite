@@ -2,7 +2,6 @@ use super::node_properties;
 use super::utility_types::{FrontendGraphDataType, FrontendNodeType};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::DocumentMetadata;
-use crate::messages::portfolio::document::utility_types::misc::DocumentMode;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
 use crate::node_graph_executor::NodeGraphExecutor;
@@ -330,7 +329,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				nodes: [
 					DocumentNode {
 						name: "Load Resource".to_string(),
-						inputs: vec![NodeInput::Scope("editor-api".into()), NodeInput::network(concrete!(String), 1)],
+						inputs: vec![NodeInput::scope("editor-api"), NodeInput::network(concrete!(String), 1)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::LoadResourceNode<_>")),
 						..Default::default()
 					},
@@ -358,7 +357,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType {
 					name: "api",
 					data_type: FrontendGraphDataType::General,
-					default: NodeInput::Scope("editor-api".into()),
+					default: NodeInput::scope("editor-api"),
 				},
 				DocumentInputType {
 					name: "path",
@@ -381,7 +380,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				nodes: [
 					DocumentNode {
 						name: "Create Canvas".to_string(),
-						inputs: vec![NodeInput::Scope("editor-api".into())],
+						inputs: vec![NodeInput::scope("editor-api")],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
 						skip_deduplication: true,
 						..Default::default()
@@ -420,7 +419,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					},
 					DocumentNode {
 						name: "Create Canvas".to_string(),
-						inputs: vec![NodeInput::Scope("editor-api".into())],
+						inputs: vec![NodeInput::scope("editor-api")],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
 						skip_deduplication: true,
 						..Default::default()
@@ -464,7 +463,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				nodes: [
 					DocumentNode {
 						name: "Create Canvas".to_string(),
-						inputs: vec![NodeInput::Scope("editor-api".into())],
+						inputs: vec![NodeInput::scope("editor-api")],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
 						skip_deduplication: true,
 						..Default::default()
@@ -523,7 +522,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				nodes: [
 					DocumentNode {
 						name: "Create Canvas".to_string(),
-						inputs: vec![NodeInput::Scope("editor-api".into())],
+						inputs: vec![NodeInput::scope("editor-api")],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
 						skip_deduplication: true,
 						..Default::default()
@@ -543,7 +542,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					},
 					DocumentNode {
 						name: "RenderNode".to_string(),
-						inputs: vec![NodeInput::Scope("editor-api".into()), NodeInput::node(NodeId(2), 0), NodeInput::node(NodeId(1), 0)],
+						inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(2), 0), NodeInput::node(NodeId(1), 0)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _>")),
 						..Default::default()
 					},
@@ -1036,7 +1035,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				nodes: [
 					DocumentNode {
 						name: "Extract Executor".to_string(),
-						inputs: vec![NodeInput::Scope("editor-api".into())],
+						inputs: vec![NodeInput::scope("editor-api")],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<_, &WgpuExecutor>")),
 						..Default::default()
 					},
@@ -1080,7 +1079,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				nodes: [
 					DocumentNode {
 						name: "Extract Executor".to_string(),
-						inputs: vec![NodeInput::Scope("editor-api".into())],
+						inputs: vec![NodeInput::scope("editor-api")],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<_, &WgpuExecutor>")),
 						..Default::default()
 					},
@@ -1124,7 +1123,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				nodes: [
 					DocumentNode {
 						name: "Extract Executor".to_string(),
-						inputs: vec![NodeInput::Scope("editor-api".into())],
+						inputs: vec![NodeInput::scope("editor-api")],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<_, &WgpuExecutor>")),
 						..Default::default()
 					},
@@ -1176,7 +1175,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				nodes: [
 					DocumentNode {
 						name: "Extract Executor".to_string(),
-						inputs: vec![NodeInput::Scope("editor-api".into())],
+						inputs: vec![NodeInput::scope("editor-api")],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<_, &WgpuExecutor>")),
 						..Default::default()
 					},
@@ -1272,7 +1271,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				nodes: [
 					DocumentNode {
 						name: "Extract Executor".to_string(),
-						inputs: vec![NodeInput::Scope("editor-api".into())],
+						inputs: vec![NodeInput::scope("editor-api")],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<_, &WgpuExecutor>")),
 						..Default::default()
 					},
@@ -1316,7 +1315,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				nodes: [
 					DocumentNode {
 						name: "Extract Executor".to_string(),
-						inputs: vec![NodeInput::Scope("editor-api".into())],
+						inputs: vec![NodeInput::scope("editor-api")],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<_, &WgpuExecutor>")),
 						..Default::default()
 					},
@@ -1360,7 +1359,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				nodes: [
 					DocumentNode {
 						name: "Create Gpu Surface".to_string(),
-						inputs: vec![NodeInput::Scope("editor-api".into())],
+						inputs: vec![NodeInput::scope("editor-api")],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("gpu_executor::CreateGpuSurfaceNode")),
 						..Default::default()
 					},
@@ -1393,7 +1392,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				nodes: [
 					DocumentNode {
 						name: "Extract Executor".to_string(),
-						inputs: vec![NodeInput::Scope("editor-api".into())],
+						inputs: vec![NodeInput::scope("editor-api")],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<_, &WgpuExecutor>")),
 						..Default::default()
 					},
@@ -1441,7 +1440,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				nodes: [
 					DocumentNode {
 						name: "Extract Executor".to_string(),
-						inputs: vec![NodeInput::Scope("editor-api".into())],
+						inputs: vec![NodeInput::scope("editor-api")],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<_, &WgpuExecutor>")),
 						..Default::default()
 					},
@@ -2241,7 +2240,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			implementation: DocumentNodeImplementation::proto("graphene_core::text::TextGeneratorNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Text", TaggedValue::String("Lorem ipsum".to_string()), false),
-				DocumentInputType::new("editor-api", FrontendGraphDataType::General, NodeInput::Scope("editor-api".into())),
+				DocumentInputType::new("editor-api", FrontendGraphDataType::General, NodeInput::scope("editor-api")),
 				DocumentInputType::value(
 					"Font",
 					TaggedValue::Font(Font::new(graphene_core::consts::DEFAULT_FONT_FAMILY.into(), graphene_core::consts::DEFAULT_FONT_STYLE.into())),
@@ -2721,7 +2720,7 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 					name: "Imaginate".into(),
 					inputs: vec![
 						NodeInput::node(NodeId(0), 0),
-						NodeInput::Scope("editor-api".into()),
+						NodeInput::scope("editor-api"),
 						NodeInput::network(concrete!(ImaginateController), 2),
 						NodeInput::network(concrete!(f64), 3),
 						NodeInput::network(concrete!(Option<DVec2>), 4),
@@ -2751,7 +2750,7 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 		DocumentInputType {
 			name: "Editor Api",
 			data_type: FrontendGraphDataType::General,
-			default: NodeInput::Scope("editor-api".into()),
+			default: NodeInput::scope("editor-api"),
 		},
 		DocumentInputType::value("Controller", TaggedValue::ImaginateController(Default::default()), false),
 		DocumentInputType::value("Seed", TaggedValue::U64(0), false), // Remember to keep index used in `ImaginateRandom` updated with this entry's index
@@ -2918,7 +2917,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 // 	let mut network = NodeNetwork { ..Default::default() };
 // 	network.push_node_to_document_network(text_generator.to_document_node(
 // 		[
-// 			NodeInput::Scope("editor-api".into()),
+// 			NodeInput::scope("editor-api"),
 // 			NodeInput::value(TaggedValue::String(text), false),
 // 			NodeInput::value(TaggedValue::Font(font), false),
 // 			NodeInput::value(TaggedValue::F64(size), false),

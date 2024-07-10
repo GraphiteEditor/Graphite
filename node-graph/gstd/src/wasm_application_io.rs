@@ -1,5 +1,4 @@
-use dyn_any::StaticType;
-use graphene_core::application_io::{ApplicationError, ApplicationIo, ExportFormat, RenderConfig, ResourceFuture, SurfaceHandle, SurfaceHandleFrame, SurfaceId};
+use graphene_core::application_io::{ApplicationIo, ExportFormat, RenderConfig, SurfaceHandle, SurfaceHandleFrame};
 use graphene_core::raster::bbox::Bbox;
 use graphene_core::raster::Image;
 use graphene_core::raster::{color::SRGBA8, ImageFrame};
@@ -7,33 +6,19 @@ use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, I
 use graphene_core::transform::{Footprint, TransformMut};
 use graphene_core::Color;
 use graphene_core::Node;
-#[cfg(feature = "wgpu")]
-use wgpu_executor::WgpuExecutor;
 
 use base64::Engine;
 use glam::DAffine2;
 
 use core::future::Future;
-#[cfg(target_arch = "wasm32")]
-use js_sys::{Object, Reflect};
-use std::cell::RefCell;
-use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::pin::Pin;
 use std::sync::Arc;
 #[cfg(feature = "tokio")]
 use tokio::io::AsyncReadExt;
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::JsValue;
 use wasm_bindgen::{Clamped, JsCast};
-#[cfg(target_arch = "wasm32")]
-use web_sys::window;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 pub use graph_craft::wasm_application_io::*;
-
-#[cfg(any(feature = "resvg", feature = "vello"))]
-pub struct Canvas(());
 
 pub type WasmSurfaceHandle = SurfaceHandle<HtmlCanvasElement>;
 pub type WasmSurfaceHandleFrame = SurfaceHandleFrame<HtmlCanvasElement>;
@@ -285,11 +270,11 @@ where
 }
 #[automatically_derived]
 impl<Data, Surface, Parameter> RenderNode<Data, Surface, Parameter> {
-	pub fn new(data: Data, surface_handle: Surface) -> Self {
+	pub fn new(data: Data, _surface_handle: Surface) -> Self {
 		Self {
 			data,
 			#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
-			surface_handle,
+			surface_handle: _surface_handle,
 			#[cfg(not(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32")))]
 			surface_handle: PhantomData,
 			parameter: PhantomData,
