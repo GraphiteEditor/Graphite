@@ -72,7 +72,7 @@ pub struct SnappingState {
 impl Default for SnappingState {
 	fn default() -> Self {
 		Self {
-			snapping_enabled: true,
+			snapping_enabled: false, // TODO: Reenable this by default once <https://github.com/GraphiteEditor/Graphite/issues/1817> is fixed
 			grid_snapping: false,
 			bounds: Default::default(),
 			nodes: Default::default(),
