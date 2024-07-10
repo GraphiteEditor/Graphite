@@ -8,6 +8,7 @@ license = "MIT OR Apache-2.0"
 default = ["dealloc_nodes"]
 serde = ["dep:serde", "graphene-core/serde", "glam/serde", "bezier-rs/serde"]
 dealloc_nodes = []
+wgpu = ["wgpu-executor"]
 
 [dependencies]
 # Local dependencies
@@ -27,6 +28,19 @@ bezier-rs = { workspace = true }
 specta = { workspace = true }
 bytemuck = { workspace = true }
 rustc-hash = { workspace = true }
+url = { workspace = true }
+reqwest = { workspace = true }
 
 # Optional workspace dependencies
+wgpu-executor = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# Workspace dependencies
+web-sys = { workspace = true }
+js-sys = { workspace = true }
+wasm-bindgen = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Workspace dependencies
+winit = { workspace = true }

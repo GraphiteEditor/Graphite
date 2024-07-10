@@ -4,19 +4,19 @@ mod executor;
 pub use context::Context;
 use dyn_any::{DynAny, StaticType};
 pub use executor::GpuExecutor;
+pub use gpu_executor::ShaderIO;
 use gpu_executor::{ComputePassDimensions, Shader, ShaderInput, StorageBufferOptions, TextureBufferOptions, TextureBufferType, ToStorageBuffer, ToUniformBuffer};
-use graph_craft::Type;
+use graphene_core::Type;
 
 use anyhow::{bail, Result};
 use futures::Future;
 use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle};
 
-use std::cell::Cell;
 use std::pin::Pin;
 use std::sync::Arc;
 
 use wgpu::util::DeviceExt;
-use wgpu::{Buffer, BufferDescriptor, CommandBuffer, ShaderModule, SurfaceConfiguration, SurfaceError, Texture, TextureView};
+use wgpu::{Buffer, BufferDescriptor, CommandBuffer, ShaderModule, SurfaceError, Texture, TextureView};
 
 #[cfg(target_arch = "wasm32")]
 use web_sys::HtmlCanvasElement;
@@ -25,7 +25,6 @@ use web_sys::HtmlCanvasElement;
 pub struct WgpuExecutor {
 	pub context: Context,
 	render_configuration: RenderConfiguration,
-	surface_config: Cell<Option<SurfaceConfiguration>>,
 }
 
 impl std::fmt::Debug for WgpuExecutor {
@@ -37,9 +36,9 @@ impl std::fmt::Debug for WgpuExecutor {
 	}
 }
 
-impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<EditorApi<'a, T>> for &'a WgpuExecutor {
-	fn from(editor_api: EditorApi<'a, T>) -> Self {
-		editor_api.application_io.gpu_executor().unwrap()
+impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<&'a EditorApi<T>> for &'a WgpuExecutor {
+	fn from(editor_api: &'a EditorApi<T>) -> Self {
+		editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap()
 	}
 }
 
@@ -296,9 +295,8 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 			log::warn!("No surface formats available");
 			// return Ok(());
 		}
-		let Some(config) = self.surface_config.take() else { return Ok(()) };
-		let new_config = config.clone();
-		self.surface_config.replace(Some(config));
+		// let new_config = config.clone();
+		// self.surface_config.replace(Some(config));
 		let output = match result {
 			Err(SurfaceError::Timeout) => {
 				log::warn!("Timeout when getting current texture");
@@ -307,7 +305,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 			Err(SurfaceError::Lost) => {
 				log::warn!("Surface lost");
 
-				surface.configure(&self.context.device, &new_config);
+				// surface.configure(&self.context.device, &new_config);
 				return Ok(());
 			}
 			Err(SurfaceError::OutOfMemory) => {
@@ -316,7 +314,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 			}
 			Err(SurfaceError::Outdated) => {
 				log::warn!("Surface outdated");
-				surface.configure(&self.context.device, &new_config);
+				// surface.configure(&self.context.device, &new_config);
 				return Ok(());
 			}
 			Ok(surface) => surface,
@@ -472,7 +470,6 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 			desired_maximum_frame_latency: 2,
 		};
 		surface.configure(&self.context.device, &config);
-		self.surface_config.set(Some(config));
 
 		let surface_id = window.surface_id;
 		Ok(SurfaceHandle { surface_id, surface })
@@ -591,11 +588,7 @@ impl WgpuExecutor {
 			sampler,
 		};
 
-		Some(Self {
-			context,
-			render_configuration,
-			surface_config: Cell::new(None),
-		})
+		Some(Self { context, render_configuration })
 	}
 }
 

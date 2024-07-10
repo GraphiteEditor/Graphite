@@ -13,7 +13,6 @@ node-macro = { path = "../node-macro" }
 
 # Workspace dependencies
 graphene-core = { workspace = true, features = ["std", "alloc", "gpu"] }
-graph-craft = { workspace = true }
 dyn-any = { workspace = true, features = ["log-bad-types", "rc", "glam"] }
 num-traits = { workspace = true }
 log = { workspace = true }

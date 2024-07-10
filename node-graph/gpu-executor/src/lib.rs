@@ -1,14 +1,12 @@
-use bytemuck::{Pod, Zeroable};
-use graph_craft::proto::ProtoNetwork;
+use dyn_any::{StaticType, StaticTypeSized};
+use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle};
+use graphene_core::raster::{Image, ImageFrame, Pixel, SRGBA8};
 use graphene_core::*;
 
 use anyhow::Result;
-use dyn_any::{StaticType, StaticTypeSized};
+use bytemuck::{Pod, Zeroable};
 use futures::Future;
 use glam::{DAffine2, UVec3};
-use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle};
-use graphene_core::raster::{Image, ImageFrame, Pixel, SRGBA8};
-
 use std::borrow::Cow;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -61,15 +59,9 @@ pub trait GpuExecutor {
 	fn create_surface(&self, window: SurfaceHandle<Self::Window>) -> Result<SurfaceHandle<Self::Surface<'_>>>;
 }
 
-pub trait SpirVCompiler {
-	fn compile(&self, network: &[ProtoNetwork], io: &ShaderIO) -> Result<Shader>;
-}
-
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct CompileRequest {
-	pub networks: Vec<ProtoNetwork>,
-	pub io: ShaderIO,
-}
+// pub trait SpirVCompiler {
+// 	fn compile(&self, network: &[ProtoNetwork], io: &ShaderIO) -> Result<Shader>;
+// }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 /// GPU constants that can be used as inputs to a shader.
@@ -496,9 +488,9 @@ async fn read_output_buffer_node<'a: 'input, E: 'a + GpuExecutor>(buffer: Arc<Sh
 pub struct CreateGpuSurfaceNode {}
 
 #[node_macro::node_fn(CreateGpuSurfaceNode)]
-async fn create_gpu_surface<'a: 'input, E: 'a + GpuExecutor<Window = Io::Surface>, Io: ApplicationIo<Executor = E>>(editor_api: EditorApi<'a, Io>) -> Arc<SurfaceHandle<E::Surface<'a>>> {
-	let canvas = editor_api.application_io.create_surface();
-	let executor = editor_api.application_io.gpu_executor().unwrap();
+async fn create_gpu_surface<'a: 'input, E: 'a + GpuExecutor<Window = Io::Surface>, Io: ApplicationIo<Executor = E> + 'input>(editor_api: &'a EditorApi<Io>) -> Arc<SurfaceHandle<E::Surface<'a>>> {
+	let canvas = editor_api.application_io.as_ref().unwrap().create_surface();
+	let executor = editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap();
 	Arc::new(executor.create_surface(canvas).unwrap())
 }
 

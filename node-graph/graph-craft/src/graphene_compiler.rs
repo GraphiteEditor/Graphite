@@ -13,6 +13,7 @@ impl Compiler {
 		for id in node_ids {
 			network.flatten(id);
 		}
+		network.resolve_scope_inputs();
 		network.remove_redundant_id_nodes();
 		network.remove_dead_nodes(0);
 		let proto_networks = network.into_proto_networks();
@@ -39,4 +40,10 @@ pub type Any<'a> = Box<dyn DynAny<'a> + 'a>;
 
 pub trait Executor<I, O> {
 	fn execute(&self, input: I) -> LocalFuture<Result<O, Box<dyn Error>>>;
+}
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[cfg(feature = "wgpu")]
+pub struct CompileRequest {
+	pub networks: Vec<ProtoNetwork>,
+	pub io: wgpu_executor::ShaderIO,
 }

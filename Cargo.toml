@@ -30,6 +30,7 @@ resolver = "2"
 dyn-any = { path = "libraries/dyn-any", features = ["derive", "glam"] }
 graphene-core = { path = "node-graph/gcore" }
 graph-craft = { path = "node-graph/graph-craft", features = ["serde"] }
+wgpu-executor = { path = "node-graph/wgpu-executor" }
 bezier-rs = { path = "libraries/bezier-rs", features = ["dyn-any"] }
 node-macro = { path = "node-graph/node-macro" }
 

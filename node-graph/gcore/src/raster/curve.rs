@@ -110,7 +110,7 @@ impl CubicSplines {
 
 			// Eliminate the current column in all rows below the current one
 			for row_below_current in row + 1..4 {
-				assert!(augmented_matrix[row][row].abs() > core::f32::EPSILON);
+				assert!(augmented_matrix[row][row].abs() > f32::EPSILON);
 
 				let scale_factor = augmented_matrix[row_below_current][row] / augmented_matrix[row][row];
 				for col in row..5 {
@@ -122,7 +122,7 @@ impl CubicSplines {
 		// Gaussian elimination: back substitution
 		let mut solutions = [0.; 4];
 		for col in (0..4).rev() {
-			assert!(augmented_matrix[col][col].abs() > core::f32::EPSILON);
+			assert!(augmented_matrix[col][col].abs() > f32::EPSILON);
 
 			solutions[col] = augmented_matrix[col][4] / augmented_matrix[col][col];
 

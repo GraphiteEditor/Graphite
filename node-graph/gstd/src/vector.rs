@@ -108,7 +108,7 @@ fn boolean_operation_node(graphic_group: GraphicGroup, boolean_operation: Boolea
 			let transform_of_lower_into_space_of_upper = result.transform.inverse() * lower_vector_data.transform;
 
 			let upper_path_string = to_svg_string(&result, DAffine2::IDENTITY);
-			let lower_path_string = to_svg_string(&lower_vector_data, transform_of_lower_into_space_of_upper);
+			let lower_path_string = to_svg_string(lower_vector_data, transform_of_lower_into_space_of_upper);
 
 			#[allow(unused_unsafe)]
 			let boolean_operation_string = unsafe { boolean_subtract(upper_path_string, lower_path_string) };

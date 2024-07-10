@@ -10,3 +10,5 @@ pub mod proto;
 
 pub mod graphene_compiler;
 pub mod imaginate_input;
+
+pub mod wasm_application_io;
