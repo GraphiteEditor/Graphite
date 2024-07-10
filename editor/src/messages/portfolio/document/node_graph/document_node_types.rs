@@ -515,54 +515,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
-			name: "Output",
-			category: "Ignore",
-			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				exports: vec![NodeInput::node(NodeId(3), 0)],
-				nodes: [
-					DocumentNode {
-						name: "Create Canvas".to_string(),
-						inputs: vec![NodeInput::scope("editor-api")],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
-						skip_deduplication: true,
-						..Default::default()
-					},
-					DocumentNode {
-						name: "Cache".to_string(),
-						manual_composition: Some(concrete!(())),
-						inputs: vec![NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "Conversion".to_string(),
-						inputs: vec![NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T))), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<_, GraphicGroup>")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "RenderNode".to_string(),
-						inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(2), 0), NodeInput::node(NodeId(1), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _>")),
-						..Default::default()
-					},
-				]
-				.into_iter()
-				.enumerate()
-				.map(|(id, node)| (NodeId(id as u64), node))
-				.collect(),
-				..Default::default()
-			}),
-			inputs: vec![DocumentInputType {
-				name: "Output",
-				data_type: FrontendGraphDataType::Raster,
-				default: NodeInput::value(TaggedValue::GraphicGroup(GraphicGroup::default()), true),
-			}],
-			outputs: vec![],
-			properties: node_properties::output_properties,
-			..Default::default()
-		},
-		DocumentNodeDefinition {
 			name: "Image Frame",
 			category: "General",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -2851,7 +2803,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 				// TODO: Add conversion step
 				DocumentNode {
 					name: "RenderNode".to_string(),
-					manual_composition: Some(concrete!(&RenderConfig)),
+					manual_composition: Some(concrete!(RenderConfig)),
 					inputs: vec![
 						NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T))), 0),
 						NodeInput::node(NodeId(1), 0),

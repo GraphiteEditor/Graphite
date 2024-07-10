@@ -256,7 +256,7 @@ impl NodeRuntime {
 		use graph_craft::graphene_compiler::Executor;
 
 		let result = match self.executor.input_type() {
-			Some(t) if t == concrete!(&RenderConfig) => (&self.executor).execute(&render_config).await.map_err(|e| e.to_string()),
+			Some(t) if t == concrete!(RenderConfig) => (&self.executor).execute(render_config).await.map_err(|e| e.to_string()),
 			Some(t) if t == concrete!(()) => (&self.executor).execute(()).await.map_err(|e| e.to_string()),
 			Some(t) => Err(format!("Invalid input type {t:?}")),
 			_ => Err(format!("No input type:\n{:?}", self.node_graph_errors)),

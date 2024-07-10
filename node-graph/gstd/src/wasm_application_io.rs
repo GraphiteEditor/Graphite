@@ -211,7 +211,7 @@ async fn rasterize<_T: GraphicElementRendered + TransformMut>(mut data: _T, foot
 }
 
 // Render with the data node taking in Footprint.
-impl<'input, 'a: 'input, T: 'input + GraphicElementRendered, F: 'input + Future<Output = T>, Data: 'input, Surface: 'input, SurfaceFuture: 'input> Node<'input, &'a RenderConfig>
+impl<'input, 'a: 'input, T: 'input + GraphicElementRendered, F: 'input + Future<Output = T>, Data: 'input, Surface: 'input, SurfaceFuture: 'input> Node<'input, RenderConfig>
 	for RenderNode<Data, Surface, Footprint>
 where
 	Data: Node<'input, Footprint, Output = F>,
@@ -221,12 +221,12 @@ where
 	type Output = core::pin::Pin<Box<dyn core::future::Future<Output = RenderOutput> + 'input>>;
 
 	#[inline]
-	fn eval(&'input self, render_config: &'a RenderConfig) -> Self::Output {
+	fn eval(&'input self, render_config: RenderConfig) -> Self::Output {
 		Box::pin(async move {
 			let footprint = render_config.viewport;
 
 			let RenderConfig { hide_artboards, for_export, .. } = render_config;
-			let render_params = RenderParams::new(render_config.view_mode, ImageRenderMode::Base64, None, false, *hide_artboards, *for_export);
+			let render_params = RenderParams::new(render_config.view_mode, ImageRenderMode::Base64, None, false, hide_artboards, for_export);
 
 			let output_format = render_config.export_format;
 			match output_format {
@@ -240,7 +240,7 @@ where
 }
 
 // Render with the data node taking in ().
-impl<'input, 'a: 'input, T: 'input + GraphicElementRendered, F: 'input + Future<Output = T>, Data: 'input, Surface: 'input, SurfaceFuture: 'input> Node<'input, &'a RenderConfig>
+impl<'input, 'a: 'input, T: 'input + GraphicElementRendered, F: 'input + Future<Output = T>, Data: 'input, Surface: 'input, SurfaceFuture: 'input> Node<'input, RenderConfig>
 	for RenderNode<Data, Surface, ()>
 where
 	Data: Node<'input, (), Output = F>,
@@ -249,12 +249,12 @@ where
 {
 	type Output = core::pin::Pin<Box<dyn core::future::Future<Output = RenderOutput> + 'input>>;
 	#[inline]
-	fn eval(&'input self, render_config: &'a RenderConfig) -> Self::Output {
+	fn eval(&'input self, render_config: RenderConfig) -> Self::Output {
 		Box::pin(async move {
 			let footprint = render_config.viewport;
 
 			let RenderConfig { hide_artboards, for_export, .. } = render_config;
-			let render_params = RenderParams::new(render_config.view_mode, ImageRenderMode::Base64, None, false, *hide_artboards, *for_export);
+			let render_params = RenderParams::new(render_config.view_mode, ImageRenderMode::Base64, None, false, hide_artboards, for_export);
 
 			let output_format = render_config.export_format;
 			match output_format {

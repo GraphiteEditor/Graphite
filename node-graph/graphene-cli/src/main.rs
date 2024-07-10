@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	let render_config = graphene_core::application_io::RenderConfig::default();
 
 	loop {
-		let _result = (&executor).execute(&render_config).await?;
+		let _result = (&executor).execute(render_config).await?;
 		std::thread::sleep(std::time::Duration::from_millis(16));
 	}
 }

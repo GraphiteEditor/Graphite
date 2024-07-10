@@ -102,7 +102,7 @@ impl DynamicExecutor {
 	}
 }
 
-impl<'a, I: StaticType + 'a> Executor<I, TaggedValue> for &'a DynamicExecutor {
+impl<'a, I: StaticType + 'static> Executor<I, TaggedValue> for &'a DynamicExecutor {
 	fn execute(&self, input: I) -> LocalFuture<Result<TaggedValue, Box<dyn Error>>> {
 		Box::pin(async move { self.tree.eval_tagged_value(self.output, input).await.map_err(|e| e.into()) })
 	}
@@ -176,7 +176,7 @@ impl BorrowTree {
 	}
 	/// Evaluate the output node of the [`BorrowTree`] and cast it to a tagged value.
 	/// This ensures that no borrowed data can escape the node graph.
-	pub async fn eval_tagged_value<'i, I: StaticType + 'i>(&'i self, id: NodeId, input: I) -> Result<TaggedValue, String> {
+	pub async fn eval_tagged_value<I: StaticType + 'static>(&self, id: NodeId, input: I) -> Result<TaggedValue, String> {
 		let node = self.nodes.get(&id).cloned().ok_or("Output node not found in executor")?;
 		let output = node.eval(Box::new(input));
 		TaggedValue::try_from_any(output.await)
