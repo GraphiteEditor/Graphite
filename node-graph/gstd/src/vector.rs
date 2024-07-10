@@ -123,31 +123,52 @@ fn boolean_operation_node(graphic_group: GraphicGroup, boolean_operation: Boolea
 				result
 			}
 			BooleanOperation::SubtractFront => {
-				// Reverse vector data so that the first vector data is subtracted from the rest
-				let mut vector_data = vector_data.into_iter().rev();
-				let upper_vector_data = vector_data.next().unwrap_or(VectorData::empty());
-				// Union the rest of the data into a single vector
-				let lower_vector_data = boolean_operation_on_vector_data(vector_data.rev().collect::<Vec<_>>(), BooleanOperation::Union);
+				let mut vector_data = vector_data.into_iter();
+				let mut result = vector_data.next().unwrap_or(VectorData::empty());
+				let mut next_vector_data = vector_data.next();
 
-				let transform_of_lower_into_space_of_upper = upper_vector_data.transform.inverse() * lower_vector_data.transform;
+				while let Some(lower_vector_data) = next_vector_data {
+					let transform_of_lower_into_space_of_upper = result.transform.inverse() * lower_vector_data.transform;
 
-				let upper_path_string = to_svg_string(&upper_vector_data, DAffine2::IDENTITY);
-				let lower_path_string = to_svg_string(&lower_vector_data, transform_of_lower_into_space_of_upper);
+					let upper_path_string = to_svg_string(&result, DAffine2::IDENTITY);
+					let lower_path_string = to_svg_string(&lower_vector_data, transform_of_lower_into_space_of_upper);
 
-				#[allow(unused_unsafe)]
-				let boolean_operation_string = unsafe { boolean_subtract(lower_path_string, upper_path_string) };
-				let mut boolean_operation_result = from_svg_string(&boolean_operation_string);
+					#[allow(unused_unsafe)]
+					let boolean_operation_string = unsafe { boolean_subtract(upper_path_string, lower_path_string) };
+					let mut boolean_operation_result = from_svg_string(&boolean_operation_string);
 
-				boolean_operation_result.transform = upper_vector_data.transform;
-				boolean_operation_result.style = lower_vector_data.style;
-				boolean_operation_result.alpha_blending = lower_vector_data.alpha_blending;
+					result.colinear_manipulators = boolean_operation_result.colinear_manipulators;
+					result.point_domain = boolean_operation_result.point_domain;
+					result.segment_domain = boolean_operation_result.segment_domain;
+					result.region_domain = boolean_operation_result.region_domain;
 
-				boolean_operation_result
+					next_vector_data = vector_data.next();
+				}
+				result
 			}
 			BooleanOperation::SubtractBack => {
-				// Rotate the vector data so that the last vector data is at the start, and subtract it from the rest
-				vector_data.rotate_left(1);
-				boolean_operation_on_vector_data(vector_data, BooleanOperation::SubtractFront)
+				let mut vector_data = vector_data.into_iter().rev();
+				let mut result = vector_data.next().unwrap_or(VectorData::empty());
+				let mut next_vector_data = vector_data.next();
+
+				while let Some(lower_vector_data) = next_vector_data {
+					let transform_of_lower_into_space_of_upper = result.transform.inverse() * lower_vector_data.transform;
+
+					let upper_path_string = to_svg_string(&result, DAffine2::IDENTITY);
+					let lower_path_string = to_svg_string(&lower_vector_data, transform_of_lower_into_space_of_upper);
+
+					#[allow(unused_unsafe)]
+					let boolean_operation_string = unsafe { boolean_subtract(upper_path_string, lower_path_string) };
+					let mut boolean_operation_result = from_svg_string(&boolean_operation_string);
+
+					result.colinear_manipulators = boolean_operation_result.colinear_manipulators;
+					result.point_domain = boolean_operation_result.point_domain;
+					result.segment_domain = boolean_operation_result.segment_domain;
+					result.region_domain = boolean_operation_result.region_domain;
+
+					next_vector_data = vector_data.next();
+				}
+				result
 			}
 			BooleanOperation::Intersect => {
 				let mut vector_data = vector_data.into_iter().rev();
