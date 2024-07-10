@@ -2400,15 +2400,89 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
-			name: "Boolean Operation",
+			name: "Binary Boolean Operation",
 			category: "Vector",
-			implementation: DocumentNodeImplementation::proto("graphene_std::vector::BooleanOperationNode<_, _>"),
+			implementation: DocumentNodeImplementation::proto("graphene_std::vector::BinaryBooleanOperationNode<_, _>"),
 			inputs: vec![
 				DocumentInputType::value("Upper Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Lower Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Operation", TaggedValue::BooleanOperation(vector::misc::BooleanOperation::Union), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
+			properties: node_properties::binary_boolean_operation_properties,
+			..Default::default()
+		},
+		DocumentNodeDefinition {
+			name: "Boolean Operation",
+			category: "Vector",
+			is_layer: true,
+			implementation: DocumentNodeImplementation::Network(NodeNetwork {
+				exports: vec![NodeInput::node(NodeId(4), 0)],
+				nodes: [
+					// Secondary (left) input type coercion
+					(
+						NodeId(0),
+						DocumentNode {
+							name: "Boolean Operation".to_string(),
+							inputs: vec![NodeInput::network(generic!(T), 1), NodeInput::network(concrete!(vector::misc::BooleanOperation), 2)],
+							implementation: DocumentNodeImplementation::proto("graphene_std::vector::BooleanOperationNode<_>"),
+							metadata: DocumentNodeMetadata { position: glam::IVec2::new(-16, -1) },
+							..Default::default()
+						},
+					),
+					// Primary (bottom) input type coercion
+					(
+						NodeId(1),
+						DocumentNode {
+							name: "To Graphic Group".to_string(),
+							inputs: vec![NodeInput::network(generic!(T), 0)],
+							implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicGroupNode"),
+							metadata: DocumentNodeMetadata { position: glam::IVec2::new(-16, -3) }, // To Graphic Group
+							..Default::default()
+						},
+					),
+					(
+						NodeId(2),
+						DocumentNode {
+							name: "To Graphic Element".to_string(),
+							inputs: vec![NodeInput::node(NodeId(0), 0)],
+							implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicElementNode"),
+							metadata: DocumentNodeMetadata { position: glam::IVec2::new(-10, 3) }, // To Graphic Element
+							..Default::default()
+						},
+					),
+					// The monitor node is used to display a thumbnail in the UI
+					(
+						NodeId(3),
+						DocumentNode {
+							inputs: vec![NodeInput::node(NodeId(2), 0)],
+							metadata: DocumentNodeMetadata { position: glam::IVec2::new(-7, -1) }, // Monitor
+							..monitor_node()
+						},
+					),
+					(
+						NodeId(4),
+						DocumentNode {
+							name: "ConstructLayer".to_string(),
+							manual_composition: Some(concrete!(Footprint)),
+							inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(3), 0)],
+							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _>"),
+							metadata: DocumentNodeMetadata { position: glam::IVec2::new(1, -3) }, // ConstructLayer
+							..Default::default()
+						},
+					),
+				]
+				.into(),
+				imports_metadata: (NodeId(generate_uuid()), (-26, -4).into()),
+				exports_metadata: (NodeId(generate_uuid()), (8, -4).into()),
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType::value("Graphical Data", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
+				DocumentInputType::value("Vector Data", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
+				DocumentInputType::value("Operation", TaggedValue::BooleanOperation(vector::misc::BooleanOperation::Union), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Graphic)],
 			properties: node_properties::boolean_operation_properties,
 			..Default::default()
 		},

@@ -1,21 +1,23 @@
 use crate::Node;
 
 use bezier_rs::{ManipulatorGroup, Subpath};
-use graphene_core::transform::Footprint;
-use graphene_core::vector::misc::BooleanOperation;
+use graphene_core::raster::ImageFrame;
 pub use graphene_core::vector::*;
+use graphene_core::Color;
+use graphene_core::{transform::Footprint, GraphicGroup};
+use graphene_core::{vector::misc::BooleanOperation, GraphicElement};
 
 use futures::Future;
 use glam::{DAffine2, DVec2};
 use wasm_bindgen::prelude::*;
 
-pub struct BooleanOperationNode<LowerVectorData, BooleanOp> {
+pub struct BinaryBooleanOperationNode<LowerVectorData, BooleanOp> {
 	lower_vector_data: LowerVectorData,
 	boolean_operation: BooleanOp,
 }
 
-#[node_macro::node_fn(BooleanOperationNode)]
-async fn boolean_operation_node<Fut: Future<Output = VectorData>>(
+#[node_macro::node_fn(BinaryBooleanOperationNode)]
+async fn binary_boolean_operation_node<Fut: Future<Output = VectorData>>(
 	upper_vector_data: VectorData,
 	lower_vector_data: impl Node<Footprint, Output = Fut>,
 	boolean_operation: BooleanOperation,
@@ -39,7 +41,6 @@ async fn boolean_operation_node<Fut: Future<Output = VectorData>>(
 			BooleanOperation::SubtractBack => boolean_subtract(upper_path_string, lower_path_string),
 			BooleanOperation::Intersect => boolean_intersect(upper_path_string, lower_path_string),
 			BooleanOperation::Difference => boolean_difference(upper_path_string, lower_path_string),
-			BooleanOperation::Divide => boolean_divide(upper_path_string, lower_path_string),
 		}
 	};
 
@@ -51,9 +52,182 @@ async fn boolean_operation_node<Fut: Future<Output = VectorData>>(
 	result
 }
 
+pub struct BooleanOperationNode<BooleanOp> {
+	boolean_operation: BooleanOp,
+}
+
+#[node_macro::node_fn(BooleanOperationNode)]
+fn boolean_operation_node(graphic_group: GraphicGroup, boolean_operation: BooleanOperation) -> VectorData {
+	fn vector_from_image<P: graphene_core::raster::Pixel>(image_frame: &ImageFrame<P>) -> VectorData {
+		let corner1 = DVec2::ZERO;
+		let corner2 = DVec2::new(1., 1.);
+		let mut subpath = Subpath::new_rect(corner1, corner2);
+		subpath.apply_transform(image_frame.transform);
+		let mut vector_data = VectorData::from_subpath(subpath);
+		vector_data
+			.style
+			.set_fill(graphene_core::vector::style::Fill::Solid(Color::from_rgb_str("777777").unwrap().to_gamma_srgb()));
+		vector_data
+	}
+
+	fn union_vector_data(graphic_element: &GraphicElement) -> VectorData {
+		match graphic_element {
+			GraphicElement::VectorData(vector_data) => *vector_data.clone(),
+			// Union all vector data in the graphic group into a single vector
+			GraphicElement::GraphicGroup(graphic_group) => {
+				let vector_data = collect_vector_data(graphic_group);
+				boolean_operation_on_vector_data(&vector_data, BooleanOperation::Union)
+			}
+			GraphicElement::ImageFrame(image) => vector_from_image(image),
+			// Union all vector data in the artboard into a single vector
+			GraphicElement::Artboard(artboard) => {
+				let artboard_subpath = Subpath::new_rect(artboard.location.as_dvec2(), artboard.location.as_dvec2() + artboard.dimensions.as_dvec2());
+
+				let mut artboard_vector = VectorData::from_subpath(artboard_subpath);
+				artboard_vector.style.set_fill(graphene_core::vector::style::Fill::Solid(artboard.background));
+
+				let mut vector_data = vec![artboard_vector];
+				vector_data.extend(collect_vector_data(&artboard.graphic_group).into_iter());
+
+				boolean_operation_on_vector_data(&vector_data, BooleanOperation::Union)
+			}
+		}
+	}
+
+	fn collect_vector_data(graphic_group: &GraphicGroup) -> Vec<VectorData> {
+		// Ensure all non vector data in the graphic group is converted to vector data
+		graphic_group.iter().map(union_vector_data).collect::<Vec<_>>()
+	}
+
+	fn subtract<'a>(vector_data: impl Iterator<Item = &'a VectorData>) -> VectorData {
+		let mut vector_data = vector_data.into_iter();
+		let mut result = vector_data.next().cloned().unwrap_or_default();
+		let mut next_vector_data = vector_data.next();
+
+		while let Some(lower_vector_data) = next_vector_data {
+			let transform_of_lower_into_space_of_upper = result.transform.inverse() * lower_vector_data.transform;
+
+			let upper_path_string = to_svg_string(&result, DAffine2::IDENTITY);
+			let lower_path_string = to_svg_string(&lower_vector_data, transform_of_lower_into_space_of_upper);
+
+			#[allow(unused_unsafe)]
+			let boolean_operation_string = unsafe { boolean_subtract(upper_path_string, lower_path_string) };
+			let boolean_operation_result = from_svg_string(&boolean_operation_string);
+
+			result.colinear_manipulators = boolean_operation_result.colinear_manipulators;
+			result.point_domain = boolean_operation_result.point_domain;
+			result.segment_domain = boolean_operation_result.segment_domain;
+			result.region_domain = boolean_operation_result.region_domain;
+
+			next_vector_data = vector_data.next();
+		}
+		result
+	}
+
+	fn boolean_operation_on_vector_data(vector_data: &[VectorData], boolean_operation: BooleanOperation) -> VectorData {
+		match boolean_operation {
+			BooleanOperation::Union => {
+				// Reverse vector data so that the result style is the style of the first vector data
+				let mut vector_data = vector_data.iter().rev();
+				let mut result = vector_data.next().cloned().unwrap_or_default();
+				let mut second_vector_data = Some(vector_data.next().unwrap_or(const { &VectorData::empty() }));
+
+				// Loop over all vector data and union it with the result
+				while let Some(lower_vector_data) = second_vector_data {
+					let transform_of_lower_into_space_of_upper = result.transform.inverse() * lower_vector_data.transform;
+
+					let upper_path_string = to_svg_string(&result, DAffine2::IDENTITY);
+					let lower_path_string = to_svg_string(lower_vector_data, transform_of_lower_into_space_of_upper);
+
+					#[allow(unused_unsafe)]
+					let boolean_operation_string = unsafe { boolean_union(upper_path_string, lower_path_string) };
+					let boolean_operation_result = from_svg_string(&boolean_operation_string);
+
+					result.colinear_manipulators = boolean_operation_result.colinear_manipulators;
+					result.point_domain = boolean_operation_result.point_domain;
+					result.segment_domain = boolean_operation_result.segment_domain;
+					result.region_domain = boolean_operation_result.region_domain;
+					second_vector_data = vector_data.next();
+				}
+				result
+			}
+			BooleanOperation::SubtractFront => subtract(vector_data.iter()),
+			BooleanOperation::SubtractBack => subtract(vector_data.iter().rev()),
+			BooleanOperation::Intersect => {
+				let mut vector_data = vector_data.iter().rev();
+				let mut result = vector_data.next().cloned().unwrap_or_default();
+				let mut second_vector_data = Some(vector_data.next().unwrap_or(const { &VectorData::empty() }));
+
+				// For each vector data, set the result to the intersection of that data and the result
+				while let Some(lower_vector_data) = second_vector_data {
+					let transform_of_lower_into_space_of_upper = result.transform.inverse() * lower_vector_data.transform;
+
+					let upper_path_string = to_svg_string(&result, DAffine2::IDENTITY);
+					let lower_path_string = to_svg_string(lower_vector_data, transform_of_lower_into_space_of_upper);
+
+					#[allow(unused_unsafe)]
+					let boolean_operation_string = unsafe { boolean_intersect(upper_path_string, lower_path_string) };
+					let boolean_operation_result = from_svg_string(&boolean_operation_string);
+
+					result.colinear_manipulators = boolean_operation_result.colinear_manipulators;
+					result.point_domain = boolean_operation_result.point_domain;
+					result.segment_domain = boolean_operation_result.segment_domain;
+					result.region_domain = boolean_operation_result.region_domain;
+					second_vector_data = vector_data.next();
+				}
+				result
+			}
+			BooleanOperation::Difference => {
+				let mut vector_data_iter = vector_data.iter().rev();
+				let mut any_intersection = VectorData::empty();
+				let mut second_vector_data = Some(vector_data_iter.next().unwrap_or(const { &VectorData::empty() }));
+
+				// Find where all vector data intersect at least once
+				while let Some(lower_vector_data) = second_vector_data {
+					let all_other_vector_data = boolean_operation_on_vector_data(&vector_data.iter().filter(|v| v != &lower_vector_data).cloned().collect::<Vec<_>>(), BooleanOperation::Union);
+
+					let transform_of_lower_into_space_of_upper = all_other_vector_data.transform.inverse() * lower_vector_data.transform;
+
+					let upper_path_string = to_svg_string(&all_other_vector_data, DAffine2::IDENTITY);
+					let lower_path_string = to_svg_string(lower_vector_data, transform_of_lower_into_space_of_upper);
+
+					#[allow(unused_unsafe)]
+					let boolean_intersection_string = unsafe { boolean_intersect(upper_path_string, lower_path_string) };
+					let mut boolean_intersection_result = from_svg_string(&boolean_intersection_string);
+
+					boolean_intersection_result.transform = all_other_vector_data.transform;
+					boolean_intersection_result.style = all_other_vector_data.style.clone();
+					boolean_intersection_result.alpha_blending = all_other_vector_data.alpha_blending;
+
+					let transform_of_lower_into_space_of_upper = boolean_intersection_result.transform.inverse() * any_intersection.transform;
+
+					let upper_path_string = to_svg_string(&boolean_intersection_result, DAffine2::IDENTITY);
+					let lower_path_string = to_svg_string(&any_intersection, transform_of_lower_into_space_of_upper);
+
+					#[allow(unused_unsafe)]
+					let union_result = from_svg_string(&unsafe { boolean_union(upper_path_string, lower_path_string) });
+					any_intersection = union_result;
+
+					any_intersection.transform = boolean_intersection_result.transform;
+					any_intersection.style = boolean_intersection_result.style.clone();
+					any_intersection.alpha_blending = boolean_intersection_result.alpha_blending;
+
+					second_vector_data = vector_data_iter.next();
+				}
+				// Subtract the area where they intersect at least once from the union of all vector data
+				let union = boolean_operation_on_vector_data(vector_data, BooleanOperation::Union);
+				boolean_operation_on_vector_data(&[union, any_intersection], BooleanOperation::SubtractFront)
+			}
+		}
+	}
+
+	// The first index is the bottom of the stack
+	boolean_operation_on_vector_data(&collect_vector_data(&graphic_group), boolean_operation)
+}
+
 fn to_svg_string(vector: &VectorData, transform: DAffine2) -> String {
 	let mut path = String::new();
-	for (_, subpath) in vector.region_bezier_paths() {
+	for subpath in vector.stroke_bezier_paths() {
 		let _ = subpath.subpath_to_svg(&mut path, transform);
 	}
 	path
@@ -125,6 +299,4 @@ extern "C" {
 	fn boolean_intersect(path1: String, path2: String) -> String;
 	#[wasm_bindgen(js_name = booleanDifference)]
 	fn boolean_difference(path1: String, path2: String) -> String;
-	#[wasm_bindgen(js_name = booleanDivide)]
-	fn boolean_divide(path1: String, path2: String) -> String;
 }
