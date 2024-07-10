@@ -511,7 +511,7 @@ impl NodeInput {
 			NodeInput::Value { exposed, .. } => *exposed,
 			NodeInput::Network { .. } => true,
 			NodeInput::Inline(_) => false,
-			NodeInput::Scope(_) => true,
+			NodeInput::Scope(_) => false,
 		}
 	}
 
@@ -986,7 +986,7 @@ impl<'a> Iterator for FlowIter<'a> {
 			let mut node_id = self.stack.pop()?;
 
 			// Special handling for iterating from ROOT_PARENT in load_structure`
-			if node_id == NodeId(std::u64::MAX) {
+			if node_id == NodeId(u64::MAX) {
 				if let Some(root_node) = self.network.get_root_node() {
 					node_id = root_node.id
 				} else {

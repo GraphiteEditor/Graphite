@@ -13,8 +13,6 @@ use glam::DAffine2;
 use core::future::Future;
 use std::marker::PhantomData;
 use std::sync::Arc;
-#[cfg(feature = "tokio")]
-use tokio::io::AsyncReadExt;
 use wasm_bindgen::{Clamped, JsCast};
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 

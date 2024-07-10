@@ -306,7 +306,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let insert_index = parent
 					.children(self.metadata())
 					.enumerate()
-					.find_map(|(index, item)| self.selected_nodes.selected_layers(self.metadata()).any(|x| x == item).then_some(index as usize))
+					.find_map(|(index, item)| self.selected_nodes.selected_layers(self.metadata()).any(|x| x == item).then_some(index))
 					.unwrap_or(0);
 
 				// Store a history step before doing anything

@@ -219,7 +219,7 @@ impl<Io> PartialEq for EditorApi<Io> {
 	}
 }
 
-impl<'a, T> Debug for EditorApi<T> {
+impl<T> Debug for EditorApi<T> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		f.debug_struct("EditorApi").field("font_cache", &self.font_cache).finish()
 	}

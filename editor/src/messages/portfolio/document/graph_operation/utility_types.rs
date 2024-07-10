@@ -321,8 +321,8 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn insert_text(&mut self, text: String, font: Font, size: f64, layer: NodeId) {
 		let text = resolve_document_node_type("Text").expect("Text node does not exist").to_document_node(
 			[
-				NodeInput::value(TaggedValue::String(text), false),
 				NodeInput::scope("editor-api"),
+				NodeInput::value(TaggedValue::String(text), false),
 				NodeInput::value(TaggedValue::Font(font), false),
 				NodeInput::value(TaggedValue::F64(size), false),
 			],

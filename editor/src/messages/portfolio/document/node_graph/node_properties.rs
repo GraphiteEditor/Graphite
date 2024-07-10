@@ -295,8 +295,8 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 			NumberInput::new(Some(dvec2.x))
 				.label(x)
 				.unit(unit)
-				.min(min.unwrap_or(-((1_u64 << std::f64::MANTISSA_DIGITS) as f64)))
-				.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
+				.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
+				.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 				.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), dvec2.y)), node_id, index))
 				.on_commit(commit_value)
 				.widget_holder(),
@@ -304,8 +304,8 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 			NumberInput::new(Some(dvec2.y))
 				.label(y)
 				.unit(unit)
-				.min(min.unwrap_or(-((1_u64 << std::f64::MANTISSA_DIGITS) as f64)))
-				.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
+				.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
+				.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 				.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(dvec2.x, input.value.unwrap())), node_id, index))
 				.on_commit(commit_value)
 				.widget_holder(),
@@ -323,8 +323,8 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 				.int()
 				.label(x)
 				.unit(unit)
-				.min(min.unwrap_or(-((1_u64 << std::f64::MANTISSA_DIGITS) as f64)))
-				.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
+				.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
+				.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 				.on_update(update_value(update_x, node_id, index))
 				.on_commit(commit_value)
 				.widget_holder(),
@@ -333,8 +333,8 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 				.int()
 				.label(y)
 				.unit(unit)
-				.min(min.unwrap_or(-((1_u64 << std::f64::MANTISSA_DIGITS) as f64)))
-				.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
+				.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
+				.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 				.on_update(update_value(update_y, node_id, index))
 				.on_commit(commit_value)
 				.widget_holder(),
@@ -353,7 +353,7 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 				.label(x)
 				.unit(unit)
 				.min(min.unwrap_or(0.))
-				.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
+				.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 				.on_update(update_value(update_x, node_id, index))
 				.on_commit(commit_value)
 				.widget_holder(),
@@ -363,7 +363,7 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 				.label(y)
 				.unit(unit)
 				.min(min.unwrap_or(0.))
-				.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
+				.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 				.on_update(update_value(update_y, node_id, index))
 				.on_commit(commit_value)
 				.widget_holder(),
@@ -1769,7 +1769,7 @@ pub fn rasterize_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 	footprint_widget(document_node, node_id, 1)
 }
 
-pub fn node_section_font(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn text_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let text = text_area_widget(document_node, node_id, 1, "Text", true);
 	let (font, style) = font_inputs(document_node, node_id, 2, "Font", true);
 	let size = number_widget(document_node, node_id, 3, "Size", NumberInput::default().unit(" px").min(1.), true);

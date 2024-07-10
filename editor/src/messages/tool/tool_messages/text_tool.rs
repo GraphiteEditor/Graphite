@@ -104,7 +104,7 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 		.label("Size")
 		.int()
 		.min(1.)
-		.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
+		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 		.on_update(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value.unwrap() as u32)).into())
 		.widget_holder();
 	vec![
@@ -412,7 +412,7 @@ impl Fsm for TextToolFsmState {
 			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text }) => {
 				responses.add(NodeGraphMessage::SetQualifiedInputValue {
 					node_id: graph_modification_utils::get_text_id(tool_data.layer, &document.network).unwrap(),
-					input_index: 0,
+					input_index: 1,
 					value: TaggedValue::String(new_text),
 				});
 
