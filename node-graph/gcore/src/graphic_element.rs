@@ -57,7 +57,7 @@ impl core::hash::Hash for GraphicGroup {
 }
 
 /// The possible forms of graphical content held in a Vec by the `elements` field of [`GraphicElement`].
-/// Can be another recursively nested [`GraphicGroup`], [`VectorData`], an [`ImageFrame`], text (not yet implemented), or an [`Artboard`].
+/// Can be another recursively nested [`GraphicGroup`], a [`VectorData`] shape, an [`ImageFrame`], or an [`Artboard`].
 #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GraphicElement {
@@ -67,10 +67,6 @@ pub enum GraphicElement {
 	VectorData(Box<VectorData>),
 	/// A bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
 	ImageFrame(ImageFrame<Color>),
-	// TODO: Switch from `String` to a proper formatted typography type
-	/// Text, equivalent to the SVG <text> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/text
-	/// (Not yet implemented.)
-	Text(String),
 	/// The bounds for displaying a page of contained content
 	Artboard(Artboard),
 }
@@ -366,28 +362,6 @@ impl GraphicElement {
 					bounding_box: None,
 				}))
 			}
-			GraphicElement::Text(text) => usvg::Node::Text(Box::new(usvg::Text {
-				id: String::new(),
-				abs_transform: usvg::Transform::identity(),
-				rendering_mode: usvg::TextRendering::OptimizeSpeed,
-				writing_mode: usvg::WritingMode::LeftToRight,
-				chunks: vec![usvg::TextChunk {
-					text: text.clone(),
-					x: None,
-					y: None,
-					anchor: usvg::TextAnchor::Start,
-					spans: vec![],
-					text_flow: usvg::TextFlow::Linear,
-				}],
-				dx: Vec::new(),
-				dy: Vec::new(),
-				rotate: Vec::new(),
-				bounding_box: None,
-				abs_bounding_box: None,
-				stroke_bounding_box: None,
-				abs_stroke_bounding_box: None,
-				flattened: None,
-			})),
 			GraphicElement::GraphicGroup(group) => {
 				let mut group_element = usvg::Group::default();
 

@@ -18,7 +18,6 @@ pub enum BooleanOperation {
 	SubtractBack,
 	Intersect,
 	Difference,
-	// Divide,
 }
 
 impl BooleanOperation {
@@ -29,7 +28,6 @@ impl BooleanOperation {
 			BooleanOperation::SubtractBack,
 			BooleanOperation::Intersect,
 			BooleanOperation::Difference,
-			// BooleanOperation::Divide,
 		]
 	}
 
@@ -46,7 +44,6 @@ impl core::fmt::Display for BooleanOperation {
 			BooleanOperation::SubtractBack => write!(f, "Subtract Back"),
 			BooleanOperation::Intersect => write!(f, "Intersect"),
 			BooleanOperation::Difference => write!(f, "Difference"),
-			// BooleanOperation::Divide => write!(f, "Divide"),
 		}
 	}
 }
