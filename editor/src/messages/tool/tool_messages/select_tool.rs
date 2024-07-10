@@ -148,21 +148,13 @@ impl SelectTool {
 	}
 
 	fn boolean_widgets(&self, selected_count: usize) -> impl Iterator<Item = WidgetHolder> {
-		let enabled = move |operation| {
-			if operation == BooleanOperation::Union {
-				(1..=2).contains(&selected_count)
-			} else {
-				selected_count == 2
-			}
-		};
-
 		let operations = BooleanOperation::list();
 		let icons = BooleanOperation::icons();
 		operations.into_iter().zip(icons).map(move |(operation, icon)| {
 			IconButton::new(icon, 24)
 				.tooltip(operation.to_string())
-				.disabled(!enabled(operation))
-				.on_update(move |_| GraphOperationMessage::InsertBooleanOperation { operation }.into())
+				.disabled(selected_count == 0)
+				.on_update(move |_| DocumentMessage::InsertBooleanOperation { operation }.into())
 				.widget_holder()
 		})
 	}

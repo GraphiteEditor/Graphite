@@ -2344,11 +2344,18 @@ pub fn circular_repeat_properties(document_node: &DocumentNode, node_id: NodeId,
 	]
 }
 
-pub fn boolean_operation_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let other_vector_data = vector_widget(document_node, node_id, 1, "Lower Vector Data", true);
-	let opeartion = boolean_operation_radio_buttons(document_node, node_id, 2, "Operation", true);
+pub fn binary_boolean_operation_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let lower_vector_data = vector_widget(document_node, node_id, 1, "Lower Vector Data", true);
+	let operation = boolean_operation_radio_buttons(document_node, node_id, 2, "Operation", true);
 
-	vec![LayoutGroup::Row { widgets: other_vector_data }, opeartion]
+	vec![LayoutGroup::Row { widgets: lower_vector_data }, operation]
+}
+
+pub fn boolean_operation_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let vector_data = vector_widget(document_node, node_id, 1, "Vector Data", true);
+	let operation = boolean_operation_radio_buttons(document_node, node_id, 2, "Operation", true);
+
+	vec![LayoutGroup::Row { widgets: vector_data }, operation]
 }
 
 pub fn copy_to_points_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
