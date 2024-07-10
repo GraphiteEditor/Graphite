@@ -3,6 +3,7 @@ use crate::Node;
 use bezier_rs::{ManipulatorGroup, Subpath};
 use graphene_core::raster::ImageFrame;
 pub use graphene_core::vector::*;
+use graphene_core::Color;
 use graphene_core::{transform::Footprint, GraphicGroup};
 use graphene_core::{vector::misc::BooleanOperation, GraphicElement};
 
@@ -59,10 +60,14 @@ pub struct BooleanOperationNode<BooleanOp> {
 fn boolean_operation_node(graphic_group: GraphicGroup, boolean_operation: BooleanOperation) -> VectorData {
 	fn vector_from_image<P: graphene_core::raster::Pixel>(image_frame: &ImageFrame<P>) -> VectorData {
 		let corner1 = DVec2::ZERO;
-		let corner2 = DVec2::new(image_frame.image.width as f64, image_frame.image.height as f64);
+		let corner2 = DVec2::new(1., 1.);
 		let mut subpath = Subpath::new_rect(corner1, corner2);
 		subpath.apply_transform(image_frame.transform);
-		VectorData::from_subpath(subpath)
+		let mut vector_data = VectorData::from_subpath(subpath);
+		vector_data
+			.style
+			.set_fill(graphene_core::vector::style::Fill::Solid(Color::from_rgb_str("777777").unwrap().to_gamma_srgb()));
+		vector_data
 	}
 
 	fn union_vector_data(graphic_element: &GraphicElement) -> VectorData {
@@ -95,7 +100,7 @@ fn boolean_operation_node(graphic_group: GraphicGroup, boolean_operation: Boolea
 		graphic_group.iter().map(|graphic_element| union_vector_data(graphic_element)).collect::<Vec<_>>()
 	}
 
-	fn boolean_operation_on_vector_data(mut vector_data: Vec<VectorData>, boolean_operation: BooleanOperation) -> VectorData {
+	fn boolean_operation_on_vector_data(vector_data: Vec<VectorData>, boolean_operation: BooleanOperation) -> VectorData {
 		match boolean_operation {
 			BooleanOperation::Union => {
 				// Reverse vector data so that the result style is the style of the first vector data
@@ -135,7 +140,7 @@ fn boolean_operation_node(graphic_group: GraphicGroup, boolean_operation: Boolea
 
 					#[allow(unused_unsafe)]
 					let boolean_operation_string = unsafe { boolean_subtract(upper_path_string, lower_path_string) };
-					let mut boolean_operation_result = from_svg_string(&boolean_operation_string);
+					let boolean_operation_result = from_svg_string(&boolean_operation_string);
 
 					result.colinear_manipulators = boolean_operation_result.colinear_manipulators;
 					result.point_domain = boolean_operation_result.point_domain;
@@ -159,7 +164,7 @@ fn boolean_operation_node(graphic_group: GraphicGroup, boolean_operation: Boolea
 
 					#[allow(unused_unsafe)]
 					let boolean_operation_string = unsafe { boolean_subtract(upper_path_string, lower_path_string) };
-					let mut boolean_operation_result = from_svg_string(&boolean_operation_string);
+					let boolean_operation_result = from_svg_string(&boolean_operation_string);
 
 					result.colinear_manipulators = boolean_operation_result.colinear_manipulators;
 					result.point_domain = boolean_operation_result.point_domain;
@@ -276,7 +281,7 @@ fn boolean_operation_node(graphic_group: GraphicGroup, boolean_operation: Boolea
 
 fn to_svg_string(vector: &VectorData, transform: DAffine2) -> String {
 	let mut path = String::new();
-	for (_, subpath) in vector.region_bezier_paths() {
+	for subpath in vector.stroke_bezier_paths() {
 		let _ = subpath.subpath_to_svg(&mut path, transform);
 	}
 	path
