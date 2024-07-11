@@ -29,6 +29,7 @@ pub fn init_graphite() {
 	panic::set_hook(Box::new(panic_hook));
 
 	// Set up the logger with a default level of debug
+
 	log::set_logger(&LOGGER).expect("Failed to set logger");
 	log::set_max_level(log::LevelFilter::Debug);
 }
@@ -75,11 +76,16 @@ extern "C" {
 pub struct WasmLog;
 
 impl log::Log for WasmLog {
+	#[inline]
 	fn enabled(&self, metadata: &log::Metadata) -> bool {
-		metadata.level() <= log::Level::Info
+		metadata.level() <= log::max_level()
 	}
 
 	fn log(&self, record: &log::Record) {
+		if !self.enabled(record.metadata()) {
+			return;
+		}
+
 		let (log, name, color): (fn(&str, &str), &str, &str) = match record.level() {
 			log::Level::Trace => (log, "trace", "color:plum"),
 			log::Level::Debug => (log, "debug", "color:cyan"),
@@ -87,7 +93,10 @@ impl log::Log for WasmLog {
 			log::Level::Info => (info, "info", "color:mediumseagreen"),
 			log::Level::Error => (error, "error", "color:red"),
 		};
-		let msg = &format!("%c{}\t{}", name, record.args());
+
+		let file = record.file().unwrap_or_else(|| record.target());
+		let line = record.line().map_or_else(|| "[Unknown]".to_string(), |line| line.to_string());
+		let msg = &format!("%c{} {file}:{line} \n{}%c", name, record.args());
 		log(msg, color)
 	}
 

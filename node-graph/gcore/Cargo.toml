@@ -29,6 +29,7 @@ serde = [
 	"glam/serde",
 	"bezier-rs/serde",
 	"bezier-rs/serde",
+	"half/serde",
 	"base64",
 ]
 
@@ -63,6 +64,7 @@ web-sys = { workspace = true, optional = true, features = [
 image = { workspace = true, optional = true, default-features = false, features = [
 	"png",
 ] }
+half = { version = "2.4.1", default-features = false, features = ["bytemuck"] }
 
 [dev-dependencies]
 # Workspace dependencies

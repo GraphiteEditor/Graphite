@@ -1,11 +1,14 @@
+use crate::application_io::{SurfaceHandle, SurfaceHandleFrame};
 use crate::raster::{BlendMode, ImageFrame};
+use crate::renderer::GraphicElementRendered;
 use crate::transform::Footprint;
 use crate::vector::VectorData;
-use crate::{Color, Node};
+use crate::{Color, Node, SurfaceFrame};
 
 use bezier_rs::BezierHandles;
 use dyn_any::{DynAny, StaticType};
 use node_macro::node_fn;
+use web_sys::HtmlCanvasElement;
 
 use core::future::Future;
 use core::ops::{Deref, DerefMut};
@@ -67,6 +70,8 @@ pub enum GraphicElement {
 	VectorData(Box<VectorData>),
 	/// A bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
 	ImageFrame(ImageFrame<Color>),
+	/// A Canvas evement
+	Surface(SurfaceFrame),
 }
 
 // TODO: Can this be removed? It doesn't necessarily make that much sense to have a default when, instead, the entire GraphicElement just shouldn't exist if there's no specific content to assign it.
@@ -229,6 +234,25 @@ impl From<GraphicGroup> for GraphicElement {
 		GraphicElement::GraphicGroup(graphic_group)
 	}
 }
+impl From<SurfaceFrame> for GraphicElement {
+	fn from(surface: SurfaceFrame) -> Self {
+		GraphicElement::Surface(surface)
+	}
+}
+impl From<alloc::sync::Arc<SurfaceHandleFrame<HtmlCanvasElement>>> for GraphicElement {
+	fn from(surface: alloc::sync::Arc<SurfaceHandleFrame<HtmlCanvasElement>>) -> Self {
+		let surface_id = surface.surface_handle.surface_id;
+		let transform = surface.transform;
+		GraphicElement::Surface(SurfaceFrame { surface_id, transform })
+	}
+}
+impl From<SurfaceHandleFrame<HtmlCanvasElement>> for GraphicElement {
+	fn from(surface: SurfaceHandleFrame<HtmlCanvasElement>) -> Self {
+		let surface_id = surface.surface_handle.surface_id;
+		let transform = surface.transform;
+		GraphicElement::Surface(SurfaceFrame { surface_id, transform })
+	}
+}
 
 impl Deref for GraphicGroup {
 	type Target = Vec<GraphicElement>;
@@ -288,71 +312,13 @@ impl GraphicGroup {
 	}
 }
 
-impl GraphicElement {
-	fn to_usvg_node(&self) -> usvg::Node {
-		fn to_transform(transform: DAffine2) -> usvg::Transform {
-			let cols = transform.to_cols_array();
-			usvg::Transform::from_row(cols[0] as f32, cols[1] as f32, cols[2] as f32, cols[3] as f32, cols[4] as f32, cols[5] as f32)
-		}
-
+impl<'a> Into<&'a dyn GraphicElementRendered> for &'a GraphicElement {
+	fn into(self) -> &'a dyn GraphicElementRendered {
 		match self {
-			GraphicElement::VectorData(vector_data) => {
-				use usvg::tiny_skia_path::PathBuilder;
-				let mut builder = PathBuilder::new();
-
-				let transform = to_transform(vector_data.transform);
-				for subpath in vector_data.stroke_bezier_paths() {
-					let start = vector_data.transform.transform_point2(subpath[0].anchor);
-					builder.move_to(start.x as f32, start.y as f32);
-					for bezier in subpath.iter() {
-						bezier.apply_transformation(|pos| vector_data.transform.transform_point2(pos));
-						let end = bezier.end;
-						match bezier.handles {
-							BezierHandles::Linear => builder.line_to(end.x as f32, end.y as f32),
-							BezierHandles::Quadratic { handle } => builder.quad_to(handle.x as f32, handle.y as f32, end.x as f32, end.y as f32),
-							BezierHandles::Cubic { handle_start, handle_end } => {
-								builder.cubic_to(handle_start.x as f32, handle_start.y as f32, handle_end.x as f32, handle_end.y as f32, end.x as f32, end.y as f32)
-							}
-						}
-					}
-					if subpath.closed {
-						builder.close()
-					}
-				}
-				let path = builder.finish().unwrap();
-				let mut path = usvg::Path::new(path.into());
-				path.abs_transform = transform;
-				// TODO: use proper style
-				path.fill = None;
-				path.stroke = Some(usvg::Stroke::default());
-				usvg::Node::Path(Box::new(path))
-			}
-			GraphicElement::ImageFrame(image_frame) => {
-				if image_frame.image.width * image_frame.image.height == 0 {
-					return usvg::Node::Group(Box::default());
-				}
-				let png = image_frame.image.to_png();
-				usvg::Node::Image(Box::new(usvg::Image {
-					id: String::new(),
-					abs_transform: to_transform(image_frame.transform),
-					visibility: usvg::Visibility::Visible,
-					view_box: usvg::ViewBox {
-						rect: usvg::NonZeroRect::from_xywh(0., 0., 1., 1.).unwrap(),
-						aspect: usvg::AspectRatio::default(),
-					},
-					rendering_mode: usvg::ImageRendering::OptimizeSpeed,
-					kind: usvg::ImageKind::PNG(png.into()),
-					bounding_box: None,
-				}))
-			}
-			GraphicElement::GraphicGroup(group) => {
-				let mut group_element = usvg::Group::default();
-
-				for element in group.iter() {
-					group_element.children.push(element.to_usvg_node());
-				}
-				usvg::Node::Group(Box::new(group_element))
-			}
+			GraphicElement::VectorData(vector_data) => vector_data.as_ref(),
+			GraphicElement::ImageFrame(image_frame) => image_frame,
+			GraphicElement::GraphicGroup(graphic_group) => graphic_group,
+			GraphicElement::Surface(surface) => surface,
 		}
 	}
 }

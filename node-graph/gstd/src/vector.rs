@@ -2,6 +2,7 @@ use crate::Node;
 
 use bezier_rs::{ManipulatorGroup, Subpath};
 use graphene_core::raster::ImageFrame;
+use graphene_core::transform::Transform;
 pub use graphene_core::vector::*;
 use graphene_core::Color;
 use graphene_core::{transform::Footprint, GraphicGroup};
@@ -58,11 +59,11 @@ pub struct BooleanOperationNode<BooleanOp> {
 
 #[node_macro::node_fn(BooleanOperationNode)]
 fn boolean_operation_node(graphic_group: GraphicGroup, boolean_operation: BooleanOperation) -> VectorData {
-	fn vector_from_image<P: graphene_core::raster::Pixel>(image_frame: &ImageFrame<P>) -> VectorData {
+	fn vector_from_image<T: Transform>(image_frame: T) -> VectorData {
 		let corner1 = DVec2::ZERO;
 		let corner2 = DVec2::new(1., 1.);
 		let mut subpath = Subpath::new_rect(corner1, corner2);
-		subpath.apply_transform(image_frame.transform);
+		subpath.apply_transform(image_frame.transform());
 		let mut vector_data = VectorData::from_subpath(subpath);
 		vector_data
 			.style
@@ -79,6 +80,7 @@ fn boolean_operation_node(graphic_group: GraphicGroup, boolean_operation: Boolea
 				boolean_operation_on_vector_data(&vector_data, BooleanOperation::Union)
 			}
 			GraphicElement::ImageFrame(image) => vector_from_image(image),
+			GraphicElement::Surface(image) => vector_from_image(image),
 		}
 	}
 

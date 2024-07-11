@@ -14,8 +14,7 @@ gpu = [
 	"compilation-client",
 	"gpu-executor",
 ]
-vulkan = ["gpu", "vulkan-executor"]
-wgpu = ["gpu", "wgpu-executor", "dep:wgpu", "graph-craft/wgpu"]
+wgpu = ["gpu", "dep:wgpu", "graph-craft/wgpu"]
 quantization = ["autoquant"]
 wasm = ["wasm-bindgen", "web-sys", "js-sys"]
 imaginate = ["image/png", "base64", "js-sys", "web-sys", "wasm-bindgen-futures"]
@@ -60,8 +59,7 @@ image = { workspace = true, default-features = false, features = [
 ] }
 
 # Optional local dependencies
-vulkan-executor = { path = "../vulkan-executor", optional = true }
-wgpu-executor = { path = "../wgpu-executor", optional = true }
+wgpu-executor = { path = "../wgpu-executor" }
 gpu-executor = { path = "../gpu-executor", optional = true }
 gpu-compiler-bin-wrapper = { path = "../gpu-compiler/gpu-compiler-bin-wrapper", optional = true }
 compilation-client = { path = "../compilation-client", optional = true }

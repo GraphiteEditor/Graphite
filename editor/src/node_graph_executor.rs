@@ -62,6 +62,7 @@ pub struct NodeRuntime {
 
 /// Messages passed from the editor thread to the node runtime thread.
 pub enum NodeRuntimeMessage {
+	GraphUpdate(NodeNetwork),
 	ExecutionRequest(ExecutionRequest),
 	FontCacheUpdate(FontCache),
 	ImaginatePreferencesUpdate(ImaginatePreferences),
@@ -79,7 +80,6 @@ pub struct ExportConfig {
 
 pub struct ExecutionRequest {
 	execution_id: u64,
-	graph: NodeNetwork,
 	render_config: RenderConfig,
 }
 
@@ -90,13 +90,17 @@ pub struct ExecutionResponse {
 	new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	new_vector_modify: HashMap<NodeId, VectorData>,
 	new_upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
+	transform: DAffine2,
+}
+pub(crate) struct CompilationResponse {
+	result: Result<(), String>,
 	resolved_types: ResolvedDocumentNodeTypes,
 	node_graph_errors: GraphErrors,
-	transform: DAffine2,
 }
 
 pub enum NodeGraphUpdate {
 	ExecutionResponse(ExecutionResponse),
+	CompilationResponse(CompilationResponse),
 	NodeGraphUpdateMessage(NodeGraphUpdateMessage),
 }
 
@@ -104,7 +108,10 @@ pub enum NodeGraphUpdate {
 struct InternalNodeGraphUpdateSender(Sender<NodeGraphUpdate>);
 
 impl InternalNodeGraphUpdateSender {
-	fn send_generation_response(&self, response: ExecutionResponse) {
+	fn send_generation_response(&self, response: CompilationResponse) {
+		self.0.send(NodeGraphUpdate::CompilationResponse(response)).expect("Failed to send response")
+	}
+	fn send_execution_response(&self, response: ExecutionResponse) {
 		self.0.send(NodeGraphUpdate::ExecutionResponse(response)).expect("Failed to send response")
 	}
 }
@@ -150,12 +157,22 @@ impl NodeRuntime {
 	}
 
 	pub async fn run(&mut self) {
-		let mut requests = self.receiver.try_iter().collect::<Vec<_>>();
+		let requests = self.receiver.try_iter();
 		// TODO: Currently we still render the document after we submit the node graph execution request.
 		// This should be avoided in the future.
-		requests.reverse();
-		requests.dedup_by(|a, b| matches!(a, NodeRuntimeMessage::ExecutionRequest(_)) && matches!(b, NodeRuntimeMessage::ExecutionRequest(_)));
-		requests.reverse();
+		let mut font = None;
+		let mut graph = None;
+		let mut imaginate = None;
+		let mut execution = None;
+		for request in requests {
+			match request {
+				NodeRuntimeMessage::GraphUpdate(_) => graph = Some(request),
+				NodeRuntimeMessage::ExecutionRequest(_) => execution = Some(request),
+				NodeRuntimeMessage::FontCacheUpdate(_) => font = Some(request),
+				NodeRuntimeMessage::ImaginatePreferencesUpdate(_) => imaginate = Some(request),
+			}
+		}
+		let requests = [font, imaginate, graph, execution].into_iter().flatten();
 		for request in requests {
 			match request {
 				NodeRuntimeMessage::FontCacheUpdate(font_cache) => {
@@ -178,25 +195,31 @@ impl NodeRuntime {
 					.into();
 					self.recompile_graph = true;
 				}
-				NodeRuntimeMessage::ExecutionRequest(ExecutionRequest {
-					execution_id, graph, render_config, ..
-				}) => {
+				NodeRuntimeMessage::GraphUpdate(graph) => {
+					self.node_graph_errors.clear();
+					let result = self.update_network(graph).await;
+					self.sender.send_generation_response(CompilationResponse {
+						result,
+						resolved_types: self.resolved_types.clone(),
+						node_graph_errors: self.node_graph_errors.clone(),
+					});
+					self.recompile_graph = true;
+				}
+				NodeRuntimeMessage::ExecutionRequest(ExecutionRequest { execution_id, render_config, .. }) => {
 					let transform = render_config.viewport.transform;
 
-					let result = self.execute_network(graph, render_config).await;
+					let result = self.execute_network(render_config).await;
 
 					let mut responses = VecDeque::new();
 					self.process_monitor_nodes(&mut responses);
 
-					self.sender.send_generation_response(ExecutionResponse {
+					self.sender.send_execution_response(ExecutionResponse {
 						execution_id,
 						result,
 						responses,
 						new_click_targets: self.click_targets.clone().into_iter().map(|(id, targets)| (LayerNodeIdentifier::new_unchecked(id), targets)).collect(),
 						new_vector_modify: self.vector_modify.clone(),
 						new_upstream_transforms: self.upstream_transforms.clone(),
-						resolved_types: self.resolved_types.clone(),
-						node_graph_errors: core::mem::take(&mut self.node_graph_errors),
 						transform,
 					});
 				}
@@ -204,7 +227,7 @@ impl NodeRuntime {
 		}
 	}
 
-	async fn execute_network(&mut self, graph: NodeNetwork, render_config: RenderConfig) -> Result<TaggedValue, String> {
+	async fn update_network(&mut self, graph: NodeNetwork) -> Result<(), String> {
 		if self.editor_api.application_io.is_none() {
 			self.editor_api = WasmEditorApi {
 				application_io: Some(WasmApplicationIo::new().await.into()),
@@ -214,45 +237,32 @@ impl NodeRuntime {
 			}
 			.into();
 		}
-
-		let editor_api = &self.editor_api;
 		// Required to ensure that the appropriate proto nodes are reinserted when the Editor API changes.
-		let mut graph_input_hash = DefaultHasher::new();
-		editor_api.font_cache.hash(&mut graph_input_hash);
-		let _font_hash_code = graph_input_hash.finish();
-		graph.hash(&mut graph_input_hash);
-		let hash_code = graph_input_hash.finish();
 
-		if self.graph_hash != Some(hash_code) {
-			self.graph_hash = None;
+		let scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
+		self.monitor_nodes = scoped_network
+			.recursive_nodes()
+			.filter(|(_, node)| node.implementation == DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"))
+			.map(|(_, node)| node.original_location.path.clone().unwrap_or_default())
+			.collect::<Vec<_>>();
+
+		// We assume only one output
+		assert_eq!(scoped_network.exports.len(), 1, "Graph with multiple outputs not yet handled");
+		let c = Compiler {};
+		let proto_network = match c.compile_single(scoped_network) {
+			Ok(network) => network,
+			Err(e) => return Err(e),
+		};
+
+		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
+		if let Err(e) = self.executor.update(proto_network).await {
+			self.node_graph_errors = e;
 		}
+		self.resolved_types = self.executor.document_node_types();
 
-		if self.graph_hash.is_none() || self.recompile_graph {
-			let scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
-
-			self.monitor_nodes = scoped_network
-				.recursive_nodes()
-				.filter(|(_, node)| node.implementation == DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"))
-				.map(|(_, node)| node.original_location.path.clone().unwrap_or_default())
-				.collect::<Vec<_>>();
-
-			// We assume only one output
-			assert_eq!(scoped_network.exports.len(), 1, "Graph with multiple outputs not yet handled");
-			let c = Compiler {};
-			let proto_network = match c.compile_single(scoped_network) {
-				Ok(network) => network,
-				Err(e) => return Err(e),
-			};
-
-			assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
-			if let Err(e) = self.executor.update(proto_network).await {
-				self.node_graph_errors = e;
-			} else {
-				self.graph_hash = Some(hash_code);
-			}
-			self.resolved_types = self.executor.document_node_types();
-		}
-
+		Ok(())
+	}
+	async fn execute_network(&mut self, render_config: RenderConfig) -> Result<TaggedValue, String> {
 		use graph_craft::graphene_compiler::Executor;
 
 		let result = match self.executor.input_type() {
@@ -266,16 +276,6 @@ impl NodeRuntime {
 			Err(e) => return Err(e),
 		};
 
-		// if let TaggedValue::SurfaceFrame(SurfaceFrame { surface_id, transform: _ }) = result {
-		// 	let old_id = self.canvas_cache.insert(path.to_vec(), surface_id);
-		// 	if let Some(old_id) = old_id {
-		// 		if old_id != surface_id {
-		// 			if let Some(io) = self.wasm_io.as_ref() {
-		// 				io.destroy_surface(old_id)
-		// 			}
-		// 		}
-		// 	}
-		// }
 		Ok(result)
 	}
 
@@ -412,6 +412,7 @@ pub struct NodeGraphExecutor {
 	sender: Sender<NodeRuntimeMessage>,
 	receiver: Receiver<NodeGraphUpdate>,
 	futures: HashMap<u64, ExecutionContext>,
+	node_graph_hash: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -429,19 +430,16 @@ impl Default for NodeGraphExecutor {
 			futures: Default::default(),
 			sender: request_sender,
 			receiver: response_receiver,
+			node_graph_hash: 0,
 		}
 	}
 }
 
 impl NodeGraphExecutor {
 	/// Execute the network by flattening it and creating a borrow stack.
-	fn queue_execution(&self, network: NodeNetwork, render_config: RenderConfig) -> u64 {
+	fn queue_execution(&self, render_config: RenderConfig) -> u64 {
 		let execution_id = generate_uuid();
-		let request = ExecutionRequest {
-			graph: network,
-			execution_id,
-			render_config,
-		};
+		let request = ExecutionRequest { execution_id, render_config };
 		self.sender.send(NodeRuntimeMessage::ExecutionRequest(request)).expect("Failed to send generation request");
 
 		execution_id
@@ -482,9 +480,13 @@ impl NodeGraphExecutor {
 	}
 
 	/// Evaluates a node graph, computing the entire graph
-	pub fn submit_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2) -> Result<(), String> {
+	pub fn submit_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2, ignore_hash: bool) -> Result<(), String> {
 		// Get the node graph layer
-		let network = document.network().clone();
+		let network_hash = document.network().current_hash();
+		if network_hash != self.node_graph_hash || ignore_hash {
+			self.node_graph_hash = network_hash;
+			self.sender.send(NodeRuntimeMessage::GraphUpdate(document.network.clone())).map_err(|e| e.to_string())?;
+		}
 
 		let render_config = RenderConfig {
 			viewport: Footprint {
@@ -502,7 +504,7 @@ impl NodeGraphExecutor {
 		};
 
 		// Execute the node graph
-		let execution_id = self.queue_execution(network, render_config);
+		let execution_id = self.queue_execution(render_config);
 
 		self.futures.insert(execution_id, ExecutionContext { export_config: None });
 
@@ -537,7 +539,8 @@ impl NodeGraphExecutor {
 		export_config.size = size;
 
 		// Execute the node graph
-		let execution_id = self.queue_execution(network, render_config);
+		self.sender.send(NodeRuntimeMessage::GraphUpdate(network)).map_err(|e| e.to_string())?;
+		let execution_id = self.queue_execution(render_config);
 		let execution_context = ExecutionContext { export_config: Some(export_config) };
 		self.futures.insert(execution_id, execution_context);
 
@@ -585,13 +588,10 @@ impl NodeGraphExecutor {
 						new_click_targets,
 						new_vector_modify,
 						new_upstream_transforms,
-						resolved_types,
-						node_graph_errors,
 						transform,
 					} = execution_response;
 
 					responses.extend(existing_responses.into_iter().map(Into::into));
-					responses.add(NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors });
 					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(OverlaysMessage::Draw);
 
@@ -615,6 +615,22 @@ impl NodeGraphExecutor {
 					} else {
 						self.process_node_graph_output(node_graph_output, transform, responses)?
 					}
+				}
+				NodeGraphUpdate::CompilationResponse(execution_response) => {
+					let CompilationResponse {
+						resolved_types,
+						node_graph_errors,
+						result,
+					} = execution_response;
+					if let Err(e) = result {
+						// Clear the click targets while the graph is in an un-renderable state
+						document.metadata.update_from_monitor(HashMap::new(), HashMap::new());
+						log::trace!("{e}");
+
+						return Err("Node graph evaluation failed".to_string());
+					};
+
+					responses.add(NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors });
 				}
 				NodeGraphUpdate::NodeGraphUpdateMessage(NodeGraphUpdateMessage::ImaginateStatusUpdate) => {
 					responses.add(DocumentMessage::PropertiesPanel(PropertiesPanelMessage::Refresh));

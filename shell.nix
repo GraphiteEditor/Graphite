@@ -42,6 +42,9 @@ in
       pkgs.cargo
       pkgs.cargo-watch
       pkgs.wasm-pack
+      pkgs.wasm-bindgen-cli
+      pkgs.vulkan-loader
+      pkgs.libxkbcommon
 
       pkgs.openssl
       pkgs.glib
@@ -57,8 +60,8 @@ in
     ];
 
 
-    LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [pkgs.openssl];
     # Hacky way to run cago through Mold
+    LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [pkgs.openssl pkgs.vulkan-loader pkgs.libxkbcommon];
     shellHook = ''
     alias cargo='mold --run cargo'
     '';

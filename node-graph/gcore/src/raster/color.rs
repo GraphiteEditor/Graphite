@@ -1,4 +1,5 @@
 use core::hash::Hash;
+use half::f16;
 
 use dyn_any::{DynAny, StaticType};
 #[cfg(feature = "serde")]
@@ -14,6 +15,78 @@ use super::{
 	discrete_srgb::{float_to_srgb_u8, srgb_u8_to_float},
 	Alpha, AssociatedAlpha, Luminance, LuminanceMut, Pixel, RGBMut, Rec709Primaries, RGB, SRGB,
 };
+#[repr(C)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable)]
+pub struct RGBA16F {
+	red: f16,
+	green: f16,
+	blue: f16,
+	alpha: f16,
+}
+
+impl From<Color> for RGBA16F {
+	#[inline(always)]
+	fn from(c: Color) -> Self {
+		Self {
+			red: f16::from_f32(c.r()),
+			green: f16::from_f32(c.g()),
+			blue: f16::from_f32(c.b()),
+			alpha: f16::from_f32(c.a()),
+		}
+	}
+}
+
+impl Luminance for RGBA16F {
+	type LuminanceChannel = f32;
+	#[inline(always)]
+	fn luminance(&self) -> f32 {
+		// TODO: verify this is correct for sRGB
+		0.2126 * self.red() + 0.7152 * self.green() + 0.0722 * self.blue()
+	}
+}
+
+impl RGB for RGBA16F {
+	type ColorChannel = f32;
+	#[inline(always)]
+	fn red(&self) -> f32 {
+		self.red.to_f32()
+	}
+	#[inline(always)]
+	fn green(&self) -> f32 {
+		self.green.to_f32()
+	}
+	#[inline(always)]
+	fn blue(&self) -> f32 {
+		self.blue.to_f32()
+	}
+}
+
+impl Rec709Primaries for RGBA16F {}
+
+impl Alpha for RGBA16F {
+	type AlphaChannel = f32;
+	#[inline(always)]
+	fn alpha(&self) -> f32 {
+		self.alpha.to_f32() / 255.0
+	}
+
+	const TRANSPARENT: Self = RGBA16F {
+		red: f16::from_f32_const(0.),
+		green: f16::from_f32_const(0.),
+		blue: f16::from_f32_const(0.),
+		alpha: f16::from_f32_const(0.),
+	};
+
+	fn multiplied_alpha(&self, alpha: Self::AlphaChannel) -> Self {
+		let alpha = alpha * 255.0;
+		let mut result = *self;
+		result.alpha = f16::from_f32(alpha * self.alpha());
+		result
+	}
+}
+
+impl Pixel for RGBA16F {}
 
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

@@ -1,7 +1,7 @@
 use graphene_core::application_io::{ApplicationIo, ExportFormat, RenderConfig, SurfaceHandle, SurfaceHandleFrame};
 use graphene_core::raster::bbox::Bbox;
 use graphene_core::raster::Image;
-use graphene_core::raster::{color::SRGBA8, ImageFrame};
+use graphene_core::raster::ImageFrame;
 use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
 use graphene_core::transform::{Footprint, TransformMut};
 use graphene_core::Color;
@@ -9,6 +9,7 @@ use graphene_core::Node;
 
 use base64::Engine;
 use glam::DAffine2;
+use wgpu_executor::WgpuSurface;
 
 use core::future::Future;
 use std::marker::PhantomData;
@@ -18,14 +19,11 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 pub use graph_craft::wasm_application_io::*;
 
-pub type WasmSurfaceHandle = SurfaceHandle<HtmlCanvasElement>;
-pub type WasmSurfaceHandleFrame = SurfaceHandleFrame<HtmlCanvasElement>;
-
 pub struct CreateSurfaceNode {}
 
 #[node_macro::node_fn(CreateSurfaceNode)]
-async fn create_surface_node<'a: 'input>(editor: &'a WasmEditorApi) -> Arc<SurfaceHandle<<WasmApplicationIo as ApplicationIo>::Surface>> {
-	editor.application_io.as_ref().unwrap().create_surface().into()
+async fn create_surface_node<'a: 'input>(editor: &'a WasmEditorApi) -> WasmSurfaceHandle {
+	editor.application_io.as_ref().unwrap().create_surface()
 }
 
 pub struct DrawImageFrameNode<Surface> {
@@ -33,6 +31,7 @@ pub struct DrawImageFrameNode<Surface> {
 }
 
 #[node_macro::node_fn(DrawImageFrameNode)]
+#[cfg(target_arch = "wasm32")]
 async fn draw_image_frame_node<'a: 'input>(image: ImageFrame<SRGBA8>, surface_handle: Arc<WasmSurfaceHandle>) -> SurfaceHandleFrame<HtmlCanvasElement> {
 	let image_data = image.image.data;
 	let array: Clamped<&[u8]> = Clamped(bytemuck::cast_slice(image_data.as_slice()));
@@ -105,14 +104,14 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 	RenderOutput::Svg(render.svg.to_svg_string())
 }
 
-#[cfg(any(feature = "resvg", feature = "vello"))]
-fn _render_canvas(
+#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
+fn render_canvas(
 	data: impl GraphicElementRendered,
 	mut render: SvgRender,
 	render_params: RenderParams,
 	footprint: Footprint,
 	editor: &'_ WasmEditorApi,
-	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
+	surface_handle: wgpu_executor::WindowHandle,
 ) -> RenderOutput {
 	let resolution = footprint.resolution;
 	data.render_svg(&mut render, &render_params);
@@ -216,7 +215,7 @@ impl<'input, 'a: 'input, T: 'input + GraphicElementRendered, F: 'input + Future<
 where
 	Data: Node<'input, Footprint, Output = F>,
 	Surface: Node<'input, (), Output = SurfaceFuture>,
-	SurfaceFuture: core::future::Future<Output = Arc<SurfaceHandle<<crate::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>>,
+	SurfaceFuture: core::future::Future<Output = wgpu_executor::WindowHandle>,
 {
 	type Output = core::pin::Pin<Box<dyn core::future::Future<Output = RenderOutput> + 'input>>;
 
@@ -245,7 +244,7 @@ impl<'input, 'a: 'input, T: 'input + GraphicElementRendered, F: 'input + Future<
 where
 	Data: Node<'input, (), Output = F>,
 	Surface: Node<'input, (), Output = SurfaceFuture>,
-	SurfaceFuture: core::future::Future<Output = Arc<SurfaceHandle<<crate::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>>,
+	SurfaceFuture: core::future::Future<Output = wgpu_executor::WindowHandle>,
 {
 	type Output = core::pin::Pin<Box<dyn core::future::Future<Output = RenderOutput> + 'input>>;
 	#[inline]

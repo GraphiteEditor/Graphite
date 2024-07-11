@@ -6,6 +6,8 @@ use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
 use crate::node_graph_executor::NodeGraphExecutor;
 
+#[cfg(feature = "gpu")]
+use gpu_executor::*;
 use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
@@ -23,7 +25,7 @@ use graphene_core::*;
 use graphene_std::application_io::RenderConfig;
 use graphene_std::wasm_application_io::WasmEditorApi;
 #[cfg(feature = "gpu")]
-use {gpu_executor::*, graphene_core::application_io::SurfaceHandle, wgpu_executor::WgpuExecutor};
+use wgpu_executor::{Bindgroup, CommandBuffer, PipelineLayout, ShaderHandle, ShaderInputFrame, WgpuShaderInput};
 
 use once_cell::sync::Lazy;
 use std::collections::VecDeque;
@@ -994,7 +996,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					DocumentNode {
 						name: "Create Uniform".to_string(),
 						inputs: vec![NodeInput::network(generic!(T), 0), NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("gpu_executor::UniformNode<_>")),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::UniformNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
@@ -1038,7 +1040,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					DocumentNode {
 						name: "Create Storage".to_string(),
 						inputs: vec![NodeInput::network(concrete!(Vec<u8>), 0), NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("gpu_executor::StorageNode<_>")),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::StorageNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
@@ -1082,7 +1084,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					DocumentNode {
 						name: "Create Output Buffer".to_string(),
 						inputs: vec![NodeInput::network(concrete!(usize), 0), NodeInput::node(NodeId(0), 0), NodeInput::network(concrete!(Type), 1)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("gpu_executor::CreateOutputBufferNode<_, _>")),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::CreateOutputBufferNode<_, _>")),
 						..Default::default()
 					},
 					DocumentNode {
@@ -1134,12 +1136,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					DocumentNode {
 						name: "Create Compute Pass".to_string(),
 						inputs: vec![
-							NodeInput::network(concrete!(gpu_executor::PipelineLayout<WgpuExecutor>), 0),
+							NodeInput::network(concrete!(PipelineLayout), 0),
 							NodeInput::node(NodeId(0), 0),
-							NodeInput::network(concrete!(ShaderInput<WgpuExecutor>), 2),
+							NodeInput::network(concrete!(WgpuShaderInput), 2),
 							NodeInput::network(concrete!(gpu_executor::ComputePassDimensions), 3),
 						],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("gpu_executor::CreateComputePassNode<_, _, _>")),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::CreateComputePassNode<_, _, _>")),
 						..Default::default()
 					},
 					DocumentNode {
@@ -1160,12 +1162,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType {
 					name: "In",
 					data_type: FrontendGraphDataType::General,
-					default: NodeInput::network(concrete!(gpu_executor::PipelineLayout<WgpuExecutor>), 0),
+					default: NodeInput::network(concrete!(PipelineLayout), 0),
 				},
 				DocumentInputType {
 					name: "In",
 					data_type: FrontendGraphDataType::General,
-					default: NodeInput::network(concrete!(ShaderInput<WgpuExecutor>), 2),
+					default: NodeInput::network(concrete!(WgpuShaderInput), 2),
 				},
 				DocumentInputType {
 					name: "In",
@@ -1184,12 +1186,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "CreatePipelineLayout",
 			category: "Gpu",
-			implementation: DocumentNodeImplementation::proto("gpu_executor::CreatePipelineLayoutNode<_, _, _, _>"),
+			implementation: DocumentNodeImplementation::proto("wgpu_executor::CreatePipelineLayoutNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType {
 					name: "ShaderHandle",
 					data_type: FrontendGraphDataType::General,
-					default: NodeInput::network(concrete!(<WgpuExecutor as GpuExecutor>::ShaderHandle), 0),
+					default: NodeInput::network(concrete!(ShaderHandle), 0),
 				},
 				DocumentInputType {
 					name: "String",
@@ -1199,12 +1201,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType {
 					name: "Bindgroup",
 					data_type: FrontendGraphDataType::General,
-					default: NodeInput::network(concrete!(gpu_executor::Bindgroup<WgpuExecutor>), 2),
+					default: NodeInput::network(concrete!(Bindgroup), 2),
 				},
 				DocumentInputType {
 					name: "ArcShaderInput",
 					data_type: FrontendGraphDataType::General,
-					default: NodeInput::network(concrete!(Arc<ShaderInput<WgpuExecutor>>), 3),
+					default: NodeInput::network(concrete!(Arc<WgpuShaderInput>), 3),
 				},
 			],
 			outputs: vec![DocumentOutputType {
@@ -1229,8 +1231,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					},
 					DocumentNode {
 						name: "Execute Compute Pipeline".to_string(),
-						inputs: vec![NodeInput::network(concrete!(<WgpuExecutor as GpuExecutor>::CommandBuffer), 0), NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("gpu_executor::ExecuteComputePipelineNode<_>")),
+						inputs: vec![NodeInput::network(concrete!(CommandBuffer), 0), NodeInput::node(NodeId(0), 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::ExecuteComputePipelineNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
@@ -1273,8 +1275,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					},
 					DocumentNode {
 						name: "Read Output Buffer".to_string(),
-						inputs: vec![NodeInput::network(concrete!(Arc<ShaderInput<WgpuExecutor>>), 0), NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("gpu_executor::ReadOutputBufferNode<_, _>")),
+						inputs: vec![NodeInput::network(concrete!(Arc<WgpuShaderInput>), 0), NodeInput::node(NodeId(0), 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::ReadOutputBufferNode<_, _>")),
 						..Default::default()
 					},
 					DocumentNode {
@@ -1312,7 +1314,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					DocumentNode {
 						name: "Create Gpu Surface".to_string(),
 						inputs: vec![NodeInput::scope("editor-api")],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("gpu_executor::CreateGpuSurfaceNode")),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::CreateGpuSurfaceNode")),
 						..Default::default()
 					},
 					DocumentNode {
@@ -1350,12 +1352,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					},
 					DocumentNode {
 						name: "Render Texture".to_string(),
+						manual_composition: Some(concrete!(Footprint)),
 						inputs: vec![
-							NodeInput::network(concrete!(ShaderInputFrame<WgpuExecutor>), 0),
-							NodeInput::network(concrete!(Arc<SurfaceHandle<<WgpuExecutor as GpuExecutor>::Surface<'_>>>), 0),
+							NodeInput::network(concrete!(ShaderInputFrame), 0),
+							NodeInput::network(concrete!(Arc<wgpu_executor::Surface>), 1),
 							NodeInput::node(NodeId(0), 0),
 						],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("gpu_executor::RenderTextureNode<_, _>")),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::RenderTextureNode<_, _, _>")),
 						..Default::default()
 					},
 				]
@@ -1399,14 +1402,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					DocumentNode {
 						name: "Upload Texture".to_string(),
 						inputs: vec![NodeInput::network(concrete!(ImageFrame<Color>), 0), NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("gpu_executor::UploadTextureNode<_>")),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::UploadTextureNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
 						inputs: vec![NodeInput::node(NodeId(1), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode<_, _, _>")),
 						..Default::default()
 					},
 				]

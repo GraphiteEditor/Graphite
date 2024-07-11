@@ -1,7 +1,6 @@
 use dyn_any::StaticTypeSized;
 use glam::{DAffine2, DVec2, Mat2, Vec2};
-use gpu_executor::{Bindgroup, ComputePassDimensions, PipelineLayout, StorageBufferOptions};
-use gpu_executor::{GpuExecutor, ShaderIO, ShaderInput};
+use gpu_executor::{ComputePassDimensions, StorageBufferOptions};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::*;
 use graph_craft::proto::*;
@@ -9,7 +8,10 @@ use graphene_core::application_io::ApplicationIo;
 use graphene_core::quantization::QuantizationChannels;
 use graphene_core::raster::*;
 use graphene_core::*;
+use wgpu_executor::Shader;
 use wgpu_executor::WgpuExecutor;
+use wgpu_executor::WgpuShaderInput;
+use wgpu_executor::{Bindgroup, GpuExecutor, PipelineLayout, ShaderIO, ShaderInput};
 
 #[cfg(feature = "quantization")]
 use graphene_core::quantization::PackedPixel;
@@ -50,15 +52,15 @@ async fn compile_gpu(node: &'input DocumentNode, mut typing_context: TypingConte
 pub struct MapGpuNode<Node, EditorApi> {
 	node: Node,
 	editor_api: EditorApi,
-	cache: RefCell<HashMap<String, ComputePass<WgpuExecutor>>>,
+	cache: RefCell<HashMap<String, ComputePass>>,
 }
 
-struct ComputePass<T: GpuExecutor> {
-	pipeline_layout: PipelineLayout<T>,
-	readback_buffer: Option<Arc<ShaderInput<T>>>,
+struct ComputePass {
+	pipeline_layout: PipelineLayout,
+	readback_buffer: Option<Arc<WgpuShaderInput>>,
 }
 
-impl<T: GpuExecutor> Clone for ComputePass<T> {
+impl Clone for ComputePass {
 	fn clone(&self) -> Self {
 		Self {
 			pipeline_layout: self.pipeline_layout.clone(),
@@ -164,7 +166,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 	image: &ImageFrame<T>,
 	executor: &&WgpuExecutor,
 	quantization: QuantizationChannels,
-) -> Result<ComputePass<WgpuExecutor>, String> {
+) -> Result<ComputePass, String> {
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let inner_network = NodeNetwork::value_network(node);
 
@@ -335,7 +337,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 		buffers: vec![width_uniform, storage_buffer],
 	};
 
-	let shader = gpu_executor::Shader {
+	let shader = Shader {
 		source: shader.spirv_binary.into(),
 		name: "gpu::eval",
 		io: shader.io,
@@ -557,7 +559,7 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 		],
 	};
 
-	let shader = gpu_executor::Shader {
+	let shader = Shader {
 		source: shader.spirv_binary.into(),
 		name: "gpu::eval",
 		io: shader.io,

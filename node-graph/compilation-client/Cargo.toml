@@ -8,6 +8,7 @@ license = "MIT OR Apache-2.0"
 # Local dependencies
 graph-craft = { path = "../graph-craft", features = ["serde"] }
 gpu-executor = { path = "../gpu-executor" }
+wgpu-executor = { version = "0.1.0", path = "../wgpu-executor" }
 gpu-compiler-bin-wrapper = { path = "../gpu-compiler/gpu-compiler-bin-wrapper" }
 
 # Workspace dependencies

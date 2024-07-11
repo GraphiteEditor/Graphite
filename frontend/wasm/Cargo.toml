@@ -20,7 +20,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # Local dependencies
-editor = { path = "../../editor", package = "graphite-editor" }
+editor = { path = "../../editor", package = "graphite-editor", features = ["gpu"] }
 
 # Workspace dependencies
 graph-craft = { workspace = true }

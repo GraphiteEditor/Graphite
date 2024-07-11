@@ -5,7 +5,7 @@ use crate::vector::style::ViewMode;
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
 
 use alloc::sync::Arc;
-use core::fmt::Debug;
+use core::fmt::{Debug, Write};
 use core::future::Future;
 use core::hash::{Hash, Hasher};
 use core::pin::Pin;
@@ -15,6 +15,12 @@ use glam::DAffine2;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SurfaceId(pub u64);
+
+impl core::fmt::Display for SurfaceId {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		f.write_fmt(format_args!("{}", self.0))
+	}
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -27,6 +33,17 @@ impl Hash for SurfaceFrame {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.surface_id.hash(state);
 		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
+	}
+}
+
+impl Transform for SurfaceFrame {
+	fn transform(&self) -> DAffine2 {
+		self.transform
+	}
+}
+impl TransformMut for SurfaceFrame {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		&mut self.transform
 	}
 }
 

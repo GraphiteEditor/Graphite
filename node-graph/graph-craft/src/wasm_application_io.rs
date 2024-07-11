@@ -1,5 +1,4 @@
 use dyn_any::StaticType;
-#[cfg(target_arch = "wasm32")]
 use graphene_core::application_io::SurfaceHandleFrame;
 use graphene_core::application_io::{ApplicationError, ApplicationIo, ResourceFuture, SurfaceHandle, SurfaceId};
 #[cfg(feature = "wgpu")]
@@ -32,8 +31,8 @@ pub struct WasmApplicationIo {
 	ids: AtomicU64,
 	#[cfg(feature = "wgpu")]
 	pub(crate) gpu_executor: Option<WgpuExecutor>,
-	#[cfg(not(target_arch = "wasm32"))]
-	windows: Mutex<Vec<Arc<winit::window::Window>>>,
+	// #[cfg(not(target_arch = "wasm32"))]
+	// windows: Mutex<Vec<Arc<winit::window::Window>>>,
 	pub resources: HashMap<String, Arc<[u8]>>,
 }
 
@@ -61,8 +60,8 @@ impl WasmApplicationIo {
 			ids: AtomicU64::new(0),
 			#[cfg(feature = "wgpu")]
 			gpu_executor: executor,
-			#[cfg(not(target_arch = "wasm32"))]
-			windows: Vec::new().into(),
+			// #[cfg(not(target_arch = "wasm32"))]
+			// windows: Vec::new().into(),
 			resources: HashMap::new(),
 		};
 		io.resources.insert("null".to_string(), Arc::from(include_bytes!("null.png").to_vec()));
@@ -92,7 +91,7 @@ impl ApplicationIo for WasmApplicationIo {
 	#[cfg(target_arch = "wasm32")]
 	type Surface = HtmlCanvasElement;
 	#[cfg(not(target_arch = "wasm32"))]
-	type Surface = Arc<winit::window::Window>;
+	type Surface = winit::window::Window;
 	#[cfg(feature = "wgpu")]
 	type Executor = WgpuExecutor;
 	#[cfg(not(feature = "wgpu"))]
@@ -147,8 +146,7 @@ impl ApplicationIo for WasmApplicationIo {
 			.with_inner_size(winit::dpi::PhysicalSize::new(800, 600))
 			.build(&event_loop)
 			.unwrap();
-		let window = Arc::new(window);
-		self.windows.lock().as_mut().unwrap().push(window.clone());
+		// self.windows.lock().as_mut().unwrap().push(window.clone());
 		SurfaceHandle {
 			surface_id: SurfaceId(window.id().into()),
 			surface: window,
@@ -222,7 +220,5 @@ impl ApplicationIo for WasmApplicationIo {
 	}
 }
 
-#[cfg(target_arch = "wasm32")]
-pub type WasmSurfaceHandle = SurfaceHandle<HtmlCanvasElement>;
-#[cfg(target_arch = "wasm32")]
-pub type WasmSurfaceHandleFrame = SurfaceHandleFrame<HtmlCanvasElement>;
+pub type WasmSurfaceHandle = SurfaceHandle<wgpu_executor::Window>;
+pub type WasmSurfaceHandleFrame = SurfaceHandleFrame<wgpu_executor::Window>;

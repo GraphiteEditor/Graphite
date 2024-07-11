@@ -27,6 +27,12 @@ pub trait Transform {
 	}
 }
 
+impl<T: Transform> Transform for &T {
+	fn transform(&self) -> DAffine2 {
+		(*self).transform()
+	}
+}
+
 pub trait TransformMut: Transform {
 	fn transform_mut(&mut self) -> &mut DAffine2;
 	fn translate(&mut self, offset: DVec2) {
@@ -42,25 +48,12 @@ impl<P: Pixel> Transform for ImageFrame<P> {
 		self.local_pivot(pivot)
 	}
 }
-impl<P: Pixel> Transform for &ImageFrame<P> {
-	fn transform(&self) -> DAffine2 {
-		self.transform
-	}
-	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
-		(*self).local_pivot(pivot)
-	}
-}
 impl<P: Pixel> TransformMut for ImageFrame<P> {
 	fn transform_mut(&mut self) -> &mut DAffine2 {
 		&mut self.transform
 	}
 }
 impl Transform for GraphicGroup {
-	fn transform(&self) -> DAffine2 {
-		self.transform
-	}
-}
-impl Transform for &GraphicGroup {
 	fn transform(&self) -> DAffine2 {
 		self.transform
 	}
@@ -76,6 +69,7 @@ impl Transform for GraphicElement {
 			GraphicElement::VectorData(vector_shape) => vector_shape.transform(),
 			GraphicElement::ImageFrame(image_frame) => image_frame.transform(),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.transform(),
+			GraphicElement::Surface(surface) => surface.transform(),
 		}
 	}
 	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
@@ -83,13 +77,7 @@ impl Transform for GraphicElement {
 			GraphicElement::VectorData(vector_shape) => vector_shape.local_pivot(pivot),
 			GraphicElement::ImageFrame(image_frame) => image_frame.local_pivot(pivot),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.local_pivot(pivot),
-		}
-	}
-	fn decompose_scale(&self) -> DVec2 {
-		match self {
-			GraphicElement::VectorData(vector_shape) => vector_shape.decompose_scale(),
-			GraphicElement::ImageFrame(image_frame) => image_frame.decompose_scale(),
-			GraphicElement::GraphicGroup(graphic_group) => graphic_group.decompose_scale(),
+			GraphicElement::Surface(surface) => surface.local_pivot(pivot),
 		}
 	}
 }
@@ -99,6 +87,7 @@ impl TransformMut for GraphicElement {
 			GraphicElement::VectorData(vector_shape) => vector_shape.transform_mut(),
 			GraphicElement::ImageFrame(image_frame) => image_frame.transform_mut(),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.transform_mut(),
+			GraphicElement::Surface(surface) => surface.transform_mut(),
 		}
 	}
 }
