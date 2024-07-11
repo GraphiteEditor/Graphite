@@ -23,8 +23,8 @@ pub use graph_craft::wasm_application_io::*;
 pub struct CreateSurfaceNode {}
 
 #[node_macro::node_fn(CreateSurfaceNode)]
-async fn create_surface_node<'a: 'input>(editor: &'a WasmEditorApi) -> WasmSurfaceHandle {
-	editor.application_io.as_ref().unwrap().create_surface()
+async fn create_surface_node<'a: 'input>(editor: &'a WasmEditorApi) -> Arc<WasmSurfaceHandle> {
+	Arc::new(editor.application_io.as_ref().unwrap().create_surface())
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -34,8 +34,14 @@ pub struct DrawImageFrameNode<Surface> {
 
 #[node_macro::node_fn(DrawImageFrameNode)]
 #[cfg(target_arch = "wasm32")]
-async fn draw_image_frame_node<'a: 'input>(image: ImageFrame<SRGBA8>, surface_handle: Arc<WasmSurfaceHandle>) -> SurfaceHandleFrame<HtmlCanvasElement> {
+async fn draw_image_frame_node<'a: 'input>(
+	image: ImageFrame<graphene_core::raster::SRGBA8>,
+	surface_handle: Arc<WasmSurfaceHandle>,
+) -> graphene_core::application_io::SurfaceHandleFrame<HtmlCanvasElement> {
+	use graphene_core::application_io::SurfaceHandleFrame;
+
 	let image_data = image.image.data;
+	use wasm_bindgen::Clamped;
 	let array: Clamped<&[u8]> = Clamped(bytemuck::cast_slice(image_data.as_slice()));
 	if image.image.width > 0 && image.image.height > 0 {
 		let canvas = &surface_handle.surface;

@@ -349,7 +349,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Footprint, output: Artboard, fn_params: [Footprint => Artboard]),
 		async_node!(graphene_std::wasm_application_io::LoadResourceNode<_>, input: &WasmEditorApi, output: Arc<[u8]>, params: [String]),
 		register_node!(graphene_std::wasm_application_io::DecodeImageNode, input: Arc<[u8]>, params: []),
-		async_node!(graphene_std::wasm_application_io::CreateSurfaceNode, input: &WasmEditorApi, output: WasmSurfaceHandle, params: []),
+		async_node!(graphene_std::wasm_application_io::CreateSurfaceNode, input: &WasmEditorApi, output: Arc<WasmSurfaceHandle>, params: []),
 		#[cfg(target_arch = "wasm32")]
 		async_node!(
 			graphene_std::wasm_application_io::DrawImageFrameNode<_>,
@@ -614,7 +614,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: ShaderInputFrame, params: [ShaderInputFrame]),
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: wgpu_executor::WgpuSurface, params: [wgpu_executor::WgpuSurface]),
-		// async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: wgpu_executor::Surface, params: [wgpu_executor::Surface]),
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: wgpu_executor::WindowHandle, params: [wgpu_executor::WindowHandle]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: SurfaceFrame, params: [SurfaceFrame]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: RenderOutput, params: [RenderOutput]),
 		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Footprint, output: GraphicGroup, fn_params: [Footprint => GraphicGroup]),

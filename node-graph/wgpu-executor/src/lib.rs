@@ -14,8 +14,6 @@ use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle};
 use graphene_core::raster::color::RGBA16F;
 use graphene_core::raster::{Image, ImageFrame};
 use graphene_core::transform::{Footprint, Transform};
-#[cfg(target_arch = "wasm32")]
-use graphene_core::WasmSurfaceHandle;
 use graphene_core::{Color, Cow, Node, SurfaceFrame};
 
 use std::pin::Pin;
@@ -463,9 +461,9 @@ impl WgpuExecutor {
 	fn create_surface(&self, canvas: graphene_core::WasmSurfaceHandle) -> Result<SurfaceHandle<Surface>> {
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.surface))?;
 
-		let surface_caps = surface.get_capabilities(&self.context.adapter);
-		let surface_format = wgpu::TextureFormat::Rgba16Float;
-		let config = wgpu::SurfaceConfiguration {
+		// let surface_caps = surface.get_capabilities(&self.context.adapter);
+		// let surface_format = wgpu::TextureFormat::Rgba16Float;
+		/*let config = wgpu::SurfaceConfiguration {
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
 			format: surface_format,
 			width: 1920,
@@ -474,9 +472,9 @@ impl WgpuExecutor {
 			alpha_mode: surface_caps.alpha_modes[0],
 			view_formats: vec![],
 			desired_maximum_frame_latency: 2,
-		};
+		};*/
 		// surface.configure(&self.context.device, &config);
-		self.surface_config.set(Some(config));
+		// self.surface_config.set(Some(config));
 		Ok(SurfaceHandle {
 			surface_id: canvas.surface_id,
 			surface: Surface(surface),
