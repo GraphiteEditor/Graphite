@@ -10,7 +10,7 @@ use core::future::Future;
 use core::hash::{Hash, Hasher};
 use core::pin::Pin;
 use core::ptr::addr_of;
-use glam::DAffine2;
+use glam::{DAffine2, UVec2};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -26,6 +26,7 @@ impl core::fmt::Display for SurfaceId {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SurfaceFrame {
 	pub surface_id: SurfaceId,
+	pub resolution: UVec2,
 	pub transform: DAffine2,
 }
 
@@ -51,11 +52,23 @@ unsafe impl StaticType for SurfaceFrame {
 	type Static = SurfaceFrame;
 }
 
-impl<S> From<SurfaceHandleFrame<S>> for SurfaceFrame {
+pub trait Size {
+	fn size(&self) -> UVec2;
+}
+
+#[cfg(target_arch = "wasm32")]
+impl Size for web_sys::HtmlCanvasElement {
+	fn size(&self) -> UVec2 {
+		UVec2::new(self.width(), self.height())
+	}
+}
+
+impl<S: Size> From<SurfaceHandleFrame<S>> for SurfaceFrame {
 	fn from(x: SurfaceHandleFrame<S>) -> Self {
 		Self {
 			surface_id: x.surface_handle.surface_id,
 			transform: x.transform,
+			resolution: x.surface_handle.surface.size(),
 		}
 	}
 }
@@ -69,6 +82,12 @@ pub struct SurfaceHandle<Surface> {
 // unsafe impl<T: dyn_any::WasmNotSend> Send for SurfaceHandle<T> {}
 // #[cfg(target_arch = "wasm32")]
 // unsafe impl<T: dyn_any::WasmNotSync> Sync for SurfaceHandle<T> {}
+
+impl<S: Size> Size for SurfaceHandle<S> {
+	fn size(&self) -> UVec2 {
+		self.surface.size()
+	}
+}
 
 unsafe impl<T: 'static> StaticType for SurfaceHandle<T> {
 	type Static = SurfaceHandle<T>;

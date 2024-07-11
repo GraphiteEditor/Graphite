@@ -343,6 +343,27 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 
 		subpath
 	}
+
+	#[cfg(feature = "kurbo")]
+	pub fn to_vello_path(&self, transform: glam::DAffine2) -> kurbo::BezPath {
+		use crate::BezierHandles;
+
+		let mut path = kurbo::BezPath::new();
+		let to_point = |p: DVec2| kurbo::Point::new(p.x, p.y);
+		for segment in self.iter() {
+			let segment = segment.apply_transformation(|p| transform.transform_point2(p));
+			path.move_to(to_point(segment.start));
+			match segment.handles {
+				BezierHandles::Linear => path.line_to(to_point(segment.end)),
+				BezierHandles::Quadratic { handle } => path.quad_to(to_point(handle), to_point(segment.end)),
+				BezierHandles::Cubic { handle_start, handle_end } => path.curve_to(to_point(handle_start), to_point(handle_end), to_point(segment.end)),
+			}
+		}
+		if self.closed {
+			path.close_path();
+		}
+		path
+	}
 }
 
 pub fn solve_spline_first_handle(points: &[DVec2]) -> Vec<DVec2> {

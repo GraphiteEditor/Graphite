@@ -76,10 +76,6 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<RenderOutput>() => Ok(TaggedValue::RenderOutput(*downcast(input).unwrap())),
 					x if x == TypeId::of::<graphene_core::SurfaceFrame>() => Ok(TaggedValue::SurfaceFrame(*downcast(input).unwrap())),
 
-					x if x == TypeId::of::<graphene_core::WasmSurfaceHandleFrame>() => {
-						let frame = *downcast::<graphene_core::WasmSurfaceHandleFrame>(input).unwrap();
-						Ok(TaggedValue::SurfaceFrame(frame.into()))
-					}
 
 					_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
 				}

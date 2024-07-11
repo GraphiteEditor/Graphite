@@ -33,6 +33,7 @@ futures = { workspace = true }
 web-sys = { workspace = true, features = ["HtmlCanvasElement"] }
 winit = { workspace = true }
 serde = { workspace = true }
+vello = { workspace = true }
 
 # Required dependencies
 futures-intrusive = { version = "0.5.0", features = ["alloc"] }

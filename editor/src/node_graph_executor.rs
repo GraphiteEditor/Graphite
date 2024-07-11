@@ -634,7 +634,7 @@ impl NodeGraphExecutor {
 
 	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, transform: DAffine2, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		match node_graph_output {
-			TaggedValue::SurfaceFrame(SurfaceFrame { surface_id: _, transform: _ }) => {
+			TaggedValue::SurfaceFrame(SurfaceFrame { surface_id: _, transform: _, .. }) => {
 				// TODO: Reimplement this now that document-legacy is gone
 			}
 			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg(svg)) => {
@@ -643,6 +643,7 @@ impl NodeGraphExecutor {
 				responses.add(DocumentMessage::RenderScrollbars);
 			}
 			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::CanvasFrame(frame)) => {
+				let resolution = frame.resolution;
 				// Send to frontend
 				responses.add(DocumentMessage::RenderScrollbars);
 				let matrix = frame
@@ -655,7 +656,7 @@ impl NodeGraphExecutor {
 					r#"
 					<svg><foreignObject width="{}" height="{}" transform="matrix({})"><div data-canvas-placeholder="canvas{}"></div></foreignObject></svg>
 					"#,
-					1920, 1080, matrix, frame.surface_id.0
+					resolution.x, resolution.y, matrix, frame.surface_id.0
 				);
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 			}
