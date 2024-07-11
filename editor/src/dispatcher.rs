@@ -436,9 +436,9 @@ mod test {
 			// UNCOMMENT THIS FOR RUNNING UNDER MIRI
 			//
 			// let files = [
-			// 	include_str!("../../demo-artwork/isometric-fountain.graphite"),
-			// 	include_str!("../../demo-artwork/just-a-potted-cactus.graphite"),
-			// 	include_str!("../../demo-artwork/procedural-string-lights.graphite"),
+			// 	include_str!("../../demo-artwork/isometric-fountain.graphite").to_string(),
+			// 	include_str!("../../demo-artwork/just-a-potted-cactus.graphite").to_string(),
+			// 	include_str!("../../demo-artwork/procedural-string-lights.graphite").to_string(),
 			// 	include_str!("../../demo-artwork/red-dress.graphite"),
 			// 	include_str!("../../demo-artwork/valley-of-spires.graphite"),
 			// ];
@@ -456,14 +456,14 @@ mod test {
 
 				let responses = editor.handle_message(PortfolioMessage::OpenDocumentFile {
 					document_name: document_name.into(),
-					document_serialized_content: document_serialized_content.into(),
+					document_serialized_content,
 				});
 
 				// Check if the graph renders
 				let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
 				portfolio
 					.executor
-					.submit_node_graph_evaluation(portfolio.documents.get_mut(&portfolio.active_document_id.unwrap()).unwrap(), glam::UVec2::ONE)
+					.submit_node_graph_evaluation(portfolio.documents.get_mut(&portfolio.active_document_id.unwrap()).unwrap(), glam::UVec2::ONE, true)
 					.expect("submit_node_graph_evaluation failed");
 				crate::node_graph_executor::run_node_graph().await;
 				let mut messages = VecDeque::new();

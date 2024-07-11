@@ -1,7 +1,6 @@
 use crate::Node;
 
 use bezier_rs::{ManipulatorGroup, Subpath};
-use graphene_core::raster::ImageFrame;
 use graphene_core::transform::Transform;
 pub use graphene_core::vector::*;
 use graphene_core::Color;

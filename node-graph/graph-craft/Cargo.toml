@@ -8,7 +8,7 @@ license = "MIT OR Apache-2.0"
 default = ["dealloc_nodes"]
 serde = ["dep:serde", "graphene-core/serde", "glam/serde", "bezier-rs/serde"]
 dealloc_nodes = []
-wgpu = ["wgpu-executor"]
+wgpu = []
 
 [dependencies]
 # Local dependencies
@@ -32,7 +32,7 @@ url = { workspace = true }
 reqwest = { workspace = true }
 
 # Optional workspace dependencies
-wgpu-executor = { workspace = true, optional = true }
+wgpu-executor = { workspace = true }
 serde = { workspace = true, optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]

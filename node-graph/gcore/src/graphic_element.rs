@@ -1,11 +1,10 @@
-use crate::application_io::{SurfaceHandle, SurfaceHandleFrame};
+use crate::application_io::SurfaceHandleFrame;
 use crate::raster::{BlendMode, ImageFrame};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::Footprint;
 use crate::vector::VectorData;
 use crate::{Color, Node, SurfaceFrame};
 
-use bezier_rs::BezierHandles;
 use dyn_any::{DynAny, StaticType};
 use node_macro::node_fn;
 use web_sys::HtmlCanvasElement;
@@ -309,16 +308,5 @@ impl GraphicGroup {
 			root_node.children.push(element.to_usvg_node());
 		}
 		tree
-	}
-}
-
-impl<'a> Into<&'a dyn GraphicElementRendered> for &'a GraphicElement {
-	fn into(self) -> &'a dyn GraphicElementRendered {
-		match self {
-			GraphicElement::VectorData(vector_data) => vector_data.as_ref(),
-			GraphicElement::ImageFrame(image_frame) => image_frame,
-			GraphicElement::GraphicGroup(graphic_group) => graphic_group,
-			GraphicElement::Surface(surface) => surface,
-		}
 	}
 }

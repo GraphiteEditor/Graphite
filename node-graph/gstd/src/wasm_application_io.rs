@@ -1,4 +1,6 @@
-use graphene_core::application_io::{ApplicationIo, ExportFormat, RenderConfig, SurfaceHandle, SurfaceHandleFrame};
+#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
+use graphene_core::application_io::SurfaceHandleFrame;
+use graphene_core::application_io::{ApplicationIo, ExportFormat, RenderConfig, SurfaceHandle};
 use graphene_core::raster::bbox::Bbox;
 use graphene_core::raster::Image;
 use graphene_core::raster::ImageFrame;
@@ -9,12 +11,11 @@ use graphene_core::Node;
 
 use base64::Engine;
 use glam::DAffine2;
-use wgpu_executor::WgpuSurface;
 
 use core::future::Future;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use wasm_bindgen::{Clamped, JsCast};
+use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 pub use graph_craft::wasm_application_io::*;
@@ -26,6 +27,7 @@ async fn create_surface_node<'a: 'input>(editor: &'a WasmEditorApi) -> WasmSurfa
 	editor.application_io.as_ref().unwrap().create_surface()
 }
 
+#[cfg(target_arch = "wasm32")]
 pub struct DrawImageFrameNode<Surface> {
 	surface_handle: Surface,
 }

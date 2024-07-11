@@ -6,8 +6,6 @@ use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
 use crate::node_graph_executor::NodeGraphExecutor;
 
-#[cfg(feature = "gpu")]
-use gpu_executor::*;
 use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;

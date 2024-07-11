@@ -11,7 +11,7 @@ use graphene_core::*;
 use wgpu_executor::Shader;
 use wgpu_executor::WgpuExecutor;
 use wgpu_executor::WgpuShaderInput;
-use wgpu_executor::{Bindgroup, GpuExecutor, PipelineLayout, ShaderIO, ShaderInput};
+use wgpu_executor::{Bindgroup, PipelineLayout, ShaderIO, ShaderInput};
 
 #[cfg(feature = "quantization")]
 use graphene_core::quantization::PackedPixel;

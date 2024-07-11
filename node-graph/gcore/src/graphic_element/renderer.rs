@@ -1,7 +1,5 @@
 mod quad;
 
-use core::ops::Deref;
-
 use crate::raster::bbox::Bbox;
 use crate::raster::{BlendMode, Image, ImageFrame};
 use crate::transform::Transform;

@@ -5,7 +5,7 @@ use crate::vector::style::ViewMode;
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
 
 use alloc::sync::Arc;
-use core::fmt::{Debug, Write};
+use core::fmt::Debug;
 use core::future::Future;
 use core::hash::{Hash, Hasher};
 use core::pin::Pin;

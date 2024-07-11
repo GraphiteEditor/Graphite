@@ -2,7 +2,7 @@ mod context;
 mod executor;
 
 pub use context::Context;
-use dyn_any::{DynAny, StaticType, StaticTypeSized};
+use dyn_any::{DynAny, StaticType};
 pub use executor::GpuExecutor;
 use glam::DAffine2;
 use gpu_executor::{ComputePassDimensions, GPUConstant, StorageBufferOptions, TextureBufferOptions, TextureBufferType, ToStorageBuffer, ToUniformBuffer};
@@ -12,9 +12,11 @@ use anyhow::{bail, Result};
 use futures::Future;
 use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle};
 use graphene_core::raster::color::RGBA16F;
-use graphene_core::raster::{Image, ImageFrame, Pixel, SRGBA8};
+use graphene_core::raster::{Image, ImageFrame};
 use graphene_core::transform::{Footprint, Transform};
-use graphene_core::{Color, Cow, Node, SurfaceFrame, WasmSurfaceHandle};
+#[cfg(target_arch = "wasm32")]
+use graphene_core::WasmSurfaceHandle;
+use graphene_core::{Color, Cow, Node, SurfaceFrame};
 
 use std::pin::Pin;
 use std::sync::Arc;
@@ -294,7 +296,7 @@ impl WgpuExecutor {
 		Ok(CommandBuffer(encoder.finish()))
 	}
 
-	pub fn create_render_pass(&self, footprint: Footprint, texture: ShaderInputFrame, canvas: Arc<SurfaceHandle<Surface>>) -> Result<()> {
+	pub fn create_render_pass(&self, _footprint: Footprint, texture: ShaderInputFrame, canvas: Arc<SurfaceHandle<Surface>>) -> Result<()> {
 		let transform = texture.transform;
 		let texture = texture.shader_input;
 		let texture = texture.texture().expect("Expected texture input");
@@ -312,7 +314,7 @@ impl WgpuExecutor {
 		// TODO:
 		let resolution = transform.decompose_scale().as_uvec2();
 		let surface_format = wgpu::TextureFormat::Bgra8Unorm;
-		let config = wgpu::SurfaceConfiguration {
+		let config = SurfaceConfiguration {
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
 			format: surface_format,
 			width: resolution.x,
@@ -448,7 +450,7 @@ impl WgpuExecutor {
 		})
 	}
 
-	fn create_texture_view(&self, texture: WgpuShaderInput) -> Result<WgpuShaderInput> {
+	pub fn create_texture_view(&self, texture: WgpuShaderInput) -> Result<WgpuShaderInput> {
 		// Ok(ShaderInput::TextureView(texture.create_view(&wgpu::TextureViewDescriptor::default()), ) )
 		let ShaderInput::TextureBuffer(texture, ty) = &texture else {
 			bail!("Tried to create a texture view from a non texture");
@@ -488,7 +490,7 @@ impl WgpuExecutor {
 		let surface_caps = surface.get_capabilities(&self.context.adapter);
 		println!("{surface_caps:?}");
 		let surface_format = wgpu::TextureFormat::Rgba16Float;
-		let config = wgpu::SurfaceConfiguration {
+		let _config = wgpu::SurfaceConfiguration {
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
 			format: surface_format,
 			width: size.width,
@@ -896,7 +898,7 @@ async fn render_texture_node<'a: 'input, InFut: Future<Output = ShaderInputFrame
 ) -> SurfaceFrame {
 	let surface_id = surface.surface_id;
 	let image = self.image.eval(footprint).await;
-	let transform = image.transform.clone();
+	let transform = image.transform;
 
 	executor.create_render_pass(footprint, image, surface).unwrap();
 

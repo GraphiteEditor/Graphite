@@ -12,8 +12,8 @@ use std::pin::Pin;
 #[cfg(target_arch = "wasm32")]
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
-#[cfg(not(target_arch = "wasm32"))]
-use std::sync::Mutex;
+// #[cfg(not(target_arch = "wasm32"))]
+// use std::sync::Mutex;
 #[cfg(feature = "tokio")]
 use tokio::io::AsyncReadExt;
 #[cfg(target_arch = "wasm32")]

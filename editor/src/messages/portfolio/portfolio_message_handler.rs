@@ -289,7 +289,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				self.executor.update_font_cache(self.persistent_data.font_cache.clone());
 				for document_id in self.document_ids.iter() {
 					let _ = self.executor.submit_node_graph_evaluation(
-						self.documents.get_mut(&document_id).expect("Tried to render no existent Document"),
+						self.documents.get_mut(document_id).expect("Tried to render no existent Document"),
 						ipp.viewport_bounds.size().as_uvec2(),
 						true,
 					);

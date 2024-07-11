@@ -25,9 +25,6 @@ use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNo
 
 use glam::{DAffine2, DVec2, UVec2};
 use std::cell::RefCell;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::Hash;
-use std::hash::Hasher;
 use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
@@ -43,8 +40,6 @@ pub struct NodeRuntime {
 	recompile_graph: bool,
 
 	editor_api: Arc<WasmEditorApi>,
-
-	graph_hash: Option<u64>,
 	node_graph_errors: GraphErrors,
 	resolved_types: ResolvedDocumentNodeTypes,
 	monitor_nodes: Vec<Vec<NodeId>>,
@@ -92,7 +87,7 @@ pub struct ExecutionResponse {
 	new_upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
 	transform: DAffine2,
 }
-pub(crate) struct CompilationResponse {
+pub struct CompilationResponse {
 	result: Result<(), String>,
 	resolved_types: ResolvedDocumentNodeTypes,
 	node_graph_errors: GraphErrors,
@@ -144,7 +139,6 @@ impl NodeRuntime {
 			}
 			.into(),
 
-			graph_hash: None,
 			node_graph_errors: Vec::new(),
 			resolved_types: ResolvedDocumentNodeTypes::default(),
 			monitor_nodes: Vec::new(),
