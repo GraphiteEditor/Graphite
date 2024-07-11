@@ -498,7 +498,7 @@
 				<div class="details">
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
 					<span title={editor.handle.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined}>
-						{node.alias}
+						{node.displayName}
 					</span>
 				</div>
 				<IconButton
@@ -547,7 +547,7 @@
 				<div class="primary" class:no-parameter-section={exposedInputsOutputs.length === 0}>
 					<IconLabel icon={nodeIcon(node.name)} />
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
-					<TextLabel tooltip={editor.handle.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined}>{node.alias || node.name}</TextLabel>
+					<TextLabel tooltip={editor.handle.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined}>{node.displayName}</TextLabel>
 				</div>
 				<!-- Parameter rows -->
 				{#if exposedInputsOutputs.length > 0}

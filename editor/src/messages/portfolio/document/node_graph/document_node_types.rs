@@ -8,7 +8,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{
 };
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
-use crate::node_graph_executor::nodeGraphExecutor;
+use crate::node_graph_executor::NodeGraphExecutor;
 
 use glam::DVec2;
 use graph_craft::concrete;
@@ -92,7 +92,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Inputs",
 			properties: node_properties::boolean_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Number",
@@ -110,7 +109,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Inputs",
 			properties: node_properties::number_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Color",
@@ -128,7 +126,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Inputs",
 			properties: node_properties::color_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Vector2",
@@ -150,7 +147,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Inputs",
 			properties: node_properties::vector2_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Identity",
@@ -168,7 +164,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Structural",
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("The identity node simply returns the input"),
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Monitor",
@@ -188,7 +183,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Structural",
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("The Monitor node stores the value of its last evaluation"),
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Merge",
@@ -204,7 +198,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							},
 							// Primary (bottom) input type coercion
-							NodeId(1),
 							DocumentNode {
 								inputs: vec![NodeInput::network(generic!(T), 0)],
 								implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicGroupNode"),
@@ -218,7 +211,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								skip_deduplication: true,
 								..Default::default()
 							},
-							NodeId(3),
 							DocumentNode {
 								manual_composition: Some(concrete!(Footprint)),
 								inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(2), 0)],
@@ -249,7 +241,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "To Graphic Element".to_string(),
+										display_name: "To Graphic Element".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -1)),
 										..Default::default()
 									},
@@ -257,7 +249,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "To Graphic Group".to_string(),
+										display_name: "To Graphic Group".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -3)),
 										..Default::default()
 									},
@@ -265,7 +257,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Monitor".to_string(),
+										display_name: "Monitor".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -1)),
 										..Default::default()
 									},
@@ -273,7 +265,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "ConstructLayer".to_string(),
+										display_name: "ConstructLayer".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(1, -3)),
 										..Default::default()
 									},
@@ -292,7 +284,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "General",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Artboard",
@@ -302,7 +294,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(2), 0)],
 						nodes: [
 							// Ensure this ID is kept in sync with the ID in set_alias so that the name input is kept in sync with the alias
-							NodeId(0),
 							DocumentNode {
 								manual_composition: Some(concrete!(Footprint)),
 								inputs: vec![
@@ -370,7 +361,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "To Artboard".to_string(),
+										display_name: "To Artboard".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-10, -3)),
 										..Default::default()
 									},
@@ -378,7 +369,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Monitor".to_string(),
+										display_name: "Monitor".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-2, -3)),
 										..Default::default()
 									},
@@ -386,7 +377,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Add to Artboards".to_string(),
+										display_name: "Add to Artboards".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(6, -4)),
 										..Default::default()
 									},
@@ -406,7 +397,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "General",
 			properties: node_properties::artboard_properties,
-			..Default::default()
 		},
 		// TODO: Does this need an internal Cull node to be added to its implementation?
 		DocumentNodeDefinition {
@@ -425,7 +415,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Ignore",
 			properties: node_properties::node_no_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Load Image",
@@ -471,7 +460,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Load Resource".to_string(),
+										display_name: "Load Resource".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -479,7 +468,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Decode Image".to_string(),
+										display_name: "Decode Image".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -487,7 +476,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Cull".to_string(),
+										display_name: "Cull".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -507,7 +496,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Structural",
 			properties: node_properties::load_image_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Create Canvas",
@@ -546,7 +534,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Create Canvas".to_string(),
+										display_name: "Create Canvas".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -554,7 +542,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Cache".to_string(),
+										display_name: "Cache".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -573,7 +561,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Structural",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Draw Canvas",
@@ -622,7 +610,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Convert Image Frame".to_string(),
+										display_name: "Convert Image Frame".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -630,7 +618,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Create Canvas".to_string(),
+										display_name: "Create Canvas".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -638,7 +626,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Cache".to_string(),
+										display_name: "Cache".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -646,7 +634,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Draw Canvas".to_string(),
+										display_name: "Draw Canvas".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -665,7 +653,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Structural",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Rasterize",
@@ -720,7 +708,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Create Canvas".to_string(),
+										display_name: "Create Canvas".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -728,7 +716,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Cache".to_string(),
+										display_name: "Cache".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -736,7 +724,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Rasterize".to_string(),
+										display_name: "Rasterize".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -756,7 +744,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Raster",
 			properties: node_properties::rasterize_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			// This essentially builds the concept of a closure where we store variables (`let` bindings) so they can be accessed within this scope.
@@ -800,7 +787,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "SetNode".to_string(),
+										display_name: "SetNode".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -808,7 +795,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "LetNode".to_string(),
+										display_name: "LetNode".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -816,7 +803,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "RefNode".to_string(),
+										display_name: "RefNode".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -836,7 +823,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Ignore",
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("Binds the input in a local scope as a variable"),
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "End Scope",
@@ -854,7 +840,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Ignore",
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("Consumes the scope opened by the Begin Scope node and evaluates the contained node network"),
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Output",
@@ -904,7 +889,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Ignore",
 			properties: node_properties::output_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Image Frame",
@@ -945,7 +929,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Image Frame".to_string(),
+										display_name: "Image Frame".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -953,7 +937,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Cull".to_string(),
+										display_name: "Cull".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -973,7 +957,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "General",
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("Creates an embedded image with the given transform"),
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Noise Pattern",
@@ -1063,7 +1046,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Noise Pattern".to_string(),
+										display_name: "Noise Pattern".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -1071,7 +1054,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Cull".to_string(),
+										display_name: "Cull".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -1091,7 +1074,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "General",
 			properties: node_properties::noise_pattern_properties,
-			..Default::default()
 		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
 		DocumentNodeDefinition {
@@ -1113,7 +1095,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Raster",
 			properties: node_properties::mask_properties,
-			..Default::default()
 		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
 		DocumentNodeDefinition {
@@ -1136,7 +1117,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Raster",
 			properties: node_properties::insert_channel_properties,
-			..Default::default()
 		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
 		DocumentNodeDefinition {
@@ -1160,7 +1140,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Raster",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
 		DocumentNodeDefinition {
@@ -1184,7 +1164,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Raster",
 			properties: node_properties::blend_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Levels",
@@ -1216,7 +1195,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Raster",
 			properties: node_properties::levels_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Black & White",
@@ -1252,7 +1230,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Raster",
 			properties: node_properties::black_and_white_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Color Channel",
@@ -1270,7 +1247,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Image Adjustments",
 			properties: node_properties::color_channel_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Color Channel",
@@ -1288,7 +1264,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Raster",
 			properties: node_properties::color_channel_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Blend Mode Value",
@@ -1306,7 +1281,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Inputs",
 			properties: node_properties::blend_mode_value_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Luminance",
@@ -1327,7 +1301,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Raster",
 			properties: node_properties::luminance_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Extract Channel",
@@ -1348,7 +1321,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Raster",
 			properties: node_properties::extract_channel_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Extract Opaque",
@@ -1368,7 +1340,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Raster",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Split Channels",
@@ -1434,7 +1406,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "RedNode".to_string(),
+										display_name: "RedNode".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -1442,7 +1414,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "GreenNode".to_string(),
+										display_name: "GreenNode".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -1450,7 +1422,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "BlueNode".to_string(),
+										display_name: "BlueNode".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -1458,7 +1430,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "AlphaNode".to_string(),
+										display_name: "AlphaNode".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -1477,7 +1449,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Raster",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Brush",
@@ -1525,7 +1497,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Brush".to_string(),
+										display_name: "Brush".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -1533,7 +1505,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Cull".to_string(),
+										display_name: "Cull".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -1552,7 +1524,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Brush",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Extract Vector Points",
@@ -1569,7 +1541,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Brush",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Memoize",
@@ -1587,7 +1559,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Structural",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "MemoizeImpure",
@@ -1605,7 +1577,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Structural",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Image",
@@ -1635,7 +1607,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						persistent_metadata: NodeNetworkPersistentMetadata {
 							node_metadata: [DocumentNodeMetadata {
 								persistent_metadata: DocumentNodePersistentMetadata {
-									alias: "Cull".to_string(),
+									display_name: "Cull".to_string(),
 									node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 									..Default::default()
 								},
@@ -1654,7 +1626,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Ignore",
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("A bitmap image embedded in this node"),
-			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
@@ -1698,7 +1669,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Extract Executor".to_string(),
+										display_name: "Extract Executor".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -1706,7 +1677,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Create Uniform".to_string(),
+										display_name: "Create Uniform".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -1714,7 +1685,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Cache".to_string(),
+										display_name: "Cache".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -1733,7 +1704,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Gpu",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
@@ -1777,7 +1748,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Extract Executor".to_string(),
+										display_name: "Extract Executor".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -1785,7 +1756,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Create Storage".to_string(),
+										display_name: "Create Storage".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -1793,7 +1764,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Cache".to_string(),
+										display_name: "Cache".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -1812,7 +1783,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Gpu",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
@@ -1860,7 +1831,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Extract Executor".to_string(),
+										display_name: "Extract Executor".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -1868,7 +1839,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Create Output Buffer".to_string(),
+										display_name: "Create Output Buffer".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -1876,7 +1847,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Cache".to_string(),
+										display_name: "Cache".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -1896,7 +1867,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Gpu",
 			properties: node_properties::node_no_properties,
-			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
@@ -1950,7 +1920,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Extract Executor".to_string(),
+										display_name: "Extract Executor".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -1958,7 +1928,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Create Compute Pass".to_string(),
+										display_name: "Create Compute Pass".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -1966,7 +1936,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Cache".to_string(),
+										display_name: "Cache".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -1986,7 +1956,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Gpu",
 			properties: node_properties::node_no_properties,
-			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
@@ -2010,7 +1979,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Gpu",
 			properties: node_properties::node_no_properties,
-			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
@@ -2054,7 +2022,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Extract Executor".to_string(),
+										display_name: "Extract Executor".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -2062,7 +2030,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Execute Compute Pipeline".to_string(),
+										display_name: "Execute Compute Pipeline".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -2070,7 +2038,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Cache".to_string(),
+										display_name: "Cache".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -2089,7 +2057,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Gpu",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
@@ -2133,7 +2101,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Extract Executor".to_string(),
+										display_name: "Extract Executor".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -2141,7 +2109,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Read Output Buffer".to_string(),
+										display_name: "Read Output Buffer".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -2149,7 +2117,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Cache".to_string(),
+										display_name: "Cache".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -2168,7 +2136,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Gpu",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
@@ -2207,7 +2175,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Create Gpu Surface".to_string(),
+										display_name: "Create Gpu Surface".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -2215,7 +2183,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Cache".to_string(),
+										display_name: "Cache".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -2234,7 +2202,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Gpu",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
@@ -2280,7 +2248,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Extract Executor".to_string(),
+										display_name: "Extract Executor".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -2288,7 +2256,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Render Texture".to_string(),
+										display_name: "Render Texture".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -2307,7 +2275,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Gpu",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
@@ -2351,7 +2319,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Extract Executor".to_string(),
+										display_name: "Extract Executor".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -2359,7 +2327,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Upload Texture".to_string(),
+										display_name: "Upload Texture".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -2367,7 +2335,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Cache".to_string(),
+										display_name: "Cache".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -2386,7 +2354,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Gpu",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
@@ -2408,7 +2376,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Raster",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
@@ -2432,7 +2400,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Raster",
 			properties: node_properties::blend_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Extract",
@@ -2449,7 +2416,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Macros",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		#[cfg(feature = "quantization")]
 		DocumentNodeDefinition {
@@ -2472,7 +2439,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Quantization",
 			properties: node_properties::quantize_properties,
-			..Default::default()
 		},
 		#[cfg(feature = "quantization")]
 		DocumentNodeDefinition {
@@ -2494,7 +2460,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Quantization",
 			properties: node_properties::quantize_properties,
-			..Default::default()
 		},
 		#[cfg(feature = "quantization")]
 		DocumentNodeDefinition {
@@ -2516,7 +2481,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Quantization",
 			properties: node_properties::quantize_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Invert RGB",
@@ -2533,7 +2497,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Raster",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Hue/Saturation",
@@ -2556,7 +2520,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Raster",
 			properties: node_properties::adjust_hsl_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Brightness/Contrast",
@@ -2579,7 +2542,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Raster",
 			properties: node_properties::brightness_contrast_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Curves",
@@ -2600,7 +2562,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Raster",
 			properties: node_properties::curves_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Threshold",
@@ -2623,7 +2584,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Raster",
 			properties: node_properties::adjust_threshold_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Vibrance",
@@ -2641,7 +2601,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Raster",
 			properties: node_properties::adjust_vibrance_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Channel Mixer",
@@ -2705,7 +2664,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Raster",
 			properties: node_properties::adjust_channel_mixer_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Selective Color",
@@ -2715,56 +2673,56 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						"graphene_core::raster::SelectiveColorNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>",
 					),
 					inputs: vec![
-						NodeInput::Value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
+						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
 						// Mode
-						NodeInput::Value(TaggedValue::RelativeAbsolute(RelativeAbsolute::default()), false),
+						NodeInput::value(TaggedValue::RelativeAbsolute(RelativeAbsolute::default()), false),
 						// Reds
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
 						// Yellows
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
 						// Greens
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
 						// Cyans
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
 						// Blues
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
 						// Magentas
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
 						// Whites
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
 						// Neutrals
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
 						// Blacks
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
-						NodeInput::Value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
 						// Display-only properties (not used within the node)
-						NodeInput::Value(TaggedValue::SelectiveColorChoice(SelectiveColorChoice::default()), false),
+						NodeInput::value(TaggedValue::SelectiveColorChoice(SelectiveColorChoice::default()), false),
 					],
 					..Default::default()
 				},
@@ -2815,9 +2773,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Raster",
-
 			properties: node_properties::adjust_selective_color_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Opacity",
@@ -2835,7 +2791,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Raster",
 			properties: node_properties::opacity_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Blend Mode",
@@ -2856,7 +2811,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Raster",
 			properties: node_properties::blend_mode_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Posterize",
@@ -2874,7 +2828,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Raster",
 			properties: node_properties::posterize_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Exposure",
@@ -2897,7 +2850,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Raster",
 			properties: node_properties::exposure_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Add",
@@ -2915,7 +2867,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Math",
 			properties: node_properties::add_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Subtract",
@@ -2933,7 +2884,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Math",
 			properties: node_properties::subtract_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Divide",
@@ -2951,7 +2901,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Math",
 			properties: node_properties::divide_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Multiply",
@@ -2969,7 +2918,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Math",
 			properties: node_properties::multiply_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Exponent",
@@ -2987,7 +2935,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Math",
 			properties: node_properties::exponent_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Floor",
@@ -3005,7 +2952,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Math",
 			properties: node_properties::node_no_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Ceil",
@@ -3023,7 +2969,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Math",
 			properties: node_properties::node_no_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Round",
@@ -3041,7 +2986,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Math",
 			properties: node_properties::node_no_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Absolute Value",
@@ -3059,7 +3003,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Math",
 			properties: node_properties::node_no_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Logarithm",
@@ -3077,7 +3020,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Math",
 			properties: node_properties::log_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Natural Logarithm",
@@ -3095,7 +3037,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Math",
 			properties: node_properties::node_no_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Sine",
@@ -3113,7 +3054,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Math",
 			properties: node_properties::node_no_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Cosine",
@@ -3131,7 +3071,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Math",
 			properties: node_properties::node_no_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Tangent",
@@ -3149,7 +3088,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Math",
 			properties: node_properties::node_no_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Max",
@@ -3167,7 +3105,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Math",
 			properties: node_properties::max_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Min",
@@ -3185,7 +3122,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Math",
 			properties: node_properties::min_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Equals",
@@ -3203,7 +3139,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Math",
 			properties: node_properties::eq_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Modulo",
@@ -3221,7 +3156,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Math",
 			properties: node_properties::modulo_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Log to Console",
@@ -3239,7 +3173,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Logic",
 			properties: node_properties::node_no_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Or",
@@ -3257,7 +3190,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Logic",
 			properties: node_properties::logic_operator_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "And",
@@ -3275,7 +3207,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Logic",
 			properties: node_properties::logic_operator_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "XOR",
@@ -3293,7 +3224,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Logic",
 			properties: node_properties::logic_operator_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Not",
@@ -3311,7 +3241,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Logic",
 			properties: node_properties::node_no_properties,
-			..Default::default()
 		},
 		(*IMAGINATE_NODE).clone(),
 		DocumentNodeDefinition {
@@ -3350,7 +3279,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Circle Generator".to_string(),
+										display_name: "Circle Generator".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -3358,7 +3287,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Cull".to_string(),
+										display_name: "Cull".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -3378,7 +3307,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Vector",
 			properties: node_properties::circle_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Ellipse",
@@ -3400,7 +3328,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Vector",
 			properties: node_properties::ellipse_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Rectangle",
@@ -3432,7 +3359,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Vector",
 			properties: node_properties::rectangle_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Regular Polygon",
@@ -3454,7 +3380,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Vector",
 			properties: node_properties::regular_polygon_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Star",
@@ -3477,7 +3402,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Vector",
 			properties: node_properties::star_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Line",
@@ -3499,7 +3423,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Vector",
 			properties: node_properties::line_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Spline",
@@ -3520,7 +3443,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Vector",
 			properties: node_properties::spline_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Shape",
@@ -3529,7 +3451,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::PathGenerator<_>"),
 					inputs: vec![
 						NodeInput::value(TaggedValue::PointIds(vec![]), false),
-						NodeInput::value(TaggedValue::ManipulatorGroupIds(vec![]), false),
+						NodeInput::value(TaggedValue::PointIds(vec![]), false),
 					],
 					..Default::default()
 				},
@@ -3540,7 +3462,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Vector",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Path",
@@ -3582,7 +3504,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Monitor".to_string(),
+										display_name: "Monitor".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -3590,7 +3512,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Path Modify".to_string(),
+										display_name: "Path Modify".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -3609,7 +3531,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Vector",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Sample",
@@ -3627,7 +3549,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Structural",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Mandelbrot",
@@ -3645,7 +3567,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Generators",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Cull",
@@ -3663,7 +3585,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Vector",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Text",
@@ -3689,7 +3611,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Vector",
 			properties: node_properties::node_section_font,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Transform",
@@ -3741,14 +3662,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Monitor".to_string(),
+										display_name: "Monitor".to_string(),
 										..Default::default()
 									},
 									..Default::default()
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Transform".to_string(),
+										display_name: "Transform".to_string(),
 										..Default::default()
 									},
 									..Default::default()
@@ -3776,7 +3697,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Transform",
 			properties: node_properties::transform_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "SetTransform",
@@ -3796,7 +3716,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Transform",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Fill",
@@ -3828,7 +3748,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						persistent_metadata: NodeNetworkPersistentMetadata {
 							node_metadata: [DocumentNodeMetadata {
 								persistent_metadata: DocumentNodePersistentMetadata {
-									alias: "Set Fill".to_string(),
+									display_name: "Set Fill".to_string(),
 									..Default::default()
 								},
 								..Default::default()
@@ -3854,7 +3774,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Vector",
 			properties: node_properties::fill_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Stroke",
@@ -3890,7 +3809,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Vector",
 			properties: node_properties::stroke_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Bounding Box",
@@ -3908,7 +3826,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Vector",
 			properties: node_properties::node_no_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Solidify Stroke",
@@ -3926,7 +3843,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Vector",
 			properties: node_properties::node_no_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Repeat",
@@ -3949,7 +3865,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Vector",
 			properties: node_properties::repeat_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Circular Repeat",
@@ -3972,7 +3887,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Vector",
 			properties: node_properties::circular_repeat_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Boolean Operation",
@@ -3994,7 +3908,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Vector",
 			properties: node_properties::boolean_operation_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Copy to Points",
@@ -4028,7 +3941,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Vector",
 			properties: node_properties::copy_to_points_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Sample Points",
@@ -4083,21 +3995,21 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Lengths of Segments of Subpaths".to_string(),
+										display_name: "Lengths of Segments of Subpaths".to_string(),
 										..Default::default()
 									},
 									..Default::default()
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Sample Points".to_string(),
+										display_name: "Sample Points".to_string(),
 										..Default::default()
 									},
 									..Default::default()
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "MemoizeImpure".to_string(),
+										display_name: "MemoizeImpure".to_string(),
 										..Default::default()
 									},
 									..Default::default()
@@ -4124,7 +4036,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Vector",
 			properties: node_properties::sample_points_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Poisson-Disk Points",
@@ -4163,14 +4074,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "Poisson-Disk Points".to_string(),
+										display_name: "Poisson-Disk Points".to_string(),
 										..Default::default()
 									},
 									..Default::default()
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										alias: "MemoizeImpure".to_string(),
+										display_name: "MemoizeImpure".to_string(),
 										..Default::default()
 									},
 									..Default::default()
@@ -4191,7 +4102,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Vector",
 			properties: node_properties::poisson_disk_points_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Splines from Points",
@@ -4209,7 +4119,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Vector",
 			properties: node_properties::node_no_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Area",
@@ -4228,7 +4137,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Vector",
 			properties: node_properties::node_no_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Centroid",
@@ -4250,7 +4158,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Vector",
 			properties: node_properties::centroid_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Morph",
@@ -4274,7 +4181,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Vector",
 			properties: node_properties::morph_properties,
-			..Default::default()
 		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
 		DocumentNodeDefinition {
@@ -4295,7 +4201,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Raster",
-			..Default::default()
+			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Index",
@@ -4313,7 +4219,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Raster",
 			properties: node_properties::index_properties,
-			..Default::default()
 		},
 		// Applies the given color to each pixel of an image but maintains the alpha value
 		DocumentNodeDefinition {
@@ -4335,7 +4240,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Raster",
 			properties: node_properties::color_fill_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Color Overlay",
@@ -4358,7 +4262,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Raster",
 			properties: node_properties::color_overlay_properties,
-			..Default::default()
 		},
 		DocumentNodeDefinition {
 			identifier: "Image Color Palette",
@@ -4376,7 +4279,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: "Raster",
 			properties: node_properties::image_color_palette,
-			..Default::default()
 		},
 	]
 }
@@ -4452,14 +4354,14 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 					node_metadata: [
 						DocumentNodeMetadata {
 							persistent_metadata: DocumentNodePersistentMetadata {
-								alias: "Monitor".to_string(),
+								display_name: "Monitor".to_string(),
 								..Default::default()
 							},
 							..Default::default()
 						},
 						DocumentNodeMetadata {
 							persistent_metadata: DocumentNodePersistentMetadata {
-								alias: "Imaginate".to_string(),
+								display_name: "Imaginate".to_string(),
 								..Default::default()
 							},
 							..Default::default()
@@ -4498,18 +4400,17 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 	},
 	category: "Image Synthesis",
 	properties: node_properties::imaginate_properties,
-	..Default::default()
 });
 
 pub fn resolve_document_node_type(identifier: &str) -> Option<&DocumentNodeDefinition> {
-	DOCUMENT_NODE_TYPES.iter().find(|node| node.name == name)
+	DOCUMENT_NODE_TYPES.iter().find(|definition| definition.node_template.persistent_node_metadata.reference == name)
 }
 
 pub fn collect_node_types() -> Vec<FrontendNodeType> {
 	DOCUMENT_NODE_TYPES
 		.iter()
-		.filter(|node_type| !node_type.category.eq_ignore_ascii_case("ignore"))
-		.map(|node_type| FrontendNodeType::new(node_type.name, node_type.category))
+		.filter(|definition| !definition.category.eq_ignore_ascii_case("ignore"))
+		.map(|definition| FrontendNodeType::new(definition.node_template.persistent_node_metadata.reference, definition.category))
 		.collect()
 }
 
@@ -4521,7 +4422,7 @@ impl DocumentNodeDefinition {
 		input_override.into_iter().enumerate().for_each(|(index, input_override)| {
 			if let Some(input_override) = input_override {
 				// Only value inputs can be overridden, since node inputs change graph structure and must be handled by the network interface
-				assert!(matches!(input_override, NodeInput::value(_)), "Only value inputs are supported for input overrides");
+				assert!(matches!(input_override, NodeInput::Value { .. }), "Only value inputs are supported for input overrides");
 				template.document_node.inputs[index] = input_override;
 			}
 		});
@@ -4539,7 +4440,7 @@ impl DocumentNodeDefinition {
 
 	/// Converts the [DocumentNodeDefinition] type to a [NodeTemplate], completely default.
 	pub fn default_node_template(&self) -> NodeTemplate {
-		self.node_template_input_override(self.node_template.document_node.inputs.iter().map(|input| input.default.clone()))
+		self.node_template_input_override(self.node_template.document_node.inputs.clone().into_iter().map(|input| Some(input)))
 	}
 }
 
@@ -4548,7 +4449,9 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork
 
 	let mut begin_scope = resolve_document_node_type("Begin Scope")
 		.expect("Begin Scope node type not found")
-		.to_document_node(vec![NodeInput::network(concrete!(WasmEditorApi), 0)], DocumentNodeMetadata::position((-12, -3)));
+		.node_template_input_override(vec![Some(NodeInput::network(concrete!(WasmEditorApi), 0))])
+		.document_node;
+
 	if let DocumentNodeImplementation::Network(g) = &mut begin_scope.implementation {
 		if let Some(node) = g.nodes.get_mut(&NodeId(0)) {
 			node.world_state_hash = hash;
@@ -4561,41 +4464,11 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork
 		..Default::default()
 	};
 
-	let render_node = graph_craft::document::DocumentNode {
-		inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(0), 1)],
-		implementation: graph_craft::document::DocumentNodeImplementation::Network(NodeNetwork {
-			exports: vec![NodeInput::node(NodeId(2), 0)],
-			nodes: [
-				DocumentNode {
-					inputs: vec![NodeInput::network(concrete!(WasmEditorApi), 1)],
-					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
-					skip_deduplication: true,
-					..Default::default()
-				},
-				DocumentNode {
-					manual_composition: Some(concrete!(())),
-					inputs: vec![NodeInput::node(NodeId(0), 0)],
-					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
-					..Default::default()
-				},
-				DocumentNode {
-					inputs: vec![
-						NodeInput::network(concrete!(WasmEditorApi), 1),
-						NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T))), 0),
-						NodeInput::node(NodeId(1), 0),
-					],
-					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _, _>")),
-					..Default::default()
-				},
-			]
-			.into_iter()
-			.enumerate()
-			.map(|(id, node)| (NodeId(id as u64), node))
-			.collect(),
-			..Default::default()
-		}),
-		..Default::default()
-	};
+	// TODO: Replace with "Output" definition?
+	let render_node = resolve_document_node_type("Output")
+		.expect("Output node type not found")
+		.node_template_input_override(vec![Some(NodeInput::node(NodeId(1), 0)), Some(NodeInput::node(NodeId(0), 1))])
+		.document_node;
 
 	// wrap the inner network in a scope
 	let nodes = vec![
@@ -4604,7 +4477,8 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork
 		render_node,
 		resolve_document_node_type("End Scope")
 			.expect("End Scope node type not found")
-			.to_document_node(vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(2), 0)], DocumentNodeMetadata::position((2, -3))),
+			.node_template_input_override(vec![Some(NodeInput::node(NodeId(0), 0)), Some(NodeInput::node(NodeId(2), 0))])
+			.document_node,
 	];
 
 	NodeNetwork {

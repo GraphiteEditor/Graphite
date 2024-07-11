@@ -47,7 +47,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 		let selected_layers = document
 			.selected_nodes
 			.selected_layers(document.metadata())
-			.filter(|&layer| document.network_interface.is_visible(layer.to_node(), true) && !document.network_interface.is_locked(&layer.to_node()))
+			.filter(|&layer| document.network_interface.is_visible(&layer.to_node()) && !document.network_interface.is_locked(&layer.to_node()))
 			.collect::<Vec<_>>();
 
 		let mut selected = Selected::new(

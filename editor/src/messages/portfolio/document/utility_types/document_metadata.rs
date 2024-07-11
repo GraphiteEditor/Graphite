@@ -1,4 +1,4 @@
-use super::network_interface;
+use super::network_interface::{self, NodeNetworkInterface};
 use super::nodes::SelectedNodes;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 
@@ -189,16 +189,6 @@ impl DocumentMetadata {
 		self.all_layers().filter_map(|layer| self.bounding_box_viewport(layer)).reduce(Quad::combine_bounds)
 	}
 
-	/// Calculates the document bounds in document space
-	pub fn document_bounds_document_space(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
-		// moved to network interface
-	}
-
-	/// Calculates the selected layer bounds in document space
-	pub fn selected_bounds_document_space(&self, include_artboards: bool, selected_nodes: &SelectedNodes) -> Option<[DVec2; 2]> {
-		// moved to network interface
-	}
-
 	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &bezier_rs::Subpath<PointId>> {
 		static EMPTY: Vec<ClickTarget> = Vec::new();
 		let click_targets = self.click_targets.get(&layer).unwrap_or(&EMPTY);
@@ -238,13 +228,15 @@ impl LayerNodeIdentifier {
 		Self(unsafe { NonZeroU64::new_unchecked(node_id.0 + 1) })
 	}
 
-	/// Construct a [`LayerNodeIdentifier`], debug asserting that it is a layer node
+	/// Construct a [`LayerNodeIdentifier`], debug asserting that it is a layer node in the document network
 	#[track_caller]
-	pub fn new(node_id: NodeId, network: &NodeNetwork) -> Self {
+	pub fn new(node_id: NodeId, network_interface: &NodeNetworkInterface) -> Self {
+		let is_document_network = network_interface.selected_nodes_in_document_network(std::iter::once(node_id));
+		debug_assert!(is_document_network, "Layer identifier constructed from node not in document network. {node_id}: {:#?}", network_interface.network(false).and_then(|network| network.nodes.get(&node_id)));
 		debug_assert!(
-			network.nodes.get(&node_id).is_some_and(|node| node.is_layer),
+			network_interface.is_layer(&node_id),
 			"Layer identifier constructed from non-layer node {node_id}: {:#?}",
-			network.nodes.get(&node_id)
+			network_interface.document_network().nodes.get(&node_id)
 		);
 		Self::new_unchecked(node_id)
 	}

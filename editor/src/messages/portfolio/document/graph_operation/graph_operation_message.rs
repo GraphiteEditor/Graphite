@@ -82,19 +82,19 @@ pub enum GraphOperationMessage {
 		id: NodeId,
 		image_frame: ImageFrame<Color>,
 		parent: LayerNodeIdentifier,
-		insert_index: isize,
+		insert_index: usize,
 	},
 	NewCustomLayer {
 		id: NodeId,
 		nodes: HashMap<NodeId, NodeTemplate>,
 		parent: LayerNodeIdentifier,
-		insert_index: isize,
+		insert_index: usize,
 	},
 	NewVectorLayer {
 		id: NodeId,
 		subpaths: Vec<Subpath<PointId>>,
 		parent: LayerNodeIdentifier,
-		insert_index: isize,
+		insert_index: usize,
 	},
 	NewTextLayer {
 		id: NodeId,
@@ -102,7 +102,7 @@ pub enum GraphOperationMessage {
 		font: Font,
 		size: f64,
 		parent: LayerNodeIdentifier,
-		insert_index: isize,
+		insert_index: usize,
 	},
 	ResizeArtboard {
 		layer: LayerNodeIdentifier,
@@ -115,24 +115,12 @@ pub enum GraphOperationMessage {
 		svg: String,
 		transform: DAffine2,
 		parent: LayerNodeIdentifier,
-		insert_index: isize,
+		insert_index: usize,
 	},
 	ShiftUpstream {
 		node_id: NodeId,
 		shift: IVec2,
 		shift_self: bool,
-	},
-	SetNodePosition {
-		node_id: NodeId,
-		position: IVec2,
-	},
-	SetName {
-		layer: LayerNodeIdentifier,
-		name: String,
-	},
-	SetNameImpl {
-		layer: LayerNodeIdentifier,
-		name: String,
 	},
 	ToggleSelectedVisibility,
 	ToggleVisibility {
@@ -145,10 +133,10 @@ pub enum GraphOperationMessage {
 	StartPreviewingWithoutRestore,
 	ToggleSelectedLocked,
 	ToggleLocked {
-		node_id: NodeId,
+		layer: LayerNodeIdentifier,
 	},
 	SetLocked {
-		node_id: NodeId,
+		layer: LayerNodeIdentifier,
 		locked: bool,
 	},
 }

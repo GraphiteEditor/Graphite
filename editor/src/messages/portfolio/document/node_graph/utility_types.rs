@@ -3,6 +3,8 @@ use graph_craft::document::NodeId;
 use graphene_core::Type;
 use graphene_std::renderer::ClickTarget;
 
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FrontendGraphDataType {
 	#[default]
@@ -53,9 +55,8 @@ pub struct FrontendGraphOutput {
 	pub name: String,
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: Option<String>,
-	pub connected: Vec<NodeId>,
-	#[serde(rename = "connectedIndex")]
-	pub connected_index: Vec<usize>,
+	#[serde(rename = "connectedTo")]
+	pub connected_to: Vec<InputConnector>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -65,8 +66,9 @@ pub struct FrontendNode {
 	pub is_layer: bool,
 	#[serde(rename = "canBeLayer")]
 	pub can_be_layer: bool,
-	pub alias: String,
-	pub reference: String,
+	pub reference: Option<String>,
+	#[serde(rename = "displayName")]
+	pub display_name: String,
 	#[serde(rename = "primaryInput")]
 	pub primary_input: Option<FrontendGraphInput>,
 	#[serde(rename = "exposedInputs")]
@@ -87,13 +89,9 @@ pub struct FrontendNode {
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendNodeWire {
 	#[serde(rename = "wireStart")]
-	pub wire_start: NodeId,
-	#[serde(rename = "wireStartOutputIndex")]
-	pub wire_start_output_index: usize,
+	pub wire_start: OutputConnector,
 	#[serde(rename = "wireEnd")]
-	pub wire_end: NodeId,
-	#[serde(rename = "wireEndInputIndex")]
-	pub wire_end_input_index: usize,
+	pub wire_end: InputConnector,
 	pub dashed: bool,
 }
 

@@ -2,7 +2,7 @@ use super::node_graph::utility_types::Transform;
 use super::utility_types::clipboards::Clipboard;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{BoundingBoxSnapTarget, GeometrySnapTarget, OptionBoundsSnapping, OptionPointSnapping, SnappingOptions, SnappingState};
-use super::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, NodeNetworkMetadata};
+use super::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, NodeNetworkMetadata, OutputConnector};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
@@ -292,8 +292,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let insert_index = parent
 					.children(self.metadata())
 					.enumerate()
-					.find_map(|(index, item)| self.selected_nodes.selected_layers(self.metadata()).any(|x| x == item).then_some(index as isize))
-					.unwrap_or(-1);
+					.find_map(|(index, item)| self.selected_nodes.selected_layers(self.metadata()).any(|x| x == item).then_some(index as usize))
+					.unwrap_or(0);
 
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(GraphOperationMessage::NewCustomLayer {
@@ -574,7 +574,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					}
 					// Nudge resize
 					true => {
-						let selected_bounding_box = self.metadata().selected_bounds_document_space(false, &self.selected_nodes);
+						let selected_bounding_box = self.network_interface.selected_bounds_document_space(false, &self.selected_nodes);
 						let Some([existing_top_left, existing_bottom_right]) = selected_bounding_box else { return };
 
 						let size = existing_bottom_right - existing_top_left;
@@ -753,7 +753,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.selected_layers_reorder(relative_index_offset, responses);
 			}
 			DocumentMessage::SelectLayer { id, ctrl, shift } => {
-				let layer = LayerNodeIdentifier::new(id, self.document_network());
+				let layer = LayerNodeIdentifier::new(id, &self.network_interface);
 
 				let mut nodes = vec![];
 
@@ -893,7 +893,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::StartTransaction => self.backup(responses),
 			DocumentMessage::ToggleLayerExpansion { id } => {
-				let layer = LayerNodeIdentifier::new(id, self.document_network());
+				let layer = LayerNodeIdentifier::new(id, &self.network_interface);
 				if self.collapsed.0.contains(&layer) {
 					self.collapsed.0.retain(|&collapsed_layer| collapsed_layer != layer);
 				} else {
@@ -956,8 +956,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					});
 
 					// Set the primary input for the node downstream of folder to the first layer node
-					// TODO: downstream node can be none if it is the root node. A layer group connected directly to the export cannot be ungrouped
-					let Some((downstream_node_id, downstream_input_index)) = DocumentMessageHandler::get_downstream_node(&self.document_network(), &self.metadata, folder) else {
+					let Some(downstream_input_connector) = self
+						.network_interface
+						.collect_outward_wires(true)
+						.get(&OutputConnector::node(folder.to_node(), 0))
+						.and_then(|inputs| inputs.get(0))
+					else {
 						log::error!("Downstream node should always exist when moving layer");
 						continue;
 					};
@@ -965,7 +969,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					// Output_index must be 0 since layers only have 1 output
 					let downstream_input = NodeInput::node(child_layer.to_node(), 0);
 					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(downstream_node_id, downstream_input_index),
+						input_connector: downstream_input_connector,
 						input: downstream_input,
 						use_document_network: true,
 					});
@@ -1034,7 +1038,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				} else {
-					*self.network_interface.navigation_metadata_mut().node_graph_to_viewport = transform;
+					self.network_interface.set_transform(transform);
 
 					responses.add(FrontendMessage::UpdateNodeGraphTransform {
 						transform: Transform {
@@ -1055,9 +1059,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::ZoomCanvasToFitAll => {
 				let bounds = if self.graph_view_overlay_open {
-					self.node_graph_handler.bounding_box_subpath.as_ref().and_then(|subpath| subpath.bounding_box())
+					self.network_interface.graph_bounds_viewport_space()
 				} else {
-					self.metadata().document_bounds_document_space(true)
+					self.network_interface.document_bounds_document_space(true)
 				};
 				if let Some(bounds) = bounds {
 					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
@@ -1197,7 +1201,7 @@ impl DocumentMessageHandler {
 
 	pub fn selected_visible_and_unlock_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
 		self.selected_nodes
-			.selected_visible_and_unlocked_layers(self.metadata(), &self.network_interface)
+			.selected_visible_and_unlocked_layers(&self.network_interface)
 			.filter_map(|layer| self.metadata().bounding_box_viewport(layer))
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
 	}
@@ -1221,15 +1225,34 @@ impl DocumentMessageHandler {
 
 		match serde_json::from_str::<Self>(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string())) {
 			Ok(mut document) => {
-				for (_, node) in &mut document.network_interface.document_network().nodes {
+				let node_ids = document.network_interface.document_network().nodes.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>();
+
+				for node_id in &node_ids {
+					let Some(node) = document.network_interface.document_network().nodes.get(node_id) else {
+						log::error!("could not get node in deserialize_document");
+						continue;
+					};
+					let Some(node_metadata) = document.network_interface.document_network_metadata().persistent_metadata.node_metadata.get(node_id) else {
+						log::error!("could not get node metadata in deserialize_document");
+						continue;
+					};
+
 					// Upgrade Fill nodes to the format change in #1778
 					// TODO: Eventually remove this (probably starting late 2024)
-					if node.name == "Fill" && node.inputs.len() == 8 {
+					let Some(reference) = node_metadata.persistent_metadata.reference else {
+						continue;
+					};
+					if reference == "Fill" && node.inputs.len() == 8 {
 						let node_definition: &super::node_graph::document_node_types::DocumentNodeDefinition =
-							crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(&node.name).unwrap();
+							crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(reference).unwrap();
 
-						node.implementation = node_definition.implementation.clone();
-						let old_inputs = std::mem::replace(&mut node.inputs, default_definition_node.inputs.clone());
+						document
+							.network_interface
+							.set_implementation(node_id, node_definition.default_node_template().document_node.implementation.clone(), true);
+
+						let old_inputs = document
+							.network_interface
+							.replace_inputs(node_id, node_definition.default_node_template().document_node.inputs.clone(), true);
 
 						node.inputs[0] = old_inputs[0].clone();
 
@@ -1259,16 +1282,24 @@ impl DocumentMessageHandler {
 								transform,
 							}),
 						};
-						node.inputs[1] = NodeInput::value(TaggedValue::Fill(fill.clone()), false);
+						document
+							.network_interface
+							.set_input(InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::Fill(fill.clone()), false), true);
 						match fill {
 							Fill::None => {
-								node.inputs[2] = NodeInput::value(TaggedValue::OptionalColor(None), false);
+								document
+									.network_interface
+									.set_input(InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::OptionalColor(None), false), true);
 							}
 							Fill::Solid(color) => {
-								node.inputs[2] = NodeInput::value(TaggedValue::OptionalColor(Some(color)), false);
+								document
+									.network_interface
+									.set_input(InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::OptionalColor(Some(color)), false), true);
 							}
 							Fill::Gradient(gradient) => {
-								node.inputs[3] = NodeInput::value(TaggedValue::Gradient(gradient), false);
+								document
+									.network_interface
+									.set_input(InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Gradient(gradient), false), true);
 							}
 						}
 					}
@@ -1471,48 +1502,6 @@ impl DocumentMessageHandler {
 		} else {
 			self.saved_hash = None;
 		}
-	}
-
-	// TODO: Simplify and move into NodeNetworkInterface where the outward links can be used
-	pub fn get_downstream_node(network: &NodeNetwork, metadata: &DocumentMetadata, layer_to_move: LayerNodeIdentifier) -> Option<(NodeId, usize)> {
-		let mut downstream_layer = None;
-		if let Some(previous_sibling) = layer_to_move.previous_sibling(metadata) {
-			downstream_layer = Some((previous_sibling.to_node(), false))
-		} else if let Some(parent) = layer_to_move.parent(metadata) {
-			if parent != LayerNodeIdentifier::ROOT_PARENT {
-				downstream_layer = Some((parent.to_node(), true))
-			}
-		};
-
-		// Downstream layer should always exist
-		let Some((downstream_layer_node_id, downstream_layer_is_parent)) = downstream_layer else {
-			return None;
-		};
-
-		// Horizontal traversal if layer_to_move is the top of its layer stack, primary traversal if not
-		let flow_type = if downstream_layer_is_parent { FlowType::HorizontalFlow } else { FlowType::PrimaryFlow };
-
-		network_interface
-			.upstream_flow_back_from_nodes(vec![downstream_layer_node_id], flow_type)
-			.find(|(node, node_id)| {
-				// Get secondary input only if it is the downstream_layer_node_id, the parent of layer to move, and a layer node (parent might be output)
-				let is_parent_layer = downstream_layer_is_parent && downstream_layer_node_id == *node_id && node.is_layer;
-				let node_input_index = if is_parent_layer { 1 } else { 0 };
-
-				node.inputs.get(node_input_index).is_some_and(|node_input| {
-					if let NodeInput::Node { node_id, .. } = node_input {
-						*node_id == layer_to_move.to_node()
-					} else {
-						false
-					}
-				})
-			})
-			.map(|(downstream_node, downstream_node_id)| {
-				let is_parent_layer = downstream_layer_is_parent && downstream_layer_node_id == downstream_node_id && downstream_node.is_layer;
-				let downstream_input_index = if is_parent_layer { 1 } else { 0 };
-
-				(downstream_node_id, downstream_input_index)
-			})
 	}
 
 	/// Finds the parent folder which, based on the current selections, should be the container of any newly added layers.
@@ -1892,8 +1881,8 @@ impl DocumentMessageHandler {
 		// Look up the current opacity and blend mode of the selected layers (if any), and split the iterator into the first tuple and the rest.
 		let mut opacity_and_blend_mode = selected_layers_except_artboards.map(|layer| {
 			(
-				get_opacity(layer, &self.document_network()).unwrap_or(100.),
-				get_blend_mode(layer, &self.document_network()).unwrap_or_default(),
+				get_opacity(layer, &self.network_interface).unwrap_or(100.),
+				get_blend_mode(layer, &self.network_interface).unwrap_or_default(),
 			)
 		});
 		let first_opacity_and_blend_mode = opacity_and_blend_mode.next();
@@ -1939,7 +1928,7 @@ impl DocumentMessageHandler {
 			.collect();
 
 		let has_selection = self.selected_nodes.selected_layers(self.metadata()).next().is_some();
-		let selection_all_visible = self.selected_nodes.selected_layers(self.metadata()).all(|layer| self.network_interface.is_visible(layer.to_node()));
+		let selection_all_visible = self.selected_nodes.selected_layers(self.metadata()).all(|layer| self.network_interface.is_visible(&layer.to_node()));
 		let selection_all_locked = self.selected_nodes.selected_layers(self.metadata()).all(|layer| self.network_interface.is_locked(&layer.to_node()));
 
 		let layers_panel_options_bar = WidgetLayout::new(vec![LayoutGroup::Row {
@@ -2046,7 +2035,7 @@ impl DocumentMessageHandler {
 		};
 
 		// If moving down, insert below this layer. If moving up, insert above this layer.
-		let insert_index = if relative_index_offset < 0 { neighbor_index } else { neighbor_index + 1 } as isize;
+		let insert_index = if relative_index_offset < 0 { neighbor_index } else { neighbor_index + 1 };
 		responses.add(DocumentMessage::MoveSelectedLayersTo { parent, insert_index });
 	}
 }

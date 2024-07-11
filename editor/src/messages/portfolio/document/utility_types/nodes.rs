@@ -61,7 +61,7 @@ impl SelectedNodes {
 	pub fn layer_visible(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
 		layer.ancestors(network_interface.document_metadata()).all(|layer| {
 			if layer != LayerNodeIdentifier::ROOT_PARENT {
-				network_interface.is_visible(layer.to_node(), true)
+				network_interface.is_visible(&layer.to_node())
 			} else {
 				true
 			}

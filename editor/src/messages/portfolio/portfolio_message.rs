@@ -81,7 +81,7 @@ pub enum PortfolioMessage {
 	PasteIntoFolder {
 		clipboard: Clipboard,
 		parent: LayerNodeIdentifier,
-		insert_index: isize,
+		insert_index: usize,
 	},
 	PasteSerializedData {
 		data: String,

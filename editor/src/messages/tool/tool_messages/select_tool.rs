@@ -1195,7 +1195,7 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
 	tool_data.layers_dragging.append(&mut vec![document.find_deepest(&selected).unwrap_or(LayerNodeIdentifier::new(
 		document.network_interface.get_root_node(true).expect("Root node should exist when dragging layers").node_id,
-		&document.network_interface.document_network(),
+		&document.network_interface,
 	))]);
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data

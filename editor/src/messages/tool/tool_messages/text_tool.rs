@@ -286,7 +286,7 @@ impl TextToolData {
 				font: editing_text.font.clone(),
 				size: editing_text.font_size,
 				parent: document.new_layer_parent(true),
-				insert_index: -1,
+				insert_index: 0,
 			});
 			responses.add(GraphOperationMessage::FillSet {
 				layer: self.layer,

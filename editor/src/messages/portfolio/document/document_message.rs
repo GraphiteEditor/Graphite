@@ -71,11 +71,11 @@ pub enum DocumentMessage {
 		svg: String,
 		transform: DAffine2,
 		parent: LayerNodeIdentifier,
-		insert_index: isize,
+		insert_index: usize,
 	},
 	MoveSelectedLayersTo {
 		parent: LayerNodeIdentifier,
-		insert_index: isize,
+		insert_index: usize,
 	},
 	NudgeSelectedLayers {
 		delta_x: f64,

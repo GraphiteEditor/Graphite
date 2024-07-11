@@ -2,7 +2,9 @@ use super::transform_utils;
 use super::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
+use crate::messages::portfolio::document::utility_types::network_interface::{
+	self, InputConnector, LayerTransientMetadata, NodeNetworkInterface, NodeTypePersistentMetadata, NodeTypeTransientMetadata,
+};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::messages::prelude::*;
 
@@ -15,6 +17,7 @@ use graphene_core::Color;
 use graphene_std::vector::convert_usvg_path;
 
 use glam::{DAffine2, DVec2, IVec2};
+use specta::reference;
 
 pub struct GraphOperationMessageData<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
@@ -42,7 +45,13 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 		match message {
 			// TODO: Eventually remove this (probably starting late 2024)
 			GraphOperationMessage::DeleteLegacyOutputNode => {
-				if network_interface.document_network().nodes.iter().any(|(node_id, node)| node.name == "Output" && *node_id == NodeId(0)) {
+				if network_interface
+					.document_network_metadata()
+					.persistent_metadata
+					.node_metadata
+					.iter()
+					.any(|(node_id, node)| node.persistent_metadata.reference.is_some_and(|reference| reference == "Output") && *node_id == NodeId(0))
+				{
 					network_interface.delete_nodes(vec![NodeId(0)], true, selected_nodes, responses, true);
 				}
 			}
@@ -226,13 +235,13 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				insert_index,
 			} => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
-				let layer = modify_inputs.create_layer(id, parent, insert_index);
+				let layer = modify_inputs.create_layer(id, parent);
 				modify_inputs.insert_image_data(image_frame, layer, responses);
-				network_interface.move_layer_to_stack(layer.to_node(), parent.to_node(), 0);
+				network_interface.move_layer_to_stack(layer, parent, 0);
 			}
 			GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
-				let layer = modify_inputs.create_layer(id, parent, insert_index);
+				let layer = modify_inputs.create_layer(id, parent);
 
 				if nodes.len() > 0 {
 					// Add the nodes to the network
@@ -261,9 +270,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			}
 			GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
-				let layer = modify_inputs.create_layer(id, parent, insert_index);
+				let layer = modify_inputs.create_layer(id, parent);
 				modify_inputs.insert_vector_data(subpaths, layer);
-				network_interface.move_layer_to_stack(layer.to_node(), parent.to_node(), insert_index);
+				network_interface.move_layer_to_stack(layer, parent, insert_index);
 			}
 			GraphOperationMessage::NewTextLayer {
 				id,
@@ -274,9 +283,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				insert_index,
 			} => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
-				let layer = modify_inputs.create_layer(id, parent, insert_index);
+				let layer = modify_inputs.create_layer(id, parent);
 				modify_inputs.insert_text(text, font, size, layer);
-				network_interface.move_layer_to_stack(layer.to_node(), parent.to_node(), insert_index);
+				network_interface.move_layer_to_stack(layer, parent, insert_index);
 			}
 			GraphOperationMessage::ResizeArtboard { layer, location, dimensions } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, document_network, responses) {
@@ -284,7 +293,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 			}
 			GraphOperationMessage::ClearArtboards => {
-				for &artboard in network_interface.all_artboards() {
+				for artboard in network_interface.all_artboards() {
 					responses.add(NodeGraphMessage::DeleteNodes {
 						node_ids: vec![artboard.to_node()],
 						reconnect: false,
@@ -315,33 +324,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 				import_usvg_node(&mut modify_inputs, &usvg::Node::Group(Box::new(tree.root)), transform, id, parent, insert_index);
 			}
-			GraphOperationMessage::SetNodePosition { node_id, position } => {
-				let Some(node) = document_network.nodes.get_mut(&node_id) else {
-					log::error!("Failed to find node {node_id} when setting position");
-					return;
-				};
-				node.metadata().position = position;
-				node_graph.update_click_target(node_id, document_network, Vec::new());
-				responses.add(DocumentMessage::RenderRulers);
-				responses.add(DocumentMessage::RenderScrollbars);
-			}
-			GraphOperationMessage::SetName { layer, name } => {
-				responses.add(DocumentMessage::StartTransaction);
-				responses.add(GraphOperationMessage::SetNameImpl { layer, name });
-				responses.add(NodeGraphMessage::RunDocumentGraph);
-			}
-			GraphOperationMessage::SetNameImpl { layer, name } => {
-				if let Some(node) = document_network.nodes.get_mut(&layer.to_node()) {
-					node.alias = name;
-					if let Some(node_metadata) = node_graph.node_metadata.get_mut(&layer.to_node()) {
-						node_metadata.layer_width = Some(NodeGraphMessageHandler::layer_width_cells(node));
-					};
-					node_graph.update_click_target(layer.to_node(), document_network, Vec::new());
-					responses.add(DocumentMessage::RenderRulers);
-					responses.add(DocumentMessage::RenderScrollbars);
-					responses.add(NodeGraphMessage::SendGraph);
-				}
-			}
 			GraphOperationMessage::ShiftUpstream { node_id, shift, shift_self } => {
 				network_interface.shift_upstream(node_id, shift, shift_self);
 			}
@@ -349,36 +331,30 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				responses.add(DocumentMessage::StartTransaction);
 
 				// If any of the selected nodes are hidden, show them all. Otherwise, hide them all.
-				let visible = !selected_nodes.selected_layers(&document_metadata).all(|layer| network_interface.is_visible(layer.to_node(), true));
+				let visible = !selected_nodes.selected_layers(&document_metadata).all(|layer| network_interface.is_visible(&layer.to_node()));
 
 				for layer in selected_nodes.selected_layers(&document_metadata) {
 					responses.add(GraphOperationMessage::SetVisibility { node_id: layer.to_node(), visible });
 				}
 			}
 			GraphOperationMessage::ToggleVisibility { node_id } => {
-				let visible = !network_interface.is_visible(node_id, true);
+				let visible = !network_interface.is_visible(&node_id);
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(GraphOperationMessage::SetVisibility { node_id, visible });
 			}
 			GraphOperationMessage::SetVisibility { node_id, visible } => {
-				// Set what we determined shall be the visibility of the node
-				let Some(node) = document_network.nodes.get_mut(&node_id) else {
-					log::error!("Could not get node {:?} in GraphOperationMessage::SetVisibility", node_id);
-					return;
-				};
-				node.visible = visible;
+				network_interface.set_visibility(node_id, visible);
 
-				// Only generate node graph if one of the selected nodes is connected to the output
+				// Only execute node graph if one of the selected nodes is connected to the output
 				if network_interface.connected_to_output(&node_id) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 
-				document_metadata.load_structure(document_network);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
 				responses.add(PropertiesPanelMessage::Refresh);
 			}
 			GraphOperationMessage::StartPreviewingWithoutRestore => {
-				document_network.start_previewing_without_restore();
+				network_interface.start_previewing_without_restore();
 			}
 			GraphOperationMessage::ToggleSelectedLocked => {
 				responses.add(DocumentMessage::StartTransaction);
@@ -387,28 +363,31 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				let locked = !selected_nodes.selected_layers(&document_metadata).all(|layer| network_interface.is_locked(&layer.to_node()));
 
 				for layer in selected_nodes.selected_layers(&document_metadata) {
-					responses.add(GraphOperationMessage::SetLocked { node_id: layer.to_node(), locked });
+					responses.add(GraphOperationMessage::SetLocked { layer, locked });
 				}
 			}
-			GraphOperationMessage::ToggleLocked { node_id } => {
-				let Some(node) = document_network.nodes.get(&node_id) else {
+			GraphOperationMessage::ToggleLocked { layer } => {
+				let Some(node_metadata) = network_interface.document_network_metadata().persistent_metadata.node_metadata.get(&layer.to_node()) else {
 					log::error!("Cannot get node {:?} in GraphOperationMessage::ToggleLocked", node_id);
 					return;
 				};
 
-				let locked = !node.locked;
+				let locked = if let NodeTypePersistentMetadata::Layer(layer_metadata) = node_metadata.persistent_metadata.node_type_metadata {
+					!layer_metadata.locked
+				} else {
+					log::error!("Layer should always store LayerPersistentMetadata");
+					false
+				};
 				responses.add(DocumentMessage::StartTransaction);
-				responses.add(GraphOperationMessage::SetLocked { node_id, locked });
+				responses.add(GraphOperationMessage::SetLocked { layer, locked });
 			}
-			GraphOperationMessage::SetLocked { node_id, locked } => {
-				let Some(node) = document_network.nodes.get_mut(&node_id) else { return };
-				node.locked = locked;
+			GraphOperationMessage::SetLocked { layer, locked } => {
+				network_interface.set_locked(node_id, locked);
 
 				if network_interface.connected_to_output(&node_id) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 
-				document_metadata.load_structure(document_network);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated)
 			}
 		}
@@ -419,11 +398,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 	}
 }
 
-pub fn load_network_structure(document_network: &NodeNetwork, document_metadata: &mut DocumentMetadata, collapsed: &mut CollapsedLayers) {
-	document_metadata.load_structure(document_network);
-	collapsed.0.retain(|&layer| document_metadata.layer_exists(layer));
-}
-
 fn usvg_color(c: usvg::Color, a: f32) -> Color {
 	Color::from_rgbaf32_unchecked(c.red as f32 / 255., c.green as f32 / 255., c.blue as f32 / 255., a)
 }
@@ -432,13 +406,13 @@ fn usvg_transform(c: usvg::Transform) -> DAffine2 {
 	DAffine2::from_cols_array(&[c.sx as f64, c.ky as f64, c.kx as f64, c.sy as f64, c.tx as f64, c.ty as f64])
 }
 
-fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, transform: DAffine2, id: NodeId, parent: LayerNodeIdentifier, insert_index: isize) {
-	let layer = modify_inputs.create_layer(id, parent, insert_index);
+fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, transform: DAffine2, id: NodeId, parent: LayerNodeIdentifier, insert_index: usize) {
+	let layer = modify_inputs.create_layer(id, parent);
 	modify_inputs.layer_node = Some(layer);
 	match node {
 		usvg::Node::Group(group) => {
 			for child in &group.children {
-				import_usvg_node(modify_inputs, child, transform, NodeId(generate_uuid()), LayerNodeIdentifier::new_unchecked(layer), -1);
+				import_usvg_node(modify_inputs, child, transform, NodeId(generate_uuid()), layer, 0);
 			}
 			modify_inputs.layer_node = Some(layer);
 		}
@@ -451,11 +425,14 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 				.reduce(Quad::combine_bounds)
 				.unwrap_or_default();
 			modify_inputs.insert_vector_data(subpaths, layer);
-			modify_inputs.network_interface.move_layer_to_stack(layer.to_node(), parent, insert_index);
 
-			modify_inputs.modify_inputs("Transform", true, |inputs, _node_id, _metadata| {
-				transform_utils::update_transform(inputs, transform * usvg_transform(node.abs_transform()));
-			});
+			let insert_index = if insert_index < 0 { 0 } else { insert_index as usize };
+			modify_inputs.network_interface.move_layer_to_stack(layer, parent, insert_index);
+
+			if let Some(transform_node_id) = modify_inputs.get_existing_node_id("Transform") {
+				transform_utils::update_transform(&mut modify_inputs.network_interface, &transform_node_id, transform * usvg_transform(node.abs_transform()));
+			}
+
 			let bounds_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 			let transformed_bound_transform = DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);
 			apply_usvg_fill(

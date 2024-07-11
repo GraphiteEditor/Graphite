@@ -12,6 +12,7 @@ use editor::application::Editor;
 use editor::consts::FILE_SAVE_SUFFIX;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
+use editor::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use editor::messages::portfolio::utility_types::Platform;
 use editor::messages::prelude::*;
@@ -516,7 +517,7 @@ impl EditorHandle {
 
 	/// Move a layer to within a folder and placed down at the given index.
 	/// If the folder is `None`, it is inserted into the document root.
-	/// If the insert index is `None`, it is inserted at the end of the folder (equivalent to index infinity).
+	/// If the insert index is `None`, it is inserted at the start of the folder.
 	#[wasm_bindgen(js_name = moveLayerInTree)]
 	pub fn move_layer_in_tree(&self, insert_parent_id: Option<u64>, insert_index: Option<usize>) {
 		let insert_parent_id = insert_parent_id.map(NodeId);
@@ -524,7 +525,7 @@ impl EditorHandle {
 
 		let message = DocumentMessage::MoveSelectedLayersTo {
 			parent,
-			insert_index: insert_index.map(|x| x as isize).unwrap_or(-1),
+			insert_index: insert_index.map(|x| x as usize).unwrap_or(0),
 		};
 		self.dispatch(message);
 	}
@@ -533,7 +534,10 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = setLayerName)]
 	pub fn set_layer_name(&self, id: u64, name: String) {
 		let layer = LayerNodeIdentifier::new_unchecked(NodeId(id));
-		let message = GraphOperationMessage::SetName { layer, name };
+		let message = NodeGraphMessage::SetDisplayName {
+			node_id: layer.to_node(),
+			alias: name,
+		};
 		self.dispatch(message);
 	}
 
@@ -610,7 +614,11 @@ impl EditorHandle {
 		self.dispatch(message);
 
 		let id = NodeId(id);
-		let message = NodeGraphMessage::DeleteNodes { node_ids: vec![id], reconnect: true };
+		let message = NodeGraphMessage::DeleteNodes {
+			node_ids: vec![id],
+			reconnect: true,
+			use_document_network: true,
+		};
 		self.dispatch(message);
 	}
 
@@ -733,28 +741,36 @@ impl EditorHandle {
 			let mut responses = VecDeque::new();
 			let mut shape = None;
 
-			if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), &mut document.network, &mut document.metadata, &mut document.node_graph_handler, &mut responses) {
-				modify_inputs.modify_existing_inputs("Transform", |inputs, node_id, metadata| {
+			if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, &mut document.network_interface, &mut responses) {
+				{
 					if !updated_nodes.insert(node_id) {
 						return;
 					}
-
+					let Some(transform_node_id) = modify_inputs.get_existing_node_id("Transform") else {
+						return;
+					};
 					let transform = get_current_transform(&inputs);
-					let upstream_transform = metadata.upstream_transform(node_id);
+					let upstream_transform = modify_inputs.network_interface.document_metadata().upstream_transform(node_id);
 					let pivot_transform = glam::DAffine2::from_translation(upstream_transform.transform_point2(bounds.local_pivot(get_current_normalized_pivot(&inputs))));
 
-					update_transform(inputs, pivot_transform * transform * pivot_transform.inverse());
-				});
-				modify_inputs.modify_existing_inputs("Shape", |inputs, node_id, _metadata| {
+					update_transform(&mut document.network_interface, &transform_node_id, pivot_transform * transform * pivot_transform.inverse());
+				}
+				{
 					if !updated_nodes.insert(node_id) {
 						return;
 					}
-
+					let Some(shape_node_id) = modify_inputs.get_existing_node_id("Shape") else {
+						return;
+					};
+					let Some(shape_node) = modify_inputs.network_interface.document_network().nodes.get(&shape_node_id) else {
+						log::error!("Could not get shape node in document network");
+						return;
+					};
 					let empty_vec = Vec::new();
 					let path_data = if let NodeInput::Value {
 						tagged_value: TaggedValue::Subpaths(translation),
 						..
-					} = &inputs[0]
+					} = &shape_node.inputs[0]
 					{
 						translation
 					} else {
@@ -765,7 +781,7 @@ impl EditorHandle {
 					let colinear_manipulators = if let NodeInput::Value {
 						tagged_value: TaggedValue::PointIds(translation),
 						..
-					} = &inputs[1]
+					} = &shape_node.inputs[1]
 					{
 						translation
 					} else {
@@ -779,7 +795,7 @@ impl EditorHandle {
 						.collect();
 
 					shape = Some((node_id, VectorModification::create_from_vector(&vector_data)));
-				});
+				}
 			}
 			if let Some((id, modification)) = shape {
 				let metadata = document.network.nodes.remove(&id).map(|node| node.metadata).unwrap_or_default();

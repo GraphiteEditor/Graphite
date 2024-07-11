@@ -127,11 +127,11 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		locked: bool,
 	},
-	SetAlias {
+	SetDisplayName {
 		node_id: NodeId,
 		alias: String,
 	},
-	SetAliasImpl {
+	SetDisplayNameImpl {
 		node_id: NodeId,
 		alias: String,
 	},

@@ -15,7 +15,7 @@ use std::collections::VecDeque;
 
 /// Create a new vector layer from a vector of [`bezier_rs::Subpath`].
 pub fn new_vector_layer(subpaths: Vec<Subpath<PointId>>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
-	let insert_index = -1;
+	let insert_index = 0;
 	responses.add(GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index });
 	responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
 
@@ -24,7 +24,7 @@ pub fn new_vector_layer(subpaths: Vec<Subpath<PointId>>, id: NodeId, parent: Lay
 
 /// Create a new bitmap layer from an [`graphene_core::raster::ImageFrame<Color>`]
 pub fn new_image_layer(image_frame: ImageFrame<Color>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
-	let insert_index = -1;
+	let insert_index = 0;
 	responses.add(GraphOperationMessage::NewBitmapLayer {
 		id,
 		image_frame,
@@ -36,7 +36,7 @@ pub fn new_image_layer(image_frame: ImageFrame<Color>, id: NodeId, parent: Layer
 
 /// Create a new group layer from an svg
 pub fn new_svg_layer(svg: String, transform: glam::DAffine2, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
-	let insert_index = -1;
+	let insert_index = 0;
 	responses.add(DocumentMessage::ImportSvg {
 		id,
 		svg,
@@ -48,7 +48,7 @@ pub fn new_svg_layer(svg: String, transform: glam::DAffine2, id: NodeId, parent:
 }
 
 pub fn new_custom(id: NodeId, nodes: HashMap<NodeId, NodeTemplate>, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
-	responses.add(GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index: -1 });
+	responses.add(GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index: 0 });
 	responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
 	LayerNodeIdentifier::new_unchecked(id)
 }
