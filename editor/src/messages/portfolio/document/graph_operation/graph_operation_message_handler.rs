@@ -1,9 +1,7 @@
 use super::transform_utils;
 use super::utility_types::ModifyInputsContext;
-use crate::messages::portfolio::document::utility_types::document_metadata::{ LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::network_interface::{
-	InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata,
-};
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::messages::prelude::*;
 
@@ -33,8 +31,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 		let GraphOperationMessageData {
 			network_interface,
 			selected_nodes,
-			collapsed,
-			node_graph,
+			collapsed: _,
+			node_graph: _,
 		} = data;
 
 		match message {
@@ -425,7 +423,6 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 				.unwrap_or_default();
 			modify_inputs.insert_vector_data(subpaths, layer);
 
-			let insert_index = if insert_index < 0 { 0 } else { insert_index as usize };
 			modify_inputs.network_interface.move_layer_to_stack(layer, parent, insert_index);
 
 			if let Some(transform_node_id) = modify_inputs.get_existing_node_id("Transform") {

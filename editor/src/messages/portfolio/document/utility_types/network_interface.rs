@@ -1,4 +1,4 @@
-use crate::messages::prelude::Responses;
+use crate::messages::{portfolio::document::graph_operation::utility_types::ModifyInputsContext, prelude::Responses};
 use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::{
@@ -75,19 +75,42 @@ impl NodeNetworkInterface {
 		&self.document_metadata
 	}
 
-	/// Get the node metadata for the node which encapsulates the currently viewed network. Will always be None in the document network.
-	pub fn encapsulating_node_metadata(&self) -> Option<&DocumentNodeMetadata> {
+	/// Get the node which encapsulates the currently viewed network. Will always be None in the document network.
+	pub fn get_encapsulating_node(&self) -> Option<&DocumentNode> {
 		let mut encapsulating_path = self.network_path.clone();
-		let Some(encapsulating_node) = encapsulating_path.pop() else {
+		let Some(encapsulating_node_id) = encapsulating_path.pop() else {
+			return None;
+		};
+		let Some(parent_network) = self.document_network().nested_network(&encapsulating_path) else {
+			log::error!("Could not get parent network in get_encapsulating_node");
+			return None;
+		};
+		let Some(encapsulating_node) = parent_network.nodes.get(&encapsulating_node_id) else {
+			log::error!("Could not get encapsulating node in get_encapsulating_node");
+			return None;
+		};
+		Some(encapsulating_node)
+	}
+
+	/// Get the node metadata for the node which encapsulates the currently viewed network. Will always be None in the document network.
+	pub fn get_encapsulating_node_metadata(&self) -> Option<&DocumentNodeMetadata> {
+		let mut encapsulating_path = self.network_path.clone();
+		let Some(encapsulating_node_id) = encapsulating_path.pop() else {
 			return None;
 		};
 		let Some(parent_metadata) = self.document_network_metadata().nested_metadata(&encapsulating_path) else {
+			log::error!("Could not get parent network in encapsulating_node_metadata");
 			return None;
 		};
-		parent_metadata.persistent_metadata.node_metadata.get(&encapsulating_node)
+		let Some(encapsulating_node_metadata) = parent_metadata.persistent_metadata.node_metadata.get(&encapsulating_node_id) else {
+			log::error!("Could not get encapsulating node metadata in encapsulating_node_metadata");
+			return None;
+		};
+		Some(encapsulating_node_metadata)
 	}
 
-	// This should be able to compile without selected nodes being mutable
+	// TODO: This should be able to compile without selected nodes being mutable
+	// TODO: This may lead to undefined behavior since a node in a sub network may have the same id as a node in the document network
 	pub fn selected_nodes_in_document_network<'a>(&self, mut selected_nodes: impl Iterator<Item = &'a NodeId>) -> bool {
 		selected_nodes.any(|node_id| self.network.nodes.contains_key(node_id))
 	}
@@ -219,16 +242,8 @@ impl NodeNetworkInterface {
 
 	fn number_of_imports(&self, use_document_network: bool) -> usize {
 		// TODO: Use network.import_types.len()
-		let mut encapsulating_path = self.network_path.clone();
-		if let Some(encapsulating_node_id) = encapsulating_path.pop() {
-			let parent_node = self
-				.document_network()
-				.nested_network(&encapsulating_path)
-				.expect("Parent path should always exist")
-				.nodes
-				.get(&encapsulating_node_id)
-				.expect("Last path node should always exist in parent network");
-			parent_node.inputs.len()
+		if let Some(encapsulating_node) = self.get_encapsulating_node() {
+			encapsulating_node.inputs.len()
 		} else {
 			// There is one(?) import to the document network, but the imports are not displayed
 			1
@@ -352,7 +367,7 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	/// Get the [`Type`] for any `node_id` and `input_index`. The `network_path` is the path to the encapsulating node (including the encapsulating node). The `node_id` is the selected node.
+	/// Get the [`Type`] for any InputConnector
 	pub fn get_input_type(&self, input_connector: &InputConnector, use_document_network: bool) -> Type {
 		let Some(network) = self.network(use_document_network) else {
 			log::error!("Could not get network in get_tagged_value");
@@ -368,17 +383,8 @@ impl NodeNetworkInterface {
 			});
 			input_type.cloned()
 		} else {
-			let mut encapsulating_path = self.network_path.clone();
-			if let Some(encapsulating_node_id) = encapsulating_path.pop() {
-				let parent_node = self
-					.document_network()
-					.nested_network(&encapsulating_path)
-					.expect("Parent path should always exist")
-					.nodes
-					.get(&encapsulating_node_id)
-					.expect("Last path node should always exist in parent network");
-
-				let output_types = NodeGraphMessageHandler::get_output_types(parent_node, &self.resolved_types, &self.network_path);
+			if let Some(encapsulating_node) = self.get_encapsulating_node() {
+				let output_types = NodeGraphMessageHandler::get_output_types(encapsulating_node, &self.resolved_types, &self.network_path);
 				output_types.iter().nth(input_connector.input_index()).map_or_else(
 					|| {
 						warn!("Could not find output type for export node");
@@ -931,6 +937,43 @@ impl NodeNetworkInterface {
 		self.network_metadata_mut(self.selected_nodes_in_document_network(selected_nodes))
 	}
 
+	/// Mutably get the node which encapsulates the currently viewed network. Will always be None in the document network.
+	fn get_encapsulating_node_mut(&mut self) -> Option<&mut DocumentNode> {
+		let mut encapsulating_path = self.network_path.clone();
+		let Some(encapsulating_node_id) = encapsulating_path.pop() else {
+			return None;
+		};
+		let Some(parent_network) = self.document_network_mut().nested_network_mut(&encapsulating_path) else {
+			log::error!("Could not get parent network in get_encapsulating_node_mut");
+			return None;
+		};
+		let Some(encapsulating_node) = parent_network.nodes.get_mut(&encapsulating_node_id) else {
+			log::error!("Could not get encapsulating node in get_encapsulating_node_mut");
+			return None;
+		};
+		Some(encapsulating_node)
+	}
+
+	/// Get the node metadata for the node which encapsulates the currently viewed network. Will always be None in the document network.
+	fn get_encapsulating_node_metadata_mut(&mut self) -> Option<&mut DocumentNodeMetadata> {
+		let mut encapsulating_path = self.network_path.clone();
+		let Some(encapsulating_node_id) = encapsulating_path.pop() else {
+			return None;
+		};
+		let Some(parent_metadata) = self.document_network_metadata_mut().nested_metadata_mut(&encapsulating_path) else {
+			log::error!("Could not get parent network in encapsulating_node_metadata");
+			return None;
+		};
+		let Some(encapsulating_node_metadata) = parent_metadata.persistent_metadata.node_metadata.get_mut(&encapsulating_node_id) else {
+			log::error!("Could not get encapsulating node metadata in encapsulating_node_metadata");
+			return None;
+		};
+		Some(encapsulating_node_metadata)
+	}
+}
+
+// Public mutable getters for data that involves transient metadata, which may need to be created if they are unloaded
+impl NodeNetworkInterface {
 	/// This method is implemented in the interface since creating a node requires information from both the NodeNetwork and network metadata
 	pub fn get_transient_node_metadata(&mut self, node_id: &NodeId, use_document_network: bool) -> Option<&DocumentNodeTransientMetadata> {
 		let Some(network_metadata) = self.network_metadata(use_document_network) else {
@@ -995,10 +1038,7 @@ impl NodeNetworkInterface {
 			CurrentNodeNetworkTransientMetadata::Unloaded => None,
 		}
 	}
-}
 
-// Public mutable getters for data that involves transient metadata, which may need to be created if they are unloaded
-impl NodeNetworkInterface {
 	pub fn set_document_to_viewport_transform(&mut self, transform: DAffine2) {
 		let document_metadata = self.document_metadata_mut();
 		document_metadata.document_to_viewport = transform;
@@ -1261,7 +1301,7 @@ impl NodeNetworkInterface {
 		else {
 			return;
 		};
-
+		log::debug!("First root layer: {first_root_layer:?}");
 		// Should refer to output node
 		let mut awaiting_horizontal_flow = vec![(first_root_layer.to_node(), first_root_layer)];
 		let mut awaiting_primary_flow = vec![];
@@ -1269,19 +1309,19 @@ impl NodeNetworkInterface {
 		while let Some((horizontal_root_node_id, mut parent_layer_node)) = awaiting_horizontal_flow.pop() {
 			let horizontal_flow_iter = self.upstream_flow_back_from_nodes(vec![horizontal_root_node_id], FlowType::HorizontalFlow);
 			let mut children = Vec::new();
-			// Special handling for the root layer
+			// Special handling for the root layer, since it should not be skipped
 			if horizontal_root_node_id == first_root_layer.to_node() {
-				// Skip the horizontal_root_node_id node
-				for (_, current_node_id) in horizontal_flow_iter.skip(0) {
+				for (_, current_node_id) in horizontal_flow_iter {
 					if self.is_layer(&current_node_id) {
 						let current_layer_node = LayerNodeIdentifier::new(current_node_id, self);
 						if !self.document_metadata.structure.contains_key(&current_layer_node) {
 							if current_node_id == first_root_layer.to_node() {
 								awaiting_primary_flow.push((current_node_id, LayerNodeIdentifier::ROOT_PARENT));
+								children.push((LayerNodeIdentifier::ROOT_PARENT, current_layer_node));
 							} else {
 								awaiting_primary_flow.push((current_node_id, parent_layer_node));
+								children.push((parent_layer_node, current_layer_node));
 							}
-							children.push((parent_layer_node, current_layer_node));
 							parent_layer_node = current_layer_node;
 						}
 					}
@@ -1302,6 +1342,7 @@ impl NodeNetworkInterface {
 			for (parent, child) in children {
 				parent.push_child(self.document_metadata_mut(), child);
 			}
+			log::debug!("self.document_metadata.structure: {:?}", self.document_metadata.structure);
 			while let Some((primary_root_node_id, parent_layer_node)) = awaiting_primary_flow.pop() {
 				let primary_flow_iter = self.upstream_flow_back_from_nodes(vec![primary_root_node_id], FlowType::PrimaryFlow);
 				// Skip the primary_root_node_id node
@@ -1369,8 +1410,54 @@ impl NodeNetworkInterface {
 		network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport = transform;
 	}
 
-	pub fn insert_input(&mut self, node_id: &NodeId, input_index: usize, input: NodeInput) {
-		let Some(network) = self.network_for_selected_nodes_mut(std::iter::once(node_id)) else {
+	/// Inserts a new export at insert index. If the insert index is -1 it is inserted at the end. The output_name is used by the encapsulating node.
+	pub fn add_export(&mut self, default_value: TaggedValue, insert_index: isize, output_name: String, use_document_network: bool) {
+		let Some(network) = self.network_mut(use_document_network) else {
+			log::error!("Could not get nested network in add_export");
+			return;
+		};
+		let input = NodeInput::Value {
+			tagged_value: default_value,
+			exposed: true,
+		};
+
+		if insert_index == -1 {
+			network.exports.push(input);
+		} else {
+			network.exports.insert(insert_index as usize, input);
+		}
+
+		// There will not be an encapsulating node if the network is the document network
+		if let Some(encapsulating_node_metadata) = self.get_encapsulating_node_metadata_mut() {
+			if insert_index == -1 {
+				encapsulating_node_metadata.persistent_metadata.output_names.push(output_name);
+			} else {
+				encapsulating_node_metadata.persistent_metadata.output_names.insert(insert_index as usize, output_name);
+			}
+		};
+
+		// Update the click targets for the current network
+		let Some(network_metadata_mut) = self.network_metadata_mut(use_document_network) else {
+			log::error!("Could not get nested network_metadata in add_export");
+			return;
+		};
+		// TODO: Just update the click targets instead of unloading all data
+		network_metadata_mut.transient_metadata.unload();
+
+		// Update the click targets for the encapsulating node output, if it exists. There is no encapsulating node if the network is the document network
+		if let Some(encapsulating_node_metadata_mut) = self.get_encapsulating_node_metadata_mut() {
+			encapsulating_node_metadata_mut.transient_metadata.unload();
+		};
+
+		// If the input is inserted as the first input or second input, then it may have affected the document metadata structure
+		if input_index == 0 || input_index == 1 {
+			self.load_structure();
+		}
+	}
+
+	/// Inserts a new input at insert index. If the insert index is -1 it is inserted at the end. The output_name is used by the encapsulating node.
+	pub fn add_input(&mut self, node_id: &NodeId, default_value: TaggedValue, exposed: bool, input_index: isize, input_name: String, use_document_network: bool) {
+		let Some(network) = self.network_mut(use_document_network) else {
 			log::error!("Could not get nested network in insert_input");
 			return;
 		};
@@ -1378,7 +1465,38 @@ impl NodeNetworkInterface {
 			log::error!("Could not get node in insert_input");
 			return;
 		};
-		node.inputs.insert(input_index, input);
+		let input = NodeInput::Value { tagged_value: default_value, exposed };
+		if input_index == -1 {
+			node.inputs.push(input);
+		} else {
+			node.inputs.insert(input_index as usize, input);
+		}
+
+		let Some(network_metadata) = self.network_metadata_mut(use_document_network) else {
+			log::error!("Could not get nested network_metadata in insert_input");
+			return;
+		};
+		let Some(node_metadata) = network_metadata.persistent_metadata.node_metadata.get_mut(node_id) else {
+			log::error!("Could not get node_metadata in insert_input");
+			return;
+		};
+		if input_index == -1 {
+			node_metadata.persistent_metadata.input_names.push(input_name);
+		} else {
+			node_metadata.persistent_metadata.input_names.insert(input_index as usize, input_name);
+		}
+
+		// Update the click targets for the node and its internal network imports (if has a network implementation)
+		// TODO: Just update the click targets instead of unloading all data
+		node_metadata.transient_metadata.unload();
+		if let Some(internal_network) = &mut node_metadata.persistent_metadata.network_metadata {
+			internal_network.transient_metadata.unload();
+		}
+
+		// If the input is inserted as the first input, then it may have affected the document metadata structure
+		if input_index == 0 || input_index == 1 {
+			self.load_structure();
+		}
 	}
 
 	// TODO: Keep metadata in sync with the new implementation
@@ -1406,8 +1524,23 @@ impl NodeNetworkInterface {
 		std::mem::replace(&mut node.inputs, inputs)
 	}
 
-	/// Ensure network metadata, positions, and other metadata is kept in sync
-	pub fn set_input(&mut self, _input_connector: InputConnector, _input: NodeInput, _use_document_network: bool) {}
+	/// TODO: Ensure network metadata, positions, and other metadata is kept in sync
+	pub fn set_input(&mut self, input_connector: InputConnector, input: NodeInput, use_document_network: bool) {
+		let Some(network) = self.network_mut(use_document_network) else {
+			log::error!("Could not get nested network in set_input");
+			return;
+		};
+		match input_connector {
+			InputConnector::Node { node_id, input_index } => todo!(),
+			InputConnector::Export(export_index) => {
+				let Some(export) = network.exports.get_mut(export_index) else {
+					log::error!("Could not get export in set_input");
+					return;
+				};
+				*export = input;
+			}
+		}
+	}
 
 	/// Ensure network metadata, positions, and other metadata is kept in sync
 	pub fn disconnect_input(&mut self, input_connector: InputConnector, use_document_network: bool) {
@@ -1498,19 +1631,24 @@ impl NodeNetworkInterface {
 	}
 
 	/// Used to insert a node template into the network.
-	/// Do not shift nodes here, instead run a layout command for a group of nodes after inserting
-	pub fn insert_node(&mut self, _node_id: NodeId, _node_template: NodeTemplate, _use_document_network: bool) {
-		// Ensure there is space for the new node
-		// let Some(network) = document_network.nested_network_mut(network_path) else {
-		// 	log::error!("Network not found in update_click_target");
-		// 	return;
-		// };
-		// assert!(
-		// 	node_id != network.imports_metadata.0 && node_id != network.exports_metadata.0,
-		// 	"Cannot insert import/export node into network.nodes"
-		// );
-		// network.nodes.insert(node_id, node);
-		// self.update_click_target(node_id, document_network, network_path.clone());
+	pub fn insert_node(&mut self, node_id: NodeId, node_template: NodeTemplate, use_document_network: bool) {
+		let Some(network) = self.network_mut(use_document_network) else {
+			log::error!("Network not found in insert_node");
+			return;
+		};
+		network.nodes.insert(node_id.clone(), node_template.document_node);
+
+		let Some(network_metadata) = self.network_metadata_mut(use_document_network) else {
+			log::error!("Network not found in insert_node");
+			return;
+		};
+		let node_metadata = DocumentNodeMetadata {
+			persistent_metadata: node_template.persistent_node_metadata,
+			transient_metadata: CurrentDocumentNodeTransientMetadata::Unloaded,
+		};
+		network_metadata.persistent_metadata.node_metadata.insert(node_id.clone(), node_metadata);
+		// TODO: Update the bounding box around all nodes instead of unloading all data
+		network_metadata.transient_metadata.unload();
 	}
 
 	/// Deletes all nodes in `node_ids` and any sole dependents in the horizontal chain if the node to delete is a layer node.
@@ -2044,8 +2182,11 @@ impl NodeNetworkInterface {
 	pub fn move_node_to(&mut self, _node_id: &NodeId, _target_id: &NodeId) {}
 
 	// Disconnect the layers primary output and the input to the last non layer node feeding into it through primary flow, reconnects, then moves the layer to the new layer and stack index
-	pub fn move_layer_to_stack(&mut self, _layer: LayerNodeIdentifier, _parent: LayerNodeIdentifier, _insert_index: usize) {
+	pub fn move_layer_to_stack(&mut self, layer: LayerNodeIdentifier, parent: LayerNodeIdentifier, insert_index: usize) {
 		// TODO: Run the auto layout system to make space for the new nodes
+		let (post_node, pre_node) = ModifyInputsContext::get_post_node_with_index(self, parent, insert_index);
+		let input = NodeInput::node(layer.to_node(), 0);
+		self.set_input(post_node, input, true);
 	}
 
 	// Moves a node and all upstream children to the end of a layer chain

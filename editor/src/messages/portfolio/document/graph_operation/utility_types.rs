@@ -1,12 +1,12 @@
 use super::transform_utils;
-use crate::messages::portfolio::document::node_graph::document_node_types::{resolve_document_node_type};
-use crate::messages::portfolio::document::utility_types::document_metadata::{LayerNodeIdentifier};
+use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, NodeTemplate, OutputConnector};
 use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{generate_uuid,NodeId, NodeInput};
+use graph_craft::document::{generate_uuid, NodeId, NodeInput};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
 use graphene_core::vector::brush_stroke::BrushStroke;
@@ -65,8 +65,6 @@ impl<'a> ModifyInputsContext<'a> {
 	/// -> Layer3  
 	///             if insert_index == 3, return (Layer3, None)
 	pub fn get_post_node_with_index(network_interface: &NodeNetworkInterface, parent: LayerNodeIdentifier, insert_index: usize) -> (InputConnector, Option<OutputConnector>) {
-		let document_network = network_interface.document_network();
-
 		let mut post_node_input_connector = if parent == LayerNodeIdentifier::ROOT_PARENT {
 			InputConnector::Export(0)
 		} else {
@@ -168,11 +166,11 @@ impl<'a> ModifyInputsContext<'a> {
 		let stroke_id = NodeId(generate_uuid());
 		self.insert_node_to_chain(stroke_id, layer, stroke);
 		let fill_id = NodeId(generate_uuid());
-		self.insert_node_to_chain(stroke_id, layer, fill);
+		self.insert_node_to_chain(fill_id, layer, fill);
 		let transform_id = NodeId(generate_uuid());
-		self.insert_node_to_chain(stroke_id, layer, transform);
+		self.insert_node_to_chain(transform_id, layer, transform);
 		let shape_id = NodeId(generate_uuid());
-		self.insert_node_to_chain(stroke_id, layer, shape);
+		self.insert_node_to_chain(shape_id, layer, shape);
 	}
 
 	pub fn insert_text(&mut self, text: String, font: Font, size: f64, layer: LayerNodeIdentifier) {
@@ -189,9 +187,9 @@ impl<'a> ModifyInputsContext<'a> {
 		let stroke_id = NodeId(generate_uuid());
 		self.insert_node_to_chain(stroke_id, layer, stroke);
 		let fill_id = NodeId(generate_uuid());
-		self.insert_node_to_chain(stroke_id, layer, fill);
+		self.insert_node_to_chain(fill_id, layer, fill);
 		let transform_id = NodeId(generate_uuid());
-		self.insert_node_to_chain(stroke_id, layer, transform);
+		self.insert_node_to_chain(transform_id, layer, transform);
 		let text_id = NodeId(generate_uuid());
 		self.insert_node_to_chain(text_id, layer, text);
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);

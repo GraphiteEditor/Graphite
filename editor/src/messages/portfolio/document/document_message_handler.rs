@@ -2,7 +2,7 @@ use super::node_graph::utility_types::Transform;
 use super::utility_types::clipboards::Clipboard;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{BoundingBoxSnapTarget, GeometrySnapTarget, OptionBoundsSnapping, OptionPointSnapping, SnappingOptions, SnappingState};
-use super::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
+use super::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
@@ -123,7 +123,7 @@ impl Default for DocumentMessageHandler {
 			// ============================================
 			// Fields that are saved in the document format
 			// ============================================
-			network_interface: Default::default(),
+			network_interface: default_document_network_interface(),
 			selected_nodes: SelectedNodes::default(),
 			collapsed: CollapsedLayers::default(),
 			name: DEFAULT_DOCUMENT_NAME.to_string(),
@@ -407,7 +407,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				});
 
 				// Group all shallowest unique selected layers in order
-				let mut all_layers_to_group = self
+				let all_layers_to_group = self
 					.network_interface
 					.shallowest_unique_layers(self.selected_nodes.selected_layers(self.metadata()))
 					.collect::<Vec<_>>();
@@ -1945,13 +1945,9 @@ impl DocumentMessageHandler {
 	}
 }
 
-fn root_network() -> NodeNetwork {
-	{
-		let mut network = NodeNetwork::default();
-		network.exports = vec![NodeInput::Value {
-			tagged_value: TaggedValue::ArtboardGroup(graphene_core::ArtboardGroup::EMPTY),
-			exposed: true,
-		}];
-		network
-	}
+/// Create a network interface with a single export
+fn default_document_network_interface() -> NodeNetworkInterface {
+	let mut network_interface = NodeNetworkInterface::default();
+	network_interface.add_export(TaggedValue::ArtboardGroup(graphene_core::ArtboardGroup::EMPTY), -1, "".to_string(), true);
+	network_interface
 }

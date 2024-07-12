@@ -1,9 +1,8 @@
 use super::node_properties;
-use super::utility_types::{FrontendNodeType};
+use super::utility_types::FrontendNodeType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::{
-	DocumentNodeMetadata, DocumentNodePersistentMetadata, NodeNetworkInterface, NodeNetworkMetadata,
-	NodeNetworkPersistentMetadata, NodeTemplate, NodeTypePersistentMetadata,
+	DocumentNodeMetadata, DocumentNodePersistentMetadata, NodeNetworkInterface, NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodeTemplate, NodeTypePersistentMetadata,
 };
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
@@ -840,10 +839,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(3), 0)],
+						exports: vec![NodeInput::node(NodeId(2), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(WasmEditorApi), 1)],
+								inputs: vec![NodeInput::network(concrete!(&WasmEditorApi), 1)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
 								skip_deduplication: true,
 								..Default::default()
@@ -854,14 +853,19 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 								..Default::default()
 							},
+							// TODO: Add conversion step
+							// DocumentNode {
+							// 	inputs: vec![NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T))), 0)],
+							// 	implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<_, GraphicGroup>")),
+							// 	..Default::default()
+							// },
 							DocumentNode {
-								inputs: vec![NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T))), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<_, GraphicGroup>")),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(WasmEditorApi), 1), NodeInput::node(NodeId(2), 0), NodeInput::node(NodeId(1), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _>")),
+								inputs: vec![
+									NodeInput::network(concrete!(WasmEditorApi), 1),
+									NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T))), 0),
+									NodeInput::node(NodeId(1), 0),
+								],
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _, _>")),
 								..Default::default()
 							},
 						]
@@ -880,7 +884,42 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				persistent_node_metadata: DocumentNodePersistentMetadata {
 					input_names: vec!["Output".to_string(), "In".to_string()],
 					output_names: vec![],
-					network_metadata: Some(NodeNetworkMetadata::default()),
+					network_metadata: Some(NodeNetworkMetadata {
+						persistent_metadata: NodeNetworkPersistentMetadata {
+							node_metadata: [
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Create Canvas".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Cache".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "RenderNode".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+							]
+							.into_iter()
+							.enumerate()
+							.map(|(id, node)| (NodeId(id as u64), node))
+							.collect(),
+							..Default::default()
+						},
+						..Default::default()
+					}),
 					..Default::default()
 				},
 			},
@@ -4416,7 +4455,7 @@ impl DocumentNodeDefinition {
 		input_override.into_iter().enumerate().for_each(|(index, input_override)| {
 			if let Some(input_override) = input_override {
 				// Only value inputs can be overridden, since node inputs change graph structure and must be handled by the network interface
-				assert!(matches!(input_override, NodeInput::Value { .. }), "Only value inputs are supported for input overrides");
+				// assert!(matches!(input_override, NodeInput::Value { .. }), "Only value inputs are supported for input overrides");
 				template.document_node.inputs[index] = input_override;
 			}
 		});

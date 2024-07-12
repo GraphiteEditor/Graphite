@@ -1542,7 +1542,7 @@ impl NodeGraphMessageHandler {
 		// Get import/export names from parent node metadata input/outputs, which must match the number of imports/exports.
 		// Empty string or no entry means to use type, or "Import/Export + index" if type can't be determined
 		// TODO: Get number of imports from parent node metadata
-		let (import_names, mut export_names) = if let Some(encapsulating_metadata) = network_interface.encapsulating_node_metadata() {
+		let (import_names, mut export_names) = if let Some(encapsulating_metadata) = network_interface.get_encapsulating_node_metadata() {
 			// Get all import/export names from encapsulating node metadata
 			(
 				encapsulating_metadata.persistent_metadata.input_names.clone(),

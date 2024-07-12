@@ -721,7 +721,7 @@ impl EditorHandle {
 						.set_implementation(&node_id, DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _, _>"));
 					document
 						.network_interface
-						.insert_input(&node_id, 2, NodeInput::value(TaggedValue::IVec2(glam::IVec2::default()), false));
+						.add_input(&node_id, TaggedValue::IVec2(glam::IVec2::default()), false, 2, "".to_string(), true);
 				}
 			}
 		}
