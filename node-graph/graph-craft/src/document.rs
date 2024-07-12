@@ -5,9 +5,8 @@ use dyn_any::{DynAny, StaticType};
 pub use graphene_core::uuid::generate_uuid;
 use graphene_core::{ProtoNodeIdentifier, Type};
 
-use glam::IVec2;
 use std::collections::hash_map::DefaultHasher;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 pub mod value;
@@ -549,15 +548,6 @@ where
 	Ok(inputs)
 }
 
-// TODO: Eventually remove this (probably starting late 2024)
-fn default_import_metadata() -> (NodeId, IVec2) {
-	(NodeId(generate_uuid()), IVec2::new(-25, -4))
-}
-// TODO: Eventually remove this (probably starting late 2024)
-fn default_export_metadata() -> (NodeId, IVec2) {
-	(NodeId(generate_uuid()), IVec2::new(8, -4))
-}
-
 #[derive(Clone, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// A network (subgraph) of nodes containing each [`DocumentNode`] and its ID, as well as list mapping each export to its connected node, or a value if disconnected
@@ -570,12 +560,6 @@ pub struct NodeNetwork {
 	// pub import_types: Vec<Type>,
 	/// The list of all nodes in this network.
 	pub nodes: HashMap<NodeId, DocumentNode>,
-	/// Temporary fields to store metadata for "Import"/"Export" UI-only nodes, eventually will be replaced with lines leading to edges
-	// TODO: Move to NodeNetworkInterface
-	#[serde(default = "default_import_metadata")]
-	pub imports_metadata: (NodeId, IVec2),
-	#[serde(default = "default_export_metadata")]
-	pub exports_metadata: (NodeId, IVec2),
 }
 
 impl std::hash::Hash for NodeNetwork {
@@ -595,14 +579,12 @@ impl Default for NodeNetwork {
 			exports: Default::default(),
 			//import_types: Default::default(),
 			nodes: Default::default(),
-			imports_metadata: default_import_metadata(),
-			exports_metadata: default_export_metadata(),
 		}
 	}
 }
 impl PartialEq for NodeNetwork {
 	fn eq(&self, other: &Self) -> bool {
-		self.exports == other.exports && self.imports_metadata == other.imports_metadata && self.exports_metadata == other.exports_metadata
+		self.exports == other.exports
 	}
 }
 
@@ -1226,10 +1208,6 @@ mod test {
 			.collect(),
 			..Default::default()
 		};
-		network.exports_metadata.0 = NodeId(0);
-		network.imports_metadata.0 = NodeId(0);
-		mapped_add.exports_metadata.0 = NodeId(0);
-		mapped_add.imports_metadata.0 = NodeId(0);
 		assert_eq!(network, mapped_add);
 	}
 
@@ -1288,11 +1266,7 @@ mod test {
 		};
 		network.generate_node_paths(&[]);
 		network.flatten_with_fns(NodeId(1), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), gen_node_id);
-		network.exports_metadata.0 = NodeId(0);
-		network.imports_metadata.0 = NodeId(0);
 		let mut flat_network = flat_network();
-		flat_network.imports_metadata.0 = NodeId(0);
-		flat_network.exports_metadata.0 = NodeId(0);
 		println!("{flat_network:#?}");
 		println!("{network:#?}");
 

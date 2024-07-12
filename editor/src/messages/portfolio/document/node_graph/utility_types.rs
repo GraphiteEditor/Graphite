@@ -1,7 +1,6 @@
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::NodeId;
 use graphene_core::Type;
-use graphene_std::renderer::ClickTarget;
 
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
 
@@ -45,7 +44,7 @@ pub struct FrontendGraphInput {
 	pub name: String,
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: Option<String>,
-	pub connected: Option<NodeId>,
+	pub connected_to: Option<OutputConnector>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]

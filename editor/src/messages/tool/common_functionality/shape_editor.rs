@@ -2,11 +2,10 @@ use super::graph_modification_utils;
 use super::snapping::{SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{GeometrySnapSource, SnapSource};
-use crate::messages::portfolio::document::utility_types::network_interface::{self, NodeNetworkInterface};
+use crate::messages::portfolio::document::utility_types::network_interface::{NodeNetworkInterface};
 use crate::messages::prelude::*;
 
 use bezier_rs::{Bezier, BezierHandles, TValue};
-use graph_craft::document::NodeNetwork;
 use graphene_core::transform::Transform;
 use graphene_core::vector::{ManipulatorPointId, PointId, VectorData, VectorModificationType};
 
@@ -235,7 +234,7 @@ impl ShapeState {
 		}
 
 		if let Some((layer, manipulator_point_id)) = self.find_nearest_point_indices(network_interface, mouse_position, select_threshold) {
-			let vector_data = document_metadata.compute_modified_vector(layer, network_interface)?;
+			let vector_data = network_interface.document_metadata().compute_modified_vector(layer, network_interface)?;
 			let point_position = manipulator_point_id.get_position(&vector_data)?;
 
 			let selected_shape_state = self.selected_shape_state.get(&layer)?;
@@ -957,8 +956,8 @@ impl ShapeState {
 		let mut closest_distance_squared: f64 = f64::MAX;
 		let mut manipulator_point = None;
 
-		let vector_data = document_metadata.compute_modified_vector(layer, document_network)?;
-		let viewspace = document_metadata.transform_to_viewport(layer);
+		let vector_data = network_interface.document_metadata().compute_modified_vector(layer, network_interface)?;
+		let viewspace = network_interface.document_metadata().transform_to_viewport(layer);
 
 		// Handles
 		for (segment_id, bezier, _, _) in vector_data.segment_bezier_iter() {
@@ -1002,7 +1001,7 @@ impl ShapeState {
 		let mut closest = None;
 		let mut closest_distance_squared: f64 = tolerance * tolerance;
 
-		let vector_data = document_metadata.compute_modified_vector(layer, document_network)?;
+		let vector_data = network_interface.document_metadata().compute_modified_vector(layer, network_interface)?;
 
 		for (segment, mut bezier, start, end) in vector_data.segment_bezier_iter() {
 			let t = bezier.project(layer_pos);
@@ -1017,7 +1016,7 @@ impl ShapeState {
 				// 0.5 is half the line (center to side) but it's convenient to allow targeting slightly more than half the line width
 				const STROKE_WIDTH_PERCENT: f64 = 0.7;
 
-				let stroke_width = graph_modification_utils::get_stroke_width(layer, document_network).unwrap_or(1.) as f64 * STROKE_WIDTH_PERCENT;
+				let stroke_width = graph_modification_utils::get_stroke_width(layer, network_interface).unwrap_or(1.) as f64 * STROKE_WIDTH_PERCENT;
 
 				// Convert to linear if handes are on top of control points
 				if let bezier_rs::BezierHandles::Cubic { handle_start, handle_end } = bezier.handles {
@@ -1053,7 +1052,7 @@ impl ShapeState {
 		match self.selected_shape_state.len() {
 			0 => None,
 			1 => self.selected_layers().next().copied().and_then(closest_seg),
-			_ => self.sorted_selected_layers(document_metadata).find_map(closest_seg),
+			_ => self.sorted_selected_layers(network_interface.document_metadata()).find_map(closest_seg),
 		}
 	}
 
@@ -1062,7 +1061,7 @@ impl ShapeState {
 	/// This can can be activated by double clicking on an anchor with the Path tool.
 	pub fn flip_smooth_sharp(&self, network_interface: &NodeNetworkInterface, target: glam::DVec2, tolerance: f64, responses: &mut VecDeque<Message>) -> bool {
 		let mut process_layer = |layer| {
-			let vector_data = network_interface.document_metadata().compute_modified_vector(layer, document_network)?;
+			let vector_data = network_interface.document_metadata().compute_modified_vector(layer, network_interface)?;
 			let transform_to_screenspace = network_interface.document_metadata().transform_to_viewport(layer);
 
 			let mut result = None;
@@ -1145,9 +1144,9 @@ impl ShapeState {
 				state.clear_points()
 			}
 
-			let vector_data = document_metadata.compute_modified_vector(layer, document_network);
+			let vector_data = network_interface.document_metadata().compute_modified_vector(layer, network_interface);
 			let Some(vector_data) = vector_data else { continue };
-			let transform = document_metadata.transform_to_viewport(layer);
+			let transform =network_interface.document_metadata().transform_to_viewport(layer);
 
 			assert_eq!(vector_data.segment_domain.ids().len(), vector_data.segment_domain.start_point().len());
 			assert_eq!(vector_data.segment_domain.ids().len(), vector_data.segment_domain.end_point().len());

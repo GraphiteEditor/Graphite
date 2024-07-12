@@ -4,7 +4,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Node
 use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
-use graph_craft::document::{DocumentNode, NodeId, NodeInput};
+use graph_craft::document::{NodeId};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
 use graphene_core::vector::brush_stroke::BrushStroke;
@@ -19,10 +19,6 @@ use glam::{DAffine2, DVec2, IVec2};
 #[impl_message(Message, DocumentMessage, GraphOperation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum GraphOperationMessage {
-	AddNodes {
-		nodes: HashMap<NodeId, NodeTemplate>,
-		new_ids: HashMap<NodeId, NodeId>,
-	},
 	// TODO: Eventually remove this (probably starting late 2024)
 	DeleteLegacyOutputNode,
 	FillSet {

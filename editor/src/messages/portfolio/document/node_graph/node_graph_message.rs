@@ -1,10 +1,10 @@
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{Connector, InputConnector, NodeTemplate, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::*;
 
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, NodeId, NodeInput};
+use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 
@@ -23,7 +23,6 @@ pub enum NodeGraphMessage {
 	CreateNode {
 		node_id: Option<NodeId>,
 		node_type: String,
-		input_override: impl IntoIterator<Item = Option<NodeInput>>,
 		use_document_network: bool,
 	},
 	CreateWire {

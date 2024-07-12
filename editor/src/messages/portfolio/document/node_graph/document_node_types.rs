@@ -1,9 +1,8 @@
 use super::node_properties;
-use super::utility_types::{FrontendGraphDataType, FrontendNodeType};
+use super::utility_types::{FrontendNodeType};
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::utility_types::document_metadata::DocumentMetadata;
 use crate::messages::portfolio::document::utility_types::network_interface::{
-	DocumentNodeMetadata, DocumentNodeMetadataTemplate, DocumentNodePersistentMetadata, NodeNetworkInterface, NodeNetworkInterfaceTemplate, NodeNetworkMetadata, NodeNetworkMetadataTemplate,
+	DocumentNodeMetadata, DocumentNodePersistentMetadata, NodeNetworkInterface, NodeNetworkMetadata,
 	NodeNetworkPersistentMetadata, NodeTemplate, NodeTypePersistentMetadata,
 };
 use crate::messages::portfolio::utility_types::PersistentData;
@@ -39,7 +38,6 @@ pub struct NodePropertiesContext<'a> {
 	pub responses: &'a mut VecDeque<Message>,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub network_interface: &'a NodeNetworkInterface,
-	pub metadata: &'a mut DocumentMetadata,
 }
 
 /// Acts as a description for a [DocumentNode] before it gets instantiated as one.
@@ -222,8 +220,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						.enumerate()
 						.map(|(id, node)| (NodeId(id as u64), node))
 						.collect(),
-						imports_metadata: (NodeId(generate_uuid()), (-26, -4).into()),
-						exports_metadata: (NodeId(generate_uuid()), (8, -4).into()),
 						..Default::default()
 					}),
 					inputs: vec![
@@ -329,10 +325,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						.into_iter()
 						.enumerate()
 						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect()
+						.collect::<std::collections::HashMap<_, _>>() // Why can't type be inferred
 						.into(),
-						imports_metadata: (NodeId(generate_uuid()), (-21, -5).into()),
-						exports_metadata: (NodeId(generate_uuid()), (14, -5).into()),
 						..Default::default()
 					}),
 					inputs: vec![
@@ -404,7 +398,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ExtractImageFrame"),
-					inputs: vec![::network(concrete!(WasmEditorApi), 0)],
+					inputs: vec![NodeInput::network(concrete!(WasmEditorApi), 0)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -599,7 +593,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true), ::network(concrete!(WasmEditorApi), 0)],
+					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true), NodeInput::network(concrete!(WasmEditorApi), 0)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -765,7 +759,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								manual_composition: Some(concrete!(())),
-								inputs: vec![::lambda(NodeId(1), 0)],
+								inputs: vec![NodeInput::lambda(NodeId(1), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::RefNode<_, _>")),
 								..Default::default()
 							},
@@ -776,7 +770,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![::network(concrete!(WasmEditorApi), 0)],
+					inputs: vec![NodeInput::network(concrete!(WasmEditorApi), 0)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -877,7 +871,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::value(TaggedValue::GraphicGroup(GraphicGroup::default()), true), ::network(concrete!(WasmEditorApi), 0)],
+					inputs: vec![
+						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroup::default()), true),
+						NodeInput::network(concrete!(WasmEditorApi), 0),
+					],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -3251,7 +3248,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: vec![
 							DocumentNode {
-								inputs: vec![::network(concrete!(()), 0), ::network(concrete!(f64), 1)],
+								inputs: vec![NodeInput::network(concrete!(()), 0), NodeInput::network(concrete!(f64), 1)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::generator_nodes::CircleGenerator<_>")),
 								..Default::default()
 							},
@@ -3449,10 +3446,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::PathGenerator<_>"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::PointIds(vec![]), false),
-						NodeInput::value(TaggedValue::PointIds(vec![]), false),
-					],
+					inputs: vec![NodeInput::value(TaggedValue::PointIds(vec![]), false), NodeInput::value(TaggedValue::PointIds(vec![]), false)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -4403,14 +4397,14 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 });
 
 pub fn resolve_document_node_type(identifier: &str) -> Option<&DocumentNodeDefinition> {
-	DOCUMENT_NODE_TYPES.iter().find(|definition| definition.node_template.persistent_node_metadata.reference == name)
+	DOCUMENT_NODE_TYPES.iter().find(|definition| definition.identifier == identifier)
 }
 
 pub fn collect_node_types() -> Vec<FrontendNodeType> {
 	DOCUMENT_NODE_TYPES
 		.iter()
 		.filter(|definition| !definition.category.eq_ignore_ascii_case("ignore"))
-		.map(|definition| FrontendNodeType::new(definition.node_template.persistent_node_metadata.reference, definition.category))
+		.map(|definition| FrontendNodeType::new(definition.identifier, definition.category))
 		.collect()
 }
 
@@ -4434,7 +4428,7 @@ impl DocumentNodeDefinition {
 		// }
 
 		// Set the reference to the node definition
-		template.persistent_node_metadata.reference = Some(self.identifier);
+		template.persistent_node_metadata.reference = Some(self.identifier.to_string());
 		template
 	}
 

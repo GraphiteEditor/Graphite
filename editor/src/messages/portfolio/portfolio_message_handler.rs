@@ -1,4 +1,5 @@
-use super::document::utility_types::network_interface::{self, NodeNetworkInterface};
+use super::document::utility_types::document_metadata::LayerNodeIdentifier;
+use super::document::utility_types::network_interface::{self};
 use super::utility_types::PersistentData;
 use crate::application::generate_uuid;
 use crate::consts::DEFAULT_DOCUMENT_NAME;
@@ -13,7 +14,6 @@ use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 
 use graph_craft::document::NodeId;
 use graphene_core::text::Font;
-use graphene_std::Node;
 
 use std::sync::Arc;
 
@@ -184,40 +184,23 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				};
 
 				let copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
-					let binding = active_document
+					let ordered_last_elements = active_document
 						.network_interface
 						.shallowest_unique_layers(active_document.selected_nodes.selected_layers(active_document.metadata()));
 
-					let get_last_elements: Vec<_> = binding.iter().map(|x| x.last().expect("empty path")).collect();
-
-					let ordered_last_elements: Vec<_> = active_document
-						.network_interface
-						.document_metadata()
-						.all_layers()
-						.filter(|layer| get_last_elements.contains(&layer))
-						.collect();
-
 					for layer in ordered_last_elements {
 						let layer_node_id = layer.to_node();
-						let previous_alias = active_document.document_network().nodes.get(&layer_node_id).map(|node| node.alias.clone()).unwrap_or_default();
 
 						let mut copy_ids = HashMap::new();
 						copy_ids.insert(layer_node_id, NodeId(0 as u64));
-						if let Some(input_node) = active_document
-							.document_network()
-							.nodes
-							.get(&layer_node_id)
-							.and_then(|node| if node.is_layer { node.inputs.get(1) } else { node.inputs.get(0) })
-							.and_then(|input| input.as_node())
-						{
-							active_document
-								.network_interface
-								.upstream_flow_back_from_nodes(vec![input_node], graph_craft::document::FlowType::UpstreamFlow)
-								.enumerate()
-								.for_each(|(index, (_, node_id))| {
-									copy_ids.insert(node_id, NodeId((index + 1) as u64));
-								});
-						};
+
+						active_document
+							.network_interface
+							.upstream_flow_back_from_nodes(vec![layer_node_id], network_interface::FlowType::LayerChildrenUpstreamFlow)
+							.enumerate()
+							.for_each(|(index, (_, node_id))| {
+								copy_ids.insert(node_id, NodeId((index + 1) as u64));
+							});
 
 						buffer.push(CopyBufferEntry {
 							nodes: active_document.network_interface.copy_nodes(&copy_ids, true).collect(),
@@ -225,7 +208,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							visible: active_document.selected_nodes.layer_visible(layer, &active_document.network_interface),
 							locked: active_document.selected_nodes.layer_locked(layer, &active_document.network_interface),
 							collapsed: false,
-							alias: previous_alias.to_string(),
 						});
 					}
 				};
@@ -416,17 +398,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						trace!("Pasting into folder {parent:?} as index: {insert_index}");
 						let nodes = entry.clone().nodes;
 						let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
-						let new_layer_id = new_ids[&NodeId(0)];
+						let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
 						responses.add(NodeGraphMessage::AddNodes {
 							nodes,
 							new_ids,
 							use_document_network: true,
 						});
 						responses.add(GraphOperationMessage::MoveLayerToStack {
-							layer: new_layer_id,
+							layer,
 							parent,
 							insert_index,
-							skip_rerender: false,
+							skip_rerender: true,
 						});
 					}
 				};
@@ -436,6 +418,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				for entry in self.copy_buffer[clipboard as usize].iter().rev() {
 					paste(entry, responses)
 				}
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			PortfolioMessage::PasteSerializedData { data } => {
 				if let Some(document) = self.active_document() {
@@ -448,14 +431,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						for entry in data.into_iter().rev() {
 							document.load_layer_resources(responses);
 							let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
-							let new_layer_id = new_ids[&NodeId(0)];
+							let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
 							responses.add(NodeGraphMessage::AddNodes {
 								nodes: entry.nodes,
 								new_ids,
 								use_document_network: true,
 							});
 							responses.add(GraphOperationMessage::MoveLayerToStack {
-								layer: new_layer_id,
+								layer,
 								parent,
 								insert_index: 0,
 								skip_rerender: true,

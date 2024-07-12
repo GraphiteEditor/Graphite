@@ -1,10 +1,8 @@
-use super::network_interface::{self, NodeNetworkInterface};
-use super::nodes::SelectedNodes;
+use super::network_interface::NodeNetworkInterface;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::FlowType;
-use graph_craft::document::{NodeId, NodeNetwork};
+use graph_craft::document::NodeId;
 use graphene_core::renderer::ClickTarget;
 use graphene_core::renderer::Quad;
 use graphene_core::transform::Footprint;
@@ -12,7 +10,7 @@ use graphene_std::vector::PointId;
 use graphene_std::vector::VectorData;
 
 use glam::{DAffine2, DVec2};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::num::NonZeroU64;
 
 // ================
@@ -21,7 +19,6 @@ use std::num::NonZeroU64;
 
 // TODO: To avoid storing a stateful snapshot of some other system's state (which is easily to accidentally get out of sync),
 // TODO: it might be better to have a system that can query the state of the node network on demand.
-// TODO: Store in network interface.
 #[derive(Debug, Clone)]
 pub struct DocumentMetadata {
 	pub upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
@@ -231,8 +228,12 @@ impl LayerNodeIdentifier {
 	/// Construct a [`LayerNodeIdentifier`], debug asserting that it is a layer node in the document network
 	#[track_caller]
 	pub fn new(node_id: NodeId, network_interface: &NodeNetworkInterface) -> Self {
-		let is_document_network = network_interface.selected_nodes_in_document_network(std::iter::once(node_id));
-		debug_assert!(is_document_network, "Layer identifier constructed from node not in document network. {node_id}: {:#?}", network_interface.network(false).and_then(|network| network.nodes.get(&node_id)));
+		let is_document_network = network_interface.selected_nodes_in_document_network(std::iter::once(&node_id));
+		debug_assert!(
+			is_document_network,
+			"Layer identifier constructed from node not in document network. {node_id}: {:#?}",
+			network_interface.network(false).and_then(|network| network.nodes.get(&node_id))
+		);
 		debug_assert!(
 			network_interface.is_layer(&node_id),
 			"Layer identifier constructed from non-layer node {node_id}: {:#?}",
@@ -274,7 +275,7 @@ impl LayerNodeIdentifier {
 		metadata.get_relations(self).and_then(|relations| relations.last_child)
 	}
 
-	/// Does the layer have children?
+	/// Does the layer have children? If so, then it is a folder
 	pub fn has_children(self, metadata: &DocumentMetadata) -> bool {
 		self.first_child(metadata).is_some()
 	}

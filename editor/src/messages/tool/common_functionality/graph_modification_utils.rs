@@ -1,8 +1,8 @@
-use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, NodeNetworkInterface};
+use crate::messages::portfolio::document::utility_types::document_metadata::{LayerNodeIdentifier};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
 use crate::messages::prelude::*;
 use bezier_rs::Subpath;
-use graph_craft::document::{value::TaggedValue, DocumentNode, NodeId, NodeInput, NodeNetwork};
+use graph_craft::document::{value::TaggedValue, DocumentNode, NodeId, NodeInput};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
 use graphene_core::vector::style::Gradient;
@@ -10,7 +10,6 @@ use graphene_core::vector::PointId;
 use graphene_core::Color;
 
 use glam::DVec2;
-use specta::reference;
 use std::collections::VecDeque;
 
 /// Create a new vector layer from a vector of [`bezier_rs::Subpath`].
@@ -66,7 +65,7 @@ pub fn get_pivot(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInte
 pub fn get_viewport_pivot(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DVec2 {
 	let [min, max] = network_interface.document_metadata().nonzero_bounding_box(layer);
 	let pivot = get_pivot(layer, network_interface).unwrap_or(DVec2::splat(0.5));
-	document_metadata.transform_to_viewport(layer).transform_point2(min + (max - min) * pivot)
+	network_interface.document_metadata().transform_to_viewport(layer).transform_point2(min + (max - min) * pivot)
 }
 
 /// Get the current gradient of a layer from the closest Fill node

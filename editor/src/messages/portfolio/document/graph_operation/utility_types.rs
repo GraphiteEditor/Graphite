@@ -1,27 +1,20 @@
 use super::transform_utils;
-use crate::messages::portfolio::document::node_graph::document_node_types::{resolve_document_node_type, DocumentNodeDefinition};
-use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
+use crate::messages::portfolio::document::node_graph::document_node_types::{resolve_document_node_type};
+use crate::messages::portfolio::document::utility_types::document_metadata::{LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, NodeTemplate, OutputConnector};
-use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
-use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{generate_uuid, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, Previewing};
+use graph_craft::document::{generate_uuid,NodeId, NodeInput};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::{PointId, VectorModificationType};
-use graphene_core::{Artboard, Color, Type};
-use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
-use interpreted_executor::node_registry::NODE_REGISTRY;
+use graphene_core::{Artboard, Color};
 
 use glam::{DAffine2, DVec2, IVec2};
-use std::hash::{DefaultHasher, Hash};
-use usvg::tiny_skia_path::Point;
-use web_sys::Node;
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformIn {
@@ -62,16 +55,16 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Starts at any folder, or the output, and skips layer nodes based on insert_index. Non layer nodes are always skipped. Returns the post node InputConnector and pre node OutputConnector
 	/// Non layer nodes directly upstream of a layer are treated as part of that layer. See insert_index == 2 in the diagram
 	///       -----> Post node
-	///      |      if insert_index == 0, return (Post node, Some(Layer1), 1)
+	///      |      if insert_index == 0, return (Post node, Some(Layer1))
 	/// -> Layer1   
-	///      ↑      if insert_index == 1, return (Layer1, Some(Layer2), 0)
+	///      ↑      if insert_index == 1, return (Layer1, Some(Layer2))
 	/// -> Layer2   
 	///      ↑
 	///	-> NonLayerNode
-	///      ↑      if insert_index == 2, return (NonLayerNode, Some(Layer3), 0)
+	///      ↑      if insert_index == 2, return (NonLayerNode, Some(Layer3))
 	/// -> Layer3  
-	///             if insert_index == 3, return (Layer3, None, 0)
-	pub fn get_post_node_with_index(network_interface: &NodeNetworkInterface, parent: LayerNodeIdentifier, insert_index: usize) -> (InputConnector, Option<OutputConnector>, usize) {
+	///             if insert_index == 3, return (Layer3, None)
+	pub fn get_post_node_with_index(network_interface: &NodeNetworkInterface, parent: LayerNodeIdentifier, insert_index: usize) -> (InputConnector, Option<OutputConnector>) {
 		let document_network = network_interface.document_network();
 
 		let mut post_node_input_connector = if parent == LayerNodeIdentifier::ROOT_PARENT {
@@ -109,15 +102,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 		// Sink post_node down to the end of the non layer chain that feeds into post_node, such that pre_node is the layer node at insert_index + 1, or None if insert_index is the last layer
 		loop {
-			pre_node_output_connector = pre_node_output_connector.or_else(|| {
-				network_interface.get_input(&post_node_input_connector, true).and_then(|input| {
-					if let NodeInput::Node { node_id, output_index, .. } = input {
-						(*output_index == 0).then(|| OutputConnector::node(*node_id, 0))
-					} else {
-						None
-					}
-				})
-			});
+			pre_node_output_connector = network_interface.get_upstream_output_connector(&post_node_input_connector);
 
 			match pre_node_output_connector {
 				Some(OutputConnector::Node { node_id: pre_node_id, .. }) if !network_interface.is_layer(&pre_node_id) => {
@@ -130,7 +115,7 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 		}
 
-		(Some(post_node_id), pre_node_id, post_node_input_index)
+		(post_node_input_connector, pre_node_output_connector)
 	}
 
 	/// Creates a new layer and adds it to the document network. network_interface.move_layer_to_stack should be called after
@@ -191,16 +176,15 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn insert_text(&mut self, text: String, font: Font, size: f64, layer: LayerNodeIdentifier) {
+		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_node_template();
+		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_node_template();
+		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
 		let text = resolve_document_node_type("Text").expect("Text node does not exist").node_template_input_override([
 			Some(NodeInput::network(graph_craft::concrete!(graphene_std::wasm_application_io::WasmEditorApi), 0)),
 			Some(NodeInput::value(TaggedValue::String(text), false)),
 			Some(NodeInput::value(TaggedValue::Font(font), false)),
 			Some(NodeInput::value(TaggedValue::F64(size), false)),
 		]);
-
-		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
-		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_node_template();
-		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_node_template();
 
 		let stroke_id = NodeId(generate_uuid());
 		self.insert_node_to_chain(stroke_id, layer, stroke);
@@ -213,7 +197,8 @@ impl<'a> ModifyInputsContext<'a> {
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	pub fn insert_image_data(&self, image_frame: ImageFrame<Color>, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+	pub fn insert_image_data(&mut self, image_frame: ImageFrame<Color>, layer: LayerNodeIdentifier) {
+		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
 		let image = resolve_document_node_type("Image")
 			.expect("Image node does not exist")
 			.node_template_input_override([Some(NodeInput::value(TaggedValue::ImageFrame(image_frame), false))]);
@@ -238,7 +223,7 @@ impl<'a> ModifyInputsContext<'a> {
 					},
 					|layer| vec![layer.to_node()],
 				),
-				graph_craft::document::FlowType::HorizontalFlow,
+				network_interface::FlowType::HorizontalFlow,
 			)
 			.find(|(_, node_id)| self.network_interface.get_reference(node_id).is_some_and(|node_reference| node_reference == reference))
 			.map(|(_, id)| id)
@@ -334,7 +319,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(transform_node_id) = self.get_existing_node_id("Transform") else {
 			return;
 		};
-		let upstream_transform = self.network_interface.document_metadata().upstream_transform(node_id);
+		let upstream_transform = self.network_interface.document_metadata().upstream_transform(transform_node_id);
 		let to = match transform_in {
 			TransformIn::Local => DAffine2::IDENTITY,
 			TransformIn::Scope { scope } => scope * parent_transform,
@@ -378,11 +363,11 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn brush_modify(&mut self, strokes: Vec<BrushStroke>) {
-		let Some(path_node_id) = self.get_existing_node_id("Brush") else {
+		let Some(brush_node_id) = self.get_existing_node_id("Brush") else {
 			return;
 		};
 		self.network_interface
-			.set_input(InputConnector::node(transform_node_id, 2), NodeInput::value(TaggedValue::BrushStrokes(strokes), false), true);
+			.set_input(InputConnector::node(brush_node_id, 2), NodeInput::value(TaggedValue::BrushStrokes(strokes), false), true);
 
 		self.responses.add(PropertiesPanelMessage::Refresh);
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -392,18 +377,18 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(artboard_node_id) = self.get_existing_node_id("Artboard") else {
 			return;
 		};
-		
-			let mut dimensions = dimensions;
-			let mut location = location;
 
-			if dimensions.x < 0 {
-				dimensions.x *= -1;
-				location.x -= dimensions.x;
-			}
-			if dimensions.y < 0 {
-				dimensions.y *= -1;
-				location.y -= dimensions.y;
-			}
+		let mut dimensions = dimensions;
+		let mut location = location;
+
+		if dimensions.x < 0 {
+			dimensions.x *= -1;
+			location.x -= dimensions.x;
+		}
+		if dimensions.y < 0 {
+			dimensions.y *= -1;
+			location.y -= dimensions.y;
+		}
 		self.network_interface
 			.set_input(InputConnector::node(artboard_node_id, 2), NodeInput::value(TaggedValue::IVec2(location), false), true);
 		self.network_interface
@@ -471,7 +456,7 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Inserts a node at the end of the horizontal node chain from a layer node. The position will be `Position::Chain`
 	pub fn insert_node_to_chain(&mut self, new_id: NodeId, parent: LayerNodeIdentifier, mut node_template: NodeTemplate) {
 		assert!(
-			self.network_interface.document_network().nodes.contains_key(&node_id),
+			self.network_interface.document_network().nodes.contains_key(&new_id),
 			"add_node_to_chain only works in the document network"
 		);
 		// TODO: node layout system and implementation
@@ -480,7 +465,7 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Inserts a node as a child of a layer at a certain stack index. The position will be `Position::Stack(calculated y position)`
 	pub fn insert_layer_to_stack(&mut self, new_id: NodeId, mut node_template: NodeTemplate, parent: LayerNodeIdentifier, insert_index: usize) {
 		assert!(
-			self.network_interface.document_network().nodes.contains_key(&node_id),
+			self.network_interface.document_network().nodes.contains_key(&new_id),
 			"add_node_to_stack only works in the document network"
 		);
 		// TODO: node layout system and implementation

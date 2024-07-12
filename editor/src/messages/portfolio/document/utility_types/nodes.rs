@@ -83,8 +83,8 @@ impl SelectedNodes {
 		})
 	}
 
-	pub fn selected_unlocked_layers<'a>(&'a self, metadata: &'a DocumentMetadata, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
-		self.selected_layers(metadata).filter(move |&layer| !self.layer_locked(layer, network_interface))
+	pub fn selected_unlocked_layers<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
+		self.selected_layers(network_interface.document_metadata()).filter(move |&layer| !self.layer_locked(layer, network_interface))
 	}
 
 	pub fn selected_visible_and_unlocked_layers<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
@@ -117,7 +117,7 @@ impl SelectedNodes {
 	pub fn network_has_selected_nodes(&self, network: &NodeNetwork) -> bool {
 		self.0
 			.iter()
-			.any(|node_id| network.nodes.contains_key(node_id) || *node_id == network.imports_metadata.0 || *node_id == network.exports_metadata.0)
+			.any(|node_id| network.nodes.contains_key(node_id))
 	}
 
 	pub fn has_selected_nodes(&self) -> bool {
@@ -139,12 +139,12 @@ impl SelectedNodes {
 		// If any nodes to add are in the document network, clear selected nodes in the current network
 		if new_nodes.iter().any(|node_to_add| document_network.nodes.contains_key(node_to_add)) {
 			new_nodes.retain(|selected_node| {
-				document_network.nodes.contains_key(selected_node) || document_network.imports_metadata.0 == *selected_node || document_network.exports_metadata.0 == *selected_node
+				document_network.nodes.contains_key(selected_node) 
 			});
 		}
 		// If not, then clear any nodes that are not in the current network
 		else {
-			new_nodes.retain(|selected_node| network.nodes.contains_key(selected_node) || network.imports_metadata.0 == *selected_node || network.exports_metadata.0 == *selected_node);
+			new_nodes.retain(|selected_node| network.nodes.contains_key(selected_node));
 		}
 
 		self.0 = new_nodes;
@@ -157,10 +157,10 @@ impl SelectedNodes {
 		// If the nodes to add are in the document network, clear selected nodes in the current network
 		if new.iter().any(|node_to_add| document_network.nodes.contains_key(node_to_add)) {
 			self.retain_selected_nodes(|selected_node| {
-				document_network.nodes.contains_key(selected_node) || document_network.imports_metadata.0 == *selected_node || document_network.exports_metadata.0 == *selected_node
+				document_network.nodes.contains_key(selected_node)
 			});
 		} else {
-			self.retain_selected_nodes(|selected_node| network.nodes.contains_key(selected_node) || network.imports_metadata.0 == *selected_node || network.exports_metadata.0 == *selected_node);
+			self.retain_selected_nodes(|selected_node| network.nodes.contains_key(selected_node));
 		}
 
 		self.0.extend(new);

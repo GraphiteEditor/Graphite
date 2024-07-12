@@ -8,7 +8,7 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Transf
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
-use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, NodeNetworkInterface};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
@@ -16,7 +16,7 @@ use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 
-use graph_craft::document::{DocumentNode, NodeId, NodeNetwork};
+use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;
 use graphene_std::vector::misc::BooleanOperation;
 
@@ -322,16 +322,7 @@ impl SelectToolData {
 	fn start_duplicates(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		self.non_duplicated_layers = Some(self.layers_dragging.clone());
 		let mut new_dragging = Vec::new();
-		for layer_ancestors in document.network_interface.shallowest_unique_layers(self.layers_dragging.iter().copied().rev()) {
-			let Some(layer) = layer_ancestors.last().copied() else { continue };
-
-			// `layer` cannot be `ROOT_PARENT`, since `ROOT_PARENT` cannot be part of `layers_dragging`
-			if layer == LayerNodeIdentifier::ROOT_PARENT {
-				log::error!("ROOT_PARENT cannot be in layers_dragging");
-				continue;
-			}
-
-			// `parent` can be `ROOT_PARENT`
+		for layer in document.network_interface.shallowest_unique_layers(self.layers_dragging.iter().copied().rev()) {
 			let Some(parent) = layer.parent(&document.metadata()) else { continue };
 
 			// Moves the layer back to its starting position.
@@ -346,22 +337,15 @@ impl SelectToolData {
 			let mut copy_ids = HashMap::new();
 			let node_id = layer.to_node();
 			copy_ids.insert(node_id, NodeId(0 as u64));
-			if let Some(input_node) = document
+
+			document
 				.network_interface
-				.document_network()
-				.nodes
-				.get(&node_id)
-				.and_then(|node| if document.network_interface.is_layer(&node_id) { node.inputs.get(1) } else { node.inputs.get(0) })
-				.and_then(|input| input.as_node())
-			{
-				document
-					.network_interface
-					.upstream_flow_back_from_nodes(vec![input_node], FlowType::UpstreamFlow)
-					.enumerate()
-					.for_each(|(index, (_, node_id))| {
-						copy_ids.insert(node_id, NodeId((index + 1) as u64));
-					});
-			};
+				.upstream_flow_back_from_nodes(vec![layer.to_node()], FlowType::LayerChildrenUpstreamFlow)
+				.enumerate()
+				.for_each(|(index, (_, node_id))| {
+					copy_ids.insert(node_id, NodeId((index + 1) as u64));
+				});
+
 			let nodes: HashMap<NodeId, NodeTemplate> = document.network_interface.copy_nodes(&copy_ids, true).collect();
 
 			let insert_index = DocumentMessageHandler::get_calculated_insert_index(&document.metadata(), &document.selected_nodes, parent);
@@ -396,12 +380,7 @@ impl SelectToolData {
 		};
 
 		// Delete the duplicated layers
-		for layer_ancestors in document.network_interface.shallowest_unique_layers(self.layers_dragging.iter().copied()) {
-			let layer = layer_ancestors.last().unwrap();
-			if *layer == LayerNodeIdentifier::ROOT_PARENT {
-				log::error!("ROOT_PARENT cannot be in layers_dragging");
-				continue;
-			}
+		for layer in document.network_interface.shallowest_unique_layers(self.layers_dragging.iter().copied()) {
 			responses.add(NodeGraphMessage::DeleteNodes {
 				node_ids: vec![layer.to_node()],
 				reconnect: true,
@@ -447,7 +426,7 @@ impl Fsm for SelectToolFsmState {
 			(_, SelectToolMessage::Overlays(mut overlay_context)) => {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 
-				let selected_layers_count = document.selected_nodes.selected_unlocked_layers(document.metadata(), &document.network_interface).count();
+				let selected_layers_count = document.selected_nodes.selected_unlocked_layers(&document.network_interface).count();
 				tool_data.selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
 				tool_data.selected_layers_count = selected_layers_count;
 
@@ -703,9 +682,9 @@ impl Fsm for SelectToolFsmState {
 				let mouse_delta = snap_drag(start, current, axis_align, snap_data, &mut tool_data.snap_manager, &tool_data.snap_candidates);
 
 				// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
-				for layer_ancestors in document.network_interface.shallowest_unique_layers(tool_data.layers_dragging.iter().copied()) {
+				for layer in document.network_interface.shallowest_unique_layers(tool_data.layers_dragging.iter().copied()) {
 					responses.add_front(GraphOperationMessage::TransformChange {
-						layer: *layer_ancestors.last().unwrap(),
+						layer,
 						transform: DAffine2::from_translation(mouse_delta),
 						transform_in: TransformIn::Viewport,
 						skip_rerender: false,

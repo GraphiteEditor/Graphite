@@ -1,4 +1,3 @@
-use graph_craft::document::DocumentNode;
 use graph_craft::document::NodeId;
 
 use std::collections::HashMap;
@@ -24,5 +23,4 @@ pub struct CopyBufferEntry {
 	pub visible: bool,
 	pub locked: bool,
 	pub collapsed: bool,
-	pub alias: String,
 }

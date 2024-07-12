@@ -1,27 +1,23 @@
 use super::transform_utils;
 use super::utility_types::ModifyInputsContext;
-use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
-use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
+use crate::messages::portfolio::document::utility_types::document_metadata::{ LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::network_interface::{
-	self, InputConnector, LayerTransientMetadata, NodeNetworkInterface, NodeTypePersistentMetadata, NodeTypeTransientMetadata,
+	InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::messages::prelude::*;
 
-use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{generate_uuid, NodeId, NodeInput, NodeNetwork, Previewing};
+use graph_craft::document::{generate_uuid, NodeId, NodeInput};
 use graphene_core::renderer::Quad;
 use graphene_core::text::Font;
 use graphene_core::vector::style::{Fill, Gradient, GradientStops, GradientType, LineCap, LineJoin, Stroke};
 use graphene_core::Color;
 use graphene_std::vector::convert_usvg_path;
 
-use glam::{DAffine2, DVec2, IVec2};
-use specta::reference;
+use glam::{DAffine2, DVec2};
 
 pub struct GraphOperationMessageData<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
-	pub document_metadata: &'a mut DocumentMetadata,
 	pub selected_nodes: &'a mut SelectedNodes,
 	pub collapsed: &'a mut CollapsedLayers,
 	pub node_graph: &'a mut NodeGraphMessageHandler,
@@ -36,7 +32,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 	fn process_message(&mut self, message: GraphOperationMessage, responses: &mut VecDeque<Message>, data: GraphOperationMessageData) {
 		let GraphOperationMessageData {
 			network_interface,
-			document_metadata,
 			selected_nodes,
 			collapsed,
 			node_graph,
@@ -50,7 +45,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					.persistent_metadata
 					.node_metadata
 					.iter()
-					.any(|(node_id, node)| node.persistent_metadata.reference.is_some_and(|reference| reference == "Output") && *node_id == NodeId(0))
+					.any(|(node_id, node)| node.persistent_metadata.reference.as_ref().is_some_and(|reference| reference == "Output") && *node_id == NodeId(0))
 				{
 					network_interface.delete_nodes(vec![NodeId(0)], true, selected_nodes, responses, true);
 				}
@@ -182,7 +177,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				transform_in,
 				skip_rerender,
 			} => {
-				let parent_transform = document_metadata.downstream_transform_to_viewport(layer);
+				let parent_transform = network_interface.document_metadata().downstream_transform_to_viewport(layer);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.transform_change(transform, transform_in, parent_transform, skip_rerender);
 				}
@@ -193,8 +188,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				transform_in,
 				skip_rerender,
 			} => {
-				let parent_transform = document_metadata.downstream_transform_to_viewport(layer);
-				let current_transform = Some(document_metadata.transform_to_viewport(layer));
+				let parent_transform = network_interface.document_metadata().downstream_transform_to_viewport(layer);
+				let current_transform = Some(network_interface.document_metadata().transform_to_viewport(layer));
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.transform_set(transform, transform_in, parent_transform, current_transform, skip_rerender);
 				}
@@ -236,8 +231,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			} => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(id, parent);
-				modify_inputs.insert_image_data(image_frame, layer, responses);
-				network_interface.move_layer_to_stack(layer, parent, 0);
+				modify_inputs.insert_image_data(image_frame, layer);
+				network_interface.move_layer_to_stack(layer, parent, insert_index);
 			}
 			GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
@@ -246,14 +241,14 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				if nodes.len() > 0 {
 					// Add the nodes to the network
 					let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
+					// Since all the new nodes are already connected, just connect the input of the layer to first new node
+					let first_new_node_id = new_ids[&NodeId(0)];
 					responses.add(NodeGraphMessage::AddNodes {
 						nodes,
-						new_ids,
+						new_ids: new_ids,
 						use_document_network: true,
 					});
 
-					// Since all the new nodes are already connected, just connect the input of the layer to first new node
-					let first_new_node_id = new_ids[&NodeId(0)];
 					responses.add(NodeGraphMessage::SetInput {
 						input_connector: InputConnector::node(layer.to_node(), 1),
 						input: NodeInput::node(first_new_node_id, 0),
@@ -288,7 +283,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				network_interface.move_layer_to_stack(layer, parent, insert_index);
 			}
 			GraphOperationMessage::ResizeArtboard { layer, location, dimensions } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, document_network, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.resize_artboard(location, dimensions);
 				}
 			}
@@ -331,9 +326,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				responses.add(DocumentMessage::StartTransaction);
 
 				// If any of the selected nodes are hidden, show them all. Otherwise, hide them all.
-				let visible = !selected_nodes.selected_layers(&document_metadata).all(|layer| network_interface.is_visible(&layer.to_node()));
+				let visible = !selected_nodes
+					.selected_layers(&network_interface.document_metadata())
+					.all(|layer| network_interface.is_visible(&layer.to_node()));
 
-				for layer in selected_nodes.selected_layers(&document_metadata) {
+				for layer in selected_nodes.selected_layers(&network_interface.document_metadata()) {
 					responses.add(GraphOperationMessage::SetVisibility { node_id: layer.to_node(), visible });
 				}
 			}
@@ -360,19 +357,21 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				responses.add(DocumentMessage::StartTransaction);
 
 				// If any of the selected nodes are locked, show them all. Otherwise, hide them all.
-				let locked = !selected_nodes.selected_layers(&document_metadata).all(|layer| network_interface.is_locked(&layer.to_node()));
+				let locked = !selected_nodes
+					.selected_layers(&network_interface.document_metadata())
+					.all(|layer| network_interface.is_locked(&layer.to_node()));
 
-				for layer in selected_nodes.selected_layers(&document_metadata) {
+				for layer in selected_nodes.selected_layers(&network_interface.document_metadata()) {
 					responses.add(GraphOperationMessage::SetLocked { layer, locked });
 				}
 			}
 			GraphOperationMessage::ToggleLocked { layer } => {
 				let Some(node_metadata) = network_interface.document_network_metadata().persistent_metadata.node_metadata.get(&layer.to_node()) else {
-					log::error!("Cannot get node {:?} in GraphOperationMessage::ToggleLocked", node_id);
+					log::error!("Cannot get node {:?} in GraphOperationMessage::ToggleLocked", layer.to_node());
 					return;
 				};
 
-				let locked = if let NodeTypePersistentMetadata::Layer(layer_metadata) = node_metadata.persistent_metadata.node_type_metadata {
+				let locked = if let NodeTypePersistentMetadata::Layer(layer_metadata) = &node_metadata.persistent_metadata.node_type_metadata {
 					!layer_metadata.locked
 				} else {
 					log::error!("Layer should always store LayerPersistentMetadata");
@@ -382,9 +381,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				responses.add(GraphOperationMessage::SetLocked { layer, locked });
 			}
 			GraphOperationMessage::SetLocked { layer, locked } => {
-				network_interface.set_locked(node_id, locked);
+				network_interface.set_locked(layer.to_node(), locked);
 
-				if network_interface.connected_to_output(&node_id) {
+				if network_interface.connected_to_output(&layer.to_node()) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 

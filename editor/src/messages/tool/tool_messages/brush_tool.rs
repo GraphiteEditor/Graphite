@@ -6,7 +6,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Flow
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNodeMetadata, NodeId, NodeInput};
+use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::raster::BlendMode;
 use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::brush_stroke::{BrushInputSample, BrushStroke, BrushStyle};

@@ -6,13 +6,12 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::ToolType;
 
-use graph_craft::document::{self, NodeNetwork};
 use graphene_core::renderer::Quad;
 use graphene_core::vector::ManipulatorPointId;
 use graphene_core::vector::VectorModificationType;
 use graphene_std::vector::{HandleId, PointId};
 
-use super::network_interface::{self, NodeNetworkInterface};
+use super::network_interface::{NodeNetworkInterface};
 use glam::{DAffine2, DVec2};
 use std::collections::{HashMap, VecDeque};
 
@@ -75,7 +74,7 @@ impl OriginalTransforms {
 					if path_map.contains_key(&layer) {
 						continue;
 					}
-					let Some(vector_data) = network_interface.document_metadata().compute_modified_vector(layer, document_network) else {
+					let Some(vector_data) = network_interface.document_metadata().compute_modified_vector(layer, network_interface) else {
 						continue;
 					};
 					let Some(selected_points) = shape_editor.selected_points_in_layer(layer) else {
@@ -444,16 +443,14 @@ impl<'a> Selected<'a> {
 	pub fn apply_transformation(&mut self, transformation: DAffine2) {
 		if !self.selected.is_empty() {
 			// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
-			for layer_ancestors in self.network_interface.shallowest_unique_layers(self.selected.iter().copied()) {
-				let layer = *layer_ancestors.last().unwrap();
-
+			for layer in self.network_interface.shallowest_unique_layers(self.selected.iter().copied()) {
 				match &mut self.original_transforms {
 					OriginalTransforms::Layer(layer_transforms) => {
 						Self::transform_layer(self.network_interface.document_metadata(), layer, layer_transforms.get(&layer), transformation, self.responses)
 					}
 					OriginalTransforms::Path(path_transforms) => {
 						if let Some(initial_points) = path_transforms.get_mut(&layer) {
-							Self::transform_path(sself.network_interface.document_metadata(), layer, initial_points, transformation, self.responses)
+							Self::transform_path(self.network_interface.document_metadata(), layer, initial_points, transformation, self.responses)
 						}
 					}
 				}

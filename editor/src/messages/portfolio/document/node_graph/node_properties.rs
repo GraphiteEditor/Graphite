@@ -21,7 +21,6 @@ use graphene_std::vector::style::{Fill, FillChoice};
 use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_std::transform::Footprint;
 use graphene_std::vector::misc::BooleanOperation;
-use specta::reference;
 
 pub fn string_properties(text: impl Into<String>) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_holder();
