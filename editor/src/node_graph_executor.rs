@@ -309,9 +309,10 @@ impl NodeRuntime {
 				// Insert the vector modify if we are dealing with vector data
 				self.vector_modify.insert(parent_network_node_id, record.output.clone());
 			}
+
 			// If this is `VectorData`, `ImageFrame`, or `GraphicElement` data:
 			// Update the stored upstream transforms for this layer/node.
-			else if let Some(transform) = {
+			if let Some(transform) = {
 				fn try_downcast<T: Transform + 'static>(value: &dyn std::any::Any) -> Option<(Footprint, DAffine2)> {
 					let io_data = value.downcast_ref::<IORecord<Footprint, T>>()?;
 					let transform = io_data.output.transform();
