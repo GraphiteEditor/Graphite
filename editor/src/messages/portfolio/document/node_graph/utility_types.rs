@@ -44,6 +44,7 @@ pub struct FrontendGraphInput {
 	pub name: String,
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: Option<String>,
+	#[serde(rename = "connectedTo")]
 	pub connected_to: Option<OutputConnector>,
 }
 
@@ -163,4 +164,16 @@ pub struct ContextMenuInformation {
 	pub context_menu_coordinates: (i32, i32),
 	#[serde(rename = "contextMenuData")]
 	pub context_menu_data: ContextMenuData,
+}
+
+#[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct FrontEndClickTargets {
+	#[serde(rename = "nodeClickTargets")]
+	pub node_click_targets: Vec<String>,
+	#[serde(rename = "layerClickTargets")]
+	pub layer_click_targets: Vec<String>,
+	#[serde(rename = "portClickTargets")]
+	pub port_click_targets: Vec<String>,
+	#[serde(rename = "visibilityClickTargets")]
+	pub visibility_click_targets: Vec<String>,
 }

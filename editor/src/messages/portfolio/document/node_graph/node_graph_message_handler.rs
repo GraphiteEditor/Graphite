@@ -1,4 +1,4 @@
-use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeWire, WirePath};
+use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontEndClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeWire, WirePath};
 use super::{document_node_types, node_properties};
 use crate::application::generate_uuid;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
@@ -134,11 +134,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				self.wire_in_progress_to_connector = None;
 				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 			}
-			NodeGraphMessage::CreateNode {
-				node_id,
-				node_type,
-				use_document_network,
-			} => {
+			NodeGraphMessage::CreateNodeFromContextMenu { node_id, node_type } => {
 				let node_id = node_id.unwrap_or_else(|| NodeId(generate_uuid()));
 
 				let Some(document_node_type) = document_node_types::resolve_document_node_type(&node_type) else {
@@ -153,47 +149,45 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				self.context_menu = None;
 
 				// Only auto connect to the dragged wire if the node is being added to the currently opened network
-				if !use_document_network {
-					if let Some(output_connector_position) = self.wire_in_progress_from_connector {
-						let Some(output_connector) = &network_interface.get_output_connector_from_click(output_connector_position) else {
-							log::error!("Could not get output from connector start");
-							return;
-						};
+				if let Some(output_connector_position) = self.wire_in_progress_from_connector {
+					let Some(output_connector) = &network_interface.get_output_connector_from_click(output_connector_position) else {
+						log::error!("Could not get output from connector start");
+						return;
+					};
 
-						// Ensure connection is to correct input of new node. If it does not have an input then do not connect
-						if let Some((input_index, _)) = node_template
-							.document_node
-							.inputs
-							.iter()
-							.enumerate()
-							.find(|(_, input)| input.is_exposed_to_frontend(network_interface.is_document_network()))
-						{
-							responses.add(NodeGraphMessage::CreateWire {
-								output_connector: output_connector.clone(),
-								input_connector: InputConnector::node(node_id, input_index),
-								use_document_network: false,
-							});
-							if let OutputConnector::Node { node_id, .. } = output_connector {
-								if network_interface.connected_to_output(&node_id) {
-									responses.add(NodeGraphMessage::RunDocumentGraph);
-								}
-							} else {
-								// Creating wire to export node, always run graph
+					// Ensure connection is to correct input of new node. If it does not have an input then do not connect
+					if let Some((input_index, _)) = node_template
+						.document_node
+						.inputs
+						.iter()
+						.enumerate()
+						.find(|(_, input)| input.is_exposed_to_frontend(network_interface.is_document_network()))
+					{
+						responses.add(NodeGraphMessage::CreateWire {
+							output_connector: output_connector.clone(),
+							input_connector: InputConnector::node(node_id, input_index),
+							use_document_network: false,
+						});
+						if let OutputConnector::Node { node_id, .. } = output_connector {
+							if network_interface.connected_to_output(&node_id) {
 								responses.add(NodeGraphMessage::RunDocumentGraph);
 							}
-							responses.add(NodeGraphMessage::SendGraph);
+						} else {
+							// Creating wire to export node, always run graph
+							responses.add(NodeGraphMessage::RunDocumentGraph);
 						}
-
-						self.wire_in_progress_from_connector = None;
-						self.wire_in_progress_to_connector = None;
+						responses.add(NodeGraphMessage::SendGraph);
 					}
+
+					self.wire_in_progress_from_connector = None;
+					self.wire_in_progress_to_connector = None;
 				}
 
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(NodeGraphMessage::InsertNode {
 					node_id,
 					node_template,
-					use_document_network,
+					use_document_network: false,
 				});
 
 				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
@@ -986,6 +980,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(BroadcastEvent::SelectionChanged);
 				responses.add(PropertiesPanelMessage::Refresh);
 			}
+			NodeGraphMessage::SendClickTargets => responses.add(FrontendMessage::UpdateClickTargets {
+				click_targets: Some(network_interface.collect_front_end_click_targets()),
+			}),
+			NodeGraphMessage::EndSendClickTargets => responses.add(FrontendMessage::UpdateClickTargets { click_targets: None }),
 			NodeGraphMessage::SendGraph => {
 				self.send_graph(network_interface, collapsed, graph_view_overlay_open, responses);
 			}
@@ -1164,7 +1162,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 impl NodeGraphMessageHandler {
 	/// Similar to [`NodeGraphMessageHandler::actions`], but this provides additional actions if the node graph is open and should only be called in that circumstance.
 	pub fn actions_additional_if_node_graph_is_open(&self) -> ActionList {
-		let mut common = actions!(NodeGraphMessageDiscriminant; EnterNestedNetwork, PointerDown, PointerMove, PointerUp);
+		let mut common = actions!(NodeGraphMessageDiscriminant; EnterNestedNetwork, PointerDown, PointerMove, PointerUp, SendClickTargets, EndSendClickTargets);
 
 		if self.has_selection {
 			common.extend(actions!(NodeGraphMessageDiscriminant;

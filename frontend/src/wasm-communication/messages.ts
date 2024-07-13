@@ -29,6 +29,10 @@ export class UpdateBox extends JsMessage {
 	readonly box!: Box | undefined;
 }
 
+export class UpdateClickTargets extends JsMessage {
+	readonly clickTargets!: ClickTargets | undefined;
+}
+
 const ContextTupleToVec2 = Transform((data) => {
 	if (data.obj.contextMenuInformation === undefined) return undefined;
 	const contextMenuCoordinates = { x: data.obj.contextMenuInformation.contextMenuCoordinates[0], y: data.obj.contextMenuInformation.contextMenuCoordinates[1] };
@@ -127,6 +131,13 @@ export class Box {
 	readonly endY!: number;
 }
 
+export type ClickTargets = {
+	readonly nodeClickTargets: string[];
+	readonly layerClickTargets: string[];
+	readonly portClickTargets: string[];
+	readonly visibilityClickTargets: string[];
+};
+
 export type ContextMenuInformation = {
 	contextMenuCoordinates: XY;
 
@@ -135,6 +146,25 @@ export type ContextMenuInformation = {
 
 export type FrontendGraphDataType = "General" | "Raster" | "VectorData" | "Number" | "Graphic" | "Artboard";
 
+export class Node {
+	readonly nodeId!: bigint;
+	readonly index!: bigint;
+}
+
+export class Export {
+	readonly nodeId!: bigint;
+	readonly inputIndex!: bigint;
+}
+
+export class Import {
+	readonly nodeId!: bigint;
+	readonly inputIndex!: bigint;
+}
+
+export type OutputConnector = Node | Export;
+
+export type InputConnector = Node | Import;
+
 export class FrontendGraphInput {
 	readonly dataType!: FrontendGraphDataType;
 
@@ -142,7 +172,7 @@ export class FrontendGraphInput {
 
 	readonly resolvedType!: string | undefined;
 
-	readonly connected!: bigint | undefined;
+	readonly connectedTo!: OutputConnector | undefined;
 }
 
 export class FrontendGraphOutput {
@@ -152,7 +182,7 @@ export class FrontendGraphOutput {
 
 	readonly resolvedType!: string | undefined;
 
-	readonly connected!: bigint[];
+	readonly connectedTo!: InputConnector[];
 
 	readonly connectedIndex!: bigint[];
 }
@@ -1453,6 +1483,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerVisitLink,
 	UpdateActiveDocument,
 	UpdateBox,
+	UpdateClickTargets,
 	UpdateContextMenuInformation,
 	UpdateLayerWidths,
 	UpdateDialogButtons,

@@ -298,10 +298,12 @@
 	}
 
 	function connectedToText(output: FrontendGraphOutput): string {
-		if (output.connected.length === 0) {
+		if (output.connectedTo.length === 0) {
 			return "Connected to nothing";
 		} else {
-			return output.connected.map((nodeId, index) => `Connected to ${nodeId}, port index ${output.connectedIndex[index]}`).join("\n");
+			console.log(output.connectedTo);
+			return "";
+			//return output.connectedTo.map((input_connector) => `Connected to ${nodeId}, port index ${output.connectedIndex[index]}`).join("\n");
 		}
 	}
 </script>
@@ -377,6 +379,24 @@
 			{/if}
 		</LayoutCol>
 	{/if}
+	{#if $nodeGraph.clickTargets}
+		<div class="click-targets" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
+			<svg>
+				{#each $nodeGraph.clickTargets.nodeClickTargets as pathString}
+					<path class="node" d={pathString} />
+				{/each}
+				{#each $nodeGraph.clickTargets.layerClickTargets as pathString}
+					<path class="layer" d={pathString} />
+				{/each}
+				{#each $nodeGraph.clickTargets.portClickTargets as pathString}
+					<path class="port" d={pathString} />
+				{/each}
+				{#each $nodeGraph.clickTargets.visibilityClickTargets as pathString}
+					<path class="visibility" d={pathString} />
+				{/each}
+			</svg>
+		</div>
+	{/if}
 	<!-- Node connection wires -->
 	<div class="wires" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
 		<svg>
@@ -439,9 +459,9 @@
 							bind:this={outputs[nodeIndex][0]}
 						>
 							<title>{`${dataTypeTooltip(node.primaryOutput)}\n${connectedToText(node.primaryOutput)}`}</title>
-							{#if node.primaryOutput.connected.length > 0}
+							{#if node.primaryOutput.connectedTo.length > 0}
 								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color)" />
-								{#if Number(node.primaryOutput?.connectedIndex) === 0 && $nodeGraph.nodes.find((n) => node.primaryOutput?.connected.includes(n.id))?.isLayer}
+								{#if Number(node.primaryOutput?.connectedIndex) === 0 && $nodeGraph.nodes.find((n) => node.primaryOutput?.connectedTo.includes(n.id))?.isLayer}
 									<path d="M0,-3.5h8v8l-2.521,-1.681a2.666,2.666,0,0,0,-2.959,0l-2.52,1.681z" fill="var(--data-color-dim)" />
 								{/if}
 							{:else}
@@ -461,11 +481,11 @@
 						bind:this={inputs[nodeIndex][0]}
 					>
 						{#if node.primaryInput}
-							<title>{`${dataTypeTooltip(node.primaryInput)}\nConnected to ${node.primaryInput?.connected !== undefined ? node.primaryInput.connected : "nothing"}`}</title>
+							<title>{`${dataTypeTooltip(node.primaryInput)}\nConnected to ${node.primaryInput?.connectedTo !== undefined ? node.primaryInput.connectedTo : "nothing"}`}</title>
 						{/if}
-						{#if node.primaryInput?.connected !== undefined}
+						{#if node.primaryInput?.connectedTo !== undefined}
 							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color)" />
-							{#if $nodeGraph.nodes.find((n) => n.id === node.primaryInput?.connected)?.isLayer}
+							{#if $nodeGraph.nodes.find((n) => n.id === node.primaryInput?.connectedTo)?.isLayer}
 								<path d="M0,10.95l2.52,-1.69c0.89,-0.6,2.06,-0.6,2.96,0l2.52,1.69v5.05h-8v-5.05z" fill="var(--data-color-dim)" />
 							{/if}
 						{:else}
@@ -770,6 +790,32 @@
 			}
 		}
 
+		.click-targets {
+			position: absolute;
+			z-index: 10;
+			pointer-events: none;
+			width: 100%;
+			height: 100%;
+			svg {
+				width: 100%;
+				height: 100%;
+				overflow: visible;
+				fill: none;
+				stroke-width: 1;
+				.layer {
+					stroke: yellow;
+				}
+				.node {
+					stroke: blue;
+				}
+				.port {
+					stroke: green;
+				}
+				.visibility {
+					stroke: red;
+				}
+			}
+		}
 		.wires {
 			pointer-events: none;
 			position: absolute;

@@ -3,12 +3,14 @@ import { writable } from "svelte/store";
 import { type Editor } from "@graphite/wasm-communication/editor";
 import {
 	type Box,
+	type ClickTargets,
 	type ContextMenuInformation,
 	type FrontendNode,
 	type FrontendNodeWire as FrontendNodeWire,
 	type FrontendNodeType,
 	type WirePath,
 	UpdateBox,
+	UpdateClickTargets,
 	UpdateContextMenuInformation,
 	UpdateLayerWidths,
 	UpdateNodeGraph,
@@ -25,6 +27,7 @@ import {
 export function createNodeGraphState(editor: Editor) {
 	const { subscribe, update } = writable({
 		box: undefined as Box | undefined,
+		clickTargets: undefined as ClickTargets | undefined,
 		contextMenuInformation: undefined as ContextMenuInformation | undefined,
 		layerWidths: new Map<bigint, number>(),
 		nodes: [] as FrontendNode[],
@@ -42,6 +45,13 @@ export function createNodeGraphState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateBox, (updateBox) => {
 		update((state) => {
 			state.box = updateBox.box;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateClickTargets, (UpdateClickTargets) => {
+		update((state) => {
+			state.clickTargets = UpdateClickTargets.clickTargets;
+			console.log("Frontend Click Targets: ", state.clickTargets);
 			return state;
 		});
 	});

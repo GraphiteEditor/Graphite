@@ -1,4 +1,7 @@
-use crate::messages::{portfolio::document::graph_operation::utility_types::ModifyInputsContext, prelude::Responses};
+use crate::messages::{
+	portfolio::document::{graph_operation::utility_types::ModifyInputsContext, node_graph::utility_types::FrontEndClickTargets},
+	prelude::Responses,
+};
 use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::{
@@ -503,7 +506,7 @@ impl NodeNetworkInterface {
 			}
 			NodeTypePersistentMetadata::Node(node_metadata) => {
 				match node_metadata.position {
-					NodePosition::Absolute(_) => todo!(),
+					NodePosition::Absolute(position) => Some(position),
 					NodePosition::Chain => {
 						// Iterate through primary flow to find the first Layer
 						let mut current_node_id = node_id;
@@ -974,6 +977,55 @@ impl NodeNetworkInterface {
 
 // Public mutable getters for data that involves transient metadata, which may need to be created if they are unloaded
 impl NodeNetworkInterface {
+	pub fn collect_front_end_click_targets(&mut self) -> FrontEndClickTargets {
+		let mut all_node_click_targets = Vec::new();
+		let mut port_click_targets = Vec::new();
+		let mut visibility_click_targets = Vec::new();
+		let Some(network_metadata) = self.network_metadata(false) else {
+			log::error!("Could not get nested network_metadata in collect_node_click_targets");
+			return FrontEndClickTargets::default();
+		};
+		network_metadata
+			.persistent_metadata
+			.node_metadata
+			.iter()
+			.map(|(node_id, _)| node_id.clone())
+			.collect::<Vec<_>>()
+			.into_iter()
+			.for_each(|node_id| {
+				if let Some(transient_node_metadata) = self.get_transient_node_metadata(&node_id, false) {
+					let mut node_path = String::new();
+					transient_node_metadata.node_click_target.subpath.subpath_to_svg(&mut node_path, DAffine2::IDENTITY);
+					all_node_click_targets.push((node_id, node_path));
+					for port in transient_node_metadata.port_click_targets.get_click_targets() {
+						let mut port_path = String::new();
+						port.subpath.subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
+						port_click_targets.push(port_path);
+					}
+					if let NodeTypeTransientMetadata::Layer(layer_metadata) = &transient_node_metadata.node_type_metadata {
+						let mut port_path = String::new();
+						layer_metadata.visibility_click_target.subpath.subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
+						visibility_click_targets.push(port_path);
+					}
+				}
+			});
+		let mut layer_click_targets = Vec::new();
+		let mut node_click_targets = Vec::new();
+		all_node_click_targets.into_iter().for_each(|(node_id, path)| {
+			if self.is_layer(&node_id) {
+				layer_click_targets.push(path);
+			} else {
+				node_click_targets.push(path);
+			}
+		});
+		FrontEndClickTargets {
+			node_click_targets,
+			layer_click_targets,
+			port_click_targets,
+			visibility_click_targets,
+		}
+	}
+
 	/// This method is implemented in the interface since creating a node requires information from both the NodeNetwork and network metadata
 	pub fn get_transient_node_metadata(&mut self, node_id: &NodeId, use_document_network: bool) -> Option<&DocumentNodeTransientMetadata> {
 		let Some(network_metadata) = self.network_metadata(use_document_network) else {
@@ -1301,7 +1353,6 @@ impl NodeNetworkInterface {
 		else {
 			return;
 		};
-		log::debug!("First root layer: {first_root_layer:?}");
 		// Should refer to output node
 		let mut awaiting_horizontal_flow = vec![(first_root_layer.to_node(), first_root_layer)];
 		let mut awaiting_primary_flow = vec![];
@@ -1342,7 +1393,6 @@ impl NodeNetworkInterface {
 			for (parent, child) in children {
 				parent.push_child(self.document_metadata_mut(), child);
 			}
-			log::debug!("self.document_metadata.structure: {:?}", self.document_metadata.structure);
 			while let Some((primary_root_node_id, parent_layer_node)) = awaiting_primary_flow.pop() {
 				let primary_flow_iter = self.upstream_flow_back_from_nodes(vec![primary_root_node_id], FlowType::PrimaryFlow);
 				// Skip the primary_root_node_id node
@@ -1450,13 +1500,13 @@ impl NodeNetworkInterface {
 		};
 
 		// If the input is inserted as the first input or second input, then it may have affected the document metadata structure
-		if input_index == 0 || input_index == 1 {
+		if insert_index == 0 || insert_index == 1 {
 			self.load_structure();
 		}
 	}
 
 	/// Inserts a new input at insert index. If the insert index is -1 it is inserted at the end. The output_name is used by the encapsulating node.
-	pub fn add_input(&mut self, node_id: &NodeId, default_value: TaggedValue, exposed: bool, input_index: isize, input_name: String, use_document_network: bool) {
+	pub fn add_input(&mut self, node_id: &NodeId, default_value: TaggedValue, exposed: bool, insert_index: isize, input_name: String, use_document_network: bool) {
 		let Some(network) = self.network_mut(use_document_network) else {
 			log::error!("Could not get nested network in insert_input");
 			return;
@@ -1466,10 +1516,10 @@ impl NodeNetworkInterface {
 			return;
 		};
 		let input = NodeInput::Value { tagged_value: default_value, exposed };
-		if input_index == -1 {
+		if insert_index == -1 {
 			node.inputs.push(input);
 		} else {
-			node.inputs.insert(input_index as usize, input);
+			node.inputs.insert(insert_index as usize, input);
 		}
 
 		let Some(network_metadata) = self.network_metadata_mut(use_document_network) else {
@@ -1480,10 +1530,10 @@ impl NodeNetworkInterface {
 			log::error!("Could not get node_metadata in insert_input");
 			return;
 		};
-		if input_index == -1 {
+		if insert_index == -1 {
 			node_metadata.persistent_metadata.input_names.push(input_name);
 		} else {
-			node_metadata.persistent_metadata.input_names.insert(input_index as usize, input_name);
+			node_metadata.persistent_metadata.input_names.insert(insert_index as usize, input_name);
 		}
 
 		// Update the click targets for the node and its internal network imports (if has a network implementation)
@@ -1494,7 +1544,7 @@ impl NodeNetworkInterface {
 		}
 
 		// If the input is inserted as the first input, then it may have affected the document metadata structure
-		if input_index == 0 || input_index == 1 {
+		if insert_index == 0 || insert_index == 1 {
 			self.load_structure();
 		}
 	}
@@ -2084,7 +2134,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Sets the position of a node to an absolute position
-	fn set_absolute_node_position(&mut self, node_id: &NodeId, position: IVec2) {
+	fn set_absolute_position(&mut self, node_id: &NodeId, position: IVec2) {
 		let Some(network_metadata) = self.network_metadata_for_selected_nodes_mut(std::iter::once(node_id)) else {
 			log::error!("Could not get nested network_metadata in shift_node");
 			return;
@@ -2095,8 +2145,11 @@ impl NodeNetworkInterface {
 		};
 		if let NodeTypePersistentMetadata::Node(node_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
 			node_metadata.position = NodePosition::Absolute(position);
+		} else if let NodeTypePersistentMetadata::Layer(layer_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
+			layer_metadata.position = LayerPosition::Absolute(position);
 		}
 	}
+
 	/// Shifts a node by a certain offset without the auto layout system. If the node is a layer in a stack, the y_offset is shifted. If the node is a node in a chain, its position gets set to absolute.
 	pub fn shift_node(&mut self, node_id: &NodeId, shift: IVec2) {
 		let use_document_network = self.selected_nodes_in_document_network(std::iter::once(node_id));
@@ -2109,16 +2162,16 @@ impl NodeNetworkInterface {
 			return;
 		};
 		if let NodeTypePersistentMetadata::Layer(layer_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
-			if let LayerPosition::Absolute(mut layer_position) = layer_metadata.position {
-				layer_position += shift;
-			} else if let LayerPosition::Stack(mut y_offset) = layer_metadata.position {
-				let shifted_y_offset = y_offset as i32 + shift.y;
+			if let LayerPosition::Absolute(layer_position) = &mut layer_metadata.position {
+				*layer_position += shift;
+			} else if let LayerPosition::Stack(y_offset) = &mut layer_metadata.position {
+				let shifted_y_offset = *y_offset as i32 + shift.y;
 				// A layer can only be shifted to a positive y_offset
-				y_offset = shifted_y_offset.max(0) as u32;
+				*y_offset = shifted_y_offset.max(0) as u32;
 			}
 		} else if let NodeTypePersistentMetadata::Node(node_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
-			if let NodePosition::Absolute(mut node_metadata) = node_metadata.position {
-				node_metadata += shift;
+			if let NodePosition::Absolute(node_metadata) = &mut node_metadata.position {
+				*node_metadata += shift;
 			} else if let NodePosition::Chain = node_metadata.position {
 				// TODO: Dont't break the chain when shifting a node left or right. Instead, shift the entire chain (?).
 				// TODO: Instead of outward wires to the export being based on the export (which changes when previewing), it should be based on the root node.
@@ -2129,7 +2182,7 @@ impl NodeNetworkInterface {
 						IVec2::new(0, 0)
 					})
 					.y + shift;
-				self.set_absolute_node_position(node_id, position);
+				self.set_absolute_position(node_id, position);
 			}
 		}
 		//TODO: Update transient metadata based on the movement. Unloading it means it will be recalculated next time it is needed, which is a simple solution.
@@ -2323,6 +2376,13 @@ impl Ports {
 			input_ports: Vec::new(),
 			output_ports: Vec::new(),
 		}
+	}
+
+	pub fn get_click_targets(&self) -> impl Iterator<Item = &ClickTarget> {
+		self.input_ports
+			.iter()
+			.map(|(_, click_target)| click_target)
+			.chain(self.output_ports.iter().map(|(_, click_target)| click_target))
 	}
 
 	fn insert_input_port_at_center(&mut self, input_index: usize, center: DVec2) {
@@ -2558,7 +2618,7 @@ impl PartialEq for DocumentNodeMetadata {
 }
 
 /// Persistent metadata for each node in the network, which must be included when creating, serializing, and deserializing saving a node.
-#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocumentNodePersistentMetadata {
 	/// The name of the node definition, as originally set by [`DocumentNodeDefinition`], used to display in the UI and to display the appropriate properties if no display name is set.
 	/// Used during serialization/deserialization to prevent storing implementation or inputs (and possible other fields) if they are the same as the definition.
@@ -2579,6 +2639,21 @@ pub struct DocumentNodePersistentMetadata {
 	/// This should always be Some for nodes with a [`DocumentNodeImplementation::Network`], and none for [`DocumentNodeImplementation::ProtoNode`]
 	pub network_metadata: Option<NodeNetworkMetadata>,
 }
+
+impl Default for DocumentNodePersistentMetadata {
+	fn default() -> Self {
+		DocumentNodePersistentMetadata {
+			reference: None,
+			display_name: String::new(),
+			input_names: Vec::new(),
+			output_names: Vec::new(),
+			has_primary_output: true,
+			node_type_metadata: NodeTypePersistentMetadata::default(),
+			network_metadata: None,
+		}
+	}
+}
+
 impl DocumentNodePersistentMetadata {
 	pub fn is_layer(&self) -> bool {
 		matches!(self.node_type_metadata, NodeTypePersistentMetadata::Layer(_))
@@ -2706,11 +2781,11 @@ impl DocumentNodeTransientMetadata {
 	// Create transient metadata using data from the document node and persistent node metadata
 	pub fn new(network_interface: &NodeNetworkInterface, node_id: &NodeId, use_document_network: bool) -> Option<DocumentNodeTransientMetadata> {
 		let Some(network_metadata) = network_interface.network_metadata(use_document_network) else {
-			log::error!("Could not get nested network_metadata in get_transient_node_metadata");
+			log::error!("Could not get nested network_metadata in new DocumentNodeTransientMetadata");
 			return None;
 		};
 		let Some(node_metadata) = network_metadata.persistent_metadata.node_metadata.get(node_id) else {
-			log::error!("Could not get nested node_metadata in get_transient_node_metadata");
+			log::error!("Could not get nested node_metadata in new DocumentNodeTransientMetadata");
 			return None;
 		};
 		let Some(node_position) = network_interface.get_position(node_id, &network_interface.collect_outward_wires(use_document_network), use_document_network) else {
@@ -2755,10 +2830,11 @@ impl DocumentNodeTransientMetadata {
 
 			let height = std::cmp::max(input_row_count, output_row_count) as u32 * NodeNetworkMetadata::GRID_SIZE;
 			let width = 5 * NodeNetworkMetadata::GRID_SIZE;
-			let node_bottom_right = node_top_left + DVec2::new(width as f64, height as f64);
+			let node_click_target_top_left = node_top_left + DVec2::new(0., 12.);
+			let node_click_target_bottom_right = node_click_target_top_left + DVec2::new(width as f64, height as f64);
 
 			let radius = 3.;
-			let subpath = bezier_rs::Subpath::new_rounded_rect(node_top_left, node_bottom_right, [radius; 4]);
+			let subpath = bezier_rs::Subpath::new_rounded_rect(node_click_target_top_left, node_click_target_bottom_right, [radius; 4]);
 			let node_click_target = ClickTarget { subpath, stroke_width: 1. };
 
 			Some(DocumentNodeTransientMetadata {

@@ -20,10 +20,9 @@ pub enum NodeGraphMessage {
 	SelectedNodesUpdated,
 	Copy,
 	CloseCreateNodeMenu,
-	CreateNode {
+	CreateNodeFromContextMenu {
 		node_id: Option<NodeId>,
 		node_type: String,
-		use_document_network: bool,
 	},
 	CreateWire {
 		output_connector: OutputConnector,
@@ -107,6 +106,8 @@ pub enum NodeGraphMessage {
 	SelectedNodesSet {
 		nodes: Vec<NodeId>,
 	},
+	SendClickTargets,
+	EndSendClickTargets,
 	SendGraph,
 	SetInputValue {
 		node_id: NodeId,
