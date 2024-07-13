@@ -438,22 +438,17 @@ impl<'a> ModifyInputsContext<'a> {
 
 	/// Find a node id as part of the layer
 	fn existing_node_id(&mut self, name: &'static str) -> Option<NodeId> {
-		self.document_network
-			.upstream_flow_back_from_nodes(
-				self.layer_node.map_or_else(
-					|| {
-						self.document_network
-							.exports
-							.iter()
-							.filter_map(|output| if let NodeInput::Node { node_id, .. } = output { Some(*node_id) } else { None })
-							.collect()
-					},
-					|id| vec![id],
-				),
-				graph_craft::document::FlowType::HorizontalFlow,
-			)
-			.find(|(node, _)| node.name == name)
-			.map(|(_, id)| id)
+		// Start from the layer node or export
+		let node_ids = self
+			.layer_node
+			.map_or_else(|| self.document_network.exports.iter().filter_map(graph_craft::document::NodeInput::as_node).collect(), |id| vec![id]);
+		let upstream = self.document_network.upstream_flow_back_from_nodes(node_ids, graph_craft::document::FlowType::HorizontalFlow);
+
+		// Take until another layer node is found (but not the first layer node)
+		let is_input = |node_id: NodeId| self.layer_node == Some(node_id) || self.document_network.exports.iter().any(|export| export.as_node() == Some(node_id));
+		let mut upstream_until_layer = upstream.take_while(|&(node, id)| is_input(id) || !node.is_layer);
+
+		upstream_until_layer.find(|(node, _)| node.name == name).map(|(_, id)| id)
 	}
 
 	/// Changes the input of a specific node; skipping if it doesn't exist
