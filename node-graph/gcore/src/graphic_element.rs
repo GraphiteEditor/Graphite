@@ -121,15 +121,6 @@ impl ArtboardGroup {
 	fn add_artboard(&mut self, artboard: Artboard) {
 		self.artboards.push(artboard);
 	}
-
-	pub fn get_graphic_group(&self) -> GraphicGroup {
-		let mut graphic_group = GraphicGroup::EMPTY;
-		for artboard in self.artboards.clone() {
-			let graphic_element: GraphicElement = artboard.into();
-			graphic_group.push(graphic_element);
-		}
-		graphic_group
-	}
 }
 
 pub struct ConstructLayerNode<Stack, GraphicElement> {
@@ -240,11 +231,6 @@ impl From<GraphicGroup> for GraphicElement {
 		GraphicElement::GraphicGroup(graphic_group)
 	}
 }
-impl From<Artboard> for GraphicElement {
-	fn from(artboard: Artboard) -> Self {
-		GraphicElement::Artboard(artboard)
-	}
-}
 
 impl Deref for GraphicGroup {
 	type Target = Vec<GraphicElement>;
@@ -265,7 +251,6 @@ trait ToGraphicElement: Into<GraphicElement> {}
 
 impl ToGraphicElement for VectorData {}
 impl ToGraphicElement for ImageFrame<Color> {}
-impl ToGraphicElement for Artboard {}
 
 impl<T> From<T> for GraphicGroup
 where

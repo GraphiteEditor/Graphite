@@ -301,65 +301,17 @@ impl NodeRuntime {
 				continue;
 			};
 
-			enum IntrospectedData<'a> {
-				GraphicElement(&'a graphene_core::GraphicElement),
-				Artboard(&'a graphene_core::Artboard),
-			}
-
-			let introspected_data_output = introspected_data
-				.downcast_ref::<IORecord<Footprint, graphene_core::GraphicElement>>()
-				.map(|io_data| IntrospectedData::GraphicElement(&io_data.output))
-				.or_else(|| {
-					introspected_data
-						.downcast_ref::<IORecord<Footprint, graphene_core::Artboard>>()
-						.map(|io_data| IntrospectedData::Artboard(&io_data.output))
-				});
-
-			let graphic_element = match introspected_data_output {
-				Some(IntrospectedData::GraphicElement(graphic_element)) => Some(graphic_element.clone()),
-				Some(IntrospectedData::Artboard(artboard)) => Some(artboard.clone().into()),
-				_ => None,
-			};
-			// If this is `GraphicElement` data:
-			// Regenerate click targets and thumbnails for the layers in the graph, modifying the state and updating the UI.
-			if let Some(graphic_element) = graphic_element {
-				let click_targets = self.click_targets.entry(parent_network_node_id).or_default();
-				click_targets.clear();
-				graphic_element.add_click_targets(click_targets);
-
-				// RENDER THUMBNAIL
-
-				let bounds = graphic_element.bounding_box(DAffine2::IDENTITY);
-
-				// Render the thumbnail from a `GraphicElement` into an SVG string
-				let render_params = RenderParams::new(ViewMode::Normal, ImageRenderMode::Base64, bounds, true, false, false);
-				let mut render = SvgRender::new();
-				graphic_element.render_svg(&mut render, &render_params);
-
-				// And give the SVG a viewbox and outer <svg>...</svg> wrapper tag
-				let [min, max] = bounds.unwrap_or_default();
-				render.format_svg(min, max);
-
-				// UPDATE FRONTEND THUMBNAIL
-
-				let new_thumbnail_svg = render.svg;
-				let old_thumbnail_svg = self.thumbnail_renders.entry(parent_network_node_id).or_default();
-
-				if old_thumbnail_svg != &new_thumbnail_svg {
-					responses.push_back(FrontendMessage::UpdateNodeThumbnail {
-						id: parent_network_node_id,
-						value: new_thumbnail_svg.to_svg_string(),
-					});
-					*old_thumbnail_svg = new_thumbnail_svg;
-				}
+			if let Some(io) = introspected_data.downcast_ref::<IORecord<Footprint, graphene_core::GraphicElement>>() {
+				Self::process_graphic_element(&mut self.thumbnail_renders, &mut self.click_targets, parent_network_node_id, &io.output, responses)
+			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Footprint, graphene_core::Artboard>>() {
+				Self::process_graphic_element(&mut self.thumbnail_renders, &mut self.click_targets, parent_network_node_id, &io.output, responses)
 			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<Footprint, VectorData>>() {
 				// Insert the vector modify if we are dealing with vector data
 				self.vector_modify.insert(parent_network_node_id, record.output.clone());
 			}
-
 			// If this is `VectorData`, `ImageFrame`, or `GraphicElement` data:
 			// Update the stored upstream transforms for this layer/node.
-			if let Some(transform) = {
+			else if let Some(transform) = {
 				fn try_downcast<T: Transform + 'static>(value: &dyn std::any::Any) -> Option<(Footprint, DAffine2)> {
 					let io_data = value.downcast_ref::<IORecord<Footprint, T>>()?;
 					let transform = io_data.output.transform();
@@ -372,6 +324,46 @@ impl NodeRuntime {
 			} {
 				self.upstream_transforms.insert(parent_network_node_id, transform);
 			}
+		}
+	}
+
+	// If this is `GraphicElement` data:
+	// Regenerate click targets and thumbnails for the layers in the graph, modifying the state and updating the UI.
+	fn process_graphic_element(
+		thumbnail_renders: &mut HashMap<NodeId, Vec<SvgSegment>>,
+		click_targets: &mut HashMap<NodeId, Vec<ClickTarget>>,
+		parent_network_node_id: NodeId,
+		graphic_element: &impl GraphicElementRendered,
+		responses: &mut VecDeque<FrontendMessage>,
+	) {
+		let click_targets = click_targets.entry(parent_network_node_id).or_default();
+		click_targets.clear();
+		graphic_element.add_click_targets(click_targets);
+
+		// RENDER THUMBNAIL
+
+		let bounds = graphic_element.bounding_box(DAffine2::IDENTITY);
+
+		// Render the thumbnail from a `GraphicElement` into an SVG string
+		let render_params = RenderParams::new(ViewMode::Normal, ImageRenderMode::Base64, bounds, true, false, false);
+		let mut render = SvgRender::new();
+		graphic_element.render_svg(&mut render, &render_params);
+
+		// And give the SVG a viewbox and outer <svg>...</svg> wrapper tag
+		let [min, max] = bounds.unwrap_or_default();
+		render.format_svg(min, max);
+
+		// UPDATE FRONTEND THUMBNAIL
+
+		let new_thumbnail_svg = render.svg;
+		let old_thumbnail_svg = thumbnail_renders.entry(parent_network_node_id).or_default();
+
+		if old_thumbnail_svg != &new_thumbnail_svg {
+			responses.push_back(FrontendMessage::UpdateNodeThumbnail {
+				id: parent_network_node_id,
+				value: new_thumbnail_svg.to_svg_string(),
+			});
+			*old_thumbnail_svg = new_thumbnail_svg;
 		}
 	}
 }

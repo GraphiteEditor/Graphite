@@ -469,15 +469,19 @@ impl GraphicElementRendered for Artboard {
 
 impl GraphicElementRendered for crate::ArtboardGroup {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		self.get_graphic_group().render_svg(render, render_params);
+		for artboard in &self.artboards {
+			artboard.render_svg(render, render_params);
+		}
 	}
 
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.get_graphic_group().bounding_box(transform)
+		self.artboards.iter().filter_map(|element| element.bounding_box(transform)).reduce(Quad::combine_bounds)
 	}
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		self.get_graphic_group().add_click_targets(click_targets);
+		for artboard in &self.artboards {
+			artboard.add_click_targets(click_targets);
+		}
 	}
 
 	fn contains_artboard(&self) -> bool {

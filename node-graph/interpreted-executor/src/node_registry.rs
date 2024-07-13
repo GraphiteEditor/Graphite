@@ -289,7 +289,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::ops::IntoNode<_, GraphicGroup>, input: ImageFrame<Color>, output: GraphicGroup, params: []),
 		async_node!(graphene_core::ops::IntoNode<_, GraphicGroup>, input: VectorData, output: GraphicGroup, params: []),
 		async_node!(graphene_core::ops::IntoNode<_, GraphicGroup>, input: GraphicGroup, output: GraphicGroup, params: []),
-		async_node!(graphene_core::ops::IntoNode<_, GraphicGroup>, input: Artboard, output: GraphicGroup, params: []),
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::ops::IntoNode<_, &WgpuExecutor>, input: &WasmEditorApi, output: &WgpuExecutor, params: []),
 		register_node!(graphene_std::raster::MaskImageNode<_, _, _>, input: ImageFrame<Color>, params: [ImageFrame<Color>]),
@@ -753,11 +752,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_core::ToGraphicElementNode, input: graphene_core::vector::VectorData, params: []),
 		register_node!(graphene_core::ToGraphicElementNode, input: ImageFrame<Color>, params: []),
 		register_node!(graphene_core::ToGraphicElementNode, input: GraphicGroup, params: []),
-		register_node!(graphene_core::ToGraphicElementNode, input: Artboard, params: []),
 		register_node!(graphene_core::ToGraphicGroupNode, input: graphene_core::vector::VectorData, params: []),
 		register_node!(graphene_core::ToGraphicGroupNode, input: ImageFrame<Color>, params: []),
 		register_node!(graphene_core::ToGraphicGroupNode, input: GraphicGroup, params: []),
-		register_node!(graphene_core::ToGraphicGroupNode, input: Artboard, params: []),
 		async_node!(graphene_core::ConstructArtboardNode<_, _, _, _, _, _>, input: Footprint, output: Artboard, fn_params: [Footprint => GraphicGroup, () => String, () => glam::IVec2, () => glam::IVec2, () => Color, () => bool]),
 		async_node!(graphene_core::AddArtboardNode<_, _>, input: Footprint, output: ArtboardGroup, fn_params: [Footprint => ArtboardGroup, Footprint => Artboard]),
 	];
