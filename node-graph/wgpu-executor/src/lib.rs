@@ -1,24 +1,22 @@
 mod context;
 mod executor;
-
 pub use context::Context;
-use dyn_any::{DynAny, StaticType};
 pub use executor::GpuExecutor;
-use glam::DAffine2;
-use gpu_executor::{ComputePassDimensions, GPUConstant, StorageBufferOptions, TextureBufferOptions, TextureBufferType, ToStorageBuffer, ToUniformBuffer};
-use graphene_core::Type;
 
-use anyhow::{bail, Result};
-use futures::Future;
+use dyn_any::{DynAny, StaticType};
+use gpu_executor::{ComputePassDimensions, GPUConstant, StorageBufferOptions, TextureBufferOptions, TextureBufferType, ToStorageBuffer, ToUniformBuffer};
 use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle};
 use graphene_core::raster::color::RGBA16F;
 use graphene_core::raster::{Image, ImageFrame};
 use graphene_core::transform::{Footprint, Transform};
+use graphene_core::Type;
 use graphene_core::{Color, Cow, Node, SurfaceFrame};
 
+use anyhow::{bail, Result};
+use futures::Future;
+use glam::DAffine2;
 use std::pin::Pin;
 use std::sync::Arc;
-
 use wgpu::util::DeviceExt;
 use wgpu::{Buffer, BufferDescriptor, ShaderModule, SurfaceConfiguration, SurfaceError, Texture, TextureView};
 
@@ -296,8 +294,7 @@ impl WgpuExecutor {
 
 	pub fn create_render_pass(&self, _footprint: Footprint, texture: ShaderInputFrame, canvas: Arc<SurfaceHandle<Surface>>) -> Result<()> {
 		let transform = texture.transform;
-		let texture = texture.shader_input;
-		let texture = texture.texture().expect("Expected texture input");
+		let texture = texture.shader_input.texture().expect("Expected texture input");
 		let texture_view = texture.create_view(&wgpu::TextureViewDescriptor {
 			format: Some(wgpu::TextureFormat::Rgba16Float),
 			..Default::default()
@@ -463,16 +460,16 @@ impl WgpuExecutor {
 
 		// let surface_caps = surface.get_capabilities(&self.context.adapter);
 		// let surface_format = wgpu::TextureFormat::Rgba16Float;
-		/*let config = wgpu::SurfaceConfiguration {
-			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-			format: surface_format,
-			width: 1920,
-			height: 1080,
-			present_mode: surface_caps.present_modes[0],
-			alpha_mode: surface_caps.alpha_modes[0],
-			view_formats: vec![],
-			desired_maximum_frame_latency: 2,
-		};*/
+		// let config = wgpu::SurfaceConfiguration {
+		// 	usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+		// 	format: surface_format,
+		// 	width: 1920,
+		// 	height: 1080,
+		// 	present_mode: surface_caps.present_modes[0],
+		// 	alpha_mode: surface_caps.alpha_modes[0],
+		// 	view_formats: vec![],
+		// 	desired_maximum_frame_latency: 2,
+		// };
 		// surface.configure(&self.context.device, &config);
 		// self.surface_config.set(Some(config));
 		Ok(SurfaceHandle {

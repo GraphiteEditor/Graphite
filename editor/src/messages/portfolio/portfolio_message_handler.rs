@@ -289,7 +289,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				self.executor.update_font_cache(self.persistent_data.font_cache.clone());
 				for document_id in self.document_ids.iter() {
 					let _ = self.executor.submit_node_graph_evaluation(
-						self.documents.get_mut(document_id).expect("Tried to render no existent Document"),
+						self.documents.get_mut(document_id).expect("Tried to render non-existent document"),
 						ipp.viewport_bounds.size().as_uvec2(),
 						true,
 					);
@@ -578,7 +578,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				bounds,
 				transparent_background,
 			} => {
-				let document = self.active_document_id.and_then(|id| self.documents.get_mut(&id)).expect("Tried to render no existent Document");
+				let document = self.active_document_id.and_then(|id| self.documents.get_mut(&id)).expect("Tried to render non-existent document");
 				let export_config = ExportConfig {
 					file_name,
 					file_type,
@@ -598,7 +598,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			}
 			PortfolioMessage::SubmitGraphRender { document_id } => {
 				let result = self.executor.submit_node_graph_evaluation(
-					self.documents.get_mut(&document_id).expect("Tried to render no existent Document"),
+					self.documents.get_mut(&document_id).expect("Tried to render non-existent document"),
 					ipp.viewport_bounds.size().as_uvec2(),
 					false,
 				);

@@ -87,6 +87,7 @@ pub struct ExecutionResponse {
 	new_upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
 	transform: DAffine2,
 }
+
 pub struct CompilationResponse {
 	result: Result<(), String>,
 	resolved_types: ResolvedDocumentNodeTypes,
@@ -106,6 +107,7 @@ impl InternalNodeGraphUpdateSender {
 	fn send_generation_response(&self, response: CompilationResponse) {
 		self.0.send(NodeGraphUpdate::CompilationResponse(response)).expect("Failed to send response")
 	}
+
 	fn send_execution_response(&self, response: ExecutionResponse) {
 		self.0.send(NodeGraphUpdate::ExecutionResponse(response)).expect("Failed to send response")
 	}
@@ -151,14 +153,13 @@ impl NodeRuntime {
 	}
 
 	pub async fn run(&mut self) {
-		let requests = self.receiver.try_iter();
-		// TODO: Currently we still render the document after we submit the node graph execution request.
-		// This should be avoided in the future.
+		// TODO: Currently we still render the document after we submit the node graph execution request. This should be avoided in the future.
+
 		let mut font = None;
-		let mut graph = None;
 		let mut imaginate = None;
+		let mut graph = None;
 		let mut execution = None;
-		for request in requests {
+		for request in self.receiver.try_iter() {
 			match request {
 				NodeRuntimeMessage::GraphUpdate(_) => graph = Some(request),
 				NodeRuntimeMessage::ExecutionRequest(_) => execution = Some(request),
@@ -167,6 +168,7 @@ impl NodeRuntime {
 			}
 		}
 		let requests = [font, imaginate, graph, execution].into_iter().flatten();
+
 		for request in requests {
 			match request {
 				NodeRuntimeMessage::FontCacheUpdate(font_cache) => {
@@ -231,7 +233,6 @@ impl NodeRuntime {
 			}
 			.into();
 		}
-		// Required to ensure that the appropriate proto nodes are reinserted when the Editor API changes.
 
 		let scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
 		self.monitor_nodes = scoped_network
@@ -256,6 +257,7 @@ impl NodeRuntime {
 
 		Ok(())
 	}
+
 	async fn execute_network(&mut self, render_config: RenderConfig) -> Result<TaggedValue, String> {
 		use graph_craft::graphene_compiler::Executor;
 

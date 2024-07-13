@@ -1,5 +1,4 @@
 use dyn_any::StaticTypeSized;
-use glam::{DAffine2, DVec2, Mat2, Vec2};
 use gpu_executor::{ComputePassDimensions, StorageBufferOptions};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::*;
@@ -8,10 +7,9 @@ use graphene_core::application_io::ApplicationIo;
 use graphene_core::quantization::QuantizationChannels;
 use graphene_core::raster::*;
 use graphene_core::*;
-use wgpu_executor::Shader;
-use wgpu_executor::WgpuExecutor;
-use wgpu_executor::WgpuShaderInput;
-use wgpu_executor::{Bindgroup, PipelineLayout, ShaderIO, ShaderInput};
+use wgpu_executor::{Bindgroup, PipelineLayout, Shader, ShaderIO, ShaderInput, WgpuExecutor, WgpuShaderInput};
+
+use glam::{DAffine2, DVec2, Mat2, Vec2};
 
 #[cfg(feature = "quantization")]
 use graphene_core::quantization::PackedPixel;

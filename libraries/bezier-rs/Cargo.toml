@@ -1,7 +1,7 @@
 [package]
 name = "bezier-rs"
 version = "0.4.0"
-rust-version = "1.70.0"
+rust-version = "1.79"
 edition = "2021"
 authors = ["Graphite Authors <contact@graphite.rs>"]
 description = "Computational geometry algorithms for Bézier segments and shapes useful in the context of 2D graphics"

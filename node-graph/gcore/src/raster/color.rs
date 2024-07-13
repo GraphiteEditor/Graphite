@@ -68,7 +68,7 @@ impl Alpha for RGBA16F {
 	type AlphaChannel = f32;
 	#[inline(always)]
 	fn alpha(&self) -> f32 {
-		self.alpha.to_f32() / 255.0
+		self.alpha.to_f32() / 255.
 	}
 
 	const TRANSPARENT: Self = RGBA16F {
@@ -79,7 +79,7 @@ impl Alpha for RGBA16F {
 	};
 
 	fn multiplied_alpha(&self, alpha: Self::AlphaChannel) -> Self {
-		let alpha = alpha * 255.0;
+		let alpha = alpha * 255.;
 		let mut result = *self;
 		result.alpha = f16::from_f32(alpha * self.alpha());
 		result
@@ -106,7 +106,7 @@ impl From<Color> for SRGBA8 {
 			red: float_to_srgb_u8(c.r()),
 			green: float_to_srgb_u8(c.g()),
 			blue: float_to_srgb_u8(c.b()),
-			alpha: (c.a() * 255.0) as u8,
+			alpha: (c.a() * 255.) as u8,
 		}
 	}
 }
@@ -118,7 +118,7 @@ impl From<SRGBA8> for Color {
 			red: srgb_u8_to_float(color.red),
 			green: srgb_u8_to_float(color.green),
 			blue: srgb_u8_to_float(color.blue),
-			alpha: color.alpha as f32 / 255.0,
+			alpha: color.alpha as f32 / 255.,
 		}
 	}
 }
@@ -136,15 +136,15 @@ impl RGB for SRGBA8 {
 	type ColorChannel = f32;
 	#[inline(always)]
 	fn red(&self) -> f32 {
-		self.red as f32 / 255.0
+		self.red as f32 / 255.
 	}
 	#[inline(always)]
 	fn green(&self) -> f32 {
-		self.green as f32 / 255.0
+		self.green as f32 / 255.
 	}
 	#[inline(always)]
 	fn blue(&self) -> f32 {
-		self.blue as f32 / 255.0
+		self.blue as f32 / 255.
 	}
 }
 
@@ -155,13 +155,13 @@ impl Alpha for SRGBA8 {
 	type AlphaChannel = f32;
 	#[inline(always)]
 	fn alpha(&self) -> f32 {
-		self.alpha as f32 / 255.0
+		self.alpha as f32 / 255.
 	}
 
 	const TRANSPARENT: Self = SRGBA8 { red: 0, green: 0, blue: 0, alpha: 0 };
 
 	fn multiplied_alpha(&self, alpha: Self::AlphaChannel) -> Self {
-		let alpha = alpha * 255.0;
+		let alpha = alpha * 255.;
 		let mut result = *self;
 		result.alpha = (alpha * self.alpha()) as u8;
 		result
@@ -411,7 +411,7 @@ impl Color {
 	#[inline(always)]
 	pub fn from_rgba8_srgb(red: u8, green: u8, blue: u8, alpha: u8) -> Color {
 		let alpha = alpha as f32 / 255.;
-		let map_range = |int_color| int_color as f32 / 255.0;
+		let map_range = |int_color| int_color as f32 / 255.;
 		Color {
 			red: map_range(red),
 			green: map_range(green),

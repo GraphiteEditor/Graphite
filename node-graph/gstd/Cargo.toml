@@ -27,6 +27,7 @@ wayland = []
 # Local dependencies
 dyn-any = { path = "../../libraries/dyn-any", features = ["derive"] }
 graph-craft = { path = "../graph-craft", features = ["serde"] }
+wgpu-executor = { path = "../wgpu-executor" }
 graphene-core = { path = "../gcore", default-features = false, features = [
 	"std",
 	"serde",
@@ -59,7 +60,6 @@ image = { workspace = true, default-features = false, features = [
 ] }
 
 # Optional local dependencies
-wgpu-executor = { path = "../wgpu-executor" }
 gpu-executor = { path = "../gpu-executor", optional = true }
 gpu-compiler-bin-wrapper = { path = "../gpu-compiler/gpu-compiler-bin-wrapper", optional = true }
 compilation-client = { path = "../compilation-client", optional = true }

@@ -1,4 +1,6 @@
+pub use graph_craft::wasm_application_io::*;
 #[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
+use graphene_core::application_io::SurfaceHandleFrame;
 use graphene_core::application_io::SurfaceHandleFrame;
 use graphene_core::application_io::{ApplicationIo, ExportFormat, RenderConfig, SurfaceHandle};
 use graphene_core::raster::bbox::Bbox;
@@ -10,15 +12,13 @@ use graphene_core::Color;
 use graphene_core::Node;
 
 use base64::Engine;
-use glam::DAffine2;
-
 use core::future::Future;
+use glam::DAffine2;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use wasm_bindgen::Clamped;
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
-
-pub use graph_craft::wasm_application_io::*;
 
 pub struct CreateSurfaceNode {}
 
@@ -38,10 +38,7 @@ async fn draw_image_frame_node<'a: 'input>(
 	image: ImageFrame<graphene_core::raster::SRGBA8>,
 	surface_handle: Arc<WasmSurfaceHandle>,
 ) -> graphene_core::application_io::SurfaceHandleFrame<HtmlCanvasElement> {
-	use graphene_core::application_io::SurfaceHandleFrame;
-
 	let image_data = image.image.data;
-	use wasm_bindgen::Clamped;
 	let array: Clamped<&[u8]> = Clamped(bytemuck::cast_slice(image_data.as_slice()));
 	if image.image.width > 0 && image.image.height > 0 {
 		let canvas = &surface_handle.surface;

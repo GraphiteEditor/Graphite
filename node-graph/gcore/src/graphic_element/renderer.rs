@@ -502,9 +502,7 @@ impl GraphicElementRendered for SurfaceFrame {
 			.fold(String::new(), |val, (i, entry)| val + &(entry.to_string() + if i == 5 { "" } else { "," }));
 
 		let canvas = format!(
-			r#"
-					<foreignObject width="{}" height="{}" transform="matrix({})"><div data-canvas-placeholder="canvas{}"></div></foreignObject>
-			"#,
+			r#"<foreignObject width="{}" height="{}" transform="matrix({})"><div data-canvas-placeholder="canvas{}"></div></foreignObject>"#,
 			width.abs(),
 			height.abs(),
 			matrix,
