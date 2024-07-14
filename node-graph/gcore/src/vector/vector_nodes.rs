@@ -212,7 +212,7 @@ pub struct CopyToPoints<Points, Instance, RandomScaleMin, RandomScaleMax, Random
 }
 
 #[node_macro::node_fn(CopyToPoints)]
-async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + TransformMut, FP: Future<Output = VectorData>, FI: Future<Output = I>>(
+async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + TransformMut + Send, FP: Future<Output = VectorData> + Send, FI: Future<Output = I> + Send>(
 	footprint: Footprint,
 	points: impl Node<Footprint, Output = FP>,
 	instance: impl Node<Footprint, Output = FI>,
@@ -280,7 +280,7 @@ pub struct SamplePoints<VectorData, Spacing, StartOffset, StopOffset, AdaptiveSp
 }
 
 #[node_macro::node_fn(SamplePoints)]
-async fn sample_points<FV: Future<Output = VectorData>, FL: Future<Output = Vec<f64>>>(
+async fn sample_points<FV: Future<Output = VectorData> + Send, FL: Future<Output = Vec<f64>> + Send>(
 	footprint: Footprint,
 	mut vector_data: impl Node<Footprint, Output = FV>,
 	spacing: f64,
@@ -422,7 +422,7 @@ pub struct MorphNode<Source, Target, StartIndex, Time> {
 }
 
 #[node_macro::node_fn(MorphNode)]
-async fn morph<SourceFuture: Future<Output = VectorData>, TargetFuture: Future<Output = VectorData>>(
+async fn morph<SourceFuture: Future<Output = VectorData> + Send, TargetFuture: Future<Output = VectorData> + Send>(
 	footprint: Footprint,
 	source: impl Node<Footprint, Output = SourceFuture>,
 	target: impl Node<Footprint, Output = TargetFuture>,
@@ -516,7 +516,7 @@ pub struct AreaNode<VectorData> {
 }
 
 #[node_macro::node_fn(AreaNode)]
-async fn area_node<Fut: Future<Output = VectorData>>(empty: (), vector_data: impl Node<Footprint, Output = Fut>) -> f64 {
+async fn area_node<Fut: Future<Output = VectorData> + Send>(empty: (), vector_data: impl Node<Footprint, Output = Fut>) -> f64 {
 	let vector_data = self.vector_data.eval(Footprint::default()).await;
 
 	let mut area = 0.;
@@ -534,7 +534,7 @@ pub struct CentroidNode<VectorData, CentroidType> {
 }
 
 #[node_macro::node_fn(CentroidNode)]
-async fn centroid_node<Fut: Future<Output = VectorData>>(empty: (), vector_data: impl Node<Footprint, Output = Fut>, centroid_type: CentroidType) -> DVec2 {
+async fn centroid_node<Fut: Future<Output = VectorData> + Send>(empty: (), vector_data: impl Node<Footprint, Output = Fut>, centroid_type: CentroidType) -> DVec2 {
 	let vector_data = self.vector_data.eval(Footprint::default()).await;
 
 	if centroid_type == CentroidType::Area {

@@ -13,7 +13,7 @@ pub struct DynAnyNode<I, O, Node> {
 	_o: PhantomData<O>,
 }
 
-impl<'input, _I: 'input + StaticType, _O: 'input + StaticType, N: 'input> Node<'input, Any<'input>> for DynAnyNode<_I, _O, N>
+impl<'input, _I: 'input + StaticType + Sync + Send, _O: 'input + StaticType + Sync + Send, N: 'input + Sync> Node<'input, Any<'input>> for DynAnyNode<_I, _O, N>
 where
 	N: Node<'input, _I, Output = DynFuture<'input, _O>>,
 {
@@ -63,7 +63,7 @@ pub struct DynAnyRefNode<I, O, Node> {
 	node: Node,
 	_i: PhantomData<(I, O)>,
 }
-impl<'input, _I: 'input + StaticType, _O: 'input + StaticType, N: 'input> Node<'input, Any<'input>> for DynAnyRefNode<_I, _O, N>
+impl<'input, _I: 'input + StaticType, _O: 'input + StaticType + Send + Sync, N: 'input> Node<'input, Any<'input>> for DynAnyRefNode<_I, _O, N>
 where
 	N: for<'any_input> Node<'any_input, _I, Output = &'any_input _O>,
 {
@@ -93,7 +93,7 @@ pub struct DynAnyInRefNode<I, O, Node> {
 	node: Node,
 	_i: PhantomData<(I, O)>,
 }
-impl<'input, _I: 'input + StaticType, _O: 'input + StaticType, N: 'input> Node<'input, Any<'input>> for DynAnyInRefNode<_I, _O, N>
+impl<'input, _I: 'input + StaticType, _O: 'input + StaticType + Send + Sync, N: 'input> Node<'input, Any<'input>> for DynAnyInRefNode<_I, _O, N>
 where
 	N: for<'any_input> Node<'any_input, &'any_input _I, Output = DynFuture<'any_input, _O>>,
 {
@@ -117,7 +117,7 @@ pub struct FutureWrapperNode<Node> {
 	node: Node,
 }
 
-impl<'i, T: 'i, N: Node<'i, T>> Node<'i, T> for FutureWrapperNode<N>
+impl<'i, T: 'i + Sync + Send, N: Node<'i, T> + Sync> Node<'i, T> for FutureWrapperNode<N>
 where
 	N: Node<'i, T>,
 {
@@ -144,7 +144,7 @@ pub trait IntoTypeErasedNode<'n> {
 	fn into_type_erased(self) -> TypeErasedBox<'n>;
 }
 
-impl<'n, N: 'n> IntoTypeErasedNode<'n> for N
+impl<'n, N: 'n + Send + Sync> IntoTypeErasedNode<'n> for N
 where
 	N: for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n,
 {
@@ -182,7 +182,7 @@ pub struct DowncastBothNode<I, O> {
 	_i: PhantomData<I>,
 	_o: PhantomData<O>,
 }
-impl<'input, O: 'input + StaticType, I: 'input + StaticType> Node<'input, I> for DowncastBothNode<I, O> {
+impl<'input, O: 'input + StaticType + Send + Sync, I: 'input + StaticType + Send + Sync> Node<'input, I> for DowncastBothNode<I, O> {
 	type Output = DynFuture<'input, O>;
 	#[inline]
 	fn eval(&'input self, input: I) -> Self::Output {
@@ -204,32 +204,6 @@ impl<I, O> DowncastBothNode<I, O> {
 			_i: core::marker::PhantomData,
 			_o: core::marker::PhantomData,
 		}
-	}
-}
-/// Boxes the input and downcasts the output.
-/// Wraps around a node taking Box<dyn DynAny> and returning Box<dyn DynAny>
-#[derive(Clone)]
-pub struct DowncastBothRefNode<I, O> {
-	node: SharedNodeContainer,
-	_i: PhantomData<(I, O)>,
-}
-impl<'input, O: 'input + StaticType, I: 'input + StaticType> Node<'input, I> for DowncastBothRefNode<I, O> {
-	type Output = DynFuture<'input, &'input O>;
-	#[inline]
-	fn eval(&'input self, input: I) -> Self::Output {
-		{
-			let node_name = self.node.node_name();
-			let input = Box::new(input);
-			Box::pin(async move {
-				let out: Box<&_> = dyn_any::downcast::<&O>(self.node.eval(input).await).unwrap_or_else(|e| panic!("DowncastBothRefNode Input {e} in {node_name}"));
-				*out
-			})
-		}
-	}
-}
-impl<I, O> DowncastBothRefNode<I, O> {
-	pub const fn new(node: SharedNodeContainer) -> Self {
-		Self { node, _i: core::marker::PhantomData }
 	}
 }
 

@@ -41,10 +41,14 @@ in
       pkgs.nodejs
       pkgs.cargo
       pkgs.cargo-watch
+      pkgs.cargo-nextest
       pkgs.wasm-pack
       pkgs.wasm-bindgen-cli
       pkgs.vulkan-loader
       pkgs.libxkbcommon
+      pkgs.llvm
+      pkgs.gcc-unwrapped.lib
+      pkgs.llvmPackages.libcxxStdenv
 
       pkgs.openssl
       pkgs.glib
@@ -61,7 +65,7 @@ in
 
 
     # Hacky way to run cago through Mold
-    LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [pkgs.openssl pkgs.vulkan-loader pkgs.libxkbcommon];
+    LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [pkgs.openssl pkgs.vulkan-loader pkgs.libxkbcommon pkgs.llvmPackages.libcxxStdenv pkgs.gcc-unwrapped.lib pkgs.llvm];
     shellHook = ''
     alias cargo='mold --run cargo'
     '';

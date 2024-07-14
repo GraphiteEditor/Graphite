@@ -35,7 +35,7 @@ winit = { workspace = true }
 serde = { workspace = true }
 
 # Required dependencies
-futures-intrusive = "0.5.0"
+futures-intrusive = { version = "0.5.0", features = ["alloc"] }
 half = "2.4.1"
 
 # Optional dependencies

@@ -254,8 +254,8 @@ fn node_impl_impl(attr: TokenStream, item: TokenStream, asyncness: Asyncness) ->
 	}
 
 	// Generics are simply `S0` through to `Sn-1` where n is the number of secondary inputs
-	let node_generics = construct_node_generics(&struct_generics);
-	let future_generic_params = construct_node_generics(&future_generics);
+	let node_generics = construct_node_generics(&struct_generics, true);
+	let future_generic_params = construct_node_generics(&future_generics, false);
 	let (future_parameter_types, future_generic_params): (Vec<_>, Vec<_>) = parameter_types.iter().cloned().zip(future_generic_params).filter(|(ty, _)| !matches!(ty, Type::ImplTrait(_))).unzip();
 
 	let generics = if async_in {
@@ -280,7 +280,7 @@ fn node_impl_impl(attr: TokenStream, item: TokenStream, asyncness: Asyncness) ->
 	where_clause.predicates.extend(node_bounds);
 
 	let output = if async_out {
-		quote::quote!(core::pin::Pin<Box<dyn core::future::Future< Output = #output> + 'input>>)
+		quote::quote!(core::pin::Pin<Box<dyn core::future::Future< Output = #output> + 'input + Send >>)
 	} else {
 		quote::quote!(#output)
 	};
@@ -338,7 +338,24 @@ fn parse_inputs(function: &ItemFn, remove_impl_node: bool) -> (&syn::PatType, Ve
 	(primary_input, parameter_inputs, parameter_pat_ident_patterns)
 }
 
-fn construct_node_generics(struct_generics: &[Ident]) -> Vec<GenericParam> {
+fn construct_node_generics(struct_generics: &[Ident], add_sync: bool) -> Vec<GenericParam> {
+	let mut bounds = vec![
+		TypeParamBound::Lifetime(Lifetime::new("'input", Span::call_site())),
+		TypeParamBound::Trait(TraitBound {
+			paren_token: None,
+			modifier: syn::TraitBoundModifier::None,
+			lifetimes: None,
+			path: syn::PathSegment::from(syn::Ident::new("Send", Span::call_site())).into(),
+		}),
+	];
+	if add_sync {
+		bounds.push(TypeParamBound::Trait(TraitBound {
+			paren_token: None,
+			modifier: syn::TraitBoundModifier::None,
+			lifetimes: None,
+			path: syn::PathSegment::from(syn::Ident::new("Sync", Span::call_site())).into(),
+		}))
+	};
 	struct_generics
 		.iter()
 		.cloned()
@@ -347,7 +364,7 @@ fn construct_node_generics(struct_generics: &[Ident]) -> Vec<GenericParam> {
 				attrs: vec![],
 				ident,
 				colon_token: Some(Default::default()),
-				bounds: Punctuated::from_iter([TypeParamBound::Lifetime(Lifetime::new("'input", Span::call_site()))].iter().cloned()),
+				bounds: Punctuated::from_iter(bounds.clone()),
 				eq_token: None,
 				default: None,
 			})

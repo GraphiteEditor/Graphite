@@ -379,7 +379,7 @@ pub struct IntoNode<I, O> {
 #[node_macro::node_fn(IntoNode<_I, _O>)]
 async fn into<_I, _O>(input: _I) -> _O
 where
-	_I: Into<_O>,
+	_I: Into<_O> + Sync + Send,
 {
 	input.into()
 }

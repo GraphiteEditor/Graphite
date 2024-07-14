@@ -265,7 +265,7 @@ pub struct BlendImageNode<P, Background, MapFn> {
 }
 
 #[node_macro::node_fn(BlendImageNode<_P>)]
-async fn blend_image_node<_P: Alpha + Pixel + Debug, Forground: Sample<Pixel = _P> + Transform>(
+async fn blend_image_node<_P: Alpha + Pixel + Debug + Send + Sync, Forground: Sample<Pixel = _P> + Transform + Send>(
 	foreground: Forground,
 	background: ImageFrame<_P>,
 	map_fn: impl Node<(_P, _P), Output = _P>,
@@ -474,7 +474,7 @@ macro_rules! generate_imaginate_node {
 			editor_api: E,
 			controller: C,
 			$($val: $t,)*
-			cache: std::sync::Mutex<HashMap<u64, Image<P>>>,
+			cache: std::sync::Arc<std::sync::Mutex<HashMap<u64, Image<P>>>>,
 		}
 
 		impl<'e, P: Pixel, E, C, $($t,)*> ImaginateNode<P, E, C, $($t,)*>
@@ -488,7 +488,7 @@ macro_rules! generate_imaginate_node {
 			}
 		}
 
-		impl<'i, 'e: 'i, P: Pixel + 'i + Hash + Default, E: 'i, C: 'i, $($t: 'i,)*> Node<'i, ImageFrame<P>> for ImaginateNode<P, E, C, $($t,)*>
+		impl<'i, 'e: 'i, P: Pixel + 'i + Hash + Default + Send, E: 'i, C: 'i, $($t: 'i,)*> Node<'i, ImageFrame<P>> for ImaginateNode<P, E, C, $($t,)*>
 		where $($t: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, $o>>,)*
 			E: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, &'e WasmEditorApi>>,
 			C: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, ImaginateController>>,
@@ -503,19 +503,20 @@ macro_rules! generate_imaginate_node {
 				let mut hasher = rustc_hash::FxHasher::default();
 				frame.image.hash(&mut hasher);
 				let hash = hasher.finish();
+				let editor_api = self.editor_api.eval(());
+				let cache = self.cache.clone();
 
 				Box::pin(async move {
-					let controller: std::pin::Pin<Box<dyn std::future::Future<Output = ImaginateController>>> = controller;
+					// let controller: std::pin::Pin<Box<dyn std::future::Future<Output = ImaginateController> + Send>> = controller;
 					let controller: ImaginateController = controller.await;
 					if controller.take_regenerate_trigger() {
-						let editor_api = self.editor_api.eval(());
 						let image = super::imaginate::imaginate(frame.image, editor_api, controller, $($val,)*).await;
 
-						self.cache.lock().unwrap().insert(hash, image.clone());
+						cache.lock().unwrap().insert(hash, image.clone());
 
 						return ImageFrame { image, ..frame }
 					}
-					let image = self.cache.lock().unwrap().get(&hash).cloned().unwrap_or_default();
+					let image = cache.lock().unwrap().get(&hash).cloned().unwrap_or_default();
 
 					ImageFrame { image, ..frame }
 				})

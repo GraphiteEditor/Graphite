@@ -223,7 +223,7 @@ impl TransformMut for Footprint {
 }
 
 #[node_macro::node_fn(TransformNode)]
-pub(crate) async fn transform_vector_data<Fut: Future>(
+pub(crate) async fn transform_vector_data<Fut: Future + Send>(
 	mut footprint: Footprint,
 	transform_target: impl Node<Footprint, Output = Fut>,
 	translate: DVec2,
@@ -233,7 +233,7 @@ pub(crate) async fn transform_vector_data<Fut: Future>(
 	_pivot: DVec2,
 ) -> Fut::Output
 where
-	Fut::Output: TransformMut,
+	Fut::Output: TransformMut + Send,
 {
 	let modification = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
 	if !footprint.ignore_modifications {

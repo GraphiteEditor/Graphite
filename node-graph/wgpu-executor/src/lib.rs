@@ -407,7 +407,7 @@ impl WgpuExecutor {
 		Ok(())
 	}
 
-	pub fn read_output_buffer(&self, buffer: Arc<WgpuShaderInput>) -> Pin<Box<dyn Future<Output = Result<Vec<u8>>>>> {
+	pub fn read_output_buffer(&self, buffer: Arc<WgpuShaderInput>) -> Pin<Box<dyn Future<Output = Result<Vec<u8>>> + Send>> {
 		Box::pin(async move {
 			if let ShaderInput::ReadBackBuffer(buffer, _) = buffer.as_ref() {
 				let buffer_slice = buffer.slice(..);
@@ -774,7 +774,7 @@ pub struct UniformNode<Executor> {
 }
 
 #[node_macro::node_fn(UniformNode)]
-async fn uniform_node<'a: 'input, T: ToUniformBuffer>(data: T, executor: &'a WgpuExecutor) -> WgpuShaderInput {
+async fn uniform_node<'a: 'input, T: ToUniformBuffer + Send>(data: T, executor: &'a WgpuExecutor) -> WgpuShaderInput {
 	executor.create_uniform_buffer(data).unwrap()
 }
 
@@ -783,7 +783,7 @@ pub struct StorageNode<Executor> {
 }
 
 #[node_macro::node_fn(StorageNode)]
-async fn storage_node<'a: 'input, T: ToStorageBuffer>(data: T, executor: &'a WgpuExecutor) -> WgpuShaderInput {
+async fn storage_node<'a: 'input, T: ToStorageBuffer + Send>(data: T, executor: &'a WgpuExecutor) -> WgpuShaderInput {
 	executor
 		.create_storage_buffer(
 			data,
@@ -802,7 +802,7 @@ pub struct PushNode<Value> {
 }
 
 #[node_macro::node_fn(PushNode)]
-async fn push_node<T>(mut vec: Vec<T>, value: T) {
+async fn push_node<T: Send>(mut vec: Vec<T>, value: T) {
 	vec.push(value);
 }
 
@@ -866,7 +866,7 @@ pub struct CreateGpuSurfaceNode {}
 pub type WindowHandle = Arc<SurfaceHandle<Window>>;
 
 #[node_macro::node_fn(CreateGpuSurfaceNode)]
-async fn create_gpu_surface<'a: 'input, Io: ApplicationIo<Executor = WgpuExecutor, Surface = Window>>(editor_api: &'a EditorApi<Io>) -> WgpuSurface {
+async fn create_gpu_surface<'a: 'input, Io: ApplicationIo<Executor = WgpuExecutor, Surface = Window> + Send + Sync>(editor_api: &'a EditorApi<Io>) -> WgpuSurface {
 	let canvas = editor_api.application_io.as_ref().unwrap().create_surface();
 	let executor = editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap();
 	Arc::new(executor.create_surface(canvas).unwrap())
@@ -885,7 +885,7 @@ pub struct ShaderInputFrame {
 }
 
 #[node_macro::node_fn(RenderTextureNode)]
-async fn render_texture_node<'a: 'input, InFut: Future<Output = ShaderInputFrame>>(
+async fn render_texture_node<'a: 'input, InFut: Future<Output = ShaderInputFrame> + Send>(
 	footprint: Footprint,
 	image: impl Node<Footprint, Output = InFut>,
 	surface: WgpuSurface,

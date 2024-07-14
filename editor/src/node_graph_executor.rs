@@ -27,7 +27,7 @@ use glam::{DAffine2, DVec2, UVec2};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Persistent data between graph executions. It's updated via message passing from the editor thread with [`NodeRuntimeMessage`]`.
 /// Some of these fields are put into a [`WasmEditorApi`] which is passed to the final compiled graph network upon each execution.
@@ -119,9 +119,7 @@ impl NodeGraphUpdateSender for InternalNodeGraphUpdateSender {
 	}
 }
 
-thread_local! {
-	pub(crate) static NODE_RUNTIME: Rc<RefCell<Option<NodeRuntime>>> = Rc::new(RefCell::new(None));
-}
+pub(crate) static NODE_RUNTIME: Mutex<Option<NodeRuntime>> = Mutex::new(None);
 
 impl NodeRuntime {
 	pub fn new(receiver: Receiver<NodeRuntimeMessage>, sender: Sender<NodeGraphUpdate>) -> Self {
@@ -381,13 +379,10 @@ pub fn introspect_node(path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
 
 pub async fn run_node_graph() {
 	let result = NODE_RUNTIME.try_with(|runtime| {
-		let runtime = runtime.clone();
-		async move {
-			let mut runtime = runtime.try_borrow_mut();
-			if let Ok(ref mut runtime) = runtime {
-				if let Some(ref mut runtime) = runtime.as_mut() {
-					runtime.run().await;
-				}
+		let mut runtime = runtime.try_borrow_mut();
+		if let Ok(ref mut runtime) = runtime {
+			if let Some(ref mut runtime) = runtime.as_mut() {
+				runtime.run().await;
 			}
 		}
 	});
