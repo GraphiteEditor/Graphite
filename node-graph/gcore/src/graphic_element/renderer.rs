@@ -559,7 +559,6 @@ impl GraphicElementRendered for GraphicElement {
 			GraphicElement::VectorData(vector_data) => vector_data.render_svg(render, render_params),
 			GraphicElement::ImageFrame(image_frame) => image_frame.render_svg(render, render_params),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.render_svg(render, render_params),
-			GraphicElement::Artboard(artboard) => artboard.render_svg(render, render_params),
 		}
 	}
 
@@ -568,7 +567,6 @@ impl GraphicElementRendered for GraphicElement {
 			GraphicElement::VectorData(vector_data) => GraphicElementRendered::bounding_box(&**vector_data, transform),
 			GraphicElement::ImageFrame(image_frame) => image_frame.bounding_box(transform),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.bounding_box(transform),
-			GraphicElement::Artboard(artboard) => artboard.bounding_box(transform),
 		}
 	}
 
@@ -577,7 +575,6 @@ impl GraphicElementRendered for GraphicElement {
 			GraphicElement::VectorData(vector_data) => vector_data.add_click_targets(click_targets),
 			GraphicElement::ImageFrame(image_frame) => image_frame.add_click_targets(click_targets),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.add_click_targets(click_targets),
-			GraphicElement::Artboard(artboard) => artboard.add_click_targets(click_targets),
 		}
 	}
 
@@ -586,7 +583,6 @@ impl GraphicElementRendered for GraphicElement {
 			GraphicElement::VectorData(vector_data) => vector_data.to_usvg_node(),
 			GraphicElement::ImageFrame(image_frame) => image_frame.to_usvg_node(),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.to_usvg_node(),
-			GraphicElement::Artboard(artboard) => artboard.to_usvg_node(),
 		}
 	}
 
@@ -595,7 +591,6 @@ impl GraphicElementRendered for GraphicElement {
 			GraphicElement::VectorData(vector_data) => vector_data.contains_artboard(),
 			GraphicElement::ImageFrame(image_frame) => image_frame.contains_artboard(),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.contains_artboard(),
-			GraphicElement::Artboard(artboard) => artboard.contains_artboard(),
 		}
 	}
 }

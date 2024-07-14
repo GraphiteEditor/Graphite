@@ -67,8 +67,6 @@ pub enum GraphicElement {
 	VectorData(Box<VectorData>),
 	/// A bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
 	ImageFrame(ImageFrame<Color>),
-	/// The bounds for displaying a page of contained content
-	Artboard(Artboard),
 }
 
 // TODO: Can this be removed? It doesn't necessarily make that much sense to have a default when, instead, the entire GraphicElement just shouldn't exist if there's no specific content to assign it.
@@ -355,8 +353,6 @@ impl GraphicElement {
 				}
 				usvg::Node::Group(Box::new(group_element))
 			}
-			// TODO
-			GraphicElement::Artboard(_board) => usvg::Node::Group(Box::default()),
 		}
 	}
 }
