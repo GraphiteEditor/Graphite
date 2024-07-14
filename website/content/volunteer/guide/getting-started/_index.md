@@ -37,7 +37,7 @@ cargo install cargo-watch
 You might benefit from manually installing some Rust based utilities for compiling wasm (they are supposed to be installed automatically but it sometimes doesn't work - see the [Discord discussion](https://discord.com/channels/731730685944922173/830518879247007795/1222453349153247252)):
 
 ```sh
-cargo install -f wasm-bindgen-cli@0.2.91 # Must be matched with the version in Cargo.toml otherwise it will be re-downloaded each build.
+cargo install -f wasm-bindgen-cli@0.2.92 # Must be matched with the version in Cargo.toml otherwise it will be re-downloaded each build.
 cargo install wasm-pack
 ```
 
