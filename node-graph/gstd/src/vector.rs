@@ -79,18 +79,6 @@ fn boolean_operation_node(graphic_group: GraphicGroup, boolean_operation: Boolea
 				boolean_operation_on_vector_data(&vector_data, BooleanOperation::Union)
 			}
 			GraphicElement::ImageFrame(image) => vector_from_image(image),
-			// Union all vector data in the artboard into a single vector
-			GraphicElement::Artboard(artboard) => {
-				let artboard_subpath = Subpath::new_rect(artboard.location.as_dvec2(), artboard.location.as_dvec2() + artboard.dimensions.as_dvec2());
-
-				let mut artboard_vector = VectorData::from_subpath(artboard_subpath);
-				artboard_vector.style.set_fill(graphene_core::vector::style::Fill::Solid(artboard.background));
-
-				let mut vector_data = vec![artboard_vector];
-				vector_data.extend(collect_vector_data(&artboard.graphic_group).into_iter());
-
-				boolean_operation_on_vector_data(&vector_data, BooleanOperation::Union)
-			}
 		}
 	}
 
