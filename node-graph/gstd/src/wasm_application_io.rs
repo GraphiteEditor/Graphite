@@ -1,7 +1,4 @@
 pub use graph_craft::wasm_application_io::*;
-#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
-use graphene_core::application_io::SurfaceHandleFrame;
-use graphene_core::application_io::SurfaceHandleFrame;
 use graphene_core::application_io::{ApplicationIo, ExportFormat, RenderConfig, SurfaceHandle};
 use graphene_core::raster::bbox::Bbox;
 use graphene_core::raster::Image;
@@ -16,6 +13,7 @@ use core::future::Future;
 use glam::DAffine2;
 use std::marker::PhantomData;
 use std::sync::Arc;
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::Clamped;
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
@@ -49,7 +47,7 @@ async fn draw_image_frame_node<'a: 'input>(
 		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(array, image.image.width, image.image.height).expect("Failed to construct ImageData");
 		context.put_image_data(&image_data, 0.0, 0.0).unwrap();
 	}
-	SurfaceHandleFrame {
+	graphene_core::application_io::SurfaceHandleFrame {
 		surface_handle,
 		transform: image.transform,
 	}
@@ -153,7 +151,7 @@ fn render_canvas(
 	wasm_bindgen_futures::JsFuture::from(image_data.decode()).await.unwrap();
 	context.draw_image_with_html_image_element(&image_data, 0.0, 0.0).unwrap();
 	*/
-	let frame = SurfaceHandleFrame {
+	let frame = graphene_core::application_io::SurfaceHandleFrame {
 		surface_handle,
 		transform: glam::DAffine2::IDENTITY,
 	};
