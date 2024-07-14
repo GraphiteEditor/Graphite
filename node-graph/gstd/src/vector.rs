@@ -96,7 +96,13 @@ fn boolean_operation_node(graphic_group: GraphicGroup, boolean_operation: Boolea
 
 	fn collect_vector_data(graphic_group: &GraphicGroup) -> Vec<VectorData> {
 		// Ensure all non vector data in the graphic group is converted to vector data
-		graphic_group.iter().map(union_vector_data).collect::<Vec<_>>()
+		let vector_data = graphic_group.iter().map(union_vector_data);
+		// Apply the transform from the parent graphic group
+		let transformed_vector_data = vector_data.map(|mut vector_data| {
+			vector_data.transform = graphic_group.transform * vector_data.transform;
+			vector_data
+		});
+		transformed_vector_data.collect::<Vec<_>>()
 	}
 
 	fn subtract<'a>(vector_data: impl Iterator<Item = &'a VectorData>) -> VectorData {
