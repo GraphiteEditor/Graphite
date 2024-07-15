@@ -507,12 +507,16 @@ ol {
 }
 
 code {
-	background: var(--color-fog);
 	color: var(--color-black);
+	background: var(--color-fog);
 	padding: 0 4px;
 	overflow-wrap: anywhere;
 	-webkit-hyphens: none;
 	hyphens: none;
+
+	a & {
+		color: var(--color-crimson);
+	}
 }
 
 pre {
