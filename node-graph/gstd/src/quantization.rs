@@ -92,7 +92,7 @@ fn generate_quantization<const N: usize>(data: Vec<f64>, samples: usize, channel
 }*/
 
 fn create_distribution(data: Vec<f64>, samples: usize, channel: usize) -> Vec<(f64, f64)> {
-	let data: Vec<f64> = data.chunks(4 * (data.len() / (4 * samples.min(data.len() / 4)))).map(|x| x[channel] as f64).collect();
+	let data: Vec<f64> = data.chunks(4 * (data.len() / (4 * samples.min(data.len() / 4)))).map(|x| x[channel]).collect();
 	let max = *data.iter().max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)).unwrap();
 	let data: Vec<f64> = data.iter().map(|x| x / max).collect();
 	dbg!(max);

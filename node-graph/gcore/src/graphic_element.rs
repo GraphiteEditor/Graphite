@@ -8,7 +8,6 @@ use crate::{Color, Node, SurfaceFrame};
 use dyn_any::{DynAny, StaticType};
 use node_macro::node_fn;
 
-use core::future::Future;
 use core::ops::{Deref, DerefMut};
 use glam::{DAffine2, DVec2, IVec2, UVec2};
 use web_sys::HtmlCanvasElement;

@@ -3,7 +3,7 @@ use proc_macro2::Span;
 use quote::{format_ident, quote, ToTokens};
 use syn::{
 	parse_macro_input, punctuated::Punctuated, token::Comma, AngleBracketedGenericArguments, AssocType, FnArg, GenericArgument, GenericParam, Ident, ItemFn, Lifetime, Pat, PatIdent, PathArguments,
-	PredicateType, ReturnType, Token, TraitBound, Type, TypeImplTrait, TypeParam, TypeParamBound, TypeTuple, WhereClause, WherePredicate,
+	PathSegment, PredicateType, ReturnType, Token, TraitBound, Type, TypeImplTrait, TypeParam, TypeParamBound, TypeTuple, WhereClause, WherePredicate,
 };
 
 /// A macro used to construct a proto node implementation from the given struct and the decorated function.
@@ -238,16 +238,7 @@ fn node_impl_impl(attr: TokenStream, item: TokenStream, asyncness: Asyncness) ->
 
 	let num_inputs = parameter_inputs.len();
 	let struct_generics = (0..num_inputs).map(|x| format_ident!("S{x}")).collect::<Vec<_>>();
-	let future_generics = (0..num_inputs).map(|x| format_ident!("F{x}")).collect::<Vec<_>>();
 	let parameter_types = parameter_inputs.iter().map(|x| *x.ty.clone()).collect::<Vec<Type>>();
-	let future_types = future_generics
-		.iter()
-		.enumerate()
-		.map(|(i, x)| match parameter_types[i].clone() {
-			Type::ImplTrait(x) => Type::ImplTrait(x),
-			_ => Type::Verbatim(x.to_token_stream()),
-		})
-		.collect::<Vec<_>>();
 
 	for ident in struct_generics.iter() {
 		args.push(Type::Verbatim(quote::quote!(#ident)));
@@ -255,26 +246,13 @@ fn node_impl_impl(attr: TokenStream, item: TokenStream, asyncness: Asyncness) ->
 
 	// Generics are simply `S0` through to `Sn-1` where n is the number of secondary inputs
 	let node_generics = construct_node_generics(&struct_generics, true);
-	let future_generic_params = construct_node_generics(&future_generics, false);
-	let (future_parameter_types, future_generic_params): (Vec<_>, Vec<_>) = parameter_types.iter().cloned().zip(future_generic_params).filter(|(ty, _)| !matches!(ty, Type::ImplTrait(_))).unzip();
-
-	let generics = if async_in {
-		type_generics
-			.into_iter()
-			.chain(node_generics.iter().cloned())
-			// .chain(future_generic_params.iter().cloned())
-			.collect::<Punctuated<_, Comma>>()
-	} else {
-		type_generics.into_iter().chain(node_generics.iter().cloned()).collect::<Punctuated<_, Comma>>()
-	};
+	let generics = type_generics.into_iter().chain(node_generics.iter().cloned()).collect::<Punctuated<_, Comma>>();
 
 	// Bindings for all of the above generics to a node with an input of `()` and an output of the type in the function
 	let node_bounds = if async_in {
-		// let future_bounds = input_node_bounds(future_parameter_types, future_generic_params, |_, _, out_ty| quote! { core::future::Future<Output = #out_ty> + Send});
-		// node_bounds.extend(future_bounds);
 		input_node_bounds(parameter_types, node_generics, |lifetime, in_ty, out_ty| {
 			quote! {
-				 Node<'any_input, #in_ty, Output: core::future::Future<Output = #out_ty> + ::dyn_any::WasmNotSend > + ::dyn_any::WasmNotSend + 'any_input
+				 Node<'any_input, #in_ty, Output: core::future::Future<Output = #out_ty> + ::dyn_any::WasmNotSend > + ::dyn_any::WasmNotSend + #lifetime
 
 			}
 		})
@@ -346,6 +324,16 @@ fn parse_inputs(function: &ItemFn, remove_impl_node: bool) -> (&syn::PatType, Ve
 	(primary_input, parameter_inputs, parameter_pat_ident_patterns)
 }
 
+fn path(elements: &[&str]) -> syn::Path {
+	syn::Path {
+		leading_colon: None,
+		segments: Punctuated::from_iter(elements.iter().map(|element| PathSegment {
+			ident: Ident::new(element, Span::mixed_site()),
+			arguments: PathArguments::None,
+		})),
+	}
+}
+
 fn construct_node_generics(struct_generics: &[Ident], add_sync: bool) -> Vec<GenericParam> {
 	let mut bounds = vec![
 		TypeParamBound::Lifetime(Lifetime::new("'input", Span::call_site())),
@@ -353,7 +341,7 @@ fn construct_node_generics(struct_generics: &[Ident], add_sync: bool) -> Vec<Gen
 			paren_token: None,
 			modifier: syn::TraitBoundModifier::None,
 			lifetimes: None,
-			path: syn::PathSegment::from(syn::Ident::new("Send", Span::call_site())).into(),
+			path: path(&["dyn_any", "WasmNotSend"]),
 		}),
 	];
 	if add_sync {
@@ -361,7 +349,7 @@ fn construct_node_generics(struct_generics: &[Ident], add_sync: bool) -> Vec<Gen
 			paren_token: None,
 			modifier: syn::TraitBoundModifier::None,
 			lifetimes: None,
-			path: syn::PathSegment::from(syn::Ident::new("Sync", Span::call_site())).into(),
+			path: path(&["dyn_any", "WasmNotSync"]),
 		}))
 	};
 	struct_generics

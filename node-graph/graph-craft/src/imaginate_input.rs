@@ -1,5 +1,5 @@
 use dyn_any::{DynAny, StaticType};
-use graphene_core::{Color, WasmNotSend};
+use graphene_core::Color;
 use std::borrow::Cow;
 use std::fmt::Debug;
 use std::sync::{

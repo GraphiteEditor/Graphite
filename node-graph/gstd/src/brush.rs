@@ -6,7 +6,7 @@ use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{Alpha, Color, Image, ImageFrame, Pixel, Sample};
 use graphene_core::raster::{BlendMode, BlendNode};
 use graphene_core::transform::{Transform, TransformMut};
-use graphene_core::value::{ClonedNode, CopiedNode, OnceCellNode, ValueNode};
+use graphene_core::value::{ClonedNode, CopiedNode, ValueNode};
 use graphene_core::vector::brush_stroke::{BrushStroke, BrushStyle};
 use graphene_core::vector::VectorData;
 use graphene_core::{Node, WasmNotSend};
@@ -35,10 +35,11 @@ pub struct ChainApplyNode<Value> {
 }
 
 #[node_fn(ChainApplyNode)]
-async fn chain_apply<I: Iterator + WasmNotSend, T: WasmNotSend>(iter: I, mut value: T) -> T
+async fn chain_apply<I: Iterator + WasmNotSend, T: WasmNotSend>(iter: I, value: T) -> T
 where
 	I::Item: for<'a> Node<'a, T, Output = T>,
 {
+	let mut value = value;
 	for lambda in iter {
 		value = lambda.eval(value);
 	}

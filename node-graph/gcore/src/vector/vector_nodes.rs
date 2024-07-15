@@ -4,7 +4,6 @@ use super::{PointId, SegmentId, StrokeId, VectorData};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
 use crate::{Color, GraphicGroup, Node};
-use core::future::Future;
 
 use bezier_rs::{Cap, Join, Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
@@ -588,11 +587,12 @@ mod test {
 
 	impl<'i, T: 'i, N: Node<'i, T> + Clone> Node<'i, T> for FutureWrapperNode<N>
 	where
-		N: Node<'i, T>,
+		N: Node<'i, T, Output: Send>,
 	{
-		type Output = Pin<Box<dyn core::future::Future<Output = N::Output> + 'i>>;
+		type Output = Pin<Box<dyn core::future::Future<Output = N::Output> + 'i + Send>>;
 		fn eval(&'i self, input: T) -> Self::Output {
-			Box::pin(async move { self.0.eval(input) })
+			let result = self.0.eval(input);
+			Box::pin(async move { result })
 		}
 	}
 

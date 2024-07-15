@@ -4,11 +4,9 @@ use graphene_core::application_io::{ApplicationError, ApplicationIo, ResourceFut
 #[cfg(feature = "wgpu")]
 use wgpu_executor::WgpuExecutor;
 
-use core::future::Future;
 #[cfg(target_arch = "wasm32")]
 use js_sys::{Object, Reflect};
 use std::collections::HashMap;
-use std::pin::Pin;
 #[cfg(target_arch = "wasm32")]
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;

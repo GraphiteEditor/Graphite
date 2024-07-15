@@ -265,13 +265,13 @@ pub struct BlendImageNode<P, Background, MapFn> {
 }
 
 #[node_macro::node_fn(BlendImageNode<_P>)]
-fn blend_image_node<_P: Alpha + Pixel + Debug + WasmNotSend + Sync, MapFn, Forground: Sample<Pixel = _P> + Transform + Send>(
+async fn blend_image_node<_P: Alpha + Pixel + Debug + WasmNotSend + Sync + 'static, MapFn, Forground: Sample<Pixel = _P> + Transform + Send>(
 	foreground: Forground,
 	background: ImageFrame<_P>,
 	map_fn: &'input MapFn,
 ) -> ImageFrame<_P>
 where
-	MapFn: Node<'input, (_P, _P), Output = _P> + 'input,
+	for<'a> MapFn: Node<'a, (_P, _P), Output = _P> + 'input,
 {
 	blend_new_image(foreground, background, map_fn)
 }

@@ -27,7 +27,8 @@ pub struct GpuCompiler<TypingContext, ShaderIO> {
 
 // TODO: Move to graph-craft
 #[node_macro::node_fn(GpuCompiler)]
-async fn compile_gpu(node: &'input DocumentNode, mut typing_context: TypingContext, io: ShaderIO) -> Result<compilation_client::Shader, String> {
+async fn compile_gpu(node: &'input DocumentNode, typing_context: TypingContext, io: ShaderIO) -> Result<compilation_client::Shader, String> {
+	let mut typing_context = typing_context;
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let DocumentNodeImplementation::Network(ref network) = node.implementation else { panic!() };
 	let proto_networks: Vec<_> = compiler.compile(network.clone())?.collect();

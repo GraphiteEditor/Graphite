@@ -1,6 +1,6 @@
 use crate::{Node, WasmNotSend};
 use core::future::Future;
-use core::ops::{Deref, DerefMut};
+use core::ops::Deref;
 use std::sync::Mutex;
 
 #[cfg(feature = "alloc")]
@@ -13,7 +13,7 @@ pub struct MemoNode<T, CachedNode> {
 	cache: Arc<Mutex<Option<T>>>,
 	node: CachedNode,
 }
-impl<'i, 'o: 'i, T: 'i + Clone + 'o + Send, CachedNode: 'i> Node<'i, ()> for MemoNode<T, CachedNode>
+impl<'i, 'o: 'i, T: 'i + Clone + 'o + WasmNotSend, CachedNode: 'i> Node<'i, ()> for MemoNode<T, CachedNode>
 where
 	CachedNode: for<'any_input> Node<'any_input, ()>,
 	for<'a> <CachedNode as Node<'a, ()>>::Output: core::future::Future<Output = T> + WasmNotSend,
@@ -58,7 +58,7 @@ pub struct ImpureMemoNode<I, T, CachedNode> {
 	_phantom: std::marker::PhantomData<I>,
 }
 
-impl<'i, 'o: 'i, I: 'i, T: 'i + Clone + 'o + Send, CachedNode: 'i> Node<'i, I> for ImpureMemoNode<I, T, CachedNode>
+impl<'i, 'o: 'i, I: 'i, T: 'i + Clone + 'o + WasmNotSend, CachedNode: 'i> Node<'i, I> for ImpureMemoNode<I, T, CachedNode>
 where
 	CachedNode: for<'any_input> Node<'any_input, I>,
 	for<'a> <CachedNode as Node<'a, I>>::Output: core::future::Future<Output = T> + WasmNotSend,
@@ -107,6 +107,7 @@ pub struct IORecord<I, O> {
 /// Caches the output of the last graph evaluation for introspection
 #[derive(Default)]
 pub struct MonitorNode<I, T, N> {
+	#[allow(clippy::type_complexity)]
 	io: Arc<Mutex<Option<Arc<IORecord<I, T>>>>>,
 	node: N,
 }

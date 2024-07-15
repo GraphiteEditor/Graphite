@@ -1,22 +1,29 @@
 use dyn_any::DynFuture;
 pub use graph_craft::wasm_application_io::*;
-use graphene_core::application_io::{ApplicationIo, ExportFormat, RenderConfig, SurfaceHandle};
+#[cfg(target_arch = "wasm32")]
+use graphene_core::application_io::SurfaceHandle;
+use graphene_core::application_io::{ApplicationIo, ExportFormat, RenderConfig};
+#[cfg(target_arch = "wasm32")]
 use graphene_core::raster::bbox::Bbox;
 use graphene_core::raster::Image;
 use graphene_core::raster::ImageFrame;
 use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
-use graphene_core::transform::{Footprint, TransformMut};
+use graphene_core::transform::Footprint;
 use graphene_core::Node;
 use graphene_core::{Color, WasmNotSend};
 
+#[cfg(target_arch = "wasm32")]
 use base64::Engine;
 use core::future::Future;
+#[cfg(target_arch = "wasm32")]
 use glam::DAffine2;
 use std::marker::PhantomData;
 use std::sync::Arc;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::Clamped;
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
+#[cfg(target_arch = "wasm32")]
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 pub struct CreateSurfaceNode {}
@@ -159,15 +166,19 @@ fn render_canvas(
 	RenderOutput::CanvasFrame(frame.into())
 }
 
+#[cfg(target_arch = "wasm32")]
 pub struct RasterizeNode<Footprint, Surface> {
 	footprint: Footprint,
 	surface_handle: Surface,
 }
 
-mod js_future;
-
 #[node_macro::node_fn(RasterizeNode)]
-async fn rasterize<_T: GraphicElementRendered + TransformMut + WasmNotSend>(mut data: _T, footprint: Footprint, surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>) -> ImageFrame<Color> {
+#[cfg(target_arch = "wasm32")]
+async fn rasterize<_T: GraphicElementRendered + graphene_core::transform::TransformMut + WasmNotSend>(
+	mut data: _T,
+	footprint: Footprint,
+	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
+) -> ImageFrame<Color> {
 	let mut render = SvgRender::new();
 
 	if footprint.transform.matrix2.determinant() == 0. {
@@ -200,7 +211,7 @@ async fn rasterize<_T: GraphicElementRendered + TransformMut + WasmNotSend>(mut 
 
 	let image_data = web_sys::HtmlImageElement::new().unwrap();
 	image_data.set_src(base64_string.as_str());
-	futures::executor::block_on(js_future::UnsafeSendJsFuture::from(image_data.decode())).unwrap();
+	wasm_bindgen_futures::JsFuture::from(image_data.decode()).await.unwrap();
 	context
 		.draw_image_with_html_image_element_and_dw_and_dh(&image_data, 0., 0., resolution.x as f64, resolution.y as f64)
 		.unwrap();
@@ -227,7 +238,9 @@ where
 	fn eval(&'input self, render_config: RenderConfig) -> Self::Output {
 		let footprint = render_config.viewport;
 
+		#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
 		let RenderConfig { hide_artboards, for_export, .. } = render_config;
+		#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
 		let render_params = RenderParams::new(render_config.view_mode, ImageRenderMode::Base64, None, false, hide_artboards, for_export);
 
 		let data_fut = self.data.eval(footprint);
@@ -261,9 +274,9 @@ where
 
 	#[inline]
 	fn eval(&'input self, render_config: RenderConfig) -> Self::Output {
-		let footprint = render_config.viewport;
-
+		#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
 		let RenderConfig { hide_artboards, for_export, .. } = render_config;
+		#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
 		let render_params = RenderParams::new(render_config.view_mode, ImageRenderMode::Base64, None, false, hide_artboards, for_export);
 
 		let data_fut = self.data.eval(());
