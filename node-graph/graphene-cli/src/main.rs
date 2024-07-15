@@ -42,17 +42,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		device.poll(wgpu::Maintain::Poll);
 	});
 
-	let editor_api = WasmEditorApi {
-		image_frame: None,
-		font_cache: &FontCache::default(),
-		application_io: &application_io,
-		node_graph_message_sender: &UpdateLogger {},
-		imaginate_preferences: &ImaginatePreferences::default(),
-		render_config: graphene_core::application_io::RenderConfig::default(),
+	let _editor_api = WasmEditorApi {
+		font_cache: FontCache::default(),
+		application_io: Some(application_io.into()),
+		node_graph_message_sender: Box::new(UpdateLogger {}),
+		imaginate_preferences: Box::new(ImaginatePreferences::default()),
 	};
+	let render_config = graphene_core::application_io::RenderConfig::default();
 
 	loop {
-		let _result = (&executor).execute(editor_api.clone()).await?;
+		let _result = (&executor).execute(render_config).await?;
 		std::thread::sleep(std::time::Duration::from_millis(16));
 	}
 }
@@ -90,7 +89,7 @@ fn create_executor(_document_string: String) -> Result<DynamicExecutor, Box<dyn 
 	// Ok(executor)
 }
 
-fn begin_scope() -> DocumentNode {
+fn _begin_scope() -> DocumentNode {
 	DocumentNode {
 		name: "Begin Scope".to_string(),
 		implementation: DocumentNodeImplementation::Network(NodeNetwork {

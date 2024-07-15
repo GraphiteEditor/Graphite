@@ -57,7 +57,7 @@ impl core::hash::Hash for GraphicGroup {
 }
 
 /// The possible forms of graphical content held in a Vec by the `elements` field of [`GraphicElement`].
-/// Can be another recursively nested [`GraphicGroup`], [`VectorData`], an [`ImageFrame`], text (not yet implemented), or an [`Artboard`].
+/// Can be another recursively nested [`GraphicGroup`], a [`VectorData`] shape, an [`ImageFrame`], or an [`Artboard`].
 #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GraphicElement {
@@ -67,12 +67,6 @@ pub enum GraphicElement {
 	VectorData(Box<VectorData>),
 	/// A bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
 	ImageFrame(ImageFrame<Color>),
-	// TODO: Switch from `String` to a proper formatted typography type
-	/// Text, equivalent to the SVG <text> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/text
-	/// (Not yet implemented.)
-	Text(String),
-	/// The bounds for displaying a page of contained content
-	Artboard(Artboard),
 }
 
 // TODO: Can this be removed? It doesn't necessarily make that much sense to have a default when, instead, the entire GraphicElement just shouldn't exist if there's no specific content to assign it.
@@ -124,15 +118,6 @@ impl ArtboardGroup {
 
 	fn add_artboard(&mut self, artboard: Artboard) {
 		self.artboards.push(artboard);
-	}
-
-	pub fn get_graphic_group(&self) -> GraphicGroup {
-		let mut graphic_group = GraphicGroup::EMPTY;
-		for artboard in self.artboards.clone() {
-			let graphic_element: GraphicElement = artboard.into();
-			graphic_group.push(graphic_element);
-		}
-		graphic_group
 	}
 }
 
@@ -244,11 +229,6 @@ impl From<GraphicGroup> for GraphicElement {
 		GraphicElement::GraphicGroup(graphic_group)
 	}
 }
-impl From<Artboard> for GraphicElement {
-	fn from(artboard: Artboard) -> Self {
-		GraphicElement::Artboard(artboard)
-	}
-}
 
 impl Deref for GraphicGroup {
 	type Target = Vec<GraphicElement>;
@@ -269,7 +249,6 @@ trait ToGraphicElement: Into<GraphicElement> {}
 
 impl ToGraphicElement for VectorData {}
 impl ToGraphicElement for ImageFrame<Color> {}
-impl ToGraphicElement for Artboard {}
 
 impl<T> From<T> for GraphicGroup
 where
@@ -366,28 +345,6 @@ impl GraphicElement {
 					bounding_box: None,
 				}))
 			}
-			GraphicElement::Text(text) => usvg::Node::Text(Box::new(usvg::Text {
-				id: String::new(),
-				abs_transform: usvg::Transform::identity(),
-				rendering_mode: usvg::TextRendering::OptimizeSpeed,
-				writing_mode: usvg::WritingMode::LeftToRight,
-				chunks: vec![usvg::TextChunk {
-					text: text.clone(),
-					x: None,
-					y: None,
-					anchor: usvg::TextAnchor::Start,
-					spans: vec![],
-					text_flow: usvg::TextFlow::Linear,
-				}],
-				dx: Vec::new(),
-				dy: Vec::new(),
-				rotate: Vec::new(),
-				bounding_box: None,
-				abs_bounding_box: None,
-				stroke_bounding_box: None,
-				abs_stroke_bounding_box: None,
-				flattened: None,
-			})),
 			GraphicElement::GraphicGroup(group) => {
 				let mut group_element = usvg::Group::default();
 
@@ -396,8 +353,6 @@ impl GraphicElement {
 				}
 				usvg::Node::Group(Box::new(group_element))
 			}
-			// TODO
-			GraphicElement::Artboard(_board) => usvg::Node::Group(Box::default()),
 		}
 	}
 }

@@ -226,24 +226,25 @@ pub fn snap_drag(start: DVec2, current: DVec2, axis_align: bool, snap_data: Snap
 	let mut best_snap = SnappedPoint::infinite_snap(document.metadata().document_to_viewport.inverse().transform_point2(mouse_position));
 
 	for point in candidates {
-		let origin = point.document_point + total_mouse_delta_document;
+		let mut point = point.clone();
+		point.document_point += total_mouse_delta_document;
 
 		let snapped = if axis_align {
 			snap_manager.constrained_snap(
 				&snap_data,
-				point,
+				&point,
 				SnapConstraint::Line {
-					origin,
+					origin: point.document_point,
 					direction: total_mouse_delta_document.try_normalize().unwrap_or(DVec2::X),
 				},
 				None,
 			)
 		} else {
-			snap_manager.free_snap(&snap_data, point, None, false)
+			snap_manager.free_snap(&snap_data, &point, None, false)
 		};
 
 		if best_snap.other_snap_better(&snapped) {
-			offset = snapped.snapped_point_document - origin + mouse_delta_document;
+			offset = snapped.snapped_point_document - point.document_point + mouse_delta_document;
 			best_snap = snapped;
 		}
 	}

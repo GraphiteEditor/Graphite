@@ -23,7 +23,7 @@ impl ClickTarget {
 	/// Does the click target intersect the rectangle
 	pub fn intersect_rectangle(&self, document_quad: Quad, layer_transform: DAffine2) -> bool {
 		// Check if the matrix is not invertible
-		if layer_transform.matrix2.determinant().abs() <= std::f64::EPSILON {
+		if layer_transform.matrix2.determinant().abs() <= f64::EPSILON {
 			return false;
 		}
 		let quad = layer_transform.inverse() * document_quad;
@@ -468,15 +468,19 @@ impl GraphicElementRendered for Artboard {
 
 impl GraphicElementRendered for crate::ArtboardGroup {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		self.get_graphic_group().render_svg(render, render_params);
+		for artboard in &self.artboards {
+			artboard.render_svg(render, render_params);
+		}
 	}
 
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.get_graphic_group().bounding_box(transform)
+		self.artboards.iter().filter_map(|element| element.bounding_box(transform)).reduce(Quad::combine_bounds)
 	}
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		self.get_graphic_group().add_click_targets(click_targets);
+		for artboard in &self.artboards {
+			artboard.add_click_targets(click_targets);
+		}
 	}
 
 	fn contains_artboard(&self) -> bool {
@@ -553,9 +557,7 @@ impl GraphicElementRendered for GraphicElement {
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.render_svg(render, render_params),
 			GraphicElement::ImageFrame(image_frame) => image_frame.render_svg(render, render_params),
-			GraphicElement::Text(_) => todo!("Render a text GraphicElement"),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.render_svg(render, render_params),
-			GraphicElement::Artboard(artboard) => artboard.render_svg(render, render_params),
 		}
 	}
 
@@ -563,9 +565,7 @@ impl GraphicElementRendered for GraphicElement {
 		match self {
 			GraphicElement::VectorData(vector_data) => GraphicElementRendered::bounding_box(&**vector_data, transform),
 			GraphicElement::ImageFrame(image_frame) => image_frame.bounding_box(transform),
-			GraphicElement::Text(_) => todo!("Bounds of a text GraphicElement"),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.bounding_box(transform),
-			GraphicElement::Artboard(artboard) => artboard.bounding_box(transform),
 		}
 	}
 
@@ -573,9 +573,7 @@ impl GraphicElementRendered for GraphicElement {
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.add_click_targets(click_targets),
 			GraphicElement::ImageFrame(image_frame) => image_frame.add_click_targets(click_targets),
-			GraphicElement::Text(_) => todo!("click target for text GraphicElement"),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.add_click_targets(click_targets),
-			GraphicElement::Artboard(artboard) => artboard.add_click_targets(click_targets),
 		}
 	}
 
@@ -583,9 +581,7 @@ impl GraphicElementRendered for GraphicElement {
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.to_usvg_node(),
 			GraphicElement::ImageFrame(image_frame) => image_frame.to_usvg_node(),
-			GraphicElement::Text(text) => text.to_usvg_node(),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.to_usvg_node(),
-			GraphicElement::Artboard(artboard) => artboard.to_usvg_node(),
 		}
 	}
 
@@ -593,9 +589,7 @@ impl GraphicElementRendered for GraphicElement {
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.contains_artboard(),
 			GraphicElement::ImageFrame(image_frame) => image_frame.contains_artboard(),
-			GraphicElement::Text(text) => text.contains_artboard(),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.contains_artboard(),
-			GraphicElement::Artboard(artboard) => artboard.contains_artboard(),
 		}
 	}
 }

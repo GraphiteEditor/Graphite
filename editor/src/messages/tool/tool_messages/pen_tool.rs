@@ -96,7 +96,7 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.unit(" px")
 		.label("Weight")
 		.min(0.)
-		.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
+		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 		.on_update(|number_input: &NumberInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
 		.widget_holder()
 }
@@ -508,8 +508,12 @@ impl Fsm for PenToolFsmState {
 			(PenToolFsmState::Ready, PenToolMessage::DragStart) => {
 				responses.add(DocumentMessage::StartTransaction);
 
+				let point = SnapCandidatePoint::handle(document.metadata.document_to_viewport.inverse().transform_point2(input.mouse.position));
+				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, None, false);
+				let viewport = document.metadata.document_to_viewport.transform_point2(snapped.snapped_point_document);
+
 				// Perform extension of an existing path
-				if let Some((layer, point, position)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE) {
+				if let Some((layer, point, position)) = should_extend(document, viewport, crate::consts::SNAP_POINT_TOLERANCE) {
 					tool_data.add_point(LastPoint {
 						id: point,
 						pos: position,
@@ -535,8 +539,6 @@ impl Fsm for PenToolFsmState {
 					// Generate first point
 					let id = PointId::generate();
 					let transform = document.metadata().transform_to_document(parent);
-					let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
-					let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, None, false);
 					let pos = transform.inverse().transform_point2(snapped.snapped_point_document);
 					let modification_type = VectorModificationType::InsertPoint { id, position: pos };
 					responses.add(GraphOperationMessage::Vector { layer, modification_type });

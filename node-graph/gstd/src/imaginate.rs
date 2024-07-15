@@ -6,7 +6,7 @@ use glam::{DVec2, U64Vec2};
 use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginatePreferences, ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus, ImaginateTerminationHandle};
 use graphene_core::application_io::NodeGraphUpdateMessage;
 use graphene_core::raster::{Color, Image, Luma, Pixel};
-use image::{DynamicImage, ImageBuffer, ImageOutputFormat};
+use image::{DynamicImage, ImageBuffer, ImageFormat};
 use reqwest::Url;
 
 const PROGRESS_EVERY_N_STEPS: u32 = 5;
@@ -51,7 +51,10 @@ impl core::fmt::Debug for ImaginatePersistentData {
 impl Default for ImaginatePersistentData {
 	fn default() -> Self {
 		let mut status = ImaginateServerStatus::default();
+		#[cfg(not(miri))]
 		let client = new_client().map_err(|err| status = ImaginateServerStatus::Failed(err.to_string())).ok();
+		#[cfg(miri)]
+		let client = None;
 		let ImaginatePreferences { host_name } = Default::default();
 		Self {
 			pending_server_check: None,
@@ -263,7 +266,7 @@ struct ImaginateCommonImageRequest<'a> {
 #[allow(clippy::too_many_arguments)]
 pub async fn imaginate<'a, P: Pixel>(
 	image: Image<P>,
-	editor_api: impl Future<Output = WasmEditorApi<'a>>,
+	editor_api: impl Future<Output = &'a WasmEditorApi>,
 	controller: ImaginateController,
 	seed: impl Future<Output = f64>,
 	res: impl Future<Output = Option<DVec2>>,
@@ -468,7 +471,7 @@ fn image_to_base64<P: Pixel>(image: Image<P>) -> Result<String, Error> {
 	};
 
 	let mut png_data = std::io::Cursor::new(vec![]);
-	image.write_to(&mut png_data, ImageOutputFormat::Png).map_err(Error::ImageEncode)?;
+	image.write_to(&mut png_data, ImageFormat::Png).map_err(Error::ImageEncode)?;
 	Ok(BASE64_STANDARD.encode(png_data.into_inner()))
 }
 

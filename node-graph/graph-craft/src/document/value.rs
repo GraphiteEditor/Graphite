@@ -2,6 +2,7 @@ use super::DocumentNode;
 use crate::graphene_compiler::Any;
 pub use crate::imaginate_input::{ImaginateCache, ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use crate::proto::{Any as DAny, FutureAny};
+use crate::wasm_application_io::WasmEditorApi;
 
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
@@ -10,7 +11,9 @@ use graphene_core::{Color, Node, Type};
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
+use std::fmt::Display;
 use std::hash::Hash;
+use std::marker::PhantomData;
 pub use std::sync::Arc;
 
 /// Macro to generate the tagged value enum.
@@ -24,6 +27,8 @@ macro_rules! tagged_value {
 			$( $(#[$meta] ) *$identifier( $ty ), )*
 			RenderOutput(RenderOutput),
 			SurfaceFrame(graphene_core::SurfaceFrame),
+			#[serde(skip)]
+			EditorApi(Arc<WasmEditorApi>)
 		}
 
 		// We must manually implement hashing because some values are floats and so do not reproducibly hash (see FakeHash below)
@@ -36,6 +41,7 @@ macro_rules! tagged_value {
 					$( Self::$identifier(x) => {x.hash(state)}),*
 					Self::RenderOutput(x) => x.hash(state),
 					Self::SurfaceFrame(x) => x.hash(state),
+					Self::EditorApi(x) => x.hash(state),
 				}
 			}
 		}
@@ -47,6 +53,7 @@ macro_rules! tagged_value {
 					$( Self::$identifier(x) => Box::new(x), )*
 					Self::RenderOutput(x) => Box::new(x),
 					Self::SurfaceFrame(x) => Box::new(x),
+					Self::EditorApi(x) => Box::new(x),
 				}
 			}
 			/// Creates a graphene_core::Type::Concrete(TypeDescriptor { .. }) with the type of the value inside the tagged value
@@ -56,6 +63,7 @@ macro_rules! tagged_value {
 					$( Self::$identifier(_) => concrete!($ty), )*
 					Self::RenderOutput(_) => concrete!(RenderOutput),
 					Self::SurfaceFrame(_) => concrete!(graphene_core::SurfaceFrame),
+					Self::EditorApi(_) => concrete!(&WasmEditorApi)
 				}
 			}
 			/// Attempts to downcast the dynamic type to a tagged value
@@ -155,6 +163,7 @@ tagged_value! {
 	GradientStops(graphene_core::vector::style::GradientStops),
 	Quantization(graphene_core::quantization::QuantizationChannels),
 	OptionalColor(Option<graphene_core::raster::color::Color>),
+	#[serde(alias = "ManipulatorGroupIds")] // TODO: Eventually remove this alias (probably starting late 2024)
 	PointIds(Vec<graphene_core::vector::PointId>),
 	Font(graphene_core::text::Font),
 	BrushStrokes(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
@@ -170,19 +179,10 @@ tagged_value! {
 	VectorModification(graphene_core::vector::VectorModification),
 	CentroidType(graphene_core::vector::misc::CentroidType),
 	BooleanOperation(graphene_core::vector::misc::BooleanOperation),
+	FontCache(Arc<graphene_core::text::FontCache>),
 }
 
-impl<'a> TaggedValue {
-	pub fn to_string(&self) -> String {
-		match self {
-			TaggedValue::String(x) => x.to_string(),
-			TaggedValue::U32(x) => x.to_string(),
-			TaggedValue::U64(x) => x.to_string(),
-			TaggedValue::F64(x) => x.to_string(),
-			TaggedValue::Bool(x) => x.to_string(),
-			_ => panic!("Cannot convert to string"),
-		}
-	}
+impl TaggedValue {
 	pub fn to_primitive_string(&self) -> String {
 		match self {
 			TaggedValue::None => "()".to_string(),
@@ -194,6 +194,19 @@ impl<'a> TaggedValue {
 			TaggedValue::BlendMode(x) => "BlendMode::".to_string() + &x.to_string(),
 			TaggedValue::Color(x) => format!("Color {x:?}"),
 			_ => panic!("Cannot convert to primitive string"),
+		}
+	}
+}
+
+impl Display for TaggedValue {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			TaggedValue::String(x) => f.write_str(x),
+			TaggedValue::U32(x) => f.write_fmt(format_args!("{x}")),
+			TaggedValue::U64(x) => f.write_fmt(format_args!("{x}")),
+			TaggedValue::F64(x) => f.write_fmt(format_args!("{x}")),
+			TaggedValue::Bool(x) => f.write_fmt(format_args!("{x}")),
+			_ => panic!("Cannot convert to string"),
 		}
 	}
 }
@@ -211,6 +224,22 @@ impl<'input> Node<'input, DAny<'input>> for UpcastNode {
 impl UpcastNode {
 	pub fn new(value: TaggedValue) -> Self {
 		Self { value }
+	}
+}
+#[derive(Default, Debug, Clone, Copy)]
+pub struct UpcastAsRefNode<T: AsRef<U>, U>(pub T, PhantomData<U>);
+
+impl<'i, T: 'i + AsRef<U>, U: 'i + StaticType> Node<'i, DAny<'i>> for UpcastAsRefNode<T, U> {
+	type Output = FutureAny<'i>;
+	#[inline(always)]
+	fn eval(&'i self, _: DAny<'i>) -> Self::Output {
+		Box::pin(async move { Box::new(self.0.as_ref()) as DAny<'i> })
+	}
+}
+
+impl<T: AsRef<U>, U> UpcastAsRefNode<T, U> {
+	pub const fn new(value: T) -> UpcastAsRefNode<T, U> {
+		UpcastAsRefNode(value, PhantomData)
 	}
 }
 

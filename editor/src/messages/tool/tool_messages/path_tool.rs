@@ -98,8 +98,8 @@ impl LayoutHolder for PathTool {
 			.label("X")
 			.min_width(120)
 			.disabled(x.is_none())
-			.min(-((1_u64 << std::f64::MANTISSA_DIGITS) as f64))
-			.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
+			.min(-((1_u64 << f64::MANTISSA_DIGITS) as f64))
+			.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 			.on_update(move |number_input: &NumberInput| {
 				if let Some(new_x) = number_input.value.or(x) {
 					PathToolMessage::SelectedPointXChanged { new_x }.into()
@@ -114,8 +114,8 @@ impl LayoutHolder for PathTool {
 			.label("Y")
 			.min_width(120)
 			.disabled(y.is_none())
-			.min(-((1_u64 << std::f64::MANTISSA_DIGITS) as f64))
-			.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
+			.min(-((1_u64 << f64::MANTISSA_DIGITS) as f64))
+			.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 			.on_update(move |number_input: &NumberInput| {
 				if let Some(new_y) = number_input.value.or(y) {
 					PathToolMessage::SelectedPointYChanged { new_y }.into()
@@ -403,10 +403,8 @@ impl PathToolData {
 		}
 		self.alt_debounce = alt;
 
-		if shift {
-			if self.opposing_handle_lengths.is_none() {
-				self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(document));
-			}
+		if shift && self.opposing_handle_lengths.is_none() {
+			self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(document));
 		}
 		false
 	}
@@ -416,7 +414,7 @@ impl PathToolData {
 		let previous_mouse = document.metadata().document_to_viewport.transform_point2(self.previous_mouse_position);
 		let snapped_delta = shape_editor.snap(&mut self.snap_manager, document, input, previous_mouse);
 		let handle_lengths = if equidistant { None } else { self.opposing_handle_lengths.take() };
-		shape_editor.move_selected_points(handle_lengths, &document, snapped_delta, equidistant, responses);
+		shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, responses);
 		self.previous_mouse_position += document.metadata().document_to_viewport.inverse().transform_vector2(snapped_delta);
 	}
 }
@@ -607,7 +605,7 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::Delete) => {
 				// Delete the selected points and clean up overlays
 				responses.add(DocumentMessage::StartTransaction);
-				shape_editor.delete_selected_points(&document, responses);
+				shape_editor.delete_selected_points(document, responses);
 				responses.add(PathToolMessage::SelectionChanged);
 
 				PathToolFsmState::Ready
@@ -633,7 +631,7 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::PointerMove { .. }) => self,
 			(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y }) => {
-				shape_editor.move_selected_points(tool_data.opposing_handle_lengths.take(), &document, (delta_x, delta_y).into(), true, responses);
+				shape_editor.move_selected_points(tool_data.opposing_handle_lengths.take(), document, (delta_x, delta_y).into(), true, responses);
 
 				PathToolFsmState::Ready
 			}

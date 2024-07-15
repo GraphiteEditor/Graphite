@@ -1,3 +1,4 @@
+#![cfg(feature = "raw-rs-tests")]
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::fs::{read_dir, File};
@@ -13,7 +14,6 @@ const BASE_URL: &str = "https://static.graphite.rs/test-data/libraries/raw-rs/";
 const BASE_PATH: &str = "./tests/images";
 
 #[test]
-#[cfg(feature = "raw-rs-tests")]
 fn test_images_match_with_libraw() {
 	download_images();
 
@@ -30,7 +30,7 @@ fn test_images_match_with_libraw() {
 
 			print!("{} => ", path.display());
 
-			let raw_image = match test_raw_data(&content) {
+			let _raw_image = match test_raw_data(&content) {
 				Err(err_msg) => {
 					failed_tests += 1;
 					return println!("{}", err_msg);
@@ -54,7 +54,6 @@ fn test_images_match_with_libraw() {
 	}
 }
 
-#[cfg(feature = "raw-rs-tests")]
 fn download_images() {
 	let mut path = Path::new(BASE_PATH).to_owned();
 	let mut downloads: Vec<Download> = Vec::new();
@@ -75,7 +74,6 @@ fn download_images() {
 	}
 }
 
-#[cfg(feature = "raw-rs-tests")]
 fn test_raw_data(content: &[u8]) -> Result<RawImage, String> {
 	let processor = libraw::Processor::new();
 	let libraw_raw_image = processor.decode(content).unwrap();
@@ -149,8 +147,7 @@ fn test_raw_data(content: &[u8]) -> Result<RawImage, String> {
 	Ok(raw_image)
 }
 
-#[cfg(feature = "raw-rs-tests")]
-fn test_final_image(content: &[u8], raw_image: RawImage) -> Result<(), String> {
+fn _test_final_image(content: &[u8], raw_image: RawImage) -> Result<(), String> {
 	let processor = libraw::Processor::new();
 	let libraw_image = processor.process_8bit(content).unwrap();
 

@@ -166,13 +166,13 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 				.unit(" px")
 				.on_update(update_value(
 					move |x: &NumberInput| {
-						let (offset, scale) = (move |x: f64| -> (DVec2, DVec2) {
-							let diff = DVec2::new(top_left.x - x, 0.);
+						let (offset, scale) = {
+							let diff = DVec2::new(top_left.x - x.value.unwrap_or_default(), 0.);
 							(top_left - diff, bounds)
-						})(x.value.unwrap_or_default());
+						};
 
 						let footprint = Footprint {
-							transform: DAffine2::from_scale_angle_translation(scale.into(), 0., offset.into()),
+							transform: DAffine2::from_scale_angle_translation(scale, 0., offset),
 							resolution: (oversample * scale).as_uvec2(),
 							..footprint
 						};
@@ -190,13 +190,13 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 				.unit(" px")
 				.on_update(update_value(
 					move |x: &NumberInput| {
-						let (offset, scale) = (move |y: f64| -> (DVec2, DVec2) {
-							let diff = DVec2::new(0., top_left.y - y);
+						let (offset, scale) = {
+							let diff = DVec2::new(0., top_left.y - x.value.unwrap_or_default());
 							(top_left - diff, bounds)
-						})(x.value.unwrap_or_default());
+						};
 
 						let footprint = Footprint {
-							transform: DAffine2::from_scale_angle_translation(scale.into(), 0., offset.into()),
+							transform: DAffine2::from_scale_angle_translation(scale, 0., offset),
 							resolution: (oversample * scale).as_uvec2(),
 							..footprint
 						};
@@ -216,10 +216,10 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 				.unit(" px")
 				.on_update(update_value(
 					move |x: &NumberInput| {
-						let (offset, scale) = (move |x: f64| -> (DVec2, DVec2) { (top_left, DVec2::new(x, bounds.y)) })(x.value.unwrap_or_default());
+						let (offset, scale) = (top_left, DVec2::new(x.value.unwrap_or_default(), bounds.y));
 
 						let footprint = Footprint {
-							transform: DAffine2::from_scale_angle_translation(scale.into(), 0., offset.into()),
+							transform: DAffine2::from_scale_angle_translation(scale, 0., offset),
 							resolution: (oversample * scale).as_uvec2(),
 							..footprint
 						};
@@ -237,10 +237,10 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 				.unit(" px")
 				.on_update(update_value(
 					move |x: &NumberInput| {
-						let (offset, scale) = (move |y: f64| -> (DVec2, DVec2) { (top_left, DVec2::new(bounds.x, y)) })(x.value.unwrap_or_default());
+						let (offset, scale) = (top_left, DVec2::new(bounds.x, x.value.unwrap_or_default()));
 
 						let footprint = Footprint {
-							transform: DAffine2::from_scale_angle_translation(scale.into(), 0., offset.into()),
+							transform: DAffine2::from_scale_angle_translation(scale, 0., offset),
 							resolution: (oversample * scale).as_uvec2(),
 							..footprint
 						};
@@ -255,7 +255,7 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 		]);
 
 		resolution_widgets.push(
-			NumberInput::new(Some((footprint.resolution.as_dvec2() / bounds).x as f64 * 100.))
+			NumberInput::new(Some((footprint.resolution.as_dvec2() / bounds).x * 100.))
 				.label("Resolution")
 				.unit("%")
 				.on_update(update_value(
@@ -295,8 +295,8 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 			NumberInput::new(Some(dvec2.x))
 				.label(x)
 				.unit(unit)
-				.min(min.unwrap_or(-((1_u64 << std::f64::MANTISSA_DIGITS) as f64)))
-				.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
+				.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
+				.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 				.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), dvec2.y)), node_id, index))
 				.on_commit(commit_value)
 				.widget_holder(),
@@ -304,8 +304,8 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 			NumberInput::new(Some(dvec2.y))
 				.label(y)
 				.unit(unit)
-				.min(min.unwrap_or(-((1_u64 << std::f64::MANTISSA_DIGITS) as f64)))
-				.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
+				.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
+				.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 				.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(dvec2.x, input.value.unwrap())), node_id, index))
 				.on_commit(commit_value)
 				.widget_holder(),
@@ -323,8 +323,8 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 				.int()
 				.label(x)
 				.unit(unit)
-				.min(min.unwrap_or(-((1_u64 << std::f64::MANTISSA_DIGITS) as f64)))
-				.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
+				.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
+				.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 				.on_update(update_value(update_x, node_id, index))
 				.on_commit(commit_value)
 				.widget_holder(),
@@ -333,8 +333,8 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 				.int()
 				.label(y)
 				.unit(unit)
-				.min(min.unwrap_or(-((1_u64 << std::f64::MANTISSA_DIGITS) as f64)))
-				.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
+				.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
+				.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 				.on_update(update_value(update_y, node_id, index))
 				.on_commit(commit_value)
 				.widget_holder(),
@@ -353,7 +353,7 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 				.label(x)
 				.unit(unit)
 				.min(min.unwrap_or(0.))
-				.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
+				.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 				.on_update(update_value(update_x, node_id, index))
 				.on_commit(commit_value)
 				.widget_holder(),
@@ -363,7 +363,7 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 				.label(y)
 				.unit(unit)
 				.min(min.unwrap_or(0.))
-				.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
+				.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 				.on_update(update_value(update_y, node_id, index))
 				.on_commit(commit_value)
 				.widget_holder(),
@@ -1769,7 +1769,7 @@ pub fn rasterize_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 	footprint_widget(document_node, node_id, 1)
 }
 
-pub fn node_section_font(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn text_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let text = text_area_widget(document_node, node_id, 1, "Text", true);
 	let (font, style) = font_inputs(document_node, node_id, 2, "Font", true);
 	let size = number_widget(document_node, node_id, 3, "Size", NumberInput::default().unit(" px").min(1.), true);
@@ -2011,8 +2011,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 						node.1
 							.inputs
 							.iter()
-							.find(|node_input| if let NodeInput::Network { import_index, .. } = node_input { *import_index == 0 } else { false })
-							.is_some()
+							.any(|node_input| if let NodeInput::Network { import_index, .. } = node_input { *import_index == 0 } else { false })
 					})
 					.map(|(node_id, _)| node_id)
 					.copied()
@@ -2362,11 +2361,18 @@ pub fn circular_repeat_properties(document_node: &DocumentNode, node_id: NodeId,
 	]
 }
 
-pub fn boolean_operation_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let other_vector_data = vector_widget(document_node, node_id, 1, "Lower Vector Data", true);
-	let opeartion = boolean_operation_radio_buttons(document_node, node_id, 2, "Operation", true);
+pub fn binary_boolean_operation_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let lower_vector_data = vector_widget(document_node, node_id, 1, "Lower Vector Data", true);
+	let operation = boolean_operation_radio_buttons(document_node, node_id, 2, "Operation", true);
 
-	vec![LayoutGroup::Row { widgets: other_vector_data }, opeartion]
+	vec![LayoutGroup::Row { widgets: lower_vector_data }, operation]
+}
+
+pub fn boolean_operation_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let vector_data = vector_widget(document_node, node_id, 1, "Vector Data", true);
+	let operation = boolean_operation_radio_buttons(document_node, node_id, 2, "Operation", true);
+
+	vec![LayoutGroup::Row { widgets: vector_data }, operation]
 }
 
 pub fn copy_to_points_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -2477,7 +2483,7 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 		return vec![LayoutGroup::Row { widgets: widgets_first_row }];
 	};
 	let fill2 = fill.clone();
-	let backup_color_fill: Fill = backup_color.clone().into();
+	let backup_color_fill: Fill = (*backup_color).into();
 	let backup_gradient_fill: Fill = backup_gradient.clone().into();
 
 	widgets_first_row.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -2496,7 +2502,7 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 						Fill::Solid(color) => NodeGraphMessage::SetInputValue {
 							node_id,
 							input_index: backup_color_index,
-							value: TaggedValue::OptionalColor(Some(color.clone())),
+							value: TaggedValue::OptionalColor(Some(*color)),
 						}
 						.into(),
 						Fill::Gradient(gradient) => NodeGraphMessage::SetInputValue {

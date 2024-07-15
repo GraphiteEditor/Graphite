@@ -42,6 +42,9 @@ pub enum DocumentMessage {
 	ClearArtboards,
 	ClearLayersPanel,
 	CommitTransaction,
+	InsertBooleanOperation {
+		operation: graphene_core::vector::misc::BooleanOperation,
+	},
 	CreateEmptyFolder,
 	DebugPrintDocument,
 	DeleteSelectedLayers,

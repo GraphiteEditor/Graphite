@@ -60,7 +60,7 @@ impl<'a> ModifyInputsContext<'a> {
 	///      ↑      if insert_index == 1, return (Layer1, Some(Layer2))
 	/// -> Layer2   
 	///      ↑
-	///	-> NonLayerNode
+	/// -> NonLayerNode
 	///      ↑      if insert_index == 2, return (NonLayerNode, Some(Layer3))
 	/// -> Layer3  
 	///             if insert_index == 3, return (Layer3, None)
@@ -178,7 +178,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_node_template();
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
 		let text = resolve_document_node_type("Text").expect("Text node does not exist").node_template_input_override([
-			Some(NodeInput::network(graph_craft::concrete!(graphene_std::wasm_application_io::WasmEditorApi), 0)),
+			Some(NodeInput::scope("editor-api")),
 			Some(NodeInput::value(TaggedValue::String(text), false)),
 			Some(NodeInput::value(TaggedValue::Font(font), false)),
 			Some(NodeInput::value(TaggedValue::F64(size), false)),
@@ -400,55 +400,6 @@ impl<'a> ModifyInputsContext<'a> {
 		if !skip_rerender {
 			self.responses.add(NodeGraphMessage::RunDocumentGraph);
 		}
-		// let Some(network) = document_network.nested_network_mut(network_path) else {
-		// 	log::error!("Could not get nested network for set_input");
-		// 	return false;
-		// };
-		// if let Some(node) = network.nodes.get_mut(&node_id) {
-		// 	let Some(node_input) = node.inputs.get_mut(input_index) else {
-		// 		log::error!("Tried to set input {input_index} to {input:?}, but the index was invalid. Node {node_id}:\n{node:#?}");
-		// 		return false;
-		// 	};
-		// 	let structure_changed = node_input.as_node().is_some() || input.as_node().is_some();
-
-		// 	let previously_exposed = node_input.is_exposed();
-		// 	*node_input = input;
-		// 	let currently_exposed = node_input.is_exposed();
-		// 	if previously_exposed != currently_exposed {
-		// 		node_graph.update_click_target(node_id, document_network, network_path.clone());
-		// 	}
-
-		// 	// Only load network structure for changes to document_network
-		// 	structure_changed && is_document_network
-		// } else if node_id == network.exports_metadata.0 {
-		// 	let Some(export) = network.exports.get_mut(input_index) else {
-		// 		log::error!("Tried to set export {input_index} to {input:?}, but the index was invalid. Network:\n{network:#?}");
-		// 		return false;
-		// 	};
-
-		// 	let previously_exposed = export.is_exposed();
-		// 	*export = input;
-		// 	let currently_exposed = export.is_exposed();
-
-		// 	if let NodeInput::Node { node_id, output_index, .. } = *export {
-		// 		network.update_root_node(node_id, output_index);
-		// 	} else if let NodeInput::Value { .. } = *export {
-		// 		if input_index == 0 {
-		// 			network.stop_preview();
-		// 		}
-		// 	} else {
-		// 		log::error!("Network export input not supported");
-		// 	}
-
-		// 	if previously_exposed != currently_exposed {
-		// 		node_graph.update_click_target(node_id, document_network, network_path.clone());
-		// 	}
-
-		// 	// Only load network structure for changes to document_network
-		// 	is_document_network
-		// } else {
-		// 	false
-		// }
 	}
 
 	/// Inserts a node at the end of the horizontal node chain from a layer node. The position will be `Position::Chain`

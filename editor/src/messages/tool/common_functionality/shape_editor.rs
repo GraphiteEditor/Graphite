@@ -504,14 +504,14 @@ impl ShapeState {
 		};
 
 		// Set the manipulator to have colinear handles
-		if let (Some(a), Some(b)) = (handles.get(0), handles.get(1)) {
+		if let (Some(a), Some(b)) = (handles.first(), handles.get(1)) {
 			let handles = [*a, *b];
 			let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: true };
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
 		}
 
 		// Flip the vector if it is not facing towards the same direction as the anchor
-		let [first, second] = [anchor_positions.get(0).copied().flatten(), anchor_positions.get(1).copied().flatten()];
+		let [first, second] = [anchor_positions.first().copied().flatten(), anchor_positions.get(1).copied().flatten()];
 		if first.is_some_and(|group| (group - anchor_position).normalize_or_zero().dot(handle_direction) < 0.)
 			|| second.is_some_and(|group| (group - anchor_position).normalize_or_zero().dot(handle_direction) > 0.)
 		{
@@ -529,7 +529,7 @@ impl ShapeState {
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
 			// Create the opposite handle if it doesn't exist (if it is not a cubic segment)
-			if handle.opposite().to_manipulator_point().get_position(&vector_data).is_none() {
+			if handle.opposite().to_manipulator_point().get_position(vector_data).is_none() {
 				let modification_type = handle.opposite().set_relative_position(DVec2::ZERO);
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
 			}
@@ -781,7 +781,7 @@ impl ShapeState {
 
 				let mut handles = handles.map(Some);
 				for handle in &mut handles {
-					while let Some((point, connected)) = handle.clone().and_then(|(_, point)| missing_anchors.remove_entry(&point)) {
+					while let Some((point, connected)) = (*handle).and_then(|(_, point)| missing_anchors.remove_entry(&point)) {
 						visited.push(point);
 
 						*handle = connected.into_iter().find(|(_, point)| !visited.contains(point));

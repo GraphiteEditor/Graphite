@@ -52,6 +52,9 @@ pub struct NodeGraphMessageHandler {
 	wire_in_progress_to_connector: Option<DVec2>,
 	/// State for the context menu popups.
 	context_menu: Option<ContextMenuInformation>,
+	/// Index of selected node to be deselected on pointer up when shift clicking an already selected node
+	pub deselect_on_pointer_up: Option<usize>,
+	/// Adds the auto panning functionality to the node graph when dragging a node or selection box to the edge of the viewport.
 	auto_panning: AutoPanning,
 }
 
@@ -443,7 +446,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if right_click {
 					let context_menu_data = if let Some(node_id) = clicked_id {
 						ContextMenuData::ToggleLayer {
-							node_id: node_id,
+							node_id,
 							currently_is_node: !network_interface.is_layer(&node_id),
 						}
 					} else {
@@ -559,12 +562,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						modified_selected = true;
 
 						let index = updated_selected.iter().enumerate().find_map(|(i, node_id)| if *node_id == clicked_id { Some(i) } else { None });
-						// Remove from selection if already selected
-						if let Some(index) = index {
-							updated_selected.remove(index);
-						}
+						// Remove from selection (on PointerUp) if already selected
+						self.deselect_on_pointer_up = index;
+
 						// Add to selection if not already selected. Necessary in order to drag multiple nodes
-						else {
+						if index.is_none() {
 							updated_selected.push(clicked_id);
 						};
 					}
@@ -605,7 +607,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 				self.box_selection_start = Some(UVec2::new(node_graph_point.x.round().abs() as u32, node_graph_point.y.round().abs() as u32));
 			}
-			// TODO: Alt+drag should move all upstream nodes as well
 			NodeGraphMessage::PointerMove { shift } => {
 				let Some(network) = network_interface.network(false) else {
 					return;
@@ -685,6 +686,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							node_ids: selected_nodes.selected_nodes().cloned().collect(),
 							displacement_x: graph_delta.x - drag_start.round_x,
 							displacement_y: graph_delta.y - drag_start.round_y,
+							move_upstream: ipp.keyboard.get(shift as usize),
 						});
 						drag_start.round_x = graph_delta.x;
 						drag_start.round_y = graph_delta.y;
@@ -748,6 +750,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					warn!("No network_metadata");
 					return;
 				};
+				if let Some(node_to_deselect) = self.deselect_on_pointer_up {
+					let mut new_selected_nodes = selected_nodes.selected_nodes_ref().clone();
+					new_selected_nodes.remove(node_to_deselect);
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_selected_nodes });
+					self.deselect_on_pointer_up = None;
+				}
+
 				let point = network_metadata
 					.persistent_metadata
 					.navigation_metadata
@@ -807,7 +816,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							&& (selected_nodes.selected_nodes_ref().len() != 1
 								|| selected_nodes
 									.selected_nodes_ref()
-									.get(0)
+									.first()
 									.is_some_and(|first_selected_node| *first_selected_node != select_if_not_dragged))
 						{
 							responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![select_if_not_dragged] })
@@ -823,7 +832,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						if let Some(selected_node) = network.nodes.get(&selected_node_id) {
 							// Check if any downstream node has any input that feeds into the primary export of the selected node
 							let has_primary_output_connection = network_interface.collect_outward_wires(false).get(&OutputConnector::node(selected_node_id, 0)).is_some();
-							let has_primary_input_connection = selected_node.inputs.get(0).is_some_and(|first_input| first_input.as_value().is_some());
+							let has_primary_input_connection = selected_node.inputs.first().is_some_and(|first_input| first_input.as_value().is_some());
 							// Check that neither the primary input or output of the selected node are already connected.
 							if !has_primary_output_connection && !has_primary_input_connection {
 								let Some(bounding_box) = network_interface.node_bounding_box(selected_node_id) else {
@@ -1437,9 +1446,9 @@ impl NodeGraphMessageHandler {
 				.collect();
 
 			let output_types = Self::get_output_types(node, &network_interface.resolved_types, &node_id_path);
-			let primary_output_type = output_types.get(0).expect("Primary output should always exist");
+			let primary_output_type = output_types.first().expect("Primary output should always exist");
 			let frontend_data_type = if let Some(output_type) = primary_output_type {
-				FrontendGraphDataType::with_type(&output_type)
+				FrontendGraphDataType::with_type(output_type)
 			} else {
 				FrontendGraphDataType::General
 			};
@@ -1490,7 +1499,7 @@ impl NodeGraphMessageHandler {
 					connected_to,
 				});
 			}
-			let is_export = network.exports.get(0).is_some_and(|export| export.as_node().is_some_and(|export_node_id| node_id == export_node_id));
+			let is_export = network.exports.first().is_some_and(|export| export.as_node().is_some_and(|export_node_id| node_id == export_node_id));
 			let is_root_node = network_interface.get_root_node(false).is_some_and(|root_node| root_node.node_id == node_id);
 			let reference = network_interface.get_reference(&node_id);
 
@@ -1531,8 +1540,8 @@ impl NodeGraphMessageHandler {
 				position,
 				previewed,
 				visible: node.visible,
-				locked: locked,
-				errors: errors,
+				locked,
+				errors,
 				ui_only: false,
 			});
 		}
@@ -1557,8 +1566,8 @@ impl NodeGraphMessageHandler {
 		for (index, export) in network.exports.iter().enumerate() {
 			let (frontend_data_type, input_type) = if let NodeInput::Node { node_id, output_index, .. } = export {
 				let node = network.nodes.get(node_id).expect("Node should always exist");
-				let node_id_path: &Vec<NodeId> = &[&self.network[..], &[*node_id]].concat();
-				let output_types = Self::get_output_types(node, &network_interface.resolved_types, &node_id_path);
+				let node_id_path = &[&self.network[..], &[*node_id]].concat();
+				let output_types = Self::get_output_types(node, &network_interface.resolved_types, node_id_path);
 
 				if let Some(output_type) = output_types.get(*output_index).cloned().flatten() {
 					(FrontendGraphDataType::with_type(&output_type), Some(output_type.clone()))
@@ -1567,12 +1576,11 @@ impl NodeGraphMessageHandler {
 				}
 			} else if let NodeInput::Value { tagged_value, .. } = export {
 				(FrontendGraphDataType::with_type(&tagged_value.ty()), Some(tagged_value.ty()))
-			}
 			// TODO: Get type from parent node input when <https://github.com/GraphiteEditor/Graphite/issues/1762> is possible
 			// else if let NodeInput::Network { import_type, .. } = export {
 			// 	(FrontendGraphDataType::with_type(import_type), Some(import_type.clone()))
 			// }
-			else {
+			} else {
 				(FrontendGraphDataType::General, None)
 			};
 
@@ -1746,10 +1754,16 @@ impl NodeGraphMessageHandler {
 		}
 	}
 
-	pub fn get_output_types(node: &DocumentNode, resolved_types: &ResolvedDocumentNodeTypes, node_id_path: &Vec<NodeId>) -> Vec<Option<Type>> {
+	pub fn get_output_types(node: &DocumentNode, resolved_types: &ResolvedDocumentNodeTypes, node_id_path: &[NodeId]) -> Vec<Option<Type>> {
 		let mut output_types = Vec::new();
 
-		let primary_output_type = resolved_types.outputs.get(&Source { node: node_id_path.clone(), index: 0 }).cloned();
+		let primary_output_type = resolved_types
+			.outputs
+			.get(&Source {
+				node: node_id_path.to_owned(),
+				index: 0,
+			})
+			.cloned();
 		output_types.push(primary_output_type);
 
 		// If the node is not a protonode, get types by traversing across exports until a proto node is reached.
@@ -1757,7 +1771,7 @@ impl NodeGraphMessageHandler {
 			for export in internal_network.exports.iter().skip(1) {
 				let mut current_export = export;
 				let mut current_network = internal_network;
-				let mut current_path = node_id_path.clone();
+				let mut current_path = node_id_path.to_owned();
 
 				while let NodeInput::Node { node_id, output_index, .. } = current_export {
 					current_path.push(*node_id);
@@ -1782,7 +1796,7 @@ impl NodeGraphMessageHandler {
 					resolved_types
 						.outputs
 						.get(&Source {
-							node: node_id_path.clone(),
+							node: node_id_path.to_owned(),
 							index: *import_index,
 						})
 						.cloned()
@@ -1850,7 +1864,7 @@ impl NodeGraphMessageHandler {
 		let horizontal_curve = horizontal_curve_amount * curve_length;
 		let vertical_curve = vertical_curve_amount * curve_length;
 
-		return vec![
+		vec![
 			output_position,
 			DVec2::new(
 				if vertical_out { output_position.x } else { output_position.x + horizontal_curve },
@@ -1861,7 +1875,7 @@ impl NodeGraphMessageHandler {
 				if vertical_in { input_position.y + vertical_curve } else { input_position.y },
 			),
 			DVec2::new(input_position.x, input_position.y),
-		];
+		]
 	}
 }
 
@@ -1894,6 +1908,7 @@ impl Default for NodeGraphMessageHandler {
 			wire_in_progress_from_connector: None,
 			wire_in_progress_to_connector: None,
 			context_menu: None,
+			deselect_on_pointer_up: None,
 			auto_panning: Default::default(),
 		}
 	}

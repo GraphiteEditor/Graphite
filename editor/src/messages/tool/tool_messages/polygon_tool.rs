@@ -113,7 +113,7 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.unit(" px")
 		.label("Weight")
 		.min(0.)
-		.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
+		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 		.on_update(|number_input: &NumberInput| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
 		.widget_holder()
 }
@@ -251,14 +251,14 @@ impl Fsm for PolygonToolFsmState {
 							.node_template_input_override(
 								[
 									None,
-									Some(NodeInput::value(TaggedValue::U32(tool_options.vertices as u32), false)),
+									Some(NodeInput::value(TaggedValue::U32(tool_options.vertices), false)),
 									Some(NodeInput::value(TaggedValue::F64(0.5), false)),
 								],
 							),
 						PolygonType::Star => resolve_document_node_type("Star").expect("Star node does not exist").node_template_input_override(
 							[
 								None,
-								Some(NodeInput::value(TaggedValue::U32(tool_options.vertices as u32), false)),
+								Some(NodeInput::value(TaggedValue::U32(tool_options.vertices), false)),
 								Some(NodeInput::value(TaggedValue::F64(0.5), false)),
 								Some(NodeInput::value(TaggedValue::F64(0.25), false)),
 							],

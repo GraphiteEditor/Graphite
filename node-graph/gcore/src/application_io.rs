@@ -1,16 +1,15 @@
-use crate::raster::ImageFrame;
 use crate::text::FontCache;
 use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::style::ViewMode;
-use crate::{Color, Node};
 
-use dyn_any::{StaticType, StaticTypeSized};
+use dyn_any::{DynAny, StaticType, StaticTypeSized};
 
 use alloc::sync::Arc;
 use core::fmt::Debug;
 use core::future::Future;
 use core::hash::{Hash, Hasher};
 use core::pin::Pin;
+use core::ptr::addr_of;
 use glam::DAffine2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -133,6 +132,12 @@ pub trait NodeGraphUpdateSender {
 	fn send(&self, message: NodeGraphUpdateMessage);
 }
 
+impl<T: NodeGraphUpdateSender> NodeGraphUpdateSender for std::sync::Mutex<T> {
+	fn send(&self, message: NodeGraphUpdateMessage) {
+		self.lock().as_mut().unwrap().send(message)
+	}
+}
+
 pub trait GetImaginatePreferences {
 	fn get_host_name(&self) -> &str;
 }
@@ -148,7 +153,7 @@ pub enum ExportFormat {
 	Canvas,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny)]
 pub struct RenderConfig {
 	pub viewport: Footprint,
 	pub export_format: ExportFormat,
@@ -157,82 +162,69 @@ pub struct RenderConfig {
 	pub for_export: bool,
 }
 
-pub struct EditorApi<'a, Io> {
-	// TODO: Is `image_frame` still used? I think it's only ever set to None.
-	pub image_frame: Option<ImageFrame<Color>>,
-	pub font_cache: &'a FontCache,
-	pub application_io: &'a Io,
-	pub node_graph_message_sender: &'a dyn NodeGraphUpdateSender,
-	pub imaginate_preferences: &'a dyn GetImaginatePreferences,
-	pub render_config: RenderConfig,
+struct Logger;
+
+impl NodeGraphUpdateSender for Logger {
+	fn send(&self, message: NodeGraphUpdateMessage) {
+		log::warn!("dispatching message with fallback node graph update sender {:?}", message);
+	}
 }
 
-impl<'a, Io> Clone for EditorApi<'a, Io> {
-	fn clone(&self) -> Self {
+struct DummyPreferences;
+
+impl GetImaginatePreferences for DummyPreferences {
+	fn get_host_name(&self) -> &str {
+		"dummy_endpoint"
+	}
+}
+
+pub struct EditorApi<Io> {
+	/// Font data (for rendering text) made available to the graph through the [`WasmEditorApi`].
+	pub font_cache: FontCache,
+	/// Gives access to APIs like a rendering surface (native window handle or HTML5 canvas) and WGPU (which becomes WebGPU on web).
+	pub application_io: Option<Arc<Io>>,
+	pub node_graph_message_sender: Box<dyn NodeGraphUpdateSender + Send + Sync>,
+	/// Imaginate preferences made available to the graph through the [`WasmEditorApi`].
+	pub imaginate_preferences: Box<dyn GetImaginatePreferences + Send + Sync>,
+}
+
+impl<Io> Eq for EditorApi<Io> {}
+
+impl<Io: Default> Default for EditorApi<Io> {
+	fn default() -> Self {
 		Self {
-			image_frame: self.image_frame.clone(),
-			font_cache: self.font_cache,
-			application_io: self.application_io,
-			node_graph_message_sender: self.node_graph_message_sender,
-			imaginate_preferences: self.imaginate_preferences,
-			render_config: self.render_config,
+			font_cache: FontCache::default(),
+			application_io: None,
+			node_graph_message_sender: Box::new(Logger),
+			imaginate_preferences: Box::new(DummyPreferences),
 		}
 	}
 }
 
-impl<'a, T> PartialEq for EditorApi<'a, T> {
-	fn eq(&self, other: &Self) -> bool {
-		self.image_frame == other.image_frame && self.font_cache == other.font_cache
-	}
-}
-
-impl<'a, T> Hash for EditorApi<'a, T> {
+impl<Io> Hash for EditorApi<Io> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.image_frame.hash(state);
 		self.font_cache.hash(state);
+		self.application_io.as_ref().map_or(0, |io| io.as_ref() as *const _ as usize).hash(state);
+		(self.node_graph_message_sender.as_ref() as *const dyn NodeGraphUpdateSender).hash(state);
+		(self.imaginate_preferences.as_ref() as *const dyn GetImaginatePreferences).hash(state);
 	}
 }
 
-impl<'a, T> Debug for EditorApi<'a, T> {
+impl<Io> PartialEq for EditorApi<Io> {
+	fn eq(&self, other: &Self) -> bool {
+		self.font_cache == other.font_cache
+			&& self.application_io.as_ref().map_or(0, |io| addr_of!(io) as usize) == other.application_io.as_ref().map_or(0, |io| addr_of!(io) as usize)
+			&& std::ptr::eq(self.node_graph_message_sender.as_ref() as *const _, other.node_graph_message_sender.as_ref() as *const _)
+			&& std::ptr::eq(self.imaginate_preferences.as_ref() as *const _, other.imaginate_preferences.as_ref() as *const _)
+	}
+}
+
+impl<T> Debug for EditorApi<T> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		f.debug_struct("EditorApi").field("image_frame", &self.image_frame).field("font_cache", &self.font_cache).finish()
+		f.debug_struct("EditorApi").field("font_cache", &self.font_cache).finish()
 	}
 }
 
-unsafe impl<T: StaticTypeSized> StaticType for EditorApi<'_, T> {
-	type Static = EditorApi<'static, T::Static>;
-}
-
-impl<'a, T> AsRef<EditorApi<'a, T>> for EditorApi<'a, T> {
-	fn as_ref(&self) -> &EditorApi<'a, T> {
-		self
-	}
-}
-
-// Required for the EndLetNode
-impl<'a, IO> From<EditorApi<'a, IO>> for Footprint {
-	fn from(value: EditorApi<'a, IO>) -> Self {
-		value.render_config.viewport
-	}
-}
-
-// Required for the EndLetNode
-impl<'a, IO> From<EditorApi<'a, IO>> for () {
-	fn from(_value: EditorApi<'a, IO>) -> Self {}
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ExtractImageFrame;
-
-impl<'a: 'input, 'input, T> Node<'input, EditorApi<'a, T>> for ExtractImageFrame {
-	type Output = ImageFrame<Color>;
-	fn eval(&'input self, editor_api: EditorApi<'a, T>) -> Self::Output {
-		editor_api.image_frame.unwrap_or(ImageFrame::identity())
-	}
-}
-
-impl ExtractImageFrame {
-	pub fn new() -> Self {
-		Self
-	}
+unsafe impl<T: StaticTypeSized> StaticType for EditorApi<T> {
+	type Static = EditorApi<T::Static>;
 }

@@ -39,6 +39,23 @@ impl<T> From<T> for ValueNode<T> {
 	}
 }
 
+#[derive(Default, Debug, Clone, Copy)]
+pub struct AsRefNode<T: AsRef<U>, U>(pub T, PhantomData<U>);
+
+impl<'i, T: 'i + AsRef<U>, U: 'i> Node<'i, ()> for AsRefNode<T, U> {
+	type Output = &'i U;
+	#[inline(always)]
+	fn eval(&'i self, _input: ()) -> Self::Output {
+		self.0.as_ref()
+	}
+}
+
+impl<T: AsRef<U>, U> AsRefNode<T, U> {
+	pub const fn new(value: T) -> AsRefNode<T, U> {
+		AsRefNode(value, PhantomData)
+	}
+}
+
 #[derive(Default, Debug, Clone)]
 pub struct RefCellMutNode<T>(pub RefCell<T>);
 

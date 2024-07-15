@@ -130,12 +130,12 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<span>Procedurally alterable vector data</span>
 		</div>
 		<div class="feature-icon ongoing" title="Development Ongoing">
-			<img class="atlas" style="--atlas-index: 0" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
-			<span>Imaginate (Stable Diffusion node/tool)</span>
-		</div>
-		<div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 13" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
 			<span>New vector 2D renderer (with <a target="_blank" href="https://github.com/linebender/vello">Vello</a>)</span>
+		</div>
+		<div class="feature-icon ongoing" title="Development Ongoing">
+			<img class="atlas" style="--atlas-index: 0" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
+			<span>Imaginate (Stable Diffusion node/tool)</span>
 		</div>
 		<div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 12" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
@@ -152,6 +152,10 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 		<div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
 			<span>Adaptive resolution system</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
+			<span>Graph data attribute spreadsheets</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 41" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
@@ -172,10 +176,6 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 21" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
 			<span>Select mode (marquee masking)</span>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
-			<span>Graph data attribute spreadsheet</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 17" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
@@ -267,7 +267,7 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 34" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
-			<span>Node manager and marketplace</span>
+			<span>Asset libraries and marketplace</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 45" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />

@@ -142,10 +142,7 @@ impl ArtboardToolData {
 	}
 
 	fn hovered_artboard(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) -> Option<LayerNodeIdentifier> {
-		document
-			.click_xray(input.mouse.position)
-			.filter(|&layer| document.network_interface.is_artboard(&layer.to_node()))
-			.next()
+		document.click_xray(input.mouse.position).find(|&layer| document.network_interface.is_artboard(&layer.to_node()))
 	}
 
 	fn select_artboard(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> bool {

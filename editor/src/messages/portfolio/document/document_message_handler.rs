@@ -26,7 +26,6 @@ use graph_craft::document::{NodeId, NodeInput, NodeNetwork};
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::ImageFrame;
 use graphene_core::vector::style::ViewMode;
-use graphene_std::vector::style::{Fill, FillType, Gradient};
 
 use glam::{DAffine2, DVec2};
 
@@ -273,6 +272,46 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				});
 			}
 			DocumentMessage::CommitTransaction => (),
+			DocumentMessage::InsertBooleanOperation { operation } => {
+				let boolean_operation_node_id = NodeId(generate_uuid());
+
+				let parent = self
+					.metadata()
+					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), true)
+					.unwrap_or(LayerNodeIdentifier::ROOT_PARENT);
+
+				let insert_index = parent
+					.children(self.metadata())
+					.enumerate()
+					.find_map(|(index, item)| self.selected_nodes.selected_layers(self.metadata()).any(|x| x == item).then_some(index))
+					.unwrap_or(0);
+
+				// Store a history step before doing anything
+				responses.add(DocumentMessage::StartTransaction);
+
+				// Create the new Boolean Operation node
+				responses.add(GraphOperationMessage::CreateBooleanOperationNode {
+					node_id: boolean_operation_node_id,
+					operation,
+				});
+
+				responses.add(GraphOperationMessage::InsertNodeAtStackIndex {
+					node_id: boolean_operation_node_id,
+					parent,
+					insert_index,
+				});
+
+				responses.add(GraphOperationMessage::MoveSelectedSiblingsToChild {
+					new_parent: LayerNodeIdentifier::new_unchecked(boolean_operation_node_id),
+				});
+
+				// Select the new node
+				responses.add(NodeGraphMessage::SelectedNodesSet {
+					nodes: vec![boolean_operation_node_id],
+				});
+				// Re-render
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
 			DocumentMessage::CreateEmptyFolder => {
 				let id = NodeId(generate_uuid());
 
@@ -1128,6 +1167,7 @@ impl DocumentMessageHandler {
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
 		// serde_json::from_str(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string()))
 
+		// TODO: This was removed, could have been moved somewhere else
 		match serde_json::from_str::<Self>(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string())) {
 			Ok(mut document) => {
 				let node_ids = document.network_interface.document_network().nodes.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>();
@@ -1348,7 +1388,7 @@ impl DocumentMessageHandler {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		// If there is no history return and don't broadcast SelectionChanged
-		let Some(network) = self.document_undo_history.pop_back() else { return None };
+		let network = self.document_undo_history.pop_back()?;
 
 		responses.add(BroadcastEvent::SelectionChanged);
 
@@ -1369,7 +1409,7 @@ impl DocumentMessageHandler {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		// If there is no history return and don't broadcast SelectionChanged
-		let Some(network) = self.document_redo_history.pop_back() else { return None };
+		let network = self.document_redo_history.pop_back()?;
 
 		responses.add(BroadcastEvent::SelectionChanged);
 

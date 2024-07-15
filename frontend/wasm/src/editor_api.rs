@@ -669,8 +669,6 @@ impl EditorHandle {
 		let (response_sender, _) = std::sync::mpsc::channel();
 		let old_runtime = replace_node_runtime(NodeRuntime::new(request_receiver, response_sender));
 
-		let document_serialized_content = document_serialized_content.replace("\"ManipulatorGroupIds\"", "\"PointIds\"");
-
 		let mut editor = Editor::new();
 		let document_id = DocumentId(document_id);
 		editor.handle_message(PortfolioMessage::OpenDocumentFileWithId {
@@ -965,7 +963,7 @@ fn editor<T: Default>(callback: impl FnOnce(&mut editor::application::Editor) ->
 			return T::default();
 		};
 
-		callback(&mut *editor)
+		callback(&mut editor)
 	})
 }
 

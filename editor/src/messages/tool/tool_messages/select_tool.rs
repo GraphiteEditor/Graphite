@@ -149,21 +149,13 @@ impl SelectTool {
 	}
 
 	fn boolean_widgets(&self, selected_count: usize) -> impl Iterator<Item = WidgetHolder> {
-		let enabled = move |operation| {
-			if operation == BooleanOperation::Union {
-				(1..=2).contains(&selected_count)
-			} else {
-				selected_count == 2
-			}
-		};
-
 		let operations = BooleanOperation::list();
 		let icons = BooleanOperation::icons();
-		operations.into_iter().zip(icons.into_iter()).map(move |(operation, icon)| {
+		operations.into_iter().zip(icons).map(move |(operation, icon)| {
 			IconButton::new(icon, 24)
 				.tooltip(operation.to_string())
-				.disabled(!enabled(operation))
-				.on_update(move |_| GraphOperationMessage::InsertBooleanOperation { operation }.into())
+				.disabled(selected_count == 0)
+				.on_update(move |_| DocumentMessage::InsertBooleanOperation { operation }.into())
 				.widget_holder()
 		})
 	}
@@ -352,7 +344,7 @@ impl SelectToolData {
 
 			let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
 
-			let layer_id = new_ids.get(&NodeId(0)).expect("Node Id 0 should be a layer").clone();
+			let layer_id = *new_ids.get(&NodeId(0)).expect("Node Id 0 should be a layer");
 			let layer = LayerNodeIdentifier::new_unchecked(layer_id);
 			new_dragging.push(layer);
 			responses.add(NodeGraphMessage::AddNodes {

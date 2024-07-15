@@ -1,5 +1,4 @@
 [target.wasm32-unknown-unknown]
-
 rustflags = [
 	# Currently disabled because of https://github.com/GraphiteEditor/Graphite/issues/1262
 	# The current simd implementation leads to undefined behavior

@@ -22,74 +22,79 @@ members = [
 	"libraries/raw-rs/tag-derive",
 	"website/other/bezier-rs-demos/wasm",
 ]
-resolver = "2"
 exclude = ["node-graph/gpu-compiler"]
+resolver = "2"
 
 [workspace.dependencies]
-specta = { git = "https://github.com/oscartbeaumont/specta.git", features = [
-	"glam",
-] }
-rustc-hash = "1.1.0"
-# wasm-bindgen upgrades may break various things so we pin the version
-wasm-bindgen = "=0.2.91"
+# Local dependencies
 dyn-any = { path = "libraries/dyn-any", features = ["derive", "glam"] }
 graphene-core = { path = "node-graph/gcore" }
 graph-craft = { path = "node-graph/graph-craft", features = ["serde"] }
-spirv-std = { git = "https://github.com/EmbarkStudios/rust-gpu.git" }
+wgpu-executor = { path = "node-graph/wgpu-executor" }
+bezier-rs = { path = "libraries/bezier-rs", features = ["dyn-any"] }
+node-macro = { path = "node-graph/node-macro" }
+
+# Workspace dependencies
+rustc-hash = "2.0"
 bytemuck = { version = "1.13", features = ["derive"] }
-async-trait = { version = "0.1" }
+async-trait = "0.1"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
-reqwest = { version = "0.11", features = ["rustls", "rustls-tls", "json"] }
+serde-wasm-bindgen = "0.6"
+reqwest = { version = "0.12", features = ["blocking", "rustls-tls", "json"] }
 futures = "0.3"
-log = { version = "0.4" }
+env_logger = "0.11"
+log = "0.4"
 bitflags = { version = "2.4", features = ["serde"] }
-derivative = "2.2.0"
-tempfile = "3"
+derivative = "2.2"
+tempfile = "3.6"
 thiserror = "1.0"
-anyhow = "1.0.66"
+anyhow = "1.0"
 proc-macro2 = "1"
-syn = { version = "2.0", default-features = false, features = ["full", "derive"] }
 quote = "1.0"
-axum = "0.6"
-chrono = "^0.4.23"
+axum = "0.7"
+chrono = "0.4"
 ron = "0.8"
-fastnoise-lite = "1.1.0"
+fastnoise-lite = "1.1"
+spirv-std = { git = "https://github.com/EmbarkStudios/rust-gpu.git" }
 wgpu-types = "0.17"
 wgpu = "0.19"
-wasm-bindgen-futures = { version = "0.4.36" }
+once_cell = "1.13" # Remove when `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) is stabilized in Rust 1.80 and we bump our MSRV
+wasm-bindgen = "=0.2.92" # NOTICE: ensure this stays in sync with the `wasm-bindgen-cli` version in `website/content/volunteer/guide/getting-started/_index.md`. We pin this version because wasm-bindgen upgrades may break various things.
+wasm-bindgen-futures = "0.4"
+js-sys = "=0.3.69"
+web-sys = "=0.3.69"
 winit = "0.29"
-url = "2.4.0"
+url = "2.5"
 tokio = { version = "1.29", features = ["fs", "io-std"] }
-vello = { version = "0.1.0" }
-resvg = { version = "0.39" }
-rand = { version = "0.8.5", default-features = false }
-rand_chacha = { version = "0.3.1" }
-bezier-rs = { path = "libraries/bezier-rs", features = ["dyn-any"] }
+vello = "0.1"
+resvg = "0.39"
+usvg = "0.39"
+rand = { version = "0.8", default-features = false }
+rand_chacha = "0.3"
+glam = { version = "0.25", default-features = false, features = ["serde"] }
+base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["png"] }
+rustybuzz = "0.17"
+meval = "0.2"
+spirv = "0.3"
+fern = { version = "0.6", features = ["colored"] }
+num_enum = "0.7"
+num-derive = "0.4"
+num-traits = { version = "0.2", default-features = false, features = ["i128"] }
+specta = { git = "https://github.com/oscartbeaumont/specta.git", features = [
+	"glam",
+	# "typescript",
+] }
+syn = { version = "2.0", default-features = false, features = [
+	"full",
+	"derive",
+] }
 kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
 	"serde",
 ] }
-glam = { version = "0.25", default-features = false, features = ["serde"] }
-node-macro = { path = "node-graph/node-macro" }
-base64 = { version = "0.21" }
-image = { version = "0.24", default-features = false, features = ["png"] }
-rustybuzz = { version = "0.10.0" }
-num-derive = { version = "0.4" }
-num-traits = { version = "0.2.15", default-features = false, features = [
-	"i128",
-] }
-js-sys = { version = "=0.3.67" }
-web-sys = { version = "=0.3.67" }
-usvg = "0.39"
-spirv = "0.3"
-fern = { version = "0.6", features = ["colored"] }
 
 [profile.dev.package.graphite-editor]
-opt-level = 1
-
-# This is a mitigation for https://github.com/rustwasm/wasm-pack/issues/981
-# Which is needed because the node_registry function is too large
-[profile.dev.package.interpreted-executor]
 opt-level = 1
 
 [profile.dev.package.graphene-core]
@@ -97,6 +102,9 @@ opt-level = 1
 
 [profile.dev.package.graphene-std]
 opt-level = 1
+
+[profile.dev.package.interpreted-executor]
+opt-level = 1 # This is a mitigation for https://github.com/rustwasm/wasm-pack/issues/981 which is needed because the node_registry function is too large
 
 [profile.dev.package.autoquant]
 opt-level = 3

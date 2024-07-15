@@ -87,7 +87,7 @@ mod test {
 		for message in messages {
 			block_on(crate::node_graph_executor::run_node_graph());
 			let mut res = VecDeque::new();
-			editor.poll_node_graph_evaluation(&mut res);
+			editor.poll_node_graph_evaluation(&mut res).expect("poll_node_graph_evaluation failed");
 
 			let res = editor.handle_message(message);
 			responses.push(res);

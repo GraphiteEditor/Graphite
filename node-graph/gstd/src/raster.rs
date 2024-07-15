@@ -479,7 +479,7 @@ macro_rules! generate_imaginate_node {
 
 		impl<'e, P: Pixel, E, C, $($t,)*> ImaginateNode<P, E, C, $($t,)*>
 		where $($t: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, $o>>,)*
-			E: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, WasmEditorApi<'e>>>,
+			E: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, &'e WasmEditorApi>>,
 			C: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, ImaginateController>>,
 		{
 			#[allow(clippy::too_many_arguments)]
@@ -490,7 +490,7 @@ macro_rules! generate_imaginate_node {
 
 		impl<'i, 'e: 'i, P: Pixel + 'i + Hash + Default, E: 'i, C: 'i, $($t: 'i,)*> Node<'i, ImageFrame<P>> for ImaginateNode<P, E, C, $($t,)*>
 		where $($t: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, $o>>,)*
-			E: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, WasmEditorApi<'e>>>,
+			E: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, &'e WasmEditorApi>>,
 			C: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, ImaginateController>>,
 		{
 			type Output = DynFuture<'i, ImageFrame<P>>;
@@ -590,8 +590,8 @@ pub struct NoisePatternNode<
 	cellular_jitter: CellularJitter,
 }
 
-#[allow(clippy::too_many_arguments)]
 #[node_macro::node_fn(NoisePatternNode)]
+#[allow(clippy::too_many_arguments)]
 fn noise_pattern(
 	_no_primary_input: (),
 	dimensions: UVec2,

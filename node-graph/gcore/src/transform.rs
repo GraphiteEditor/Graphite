@@ -75,27 +75,21 @@ impl Transform for GraphicElement {
 		match self {
 			GraphicElement::VectorData(vector_shape) => vector_shape.transform(),
 			GraphicElement::ImageFrame(image_frame) => image_frame.transform(),
-			GraphicElement::Text(_) => todo!("Transform of text"),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.transform(),
-			GraphicElement::Artboard(artboard) => artboard.transform(),
 		}
 	}
 	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
 		match self {
 			GraphicElement::VectorData(vector_shape) => vector_shape.local_pivot(pivot),
 			GraphicElement::ImageFrame(image_frame) => image_frame.local_pivot(pivot),
-			GraphicElement::Text(_) => todo!("Transform of text"),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.local_pivot(pivot),
-			GraphicElement::Artboard(artboard) => artboard.local_pivot(pivot),
 		}
 	}
 	fn decompose_scale(&self) -> DVec2 {
 		match self {
 			GraphicElement::VectorData(vector_shape) => vector_shape.decompose_scale(),
 			GraphicElement::ImageFrame(image_frame) => image_frame.decompose_scale(),
-			GraphicElement::Text(_) => todo!("Transform of text"),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.decompose_scale(),
-			GraphicElement::Artboard(artboard) => artboard.decompose_scale(),
 		}
 	}
 }
@@ -104,9 +98,7 @@ impl TransformMut for GraphicElement {
 		match self {
 			GraphicElement::VectorData(vector_shape) => vector_shape.transform_mut(),
 			GraphicElement::ImageFrame(image_frame) => image_frame.transform_mut(),
-			GraphicElement::Text(_) => todo!("Transform of text"),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.transform_mut(),
-			GraphicElement::Artboard(_) => todo!("Transform of artboard"),
 		}
 	}
 }

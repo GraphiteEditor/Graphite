@@ -4,29 +4,31 @@
 #[ignore]
 #[test]
 fn generate_ts_types() {
-	use crate::messages::prelude::FrontendMessage;
-	use specta::ts::{export_named_datatype, BigIntExportBehavior, ExportConfig};
-	use specta::{NamedType, TypeMap};
-	use std::fs::File;
-	use std::io::Write;
+	// TODO: Un-comment this out when we figure out how to reenable the "typescript` Specta feature flag
 
-	let config = ExportConfig::new().bigint(BigIntExportBehavior::Number);
+	// use crate::messages::prelude::FrontendMessage;
+	// use specta::ts::{export_named_datatype, BigIntExportBehavior, ExportConfig};
+	// use specta::{NamedType, TypeMap};
+	// use std::fs::File;
+	// use std::io::Write;
 
-	let mut type_map = TypeMap::default();
+	// let config = ExportConfig::new().bigint(BigIntExportBehavior::Number);
 
-	let datatype = FrontendMessage::definition_named_data_type(&mut type_map);
+	// let mut type_map = TypeMap::default();
 
-	let mut export = String::new();
+	// let datatype = FrontendMessage::definition_named_data_type(&mut type_map);
 
-	export += &export_named_datatype(&config, &datatype, &type_map).unwrap();
+	// let mut export = String::new();
 
-	type_map
-		.iter()
-		.map(|(_, v)| v)
-		.flat_map(|v| export_named_datatype(&config, v, &type_map))
-		.for_each(|e| export += &format!("\n\n{e}"));
+	// export += &export_named_datatype(&config, &datatype, &type_map).unwrap();
 
-	let mut file = File::create("../types.ts").unwrap();
+	// type_map
+	// 	.iter()
+	// 	.map(|(_, v)| v)
+	// 	.flat_map(|v| export_named_datatype(&config, v, &type_map))
+	// 	.for_each(|e| export += &format!("\n\n{e}"));
 
-	write!(file, "{export}").ok();
+	// let mut file = File::create("../types.ts").unwrap();
+
+	// write!(file, "{export}").ok();
 }

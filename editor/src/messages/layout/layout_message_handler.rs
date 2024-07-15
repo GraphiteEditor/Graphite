@@ -161,11 +161,11 @@ impl LayoutMessageHandler {
 			Widget::DropdownInput(dropdown_input) => {
 				let callback_message = match action {
 					WidgetValueAction::Commit => {
-						let update_value = value.as_u64().expect(&format!("DropdownInput commit was not of type `u64`, found {value:?}"));
+						let update_value = value.as_u64().unwrap_or_else(|| panic!("DropdownInput commit was not of type `u64`, found {value:?}"));
 						(dropdown_input.entries.iter().flatten().nth(update_value as usize).unwrap().on_commit.callback)(&())
 					}
 					WidgetValueAction::Update => {
-						let update_value = value.as_u64().expect(&format!("DropdownInput update was not of type `u64`, found {value:?}"));
+						let update_value = value.as_u64().unwrap_or_else(|| panic!("DropdownInput update was not of type `u64`, found {value:?}"));
 						dropdown_input.selected_index = Some(update_value as u32);
 						(dropdown_input.entries.iter().flatten().nth(update_value as usize).unwrap().on_update.callback)(&())
 					}

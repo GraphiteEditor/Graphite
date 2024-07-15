@@ -39,14 +39,11 @@ pub struct NodeRuntime {
 	executor: DynamicExecutor,
 	receiver: Receiver<NodeRuntimeMessage>,
 	sender: InternalNodeGraphUpdateSender,
-
-	/// Font data (for rendering text) made available to the graph through the [`WasmEditorApi`].
-	font_cache: FontCache,
-	/// Imaginate preferences made available to the graph through the [`WasmEditorApi`].
 	imaginate_preferences: ImaginatePreferences,
+	recompile_graph: bool,
 
-	/// Gives access to APIs like a rendering surface (native window handle or HTML5 canvas) and WGPU (which becomes WebGPU on web).
-	wasm_application_io: Option<WasmApplicationIo>,
+	editor_api: Arc<WasmEditorApi>,
+
 	graph_hash: Option<u64>,
 	node_graph_errors: GraphErrors,
 	resolved_types: ResolvedDocumentNodeTypes,
@@ -89,7 +86,7 @@ pub struct ExecutionRequest {
 pub struct ExecutionResponse {
 	execution_id: u64,
 	result: Result<TaggedValue, String>,
-	responses: VecDeque<Message>,
+	responses: VecDeque<FrontendMessage>,
 	new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	new_vector_modify: HashMap<NodeId, VectorData>,
 	new_upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
@@ -103,6 +100,7 @@ pub enum NodeGraphUpdate {
 	NodeGraphUpdateMessage(NodeGraphUpdateMessage),
 }
 
+#[derive(Clone)]
 struct InternalNodeGraphUpdateSender(Sender<NodeGraphUpdate>);
 
 impl InternalNodeGraphUpdateSender {
@@ -126,12 +124,19 @@ impl NodeRuntime {
 		Self {
 			executor: DynamicExecutor::default(),
 			receiver,
-			sender: InternalNodeGraphUpdateSender(sender),
+			sender: InternalNodeGraphUpdateSender(sender.clone()),
+			imaginate_preferences: ImaginatePreferences::default(),
+			recompile_graph: true,
 
-			font_cache: FontCache::default(),
-			imaginate_preferences: Default::default(),
+			editor_api: WasmEditorApi {
+				font_cache: FontCache::default(),
+				imaginate_preferences: Box::new(ImaginatePreferences::default()),
+				node_graph_message_sender: Box::new(InternalNodeGraphUpdateSender(sender)),
 
-			wasm_application_io: None,
+				application_io: None,
+			}
+			.into(),
+
 			graph_hash: None,
 			node_graph_errors: Vec::new(),
 			resolved_types: ResolvedDocumentNodeTypes::default(),
@@ -153,8 +158,26 @@ impl NodeRuntime {
 		requests.reverse();
 		for request in requests {
 			match request {
-				NodeRuntimeMessage::FontCacheUpdate(font_cache) => self.font_cache = font_cache,
-				NodeRuntimeMessage::ImaginatePreferencesUpdate(preferences) => self.imaginate_preferences = preferences,
+				NodeRuntimeMessage::FontCacheUpdate(font_cache) => {
+					self.editor_api = WasmEditorApi {
+						font_cache,
+						application_io: self.editor_api.application_io.clone(),
+						node_graph_message_sender: Box::new(self.sender.clone()),
+						imaginate_preferences: Box::new(self.imaginate_preferences.clone()),
+					}
+					.into();
+					self.recompile_graph = true;
+				}
+				NodeRuntimeMessage::ImaginatePreferencesUpdate(preferences) => {
+					self.editor_api = WasmEditorApi {
+						font_cache: self.editor_api.font_cache.clone(),
+						application_io: self.editor_api.application_io.clone(),
+						node_graph_message_sender: Box::new(self.sender.clone()),
+						imaginate_preferences: Box::new(preferences),
+					}
+					.into();
+					self.recompile_graph = true;
+				}
 				NodeRuntimeMessage::ExecutionRequest(ExecutionRequest {
 					execution_id, graph, render_config, ..
 				}) => {
@@ -182,23 +205,21 @@ impl NodeRuntime {
 	}
 
 	async fn execute_network(&mut self, graph: NodeNetwork, render_config: RenderConfig) -> Result<TaggedValue, String> {
-		if self.wasm_application_io.is_none() {
-			self.wasm_application_io = Some(WasmApplicationIo::new().await);
+		if self.editor_api.application_io.is_none() {
+			self.editor_api = WasmEditorApi {
+				application_io: Some(WasmApplicationIo::new().await.into()),
+				font_cache: self.editor_api.font_cache.clone(),
+				node_graph_message_sender: Box::new(self.sender.clone()),
+				imaginate_preferences: Box::new(ImaginatePreferences::default()),
+			}
+			.into();
 		}
 
-		let editor_api = WasmEditorApi {
-			font_cache: &self.font_cache,
-			imaginate_preferences: &self.imaginate_preferences,
-			application_io: self.wasm_application_io.as_ref().unwrap(),
-			node_graph_message_sender: &self.sender,
-			render_config,
-			image_frame: None,
-		};
-
+		let editor_api = &self.editor_api;
 		// Required to ensure that the appropriate proto nodes are reinserted when the Editor API changes.
 		let mut graph_input_hash = DefaultHasher::new();
 		editor_api.font_cache.hash(&mut graph_input_hash);
-		let font_hash_code = graph_input_hash.finish();
+		let _font_hash_code = graph_input_hash.finish();
 		graph.hash(&mut graph_input_hash);
 		let hash_code = graph_input_hash.finish();
 
@@ -206,8 +227,8 @@ impl NodeRuntime {
 			self.graph_hash = None;
 		}
 
-		if self.graph_hash.is_none() {
-			let scoped_network = wrap_network_in_scope(graph, font_hash_code);
+		if self.graph_hash.is_none() || self.recompile_graph {
+			let scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
 
 			self.monitor_nodes = scoped_network
 				.recursive_nodes()
@@ -235,7 +256,7 @@ impl NodeRuntime {
 		use graph_craft::graphene_compiler::Executor;
 
 		let result = match self.executor.input_type() {
-			Some(t) if t == concrete!(WasmEditorApi) => (&self.executor).execute(editor_api).await.map_err(|e| e.to_string()),
+			Some(t) if t == concrete!(RenderConfig) => (&self.executor).execute(render_config).await.map_err(|e| e.to_string()),
 			Some(t) if t == concrete!(()) => (&self.executor).execute(()).await.map_err(|e| e.to_string()),
 			Some(t) => Err(format!("Invalid input type {t:?}")),
 			_ => Err(format!("No input type:\n{:?}", self.node_graph_errors)),
@@ -259,7 +280,7 @@ impl NodeRuntime {
 	}
 
 	/// Updates state data
-	pub fn process_monitor_nodes(&mut self, responses: &mut VecDeque<Message>) {
+	pub fn process_monitor_nodes(&mut self, responses: &mut VecDeque<FrontendMessage>) {
 		// TODO: Consider optimizing this since it's currently O(m*n^2), with a sort it could be made O(m * n*log(n))
 		self.thumbnail_renders.retain(|id, _| self.monitor_nodes.iter().any(|monitor_node_path| monitor_node_path.contains(id)));
 
@@ -280,57 +301,10 @@ impl NodeRuntime {
 				continue;
 			};
 
-			enum IntrospectedData<'a> {
-				GraphicElement(&'a graphene_core::GraphicElement),
-				Artboard(&'a graphene_core::Artboard),
-			}
-
-			let introspected_data_output = introspected_data
-				.downcast_ref::<IORecord<Footprint, graphene_core::GraphicElement>>()
-				.and_then(|io_data| Some(IntrospectedData::GraphicElement(&io_data.output)))
-				.or_else(|| {
-					introspected_data
-						.downcast_ref::<IORecord<Footprint, graphene_core::Artboard>>()
-						.and_then(|io_data| Some(IntrospectedData::Artboard(&io_data.output)))
-				});
-
-			let graphic_element = match introspected_data_output {
-				Some(IntrospectedData::GraphicElement(graphic_element)) => Some(graphic_element.clone()),
-				Some(IntrospectedData::Artboard(artboard)) => Some(artboard.clone().into()),
-				_ => None,
-			};
-			// If this is `GraphicElement` data:
-			// Regenerate click targets and thumbnails for the layers in the graph, modifying the state and updating the UI.
-			if let Some(graphic_element) = graphic_element {
-				let click_targets = self.click_targets.entry(parent_network_node_id).or_default();
-				click_targets.clear();
-				graphic_element.add_click_targets(click_targets);
-
-				// RENDER THUMBNAIL
-
-				let bounds = graphic_element.bounding_box(DAffine2::IDENTITY);
-
-				// Render the thumbnail from a `GraphicElement` into an SVG string
-				let render_params = RenderParams::new(ViewMode::Normal, ImageRenderMode::Base64, bounds, true, false, false);
-				let mut render = SvgRender::new();
-				graphic_element.render_svg(&mut render, &render_params);
-
-				// And give the SVG a viewbox and outer <svg>...</svg> wrapper tag
-				let [min, max] = bounds.unwrap_or_default();
-				render.format_svg(min, max);
-
-				// UPDATE FRONTEND THUMBNAIL
-
-				let new_thumbnail_svg = render.svg;
-				let old_thumbnail_svg = self.thumbnail_renders.entry(parent_network_node_id).or_default();
-
-				if old_thumbnail_svg != &new_thumbnail_svg {
-					responses.add(FrontendMessage::UpdateNodeThumbnail {
-						id: parent_network_node_id,
-						value: new_thumbnail_svg.to_svg_string(),
-					});
-					*old_thumbnail_svg = new_thumbnail_svg;
-				}
+			if let Some(io) = introspected_data.downcast_ref::<IORecord<Footprint, graphene_core::GraphicElement>>() {
+				Self::process_graphic_element(&mut self.thumbnail_renders, &mut self.click_targets, parent_network_node_id, &io.output, responses)
+			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Footprint, graphene_core::Artboard>>() {
+				Self::process_graphic_element(&mut self.thumbnail_renders, &mut self.click_targets, parent_network_node_id, &io.output, responses)
 			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<Footprint, VectorData>>() {
 				// Insert the vector modify if we are dealing with vector data
 				self.vector_modify.insert(parent_network_node_id, record.output.clone());
@@ -351,6 +325,46 @@ impl NodeRuntime {
 			} {
 				self.upstream_transforms.insert(parent_network_node_id, transform);
 			}
+		}
+	}
+
+	// If this is `GraphicElement` data:
+	// Regenerate click targets and thumbnails for the layers in the graph, modifying the state and updating the UI.
+	fn process_graphic_element(
+		thumbnail_renders: &mut HashMap<NodeId, Vec<SvgSegment>>,
+		click_targets: &mut HashMap<NodeId, Vec<ClickTarget>>,
+		parent_network_node_id: NodeId,
+		graphic_element: &impl GraphicElementRendered,
+		responses: &mut VecDeque<FrontendMessage>,
+	) {
+		let click_targets = click_targets.entry(parent_network_node_id).or_default();
+		click_targets.clear();
+		graphic_element.add_click_targets(click_targets);
+
+		// RENDER THUMBNAIL
+
+		let bounds = graphic_element.bounding_box(DAffine2::IDENTITY);
+
+		// Render the thumbnail from a `GraphicElement` into an SVG string
+		let render_params = RenderParams::new(ViewMode::Normal, ImageRenderMode::Base64, bounds, true, false, false);
+		let mut render = SvgRender::new();
+		graphic_element.render_svg(&mut render, &render_params);
+
+		// And give the SVG a viewbox and outer <svg>...</svg> wrapper tag
+		let [min, max] = bounds.unwrap_or_default();
+		render.format_svg(min, max);
+
+		// UPDATE FRONTEND THUMBNAIL
+
+		let new_thumbnail_svg = render.svg;
+		let old_thumbnail_svg = thumbnail_renders.entry(parent_network_node_id).or_default();
+
+		if old_thumbnail_svg != &new_thumbnail_svg {
+			responses.push_back(FrontendMessage::UpdateNodeThumbnail {
+				id: parent_network_node_id,
+				value: new_thumbnail_svg.to_svg_string(),
+			});
+			*old_thumbnail_svg = new_thumbnail_svg;
 		}
 	}
 }
@@ -578,7 +592,7 @@ impl NodeGraphExecutor {
 						transform,
 					} = execution_response;
 
-					responses.extend(existing_responses);
+					responses.extend(existing_responses.into_iter().map(Into::into));
 					responses.add(NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors });
 					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(OverlaysMessage::Draw);
