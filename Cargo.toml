@@ -60,7 +60,7 @@ spirv-std = { git = "https://github.com/EmbarkStudios/rust-gpu.git" }
 wgpu-types = "0.17"
 wgpu = "0.19"
 once_cell = "1.13" # Remove when `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) is stabilized in Rust 1.80 and we bump our MSRV
-wasm-bindgen = "=0.2.92" # wasm-bindgen upgrades may break various things so we pin the version
+wasm-bindgen = "=0.2.92" # NOTICE: ensure this stays in sync with the `wasm-bindgen-cli` version in `website/content/volunteer/guide/getting-started/_index.md`. We pin this version because wasm-bindgen upgrades may break various things.
 wasm-bindgen-futures = "0.4"
 js-sys = "=0.3.69"
 web-sys = "=0.3.69"

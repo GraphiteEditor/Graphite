@@ -7,7 +7,6 @@
 		"ghcr.io/devcontainers/features/node:1": {}
 	},
 	"onCreateCommand": "cargo install cargo-watch cargo-about",
-	"postCreateCommand": "cd frontend && npm install",
 	"customizations": {
 		"vscode": {
 			// NOTE: Keep this in sync with `.vscode/extensions.json`
