@@ -36,7 +36,6 @@ impl Compiler {
 		Ok(proto_network)
 	}
 }
-pub type Any<'a> = Box<dyn DynAny<'a> + 'a + Send + Sync>;
 
 pub trait Executor<I, O> {
 	fn execute(&self, input: I) -> LocalFuture<Result<O, Box<dyn Error>>>;

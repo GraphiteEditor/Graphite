@@ -42,6 +42,7 @@ in
       pkgs.cargo
       pkgs.cargo-watch
       pkgs.cargo-nextest
+      pkgs.cargo-expand
       pkgs.wasm-pack
       pkgs.wasm-bindgen-cli
       pkgs.vulkan-loader

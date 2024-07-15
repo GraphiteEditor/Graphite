@@ -65,6 +65,10 @@ pub struct SurfaceHandle<Surface> {
 	pub surface_id: SurfaceId,
 	pub surface: Surface,
 }
+#[cfg(target_arch = "wasm32")]
+unsafe impl<T: dyn_any::WasmNotSend> Send for SurfaceHandle<T> {}
+#[cfg(target_arch = "wasm32")]
+unsafe impl<T: dyn_any::WasmNotSync> Sync for SurfaceHandle<T> {}
 
 unsafe impl<T: 'static> StaticType for SurfaceHandle<T> {
 	type Static = SurfaceHandle<T>;
@@ -100,7 +104,10 @@ impl<'a, Surface> Drop for SurfaceHandle<'a, Surface> {
 	}
 }*/
 
+#[cfg(target_arch = "wasm32")]
 pub type ResourceFuture = Pin<Box<dyn Future<Output = Result<Arc<[u8]>, ApplicationError>>>>;
+#[cfg(not(target_arch = "wasm32"))]
+pub type ResourceFuture = Pin<Box<dyn Future<Output = Result<Arc<[u8]>, ApplicationError>> + Send>>;
 
 pub trait ApplicationIo {
 	type Surface;

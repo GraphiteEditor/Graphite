@@ -197,7 +197,7 @@ impl ApplicationIo for WasmApplicationIo {
 					let mut data = Vec::new();
 					reader.read_to_end(&mut data).await.map_err(|_| ApplicationError::NotFound)?;
 					Ok(Arc::from(data))
-				}) as Pin<Box<dyn Future<Output = Result<Arc<[u8]>, _>>>>)
+				}) as ResourceFuture)
 			}
 			"http" | "https" => {
 				let url = url.to_string();
@@ -206,14 +206,14 @@ impl ApplicationIo for WasmApplicationIo {
 					let response = client.get(url).send().await.map_err(|_| ApplicationError::NotFound)?;
 					let data = response.bytes().await.map_err(|_| ApplicationError::NotFound)?;
 					Ok(Arc::from(data.to_vec()))
-				}) as Pin<Box<dyn Future<Output = Result<Arc<[u8]>, _>>>>)
+				}) as ResourceFuture)
 			}
 			"graphite" => {
 				let path = url.path();
 				let path = path.to_owned();
 				log::trace!("Loading local resource: {path}");
 				let data = self.resources.get(&path).ok_or(ApplicationError::NotFound)?.clone();
-				Ok(Box::pin(async move { Ok(data.clone()) }) as Pin<Box<dyn Future<Output = Result<Arc<[u8]>, _>>>>)
+				Ok(Box::pin(async move { Ok(data.clone()) }) as ResourceFuture)
 			}
 			_ => Err(ApplicationError::NotFound),
 		}

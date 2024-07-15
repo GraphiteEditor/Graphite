@@ -12,12 +12,21 @@ use std::hash::Hash;
 use std::ops::Deref;
 use std::pin::Pin;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub type DynFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n + Send>>;
+#[cfg(target_arch = "wasm32")]
+pub type DynFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
 pub type LocalFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
-pub type Any<'n> = Box<dyn DynAny<'n> + 'n + Send + Sync>;
+#[cfg(not(target_arch = "wasm32"))]
+pub type Any<'n> = Box<dyn DynAny<'n> + 'n + Send>;
+#[cfg(target_arch = "wasm32")]
+pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
 pub type FutureAny<'n> = DynFuture<'n, Any<'n>>;
 // TODO: is this safe? This is assumed to be send+sync.
+#[cfg(not(target_arch = "wasm32"))]
 pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n + Send + Sync;
+#[cfg(target_arch = "wasm32")]
+pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n;
 pub type TypeErasedPinnedRef<'n> = Pin<&'n TypeErasedNode<'n>>;
 pub type TypeErasedRef<'n> = &'n TypeErasedNode<'n>;
 pub type TypeErasedBox<'n> = Box<TypeErasedNode<'n>>;

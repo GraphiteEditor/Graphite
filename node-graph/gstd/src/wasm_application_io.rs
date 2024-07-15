@@ -1,3 +1,4 @@
+use dyn_any::DynFuture;
 pub use graph_craft::wasm_application_io::*;
 use graphene_core::application_io::{ApplicationIo, ExportFormat, RenderConfig, SurfaceHandle};
 use graphene_core::raster::bbox::Bbox;
@@ -5,8 +6,8 @@ use graphene_core::raster::Image;
 use graphene_core::raster::ImageFrame;
 use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
 use graphene_core::transform::{Footprint, TransformMut};
-use graphene_core::Color;
 use graphene_core::Node;
+use graphene_core::{Color, WasmNotSend};
 
 use base64::Engine;
 use core::future::Future;
@@ -163,8 +164,10 @@ pub struct RasterizeNode<Footprint, Surface> {
 	surface_handle: Surface,
 }
 
+mod js_future;
+
 #[node_macro::node_fn(RasterizeNode)]
-async fn rasterize<_T: GraphicElementRendered + TransformMut>(mut data: _T, footprint: Footprint, surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>) -> ImageFrame<Color> {
+async fn rasterize<_T: GraphicElementRendered + TransformMut + WasmNotSend>(mut data: _T, footprint: Footprint, surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>) -> ImageFrame<Color> {
 	let mut render = SvgRender::new();
 
 	if footprint.transform.matrix2.determinant() == 0. {
@@ -197,7 +200,7 @@ async fn rasterize<_T: GraphicElementRendered + TransformMut>(mut data: _T, foot
 
 	let image_data = web_sys::HtmlImageElement::new().unwrap();
 	image_data.set_src(base64_string.as_str());
-	wasm_bindgen_futures::JsFuture::from(image_data.decode()).await.unwrap();
+	futures::executor::block_on(js_future::UnsafeSendJsFuture::from(image_data.decode())).unwrap();
 	context
 		.draw_image_with_html_image_element_and_dw_and_dh(&image_data, 0., 0., resolution.x as f64, resolution.y as f64)
 		.unwrap();
@@ -213,18 +216,25 @@ async fn rasterize<_T: GraphicElementRendered + TransformMut>(mut data: _T, foot
 }
 
 // Render with the data node taking in Footprint.
-impl<'input, 'a: 'input, T: 'input + GraphicElementRendered, F: 'input + Future<Output = T>, Data: 'input, Surface: 'input, SurfaceFuture: 'input> Node<'input, RenderConfig>
-	for RenderNode<Data, Surface, Footprint>
+impl<'input, T: 'input + GraphicElementRendered, Data: 'input, Surface: 'input> Node<'input, RenderConfig> for RenderNode<Data, Surface, Footprint>
 where
-	Data: Node<'input, Footprint, Output = F>,
-	Surface: Node<'input, (), Output = SurfaceFuture>,
-	SurfaceFuture: core::future::Future<Output = wgpu_executor::WindowHandle>,
+	for<'a> Data: Node<'a, Footprint, Output: Future<Output = T> + WasmNotSend>,
+	for<'a> Surface: Node<'a, (), Output: Future<Output = wgpu_executor::WindowHandle> + WasmNotSend> + 'input,
 {
-	type Output = core::pin::Pin<Box<dyn core::future::Future<Output = RenderOutput> + 'input>>;
+	type Output = DynFuture<'input, RenderOutput>;
 
 	#[inline]
 	fn eval(&'input self, render_config: RenderConfig) -> Self::Output {
+		let footprint = render_config.viewport;
+
+		let RenderConfig { hide_artboards, for_export, .. } = render_config;
+		let render_params = RenderParams::new(render_config.view_mode, ImageRenderMode::Base64, None, false, hide_artboards, for_export);
+
+		let data_fut = self.data.eval(footprint);
+		#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
+		let surface_fut = self.surface_handle.eval(());
 		Box::pin(async move {
+			let data = data_fut.await;
 			let footprint = render_config.viewport;
 
 			let RenderConfig { hide_artboards, for_export, .. } = render_config;
@@ -232,9 +242,9 @@ where
 
 			let output_format = render_config.export_format;
 			match output_format {
-				ExportFormat::Svg => render_svg(self.data.eval(footprint).await, SvgRender::new(), render_params, footprint),
+				ExportFormat::Svg => render_svg(data, SvgRender::new(), render_params, footprint),
 				#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
-				ExportFormat::Canvas => render_canvas(self.data.eval(footprint).await, SvgRender::new(), render_params, footprint, editor, self.surface_handle.eval(()).await),
+				ExportFormat::Canvas => render_canvas(data, SvgRender::new(), render_params, footprint, editor, surface_fut.await),
 				_ => todo!("Non-SVG render output for {output_format:?}"),
 			}
 		})
@@ -242,17 +252,25 @@ where
 }
 
 // Render with the data node taking in ().
-impl<'input, 'a: 'input, T: 'input + GraphicElementRendered, F: 'input + Future<Output = T>, Data: 'input, Surface: 'input, SurfaceFuture: 'input> Node<'input, RenderConfig>
-	for RenderNode<Data, Surface, ()>
+impl<'input, T: 'input + GraphicElementRendered, Data: 'input, Surface: 'input> Node<'input, RenderConfig> for RenderNode<Data, Surface, ()>
 where
-	Data: Node<'input, (), Output = F>,
-	Surface: Node<'input, (), Output = SurfaceFuture>,
-	SurfaceFuture: core::future::Future<Output = wgpu_executor::WindowHandle>,
+	for<'a> Data: Node<'a, (), Output: Future<Output = T> + WasmNotSend>,
+	for<'a> Surface: Node<'a, (), Output: Future<Output = wgpu_executor::WindowHandle> + WasmNotSend> + 'input,
 {
-	type Output = core::pin::Pin<Box<dyn core::future::Future<Output = RenderOutput> + 'input>>;
+	type Output = DynFuture<'input, RenderOutput>;
+
 	#[inline]
 	fn eval(&'input self, render_config: RenderConfig) -> Self::Output {
+		let footprint = render_config.viewport;
+
+		let RenderConfig { hide_artboards, for_export, .. } = render_config;
+		let render_params = RenderParams::new(render_config.view_mode, ImageRenderMode::Base64, None, false, hide_artboards, for_export);
+
+		let data_fut = self.data.eval(());
+		#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
+		let surface_fut = self.surface_handle.eval(());
 		Box::pin(async move {
+			let data = data_fut.await;
 			let footprint = render_config.viewport;
 
 			let RenderConfig { hide_artboards, for_export, .. } = render_config;
@@ -260,14 +278,15 @@ where
 
 			let output_format = render_config.export_format;
 			match output_format {
-				ExportFormat::Svg => render_svg(self.data.eval(()).await, SvgRender::new(), render_params, footprint),
+				ExportFormat::Svg => render_svg(data, SvgRender::new(), render_params, footprint),
 				#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
-				ExportFormat::Canvas => render_canvas(self.data.eval(()).await, SvgRender::new(), render_params, footprint, editor, self.surface_handle.eval(()).await),
+				ExportFormat::Canvas => render_canvas(data, SvgRender::new(), render_params, footprint, editor, surface_fut.await),
 				_ => todo!("Non-SVG render output for {output_format:?}"),
 			}
 		})
 	}
 }
+
 #[automatically_derived]
 impl<Data, Surface, Parameter> RenderNode<Data, Surface, Parameter> {
 	pub fn new(data: Data, _surface_handle: Surface) -> Self {

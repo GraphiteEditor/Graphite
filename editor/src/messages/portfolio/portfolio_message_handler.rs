@@ -674,8 +674,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 }
 
 impl PortfolioMessageHandler {
-	pub fn introspect_node(&self, node_path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
-		self.executor.introspect_node(node_path)
+	pub async fn introspect_node(&self, node_path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
+		self.executor.introspect_node(node_path).await
 	}
 
 	pub fn document(&self, document_id: DocumentId) -> Option<&DocumentMessageHandler> {

@@ -126,16 +126,6 @@ impl TransformMut for DAffine2 {
 	}
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct TransformNode<TransformTarget, Translation, Rotation, Scale, Shear, Pivot> {
-	pub(crate) transform_target: TransformTarget,
-	pub(crate) translate: Translation,
-	pub(crate) rotate: Rotation,
-	pub(crate) scale: Scale,
-	pub(crate) shear: Shear,
-	pub(crate) _pivot: Pivot,
-}
-
 #[derive(Debug, Clone, Copy, dyn_any::DynAny, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum RenderQuality {
@@ -222,19 +212,26 @@ impl TransformMut for Footprint {
 	}
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct TransformNode<TransformTarget, Translation, Rotation, Scale, Shear, Pivot> {
+	pub(crate) transform_target: TransformTarget,
+	pub(crate) translate: Translation,
+	pub(crate) rotate: Rotation,
+	pub(crate) scale: Scale,
+	pub(crate) shear: Shear,
+	pub(crate) _pivot: Pivot,
+}
+
 #[node_macro::node_fn(TransformNode)]
-pub(crate) async fn transform_vector_data<Fut: Future + Send>(
+pub(crate) async fn transform_vector_data<T: TransformMut>(
 	mut footprint: Footprint,
-	transform_target: impl Node<Footprint, Output = Fut>,
+	transform_target: impl Node<Footprint, Output = T>,
 	translate: DVec2,
 	rotate: f64,
 	scale: DVec2,
 	shear: DVec2,
 	_pivot: DVec2,
-) -> Fut::Output
-where
-	Fut::Output: TransformMut + Send,
-{
+) -> T {
 	let modification = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
 	if !footprint.ignore_modifications {
 		*footprint.transform_mut() = footprint.transform() * modification;

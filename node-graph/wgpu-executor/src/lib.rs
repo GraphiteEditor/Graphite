@@ -885,12 +885,7 @@ pub struct ShaderInputFrame {
 }
 
 #[node_macro::node_fn(RenderTextureNode)]
-async fn render_texture_node<'a: 'input, InFut: Future<Output = ShaderInputFrame> + Send>(
-	footprint: Footprint,
-	image: impl Node<Footprint, Output = InFut>,
-	surface: WgpuSurface,
-	executor: &'a WgpuExecutor,
-) -> SurfaceFrame {
+async fn render_texture_node<'a: 'input>(footprint: Footprint, image: impl Node<Footprint, Output = ShaderInputFrame>, surface: WgpuSurface, executor: &'a WgpuExecutor) -> SurfaceFrame {
 	let surface_id = surface.surface_id;
 	let image = self.image.eval(footprint).await;
 	let transform = image.transform;

@@ -14,9 +14,9 @@ use glam::{DAffine2, DVec2, Mat2, Vec2};
 #[cfg(feature = "quantization")]
 use graphene_core::quantization::PackedPixel;
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use crate::wasm_application_io::WasmApplicationIo;
 
@@ -50,7 +50,7 @@ async fn compile_gpu(node: &'input DocumentNode, mut typing_context: TypingConte
 pub struct MapGpuNode<Node, EditorApi> {
 	node: Node,
 	editor_api: EditorApi,
-	cache: RefCell<HashMap<String, ComputePass>>,
+	cache: Mutex<HashMap<String, ComputePass>>,
 }
 
 struct ComputePass {
@@ -96,15 +96,15 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	};
 
 	// TODO: The cache should be based on the network topology not the node name
-	let compute_pass_descriptor = if self.cache.borrow().contains_key(&node.name) {
-		self.cache.borrow().get(&node.name).unwrap().clone()
+	let compute_pass_descriptor = if self.cache.lock().as_ref().unwrap().contains_key(&node.name) {
+		self.cache.lock().as_ref().unwrap().get(&node.name).unwrap().clone()
 	} else {
 		let name = node.name.to_string();
 		let Ok(compute_pass_descriptor) = create_compute_pass_descriptor(node, &image, executor, quantization).await else {
 			log::error!("Error creating compute pass descriptor in 'map_gpu()");
 			return ImageFrame::empty();
 		};
-		self.cache.borrow_mut().insert(name, compute_pass_descriptor.clone());
+		self.cache.lock().as_mut().unwrap().insert(name, compute_pass_descriptor.clone());
 		log::error!("created compute pass");
 		compute_pass_descriptor
 	};
@@ -154,7 +154,7 @@ impl<Node, EditorApi> MapGpuNode<Node, EditorApi> {
 		Self {
 			node,
 			editor_api,
-			cache: RefCell::new(HashMap::new()),
+			cache: Mutex::new(HashMap::new()),
 		}
 	}
 }

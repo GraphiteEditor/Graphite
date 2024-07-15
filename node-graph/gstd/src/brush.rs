@@ -9,7 +9,7 @@ use graphene_core::transform::{Transform, TransformMut};
 use graphene_core::value::{ClonedNode, CopiedNode, OnceCellNode, ValueNode};
 use graphene_core::vector::brush_stroke::{BrushStroke, BrushStyle};
 use graphene_core::vector::VectorData;
-use graphene_core::Node;
+use graphene_core::{Node, WasmNotSend};
 use node_macro::node_fn;
 
 use glam::{DAffine2, DVec2};
@@ -35,7 +35,7 @@ pub struct ChainApplyNode<Value> {
 }
 
 #[node_fn(ChainApplyNode)]
-async fn chain_apply<I: Iterator, T>(iter: I, mut value: T) -> T
+async fn chain_apply<I: Iterator + WasmNotSend, T: WasmNotSend>(iter: I, mut value: T) -> T
 where
 	I::Item: for<'a> Node<'a, T, Output = T>,
 {
@@ -304,7 +304,7 @@ async fn brush(image: ImageFrame<Color>, bounds: ImageFrame<Color>, strokes: Vec
 		background_bounds = bounds.transform;
 	}
 
-	let mut actual_image = ExtendImageToBoundsNode::new(OnceCellNode::new(background_bounds)).eval(brush_plan.background);
+	let mut actual_image = ExtendImageToBoundsNode::new(ClonedNode::new(background_bounds)).eval(brush_plan.background);
 	let final_stroke_idx = brush_plan.strokes.len().saturating_sub(1);
 	for (idx, stroke) in brush_plan.strokes.into_iter().enumerate() {
 		// Create brush texture.

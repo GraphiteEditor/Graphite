@@ -7,7 +7,6 @@ use graphene_core::Color;
 use graphene_core::{transform::Footprint, GraphicGroup};
 use graphene_core::{vector::misc::BooleanOperation, GraphicElement};
 
-use futures::Future;
 use glam::{DAffine2, DVec2};
 use wasm_bindgen::prelude::*;
 
@@ -17,11 +16,7 @@ pub struct BinaryBooleanOperationNode<LowerVectorData, BooleanOp> {
 }
 
 #[node_macro::node_fn(BinaryBooleanOperationNode)]
-async fn binary_boolean_operation_node<Fut: Future<Output = VectorData>>(
-	upper_vector_data: VectorData,
-	lower_vector_data: impl Node<Footprint, Output = Fut>,
-	boolean_operation: BooleanOperation,
-) -> VectorData {
+async fn binary_boolean_operation_node(upper_vector_data: VectorData, lower_vector_data: impl Node<Footprint, Output = VectorData>, boolean_operation: BooleanOperation) -> VectorData {
 	let lower_vector_data = self.lower_vector_data.eval(Footprint::default()).await;
 	let transform_of_lower_into_space_of_upper = upper_vector_data.transform.inverse() * lower_vector_data.transform;
 

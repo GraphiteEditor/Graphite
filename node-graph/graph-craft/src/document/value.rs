@@ -1,5 +1,4 @@
 use super::DocumentNode;
-use crate::graphene_compiler::Any;
 pub use crate::imaginate_input::{ImaginateCache, ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use crate::proto::{Any as DAny, FutureAny};
 use crate::wasm_application_io::WasmEditorApi;
@@ -47,7 +46,7 @@ macro_rules! tagged_value {
 		}
 		impl<'a> TaggedValue {
 			/// Converts to a Box<dyn DynAny> - this isn't very neat but I'm not sure of a better approach
-			pub fn to_any(self) -> Any<'a> {
+			pub fn to_any(self) -> DAny<'a> {
 				match self {
 					Self::None => Box::new(()),
 					$( Self::$identifier(x) => Box::new(x), )*
@@ -227,9 +226,9 @@ impl UpcastNode {
 	}
 }
 #[derive(Default, Debug, Clone, Copy)]
-pub struct UpcastAsRefNode<T: AsRef<U> + Sync, U: Sync>(pub T, PhantomData<U>);
+pub struct UpcastAsRefNode<T: AsRef<U> + Sync + Send, U: Sync + Send>(pub T, PhantomData<U>);
 
-impl<'i, T: 'i + AsRef<U> + Sync, U: 'i + StaticType + Sync> Node<'i, DAny<'i>> for UpcastAsRefNode<T, U> {
+impl<'i, T: 'i + AsRef<U> + Sync + Send, U: 'i + StaticType + Sync + Send> Node<'i, DAny<'i>> for UpcastAsRefNode<T, U> {
 	type Output = FutureAny<'i>;
 	#[inline(always)]
 	fn eval(&'i self, _: DAny<'i>) -> Self::Output {
@@ -237,7 +236,7 @@ impl<'i, T: 'i + AsRef<U> + Sync, U: 'i + StaticType + Sync> Node<'i, DAny<'i>> 
 	}
 }
 
-impl<T: AsRef<U> + Sync, U: Sync> UpcastAsRefNode<T, U> {
+impl<T: AsRef<U> + Sync + Send, U: Sync + Send> UpcastAsRefNode<T, U> {
 	pub const fn new(value: T) -> UpcastAsRefNode<T, U> {
 		UpcastAsRefNode(value, PhantomData)
 	}

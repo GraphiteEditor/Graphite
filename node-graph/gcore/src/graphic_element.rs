@@ -131,10 +131,10 @@ pub struct ConstructLayerNode<Stack, GraphicElement> {
 }
 
 #[node_fn(ConstructLayerNode)]
-async fn construct_layer<Data: Into<GraphicElement> + Send, Fut1: Future<Output = GraphicGroup> + Send, Fut2: Future<Output = Data> + Send>(
+async fn construct_layer<Data: Into<GraphicElement> + Send>(
 	footprint: crate::transform::Footprint,
-	mut stack: impl Node<crate::transform::Footprint, Output = Fut1>,
-	graphic_element: impl Node<crate::transform::Footprint, Output = Fut2>,
+	mut stack: impl Node<crate::transform::Footprint, Output = GraphicGroup>,
+	graphic_element: impl Node<crate::transform::Footprint, Output = Data>,
 ) -> GraphicGroup {
 	let graphic_element = self.graphic_element.eval(footprint).await;
 	let mut stack = self.stack.eval(footprint).await;
@@ -166,9 +166,9 @@ pub struct ConstructArtboardNode<Contents, Label, Location, Dimensions, Backgrou
 }
 
 #[node_fn(ConstructArtboardNode)]
-async fn construct_artboard<Fut: Future<Output = GraphicGroup> + Send>(
+async fn construct_artboard(
 	mut footprint: Footprint,
-	contents: impl Node<Footprint, Output = Fut>,
+	contents: impl Node<Footprint, Output = GraphicGroup>,
 	label: String,
 	location: IVec2,
 	dimensions: IVec2,
@@ -193,11 +193,7 @@ pub struct AddArtboardNode<ArtboardGroup, Artboard> {
 }
 
 #[node_fn(AddArtboardNode)]
-async fn add_artboard<Data: Into<Artboard> + Send, Fut1: Future<Output = ArtboardGroup> + Send, Fut2: Future<Output = Data> + Send>(
-	footprint: Footprint,
-	artboards: impl Node<Footprint, Output = Fut1>,
-	artboard: impl Node<Footprint, Output = Fut2>,
-) -> ArtboardGroup {
+async fn add_artboard<Data: Into<Artboard> + Send>(footprint: Footprint, artboards: impl Node<Footprint, Output = ArtboardGroup>, artboard: impl Node<Footprint, Output = Data>) -> ArtboardGroup {
 	let artboard = self.artboard.eval(footprint).await;
 	let mut artboards = self.artboards.eval(footprint).await;
 

@@ -10,7 +10,7 @@ use graphene_core::raster::{
 };
 use graphene_core::transform::{Footprint, Transform};
 use graphene_core::value::CopiedNode;
-use graphene_core::{AlphaBlending, Color, Node};
+use graphene_core::{AlphaBlending, Color, Node, WasmNotSend};
 
 use fastnoise_lite;
 use glam::{DAffine2, DVec2, UVec2, Vec2};
@@ -265,12 +265,15 @@ pub struct BlendImageNode<P, Background, MapFn> {
 }
 
 #[node_macro::node_fn(BlendImageNode<_P>)]
-async fn blend_image_node<_P: Alpha + Pixel + Debug + Send + Sync, Forground: Sample<Pixel = _P> + Transform + Send>(
+fn blend_image_node<_P: Alpha + Pixel + Debug + WasmNotSend + Sync, MapFn, Forground: Sample<Pixel = _P> + Transform + Send>(
 	foreground: Forground,
 	background: ImageFrame<_P>,
-	map_fn: impl Node<(_P, _P), Output = _P>,
-) -> ImageFrame<_P> {
-	blend_new_image(foreground, background, &self.map_fn)
+	map_fn: &'input MapFn,
+) -> ImageFrame<_P>
+where
+	MapFn: Node<'input, (_P, _P), Output = _P> + 'input,
+{
+	blend_new_image(foreground, background, map_fn)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -468,6 +471,7 @@ fn empty_image<_P: Pixel>(transform: DAffine2, color: _P) -> ImageFrame<_P> {
 	}
 }
 
+#[cfg(feature = "serde")]
 macro_rules! generate_imaginate_node {
 	($($val:ident: $t:ident: $o:ty,)*) => {
 		pub struct ImaginateNode<P: Pixel, E, C, $($t,)*> {
@@ -525,6 +529,7 @@ macro_rules! generate_imaginate_node {
 	}
 }
 
+#[cfg(feature = "serde")]
 generate_imaginate_node! {
 	seed: Seed: f64,
 	res: Res: Option<DVec2>,

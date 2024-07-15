@@ -1,5 +1,5 @@
 use dyn_any::{DynAny, StaticType};
-use graphene_core::Color;
+use graphene_core::{Color, WasmNotSend};
 use std::borrow::Cow;
 use std::fmt::Debug;
 use std::sync::{
@@ -29,7 +29,7 @@ impl core::hash::Hash for ImaginateCache {
 	}
 }
 
-pub trait ImaginateTerminationHandle: Debug + Send + Sync + 'static {
+pub trait ImaginateTerminationHandle: Debug + Send + 'static {
 	fn terminate(&self);
 }
 

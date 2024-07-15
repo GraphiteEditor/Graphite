@@ -4,6 +4,7 @@ use crate::messages::portfolio::document::node_graph::document_node_types::wrap_
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 
+use futures::lock::Mutex;
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
@@ -24,10 +25,9 @@ use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypes};
 
 use glam::{DAffine2, DVec2, UVec2};
-use std::cell::RefCell;
-use std::rc::Rc;
+use once_cell::sync::Lazy;
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 /// Persistent data between graph executions. It's updated via message passing from the editor thread with [`NodeRuntimeMessage`]`.
 /// Some of these fields are put into a [`WasmEditorApi`] which is passed to the final compiled graph network upon each execution.
@@ -119,7 +119,7 @@ impl NodeGraphUpdateSender for InternalNodeGraphUpdateSender {
 	}
 }
 
-pub(crate) static NODE_RUNTIME: Mutex<Option<NodeRuntime>> = Mutex::new(None);
+pub(crate) static NODE_RUNTIME: Lazy<Mutex<Option<NodeRuntime>>> = Lazy::new(|| Mutex::new(None));
 
 impl NodeRuntime {
 	pub fn new(receiver: Receiver<NodeRuntimeMessage>, sender: Sender<NodeGraphUpdate>) -> Self {
@@ -363,39 +363,24 @@ impl NodeRuntime {
 	}
 }
 
-pub fn introspect_node(path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
-	NODE_RUNTIME
-		.try_with(|runtime| {
-			let runtime = runtime.try_borrow();
-			if let Ok(ref runtime) = runtime {
-				if let Some(ref mut runtime) = runtime.as_ref() {
-					return runtime.executor.introspect(path).flatten();
-				}
-			}
-			None
-		})
-		.unwrap_or(None)
+pub async fn introspect_node(path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
+	let runtime = NODE_RUNTIME.lock().await;
+	if let Some(ref mut runtime) = runtime.as_ref() {
+		return runtime.executor.introspect(path).flatten();
+	}
+	None
 }
 
 pub async fn run_node_graph() {
-	let result = NODE_RUNTIME.try_with(|runtime| {
-		let mut runtime = runtime.try_borrow_mut();
-		if let Ok(ref mut runtime) = runtime {
-			if let Some(ref mut runtime) = runtime.as_mut() {
-				runtime.run().await;
-			}
-		}
-	});
-	if let Ok(result) = result {
-		result.await;
+	let mut runtime = NODE_RUNTIME.lock().await;
+	if let Some(ref mut runtime) = runtime.as_mut() {
+		runtime.run().await;
 	}
 }
 
-pub fn replace_node_runtime(runtime: NodeRuntime) -> Option<NodeRuntime> {
-	NODE_RUNTIME.with(|node_runtime| {
-		let mut node_runtime = node_runtime.borrow_mut();
-		node_runtime.replace(runtime)
-	})
+pub async fn replace_node_runtime(runtime: NodeRuntime) -> Option<NodeRuntime> {
+	let mut node_runtime = NODE_RUNTIME.lock().await;
+	node_runtime.replace(runtime)
 }
 
 #[derive(Debug)]
@@ -415,7 +400,7 @@ impl Default for NodeGraphExecutor {
 	fn default() -> Self {
 		let (request_sender, request_receiver) = std::sync::mpsc::channel();
 		let (response_sender, response_receiver) = std::sync::mpsc::channel();
-		replace_node_runtime(NodeRuntime::new(request_receiver, response_sender));
+		futures::executor::block_on(replace_node_runtime(NodeRuntime::new(request_receiver, response_sender)));
 
 		Self {
 			futures: Default::default(),
@@ -436,8 +421,8 @@ impl NodeGraphExecutor {
 		execution_id
 	}
 
-	pub fn introspect_node(&self, path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
-		introspect_node(path)
+	pub async fn introspect_node(&self, path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
+		introspect_node(path).await
 	}
 
 	pub fn update_font_cache(&self, font_cache: FontCache) {
@@ -462,7 +447,7 @@ impl NodeGraphExecutor {
 			return None;
 		};
 		let introspection_node = find_node(wrapped_network)?;
-		let introspection = self.introspect_node(&[node_path, &[introspection_node]].concat())?;
+		let introspection = futures::executor::block_on(self.introspect_node(&[node_path, &[introspection_node]].concat()))?;
 		let Some(downcasted): Option<&T> = <dyn std::any::Any>::downcast_ref(introspection.as_ref()) else {
 			log::warn!("Failed to downcast type for introspection");
 			return None;
