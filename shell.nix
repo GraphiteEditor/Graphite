@@ -1,8 +1,8 @@
-# This is a helper file for people using NixOs as their Operating System
-# > If you don't know what this file does you can safely ignore it :D
+# This is a helper file for people using NixOS as their operating system.
+# If you don't know what this file does, you can safely ignore it.
 
-# If you are using nix as your package manager, you can run 'nix-shell'
-# in the root directory of the project and nix will open a bash shell
+# If you are using Nix as your package manager, you can run 'nix-shell'
+# in the root directory of the project and Nix will open a bash shell
 # with all the packages needed to build and run Graphite installed.
 # A shell.nix file is used in the Nix ecosystem to define a development
 # environment with specific dependencies. When you enter a Nix shell using
@@ -10,8 +10,10 @@
 # available regardless of the host system's configuration. This provides
 # a reproducible development environment across different machines and developers.
 
-# If you don't need the shell, you can build Graphite using this command:
-# nix-shell --command "npm start"
+# You can enter the Nix shell and run Graphite like normal with:
+# > npm start
+# Or you can run it like this without needing to first enter the Nix shell:
+# > nix-shell --command "npm start"
 
 let
   # Get oxalica's Rust overlay for better Rust integration
@@ -50,25 +52,25 @@ in
       pkgs.llvm
       pkgs.gcc-unwrapped.lib
       pkgs.llvmPackages.libcxxStdenv
+      pkgs.pkg-config
 
+      # For Tauri
       pkgs.openssl
       pkgs.glib
       pkgs.gtk3
       pkgs.libsoup
       pkgs.webkitgtk
 
-      pkgs.pkg-config
-      pkgs.openssl
+      # For Raw-rs tests
+      pkgs.libraw
 
-      # Use Mold as a Linke
+      # Use Mold as a linker
       pkgs.mold
     ];
 
-
-    # Hacky way to run cago through Mold
-    LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [pkgs.openssl pkgs.vulkan-loader pkgs.libxkbcommon pkgs.llvmPackages.libcxxStdenv pkgs.gcc-unwrapped.lib pkgs.llvm];
+    # Hacky way to run Cargo through Mold
+    LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [pkgs.openssl pkgs.vulkan-loader pkgs.libxkbcommon pkgs.llvmPackages.libcxxStdenv pkgs.gcc-unwrapped.lib pkgs.llvm pkgs.libraw];
     shellHook = ''
     alias cargo='mold --run cargo'
     '';
   }
-
