@@ -1,5 +1,5 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
-use super::document::utility_types::network_interface::{self};
+use super::document::utility_types::network_interface::{self, InputConnector};
 use super::utility_types::PersistentData;
 use crate::application::generate_uuid;
 use crate::consts::DEFAULT_DOCUMENT_NAME;
@@ -384,36 +384,71 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				// TODO: Eventually remove this (probably starting late 2024)
 				// Upgrade all old nodes to support editable subgraphs introduced in #1750
 				if upgrade_from_before_editable_subgraphs {
-					for node in document.network.nodes.values_mut() {
-						let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(&node.name).unwrap();
-						let default_definition_node = node_definition.default_document_node();
-
-						node.implementation = default_definition_node.implementation.clone();
+					// This can be used, if uncommented, to upgrade demo artwork with outdated document node internals from their definitions. Delete when it's no longer needed.
+					// Used for upgrading old internal networks for demo artwork nodes. Will reset all node internals for any opened file
+					for node_id in &document
+						.network_interface
+						.document_network_metadata()
+						.persistent_metadata
+						.node_metadata
+						.keys()
+						.cloned()
+						.collect::<Vec<NodeId>>()
+					{
+						if let Some(reference) = document
+							.network_interface
+							.document_network_metadata()
+							.persistent_metadata
+							.node_metadata
+							.get(node_id)
+							.and_then(|node| node.persistent_metadata.reference.as_ref())
+						{
+							let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(reference).unwrap();
+							let default_definition_node = node_definition.default_node_template();
+							document.network_interface.set_implementation(node_id, default_definition_node.document_node.implementation);
+						}
 					}
 				}
-				if document.network.nodes.iter().any(|(node_id, node)| node.name == "Output" && *node_id == NodeId(0)) {
-					ModifyInputsContext::delete_nodes(
-						&mut document.node_graph_handler,
-						&mut document.network,
-						&mut SelectedNodes(vec![]),
-						vec![NodeId(0)],
-						true,
-						responses,
-						Vec::new(),
-					);
+
+				if document
+					.network_interface
+					.document_network_metadata()
+					.persistent_metadata
+					.node_metadata
+					.iter()
+					.any(|(node_id, node)| node.persistent_metadata.reference.as_ref().is_some_and(|reference| reference == "Output") && *node_id == NodeId(0))
+				{
+					document.network_interface.delete_nodes(vec![NodeId(0)], true, &mut SelectedNodes(vec![]), responses, true);
 				}
 
-				// TODO: Eventually remove this (probably starting late 2024)
-				// Upgrade Fill nodes to the format change in #1778
-				for node in document.network.nodes.values_mut() {
-					if node.name == "Fill" && node.inputs.len() == 8 {
-						let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(&node.name).unwrap();
-						let default_definition_node = node_definition.default_document_node();
+				let node_ids = document.network_interface.document_network().nodes.keys().cloned().collect::<Vec<_>>();
+				for node_id in &node_ids {
+					let Some(node) = document.network_interface.document_network().nodes.get(node_id) else {
+						log::error!("could not get node in deserialize_document");
+						continue;
+					};
+					let Some(node_metadata) = document.network_interface.document_network_metadata().persistent_metadata.node_metadata.get(node_id) else {
+						log::error!("could not get node metadata in deserialize_document");
+						continue;
+					};
 
-						node.implementation = default_definition_node.implementation.clone();
-						let old_inputs = std::mem::replace(&mut node.inputs, default_definition_node.inputs.clone());
+					// Upgrade Fill nodes to the format change in #1778
+					// TODO: Eventually remove this (probably starting late 2024)
+					let Some(reference) = node_metadata.persistent_metadata.reference.clone() else {
+						continue;
+					};
+					if reference == "Fill" && node.inputs.len() == 8 {
+						let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(&reference).unwrap();
 
-						node.inputs[0] = old_inputs[0].clone();
+						document
+							.network_interface
+							.set_implementation(node_id, node_definition.default_node_template().document_node.implementation.clone());
+
+						let old_inputs = document
+							.network_interface
+							.replace_inputs(node_id, node_definition.default_node_template().document_node.inputs.clone(), true);
+
+						document.network_interface.set_input(InputConnector::node(*node_id, 0), old_inputs[0].clone(), true);
 
 						let Some(fill_type) = old_inputs[1].as_value().cloned() else { continue };
 						let TaggedValue::FillType(fill_type) = fill_type else { continue };
@@ -441,16 +476,24 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 								transform,
 							}),
 						};
-						node.inputs[1] = NodeInput::value(TaggedValue::Fill(fill.clone()), false);
+						document
+							.network_interface
+							.set_input(InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::Fill(fill.clone()), false), true);
 						match fill {
 							Fill::None => {
-								node.inputs[2] = NodeInput::value(TaggedValue::OptionalColor(None), false);
+								document
+									.network_interface
+									.set_input(InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::OptionalColor(None), false), true);
 							}
 							Fill::Solid(color) => {
-								node.inputs[2] = NodeInput::value(TaggedValue::OptionalColor(Some(color)), false);
+								document
+									.network_interface
+									.set_input(InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::OptionalColor(Some(color)), false), true);
 							}
 							Fill::Gradient(gradient) => {
-								node.inputs[3] = NodeInput::value(TaggedValue::Gradient(gradient), false);
+								document
+									.network_interface
+									.set_input(InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Gradient(gradient), false), true);
 							}
 						}
 					}

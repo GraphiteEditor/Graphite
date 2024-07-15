@@ -429,7 +429,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["editor-api".to_string(), "path".to_string()],
+					input_names: vec!["api".to_string(), "path".to_string()],
 					output_names: vec!["Image Frame".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -499,11 +499,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::scope("editor-api")],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["In".to_string()],
 					output_names: vec!["Image Frame".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -579,7 +577,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["In".to_string(), "In".to_string()],
+					input_names: vec!["In".to_string()],
 					output_names: vec!["Canvas".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1647,15 +1645,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![
-						NodeInput::value(TaggedValue::None, true),
-						NodeInput::network(concrete!(WasmEditorApi), 0),
-						NodeInput::value(TaggedValue::None, true),
-					],
+					inputs: vec![NodeInput::value(TaggedValue::None, true), NodeInput::value(TaggedValue::None, true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["In".to_string(), "In".to_string(), "In".to_string()],
+					input_names: vec!["In".to_string(), "In".to_string()],
 					output_names: vec!["OutputBuffer".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1737,14 +1731,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					}),
 					inputs: vec![
 						NodeInput::network(concrete!(gpu_executor::PipelineLayout<WgpuExecutor>), 0),
-						NodeInput::network(concrete!(WasmEditorApi), 1),
 						NodeInput::network(concrete!(ShaderInput<WgpuExecutor>), 2),
 						NodeInput::network(concrete!(gpu_executor::ComputePassDimensions), 3),
 					],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["In".to_string(), "In".to_string(), "In".to_string(), "In".to_string()],
+					input_names: vec!["In".to_string(), "In".to_string(), "In".to_string()],
 					output_names: vec!["CommandBuffer".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1995,11 +1988,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::network(concrete!(WasmEditorApi), 0)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["In".to_string()],
 					output_names: vec!["GpuSurface".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -2064,15 +2055,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![
-						NodeInput::value(TaggedValue::None, true),
-						NodeInput::value(TaggedValue::None, true),
-						NodeInput::network(concrete!(WasmEditorApi), 0),
-					],
+					inputs: vec![NodeInput::value(TaggedValue::None, true), NodeInput::value(TaggedValue::None, true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Texture".to_string(), "Surface".to_string(), "EditorApi".to_string()],
+					input_names: vec!["Texture".to_string(), "Surface".to_string()],
 					output_names: vec!["RenderedTexture".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -3713,92 +3700,135 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Vector",
-			implementation: DocumentNodeImplementation::proto("graphene_std::vector::BinaryBooleanOperationNode<_, _>"),
-			inputs: vec![
-				DocumentInputType::value("Upper Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-				DocumentInputType::value("Lower Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-				DocumentInputType::value("Operation", TaggedValue::BooleanOperation(vector::misc::BooleanOperation::Union), false),
-			],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
-			properties: node_properties::binary_boolean_operation_properties,
-			..Default::default()
+			properties: node_properties::circular_repeat_properties,
 		},
 		DocumentNodeDefinition {
-			name: "Boolean Operation",
+			identifier: "Binary Boolean Operation",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::proto("graphene_std::vector::BinaryBooleanOperationNode<_, _>"),
+					inputs: vec![
+						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+						NodeInput::value(TaggedValue::BooleanOperation(vector::misc::BooleanOperation::Union), false),
+					],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_names: vec!["Upper Vector Data".to_string(), "Lower Vector Data".to_string(), "Operation".to_string(), "Instances".to_string()],
+					output_names: vec!["Vector".to_string()],
+					..Default::default()
+				},
+			},
 			category: "Vector",
-			is_layer: true,
-			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				exports: vec![NodeInput::node(NodeId(4), 0)],
-				nodes: [
-					// Secondary (left) input type coercion
-					(
-						NodeId(0),
-						DocumentNode {
-							name: "Boolean Operation".to_string(),
-							inputs: vec![NodeInput::network(generic!(T), 1), NodeInput::network(concrete!(vector::misc::BooleanOperation), 2)],
-							implementation: DocumentNodeImplementation::proto("graphene_std::vector::BooleanOperationNode<_>"),
-							metadata: DocumentNodeMetadata { position: glam::IVec2::new(-16, -1) },
-							..Default::default()
-						},
-					),
-					// Primary (bottom) input type coercion
-					(
-						NodeId(1),
-						DocumentNode {
-							name: "To Graphic Group".to_string(),
-							inputs: vec![NodeInput::network(generic!(T), 0)],
-							implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicGroupNode"),
-							metadata: DocumentNodeMetadata { position: glam::IVec2::new(-16, -3) }, // To Graphic Group
-							..Default::default()
-						},
-					),
-					(
-						NodeId(2),
-						DocumentNode {
-							name: "To Graphic Element".to_string(),
-							inputs: vec![NodeInput::node(NodeId(0), 0)],
-							implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicElementNode"),
-							metadata: DocumentNodeMetadata { position: glam::IVec2::new(-10, 3) }, // To Graphic Element
-							..Default::default()
-						},
-					),
-					// The monitor node is used to display a thumbnail in the UI
-					(
-						NodeId(3),
-						DocumentNode {
-							inputs: vec![NodeInput::node(NodeId(2), 0)],
-							metadata: DocumentNodeMetadata { position: glam::IVec2::new(-7, -1) }, // Monitor
-							..monitor_node()
-						},
-					),
-					(
-						NodeId(4),
-						DocumentNode {
-							name: "ConstructLayer".to_string(),
-							manual_composition: Some(concrete!(Footprint)),
-							inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(3), 0)],
-							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _>"),
-							metadata: DocumentNodeMetadata { position: glam::IVec2::new(1, -3) }, // ConstructLayer
-							..Default::default()
-						},
-					),
-				]
-				.into(),
-				imports_metadata: (NodeId(generate_uuid()), (-26, -4).into()),
-				exports_metadata: (NodeId(generate_uuid()), (8, -4).into()),
-				..Default::default()
-			}),
-			inputs: vec![
-				DocumentInputType::value("Graphical Data", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
-				DocumentInputType::value("Vector Data", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
-				DocumentInputType::value("Operation", TaggedValue::BooleanOperation(vector::misc::BooleanOperation::Union), false),
-			],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Graphic)],
-			properties: node_properties::boolean_operation_properties,
-			..Default::default()
+			properties: node_properties::binary_boolean_operation_properties,
 		},
 		DocumentNodeDefinition {
-			name: "Copy to Points",
+			identifier: "Boolean Operation",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					inputs: vec![
+						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
+						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
+						NodeInput::value(TaggedValue::BooleanOperation(vector::misc::BooleanOperation::Union), false),
+					],
+					implementation: DocumentNodeImplementation::Network(NodeNetwork {
+						exports: vec![NodeInput::node(NodeId(4), 0)],
+						nodes: [
+							// Secondary (left) input type coercion
+							DocumentNode {
+								inputs: vec![NodeInput::network(generic!(T), 1), NodeInput::network(concrete!(vector::misc::BooleanOperation), 2)],
+								implementation: DocumentNodeImplementation::proto("graphene_std::vector::BooleanOperationNode<_>"),
+								..Default::default()
+							},
+							// Primary (bottom) input type coercion
+							DocumentNode {
+								inputs: vec![NodeInput::network(generic!(T), 0)],
+								implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicGroupNode"),
+								..Default::default()
+							},
+							DocumentNode {
+								inputs: vec![NodeInput::node(NodeId(0), 0)],
+								implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicElementNode"),
+								..Default::default()
+							},
+							// The monitor node is used to display a thumbnail in the UI
+							DocumentNode {
+								inputs: vec![NodeInput::network(concrete!(VectorData), 0)],
+								implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"),
+								manual_composition: Some(generic!(T)),
+								skip_deduplication: true,
+								..Default::default()
+							},
+							DocumentNode {
+								manual_composition: Some(concrete!(Footprint)),
+								inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(3), 0)],
+								implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _>"),
+								..Default::default()
+							},
+						]
+						.into_iter()
+						.enumerate()
+						.map(|(id, node)| (NodeId(id as u64), node))
+						.collect(),
+						..Default::default()
+					}),
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					network_metadata: Some(NodeNetworkMetadata {
+						persistent_metadata: NodeNetworkPersistentMetadata {
+							node_metadata: [
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Boolean Operation".to_string(),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "To Graphic Group".to_string(),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "To Graphic Element".to_string(),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "To Graphic Group".to_string(),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "ConstructLayer".to_string(),
+										..Default::default()
+									},
+									..Default::default()
+								},
+							]
+							.into_iter()
+							.enumerate()
+							.map(|(id, node)| (NodeId(id as u64), node))
+							.collect(),
+							..Default::default()
+						},
+						..Default::default()
+					}),
+					input_names: vec!["Graphical Data".to_string(), "Vector Data".to_string(), "Operation".to_string()],
+					output_names: vec!["Vector".to_string()],
+					node_type_metadata: NodeTypePersistentMetadata::layer(IVec2::new(0, 0)),
+					..Default::default()
+				},
+			},
 			category: "Vector",
 			properties: node_properties::boolean_operation_properties,
 		},
@@ -4353,20 +4383,17 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 	// 	.document_node;
 
 	let render_node = graph_craft::document::DocumentNode {
-		name: "Output".into(),
 		inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(2), 0)],
 		implementation: graph_craft::document::DocumentNodeImplementation::Network(NodeNetwork {
 			exports: vec![NodeInput::node(NodeId(2), 0)],
 			nodes: [
 				DocumentNode {
-					name: "Create Canvas".to_string(),
 					inputs: vec![NodeInput::network(concrete!(&WasmEditorApi), 1)],
 					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
 					skip_deduplication: true,
 					..Default::default()
 				},
 				DocumentNode {
-					name: "Cache".to_string(),
 					manual_composition: Some(concrete!(())),
 					inputs: vec![NodeInput::node(NodeId(0), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
@@ -4374,7 +4401,6 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 				},
 				// TODO: Add conversion step
 				DocumentNode {
-					name: "RenderNode".to_string(),
 					manual_composition: Some(concrete!(RenderConfig)),
 					inputs: vec![
 						NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T))), 0),
@@ -4390,7 +4416,6 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 			.collect(),
 			..Default::default()
 		}),
-		metadata: DocumentNodeMetadata::position((-3, 0)),
 		..Default::default()
 	};
 
@@ -4399,7 +4424,6 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 		inner_network,
 		render_node,
 		DocumentNode {
-			name: "Editor Api".into(),
 			implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
 			inputs: vec![NodeInput::value(TaggedValue::EditorApi(editor_api), false)],
 			..Default::default()

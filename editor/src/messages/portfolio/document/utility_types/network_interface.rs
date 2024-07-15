@@ -2278,7 +2278,7 @@ impl<'a> Iterator for FlowIter<'a> {
 
 			// Special handling for iterating from ROOT_PARENT in load_structure`
 			// TODO: Delete this
-			if node_id == NodeId(std::u64::MAX) {
+			if node_id == NodeId(u64::MAX) {
 				panic!("ROOT_PARENT should not be iterated over in upstream_flow_back_from_nodes");
 			}
 

@@ -28,6 +28,7 @@ use graphene_core::raster::ImageFrame;
 use graphene_core::vector::style::ViewMode;
 
 use glam::{DAffine2, DVec2};
+use graphene_std::vector::style::FillType;
 
 pub struct DocumentMessageData<'a> {
 	pub document_id: DocumentId,
@@ -273,44 +274,36 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::CommitTransaction => (),
 			DocumentMessage::InsertBooleanOperation { operation } => {
-				let boolean_operation_node_id = NodeId(generate_uuid());
-
-				let parent = self
-					.metadata()
-					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), true)
-					.unwrap_or(LayerNodeIdentifier::ROOT_PARENT);
-
-				let insert_index = parent
-					.children(self.metadata())
-					.enumerate()
-					.find_map(|(index, item)| self.selected_nodes.selected_layers(self.metadata()).any(|x| x == item).then_some(index))
-					.unwrap_or(0);
-
-				// Store a history step before doing anything
 				responses.add(DocumentMessage::StartTransaction);
 
-				// Create the new Boolean Operation node
-				responses.add(GraphOperationMessage::CreateBooleanOperationNode {
-					node_id: boolean_operation_node_id,
-					operation,
-				});
+				let Some(parent) = self.network_interface.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), false) else {
+					// Cancel grouping layers across different artboards
+					// TODO: Group each set of layers for each artboard separately
+					return;
+				};
+				let insert_index = DocumentMessageHandler::get_calculated_insert_index(&self.metadata(), &self.selected_nodes, parent);
 
-				responses.add(GraphOperationMessage::InsertNodeAtStackIndex {
-					node_id: boolean_operation_node_id,
+				let folder_id = NodeId(generate_uuid());
+				let mut new_group_node = super::node_graph::document_node_types::resolve_document_node_type("Boolean Operation")
+					.expect("Failed to create merge node")
+					.node_template_input_override([
+						Some(NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorData::empty()), true)),
+						Some(NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorData::empty()), true)),
+						Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
+					]);
+				self.network_interface.insert_node(folder_id, new_group_node, true);
+				let new_group_folder = LayerNodeIdentifier::new(folder_id, &self.network_interface);
+
+				// Move the boolean operation to the correct position
+				responses.add(GraphOperationMessage::MoveLayerToStack {
+					layer: new_group_folder,
 					parent,
 					insert_index,
+					skip_rerender: true,
 				});
 
-				responses.add(GraphOperationMessage::MoveSelectedSiblingsToChild {
-					new_parent: LayerNodeIdentifier::new_unchecked(boolean_operation_node_id),
-				});
-
-				// Select the new node
-				responses.add(NodeGraphMessage::SelectedNodesSet {
-					nodes: vec![boolean_operation_node_id],
-				});
-				// Re-render
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				// Move all shallowest selected layers as children
+				responses.add(DocumentMessage::MoveSelectedLayersToGroup { parent: new_group_folder });
 			}
 			DocumentMessage::CreateEmptyFolder => {
 				let id = NodeId(generate_uuid());
@@ -437,34 +430,21 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let insert_index = DocumentMessageHandler::get_calculated_insert_index(&self.metadata(), &self.selected_nodes, parent);
 
 				let folder_id = NodeId(generate_uuid());
-				let new_group_folder = LayerNodeIdentifier::new_unchecked(folder_id);
-				responses.add(GraphOperationMessage::NewCustomLayer {
-					id: folder_id,
-					nodes: HashMap::new(),
-					parent: new_group_folder,
+				let mut new_group_node = super::node_graph::document_node_types::resolve_document_node_type("Merge")
+					.expect("Failed to create merge node")
+					.default_node_template();
+				self.network_interface.insert_node(folder_id, new_group_node, true);
+				let new_group_folder = LayerNodeIdentifier::new(folder_id, &self.network_interface);
+
+				// Move the new folder to the correct position
+				responses.add(GraphOperationMessage::MoveLayerToStack {
+					layer: new_group_folder,
+					parent,
 					insert_index,
+					skip_rerender: true,
 				});
 
-				// Group all shallowest unique selected layers in order
-				let all_layers_to_group = self
-					.network_interface
-					.shallowest_unique_layers(self.selected_nodes.selected_layers(self.metadata()))
-					.collect::<Vec<_>>();
-
-				// Ensure nodes are grouped in the correct order
-				for (insert_index, layer_to_group) in all_layers_to_group.into_iter().rev().enumerate() {
-					responses.add(GraphOperationMessage::MoveLayerToStack {
-						layer: layer_to_group,
-						parent: new_group_folder,
-						insert_index,
-						skip_rerender: true,
-					});
-				}
-
-				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
-				responses.add(NodeGraphMessage::RunDocumentGraph);
-				responses.add(DocumentMessage::DocumentStructureChanged);
-				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(DocumentMessage::MoveSelectedLayersToGroup { parent: new_group_folder });
 			}
 			DocumentMessage::ImaginateGenerate => responses.add(PortfolioMessage::SubmitGraphRender { document_id }),
 			DocumentMessage::ImaginateRandom { imaginate_node, then_generate } => {
@@ -546,6 +526,28 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				}
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SendGraph);
+			}
+			DocumentMessage::MoveSelectedLayersToGroup { parent } => {
+				// Group all shallowest unique selected layers in order
+				let all_layers_to_group = self
+					.network_interface
+					.shallowest_unique_layers(self.selected_nodes.selected_layers(self.metadata()))
+					.collect::<Vec<_>>();
+
+				// Ensure nodes are grouped in the correct order
+				for (insert_index, layer_to_group) in all_layers_to_group.into_iter().rev().enumerate() {
+					responses.add(GraphOperationMessage::MoveLayerToStack {
+						layer: layer_to_group,
+						parent,
+						insert_index,
+						skip_rerender: true,
+					});
+				}
+
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![parent.to_node()] });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(DocumentMessage::DocumentStructureChanged);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::NudgeSelectedLayers {
@@ -1165,109 +1167,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
-		// serde_json::from_str(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string()))
-
-		// TODO: This was removed, could have been moved somewhere else
-		match serde_json::from_str::<Self>(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string())) {
-			Ok(mut document) => {
-				let node_ids = document.network_interface.document_network().nodes.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>();
-
-				for node_id in &node_ids {
-					let Some(node) = document.network_interface.document_network().nodes.get(node_id) else {
-						log::error!("could not get node in deserialize_document");
-						continue;
-					};
-					let Some(node_metadata) = document.network_interface.document_network_metadata().persistent_metadata.node_metadata.get(node_id) else {
-						log::error!("could not get node metadata in deserialize_document");
-						continue;
-					};
-
-					// Upgrade Fill nodes to the format change in #1778
-					// TODO: Eventually remove this (probably starting late 2024)
-					let Some(reference) = node_metadata.persistent_metadata.reference.clone() else {
-						continue;
-					};
-					if reference == "Fill" && node.inputs.len() == 8 {
-						let node_definition: &super::node_graph::document_node_types::DocumentNodeDefinition =
-							crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(&reference).unwrap();
-
-						document
-							.network_interface
-							.set_implementation(node_id, node_definition.default_node_template().document_node.implementation.clone());
-
-						let old_inputs = document
-							.network_interface
-							.replace_inputs(node_id, node_definition.default_node_template().document_node.inputs.clone(), true);
-
-						document.network_interface.set_input(InputConnector::node(*node_id, 0), old_inputs[0].clone(), true);
-
-						let Some(fill_type) = old_inputs[1].as_value().cloned() else { continue };
-						let TaggedValue::FillType(fill_type) = fill_type else { continue };
-						let Some(solid_color) = old_inputs[2].as_value().cloned() else { continue };
-						let TaggedValue::OptionalColor(solid_color) = solid_color else { continue };
-						let Some(gradient_type) = old_inputs[3].as_value().cloned() else { continue };
-						let TaggedValue::GradientType(gradient_type) = gradient_type else { continue };
-						let Some(start) = old_inputs[4].as_value().cloned() else { continue };
-						let TaggedValue::DVec2(start) = start else { continue };
-						let Some(end) = old_inputs[5].as_value().cloned() else { continue };
-						let TaggedValue::DVec2(end) = end else { continue };
-						let Some(transform) = old_inputs[6].as_value().cloned() else { continue };
-						let TaggedValue::DAffine2(transform) = transform else { continue };
-						let Some(positions) = old_inputs[7].as_value().cloned() else { continue };
-						let TaggedValue::GradientStops(positions) = positions else { continue };
-
-						let fill = match (fill_type, solid_color) {
-							(FillType::Solid, None) => Fill::None,
-							(FillType::Solid, Some(color)) => Fill::Solid(color),
-							(FillType::Gradient, _) => Fill::Gradient(Gradient {
-								stops: positions,
-								gradient_type,
-								start,
-								end,
-								transform,
-							}),
-						};
-						document
-							.network_interface
-							.set_input(InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::Fill(fill.clone()), false), true);
-						match fill {
-							Fill::None => {
-								document
-									.network_interface
-									.set_input(InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::OptionalColor(None), false), true);
-							}
-							Fill::Solid(color) => {
-								document
-									.network_interface
-									.set_input(InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::OptionalColor(Some(color)), false), true);
-							}
-							Fill::Gradient(gradient) => {
-								document
-									.network_interface
-									.set_input(InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Gradient(gradient), false), true);
-							}
-						}
-					}
-				}
-				Ok(document)
-			}
-			Err(e) => Err(e),
-		}
-
-		// TODO: This can be used, if uncommented, to upgrade demo artwork with outdated document node internals from their definitions. Delete when it's no longer needed.
-		// Used for upgrading old internal networks for demo artwork nodes. Will reset all node internals for any opened file
-		// match serde_json::from_str::<Self>(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string())) {
-		// 	Ok(mut document) => {
-		// 		for (_, node) in &mut document.network.nodes {
-		// 			let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(&node.name).unwrap();
-		// 			let default_definition_node = node_definition.default_document_node();
-
-		// 			node.implementation = default_definition_node.implementation.clone();
-		// 		}
-		// 		Ok(document)
-		// 	}
-		// 	Err(e) => Err(e),
-		// }
+		serde_json::from_str(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string()))
 	}
 
 	pub fn with_name(name: String, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> Self {

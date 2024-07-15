@@ -1020,6 +1020,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				node_ids,
 				displacement_x,
 				displacement_y,
+				move_upstream,
 			} => {
 				for node_id in node_ids {
 					network_interface.shift_node(&node_id, IVec2::new(displacement_x, displacement_y));

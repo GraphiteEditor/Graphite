@@ -80,6 +80,9 @@ pub enum DocumentMessage {
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
+	MoveSelectedLayersToGroup {
+		parent: LayerNodeIdentifier,
+	},
 	NudgeSelectedLayers {
 		delta_x: f64,
 		delta_y: f64,

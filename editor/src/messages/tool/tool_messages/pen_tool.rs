@@ -508,9 +508,9 @@ impl Fsm for PenToolFsmState {
 			(PenToolFsmState::Ready, PenToolMessage::DragStart) => {
 				responses.add(DocumentMessage::StartTransaction);
 
-				let point = SnapCandidatePoint::handle(document.metadata.document_to_viewport.inverse().transform_point2(input.mouse.position));
+				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, None, false);
-				let viewport = document.metadata.document_to_viewport.transform_point2(snapped.snapped_point_document);
+				let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
 
 				// Perform extension of an existing path
 				if let Some((layer, point, position)) = should_extend(document, viewport, crate::consts::SNAP_POINT_TOLERANCE) {
