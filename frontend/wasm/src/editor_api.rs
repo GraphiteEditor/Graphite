@@ -658,7 +658,7 @@ impl EditorHandle {
 
 		let (_, request_receiver) = std::sync::mpsc::channel();
 		let (response_sender, _) = std::sync::mpsc::channel();
-		let old_runtime = replace_node_runtime(NodeRuntime::new(request_receiver, response_sender));
+		let old_runtime = replace_node_runtime(NodeRuntime::new(request_receiver, response_sender)).await;
 
 		let mut editor = Editor::new();
 		let document_id = DocumentId(document_id);
@@ -687,7 +687,7 @@ impl EditorHandle {
 		let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
 		portfolio
 			.executor
-			.submit_node_graph_evaluation(portfolio.documents.get_mut(&portfolio.active_document_id().unwrap()).unwrap(), glam::UVec2::ONE)
+			.submit_node_graph_evaluation(portfolio.documents.get_mut(&portfolio.active_document_id().unwrap()).unwrap(), glam::UVec2::ONE, true)
 			.unwrap();
 		editor::node_graph_executor::run_node_graph().await;
 
@@ -698,7 +698,7 @@ impl EditorHandle {
 				err
 			);
 
-			replace_node_runtime(old_runtime.unwrap());
+			replace_node_runtime(old_runtime.unwrap()).await;
 
 			let document_name = document_name.clone() + "__DO_NOT_UPGRADE__";
 			self.dispatch(PortfolioMessage::OpenDocumentFileWithId {
@@ -784,7 +784,7 @@ impl EditorHandle {
 
 		let document_serialized_content = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap().serialize_document();
 
-		replace_node_runtime(old_runtime.unwrap());
+		replace_node_runtime(old_runtime.unwrap()).await;
 
 		self.dispatch(PortfolioMessage::OpenDocumentFileWithId {
 			document_id,

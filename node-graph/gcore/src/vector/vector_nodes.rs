@@ -4,7 +4,6 @@ use super::{PointId, SegmentId, StrokeId, VectorData};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
 use crate::{Color, GraphicGroup, Node};
-use core::future::Future;
 
 use bezier_rs::{Cap, Join, Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
@@ -212,10 +211,10 @@ pub struct CopyToPoints<Points, Instance, RandomScaleMin, RandomScaleMax, Random
 }
 
 #[node_macro::node_fn(CopyToPoints)]
-async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + TransformMut, FP: Future<Output = VectorData>, FI: Future<Output = I>>(
+async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + TransformMut + Send>(
 	footprint: Footprint,
-	points: impl Node<Footprint, Output = FP>,
-	instance: impl Node<Footprint, Output = FI>,
+	points: impl Node<Footprint, Output = VectorData>,
+	instance: impl Node<Footprint, Output = I>,
 	random_scale_min: f64,
 	random_scale_max: f64,
 	random_scale_bias: f64,
@@ -280,14 +279,14 @@ pub struct SamplePoints<VectorData, Spacing, StartOffset, StopOffset, AdaptiveSp
 }
 
 #[node_macro::node_fn(SamplePoints)]
-async fn sample_points<FV: Future<Output = VectorData>, FL: Future<Output = Vec<f64>>>(
+async fn sample_points(
 	footprint: Footprint,
-	mut vector_data: impl Node<Footprint, Output = FV>,
+	mut vector_data: impl Node<Footprint, Output = VectorData>,
 	spacing: f64,
 	start_offset: f64,
 	stop_offset: f64,
 	adaptive_spacing: bool,
-	lengths_of_segments_of_subpaths: impl Node<Footprint, Output = FL>,
+	lengths_of_segments_of_subpaths: impl Node<Footprint, Output = Vec<f64>>,
 ) -> VectorData {
 	let vector_data = self.vector_data.eval(footprint).await;
 	let lengths_of_segments_of_subpaths = self.lengths_of_segments_of_subpaths.eval(footprint).await;
@@ -422,13 +421,7 @@ pub struct MorphNode<Source, Target, StartIndex, Time> {
 }
 
 #[node_macro::node_fn(MorphNode)]
-async fn morph<SourceFuture: Future<Output = VectorData>, TargetFuture: Future<Output = VectorData>>(
-	footprint: Footprint,
-	source: impl Node<Footprint, Output = SourceFuture>,
-	target: impl Node<Footprint, Output = TargetFuture>,
-	start_index: u32,
-	time: f64,
-) -> VectorData {
+async fn morph(footprint: Footprint, source: impl Node<Footprint, Output = VectorData>, target: impl Node<Footprint, Output = VectorData>, start_index: u32, time: f64) -> VectorData {
 	let source = self.source.eval(footprint).await;
 	let target = self.target.eval(footprint).await;
 	let mut result = VectorData::empty();
@@ -516,7 +509,7 @@ pub struct AreaNode<VectorData> {
 }
 
 #[node_macro::node_fn(AreaNode)]
-async fn area_node<Fut: Future<Output = VectorData>>(empty: (), vector_data: impl Node<Footprint, Output = Fut>) -> f64 {
+async fn area_node(empty: (), vector_data: impl Node<Footprint, Output = VectorData>) -> f64 {
 	let vector_data = self.vector_data.eval(Footprint::default()).await;
 
 	let mut area = 0.;
@@ -534,7 +527,7 @@ pub struct CentroidNode<VectorData, CentroidType> {
 }
 
 #[node_macro::node_fn(CentroidNode)]
-async fn centroid_node<Fut: Future<Output = VectorData>>(empty: (), vector_data: impl Node<Footprint, Output = Fut>, centroid_type: CentroidType) -> DVec2 {
+async fn centroid_node(empty: (), vector_data: impl Node<Footprint, Output = VectorData>, centroid_type: CentroidType) -> DVec2 {
 	let vector_data = self.vector_data.eval(Footprint::default()).await;
 
 	if centroid_type == CentroidType::Area {
@@ -594,11 +587,12 @@ mod test {
 
 	impl<'i, T: 'i, N: Node<'i, T> + Clone> Node<'i, T> for FutureWrapperNode<N>
 	where
-		N: Node<'i, T>,
+		N: Node<'i, T, Output: Send>,
 	{
-		type Output = Pin<Box<dyn core::future::Future<Output = N::Output> + 'i>>;
+		type Output = Pin<Box<dyn core::future::Future<Output = N::Output> + 'i + Send>>;
 		fn eval(&'i self, input: T) -> Self::Output {
-			Box::pin(async move { self.0.eval(input) })
+			let result = self.0.eval(input);
+			Box::pin(async move { result })
 		}
 	}
 

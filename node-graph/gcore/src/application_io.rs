@@ -16,6 +16,12 @@ use glam::DAffine2;
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SurfaceId(pub u64);
 
+impl core::fmt::Display for SurfaceId {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		f.write_fmt(format_args!("{}", self.0))
+	}
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SurfaceFrame {
@@ -27,6 +33,17 @@ impl Hash for SurfaceFrame {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.surface_id.hash(state);
 		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
+	}
+}
+
+impl Transform for SurfaceFrame {
+	fn transform(&self) -> DAffine2 {
+		self.transform
+	}
+}
+impl TransformMut for SurfaceFrame {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		&mut self.transform
 	}
 }
 
@@ -48,6 +65,10 @@ pub struct SurfaceHandle<Surface> {
 	pub surface_id: SurfaceId,
 	pub surface: Surface,
 }
+// #[cfg(target_arch = "wasm32")]
+// unsafe impl<T: dyn_any::WasmNotSend> Send for SurfaceHandle<T> {}
+// #[cfg(target_arch = "wasm32")]
+// unsafe impl<T: dyn_any::WasmNotSync> Sync for SurfaceHandle<T> {}
 
 unsafe impl<T: 'static> StaticType for SurfaceHandle<T> {
 	type Static = SurfaceHandle<T>;
@@ -83,7 +104,10 @@ impl<'a, Surface> Drop for SurfaceHandle<'a, Surface> {
 	}
 }*/
 
+#[cfg(target_arch = "wasm32")]
 pub type ResourceFuture = Pin<Box<dyn Future<Output = Result<Arc<[u8]>, ApplicationError>>>>;
+#[cfg(not(target_arch = "wasm32"))]
+pub type ResourceFuture = Pin<Box<dyn Future<Output = Result<Arc<[u8]>, ApplicationError>> + Send>>;
 
 pub trait ApplicationIo {
 	type Surface;

@@ -29,6 +29,7 @@ serde = [
 	"glam/serde",
 	"bezier-rs/serde",
 	"bezier-rs/serde",
+	"half/serde",
 	"base64",
 ]
 
@@ -43,6 +44,9 @@ rand = { workspace = true, default-features = false, features = ["std_rng"] }
 glam = { workspace = true, default-features = false, features = [
 	"scalar-math",
 ] }
+
+# Required dependencies
+half = { version = "2.4.1", default-features = false, features = ["bytemuck"] }
 
 # Optional workspace dependencies
 dyn-any = { workspace = true, optional = true }

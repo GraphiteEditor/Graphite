@@ -40,7 +40,7 @@ futures = { workspace = true }
 fern = { workspace = true }
 chrono = { workspace = true }
 wgpu = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 image = { workspace = true, default-features = false, features = [
 	"bmp",
 	"png",

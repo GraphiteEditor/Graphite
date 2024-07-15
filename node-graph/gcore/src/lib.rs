@@ -6,6 +6,7 @@ extern crate alloc;
 #[cfg_attr(feature = "log", macro_use)]
 #[cfg(feature = "log")]
 extern crate log;
+pub use crate as graphene_core;
 
 pub mod consts;
 pub mod generic;
@@ -176,3 +177,5 @@ pub use crate::application_io::{SurfaceFrame, SurfaceId};
 pub type WasmSurfaceHandle = application_io::SurfaceHandle<web_sys::HtmlCanvasElement>;
 #[cfg(feature = "wasm")]
 pub type WasmSurfaceHandleFrame = application_io::SurfaceHandleFrame<web_sys::HtmlCanvasElement>;
+
+pub use dyn_any::{WasmNotSend, WasmNotSync};

@@ -7,7 +7,7 @@ license = "Apache-2.0"
 repository = ""
 default-run = "graphite-desktop"
 edition = "2021"
-rust-version = "1.70.0"
+rust-version = "1.79"
 
 [features]
 # by default Tauri runs in production mode

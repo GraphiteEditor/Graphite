@@ -219,7 +219,7 @@ impl Default for ImaginateImageToImageRequestOverrideSettings {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 struct ImaginateTextToImageRequest<'a> {
-	#[serde(flatten)]
+	#[cfg_attr(feature = "serde", serde(flatten))]
 	common: ImaginateCommonImageRequest<'a>,
 	override_settings: ImaginateTextToImageRequestOverrideSettings,
 }
@@ -237,13 +237,13 @@ struct ImaginateMask {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 struct ImaginateImageToImageRequest<'a> {
-	#[serde(flatten)]
+	#[cfg_attr(feature = "serde", serde(flatten))]
 	common: ImaginateCommonImageRequest<'a>,
 	override_settings: ImaginateImageToImageRequestOverrideSettings,
 
 	init_images: Vec<String>,
 	denoising_strength: f64,
-	#[serde(flatten)]
+	#[cfg_attr(feature = "serde", serde(flatten))]
 	mask: Option<ImaginateMask>,
 }
 
@@ -262,7 +262,7 @@ struct ImaginateCommonImageRequest<'a> {
 	sampler_index: &'a str,
 }
 
-#[cfg(feature = "imaginate")]
+#[cfg(all(feature = "imaginate", feature = "serde"))]
 #[allow(clippy::too_many_arguments)]
 pub async fn imaginate<'a, P: Pixel>(
 	image: Image<P>,
@@ -328,7 +328,7 @@ pub async fn imaginate<'a, P: Pixel>(
 	})
 }
 
-#[cfg(feature = "imaginate")]
+#[cfg(all(feature = "imaginate", feature = "serde"))]
 #[allow(clippy::too_many_arguments)]
 async fn imaginate_maybe_fail<'a, P: Pixel, F: Fn(ImaginateStatus)>(
 	image: Image<P>,

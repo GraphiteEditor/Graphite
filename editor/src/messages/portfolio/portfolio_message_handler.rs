@@ -287,6 +287,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 				self.persistent_data.font_cache.insert(font, preview_url, data, is_default);
 				self.executor.update_font_cache(self.persistent_data.font_cache.clone());
+				for document_id in self.document_ids.iter() {
+					let _ = self.executor.submit_node_graph_evaluation(
+						self.documents.get_mut(document_id).expect("Tried to render non-existent document"),
+						ipp.viewport_bounds.size().as_uvec2(),
+						true,
+					);
+				}
 
 				if self.active_document_mut().is_some() {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -571,7 +578,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				bounds,
 				transparent_background,
 			} => {
-				let document = self.active_document_id.and_then(|id| self.documents.get_mut(&id)).expect("Tried to render no existent Document");
+				let document = self.active_document_id.and_then(|id| self.documents.get_mut(&id)).expect("Tried to render non-existent document");
 				let export_config = ExportConfig {
 					file_name,
 					file_type,
@@ -591,8 +598,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			}
 			PortfolioMessage::SubmitGraphRender { document_id } => {
 				let result = self.executor.submit_node_graph_evaluation(
-					self.documents.get_mut(&document_id).expect("Tried to render no existent Document"),
+					self.documents.get_mut(&document_id).expect("Tried to render non-existent document"),
 					ipp.viewport_bounds.size().as_uvec2(),
+					false,
 				);
 
 				if let Err(description) = result {
@@ -666,8 +674,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 }
 
 impl PortfolioMessageHandler {
-	pub fn introspect_node(&self, node_path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
-		self.executor.introspect_node(node_path)
+	pub async fn introspect_node(&self, node_path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
+		self.executor.introspect_node(node_path).await
 	}
 
 	pub fn document(&self, document_id: DocumentId) -> Option<&DocumentMessageHandler> {

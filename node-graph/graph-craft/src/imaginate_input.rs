@@ -29,7 +29,7 @@ impl core::hash::Hash for ImaginateCache {
 	}
 }
 
-pub trait ImaginateTerminationHandle: Debug + Send + Sync + 'static {
+pub trait ImaginateTerminationHandle: Debug + Send + 'static {
 	fn terminate(&self);
 }
 

@@ -10,8 +10,9 @@ profiling = []
 
 [dependencies]
 # Local dependencies
-graph-craft = { path = "../../graph-craft", features = ["serde"] }
+graph-craft = { path = "../../graph-craft", features = ["serde", "wgpu"] }
 gpu-executor = { path = "../../gpu-executor" }
+wgpu-executor = { path = "../../wgpu-executor" }
 
 # Workspace dependencies
 log = { workspace = true }
