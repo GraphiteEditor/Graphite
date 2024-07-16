@@ -152,10 +152,9 @@ impl WgpuExecutor {
 			},
 		);
 		let surface_texture = surface.get_current_texture()?;
-		let view = surface_texture.texture.create_view(&wgpu::TextureViewDescriptor::default());
 
 		let render_params = RenderParams {
-			base_color: vello::peniko::Color::TRANSPARENT,
+			base_color: vello::peniko::Color::WHITE,
 			width,
 			height,
 			antialiasing_method: AaConfig::Area,
@@ -169,6 +168,7 @@ impl WgpuExecutor {
 				.unwrap();
 		}
 
+		log::debug!("presenting surface");
 		surface_texture.present();
 
 		Ok(())
