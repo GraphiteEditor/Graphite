@@ -37,7 +37,7 @@ pub enum DocumentMessage {
 		aggregate: AlignAggregate,
 	},
 	BackupDocument {
-		network: NodeNetwork,
+		network_interface: super::utility_types::network_interface::NodeNetworkInterface,
 	},
 	ClearArtboards,
 	ClearLayersPanel,

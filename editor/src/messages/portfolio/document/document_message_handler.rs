@@ -91,10 +91,10 @@ pub struct DocumentMessageHandler {
 	//
 	/// Stack of document network snapshots for previous history states.
 	#[serde(skip)]
-	document_undo_history: VecDeque<NodeNetwork>,
+	document_undo_history: VecDeque<NodeNetworkInterface>,
 	/// Stack of document network snapshots for future history states.
 	#[serde(skip)]
-	document_redo_history: VecDeque<NodeNetwork>,
+	document_redo_history: VecDeque<NodeNetworkInterface>,
 	/// Hash of the document snapshot that was most recently saved to disk by the user.
 	#[serde(skip)]
 	saved_hash: Option<u64>,
@@ -256,7 +256,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					});
 				}
 			}
-			DocumentMessage::BackupDocument { network } => self.backup_with_document(network, responses),
+			DocumentMessage::BackupDocument { network_interface } => self.backup_with_document(network_interface, responses),
 			DocumentMessage::ClearArtboards => {
 				self.backup(responses);
 				responses.add(GraphOperationMessage::ClearArtboards);
@@ -1252,9 +1252,9 @@ impl DocumentMessageHandler {
 	}
 
 	/// Places a document into the history system
-	fn backup_with_document(&mut self, network: NodeNetwork, responses: &mut VecDeque<Message>) {
+	fn backup_with_document(&mut self, network_interface: NodeNetworkInterface, responses: &mut VecDeque<Message>) {
 		self.document_redo_history.clear();
-		self.document_undo_history.push_back(network);
+		self.document_undo_history.push_back(network_interface);
 		if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			self.document_undo_history.pop_front();
 		}
@@ -1265,14 +1265,18 @@ impl DocumentMessageHandler {
 
 	/// Copies the entire document into the history system
 	pub fn backup(&mut self, responses: &mut VecDeque<Message>) {
-		self.backup_with_document(self.document_network().clone(), responses);
+		let mut network_interface_clone = self.network_interface.clone();
+
+		network_interface_clone.clear_transient_metadata();
+
+		self.backup_with_document(network_interface_clone, responses);
 	}
 
 	// TODO: Is this now redundant?
 	/// Push a message backing up the document in its current state
 	pub fn backup_nonmut(&self, responses: &mut VecDeque<Message>) {
 		responses.add(DocumentMessage::BackupDocument {
-			network: self.document_network().clone(),
+			network_interface: self.network_interface.clone(),
 		});
 	}
 
@@ -1284,15 +1288,16 @@ impl DocumentMessageHandler {
 			self.document_redo_history.pop_front();
 		}
 	}
-	pub fn undo(&mut self, responses: &mut VecDeque<Message>) -> Option<NodeNetwork> {
+	pub fn undo(&mut self, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		// If there is no history return and don't broadcast SelectionChanged
-		let network = self.document_undo_history.pop_back()?;
+		let network_interface = self.document_undo_history.pop_back()?;
 
 		responses.add(BroadcastEvent::SelectionChanged);
 
-		let previous_network = self.network_interface.replace(network);
+		let previous_network = std::mem::replace(&mut self.network_interface, network_interface);
+
 		Some(previous_network)
 	}
 	pub fn redo_with_history(&mut self, responses: &mut VecDeque<Message>) {
@@ -1305,15 +1310,16 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	pub fn redo(&mut self, responses: &mut VecDeque<Message>) -> Option<NodeNetwork> {
+	pub fn redo(&mut self, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		// If there is no history return and don't broadcast SelectionChanged
-		let network = self.document_redo_history.pop_back()?;
+		let network_interface = self.document_redo_history.pop_back()?;
 
 		responses.add(BroadcastEvent::SelectionChanged);
 
-		let previous_network = self.network_interface.replace(network);
+		let previous_network = std::mem::replace(&mut self.network_interface, network_interface);
+
 		Some(previous_network)
 	}
 

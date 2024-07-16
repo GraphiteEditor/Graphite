@@ -268,7 +268,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::EnforceLayerHasNoMultiParams { node_id } => {
 				if !network_interface.is_eligible_to_be_layer(&node_id) {
-					responses.add(NodeGraphMessage::SetToNodeOrLayer { node_id: node_id, is_layer: false })
+					responses.add(NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer: false })
 				}
 			}
 			NodeGraphMessage::EnterNestedNetwork => {
@@ -304,7 +304,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				self.update_selected(&network_interface, selected_nodes, responses);
 			}
 			NodeGraphMessage::ExposeInput { node_id, input_index, new_exposed } => {
-				let use_document_network = network_interface.selected_nodes_in_document_network(std::iter::once(&node_id));
+				let use_document_network = network_interface.selected_nodes_in_document_network(selected_nodes.selected_nodes_ref().iter());
 				let Some(network) = network_interface.network(use_document_network) else {
 					return;
 				};
@@ -730,11 +730,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					let mut nodes = if shift { selected_nodes.selected_nodes_ref().clone() } else { Vec::new() };
 					let all_nodes = network_metadata.persistent_metadata.node_metadata.iter().map(|(node_id, _)| node_id).cloned().collect::<Vec<_>>();
 					for node_id in all_nodes {
-						let Some(transient_metadata) = network_interface.get_transient_node_metadata(&node_id, false) else {
+						let Some(click_targets) = network_interface.get_node_click_targets(&node_id, false) else {
 							log::error!("Could not get transient metadata for node {node_id}");
 							continue;
 						};
-						if transient_metadata
+						if click_targets
 							.node_click_target
 							.intersect_rectangle(Quad::from_box([box_selection_start_graph, box_selection_end_graph]), DAffine2::IDENTITY)
 						{
@@ -1105,7 +1105,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				}
 
-				network_interface.set_to_node_or_layer(node_id, is_layer);
+				network_interface.set_to_node_or_layer(&node_id, is_layer);
 
 				self.context_menu = None;
 				responses.add(FrontendMessage::UpdateContextMenuInformation {
@@ -1119,7 +1119,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::SetDisplayNameImpl { node_id, alias });
 			}
 			NodeGraphMessage::SetDisplayNameImpl { node_id, alias } => {
-				network_interface.set_display_name(node_id, alias);
+				network_interface.set_display_name(&node_id, alias);
 
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
