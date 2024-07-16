@@ -18,7 +18,6 @@ import {
 	UpdateNodeGraphTransform,
 	UpdateNodeTypes,
 	UpdateNodeThumbnail,
-	UpdateSubgraphPath,
 	UpdateWirePathInProgress,
 	UpdateZoomWithScroll,
 } from "@graphite/wasm-communication/messages";
@@ -37,7 +36,6 @@ export function createNodeGraphState(editor: Editor) {
 		zoomWithScroll: false as boolean,
 		thumbnails: new Map<bigint, string>(),
 		selected: [] as bigint[],
-		subgraphPath: [] as string[],
 		transform: { scale: 1, x: 0, y: 0 },
 	});
 
@@ -96,12 +94,6 @@ export function createNodeGraphState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateNodeThumbnail, (updateNodeThumbnail) => {
 		update((state) => {
 			state.thumbnails.set(updateNodeThumbnail.id, updateNodeThumbnail.value);
-			return state;
-		});
-	});
-	editor.subscriptions.subscribeJsMessage(UpdateSubgraphPath, (UpdateSubgraphPath) => {
-		update((state) => {
-			state.subgraphPath = UpdateSubgraphPath.subgraphPath;
 			return state;
 		});
 	});

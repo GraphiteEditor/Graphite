@@ -151,10 +151,6 @@ impl NodeNetworkInterface {
 		self.network_path.is_empty()
 	}
 
-	pub fn current_hash(&self) -> u64 {
-		self.network.current_hash()
-	}
-
 	/// Returns the first downstream layer from a node, inclusive. If the node is a layer, it will return itself
 	pub fn downstream_layer(&self, node_id: &NodeId, use_document_network: bool) -> Option<LayerNodeIdentifier> {
 		let Some(network_metadata) = self.network_metadata(use_document_network) else {

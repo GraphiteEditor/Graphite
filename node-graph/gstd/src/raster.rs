@@ -10,7 +10,7 @@ use graphene_core::raster::{
 };
 use graphene_core::transform::{Footprint, Transform};
 use graphene_core::value::CopiedNode;
-use graphene_core::{AlphaBlending, Color, Node};
+use graphene_core::{AlphaBlending, Color, Node, WasmNotSend};
 
 use fastnoise_lite;
 use glam::{DAffine2, DVec2, UVec2, Vec2};
@@ -265,12 +265,15 @@ pub struct BlendImageNode<P, Background, MapFn> {
 }
 
 #[node_macro::node_fn(BlendImageNode<_P>)]
-async fn blend_image_node<_P: Alpha + Pixel + Debug, Forground: Sample<Pixel = _P> + Transform>(
+async fn blend_image_node<_P: Alpha + Pixel + Debug + WasmNotSend + Sync + 'static, MapFn, Forground: Sample<Pixel = _P> + Transform + Send>(
 	foreground: Forground,
 	background: ImageFrame<_P>,
-	map_fn: impl Node<(_P, _P), Output = _P>,
-) -> ImageFrame<_P> {
-	blend_new_image(foreground, background, &self.map_fn)
+	map_fn: &'input MapFn,
+) -> ImageFrame<_P>
+where
+	for<'a> MapFn: Node<'a, (_P, _P), Output = _P> + 'input,
+{
+	blend_new_image(foreground, background, map_fn)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -468,13 +471,14 @@ fn empty_image<_P: Pixel>(transform: DAffine2, color: _P) -> ImageFrame<_P> {
 	}
 }
 
+#[cfg(feature = "serde")]
 macro_rules! generate_imaginate_node {
 	($($val:ident: $t:ident: $o:ty,)*) => {
 		pub struct ImaginateNode<P: Pixel, E, C, $($t,)*> {
 			editor_api: E,
 			controller: C,
 			$($val: $t,)*
-			cache: std::sync::Mutex<HashMap<u64, Image<P>>>,
+			cache: std::sync::Arc<std::sync::Mutex<HashMap<u64, Image<P>>>>,
 		}
 
 		impl<'e, P: Pixel, E, C, $($t,)*> ImaginateNode<P, E, C, $($t,)*>
@@ -488,7 +492,7 @@ macro_rules! generate_imaginate_node {
 			}
 		}
 
-		impl<'i, 'e: 'i, P: Pixel + 'i + Hash + Default, E: 'i, C: 'i, $($t: 'i,)*> Node<'i, ImageFrame<P>> for ImaginateNode<P, E, C, $($t,)*>
+		impl<'i, 'e: 'i, P: Pixel + 'i + Hash + Default + Send, E: 'i, C: 'i, $($t: 'i,)*> Node<'i, ImageFrame<P>> for ImaginateNode<P, E, C, $($t,)*>
 		where $($t: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, $o>>,)*
 			E: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, &'e WasmEditorApi>>,
 			C: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, ImaginateController>>,
@@ -503,19 +507,20 @@ macro_rules! generate_imaginate_node {
 				let mut hasher = rustc_hash::FxHasher::default();
 				frame.image.hash(&mut hasher);
 				let hash = hasher.finish();
+				let editor_api = self.editor_api.eval(());
+				let cache = self.cache.clone();
 
 				Box::pin(async move {
-					let controller: std::pin::Pin<Box<dyn std::future::Future<Output = ImaginateController>>> = controller;
+					// let controller: std::pin::Pin<Box<dyn std::future::Future<Output = ImaginateController> + Send>> = controller;
 					let controller: ImaginateController = controller.await;
 					if controller.take_regenerate_trigger() {
-						let editor_api = self.editor_api.eval(());
 						let image = super::imaginate::imaginate(frame.image, editor_api, controller, $($val,)*).await;
 
-						self.cache.lock().unwrap().insert(hash, image.clone());
+						cache.lock().unwrap().insert(hash, image.clone());
 
 						return ImageFrame { image, ..frame }
 					}
-					let image = self.cache.lock().unwrap().get(&hash).cloned().unwrap_or_default();
+					let image = cache.lock().unwrap().get(&hash).cloned().unwrap_or_default();
 
 					ImageFrame { image, ..frame }
 				})
@@ -524,6 +529,7 @@ macro_rules! generate_imaginate_node {
 	}
 }
 
+#[cfg(feature = "serde")]
 generate_imaginate_node! {
 	seed: Seed: f64,
 	res: Res: Option<DVec2>,

@@ -87,10 +87,6 @@ export class UpdateOpenDocumentsList extends JsMessage {
 	readonly openDocuments!: FrontendDocumentDetails[];
 }
 
-export class UpdateSubgraphPath extends JsMessage {
-	readonly subgraphPath!: string[];
-}
-
 export class UpdateWirePathInProgress extends JsMessage {
 	readonly wirePath!: WirePath | undefined;
 }
@@ -1510,7 +1506,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelOptionsLayout,
 	UpdatePropertyPanelSectionsLayout,
-	UpdateSubgraphPath,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateWorkingColorsLayout,

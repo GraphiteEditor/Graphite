@@ -301,7 +301,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					network_interface.exit_nested_network();
 				}
 				responses.add(NodeGraphMessage::SendGraph);
-				self.update_selected(&network_interface, selected_nodes, responses);
+				self.update_selected(network_interface, selected_nodes, responses);
 			}
 			NodeGraphMessage::ExposeInput { node_id, input_index, new_exposed } => {
 				let use_document_network = network_interface.selected_nodes_in_document_network(selected_nodes.selected_nodes_ref().iter());
@@ -1197,13 +1197,32 @@ impl NodeGraphMessageHandler {
 	}
 
 	/// Updates the buttons for visibility, locked, and preview
-	fn update_selection_action_buttons(&mut self, network_interface: &NodeNetworkInterface, selected_nodes: &SelectedNodes, responses: &mut VecDeque<Message>) {
+	fn update_selection_action_buttons(&mut self, network_interface: &mut NodeNetworkInterface, selected_nodes: &SelectedNodes, responses: &mut VecDeque<Message>) {
+		let Some(subgraph_path_names) = Self::collect_subgraph_names(network_interface) else {
+			self.update_selection_action_buttons(network_interface, selected_nodes, responses);
+			return;
+		};
+
 		let use_document_network = network_interface.selected_nodes_in_document_network(selected_nodes.selected_nodes_ref().iter());
 		let Some(network) = network_interface.network(use_document_network) else {
 			warn!("No network in update_selection_action_buttons");
 			return;
 		};
-		let mut widgets = Vec::new();
+
+		let subgraph_path_names_length = subgraph_path_names.len();
+
+		let breadcrumb_trail = BreadcrumbTrailButtons::new(subgraph_path_names).on_update(move |index| {
+			NodeGraphMessage::ExitNestedNetwork {
+				steps_back: subgraph_path_names_length - (*index as usize) - 1,
+			}
+			.into()
+		});
+
+		let mut widgets = if subgraph_path_names_length >= 2 {
+			vec![breadcrumb_trail.widget_holder(), Separator::new(SeparatorType::Unrelated).widget_holder()]
+		} else {
+			Vec::new()
+		};
 
 		let mut selection = selected_nodes.selected_nodes();
 
@@ -1660,7 +1679,7 @@ impl NodeGraphMessageHandler {
 
 	fn collect_subgraph_names(network_interface: &mut NodeNetworkInterface) -> Option<Vec<String>> {
 		let mut current_network = network_interface.document_network();
-		let mut subgraph_names = Vec::new();
+		let mut subgraph_names = vec!["Document".to_string()];
 		for node_id in network_interface.network_path().iter() {
 			if let Some(node) = current_network.nodes.get(node_id) {
 				if let Some(network) = node.implementation.get_network() {
@@ -1726,12 +1745,6 @@ impl NodeGraphMessageHandler {
 	}
 
 	fn send_graph(&mut self, network_interface: &mut NodeNetworkInterface, collapsed: &CollapsedLayers, graph_open: bool, responses: &mut VecDeque<Message>) {
-		// If a node cannot be found in collect_subgraph_names, for example when the nested node is deleted while it is entered, and we are in a nested network, set self.network to empty (document network), and call send_graph again to send the document network
-		let Some(nested_path) = Self::collect_subgraph_names(network_interface) else {
-			self.send_graph(network_interface, collapsed, graph_open, responses);
-			return;
-		};
-
 		let Some(network) = network_interface.network(false) else {
 			log::error!("Could not send graph since nested network does not exist");
 			return;
@@ -1750,7 +1763,6 @@ impl NodeGraphMessageHandler {
 			let layer_widths = network_interface.collect_layer_widths();
 
 			responses.add(FrontendMessage::UpdateNodeGraph { nodes, wires });
-			responses.add(FrontendMessage::UpdateSubgraphPath { subgraph_path: nested_path });
 			responses.add(FrontendMessage::UpdateLayerWidths { layer_widths });
 		}
 	}
@@ -1811,7 +1823,7 @@ impl NodeGraphMessageHandler {
 	}
 
 	/// Updates the frontend's selection state in line with the backend
-	fn update_selected(&mut self, network_interface: &NodeNetworkInterface, selected_nodes: &SelectedNodes, responses: &mut VecDeque<Message>) {
+	fn update_selected(&mut self, network_interface: &mut NodeNetworkInterface, selected_nodes: &SelectedNodes, responses: &mut VecDeque<Message>) {
 		self.update_selection_action_buttons(network_interface, selected_nodes, responses);
 
 		responses.add(FrontendMessage::UpdateNodeGraphSelection {

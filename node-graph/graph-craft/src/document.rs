@@ -967,7 +967,6 @@ impl NodeNetwork {
 							NodeInput::Value { .. } => unreachable!("Value inputs should have been replaced with value nodes"),
 							NodeInput::Inline(_) => (),
 							NodeInput::Scope(ref key) => {
-								log::debug!("flattening scope: {}", key);
 								let (import_id, _ty) = self.scope_injections.get(key.as_ref()).expect("Tried to import a non existent key from scope");
 								// TODO use correct output index
 								nested_node.inputs[nested_input_index] = NodeInput::node(*import_id, 0);

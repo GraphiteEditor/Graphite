@@ -10,7 +10,6 @@
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import BreadcrumbTrailButtons from "@graphite/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import RadioInput from "@graphite/components/widgets/inputs/RadioInput.svelte";
@@ -95,7 +94,7 @@
 				category.nodes.push(node);
 			} else
 				categories.set(node.category, {
-					open: open,
+					open,
 					nodes: [node],
 				});
 		});
@@ -317,7 +316,6 @@
 	style:--dot-radius={`${dotRadius}px`}
 	data-node-graph
 >
-	<BreadcrumbTrailButtons labels={["Document"].concat($nodeGraph.subgraphPath)} action={(index) => editor.handle.exitNestedNetwork($nodeGraph.subgraphPath?.length - index)} />
 	<!-- Right click menu for adding nodes -->
 	{#if $nodeGraph.contextMenuInformation}
 		<LayoutCol

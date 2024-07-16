@@ -221,7 +221,7 @@ impl LayerNodeIdentifier {
 
 	/// Construct a [`LayerNodeIdentifier`] without checking if it is a layer node
 	pub const fn new_unchecked(node_id: NodeId) -> Self {
-		// Safety: will always be >=1
+		// # Safety: will always be >=1
 		Self(unsafe { NonZeroU64::new_unchecked(node_id.0 + 1) })
 	}
 

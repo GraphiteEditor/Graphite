@@ -337,7 +337,7 @@ impl HandleId {
 }
 
 #[cfg(test)]
-fn assert_subpath_eq(generated: &Vec<bezier_rs::Subpath<PointId>>, expected: &[bezier_rs::Subpath<PointId>]) {
+fn assert_subpath_eq(generated: &[bezier_rs::Subpath<PointId>], expected: &[bezier_rs::Subpath<PointId>]) {
 	assert_eq!(generated.len(), expected.len());
 	for (generated, expected) in generated.iter().zip(expected) {
 		assert_eq!(generated.manipulator_groups().len(), expected.manipulator_groups().len());

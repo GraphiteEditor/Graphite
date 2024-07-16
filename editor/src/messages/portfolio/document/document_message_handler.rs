@@ -1324,7 +1324,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn current_hash(&self) -> Option<u64> {
-		self.document_undo_history.iter().last().map(|network| network.current_hash())
+		self.document_undo_history.iter().last().map(|network| network.document_network().current_hash())
 	}
 
 	pub fn is_auto_saved(&self) -> bool {

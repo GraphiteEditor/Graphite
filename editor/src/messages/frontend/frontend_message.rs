@@ -254,10 +254,6 @@ pub enum FrontendMessage {
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
-	UpdateSubgraphPath {
-		#[serde(rename = "subgraphPath")]
-		subgraph_path: Vec<String>,
-	},
 	UpdateToolOptionsLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,

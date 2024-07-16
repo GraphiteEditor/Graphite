@@ -1,7 +1,5 @@
 use dyn_any::StaticTypeSized;
-use glam::{DAffine2, DVec2, Mat2, Vec2};
-use gpu_executor::{Bindgroup, ComputePassDimensions, PipelineLayout, StorageBufferOptions};
-use gpu_executor::{GpuExecutor, ShaderIO, ShaderInput};
+use gpu_executor::{ComputePassDimensions, StorageBufferOptions};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::*;
 use graph_craft::proto::*;
@@ -9,14 +7,16 @@ use graphene_core::application_io::ApplicationIo;
 use graphene_core::quantization::QuantizationChannels;
 use graphene_core::raster::*;
 use graphene_core::*;
-use wgpu_executor::WgpuExecutor;
+use wgpu_executor::{Bindgroup, PipelineLayout, Shader, ShaderIO, ShaderInput, WgpuExecutor, WgpuShaderInput};
+
+use glam::{DAffine2, DVec2, Mat2, Vec2};
 
 #[cfg(feature = "quantization")]
 use graphene_core::quantization::PackedPixel;
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use crate::wasm_application_io::WasmApplicationIo;
 
@@ -27,7 +27,8 @@ pub struct GpuCompiler<TypingContext, ShaderIO> {
 
 // TODO: Move to graph-craft
 #[node_macro::node_fn(GpuCompiler)]
-async fn compile_gpu(node: &'input DocumentNode, mut typing_context: TypingContext, io: ShaderIO) -> Result<compilation_client::Shader, String> {
+async fn compile_gpu(node: &'input DocumentNode, typing_context: TypingContext, io: ShaderIO) -> Result<compilation_client::Shader, String> {
+	let mut typing_context = typing_context;
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let DocumentNodeImplementation::Network(ref network) = node.implementation else { panic!() };
 	let proto_networks: Vec<_> = compiler.compile(network.clone())?.collect();
@@ -50,15 +51,15 @@ async fn compile_gpu(node: &'input DocumentNode, mut typing_context: TypingConte
 pub struct MapGpuNode<Node, EditorApi> {
 	node: Node,
 	editor_api: EditorApi,
-	cache: RefCell<HashMap<String, ComputePass<WgpuExecutor>>>,
+	cache: Mutex<HashMap<String, ComputePass>>,
 }
 
-struct ComputePass<T: GpuExecutor> {
-	pipeline_layout: PipelineLayout<T>,
-	readback_buffer: Option<Arc<ShaderInput<T>>>,
+struct ComputePass {
+	pipeline_layout: PipelineLayout,
+	readback_buffer: Option<Arc<WgpuShaderInput>>,
 }
 
-impl<T: GpuExecutor> Clone for ComputePass<T> {
+impl Clone for ComputePass {
 	fn clone(&self) -> Self {
 		Self {
 			pipeline_layout: self.pipeline_layout.clone(),
@@ -96,15 +97,15 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	};
 
 	// TODO: The cache should be based on the network topology not the node name
-	let compute_pass_descriptor = if self.cache.borrow().contains_key("placeholder") {
-		self.cache.borrow().get("placeholder").unwrap().clone()
+	let compute_pass_descriptor = if self.cache.lock().as_ref().unwrap().contains_key("placeholder") {
+		self.cache.lock().as_ref().unwrap().get("placeholder").unwrap().clone()
 	} else {
 		let name = "placeholder".to_string();
 		let Ok(compute_pass_descriptor) = create_compute_pass_descriptor(node, &image, executor, quantization).await else {
 			log::error!("Error creating compute pass descriptor in 'map_gpu()");
 			return ImageFrame::empty();
 		};
-		self.cache.borrow_mut().insert(name, compute_pass_descriptor.clone());
+		self.cache.lock().as_mut().unwrap().insert(name, compute_pass_descriptor.clone());
 		log::error!("created compute pass");
 		compute_pass_descriptor
 	};
@@ -154,7 +155,7 @@ impl<Node, EditorApi> MapGpuNode<Node, EditorApi> {
 		Self {
 			node,
 			editor_api,
-			cache: RefCell::new(HashMap::new()),
+			cache: Mutex::new(HashMap::new()),
 		}
 	}
 }
@@ -164,7 +165,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 	image: &ImageFrame<T>,
 	executor: &&WgpuExecutor,
 	quantization: QuantizationChannels,
-) -> Result<ComputePass<WgpuExecutor>, String> {
+) -> Result<ComputePass, String> {
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let inner_network = NodeNetwork::value_network(node);
 
@@ -331,7 +332,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 		buffers: vec![width_uniform, storage_buffer],
 	};
 
-	let shader = gpu_executor::Shader {
+	let shader = Shader {
 		source: shader.spirv_binary.into(),
 		name: "gpu::eval",
 		io: shader.io,
@@ -552,7 +553,7 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 		],
 	};
 
-	let shader = gpu_executor::Shader {
+	let shader = Shader {
 		source: shader.spirv_binary.into(),
 		name: "gpu::eval",
 		io: shader.io,

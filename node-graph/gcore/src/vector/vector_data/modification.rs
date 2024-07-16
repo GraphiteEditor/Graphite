@@ -443,7 +443,7 @@ fn modify_existing() {
 			false,
 		),
 	];
-	let mut vector_data = VectorData::from_subpaths(&subpaths, false);
+	let mut vector_data = VectorData::from_subpaths(subpaths, false);
 
 	let mut modify_new = VectorModification::create_from_vector(&vector_data);
 	let mut modify_original = VectorModification::default();

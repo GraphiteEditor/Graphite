@@ -1,20 +1,17 @@
 use dyn_any::StaticType;
-#[cfg(target_arch = "wasm32")]
 use graphene_core::application_io::SurfaceHandleFrame;
 use graphene_core::application_io::{ApplicationError, ApplicationIo, ResourceFuture, SurfaceHandle, SurfaceId};
 #[cfg(feature = "wgpu")]
 use wgpu_executor::WgpuExecutor;
 
-use core::future::Future;
 #[cfg(target_arch = "wasm32")]
 use js_sys::{Object, Reflect};
 use std::collections::HashMap;
-use std::pin::Pin;
 #[cfg(target_arch = "wasm32")]
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
-#[cfg(not(target_arch = "wasm32"))]
-use std::sync::Mutex;
+// #[cfg(not(target_arch = "wasm32"))]
+// use std::sync::Mutex;
 #[cfg(feature = "tokio")]
 use tokio::io::AsyncReadExt;
 #[cfg(target_arch = "wasm32")]
@@ -32,8 +29,8 @@ pub struct WasmApplicationIo {
 	ids: AtomicU64,
 	#[cfg(feature = "wgpu")]
 	pub(crate) gpu_executor: Option<WgpuExecutor>,
-	#[cfg(not(target_arch = "wasm32"))]
-	windows: Mutex<Vec<Arc<winit::window::Window>>>,
+	// #[cfg(not(target_arch = "wasm32"))]
+	// windows: Mutex<Vec<Arc<winit::window::Window>>>,
 	pub resources: HashMap<String, Arc<[u8]>>,
 }
 
@@ -61,8 +58,8 @@ impl WasmApplicationIo {
 			ids: AtomicU64::new(0),
 			#[cfg(feature = "wgpu")]
 			gpu_executor: executor,
-			#[cfg(not(target_arch = "wasm32"))]
-			windows: Vec::new().into(),
+			// #[cfg(not(target_arch = "wasm32"))]
+			// windows: Vec::new().into(),
 			resources: HashMap::new(),
 		};
 		io.resources.insert("null".to_string(), Arc::from(include_bytes!("null.png").to_vec()));
@@ -92,7 +89,7 @@ impl ApplicationIo for WasmApplicationIo {
 	#[cfg(target_arch = "wasm32")]
 	type Surface = HtmlCanvasElement;
 	#[cfg(not(target_arch = "wasm32"))]
-	type Surface = Arc<winit::window::Window>;
+	type Surface = winit::window::Window;
 	#[cfg(feature = "wgpu")]
 	type Executor = WgpuExecutor;
 	#[cfg(not(feature = "wgpu"))]
@@ -147,8 +144,7 @@ impl ApplicationIo for WasmApplicationIo {
 			.with_inner_size(winit::dpi::PhysicalSize::new(800, 600))
 			.build(&event_loop)
 			.unwrap();
-		let window = Arc::new(window);
-		self.windows.lock().as_mut().unwrap().push(window.clone());
+		// self.windows.lock().as_mut().unwrap().push(window.clone());
 		SurfaceHandle {
 			surface_id: SurfaceId(window.id().into()),
 			surface: window,
@@ -199,7 +195,7 @@ impl ApplicationIo for WasmApplicationIo {
 					let mut data = Vec::new();
 					reader.read_to_end(&mut data).await.map_err(|_| ApplicationError::NotFound)?;
 					Ok(Arc::from(data))
-				}) as Pin<Box<dyn Future<Output = Result<Arc<[u8]>, _>>>>)
+				}) as ResourceFuture)
 			}
 			"http" | "https" => {
 				let url = url.to_string();
@@ -208,21 +204,19 @@ impl ApplicationIo for WasmApplicationIo {
 					let response = client.get(url).send().await.map_err(|_| ApplicationError::NotFound)?;
 					let data = response.bytes().await.map_err(|_| ApplicationError::NotFound)?;
 					Ok(Arc::from(data.to_vec()))
-				}) as Pin<Box<dyn Future<Output = Result<Arc<[u8]>, _>>>>)
+				}) as ResourceFuture)
 			}
 			"graphite" => {
 				let path = url.path();
 				let path = path.to_owned();
 				log::trace!("Loading local resource: {path}");
 				let data = self.resources.get(&path).ok_or(ApplicationError::NotFound)?.clone();
-				Ok(Box::pin(async move { Ok(data.clone()) }) as Pin<Box<dyn Future<Output = Result<Arc<[u8]>, _>>>>)
+				Ok(Box::pin(async move { Ok(data.clone()) }) as ResourceFuture)
 			}
 			_ => Err(ApplicationError::NotFound),
 		}
 	}
 }
 
-#[cfg(target_arch = "wasm32")]
-pub type WasmSurfaceHandle = SurfaceHandle<HtmlCanvasElement>;
-#[cfg(target_arch = "wasm32")]
-pub type WasmSurfaceHandleFrame = SurfaceHandleFrame<HtmlCanvasElement>;
+pub type WasmSurfaceHandle = SurfaceHandle<wgpu_executor::Window>;
+pub type WasmSurfaceHandleFrame = SurfaceHandleFrame<wgpu_executor::Window>;

@@ -385,8 +385,6 @@ impl LayoutMessageHandler {
 	fn send_diff(&self, mut diff: Vec<WidgetDiff>, layout_target: LayoutTarget, responses: &mut VecDeque<Message>, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) {
 		diff.iter_mut().for_each(|diff| diff.new_value.apply_keyboard_shortcut(action_input_mapping));
 
-		trace!("{layout_target:?} diff {diff:#?}");
-
 		let message = match layout_target {
 			LayoutTarget::DialogButtons => FrontendMessage::UpdateDialogButtons { layout_target, diff },
 			LayoutTarget::DialogColumn1 => FrontendMessage::UpdateDialogColumn1 { layout_target, diff },
