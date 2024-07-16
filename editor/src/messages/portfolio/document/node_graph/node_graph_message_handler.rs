@@ -1947,7 +1947,24 @@ impl NodeGraphMessageHandler {
 				warn!("No network in update_selection_action_buttons");
 				return;
 			};
-			let mut widgets = Vec::new();
+
+			let subgraph_path_names = Self::collect_subgraph_names(&mut self.network, document_network);
+			let breadcrumb_trail = subgraph_path_names.and_then(|subgraph_path_names| {
+				let subgraph_path_names_length = subgraph_path_names.len();
+				if subgraph_path_names_length < 2 {
+					return None;
+				}
+
+				Some(BreadcrumbTrailButtons::new(subgraph_path_names).on_update(move |index| {
+					NodeGraphMessage::ExitNestedNetwork {
+						steps_back: subgraph_path_names_length - (*index as usize) - 1,
+					}
+					.into()
+				}))
+			});
+			let mut widgets = breadcrumb_trail
+				.map(|breadcrumb_trail| vec![breadcrumb_trail.widget_holder(), Separator::new(SeparatorType::Unrelated).widget_holder()])
+				.unwrap_or_default();
 
 			// Don't allow disabling input or output nodes
 			let mut selection = selected_nodes
@@ -2458,7 +2475,7 @@ impl NodeGraphMessageHandler {
 
 	fn collect_subgraph_names(subgraph_path: &mut Vec<NodeId>, network: &NodeNetwork) -> Option<Vec<String>> {
 		let mut current_network = network;
-		let mut subraph_names = Vec::new();
+		let mut subgraph_path_names = vec!["Document".to_string()];
 		for node_id in subgraph_path.iter() {
 			let Some(node) = current_network.nodes.get(node_id) else {
 				// If node cannot be found and we are in a nested network, set subgraph_path to document network and return None, which runs send_graph again on the document network
@@ -2474,9 +2491,9 @@ impl NodeGraphMessageHandler {
 			}
 
 			// TODO: Maybe replace with alias and default to name if it does not exist
-			subraph_names.push(node.name.clone());
+			subgraph_path_names.push(node.name.clone());
 		}
-		Some(subraph_names)
+		Some(subgraph_path_names)
 	}
 
 	fn update_layer_panel(document_network: &NodeNetwork, metadata: &DocumentMetadata, collapsed: &CollapsedLayers, responses: &mut VecDeque<Message>) {
@@ -2529,12 +2546,6 @@ impl NodeGraphMessageHandler {
 	}
 
 	fn send_graph(&mut self, document_network: &NodeNetwork, metadata: &mut DocumentMetadata, collapsed: &CollapsedLayers, graph_open: bool, responses: &mut VecDeque<Message>) {
-		// If a node cannot be found in collect_subgraph_names, for example when the nested node is deleted while it is entered, and we are in a nested network, set self.network to empty (document network), and call send_graph again to send the document network
-		let Some(nested_path) = Self::collect_subgraph_names(&mut self.network, document_network) else {
-			self.send_graph(document_network, metadata, collapsed, graph_open, responses);
-			return;
-		};
-
 		let Some(network) = document_network.nested_network(&self.network) else {
 			log::error!("Could not send graph since nested network does not exist");
 			return;
@@ -2553,7 +2564,6 @@ impl NodeGraphMessageHandler {
 			let nodes = self.collect_nodes(document_network, network, &wires);
 
 			responses.add(FrontendMessage::UpdateNodeGraph { nodes, wires });
-			responses.add(FrontendMessage::UpdateSubgraphPath { subgraph_path: nested_path });
 			let layer_widths = self
 				.node_metadata
 				.iter()

@@ -68,7 +68,7 @@ pub enum GraphicElement {
 	VectorData(Box<VectorData>),
 	/// A bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
 	ImageFrame(ImageFrame<Color>),
-	/// A Canvas evement
+	/// A Canvas element
 	Surface(SurfaceFrame),
 }
 
