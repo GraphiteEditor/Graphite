@@ -142,7 +142,7 @@ impl ArtboardToolData {
 	}
 
 	fn hovered_artboard(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) -> Option<LayerNodeIdentifier> {
-		document.click_xray(input.mouse.position).find(|&layer| document.network_interface.is_artboard(&layer.to_node()))
+		document.click_xray(input.mouse.position).find(|&layer| document.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
 
 	fn select_artboard(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> bool {
@@ -461,12 +461,12 @@ impl Fsm for ArtboardToolFsmState {
 				tool_data.selected_artboard = document
 					.selected_nodes
 					.selected_layers(document.metadata())
-					.find(|layer| document.network_interface.is_artboard(&layer.to_node()));
+					.find(|layer| document.network_interface.is_artboard(&layer.to_node(), &[]));
 				self
 			}
 			(_, ArtboardToolMessage::DeleteSelected) => {
 				tool_data.selected_artboard.take();
-				responses.add(NodeGraphMessage::DeleteSelectedNodes { reconnect: true });
+				responses.add(DocumentMessage::DeleteSelectedLayers);
 
 				ArtboardToolFsmState::Ready { hovered }
 			}

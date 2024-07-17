@@ -228,16 +228,10 @@ impl LayerNodeIdentifier {
 	/// Construct a [`LayerNodeIdentifier`], debug asserting that it is a layer node in the document network
 	#[track_caller]
 	pub fn new(node_id: NodeId, network_interface: &NodeNetworkInterface) -> Self {
-		let is_document_network = network_interface.selected_nodes_in_document_network(std::iter::once(&node_id));
 		debug_assert!(
-			is_document_network,
-			"Layer identifier constructed from node not in document network. {node_id}: {:#?}",
-			network_interface.network(false).and_then(|network| network.nodes.get(&node_id))
-		);
-		debug_assert!(
-			network_interface.is_layer(&node_id),
+			network_interface.is_layer(&node_id, &Vec::new()),
 			"Layer identifier constructed from non-layer node {node_id}: {:#?}",
-			network_interface.document_network().nodes.get(&node_id)
+			network_interface.network(&[]).unwrap().nodes.get(&node_id)
 		);
 		Self::new_unchecked(node_id)
 	}

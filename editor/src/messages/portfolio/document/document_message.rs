@@ -2,6 +2,7 @@ use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GridSnapping};
+use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 
 use graph_craft::document::{NodeId, NodeNetwork};
@@ -116,6 +117,9 @@ pub enum DocumentMessage {
 		id: NodeId,
 		ctrl: bool,
 		shift: bool,
+	},
+	SetActivePanel {
+		panel: PanelType,
 	},
 	SetBlendModeForSelectedLayers {
 		blend_mode: BlendMode,

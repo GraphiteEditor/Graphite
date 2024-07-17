@@ -411,7 +411,6 @@ impl Fsm for TextToolFsmState {
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface).unwrap(), 1),
 					input: NodeInput::value(TaggedValue::String(new_text), false),
-					use_document_network: true,
 				});
 
 				tool_data.set_editing(false, font_cache, document, responses);

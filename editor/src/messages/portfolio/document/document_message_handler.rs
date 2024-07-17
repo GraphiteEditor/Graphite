@@ -60,6 +60,7 @@ pub struct DocumentMessageHandler {
 	// Contains the NodeNetwork and acts an an interface to manipulate the NodeNetwork with custom setters in order to keep NetworkMetadata in sync
 	pub network_interface: NodeNetworkInterface,
 	/// List of the [`NodeId`]s that are currently selected by the user.
+	/// TODO: Remove this
 	pub selected_nodes: SelectedNodes,
 	/// List of the [`LayerNodeIdentifier`]s that are currently collapsed by the user in the Layers panel.
 	/// Collapsed means that the expansion arrow isn't set to show the children of these layers.
@@ -89,6 +90,12 @@ pub struct DocumentMessageHandler {
 	// Fields omitted from the saved document format
 	// =============================================
 	//
+	/// Path to network currently viewed in the node graph overlay. This will eventually be stored in each panel, so that multiple panels can refer to different networks
+	#[serde(skip)]
+	breadcrumb_network_path: Vec<NodeId>,
+	/// Path to network that is currently selected. Updated based on the most recently clicked panel.
+	#[serde(skip)]
+	selection_network_path: Vec<NodeId>,
 	/// Stack of document network snapshots for previous history states.
 	#[serde(skip)]
 	document_undo_history: VecDeque<NodeNetworkInterface>,
@@ -124,7 +131,6 @@ impl Default for DocumentMessageHandler {
 			// Fields that are saved in the document format
 			// ============================================
 			network_interface: default_document_network_interface(),
-			selected_nodes: SelectedNodes::default(),
 			collapsed: CollapsedLayers::default(),
 			name: DEFAULT_DOCUMENT_NAME.to_string(),
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
@@ -138,6 +144,8 @@ impl Default for DocumentMessageHandler {
 			// =============================================
 			// Fields omitted from the saved document format
 			// =============================================
+			breadcrumb_network_path: Vec::new(),
+			selection_network_path: Vec::new(),
 			document_undo_history: VecDeque::new(),
 			document_redo_history: VecDeque::new(),
 			saved_hash: None,
@@ -157,7 +165,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			executor,
 		} = data;
 
-		let selected_nodes_bounding_box_viewport = self.network_interface.selected_nodes_bounding_box_viewport(&self.selected_nodes);
+		let selected_nodes_bounding_box_viewport = self.network_interface.selected_nodes_bounding_box_viewport(&self.breadcrumb_network_path);
 		let selected_visible_layers_bounding_box_viewport = self.selected_visible_layers_bounding_box_viewport();
 		match message {
 			// Sub-messages
@@ -183,8 +191,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::PropertiesPanel(message) => {
 				let properties_panel_message_handler_data = PropertiesPanelMessageHandlerData {
 					network_interface: &self.network_interface,
+					selection_path: &self.selection_network_path,
 					document_name: self.name.as_str(),
-					selected_nodes: &self.selected_nodes,
 					executor,
 				};
 				self.properties_panel_message_handler
@@ -196,7 +204,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses,
 					NodeGraphHandlerData {
 						network_interface: &mut self.network_interface,
-						selected_nodes: &mut self.selected_nodes,
+						selection_network_path: &self.selection_network_path,
+						breadcrumb_network_path: &self.breadcrumb_network_path,
 						document_id,
 						collapsed: &mut self.collapsed,
 						ipp,
@@ -276,7 +285,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::InsertBooleanOperation { operation } => {
 				responses.add(DocumentMessage::StartTransaction);
 
-				let Some(parent) = self.network_interface.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), false) else {
+				let Some(parent) = self.network_interface.deepest_common_ancestor(&self.selection_network_path, false) else {
 					// Cancel grouping layers across different artboards
 					// TODO: Group each set of layers for each artboard separately
 					return;
@@ -310,7 +319,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				let parent = self
 					.network_interface
-					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), true)
+					.deepest_common_ancestor(&self.selection_network_path, true)
 					.unwrap_or(LayerNodeIdentifier::ROOT_PARENT);
 
 				let insert_index = parent
@@ -332,18 +341,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				info!("{:#?}", self.network_interface);
 			}
 			DocumentMessage::DeleteSelectedLayers => {
-				self.backup(responses);
-
-				responses.add_front(BroadcastEvent::SelectionChanged);
-				for layer in self.network_interface.shallowest_unique_layers(self.selected_nodes.selected_layers(&self.metadata())) {
-					responses.add_front(NodeGraphMessage::DeleteNodes {
-						node_ids: vec![layer.to_node()],
-						reconnect: true,
-						use_document_network: true,
-					});
-					responses.add_front(BroadcastEvent::ToolAbort);
-				}
-				responses.add_front(DocumentMessage::StartTransaction);
+				responses.add(NodeGraphMessage::DeleteSelectedNodes { reconnect: true });
 			}
 			DocumentMessage::DeselectAllLayers => {
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
@@ -422,7 +420,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::GroupSelectedLayers => {
 				responses.add(DocumentMessage::StartTransaction);
 
-				let Some(parent) = self.network_interface.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), false) else {
+				let Some(parent) = self.network_interface.deepest_common_ancestor(&self.selection_network_path, false) else {
 					// Cancel grouping layers across different artboards
 					// TODO: Group each set of layers for each artboard separately
 					return;
@@ -484,6 +482,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				});
 			}
 			DocumentMessage::MoveSelectedLayersTo { parent, insert_index } => {
+				if self.selection_network_path.len() != 0 {
+					log::error!("Moving selected layers is only supported for the Document Network");
+					return;
+				}
+
 				responses.add(DocumentMessage::StartTransaction);
 
 				// Disallow trying to insert into self.
@@ -495,26 +498,29 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					return;
 				}
 				// Artboards can only have `ROOT_PARENT` as the parent.
-				let any_artboards = self.selected_nodes.selected_layers(self.metadata()).any(|layer| self.network_interface.is_artboard(&layer.to_node()));
+				let any_artboards = self
+					.selected_nodes
+					.selected_layers(self.metadata())
+					.any(|layer| self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path));
 				if any_artboards && parent != LayerNodeIdentifier::ROOT_PARENT {
 					return;
 				}
 
 				// Non-artboards cannot be put at the top level if artboards also exist there
-				let selected_any_non_artboards = self.selected_nodes.selected_layers(self.metadata()).any(|layer| !self.network_interface.is_artboard(&layer.to_node()));
+				let selected_any_non_artboards = self
+					.selected_nodes
+					.selected_layers(self.metadata())
+					.any(|layer| !self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path));
 
 				let top_level_artboards = LayerNodeIdentifier::ROOT_PARENT
 					.children(self.metadata())
-					.any(|layer| self.network_interface.is_artboard(&layer.to_node()));
+					.any(|layer| self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path));
 
 				if selected_any_non_artboards && parent == LayerNodeIdentifier::ROOT_PARENT && top_level_artboards {
 					return;
 				}
 
-				let layers_to_move = self
-					.network_interface
-					.shallowest_unique_layers(self.selected_nodes.selected_layers(&self.metadata()))
-					.collect::<Vec<_>>();
+				let layers_to_move = self.network_interface.shallowest_unique_layers(self.selection_network_path).collect::<Vec<_>>();
 
 				for layer_to_move in layers_to_move.into_iter().rev() {
 					responses.add(GraphOperationMessage::MoveLayerToStack {
@@ -530,10 +536,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::MoveSelectedLayersToGroup { parent } => {
 				// Group all shallowest unique selected layers in order
-				let all_layers_to_group = self
-					.network_interface
-					.shallowest_unique_layers(self.selected_nodes.selected_layers(self.metadata()))
-					.collect::<Vec<_>>();
+				let all_layers_to_group = self.network_interface.shallowest_unique_layers(&self.selection_network_path).collect::<Vec<_>>();
 
 				// Ensure nodes are grouped in the correct order
 				for (insert_index, layer_to_group) in all_layers_to_group.into_iter().rev().enumerate() {
@@ -681,7 +684,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					self.metadata().document_to_viewport.transform_point2(DVec2::ZERO)
 				} else {
 					self.network_interface
-						.document_network_metadata()
+						.network_metadata(&[])
+						.unwrap()
 						.persistent_metadata
 						.navigation_metadata
 						.node_graph_to_viewport
@@ -742,7 +746,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let metadata = self.metadata();
 				let all_layers_except_artboards_invisible_and_locked = metadata
 					.all_layers()
-					.filter(|&layer| !self.network_interface.is_artboard(&layer.to_node()))
+					.filter(|&layer| !self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path))
 					.filter(|&layer| self.selected_nodes.layer_visible(layer, &self.network_interface) && !self.selected_nodes.layer_locked(layer, &self.network_interface));
 				let nodes = all_layers_except_artboards_invisible_and_locked.map(|layer| layer.to_node()).collect();
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
@@ -815,6 +819,20 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					} else {
 						responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes });
 					}
+				}
+			}
+			DocumentMessage::SetActivePanel { panel } => {
+				use crate::messages::portfolio::utility_types::PanelType;
+				match panel {
+					PanelType::Document => {
+						if self.graph_view_overlay_open {
+							self.selection_network_path = self.breadcrumb_network_path.clone()
+						} else {
+							self.selection_network_path = vec![]
+						}
+					}
+					PanelType::Layers => self.selection_network_path = vec![],
+					_ => {}
 				}
 			}
 			DocumentMessage::SetBlendModeForSelectedLayers { blend_mode } => {
@@ -937,16 +955,20 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.undo_in_progress = false;
 			}
 			DocumentMessage::UngroupSelectedLayers => {
+				if self.selection_network_path.len() != 0 {
+					log::error!("Ungrouping selected layers is only supported for the Document Network");
+					return;
+				}
 				responses.add(DocumentMessage::StartTransaction);
 
-				let folder_paths = self.network_interface.folders_sorted_by_most_nested(self.selected_nodes.selected_layers(self.metadata()));
+				let folder_paths = self.network_interface.folders_sorted_by_most_nested(&self.selection_network_path);
 				for folder in folder_paths {
 					if folder == LayerNodeIdentifier::ROOT_PARENT {
 						log::error!("ROOT_PARENT cannot be selected when ungrouping selected layers");
 						continue;
 					}
 					// Cannot ungroup artboard
-					if self.network_interface.is_artboard(&folder.to_node()) {
+					if self.network_interface.is_artboard(&folder.to_node(), &self.selection_network_path) {
 						return;
 					}
 
@@ -957,17 +979,16 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					for child in folder.children(self.metadata()).collect::<Vec<_>>().into_iter().rev() {
 						responses.add(GraphOperationMessage::MoveLayerToStack {
 							layer: child,
-							parent: parent,
+							parent,
 							insert_index: folder_index,
 							skip_rerender: true,
 						});
 					}
 
-					// Delete empty group folder and all horizontal inputs
+					// Delete empty group folder
 					responses.add(NodeGraphMessage::DeleteNodes {
 						node_ids: vec![folder.to_node()],
 						reconnect: true,
-						use_document_network: true,
 					});
 				}
 
@@ -1076,7 +1097,7 @@ impl DocumentMessageHandler {
 			.all_layers()
 			.filter(|&layer| self.selected_nodes.layer_visible(layer, &self.network_interface))
 			.filter(|&layer| !self.selected_nodes.layer_locked(layer, &self.network_interface))
-			.filter(|&layer| !self.network_interface.is_artboard(&layer.to_node()))
+			.filter(|&layer| !self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path))
 			.filter_map(|layer| self.metadata().click_target(layer).map(|targets| (layer, targets)))
 			.filter(move |(layer, target)| {
 				target
@@ -1115,7 +1136,8 @@ impl DocumentMessageHandler {
 
 	/// Find any layers sorted by index that are under the given location in viewport space.
 	pub fn click_xray_no_artboards<'a>(&'a self, viewport_location: DVec2) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
-		self.click_xray(viewport_location).filter(move |&layer| !self.network_interface.is_artboard(&layer.to_node()))
+		self.click_xray(viewport_location)
+			.filter(move |&layer| !self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path))
 	}
 
 	/// Find layers under the location in viewport space that was clicked, listed by their depth in the layer tree hierarchy.
@@ -1153,7 +1175,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn document_network(&self) -> &NodeNetwork {
-		&self.network_interface.document_network()
+		&self.network_interface.network(&[]).unwrap()
 	}
 
 	pub fn metadata(&self) -> &DocumentMetadata {
@@ -1324,7 +1346,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn current_hash(&self) -> Option<u64> {
-		self.document_undo_history.iter().last().map(|network| network.document_network().current_hash())
+		self.document_undo_history.iter().last().map(|network| network.network(&[]).unwrap().current_hash())
 	}
 
 	pub fn is_auto_saved(&self) -> bool {
@@ -1358,7 +1380,7 @@ impl DocumentMessageHandler {
 	/// Finds the parent folder which, based on the current selections, should be the container of any newly added layers.
 	pub fn new_layer_parent(&self, include_self: bool) -> LayerNodeIdentifier {
 		self.network_interface
-			.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), include_self)
+			.deepest_common_ancestor(&self.selection_network_path, include_self)
 			.unwrap_or_else(|| self.network_interface.all_artboards().iter().next().copied().unwrap_or(LayerNodeIdentifier::ROOT_PARENT))
 	}
 
@@ -1385,7 +1407,7 @@ impl DocumentMessageHandler {
 	/// Loads layer resources such as creating the blob URLs for the images and loading all of the fonts in the document.
 	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>) {
 		let mut fonts = HashSet::new();
-		for (_node_id, node) in self.document_network().recursive_nodes() {
+		for (_node_id, node) in self.network(&[]).unwrap().recursive_nodes() {
 			for input in &node.inputs {
 				if let NodeInput::Value {
 					tagged_value: TaggedValue::Font(font),

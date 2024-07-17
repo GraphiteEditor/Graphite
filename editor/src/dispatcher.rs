@@ -384,7 +384,7 @@ mod test {
 			nodes: vec![rect_id.to_node(), ellipse_id.to_node()],
 		});
 		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
-		editor.handle_message(DocumentMessage::DeleteSelectedLayers);
+		editor.handle_message(NodeGraphMessage::DeleteSelectedLayers);
 		editor.draw_rect(0., 800., 12., 200.);
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,

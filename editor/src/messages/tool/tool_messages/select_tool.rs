@@ -332,13 +332,13 @@ impl SelectToolData {
 
 			document
 				.network_interface
-				.upstream_flow_back_from_nodes(vec![layer.to_node()], FlowType::LayerChildrenUpstreamFlow)
+				.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::LayerChildrenUpstreamFlow)
 				.enumerate()
 				.for_each(|(index, (_, node_id))| {
 					copy_ids.insert(node_id, NodeId((index + 1) as u64));
 				});
 
-			let nodes: HashMap<NodeId, NodeTemplate> = document.network_interface.copy_nodes(&copy_ids, true).collect();
+			let nodes: HashMap<NodeId, NodeTemplate> = document.network_interface.copy_nodes(&copy_ids, &[]).collect();
 
 			let insert_index = DocumentMessageHandler::get_calculated_insert_index(&document.metadata(), &document.selected_nodes, parent);
 
@@ -347,11 +347,7 @@ impl SelectToolData {
 			let layer_id = *new_ids.get(&NodeId(0)).expect("Node Id 0 should be a layer");
 			let layer = LayerNodeIdentifier::new_unchecked(layer_id);
 			new_dragging.push(layer);
-			responses.add(NodeGraphMessage::AddNodes {
-				nodes,
-				new_ids,
-				use_document_network: true,
-			});
+			responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
 			responses.add(GraphOperationMessage::MoveLayerToStack {
 				layer,
 				parent,
@@ -372,11 +368,10 @@ impl SelectToolData {
 		};
 
 		// Delete the duplicated layers
-		for layer in document.network_interface.shallowest_unique_layers(self.layers_dragging.iter().copied()) {
+		for layer in document.network_interface.shallowest_unique_layers(&[]) {
 			responses.add(NodeGraphMessage::DeleteNodes {
 				node_ids: vec![layer.to_node()],
 				reconnect: true,
-				use_document_network: true,
 			});
 		}
 
@@ -544,7 +539,7 @@ impl Fsm for SelectToolFsmState {
 
 						tool_data.layers_dragging.retain(|layer| {
 							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.document_network().nodes.contains_key(&layer.to_node())
+								document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
 							} else {
 								log::error!("ROOT_PARENT should not be part of layers_dragging");
 								false
@@ -573,7 +568,7 @@ impl Fsm for SelectToolFsmState {
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						tool_data.layers_dragging.retain(|layer| {
 							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.document_network().nodes.contains_key(&layer.to_node())
+								document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
 							} else {
 								log::error!("ROOT_PARENT should not be part of layers_dragging");
 								false
@@ -674,7 +669,7 @@ impl Fsm for SelectToolFsmState {
 				let mouse_delta = snap_drag(start, current, axis_align, snap_data, &mut tool_data.snap_manager, &tool_data.snap_candidates);
 
 				// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
-				for layer in document.network_interface.shallowest_unique_layers(tool_data.layers_dragging.iter().copied()) {
+				for layer in document.network_interface.shallowest_unique_layers(&[]) {
 					responses.add_front(GraphOperationMessage::TransformChange {
 						layer,
 						transform: DAffine2::from_translation(mouse_delta),
@@ -712,7 +707,7 @@ impl Fsm for SelectToolFsmState {
 
 						tool_data.layers_dragging.retain(|layer| {
 							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.document_network().nodes.contains_key(&layer.to_node())
+								document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
 							} else {
 								log::error!("ROOT_PARENT should not be part of layers_dragging");
 								false
@@ -753,7 +748,7 @@ impl Fsm for SelectToolFsmState {
 
 					tool_data.layers_dragging.retain(|layer| {
 						if *layer != LayerNodeIdentifier::ROOT_PARENT {
-							document.document_network().nodes.contains_key(&layer.to_node())
+							document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
 						} else {
 							log::error!("ROOT_PARENT should not be part of replacement_selected_layers");
 							false
@@ -1022,7 +1017,7 @@ impl Fsm for SelectToolFsmState {
 			(_, SelectToolMessage::Abort) => {
 				tool_data.layers_dragging.retain(|layer| {
 					if *layer != LayerNodeIdentifier::ROOT_PARENT {
-						document.document_network().nodes.contains_key(&layer.to_node())
+						document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
 					} else {
 						false
 					}
@@ -1132,7 +1127,7 @@ impl Fsm for SelectToolFsmState {
 }
 
 fn not_artboard(document: &DocumentMessageHandler) -> impl Fn(&LayerNodeIdentifier) -> bool + '_ {
-	|&layer| !document.network_interface.is_artboard(&layer.to_node())
+	|&layer| !document.network_interface.is_artboard(&layer.to_node(), &[])
 }
 
 fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
@@ -1165,7 +1160,7 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 
 fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
 	tool_data.layers_dragging.append(&mut vec![document.find_deepest(&selected).unwrap_or(LayerNodeIdentifier::new(
-		document.network_interface.get_root_node(true).expect("Root node should exist when dragging layers").node_id,
+		document.network_interface.get_root_node(&[]).expect("Root node should exist when dragging layers").node_id,
 		&document.network_interface,
 	))]);
 	responses.add(NodeGraphMessage::SelectedNodesSet {

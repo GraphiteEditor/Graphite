@@ -1783,7 +1783,7 @@ pub fn text_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 }
 
 pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let imaginate_node = [context.network_interface.network_path().clone(), (&[node_id]).to_vec()].concat();
+	let imaginate_node = [context.selection_path.clone(), &[node_id]].concat();
 
 	let resolve_input = |name: &str| {
 		IMAGINATE_NODE
@@ -2001,7 +2001,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	let image_size = context
 		.executor
 		.introspect_node_in_network(
-			context.network_interface.document_network(),
+			context.network_interface.network(&[]).unwrap(),
 			&imaginate_node,
 			|network| {
 				network
@@ -2295,7 +2295,7 @@ pub fn index_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 }
 
 pub fn generate_node_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> LayoutGroup {
-	let reference = context.network_interface.get_reference(&node_id).clone();
+	let reference = context.network_interface.get_reference(&node_id, context.selection_path).clone();
 	let layout = if let Some(ref reference) = reference {
 		match super::document_node_types::resolve_document_node_type(reference) {
 			Some(document_node_type) => (document_node_type.properties)(document_node, node_id, context),

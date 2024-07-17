@@ -37,7 +37,7 @@ impl serde::Serialize for JsRawBuffer {
 pub struct LayerPanelEntry {
 	pub id: NodeId,
 	pub alias: String,
-	pub tooltip: String,
+	pub tooltip: PanelType,
 	#[serde(rename = "childrenAllowed")]
 	pub children_allowed: bool,
 	#[serde(rename = "childrenPresent")]
@@ -99,7 +99,7 @@ impl SelectedNodes {
 
 	pub fn selected_layers_except_artboards<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
 		self.selected_layers(network_interface.document_metadata())
-			.filter(move |&layer| !network_interface.is_artboard(&layer.to_node()))
+			.filter(move |&layer| !network_interface.is_artboard(&layer.to_node(), &[]))
 	}
 
 	pub fn selected_layers_contains(&self, layer: LayerNodeIdentifier, metadata: &DocumentMetadata) -> bool {
@@ -130,35 +130,35 @@ impl SelectedNodes {
 	// Ensures new selected nodes are all in the same network
 	// TODO: This function is run when a node in the layer panel is currently selected, and a new node is selected in the graph, as well as when a node is currently selected in the graph and a node in the layer panel is selected. These are fundamentally different operations, since different nodes should be selected in each case, but cannot be distinguished. Currently it is not possible to shift+click a node in the node graph while a layer is selected. Instead of set_selected_nodes, add_selected_nodes should be used.
 	pub fn set_selected_nodes(&mut self, new: Vec<NodeId>, network_interface: &NodeNetworkInterface) {
-		let Some(network) = network_interface.network(false) else { return };
-		let document_network = network_interface.document_network();
+		// let Some(network) = network_interface.network(false) else { return };
+		// let document_network = network_interface.network(&[]).unwrap();
 
-		let mut new_nodes = new;
+		// let mut new_nodes = new;
 
-		// If any nodes to add are in the document network, clear selected nodes in the current network
-		if new_nodes.iter().any(|node_to_add| document_network.nodes.contains_key(node_to_add)) {
-			new_nodes.retain(|selected_node| document_network.nodes.contains_key(selected_node));
-		}
-		// If not, then clear any nodes that are not in the current network
-		else {
-			new_nodes.retain(|selected_node| network.nodes.contains_key(selected_node));
-		}
+		// // If any nodes to add are in the document network, clear selected nodes in the current network
+		// if new_nodes.iter().any(|node_to_add| document_network.nodes.contains_key(node_to_add)) {
+		// 	new_nodes.retain(|selected_node| document_network.nodes.contains_key(selected_node));
+		// }
+		// // If not, then clear any nodes that are not in the current network
+		// else {
+		// 	new_nodes.retain(|selected_node| network.nodes.contains_key(selected_node));
+		// }
 
-		self.0 = new_nodes;
+		// self.0 = new_nodes;
 	}
 
 	// Ensures all selected nodes are all in the same network
 	pub fn add_selected_nodes(&mut self, new: Vec<NodeId>, network_interface: &NodeNetworkInterface) {
-		let Some(network) = network_interface.network(false) else { return };
-		let document_network = network_interface.document_network();
-		// If the nodes to add are in the document network, clear selected nodes in the current network
-		if new.iter().any(|node_to_add| document_network.nodes.contains_key(node_to_add)) {
-			self.retain_selected_nodes(|selected_node| document_network.nodes.contains_key(selected_node));
-		} else {
-			self.retain_selected_nodes(|selected_node| network.nodes.contains_key(selected_node));
-		}
+		// let Some(network) = network_interface.network(false) else { return };
+		// let document_network = network_interface.network(&[]).unwrap();
+		// // If the nodes to add are in the document network, clear selected nodes in the current network
+		// if new.iter().any(|node_to_add| document_network.nodes.contains_key(node_to_add)) {
+		// 	self.retain_selected_nodes(|selected_node| document_network.nodes.contains_key(selected_node));
+		// } else {
+		// 	self.retain_selected_nodes(|selected_node| network.nodes.contains_key(selected_node));
+		// }
 
-		self.0.extend(new);
+		// self.0.extend(new);
 	}
 
 	pub fn clear_selected_nodes(&mut self) {

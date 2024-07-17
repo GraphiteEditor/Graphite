@@ -609,11 +609,7 @@ impl EditorHandle {
 		self.dispatch(message);
 
 		let id = NodeId(id);
-		let message = NodeGraphMessage::DeleteNodes {
-			node_ids: vec![id],
-			reconnect: true,
-			use_document_network: true,
-		};
+		let message = NodeGraphMessage::DeleteNodes { node_ids: vec![id], reconnect: true };
 		self.dispatch(message);
 	}
 
@@ -630,6 +626,13 @@ impl EditorHandle {
 	pub fn toggle_layer_expansion(&self, id: u64) {
 		let id = NodeId(id);
 		let message = DocumentMessage::ToggleLayerExpansion { id };
+		self.dispatch(message);
+	}
+
+	/// Set the active panel to the most recently clicked panel
+	#[wasm_bindgen(js_name = setActivePanel)]
+	pub fn set_active_panel(&self, panel: String) {
+		let message = PortfolioMessage::SetActivePanel { panel };
 		self.dispatch(message);
 	}
 
@@ -682,7 +685,7 @@ impl EditorHandle {
 		let document = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap();
 		for node in document
 			.network_interface
-			.document_network_metadata()
+			.network_metadata(&[]).unwrap()
 			.persistent_metadata
 			.node_metadata
 			.iter()
@@ -690,17 +693,17 @@ impl EditorHandle {
 			.map(|(id, _)| *id)
 			.collect::<Vec<_>>()
 		{
-			let Some(document_node) = document.network_interface.document_network().nodes.get(&node) else {
+			let Some(document_node) = document.network_interface.network(&[]).unwrap().nodes.get(&node) else {
 				log::error!("Could not get document node in document network");
 				return;
 			};
 			if let Some(network) = document_node.implementation.get_network() {
 				let mut nodes_to_upgrade = Vec::new();
 				for (node_id, _) in network.nodes.iter().collect::<Vec<_>>() {
-					if document.network_interface.get_reference(node_id).is_some_and(|reference| reference == "To Artboard") {
+					if document.network_interface.get_reference(node_id, &[]).is_some_and(|reference| reference == "To Artboard") {
 						if document
 							.network_interface
-							.document_network()
+							.network(&[]).unwrap()
 							.nodes
 							.get(node_id)
 							.is_some_and(|document_node| document_node.inputs.len() != 6)
@@ -752,7 +755,7 @@ impl EditorHandle {
 		document.network_interface.load_structure();
 		for node in document
 			.network_interface
-			.document_network_metadata()
+			.network_metadata(&[]).unwrap()
 			.persistent_metadata
 			.node_metadata
 			.iter()
@@ -777,7 +780,7 @@ impl EditorHandle {
 				if !updated_nodes.insert(transform_node_id.clone()) {
 					return;
 				}
-				let Some(inputs) = modify_inputs.network_interface.document_network().nodes.get(&transform_node_id).map(|node| &node.inputs) else {
+				let Some(inputs) = modify_inputs.network_interface.network(&[]).unwrap().nodes.get(&transform_node_id).map(|node| &node.inputs) else {
 					log::error!("Could not get transform node in document network");
 					return;
 				};
@@ -794,7 +797,7 @@ impl EditorHandle {
 				if !updated_nodes.insert(shape_node_id) {
 					return;
 				}
-				let Some(shape_node) = modify_inputs.network_interface.document_network().nodes.get(&shape_node_id) else {
+				let Some(shape_node) = modify_inputs.network_interface.network(&[]).unwrap().nodes.get(&shape_node_id) else {
 					log::error!("Could not get shape node in document network");
 					return;
 				};

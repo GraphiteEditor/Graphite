@@ -141,14 +141,12 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					let first_new_node_id = new_ids[&NodeId(0)];
 					responses.add(NodeGraphMessage::AddNodes {
 						nodes,
-						new_ids: new_ids,
-						use_document_network: true,
+						new_ids,
 					});
 
 					responses.add(NodeGraphMessage::SetInput {
 						input_connector: InputConnector::node(layer.to_node(), 1),
 						input: NodeInput::node(first_new_node_id, 0),
-						use_document_network: true,
 					});
 				}
 				// Move the layer and all nodes to the correct position in the network
@@ -188,7 +186,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					responses.add(NodeGraphMessage::DeleteNodes {
 						node_ids: vec![artboard.to_node()],
 						reconnect: false,
-						use_document_network: true,
+						network_path: &[],
 					});
 				}
 				//TODO: Replace deleted artboards with merge nodes
@@ -262,7 +260,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 			}
 			GraphOperationMessage::ToggleLocked { layer } => {
-				let Some(node_metadata) = network_interface.document_network_metadata().persistent_metadata.node_metadata.get(&layer.to_node()) else {
+				let Some(node_metadata) = network_interface.network_metadata(&[]).unwrap().persistent_metadata.node_metadata.get(&layer.to_node()) else {
 					log::error!("Cannot get node {:?} in GraphOperationMessage::ToggleLocked", layer.to_node());
 					return;
 				};

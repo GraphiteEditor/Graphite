@@ -44,10 +44,11 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (document, input, tool_data, shape_editor): TransformData) {
 		let using_path_tool = tool_data.active_tool_type == ToolType::Path;
 
-		let selected_layers = document
-			.selected_nodes
+		// TODO: Add support for transforming layer not in the document network
+		let selected_layers = document.network_interface
+			.selected_nodes(&[]).unwrap()
 			.selected_layers(document.metadata())
-			.filter(|&layer| document.network_interface.is_visible(&layer.to_node()) && !document.network_interface.is_locked(&layer.to_node()))
+			.filter(|&layer| document.network_interface.is_visible(&layer.to_node(), &[]) && !document.network_interface.is_locked(&layer.to_node(), &[]))
 			.collect::<Vec<_>>();
 
 		let mut selected = Selected::new(

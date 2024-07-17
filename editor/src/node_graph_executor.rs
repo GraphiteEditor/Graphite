@@ -458,10 +458,10 @@ impl NodeGraphExecutor {
 	/// Evaluates a node graph, computing the entire graph
 	pub fn submit_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2, ignore_hash: bool) -> Result<(), String> {
 		// Get the node graph layer
-		let network_hash = document.document_network().current_hash();
+		let network_hash = document.network_interface.network(&[]).unwrap().current_hash();
 		if network_hash != self.node_graph_hash || ignore_hash {
 			self.node_graph_hash = network_hash;
-			self.sender.send(NodeRuntimeMessage::GraphUpdate(document.document_network().clone())).map_err(|e| e.to_string())?;
+			self.sender.send(NodeRuntimeMessage::GraphUpdate(document.network_interface.network(&[]).unwrap().clone())).map_err(|e| e.to_string())?;
 		}
 
 		let render_config = RenderConfig {
@@ -489,14 +489,14 @@ impl NodeGraphExecutor {
 
 	/// Evaluates a node graph for export
 	pub fn submit_document_export(&mut self, document: &mut DocumentMessageHandler, mut export_config: ExportConfig) -> Result<(), String> {
-		let network = document.document_network().clone();
+		let network = document.network_interface.network(&[]).unwrap().clone();
 
 		// Calculate the bounding box of the region to be exported
 		let bounds = match export_config.bounds {
 			ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space(!export_config.transparent_background),
 			ExportBounds::Selection => document
 				.network_interface
-				.selected_bounds_document_space(!export_config.transparent_background, &document.selected_nodes),
+				.selected_bounds_document_space(!export_config.transparent_background, &[]),
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;

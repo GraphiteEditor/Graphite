@@ -11,8 +11,8 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 	fn process_message(&mut self, message: PropertiesPanelMessage, responses: &mut VecDeque<Message>, (persistent_data, data): (&PersistentData, PropertiesPanelMessageHandlerData)) {
 		let PropertiesPanelMessageHandlerData {
 			network_interface,
+			selection_path,
 			document_name,
-			selected_nodes,
 			executor,
 		} = data;
 
@@ -33,9 +33,10 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 					responses,
 					executor,
 					network_interface,
+					selection_path,
 				};
 
-				let properties_sections = NodeGraphMessageHandler::collate_properties(&mut context, selected_nodes);
+				let properties_sections = NodeGraphMessageHandler::collate_properties(&mut context);
 
 				let options_bar = vec![LayoutGroup::Row {
 					widgets: vec![

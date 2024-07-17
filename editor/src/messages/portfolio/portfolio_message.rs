@@ -1,4 +1,5 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
+use super::utility_types::PanelType;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
@@ -87,6 +88,9 @@ pub enum PortfolioMessage {
 		data: String,
 	},
 	PrevDocument,
+	SetActivePanel {
+		panel: PanelType,
+	},
 	SelectDocument {
 		document_id: DocumentId,
 	},

@@ -4,7 +4,7 @@ use crate::node_graph_executor::NodeGraphExecutor;
 
 pub struct PropertiesPanelMessageHandlerData<'a> {
 	pub network_interface: &'a NodeNetworkInterface,
+	pub selection_path: &'a [NodeId],
 	pub document_name: &'a str,
-	pub selected_nodes: &'a SelectedNodes,
 	pub executor: &'a mut NodeGraphExecutor,
 }

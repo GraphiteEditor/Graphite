@@ -73,7 +73,7 @@ impl MessageHandler<DialogMessage, DialogMessageData<'_>> for DialogMessageHandl
 					let artboards = document
 						.metadata()
 						.all_layers()
-						.filter(|&layer| document.network_interface.is_artboard(&layer.to_node()))
+						.filter(|&layer| document.network_interface.is_artboard(&layer.to_node(), &[]))
 						.map(|layer| {
 							(
 								layer,
@@ -88,7 +88,10 @@ impl MessageHandler<DialogMessage, DialogMessageData<'_>> for DialogMessageHandl
 					self.export_dialog = ExportDialogMessageHandler {
 						scale_factor: 1.,
 						artboards,
-						has_selection: document.selected_nodes.selected_layers(document.metadata()).next().is_some(),
+						has_selection: document
+							.network_interface
+							.selected_nodes(&[])
+							.is_some_and(|selected_nodes| selected_nodes.selected_layers(document.metadata()).next().is_some()),
 						..Default::default()
 					};
 					self.export_dialog.send_dialog_to_frontend(responses);

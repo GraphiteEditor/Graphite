@@ -14,7 +14,6 @@ pub enum NodeGraphMessage {
 	AddNodes {
 		nodes: HashMap<NodeId, NodeTemplate>,
 		new_ids: HashMap<NodeId, NodeId>,
-		use_document_network: bool,
 	},
 	Init,
 	SelectedNodesUpdated,
@@ -27,20 +26,17 @@ pub enum NodeGraphMessage {
 	CreateWire {
 		output_connector: OutputConnector,
 		input_connector: InputConnector,
-		use_document_network: bool,
 	},
 	Cut,
 	DeleteNodes {
 		node_ids: Vec<NodeId>,
 		reconnect: bool,
-		use_document_network: bool,
 	},
 	DeleteSelectedNodes {
 		reconnect: bool,
 	},
 	DisconnectInput {
 		input_connector: InputConnector,
-		use_document_network: bool,
 	},
 
 	EnterNestedNetwork,
@@ -59,7 +55,6 @@ pub enum NodeGraphMessage {
 	InsertNode {
 		node_id: NodeId,
 		node_template: NodeTemplate,
-		use_document_network: bool,
 	},
 	InsertNodeBetween {
 		// Post node
@@ -72,7 +67,6 @@ pub enum NodeGraphMessage {
 		// Pre node
 		pre_node_id: NodeId,
 		pre_node_output_index: usize,
-		use_document_network: bool,
 	},
 	MoveLayerToStack {
 		layer: LayerNodeIdentifier,
@@ -117,7 +111,6 @@ pub enum NodeGraphMessage {
 	SetInput {
 		input_connector: InputConnector,
 		input: NodeInput,
-		use_document_network: bool,
 	},
 	SetVisibility {
 		node_id: NodeId,

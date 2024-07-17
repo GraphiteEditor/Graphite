@@ -57,7 +57,7 @@ impl LayerSnapper {
 		self.paths_to_snap.clear();
 
 		for layer in document.metadata().all_layers() {
-			if !document.network_interface.is_artboard(&layer.to_node()) || snap_data.ignore.contains(&layer) {
+			if !document.network_interface.is_artboard(&layer.to_node(), &[]) || snap_data.ignore.contains(&layer) {
 				continue;
 			}
 			self.add_layer_bounds(document, layer, SnapTarget::Board(BoardSnapTarget::Edge));
@@ -179,7 +179,7 @@ impl LayerSnapper {
 		self.points_to_snap.clear();
 
 		for layer in document.metadata().all_layers() {
-			if !document.network_interface.is_artboard(&layer.to_node()) || snap_data.ignore.contains(&layer) {
+			if !document.network_interface.is_artboard(&layer.to_node(), &[]) || snap_data.ignore.contains(&layer) {
 				continue;
 			}
 
@@ -448,7 +448,7 @@ pub fn are_manipulator_handles_colinear(group: &bezier_rs::ManipulatorGroup<Poin
 pub fn get_layer_snap_points(layer: LayerNodeIdentifier, snap_data: &SnapData, points: &mut Vec<SnapCandidatePoint>) {
 	let document = snap_data.document;
 
-	if document.network_interface.is_artboard(&layer.to_node()) {
+	if document.network_interface.is_artboard(&layer.to_node(), &[]) {
 		return;
 	}
 

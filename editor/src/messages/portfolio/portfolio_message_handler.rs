@@ -1,6 +1,6 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::document::utility_types::network_interface::{self, InputConnector};
-use super::utility_types::PersistentData;
+use super::utility_types::{PanelType, PersistentData};
 use crate::application::generate_uuid;
 use crate::consts::DEFAULT_DOCUMENT_NAME;
 use crate::messages::dialog::simple_dialogs;
@@ -31,6 +31,7 @@ pub struct PortfolioMessageHandler {
 	menu_bar_message_handler: MenuBarMessageHandler,
 	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
 	document_ids: Vec<DocumentId>,
+	active_panel: PanelType,
 	pub(crate) active_document_id: Option<DocumentId>,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	pub persistent_data: PersistentData,
@@ -190,7 +191,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				let copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
 					let ordered_last_elements = active_document
 						.network_interface
-						.shallowest_unique_layers(active_document.selected_nodes.selected_layers(active_document.metadata()));
+						.shallowest_unique_layers(&[]);
 
 					for layer in ordered_last_elements {
 						let layer_node_id = layer.to_node();
@@ -395,7 +396,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					// Used for upgrading old internal networks for demo artwork nodes. Will reset all node internals for any opened file
 					for node_id in &document
 						.network_interface
-						.document_network_metadata()
+						.network_metadata(&[])
 						.persistent_metadata
 						.node_metadata
 						.keys()
@@ -404,7 +405,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					{
 						if let Some(reference) = document
 							.network_interface
-							.document_network_metadata()
+							.network_metadata(&[])
 							.persistent_metadata
 							.node_metadata
 							.get(node_id)
@@ -419,7 +420,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 				if document
 					.network_interface
-					.document_network_metadata()
+					.network_metadata(&[])
 					.persistent_metadata
 					.node_metadata
 					.iter()
@@ -428,13 +429,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					document.network_interface.delete_nodes(vec![NodeId(0)], true, &mut SelectedNodes(vec![]), responses, true);
 				}
 
-				let node_ids = document.network_interface.document_network().nodes.keys().cloned().collect::<Vec<_>>();
+				let node_ids = document.network_interface.network(&[]).unwrap().nodes.keys().cloned().collect::<Vec<_>>();
 				for node_id in &node_ids {
-					let Some(node) = document.network_interface.document_network().nodes.get(node_id) else {
+					let Some(node) = document.network_interface.network(&[]).unwrap().nodes.get(node_id) else {
 						log::error!("could not get node in deserialize_document");
 						continue;
 					};
-					let Some(node_metadata) = document.network_interface.document_network_metadata().persistent_metadata.node_metadata.get(node_id) else {
+					let Some(node_metadata) = document.network_interface.network_metadata(&[]).persistent_metadata.node_metadata.get(node_id) else {
 						log::error!("could not get node metadata in deserialize_document");
 						continue;
 					};
@@ -534,7 +535,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						responses.add(NodeGraphMessage::AddNodes {
 							nodes,
 							new_ids,
-							use_document_network: true,
 						});
 						responses.add(GraphOperationMessage::MoveLayerToStack {
 							layer,
@@ -567,7 +567,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							responses.add(NodeGraphMessage::AddNodes {
 								nodes: entry.nodes,
 								new_ids,
-								use_document_network: true,
 							});
 							responses.add(GraphOperationMessage::MoveLayerToStack {
 								layer,
@@ -588,6 +587,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					let prev_id = self.document_ids[prev_index];
 					responses.add(PortfolioMessage::SelectDocument { document_id: prev_id });
 				}
+			}
+			PortfolioMessage::SetActivePanel { panel } => {
+				self.active_panel = panel;
+				responses.add(DocumentMessage::SetActivePanel { active_panel: self.active_panel });
 			}
 			PortfolioMessage::SelectDocument { document_id } => {
 				// Auto-save the document we are leaving

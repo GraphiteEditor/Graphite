@@ -139,7 +139,7 @@ impl<'a> ModifyInputsContext<'a> {
 			.move_layer_to_stack(LayerNodeIdentifier::new_unchecked(new_id), LayerNodeIdentifier::ROOT_PARENT, 0);
 
 		// If there is a non artboard feeding into the primary input of the artboard, move it to the secondary input
-		let Some(artboard) = self.network_interface.document_network().nodes.get(&new_id) else {
+		let Some(artboard) = self.network_interface.network(&[]).unwrap().nodes.get(&new_id) else {
 			log::error!("Artboard not created");
 			return;
 		};
@@ -213,7 +213,8 @@ impl<'a> ModifyInputsContext<'a> {
 				self.layer_node.map_or_else(
 					|| {
 						self.network_interface
-							.document_network()
+							.network(&[])
+							.unwrap()
 							.exports
 							.iter()
 							.filter_map(|output| if let NodeInput::Node { node_id, .. } = output { Some(*node_id) } else { None })
@@ -221,9 +222,10 @@ impl<'a> ModifyInputsContext<'a> {
 					},
 					|layer| vec![layer.to_node()],
 				),
+				&[],
 				network_interface::FlowType::HorizontalFlow,
 			)
-			.find(|(_, node_id)| self.network_interface.get_reference(node_id).is_some_and(|node_reference| node_reference == reference))
+			.find(|(_, node_id)| self.network_interface.get_reference(node_id, &[]).is_some_and(|node_reference| node_reference == reference))
 			.map(|(_, id)| id)
 		// Create a new node if the node does not exist and update its inputs
 		// TODO: Is this necessary?
@@ -296,7 +298,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(transform_node_id) = self.get_existing_node_id("Transform") else {
 			return;
 		};
-		let document_node = self.network_interface.document_network().nodes.get(&transform_node_id).unwrap();
+		let document_node = self.network_interface.network(&[]).unwrap().nodes.get(&transform_node_id).unwrap();
 		let layer_transform = transform_utils::get_current_transform(&document_node.inputs);
 		let to = match transform_in {
 			TransformIn::Local => DAffine2::IDENTITY,
@@ -405,7 +407,7 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Inserts a node at the end of the horizontal node chain from a layer node. The position will be `Position::Chain`
 	pub fn insert_node_to_chain(&mut self, new_id: NodeId, parent: LayerNodeIdentifier, mut node_template: NodeTemplate) {
 		assert!(
-			self.network_interface.document_network().nodes.contains_key(&new_id),
+			self.network_interface.network(&[]).unwrap().nodes.contains_key(&new_id),
 			"add_node_to_chain only works in the document network"
 		);
 		// TODO: node layout system and implementation
@@ -414,22 +416,22 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Inserts a node as a child of a layer at a certain stack index. The position will be `Position::Stack(calculated y position)`
 	pub fn insert_layer_to_stack(&mut self, new_id: NodeId, mut node_template: NodeTemplate, parent: LayerNodeIdentifier, insert_index: usize) {
 		assert!(
-			self.network_interface.document_network().nodes.contains_key(&new_id),
+			self.network_interface.network(&[]).unwrap().nodes.contains_key(&new_id),
 			"add_node_to_stack only works in the document network"
 		);
 		// TODO: node layout system and implementation
 		// Basic implementation
-		// assert!(!self.network_interface.document_network().nodes.contains_key(&id), "Creating already existing node");
+		// assert!(!self.network_interface.network(&[]).unwrap().nodes.contains_key(&id), "Creating already existing node");
 
-		// let previous_root_node = self.network_interface.document_network().get_root_node();
+		// let previous_root_node = self.network_interface.network(&[]).unwrap().get_root_node();
 
 		// // Add the new node as the first child of the exports
-		// self.network_interface.insert_layer_to_stack(id, self.network_interface.document_network().exports_metadata.0, 0, new_node);
-		// self.network_interface.set_input(self.network_interface.document_network().exports_metadata.0, id, 0);
+		// self.network_interface.insert_layer_to_stack(id, self.network_interface.network(&[]).unwrap().exports_metadata.0, 0, new_node);
+		// self.network_interface.set_input(self.network_interface.network(&[]).unwrap().exports_metadata.0, id, 0);
 
 		// // If a node was previous connected to the exports
 		// if let Some(root_node) = previous_root_node {
-		// 	let previous_root_node = self.network_interface.document_network().nodes.get(&root_node.id).expect("Root node should always exist");
+		// 	let previous_root_node = self.network_interface.network(&[]).unwrap().nodes.get(&root_node.id).expect("Root node should always exist");
 
 		// 	// Always move non layer nodes to the chain of the new export layer
 		// 	if !previous_root_node.is_layer {

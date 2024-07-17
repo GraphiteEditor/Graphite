@@ -38,6 +38,7 @@ pub struct NodePropertiesContext<'a> {
 	pub responses: &'a mut VecDeque<Message>,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub network_interface: &'a NodeNetworkInterface,
+	pub selection_path: &'a [NodeId],
 }
 
 /// Acts as a description for a [DocumentNode] before it gets instantiated as one.

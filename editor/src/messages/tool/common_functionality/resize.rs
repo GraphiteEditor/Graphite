@@ -37,7 +37,7 @@ impl Resize {
 			return None;
 		}
 
-		if !document.document_network().nodes.contains_key(&layer.to_node()) {
+		if !document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node()) {
 			self.layer.take();
 			return None;
 		}
