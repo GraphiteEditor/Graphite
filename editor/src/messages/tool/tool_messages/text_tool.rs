@@ -214,9 +214,8 @@ struct TextToolData {
 impl TextToolData {
 	/// Set the editing state of the currently modifying layer
 	fn set_editing(&self, editable: bool, font_cache: &FontCache, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		// TODO: Should always set visibility for document network, but `node_id` is not a layer so it crashes
 		if let Some(node_id) = graph_modification_utils::get_fill_id(self.layer, &document.network_interface) {
-			responses.add(GraphOperationMessage::SetVisibility { node_id, visible: !editable });
+			responses.add(NodeGraphMessage::SetVisibility { node_id, visible: !editable });
 		}
 
 		if let Some(editing_text) = self.editing_text.as_ref().filter(|_| editable) {
@@ -314,7 +313,7 @@ impl TextToolData {
 }
 
 fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdentifier> {
-	let mut selected_layers = document.selected_nodes.selected_layers(document.metadata());
+	let mut selected_layers = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata());
 	let layer = selected_layers.next()?;
 
 	// Check that only one layer is selected
@@ -362,7 +361,7 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Editing
 			}
 			(_, TextToolMessage::Overlays(mut overlay_context)) => {
-				for layer in document.selected_nodes.selected_layers(document.metadata()) {
+				for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
 					let Some((text, font, font_size)) = graph_modification_utils::get_text(layer, &document.network_interface) else {
 						continue;
 					};

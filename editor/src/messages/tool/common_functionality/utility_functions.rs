@@ -10,7 +10,7 @@ pub fn should_extend(document: &DocumentMessageHandler, goal: DVec2, tolerance: 
 	let mut best = None;
 	let mut best_distance_squared = tolerance * tolerance;
 
-	for layer in document.selected_nodes.selected_layers(document.metadata()) {
+	for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
 		let viewspace = document.metadata().transform_to_viewport(layer);
 
 		let vector_data = document.metadata().compute_modified_vector(layer, &document.network_interface)?;

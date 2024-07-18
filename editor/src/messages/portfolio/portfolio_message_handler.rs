@@ -6,9 +6,7 @@ use crate::consts::DEFAULT_DOCUMENT_NAME;
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::FrontendDocumentDetails;
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
-use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document::DocumentMessageData;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup};
@@ -189,9 +187,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				};
 
 				let copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
-					let ordered_last_elements = active_document
-						.network_interface
-						.shallowest_unique_layers(&[]);
+					let ordered_last_elements = active_document.network_interface.shallowest_unique_layers(&[]);
 
 					for layer in ordered_last_elements {
 						let layer_node_id = layer.to_node();
@@ -201,17 +197,21 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 						active_document
 							.network_interface
-							.upstream_flow_back_from_nodes(vec![layer_node_id], network_interface::FlowType::LayerChildrenUpstreamFlow)
+							.upstream_flow_back_from_nodes(vec![layer_node_id], &[], network_interface::FlowType::LayerChildrenUpstreamFlow)
 							.enumerate()
 							.for_each(|(index, (_, node_id))| {
 								copy_ids.insert(node_id, NodeId((index + 1) as u64));
 							});
 
 						buffer.push(CopyBufferEntry {
-							nodes: active_document.network_interface.copy_nodes(&copy_ids, true).collect(),
-							selected: active_document.selected_nodes.selected_layers_contains(layer, active_document.metadata()),
-							visible: active_document.selected_nodes.layer_visible(layer, &active_document.network_interface),
-							locked: active_document.selected_nodes.layer_locked(layer, &active_document.network_interface),
+							nodes: active_document.network_interface.copy_nodes(&copy_ids, &[]).collect(),
+							selected: active_document
+								.network_interface
+								.selected_nodes(&[])
+								.unwrap()
+								.selected_layers_contains(layer, active_document.metadata()),
+							visible: active_document.network_interface.selected_nodes(&[]).unwrap().layer_visible(layer, &active_document.network_interface),
+							locked: active_document.network_interface.selected_nodes(&[]).unwrap().layer_locked(layer, &active_document.network_interface),
 							collapsed: false,
 						});
 					}
@@ -397,6 +397,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					for node_id in &document
 						.network_interface
 						.network_metadata(&[])
+						.unwrap()
 						.persistent_metadata
 						.node_metadata
 						.keys()
@@ -406,6 +407,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						if let Some(reference) = document
 							.network_interface
 							.network_metadata(&[])
+							.unwrap()
 							.persistent_metadata
 							.node_metadata
 							.get(node_id)
@@ -413,7 +415,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						{
 							let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(reference).unwrap();
 							let default_definition_node = node_definition.default_node_template();
-							document.network_interface.set_implementation(node_id, default_definition_node.document_node.implementation);
+							document.network_interface.set_implementation(node_id, &[], default_definition_node.document_node.implementation);
 						}
 					}
 				}
@@ -421,12 +423,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				if document
 					.network_interface
 					.network_metadata(&[])
+					.unwrap()
 					.persistent_metadata
 					.node_metadata
 					.iter()
 					.any(|(node_id, node)| node.persistent_metadata.reference.as_ref().is_some_and(|reference| reference == "Output") && *node_id == NodeId(0))
 				{
-					document.network_interface.delete_nodes(vec![NodeId(0)], true, &mut SelectedNodes(vec![]), responses, true);
+					document.network_interface.delete_nodes(vec![NodeId(0)], true, &[]);
 				}
 
 				let node_ids = document.network_interface.network(&[]).unwrap().nodes.keys().cloned().collect::<Vec<_>>();
@@ -435,28 +438,24 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						log::error!("could not get node in deserialize_document");
 						continue;
 					};
-					let Some(node_metadata) = document.network_interface.network_metadata(&[]).persistent_metadata.node_metadata.get(node_id) else {
+					let Some(node_metadata) = document.network_interface.network_metadata(&[]).unwrap().persistent_metadata.node_metadata.get(node_id) else {
 						log::error!("could not get node metadata in deserialize_document");
 						continue;
 					};
 
 					// Upgrade Fill nodes to the format change in #1778
 					// TODO: Eventually remove this (probably starting late 2024)
-					let Some(reference) = node_metadata.persistent_metadata.reference.clone() else {
+					let Some(reference) = node_metadata.persistent_metadata.reference.as_ref() else {
 						continue;
 					};
 					if reference == "Fill" && node.inputs.len() == 8 {
 						let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(&reference).unwrap();
+						let document_node = node_definition.default_node_template().document_node;
+						document.network_interface.set_implementation(node_id, &[], document_node.implementation.clone());
 
-						document
-							.network_interface
-							.set_implementation(node_id, node_definition.default_node_template().document_node.implementation.clone());
+						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), &[]);
 
-						let old_inputs = document
-							.network_interface
-							.replace_inputs(node_id, node_definition.default_node_template().document_node.inputs.clone(), true);
-
-						document.network_interface.set_input(InputConnector::node(*node_id, 0), old_inputs[0].clone(), true);
+						document.network_interface.set_input(InputConnector::node(*node_id, 0), old_inputs[0].clone(), &[]);
 
 						let Some(fill_type) = old_inputs[1].as_value().cloned() else { continue };
 						let TaggedValue::FillType(fill_type) = fill_type else { continue };
@@ -486,22 +485,22 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						};
 						document
 							.network_interface
-							.set_input(InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::Fill(fill.clone()), false), true);
+							.set_input(InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::Fill(fill.clone()), false), &[]);
 						match fill {
 							Fill::None => {
 								document
 									.network_interface
-									.set_input(InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::OptionalColor(None), false), true);
+									.set_input(InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::OptionalColor(None), false), &[]);
 							}
 							Fill::Solid(color) => {
 								document
 									.network_interface
-									.set_input(InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::OptionalColor(Some(color)), false), true);
+									.set_input(InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::OptionalColor(Some(color)), false), &[]);
 							}
 							Fill::Gradient(gradient) => {
 								document
 									.network_interface
-									.set_input(InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Gradient(gradient), false), true);
+									.set_input(InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Gradient(gradient), false), &[]);
 							}
 						}
 					}
@@ -532,10 +531,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						let nodes = entry.clone().nodes;
 						let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
 						let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
-						responses.add(NodeGraphMessage::AddNodes {
-							nodes,
-							new_ids,
-						});
+						responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
 						responses.add(GraphOperationMessage::MoveLayerToStack {
 							layer,
 							parent,
@@ -564,10 +560,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							document.load_layer_resources(responses);
 							let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
 							let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
-							responses.add(NodeGraphMessage::AddNodes {
-								nodes: entry.nodes,
-								new_ids,
-							});
+							responses.add(NodeGraphMessage::AddNodes { nodes: entry.nodes, new_ids });
 							responses.add(GraphOperationMessage::MoveLayerToStack {
 								layer,
 								parent,
@@ -709,7 +702,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			common.extend(document.actions());
 
 			// Extend with actions that must have a selected layer
-			if document.selected_nodes.selected_layers(document.metadata()).next().is_some() {
+			if document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).next().is_some() {
 				common.extend(actions!(PortfolioMessageDiscriminant;
 					Copy,
 					Cut,

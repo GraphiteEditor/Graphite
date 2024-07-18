@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, 
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 
-use graph_craft::document::{NodeId, NodeNetwork};
+use graph_craft::document::{NodeId};
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::Image;
 use graphene_core::vector::style::ViewMode;
@@ -54,6 +54,10 @@ pub enum DocumentMessage {
 	DocumentHistoryForward,
 	DocumentStructureChanged,
 	DuplicateSelectedLayers,
+	EnterNestedNetwork {
+		node_id: NodeId,
+	},
+	ExitNestedNetwork,
 	FlipSelectedLayers {
 		flip_axis: FlipAxis,
 	},
@@ -119,7 +123,7 @@ pub enum DocumentMessage {
 		shift: bool,
 	},
 	SetActivePanel {
-		panel: PanelType,
+		active_panel: PanelType,
 	},
 	SetBlendModeForSelectedLayers {
 		blend_mode: BlendMode,

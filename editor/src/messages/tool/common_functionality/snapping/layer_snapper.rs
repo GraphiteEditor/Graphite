@@ -22,7 +22,7 @@ impl LayerSnapper {
 			return;
 		}
 
-		let bounds = if document.network_interface.is_artboard(&layer.to_node()) {
+		let bounds = if document.network_interface.is_artboard(&layer.to_node(), &[]) {
 			document
 				.metadata()
 				.bounding_box_with_transform(layer, document.metadata().transform_to_document(layer))

@@ -1,3 +1,4 @@
+
 use super::{
 	document_metadata::{DocumentMetadata, LayerNodeIdentifier},
 	network_interface::NodeNetworkInterface,
@@ -37,7 +38,7 @@ impl serde::Serialize for JsRawBuffer {
 pub struct LayerPanelEntry {
 	pub id: NodeId,
 	pub alias: String,
-	pub tooltip: PanelType,
+	pub tooltip: String,
 	#[serde(rename = "childrenAllowed")]
 	pub children_allowed: bool,
 	#[serde(rename = "childrenPresent")]
@@ -61,7 +62,7 @@ impl SelectedNodes {
 	pub fn layer_visible(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
 		layer.ancestors(network_interface.document_metadata()).all(|layer| {
 			if layer != LayerNodeIdentifier::ROOT_PARENT {
-				network_interface.is_visible(&layer.to_node())
+				network_interface.is_visible(&layer.to_node(), &[])
 			} else {
 				true
 			}
@@ -76,7 +77,7 @@ impl SelectedNodes {
 	pub fn layer_locked(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
 		layer.ancestors(network_interface.document_metadata()).any(|layer| {
 			if layer != LayerNodeIdentifier::ROOT_PARENT {
-				network_interface.is_locked(&layer.to_node())
+				network_interface.is_locked(&layer.to_node(), &[])
 			} else {
 				false
 			}
@@ -129,7 +130,7 @@ impl SelectedNodes {
 
 	// Ensures new selected nodes are all in the same network
 	// TODO: This function is run when a node in the layer panel is currently selected, and a new node is selected in the graph, as well as when a node is currently selected in the graph and a node in the layer panel is selected. These are fundamentally different operations, since different nodes should be selected in each case, but cannot be distinguished. Currently it is not possible to shift+click a node in the node graph while a layer is selected. Instead of set_selected_nodes, add_selected_nodes should be used.
-	pub fn set_selected_nodes(&mut self, new: Vec<NodeId>, network_interface: &NodeNetworkInterface) {
+	pub fn set_selected_nodes(&mut self, new: Vec<NodeId>) {
 		// let Some(network) = network_interface.network(false) else { return };
 		// let document_network = network_interface.network(&[]).unwrap();
 
@@ -148,7 +149,7 @@ impl SelectedNodes {
 	}
 
 	// Ensures all selected nodes are all in the same network
-	pub fn add_selected_nodes(&mut self, new: Vec<NodeId>, network_interface: &NodeNetworkInterface) {
+	pub fn add_selected_nodes(&mut self, new: Vec<NodeId>) {
 		// let Some(network) = network_interface.network(false) else { return };
 		// let document_network = network_interface.network(&[]).unwrap();
 		// // If the nodes to add are in the document network, clear selected nodes in the current network

@@ -598,7 +598,7 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = toggleNodeVisibilityLayerPanel)]
 	pub fn toggle_node_visibility_layer(&self, id: u64) {
 		let node_id = NodeId(id);
-		let message = GraphOperationMessage::ToggleVisibility { node_id };
+		let message = NodeGraphMessage::ToggleVisibility { node_id };
 		self.dispatch(message);
 	}
 
@@ -615,9 +615,8 @@ impl EditorHandle {
 
 	/// Toggle lock state of a layer from the layer list
 	#[wasm_bindgen(js_name = toggleLayerLock)]
-	pub fn toggle_layer_lock(&self, id: u64) {
-		let layer = LayerNodeIdentifier::new_unchecked(NodeId(id));
-		let message = GraphOperationMessage::ToggleLocked { layer };
+	pub fn toggle_layer_lock(&self, node_id: u64) {
+		let message = NodeGraphMessage::ToggleLocked { node_id: NodeId(node_id) };
 		self.dispatch(message);
 	}
 
@@ -632,7 +631,7 @@ impl EditorHandle {
 	/// Set the active panel to the most recently clicked panel
 	#[wasm_bindgen(js_name = setActivePanel)]
 	pub fn set_active_panel(&self, panel: String) {
-		let message = PortfolioMessage::SetActivePanel { panel };
+		let message = PortfolioMessage::SetActivePanel { panel: panel.into() };
 		self.dispatch(message);
 	}
 
@@ -685,7 +684,8 @@ impl EditorHandle {
 		let document = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap();
 		for node in document
 			.network_interface
-			.network_metadata(&[]).unwrap()
+			.network_metadata(&[])
+			.unwrap()
 			.persistent_metadata
 			.node_metadata
 			.iter()
@@ -703,7 +703,8 @@ impl EditorHandle {
 					if document.network_interface.get_reference(node_id, &[]).is_some_and(|reference| reference == "To Artboard") {
 						if document
 							.network_interface
-							.network(&[]).unwrap()
+							.network(&[])
+							.unwrap()
 							.nodes
 							.get(node_id)
 							.is_some_and(|document_node| document_node.inputs.len() != 6)
@@ -715,10 +716,10 @@ impl EditorHandle {
 				for node_id in nodes_to_upgrade {
 					document
 						.network_interface
-						.set_implementation(&node_id, DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _, _>"));
+						.set_implementation(&node_id, &[], DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _, _>"));
 					document
 						.network_interface
-						.add_input(&node_id, TaggedValue::IVec2(glam::IVec2::default()), false, 2, "".to_string(), true);
+						.add_input(&node_id, &[], TaggedValue::IVec2(glam::IVec2::default()), false, 2, "".to_string());
 				}
 			}
 		}
@@ -755,7 +756,8 @@ impl EditorHandle {
 		document.network_interface.load_structure();
 		for node in document
 			.network_interface
-			.network_metadata(&[]).unwrap()
+			.network_metadata(&[])
+			.unwrap()
 			.persistent_metadata
 			.node_metadata
 			.iter()
@@ -838,18 +840,15 @@ impl EditorHandle {
 					.node_template_input_override([None, Some(NodeInput::value(TaggedValue::VectorModification(modification), false))])
 					.document_node;
 
-				let mut persistent_node_metadata = document
-					.network_interface
-					.create_node_template(node_id, true)
-					.map(|node_template| node_template.persistent_node_metadata)
-					.unwrap_or_default();
+				let mut persistent_node_metadata = document.network_interface.persistent_node_metadata(&node_id, &[]).cloned().unwrap_or_default();
+
 				document.network_interface.insert_node(
 					node_id,
+					&[],
 					NodeTemplate {
 						document_node,
 						persistent_node_metadata,
 					},
-					true,
 				);
 			}
 		}

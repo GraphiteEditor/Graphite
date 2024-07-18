@@ -432,7 +432,7 @@ impl Fsm for PathToolFsmState {
 		match (self, event) {
 			(_, PathToolMessage::SelectionChanged) => {
 				// Set the newly targeted layers to visible
-				let target_layers = document.selected_nodes.selected_layers(document.metadata()).collect();
+				let target_layers = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
 				shape_editor.set_selected_layers(target_layers);
 
 				responses.add(OverlaysMessage::Draw);

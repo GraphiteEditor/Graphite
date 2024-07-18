@@ -41,9 +41,6 @@ pub enum NodeGraphMessage {
 
 	EnterNestedNetwork,
 	DuplicateSelectedNodes,
-	EnforceLayerHasNoMultiParams {
-		node_id: NodeId,
-	},
 	ExitNestedNetwork {
 		steps_back: usize,
 	},
@@ -102,7 +99,7 @@ pub enum NodeGraphMessage {
 	},
 	SendClickTargets,
 	EndSendClickTargets,
-	SendGraph,
+	TrySendGraph,
 	SetInputValue {
 		node_id: NodeId,
 		input_index: usize,
@@ -111,14 +108,6 @@ pub enum NodeGraphMessage {
 	SetInput {
 		input_connector: InputConnector,
 		input: NodeInput,
-	},
-	SetVisibility {
-		node_id: NodeId,
-		visible: bool,
-	},
-	SetLocked {
-		node_id: NodeId,
-		locked: bool,
 	},
 	SetDisplayName {
 		node_id: NodeId,
@@ -145,9 +134,24 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 	},
 	ToggleSelectedAsLayersOrNodes,
+	ToggleSelectedLocked,
+	ToggleLocked {
+		node_id: NodeId,
+	},
+	SetLocked {
+		node_id: NodeId,
+		locked: bool,
+	},
 	ToggleSelectedVisibility,
 	ToggleVisibility {
 		node_id: NodeId,
+	},
+	SetVisibility {
+		node_id: NodeId,
+		visible: bool,
+	},
+	SetLockedOrVisibilitySideEffects {
+		node_ids: Vec<NodeId>,
 	},
 	UpdateNewNodeGraph,
 	UpdateTypes {
@@ -156,4 +160,5 @@ pub enum NodeGraphMessage {
 		#[serde(skip)]
 		node_graph_errors: GraphErrors,
 	},
+	UpdateActionButtons,
 }

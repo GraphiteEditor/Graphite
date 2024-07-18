@@ -80,12 +80,12 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 			let next_node_in_stack_id =
 				network_interface
-					.get_input(&post_node_input_connector, true)
+					.get_input(&post_node_input_connector, &[])
 					.and_then(|input_from_connector| if let NodeInput::Node { node_id, .. } = input_from_connector { Some(node_id) } else { None });
 
 			if let Some(next_node_in_stack_id) = next_node_in_stack_id {
 				// Only increment index for layer nodes
-				if network_interface.is_layer(next_node_in_stack_id) {
+				if network_interface.is_layer(next_node_in_stack_id, &[]) {
 					current_index += 1;
 				}
 				// Input as a sibling to the Layer node above
@@ -100,10 +100,10 @@ impl<'a> ModifyInputsContext<'a> {
 
 		// Sink post_node down to the end of the non layer chain that feeds into post_node, such that pre_node is the layer node at insert_index + 1, or None if insert_index is the last layer
 		loop {
-			pre_node_output_connector = network_interface.get_upstream_output_connector(&post_node_input_connector);
+			pre_node_output_connector = network_interface.get_upstream_output_connector(&post_node_input_connector, &[]);
 
 			match pre_node_output_connector {
-				Some(OutputConnector::Node { node_id: pre_node_id, .. }) if !network_interface.is_layer(&pre_node_id) => {
+				Some(OutputConnector::Node { node_id: pre_node_id, .. }) if !network_interface.is_layer(&pre_node_id, &[]) => {
 					// Update post_node_input_connector for the next iteration
 					post_node_input_connector = InputConnector::node(pre_node_id, 0);
 					// Reset pre_node_output_connector to None to fetch new input in the next iteration
@@ -119,7 +119,7 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Creates a new layer and adds it to the document network. network_interface.move_layer_to_stack should be called after
 	pub fn create_layer(&mut self, new_id: NodeId, parent: LayerNodeIdentifier) -> LayerNodeIdentifier {
 		let mut new_merge_node = resolve_document_node_type("Merge").expect("Merge node").default_node_template();
-		self.network_interface.insert_node(new_id, new_merge_node, true);
+		self.network_interface.insert_node(new_id, &[],new_merge_node);
 		LayerNodeIdentifier::new(new_id, &self.network_interface)
 	}
 
@@ -134,9 +134,9 @@ impl<'a> ModifyInputsContext<'a> {
 			Some(NodeInput::value(TaggedValue::Bool(artboard.clip), false)),
 		]);
 
-		self.network_interface.insert_node(new_id, artboard_node_template, true);
+		self.network_interface.insert_node(new_id, &[], artboard_node_template);
 		self.network_interface
-			.move_layer_to_stack(LayerNodeIdentifier::new_unchecked(new_id), LayerNodeIdentifier::ROOT_PARENT, 0);
+			.move_layer_to_stack(LayerNodeIdentifier::new_unchecked(new_id), LayerNodeIdentifier::ROOT_PARENT, 0, &[]);
 
 		// If there is a non artboard feeding into the primary input of the artboard, move it to the secondary input
 		let Some(artboard) = self.network_interface.network(&[]).unwrap().nodes.get(&new_id) else {
@@ -146,11 +146,11 @@ impl<'a> ModifyInputsContext<'a> {
 		let primary_input = artboard.inputs.get(0).expect("Artboard should have a primary input");
 		if let NodeInput::Node { node_id, .. } = primary_input.clone() {
 			let artboard_layer = LayerNodeIdentifier::new(new_id, &self.network_interface);
-			if self.network_interface.is_layer(&node_id) {
+			if self.network_interface.is_layer(&node_id, &[]) {
 				self.network_interface.move_node_to_chain(&node_id, artboard_layer)
 			} else {
 				self.network_interface
-					.move_layer_to_stack(LayerNodeIdentifier::new(node_id, &self.network_interface), artboard_layer, 0);
+					.move_layer_to_stack(LayerNodeIdentifier::new(node_id, &self.network_interface), artboard_layer, 0, &[]);
 			}
 		}
 	}
@@ -346,11 +346,7 @@ impl<'a> ModifyInputsContext<'a> {
 			return;
 		};
 
-		self.network_interface
-			.set_input(InputConnector::node(transform_node_id, 5), NodeInput::value(TaggedValue::DVec2(new_pivot), false), true);
-
-		self.responses.add(PropertiesPanelMessage::Refresh);
-		self.responses.add(NodeGraphMessage::RunDocumentGraph);
+		self.set_input_with_refresh(InputConnector::node(transform_node_id, 5), NodeInput::value(TaggedValue::DVec2(new_pivot), false), false);
 	}
 
 	pub fn vector_modify(&mut self, modification_type: VectorModificationType) {
@@ -366,11 +362,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(brush_node_id) = self.get_existing_node_id("Brush") else {
 			return;
 		};
-		self.network_interface
-			.set_input(InputConnector::node(brush_node_id, 2), NodeInput::value(TaggedValue::BrushStrokes(strokes), false), true);
-
-		self.responses.add(PropertiesPanelMessage::Refresh);
-		self.responses.add(NodeGraphMessage::RunDocumentGraph);
+		self.set_input_with_refresh(InputConnector::node(brush_node_id, 2), NodeInput::value(TaggedValue::BrushStrokes(strokes), false), false);
 	}
 
 	pub fn resize_artboard(&mut self, location: IVec2, dimensions: IVec2) {
@@ -389,15 +381,13 @@ impl<'a> ModifyInputsContext<'a> {
 			dimensions.y *= -1;
 			location.y -= dimensions.y;
 		}
-		self.network_interface
-			.set_input(InputConnector::node(artboard_node_id, 2), NodeInput::value(TaggedValue::IVec2(location), false), true);
-		self.network_interface
-			.set_input(InputConnector::node(artboard_node_id, 3), NodeInput::value(TaggedValue::IVec2(dimensions), false), true);
+		self.set_input_with_refresh(InputConnector::node(artboard_node_id, 2), NodeInput::value(TaggedValue::IVec2(location), false), false);
+		self.set_input_with_refresh(InputConnector::node(artboard_node_id, 3), NodeInput::value(TaggedValue::IVec2(dimensions), false), false);
 	}
 
 	/// Set the input, refresh the properties panel, and run the document graph if skip_rerender is false
 	pub fn set_input_with_refresh(&mut self, input_connector: InputConnector, input: NodeInput, skip_rerender: bool) {
-		self.network_interface.set_input(input_connector, input, true);
+		self.network_interface.set_input(input_connector, input, &[]);
 		self.responses.add(PropertiesPanelMessage::Refresh);
 		if !skip_rerender {
 			self.responses.add(NodeGraphMessage::RunDocumentGraph);

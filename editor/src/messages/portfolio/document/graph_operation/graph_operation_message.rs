@@ -12,7 +12,6 @@ use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::PointId;
 use graphene_core::vector::VectorModificationType;
 use graphene_core::{Artboard, Color};
-use graphene_std::vector::misc::BooleanOperation;
 
 use glam::{DAffine2, DVec2, IVec2};
 
@@ -112,22 +111,5 @@ pub enum GraphOperationMessage {
 		node_id: NodeId,
 		shift: IVec2,
 		shift_self: bool,
-	},
-	ToggleSelectedVisibility,
-	ToggleVisibility {
-		node_id: NodeId,
-	},
-	SetVisibility {
-		node_id: NodeId,
-		visible: bool,
-	},
-	StartPreviewingWithoutRestore,
-	ToggleSelectedLocked,
-	ToggleLocked {
-		layer: LayerNodeIdentifier,
-	},
-	SetLocked {
-		layer: LayerNodeIdentifier,
-		locked: bool,
 	},
 }

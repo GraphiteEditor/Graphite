@@ -459,7 +459,9 @@ impl Fsm for ArtboardToolFsmState {
 			}
 			(_, ArtboardToolMessage::UpdateSelectedArtboard) => {
 				tool_data.selected_artboard = document
-					.selected_nodes
+					.network_interface
+					.selected_nodes(&[])
+					.unwrap()
 					.selected_layers(document.metadata())
 					.find(|layer| document.network_interface.is_artboard(&layer.to_node(), &[]));
 				self

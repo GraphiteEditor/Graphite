@@ -24,7 +24,7 @@ pub fn overlay_canvas_context() -> web_sys::CanvasRenderingContext2d {
 }
 
 pub fn path_overlays(document: &DocumentMessageHandler, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext) {
-	for layer in document.selected_nodes.selected_layers(document.metadata()) {
+	for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
 		let Some(vector_data) = document.metadata().compute_modified_vector(layer, &document.network_interface) else {
 			continue;
 		};
@@ -62,7 +62,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, shape_editor: &mut Shape
 }
 
 pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext) {
-	for layer in document.selected_nodes.selected_layers(document.metadata()) {
+	for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
 		let Some(vector_data) = document.metadata().compute_modified_vector(layer, &document.network_interface) else {
 			continue;
 		};

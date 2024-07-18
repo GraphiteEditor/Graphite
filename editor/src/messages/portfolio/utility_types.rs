@@ -37,8 +37,9 @@ pub enum KeyboardPlatformLayout {
 	Mac,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub enum PanelType {
+	#[default]
 	Document,
 	Layers,
 	Properties,

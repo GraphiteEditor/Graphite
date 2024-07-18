@@ -1783,7 +1783,7 @@ pub fn text_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 }
 
 pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let imaginate_node = [context.selection_path.clone(), &[node_id]].concat();
+	let imaginate_node = [context.selection_network_path.clone(), &[node_id]].concat();
 
 	let resolve_input = |name: &str| {
 		IMAGINATE_NODE
@@ -2281,7 +2281,7 @@ fn unknown_node_properties(reference: &String) -> Vec<LayoutGroup> {
 }
 
 pub fn node_no_properties(_document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	string_properties(if context.network_interface.is_layer(&node_id) {
+	string_properties(if context.network_interface.is_layer(&node_id, context.selection_network_path) {
 		"Layer has no properties"
 	} else {
 		"Node has no properties"
@@ -2295,7 +2295,7 @@ pub fn index_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 }
 
 pub fn generate_node_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> LayoutGroup {
-	let reference = context.network_interface.get_reference(&node_id, context.selection_path).clone();
+	let reference = context.network_interface.get_reference(&node_id, context.selection_network_path).clone();
 	let layout = if let Some(ref reference) = reference {
 		match super::document_node_types::resolve_document_node_type(reference) {
 			Some(document_node_type) => (document_node_type.properties)(document_node, node_id, context),

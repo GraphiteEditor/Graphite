@@ -570,7 +570,7 @@ impl NodeGraphExecutor {
 					} = execution_response;
 
 					responses.extend(existing_responses.into_iter().map(Into::into));
-					responses.add(NodeGraphMessage::SendGraph);
+					responses.add(NodeGraphMessage::TrySendGraph);
 					responses.add(OverlaysMessage::Draw);
 
 					let node_graph_output = match result {

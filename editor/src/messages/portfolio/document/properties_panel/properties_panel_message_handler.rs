@@ -33,7 +33,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 					responses,
 					executor,
 					network_interface,
-					selection_path,
+					selection_network_path: selection_path,
 				};
 
 				let properties_sections = NodeGraphMessageHandler::collate_properties(&mut context);

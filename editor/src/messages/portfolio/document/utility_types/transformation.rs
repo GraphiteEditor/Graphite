@@ -444,7 +444,7 @@ impl<'a> Selected<'a> {
 	pub fn apply_transformation(&mut self, transformation: DAffine2) {
 		if !self.selected.is_empty() {
 			// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
-			for layer in self.network_interface.shallowest_unique_layers(self.selected.iter().copied()) {
+			for layer in self.network_interface.shallowest_unique_layers(&[]) {
 				match &mut self.original_transforms {
 					OriginalTransforms::Layer(layer_transforms) => {
 						Self::transform_layer(self.network_interface.document_metadata(), layer, layer_transforms.get(&layer), transformation, self.responses)
