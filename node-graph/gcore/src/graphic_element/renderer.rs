@@ -273,7 +273,7 @@ impl GraphicElementRendered for GraphicGroup {
 
 		let kurbo_transform = kurbo::Affine::new((transform * self.transform).to_cols_array());
 		log::debug!("pushing graphic group");
-		let bounds = self.bounding_box(DAffine2::IDENTITY).unwrap();
+		let Some(bounds) = self.bounding_box(DAffine2::IDENTITY) else { return };
 		let blending = vello::peniko::BlendMode::new(self.alpha_blending.blend_mode.into(), vello::peniko::Compose::SrcOver);
 		// scene.push_layer(
 		// 	blending,
@@ -385,8 +385,7 @@ impl GraphicElementRendered for VectorData {
 			};
 
 			// scene.fill(Fill::NonZero, vello::kurbo::Affine::IDENTITY, &fill, None, &path);
-			let circle = vello::kurbo::Circle::new((420.0, 200.0), 120.0);
-			scene.fill(vello::peniko::Fill::NonZero, kurbo_transform, &fill, None, &path);
+			scene.fill(vello::peniko::Fill::EvenOdd, kurbo_transform, &fill, None, &path);
 		}
 		for subpath in self.stroke_bezier_paths() {
 			// let path = subpath.to_vello_path(transform * self.transform);
