@@ -233,6 +233,30 @@ impl core::fmt::Display for BlendMode {
 	}
 }
 
+impl Into<vello::peniko::Mix> for BlendMode {
+	fn into(self) -> vello::peniko::Mix {
+		match self {
+			BlendMode::Normal => vello::peniko::Mix::Normal,
+			BlendMode::Darken => vello::peniko::Mix::Darken,
+			BlendMode::Multiply => vello::peniko::Mix::Multiply,
+			BlendMode::ColorBurn => vello::peniko::Mix::ColorBurn,
+			BlendMode::Lighten => vello::peniko::Mix::Lighten,
+			BlendMode::Screen => vello::peniko::Mix::Screen,
+			BlendMode::ColorDodge => vello::peniko::Mix::ColorDodge,
+			BlendMode::Overlay => vello::peniko::Mix::Overlay,
+			BlendMode::SoftLight => vello::peniko::Mix::SoftLight,
+			BlendMode::HardLight => vello::peniko::Mix::HardLight,
+			BlendMode::Difference => vello::peniko::Mix::Difference,
+			BlendMode::Exclusion => vello::peniko::Mix::Exclusion,
+			BlendMode::Hue => vello::peniko::Mix::Hue,
+			BlendMode::Saturation => vello::peniko::Mix::Saturation,
+			BlendMode::Color => vello::peniko::Mix::Color,
+			BlendMode::Luminosity => vello::peniko::Mix::Luminosity,
+			_ => todo!(),
+		}
+	}
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LuminanceNode<LuminanceCalculation> {
 	luminance_calc: LuminanceCalculation,

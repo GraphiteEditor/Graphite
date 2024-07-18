@@ -113,13 +113,45 @@ async fn render_canvas<'a>(render_config: RenderConfig, data: impl GraphicElemen
 		use vello::*;
 		let footprint = render_config.viewport;
 
+		fn add_shapes_to_scene(scene: &mut Scene) {
+			use vello::kurbo::*;
+			use vello::peniko::Color as PColor;
+			use vello::peniko::*;
+			let transform = Affine::scale(0.5);
+			// Draw an outlined rectangle
+			let stroke = Stroke::new(6.0);
+			let rect = RoundedRect::new(10.0, 10.0, 240.0, 240.0, 20.0);
+			let rect_stroke_color = PColor::rgb(0.9804, 0.702, 0.5294);
+			scene.stroke(&stroke, Affine::IDENTITY, rect_stroke_color, None, &rect);
+
+			let rect = Rect::new(50., 50., 800., 600.);
+			scene.push_layer(BlendMode::new(vello::peniko::Mix::Normal, vello::peniko::Compose::SrcOver), 1., transform, &rect);
+
+			// Draw a filled circle
+			let circle = Circle::new((420.0, 200.0), 120.0);
+			let circle_fill_color = PColor::rgba(0.9529, 0.5451, 0.6588, 1.);
+			scene.fill(vello::peniko::Fill::NonZero, Affine::IDENTITY, circle_fill_color, None, &circle);
+			scene.pop_layer();
+
+			// Draw a filled ellipse
+			let ellipse = Ellipse::new((250.0, 420.0), (100.0, 160.0), -90.0);
+			let ellipse_fill_color = PColor::rgb(0.7961, 0.651, 0.9686);
+			scene.fill(vello::peniko::Fill::NonZero, Affine::IDENTITY, ellipse_fill_color, None, &ellipse);
+
+			// Draw a straight line
+			let line = Line::new((260.0, 20.0), (620.0, 100.0));
+			let line_stroke_color = PColor::rgb(0.5373, 0.7059, 0.9804);
+			scene.stroke(&stroke, Affine::IDENTITY, line_stroke_color, None, &line);
+		}
+
 		let mut scene = Scene::new();
 		let mut child = Scene::new();
-		data.render_to_vello(&mut child, glam::DAffine2::IDENTITY);
+		// add_shapes_to_scene(&mut child);
+		data.render_to_vello(&mut child, footprint.transform);
 		// TODO: Instead of applying the transform here, pass the transform during the translation to avoid the O(Nr cost
-		scene.append(&child, Some(kurbo::Affine::new(footprint.transform.to_cols_array())));
+		// scene.append(&child, Some(kurbo::Affine::new(footprint.transform.to_cols_array())));
 
-		exec.render_vello_scene(&scene, &surface_handle, footprint.resolution.x, footprint.resolution.y)
+		exec.render_vello_scene(&child, &surface_handle, footprint.resolution.x, footprint.resolution.y)
 			.await
 			.expect("Failed to render Vello scene");
 
