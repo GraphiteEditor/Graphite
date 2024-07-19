@@ -348,7 +348,7 @@ impl SelectToolData {
 			let layer = LayerNodeIdentifier::new_unchecked(layer_id);
 			new_dragging.push(layer);
 			responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
-			responses.add(GraphOperationMessage::MoveLayerToStack {
+			responses.add(NodeGraphMessage::MoveLayerToStack {
 				layer,
 				parent,
 				insert_index,

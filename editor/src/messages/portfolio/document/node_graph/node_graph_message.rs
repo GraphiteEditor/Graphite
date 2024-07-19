@@ -41,9 +41,6 @@ pub enum NodeGraphMessage {
 
 	EnterNestedNetwork,
 	DuplicateSelectedNodes,
-	ExitNestedNetwork {
-		steps_back: usize,
-	},
 	ExposeInput {
 		node_id: NodeId,
 		input_index: usize,
@@ -69,6 +66,7 @@ pub enum NodeGraphMessage {
 		layer: LayerNodeIdentifier,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
+		skip_rerender: bool,
 	},
 	PasteNodes {
 		serialized_nodes: String,
@@ -99,7 +97,7 @@ pub enum NodeGraphMessage {
 	},
 	SendClickTargets,
 	EndSendClickTargets,
-	TrySendGraph,
+	SendGraph,
 	SetInputValue {
 		node_id: NodeId,
 		input_index: usize,
@@ -161,4 +159,5 @@ pub enum NodeGraphMessage {
 		node_graph_errors: GraphErrors,
 	},
 	UpdateActionButtons,
+	SendSelectedNodes,
 }

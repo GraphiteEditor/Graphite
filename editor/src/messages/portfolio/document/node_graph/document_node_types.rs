@@ -326,8 +326,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						.into_iter()
 						.enumerate()
 						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect::<std::collections::HashMap<_, _>>() // Why can't type be inferred
-						.into(),
+						.collect(),
 						..Default::default()
 					}),
 					inputs: vec![

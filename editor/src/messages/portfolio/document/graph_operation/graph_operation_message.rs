@@ -22,12 +22,6 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		fill: Fill,
 	},
-	MoveLayerToStack {
-		layer: LayerNodeIdentifier,
-		parent: LayerNodeIdentifier,
-		insert_index: usize,
-		skip_rerender: bool,
-	},
 	OpacitySet {
 		layer: LayerNodeIdentifier,
 		opacity: f64,

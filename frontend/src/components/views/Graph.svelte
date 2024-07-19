@@ -300,7 +300,6 @@
 		if (output.connectedTo.length === 0) {
 			return "Connected to nothing";
 		} else {
-			console.log(output.connectedTo);
 			return "";
 			//return output.connectedTo.map((input_connector) => `Connected to ${nodeId}, port index ${output.connectedIndex[index]}`).join("\n");
 		}
@@ -392,6 +391,7 @@
 				{#each $nodeGraph.clickTargets.visibilityClickTargets as pathString}
 					<path class="visibility" d={pathString} />
 				{/each}
+				<path class="allNodesBoundingBox" d={$nodeGraph.clickTargets.allNodesBoundingBox} />
 			</svg>
 		</div>
 	{/if}
@@ -811,6 +811,9 @@
 				}
 				.visibility {
 					stroke: red;
+				}
+				.allNodesBoundingBox {
+					stroke: purple;
 				}
 			}
 		}

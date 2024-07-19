@@ -176,4 +176,6 @@ pub struct FrontEndClickTargets {
 	pub port_click_targets: Vec<String>,
 	#[serde(rename = "visibilityClickTargets")]
 	pub visibility_click_targets: Vec<String>,
+	#[serde(rename = "allNodesBoundingBox")]
+	pub all_nodes_bounding_box: String,
 }

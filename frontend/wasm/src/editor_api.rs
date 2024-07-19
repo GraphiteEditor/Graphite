@@ -571,13 +571,6 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Go back a certain number of nested levels
-	#[wasm_bindgen(js_name = exitNestedNetwork)]
-	pub fn exit_nested_network(&self, steps_back: usize) {
-		let message = NodeGraphMessage::ExitNestedNetwork { steps_back };
-		self.dispatch(message);
-	}
-
 	/// Pastes an image
 	#[wasm_bindgen(js_name = pasteImage)]
 	pub fn paste_image(&self, image_data: Vec<u8>, width: u32, height: u32, mouse_x: Option<f64>, mouse_y: Option<f64>) {

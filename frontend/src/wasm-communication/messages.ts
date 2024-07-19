@@ -132,6 +132,7 @@ export type ClickTargets = {
 	readonly layerClickTargets: string[];
 	readonly portClickTargets: string[];
 	readonly visibilityClickTargets: string[];
+	readonly allNodesBoundingBox: string[];
 };
 
 export type ContextMenuInformation = {
@@ -777,6 +778,8 @@ export class LayerPanelEntry {
 	parentsUnlocked!: boolean;
 
 	parentId!: bigint | undefined;
+
+	selected!: boolean;
 }
 
 export class DisplayDialogDismiss extends JsMessage {}

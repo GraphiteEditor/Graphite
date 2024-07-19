@@ -49,7 +49,6 @@ export function createNodeGraphState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateClickTargets, (UpdateClickTargets) => {
 		update((state) => {
 			state.clickTargets = UpdateClickTargets.clickTargets;
-			console.log("Frontend Click Targets: ", state.clickTargets);
 			return state;
 		});
 	});

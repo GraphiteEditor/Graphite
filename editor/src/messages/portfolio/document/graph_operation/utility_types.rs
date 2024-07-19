@@ -118,14 +118,14 @@ impl<'a> ModifyInputsContext<'a> {
 
 	/// Creates a new layer and adds it to the document network. network_interface.move_layer_to_stack should be called after
 	pub fn create_layer(&mut self, new_id: NodeId, parent: LayerNodeIdentifier) -> LayerNodeIdentifier {
-		let mut new_merge_node = resolve_document_node_type("Merge").expect("Merge node").default_node_template();
-		self.network_interface.insert_node(new_id, &[],new_merge_node);
+		let new_merge_node = resolve_document_node_type("Merge").expect("Merge node").default_node_template();
+		self.network_interface.insert_node(new_id, &[], new_merge_node);
 		LayerNodeIdentifier::new(new_id, &self.network_interface)
 	}
 
 	/// Creates an artboard as the primary export for the document network
 	pub fn create_artboard(&mut self, new_id: NodeId, artboard: Artboard) {
-		let mut artboard_node_template = resolve_document_node_type("Artboard").expect("Node").node_template_input_override([
+		let artboard_node_template = resolve_document_node_type("Artboard").expect("Node").node_template_input_override([
 			Some(NodeInput::value(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroup::EMPTY), true)),
 			Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_core::GraphicGroup::EMPTY), true)),
 			Some(NodeInput::value(TaggedValue::IVec2(artboard.location), false)),

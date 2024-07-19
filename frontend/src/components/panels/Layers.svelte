@@ -375,7 +375,7 @@
 				<LayoutRow
 					class="layer"
 					classes={{
-						selected: fakeHighlight !== undefined ? fakeHighlight === listing.entry.id : $nodeGraph.selected.includes(listing.entry.id),
+						selected: fakeHighlight !== undefined ? fakeHighlight === listing.entry.id : listing.entry.selected,
 						"insert-folder": (draggingData?.highlightFolder || false) && draggingData?.insertParentId === listing.entry.id,
 					}}
 					styles={{ "--layer-indent-levels": `${listing.entry.depth - 1}` }}

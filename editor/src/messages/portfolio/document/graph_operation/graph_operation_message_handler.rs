@@ -2,7 +2,7 @@ use super::transform_utils;
 use super::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
-use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers};
+use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 use crate::messages::prelude::*;
 
 use graph_craft::document::{generate_uuid, NodeId, NodeInput};
@@ -34,17 +34,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 		} = data;
 
 		match message {
-			GraphOperationMessage::MoveLayerToStack {
-				layer,
-				parent,
-				insert_index,
-				skip_rerender,
-			} => {
-				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
-				if !skip_rerender {
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-				}
-			}
 			GraphOperationMessage::FillSet { layer, fill } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.fill_set(fill);
@@ -132,7 +121,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(id, parent);
 
-				if nodes.len() > 0 {
+				if !nodes.is_empty() {
 					// Add the nodes to the network
 					let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
 					// Since all the new nodes are already connected, just connect the input of the layer to first new node
@@ -145,7 +134,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					});
 				}
 				// Move the layer and all nodes to the correct position in the network
-				responses.add(GraphOperationMessage::MoveLayerToStack {
+				responses.add(NodeGraphMessage::MoveLayerToStack {
 					layer,
 					parent,
 					insert_index,
