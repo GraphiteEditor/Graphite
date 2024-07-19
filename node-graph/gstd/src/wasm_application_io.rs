@@ -206,7 +206,7 @@ async fn render_node<'a: 'input, T: 'input + GraphicElementRendered + WasmNotSen
 	render_config: RenderConfig,
 	editor_api: &'a WasmEditorApi,
 	data: impl Node<Footprint, Output = T>,
-	surface_handle: impl Node<Footprint, Output = wgpu_executor::WgpuSurface>,
+	surface_handle: impl Node<Footprint, Output = Option<wgpu_executor::WgpuSurface>>,
 ) -> RenderOutput {
 	let footprint = render_config.viewport;
 
@@ -222,9 +222,9 @@ async fn render_node<'a: 'input, T: 'input + GraphicElementRendered + WasmNotSen
 	match output_format {
 		ExportFormat::Svg => render_svg(data, SvgRender::new(), render_params, footprint),
 		ExportFormat::Canvas => {
-			if use_vello && editor_api.application_io.as_ref().unwrap().gpu_executor().is_some() {
+			if use_vello && editor_api.application_io.as_ref().unwrap().gpu_executor().is_some() && surface_handle.is_some() {
 				#[cfg(all(feature = "vello", target_arch = "wasm32"))]
-				return render_canvas(render_config, data, editor_api, surface_handle).await;
+				return render_canvas(render_config, data, editor_api, surface_handle.unwrap()).await;
 				#[cfg(not(all(feature = "vello", target_arch = "wasm32")))]
 				render_svg(data, SvgRender::new(), render_params, footprint)
 			} else {

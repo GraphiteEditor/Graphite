@@ -938,10 +938,10 @@ pub struct CreateGpuSurfaceNode<EditorApi> {
 pub type WindowHandle = Arc<SurfaceHandle<Window>>;
 
 #[node_macro::node_fn(CreateGpuSurfaceNode)]
-async fn create_gpu_surface<'a: 'input, Io: ApplicationIo<Executor = WgpuExecutor, Surface = Window> + 'a + Send + Sync>(footprint: Footprint, editor_api: &'a EditorApi<Io>) -> WgpuSurface {
-	let canvas = editor_api.application_io.as_ref().unwrap().create_surface();
-	let executor = editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap();
-	Arc::new(executor.create_surface(canvas, Some(footprint.resolution)).unwrap())
+async fn create_gpu_surface<'a: 'input, Io: ApplicationIo<Executor = WgpuExecutor, Surface = Window> + 'a + Send + Sync>(footprint: Footprint, editor_api: &'a EditorApi<Io>) -> Option<WgpuSurface> {
+	let canvas = editor_api.application_io.as_ref()?.create_surface();
+	let executor = editor_api.application_io.as_ref()?.gpu_executor()?;
+	Some(Arc::new(executor.create_surface(canvas, Some(footprint.resolution)).ok()?))
 }
 
 pub struct RenderTextureNode<Image, Surface, EditorApi> {
@@ -957,7 +957,8 @@ pub struct ShaderInputFrame {
 }
 
 #[node_macro::node_fn(RenderTextureNode)]
-async fn render_texture_node<'a: 'input>(footprint: Footprint, image: impl Node<Footprint, Output = ShaderInputFrame>, surface: WgpuSurface, executor: &'a WgpuExecutor) -> SurfaceFrame {
+async fn render_texture_node<'a: 'input>(footprint: Footprint, image: impl Node<Footprint, Output = ShaderInputFrame>, surface: Option<WgpuSurface>, executor: &'a WgpuExecutor) -> SurfaceFrame {
+	let surface = surface.unwrap();
 	let surface_id = surface.surface_id;
 	let image = self.image.eval(footprint).await;
 	let transform = image.transform;
