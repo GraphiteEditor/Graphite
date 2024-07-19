@@ -1,13 +1,18 @@
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::fs::{read_dir, File};
-use std::io::{Cursor, Read};
-use std::path::Path;
+use std::io::{BufWriter, Cursor, Read};
+use std::path::{Path, PathBuf};
 
 use raw_rs::RawImage;
 
 use downloader::{Download, Downloader};
+use image::{
+	codecs::png::{CompressionType, FilterType, PngEncoder},
+	ColorType, ImageEncoder,
+};
 use libraw::Processor;
+use palette::{LinSrgb, Srgb};
 
 const TEST_FILES: [&str; 3] = ["ILCE-7M3-ARW2.3.5-blossoms.arw", "ILCE-7RM4-ARW2.3.5-kestrel.arw", "ILCE-6000-ARW2.3.1-windsock.arw"];
 const BASE_URL: &str = "https://static.graphite.rs/test-data/libraries/raw-rs/";
@@ -47,11 +52,47 @@ fn test_images_match_with_libraw() {
 			// };
 
 			println!("Passed");
+
+			// TODO: Remove this later
+			let mut image = raw_rs::process_8bit(raw_image);
+			store_image(&path, "raw_rs", &mut image.data, image.width, image.height);
+
+			let processor = Processor::new();
+			let libraw_image = processor.process_8bit(&content).unwrap();
+			let mut data = Vec::from_iter(libraw_image.iter().copied());
+			store_image(&path, "libraw_rs", &mut data[..], libraw_image.width() as usize, libraw_image.height() as usize);
 		});
 
 	if failed_tests != 0 {
 		panic!("{} images have failed the tests", failed_tests);
 	}
+}
+
+fn store_image(path: &Path, suffix: &str, data: &mut [u8], width: usize, height: usize) {
+	if suffix == "raw_rs" {
+		for pixel in data.chunks_mut(3) {
+			let lin_srgb: LinSrgb<f64> = LinSrgb::new(pixel[0], pixel[1], pixel[2]).into_format();
+			let output: Srgb<u8> = Srgb::from_linear(lin_srgb);
+			pixel[0] = output.red;
+			pixel[1] = output.green;
+			pixel[2] = output.blue;
+		}
+	}
+
+	let mut output_path = PathBuf::new();
+	if let Some(parent) = path.parent() {
+		output_path.push(parent);
+	}
+	output_path.push("output");
+	if let Some(filename) = path.file_name() {
+		let new_filename = format!("{}_{}.{}", filename.to_string_lossy(), suffix, "png");
+		output_path.push(new_filename);
+	}
+	output_path.set_extension("png");
+
+	let file = BufWriter::new(File::create(output_path).unwrap());
+	let png_encoder = PngEncoder::new_with_quality(file, CompressionType::Best, FilterType::Adaptive);
+	png_encoder.write_image(data, width as u32, height as u32, ColorType::Rgb8).unwrap();
 }
 
 fn download_images() {

@@ -31,6 +31,8 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 	let image_width: usize = ifd.image_width.try_into().unwrap();
 	let image_height: usize = ifd.image_height.try_into().unwrap();
 	let bits_per_sample: usize = ifd.bits_per_sample.into();
+	assert!(bits_per_sample == 12);
+
 	let [cfa_pattern_width, cfa_pattern_height] = ifd.cfa_pattern_dim;
 	assert!(cfa_pattern_width == 2 && cfa_pattern_height == 2);
 
@@ -40,16 +42,14 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 	// Converting the bps from 12 to 14 so that ARW 2.3.1 and 2.3.5 have the same 14 bps.
 	image.iter_mut().for_each(|x| *x <<= 2);
 
-	image[0] = 0;
-
 	RawImage {
 		data: image,
 		width: image_width,
 		height: image_height,
-		cfa_pattern: cfa_pattern.try_into().unwrap(),
+		cfa_pattern: ifd.cfa_pattern.try_into().unwrap(),
 		maximum: (1 << 14) - 1,
-		black: SubtractBlack::None,
-		cam_to_xyz: None,
+		black: SubtractBlack::CfaGrid([512, 512, 512, 512]), // TODD: Find the correct way to do this
+		camera_to_xyz: None,
 	}
 }
 
