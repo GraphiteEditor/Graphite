@@ -634,7 +634,21 @@ impl GraphicElementRendered for ImageFrame<Color> {
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2) {
-		todo!()
+		use vello::peniko::Extend;
+		let image = &self.image;
+		if image.data.is_empty() {
+			return;
+		}
+		let (data, _, _) = image.to_flat_u8();
+		let image = vello::peniko::Image {
+			data: data.into(),
+			width: image.width as u32,
+			height: image.height as u32,
+			format: peniko::Format::Rgba8,
+			extend: Extend::Repeat,
+		};
+		let transform = transform * self.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
+		scene.draw_image(&image, vello::kurbo::Affine::new(transform.to_cols_array()));
 	}
 }
 
