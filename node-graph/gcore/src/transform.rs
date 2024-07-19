@@ -1,5 +1,3 @@
-use core::future::Future;
-
 use dyn_any::StaticType;
 use glam::DAffine2;
 
@@ -27,6 +25,12 @@ pub trait Transform {
 	}
 }
 
+impl<T: Transform> Transform for &T {
+	fn transform(&self) -> DAffine2 {
+		(*self).transform()
+	}
+}
+
 pub trait TransformMut: Transform {
 	fn transform_mut(&mut self) -> &mut DAffine2;
 	fn translate(&mut self, offset: DVec2) {
@@ -42,25 +46,12 @@ impl<P: Pixel> Transform for ImageFrame<P> {
 		self.local_pivot(pivot)
 	}
 }
-impl<P: Pixel> Transform for &ImageFrame<P> {
-	fn transform(&self) -> DAffine2 {
-		self.transform
-	}
-	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
-		(*self).local_pivot(pivot)
-	}
-}
 impl<P: Pixel> TransformMut for ImageFrame<P> {
 	fn transform_mut(&mut self) -> &mut DAffine2 {
 		&mut self.transform
 	}
 }
 impl Transform for GraphicGroup {
-	fn transform(&self) -> DAffine2 {
-		self.transform
-	}
-}
-impl Transform for &GraphicGroup {
 	fn transform(&self) -> DAffine2 {
 		self.transform
 	}
@@ -75,27 +66,16 @@ impl Transform for GraphicElement {
 		match self {
 			GraphicElement::VectorData(vector_shape) => vector_shape.transform(),
 			GraphicElement::ImageFrame(image_frame) => image_frame.transform(),
-			GraphicElement::Text(_) => todo!("Transform of text"),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.transform(),
-			GraphicElement::Artboard(artboard) => artboard.transform(),
+			GraphicElement::Surface(surface) => surface.transform(),
 		}
 	}
 	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
 		match self {
 			GraphicElement::VectorData(vector_shape) => vector_shape.local_pivot(pivot),
 			GraphicElement::ImageFrame(image_frame) => image_frame.local_pivot(pivot),
-			GraphicElement::Text(_) => todo!("Transform of text"),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.local_pivot(pivot),
-			GraphicElement::Artboard(artboard) => artboard.local_pivot(pivot),
-		}
-	}
-	fn decompose_scale(&self) -> DVec2 {
-		match self {
-			GraphicElement::VectorData(vector_shape) => vector_shape.decompose_scale(),
-			GraphicElement::ImageFrame(image_frame) => image_frame.decompose_scale(),
-			GraphicElement::Text(_) => todo!("Transform of text"),
-			GraphicElement::GraphicGroup(graphic_group) => graphic_group.decompose_scale(),
-			GraphicElement::Artboard(artboard) => artboard.decompose_scale(),
+			GraphicElement::Surface(surface) => surface.local_pivot(pivot),
 		}
 	}
 }
@@ -104,9 +84,8 @@ impl TransformMut for GraphicElement {
 		match self {
 			GraphicElement::VectorData(vector_shape) => vector_shape.transform_mut(),
 			GraphicElement::ImageFrame(image_frame) => image_frame.transform_mut(),
-			GraphicElement::Text(_) => todo!("Transform of text"),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.transform_mut(),
-			GraphicElement::Artboard(_) => todo!("Transform of artboard"),
+			GraphicElement::Surface(surface) => surface.transform_mut(),
 		}
 	}
 }
@@ -145,16 +124,6 @@ impl TransformMut for DAffine2 {
 	}
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct TransformNode<TransformTarget, Translation, Rotation, Scale, Shear, Pivot> {
-	pub(crate) transform_target: TransformTarget,
-	pub(crate) translate: Translation,
-	pub(crate) rotate: Rotation,
-	pub(crate) scale: Scale,
-	pub(crate) shear: Shear,
-	pub(crate) pivot: Pivot,
-}
-
 #[derive(Debug, Clone, Copy, dyn_any::DynAny, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum RenderQuality {
@@ -165,7 +134,7 @@ pub enum RenderQuality {
 	Scale(f32),
 	/// Flip a coin to decide if the render should be available with the current quality or done at full quality
 	/// This should be used to gradually update the render quality of a cached node
-	Probabilty(f32),
+	Probability(f32),
 	/// Render at full quality
 	Full,
 }
@@ -241,31 +210,33 @@ impl TransformMut for Footprint {
 	}
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct TransformNode<TransformTarget, Translation, Rotation, Scale, Shear, Pivot> {
+	pub(crate) transform_target: TransformTarget,
+	pub(crate) translate: Translation,
+	pub(crate) rotate: Rotation,
+	pub(crate) scale: Scale,
+	pub(crate) shear: Shear,
+	pub(crate) _pivot: Pivot,
+}
+
 #[node_macro::node_fn(TransformNode)]
-pub(crate) async fn transform_vector_data<Fut: Future>(
+pub(crate) async fn transform_vector_data<T: TransformMut>(
 	mut footprint: Footprint,
-	transform_target: impl Node<Footprint, Output = Fut>,
+	transform_target: impl Node<Footprint, Output = T>,
 	translate: DVec2,
 	rotate: f64,
 	scale: DVec2,
 	shear: DVec2,
-	pivot: DVec2,
-) -> Fut::Output
-where
-	Fut::Output: TransformMut,
-{
-	// TODO: This is hack and might break for Vector data because the pivot may be incorrect
-	let transform = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
+	_pivot: DVec2,
+) -> T {
+	let modification = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
 	if !footprint.ignore_modifications {
-		let pivot_transform = DAffine2::from_translation(pivot);
-		let modification = pivot_transform * transform * pivot_transform.inverse();
 		*footprint.transform_mut() = footprint.transform() * modification;
 	}
 
 	let mut data = self.transform_target.eval(footprint).await;
-	let pivot_transform = DAffine2::from_translation(data.local_pivot(pivot));
 
-	let modification = pivot_transform * transform * pivot_transform.inverse();
 	let data_transform = data.transform_mut();
 	*data_transform = modification * (*data_transform);
 

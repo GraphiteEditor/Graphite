@@ -7,57 +7,81 @@ page_template = "book.html"
 order = 1 # Chapter number
 +++
 
-Graphite is built with Rust and web technologies. Install the latest LTS version of [Node.js](https://nodejs.org/) and stable release of [Rust](https://www.rust-lang.org/), as well as [Git](https://git-scm.com/).
+To begin working with the Graphite codebase, you will need to set up the project to build and run on your local machine. Development usually involves running the dev server which watches for changes to frontend (web) and backend (Rust) code and automatically recompiles and reloads the Graphite editor in your browser.
 
-## Installing
+## Dependencies
 
-Clone the project:
+Graphite is built with Rust and web technologies, which means you will need to install:
+- [Node.js](https://nodejs.org/) (the latest LTS version)
+- [Rust](https://www.rust-lang.org/) (the latest stable release)
+- [Git](https://git-scm.com/) (any recent version)
 
-```sh
-git clone https://github.com/GraphiteEditor/Graphite.git
-```
-
-On Debian-based (Ubuntu, Mint, etc.) Linux distributions, you may need to install the following packages:
-
-```sh
-sudo apt install libgtk-3-dev libsoup2.4-dev libjavascriptcoregtk-4.0-dev libwebkit2gtk-4.0-dev
-```
-
-On Fedora-based (RHEL, CentOS, etc.) Linux distributions, you may need to install the following packages:
-
-```sh
-sudo dnf install libsoup-devel gtk3-devel javascriptcoregtk4.0-devel webkit2gtk4.0-devel
-```
-
-Then install the required Node.js packages:
-
-```sh
-cd frontend
-npm install
-```
-
-You only need to explicitly install Node.js dependencies. Rust's cargo dependencies will be installed automatically on your first build. One dependency in the build chain, `wasm-pack`, will be installed automatically on your system when the Node.js packages are installing. (If you prefer to install this manually, get it from the [wasm-pack website](https://rustwasm.github.io/wasm-pack/), then install your npm dependencies with `npm install --omit=optional` instead.)
-
-One tool in the Rust ecosystem does need to be installed:
+Next, install the dependencies required for development builds:
 
 ```sh
 cargo install cargo-watch
+cargo install wasm-pack
 ```
 
-That's it! Now, to run the project while developing, just execute:
+You'll likely get faster build times if you manually install this specific version of `wasm-bindgen-cli`. It is supposed to be installed automatically but a version mismatch causes it to reinstall every single recompilation. It may need to be manually updated periodically to match the version of the `wasm-bindgen` dependency in [`Cargo.toml`](https://github.com/GraphiteEditor/Graphite/blob/master/Cargo.toml):
+
+```sh
+cargo install -f wasm-bindgen-cli@0.2.92
+```
+
+<!-- THESE INSTRUCTIONS ARE HIDDEN UNTIL WE NEED THEM AGAIN FOR TAURI DEVELOPMENT ONCE THAT HAS BEEN MERGED INTO MASTER -->
+<!--
+On Linux, you may need to install this set of additional packages if you run into issues:
+
+<details>
+<summary>Click to view</summary>
+
+```sh
+# On Debian-based (Ubuntu, Mint, etc.) distributions:
+sudo apt install libgtk-3-dev libsoup2.4-dev libjavascriptcoregtk-4.0-dev libwebkit2gtk-4.0-dev
+
+# On Fedora-based (RHEL, CentOS, etc.) distributions:
+sudo dnf install gtk3-devel libsoup-devel javascriptcoregtk4.0-devel webkit2gtk4.0-devel
+
+# On NixOS or when using the Nix package manager:
+nix-shell
+```
+
+</details>
+-->
+
+## Repository
+
+Clone the project to a convenient location:
+
+```sh
+git clone https://github.com/GraphiteEditor/Graphite.git
+cd Graphite
+```
+
+## Development builds
+
+From either the `/` (root) or `/frontend` directories, you can run the project by executing:
 
 ```sh
 npm start
 ```
 
-This spins up the dev server at <http://localhost:8080> with a file watcher that performs hot reloading of the web page. You should be able to start the server, edit and save web and Rust code, and rarely have to kill the server (by hitting <kbd>Ctrl</kbd><kbd>C</kbd> twice). You sometimes may need to reload the browser's web page if the hot reloading didn't behave perfectly. This method compiles Graphite code in debug mode which includes debug symbols for viewing function names in stack traces. But be aware, it runs slower and takes more memory.
+This spins up the dev server at <http://localhost:8080> with a file watcher that performs hot reloading of the web page. You should be able to start the server, edit and save web and Rust code, and shut it down by double pressing <kbd>Ctrl</kbd><kbd>C</kbd>. You sometimes may need to reload the browser's page if hot reloading didn't behave right.
+
+This method compiles Graphite code in debug mode which includes debug symbols for viewing function names in stack traces. But be aware, it runs slower and the Wasm binary is much larger. Having your browser's developer tools open will also significantly impact performance in both debug and release builds, so it's best to close that when not in use.
 
 ## Production builds
 
-You'll rarely ever need to do this, but to compile a production build with full optimizations:
+You'll rarely need to compile your own production builds because our CI/CD system takes care of deployments. However, you can compile a production build with full optimizations by first installing the additional `cargo-about` dev dependency:
 
 ```sh
 cargo install cargo-about
+```
+
+And then running:
+
+```sh
 npm run build
 ```
 

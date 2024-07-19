@@ -32,10 +32,8 @@
 		"editor.formatOnSave": false
 	},
 	// Rust Analyzer config
-	"rust-analyzer.cargo.target": "wasm32-unknown-unknown",
+	"rust-analyzer.cargo.allTargets": false,
 	"rust-analyzer.check.command": "clippy",
-	"rust-analyzer.cargo.buildScripts.overrideCommand": ["cargo", "check", "--quiet", "--message-format=json", "--all-targets", "-p", "graphite-wasm"], // Build scripts for Tauri aren't compatible with wasm32-unknown-unknown, so this restricts it to just our code entry point
-	"rust-analyzer.diagnostics.disabled": ["unresolved-macro-call"], // Remove when https://github.com/rust-lang/rust-analyzer/issues/6835 is fixed
 	// ESLint config
 	"eslint.format.enable": true,
 	"eslint.workingDirectories": ["./frontend", "./website/other/bezier-rs-demos", "./website"],

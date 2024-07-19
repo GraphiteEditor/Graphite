@@ -1,7 +1,7 @@
 use crate::node_registry;
 
 use dyn_any::StaticType;
-use graph_craft::document::value::{TaggedValue, UpcastNode};
+use graph_craft::document::value::{TaggedValue, UpcastAsRefNode, UpcastNode};
 use graph_craft::document::{NodeId, Source};
 use graph_craft::graphene_compiler::Executor;
 use graph_craft::proto::{ConstructionArgs, GraphError, LocalFuture, NodeContainer, ProtoNetwork, ProtoNode, SharedNodeContainer, TypeErasedBox, TypingContext};
@@ -102,7 +102,7 @@ impl DynamicExecutor {
 	}
 }
 
-impl<'a, I: StaticType + 'a> Executor<I, TaggedValue> for &'a DynamicExecutor {
+impl<'a, I: StaticType + 'static + Send + Sync> Executor<I, TaggedValue> for &'a DynamicExecutor {
 	fn execute(&self, input: I) -> LocalFuture<Result<TaggedValue, Box<dyn Error>>> {
 		Box::pin(async move { self.tree.eval_tagged_value(self.output, input).await.map_err(|e| e.into()) })
 	}
@@ -169,14 +169,14 @@ impl BorrowTree {
 	}
 
 	/// Evaluate the output node of the [`BorrowTree`].
-	pub async fn eval<'i, I: StaticType + 'i, O: StaticType + 'i>(&'i self, id: NodeId, input: I) -> Option<O> {
+	pub async fn eval<'i, I: StaticType + 'i + Send + Sync, O: StaticType + 'i>(&'i self, id: NodeId, input: I) -> Option<O> {
 		let node = self.nodes.get(&id).cloned()?;
 		let output = node.eval(Box::new(input));
 		dyn_any::downcast::<O>(output.await).ok().map(|o| *o)
 	}
 	/// Evaluate the output node of the [`BorrowTree`] and cast it to a tagged value.
 	/// This ensures that no borrowed data can escape the node graph.
-	pub async fn eval_tagged_value<'i, I: StaticType + 'i>(&'i self, id: NodeId, input: I) -> Result<TaggedValue, String> {
+	pub async fn eval_tagged_value<I: StaticType + 'static + Send + Sync>(&self, id: NodeId, input: I) -> Result<TaggedValue, String> {
 		let node = self.nodes.get(&id).cloned().ok_or("Output node not found in executor")?;
 		let output = node.eval(Box::new(input));
 		TaggedValue::try_from_any(output.await)
@@ -207,9 +207,15 @@ impl BorrowTree {
 
 		match &proto_node.construction_args {
 			ConstructionArgs::Value(value) => {
-				let upcasted = UpcastNode::new(value.to_owned());
-				let node = Box::new(upcasted) as TypeErasedBox<'_>;
-				let node: std::rc::Rc<NodeContainer> = NodeContainer::new(node);
+				let node = if let TaggedValue::EditorApi(api) = value {
+					let editor_api = UpcastAsRefNode::new(api.clone());
+					let node = Box::new(editor_api) as TypeErasedBox<'_>;
+					NodeContainer::new(node)
+				} else {
+					let upcasted = UpcastNode::new(value.to_owned());
+					let node = Box::new(upcasted) as TypeErasedBox<'_>;
+					NodeContainer::new(node)
+				};
 				self.store_node(node, id);
 			}
 			ConstructionArgs::Inline(_) => unimplemented!("Inline nodes are not supported yet"),

@@ -1,10 +1,9 @@
 use super::utility_types::OverlayContext;
 use crate::consts::HIDE_HANDLE_DISTANCE;
-use crate::messages::tool::common_functionality::graph_modification_utils::{get_manipulator_groups, get_subpaths};
 use crate::messages::tool::common_functionality::shape_editor::{SelectedLayerState, ShapeState};
 use crate::messages::tool::tool_messages::tool_prelude::DocumentMessageHandler;
 
-use graphene_core::vector::{ManipulatorPointId, SelectedType};
+use graphene_core::vector::ManipulatorPointId;
 
 use glam::DVec2;
 use wasm_bindgen::JsCast;
@@ -26,54 +25,55 @@ pub fn overlay_canvas_context() -> web_sys::CanvasRenderingContext2d {
 
 pub fn path_overlays(document: &DocumentMessageHandler, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext) {
 	for layer in document.selected_nodes.selected_layers(document.metadata()) {
-		let Some(subpaths) = get_subpaths(layer, &document.network) else { continue };
+		let Some(vector_data) = document.metadata.compute_modified_vector(layer, &document.network) else {
+			continue;
+		};
 		let transform = document.metadata().transform_to_viewport(layer);
 		let selected = shape_editor.selected_shape_state.get(&layer);
 		let is_selected = |selected: Option<&SelectedLayerState>, point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_selected(point));
-		overlay_context.outline(subpaths.iter(), transform);
+		overlay_context.outline_vector(&vector_data, transform);
 
-		for manipulator_group in get_manipulator_groups(subpaths) {
-			let anchor = manipulator_group.anchor;
-			let anchor_position = transform.transform_point2(anchor);
-
-			let not_under_anchor = |&position: &DVec2| transform.transform_point2(position).distance_squared(anchor_position) >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE;
-			if let Some(in_handle) = manipulator_group.in_handle.filter(not_under_anchor) {
-				let handle_position = transform.transform_point2(in_handle);
-				overlay_context.line(handle_position, anchor_position, None, None);
-				overlay_context.manipulator_handle(handle_position, is_selected(selected, ManipulatorPointId::new(manipulator_group.id, SelectedType::InHandle)));
+		for (segment_id, bezier, _start, _end) in vector_data.segment_bezier_iter() {
+			let bezier = bezier.apply_transformation(|point| transform.transform_point2(point));
+			let not_under_anchor = |position: DVec2, anchor: DVec2| position.distance_squared(anchor) >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE;
+			match bezier.handles {
+				bezier_rs::BezierHandles::Quadratic { handle } if not_under_anchor(handle, bezier.start) && not_under_anchor(handle, bezier.end) => {
+					overlay_context.line(handle, bezier.start);
+					overlay_context.line(handle, bezier.end);
+					overlay_context.manipulator_handle(handle, is_selected(selected, ManipulatorPointId::PrimaryHandle(segment_id)));
+				}
+				bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
+					if not_under_anchor(handle_start, bezier.start) {
+						overlay_context.line(handle_start, bezier.start);
+						overlay_context.manipulator_handle(handle_start, is_selected(selected, ManipulatorPointId::PrimaryHandle(segment_id)));
+					}
+					if not_under_anchor(handle_end, bezier.end) {
+						overlay_context.line(handle_end, bezier.end);
+						overlay_context.manipulator_handle(handle_end, is_selected(selected, ManipulatorPointId::EndHandle(segment_id)));
+					}
+				}
+				_ => {}
 			}
-			if let Some(out_handle) = manipulator_group.out_handle.filter(not_under_anchor) {
-				let handle_position = transform.transform_point2(out_handle);
-				overlay_context.line(handle_position, anchor_position, None, None);
-				overlay_context.manipulator_handle(handle_position, is_selected(selected, ManipulatorPointId::new(manipulator_group.id, SelectedType::OutHandle)));
-			}
-
-			overlay_context.manipulator_anchor(anchor_position, is_selected(selected, ManipulatorPointId::new(manipulator_group.id, SelectedType::Anchor)), None);
+		}
+		for (&id, &position) in vector_data.point_domain.ids().iter().zip(vector_data.point_domain.positions()) {
+			overlay_context.manipulator_anchor(transform.transform_point2(position), is_selected(selected, ManipulatorPointId::Anchor(id)), None);
 		}
 	}
 }
 
 pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext) {
 	for layer in document.selected_nodes.selected_layers(document.metadata()) {
-		let Some(subpaths) = get_subpaths(layer, &document.network) else { continue };
+		let Some(vector_data) = document.metadata.compute_modified_vector(layer, &document.network) else {
+			continue;
+		};
 		let transform = document.metadata().transform_to_viewport(layer);
 		let selected = shape_editor.selected_shape_state.get(&layer);
 		let is_selected = |selected: Option<&SelectedLayerState>, point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_selected(point));
 
-		let mut manipulator_groups = get_manipulator_groups(subpaths);
-
-		if let Some(first_manipulator) = manipulator_groups.next() {
-			let anchor = first_manipulator.anchor;
-			let anchor_position = transform.transform_point2(anchor);
-
-			overlay_context.manipulator_anchor(anchor_position, is_selected(selected, ManipulatorPointId::new(first_manipulator.id, SelectedType::Anchor)), None);
-		};
-
-		if let Some(last_manipulator) = manipulator_groups.last() {
-			let anchor = last_manipulator.anchor;
-			let anchor_position = transform.transform_point2(anchor);
-
-			overlay_context.manipulator_anchor(anchor_position, is_selected(selected, ManipulatorPointId::new(last_manipulator.id, SelectedType::Anchor)), None);
-		};
+		for point in vector_data.single_connected_points() {
+			let Some(position) = vector_data.point_domain.position_from_id(point) else { continue };
+			let position = transform.transform_point2(position);
+			overlay_context.manipulator_anchor(position, is_selected(selected, ManipulatorPointId::Anchor(point)), None);
+		}
 	}
 }

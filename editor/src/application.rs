@@ -21,8 +21,8 @@ impl Editor {
 		std::mem::take(&mut self.dispatcher.responses)
 	}
 
-	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) {
-		self.dispatcher.poll_node_graph_evaluation(responses);
+	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) -> Result<(), String> {
+		self.dispatcher.poll_node_graph_evaluation(responses)
 	}
 }
 
@@ -87,7 +87,7 @@ mod test {
 		for message in messages {
 			block_on(crate::node_graph_executor::run_node_graph());
 			let mut res = VecDeque::new();
-			editor.poll_node_graph_evaluation(&mut res);
+			editor.poll_node_graph_evaluation(&mut res).expect("poll_node_graph_evaluation failed");
 
 			let res = editor.handle_message(message);
 			responses.push(res);

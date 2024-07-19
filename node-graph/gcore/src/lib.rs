@@ -6,6 +6,7 @@ extern crate alloc;
 #[cfg_attr(feature = "log", macro_use)]
 #[cfg(feature = "log")]
 extern crate log;
+pub use crate as graphene_core;
 
 pub mod consts;
 pub mod generic;
@@ -171,8 +172,10 @@ impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<&'i (dyn NodeIO<'i, I, Output = O> + 
 }
 
 #[cfg(feature = "alloc")]
-pub use crate::application_io::{ExtractImageFrame, SurfaceFrame, SurfaceId};
+pub use crate::application_io::{SurfaceFrame, SurfaceId};
 #[cfg(feature = "wasm")]
 pub type WasmSurfaceHandle = application_io::SurfaceHandle<web_sys::HtmlCanvasElement>;
 #[cfg(feature = "wasm")]
 pub type WasmSurfaceHandleFrame = application_io::SurfaceHandleFrame<web_sys::HtmlCanvasElement>;
+
+pub use dyn_any::{WasmNotSend, WasmNotSync};

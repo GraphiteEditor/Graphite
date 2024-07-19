@@ -6,7 +6,7 @@ mod utils;
 use wasm_bindgen::prelude::*;
 
 pub static LOGGER: WasmLog = WasmLog;
-thread_local! { pub static HAS_CRASHED: std::cell::RefCell<bool> = std::cell::RefCell::new(false); }
+thread_local! { pub static HAS_CRASHED: std::cell::RefCell<bool> = const { std::cell::RefCell::new(false) } }
 
 /// Initialize the backend
 #[wasm_bindgen(start)]
@@ -15,7 +15,7 @@ pub fn init() {
 	log::set_logger(&LOGGER).expect("Failed to set logger");
 	log::set_max_level(log::LevelFilter::Trace);
 
-	fn panic_hook(info: &core::panic::PanicInfo) {
+	fn panic_hook(info: &std::panic::PanicInfo<'_>) {
 		// Skip if we have already panicked
 		if HAS_CRASHED.with(|cell| cell.replace(true)) {
 			return;

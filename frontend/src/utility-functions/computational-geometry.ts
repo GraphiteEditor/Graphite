@@ -20,13 +20,9 @@ export function booleanDifference(path1: string, path2: string): string {
 	return booleanOperation(path1, path2, "exclude");
 }
 
-export function booleanDivide(path1: string, path2: string): string {
-	return booleanOperation(path1, path2, "intersect") + booleanOperation(path1, path2, "exclude");
-}
-
 function booleanOperation(path1: string, path2: string, operation: "unite" | "subtract" | "intersect" | "exclude"): string {
-	const paperPath1 = new paper.Path(path1);
-	const paperPath2 = new paper.Path(path2);
+	const paperPath1 = new paper.CompoundPath(path1);
+	const paperPath2 = new paper.CompoundPath(path2);
 	const result = paperPath1[operation](paperPath2);
 	paperPath1.remove();
 	paperPath2.remove();

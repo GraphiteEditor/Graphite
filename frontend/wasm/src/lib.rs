@@ -18,8 +18,8 @@ use wasm_bindgen::prelude::*;
 pub static EDITOR_HAS_CRASHED: AtomicBool = AtomicBool::new(false);
 pub static LOGGER: WasmLog = WasmLog;
 thread_local! {
-	pub static EDITOR: OnceCell<RefCell<editor::application::Editor>> = OnceCell::new();
-	pub static EDITOR_HANDLE: OnceCell<RefCell<editor_api::EditorHandle>> = OnceCell::new();
+	pub static EDITOR: OnceCell<RefCell<editor::application::Editor>> = const { OnceCell::new() };
+	pub static EDITOR_HANDLE: OnceCell<RefCell<editor_api::EditorHandle>> = const { OnceCell::new() };
 }
 
 /// Initialize the backend
@@ -48,9 +48,9 @@ pub fn panic_hook(info: &panic::PanicInfo) {
 	});
 }
 
-/// The JavaScript `Error` type
 #[wasm_bindgen]
 extern "C" {
+	/// The JavaScript `Error` type
 	#[derive(Clone, Debug)]
 	pub type Error;
 
@@ -75,11 +75,16 @@ extern "C" {
 pub struct WasmLog;
 
 impl log::Log for WasmLog {
+	#[inline]
 	fn enabled(&self, metadata: &log::Metadata) -> bool {
-		metadata.level() <= log::Level::Info
+		metadata.level() <= log::max_level()
 	}
 
 	fn log(&self, record: &log::Record) {
+		if !self.enabled(record.metadata()) {
+			return;
+		}
+
 		let (log, name, color): (fn(&str, &str), &str, &str) = match record.level() {
 			log::Level::Trace => (log, "trace", "color:plum"),
 			log::Level::Debug => (log, "debug", "color:cyan"),
@@ -87,7 +92,10 @@ impl log::Log for WasmLog {
 			log::Level::Info => (info, "info", "color:mediumseagreen"),
 			log::Level::Error => (error, "error", "color:red"),
 		};
-		let msg = &format!("%c{}\t{}", name, record.args());
+
+		let file = record.file().unwrap_or_else(|| record.target());
+		let line = record.line().map_or_else(|| "[Unknown]".to_string(), |line| line.to_string());
+		let msg = &format!("%c{} {file}:{line} \n{}%c", name, record.args());
 		log(msg, color)
 	}
 

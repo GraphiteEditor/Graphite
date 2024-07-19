@@ -1,5 +1,6 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
@@ -7,9 +8,8 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::SnapData;
 
-use graph_craft::document::NodeId;
+use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
 use graphene_core::uuid::generate_uuid;
-use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::Color;
 
 #[derive(Default)]
@@ -78,7 +78,7 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.unit(" px")
 		.label("Weight")
 		.min(0.)
-		.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
+		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 		.on_update(|number_input: &NumberInput| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
 		.widget_holder()
 }
@@ -201,10 +201,18 @@ impl Fsm for EllipseToolFsmState {
 				responses.add(DocumentMessage::StartTransaction);
 
 				// Create a new ellipse vector shape
-				let subpath = bezier_rs::Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE);
-				let manipulator_groups = subpath.manipulator_groups().to_vec();
-				let layer = graph_modification_utils::new_vector_layer(vec![subpath], NodeId(generate_uuid()), document.new_layer_parent(true), responses);
-				graph_modification_utils::set_manipulator_colinear_handles_state(&manipulator_groups, layer, true, responses);
+				let nodes = {
+					let node_type = resolve_document_node_type("Ellipse").expect("Ellipse node does not exist");
+					let node = node_type.to_document_node_default_inputs(
+						[None, Some(NodeInput::value(TaggedValue::F64(0.5), false)), Some(NodeInput::value(TaggedValue::F64(0.5), false))],
+						Default::default(),
+					);
+
+					HashMap::from([(NodeId(0), node)])
+				};
+				let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, document.new_layer_parent(true), responses);
+				tool_options.fill.apply_fill(layer, responses);
+				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
 				shape_data.layer = Some(layer);
 
 				responses.add(GraphOperationMessage::TransformSet {
@@ -214,22 +222,18 @@ impl Fsm for EllipseToolFsmState {
 					skip_rerender: false,
 				});
 
-				let fill_color = tool_options.fill.active_color();
-				responses.add(GraphOperationMessage::FillSet {
-					layer,
-					fill: if let Some(color) = fill_color { Fill::Solid(color) } else { Fill::None },
-				});
-
-				responses.add(GraphOperationMessage::StrokeSet {
-					layer,
-					stroke: Stroke::new(tool_options.stroke.active_color(), tool_options.line_weight),
-				});
-
 				EllipseToolFsmState::Drawing
 			}
 			(EllipseToolFsmState::Drawing, EllipseToolMessage::PointerMove { center, lock_ratio }) => {
-				if let Some(message) = shape_data.calculate_transform(document, input, center, lock_ratio, false) {
-					responses.add(message);
+				if let Some([start, end]) = shape_data.calculate_points(document, input, center, lock_ratio) {
+					if let Some(layer) = shape_data.layer {
+						responses.add(GraphOperationMessage::TransformSet {
+							layer,
+							transform: DAffine2::from_scale_angle_translation(end - start, 0., (start + end) / 2.),
+							transform_in: TransformIn::Viewport,
+							skip_rerender: false,
+						});
+					}
 				}
 
 				// Auto-panning

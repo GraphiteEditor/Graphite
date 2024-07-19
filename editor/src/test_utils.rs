@@ -73,8 +73,10 @@ impl EditorTestUtils for Editor {
 	}
 
 	fn move_mouse(&mut self, x: f64, y: f64) {
-		let mut editor_mouse_state = EditorMouseState::default();
-		editor_mouse_state.editor_position = ViewportPosition::new(x, y);
+		let editor_mouse_state = EditorMouseState {
+			editor_position: ViewportPosition::new(x, y),
+			..Default::default()
+		};
 		let modifier_keys = ModifierKeys::default();
 		self.input(InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys });
 	}

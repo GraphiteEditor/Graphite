@@ -1,9 +1,11 @@
 mod quad;
 
+use crate::raster::bbox::Bbox;
 use crate::raster::{BlendMode, Image, ImageFrame};
 use crate::transform::Transform;
 use crate::uuid::generate_uuid;
 use crate::vector::PointId;
+use crate::SurfaceFrame;
 use crate::{vector::VectorData, Artboard, Color, GraphicElement, GraphicGroup};
 pub use quad::Quad;
 
@@ -24,7 +26,7 @@ impl ClickTarget {
 	/// Does the click target intersect the rectangle
 	pub fn intersect_rectangle(&self, document_quad: Quad, layer_transform: DAffine2) -> bool {
 		// Check if the matrix is not invertible
-		if layer_transform.matrix2.determinant().abs() <= std::f64::EPSILON {
+		if layer_transform.matrix2.determinant().abs() <= f64::EPSILON {
 			return false;
 		}
 		let quad = layer_transform.inverse() * document_quad;
@@ -334,8 +336,14 @@ impl GraphicElementRendered for VectorData {
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let stroke_width = self.style.stroke().as_ref().map_or(0., crate::vector::style::Stroke::weight);
-		click_targets.extend(self.region_bezier_paths().map(|(_, subpath)| ClickTarget { stroke_width, subpath }));
-		click_targets.extend(self.stroke_bezier_paths().map(|subpath| ClickTarget { stroke_width, subpath }));
+		let filled = self.style.fill() != &crate::vector::style::Fill::None;
+		let fill = |mut subpath: bezier_rs::Subpath<_>| {
+			if filled {
+				subpath.set_closed(true);
+			}
+			subpath
+		};
+		click_targets.extend(self.stroke_bezier_paths().map(fill).map(|subpath| ClickTarget { stroke_width, subpath }));
 	}
 
 	fn to_usvg_node(&self) -> usvg::Node {
@@ -463,19 +471,56 @@ impl GraphicElementRendered for Artboard {
 
 impl GraphicElementRendered for crate::ArtboardGroup {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		self.get_graphic_group().render_svg(render, render_params);
+		for artboard in &self.artboards {
+			artboard.render_svg(render, render_params);
+		}
 	}
 
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.get_graphic_group().bounding_box(transform)
+		self.artboards.iter().filter_map(|element| element.bounding_box(transform)).reduce(Quad::combine_bounds)
 	}
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		self.get_graphic_group().add_click_targets(click_targets);
+		for artboard in &self.artboards {
+			artboard.add_click_targets(click_targets);
+		}
 	}
 
 	fn contains_artboard(&self) -> bool {
-		self.artboards.len() > 0
+		!self.artboards.is_empty()
+	}
+}
+
+impl GraphicElementRendered for SurfaceFrame {
+	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
+		let transform = self.transform;
+		let (width, height) = (transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
+		let matrix = (transform * DAffine2::from_scale((width, height).into()).inverse())
+			.to_cols_array()
+			.iter()
+			.enumerate()
+			.fold(String::new(), |val, (i, entry)| val + &(entry.to_string() + if i == 5 { "" } else { "," }));
+
+		let canvas = format!(
+			r#"<foreignObject width="{}" height="{}" transform="matrix({})"><div data-canvas-placeholder="canvas{}"></div></foreignObject>"#,
+			width.abs(),
+			height.abs(),
+			matrix,
+			self.surface_id
+		);
+		render.svg.push(canvas.into())
+	}
+
+	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
+		let bbox = Bbox::from_transform(transform);
+		let aabb = bbox.to_axis_aligned_bbox();
+		Some([aabb.start, aabb.end])
+	}
+
+	fn add_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
+
+	fn contains_artboard(&self) -> bool {
+		false
 	}
 }
 
@@ -548,9 +593,8 @@ impl GraphicElementRendered for GraphicElement {
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.render_svg(render, render_params),
 			GraphicElement::ImageFrame(image_frame) => image_frame.render_svg(render, render_params),
-			GraphicElement::Text(_) => todo!("Render a text GraphicElement"),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.render_svg(render, render_params),
-			GraphicElement::Artboard(artboard) => artboard.render_svg(render, render_params),
+			GraphicElement::Surface(surface) => surface.render_svg(render, render_params),
 		}
 	}
 
@@ -558,9 +602,8 @@ impl GraphicElementRendered for GraphicElement {
 		match self {
 			GraphicElement::VectorData(vector_data) => GraphicElementRendered::bounding_box(&**vector_data, transform),
 			GraphicElement::ImageFrame(image_frame) => image_frame.bounding_box(transform),
-			GraphicElement::Text(_) => todo!("Bounds of a text GraphicElement"),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.bounding_box(transform),
-			GraphicElement::Artboard(artboard) => artboard.bounding_box(transform),
+			GraphicElement::Surface(surface) => surface.bounding_box(transform),
 		}
 	}
 
@@ -568,9 +611,8 @@ impl GraphicElementRendered for GraphicElement {
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.add_click_targets(click_targets),
 			GraphicElement::ImageFrame(image_frame) => image_frame.add_click_targets(click_targets),
-			GraphicElement::Text(_) => todo!("click target for text GraphicElement"),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.add_click_targets(click_targets),
-			GraphicElement::Artboard(artboard) => artboard.add_click_targets(click_targets),
+			GraphicElement::Surface(surface) => surface.add_click_targets(click_targets),
 		}
 	}
 
@@ -578,9 +620,8 @@ impl GraphicElementRendered for GraphicElement {
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.to_usvg_node(),
 			GraphicElement::ImageFrame(image_frame) => image_frame.to_usvg_node(),
-			GraphicElement::Text(text) => text.to_usvg_node(),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.to_usvg_node(),
-			GraphicElement::Artboard(artboard) => artboard.to_usvg_node(),
+			GraphicElement::Surface(surface) => surface.to_usvg_node(),
 		}
 	}
 
@@ -588,9 +629,8 @@ impl GraphicElementRendered for GraphicElement {
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.contains_artboard(),
 			GraphicElement::ImageFrame(image_frame) => image_frame.contains_artboard(),
-			GraphicElement::Text(text) => text.contains_artboard(),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.contains_artboard(),
-			GraphicElement::Artboard(artboard) => artboard.contains_artboard(),
+			GraphicElement::Surface(surface) => surface.contains_artboard(),
 		}
 	}
 }

@@ -1,12 +1,10 @@
 #![doc(html_root_url = "http://docs.rs/const-default/1.0.0")]
-#![cfg_attr(feature = "unstable-docs", feature(doc_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(clippy::missing_safety_doc)]
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
 #[cfg(feature = "derive")]
-#[cfg_attr(feature = "unstable-docs", doc(cfg(feature = "derive")))]
 pub use dyn_any_derive::DynAny;
 
 /// Implement this trait for your `dyn Trait` types for all `T: Trait`
@@ -201,8 +199,14 @@ unsafe impl StaticType for dyn for<'i> DynAny<'_> + '_ {
 unsafe impl StaticType for dyn for<'i> DynAny<'_> + Send + Sync + '_ {
 	type Static = dyn DynAny<'static> + Send + Sync;
 }
+unsafe impl StaticType for dyn for<'i> DynAny<'_> + Send + '_ {
+	type Static = dyn DynAny<'static> + Sync;
+}
 unsafe impl<T: StaticTypeSized> StaticType for dyn core::future::Future<Output = T> + Send + Sync + '_ {
 	type Static = dyn core::future::Future<Output = T::Static> + Send + Sync;
+}
+unsafe impl<T: StaticTypeSized> StaticType for dyn core::future::Future<Output = T> + Send + '_ {
+	type Static = dyn core::future::Future<Output = T::Static> + Send;
 }
 unsafe impl<T: StaticTypeSized> StaticType for dyn core::future::Future<Output = T> + '_ {
 	type Static = dyn core::future::Future<Output = T::Static>;
@@ -334,3 +338,32 @@ fn simple_downcast_panic() {
 	let x = Box::new(3_i32) as Box<dyn DynAny>;
 	assert_eq!(*downcast::<u32>(x).expect("attempted to perform invalid downcast"), 3_u32);
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+pub trait WasmNotSend: Send {}
+#[cfg(target_arch = "wasm32")]
+pub trait WasmNotSend {}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl<T: Send> WasmNotSend for T {}
+
+#[cfg(target_arch = "wasm32")]
+impl<T> WasmNotSend for T {}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub trait WasmNotSync: Sync {}
+#[cfg(target_arch = "wasm32")]
+pub trait WasmNotSync {}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl<T: Sync> WasmNotSync for T {}
+
+#[cfg(target_arch = "wasm32")]
+impl<T> WasmNotSync for T {}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "alloc")]
+pub type DynFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n + Send>>;
+#[cfg(target_arch = "wasm32")]
+#[cfg(feature = "alloc")]
+pub type DynFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;

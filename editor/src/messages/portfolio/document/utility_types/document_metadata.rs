@@ -1,13 +1,16 @@
 use super::nodes::SelectedNodes;
+use crate::messages::tool::common_functionality::graph_modification_utils;
 
+use graph_craft::document::value::TaggedValue;
 use graph_craft::document::FlowType;
 use graph_craft::document::{NodeId, NodeNetwork};
 use graphene_core::renderer::ClickTarget;
 use graphene_core::renderer::Quad;
 use graphene_core::transform::Footprint;
+use graphene_std::vector::PointId;
+use graphene_std::vector::VectorData;
 
 use glam::{DAffine2, DVec2};
-use graphene_std::vector::PointId;
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
 
@@ -26,6 +29,7 @@ pub struct DocumentMetadata {
 	hidden: HashSet<NodeId>,
 	locked: HashSet<NodeId>,
 	click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
+	vector_modify: HashMap<NodeId, VectorData>,
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
 }
@@ -39,6 +43,7 @@ impl Default for DocumentMetadata {
 			folders: HashSet::new(),
 			hidden: HashSet::new(),
 			locked: HashSet::new(),
+			vector_modify: HashMap::new(),
 			click_targets: HashMap::new(),
 			document_to_viewport: DAffine2::IDENTITY,
 		}
@@ -60,6 +65,23 @@ impl DocumentMetadata {
 
 	pub fn click_target(&self, layer: LayerNodeIdentifier) -> Option<&Vec<ClickTarget>> {
 		self.click_targets.get(&layer)
+	}
+
+	/// Get vector data after the modification is appled
+	pub fn compute_modified_vector(&self, layer: LayerNodeIdentifier, network: &NodeNetwork) -> Option<VectorData> {
+		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network);
+
+		if let Some(vector_data) = graph_layer.upstream_node_id_from_name("Path").and_then(|node| self.vector_modify.get(&node)) {
+			let mut modified = vector_data.clone();
+			if let Some(TaggedValue::VectorModification(modification)) = graph_layer.find_input("Path", 1) {
+				modification.apply(&mut modified);
+			}
+			return Some(modified);
+		}
+		self.click_targets
+			.get(&layer)
+			.map(|click| click.iter().map(|click| &click.subpath))
+			.map(|subpaths| VectorData::from_subpaths(subpaths, true))
 	}
 
 	/// Access the [`NodeRelations`] of a layer.
@@ -155,13 +177,13 @@ impl DocumentMetadata {
 
 		// Should refer to output node
 
-		let mut awaiting_horizontal_flow = vec![(NodeId(std::u64::MAX), LayerNodeIdentifier::ROOT_PARENT)];
+		let mut awaiting_horizontal_flow = vec![(NodeId(u64::MAX), LayerNodeIdentifier::ROOT_PARENT)];
 		let mut awaiting_primary_flow = vec![];
 
 		while let Some((horizontal_root_node_id, mut parent_layer_node)) = awaiting_horizontal_flow.pop() {
 			let horizontal_flow_iter = graph.upstream_flow_back_from_nodes(vec![horizontal_root_node_id], FlowType::HorizontalFlow);
 			// Skip the horizontal_root_node_id node
-			for (current_node, current_node_id) in horizontal_flow_iter.skip(if horizontal_root_node_id == NodeId(std::u64::MAX) { 0 } else { 1 }) {
+			for (current_node, current_node_id) in horizontal_flow_iter.skip(if horizontal_root_node_id == NodeId(u64::MAX) { 0 } else { 1 }) {
 				if !current_node.visible {
 					self.hidden.insert(current_node_id);
 				}
@@ -225,6 +247,7 @@ impl DocumentMetadata {
 
 		self.upstream_transforms.retain(|node, _| graph.nodes.contains_key(node));
 		self.click_targets.retain(|layer, _| self.structure.contains_key(layer));
+		self.vector_modify.retain(|node, _| graph.nodes.contains_key(node));
 	}
 }
 
@@ -281,9 +304,10 @@ impl DocumentMetadata {
 // ===============================
 
 impl DocumentMetadata {
-	/// Update the cached click targets of the layers
-	pub fn update_click_targets(&mut self, new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>) {
+	/// Update the cached click targets and vector modify values of the layers
+	pub fn update_from_monitor(&mut self, new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>, new_vector_modify: HashMap<NodeId, VectorData>) {
 		self.click_targets = new_click_targets;
+		self.vector_modify = new_vector_modify;
 	}
 
 	/// Get the bounding box of the click target of the specified layer in the specified transform space
@@ -379,7 +403,7 @@ impl LayerNodeIdentifier {
 
 	/// Construct a [`LayerNodeIdentifier`] without checking if it is a layer node
 	pub const fn new_unchecked(node_id: NodeId) -> Self {
-		// Safety: will always be >=1
+		// # Safety: will always be >=1
 		Self(unsafe { NonZeroU64::new_unchecked(node_id.0 + 1) })
 	}
 

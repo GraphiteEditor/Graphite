@@ -1,4 +1,4 @@
-use super::transform_utils::{self, LayerBounds};
+use super::transform_utils;
 use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
@@ -10,12 +10,10 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, Previewing};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
-use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
-use graphene_core::Type;
-use graphene_core::{Artboard, Color};
-use graphene_std::vector::ManipulatorPointId;
+use graphene_core::vector::{PointId, VectorModificationType};
+use graphene_core::{Artboard, Color, Type};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 use interpreted_executor::node_registry::NODE_REGISTRY;
 
@@ -27,22 +25,6 @@ pub enum TransformIn {
 	Local,
 	Scope { scope: DAffine2 },
 	Viewport,
-}
-
-type ManipulatorGroup = bezier_rs::ManipulatorGroup<ManipulatorGroupId>;
-
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub enum VectorDataModification {
-	AddEndManipulatorGroup { subpath_index: usize, manipulator_group: ManipulatorGroup },
-	AddManipulatorGroup { manipulator_group: ManipulatorGroup, after_id: ManipulatorGroupId },
-	AddStartManipulatorGroup { subpath_index: usize, manipulator_group: ManipulatorGroup },
-	RemoveManipulatorGroup { id: ManipulatorGroupId },
-	RemoveManipulatorPoint { point: ManipulatorPointId },
-	SetClosed { index: usize, closed: bool },
-	SetManipulatorColinearHandlesState { id: ManipulatorGroupId, colinear: bool },
-	SetManipulatorPosition { point: ManipulatorPointId, position: DVec2 },
-	ToggleManipulatorColinearHandlesState { id: ManipulatorGroupId },
-	UpdateSubpaths { subpaths: Vec<Subpath<ManipulatorGroupId>> },
 }
 
 // TODO: This is helpful to prevent passing the same arguments to multiple functions, but is currently inefficient due to the collect_outwards_wires. Move it into a function and use only when needed.
@@ -93,6 +75,7 @@ impl<'a> ModifyInputsContext<'a> {
 		update_input(&mut document_node.inputs, node_id, self.document_metadata);
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub fn insert_between(
 		node_graph: &mut NodeGraphMessageHandler,
 		document_network: &mut NodeNetwork,
@@ -172,7 +155,7 @@ impl<'a> ModifyInputsContext<'a> {
 	///      ↑      if skip_layer_nodes == 1, return (Layer1, Some(Layer2), 0)
 	/// -> Layer2   input_index: 2
 	///      ↑
-	///	-> NonLayerNode
+	/// -> NonLayerNode
 	///      ↑      if skip_layer_nodes == 2, return (NonLayerNode, Some(Layer3), 0)
 	/// -> Layer3   input_index: 3
 	///             if skip_layer_nodes == 3, return (Layer3, None, 0)
@@ -207,7 +190,7 @@ impl<'a> ModifyInputsContext<'a> {
 				.expect("Post node should always exist")
 				.inputs
 				.get(post_node_input_index)
-				.and_then(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id.clone()) } else { None });
+				.and_then(|input| if let NodeInput::Node { node_id, .. } = input { Some(*node_id) } else { None });
 
 			if let Some(next_node_in_stack_id) = next_node_in_stack_id {
 				// Only increment index for layer nodes
@@ -231,7 +214,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let mut pre_node_id = post_node
 			.inputs
 			.get(post_node_input_index)
-			.and_then(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id.clone()) } else { None });
+			.and_then(|input| if let NodeInput::Node { node_id, .. } = input { Some(*node_id) } else { None });
 
 		// Skip until pre_node is either a layer or does not exist
 		while let Some(pre_node_id_value) = pre_node_id {
@@ -241,8 +224,8 @@ impl<'a> ModifyInputsContext<'a> {
 				post_node_id = pre_node_id_value;
 				pre_node_id = post_node
 					.inputs
-					.get(0)
-					.and_then(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id.clone()) } else { None });
+					.first()
+					.and_then(|input| if let NodeInput::Node { node_id, .. } = input { Some(*node_id) } else { None });
 				post_node_input_index = 0;
 			} else {
 				break;
@@ -264,7 +247,7 @@ impl<'a> ModifyInputsContext<'a> {
 				// If the current root node is the artboard, then the new layer should be a child of the artboard
 				let current_root_node = self.document_network.nodes.get(&root_node.id).expect("Root node should always exist");
 				if current_root_node.is_artboard() && current_root_node.is_layer {
-					parent = LayerNodeIdentifier::new(root_node.id, &self.document_network);
+					parent = LayerNodeIdentifier::new(root_node.id, self.document_network);
 				}
 			}
 		}
@@ -315,7 +298,7 @@ impl<'a> ModifyInputsContext<'a> {
 		ModifyInputsContext::insert_node_as_primary_export(node_graph, document_network, new_id, artboard_node)
 	}
 
-	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<ManipulatorGroupId>>, layer: NodeId) {
+	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<PointId>>, layer: NodeId) {
 		let shape = {
 			let node_type: &crate::messages::portfolio::document::node_graph::document_node_types::DocumentNodeDefinition = resolve_document_node_type("Shape").expect("Shape node does not exist");
 			node_type.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))], Default::default())
@@ -338,7 +321,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn insert_text(&mut self, text: String, font: Font, size: f64, layer: NodeId) {
 		let text = resolve_document_node_type("Text").expect("Text node does not exist").to_document_node(
 			[
-				NodeInput::network(graph_craft::concrete!(graphene_std::wasm_application_io::WasmEditorApi), 0),
+				NodeInput::scope("editor-api"),
 				NodeInput::value(TaggedValue::String(text), false),
 				NodeInput::value(TaggedValue::Font(font), false),
 				NodeInput::value(TaggedValue::F64(size), false),
@@ -376,7 +359,7 @@ impl<'a> ModifyInputsContext<'a> {
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	pub fn shift_upstream(node_graph: &mut NodeGraphMessageHandler, document_network: &mut NodeNetwork, network_path: &Vec<NodeId>, node_id: NodeId, shift: IVec2, shift_self: bool) {
+	pub fn shift_upstream(node_graph: &mut NodeGraphMessageHandler, document_network: &mut NodeNetwork, network_path: &[NodeId], node_id: NodeId, shift: IVec2, shift_self: bool) {
 		let Some(network) = document_network.nested_network(network_path) else {
 			log::error!("Could not get nested network for shift_upstream");
 			return;
@@ -401,7 +384,7 @@ impl<'a> ModifyInputsContext<'a> {
 		for node_id in shift_nodes {
 			if let Some(node) = document_network.nodes.get_mut(&node_id) {
 				node.metadata.position += shift;
-				node_graph.update_click_target(node_id, document_network, network_path.clone());
+				node_graph.update_click_target(node_id, document_network, network_path.to_owned());
 			}
 		}
 	}
@@ -409,7 +392,7 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Inserts a new node and modifies the inputs
 	pub fn modify_new_node(&mut self, name: &'static str, update_input: impl FnOnce(&mut Vec<NodeInput>, NodeId, &DocumentMetadata)) {
 		let output_node_id = self.layer_node.or_else(|| {
-			if let Some(NodeInput::Node { node_id, .. }) = self.document_network.exports.get(0) {
+			if let Some(NodeInput::Node { node_id, .. }) = self.document_network.exports.first() {
 				Some(*node_id)
 			} else {
 				log::error!("Could not modify new node with empty network");
@@ -453,25 +436,32 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 	}
 
-	/// Changes the inputs of a specific node
+	/// Find a node id as part of the layer
+	fn existing_node_id(&mut self, name: &'static str) -> Option<NodeId> {
+		// Start from the layer node or export
+		let node_ids = self
+			.layer_node
+			.map_or_else(|| self.document_network.exports.iter().filter_map(graph_craft::document::NodeInput::as_node).collect(), |id| vec![id]);
+		let upstream = self.document_network.upstream_flow_back_from_nodes(node_ids, graph_craft::document::FlowType::HorizontalFlow);
+
+		// Take until another layer node is found (but not the first layer node)
+		let is_input = |node_id: NodeId| self.layer_node == Some(node_id) || self.document_network.exports.iter().any(|export| export.as_node() == Some(node_id));
+		let mut upstream_until_layer = upstream.take_while(|&(node, id)| is_input(id) || !node.is_layer);
+
+		upstream_until_layer.find(|(node, _)| node.name == name).map(|(_, id)| id)
+	}
+
+	/// Changes the input of a specific node; skipping if it doesn't exist
+	pub fn modify_existing_inputs(&mut self, name: &'static str, update_input: impl FnOnce(&mut Vec<NodeInput>, NodeId, &DocumentMetadata)) {
+		let existing_node_id = self.existing_node_id(name);
+		if let Some(node_id) = existing_node_id {
+			self.modify_existing_node_inputs(node_id, update_input);
+		}
+	}
+
+	/// Changes the inputs of a specific node; creating it if it doesn't exist
 	pub fn modify_inputs(&mut self, name: &'static str, skip_rerender: bool, update_input: impl FnOnce(&mut Vec<NodeInput>, NodeId, &DocumentMetadata)) {
-		let existing_node_id = self
-			.document_network
-			.upstream_flow_back_from_nodes(
-				self.layer_node.map_or_else(
-					|| {
-						self.document_network
-							.exports
-							.iter()
-							.filter_map(|output| if let NodeInput::Node { node_id, .. } = output { Some(*node_id) } else { None })
-							.collect()
-					},
-					|id| vec![id],
-				),
-				graph_craft::document::FlowType::HorizontalFlow,
-			)
-			.find(|(node, _)| node.name == name)
-			.map(|(_, id)| id);
+		let existing_node_id = self.existing_node_id(name);
 		if let Some(node_id) = existing_node_id {
 			self.modify_existing_node_inputs(node_id, update_input);
 		} else {
@@ -495,7 +485,7 @@ impl<'a> ModifyInputsContext<'a> {
 						self.document_network
 							.exports
 							.iter()
-							.filter_map(|output| if let NodeInput::Node { node_id, .. } = output { Some(node_id.clone()) } else { None })
+							.filter_map(|output| if let NodeInput::Node { node_id, .. } = output { Some(*node_id) } else { None })
 							.collect()
 					},
 					|id| vec![id],
@@ -522,7 +512,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn set_input(
 		node_graph: &mut NodeGraphMessageHandler,
 		document_network: &mut NodeNetwork,
-		network_path: &Vec<NodeId>,
+		network_path: &[NodeId],
 		node_id: NodeId,
 		input_index: usize,
 		input: NodeInput,
@@ -543,7 +533,7 @@ impl<'a> ModifyInputsContext<'a> {
 			*node_input = input;
 			let currently_exposed = node_input.is_exposed();
 			if previously_exposed != currently_exposed {
-				node_graph.update_click_target(node_id, document_network, network_path.clone());
+				node_graph.update_click_target(node_id, document_network, network_path.to_owned());
 			}
 
 			// Only load network structure for changes to document_network
@@ -569,7 +559,7 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 
 			if previously_exposed != currently_exposed {
-				node_graph.update_click_target(node_id, document_network, network_path.clone());
+				node_graph.update_click_target(node_id, document_network, network_path.to_owned());
 			}
 
 			// Only load network structure for changes to document_network
@@ -625,22 +615,20 @@ impl<'a> ModifyInputsContext<'a> {
 		});
 	}
 
-	pub fn transform_change(&mut self, transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, bounds: LayerBounds, skip_rerender: bool) {
-		self.modify_inputs("Transform", skip_rerender, |inputs, node_id, metadata| {
+	pub fn transform_change(&mut self, transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, skip_rerender: bool) {
+		self.modify_inputs("Transform", skip_rerender, |inputs, _node_id, _metadata| {
 			let layer_transform = transform_utils::get_current_transform(inputs);
-			let upstream_transform = metadata.upstream_transform(node_id);
 			let to = match transform_in {
 				TransformIn::Local => DAffine2::IDENTITY,
 				TransformIn::Scope { scope } => scope * parent_transform,
 				TransformIn::Viewport => parent_transform,
 			};
-			let pivot = DAffine2::from_translation(upstream_transform.transform_point2(bounds.layerspace_pivot(transform_utils::get_current_normalized_pivot(inputs))));
-			let transform = pivot.inverse() * to.inverse() * transform * to * pivot * layer_transform;
+			let transform = to.inverse() * transform * to * layer_transform;
 			transform_utils::update_transform(inputs, transform);
 		});
 	}
 
-	pub fn transform_set(&mut self, mut transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, current_transform: Option<DAffine2>, bounds: LayerBounds, skip_rerender: bool) {
+	pub fn transform_set(&mut self, mut transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, current_transform: Option<DAffine2>, skip_rerender: bool) {
 		self.modify_inputs("Transform", skip_rerender, |inputs, node_id, metadata| {
 			let upstream_transform = metadata.upstream_transform(node_id);
 
@@ -649,7 +637,6 @@ impl<'a> ModifyInputsContext<'a> {
 				TransformIn::Scope { scope } => scope * parent_transform,
 				TransformIn::Viewport => parent_transform,
 			};
-			let pivot = DAffine2::from_translation(upstream_transform.transform_point2(bounds.layerspace_pivot(transform_utils::get_current_normalized_pivot(inputs))));
 
 			if current_transform
 				.filter(|transform| transform.matrix2.determinant() != 0. && upstream_transform.matrix2.determinant() != 0.)
@@ -657,79 +644,29 @@ impl<'a> ModifyInputsContext<'a> {
 			{
 				transform *= upstream_transform.inverse();
 			}
-			let final_transform = pivot.inverse() * to.inverse() * transform * pivot;
+			let final_transform = to.inverse() * transform;
 			transform_utils::update_transform(inputs, final_transform);
 		});
 	}
 
-	pub fn pivot_set(&mut self, new_pivot: DVec2, bounds: LayerBounds) {
-		self.modify_inputs("Transform", false, |inputs, node_id, metadata| {
-			let layer_transform = transform_utils::get_current_transform(inputs);
-			let upstream_transform = metadata.upstream_transform(node_id);
-			let old_pivot_transform = DAffine2::from_translation(upstream_transform.transform_point2(bounds.local_pivot(transform_utils::get_current_normalized_pivot(inputs))));
-			let new_pivot_transform = DAffine2::from_translation(upstream_transform.transform_point2(bounds.local_pivot(new_pivot)));
-			let transform = new_pivot_transform.inverse() * old_pivot_transform * layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
-			transform_utils::update_transform(inputs, transform);
+	pub fn pivot_set(&mut self, new_pivot: DVec2) {
+		self.modify_inputs("Transform", false, |inputs, _node_id, _metadata| {
 			inputs[5] = NodeInput::value(TaggedValue::DVec2(new_pivot), false);
 		});
 	}
 
-	pub fn update_bounds(&mut self, [old_bounds_min, old_bounds_max]: [DVec2; 2], [new_bounds_min, new_bounds_max]: [DVec2; 2]) {
-		self.modify_all_node_inputs("Transform", false, |inputs, node_id, metadata| {
-			let upstream_transform = metadata.upstream_transform(node_id);
-			let layer_transform = transform_utils::get_current_transform(inputs);
-			let normalized_pivot = transform_utils::get_current_normalized_pivot(inputs);
-
-			let old_layerspace_pivot = (old_bounds_max - old_bounds_min) * normalized_pivot + old_bounds_min;
-			let new_layerspace_pivot = (new_bounds_max - new_bounds_min) * normalized_pivot + new_bounds_min;
-			let new_pivot_transform = DAffine2::from_translation(upstream_transform.transform_point2(new_layerspace_pivot));
-			let old_pivot_transform = DAffine2::from_translation(upstream_transform.transform_point2(old_layerspace_pivot));
-
-			let transform = new_pivot_transform.inverse() * old_pivot_transform * layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
-			transform_utils::update_transform(inputs, transform);
-		});
-	}
-
-	pub fn vector_modify(&mut self, modification: VectorDataModification) -> Option<LayerNodeIdentifier> {
-		let [mut old_bounds_min, mut old_bounds_max] = [DVec2::ZERO, DVec2::ONE];
-		let [mut new_bounds_min, mut new_bounds_max] = [DVec2::ZERO, DVec2::ONE];
-		let mut empty = false;
-
-		self.modify_inputs("Shape", false, |inputs, _node_id, _metadata| {
-			let [subpaths, colinear_manipulators] = inputs.as_mut_slice() else {
-				panic!("Shape does not have both `subpath` and `colinear_manipulators` inputs");
-			};
-
-			let NodeInput::Value {
-				tagged_value: TaggedValue::Subpaths(subpaths),
+	pub fn vector_modify(&mut self, modification_type: VectorModificationType) {
+		self.modify_inputs("Path", false, |inputs, _node_id, _metadata| {
+			let [_, NodeInput::Value {
+				tagged_value: TaggedValue::VectorModification(modification),
 				..
-			} = subpaths
+			}] = inputs.as_mut_slice()
 			else {
-				return;
-			};
-			let NodeInput::Value {
-				tagged_value: TaggedValue::ManipulatorGroupIds(colinear_manipulators),
-				..
-			} = colinear_manipulators
-			else {
-				return;
+				panic!("Path node does not have modification input");
 			};
 
-			[old_bounds_min, old_bounds_max] = transform_utils::nonzero_subpath_bounds(subpaths);
-
-			transform_utils::VectorModificationState { subpaths, colinear_manipulators }.modify(modification);
-			empty = !subpaths.iter().any(|subpath| !subpath.is_empty());
-
-			[new_bounds_min, new_bounds_max] = transform_utils::nonzero_subpath_bounds(subpaths);
+			modification.modify(&modification_type);
 		});
-
-		self.update_bounds([old_bounds_min, old_bounds_max], [new_bounds_min, new_bounds_max]);
-
-		if empty {
-			self.layer_node.map(|layer_id| LayerNodeIdentifier::new(layer_id, &self.document_network))
-		} else {
-			None
-		}
 	}
 
 	pub fn brush_modify(&mut self, strokes: Vec<BrushStroke>) {
@@ -778,7 +715,7 @@ impl<'a> ModifyInputsContext<'a> {
 			if !reconnect {
 				continue;
 			};
-			let Some(node) = network.nodes.get(&node_id) else {
+			let Some(node) = network.nodes.get(node_id) else {
 				continue;
 			};
 			let child_id = node.inputs.get(1).and_then(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id) } else { None });
@@ -809,8 +746,8 @@ impl<'a> ModifyInputsContext<'a> {
 						// Continue traversing over the downstream sibling, which happens if the current node is a sibling to a node in node_ids
 						else {
 							for deleted_node_id in &node_ids {
-								let Some(output_node) = network.nodes.get(&deleted_node_id) else { continue };
-								let Some(input) = output_node.inputs.get(0) else { continue };
+								let Some(output_node) = network.nodes.get(deleted_node_id) else { continue };
+								let Some(input) = output_node.inputs.first() else { continue };
 
 								if let NodeInput::Node { node_id, .. } = input {
 									if *node_id == current_node {
@@ -852,24 +789,24 @@ impl<'a> ModifyInputsContext<'a> {
 		node_id: NodeId,
 		reconnect: bool,
 		responses: &mut VecDeque<Message>,
-		network_path: &Vec<NodeId>,
+		network_path: &[NodeId],
 	) -> bool {
-		if !ModifyInputsContext::remove_references_from_network(node_graph, document_network, node_id, reconnect, &network_path) {
+		if !ModifyInputsContext::remove_references_from_network(node_graph, document_network, node_id, reconnect, network_path) {
 			log::error!("could not remove_references_from_network");
 			return false;
 		}
-		let Some(network) = document_network.nested_network_mut(&network_path) else { return false };
+		let Some(network) = document_network.nested_network_mut(network_path) else { return false };
 
 		network.nodes.remove(&node_id);
 		selected_nodes.retain_selected_nodes(|&id| id != node_id || id == network.exports_metadata.0 || id == network.imports_metadata.0);
-		node_graph.update_click_target(node_id, document_network, network_path.clone());
+		node_graph.update_click_target(node_id, document_network, network_path.to_owned());
 
 		responses.add(BroadcastEvent::SelectionChanged);
 
 		true
 	}
 
-	pub fn remove_references_from_network(node_graph: &mut NodeGraphMessageHandler, document_network: &mut NodeNetwork, deleting_node_id: NodeId, reconnect: bool, network_path: &Vec<NodeId>) -> bool {
+	pub fn remove_references_from_network(node_graph: &mut NodeGraphMessageHandler, document_network: &mut NodeNetwork, deleting_node_id: NodeId, reconnect: bool, network_path: &[NodeId]) -> bool {
 		let Some(network) = document_network.nested_network(network_path) else { return false };
 		let mut reconnect_to_input: Option<NodeInput> = None;
 
@@ -877,7 +814,7 @@ impl<'a> ModifyInputsContext<'a> {
 			// Check whether the being-deleted node's first (primary) input is a node
 			if let Some(node) = network.nodes.get(&deleting_node_id) {
 				// Reconnect to the node below when deleting a layer node.
-				if matches!(&node.inputs.get(0), Some(NodeInput::Node { .. })) || matches!(&node.inputs.get(0), Some(NodeInput::Network { .. })) {
+				if matches!(&node.inputs.first(), Some(NodeInput::Node { .. })) || matches!(&node.inputs.first(), Some(NodeInput::Network { .. })) {
 					reconnect_to_input = Some(node.inputs[0].clone());
 				}
 			}
@@ -933,11 +870,12 @@ impl<'a> ModifyInputsContext<'a> {
 
 		//let Some(network) = document_network.nested_network(network_path) else { return false };
 
-		if let Some(Previewing::Yes { root_node_to_restore }) = document_network.nested_network(network_path).map(|network| &network.previewing) {
-			if let Some(root_node_to_restore) = root_node_to_restore {
-				if root_node_to_restore.id == deleting_node_id {
-					document_network.nested_network_mut(network_path).unwrap().start_previewing_without_restore();
-				}
+		if let Some(Previewing::Yes {
+			root_node_to_restore: Some(root_node_to_restore),
+		}) = document_network.nested_network(network_path).map(|network| &network.previewing)
+		{
+			if root_node_to_restore.id == deleting_node_id {
+				document_network.nested_network_mut(network_path).unwrap().start_previewing_without_restore();
 			}
 		}
 
@@ -1001,14 +939,14 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	/// Get the [`Type`] for any `node_id` and `input_index`. The `network_path` is the path to the encapsulating node (including the encapsulating node). The `node_id` is the selected node.
-	pub fn get_input_type(document_network: &NodeNetwork, network_path: &Vec<NodeId>, node_id: NodeId, resolved_types: &ResolvedDocumentNodeTypes, input_index: usize) -> Type {
-		let Some(network) = document_network.nested_network(&network_path) else {
+	pub fn get_input_type(document_network: &NodeNetwork, network_path: &[NodeId], node_id: NodeId, resolved_types: &ResolvedDocumentNodeTypes, input_index: usize) -> Type {
+		let Some(network) = document_network.nested_network(network_path) else {
 			log::error!("Could not get network in get_tagged_value");
 			return concrete!(());
 		};
 
 		// TODO: Store types for all document nodes, not just the compiled proto nodes, which currently skips isolated nodes
-		let node_id_path = &[&network_path[..], &[node_id]].concat();
+		let node_id_path = &[network_path, &[node_id]].concat();
 		let input_type = resolved_types.inputs.get(&graph_craft::document::Source {
 			node: node_id_path.clone(),
 			index: input_index,
@@ -1018,18 +956,18 @@ impl<'a> ModifyInputsContext<'a> {
 			input_type.clone()
 		} else if node_id == network.exports_metadata.0 {
 			if let Some(parent_node_id) = network_path.last() {
-				let mut parent_path = network_path.clone();
+				let mut parent_path = network_path.to_owned();
 				parent_path.pop();
 
 				let parent_node = document_network
 					.nested_network(&parent_path)
 					.expect("Parent path should always exist")
 					.nodes
-					.get(&parent_node_id)
+					.get(parent_node_id)
 					.expect("Last path node should always exist in parent network");
 
-				let output_types = NodeGraphMessageHandler::get_output_types(parent_node, &resolved_types, network_path);
-				output_types.iter().nth(input_index).map_or_else(
+				let output_types = NodeGraphMessageHandler::get_output_types(parent_node, resolved_types, network_path);
+				output_types.get(input_index).map_or_else(
 					|| {
 						warn!("Could not find output type for export node {node_id}");
 						concrete!(())
@@ -1051,7 +989,7 @@ impl<'a> ModifyInputsContext<'a> {
 			fn get_type_from_node(node: &DocumentNode, input_index: usize) -> Type {
 				match &node.implementation {
 					DocumentNodeImplementation::ProtoNode(protonode) => {
-						let Some(node_io_hashmap) = NODE_REGISTRY.get(&protonode) else {
+						let Some(node_io_hashmap) = NODE_REGISTRY.get(protonode) else {
 							log::error!("Could not get hashmap for proto node: {protonode:?}");
 							return concrete!(());
 						};
@@ -1069,10 +1007,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 						let skip_footprint = if node.manual_composition.is_some() { 1 } else { 0 };
 
-						let Some(input_type) = std::iter::once(node_types.input.clone())
-							.chain(node_types.parameters.clone().into_iter())
-							.nth(input_index + skip_footprint)
-						else {
+						let Some(input_type) = std::iter::once(node_types.input.clone()).chain(node_types.parameters.clone()).nth(input_index + skip_footprint) else {
 							log::error!("Could not get type");
 							return concrete!(());
 						};
@@ -1084,7 +1019,7 @@ impl<'a> ModifyInputsContext<'a> {
 							for (network_node_input_index, input) in node.1.inputs.iter().enumerate() {
 								if let NodeInput::Network { import_index, .. } = input {
 									if *import_index == input_index {
-										return get_type_from_node(&node.1, network_node_input_index);
+										return get_type_from_node(node.1, network_node_input_index);
 									}
 								}
 							}

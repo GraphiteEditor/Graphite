@@ -6,9 +6,13 @@ description = "CLI interface for the graphene language"
 authors = ["Graphite Authors <contact@graphite.rs>"]
 license = "MIT OR Apache-2.0"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [features]
+default = ["wgpu"]
+wgpu = ["wgpu-executor", "gpu", "graphene-std/wgpu"]
+wayland = ["graphene-std/wayland"]
+profiling = ["wgpu-executor/profiling"]
+passthrough = ["wgpu-executor/passthrough"]
+quantization = ["graphene-std/quantization"]
 gpu = [
 	"interpreted-executor/gpu",
 	"graphene-std/gpu",
@@ -16,37 +20,35 @@ gpu = [
 	"wgpu-executor",
 	"gpu-executor",
 ]
-default = ["wgpu"]
-wgpu = ["wgpu-executor", "gpu", "graphene-std/wgpu"]
-wayland = ["graphene-std/wayland"]
-profiling = ["wgpu-executor/profiling"]
-passthrough = ["wgpu-executor/passthrough"]
-quantization = ["graphene-std/quantization"]
-
 
 [dependencies]
+# Local dependencies
+graphene-std = { path = "../gstd", features = ["serde"] }
+interpreted-executor = { path = "../interpreted-executor" }
+
+# Workspace dependencies
 log = { workspace = true }
 bitflags = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 bezier-rs = { workspace = true }
 glam = { workspace = true }
-graphene-std = { path = "../gstd", features = ["serde"] }
+graph-craft = { workspace = true }
+dyn-any = { workspace = true }
+graphene-core = { workspace = true }
+futures = { workspace = true }
+fern = { workspace = true }
+chrono = { workspace = true }
+wgpu = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 image = { workspace = true, default-features = false, features = [
 	"bmp",
 	"png",
 ] }
-graph-craft = { workspace = true }
+
+# Optional local dependencies
 wgpu-executor = { path = "../wgpu-executor", optional = true }
 gpu-executor = { path = "../gpu-executor", optional = true }
-interpreted-executor = { path = "../interpreted-executor" }
-dyn-any = { workspace = true }
-graphene-core = { workspace = true }
-wasm-bindgen = { workspace = true, optional = true }
-futures = { workspace = true }
-fern = { workspace = true }
-chrono = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt"] }
-wgpu = { workspace = true }
 
-[dev-dependencies]
+# Optional workspace dependencies
+wasm-bindgen = { workspace = true, optional = true }

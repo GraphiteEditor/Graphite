@@ -1,5 +1,6 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
@@ -7,9 +8,8 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::SnapData;
 
-use graph_craft::document::NodeId;
+use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
 use graphene_core::uuid::generate_uuid;
-use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::Color;
 
 #[derive(Default)]
@@ -113,7 +113,7 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.unit(" px")
 		.label("Weight")
 		.min(0.)
-		.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
+		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 		.on_update(|number_input: &NumberInput| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
 		.widget_holder()
 }
@@ -244,11 +244,34 @@ impl Fsm for PolygonToolFsmState {
 				polygon_data.start(document, input);
 				responses.add(DocumentMessage::StartTransaction);
 
-				let subpath = match tool_options.polygon_type {
-					PolygonType::Convex => bezier_rs::Subpath::new_regular_polygon(DVec2::ZERO, tool_options.vertices as u64, 1.),
-					PolygonType::Star => bezier_rs::Subpath::new_star_polygon(DVec2::ZERO, tool_options.vertices as u64, 1., 0.5),
+				let nodes = {
+					let node = match tool_options.polygon_type {
+						PolygonType::Convex => resolve_document_node_type("Regular Polygon")
+							.expect("Regular Polygon node does not exist")
+							.to_document_node_default_inputs(
+								[
+									None,
+									Some(NodeInput::value(TaggedValue::U32(tool_options.vertices), false)),
+									Some(NodeInput::value(TaggedValue::F64(0.5), false)),
+								],
+								Default::default(),
+							),
+						PolygonType::Star => resolve_document_node_type("Star").expect("Star node does not exist").to_document_node_default_inputs(
+							[
+								None,
+								Some(NodeInput::value(TaggedValue::U32(tool_options.vertices), false)),
+								Some(NodeInput::value(TaggedValue::F64(0.5), false)),
+								Some(NodeInput::value(TaggedValue::F64(0.25), false)),
+							],
+							Default::default(),
+						),
+					};
+
+					HashMap::from([(NodeId(0), node)])
 				};
-				let layer = graph_modification_utils::new_vector_layer(vec![subpath], NodeId(generate_uuid()), document.new_layer_parent(true), responses);
+				let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, document.new_layer_parent(false), responses);
+				tool_options.fill.apply_fill(layer, responses);
+				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
 				polygon_data.layer = Some(layer);
 
 				responses.add(GraphOperationMessage::TransformSet {
@@ -258,22 +281,19 @@ impl Fsm for PolygonToolFsmState {
 					skip_rerender: false,
 				});
 
-				let fill_color = tool_options.fill.active_color();
-				responses.add(GraphOperationMessage::FillSet {
-					layer,
-					fill: if let Some(color) = fill_color { Fill::Solid(color) } else { Fill::None },
-				});
-
-				responses.add(GraphOperationMessage::StrokeSet {
-					layer,
-					stroke: Stroke::new(tool_options.stroke.active_color(), tool_options.line_weight),
-				});
-
 				PolygonToolFsmState::Drawing
 			}
 			(PolygonToolFsmState::Drawing, PolygonToolMessage::PointerMove { center, lock_ratio }) => {
-				if let Some(message) = polygon_data.calculate_transform(document, input, center, lock_ratio, false) {
-					responses.add(message);
+				if let Some([start, end]) = tool_data.data.calculate_points(document, input, center, lock_ratio) {
+					if let Some(layer) = tool_data.data.layer {
+						// TODO: make the scale impact the polygon/star node - we need to determine how to allow the polygon node to make irregular shapes
+						responses.add(GraphOperationMessage::TransformSet {
+							layer,
+							transform: DAffine2::from_scale_angle_translation(end - start, 0., (start + end) / 2.),
+							transform_in: TransformIn::Viewport,
+							skip_rerender: false,
+						});
+					}
 				}
 
 				// Auto-panning

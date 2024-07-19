@@ -15,9 +15,13 @@ impl Font {
 		Self { font_family, font_style }
 	}
 }
-
+impl Default for Font {
+	fn default() -> Self {
+		Self::new(crate::consts::DEFAULT_FONT_FAMILY.into(), crate::consts::DEFAULT_FONT_STYLE.into())
+	}
+}
 /// A cache of all loaded font data and preview urls along with the default font (send from `init_app` in `editor_api.rs`)
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default, PartialEq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default, PartialEq, DynAny)]
 pub struct FontCache {
 	/// Actual font file data used for rendering a font with ttf_parser and rustybuzz
 	font_file_data: HashMap<Font, Vec<u8>>,

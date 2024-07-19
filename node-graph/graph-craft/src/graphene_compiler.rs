@@ -1,7 +1,5 @@
 use std::error::Error;
 
-use dyn_any::DynAny;
-
 use crate::document::NodeNetwork;
 use crate::proto::{LocalFuture, ProtoNetwork};
 
@@ -9,11 +7,11 @@ pub struct Compiler {}
 
 impl Compiler {
 	pub fn compile(&self, mut network: NodeNetwork) -> Result<impl Iterator<Item = ProtoNetwork>, String> {
-		println!("flattening");
 		let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
 		for id in node_ids {
 			network.flatten(id);
 		}
+		network.resolve_scope_inputs();
 		network.remove_redundant_id_nodes();
 		network.remove_dead_nodes(0);
 		let proto_networks = network.into_proto_networks();
@@ -36,8 +34,13 @@ impl Compiler {
 		Ok(proto_network)
 	}
 }
-pub type Any<'a> = Box<dyn DynAny<'a> + 'a>;
 
 pub trait Executor<I, O> {
 	fn execute(&self, input: I) -> LocalFuture<Result<O, Box<dyn Error>>>;
+}
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[cfg(feature = "wgpu")]
+pub struct CompileRequest {
+	pub networks: Vec<ProtoNetwork>,
+	pub io: wgpu_executor::ShaderIO,
 }

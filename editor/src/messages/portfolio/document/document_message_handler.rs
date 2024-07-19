@@ -27,7 +27,6 @@ use graphene_core::raster::BlendMode;
 use graphene_core::raster::ImageFrame;
 use graphene_core::renderer::ClickTarget;
 use graphene_core::vector::style::ViewMode;
-use graphene_std::vector::style::{Fill, FillType, Gradient};
 
 use glam::{DAffine2, DVec2, IVec2};
 
@@ -188,7 +187,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					node_graph_ptz: &mut self.node_graph_ptz,
 					graph_view_overlay_open: self.graph_view_overlay_open,
 					node_graph_handler: &self.node_graph_handler,
-					node_graph_to_viewport: &self.node_graph_to_viewport.entry(self.node_graph_handler.network.clone()).or_insert(DAffine2::IDENTITY),
+					node_graph_to_viewport: self.node_graph_to_viewport.entry(self.node_graph_handler.network.clone()).or_insert(DAffine2::IDENTITY),
 				};
 
 				self.navigation_handler.process_message(message, responses, data);
@@ -222,7 +221,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						collapsed: &mut self.collapsed,
 						ipp,
 						graph_view_overlay_open: self.graph_view_overlay_open,
-						node_graph_to_viewport: &self.node_graph_to_viewport.entry(self.node_graph_handler.network.clone()).or_insert(DAffine2::IDENTITY),
+						node_graph_to_viewport: self.node_graph_to_viewport.entry(self.node_graph_handler.network.clone()).or_insert(DAffine2::IDENTITY),
 					},
 				);
 			}
@@ -296,6 +295,46 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				});
 			}
 			DocumentMessage::CommitTransaction => (),
+			DocumentMessage::InsertBooleanOperation { operation } => {
+				let boolean_operation_node_id = NodeId(generate_uuid());
+
+				let parent = self
+					.metadata()
+					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), true)
+					.unwrap_or(LayerNodeIdentifier::ROOT_PARENT);
+
+				let insert_index = parent
+					.children(self.metadata())
+					.enumerate()
+					.find_map(|(index, item)| self.selected_nodes.selected_layers(self.metadata()).any(|x| x == item).then_some(index))
+					.unwrap_or(0);
+
+				// Store a history step before doing anything
+				responses.add(DocumentMessage::StartTransaction);
+
+				// Create the new Boolean Operation node
+				responses.add(GraphOperationMessage::CreateBooleanOperationNode {
+					node_id: boolean_operation_node_id,
+					operation,
+				});
+
+				responses.add(GraphOperationMessage::InsertNodeAtStackIndex {
+					node_id: boolean_operation_node_id,
+					parent,
+					insert_index,
+				});
+
+				responses.add(GraphOperationMessage::MoveSelectedSiblingsToChild {
+					new_parent: LayerNodeIdentifier::new_unchecked(boolean_operation_node_id),
+				});
+
+				// Select the new node
+				responses.add(NodeGraphMessage::SelectedNodesSet {
+					nodes: vec![boolean_operation_node_id],
+				});
+				// Re-render
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
 			DocumentMessage::CreateEmptyFolder => {
 				let id = NodeId(generate_uuid());
 
@@ -385,7 +424,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				// TODO: Update click targets when node graph is closed so that this is not necessary
 				if self.graph_view_overlay_open {
-					self.node_graph_handler.update_all_click_targets(&mut self.network, self.node_graph_handler.network.clone())
+					self.node_graph_handler.update_all_click_targets(&self.network, self.node_graph_handler.network.clone())
 				}
 
 				responses.add(FrontendMessage::TriggerGraphViewOverlay { open });
@@ -607,7 +646,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					// Reconnect layer_to_move to new parent at insert index.
 					responses.add(GraphOperationMessage::InsertNodeAtStackIndex {
 						node_id: layer_to_move.to_node(),
-						parent: parent,
+						parent,
 						insert_index,
 					});
 				}
@@ -1048,13 +1087,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					});
 
 					// Get the node that feeds into the primary input for the folder (if it exists)
-					if let Some(NodeInput::Node { node_id, .. }) = self.network.nodes.get(&folder.to_node()).expect("Folder should always exist").inputs.get(0) {
+					if let Some(NodeInput::Node { node_id, .. }) = self.network.nodes.get(&folder.to_node()).expect("Folder should always exist").inputs.first() {
 						let upstream_sibling_id = *node_id;
 
 						// Get the node at the bottom of the first layer node stack
 						let mut last_child_node_id = child_layer.to_node();
 						loop {
-							let Some(NodeInput::Node { node_id, .. }) = self.network.nodes.get(&last_child_node_id).expect("Child node should always exist").inputs.get(0) else {
+							let Some(NodeInput::Node { node_id, .. }) = self.network.nodes.get(&last_child_node_id).expect("Child node should always exist").inputs.first() else {
 								break;
 							};
 							last_child_node_id = *node_id;
@@ -1236,32 +1275,27 @@ impl DocumentMessageHandler {
 	}
 
 	/// Find any layers sorted by index that are under the given location in viewport space.
-	pub fn click_list_any(&self, viewport_location: DVec2, network: &NodeNetwork) -> Vec<LayerNodeIdentifier> {
-		self.click_xray(viewport_location).filter(|&layer| !is_artboard(layer, network)).collect::<Vec<_>>()
+	pub fn click_xray_no_artboards<'a>(&'a self, viewport_location: DVec2, network: &'a NodeNetwork) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+		self.click_xray(viewport_location).filter(move |&layer| !is_artboard(layer, network))
 	}
 
 	/// Find layers under the location in viewport space that was clicked, listed by their depth in the layer tree hierarchy.
-	pub fn click_list(&self, viewport_location: DVec2, network: &NodeNetwork) -> Vec<LayerNodeIdentifier> {
-		let mut node_list = self.click_list_any(viewport_location, network);
-		node_list.truncate(
-			node_list
-				.iter()
-				.position(|&layer| {
-					if layer != LayerNodeIdentifier::ROOT_PARENT {
-						!network.nodes.get(&layer.to_node()).map(|node| node.layer_has_child_layers(network)).unwrap_or_default()
-					} else {
-						log::error!("ROOT_PARENT should not exist in click_list_any");
-						false
-					}
-				})
-				.unwrap_or(0) + 1,
-		);
-		node_list
+	pub fn click_list<'a>(&'a self, viewport_location: DVec2, network: &'a NodeNetwork) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+		self.click_xray_no_artboards(viewport_location, network)
+			.skip_while(|&layer| layer == LayerNodeIdentifier::ROOT_PARENT)
+			.scan(true, |last_had_children, layer| {
+				if *last_had_children {
+					*last_had_children = network.nodes.get(&layer.to_node()).map_or(false, |node| node.layer_has_child_layers(network));
+					Some(layer)
+				} else {
+					None
+				}
+			})
 	}
 
 	/// Find the deepest layer that has been clicked on from a location in viewport space.
 	pub fn click(&self, viewport_location: DVec2, network: &NodeNetwork) -> Option<LayerNodeIdentifier> {
-		self.click_list(viewport_location, network).last().copied()
+		self.click_list(viewport_location, network).last()
 	}
 
 	/// Get the combined bounding box of the click targets of the selected visible layers in viewport space
@@ -1282,14 +1316,8 @@ impl DocumentMessageHandler {
 		self.selected_nodes
 			.selected_nodes(network)
 			.filter_map(|node| {
-				let Some(node_metadata) = self.node_graph_handler.node_metadata.get(&node) else {
-					log::debug!("Could not get click target for node {node}");
-					return None;
-				};
-				let Some(node_graph_to_viewport) = self.node_graph_to_viewport.get(&self.node_graph_handler.network) else {
-					log::debug!("Could not get node_graph_to_viewport for network: {:?}", self.node_graph_handler.network);
-					return None;
-				};
+				let node_metadata = self.node_graph_handler.node_metadata.get(node)?;
+				let node_graph_to_viewport = self.node_graph_to_viewport.get(&self.node_graph_handler.network)?;
 				node_metadata.node_click_target.subpath.bounding_box_with_transform(*node_graph_to_viewport)
 			})
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
@@ -1317,81 +1345,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
-		// serde_json::from_str(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string()))
-
-		match serde_json::from_str::<Self>(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string())) {
-			Ok(mut document) => {
-				for (_, node) in &mut document.network.nodes {
-					// Upgrade Fill nodes to the format change in #1778
-					// TODO: Eventually remove this (probably starting late 2024)
-					if node.name == "Fill" && node.inputs.len() == 8 {
-						let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(&node.name).unwrap();
-						let default_definition_node = node_definition.default_document_node();
-
-						node.implementation = default_definition_node.implementation.clone();
-						let old_inputs = std::mem::replace(&mut node.inputs, default_definition_node.inputs.clone());
-
-						node.inputs[0] = old_inputs[0].clone();
-
-						let Some(fill_type) = old_inputs[1].as_value().cloned() else { continue };
-						let TaggedValue::FillType(fill_type) = fill_type else { continue };
-						let Some(solid_color) = old_inputs[2].as_value().cloned() else { continue };
-						let TaggedValue::OptionalColor(solid_color) = solid_color else { continue };
-						let Some(gradient_type) = old_inputs[3].as_value().cloned() else { continue };
-						let TaggedValue::GradientType(gradient_type) = gradient_type else { continue };
-						let Some(start) = old_inputs[4].as_value().cloned() else { continue };
-						let TaggedValue::DVec2(start) = start else { continue };
-						let Some(end) = old_inputs[5].as_value().cloned() else { continue };
-						let TaggedValue::DVec2(end) = end else { continue };
-						let Some(transform) = old_inputs[6].as_value().cloned() else { continue };
-						let TaggedValue::DAffine2(transform) = transform else { continue };
-						let Some(positions) = old_inputs[7].as_value().cloned() else { continue };
-						let TaggedValue::GradientStops(positions) = positions else { continue };
-
-						let fill = match (fill_type, solid_color) {
-							(FillType::Solid, None) => Fill::None,
-							(FillType::Solid, Some(color)) => Fill::Solid(color),
-							(FillType::Gradient, _) => Fill::Gradient(Gradient {
-								stops: positions,
-								gradient_type,
-								start,
-								end,
-								transform,
-							}),
-						};
-						node.inputs[1] = NodeInput::value(TaggedValue::Fill(fill.clone()), false);
-						match fill {
-							Fill::None => {
-								node.inputs[2] = NodeInput::value(TaggedValue::OptionalColor(None), false);
-							}
-							Fill::Solid(color) => {
-								node.inputs[2] = NodeInput::value(TaggedValue::OptionalColor(Some(color)), false);
-							}
-							Fill::Gradient(gradient) => {
-								node.inputs[3] = NodeInput::value(TaggedValue::Gradient(gradient), false);
-							}
-						}
-					}
-				}
-				Ok(document)
-			}
-			Err(e) => Err(e),
-		}
-
-		// TODO: This can be used, if uncommented, to upgrade demo artwork with outdated document node internals from their definitions. Delete when it's no longer needed.
-		// Used for upgrading old internal networks for demo artwork nodes. Will reset all node internals for any opened file
-		// match serde_json::from_str::<Self>(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string())) {
-		// 	Ok(mut document) => {
-		// 		for (_, node) in &mut document.network.nodes {
-		// 			let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(&node.name).unwrap();
-		// 			let default_definition_node = node_definition.default_document_node();
-
-		// 			node.implementation = default_definition_node.implementation.clone();
-		// 		}
-		// 		Ok(document)
-		// 	}
-		// 	Err(e) => Err(e),
-		// }
+		serde_json::from_str(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string()))
 	}
 
 	pub fn with_name(name: String, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> Self {
@@ -1517,7 +1471,7 @@ impl DocumentMessageHandler {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		// If there is no history return and don't broadcast SelectionChanged
-		let Some(network) = self.document_undo_history.pop_back() else { return None };
+		let network = self.document_undo_history.pop_back()?;
 
 		responses.add(BroadcastEvent::SelectionChanged);
 
@@ -1540,7 +1494,7 @@ impl DocumentMessageHandler {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		// If there is no history return and don't broadcast SelectionChanged
-		let Some(network) = self.document_redo_history.pop_back() else { return None };
+		let network = self.document_redo_history.pop_back()?;
 
 		responses.add(BroadcastEvent::SelectionChanged);
 
@@ -1560,9 +1514,9 @@ impl DocumentMessageHandler {
 		};
 
 		for (node_id, current_node) in &network.nodes {
-			if let Some(previous_node) = previous_nested_network.nodes.get(&node_id) {
+			if let Some(previous_node) = previous_nested_network.nodes.get(node_id) {
 				if previous_node.alias == current_node.alias
-					&& previous_node.inputs.iter().map(|node_input| node_input.is_exposed()).count() == current_node.inputs.iter().map(|node_input| node_input.is_exposed()).count()
+					&& previous_node.inputs.iter().filter(|node_input| node_input.is_exposed()).count() == current_node.inputs.iter().filter(|node_input| node_input.is_exposed()).count()
 					&& previous_node.is_layer == current_node.is_layer
 					&& previous_node.metadata.position == current_node.metadata.position
 				{
@@ -1622,9 +1576,7 @@ impl DocumentMessageHandler {
 		};
 
 		// Downstream layer should always exist
-		let Some((downstream_layer_node_id, downstream_layer_is_parent)) = downstream_layer else {
-			return None;
-		};
+		let (downstream_layer_node_id, downstream_layer_is_parent) = downstream_layer?;
 
 		// Horizontal traversal if layer_to_move is the top of its layer stack, primary traversal if not
 		let flow_type = if downstream_layer_is_parent { FlowType::HorizontalFlow } else { FlowType::PrimaryFlow };
@@ -2185,11 +2137,12 @@ impl DocumentMessageHandler {
 
 fn root_network() -> NodeNetwork {
 	{
-		let mut network = NodeNetwork::default();
-		network.exports = vec![NodeInput::Value {
-			tagged_value: TaggedValue::ArtboardGroup(graphene_core::ArtboardGroup::EMPTY),
-			exposed: true,
-		}];
-		network
+		NodeNetwork {
+			exports: vec![NodeInput::Value {
+				tagged_value: TaggedValue::ArtboardGroup(graphene_core::ArtboardGroup::EMPTY),
+				exposed: true,
+			}],
+			..Default::default()
+		}
 	}
 }

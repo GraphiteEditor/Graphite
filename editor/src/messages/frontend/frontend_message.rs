@@ -99,6 +99,19 @@ pub enum FrontendMessage {
 		#[serde(rename = "copyText")]
 		copy_text: String,
 	},
+	// TODO: Eventually remove this (probably starting late 2024)
+	TriggerUpgradeDocumentToVectorManipulationFormat {
+		#[serde(rename = "documentId")]
+		document_id: DocumentId,
+		#[serde(rename = "documentName")]
+		document_name: String,
+		#[serde(rename = "documentIsAutoSaved")]
+		document_is_auto_saved: bool,
+		#[serde(rename = "documentIsSaved")]
+		document_is_saved: bool,
+		#[serde(rename = "documentSerializedContent")]
+		document_serialized_content: String,
+	},
 	TriggerViewportResize,
 	TriggerVisitLink {
 		url: String,
@@ -234,10 +247,6 @@ pub enum FrontendMessage {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
-	},
-	UpdateSubgraphPath {
-		#[serde(rename = "subgraphPath")]
-		subgraph_path: Vec<String>,
 	},
 	UpdateToolOptionsLayout {
 		#[serde(rename = "layoutTarget")]

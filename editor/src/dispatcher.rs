@@ -36,6 +36,7 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::DocumentStructureChanged)),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::Overlays(OverlaysMessageDiscriminant::Draw))),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderRulers)),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
 ];
@@ -166,7 +167,7 @@ impl Dispatcher {
 					if let Some(document) = self.message_handlers.portfolio_message_handler.active_document() {
 						let data = ToolMessageData {
 							document_id: self.message_handlers.portfolio_message_handler.active_document_id().unwrap(),
-							document: document,
+							document,
 							input: &self.message_handlers.input_preprocessor_message_handler,
 							persistent_data: &self.message_handlers.portfolio_message_handler.persistent_data,
 							node_graph: &self.message_handlers.portfolio_message_handler.executor,
@@ -205,8 +206,8 @@ impl Dispatcher {
 		list
 	}
 
-	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) {
-		self.message_handlers.portfolio_message_handler.poll_node_graph_evaluation(responses);
+	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) -> Result<(), String> {
+		self.message_handlers.portfolio_message_handler.poll_node_graph_evaluation(responses)
 	}
 
 	/// Create the tree structure for logging the messages as a tree
@@ -262,10 +263,7 @@ mod test {
 	use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 	use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 	use crate::messages::prelude::*;
-	use crate::messages::tool::tool_messages::tool_prelude::ToolType;
 	use crate::test_utils::EditorTestUtils;
-
-	use graph_craft::document::NodeId;
 	use graphene_core::raster::color::Color;
 
 	fn init_logger() {
@@ -412,11 +410,9 @@ mod test {
 		assert_eq!(layers_after_copy[5], shape_id);
 	}
 
-	// TODO: Fix text
-	#[ignore]
-	#[test]
+	#[tokio::test]
 	/// This test will fail when you make changes to the underlying serialization format for a document.
-	fn check_if_demo_art_opens() {
+	async fn check_if_demo_art_opens() {
 		use crate::messages::layout::utility_types::widget_prelude::*;
 
 		let print_problem_to_terminal_on_failure = |value: &String| {
@@ -436,6 +432,18 @@ mod test {
 		init_logger();
 		let mut editor = Editor::create();
 
+		// UNCOMMENT THIS FOR RUNNING UNDER MIRI
+		//
+		// let files = [
+		// 	include_str!("../../demo-artwork/isometric-fountain.graphite"),
+		// 	include_str!("../../demo-artwork/just-a-potted-cactus.graphite"),
+		// 	include_str!("../../demo-artwork/procedural-string-lights.graphite"),
+		// 	include_str!("../../demo-artwork/red-dress.graphite"),
+		// 	include_str!("../../demo-artwork/valley-of-spires.graphite"),
+		// ];
+		// for (id, document_serialized_content) in files.iter().enumerate() {
+		// let document_name = format!("document {id}");
+
 		for (document_name, _, file_name) in crate::messages::dialog::simple_dialogs::ARTWORK {
 			let document_serialized_content = std::fs::read_to_string(format!("../demo-artwork/{file_name}")).unwrap();
 
@@ -449,6 +457,16 @@ mod test {
 				document_name: document_name.into(),
 				document_serialized_content,
 			});
+
+			// Check if the graph renders
+			let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
+			portfolio
+				.executor
+				.submit_node_graph_evaluation(portfolio.documents.get_mut(&portfolio.active_document_id.unwrap()).unwrap(), glam::UVec2::ONE, true)
+				.expect("submit_node_graph_evaluation failed");
+			crate::node_graph_executor::run_node_graph().await;
+			let mut messages = VecDeque::new();
+			editor.poll_node_graph_evaluation(&mut messages).expect("Graph should render");
 
 			for response in responses {
 				// Check for the existence of the file format incompatibility warning dialog after opening the test file

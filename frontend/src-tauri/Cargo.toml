@@ -7,24 +7,26 @@ license = "Apache-2.0"
 repository = ""
 default-run = "graphite-desktop"
 edition = "2021"
-rust-version = "1.66.0"
+rust-version = "1.79"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[build-dependencies]
-tauri-build = { version = "1.2", features = [] }
+[features]
+# by default Tauri runs in production mode
+# when `tauri dev` runs it is executed with `cargo run --no-default-features` if `devPath` is an URL
+default = ["custom-protocol"]
+# this feature is used for production builds where `devPath` points to the filesystem
+# DO NOT remove this
+custom-protocol = ["tauri/custom-protocol"]
+gpu = ["graphite-editor/gpu"]
+quantization = ["graphite-editor/quantization"]
 
 [dependencies]
+# Local dependencies
+graphite-editor = { path = "../../editor" }
+
+# Workspace dependencies
 serde_json = { workspace = true }
 serde = { workspace = true }
-tauri = { version = "1.5", features = [
-	"api-all",
-	"devtools",
-	"linux-protocol-headers",
-	"wry",
-] }
 axum = { workspace = true }
-graphite-editor = { path = "../../editor" }
 chrono = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 ron = { workspace = true }
@@ -32,12 +34,14 @@ log = { workspace = true }
 fern = { workspace = true }
 futures = { workspace = true }
 
-[features]
-gpu = ["graphite-editor/gpu"]
-quantization = ["graphite-editor/quantization"]
-# by default Tauri runs in production mode
-# when `tauri dev` runs it is executed with `cargo run --no-default-features` if `devPath` is an URL
-default = ["custom-protocol"]
-# this feature is used for production builds where `devPath` points to the filesystem
-# DO NOT remove this
-custom-protocol = ["tauri/custom-protocol"]
+# Required dependencies
+tauri = { version = "1.5", features = [
+	"api-all",
+	"devtools",
+	"linux-protocol-headers",
+	"wry",
+] }
+
+[build-dependencies]
+# Required dependencies
+tauri-build = { version = "1.2", features = [] }

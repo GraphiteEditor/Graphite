@@ -1,7 +1,7 @@
 [package]
 name = "bezier-rs"
 version = "0.4.0"
-rust-version = "1.66.0"
+rust-version = "1.79"
 edition = "2021"
 authors = ["Graphite Authors <contact@graphite.rs>"]
 description = "Computational geometry algorithms for Bézier segments and shapes useful in the context of 2D graphics"
@@ -14,8 +14,12 @@ repository = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/b
 documentation = "https://graphite.rs/libraries/bezier-rs/"
 
 [dependencies]
+# Required dependencies
 glam = { version = "0.25", features = ["serde"] }
 
+# Optional local dependencies
 dyn-any = { version = "0.3.0", path = "../dyn-any", optional = true }
+
+# Optional workspace dependencies
 serde = { workspace = true, optional = true }
 log = { workspace = true, optional = true }

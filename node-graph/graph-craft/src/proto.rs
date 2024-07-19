@@ -12,25 +12,34 @@ use std::hash::Hash;
 use std::ops::Deref;
 use std::pin::Pin;
 
+#[cfg(not(target_arch = "wasm32"))]
+pub type DynFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n + Send>>;
+#[cfg(target_arch = "wasm32")]
 pub type DynFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
 pub type LocalFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
+#[cfg(not(target_arch = "wasm32"))]
+pub type Any<'n> = Box<dyn DynAny<'n> + 'n + Send>;
+#[cfg(target_arch = "wasm32")]
 pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
 pub type FutureAny<'n> = DynFuture<'n, Any<'n>>;
 // TODO: is this safe? This is assumed to be send+sync.
+#[cfg(not(target_arch = "wasm32"))]
+pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n + Send + Sync;
+#[cfg(target_arch = "wasm32")]
 pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n;
 pub type TypeErasedPinnedRef<'n> = Pin<&'n TypeErasedNode<'n>>;
 pub type TypeErasedRef<'n> = &'n TypeErasedNode<'n>;
 pub type TypeErasedBox<'n> = Box<TypeErasedNode<'n>>;
 pub type TypeErasedPinned<'n> = Pin<Box<TypeErasedNode<'n>>>;
 
-pub type SharedNodeContainer = std::rc::Rc<NodeContainer>;
+pub type SharedNodeContainer = std::sync::Arc<NodeContainer>;
 
 pub type NodeConstructor = fn(Vec<SharedNodeContainer>) -> DynFuture<'static, TypeErasedBox<'static>>;
 
 #[derive(Clone)]
 pub struct NodeContainer {
 	#[cfg(feature = "dealloc_nodes")]
-	pub node: *mut TypeErasedNode<'static>,
+	pub node: *const TypeErasedNode<'static>,
 	#[cfg(not(feature = "dealloc_nodes"))]
 	pub node: TypeErasedRef<'static>,
 }
@@ -40,7 +49,7 @@ impl Deref for NodeContainer {
 
 	#[cfg(feature = "dealloc_nodes")]
 	fn deref(&self) -> &Self::Target {
-		unsafe { &*(self.node as *const TypeErasedNode) }
+		unsafe { &*(self.node) }
 		#[cfg(not(feature = "dealloc_nodes"))]
 		self.node
 	}
@@ -49,6 +58,14 @@ impl Deref for NodeContainer {
 		self.node
 	}
 }
+
+/// #Safety
+/// Marks NodeContainer as Sync. This dissallows the use of threadlocal stroage for nodes as this would invalidate references to them.
+// TODO: implement this on a higher level wrapper to avoid missuse
+#[cfg(feature = "dealloc_nodes")]
+unsafe impl Send for NodeContainer {}
+#[cfg(feature = "dealloc_nodes")]
+unsafe impl Sync for NodeContainer {}
 
 #[cfg(feature = "dealloc_nodes")]
 impl Drop for NodeContainer {
@@ -71,7 +88,7 @@ impl NodeContainer {
 
 	#[cfg(feature = "dealloc_nodes")]
 	unsafe fn dealloc_unchecked(&mut self) {
-		std::mem::drop(Box::from_raw(self.node));
+		std::mem::drop(Box::from_raw(self.node as *mut TypeErasedNode));
 	}
 }
 
@@ -605,7 +622,8 @@ impl core::fmt::Debug for GraphErrorType {
 					"Node graph type error! If this just appeared while editing the graph,\n\
 					consider using undo to go back and try another way to connect the nodes.\n\
 					\n\
-					No node implementation exists for type ({parameters}).\n\
+					No node implementation exists for type:\n\
+					({parameters})\n\
 					\n\
 					Caused by{}:\n\
 					{}",
@@ -788,7 +806,6 @@ impl TypingContext {
 
 		match valid_impls.as_slice() {
 			[] => {
-				dbg!(&self.inferred);
 				let mut best_errors = usize::MAX;
 				let mut error_inputs = Vec::new();
 				for node_io in impls.keys() {
@@ -930,12 +947,12 @@ mod test {
 		assert_eq!(
 			ids,
 			vec![
-				NodeId(17957338642374791135),
-				NodeId(1303972037140595827),
-				NodeId(15485192931817078264),
-				NodeId(9739645351331265115),
-				NodeId(4165308598738454684),
-				NodeId(5557529806312473178)
+				NodeId(8751908307531981068),
+				NodeId(3279077344149194814),
+				NodeId(532186116905587629),
+				NodeId(10764326338085309082),
+				NodeId(18015434340620913446),
+				NodeId(11801333199647382191)
 			]
 		);
 	}

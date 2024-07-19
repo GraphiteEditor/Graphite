@@ -2,7 +2,7 @@
 name = "graphite-proc-macros"
 publish = false
 version = "0.0.0"
-rust-version = "1.66.0"
+rust-version = "1.79"
 authors = ["Graphite Authors <contact@graphite.rs>"]
 edition = "2021"
 readme = "../README.md"
@@ -19,13 +19,14 @@ default = ["serde-discriminant"]
 serde-discriminant = []
 
 [dependencies]
+# Workspace dependencies
 proc-macro2 = { workspace = true }
 syn = { workspace = true }
 quote = { workspace = true }
 
-[dev-dependencies.editor]
-path = "../editor"
-package = "graphite-editor"
-
 [dev-dependencies]
+# Local dependencies
+editor = { path = "../editor", package = "graphite-editor" }
+
+# Workspace dependencies
 serde = { workspace = true }

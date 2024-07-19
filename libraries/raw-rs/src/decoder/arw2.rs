@@ -87,10 +87,10 @@ fn sony_arw2_load_raw<R: Read + Seek>(width: usize, height: usize, curve: CurveL
 			let max_minus_min = max as i32 - min as i32;
 			let shift_by_bits = (0..4).find(|&shift| (0x80 << shift) > max_minus_min).unwrap_or(4);
 
-			let mut pixel = [0_u16; 16];
+			let mut pixels = [0_u16; 16];
 			let mut bit = 30;
-			for i in 0..16 {
-				pixel[i] = match () {
+			for (i, pixel) in pixels.iter_mut().enumerate() {
+				*pixel = match () {
 					_ if i as u32 == index_to_set_max => max,
 					_ if i as u32 == index_to_set_min => min,
 					_ => {
@@ -104,7 +104,7 @@ fn sony_arw2_load_raw<R: Read + Seek>(width: usize, height: usize, curve: CurveL
 				};
 			}
 
-			for value in pixel {
+			for value in pixels {
 				image[row * width + column] = curve.get((value << 1).into()) >> 2;
 
 				// Skip between interlaced columns
