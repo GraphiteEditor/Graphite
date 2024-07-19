@@ -13,7 +13,7 @@ repository = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/r
 documentation = "https://docs.rs/raw-rs"
 
 [features]
-raw-rs-tests = ["libraw-rs"]
+raw-rs-tests = ["dep:downloader", "dep:image", "dep:libraw-rs", "dep:palette"]
 
 [dependencies]
 # Local dependencies
@@ -23,12 +23,9 @@ tag-derive = { path = "tag-derive" }
 bitstream-io = "2.3.0"
 num_enum = "0.7.2"
 thiserror = { workspace = true }
-image = { workspace = true }
-palette = "0.7.6"
 
-# Optional dependencies
-libraw-rs = { version = "0.0.4", optional = true } # Should be a dev dependency, but Cargo currently doesn't allow optional dev dependencies
-
-[dev-dependencies]
-# Required dependencies
-downloader = "0.2.7"
+# Optional dependencies (Should be dev dependencies, but Cargo currently doesn't allow optional dev dependencies)
+downloader = { version = "0.2.7", optional = true }
+image = { workspace = true, optional = true }
+libraw-rs = { version = "0.0.4", optional = true }
+palette = { version = "0.7.6", optional = true }
