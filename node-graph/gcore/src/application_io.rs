@@ -183,6 +183,7 @@ impl<T: NodeGraphUpdateSender> NodeGraphUpdateSender for std::sync::Mutex<T> {
 
 pub trait GetImaginatePreferences {
 	fn get_host_name(&self) -> &str;
+	fn use_vello(&self) -> bool;
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
@@ -218,6 +219,9 @@ struct DummyPreferences;
 impl GetImaginatePreferences for DummyPreferences {
 	fn get_host_name(&self) -> &str {
 		"dummy_endpoint"
+	}
+	fn use_vello(&self) -> bool {
+		false
 	}
 }
 

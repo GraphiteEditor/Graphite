@@ -7,23 +7,26 @@ pub struct PreferencesMessageHandler {
 	pub imaginate_server_hostname: String,
 	pub imaginate_refresh_frequency: f64,
 	pub zoom_with_scroll: bool,
+	pub use_vello: bool,
 }
 
 impl PreferencesMessageHandler {
 	pub fn get_imaginate_preferences(&self) -> ImaginatePreferences {
 		ImaginatePreferences {
 			host_name: self.imaginate_server_hostname.clone(),
+			use_vello: self.use_vello,
 		}
 	}
 }
 
 impl Default for PreferencesMessageHandler {
 	fn default() -> Self {
-		let ImaginatePreferences { host_name } = Default::default();
+		let ImaginatePreferences { host_name, use_vello } = Default::default();
 		Self {
 			imaginate_server_hostname: host_name,
 			imaginate_refresh_frequency: 1.,
 			zoom_with_scroll: matches!(MappingVariant::default(), MappingVariant::ZoomWithScroll),
+			use_vello,
 		}
 	}
 }
@@ -53,6 +56,10 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			PreferencesMessage::ImaginateRefreshFrequency { seconds } => {
 				self.imaginate_refresh_frequency = seconds;
 				responses.add(PortfolioMessage::ImaginateCheckServerStatus);
+				responses.add(PortfolioMessage::ImaginatePreferences);
+			}
+			PreferencesMessage::UseVello { use_vello } => {
+				self.use_vello = use_vello;
 				responses.add(PortfolioMessage::ImaginatePreferences);
 			}
 			PreferencesMessage::ImaginateServerHostname { hostname } => {

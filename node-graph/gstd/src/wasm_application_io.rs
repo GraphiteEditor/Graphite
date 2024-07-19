@@ -107,47 +107,17 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 	RenderOutput::Svg(render.svg.to_svg_string())
 }
 
-#[cfg(any(feature = "resvg", feature = "vello"))]
+#[cfg(feature = "vello")]
 async fn render_canvas<'a>(render_config: RenderConfig, data: impl GraphicElementRendered, editor: &'a WasmEditorApi, surface_handle: wgpu_executor::WgpuSurface) -> RenderOutput {
 	if let Some(exec) = editor.application_io.as_ref().unwrap().gpu_executor() {
 		use vello::*;
 		let footprint = render_config.viewport;
 
-		fn add_shapes_to_scene(scene: &mut Scene) {
-			use vello::kurbo::*;
-			use vello::peniko::Color as PColor;
-			use vello::peniko::*;
-			let transform = Affine::scale(0.5);
-			// Draw an outlined rectangle
-			let stroke = Stroke::new(6.0);
-			let rect = RoundedRect::new(10.0, 10.0, 240.0, 240.0, 20.0);
-			let rect_stroke_color = PColor::rgb(0.9804, 0.702, 0.5294);
-			scene.stroke(&stroke, Affine::IDENTITY, rect_stroke_color, None, &rect);
-
-			let rect = Rect::new(50., 50., 800., 600.);
-			scene.push_layer(BlendMode::new(vello::peniko::Mix::Normal, vello::peniko::Compose::SrcOver), 1., transform, &rect);
-
-			// Draw a filled circle
-			let circle = Circle::new((420.0, 200.0), 120.0);
-			let circle_fill_color = PColor::rgba(0.9529, 0.5451, 0.6588, 1.);
-			scene.fill(vello::peniko::Fill::NonZero, Affine::IDENTITY, circle_fill_color, None, &circle);
-			scene.pop_layer();
-
-			// Draw a filled ellipse
-			let ellipse = Ellipse::new((250.0, 420.0), (100.0, 160.0), -90.0);
-			let ellipse_fill_color = PColor::rgb(0.7961, 0.651, 0.9686);
-			scene.fill(vello::peniko::Fill::NonZero, Affine::IDENTITY, ellipse_fill_color, None, &ellipse);
-
-			// Draw a straight line
-			let line = Line::new((260.0, 20.0), (620.0, 100.0));
-			let line_stroke_color = PColor::rgb(0.5373, 0.7059, 0.9804);
-			scene.stroke(&stroke, Affine::IDENTITY, line_stroke_color, None, &line);
-		}
-
 		let mut scene = Scene::new();
 		let mut child = Scene::new();
 		// add_shapes_to_scene(&mut child);
 		data.render_to_vello(&mut child, footprint.transform);
+		log::debug!("rendering using vello");
 		// TODO: Instead of applying the transform here, pass the transform during the translation to avoid the O(Nr cost
 		// scene.append(&child, Some(kurbo::Affine::new(footprint.transform.to_cols_array())));
 
@@ -245,14 +215,24 @@ async fn render_node<'a: 'input, T: 'input + GraphicElementRendered + WasmNotSen
 	let render_params = RenderParams::new(render_config.view_mode, ImageRenderMode::Base64, None, false, hide_artboards, for_export);
 
 	let data = self.data.eval(footprint).await;
-	#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
+	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
 	let surface_handle = self.surface_handle.eval(footprint).await;
+	let use_vello = editor_api.imaginate_preferences.use_vello();
+	log::debug!("vello: {use_vello}");
 
 	let output_format = render_config.export_format;
 	match output_format {
 		ExportFormat::Svg => render_svg(data, SvgRender::new(), render_params, footprint),
-		#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
-		ExportFormat::Canvas => render_canvas(render_config, data, editor_api, surface_handle).await,
+		ExportFormat::Canvas => {
+			if use_vello && editor_api.application_io.as_ref().unwrap().gpu_executor().is_some() {
+				#[cfg(all(feature = "vello", target_arch = "wasm32"))]
+				return render_canvas(render_config, data, editor_api, surface_handle).await;
+				#[cfg(not(all(feature = "vello", target_arch = "wasm32")))]
+				render_svg(data, SvgRender::new(), render_params, footprint)
+			} else {
+				render_svg(data, SvgRender::new(), render_params, footprint)
+			}
+		}
 		_ => todo!("Non-SVG render output for {output_format:?}"),
 	}
 }

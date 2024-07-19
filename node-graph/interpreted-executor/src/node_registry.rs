@@ -635,6 +635,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: RenderConfig, output: RenderOutput, fn_params: [() => &WasmEditorApi, Footprint => ArtboardGroup, Footprint => WgpuSurface]),
 		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: RenderConfig, output: RenderOutput, fn_params: [() => &WasmEditorApi, Footprint => Option<Color>, Footprint => WgpuSurface]),
 		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: RenderConfig, output: RenderOutput, fn_params: [() => &WasmEditorApi, Footprint => Vec<Color>, Footprint => WgpuSurface]),
+		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: RenderConfig, output: RenderOutput, fn_params: [() => &WasmEditorApi, Footprint => f64, Footprint => WgpuSurface]),
+		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: RenderConfig, output: RenderOutput, fn_params: [() => &WasmEditorApi, Footprint => String, Footprint => WgpuSurface]),
 		#[cfg(target_arch = "wasm32")]
 		async_node!(graphene_std::wasm_application_io::RasterizeNode<_, _>, input: VectorData, output: ImageFrame<Color>, params: [Footprint, Arc<WasmSurfaceHandle>]),
 		#[cfg(target_arch = "wasm32")]

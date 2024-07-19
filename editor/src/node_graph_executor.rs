@@ -37,7 +37,7 @@ pub struct NodeRuntime {
 	receiver: Receiver<NodeRuntimeMessage>,
 	sender: InternalNodeGraphUpdateSender,
 	imaginate_preferences: ImaginatePreferences,
-	recompile_graph: bool,
+	old_graph: Option<NodeNetwork>,
 
 	editor_api: Arc<WasmEditorApi>,
 	node_graph_errors: GraphErrors,
@@ -128,7 +128,7 @@ impl NodeRuntime {
 			receiver,
 			sender: InternalNodeGraphUpdateSender(sender.clone()),
 			imaginate_preferences: ImaginatePreferences::default(),
-			recompile_graph: true,
+			old_graph: None,
 
 			editor_api: WasmEditorApi {
 				font_cache: FontCache::default(),
@@ -177,9 +177,12 @@ impl NodeRuntime {
 						imaginate_preferences: Box::new(self.imaginate_preferences.clone()),
 					}
 					.into();
-					self.recompile_graph = true;
+					if let Some(graph) = self.old_graph.clone() {
+						self.update_network(graph).await;
+					}
 				}
 				NodeRuntimeMessage::ImaginatePreferencesUpdate(preferences) => {
+					self.imaginate_preferences = preferences.clone();
 					self.editor_api = WasmEditorApi {
 						font_cache: self.editor_api.font_cache.clone(),
 						application_io: self.editor_api.application_io.clone(),
@@ -187,9 +190,12 @@ impl NodeRuntime {
 						imaginate_preferences: Box::new(preferences),
 					}
 					.into();
-					self.recompile_graph = true;
+					if let Some(graph) = self.old_graph.clone() {
+						self.update_network(graph).await;
+					}
 				}
 				NodeRuntimeMessage::GraphUpdate(graph) => {
+					self.old_graph = Some(graph.clone());
 					self.node_graph_errors.clear();
 					let result = self.update_network(graph).await;
 					self.sender.send_generation_response(CompilationResponse {
@@ -197,7 +203,6 @@ impl NodeRuntime {
 						resolved_types: self.resolved_types.clone(),
 						node_graph_errors: self.node_graph_errors.clone(),
 					});
-					self.recompile_graph = true;
 				}
 				NodeRuntimeMessage::ExecutionRequest(ExecutionRequest { execution_id, render_config, .. }) => {
 					let transform = render_config.viewport.transform;
@@ -227,10 +232,11 @@ impl NodeRuntime {
 				application_io: Some(WasmApplicationIo::new().await.into()),
 				font_cache: self.editor_api.font_cache.clone(),
 				node_graph_message_sender: Box::new(self.sender.clone()),
-				imaginate_preferences: Box::new(ImaginatePreferences::default()),
+				imaginate_preferences: Box::new(self.imaginate_preferences.clone()),
 			}
 			.into();
 		}
+		log::debug!("editor_api: {:?}", self.editor_api.imaginate_preferences.use_vello());
 
 		let scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
 		self.monitor_nodes = scoped_network

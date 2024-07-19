@@ -55,7 +55,7 @@ impl Default for ImaginatePersistentData {
 		let client = new_client().map_err(|err| status = ImaginateServerStatus::Failed(err.to_string())).ok();
 		#[cfg(miri)]
 		let client = None;
-		let ImaginatePreferences { host_name } = Default::default();
+		let ImaginatePreferences { host_name, .. } = Default::default();
 		Self {
 			pending_server_check: None,
 			host_name: parse_url(&host_name).unwrap(),

@@ -640,6 +640,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					.collect::<Vec<_>>();
 				responses.add(FrontendMessage::UpdateOpenDocumentsList { open_documents });
 			}
+			PortfolioMessage::UpdateVelloPreference => {
+				self.persistent_data.use_vello = preferences.use_vello;
+			}
 		}
 	}
 
