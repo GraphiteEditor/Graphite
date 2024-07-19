@@ -31,7 +31,7 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 	let image_width: usize = ifd.image_width.try_into().unwrap();
 	let image_height: usize = ifd.image_height.try_into().unwrap();
 	let rows_per_strip: usize = ifd.rows_per_strip.try_into().unwrap();
-	let _bits_per_sample: usize = ifd.bits_per_sample.into();
+	let bits_per_sample: usize = ifd.bits_per_sample.into();
 	let [cfa_pattern_width, cfa_pattern_height] = ifd.cfa_pattern_dim;
 	assert!(cfa_pattern_width == 2 && cfa_pattern_height == 2);
 
