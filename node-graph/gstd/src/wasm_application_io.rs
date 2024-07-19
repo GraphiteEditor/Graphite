@@ -117,7 +117,6 @@ async fn render_canvas<'a>(render_config: RenderConfig, data: impl GraphicElemen
 		let mut child = Scene::new();
 		// add_shapes_to_scene(&mut child);
 		data.render_to_vello(&mut child, footprint.transform);
-		log::debug!("rendering using vello");
 		// TODO: Instead of applying the transform here, pass the transform during the translation to avoid the O(Nr cost
 		// scene.append(&child, Some(kurbo::Affine::new(footprint.transform.to_cols_array())));
 
@@ -218,7 +217,6 @@ async fn render_node<'a: 'input, T: 'input + GraphicElementRendered + WasmNotSen
 	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
 	let surface_handle = self.surface_handle.eval(footprint).await;
 	let use_vello = editor_api.imaginate_preferences.use_vello();
-	log::debug!("vello: {use_vello}");
 
 	let output_format = render_config.export_format;
 	match output_format {

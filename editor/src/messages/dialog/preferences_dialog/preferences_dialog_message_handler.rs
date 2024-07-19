@@ -49,7 +49,7 @@ impl PreferencesDialogMessageHandler {
 			TextLabel::new("Input").min_width(60).italic(true).widget_holder(),
 			TextLabel::new("Vello renderer").table_align(true).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			CheckboxInput::new(preferences.zoom_with_scroll)
+			CheckboxInput::new(preferences.use_vello)
 				.tooltip("Use experimental vello renderer")
 				.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::UseVello { use_vello: checkbox_input.checked }.into())
 				.widget_holder(),

@@ -272,7 +272,6 @@ impl GraphicElementRendered for GraphicGroup {
 		use vello::peniko::Mix;
 
 		let kurbo_transform = kurbo::Affine::new((transform * self.transform).to_cols_array());
-		log::debug!("pushing graphic group");
 		let Some(bounds) = self.bounding_box(DAffine2::IDENTITY) else { return };
 		let blending = vello::peniko::BlendMode::new(self.alpha_blending.blend_mode.into(), vello::peniko::Compose::SrcOver);
 		// scene.push_layer(

@@ -41,6 +41,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 					responses.add(PortfolioMessage::ImaginateServerHostname);
 					responses.add(PortfolioMessage::ImaginateCheckServerStatus);
 					responses.add(PortfolioMessage::ImaginatePreferences);
+					responses.add(PortfolioMessage::UpdateVelloPreference);
 					responses.add(PreferencesMessage::ModifyLayout {
 						zoom_with_scroll: self.zoom_with_scroll,
 					});
@@ -60,6 +61,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			}
 			PreferencesMessage::UseVello { use_vello } => {
 				self.use_vello = use_vello;
+				responses.add(PortfolioMessage::UpdateVelloPreference);
 				responses.add(PortfolioMessage::ImaginatePreferences);
 			}
 			PreferencesMessage::ImaginateServerHostname { hostname } => {

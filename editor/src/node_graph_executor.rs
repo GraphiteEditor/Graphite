@@ -236,7 +236,6 @@ impl NodeRuntime {
 			}
 			.into();
 		}
-		log::debug!("editor_api: {:?}", self.editor_api.imaginate_preferences.use_vello());
 
 		let scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
 		self.monitor_nodes = scoped_network
