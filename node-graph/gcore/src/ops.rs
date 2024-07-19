@@ -203,7 +203,7 @@ fn construct_vector2(_primary: (), x: f64, y: f64) -> glam::DVec2 {
 
 // Size Of
 #[cfg(feature = "std")]
-struct SizeOfNode;
+pub struct SizeOfNode;
 #[cfg(feature = "std")]
 #[node_macro::node_fn(SizeOfNode)]
 fn flat_map(ty: crate::Type) -> Option<usize> {

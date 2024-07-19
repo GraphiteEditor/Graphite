@@ -299,7 +299,7 @@ fn generate_transform(tool_data: &mut LineToolData, snap_data: SnapData, lock_an
 	let document_to_viewport = snap_data.document.metadata.document_to_viewport;
 	let mut document_points = [tool_data.drag_start, document_to_viewport.inverse().transform_point2(tool_data.drag_current)];
 
-	let mut angle = -(document_points[1] - document_points[0]).angle_between(DVec2::X);
+	let mut angle = -(document_points[1] - document_points[0]).angle_to(DVec2::X);
 	let mut line_length = (document_points[1] - document_points[0]).length();
 	if lock_angle {
 		angle = tool_data.angle;
@@ -352,11 +352,11 @@ fn generate_transform(tool_data: &mut LineToolData, snap_data: SnapData, lock_an
 	}
 
 	// Used for keeping the same angle next frame
-	tool_data.angle = -(document_points[1] - document_points[0]).angle_between(DVec2::X);
+	tool_data.angle = -(document_points[1] - document_points[0]).angle_to(DVec2::X);
 
 	let viewport_points = [document_to_viewport.transform_point2(document_points[0]), document_to_viewport.transform_point2(document_points[1])];
 	let line_length = (viewport_points[1] - viewport_points[0]).length();
-	let angle = -(viewport_points[1] - viewport_points[0]).angle_between(DVec2::X);
+	let angle = -(viewport_points[1] - viewport_points[0]).angle_to(DVec2::X);
 	GraphOperationMessage::TransformSet {
 		layer: tool_data.layer.unwrap(),
 		transform: glam::DAffine2::from_scale_angle_translation(DVec2::new(line_length, 1.), angle, viewport_points[0]),

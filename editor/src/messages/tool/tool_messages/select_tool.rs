@@ -757,7 +757,7 @@ impl Fsm for SelectToolFsmState {
 						let start_offset = tool_data.drag_start - bounds.center_of_transformation;
 						let end_offset = input.mouse.position - bounds.center_of_transformation;
 
-						start_offset.angle_between(end_offset)
+						start_offset.angle_to(end_offset)
 					};
 
 					let snapped_angle = if input.keyboard.key(modifier_keys.snap_angle) {

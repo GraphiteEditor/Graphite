@@ -51,7 +51,7 @@ impl Quad {
 		let offset = |index_before, index, index_after| {
 			let [point_before, point, point_after]: [DVec2; 3] = [self.0[index_before], self.0[index], self.0[index_after]];
 			let [line_in, line_out] = [point - point_before, point_after - point];
-			let angle = line_in.angle_between(-line_out);
+			let angle = line_in.angle_to(-line_out);
 			let offset_length = offset / (std::f64::consts::FRAC_PI_2 - angle / 2.).cos();
 			point + (line_in.perp().normalize_or_zero() + line_out.perp().normalize_or_zero()).normalize_or_zero() * offset_length
 		};

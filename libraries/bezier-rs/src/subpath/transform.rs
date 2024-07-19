@@ -388,7 +388,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 			// Calculate the angle formed between two consecutive Subpaths
 			let out_tangent = self.get_segment(i).unwrap().tangent(TValue::Parametric(1.));
 			let in_tangent = self.get_segment(j).unwrap().tangent(TValue::Parametric(0.));
-			let angle = out_tangent.angle_between(in_tangent);
+			let angle = out_tangent.angle_to(in_tangent);
 
 			// The angle is concave. The Subpath overlap and must be clipped
 			let mut apply_join = true;
@@ -428,7 +428,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		if self.closed {
 			let out_tangent = self.get_segment(self.len_segments() - 1).unwrap().tangent(TValue::Parametric(1.));
 			let in_tangent = self.get_segment(0).unwrap().tangent(TValue::Parametric(0.));
-			let angle = out_tangent.angle_between(in_tangent);
+			let angle = out_tangent.angle_to(in_tangent);
 
 			let mut apply_join = true;
 			if (angle > 0. && distance > 0.) || (angle < 0. && distance < 0.) {

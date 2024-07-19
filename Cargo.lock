@@ -3,6 +3,12 @@
 version = 3
 
 [[package]]
+name = "Inflector"
+version = "0.11.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe438c63458706e03479442743baae6c88256498e6431708f6dfc520a26515d3"
+
+[[package]]
 name = "ab_glyph"
 version = "0.2.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -563,7 +569,7 @@ name = "bezier-rs"
 version = "0.4.0"
 dependencies = [
  "dyn-any",
- "glam 0.25.0",
+ "glam",
  "kurbo",
  "log",
  "serde",
@@ -574,7 +580,7 @@ name = "bezier-rs-wasm"
 version = "0.0.0"
 dependencies = [
  "bezier-rs",
- "glam 0.25.0",
+ "glam",
  "js-sys",
  "log",
  "serde",
@@ -1423,7 +1429,7 @@ name = "dyn-any"
 version = "0.3.1"
 dependencies = [
  "dyn-any-derive",
- "glam 0.25.0",
+ "glam",
  "log",
 ]
 
@@ -2079,20 +2085,14 @@ dependencies = [
 
 [[package]]
 name = "glam"
-version = "0.25.0"
+version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "151665d9be52f9bb40fc7966565d39666f2d1e69233571b71b87791c7e0528b3"
+checksum = "779ae4bf7e8421cf91c0b3b64e7e8b40b862fba4d393f59150042de7c4965a94"
 dependencies = [
  "bytemuck",
  "libm",
  "serde",
 ]
-
-[[package]]
-name = "glam"
-version = "0.28.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "779ae4bf7e8421cf91c0b3b64e7e8b40b862fba4d393f59150042de7c4965a94"
 
 [[package]]
 name = "glib"
@@ -2264,7 +2264,7 @@ dependencies = [
  "bytemuck",
  "dyn-any",
  "futures",
- "glam 0.25.0",
+ "glam",
  "graphene-core",
  "log",
  "node-macro",
@@ -2282,7 +2282,7 @@ dependencies = [
  "bytemuck",
  "dyn-any",
  "futures",
- "glam 0.25.0",
+ "glam",
  "graphene-core",
  "js-sys",
  "log",
@@ -2308,7 +2308,7 @@ dependencies = [
  "dyn-any",
  "fern",
  "futures",
- "glam 0.25.0",
+ "glam",
  "gpu-executor",
  "graph-craft",
  "graphene-core",
@@ -2332,7 +2332,7 @@ dependencies = [
  "bezier-rs",
  "bytemuck",
  "dyn-any",
- "glam 0.25.0",
+ "glam",
  "half",
  "image 0.25.1",
  "js-sys",
@@ -2366,7 +2366,7 @@ dependencies = [
  "dyn-any",
  "fastnoise-lite",
  "futures",
- "glam 0.25.0",
+ "glam",
  "gpu-compiler-bin-wrapper",
  "gpu-executor",
  "graph-craft",
@@ -2425,7 +2425,7 @@ dependencies = [
  "dyn-any",
  "env_logger",
  "futures",
- "glam 0.25.0",
+ "glam",
  "gpu-executor",
  "graph-craft",
  "graphene-core",
@@ -2465,7 +2465,7 @@ name = "graphite-wasm"
 version = "0.0.0"
 dependencies = [
  "bezier-rs",
- "glam 0.25.0",
+ "glam",
  "graph-craft",
  "graphene-core",
  "graphite-editor",
@@ -3054,7 +3054,7 @@ version = "0.1.0"
 dependencies = [
  "dyn-any",
  "futures",
- "glam 0.25.0",
+ "glam",
  "gpu-executor",
  "graph-craft",
  "graphene-core",
@@ -5741,8 +5741,20 @@ name = "specta"
 version = "2.0.0-rc.15"
 source = "git+https://github.com/oscartbeaumont/specta.git#9c41ff0e95a357fd00893f5e2f9d642eac3438ef"
 dependencies = [
- "glam 0.28.0",
+ "glam",
+ "specta-macros",
  "thiserror",
+]
+
+[[package]]
+name = "specta-macros"
+version = "2.0.0-rc.15"
+source = "git+https://github.com/oscartbeaumont/specta.git#9c41ff0e95a357fd00893f5e2f9d642eac3438ef"
+dependencies = [
+ "Inflector",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.71",
 ]
 
 [[package]]
@@ -5763,10 +5775,10 @@ dependencies = [
 [[package]]
 name = "spirv-std"
 version = "0.9.0"
-source = "git+https://github.com/EmbarkStudios/rust-gpu.git#54f6978c25b7e168ded04e720b996625b3654ebd"
+source = "git+https://github.com/GraphiteEditor/rust-gpu.git#7f60fbbdddc0d6effa1c3c86e3e11f9896c970e8"
 dependencies = [
  "bitflags 1.3.2",
- "glam 0.25.0",
+ "glam",
  "num-traits",
  "spirv-std-macros",
  "spirv-std-types",
@@ -5775,7 +5787,7 @@ dependencies = [
 [[package]]
 name = "spirv-std-macros"
 version = "0.9.0"
-source = "git+https://github.com/EmbarkStudios/rust-gpu.git#54f6978c25b7e168ded04e720b996625b3654ebd"
+source = "git+https://github.com/GraphiteEditor/rust-gpu.git#7f60fbbdddc0d6effa1c3c86e3e11f9896c970e8"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5786,7 +5798,7 @@ dependencies = [
 [[package]]
 name = "spirv-std-types"
 version = "0.9.0"
-source = "git+https://github.com/EmbarkStudios/rust-gpu.git#54f6978c25b7e168ded04e720b996625b3654ebd"
+source = "git+https://github.com/GraphiteEditor/rust-gpu.git#7f60fbbdddc0d6effa1c3c86e3e11f9896c970e8"
 
 [[package]]
 name = "stable_deref_trait"
@@ -7373,7 +7385,7 @@ dependencies = [
  "dyn-any",
  "futures",
  "futures-intrusive",
- "glam 0.25.0",
+ "glam",
  "gpu-executor",
  "graphene-core",
  "half",

@@ -304,7 +304,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 							let half_viewport = ipp.viewport_bounds.size() / 2.;
 							let start_offset = self.mouse_position - half_viewport;
 							let end_offset = ipp.mouse.position - half_viewport;
-							let angle = start_offset.angle_between(end_offset);
+							let angle = start_offset.angle_to(end_offset);
 
 							tilt_raw_not_snapped + angle
 						};
