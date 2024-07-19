@@ -9,7 +9,7 @@ default = ["dealloc_nodes"]
 serde = ["dep:serde", "graphene-core/serde", "glam/serde", "bezier-rs/serde"]
 dealloc_nodes = []
 wgpu = []
-tokio = []
+tokio = ["dep:tokio"]
 
 [dependencies]
 # Local dependencies
@@ -36,6 +36,7 @@ wgpu-executor = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # Workspace dependencies

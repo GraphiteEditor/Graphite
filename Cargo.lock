@@ -2291,6 +2291,7 @@ dependencies = [
  "rustc-hash 2.0.0",
  "serde",
  "specta",
+ "tokio",
  "url",
  "wasm-bindgen",
  "web-sys",
