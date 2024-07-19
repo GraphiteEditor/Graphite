@@ -348,69 +348,69 @@ impl GraphicElementRendered for VectorData {
 
 		let kurbo_transform = kurbo::Affine::new(transform.to_cols_array());
 		let to_point = |p: DVec2| kurbo::Point::new(p.x, p.y);
+		let mut path = kurbo::BezPath::new();
 		for (_, subpath) in self.region_bezier_paths() {
-			// let path = subpath.to_vello_path(transform * self.transform);
-			let path = subpath.to_vello_path(self.transform);
-			// let path = subpath.to_vello_path(DAffine2::IDENTITY);
-			// let fill = self.style.fill().to_vello_brush();
-			// let stroke = self.style.stroke().map(|stroke| stroke.to_vello_stroke());
-
-			let fill = match self.style.fill() {
-				crate::vector::style::Fill::Solid(color) => {
-					let fill = vello::peniko::Brush::Solid(vello::peniko::Color::rgba(color.r() as f64, color.g() as f64, color.b() as f64, color.a() as f64));
-					fill
-				}
-				crate::vector::style::Fill::Gradient(gradient) => {
-					let mut stops = vello::peniko::ColorStops::new();
-					for &(offset, color) in &gradient.stops.0 {
-						stops.push(vello::peniko::ColorStop {
-							offset: offset as f32,
-							color: vello::peniko::Color::rgba(color.r() as f64, color.g() as f64, color.b() as f64, color.a() as f64),
-						});
-					}
-					let fill = vello::peniko::Brush::Gradient(vello::peniko::Gradient {
-						kind: match gradient.gradient_type {
-							crate::vector::style::GradientType::Linear => vello::peniko::GradientKind::Linear {
-								start: to_point(gradient.start),
-								end: to_point(gradient.end),
-							},
-							crate::vector::style::GradientType::Radial => todo!(),
-						},
-						stops,
-						..Default::default()
-					});
-					fill
-				}
-				crate::vector::style::Fill::None => vello::peniko::Brush::Solid(vello::peniko::Color::TRANSPARENT),
-			};
-
-			// scene.fill(Fill::NonZero, vello::kurbo::Affine::IDENTITY, &fill, None, &path);
-			scene.fill(vello::peniko::Fill::EvenOdd, kurbo_transform, &fill, None, &path);
+			subpath.to_vello_path(self.transform, &mut path);
 		}
-		for subpath in self.stroke_bezier_paths() {
-			// let path = subpath.to_vello_path(transform * self.transform);
-			let path = subpath.to_vello_path(self.transform);
-			// let path = subpath.to_vello_path(DAffine2::IDENTITY);
-			// let fill = self.style.fill().to_vello_brush();
-			// let stroke = self.style.stroke().map(|stroke| stroke.to_vello_stroke());
+		// let path = subpath.to_vello_path(transform * self.transform);
+		// let path = subpath.to_vello_path(self.transform);
+		// let path = subpath.to_vello_path(DAffine2::IDENTITY);
+		// let fill = self.style.fill().to_vello_brush();
+		// let stroke = self.style.stroke().map(|stroke| stroke.to_vello_stroke());
 
-			if let Some(stroke) = self.style.stroke() {
-				let color = match stroke.color {
-					Some(color) => vello::peniko::Color::rgba(color.r() as f64, color.g() as f64, color.b() as f64, color.a() as f64),
-					None => vello::peniko::Color::TRANSPARENT,
-				};
-				let stroke = kurbo::Stroke {
-					width: stroke.weight,
-					miter_limit: stroke.line_join_miter_limit,
-					..Default::default()
-				};
-				scene.stroke(&stroke, kurbo_transform, color, None, &path);
-				// scene.fill(Fill::NonZero, vello::kurbo::Affine::IDENTITY, color, None, &path);
-				// let circle = vello::kurbo::Circle::new((420.0, 200.0), 120.0);
-				// scene.fill(vello::peniko::Fill::NonZero, vello::kurbo::Affine::IDENTITY, color, None, &circle);
+		let fill = match self.style.fill() {
+			crate::vector::style::Fill::Solid(color) => {
+				let fill = vello::peniko::Brush::Solid(vello::peniko::Color::rgba(color.r() as f64, color.g() as f64, color.b() as f64, color.a() as f64));
+				fill
 			}
-			// scene.fill(Fill::NonZero, vello::kurbo::Affine::IDENTITY, &fill, None, &path);
+			crate::vector::style::Fill::Gradient(gradient) => {
+				let mut stops = vello::peniko::ColorStops::new();
+				for &(offset, color) in &gradient.stops.0 {
+					stops.push(vello::peniko::ColorStop {
+						offset: offset as f32,
+						color: vello::peniko::Color::rgba(color.r() as f64, color.g() as f64, color.b() as f64, color.a() as f64),
+					});
+				}
+				let fill = vello::peniko::Brush::Gradient(vello::peniko::Gradient {
+					kind: match gradient.gradient_type {
+						crate::vector::style::GradientType::Linear => vello::peniko::GradientKind::Linear {
+							start: to_point(gradient.start),
+							end: to_point(gradient.end),
+						},
+						crate::vector::style::GradientType::Radial => todo!(),
+					},
+					stops,
+					..Default::default()
+				});
+				fill
+			}
+			crate::vector::style::Fill::None => vello::peniko::Brush::Solid(vello::peniko::Color::TRANSPARENT),
+		};
+
+		// scene.fill(Fill::NonZero, vello::kurbo::Affine::IDENTITY, &fill, None, &path);
+		scene.fill(vello::peniko::Fill::EvenOdd, kurbo_transform, &fill, None, &path);
+
+		let mut path = kurbo::BezPath::new();
+		for (_, subpath) in self.region_bezier_paths() {
+			subpath.to_vello_path(self.transform, &mut path);
 		}
+
+		if let Some(stroke) = self.style.stroke() {
+			let color = match stroke.color {
+				Some(color) => vello::peniko::Color::rgba(color.r() as f64, color.g() as f64, color.b() as f64, color.a() as f64),
+				None => vello::peniko::Color::TRANSPARENT,
+			};
+			let stroke = kurbo::Stroke {
+				width: stroke.weight,
+				miter_limit: stroke.line_join_miter_limit,
+				..Default::default()
+			};
+			scene.stroke(&stroke, kurbo_transform, color, None, &path);
+			// scene.fill(Fill::NonZero, vello::kurbo::Affine::IDENTITY, color, None, &path);
+			// let circle = vello::kurbo::Circle::new((420.0, 200.0), 120.0);
+			// scene.fill(vello::peniko::Fill::NonZero, vello::kurbo::Affine::IDENTITY, color, None, &circle);
+		}
+		// scene.fill(Fill::NonZero, vello::kurbo::Affine::IDENTITY, &fill, None, &path);
 	}
 }
 

@@ -345,10 +345,9 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	}
 
 	#[cfg(feature = "kurbo")]
-	pub fn to_vello_path(&self, transform: glam::DAffine2) -> kurbo::BezPath {
+	pub fn to_vello_path(&self, transform: glam::DAffine2, path: &mut kurbo::BezPath) {
 		use crate::BezierHandles;
 
-		let mut path = kurbo::BezPath::new();
 		let to_point = |p: DVec2| {
 			let p = transform.transform_point2(p);
 			kurbo::Point::new(p.x, p.y)
@@ -365,7 +364,6 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		if self.closed {
 			path.close_path();
 		}
-		path
 	}
 }
 
