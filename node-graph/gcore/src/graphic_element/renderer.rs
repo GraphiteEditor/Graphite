@@ -376,7 +376,15 @@ impl GraphicElementRendered for VectorData {
 							start: to_point(gradient.start),
 							end: to_point(gradient.end),
 						},
-						crate::vector::style::GradientType::Radial => todo!(),
+						crate::vector::style::GradientType::Radial => {
+							let radius = (gradient.end - gradient.start).length();
+							vello::peniko::GradientKind::Radial {
+								start_center: to_point(gradient.start),
+								start_radius: 0.,
+								end_center: to_point(gradient.end),
+								end_radius: radius as f32,
+							}
+						}
 					},
 					stops,
 					..Default::default()
