@@ -233,6 +233,7 @@ impl core::fmt::Display for BlendMode {
 	}
 }
 
+#[cfg(feature = "vello")]
 impl Into<vello::peniko::Mix> for BlendMode {
 	fn into(self) -> vello::peniko::Mix {
 		match self {

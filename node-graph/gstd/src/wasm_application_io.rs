@@ -217,12 +217,14 @@ async fn render_node<'a: 'input, T: 'input + GraphicElementRendered + WasmNotSen
 	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
 	let surface_handle = self.surface_handle.eval(footprint).await;
 	let use_vello = editor_api.imaginate_preferences.use_vello();
+	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
+	let use_vello = use_vello && surface_handle.is_some();
 
 	let output_format = render_config.export_format;
 	match output_format {
 		ExportFormat::Svg => render_svg(data, SvgRender::new(), render_params, footprint),
 		ExportFormat::Canvas => {
-			if use_vello && editor_api.application_io.as_ref().unwrap().gpu_executor().is_some() && surface_handle.is_some() {
+			if use_vello && editor_api.application_io.as_ref().unwrap().gpu_executor().is_some() {
 				#[cfg(all(feature = "vello", target_arch = "wasm32"))]
 				return render_canvas(render_config, data, editor_api, surface_handle.unwrap()).await;
 				#[cfg(not(all(feature = "vello", target_arch = "wasm32")))]
