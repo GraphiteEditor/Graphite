@@ -343,6 +343,7 @@ impl GraphicElementRendered for VectorData {
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2) {
+		use glam::Affine2;
 		use vello::peniko::Fill;
 
 		let kurbo_transform = kurbo::Affine::new(transform.to_cols_array());
@@ -370,18 +371,29 @@ impl GraphicElementRendered for VectorData {
 						color: vello::peniko::Color::rgba(color.r() as f64, color.g() as f64, color.b() as f64, color.a() as f64),
 					});
 				}
+				log::debug!("gradient: {:?}", gradient);
+				log::debug!("stops: {:?}", stops);
+				// compute bounding box of the shape to determine the gradient start and end points
+				let bounds = self.bounding_box().unwrap_or_default();
+				let lerp_bounds = |p: DVec2| bounds[0] + (bounds[1] - bounds[0]) * p;
+				let start = lerp_bounds(gradient.start);
+				let end = lerp_bounds(gradient.end);
+
+				let transform = self.transform * gradient.transform;
+				let start = transform.transform_point2(start);
+				let end = transform.transform_point2(end);
 				let fill = vello::peniko::Brush::Gradient(vello::peniko::Gradient {
 					kind: match gradient.gradient_type {
 						crate::vector::style::GradientType::Linear => vello::peniko::GradientKind::Linear {
-							start: to_point(gradient.start),
-							end: to_point(gradient.end),
+							start: to_point(start),
+							end: to_point(end),
 						},
 						crate::vector::style::GradientType::Radial => {
-							let radius = (gradient.end - gradient.start).length();
+							let radius = (end - start).length();
 							vello::peniko::GradientKind::Radial {
-								start_center: to_point(gradient.start),
+								start_center: to_point(start),
 								start_radius: 0.,
-								end_center: to_point(gradient.end),
+								end_center: to_point(end),
 								end_radius: radius as f32,
 							}
 						}
@@ -389,6 +401,7 @@ impl GraphicElementRendered for VectorData {
 					stops,
 					..Default::default()
 				});
+				log::debug!("fill: {:?}", fill);
 				fill
 			}
 			crate::vector::style::Fill::None => vello::peniko::Brush::Solid(vello::peniko::Color::TRANSPARENT),
