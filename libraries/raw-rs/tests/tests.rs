@@ -36,7 +36,7 @@ fn test_images_match_with_libraw() {
 
 			print!("{} => ", path.display());
 
-			let _raw_image = match test_raw_data(&content) {
+			let raw_image = match test_raw_data(&content) {
 				Err(err_msg) => {
 					failed_tests += 1;
 					return println!("{}", err_msg);
@@ -93,7 +93,7 @@ fn store_image(path: &Path, suffix: &str, data: &mut [u8], width: usize, height:
 
 	let file = BufWriter::new(File::create(output_path).unwrap());
 	let png_encoder = PngEncoder::new_with_quality(file, CompressionType::Best, FilterType::Adaptive);
-	png_encoder.write_image(data, width as u32, height as u32, ColorType::Rgb8).unwrap();
+	png_encoder.write_image(data, width as u32, height as u32, ColorType::Rgb8.into()).unwrap();
 }
 
 fn download_images() {
