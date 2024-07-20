@@ -204,16 +204,6 @@ impl From<ImageFrame<Color>> for GraphicElement {
 	fn from(mut image_frame: ImageFrame<Color>) -> Self {
 		use base64::Engine;
 
-		let image = &image_frame.image;
-		if !image.data.is_empty() {
-			let output = image.to_png();
-			let preamble = "data:image/png;base64,";
-			let mut base64_string = String::with_capacity(preamble.len() + output.len() * 4);
-			base64_string.push_str(preamble);
-			base64::engine::general_purpose::STANDARD.encode_string(output, &mut base64_string);
-			image_frame.image.base64_string = Some(base64_string);
-		}
-
 		GraphicElement::ImageFrame(image_frame)
 	}
 }

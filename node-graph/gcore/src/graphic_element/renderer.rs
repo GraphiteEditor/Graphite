@@ -269,21 +269,20 @@ impl GraphicElementRendered for GraphicGroup {
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2) {
-		use vello::peniko::Mix;
-
 		let kurbo_transform = kurbo::Affine::new((transform * self.transform).to_cols_array());
-		let Some(bounds) = self.bounding_box(DAffine2::IDENTITY) else { return };
+		// TODO: We make the bounding box bigger to accomodate for the stroke width. This should be done in a better way.
+		let Some(bounds) = self.bounding_box(DAffine2::from_scale(DVec2::splat(1.05))) else { return };
 		let blending = vello::peniko::BlendMode::new(self.alpha_blending.blend_mode.into(), vello::peniko::Compose::SrcOver);
-		// scene.push_layer(
-		// 	blending,
-		// 	self.alpha_blending.opacity,
-		// 	kurbo::Affine::new(transform.to_cols_array()),
-		// 	&vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y),
-		// );
+		scene.push_layer(
+			blending,
+			self.alpha_blending.opacity,
+			kurbo_transform,
+			&vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y),
+		);
 		for element in self.iter() {
 			element.render_to_vello(scene, transform * self.transform);
 		}
-		// scene.pop_layer();
+		scene.pop_layer();
 	}
 
 	fn contains_artboard(&self) -> bool {
@@ -343,25 +342,17 @@ impl GraphicElementRendered for VectorData {
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2) {
-		use glam::Affine2;
-		use vello::peniko::Fill;
-
 		let kurbo_transform = kurbo::Affine::new(transform.to_cols_array());
 		let to_point = |p: DVec2| kurbo::Point::new(p.x, p.y);
 		let mut path = kurbo::BezPath::new();
 		for (_, subpath) in self.region_bezier_paths() {
 			subpath.to_vello_path(self.transform, &mut path);
 		}
-		// let path = subpath.to_vello_path(transform * self.transform);
-		// let path = subpath.to_vello_path(self.transform);
-		// let path = subpath.to_vello_path(DAffine2::IDENTITY);
-		// let fill = self.style.fill().to_vello_brush();
-		// let stroke = self.style.stroke().map(|stroke| stroke.to_vello_stroke());
 
-		let fill = match self.style.fill() {
+		match self.style.fill() {
 			crate::vector::style::Fill::Solid(color) => {
 				let fill = vello::peniko::Brush::Solid(vello::peniko::Color::rgba(color.r() as f64, color.g() as f64, color.b() as f64, color.a() as f64));
-				fill
+				scene.fill(vello::peniko::Fill::NonZero, kurbo_transform, &fill, None, &path);
 			}
 			crate::vector::style::Fill::Gradient(gradient) => {
 				let mut stops = vello::peniko::ColorStops::new();
@@ -371,8 +362,6 @@ impl GraphicElementRendered for VectorData {
 						color: vello::peniko::Color::rgba(color.r() as f64, color.g() as f64, color.b() as f64, color.a() as f64),
 					});
 				}
-				log::debug!("gradient: {:?}", gradient);
-				log::debug!("stops: {:?}", stops);
 				// compute bounding box of the shape to determine the gradient start and end points
 				let bounds = self.bounding_box().unwrap_or_default();
 				let lerp_bounds = |p: DVec2| bounds[0] + (bounds[1] - bounds[0]) * p;
@@ -389,7 +378,7 @@ impl GraphicElementRendered for VectorData {
 							end: to_point(end),
 						},
 						crate::vector::style::GradientType::Radial => {
-							let radius = (end - start).length();
+							let radius = start.distance(end);
 							vello::peniko::GradientKind::Radial {
 								start_center: to_point(start),
 								start_radius: 0.,
@@ -401,14 +390,10 @@ impl GraphicElementRendered for VectorData {
 					stops,
 					..Default::default()
 				});
-				log::debug!("fill: {:?}", fill);
-				fill
+				scene.fill(vello::peniko::Fill::NonZero, kurbo_transform, &fill, None, &path);
 			}
-			crate::vector::style::Fill::None => vello::peniko::Brush::Solid(vello::peniko::Color::TRANSPARENT),
+			crate::vector::style::Fill::None => (),
 		};
-
-		// scene.fill(Fill::NonZero, vello::kurbo::Affine::IDENTITY, &fill, None, &path);
-		scene.fill(vello::peniko::Fill::EvenOdd, kurbo_transform, &fill, None, &path);
 
 		let mut path = kurbo::BezPath::new();
 		for (_, subpath) in self.region_bezier_paths() {
@@ -426,11 +411,7 @@ impl GraphicElementRendered for VectorData {
 				..Default::default()
 			};
 			scene.stroke(&stroke, kurbo_transform, color, None, &path);
-			// scene.fill(Fill::NonZero, vello::kurbo::Affine::IDENTITY, color, None, &path);
-			// let circle = vello::kurbo::Circle::new((420.0, 200.0), 120.0);
-			// scene.fill(vello::peniko::Fill::NonZero, vello::kurbo::Affine::IDENTITY, color, None, &circle);
 		}
-		// scene.fill(Fill::NonZero, vello::kurbo::Affine::IDENTITY, &fill, None, &path);
 	}
 }
 
@@ -513,15 +494,15 @@ impl GraphicElementRendered for Artboard {
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2) {
-		// log::debug!("Artboard: {:#?}", &self);
-		let rect = vello::kurbo::Rect::new(self.location.x as f64, self.location.y as f64, self.dimensions.x as f64, self.dimensions.y as f64);
 		// Render background
 		let color = vello::peniko::Color::rgba(self.background.r() as f64, self.background.g() as f64, self.background.b() as f64, self.background.a() as f64);
 		let rect = vello::kurbo::Rect::new(self.location.x as f64, self.location.y as f64, self.dimensions.x as f64, self.dimensions.y as f64);
 		let blend_mode = vello::peniko::BlendMode::new(vello::peniko::Mix::Clip, vello::peniko::Compose::SrcOver);
-		scene.push_layer(blend_mode, 1.0, kurbo::Affine::new(transform.to_cols_array()), &rect);
+
+		scene.push_layer(vello::peniko::Mix::Normal, 1.0, kurbo::Affine::new(transform.to_cols_array()), &rect);
 		scene.fill(vello::peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), color, None, &rect);
 		scene.pop_layer();
+
 		if self.clip {
 			scene.push_layer(blend_mode, 1.0, kurbo::Affine::new(transform.to_cols_array()), &rect);
 		}
@@ -529,7 +510,6 @@ impl GraphicElementRendered for Artboard {
 		if self.clip {
 			scene.pop_layer();
 		}
-		// scene.pop_layer();
 	}
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {

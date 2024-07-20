@@ -1,4 +1,3 @@
-use dyn_any::DynFuture;
 pub use graph_craft::wasm_application_io::*;
 #[cfg(target_arch = "wasm32")]
 use graphene_core::application_io::SurfaceHandle;
@@ -14,10 +13,8 @@ use graphene_core::{Color, WasmNotSend};
 
 #[cfg(target_arch = "wasm32")]
 use base64::Engine;
-use core::future::Future;
 #[cfg(target_arch = "wasm32")]
 use glam::DAffine2;
-use std::marker::PhantomData;
 use std::sync::Arc;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::Clamped;
@@ -115,18 +112,15 @@ async fn render_canvas<'a>(render_config: RenderConfig, data: impl GraphicElemen
 
 		let mut scene = Scene::new();
 		let mut child = Scene::new();
-		// add_shapes_to_scene(&mut child);
-		data.render_to_vello(&mut child, footprint.transform);
+		data.render_to_vello(&mut child, glam::DAffine2::IDENTITY);
 		// TODO: Instead of applying the transform here, pass the transform during the translation to avoid the O(Nr cost
-		// scene.append(&child, Some(kurbo::Affine::new(footprint.transform.to_cols_array())));
+		scene.append(&child, Some(kurbo::Affine::new(footprint.transform.to_cols_array())));
 
-		exec.render_vello_scene(&child, &surface_handle, footprint.resolution.x, footprint.resolution.y)
+		exec.render_vello_scene(&scene, &surface_handle, footprint.resolution.x, footprint.resolution.y)
 			.await
 			.expect("Failed to render Vello scene");
-
-	// RenderOutput::CanvasFrame(surface.into())
 	} else {
-		todo!();
+		unreachable!("Attempted to render with Vello when no GPU executor is available")
 	}
 	let frame = graphene_core::application_io::SurfaceHandleFrame {
 		surface_handle,

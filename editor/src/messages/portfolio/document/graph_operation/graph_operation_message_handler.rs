@@ -724,25 +724,13 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 		usvg::Node::Path(path) => {
 			let subpaths = convert_usvg_path(path);
 			let bounds = subpaths.iter().filter_map(|subpath| subpath.bounding_box()).reduce(Quad::combine_bounds).unwrap_or_default();
-			let transformed_bounds = subpaths
-				.iter()
-				.filter_map(|subpath| subpath.bounding_box_with_transform(transform * usvg_transform(node.abs_transform())))
-				.reduce(Quad::combine_bounds)
-				.unwrap_or_default();
 			modify_inputs.insert_vector_data(subpaths, layer);
 
 			modify_inputs.modify_inputs("Transform", true, |inputs, _node_id, _metadata| {
 				transform_utils::update_transform(inputs, transform * usvg_transform(node.abs_transform()));
 			});
 			let bounds_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-			let transformed_bound_transform = DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);
-			apply_usvg_fill(
-				path.fill(),
-				modify_inputs,
-				transform * usvg_transform(node.abs_transform()),
-				bounds_transform,
-				transformed_bound_transform,
-			);
+			apply_usvg_fill(path.fill(), modify_inputs, transform * usvg_transform(node.abs_transform()), bounds_transform);
 			apply_usvg_stroke(path.stroke(), modify_inputs);
 		}
 		usvg::Node::Image(_image) => {
@@ -750,7 +738,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 		}
 		usvg::Node::Text(text) => {
 			let font = Font::new(graphene_core::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_core::consts::DEFAULT_FONT_STYLE.to_string());
-			modify_inputs.insert_text(text.chunks().iter().map(|chunk| chunk.text().clone()).collect(), font, 24., layer);
+			modify_inputs.insert_text(text.chunks().iter().map(|chunk| chunk.text()).collect(), font, 24., layer);
 			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
 		}
 	}
@@ -783,7 +771,7 @@ fn apply_usvg_stroke(stroke: Option<&usvg::Stroke>, modify_inputs: &mut ModifyIn
 	}
 }
 
-fn apply_usvg_fill(fill: Option<&usvg::Fill>, modify_inputs: &mut ModifyInputsContext, transform: DAffine2, bounds_transform: DAffine2, transformed_bound_transform: DAffine2) {
+fn apply_usvg_fill(fill: Option<&usvg::Fill>, modify_inputs: &mut ModifyInputsContext, transform: DAffine2, bounds_transform: DAffine2) {
 	if let Some(fill) = &fill {
 		modify_inputs.fill_set(match &fill.paint() {
 			usvg::Paint::Color(color) => Fill::solid(usvg_color(*color, fill.opacity().get())),

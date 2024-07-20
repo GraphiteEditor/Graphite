@@ -168,7 +168,6 @@ impl WgpuExecutor {
 				.unwrap();
 		}
 
-		log::debug!("presenting surface");
 		surface_texture.present();
 
 		Ok(())
