@@ -580,7 +580,6 @@ impl NodeGraphExecutor {
 						transform,
 					} = execution_response;
 
-					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(OverlaysMessage::Draw);
 
 					let node_graph_output = match result {
@@ -619,6 +618,7 @@ impl NodeGraphExecutor {
 
 						return Err("Node graph evaluation failed".to_string());
 					};
+					responses.add(NodeGraphMessage::SendGraph);
 
 					responses.extend(existing_responses.into_iter().map(Into::into));
 					responses.add(NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors });
@@ -656,11 +656,11 @@ impl NodeGraphExecutor {
 				// Send to frontend
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 				responses.add(DocumentMessage::RenderScrollbars);
+				responses.add(DocumentMessage::RenderRulers);
 			}
 			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::CanvasFrame(frame)) => {
 				let resolution = frame.resolution;
 				// Send to frontend
-				responses.add(DocumentMessage::RenderScrollbars);
 				let matrix = frame
 					.transform
 					.to_cols_array()
@@ -674,6 +674,8 @@ impl NodeGraphExecutor {
 					resolution.x, resolution.y, matrix, frame.surface_id.0
 				);
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
+				responses.add(DocumentMessage::RenderScrollbars);
+				responses.add(DocumentMessage::RenderRulers);
 			}
 			TaggedValue::Bool(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::String(render_object) => Self::debug_render(render_object, transform, responses),
