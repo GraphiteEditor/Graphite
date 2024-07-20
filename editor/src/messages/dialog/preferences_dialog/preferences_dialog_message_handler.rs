@@ -46,8 +46,8 @@ impl PreferencesDialogMessageHandler {
 				.widget_holder(),
 		];
 		let use_vello = vec![
-			TextLabel::new("Input").min_width(60).italic(true).widget_holder(),
-			TextLabel::new("Vello renderer").table_align(true).widget_holder(),
+			TextLabel::new("Renderer").min_width(60).italic(true).widget_holder(),
+			TextLabel::new("Vello (experimental)").table_align(true).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(preferences.use_vello)
 				.tooltip("Use experimental vello renderer")
