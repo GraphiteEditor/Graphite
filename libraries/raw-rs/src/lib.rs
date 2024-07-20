@@ -1,5 +1,5 @@
 pub mod decoder;
-pub mod demosiacing;
+pub mod demosaicing;
 pub mod metadata;
 pub mod preprocessing;
 pub mod tiff;
@@ -77,7 +77,7 @@ pub fn process_8bit(raw_image: RawImage) -> Image<u8> {
 	let raw_image = crate::preprocessing::subtract_black::subtract_black(raw_image);
 	let raw_image = crate::preprocessing::raw_to_image::raw_to_image(raw_image);
 	let raw_image = crate::preprocessing::scale_colors::scale_colors(raw_image);
-	let image = crate::demosiacing::linear_demosiacing::linear_demosiac(raw_image);
+	let image = crate::demosaicing::linear_demosaicing::linear_demosaic(raw_image);
 
 	Image {
 		channels: image.channels,

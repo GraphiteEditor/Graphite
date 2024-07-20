@@ -13,14 +13,14 @@ fn average(data: &[u16], indexes: &[i64]) -> u16 {
 	(sum / count) as u16
 }
 
-pub fn linear_demosiac(raw_image: RawImage) -> Image<u16> {
+pub fn linear_demosaic(raw_image: RawImage) -> Image<u16> {
 	match raw_image.cfa_pattern {
-		[0, 1, 1, 2] => linear_demosiac_rggb(raw_image),
+		[0, 1, 1, 2] => linear_demosaic_rggb(raw_image),
 		_ => todo!(),
 	}
 }
 
-fn linear_demosiac_rggb(mut raw_image: RawImage) -> Image<u16> {
+fn linear_demosaic_rggb(mut raw_image: RawImage) -> Image<u16> {
 	let width = raw_image.width as i64;
 	let height = raw_image.height as i64;
 
