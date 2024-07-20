@@ -81,6 +81,7 @@ pub struct ExecutionRequest {
 pub struct ExecutionResponse {
 	execution_id: u64,
 	result: Result<TaggedValue, String>,
+	responses: VecDeque<FrontendMessage>,
 	new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	new_vector_modify: HashMap<NodeId, VectorData>,
 	new_upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
@@ -201,7 +202,7 @@ impl NodeRuntime {
 					self.node_graph_errors.clear();
 					let result = self.update_network(graph).await;
 					let mut responses = VecDeque::new();
-					self.process_monitor_nodes(&mut responses);
+					self.process_monitor_nodes(&mut responses, true);
 					self.sender.send_generation_response(CompilationResponse {
 						result,
 						responses,
@@ -213,10 +214,13 @@ impl NodeRuntime {
 					let transform = render_config.viewport.transform;
 
 					let result = self.execute_network(render_config).await;
+					let mut responses = VecDeque::new();
+					self.process_monitor_nodes(&mut responses, false);
 
 					self.sender.send_execution_response(ExecutionResponse {
 						execution_id,
 						result,
+						responses,
 						new_click_targets: self.click_targets.clone().into_iter().map(|(id, targets)| (LayerNodeIdentifier::new_unchecked(id), targets)).collect(),
 						new_vector_modify: self.vector_modify.clone(),
 						new_upstream_transforms: self.upstream_transforms.clone(),
@@ -280,7 +284,7 @@ impl NodeRuntime {
 	}
 
 	/// Updates state data
-	pub fn process_monitor_nodes(&mut self, responses: &mut VecDeque<FrontendMessage>) {
+	pub fn process_monitor_nodes(&mut self, responses: &mut VecDeque<FrontendMessage>, update_thumbnails: bool) {
 		// TODO: Consider optimizing this since it's currently O(m*n^2), with a sort it could be made O(m * n*log(n))
 		self.thumbnail_renders.retain(|id, _| self.monitor_nodes.iter().any(|monitor_node_path| monitor_node_path.contains(id)));
 
@@ -302,9 +306,13 @@ impl NodeRuntime {
 			};
 
 			if let Some(io) = introspected_data.downcast_ref::<IORecord<Footprint, graphene_core::GraphicElement>>() {
-				Self::process_graphic_element(&mut self.thumbnail_renders, &mut self.click_targets, parent_network_node_id, &io.output, responses)
+				if update_thumbnails {
+					Self::process_graphic_element(&mut self.thumbnail_renders, &mut self.click_targets, parent_network_node_id, &io.output, responses)
+				}
 			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Footprint, graphene_core::Artboard>>() {
-				Self::process_graphic_element(&mut self.thumbnail_renders, &mut self.click_targets, parent_network_node_id, &io.output, responses)
+				if update_thumbnails {
+					Self::process_graphic_element(&mut self.thumbnail_renders, &mut self.click_targets, parent_network_node_id, &io.output, responses)
+				}
 			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<Footprint, VectorData>>() {
 				// Insert the vector modify if we are dealing with vector data
 				self.vector_modify.insert(parent_network_node_id, record.output.clone());
@@ -567,6 +575,7 @@ impl NodeGraphExecutor {
 						execution_id,
 						result,
 						new_click_targets,
+						responses: existing_responses,
 						new_vector_modify,
 						new_upstream_transforms,
 						transform,
@@ -585,6 +594,7 @@ impl NodeGraphExecutor {
 						}
 					};
 
+					responses.extend(existing_responses.into_iter().map(Into::into));
 					document.metadata.update_transforms(new_upstream_transforms);
 					document.metadata.update_from_monitor(new_click_targets, new_vector_modify);
 
