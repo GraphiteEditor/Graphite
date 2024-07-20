@@ -81,7 +81,6 @@ pub struct ExecutionRequest {
 pub struct ExecutionResponse {
 	execution_id: u64,
 	result: Result<TaggedValue, String>,
-	responses: VecDeque<FrontendMessage>,
 	new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	new_vector_modify: HashMap<NodeId, VectorData>,
 	new_upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
@@ -91,6 +90,7 @@ pub struct ExecutionResponse {
 pub struct CompilationResponse {
 	result: Result<(), String>,
 	resolved_types: ResolvedDocumentNodeTypes,
+	responses: VecDeque<FrontendMessage>,
 	node_graph_errors: GraphErrors,
 }
 
@@ -178,7 +178,8 @@ impl NodeRuntime {
 					}
 					.into();
 					if let Some(graph) = self.old_graph.clone() {
-						self.update_network(graph).await;
+						// We ignore this result as compilation errors should have been reported in an eariler iteration
+						let _ = self.update_network(graph).await;
 					}
 				}
 				NodeRuntimeMessage::ImaginatePreferencesUpdate(preferences) => {
@@ -191,15 +192,19 @@ impl NodeRuntime {
 					}
 					.into();
 					if let Some(graph) = self.old_graph.clone() {
-						self.update_network(graph).await;
+						// We ignore this result as compilation errors should have been reported in an eariler iteration
+						let _ = self.update_network(graph).await;
 					}
 				}
 				NodeRuntimeMessage::GraphUpdate(graph) => {
 					self.old_graph = Some(graph.clone());
 					self.node_graph_errors.clear();
 					let result = self.update_network(graph).await;
+					let mut responses = VecDeque::new();
+					self.process_monitor_nodes(&mut responses);
 					self.sender.send_generation_response(CompilationResponse {
 						result,
+						responses,
 						resolved_types: self.resolved_types.clone(),
 						node_graph_errors: self.node_graph_errors.clone(),
 					});
@@ -209,13 +214,9 @@ impl NodeRuntime {
 
 					let result = self.execute_network(render_config).await;
 
-					let mut responses = VecDeque::new();
-					self.process_monitor_nodes(&mut responses);
-
 					self.sender.send_execution_response(ExecutionResponse {
 						execution_id,
 						result,
-						responses,
 						new_click_targets: self.click_targets.clone().into_iter().map(|(id, targets)| (LayerNodeIdentifier::new_unchecked(id), targets)).collect(),
 						new_vector_modify: self.vector_modify.clone(),
 						new_upstream_transforms: self.upstream_transforms.clone(),
@@ -565,14 +566,12 @@ impl NodeGraphExecutor {
 					let ExecutionResponse {
 						execution_id,
 						result,
-						responses: existing_responses,
 						new_click_targets,
 						new_vector_modify,
 						new_upstream_transforms,
 						transform,
 					} = execution_response;
 
-					responses.extend(existing_responses.into_iter().map(Into::into));
 					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(OverlaysMessage::Draw);
 
@@ -600,6 +599,7 @@ impl NodeGraphExecutor {
 				NodeGraphUpdate::CompilationResponse(execution_response) => {
 					let CompilationResponse {
 						resolved_types,
+						responses: existing_responses,
 						node_graph_errors,
 						result,
 					} = execution_response;
@@ -611,6 +611,7 @@ impl NodeGraphExecutor {
 						return Err("Node graph evaluation failed".to_string());
 					};
 
+					responses.extend(existing_responses.into_iter().map(Into::into));
 					responses.add(NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors });
 				}
 				NodeGraphUpdate::NodeGraphUpdateMessage(NodeGraphUpdateMessage::ImaginateStatusUpdate) => {
