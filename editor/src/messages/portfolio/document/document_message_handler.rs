@@ -1148,6 +1148,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				} else {
 					self.node_graph_to_viewport.insert(self.node_graph_handler.network.clone(), transform);
+					responses.add(FrontendMessage::UpdateNodeGraphTransform {
+						transform: Transform {
+							scale: transform.matrix2.x_axis.x,
+							x: transform.translation.x,
+							y: transform.translation.y,
+						},
+					})
 				}
 			}
 			DocumentMessage::ZoomCanvasTo100Percent => {
