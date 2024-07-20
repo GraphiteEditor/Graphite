@@ -12,6 +12,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup};
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 
+use glam::{DVec2, IVec2, UVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::text::Font;
@@ -499,6 +500,34 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				document.set_save_state(document_is_saved);
 
 				self.load_document(document, document_id, responses);
+			}
+			PortfolioMessage::OpenImageFile {
+				image_name,
+				image_width,
+				image_height,
+				image_data,
+			} => {
+				let dimensions = UVec2::new(image_width, image_height);
+				responses.add(PortfolioMessage::NewDocumentWithName { name: image_name });
+
+				// let create_artboard = !self.infinite && self.dimensions.x > 0 && self.dimensions.y > 0;
+				let create_artboard = dimensions.x > 0 && dimensions.y > 0;
+				if create_artboard {
+					let id = NodeId(generate_uuid());
+					responses.add(GraphOperationMessage::NewArtboard {
+						id,
+						artboard: graphene_core::Artboard::new(IVec2::ZERO, dimensions.as_ivec2()),
+					});
+					responses.add(NavigationMessage::FitViewportToBounds {
+						bounds: [DVec2::ZERO, dimensions.as_dvec2()],
+						prevent_zoom_past_100: true,
+					});
+				}
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
+
+				let image = graphene_core::raster::Image::from_image_data(&image_data, image_width, image_height);
+				responses.add(DocumentMessage::PasteImageAsBackground { image });
 			}
 			PortfolioMessage::PasteIntoFolder { clipboard, parent, insert_index } => {
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {

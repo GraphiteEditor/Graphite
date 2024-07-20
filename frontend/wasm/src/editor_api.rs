@@ -289,6 +289,17 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	#[wasm_bindgen(js_name = openImageFile)]
+	pub fn open_image_file(&self, image_name: String, image_width: u32, image_height: u32, image_data: Vec<u8>) {
+		let message = PortfolioMessage::OpenImageFile {
+			image_name,
+			image_width,
+			image_height,
+			image_data,
+		};
+		self.dispatch(message);
+	}
+
 	#[wasm_bindgen(js_name = openDocumentFile)]
 	pub fn open_document_file(&self, document_name: String, document_serialized_content: String) {
 		let message = PortfolioMessage::OpenDocumentFile {

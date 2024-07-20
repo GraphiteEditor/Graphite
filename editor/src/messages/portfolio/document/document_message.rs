@@ -93,6 +93,9 @@ pub enum DocumentMessage {
 		image: Image<Color>,
 		mouse: Option<(f64, f64)>,
 	},
+	PasteImageAsBackground {
+		image: Image<Color>,
+	},
 	PasteSvg {
 		svg: String,
 		mouse: Option<(f64, f64)>,

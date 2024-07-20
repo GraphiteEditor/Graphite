@@ -18,6 +18,7 @@
 
 	import { platformIsMac, isEventSupported } from "@graphite/utility-functions/platform";
 
+	import { extractPixelData } from "@graphite/utility-functions/rasterization";
 	import type { Editor } from "@graphite/wasm-communication/editor";
 	import { type LayoutKeysGroup, type Key } from "@graphite/wasm-communication/messages";
 
@@ -34,6 +35,7 @@
 	export let tabLabels: { name: string; tooltip?: string }[];
 	export let tabActiveIndex: number;
 	export let panelType: PanelTypes | undefined = undefined;
+	export let dropzoneActive = false;
 	export let clickAction: ((index: number) => void) | undefined = undefined;
 	export let closeAction: ((index: number) => void) | undefined = undefined;
 
@@ -48,6 +50,41 @@
 
 		if (platformIsMac()) return reservedKey ? [ALT, COMMAND] : [COMMAND];
 		return reservedKey ? [CONTROL, ALT] : [CONTROL];
+	}
+
+	async function loadImage(file: File) {
+		const image = new Image();
+		image.onload = async function () {
+			const imageData = await extractPixelData(image);
+			editor.handle.openImageFile(file.name, image.width, image.height, new Uint8Array(imageData.data));
+		};
+		const url = window.URL || window.webkitURL;
+		image.src = url.createObjectURL(file);
+	}
+
+	// https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API/File_drag_and_drop
+	async function dropHandler(e: DragEvent) {
+		if (e.dataTransfer) {
+			if (e.dataTransfer.items) {
+				// Use DataTransferItemList interface to access the file(s)
+				[...e.dataTransfer.items].forEach(async (item, _) => {
+					// If dropped items aren't files, reject them
+					if (item.kind === "file") {
+						const file = item.getAsFile();
+						if (file && file.type.match("^image/")) {
+							await loadImage(file);
+						}
+					}
+				});
+			} else {
+				// Use DataTransfer interface to access the file(s)
+				[...e.dataTransfer.files].forEach(async (file, _) => {
+					if (file && file.type.match("^image")) {
+						await loadImage(file);
+					}
+				});
+			}
+		}
 	}
 
 	export async function scrollTabIntoView(newIndex: number) {
@@ -110,7 +147,26 @@
 		{#if panelType}
 			<svelte:component this={PANEL_COMPONENTS[panelType]} />
 		{:else}
-			<LayoutCol class="empty-panel">
+			<LayoutCol
+				class="empty-panel"
+				classes={{ dropzone: dropzoneActive }}
+				on:drop={(e) => {
+					e.preventDefault();
+					dropHandler(e);
+				}}
+				on:dragover={(e) => {
+					e.preventDefault();
+					dropzoneActive = true;
+				}}
+				on:dragenter={(e) => {
+					e.preventDefault();
+					dropzoneActive = true;
+				}}
+				on:dragleave={(e) => {
+					e.preventDefault();
+					dropzoneActive = false;
+				}}
+			>
 				<LayoutCol class="content">
 					<LayoutRow class="logotype">
 						<IconLabel icon="GraphiteLogotypeSolid" />
@@ -270,6 +326,10 @@
 				margin: 4px;
 				border-radius: 2px;
 				justify-content: center;
+
+				&.dropzone {
+					background: var(--color-3-darkgray);
+				}
 
 				.content {
 					flex: 0 0 auto;
