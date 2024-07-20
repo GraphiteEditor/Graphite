@@ -306,13 +306,9 @@ impl NodeRuntime {
 			};
 
 			if let Some(io) = introspected_data.downcast_ref::<IORecord<Footprint, graphene_core::GraphicElement>>() {
-				if update_thumbnails {
-					Self::process_graphic_element(&mut self.thumbnail_renders, &mut self.click_targets, parent_network_node_id, &io.output, responses)
-				}
+				Self::process_graphic_element(&mut self.thumbnail_renders, &mut self.click_targets, parent_network_node_id, &io.output, responses, update_thumbnails)
 			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Footprint, graphene_core::Artboard>>() {
-				if update_thumbnails {
-					Self::process_graphic_element(&mut self.thumbnail_renders, &mut self.click_targets, parent_network_node_id, &io.output, responses)
-				}
+				Self::process_graphic_element(&mut self.thumbnail_renders, &mut self.click_targets, parent_network_node_id, &io.output, responses, update_thumbnails)
 			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<Footprint, VectorData>>() {
 				// Insert the vector modify if we are dealing with vector data
 				self.vector_modify.insert(parent_network_node_id, record.output.clone());
@@ -344,11 +340,15 @@ impl NodeRuntime {
 		parent_network_node_id: NodeId,
 		graphic_element: &impl GraphicElementRendered,
 		responses: &mut VecDeque<FrontendMessage>,
+		update_thumbnails: bool,
 	) {
 		let click_targets = click_targets.entry(parent_network_node_id).or_default();
 		click_targets.clear();
 		graphic_element.add_click_targets(click_targets);
 
+		if !update_thumbnails {
+			return;
+		}
 		// RENDER THUMBNAIL
 
 		let bounds = graphic_element.bounding_box(DAffine2::IDENTITY);
@@ -363,7 +363,6 @@ impl NodeRuntime {
 		render.format_svg(min, max);
 
 		// UPDATE FRONTEND THUMBNAIL
-
 		let new_thumbnail_svg = render.svg;
 		let old_thumbnail_svg = thumbnail_renders.entry(parent_network_node_id).or_default();
 
