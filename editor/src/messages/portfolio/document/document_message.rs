@@ -157,6 +157,7 @@ pub enum DocumentMessage {
 	Undo,
 	UndoFinished,
 	UngroupSelectedLayers,
+	ResetTransform,
 	UpdateDocumentTransform {
 		transform: glam::DAffine2,
 	},

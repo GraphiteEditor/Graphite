@@ -433,7 +433,7 @@ impl NodeNetworkInterface {
 							log::error!("Could not get downstream node input connector with input index 0");
 							return None;
 						};
-						return self.get_position(downstream_node_id, network_path).map(|position| position + IVec2::new(0, y_offset as i32));
+						return self.get_position(downstream_node_id, network_path).map(|position| position + IVec2::new(0, 3 + y_offset as i32));
 					}
 				}
 			}
@@ -1323,30 +1323,23 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network_metadata in collect_front_end_click_targets");
 			return FrontEndClickTargets::default();
 		};
-		network_metadata
-			.persistent_metadata
-			.node_metadata
-			.keys()
-			.map(|node_id| node_id.clone())
-			.collect::<Vec<_>>()
-			.into_iter()
-			.for_each(|node_id| {
-				if let Some(node_click_targets) = self.get_node_click_targets(&node_id, network_path) {
-					let mut node_path = String::new();
-					node_click_targets.node_click_target.subpath.subpath_to_svg(&mut node_path, DAffine2::IDENTITY);
-					all_node_click_targets.push((node_id, node_path));
-					for port in node_click_targets.port_click_targets.get_click_targets() {
-						let mut port_path = String::new();
-						port.subpath.subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
-						port_click_targets.push(port_path);
-					}
-					if let NodeTypeClickTargets::Layer(layer_metadata) = &node_click_targets.node_type_metadata {
-						let mut port_path = String::new();
-						layer_metadata.visibility_click_target.subpath.subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
-						visibility_click_targets.push(port_path);
-					}
+		network_metadata.persistent_metadata.node_metadata.keys().copied().collect::<Vec<_>>().into_iter().for_each(|node_id| {
+			if let Some(node_click_targets) = self.get_node_click_targets(&node_id, network_path) {
+				let mut node_path = String::new();
+				node_click_targets.node_click_target.subpath.subpath_to_svg(&mut node_path, DAffine2::IDENTITY);
+				all_node_click_targets.push((node_id, node_path));
+				for port in node_click_targets.port_click_targets.get_click_targets() {
+					let mut port_path = String::new();
+					port.subpath.subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
+					port_click_targets.push(port_path);
 				}
-			});
+				if let NodeTypeClickTargets::Layer(layer_metadata) = &node_click_targets.node_type_metadata {
+					let mut port_path = String::new();
+					layer_metadata.visibility_click_target.subpath.subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
+					visibility_click_targets.push(port_path);
+				}
+			}
+		});
 		let mut layer_click_targets = Vec::new();
 		let mut node_click_targets = Vec::new();
 		all_node_click_targets.into_iter().for_each(|(node_id, path)| {
@@ -1410,9 +1403,7 @@ impl NodeNetworkInterface {
 			return None;
 		};
 
-		log::debug!("node graph to viewport: {}", network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport);
 		let point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
-		log::debug!("point: {point:?}");
 		let nodes = network.nodes.keys().map(|node_id| *node_id).collect::<Vec<_>>();
 		let clicked_nodes = nodes
 			.iter()
@@ -1422,13 +1413,12 @@ impl NodeNetworkInterface {
 			})
 			.cloned()
 			.collect::<Vec<_>>();
-		log::debug!("clicked_nodes: {clicked_nodes:?}, network_path: {network_path:?}");
 		// Since nodes are placed on top of layer chains, find the first non layer node that was clicked, and if there way no non layer nodes clicked, then find the first layer node that was clicked
 		clicked_nodes
 			.iter()
 			.find_map(|node_id| {
-				let Some(node_metadata) = self.network_metadata.persistent_metadata.node_metadata.get(node_id) else {
-					log::debug!("Could not get node_metadata for node {node_id}");
+				let Some(node_metadata) = self.network_metadata(network_path)?.persistent_metadata.node_metadata.get(node_id) else {
+					log::error!("Could not get node_metadata for node {node_id}");
 					return None;
 				};
 				if node_metadata.persistent_metadata.is_layer() {
@@ -1540,10 +1530,11 @@ impl NodeNetworkInterface {
 			InputConnector::Export(_import_index) => None, // TODO: Implement getting position for the new import connection UI
 		}
 	}
+
 	pub fn get_output_position(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Option<DVec2> {
 		match output_connector {
 			OutputConnector::Node { node_id, output_index } => self
-				.get_node_click_targets(&node_id, network_path)
+				.get_node_click_targets(node_id, network_path)
 				.and_then(|transient_node_metadata| transient_node_metadata.port_click_targets.get_output_port_position(*output_index)),
 			OutputConnector::Import(import_index) => None, // TODO: Implement getting position for the new import connection UI
 		}
@@ -1567,10 +1558,6 @@ impl NodeNetworkInterface {
 			.collect::<Vec<_>>()
 			.iter()
 			.filter_map(|node_id| {
-				let Some(node_metadata) = self.network_metadata.persistent_metadata.node_metadata.get(&node_id) else {
-					log::debug!("Could not get click target for node {node_id}");
-					return None;
-				};
 				self.get_node_click_targets(&node_id, network_path)
 					.and_then(|transient_node_metadata| transient_node_metadata.node_click_target.subpath.bounding_box_with_transform(node_graph_to_viewport))
 			})
@@ -1840,7 +1827,7 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	// TODO: Keep metadata in sync with the new implementation
+	// TODO: Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
 	pub fn set_implementation(&mut self, node_id: &NodeId, network_path: &[NodeId], implementation: DocumentNodeImplementation) {
 		let Some(network) = self.network_mut(network_path) else {
 			log::error!("Could not get nested network in set_implementation");
@@ -1865,47 +1852,127 @@ impl NodeNetworkInterface {
 		std::mem::replace(&mut node.inputs, inputs)
 	}
 
-	/// TODO: Ensure network metadata, positions, and other metadata is kept in sync
-	/// Ensure layer is toggled to non layer if it is no longer eligibile
-	pub fn set_input(&mut self, input_connector: InputConnector, input: NodeInput, network_path: &[NodeId]) {
+	/// Ensure layer is toggled to non layer if it is no longer eligible
+	pub fn set_input(&mut self, input_connector: InputConnector, new_input: NodeInput, network_path: &[NodeId]) {
+		if matches!(input_connector, InputConnector::Export(_)) && matches!(new_input, NodeInput::Network { .. }) {
+			// TODO: Add support for flattening NodeInput::Network exports in flatten_with_fns https://github.com/GraphiteEditor/Graphite/issues/1762
+			log::error!("Cannot connect a network to an export, see https://github.com/GraphiteEditor/Graphite/issues/1762");
+			return;
+		}
+
+		let previous_position = if let NodeInput::Node { node_id, .. } = &new_input {
+			self.get_position(node_id, network_path).map(|position| (*node_id, position))
+		} else {
+			None
+		};
+
 		let Some(network) = self.network_mut(network_path) else {
 			log::error!("Could not get nested network in set_input");
 			return;
 		};
 		match input_connector {
-			InputConnector::Node { node_id, input_index } => todo!(),
+			InputConnector::Node { node_id, input_index } => {
+				let Some(node) = network.nodes.get_mut(&node_id) else {
+					log::error!("Could not get node in set_input");
+					return;
+				};
+				let Some(input) = node.inputs.get_mut(input_index) else {
+					log::error!("Could not get input in set_input");
+					return;
+				};
+				*input = new_input.clone();
+			}
 			InputConnector::Export(export_index) => {
 				let Some(export) = network.exports.get_mut(export_index) else {
 					log::error!("Could not get export in set_input");
 					return;
 				};
-				*export = input;
+				*export = new_input.clone();
+			}
+		}
+
+		// Load structure if the change is to the document network and to the first or second
+		if network_path.is_empty() {
+			if matches!(input_connector, InputConnector::Export(0)) {
+				self.load_structure();
+			} else if let InputConnector::Node { node_id, input_index } = &input_connector {
+				// If the connection is made to the first or second input of a node connected to the output, then load the structure
+				if self.connected_to_output(node_id, network_path) && (*input_index == 0 || *input_index == 1) {
+					self.load_structure();
+				}
+			}
+		}
+
+		self.load_outward_wires(network_path);
+
+		// Layout system
+		if let NodeInput::Node { node_id: upstream_node_id, .. } = &new_input {
+			let Some(current_node_position) = self.get_position(upstream_node_id, network_path) else {
+				log::error!("Could not get current node position in set_input for node {upstream_node_id}");
+				return;
+			};
+			let Some(network_metadata) = self.network_metadata(network_path) else {
+				log::error!("Could not get nested network_metadata in set_input");
+				return;
+			};
+			let Some(node_metadata) = network_metadata.persistent_metadata.node_metadata.get(upstream_node_id) else {
+				log::error!("Could not get node_metadata in set_input");
+				return;
+			};
+			match &node_metadata.persistent_metadata.node_type_metadata {
+				NodeTypePersistentMetadata::Layer(_) => {
+					match &input_connector {
+						InputConnector::Export(_) => {
+							// If a layer is connected to the exports, it should be set to absolute position without being moved.
+							self.set_absolute_position(upstream_node_id, network_path, current_node_position)
+						}
+						InputConnector::Node { node_id: downstream_node_id, .. } => {
+							// If a layer is connected to another node, it should be set to stack positioning
+							let Some(downstream_node_metadata) = network_metadata.persistent_metadata.node_metadata.get(downstream_node_id) else {
+								log::error!("Could not get downstream node_metadata in set_input");
+								return;
+							};
+							match &downstream_node_metadata.persistent_metadata.node_type_metadata {
+								// TODO: Layout system
+								NodeTypePersistentMetadata::Layer(downstream_layer_metadata) => match downstream_layer_metadata.position {
+									// If the layer feeds into an absolute positioned layer, set its y offset to 0
+									LayerPosition::Absolute(_) => self.set_stack_position(upstream_node_id, network_path, 0),
+									// If the layer is added to a stack, set its y offset based on the downstream node
+									LayerPosition::Stack(downstream_y_offset) => self.set_stack_position(upstream_node_id, network_path, 0),
+								},
+								NodeTypePersistentMetadata::Node(_) => {
+									// If the layer feeds into a node, set its y offset to 0
+									self.set_stack_position(upstream_node_id, network_path, 0);
+								}
+							}
+							// Since setting the position to a stack position can move the node, reload its click targets
+							self.load_node_click_targets(upstream_node_id, network_path);
+						}
+					}
+				}
+				NodeTypePersistentMetadata::Node(node_metadata) => {
+					// If a node with chain position is connected to another node, break the chain and set the position to absolute
+					if matches!(node_metadata.position, NodePosition::Chain) {
+						self.set_absolute_position(upstream_node_id, network_path, current_node_position)
+					}
+				}
+			}
+		}
+		// Disconnecting
+		else if let NodeInput::Value { .. } = &new_input {
+			// Set the previously connected node to absolute position at its previous position
+			if let Some((node_id, previous_position)) = previous_position {
+				self.set_absolute_position(&node_id, network_path, previous_position)
 			}
 		}
 	}
 
 	/// Ensure network metadata, positions, and other metadata is kept in sync
 	pub fn disconnect_input(&mut self, input_connector: InputConnector, network_path: &[NodeId]) {
-		let Some(network) = self.network(network_path) else {
-			return;
-		};
-
-		let existing_input = match input_connector {
-			InputConnector::Node { node_id, input_index } => network.nodes.get(&node_id).and_then(|node| node.inputs.get(input_index)),
-			InputConnector::Export(input_index) => network.exports.get(input_index),
-		};
-
-		let Some(existing_input) = existing_input else {
-			warn!("Could not find input for {input_connector:?} when disconnecting");
-			return;
-		};
-
 		let tagged_value = TaggedValue::from_type(&self.get_input_type(&input_connector, network_path));
 
 		let mut value_input = NodeInput::value(tagged_value, true);
-		if let NodeInput::Value { exposed, .. } = &mut value_input {
-			*exposed = existing_input.is_exposed();
-		}
+
 		if let InputConnector::Node { node_id, .. } = input_connector {
 			self.set_input(input_connector, value_input, network_path);
 		} else {
@@ -1920,56 +1987,16 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub fn create_wire(&mut self, _output_connector: OutputConnector, _input_connector: InputConnector, _network_path: &[NodeId]) {
+	pub fn create_wire(&mut self, output_connector: OutputConnector, input_connector: InputConnector, network_path: &[NodeId]) {
+		let input = match output_connector {
+			OutputConnector::Node { node_id, output_index } => NodeInput::node(node_id, output_index),
+			OutputConnector::Import(import_index) => NodeInput::Network {
+				import_type: graph_craft::generic!(T),
+				import_index,
+			},
+		};
 
-		//let input_index = NodeGraphMessageHandler::get_input_index(network, input_node, input_node_connector_index);
-
-		// match (output_node_id, input_node_id) {
-		// 	// Connecting 2 document nodes
-		// 	(Some(output_node_id), Some(input_node_id)) => {
-		// 		let input = NodeInput::node(output_node_id, output_node_connector_index);
-		// 		responses.add(NodeGraphMessage::SetNodeInput {
-		// 			node_id: input_node_id,
-		// 			input_index,
-		// 			input,
-		// 		});
-		// 		if network.connected_to_output(input_node_id) {
-		// 			responses.add(NodeGraphMessage::RunDocumentGraph);
-		// 		}
-		// 	}
-		// 	// Connecting a document node output to the Export node input
-		// 	(Some(output_node_id), None) => {
-		// 		let input = NodeInput::node(output_node_id, output_node_connector_index);
-		// 		responses.add(NodeGraphMessage::SetNodeInput {
-		// 			node_id: network.exports_metadata.0,
-		// 			input_index,
-		// 			input,
-		// 		});
-		// 		responses.add(NodeGraphMessage::RunDocumentGraph);
-		// 	}
-		// 	// Connecting a document node input to the Import node output
-		// 	(None, Some(input_node_id)) => {
-		// 		let input = NodeInput::network(generic!(T), output_node_connector_index);
-		// 		responses.add(NodeGraphMessage::SetNodeInput {
-		// 			node_id: input_node_id,
-		// 			input_index,
-		// 			input,
-		// 		});
-
-		// 	}
-		// 	// Connecting a Export node input to the Import node output
-		// 	(None, None) => {
-		// 		// TODO: Add support for flattening NodeInput::Network exports in flatten_with_fns https://github.com/GraphiteEditor/Graphite/issues/1762
-		// 		responses.add(DialogMessage::RequestComingSoonDialog { issue: Some(1762) })
-		// 		// let input = NodeInput::network(generic!(T), output_node_connector_index);
-		// 		// responses.add(NodeGraphMessage::SetNodeInput {
-		// 		// 	node_id: network.exports_metadata.0,
-		// 		// 	input_index,
-		// 		// 	input,
-		// 		// });
-		// 		// responses.add(NodeGraphMessage::RunDocumentGraph);
-		// 	}
-		// }
+		self.set_input(input_connector, input, network_path);
 	}
 
 	/// Used to insert a node template into the network.
@@ -2437,6 +2464,24 @@ impl NodeNetworkInterface {
 		}
 	}
 
+	/// Sets the position of a layer to a stack position
+	fn set_stack_position(&mut self, node_id: &NodeId, network_path: &[NodeId], y_offset: u32) {
+		log::debug!("Setting stack position for node {node_id} to {y_offset}");
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+			log::error!("Could not get nested network_metadata in shift_node");
+			return;
+		};
+		let Some(node_metadata) = network_metadata.persistent_metadata.node_metadata.get_mut(node_id) else {
+			log::error!("Could not get node_metadata for node {node_id}");
+			return;
+		};
+		if let NodeTypePersistentMetadata::Layer(layer_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
+			layer_metadata.position = LayerPosition::Stack(y_offset);
+		} else {
+			log::error!("Could not set stack position for non layer node {node_id}");
+		}
+	}
+
 	/// Shifts a node by a certain offset without the auto layout system. If the node is a layer in a stack, the y_offset is shifted. If the node is a node in a chain, its position gets set to absolute.
 	pub fn shift_node(&mut self, node_id: &NodeId, shift: IVec2, network_path: &[NodeId]) {
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
@@ -2836,7 +2881,7 @@ pub struct NodeNetworkTransientMetadata {
 	pub all_nodes_bounding_box: TransientMetadata<[DVec2; 2]>,
 	/// Cache bounding box for all "groups of nodes", which will be used to prevent overlapping nodes
 	// node_group_bounding_box: Vec<(Subpath<ManipulatorGroupId>, Vec<Nodes>)>,
-	/// Cache for all outward wire connections - will most likely need to be added
+	/// Cache for all outward wire connections
 	pub outward_wires: TransientMetadata<HashMap<OutputConnector, Vec<InputConnector>>>,
 	/// TODO: Cache all wire paths instead of calculating in Graph.svelte
 	// pub wire_paths: Vec<WirePath>

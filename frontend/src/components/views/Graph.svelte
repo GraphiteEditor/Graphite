@@ -6,7 +6,7 @@
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import type { FrontendNodeWire, FrontendNodeType, FrontendNode, FrontendGraphInput, FrontendGraphOutput, FrontendGraphDataType, WirePath } from "@graphite/wasm-communication/messages";
+	import type { FrontendNodeWire, FrontendNodeType, FrontendNode, FrontendGraphInput, FrontendGraphOutput, FrontendGraphDataType, WirePath, Node } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -117,11 +117,11 @@
 	}
 
 	function resolveWire(wire: FrontendNodeWire): { nodeOutput: SVGSVGElement | undefined; nodeInput: SVGSVGElement | undefined } {
-		const outputIndex = Number(wire.wireStartOutputIndex);
-		const inputIndex = Number(wire.wireEndInputIndex);
+		const outputIndex = wire.wireStart.Node ? Number(wire.wireStart.Node?.output_index) : Number(wire.wireStart.Import?.output_index);
+		const inputIndex = wire.wireEnd.Node ? Number(wire.wireEnd.Node?.input_index) : Number(wire.wireEnd.Export?.input_index);
 
-		const nodeOutputConnectors = outputs[$nodeGraph.nodes.findIndex((n) => n.id === wire.wireStart)];
-		const nodeInputConnectors = inputs[$nodeGraph.nodes.findIndex((n) => n.id === wire.wireEnd)] || undefined;
+		const nodeOutputConnectors = outputs[$nodeGraph.nodes.findIndex((n) => n.id === wire.wireStart.Node?.node_id)];
+		const nodeInputConnectors = inputs[$nodeGraph.nodes.findIndex((n) => n.id === wire.wireEnd.Node?.node_id)] || undefined;
 
 		const nodeOutput = nodeOutputConnectors?.[outputIndex] as SVGSVGElement | undefined;
 		const nodeInput = nodeInputConnectors?.[inputIndex] as SVGSVGElement | undefined;

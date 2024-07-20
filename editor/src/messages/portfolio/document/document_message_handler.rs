@@ -383,8 +383,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					self.breadcrumb_network_path.pop();
 					self.selection_network_path = self.breadcrumb_network_path.clone();
 				}
-
 				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(DocumentMessage::ResetTransform);
 			}
 			DocumentMessage::FlipSelectedLayers { flip_axis } => {
 				self.backup(responses);
@@ -857,6 +857,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					PanelType::Layers => self.selection_network_path = vec![],
 					_ => {}
 				}
+				responses.add(PropertiesPanelMessage::Refresh);
 			}
 			DocumentMessage::SetBlendModeForSelectedLayers { blend_mode } => {
 				for layer in self.network_interface.selected_nodes(&[]).unwrap().selected_layers_except_artboards(&self.network_interface) {
@@ -1018,6 +1019,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(DocumentMessage::DocumentStructureChanged);
 				responses.add(NodeGraphMessage::SendGraph);
+			}
+			DocumentMessage::ResetTransform => {
+				let transform = if self.graph_view_overlay_open {
+					let Some(network_metadata) = self.network_interface.network_metadata(&self.breadcrumb_network_path) else {
+						return;
+					};
+					network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport
+				} else {
+					self.metadata().document_to_viewport
+				};
+				responses.add(DocumentMessage::UpdateDocumentTransform { transform });
 			}
 			DocumentMessage::UpdateDocumentTransform { transform } => {
 				responses.add(DocumentMessage::RenderRulers);

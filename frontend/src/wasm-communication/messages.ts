@@ -143,19 +143,22 @@ export type ContextMenuInformation = {
 
 export type FrontendGraphDataType = "General" | "Raster" | "VectorData" | "Number" | "Graphic" | "Artboard";
 
+const ConnectorTransform = Transform((data) => {
+	console.log("connector transform :", data);
+	return data;
+});
+
 export class Node {
 	readonly nodeId!: bigint;
 	readonly index!: bigint;
 }
 
 export class Export {
-	readonly nodeId!: bigint;
-	readonly inputIndex!: bigint;
+	readonly index!: bigint;
 }
 
 export class Import {
-	readonly nodeId!: bigint;
-	readonly inputIndex!: bigint;
+	readonly index!: bigint;
 }
 
 export type OutputConnector = Node | Export;
@@ -220,13 +223,9 @@ export class FrontendNode {
 }
 
 export class FrontendNodeWire {
-	readonly wireStart!: bigint;
+	readonly wireStart!: OutputConnector;
 
-	readonly wireStartOutputIndex!: bigint;
-
-	readonly wireEnd!: bigint;
-
-	readonly wireEndInputIndex!: bigint;
+	readonly wireEnd!: InputConnector;
 
 	readonly dashed!: boolean;
 }

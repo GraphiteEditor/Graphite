@@ -47,9 +47,9 @@ pub struct NodeGraphMessageHandler {
 	initial_disconnecting: bool,
 	/// Node to select on pointer up if multiple nodes are selected and they were not dragged.
 	select_if_not_dragged: Option<NodeId>,
-	/// The start of the dragged line that cannot be moved
+	/// The start of the dragged line that cannot be moved, stored in node graph coordinates
 	wire_in_progress_from_connector: Option<DVec2>,
-	/// The end point of the dragged line that can be moved
+	/// The end point of the dragged line that can be moved, stored in node graph coordinates
 	wire_in_progress_to_connector: Option<DVec2>,
 	/// State for the context menu popups.
 	context_menu: Option<ContextMenuInformation>,
@@ -115,7 +115,21 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			NodeGraphMessage::CreateWire { output_connector, input_connector } => {
-				network_interface.create_wire(output_connector, input_connector, selection_network_path);
+				// TODO: Add support for flattening NodeInput::Network exports in flatten_with_fns https://github.com/GraphiteEditor/Graphite/issues/1762
+				if matches!(input_connector, InputConnector::Export(_)) && matches!(output_connector, OutputConnector::Import { .. }) {
+					responses.add(DialogMessage::RequestComingSoonDialog { issue: Some(1762) });
+					return;
+				}
+				log::debug!("Creating wire from {output_connector:?} to {input_connector:?}");
+				network_interface.create_wire(output_connector.clone(), input_connector, selection_network_path);
+				if let OutputConnector::Node { node_id, .. } = output_connector {
+					if network_interface.connected_to_output(&node_id, selection_network_path) {
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					}
+				} else {
+					// Creating wire to export node, always run graph
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
 			}
 			NodeGraphMessage::Copy => {
 				let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else {
@@ -226,7 +240,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				})
 			}
 			NodeGraphMessage::DisconnectInput { input_connector } => {
-				network_interface.disconnect_input(input_connector, selection_network_path);
+				network_interface.disconnect_input(input_connector.clone(), selection_network_path);
+				if let InputConnector::Node { node_id, .. } = input_connector {
+					if network_interface.connected_to_output(&node_id, selection_network_path) {
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					}
+				} else {
+					// Disconnecting export node, always run graph
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
 			}
 			NodeGraphMessage::DuplicateSelectedNodes => {
 				let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else {
@@ -521,6 +543,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							}
 						}
 					}
+
 					self.wire_in_progress_from_connector = network_interface.get_output_position(&clicked_output, selection_network_path);
 					return;
 				}
@@ -609,11 +632,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				if self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none() {
 					if let Some(to_connector) = network_interface.get_input_connector_from_click(ipp.mouse.position, selection_network_path) {
-						let input_position = network_interface.get_input_position(&to_connector, selection_network_path);
-						if input_position.is_none() {
+						let Some(input_position) = network_interface.get_input_position(&to_connector, selection_network_path) else {
 							log::error!("Could not get input position for connector: {to_connector:?}");
-						}
-						self.wire_in_progress_to_connector = input_position;
+							return;
+						};
+						self.wire_in_progress_to_connector = Some(input_position);
 					}
 					// Not hovering over a node input or node output, update with the mouse position.
 					else {
@@ -632,8 +655,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 					if let (Some(wire_in_progress_from_connector), Some(wire_in_progress_to_connector)) = (self.wire_in_progress_from_connector, self.wire_in_progress_to_connector) {
 						// If performance is a concern this can be stored as a field in the wire_in_progress_from/to_connector struct, and updated when snapping to an output
+						let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
+							return;
+						};
+						let from_connector_viewport = network_metadata
+							.persistent_metadata
+							.navigation_metadata
+							.node_graph_to_viewport
+							.transform_point2(wire_in_progress_from_connector);
 						let from_connector_is_layer = network_interface
-							.get_output_connector_from_click(wire_in_progress_from_connector, selection_network_path)
+							.get_output_connector_from_click(from_connector_viewport, selection_network_path)
 							.is_some_and(|output_connector| {
 								if let OutputConnector::Node { node_id, .. } = output_connector {
 									network_interface.is_layer(&node_id, selection_network_path)
@@ -641,8 +672,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 									false
 								}
 							});
+						let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
+							return;
+						};
+						let to_connector_viewport = network_metadata
+							.persistent_metadata
+							.navigation_metadata
+							.node_graph_to_viewport
+							.transform_point2(wire_in_progress_to_connector);
 						let to_connector_is_layer = network_interface
-							.get_input_connector_from_click(wire_in_progress_to_connector, selection_network_path)
+							.get_input_connector_from_click(to_connector_viewport, selection_network_path)
 							.is_some_and(|input_connector| {
 								if let InputConnector::Node { node_id, input_index } = input_connector {
 									input_index == 0 && network_interface.is_layer(&node_id, selection_network_path)
@@ -765,8 +804,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				// Disconnect if the wire was previously connected to an input
 				if let (Some(wire_in_progress_from_connector), Some(wire_in_progress_to_connector)) = (self.wire_in_progress_from_connector, self.wire_in_progress_to_connector) {
 					// Check if dragged connector is reconnected to another input
-					let output_connector = network_interface.get_output_connector_from_click(wire_in_progress_from_connector, selection_network_path);
-					let input_connector = network_interface.get_input_connector_from_click(wire_in_progress_to_connector, selection_network_path);
+					let node_graph_to_viewport = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport;
+					let from_connector_viewport = node_graph_to_viewport.transform_point2(wire_in_progress_from_connector);
+					let to_connector_viewport = node_graph_to_viewport.transform_point2(wire_in_progress_to_connector);
+					let output_connector = network_interface.get_output_connector_from_click(from_connector_viewport, selection_network_path);
+					let input_connector = network_interface.get_input_connector_from_click(to_connector_viewport, selection_network_path);
 
 					if let (Some(output_connector), Some(input_connector)) = (&output_connector, &input_connector) {
 						responses.add(NodeGraphMessage::CreateWire {
