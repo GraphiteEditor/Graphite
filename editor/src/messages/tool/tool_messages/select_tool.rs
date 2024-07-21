@@ -1162,7 +1162,14 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 			.filter(not_artboard(document))
 			.find(|&ancestor| document.selected_nodes.selected_layers_contains(ancestor, document.metadata()));
 
-		let new_selected = ancestor.unwrap_or_else(|| layer.ancestors(document.metadata()).filter(not_artboard(document)).filter(|ancestor| *ancestor != LayerNodeIdentifier::ROOT_PARENT).last().unwrap_or(layer)); 
+		let new_selected = ancestor.unwrap_or_else(|| {
+			layer
+				.ancestors(document.metadata())
+				.filter(not_artboard(document))
+				.filter(|ancestor| *ancestor != LayerNodeIdentifier::ROOT_PARENT)
+				.last()
+				.unwrap_or(layer)
+		});
 		tool_data.layers_dragging.retain(|layer| !layer.ancestors(document.metadata()).any(|ancestor| ancestor == new_selected));
 		tool_data.layers_dragging.push(new_selected);
 	}
