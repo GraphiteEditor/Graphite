@@ -24,7 +24,7 @@ impl Context {
 			force_fallback_adapter: false,
 		};
 		// `request_adapter` instantiates the general connection to the GPU
-		let adapter = instance.request_adapter(&wgpu::RequestAdapterOptions::default()).await?;
+		let adapter = instance.request_adapter(&adapter_options).await?;
 
 		let required_limits = adapter.limits();
 		// `request_device` instantiates the feature specific connection to the GPU, defining some parameters,

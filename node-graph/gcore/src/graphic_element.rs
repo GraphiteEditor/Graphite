@@ -201,9 +201,7 @@ async fn add_artboard<Data: Into<Artboard> + Send>(footprint: Footprint, artboar
 }
 
 impl From<ImageFrame<Color>> for GraphicElement {
-	fn from(mut image_frame: ImageFrame<Color>) -> Self {
-		use base64::Engine;
-
+	fn from(image_frame: ImageFrame<Color>) -> Self {
 		GraphicElement::ImageFrame(image_frame)
 	}
 }

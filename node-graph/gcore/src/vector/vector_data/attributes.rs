@@ -9,7 +9,7 @@ use std::collections::HashMap;
 macro_rules! create_ids {
 	($($id:ident),*) => {
 		$(
-			#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, DynAny)]
+			#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Ord, Eq, Hash, DynAny)]
 			#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 			/// A strongly typed ID
 			pub struct $id(u64);
@@ -45,6 +45,15 @@ create_ids! { PointId, SegmentId, RegionId, StrokeId, FillId }
 pub struct PointDomain {
 	id: Vec<PointId>,
 	positions: Vec<DVec2>,
+}
+
+impl PartialOrd for PointDomain {
+	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+		match self.id.cmp(&other.id) {
+			core::cmp::Ordering::Equal => Some(self.positions.as_ptr().cmp(&other.positions.as_ptr())),
+			x => Some(x),
+		}
+	}
 }
 
 impl core::hash::Hash for PointDomain {
