@@ -38,6 +38,7 @@ pub struct NodeRuntime {
 	sender: InternalNodeGraphUpdateSender,
 	imaginate_preferences: ImaginatePreferences,
 	old_graph: Option<NodeNetwork>,
+	update_thumbnails: bool,
 
 	editor_api: Arc<WasmEditorApi>,
 	node_graph_errors: GraphErrors,
@@ -91,7 +92,6 @@ pub struct ExecutionResponse {
 pub struct CompilationResponse {
 	result: Result<(), String>,
 	resolved_types: ResolvedDocumentNodeTypes,
-	responses: VecDeque<FrontendMessage>,
 	node_graph_errors: GraphErrors,
 }
 
@@ -130,6 +130,7 @@ impl NodeRuntime {
 			sender: InternalNodeGraphUpdateSender(sender.clone()),
 			imaginate_preferences: ImaginatePreferences::default(),
 			old_graph: None,
+			update_thumbnails: true,
 
 			editor_api: WasmEditorApi {
 				font_cache: FontCache::default(),
@@ -201,11 +202,9 @@ impl NodeRuntime {
 					self.old_graph = Some(graph.clone());
 					self.node_graph_errors.clear();
 					let result = self.update_network(graph).await;
-					let mut responses = VecDeque::new();
-					self.process_monitor_nodes(&mut responses, true);
+					self.update_thumbnails = true;
 					self.sender.send_generation_response(CompilationResponse {
 						result,
-						responses,
 						resolved_types: self.resolved_types.clone(),
 						node_graph_errors: self.node_graph_errors.clone(),
 					});
@@ -215,7 +214,8 @@ impl NodeRuntime {
 
 					let result = self.execute_network(render_config).await;
 					let mut responses = VecDeque::new();
-					self.process_monitor_nodes(&mut responses, false);
+					self.process_monitor_nodes(&mut responses, self.update_thumbnails);
+					self.update_thumbnails = false;
 
 					self.sender.send_execution_response(ExecutionResponse {
 						execution_id,
@@ -300,7 +300,7 @@ impl NodeRuntime {
 			let Some(introspected_data) = self.executor.introspect(monitor_node_path).flatten() else {
 				// TODO: Fix the root of the issue causing the spam of this warning (this at least temporarily disables it in release builds)
 				#[cfg(debug_assertions)]
-				warn!("Failed to introspect monitor node");
+				warn!("Failed to introspect monitor node {:?}", self.executor.introspect(monitor_node_path));
 
 				continue;
 			};
@@ -607,7 +607,6 @@ impl NodeGraphExecutor {
 				NodeGraphUpdate::CompilationResponse(execution_response) => {
 					let CompilationResponse {
 						resolved_types,
-						responses: existing_responses,
 						node_graph_errors,
 						result,
 					} = execution_response;
@@ -620,7 +619,6 @@ impl NodeGraphExecutor {
 					};
 					responses.add(NodeGraphMessage::SendGraph);
 
-					responses.extend(existing_responses.into_iter().map(Into::into));
 					responses.add(NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors });
 				}
 				NodeGraphUpdate::NodeGraphUpdateMessage(NodeGraphUpdateMessage::ImaginateStatusUpdate) => {

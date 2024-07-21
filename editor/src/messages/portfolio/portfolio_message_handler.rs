@@ -496,6 +496,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 				document.set_auto_save_state(document_is_auto_saved);
 				document.set_save_state(document_is_saved);
+
 				self.load_document(document, document_id, responses);
 			}
 			PortfolioMessage::PasteIntoFolder { clipboard, parent, insert_index } => {
