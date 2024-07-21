@@ -105,6 +105,7 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 }
 
 #[cfg(feature = "vello")]
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 async fn render_canvas<'a>(render_config: RenderConfig, data: impl GraphicElementRendered, editor: &'a WasmEditorApi, surface_handle: wgpu_executor::WgpuSurface) -> RenderOutput {
 	if let Some(exec) = editor.application_io.as_ref().unwrap().gpu_executor() {
 		use vello::*;
@@ -192,7 +193,7 @@ async fn rasterize<_T: GraphicElementRendered + graphene_core::transform::Transf
 pub struct RenderNode<EditorApi, Data, Surface> {
 	editor_api: EditorApi,
 	data: Data,
-	surface_handle: Surface,
+	_surface_handle: Surface,
 }
 
 #[node_macro::node_fn(RenderNode)]
@@ -200,7 +201,7 @@ async fn render_node<'a: 'input, T: 'input + GraphicElementRendered + WasmNotSen
 	render_config: RenderConfig,
 	editor_api: &'a WasmEditorApi,
 	data: impl Node<Footprint, Output = T>,
-	surface_handle: impl Node<Footprint, Output = Option<wgpu_executor::WgpuSurface>>,
+	_surface_handle: impl Node<Footprint, Output = Option<wgpu_executor::WgpuSurface>>,
 ) -> RenderOutput {
 	let footprint = render_config.viewport;
 
@@ -209,7 +210,7 @@ async fn render_node<'a: 'input, T: 'input + GraphicElementRendered + WasmNotSen
 
 	let data = self.data.eval(footprint).await;
 	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
-	let surface_handle = self.surface_handle.eval(footprint).await;
+	let surface_handle = self._surface_handle.eval(footprint).await;
 	let use_vello = editor_api.imaginate_preferences.use_vello();
 	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
 	let use_vello = use_vello && surface_handle.is_some();
