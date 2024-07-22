@@ -186,7 +186,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 						TransformOperation::Rotating(rotation) => {
 							let start_offset = *selected.pivot - self.mouse_position;
 							let end_offset = *selected.pivot - input.mouse.position;
-							let angle = start_offset.angle_between(end_offset);
+							let angle = start_offset.angle_to(end_offset);
 
 							let change = if self.slow { angle / SLOWING_DIVISOR } else { angle };
 

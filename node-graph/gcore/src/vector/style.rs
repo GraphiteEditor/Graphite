@@ -178,7 +178,7 @@ impl Gradient {
 		let (start, end) = (transform.transform_point2(self.start), transform.transform_point2(self.end));
 
 		// Calculate the new position by finding the closest point on the line
-		let new_position = ((end - start).angle_between(mouse - start)).cos() * start.distance(mouse) / start.distance(end);
+		let new_position = ((end - start).angle_to(mouse - start)).cos() * start.distance(mouse) / start.distance(end);
 
 		// Don't insert point past end of line
 		if !(0. ..=1.).contains(&new_position) {

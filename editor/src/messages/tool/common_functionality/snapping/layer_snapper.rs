@@ -435,7 +435,7 @@ pub fn are_manipulator_handles_colinear(group: &bezier_rs::ManipulatorGroup<Poin
 	let anchor_is_endpoint = !subpath.closed() && (index == 0 || index == subpath.len() - 1);
 
 	// Unless this is an endpoint, check if both handles are colinear (within an angular epsilon)
-	!anchor_is_endpoint && handle_in.is_some_and(|handle_in| handle_out.is_some_and(|handle_out| handle_in.angle_between(handle_out) < 1e-5))
+	!anchor_is_endpoint && handle_in.is_some_and(|handle_in| handle_out.is_some_and(|handle_out| handle_in.angle_to(handle_out) < 1e-5))
 }
 
 pub fn get_layer_snap_points(layer: LayerNodeIdentifier, snap_data: &SnapData, points: &mut Vec<SnapCandidatePoint>) {

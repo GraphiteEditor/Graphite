@@ -638,7 +638,7 @@ mod test {
 		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
 			let expected_angle = (index as f64 + 1.) * 45.;
 			let center = (subpath.manipulator_groups()[0].anchor + subpath.manipulator_groups()[2].anchor) / 2.;
-			let actual_angle = DVec2::Y.angle_between(center).to_degrees();
+			let actual_angle = DVec2::Y.angle_to(center).to_degrees();
 			assert!((actual_angle - expected_angle).abs() % 360. < 1e-5);
 		}
 	}

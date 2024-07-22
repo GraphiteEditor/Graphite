@@ -273,7 +273,7 @@ impl Bezier {
 			BezierHandles::Cubic { .. } => {
 				// Axis align the curve.
 				let translated_bezier = self.translate(-self.start);
-				let angle = translated_bezier.end.angle_between(DVec2::new(1., 0.));
+				let angle = translated_bezier.end.angle_to(DVec2::new(1., 0.));
 				let rotated_bezier = translated_bezier.rotate(angle);
 				if let BezierHandles::Cubic { handle_start, handle_end } = rotated_bezier.handles {
 					// These formulas and naming conventions follows https://pomax.github.io/bezierinfo/#inflections
@@ -413,7 +413,7 @@ impl Bezier {
 		if other.is_linear() {
 			// Rotate the bezier and the line by the angle that the line makes with the x axis
 			let line_directional_vector = other.end - other.start;
-			let angle = line_directional_vector.angle_between(DVec2::new(0., 1.));
+			let angle = line_directional_vector.angle_to(DVec2::new(0., 1.));
 			let rotation_matrix = DMat2::from_angle(angle);
 			let rotated_bezier = self.apply_transformation(|point| rotation_matrix * point);
 
@@ -452,7 +452,7 @@ impl Bezier {
 	/// If this needs to be called frequently with a line of the same rotation angle, consider instead using [`line_test_crossings_prerotated`] and moving this function's setup code into your own logic before the repeated call.
 	pub fn line_test_crossings(&self, point_on_line: DVec2, direction_vector: DVec2) -> impl Iterator<Item = f64> + '_ {
 		// Rotate the bezier and the line by the angle that the line makes with the x axis
-		let angle = direction_vector.angle_between(DVec2::new(0., 1.));
+		let angle = direction_vector.angle_to(DVec2::new(0., 1.));
 		let rotation_matrix = DMat2::from_angle(angle);
 		let rotated_bezier = self.apply_transformation(|point| rotation_matrix * point);
 
@@ -476,7 +476,7 @@ impl Bezier {
 	/// If this needs to be called frequently with a ray of the same rotation angle, consider instead using [`ray_test_crossings_prerotated`] and moving this function's setup code into your own logic before the repeated call.
 	pub fn ray_test_crossings(&self, ray_start: DVec2, ray_direction: DVec2) -> impl Iterator<Item = f64> + '_ {
 		// Rotate the bezier and the line by the angle that the line makes with the x axis
-		let angle = ray_direction.angle_between(DVec2::new(0., 1.));
+		let angle = ray_direction.angle_to(DVec2::new(0., 1.));
 		let rotation_matrix = DMat2::from_angle(angle);
 		let rotated_bezier = self.apply_transformation(|point| rotation_matrix * point);
 

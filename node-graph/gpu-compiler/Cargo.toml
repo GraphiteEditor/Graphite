@@ -9,25 +9,28 @@ default = []
 profiling = ["nvtx"]
 serde = ["graphene-core/serde", "glam/serde"]
 
+# NOTE: We can't use workspace dependencies in this crate because it uses a different toolchain
 [dependencies]
 # Local dependencies
 graph-craft = { path = "../graph-craft", features = ["serde"] }
 gpu-executor = { path = "../gpu-executor" }
-
-# Workspace dependencies
-graphene-core = { workspace = true, features = ["async", "std", "alloc"] }
-dyn-any = { workspace = true, features = ["log-bad-types", "rc", "glam"] }
-num-traits = { workspace = true }
-log = { workspace = true }
-serde = { workspace = true }
-glam = { workspace = true }
-base64 = { workspace = true }
-bytemuck = { workspace = true }
-tempfile = { workspace = true }
-anyhow = { workspace = true }
-serde_json = { workspace = true }
+graphene-core = { path = "../gcore", features = ["std", "alloc"] }
+dyn-any = { path = "../../libraries/dyn-any", features = [
+	"log-bad-types",
+	"rc",
+	"glam",
+] }
 
 # Required dependencies
+num-traits = { version = "0.2", default-features = false, features = ["i128"] }
+log = "0.4"
+serde = { version = "1.0", features = ["derive", "rc"] }
+glam = { version = "0.28", default-features = false, features = ["serde"] }
+base64 = "0.22"
+bytemuck = { version = "1.13", features = ["derive"] }
+tempfile = "3.6"
+anyhow = "1.0"
+serde_json = "1.0"
 tera = { version = "1.17.1" }
 spirv-builder = { version = "0.9", default-features = false, features = [
 	"use-installed-tools",

@@ -569,8 +569,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				parent,
 				insert_index,
 			} => {
-				let database = usvg::fontdb::Database::new();
-				let tree = match usvg::Tree::from_str(&svg, &usvg::Options::default(), &database) {
+				let tree = match usvg::Tree::from_str(&svg, &usvg::Options::default()) {
 					Ok(t) => t,
 					Err(e) => {
 						responses.add(DocumentMessage::DocumentHistoryBackward);

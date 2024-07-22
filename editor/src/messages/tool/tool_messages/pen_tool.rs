@@ -362,7 +362,7 @@ impl PenToolData {
 			let angle = if lock_angle {
 				self.angle
 			} else if (relative - document_pos) != DVec2::ZERO && !lock_angle {
-				(-(relative - document_pos).angle_between(DVec2::X) / resolution).round() * resolution
+				(-(relative - document_pos).angle_to(DVec2::X) / resolution).round() * resolution
 			} else {
 				self.angle
 			};
@@ -405,7 +405,7 @@ impl PenToolData {
 
 		if let Some(relative) = relative.map(|layer| transform.transform_point2(layer)) {
 			if (relative - document_pos) != DVec2::ZERO {
-				self.angle = -(relative - document_pos).angle_between(DVec2::X)
+				self.angle = -(relative - document_pos).angle_to(DVec2::X)
 			}
 		}
 

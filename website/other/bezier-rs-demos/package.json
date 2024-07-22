@@ -33,8 +33,5 @@
 		"ts-node": "^10.9.2",
 		"typescript": "^5.4.2",
 		"vite": "^5.1.5"
-	},
-	"optionalDependencies": {
-		"wasm-pack": "0.12.1"
 	}
 }

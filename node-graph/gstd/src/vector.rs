@@ -225,8 +225,7 @@ fn to_svg_string(vector: &VectorData, transform: DAffine2) -> String {
 
 fn from_svg_string(svg_string: &str) -> VectorData {
 	let svg = format!(r#"<svg xmlns="http://www.w3.org/2000/svg"><path d="{}"></path></svg>"#, svg_string);
-	let fontdb = usvg::fontdb::Database::new();
-	let Some(tree) = usvg::Tree::from_str(&svg, &Default::default(), &fontdb).ok() else {
+	let Some(tree) = usvg::Tree::from_str(&svg, &Default::default()).ok() else {
 		return VectorData::empty();
 	};
 	let Some(usvg::Node::Path(path)) = tree.root().children().first() else {
