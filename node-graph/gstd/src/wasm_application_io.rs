@@ -1,3 +1,4 @@
+pub use graph_craft::document::value::RenderOutput;
 pub use graph_craft::wasm_application_io::*;
 #[cfg(target_arch = "wasm32")]
 use graphene_core::application_io::SurfaceHandle;
@@ -84,7 +85,6 @@ fn decode_image_node<'a: 'input>(data: Arc<[u8]>) -> ImageFrame<Color> {
 	};
 	image
 }
-pub use graph_craft::document::value::RenderOutput;
 
 fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_params: RenderParams, footprint: Footprint) -> RenderOutput {
 	if !data.contains_artboard() && !render_params.hide_artboards {
@@ -106,14 +106,17 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 
 #[cfg(feature = "vello")]
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
-async fn render_canvas<'a>(render_config: RenderConfig, data: impl GraphicElementRendered, editor: &'a WasmEditorApi, surface_handle: wgpu_executor::WgpuSurface) -> RenderOutput {
+async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRendered, editor: &WasmEditorApi, surface_handle: wgpu_executor::WgpuSurface) -> RenderOutput {
 	if let Some(exec) = editor.application_io.as_ref().unwrap().gpu_executor() {
 		use vello::*;
+
 		let footprint = render_config.viewport;
 
 		let mut scene = Scene::new();
 		let mut child = Scene::new();
+
 		data.render_to_vello(&mut child, glam::DAffine2::IDENTITY);
+
 		// TODO: Instead of applying the transform here, pass the transform during the translation to avoid the O(Nr cost
 		scene.append(&child, Some(kurbo::Affine::new(footprint.transform.to_cols_array())));
 
@@ -121,7 +124,7 @@ async fn render_canvas<'a>(render_config: RenderConfig, data: impl GraphicElemen
 			.await
 			.expect("Failed to render Vello scene");
 	} else {
-		unreachable!("Attempted to render with Vello when no GPU executor is available")
+		unreachable!("Attempted to render with Vello when no GPU executor is available");
 	}
 	let frame = graphene_core::application_io::SurfaceHandleFrame {
 		surface_handle,
@@ -211,7 +214,7 @@ async fn render_node<'a: 'input, T: 'input + GraphicElementRendered + WasmNotSen
 	let data = self.data.eval(footprint).await;
 	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
 	let surface_handle = self._surface_handle.eval(footprint).await;
-	let use_vello = editor_api.imaginate_preferences.use_vello();
+	let use_vello = editor_api.editor_preferences.use_vello();
 	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
 	let use_vello = use_vello && surface_handle.is_some();
 

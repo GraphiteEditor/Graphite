@@ -4,8 +4,6 @@ mod executor;
 pub use context::Context;
 pub use executor::GpuExecutor;
 
-use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
-
 use dyn_any::{DynAny, StaticType};
 use gpu_executor::{ComputePassDimensions, GPUConstant, StorageBufferOptions, TextureBufferOptions, TextureBufferType, ToStorageBuffer, ToUniformBuffer};
 use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle};
@@ -20,6 +18,7 @@ use futures::Future;
 use glam::{DAffine2, UVec2};
 use std::pin::Pin;
 use std::sync::Arc;
+use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
 use wgpu::util::DeviceExt;
 use wgpu::{Buffer, BufferDescriptor, ShaderModule, SurfaceConfiguration, SurfaceError, Texture, TextureView};
 
@@ -355,7 +354,7 @@ impl WgpuExecutor {
 		let surface_caps = surface.get_capabilities(&self.context.adapter);
 		if surface_caps.formats.is_empty() {
 			log::warn!("No surface formats available");
-			// return Ok(());
+			return Ok(());
 		}
 		// TODO:
 		let resolution = transform.decompose_scale().as_uvec2();

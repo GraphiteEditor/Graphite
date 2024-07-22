@@ -1,6 +1,6 @@
 use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::prelude::*;
-use graph_craft::imaginate_input::ImaginatePreferences;
+use graph_craft::wasm_application_io::EditorPreferences;
 
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct PreferencesMessageHandler {
@@ -11,9 +11,9 @@ pub struct PreferencesMessageHandler {
 }
 
 impl PreferencesMessageHandler {
-	pub fn get_imaginate_preferences(&self) -> ImaginatePreferences {
-		ImaginatePreferences {
-			host_name: self.imaginate_server_hostname.clone(),
+	pub fn editor_preferences(&self) -> EditorPreferences {
+		EditorPreferences {
+			imaginate_hostname: self.imaginate_server_hostname.clone(),
 			use_vello: self.use_vello,
 		}
 	}
@@ -21,7 +21,10 @@ impl PreferencesMessageHandler {
 
 impl Default for PreferencesMessageHandler {
 	fn default() -> Self {
-		let ImaginatePreferences { host_name, use_vello } = Default::default();
+		let EditorPreferences {
+			imaginate_hostname: host_name,
+			use_vello,
+		} = Default::default();
 		Self {
 			imaginate_server_hostname: host_name,
 			imaginate_refresh_frequency: 1.,
@@ -40,7 +43,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 
 					responses.add(PortfolioMessage::ImaginateServerHostname);
 					responses.add(PortfolioMessage::ImaginateCheckServerStatus);
-					responses.add(PortfolioMessage::ImaginatePreferences);
+					responses.add(PortfolioMessage::EditorPreferences);
 					responses.add(PortfolioMessage::UpdateVelloPreference);
 					responses.add(PreferencesMessage::ModifyLayout {
 						zoom_with_scroll: self.zoom_with_scroll,
@@ -57,12 +60,12 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			PreferencesMessage::ImaginateRefreshFrequency { seconds } => {
 				self.imaginate_refresh_frequency = seconds;
 				responses.add(PortfolioMessage::ImaginateCheckServerStatus);
-				responses.add(PortfolioMessage::ImaginatePreferences);
+				responses.add(PortfolioMessage::EditorPreferences);
 			}
 			PreferencesMessage::UseVello { use_vello } => {
 				self.use_vello = use_vello;
 				responses.add(PortfolioMessage::UpdateVelloPreference);
-				responses.add(PortfolioMessage::ImaginatePreferences);
+				responses.add(PortfolioMessage::EditorPreferences);
 			}
 			PreferencesMessage::ImaginateServerHostname { hostname } => {
 				let initial = hostname.clone();
@@ -77,7 +80,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				self.imaginate_server_hostname = hostname;
 				responses.add(PortfolioMessage::ImaginateServerHostname);
 				responses.add(PortfolioMessage::ImaginateCheckServerStatus);
-				responses.add(PortfolioMessage::ImaginatePreferences);
+				responses.add(PortfolioMessage::EditorPreferences);
 			}
 			PreferencesMessage::ModifyLayout { zoom_with_scroll } => {
 				self.zoom_with_scroll = zoom_with_scroll;

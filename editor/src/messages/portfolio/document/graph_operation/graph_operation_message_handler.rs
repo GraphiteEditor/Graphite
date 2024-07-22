@@ -779,12 +779,11 @@ fn apply_usvg_fill(fill: Option<&usvg::Fill>, modify_inputs: &mut ModifyInputsCo
 				let local = [DVec2::new(linear.x1() as f64, linear.y1() as f64), DVec2::new(linear.x2() as f64, linear.y2() as f64)];
 
 				// TODO: fix this
-				/*
-				let to_doc_transform = if linear.base.units() == usvg::Units::UserSpaceOnUse {
-					transform
-				} else {
-					transformed_bound_transform
-				};*/
+				// let to_doc_transform = if linear.base.units() == usvg::Units::UserSpaceOnUse {
+				// 	transform
+				// } else {
+				// 	transformed_bound_transform
+				// };
 				let to_doc_transform = transform;
 				let to_doc = to_doc_transform * usvg_transform(linear.transform());
 
@@ -807,12 +806,11 @@ fn apply_usvg_fill(fill: Option<&usvg::Fill>, modify_inputs: &mut ModifyInputsCo
 				let local = [DVec2::new(radial.cx() as f64, radial.cy() as f64), DVec2::new(radial.fx() as f64, radial.fy() as f64)];
 
 				// TODO: fix this
-				/*
-				let to_doc_transform = if radial.base.units == usvg::Units::UserSpaceOnUse {
-					transform
-				} else {
-					transformed_bound_transform
-				};*/
+				// let to_doc_transform = if radial.base.units == usvg::Units::UserSpaceOnUse {
+				// 	transform
+				// } else {
+				// 	transformed_bound_transform
+				// };
 				let to_doc_transform = transform;
 				let to_doc = to_doc_transform * usvg_transform(radial.transform());
 

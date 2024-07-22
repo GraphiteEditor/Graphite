@@ -181,8 +181,8 @@ impl<T: NodeGraphUpdateSender> NodeGraphUpdateSender for std::sync::Mutex<T> {
 	}
 }
 
-pub trait GetImaginatePreferences {
-	fn get_host_name(&self) -> &str;
+pub trait GetEditorPreferences {
+	fn hostname(&self) -> &str;
 	fn use_vello(&self) -> bool;
 }
 
@@ -216,10 +216,11 @@ impl NodeGraphUpdateSender for Logger {
 
 struct DummyPreferences;
 
-impl GetImaginatePreferences for DummyPreferences {
-	fn get_host_name(&self) -> &str {
+impl GetEditorPreferences for DummyPreferences {
+	fn hostname(&self) -> &str {
 		"dummy_endpoint"
 	}
+
 	fn use_vello(&self) -> bool {
 		false
 	}
@@ -231,8 +232,8 @@ pub struct EditorApi<Io> {
 	/// Gives access to APIs like a rendering surface (native window handle or HTML5 canvas) and WGPU (which becomes WebGPU on web).
 	pub application_io: Option<Arc<Io>>,
 	pub node_graph_message_sender: Box<dyn NodeGraphUpdateSender + Send + Sync>,
-	/// Imaginate preferences made available to the graph through the [`WasmEditorApi`].
-	pub imaginate_preferences: Box<dyn GetImaginatePreferences + Send + Sync>,
+	/// Editor preferences made available to the graph through the [`WasmEditorApi`].
+	pub editor_preferences: Box<dyn GetEditorPreferences + Send + Sync>,
 }
 
 impl<Io> Eq for EditorApi<Io> {}
@@ -243,7 +244,7 @@ impl<Io: Default> Default for EditorApi<Io> {
 			font_cache: FontCache::default(),
 			application_io: None,
 			node_graph_message_sender: Box::new(Logger),
-			imaginate_preferences: Box::new(DummyPreferences),
+			editor_preferences: Box::new(DummyPreferences),
 		}
 	}
 }
@@ -253,7 +254,7 @@ impl<Io> Hash for EditorApi<Io> {
 		self.font_cache.hash(state);
 		self.application_io.as_ref().map_or(0, |io| io.as_ref() as *const _ as usize).hash(state);
 		(self.node_graph_message_sender.as_ref() as *const dyn NodeGraphUpdateSender).hash(state);
-		(self.imaginate_preferences.as_ref() as *const dyn GetImaginatePreferences).hash(state);
+		(self.editor_preferences.as_ref() as *const dyn GetEditorPreferences).hash(state);
 	}
 }
 
@@ -262,7 +263,7 @@ impl<Io> PartialEq for EditorApi<Io> {
 		self.font_cache == other.font_cache
 			&& self.application_io.as_ref().map_or(0, |io| addr_of!(io) as usize) == other.application_io.as_ref().map_or(0, |io| addr_of!(io) as usize)
 			&& std::ptr::eq(self.node_graph_message_sender.as_ref() as *const _, other.node_graph_message_sender.as_ref() as *const _)
-			&& std::ptr::eq(self.imaginate_preferences.as_ref() as *const _, other.imaginate_preferences.as_ref() as *const _)
+			&& std::ptr::eq(self.editor_preferences.as_ref() as *const _, other.editor_preferences.as_ref() as *const _)
 	}
 }
 

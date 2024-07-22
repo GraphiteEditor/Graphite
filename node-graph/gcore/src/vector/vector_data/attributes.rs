@@ -47,15 +47,6 @@ pub struct PointDomain {
 	positions: Vec<DVec2>,
 }
 
-impl PartialOrd for PointDomain {
-	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-		match self.id.cmp(&other.id) {
-			core::cmp::Ordering::Equal => Some(self.positions.as_ptr().cmp(&other.positions.as_ptr())),
-			x => Some(x),
-		}
-	}
-}
-
 impl core::hash::Hash for PointDomain {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.id.hash(state);

@@ -118,8 +118,8 @@ pub struct DocumentMessageHandler {
 	#[serde(skip)]
 	node_graph_ptz: HashMap<Vec<NodeId>, PTZ>,
 	/// Transform from node graph space to viewport space.
+	// TODO: Remove this and replace its usages with a derived value from the PTZ stored above
 	#[serde(skip)]
-	// TODO(@TrueDoctor): Replace this with a better solution
 	node_graph_to_viewport: HashMap<Vec<NodeId>, DAffine2>,
 }
 
@@ -1148,6 +1148,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				} else {
 					self.node_graph_to_viewport.insert(self.node_graph_handler.network.clone(), transform);
+
 					responses.add(FrontendMessage::UpdateNodeGraphTransform {
 						transform: Transform {
 							scale: transform.matrix2.x_axis.x,

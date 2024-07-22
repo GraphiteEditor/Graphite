@@ -21,9 +21,9 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 # Local dependencies
 editor = { path = "../../editor", package = "graphite-editor", features = [
-	"gpu", 
-	"resvg", 
-	"vello"
+	"gpu",
+	"resvg",
+	"vello",
 ] }
 
 # Workspace dependencies

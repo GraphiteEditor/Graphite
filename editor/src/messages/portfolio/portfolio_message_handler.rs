@@ -324,7 +324,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				self.persistent_data.imaginate.poll_server_check();
 				responses.add(PropertiesPanelMessage::Refresh);
 			}
-			PortfolioMessage::ImaginatePreferences => self.executor.update_imaginate_preferences(preferences.get_imaginate_preferences()),
+			PortfolioMessage::EditorPreferences => self.executor.update_editor_preferences(preferences.editor_preferences()),
 			PortfolioMessage::ImaginateServerHostname => {
 				self.persistent_data.imaginate.set_host_name(&preferences.imaginate_server_hostname);
 			}

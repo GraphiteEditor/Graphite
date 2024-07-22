@@ -286,32 +286,3 @@ impl std::fmt::Display for ImaginateSamplingMethod {
 		}
 	}
 }
-
-#[derive(Clone, Debug, PartialEq, Hash, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ImaginatePreferences {
-	pub host_name: String,
-	pub use_vello: bool,
-}
-
-impl graphene_core::application_io::GetImaginatePreferences for ImaginatePreferences {
-	fn get_host_name(&self) -> &str {
-		&self.host_name
-	}
-	fn use_vello(&self) -> bool {
-		self.use_vello
-	}
-}
-
-impl Default for ImaginatePreferences {
-	fn default() -> Self {
-		Self {
-			host_name: "http://localhost:7860/".into(),
-			use_vello: false,
-		}
-	}
-}
-
-unsafe impl dyn_any::StaticType for ImaginatePreferences {
-	type Static = ImaginatePreferences;
-}

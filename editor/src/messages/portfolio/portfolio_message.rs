@@ -52,7 +52,7 @@ pub enum PortfolioMessage {
 	},
 	ImaginateCheckServerStatus,
 	ImaginatePollServerStatus,
-	ImaginatePreferences,
+	EditorPreferences,
 	ImaginateServerHostname,
 	Import,
 	LoadDocumentResources {

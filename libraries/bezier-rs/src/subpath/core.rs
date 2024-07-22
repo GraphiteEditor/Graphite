@@ -354,7 +354,6 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		};
 		path.move_to(to_point(self.iter().next().unwrap().start));
 		for segment in self.iter() {
-			// let segment = segment.apply_transformation(|p| transform.transform_point2(p));
 			match segment.handles {
 				BezierHandles::Linear => path.line_to(to_point(segment.end)),
 				BezierHandles::Quadratic { handle } => path.quad_to(to_point(handle), to_point(segment.end)),
