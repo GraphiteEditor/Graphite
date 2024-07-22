@@ -225,10 +225,11 @@ fn to_svg_string(vector: &VectorData, transform: DAffine2) -> String {
 
 fn from_svg_string(svg_string: &str) -> VectorData {
 	let svg = format!(r#"<svg xmlns="http://www.w3.org/2000/svg"><path d="{}"></path></svg>"#, svg_string);
-	let Some(tree) = usvg::Tree::from_str(&svg, &Default::default()).ok() else {
+	let fontdb = usvg::fontdb::Database::new();
+	let Some(tree) = usvg::Tree::from_str(&svg, &Default::default(), &fontdb).ok() else {
 		return VectorData::empty();
 	};
-	let Some(usvg::Node::Path(path)) = tree.root.children.first() else {
+	let Some(usvg::Node::Path(path)) = tree.root().children().first() else {
 		return VectorData::empty();
 	};
 
@@ -239,10 +240,10 @@ pub fn convert_usvg_path(path: &usvg::Path) -> Vec<Subpath<PointId>> {
 	let mut subpaths = Vec::new();
 	let mut groups = Vec::new();
 
-	let mut points = path.data.points().iter();
+	let mut points = path.data().points().iter();
 	let to_vec = |p: &usvg::tiny_skia_path::Point| DVec2::new(p.x as f64, p.y as f64);
 
-	for verb in path.data.verbs() {
+	for verb in path.data().verbs() {
 		match verb {
 			usvg::tiny_skia_path::PathVerb::Move => {
 				subpaths.push(Subpath::new(std::mem::take(&mut groups), false));

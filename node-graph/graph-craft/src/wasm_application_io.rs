@@ -220,3 +220,32 @@ impl ApplicationIo for WasmApplicationIo {
 
 pub type WasmSurfaceHandle = SurfaceHandle<wgpu_executor::Window>;
 pub type WasmSurfaceHandleFrame = SurfaceHandleFrame<wgpu_executor::Window>;
+
+#[derive(Clone, Debug, PartialEq, Hash, specta::Type)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct EditorPreferences {
+	pub imaginate_hostname: String,
+	pub use_vello: bool,
+}
+
+impl graphene_core::application_io::GetEditorPreferences for EditorPreferences {
+	fn hostname(&self) -> &str {
+		&self.imaginate_hostname
+	}
+	fn use_vello(&self) -> bool {
+		self.use_vello
+	}
+}
+
+impl Default for EditorPreferences {
+	fn default() -> Self {
+		Self {
+			imaginate_hostname: "http://localhost:7860/".into(),
+			use_vello: false,
+		}
+	}
+}
+
+unsafe impl dyn_any::StaticType for EditorPreferences {
+	type Static = EditorPreferences;
+}

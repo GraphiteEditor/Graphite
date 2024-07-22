@@ -248,9 +248,6 @@ pub struct DocumentNode {
 	/// However sometimes this is not desirable, for example in the case of a [`graphene_core::memo::MonitorNode`] that needs to be accessed outside of the graph.
 	#[serde(default)]
 	pub skip_deduplication: bool,
-	/// Used as a hash of the graph input where applicable. This ensures that proto nodes that depend on the graph's input are always regenerated.
-	#[serde(default)]
-	pub world_state_hash: u64,
 	/// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.
 	#[serde(skip)]
 	pub original_location: OriginalLocation,
@@ -293,7 +290,6 @@ impl Default for DocumentNode {
 			locked: Default::default(),
 			metadata: DocumentNodeMetadata::default(),
 			skip_deduplication: Default::default(),
-			world_state_hash: Default::default(),
 			original_location: OriginalLocation::default(),
 		}
 	}
@@ -392,7 +388,6 @@ impl DocumentNode {
 			construction_args: args,
 			original_location: self.original_location,
 			skip_deduplication: self.skip_deduplication,
-			world_state_hash: self.world_state_hash,
 		}
 	}
 

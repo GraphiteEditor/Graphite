@@ -118,6 +118,7 @@ pub struct DocumentMessageHandler {
 	#[serde(skip)]
 	node_graph_ptz: HashMap<Vec<NodeId>, PTZ>,
 	/// Transform from node graph space to viewport space.
+	// TODO: Remove this and replace its usages with a derived value from the PTZ stored above
 	#[serde(skip)]
 	node_graph_to_viewport: HashMap<Vec<NodeId>, DAffine2>,
 }
@@ -1141,9 +1142,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(DocumentMessage::UpdateDocumentTransform { transform });
 			}
 			DocumentMessage::UpdateDocumentTransform { transform } => {
-				responses.add(DocumentMessage::RenderRulers);
-				responses.add(DocumentMessage::RenderScrollbars);
-
 				if !self.graph_view_overlay_open {
 					self.metadata.document_to_viewport = transform;
 
@@ -1159,8 +1157,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						},
 					})
 				}
-
-				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			DocumentMessage::ZoomCanvasTo100Percent => {
 				responses.add_front(NavigationMessage::CanvasZoomSet { zoom_factor: 1. });

@@ -45,6 +45,15 @@ impl PreferencesDialogMessageHandler {
 				})
 				.widget_holder(),
 		];
+		let use_vello = vec![
+			TextLabel::new("Renderer").min_width(60).italic(true).widget_holder(),
+			TextLabel::new("Vello (Experimental)").table_align(true).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			CheckboxInput::new(preferences.use_vello)
+				.tooltip("Use the experimental Vello renderer (your browser must support WebGPU)")
+				.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::UseVello { use_vello: checkbox_input.checked }.into())
+				.widget_holder(),
+		];
 
 		let imaginate_server_hostname = vec![
 			TextLabel::new("Imaginate").min_width(60).italic(true).widget_holder(),
@@ -71,6 +80,7 @@ impl PreferencesDialogMessageHandler {
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![
 			LayoutGroup::Row { widgets: zoom_with_scroll },
+			LayoutGroup::Row { widgets: use_vello },
 			LayoutGroup::Row { widgets: imaginate_server_hostname },
 			LayoutGroup::Row { widgets: imaginate_refresh_frequency },
 		]))

@@ -21,5 +21,6 @@ glam = { version = "0.25", features = ["serde"] }
 dyn-any = { version = "0.3.0", path = "../dyn-any", optional = true }
 
 # Optional workspace dependencies
+kurbo = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 log = { workspace = true, optional = true }

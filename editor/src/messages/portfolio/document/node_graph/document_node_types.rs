@@ -1311,15 +1311,16 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				nodes: [
 					DocumentNode {
 						name: "Create Gpu Surface".to_string(),
+						manual_composition: Some(concrete!(Footprint)),
 						inputs: vec![NodeInput::scope("editor-api")],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::CreateGpuSurfaceNode")),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::CreateGpuSurfaceNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
-						manual_composition: Some(concrete!(())),
+						manual_composition: Some(concrete!(Footprint)),
 						inputs: vec![NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode<_, _, _>")),
 						..Default::default()
 					},
 				]
@@ -2789,16 +2790,17 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 			nodes: [
 				DocumentNode {
 					name: "Create Canvas".to_string(),
-					inputs: vec![NodeInput::network(concrete!(&WasmEditorApi), 1)],
-					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
+					inputs: vec![NodeInput::scope("editor-api")],
+					manual_composition: Some(concrete!(Footprint)),
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::CreateGpuSurfaceNode<_>")),
 					skip_deduplication: true,
 					..Default::default()
 				},
 				DocumentNode {
 					name: "Cache".to_string(),
-					manual_composition: Some(concrete!(())),
+					manual_composition: Some(concrete!(Footprint)),
 					inputs: vec![NodeInput::node(NodeId(0), 0)],
-					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode<_, _, _>")),
 					..Default::default()
 				},
 				// TODO: Add conversion step
@@ -2806,6 +2808,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 					name: "RenderNode".to_string(),
 					manual_composition: Some(concrete!(RenderConfig)),
 					inputs: vec![
+						NodeInput::scope("editor-api"),
 						NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T))), 0),
 						NodeInput::node(NodeId(1), 0),
 					],

@@ -66,9 +66,9 @@ web-sys = "=0.3.69"
 winit = "0.29"
 url = "2.5"
 tokio = { version = "1.29", features = ["fs", "io-std"] }
-vello = "0.1"
-resvg = "0.39"
-usvg = "0.39"
+vello = "0.2"
+resvg = "0.41"
+usvg = "0.41"
 rand = { version = "0.8", default-features = false }
 rand_chacha = "0.3"
 glam = { version = "0.25", default-features = false, features = ["serde"] }
@@ -89,7 +89,7 @@ syn = { version = "2.0", default-features = false, features = [
 	"full",
 	"derive",
 ] }
-kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
+kurbo = { version = "0.11.0", features = [
 	"serde",
 ] }
 
