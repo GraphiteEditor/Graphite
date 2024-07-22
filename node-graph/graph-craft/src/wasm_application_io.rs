@@ -34,6 +34,12 @@ pub struct WasmApplicationIo {
 	pub resources: HashMap<String, Arc<[u8]>>,
 }
 
+static WGPU_AVAILABLE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn wgpu_available() -> bool {
+	WGPU_AVAILABLE.load(::std::sync::atomic::Ordering::SeqCst)
+}
+
 impl WasmApplicationIo {
 	pub async fn new() -> Self {
 		#[cfg(all(feature = "wgpu", target_arch = "wasm32"))]
@@ -53,6 +59,7 @@ impl WasmApplicationIo {
 		};
 		#[cfg(all(feature = "wgpu", not(target_arch = "wasm32")))]
 		let executor = WgpuExecutor::new().await;
+		WGPU_AVAILABLE.store(executor.is_some(), ::std::sync::atomic::Ordering::SeqCst);
 		let mut io = Self {
 			#[cfg(target_arch = "wasm32")]
 			ids: AtomicU64::new(0),

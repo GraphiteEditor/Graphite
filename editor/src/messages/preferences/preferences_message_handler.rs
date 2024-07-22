@@ -8,14 +8,19 @@ pub struct PreferencesMessageHandler {
 	pub imaginate_refresh_frequency: f64,
 	pub zoom_with_scroll: bool,
 	pub use_vello: bool,
+	supports_wgpu: bool,
 }
 
 impl PreferencesMessageHandler {
 	pub fn editor_preferences(&self) -> EditorPreferences {
 		EditorPreferences {
 			imaginate_hostname: self.imaginate_server_hostname.clone(),
-			use_vello: self.use_vello,
+			use_vello: self.use_vello && self.supports_wgpu,
 		}
+	}
+
+	pub fn supports_wgpu(&self) -> bool {
+		self.supports_wgpu
 	}
 }
 
@@ -30,6 +35,7 @@ impl Default for PreferencesMessageHandler {
 			imaginate_refresh_frequency: 1.,
 			zoom_with_scroll: matches!(MappingVariant::default(), MappingVariant::ZoomWithScroll),
 			use_vello,
+			supports_wgpu: graph_craft::wasm_application_io::wgpu_available(),
 		}
 	}
 }
@@ -40,6 +46,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			PreferencesMessage::Load { preferences } => {
 				if let Ok(deserialized_preferences) = serde_json::from_str::<PreferencesMessageHandler>(&preferences) {
 					*self = deserialized_preferences;
+					self.supports_wgpu = graph_craft::wasm_application_io::wgpu_available();
 
 					responses.add(PortfolioMessage::ImaginateServerHostname);
 					responses.add(PortfolioMessage::ImaginateCheckServerStatus);
