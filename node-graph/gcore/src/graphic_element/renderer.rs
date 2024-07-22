@@ -4,7 +4,7 @@ use crate::raster::bbox::Bbox;
 use crate::raster::{BlendMode, Image, ImageFrame};
 use crate::transform::Transform;
 use crate::uuid::generate_uuid;
-use crate::vector::style::{Fill, GradientType, Stroke, ViewMode};
+use crate::vector::style::{Fill, Stroke, ViewMode};
 use crate::vector::PointId;
 use crate::SurfaceFrame;
 use crate::{vector::VectorData, Artboard, Color, GraphicElement, GraphicGroup};
@@ -342,6 +342,7 @@ impl GraphicElementRendered for VectorData {
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2) {
+		use crate::vector::style::GradientType;
 		use vello::peniko;
 
 		let kurbo_transform = kurbo::Affine::new(transform.to_cols_array());
