@@ -642,6 +642,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				responses.add(FrontendMessage::UpdateOpenDocumentsList { open_documents });
 			}
 			PortfolioMessage::UpdateVelloPreference => {
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 				self.persistent_data.use_vello = preferences.use_vello;
 			}
 		}
