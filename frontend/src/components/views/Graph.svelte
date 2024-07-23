@@ -136,8 +136,9 @@
 			const { nodeInput, nodeOutput } = resolveWire(wire);
 			if (!nodeInput || !nodeOutput) return [];
 
-			const wireStart = $nodeGraph.nodes.find((n) => n.id === wire.wireStart)?.isLayer || false;
-			const wireEnd = ($nodeGraph.nodes.find((n) => n.id === wire.wireEnd)?.isLayer && Number(wire.wireEndInputIndex) == 0) || false;
+			console.log(wire.wireStart.Node?.node_id);
+			const wireStart = $nodeGraph.nodes.find((n) => n.id === wire.wireStart.Node?.node_id)?.isLayer || false;
+			const wireEnd = ($nodeGraph.nodes.find((n) => n.id === wire.wireEnd.Node?.node_id)?.isLayer && Number(wire.wireEnd.Node?.input_index) == 0) || false;
 
 			return [createWirePath(nodeOutput, nodeInput.getBoundingClientRect(), wireStart, wireEnd, wire.dashed)];
 		});

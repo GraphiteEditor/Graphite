@@ -611,9 +611,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					log::error!("Selection network path does not match breadcrumb network path in PointerUp");
 					return;
 				}
-				let Some(network) = network_interface.network(selection_network_path) else {
-					return;
-				};
 				let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
 					return;
 				};
@@ -632,6 +629,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				if self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none() {
 					if let Some(to_connector) = network_interface.get_input_connector_from_click(ipp.mouse.position, selection_network_path) {
+						log::debug!("to_connector: {to_connector:?}");
 						let Some(input_position) = network_interface.get_input_position(&to_connector, selection_network_path) else {
 							log::error!("Could not get input position for connector: {to_connector:?}");
 							return;
@@ -1055,7 +1053,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 					if graph_view_overlay_open {
 						let wires = Self::collect_wires(network_interface, breadcrumb_network_path);
-						let nodes = self.collect_nodes(network_interface, breadcrumb_network_path, &wires);
+						let nodes = self.collect_nodes(network_interface, breadcrumb_network_path);
 						let layer_widths = network_interface.collect_layer_widths(breadcrumb_network_path);
 
 						responses.add(FrontendMessage::UpdateNodeGraph { nodes, wires });
@@ -1525,7 +1523,7 @@ impl NodeGraphMessageHandler {
 		wires
 	}
 
-	fn collect_nodes(&self, network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId], wires: &[FrontendNodeWire]) -> Vec<FrontendNode> {
+	fn collect_nodes(&self, network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId]) -> Vec<FrontendNode> {
 		let Some(outward_wires) = network_interface.get_outward_wires(breadcrumb_network_path).cloned() else {
 			return Vec::new();
 		};
@@ -1539,7 +1537,7 @@ impl NodeGraphMessageHandler {
 			if network_interface.is_eligible_to_be_layer(&node_id, breadcrumb_network_path) {
 				can_be_layer_lookup.insert(node_id);
 			}
-			if let Some(position) = network_interface.get_position(&node_id, breadcrumb_network_path) {
+			if let Some(mut position) = network_interface.get_position_from_click_target(&node_id, breadcrumb_network_path) {
 				position_lookup.insert(node_id, position);
 			} else {
 				log::error!("Could not get position for node {node_id}");
