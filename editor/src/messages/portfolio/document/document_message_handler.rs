@@ -1015,7 +1015,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				} else {
 					self.collapsed.0.push(layer);
 				}
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::ToggleGridVisibility => {
 				self.snapping_state.grid_snapping = !self.snapping_state.grid_snapping;

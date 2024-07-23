@@ -441,6 +441,9 @@ impl Fsm for SelectToolFsmState {
 					.next()
 					.map(|layer| document.metadata().transform_to_viewport(layer));
 				let transform = transform.unwrap_or(DAffine2::IDENTITY);
+				if transform.matrix2.determinant() == 0. {
+					return self;
+				}
 				let bounds = document
 					.selected_nodes
 					.selected_visible_and_unlocked_layers(document.metadata())
