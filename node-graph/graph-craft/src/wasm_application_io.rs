@@ -1,7 +1,6 @@
 use dyn_any::StaticType;
 use graphene_core::application_io::SurfaceHandleFrame;
 use graphene_core::application_io::{ApplicationError, ApplicationIo, ResourceFuture, SurfaceHandle, SurfaceId};
-#[cfg(feature = "wgpu")]
 use wgpu_executor::WgpuExecutor;
 
 #[cfg(target_arch = "wasm32")]
@@ -42,7 +41,7 @@ pub fn wgpu_available() -> bool {
 
 impl WasmApplicationIo {
 	pub async fn new() -> Self {
-		#[cfg(all(feature = "wgpu", target_arch = "wasm32"))]
+		#[cfg(target_arch = "wasm32")]
 		let executor = if let Some(gpu) = web_sys::window().map(|w| w.navigator().gpu()) {
 			let request_adapter = || {
 				let request_adapter = js_sys::Reflect::get(&gpu, &wasm_bindgen::JsValue::from_str("requestAdapter")).ok()?;
@@ -57,7 +56,7 @@ impl WasmApplicationIo {
 		} else {
 			None
 		};
-		#[cfg(all(feature = "wgpu", not(target_arch = "wasm32")))]
+		#[cfg(not(target_arch = "wasm32"))]
 		let executor = WgpuExecutor::new().await;
 		WGPU_AVAILABLE.store(executor.is_some(), ::std::sync::atomic::Ordering::SeqCst);
 		let mut io = Self {
