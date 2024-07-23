@@ -100,6 +100,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					});
 				}
 				responses.add(ArtboardToolMessage::UpdateSelectedArtboard);
+				responses.add(DocumentMessage::DocumentStructureChanged);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			NodeGraphMessage::ConnectNodesByWire {
