@@ -45,12 +45,18 @@ impl PreferencesDialogMessageHandler {
 				})
 				.widget_holder(),
 		];
+		let vello_tooltip = "Use the experimental Vello renderer (your browser must support WebGPU)";
 		let use_vello = vec![
 			TextLabel::new("Renderer").min_width(60).italic(true).widget_holder(),
-			TextLabel::new("Vello (Experimental)").table_align(true).widget_holder(),
+			TextLabel::new("Vello (Experimental)")
+				.table_align(true)
+				.tooltip(vello_tooltip)
+				.disabled(!preferences.supports_wgpu())
+				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			CheckboxInput::new(preferences.use_vello)
-				.tooltip("Use the experimental Vello renderer (your browser must support WebGPU)")
+			CheckboxInput::new(preferences.use_vello && preferences.supports_wgpu())
+				.tooltip(vello_tooltip)
+				.disabled(!preferences.supports_wgpu())
 				.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::UseVello { use_vello: checkbox_input.checked }.into())
 				.widget_holder(),
 		];

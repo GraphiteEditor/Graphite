@@ -14,8 +14,12 @@ impl PreferencesMessageHandler {
 	pub fn editor_preferences(&self) -> EditorPreferences {
 		EditorPreferences {
 			imaginate_hostname: self.imaginate_server_hostname.clone(),
-			use_vello: self.use_vello,
+			use_vello: self.use_vello && self.supports_wgpu(),
 		}
+	}
+
+	pub fn supports_wgpu(&self) -> bool {
+		graph_craft::wasm_application_io::wgpu_available().unwrap_or_default()
 	}
 }
 

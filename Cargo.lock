@@ -2300,6 +2300,7 @@ dependencies = [
  "tokio",
  "url",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
  "wgpu-executor",
  "winit",

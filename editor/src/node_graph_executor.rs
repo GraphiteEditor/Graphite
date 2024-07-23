@@ -153,7 +153,15 @@ impl NodeRuntime {
 	}
 
 	pub async fn run(&mut self) {
-		// TODO: Currently we still render the document after we submit the node graph execution request. This should be avoided in the future.
+		if self.editor_api.application_io.is_none() {
+			self.editor_api = WasmEditorApi {
+				application_io: Some(WasmApplicationIo::new().await.into()),
+				font_cache: self.editor_api.font_cache.clone(),
+				node_graph_message_sender: Box::new(self.sender.clone()),
+				editor_preferences: Box::new(self.editor_preferences.clone()),
+			}
+			.into();
+		}
 
 		let mut font = None;
 		let mut preferences = None;
@@ -232,16 +240,6 @@ impl NodeRuntime {
 	}
 
 	async fn update_network(&mut self, graph: NodeNetwork) -> Result<(), String> {
-		if self.editor_api.application_io.is_none() {
-			self.editor_api = WasmEditorApi {
-				application_io: Some(WasmApplicationIo::new().await.into()),
-				font_cache: self.editor_api.font_cache.clone(),
-				node_graph_message_sender: Box::new(self.sender.clone()),
-				editor_preferences: Box::new(self.editor_preferences.clone()),
-			}
-			.into();
-		}
-
 		let scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
 		self.monitor_nodes = scoped_network
 			.recursive_nodes()
