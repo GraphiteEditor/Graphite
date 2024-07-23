@@ -26,7 +26,7 @@ thread_local! {
 #[wasm_bindgen(start)]
 pub fn init_graphite() {
 	// Set up the panic hook
-	panic::set_hook(Box::new(panic_hook));
+	// panic::set_hook(Box::new(panic_hook));
 
 	// Set up the logger with a default level of debug
 	log::set_logger(&LOGGER).expect("Failed to set logger");

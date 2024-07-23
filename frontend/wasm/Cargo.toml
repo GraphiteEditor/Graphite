@@ -54,6 +54,7 @@ ron = { workspace = true, optional = true }
 
 [package.metadata.wasm-pack.profile.dev]
 wasm-opt = false
+panic = "unwind"
 
 [package.metadata.wasm-pack.profile.dev.wasm-bindgen]
 debug-js-glue = true

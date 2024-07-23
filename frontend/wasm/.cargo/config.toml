@@ -5,11 +5,18 @@ rustflags = [
 	#"-C",
 	#"target-feature=+simd128",
 	"-C",
+	"panic=unwind",
+	"-C",
+	"llvm-args=-wasm-enable-eh",
+	"-C",
 	"target-feature=+bulk-memory",
+	"-C",
+	"target-feature=+exception-handling",
 	"-C",
 	"link-arg=--max-memory=4294967296",
 	"--cfg=web_sys_unstable_apis",
 ]
 
 [unstable]
-build-std = ["panic_abort", "std"]
+unstable-options = true
+build-std = [ "std"]
