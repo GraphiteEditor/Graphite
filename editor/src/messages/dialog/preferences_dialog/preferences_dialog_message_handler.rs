@@ -47,12 +47,7 @@ impl PreferencesDialogMessageHandler {
 		];
 		let vello_tooltip = "Use the experimental Vello renderer (your browser must support WebGPU)";
 		let use_vello = vec![
-			TextLabel::new("Renderer")
-				.min_width(60)
-				.italic(true)
-				.tooltip(vello_tooltip)
-				.disabled(!preferences.supports_wgpu())
-				.widget_holder(),
+			TextLabel::new("Renderer").min_width(60).italic(true).widget_holder(),
 			TextLabel::new("Vello (Experimental)")
 				.table_align(true)
 				.tooltip(vello_tooltip)
