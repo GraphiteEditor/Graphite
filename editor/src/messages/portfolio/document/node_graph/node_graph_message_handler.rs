@@ -337,6 +337,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 
 					self.update_selected(document_network, selected_nodes, responses);
+					responses.add(NodeGraphMessage::SendGraph);
 				}
 			}
 			NodeGraphMessage::EnforceLayerHasNoMultiParams { node_id } => {
