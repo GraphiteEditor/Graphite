@@ -4,7 +4,6 @@ use crate::messages::portfolio::document::node_graph::document_node_types::wrap_
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 
-use futures::lock::Mutex;
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
@@ -23,6 +22,7 @@ use graphene_core::vector::VectorData;
 use graphene_core::{Color, GraphicElement, SurfaceFrame};
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypes};
+use spin::Mutex;
 
 use glam::{DAffine2, DVec2, UVec2};
 use once_cell::sync::Lazy;
@@ -120,7 +120,7 @@ impl NodeGraphUpdateSender for InternalNodeGraphUpdateSender {
 	}
 }
 
-pub(crate) static NODE_RUNTIME: Lazy<Mutex<Option<NodeRuntime>>> = Lazy::new(|| Mutex::new(None));
+pub static NODE_RUNTIME: Lazy<Mutex<Option<NodeRuntime>>> = Lazy::new(|| Mutex::new(None));
 
 impl NodeRuntime {
 	pub fn new(receiver: Receiver<NodeRuntimeMessage>, sender: Sender<NodeGraphUpdate>) -> Self {
@@ -377,7 +377,7 @@ impl NodeRuntime {
 }
 
 pub async fn introspect_node(path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
-	let runtime = NODE_RUNTIME.lock().await;
+	let runtime = NODE_RUNTIME.lock();
 	if let Some(ref mut runtime) = runtime.as_ref() {
 		return runtime.executor.introspect(path).flatten();
 	}
@@ -385,14 +385,14 @@ pub async fn introspect_node(path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> 
 }
 
 pub async fn run_node_graph() {
-	let mut runtime = NODE_RUNTIME.lock().await;
+	let Some(mut runtime) = NODE_RUNTIME.try_lock() else { return };
 	if let Some(ref mut runtime) = runtime.as_mut() {
 		runtime.run().await;
 	}
 }
 
 pub async fn replace_node_runtime(runtime: NodeRuntime) -> Option<NodeRuntime> {
-	let mut node_runtime = NODE_RUNTIME.lock().await;
+	let mut node_runtime = NODE_RUNTIME.lock();
 	node_runtime.replace(runtime)
 }
 

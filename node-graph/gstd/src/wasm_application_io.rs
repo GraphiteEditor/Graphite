@@ -107,6 +107,7 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 #[cfg(feature = "vello")]
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRendered, editor: &WasmEditorApi, surface_handle: wgpu_executor::WgpuSurface) -> RenderOutput {
+	unimplemented!();
 	if let Some(exec) = editor.application_io.as_ref().unwrap().gpu_executor() {
 		use vello::*;
 

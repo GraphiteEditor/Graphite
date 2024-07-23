@@ -69,6 +69,7 @@ gpu-executor = { path = "../node-graph/gpu-executor", optional = true }
 wasm-bindgen = { workspace = true, optional = true }
 wasm-bindgen-futures = { workspace = true, optional = true }
 async-mutex = "1.4.0"
+spin = "0.9.8"
 
 [dev-dependencies]
 # Workspace dependencies

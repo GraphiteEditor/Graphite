@@ -143,18 +143,20 @@ impl EditorHandle {
 			*g.borrow_mut() = Some(Closure::new(move |timestamp| {
 				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
-				editor_and_handle(|editor, handle| {
-					let micros: f64 = timestamp * 1000.;
-					let timestamp = Duration::from_micros(micros.round() as u64);
+				if !EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
+					editor_and_handle(|editor, handle| {
+						let micros: f64 = timestamp * 1000.;
+						let timestamp = Duration::from_micros(micros.round() as u64);
 
-					for message in editor.handle_message(InputPreprocessorMessage::FrameTimeAdvance { timestamp }) {
-						handle.send_frontend_message_to_js(message);
-					}
+						for message in editor.handle_message(InputPreprocessorMessage::FrameTimeAdvance { timestamp }) {
+							handle.send_frontend_message_to_js(message);
+						}
 
-					for message in editor.handle_message(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame)) {
-						handle.send_frontend_message_to_js(message);
-					}
-				});
+						for message in editor.handle_message(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame)) {
+							handle.send_frontend_message_to_js(message);
+						}
+					});
+				}
 
 				// Schedule ourself for another requestAnimationFrame callback
 				request_animation_frame(f.borrow().as_ref().unwrap());
@@ -906,7 +908,7 @@ fn editor<T: Default>(callback: impl FnOnce(&mut editor::application::Editor) ->
 }
 
 /// Provides access to the `Editor` and its `EditorHandle` by calling the given closure with them as arguments.
-fn editor_and_handle(mut callback: impl FnMut(&mut Editor, &mut EditorHandle)) {
+pub(crate) fn editor_and_handle(mut callback: impl FnMut(&mut Editor, &mut EditorHandle)) {
 	editor(|editor| {
 		EDITOR_HANDLE.with(|editor_handle| {
 			let Some(Ok(mut handle)) = editor_handle.get().map(RefCell::try_borrow_mut) else {
@@ -937,13 +939,18 @@ async fn poll_node_graph_evaluation() {
 			}
 		}
 
+		// Clear the error display if there are no more errors
+		if !messages.is_empty() {
+			crate::NODE_GRAPH_ERROR_DISPLAYED.store(false, Ordering::SeqCst);
+		}
+
 		// Send each `FrontendMessage` to the JavaScript frontend
 		for response in messages.into_iter().flat_map(|message| editor.handle_message(message)) {
 			handle.send_frontend_message_to_js(response);
 		}
 
 		// If the editor cannot be borrowed then it has encountered a panic - we should just ignore new dispatches
-	})
+	});
 }
 
 fn auto_save_all_documents() {

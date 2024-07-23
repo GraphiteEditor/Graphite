@@ -16,6 +16,7 @@ use wasm_bindgen::prelude::*;
 
 // Set up the persistent editor backend state
 pub static EDITOR_HAS_CRASHED: AtomicBool = AtomicBool::new(false);
+pub static NODE_GRAPH_ERROR_DISPLAYED: AtomicBool = AtomicBool::new(false);
 pub static LOGGER: WasmLog = WasmLog;
 thread_local! {
 	pub static EDITOR: OnceCell<RefCell<editor::application::Editor>> = const { OnceCell::new() };
@@ -26,7 +27,7 @@ thread_local! {
 #[wasm_bindgen(start)]
 pub fn init_graphite() {
 	// Set up the panic hook
-	// panic::set_hook(Box::new(panic_hook));
+	panic::set_hook(Box::new(panic_hook));
 
 	// Set up the logger with a default level of debug
 	log::set_logger(&LOGGER).expect("Failed to set logger");
@@ -35,7 +36,36 @@ pub fn init_graphite() {
 
 /// When a panic occurs, notify the user and log the error to the JS console before the backend dies
 pub fn panic_hook(info: &panic::PanicInfo) {
-	EDITOR_HAS_CRASHED.store(true, Ordering::SeqCst);
+	let info = info.to_string();
+	let e = Error::new("stack");
+	let stack = e.stack();
+	let backtrace = stack.to_string();
+	// error!("{:?}", backtrace);
+	if backtrace.to_string().contains("AssertUnwindSafe") {
+		log::error!("Node graph evaluation panicked {info}");
+
+		// When the graph panics, the node runtime lock may not be released properly
+		if editor::node_graph_executor::NODE_RUNTIME.try_lock().is_none() {
+			unsafe { editor::node_graph_executor::NODE_RUNTIME.force_unlock() };
+		}
+
+		if !NODE_GRAPH_ERROR_DISPLAYED.load(Ordering::SeqCst) {
+			NODE_GRAPH_ERROR_DISPLAYED.store(true, Ordering::SeqCst);
+			editor_api::editor_and_handle(|editor, handle| {
+				let responses = editor.handle_message(DialogMessage::DisplayDialogError {
+					title: "Node graph panicked".into(),
+					description: "Node graph evaluation panicked, please check the log for more information.\n Please consider this as a critical error, and save your work before doing anything else. This is an experimental recovery feature, and it's not guaranteed to work.".into(),
+				});
+				for response in responses {
+					handle.send_frontend_message_to_js_rust_proxy(response);
+				}
+			});
+		}
+
+		return;
+	} else {
+		EDITOR_HAS_CRASHED.store(true, Ordering::SeqCst);
+	}
 
 	error!("{info}");
 
@@ -56,6 +86,9 @@ extern "C" {
 
 	#[wasm_bindgen(constructor)]
 	pub fn new(msg: &str) -> Error;
+
+	#[wasm_bindgen(structural, method, getter)]
+	fn stack(error: &Error) -> String;
 }
 
 /// Logging to the JS console
@@ -69,6 +102,8 @@ extern "C" {
 	fn warn(msg: &str, format: &str);
 	#[wasm_bindgen(js_namespace = console)]
 	fn error(msg: &str, format: &str);
+	#[wasm_bindgen(js_namespace = console)]
+	fn trace(msg: &str, format: &str);
 }
 
 #[derive(Default)]
