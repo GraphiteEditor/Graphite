@@ -48,10 +48,13 @@ export class UpdateContextMenuInformation extends JsMessage {
 	readonly contextMenuInformation!: ContextMenuInformation | undefined;
 }
 const LayerWidths = Transform(({ obj }) => obj.layerWidths);
+const ChainWidths = Transform(({ obj }) => obj.layerWidths);
 
 export class UpdateLayerWidths extends JsMessage {
 	@LayerWidths
 	readonly layerWidths!: Map<bigint, number>;
+	@ChainWidths
+	readonly chainWidths!: Map<bigint, number>;
 }
 
 export class UpdateNodeGraph extends JsMessage {
@@ -142,11 +145,6 @@ export type ContextMenuInformation = {
 };
 
 export type FrontendGraphDataType = "General" | "Raster" | "VectorData" | "Number" | "Graphic" | "Artboard";
-
-const ConnectorTransform = Transform((data) => {
-	console.log("connector transform :", data);
-	return data;
-});
 
 export class Node {
 	readonly nodeId!: bigint;

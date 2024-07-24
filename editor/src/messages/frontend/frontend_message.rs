@@ -139,6 +139,8 @@ pub enum FrontendMessage {
 	UpdateLayerWidths {
 		#[serde(rename = "layerWidths")]
 		layer_widths: HashMap<NodeId, u32>,
+		#[serde(rename = "chainWidths")]
+		chain_widths: HashMap<NodeId, u32>,
 	},
 	UpdateDialogButtons {
 		#[serde(rename = "layoutTarget")]

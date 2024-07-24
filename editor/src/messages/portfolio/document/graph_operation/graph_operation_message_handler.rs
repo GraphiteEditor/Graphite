@@ -100,10 +100,39 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					modify_inputs.brush_modify(strokes);
 				}
 			}
+			GraphOperationMessage::SetUpstreamToChain { layer } => {
+				for node_id in network_interface
+					.upstream_flow_back_from_nodes(
+						vec![layer.to_node()],
+						&[],
+						crate::messages::portfolio::document::utility_types::network_interface::FlowType::HorizontalFlow,
+					)
+					.map(|(_, id)| id)
+					.collect::<Vec<_>>()
+				{
+					network_interface.set_chain_position(&node_id, &[]);
+				}
+			}
 			GraphOperationMessage::NewArtboard { id, artboard } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 
-				modify_inputs.create_artboard(id, artboard);
+				let artboard_layer = modify_inputs.create_artboard(id, artboard);
+				network_interface.move_layer_to_stack(artboard_layer, LayerNodeIdentifier::ROOT_PARENT, 0, &[]);
+
+				// If there is a non artboard feeding into the primary input of the artboard, move it to the secondary input
+				let Some(artboard) = network_interface.network(&[]).unwrap().nodes.get(&id) else {
+					log::error!("Artboard not created");
+					return;
+				};
+				let primary_input = artboard.inputs.get(0).expect("Artboard should have a primary input").clone();
+				if let NodeInput::Node { node_id, .. } = &primary_input {
+					if network_interface.is_layer(node_id, &[]) {
+						network_interface.move_layer_to_stack(LayerNodeIdentifier::new(*node_id, &network_interface), artboard_layer, 0, &[]);
+					} else {
+						network_interface.disconnect_input(InputConnector::node(artboard_layer.to_node(), 0), &[]);
+						network_interface.set_input(InputConnector::node(id, 0), primary_input, &[]);
+					}
+				}
 				responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
 			}
 			GraphOperationMessage::NewBitmapLayer {
@@ -113,13 +142,13 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				insert_index,
 			} => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
-				let layer = modify_inputs.create_layer(id, parent);
+				let layer = modify_inputs.create_layer(id);
 				modify_inputs.insert_image_data(image_frame, layer);
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 			}
 			GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
-				let layer = modify_inputs.create_layer(id, parent);
+				let layer = modify_inputs.create_layer(id);
 
 				if !nodes.is_empty() {
 					// Add the nodes to the network
@@ -143,7 +172,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			}
 			GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
-				let layer = modify_inputs.create_layer(id, parent);
+				let layer = modify_inputs.create_layer(id);
 				modify_inputs.insert_vector_data(subpaths, layer);
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 			}
@@ -156,7 +185,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				insert_index,
 			} => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
-				let layer = modify_inputs.create_layer(id, parent);
+				let layer = modify_inputs.create_layer(id);
 				modify_inputs.insert_text(text, font, size, layer);
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 			}
@@ -196,9 +225,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 				import_usvg_node(&mut modify_inputs, &usvg::Node::Group(Box::new(tree.root)), transform, id, parent, insert_index);
 			}
-			GraphOperationMessage::ShiftUpstream { node_id, shift, shift_self } => {
-				network_interface.shift_upstream(node_id, shift, shift_self);
-			}
 		}
 	}
 
@@ -216,7 +242,7 @@ fn usvg_transform(c: usvg::Transform) -> DAffine2 {
 }
 
 fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, transform: DAffine2, id: NodeId, parent: LayerNodeIdentifier, insert_index: usize) {
-	let layer = modify_inputs.create_layer(id, parent);
+	let layer = modify_inputs.create_layer(id);
 	modify_inputs.layer_node = Some(layer);
 	match node {
 		usvg::Node::Group(group) => {
@@ -238,7 +264,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 			modify_inputs.network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 
 			if let Some(transform_node_id) = modify_inputs.get_existing_node_id("Transform") {
-				transform_utils::update_transform(&mut modify_inputs.network_interface, &transform_node_id, transform * usvg_transform(node.abs_transform()));
+				transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, transform * usvg_transform(node.abs_transform()));
 			}
 
 			let bounds_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);

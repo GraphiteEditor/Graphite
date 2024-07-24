@@ -18,6 +18,8 @@ use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{get_blend_mode, get_opacity};
+use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
+use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 
@@ -281,7 +283,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::InsertBooleanOperation { operation } => {
 				responses.add(DocumentMessage::StartTransaction);
 
-				let Some(parent) = self.network_interface.deepest_common_ancestor(&self.selection_network_path, false) else {
+				let Some(parent) = self.network_interface.deepest_common_ancestor(&[], false) else {
 					// Cancel grouping layers across different artboards
 					// TODO: Group each set of layers for each artboard separately
 					return;
@@ -1037,11 +1039,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				if !self.graph_view_overlay_open {
 					self.network_interface.set_document_to_viewport_transform(transform);
-
+					responses.add(SelectToolMessage::PointerMove(SelectToolPointerKeys {
+						axis_align: Key::Shift,
+						snap_angle: Key::Control,
+						center: Key::Alt,
+						duplicate: Key::Alt,
+					}));
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				} else {
 					self.network_interface.set_transform(transform, &self.breadcrumb_network_path);
-
+					responses.add(NodeGraphMessage::UpdateEdges);
+					responses.add(NodeGraphMessage::UpdateBoxSelection);
 					responses.add(FrontendMessage::UpdateNodeGraphTransform {
 						transform: Transform {
 							scale: transform.matrix2.x_axis.x,

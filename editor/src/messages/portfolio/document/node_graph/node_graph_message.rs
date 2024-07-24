@@ -150,6 +150,8 @@ pub enum NodeGraphMessage {
 	SetLockedOrVisibilitySideEffects {
 		node_ids: Vec<NodeId>,
 	},
+	UpdateEdges,
+	UpdateBoxSelection,
 	UpdateNewNodeGraph,
 	UpdateTypes {
 		#[serde(skip)]

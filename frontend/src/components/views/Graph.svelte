@@ -136,7 +136,6 @@
 			const { nodeInput, nodeOutput } = resolveWire(wire);
 			if (!nodeInput || !nodeOutput) return [];
 
-			console.log(wire.wireStart.Node?.node_id);
 			const wireStart = $nodeGraph.nodes.find((n) => n.id === wire.wireStart.Node?.node_id)?.isLayer || false;
 			const wireEnd = ($nodeGraph.nodes.find((n) => n.id === wire.wireEnd.Node?.node_id)?.isLayer && Number(wire.wireEnd.Node?.input_index) == 0) || false;
 
@@ -422,6 +421,7 @@
 			{@const clipPathId = String(Math.random()).substring(2)}
 			{@const stackDataInput = node.exposedInputs[0]}
 			{@const layerAreaWidth = $nodeGraph.layerWidths.get(node.id) || 8}
+			{@const layerChainWidth = $nodeGraph.chainWidths.get(node.id) + 0.5 || 0}
 			<div
 				class="layer"
 				class:selected={$nodeGraph.selected.includes(node.id)}

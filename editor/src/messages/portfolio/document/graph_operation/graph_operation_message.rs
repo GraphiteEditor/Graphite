@@ -58,6 +58,9 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		strokes: Vec<BrushStroke>,
 	},
+	SetUpstreamToChain {
+		layer: LayerNodeIdentifier,
+	},
 	NewArtboard {
 		id: NodeId,
 		artboard: Artboard,
@@ -100,10 +103,5 @@ pub enum GraphOperationMessage {
 		transform: DAffine2,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
-	},
-	ShiftUpstream {
-		node_id: NodeId,
-		shift: IVec2,
-		shift_self: bool,
 	},
 }

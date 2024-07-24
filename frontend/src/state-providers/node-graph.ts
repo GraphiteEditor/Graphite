@@ -29,6 +29,7 @@ export function createNodeGraphState(editor: Editor) {
 		clickTargets: undefined as ClickTargets | undefined,
 		contextMenuInformation: undefined as ContextMenuInformation | undefined,
 		layerWidths: new Map<bigint, number>(),
+		chainWidths: new Map<bigint, number>(),
 		nodes: [] as FrontendNode[],
 		wires: [] as FrontendNodeWire[],
 		wirePathInProgress: undefined as WirePath | undefined,
@@ -61,6 +62,7 @@ export function createNodeGraphState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateLayerWidths, (updateLayerWidths) => {
 		update((state) => {
 			state.layerWidths = updateLayerWidths.layerWidths;
+			state.chainWidths = updateLayerWidths.chainWidths;
 			return state;
 		});
 	});

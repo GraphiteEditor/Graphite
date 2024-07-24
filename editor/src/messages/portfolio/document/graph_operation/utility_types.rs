@@ -64,7 +64,7 @@ impl<'a> ModifyInputsContext<'a> {
 	///      ↑      if insert_index == 2, return (NonLayerNode, Some(Layer3))
 	/// -> Layer3  
 	///             if insert_index == 3, return (Layer3, None)
-	pub fn get_post_node_with_index(network_interface: &NodeNetworkInterface, parent: LayerNodeIdentifier, insert_index: usize) -> (InputConnector, Option<OutputConnector>) {
+	pub fn get_post_node_with_index(network_interface: &NodeNetworkInterface, parent: LayerNodeIdentifier, insert_index: usize) -> InputConnector {
 		let mut post_node_input_connector = if parent == LayerNodeIdentifier::ROOT_PARENT {
 			InputConnector::Export(0)
 		} else {
@@ -113,18 +113,18 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 		}
 
-		(post_node_input_connector, pre_node_output_connector)
+		post_node_input_connector
 	}
 
 	/// Creates a new layer and adds it to the document network. network_interface.move_layer_to_stack should be called after
-	pub fn create_layer(&mut self, new_id: NodeId, parent: LayerNodeIdentifier) -> LayerNodeIdentifier {
+	pub fn create_layer(&mut self, new_id: NodeId) -> LayerNodeIdentifier {
 		let new_merge_node = resolve_document_node_type("Merge").expect("Merge node").default_node_template();
 		self.network_interface.insert_node(new_id, &[], new_merge_node);
 		LayerNodeIdentifier::new(new_id, &self.network_interface)
 	}
 
 	/// Creates an artboard as the primary export for the document network
-	pub fn create_artboard(&mut self, new_id: NodeId, artboard: Artboard) {
+	pub fn create_artboard(&mut self, new_id: NodeId, artboard: Artboard) -> LayerNodeIdentifier {
 		let artboard_node_template = resolve_document_node_type("Artboard").expect("Node").node_template_input_override([
 			Some(NodeInput::value(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroup::EMPTY), true)),
 			Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_core::GraphicGroup::EMPTY), true)),
@@ -133,26 +133,8 @@ impl<'a> ModifyInputsContext<'a> {
 			Some(NodeInput::value(TaggedValue::Color(artboard.background), false)),
 			Some(NodeInput::value(TaggedValue::Bool(artboard.clip), false)),
 		]);
-
 		self.network_interface.insert_node(new_id, &[], artboard_node_template);
-		self.network_interface
-			.move_layer_to_stack(LayerNodeIdentifier::new_unchecked(new_id), LayerNodeIdentifier::ROOT_PARENT, 0, &[]);
-
-		// If there is a non artboard feeding into the primary input of the artboard, move it to the secondary input
-		let Some(artboard) = self.network_interface.network(&[]).unwrap().nodes.get(&new_id) else {
-			log::error!("Artboard not created");
-			return;
-		};
-		let primary_input = artboard.inputs.get(0).expect("Artboard should have a primary input");
-		if let NodeInput::Node { node_id, .. } = primary_input.clone() {
-			let artboard_layer = LayerNodeIdentifier::new(new_id, &self.network_interface);
-			if self.network_interface.is_layer(&node_id, &[]) {
-				self.network_interface.move_node_to_chain(&node_id, artboard_layer)
-			} else {
-				self.network_interface
-					.move_layer_to_stack(LayerNodeIdentifier::new(node_id, &self.network_interface), artboard_layer, 0, &[]);
-			}
-		}
+		LayerNodeIdentifier::new(new_id, self.network_interface)
 	}
 	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<PointId>>, layer: LayerNodeIdentifier) {
 		let shape = resolve_document_node_type("Shape")
@@ -207,28 +189,40 @@ impl<'a> ModifyInputsContext<'a> {
 		self.insert_node_to_chain(image_id, layer, image);
 	}
 
-	pub fn get_existing_node_id(&self, reference: &'static str) -> Option<NodeId> {
-		self.network_interface
-			.upstream_flow_back_from_nodes(
-				self.layer_node.map_or_else(
-					|| {
-						self.network_interface
-							.network(&[])
-							.unwrap()
-							.exports
-							.iter()
-							.filter_map(|output| if let NodeInput::Node { node_id, .. } = output { Some(*node_id) } else { None })
-							.collect()
-					},
-					|layer| vec![layer.to_node()],
-				),
-				&[],
-				network_interface::FlowType::HorizontalFlow,
-			)
+	fn get_output_layer(&self) -> Option<LayerNodeIdentifier> {
+		self.layer_node.or_else(|| {
+			let Some(network) = self.network_interface.network(&[]) else {
+				log::error!("Document network does not exist in ModifyInputsContext::get_output_node");
+				return None;
+			};
+			let export_node = network.exports.get(0).and_then(|export| export.as_node())?;
+			if self.network_interface.is_layer(&export_node, &[]) {
+				Some(LayerNodeIdentifier::new(export_node, self.network_interface))
+			} else {
+				None
+			}
+		})
+	}
+	// Gets the node id of a node with a specific reference that is upstream from the layer node, and creates it if it does not exist
+	pub fn get_existing_node_id(&mut self, reference: &'static str) -> Option<NodeId> {
+		let existing_node_id = self
+			.network_interface
+			.upstream_flow_back_from_nodes(self.get_output_layer().map_or(vec![], |layer| vec![layer.to_node()]), &[], network_interface::FlowType::HorizontalFlow)
 			.find(|(_, node_id)| self.network_interface.get_reference(node_id, &[]).is_some_and(|node_reference| node_reference == reference))
-			.map(|(_, id)| id)
+			.map(|(_, id)| id);
+
 		// Create a new node if the node does not exist and update its inputs
-		// TODO: Is this necessary?
+		existing_node_id.or_else(|| {
+			let output_layer = self.get_output_layer()?;
+			let Some(node_definition) = resolve_document_node_type(reference) else {
+				log::error!("Node type {} does not exist in ModifyInputsContext::get_existing_node_id", reference);
+				return None;
+			};
+			let node_id = NodeId(generate_uuid());
+			self.network_interface.insert_node(node_id, &[], node_definition.default_node_template());
+			self.network_interface.move_node_to_chain_start(&node_id, output_layer, &[]);
+			Some(node_id)
+		})
 	}
 
 	pub fn fill_set(&mut self, fill: Fill) {
