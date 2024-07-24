@@ -2353,6 +2353,7 @@ dependencies = [
  "rand_chacha 0.3.1",
  "rustybuzz 0.17.0",
  "serde",
+ "serde_json",
  "specta",
  "spirv-std",
  "tokio",

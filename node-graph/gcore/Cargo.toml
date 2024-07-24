@@ -73,6 +73,7 @@ image = { workspace = true, optional = true, default-features = false, features 
 [dev-dependencies]
 # Workspace dependencies
 tokio = { workspace = true, features = ["rt", "macros"] }
+serde_json = { workspace = true }
 
 [lints.rust]
 # the spirv target is not in the list of common cfgs so must be added manually
