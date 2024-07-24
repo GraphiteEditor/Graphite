@@ -27,20 +27,22 @@ jobs:
       - name: 🗑 Clear wasm-bindgen cache
         run: rm -r ~/.cache/.wasm-pack
 
-      - name: 🟢 Set up Node
-        uses: actions/setup-node@v3
+      - name: 🟢 Install the latest Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: "16"
+          node-version: "latest"
 
       - name: 🚧 Install Node dependencies
         run: |
           cd frontend
           npm ci
 
-      - name: 🦀 Update Rust to latest stable
+      - name: 🦀 Install the latest Rust
         run: |
+          echo "Initial system version:"
           rustc --version
           rustup update stable
+          echo "Latest updated version:"
           rustc --version
 
       - name: ✂ Replace template in <head> of index.html

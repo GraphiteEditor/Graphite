@@ -44,7 +44,7 @@ jobs:
           zola build
 
       - name: 🔍 Check if `website/other` directory changed
-        uses: dorny/paths-filter@v2
+        uses: dorny/paths-filter@v3
         id: changes
         with:
           filters: |
@@ -61,9 +61,9 @@ jobs:
 
       - name: 🟢 Set up Node only if we are going to build in the next step
         if: steps.cache-website-other-dist.outputs.cache-hit != 'true'
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: "16"
+          node-version: "latest"
 
       - name: 📁 Build `website/other` directory only if changed or not cached
         if: steps.cache-website-other-dist.outputs.cache-hit != 'true'

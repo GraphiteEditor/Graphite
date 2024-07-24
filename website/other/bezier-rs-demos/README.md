@@ -6,7 +6,7 @@ This page also serves isolated demos for iframes used in the Rustdoc [crate docu
 
 ## Building and running
 
-From this directory, first execute `npm install` to install the required Node dependencies. Then...
+Make sure [Node.js](https://nodejs.org/) (the latest LTS version) and [Rust](https://www.rust-lang.org/) (the latest stable release) are installed on your system, and [wasm-pack](https://rustwasm.github.io/wasm-pack/) has been installed by running `cargo install wasm-pack`.
 
 - To run the development server with hot reloading:
   ```

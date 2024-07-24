@@ -1,3 +1,9 @@
+# USAGE:
+# After reviewing the code, core team members may comment on a PR with the exact text:
+# - `!build-dev` to build with debug symbols and optimizations disabled
+# - `!build-profiling` to build with debug symbols and optimizations enabled
+# - `!build` to build without debug symbols and optimizations enabled
+# The comment may not contain any other text, not even whitespace or newlines.
 name: "!build PR Command"
 
 on:
@@ -12,7 +18,10 @@ jobs:
     # Command should be limited to core team members (those in the organization) for security.
     # From the GitHub Actions docs:
     # author_association = 'MEMBER': Author is a member of the organization that owns the repository.
-    if: github.event.issue.pull_request && (github.event.comment.body == '!build' || github.event.comment.body == '!build-profiling') && github.event.comment.author_association == 'MEMBER'
+    if: >
+      github.event.issue.pull_request &&
+      github.event.comment.author_association == 'MEMBER' &&
+      (github.event.comment.body == '!build-dev' || github.event.comment.body == '!build-profiling' || github.event.comment.body == '!build')
     runs-on: self-hosted
     permissions:
       contents: read
@@ -45,20 +54,22 @@ jobs:
         continue-on-error: true
         run: rm -r ~/.cache/.wasm-pack
 
-      - name: 🟢 Set up Node
-        uses: actions/setup-node@v3
+      - name: 🟢 Install the latest Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: "16"
+          node-version: "latest"
 
       - name: 🚧 Install Node dependencies
         run: |
           cd frontend
           npm ci
 
-      - name: 🦀 Update Rust to latest stable
+      - name: 🦀 Install the latest Rust
         run: |
+          echo "Initial system version:"
           rustc --version
           rustup update stable
+          echo "Latest updated version:"
           rustc --version
 
       - name: ✂ Replace template in <head> of index.html
@@ -70,12 +81,14 @@ jobs:
       - name: ⌨ Set build command based on comment
         id: build_command
         run: |
-          if [[ "${{ github.event.comment.body }}" == "!build" ]]; then
-            echo "command=build" >> $GITHUB_OUTPUT
+          if [[ "${{ github.event.comment.body }}" == "!build-dev" ]]; then
+            echo "command=build-dev" >> $GITHUB_OUTPUT
           elif [[ "${{ github.event.comment.body }}" == "!build-profiling" ]]; then
             echo "command=build-profiling" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event.comment.body }}" == "!build" ]]; then
+            echo "command=build" >> $GITHUB_OUTPUT
           else
-            echo "command=print-building-help" >> $GITHUB_OUTPUT
+            echo "Failed to detect if the build command written in the comment should have been '!build-dev', '!build-profiling', or '!build'" >> $GITHUB_OUTPUT
           fi
 
       - name: 🌐 Build Graphite web code
