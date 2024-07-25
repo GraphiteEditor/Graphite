@@ -270,8 +270,7 @@ impl GraphicElementRendered for GraphicGroup {
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2) {
 		let kurbo_transform = kurbo::Affine::new((transform * self.transform).to_cols_array());
-		// TODO: We make the bounding box bigger to accommodate for the stroke width. This should be done in a better way.
-		let Some(bounds) = self.bounding_box(DAffine2::from_scale(DVec2::splat(1.05))) else { return };
+		let Some(bounds) = self.bounding_box(DAffine2::IDENTITY) else { return };
 		let blending = vello::peniko::BlendMode::new(self.alpha_blending.blend_mode.into(), vello::peniko::Compose::SrcOver);
 		scene.push_layer(
 			blending,
@@ -325,7 +324,10 @@ impl GraphicElementRendered for VectorData {
 	}
 
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.bounding_box_with_transform(self.transform * transform)
+		let stroke_width = self.style.stroke().map(|s| s.weight()).unwrap_or_default();
+		let scale = transform.decompose_scale();
+		let offset = DVec2::splat(stroke_width * scale.x.max(scale.y) / 2.);
+		self.bounding_box_with_transform(self.transform * transform).map(|[a, b]| [a - offset, b + offset])
 	}
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
@@ -348,7 +350,11 @@ impl GraphicElementRendered for VectorData {
 		let kurbo_transform = kurbo::Affine::new(transform.to_cols_array());
 		let to_point = |p: DVec2| kurbo::Point::new(p.x, p.y);
 		let mut path = kurbo::BezPath::new();
+		// TODO: Is this correct and efficient? Deesn't this lead to us potentially rendering a path twice?
 		for (_, subpath) in self.region_bezier_paths() {
+			subpath.to_vello_path(self.transform, &mut path);
+		}
+		for subpath in self.stroke_bezier_paths() {
 			subpath.to_vello_path(self.transform, &mut path);
 		}
 
@@ -397,11 +403,6 @@ impl GraphicElementRendered for VectorData {
 			}
 			Fill::None => (),
 		};
-
-		let mut path = kurbo::BezPath::new();
-		for (_, subpath) in self.region_bezier_paths() {
-			subpath.to_vello_path(self.transform, &mut path);
-		}
 
 		if let Some(stroke) = self.style.stroke() {
 			let color = match stroke.color {
