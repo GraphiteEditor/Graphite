@@ -20,6 +20,7 @@ use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DynAnyNode, FutureW
 use graphene_std::application_io::RenderConfig;
 use graphene_std::raster::*;
 use graphene_std::wasm_application_io::*;
+use graphene_std::GraphicElement;
 #[cfg(feature = "gpu")]
 use wgpu_executor::{CommandBuffer, ShaderHandle, ShaderInputFrame, WgpuExecutor, WgpuShaderInput};
 use wgpu_executor::{WgpuSurface, WindowHandle};
@@ -616,6 +617,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: wgpu_executor::WindowHandle, params: [wgpu_executor::WindowHandle]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: graphene_std::SurfaceFrame, params: [graphene_std::SurfaceFrame]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: RenderOutput, params: [RenderOutput]),
+		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Footprint, output: GraphicElement, fn_params: [Footprint => GraphicElement]),
 		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Footprint, output: GraphicGroup, fn_params: [Footprint => GraphicGroup]),
 		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Footprint, output: VectorData, fn_params: [Footprint => VectorData]),
 		#[cfg(feature = "gpu")]
