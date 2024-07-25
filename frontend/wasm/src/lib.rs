@@ -9,18 +9,19 @@ pub mod helpers;
 
 use editor::messages::prelude::*;
 
-use std::cell::{OnceCell, RefCell};
 use std::panic;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use wasm_bindgen::prelude::*;
 
 // Set up the persistent editor backend state
 pub static EDITOR_HAS_CRASHED: AtomicBool = AtomicBool::new(false);
 pub static NODE_GRAPH_ERROR_DISPLAYED: AtomicBool = AtomicBool::new(false);
 pub static LOGGER: WasmLog = WasmLog;
+
 thread_local! {
-	pub static EDITOR: OnceCell<RefCell<editor::application::Editor>> = const { OnceCell::new() };
-	pub static EDITOR_HANDLE: OnceCell<RefCell<editor_api::EditorHandle>> = const { OnceCell::new() };
+	pub static EDITOR: Mutex<Option<editor::application::Editor>> = const { Mutex::new(None) };
+	pub static EDITOR_HANDLE: Mutex<Option<editor_api::EditorHandle>> = const { Mutex::new(None) };
 }
 
 /// Initialize the backend
@@ -73,11 +74,10 @@ pub fn panic_hook(info: &panic::PanicInfo) {
 	error!("{info}");
 
 	EDITOR_HANDLE.with(|editor_handle| {
-		editor_handle.get().map(|handle| {
-			handle
-				.borrow_mut()
-				.send_frontend_message_to_js_rust_proxy(FrontendMessage::DisplayDialogPanic { panic_info: info.to_string() })
-		})
+		let mut guard = editor_handle.lock();
+		if let Ok(Some(ref mut handle)) = guard.as_deref_mut() {
+			handle.send_frontend_message_to_js_rust_proxy(FrontendMessage::DisplayDialogPanic { panic_info: info.to_string() });
+		}
 	});
 }
 
