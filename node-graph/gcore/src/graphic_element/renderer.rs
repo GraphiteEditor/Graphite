@@ -272,16 +272,16 @@ impl GraphicElementRendered for GraphicGroup {
 		let kurbo_transform = kurbo::Affine::new((transform * self.transform).to_cols_array());
 		let Some(bounds) = self.bounding_box(DAffine2::IDENTITY) else { return };
 		let blending = vello::peniko::BlendMode::new(self.alpha_blending.blend_mode.into(), vello::peniko::Compose::SrcOver);
-		scene.push_layer(
-			blending,
-			self.alpha_blending.opacity,
-			kurbo_transform,
-			&vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y),
-		);
+		// scene.push_layer(
+		// 	blending,
+		// 	self.alpha_blending.opacity,
+		// 	kurbo_transform,
+		// 	&vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y),
+		// );
 		for element in self.iter() {
 			element.render_to_vello(scene, transform * self.transform);
 		}
-		scene.pop_layer();
+		// scene.pop_layer();
 	}
 
 	fn contains_artboard(&self) -> bool {
@@ -377,7 +377,7 @@ impl GraphicElementRendered for VectorData {
 				let start = lerp_bounds(gradient.start);
 				let end = lerp_bounds(gradient.end);
 
-				let transform = self.transform * gradient.transform;
+				let transform = self.transform /* * gradient.transform*/;
 				let start = transform.transform_point2(start);
 				let end = transform.transform_point2(end);
 				let fill = peniko::Brush::Gradient(peniko::Gradient {
@@ -391,7 +391,7 @@ impl GraphicElementRendered for VectorData {
 							peniko::GradientKind::Radial {
 								start_center: to_point(start),
 								start_radius: 0.,
-								end_center: to_point(end),
+								end_center: to_point(start),
 								end_radius: radius as f32,
 							}
 						}
