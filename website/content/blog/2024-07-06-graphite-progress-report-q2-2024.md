@@ -2,10 +2,12 @@
 title = "Graphite progress report (Q2 2024)"
 date = 2024-07-06
 [extra]
-banner = "https://static.graphite.rs/content/blog/2024-05-09-graphite-progress-report-q1-2024.avif"
-banner_png = "https://static.graphite.rs/content/blog/2024-05-09-graphite-progress-report-q1-2024.png"
+banner = "https://files.keavon.com/-/TanPaleturquoiseDuckbillplatypus/dreams.avif" # TODO: Update this
+banner_png = "https://files.keavon.com/-/FondHorribleMarbledmurrelet/dreams.png" # TODO: Update this
 author = "Keavon Chambers & Hypercube"
 summary = "Graphite's Q2 2024 update introduces boolean operations, layer locking, the centroid node, and a dot grid."
+reddit = "https://www.reddit.com/r/graphite/comments/1coa0if/blog_post_graphite_progress_report_q1_2024/" # TODO: Update this
+twitter = "https://twitter.com/GraphiteEditor/status/1788698448348266946" # TODO: Update this
 +++
 
 [Graphite](/) is a new 2D vector graphics editor bringing a modern, nondestructive approach to creative workflows with node-based procedural generation. The project is currently three years into development, with a focus on streamlining the creative process for procedural vector artwork. See the [roadmap](/features#roadmap) for a more in-depth summary of the goals for 2024 and beyond.
@@ -18,28 +20,36 @@ In the past three months, we are delighted to have seen many contributions both 
 
 All Q2 2024 commits may be [viewed in this list](https://github.com/GraphiteEditor/Graphite/commits/master/?since=2024-04-01&until=2024-06-30) and all noteworthy changes are detailed below.
 
+<div class="demo-artwork">
+	<a href="https://editor.graphite.rs/#demo/isometric-fountain">
+		<img src="https://files.keavon.com/-/TanPaleturquoiseDuckbillplatypus/dreams.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Dreams" />
+	</a>
+	<p>
+		<span>
+			<em>Dreams</em>
+		</span>
+		<br />
+		<span>
+			<a href="https://editor.graphite.rs/#demo/isometric-fountain">Open this artwork</a> to<br />explore it yourself.
+		</span>
+	</p>
+</div>
 
 ## New editor features
 
-- Add layer locking feature <small>([#1702](https://github.com/GraphiteEditor/Graphite/pull/1702))</small>
+- Layer locking feature <small>([#1702](https://github.com/GraphiteEditor/Graphite/pull/1702))</small>
 
-- Add corner rounding to the Rectangle node <small>([#1648](https://github.com/GraphiteEditor/Graphite/pull/1648))</small>
+- Fine-grained choices in the Snapping options popover <small>([#1730](https://github.com/GraphiteEditor/Graphite/pull/1730))</small>
 
-- Added fine-grained choices to Snapping options popover <small>([#1730](https://github.com/GraphiteEditor/Graphite/pull/1730))</small>
+- Corner rounding included in the *Rectangle* node <small>([#1648](https://github.com/GraphiteEditor/Graphite/pull/1648))</small>
 
-- Add rotation to Repeat node <small>([commit 72ba4dd](https://github.com/GraphiteEditor/Graphite/commit/72ba4ddfe421c0e17930ad1c2be85be2c69e04ea))</small>
-
-- DropdownInput preview support and ColorButton history improvements <small>([#1598](https://github.com/GraphiteEditor/Graphite/pull/1598))</small>
-
-- Bezier-rs: Add calculations for area and centroid of subpaths <small>([#1729](https://github.com/GraphiteEditor/Graphite/pull/1729))</small>
-
-- Dot grid <small>([#1709](https://github.com/GraphiteEditor/Graphite/pull/1709))</small>
+- Rotation included in the *Repeat* node <small>([commit 72ba4dd](https://github.com/GraphiteEditor/Graphite/commit/72ba4ddfe421c0e17930ad1c2be85be2c69e04ea))</small>
 
 - Add grid color customization and choice to display as dots <small>([#1743](https://github.com/GraphiteEditor/Graphite/pull/1743))</small>
 
 - Add Isometric Fountain demo artwork <small>([commit 6b0822d](https://github.com/GraphiteEditor/Graphite/commit/6b0822d31890b6699c4533c3e828da0e9e8c9490))</small>
 
-- Add Area and Centroid nodes <small>([#1749](https://github.com/GraphiteEditor/Graphite/pull/1749))</small>
+- Add *Area* and *Centroid* nodes <small>([#1729](https://github.com/GraphiteEditor/Graphite/pull/1729), [#1749](https://github.com/GraphiteEditor/Graphite/pull/1749))</small> 
 
 - Add boolean operations <small>([#1759](https://github.com/GraphiteEditor/Graphite/pull/1759))</small>
 
@@ -107,6 +117,8 @@ All Q2 2024 commits may be [viewed in this list](https://github.com/GraphiteEdit
 - Remove editor instances concept and clean up JS interop code <small>([commit 19eb6ce](https://github.com/GraphiteEditor/Graphite/commit/19eb6ce0ab10065ec6acd6e49edd2f072729fc77))</small>
 
 - Fix shallow/deep selection <small>([#1725](https://github.com/GraphiteEditor/Graphite/pull/1725))</small>
+
+- DropdownInput preview support and ColorButton history improvements <small>([#1598](https://github.com/GraphiteEditor/Graphite/pull/1598))</small>
 
 - Add initial Graphene docs to the contributor guide <small>([#1686](https://github.com/GraphiteEditor/Graphite/pull/1686))</small>
 

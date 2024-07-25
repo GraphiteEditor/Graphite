@@ -2,8 +2,8 @@
 title = "Graphite progress report (Q1 2024)"
 date = 2024-05-09
 [extra]
-banner = "https://static.graphite.rs/content/blog/2024-05-09-graphite-progress-report-q1-2024.avif"
-banner_png = "https://static.graphite.rs/content/blog/2024-05-09-graphite-progress-report-q1-2024.png"
+banner = "https://static.graphite.rs/content/blog/2024-05-09-graphite-progress-report-q1-2024__2.avif"
+banner_png = "https://static.graphite.rs/content/blog/2024-05-09-graphite-progress-report-q1-2024__2.png"
 author = "Keavon Chambers & Hypercube"
 summary = "Graphite's Q1 2024 update introduces a precise snapping system and a customizable grid for enhanced design control. The update also includes improved procedural scattering with the 'Copy to Points' node, demonstrated in new demo artwork."
 reddit = "https://www.reddit.com/r/graphite/comments/1coa0if/blog_post_graphite_progress_report_q1_2024/"
@@ -22,7 +22,7 @@ All Q1 2024 commits may be [viewed in this list](https://github.com/GraphiteEdit
 
 <div class="demo-artwork">
 	<a href="https://editor.graphite.rs/#demo/isometric-fountain">
-		<img src="https://static.graphite.rs/content/blog/2024-05-09-graphite-progress-report-q1-2024.png" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Isometric Fountain" />
+		<img src="https://static.graphite.rs/content/blog/2024-05-09-graphite-progress-report-q1-2024__2.png" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Isometric Fountain" />
 	</a>
 	<p>
 		<span>
