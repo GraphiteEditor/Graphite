@@ -41,7 +41,7 @@ pub fn panic_hook(info: &panic::PanicInfo) {
 	let stack = e.stack();
 	let backtrace = stack.to_string();
 	// error!("{:?}", backtrace);
-	if backtrace.to_string().contains("AssertUnwindSafe") {
+	if backtrace.to_string().contains("DynAnyNode") {
 		log::error!("Node graph evaluation panicked {info}");
 
 		// When the graph panics, the node runtime lock may not be released properly
