@@ -48,7 +48,7 @@ export class UpdateContextMenuInformation extends JsMessage {
 	readonly contextMenuInformation!: ContextMenuInformation | undefined;
 }
 const LayerWidths = Transform(({ obj }) => obj.layerWidths);
-const ChainWidths = Transform(({ obj }) => obj.layerWidths);
+const ChainWidths = Transform(({ obj }) => obj.chainWidths);
 
 export class UpdateLayerWidths extends JsMessage {
 	@LayerWidths

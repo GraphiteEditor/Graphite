@@ -381,7 +381,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 	/// Set the input, refresh the properties panel, and run the document graph if skip_rerender is false
 	pub fn set_input_with_refresh(&mut self, input_connector: InputConnector, input: NodeInput, skip_rerender: bool) {
-		self.network_interface.set_input(input_connector, input, &[]);
+		self.network_interface.set_input(&input_connector, input, &[]);
 		self.responses.add(PropertiesPanelMessage::Refresh);
 		if !skip_rerender {
 			self.responses.add(NodeGraphMessage::RunDocumentGraph);

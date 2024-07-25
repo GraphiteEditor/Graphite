@@ -632,6 +632,8 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = setToNodeOrLayer)]
 	pub fn set_to_node_or_layer(&self, id: u64, is_layer: bool) {
 		let node_id = NodeId(id);
+		let message = DocumentMessage::StartTransaction;
+		self.dispatch(message);
 		let message = NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer };
 		self.dispatch(message);
 	}
@@ -833,14 +835,14 @@ impl EditorHandle {
 					.node_template_input_override([None, Some(NodeInput::value(TaggedValue::VectorModification(modification), false))])
 					.document_node;
 
-				let mut persistent_node_metadata = document.network_interface.persistent_node_metadata(&node_id, &[]).cloned().unwrap_or_default();
+				let node_metadata = document.network_interface.get_node_metadata(&node_id, &[]).cloned().unwrap_or_default();
 
 				document.network_interface.insert_node(
 					node_id,
 					&[],
 					NodeTemplate {
 						document_node,
-						persistent_node_metadata,
+						persistent_node_metadata: node_metadata.persistent_metadata,
 					},
 				);
 			}

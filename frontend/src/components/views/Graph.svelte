@@ -421,19 +421,19 @@
 			{@const clipPathId = String(Math.random()).substring(2)}
 			{@const stackDataInput = node.exposedInputs[0]}
 			{@const layerAreaWidth = $nodeGraph.layerWidths.get(node.id) || 8}
-			{@const layerChainWidth = $nodeGraph.chainWidths.get(node.id) + 0.5 || 0}
+			{@const layerChainWidth = $nodeGraph.chainWidths.get(node.id) || 0}
 			<div
 				class="layer"
 				class:selected={$nodeGraph.selected.includes(node.id)}
 				class:previewed={node.previewed}
 				class:disabled={!node.visible}
-				style:--offset-left={(node.position?.x || 0) - 1}
+				style:--offset-left={node.position?.x || 0}
 				style:--offset-top={node.position?.y || 0}
 				style:--clip-path-id={`url(#${clipPathId})`}
 				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
 				style:--layer-area-width={layerAreaWidth}
-				style:--node-chain-area-left-extension={node.exposedInputs.length === 0 ? 0 : 1.5}
+				style:--node-chain-area-left-extension={layerChainWidth ? layerChainWidth + 0.5 : 0}
 				data-node={node.id}
 				bind:this={nodeElements[nodeIndex]}
 			>
@@ -505,8 +505,8 @@
 							style:--data-color-dim={`var(--color-data-${stackDataInput.dataType.toLowerCase()}-dim)`}
 							bind:this={inputs[nodeIndex][1]}
 						>
-							<title>{`${dataTypeTooltip(stackDataInput)}\nConnected to ${stackDataInput.connected !== undefined ? stackDataInput.connected : "nothing"}`}</title>
-							{#if stackDataInput.connected !== undefined}
+							<title>{`${dataTypeTooltip(stackDataInput)}\nConnected to ${stackDataInput.connectedTo !== undefined ? stackDataInput.connectedTo : "nothing"}`}</title>
+							{#if stackDataInput.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
@@ -535,7 +535,7 @@
 					<defs>
 						<clipPath id={clipPathId}>
 							<!-- Keep this equation in sync with the equivalent one in the CSS rule for `.layer { width: ... }` below -->
-							<path clip-rule="evenodd" d={layerBorderMask(24 * layerAreaWidth - 12, node.exposedInputs.length === 0 ? 0 : 36)} />
+							<path clip-rule="evenodd" d={layerBorderMask(24 * layerAreaWidth - 12, layerChainWidth ? (0.5 + layerChainWidth) * 24 : 0)} />
 						</clipPath>
 					</defs>
 				</svg>
@@ -955,7 +955,7 @@
 				position: absolute;
 
 				&.input {
-					left: -3px;
+					left: calc(-3px + var(--node-chain-area-left-extension) * 24px - 36px);
 				}
 
 				&.output {
@@ -980,10 +980,10 @@
 			border-radius: 8px;
 			--extra-width-to-reach-grid-multiple: 8px;
 			--node-chain-area-left-extension: 0;
-			// Keep this equation in sync with the equivalent one in the Svelte template `<clipPath><path d="layerBorderMask(...)" /></clipPath>` above
-			width: calc(24px * var(--layer-area-width) - 12px);
-			padding-left: calc(var(--node-chain-area-left-extension) * 24px);
-			margin-left: calc((1.5 - var(--node-chain-area-left-extension)) * 24px);
+			// Keep this equation in sync with the equivalent one in the Svelte template `<clipPath><path d="layerBorderMask(...)" /></clipPath>` above and the left port offset
+			width: calc((var(--layer-area-width) - 0.5) * 24px);
+			padding-left: calc(var(--node-chain-area-left-extension) * 24px); // 0; //36px;
+			margin-left: calc((0.5 - var(--node-chain-area-left-extension)) * 24px); //12px; //-24px;
 
 			&::after {
 				border: 1px solid var(--color-5-dullgray);

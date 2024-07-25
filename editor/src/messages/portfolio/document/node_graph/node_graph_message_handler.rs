@@ -18,7 +18,7 @@ use graphene_core::*;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 use renderer::{ClickTarget, Quad};
 
-use glam::{DAffine2, DVec2, IVec2, UVec2};
+use glam::{DAffine2, DVec2, IVec2};
 
 #[derive(Debug)]
 pub struct NodeGraphHandlerData<'a> {
@@ -121,7 +121,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				}
 				log::debug!("Creating wire from {output_connector:?} to {input_connector:?}");
-				network_interface.create_wire(output_connector.clone(), input_connector, selection_network_path);
+				network_interface.create_wire(&output_connector, &input_connector, selection_network_path);
 				if let OutputConnector::Node { node_id, .. } = output_connector {
 					if network_interface.connected_to_output(&node_id, selection_network_path) {
 						responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -240,7 +240,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				})
 			}
 			NodeGraphMessage::DisconnectInput { input_connector } => {
-				network_interface.disconnect_input(input_connector.clone(), selection_network_path);
+				network_interface.disconnect_input(&input_connector, selection_network_path);
 				if let InputConnector::Node { node_id, .. } = input_connector {
 					if network_interface.connected_to_output(&node_id, selection_network_path) {
 						responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -1022,7 +1022,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 			}
 			NodeGraphMessage::SetInput { input_connector, input } => {
-				network_interface.set_input(input_connector, input, selection_network_path);
+				network_interface.set_input(&input_connector, input, selection_network_path);
 			}
 			NodeGraphMessage::ShiftNodes {
 				node_ids,
@@ -1044,6 +1044,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					log::error!("Could not get selected nodes in NodeGraphMessage::ToggleSelectedAsLayersOrNodes");
 					return;
 				};
+				responses.add(DocumentMessage::StartTransaction);
 				for node_id in selected_nodes.selected_nodes() {
 					responses.add(NodeGraphMessage::SetToNodeOrLayer {
 						node_id: *node_id,
@@ -1699,8 +1700,8 @@ impl NodeGraphMessageHandler {
 			nodes.push(FrontendNode {
 				id: node_id,
 				is_layer: network_interface
-					.persistent_node_metadata(&node_id, breadcrumb_network_path)
-					.is_some_and(|node_metadata| node_metadata.is_layer()),
+					.get_node_metadata(&node_id, breadcrumb_network_path)
+					.is_some_and(|node_metadata| node_metadata.persistent_metadata.is_layer()),
 				can_be_layer: can_be_layer_lookup.contains(&node_id),
 				reference: None,
 				display_name: network_interface.frontend_display_name(&node_id, breadcrumb_network_path),

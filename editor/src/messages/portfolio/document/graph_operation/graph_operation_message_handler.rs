@@ -129,8 +129,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					if network_interface.is_layer(node_id, &[]) {
 						network_interface.move_layer_to_stack(LayerNodeIdentifier::new(*node_id, &network_interface), artboard_layer, 0, &[]);
 					} else {
-						network_interface.disconnect_input(InputConnector::node(artboard_layer.to_node(), 0), &[]);
-						network_interface.set_input(InputConnector::node(id, 0), primary_input, &[]);
+						network_interface.disconnect_input(&InputConnector::node(artboard_layer.to_node(), 0), &[]);
+						network_interface.set_input(&InputConnector::node(id, 0), primary_input, &[]);
 					}
 				}
 				responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });

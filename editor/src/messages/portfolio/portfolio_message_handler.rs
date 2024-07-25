@@ -455,7 +455,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), &[]);
 
-						document.network_interface.set_input(InputConnector::node(*node_id, 0), old_inputs[0].clone(), &[]);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), &[]);
 
 						let Some(fill_type) = old_inputs[1].as_value().cloned() else { continue };
 						let TaggedValue::FillType(fill_type) = fill_type else { continue };
@@ -485,22 +485,22 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						};
 						document
 							.network_interface
-							.set_input(InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::Fill(fill.clone()), false), &[]);
+							.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::Fill(fill.clone()), false), &[]);
 						match fill {
 							Fill::None => {
 								document
 									.network_interface
-									.set_input(InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::OptionalColor(None), false), &[]);
+									.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::OptionalColor(None), false), &[]);
 							}
 							Fill::Solid(color) => {
 								document
 									.network_interface
-									.set_input(InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::OptionalColor(Some(color)), false), &[]);
+									.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::OptionalColor(Some(color)), false), &[]);
 							}
 							Fill::Gradient(gradient) => {
 								document
 									.network_interface
-									.set_input(InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Gradient(gradient), false), &[]);
+									.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Gradient(gradient), false), &[]);
 							}
 						}
 					}
