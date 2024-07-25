@@ -51,14 +51,17 @@ pub fn panic_hook(info: &panic::PanicInfo) {
 
 		if !NODE_GRAPH_ERROR_DISPLAYED.load(Ordering::SeqCst) {
 			NODE_GRAPH_ERROR_DISPLAYED.store(true, Ordering::SeqCst);
-			editor_api::editor_and_handle(|editor, handle| {
-				let responses = editor.handle_message(DialogMessage::DisplayDialogError {
-					title: "Node graph panicked".into(),
-					description: "Node graph evaluation panicked, please check the log for more information.\n Please consider this as a critical error, and save your work before doing anything else. This is an experimental recovery feature, and it's not guaranteed to work.".into(),
-				});
-				for response in responses {
-					handle.send_frontend_message_to_js_rust_proxy(response);
-				}
+			editor_api::editor_and_handle(|_, handle| {
+				let error = r#"
+				<rect x="50%" y="50%" width="600" height="100" transform="translate(-300 -50)" rx="4" fill="var(--color-error-red)" />
+				<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="18" fill="var(--color-2-mildblack)">
+					<tspan x="50%" dy="-24" font-weight="bold">The document crashed while being rendered in its current state.</tspan>
+					<tspan x="50%" dy="24">Undo your last action to restore the artwork. However, the editor is now</tspan>
+					<tspan x="50%" dy="24">unstable! Save your document then restart the editor before continuing.</tspan>
+				/text>"#
+				// It's a mystery why the `/text>` tag above needs to be missing its `<`, but when it exists it prints the `<` character in the text. However this works with it removed.
+				.to_string();
+				handle.send_frontend_message_to_js_rust_proxy(FrontendMessage::UpdateDocumentArtwork { svg: error });
 			});
 		}
 
