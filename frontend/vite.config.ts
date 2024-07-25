@@ -6,7 +6,7 @@ import path from "path";
 
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import rollupPluginLicense, { type Dependency } from "rollup-plugin-license";
-import { sveltePreprocess } from "svelte-preprocess/dist/autoProcess";
+import { sveltePreprocess } from "svelte-preprocess";
 import { defineConfig } from "vite";
 import { default as viteMultipleAssets } from "vite-multiple-assets";
 
