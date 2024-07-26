@@ -18,7 +18,7 @@ use graphene_std::text::FontCache;
 use std::fmt::{self, Debug};
 
 pub struct ToolActionHandlerData<'a> {
-	pub document: &'a DocumentMessageHandler,
+	pub document: &'a mut DocumentMessageHandler,
 	pub document_id: DocumentId,
 	pub global_tool_data: &'a DocumentToolData,
 	pub input: &'a InputPreprocessorMessageHandler,
@@ -28,7 +28,7 @@ pub struct ToolActionHandlerData<'a> {
 }
 impl<'a> ToolActionHandlerData<'a> {
 	pub fn new(
-		document: &'a DocumentMessageHandler,
+		document: &'a mut DocumentMessageHandler,
 		document_id: DocumentId,
 		global_tool_data: &'a DocumentToolData,
 		input: &'a InputPreprocessorMessageHandler,

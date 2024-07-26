@@ -152,7 +152,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 				if !nodes.is_empty() {
 					// Add the nodes to the network
-					let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
+					let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId(generate_uuid()))).collect();
 					// Since all the new nodes are already connected, just connect the input of the layer to first new node
 					let first_new_node_id = new_ids[&NodeId(0)];
 					responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });

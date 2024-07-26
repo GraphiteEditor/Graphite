@@ -336,7 +336,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(GraphOperationMessage::NewCustomLayer {
 					id,
-					nodes: HashMap::new(),
+					nodes: Vec::new(),
 					parent,
 					insert_index,
 				});
@@ -1134,7 +1134,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 impl DocumentMessageHandler {
 	/// Runs an intersection test with all layers and a viewport space quad
 	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
-		log::debug!("intersect_quad");
 		let document_quad = self.metadata().document_to_viewport.inverse() * viewport_quad;
 		self.metadata()
 			.all_layers()

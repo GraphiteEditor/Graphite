@@ -179,7 +179,7 @@ impl Fsm for LineToolFsmState {
 
 				responses.add(DocumentMessage::StartTransaction);
 
-				let nodes = {
+				
 					let node_type = resolve_document_node_type("Line").expect("Line node does not exist");
 					let node = node_type.node_template_input_override(
 						[
@@ -188,9 +188,8 @@ impl Fsm for LineToolFsmState {
 							Some(NodeInput::value(TaggedValue::DVec2(DVec2::X), false)),
 						],
 					);
+				let nodes = vec![(NodeId(0), node)];
 
-					HashMap::from([(NodeId(0), node)])
-				};
 				let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, document.new_layer_parent(false), responses);
 				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
 				tool_data.layer = Some(layer);

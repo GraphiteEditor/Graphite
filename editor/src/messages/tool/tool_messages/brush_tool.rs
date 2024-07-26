@@ -430,7 +430,7 @@ fn new_brush_layer(document: &DocumentMessageHandler, responses: &mut VecDeque<M
 	let id = NodeId(generate_uuid());
 	responses.add(GraphOperationMessage::NewCustomLayer {
 		id,
-		nodes: HashMap::from([(NodeId(0), brush_node)]),
+		nodes: vec![(NodeId(0), brush_node)],
 		parent: document.new_layer_parent(true),
 		insert_index: 0,
 	});

@@ -75,21 +75,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 		match message {
 			// TODO: automatically remove broadcast messages.
 			NodeGraphMessage::AddNodes { nodes, new_ids } => {
-				for (old_node_id, mut node_template) in nodes {
-					// Get the new node template
-					node_template = network_interface.map_ids(node_template, &old_node_id, &new_ids, selection_network_path);
-
-					// Insert node into network
-					let node_id = *new_ids.get(&old_node_id).unwrap();
-					network_interface.insert_node(node_id, selection_network_path, node_template);
-				}
-
-				let Some(new_layer_id) = new_ids.get(&NodeId(0)) else {
+				let Some(new_layer_id) = new_ids.get(&NodeId(0)).cloned() else {
 					error!("Could not get layer node when adding as child");
 					return;
 				};
+				network_interface.insert_node_group(nodes, new_ids, selection_network_path);
 
-				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![*new_layer_id] });
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![new_layer_id] });
 			}
 			NodeGraphMessage::Init => {
 				responses.add(BroadcastMessage::SubscribeEvent {
@@ -120,7 +112,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(DialogMessage::RequestComingSoonDialog { issue: Some(1762) });
 					return;
 				}
-				log::debug!("Creating wire from {output_connector:?} to {input_connector:?}");
 				network_interface.create_wire(&output_connector, &input_connector, selection_network_path);
 				if let OutputConnector::Node { node_id, .. } = output_connector {
 					if network_interface.connected_to_output(&node_id, selection_network_path) {
@@ -132,12 +123,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 			}
 			NodeGraphMessage::Copy => {
-				let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else {
-					log::error!("Could not get selected nodes in NodeGraphMessage::Copy");
-					return;
-				};
+				let all_selected_nodes = network_interface.get_upstream_chain_nodes(selection_network_path);
 				// Collect the selected nodes
-				let new_ids = &selected_nodes.selected_nodes().copied().enumerate().map(|(new, old)| (old, NodeId(new as u64))).collect();
+				let new_ids = &all_selected_nodes.iter().enumerate().map(|(new, old)| (*old, NodeId(new as u64))).collect();
 				let copied_nodes = network_interface.copy_nodes(new_ids, selection_network_path).collect::<Vec<_>>();
 
 				// Prefix to show that these are nodes
@@ -155,7 +143,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				self.wire_in_progress_to_connector = None;
 				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 			}
-			NodeGraphMessage::CreateNodeFromContextMenu { node_id, node_type } => {
+			NodeGraphMessage::CreateNodeFromContextMenu { node_id, node_type, x, y } => {
 				let node_id = node_id.unwrap_or_else(|| NodeId(generate_uuid()));
 
 				let Some(document_node_type) = document_node_types::resolve_document_node_type(&node_type) else {
@@ -205,7 +193,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(NodeGraphMessage::InsertNode { node_id, node_template });
-
+				responses.add(NodeGraphMessage::ShiftNodes {
+					node_ids: vec![node_id],
+					displacement_x: x,
+					displacement_y: y,
+					move_upstream: false,
+				});
 				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 				responses.add(FrontendMessage::UpdateContextMenuInformation {
 					context_menu_information: self.context_menu.clone(),
@@ -251,31 +244,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 			}
 			NodeGraphMessage::DuplicateSelectedNodes => {
-				let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else {
-					log::error!("Could not get selected nodes in NodeGraphMessage::DuplicateSelectedNodes");
-					return;
-				};
+				let all_selected_nodes = network_interface.get_upstream_chain_nodes(selection_network_path);
 
 				responses.add(DocumentMessage::StartTransaction);
 
-				let new_ids = &selected_nodes.selected_nodes().map(|&id| (id, NodeId(generate_uuid()))).collect();
+				let new_ids = all_selected_nodes.iter().map(|&id| (id, NodeId(generate_uuid()))).collect::<HashMap<NodeId, NodeId>>();
 
 				// Copy the selected nodes
-				let copied_nodes = network_interface.copy_nodes(new_ids, selection_network_path).collect::<Vec<_>>();
+				let nodes = network_interface.copy_nodes(&new_ids, selection_network_path).collect::<Vec<_>>();
 
-				// Select the new nodes. Duplicated nodes are always pasted into the current network
-				responses.add(NodeGraphMessage::SelectedNodesSet {
-					nodes: copied_nodes.iter().map(|(node_id, _)| *node_id).collect(),
-				});
-				for (node_id, node_template) in copied_nodes {
-					// Shift duplicated node
-					// document_node.metadata().position += IVec2::splat(2);
-
-					// Insert new node into graph
-					responses.add(NodeGraphMessage::InsertNode { node_id, node_template });
-				}
-				responses.add(BroadcastEvent::SelectionChanged);
-				responses.add(NodeGraphMessage::SelectedNodesUpdated);
+				responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
 			}
 			NodeGraphMessage::EnterNestedNetwork => {
 				let Some(node_id) = network_interface.get_node_from_click(ipp.mouse.position, selection_network_path) else {
@@ -329,47 +307,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				network_interface.insert_node(node_id, selection_network_path, node_template);
 			}
 			NodeGraphMessage::InsertNodeBetween {
-				post_node_id,
-				post_node_input_index,
-				insert_node_output_index,
-				insert_node_id,
+				node_id,
+				input_connector,
 				insert_node_input_index,
-				pre_node_output_index,
-				pre_node_id,
 			} => {
-				// let post_node = document_network.nodes.get(&post_node_id);
-				// let Some((post_node_input_index, _)) = post_node
-				// 	.map_or(&document_network.exports, |post_node| &post_node.inputs)
-				// 	.iter()
-				// 	.enumerate()
-				// 	.filter(|input| input.1.is_exposed())
-				// 	.nth(post_node_input_index)
-				// else {
-				// 	error!("Failed to find input index {post_node_input_index} on node {post_node_id:#?}");
-				// 	return;
-				// };
-				// let Some(insert_node) = document_network.nodes.get(&insert_node_id) else {
-				// 	error!("Insert node not found");
-				// 	return;
-				// };
-				// let Some((insert_node_input_index, _)) = insert_node.inputs.iter().enumerate().filter(|input| input.1.is_exposed()).nth(insert_node_input_index) else {
-				// 	error!("Failed to find input index {insert_node_input_index} on node {insert_node_id:#?}");
-				// 	return;
-				// };
-
-				// let post_input = NodeInput::node(insert_node_id, insert_node_output_index);
-				// responses.add(GraphOperationMessage::SetNodeInput {
-				// 	node_id: post_node_id,
-				// 	input_index: post_node_input_index,
-				// 	input: post_input,
-				// });
-
-				// let insert_input = NodeInput::node(pre_node_id, pre_node_output_index);
-				// responses.add(GraphOperationMessage::SetNodeInput {
-				// 	node_id: insert_node_id,
-				// 	input_index: insert_node_input_index,
-				// 	input: insert_input,
-				// });
+				network_interface.insert_node_between(&node_id, &input_connector, insert_node_input_index, selection_network_path);
 			}
 			NodeGraphMessage::MoveLayerToStack {
 				layer,
@@ -383,7 +325,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 			}
 			NodeGraphMessage::PasteNodes { serialized_nodes } => {
-				let data = match serde_json::from_str::<HashMap<NodeId, NodeTemplate>>(&serialized_nodes) {
+				let data = match serde_json::from_str::<Vec<(NodeId, NodeTemplate)>>(&serialized_nodes) {
 					Ok(d) => d,
 					Err(e) => {
 						warn!("Invalid node data {e:?}");
@@ -396,15 +338,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				responses.add(DocumentMessage::StartTransaction);
 
-				let new_ids: HashMap<_, _> = data.iter().map(|(id, _)| (id.clone(), NodeId(generate_uuid()))).collect();
+				let new_ids: HashMap<_, _> = data.iter().map(|(id, _)| (*id, NodeId(generate_uuid()))).collect();
 				responses.add(NodeGraphMessage::AddNodes {
 					nodes: data,
 					new_ids: new_ids.clone(),
 				});
-
-				//TODO: Move nodes to correct location and run layout system
-				let nodes = new_ids.values().copied().collect();
-				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 			}
 			NodeGraphMessage::PointerDown {
 				shift_click,
@@ -413,7 +351,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				right_click,
 			} => {
 				if selection_network_path != breadcrumb_network_path {
-					log::error!("Selection network path does not match breadcrumb network path in PointerUp");
+					log::error!("Selection network path does not match breadcrumb network path in PointerDown");
 					return;
 				}
 				let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
@@ -629,7 +567,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				if self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none() {
 					if let Some(to_connector) = network_interface.get_input_connector_from_click(ipp.mouse.position, selection_network_path) {
-						log::debug!("to_connector: {to_connector:?}");
 						let Some(input_position) = network_interface.get_input_position(&to_connector, selection_network_path) else {
 							log::error!("Could not get input position for connector: {to_connector:?}");
 							return;
@@ -738,7 +675,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_selected_nodes });
 					self.deselect_on_pointer_up = None;
 				}
-
 				let point = network_metadata
 					.persistent_metadata
 					.navigation_metadata
@@ -812,21 +748,41 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						let selected_node_id = selected_nodes.selected_nodes_ref()[0];
 						let has_primary_output_connection = network_interface
 							.get_outward_wires(selection_network_path)
-							.is_some_and(|outward_wires| outward_wires.get(&OutputConnector::node(selected_node_id, 0)).is_some());
+							.is_some_and(|outward_wires| outward_wires.get(&OutputConnector::node(selected_node_id, 0)).is_some_and(|outward_wires| !outward_wires.is_empty()));
 						let Some(network) = network_interface.network(selection_network_path) else {
 							return;
 						};
 						if let Some(selected_node) = network.nodes.get(&selected_node_id) {
 							// Check if any downstream node has any input that feeds into the primary export of the selected node
-							let has_primary_input_connection = selected_node.inputs.first().is_some_and(|first_input| first_input.as_value().is_some());
+							let primary_input_is_value = selected_node.inputs.first().is_some_and(|first_input| first_input.as_value().is_some());
 							// Check that neither the primary input or output of the selected node are already connected.
-							if !has_primary_output_connection && !has_primary_input_connection {
+							if !has_primary_output_connection && primary_input_is_value {
 								let Some(bounding_box) = network_interface.node_bounding_box(selected_node_id, selection_network_path) else {
 									log::error!("Could not get bounding box for node: {selected_node_id}");
 									return;
 								};
 								// TODO: Cache all wire locations if this is a performance issue
-								let overlapping_wire = Self::collect_wires(&network_interface, selection_network_path).into_iter().find(|frontend_wire| {
+								let mut overlapping_wires = Self::collect_wires(network_interface, selection_network_path).into_iter().filter(|frontend_wire| {
+									// Prevent inserting on a link that is connected upstream to the selected node
+									if network_interface
+										.upstream_flow_back_from_nodes(vec![selected_node_id], selection_network_path, network_interface::FlowType::UpstreamFlow)
+										.any(|(_, upstream_id)| {
+											frontend_wire.wire_end.node_id().is_some_and(|wire_end_id| wire_end_id == upstream_id)
+												|| frontend_wire.wire_start.node_id().is_some_and(|wire_start_id| wire_start_id == upstream_id)
+										}) {
+										return false;
+									}
+
+									// Prevent inserting a layer into a chain
+									if network_interface.is_layer(&selected_node_id, selection_network_path)
+										&& frontend_wire
+											.wire_start
+											.node_id()
+											.is_some_and(|wire_start_id| network_interface.is_chain(&wire_start_id, selection_network_path))
+									{
+										return false;
+									}
+
 									let Some(input_position) = network_interface.get_input_position(&frontend_wire.wire_end, selection_network_path) else {
 										log::error!("Could not get input port position for {:?}", frontend_wire.wire_end);
 										return false;
@@ -856,46 +812,38 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 									!bezier.rectangle_intersections(bounding_box[0], bounding_box[1]).is_empty() || bezier.is_contained_within(bounding_box[0], bounding_box[1])
 								});
-								if let Some(overlapping_wire) = overlapping_wire {
-									// Prevent inserting on a link that is connected to the selected node
-									if overlapping_wire.wire_end.node_id().is_some_and(|wire_end_id| wire_end_id != selected_node_id)
-										&& overlapping_wire.wire_start.node_id().is_some_and(|wire_start_id| wire_start_id != selected_node_id)
-									{
-										let Some(network) = network_interface.network(selection_network_path) else {
-											return;
-										};
-										// Ensure connection is to first visible input of selected node. If it does not have an input then do not connect
-										if let Some((selected_node_input_index, _)) = network
-											.nodes
-											.get(&selected_node_id)
-											.unwrap()
-											.inputs
-											.iter()
-											.enumerate()
-											.find(|(_, input)| input.is_exposed_to_frontend(selection_network_path.is_empty()))
-										{
-											responses.add(DocumentMessage::StartTransaction);
-											// Create wire between the inserted node and the post node
-											responses.add(NodeGraphMessage::CreateWire {
-												output_connector: OutputConnector::node(selected_node_id, 0),
-												input_connector: overlapping_wire.wire_end,
-											});
-											// Create wire between the pre node and the inserted node
-											responses.add(NodeGraphMessage::CreateWire {
-												output_connector: overlapping_wire.wire_start.clone(),
-												input_connector: InputConnector::node(selected_node_id, selected_node_input_index),
-											});
 
-											if let OutputConnector::Node { node_id, .. } = overlapping_wire.wire_start {
-												if network_interface.connected_to_output(&node_id, selection_network_path) {
-													responses.add(NodeGraphMessage::RunDocumentGraph);
-												}
-											} else {
-												// Creating wire to export node, always run graph
+								if let Some(overlapping_wire) = overlapping_wires.next() {
+									let Some(network) = network_interface.network(selection_network_path) else {
+										return;
+									};
+									// Ensure connection is to first visible input of selected node. If it does not have an input then do not connect
+									if let Some((selected_node_input_index, _)) = network
+										.nodes
+										.get(&selected_node_id)
+										.unwrap()
+										.inputs
+										.iter()
+										.enumerate()
+										.find(|(_, input)| input.is_exposed_to_frontend(selection_network_path.is_empty()))
+									{
+										responses.add(DocumentMessage::StartTransaction);
+
+										responses.add(NodeGraphMessage::InsertNodeBetween {
+											node_id: selected_node_id,
+											input_connector: overlapping_wire.wire_end,
+											insert_node_input_index: selected_node_input_index,
+										});
+
+										if let OutputConnector::Node { node_id, .. } = overlapping_wire.wire_start {
+											if network_interface.connected_to_output(&node_id, selection_network_path) {
 												responses.add(NodeGraphMessage::RunDocumentGraph);
 											}
-											responses.add(NodeGraphMessage::SendGraph);
+										} else {
+											// Creating wire to export node, always run graph
+											responses.add(NodeGraphMessage::RunDocumentGraph);
 										}
+										responses.add(NodeGraphMessage::SendGraph);
 									}
 								}
 							}

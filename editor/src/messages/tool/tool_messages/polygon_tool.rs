@@ -244,7 +244,6 @@ impl Fsm for PolygonToolFsmState {
 				polygon_data.start(document, input);
 				responses.add(DocumentMessage::StartTransaction);
 
-				let nodes = {
 					let node = match tool_options.polygon_type {
 						PolygonType::Convex => resolve_document_node_type("Regular Polygon")
 							.expect("Regular Polygon node does not exist")
@@ -265,8 +264,8 @@ impl Fsm for PolygonToolFsmState {
 						),
 					};
 
-					HashMap::from([(NodeId(0), node)])
-				};
+				let nodes = vec![(NodeId(0),node)];
+
 				let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, document.new_layer_parent(false), responses);
 				tool_options.fill.apply_fill(layer, responses);
 				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);

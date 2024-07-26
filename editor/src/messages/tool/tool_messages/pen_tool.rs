@@ -525,10 +525,9 @@ impl Fsm for PenToolFsmState {
 					tool_data.next_handle_start = position;
 				} else {
 					// New path layer
-					let nodes = {
-						let node_type = resolve_document_node_type("Path").expect("Path node does not exist");
-						HashMap::from([(NodeId(0), node_type.default_node_template())])
-					};
+					let node_type = resolve_document_node_type("Path").expect("Path node does not exist");
+					let nodes = vec![(NodeId(0), node_type.default_node_template())];
+
 
 					let parent = document.new_layer_parent(true);
 					let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, parent, responses);

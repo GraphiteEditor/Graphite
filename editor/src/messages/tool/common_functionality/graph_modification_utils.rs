@@ -1,5 +1,5 @@
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, NodeNetworkInterface, NodeTemplate};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
 use crate::messages::prelude::*;
 use bezier_rs::Subpath;
 use graph_craft::document::{value::TaggedValue, DocumentNode, NodeId, NodeInput};
@@ -46,13 +46,8 @@ pub fn new_svg_layer(svg: String, transform: glam::DAffine2, id: NodeId, parent:
 	LayerNodeIdentifier::new_unchecked(id)
 }
 
-pub fn new_custom(id: NodeId, nodes: HashMap<NodeId, NodeTemplate>, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
-	responses.add(GraphOperationMessage::NewCustomLayer {
-		id,
-		nodes: nodes.clone(),
-		parent,
-		insert_index: 0,
-	});
+pub fn new_custom(id: NodeId, nodes: Vec<(NodeId, NodeTemplate)>, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
+	responses.add(GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index: 0 });
 	responses.add(GraphOperationMessage::SetUpstreamToChain { layer: parent });
 	responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
 	LayerNodeIdentifier::new_unchecked(id)

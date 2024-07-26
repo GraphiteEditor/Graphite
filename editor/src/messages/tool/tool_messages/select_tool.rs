@@ -311,7 +311,7 @@ impl SelectToolData {
 	}
 
 	/// Duplicates the currently dragging layers. Called when Alt is pressed and the layers have not yet been duplicated.
-	fn start_duplicates(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	fn start_duplicates(&mut self, document: &mut DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		self.non_duplicated_layers = Some(self.layers_dragging.clone());
 		let mut new_dragging = Vec::new();
 		for layer in document.network_interface.shallowest_unique_layers(&[]) {
@@ -338,11 +338,11 @@ impl SelectToolData {
 					copy_ids.insert(node_id, NodeId((index + 1) as u64));
 				});
 
-			let nodes: HashMap<NodeId, NodeTemplate> = document.network_interface.copy_nodes(&copy_ids, &[]).collect();
+			let nodes = document.network_interface.copy_nodes(&copy_ids, &[]).collect::<Vec<(NodeId, NodeTemplate)>>();
 
-			let insert_index = DocumentMessageHandler::get_calculated_insert_index(&document.metadata(), &document.network_interface.selected_nodes(&[]).unwrap(), parent);
+			let insert_index = DocumentMessageHandler::get_calculated_insert_index(document.metadata(), document.network_interface.selected_nodes(&[]).unwrap(), parent);
 
-			let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
+			let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId(generate_uuid()))).collect();
 
 			let layer_id = *new_ids.get(&NodeId(0)).expect("Node Id 0 should be a layer");
 			let layer = LayerNodeIdentifier::new_unchecked(layer_id);

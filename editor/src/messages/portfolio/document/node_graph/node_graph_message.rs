@@ -12,7 +12,7 @@ use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum NodeGraphMessage {
 	AddNodes {
-		nodes: HashMap<NodeId, NodeTemplate>,
+		nodes: Vec<(NodeId, NodeTemplate)>,
 		new_ids: HashMap<NodeId, NodeId>,
 	},
 	Init,
@@ -22,6 +22,8 @@ pub enum NodeGraphMessage {
 	CreateNodeFromContextMenu {
 		node_id: Option<NodeId>,
 		node_type: String,
+		x: i32,
+		y: i32,
 	},
 	CreateWire {
 		output_connector: OutputConnector,
@@ -50,16 +52,9 @@ pub enum NodeGraphMessage {
 		node_template: NodeTemplate,
 	},
 	InsertNodeBetween {
-		// Post node
-		post_node_id: NodeId,
-		post_node_input_index: usize,
-		// Inserted node
-		insert_node_id: NodeId,
-		insert_node_output_index: usize,
+		node_id: NodeId,
+		input_connector: InputConnector,
 		insert_node_input_index: usize,
-		// Pre node
-		pre_node_id: NodeId,
-		pre_node_output_index: usize,
 	},
 	MoveLayerToStack {
 		layer: LayerNodeIdentifier,

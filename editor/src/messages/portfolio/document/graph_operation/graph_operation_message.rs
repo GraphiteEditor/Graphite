@@ -73,7 +73,7 @@ pub enum GraphOperationMessage {
 	},
 	NewCustomLayer {
 		id: NodeId,
-		nodes: HashMap<NodeId, NodeTemplate>,
+		nodes: Vec<(NodeId, NodeTemplate)>,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},

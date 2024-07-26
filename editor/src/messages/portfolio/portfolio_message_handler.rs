@@ -182,11 +182,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			}
 			PortfolioMessage::Copy { clipboard } => {
 				// We can't use `self.active_document()` because it counts as an immutable borrow of the entirety of `self`
-				let Some(active_document) = self.active_document_id.and_then(|id| self.documents.get(&id)) else {
+				let Some(active_document) = self.active_document_id.and_then(|id| self.documents.get_mut(&id)) else {
 					return;
 				};
 
-				let copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
+				let mut copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
 					let ordered_last_elements = active_document.network_interface.shallowest_unique_layers(&[]);
 
 					for layer in ordered_last_elements {
@@ -529,7 +529,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					if self.active_document().is_some() {
 						trace!("Pasting into folder {parent:?} as index: {insert_index}");
 						let nodes = entry.clone().nodes;
-						let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
+						let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId(generate_uuid()))).collect();
 						let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
 						responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
 						responses.add(NodeGraphMessage::MoveLayerToStack {
@@ -558,7 +558,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 						for entry in data.into_iter().rev() {
 							document.load_layer_resources(responses);
-							let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
+							let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(id, _)| (*id, NodeId(generate_uuid()))).collect();
 							let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
 							responses.add(NodeGraphMessage::AddNodes { nodes: entry.nodes, new_ids });
 							responses.add(NodeGraphMessage::MoveLayerToStack {
