@@ -13,7 +13,8 @@ pub fn compute_scale_angle_translation_shear(transform: DAffine2) -> (DVec2, f64
 
 	// Assuming there is no vertical shear
 	let determinant = x_axis.x * y_axis.y - x_axis.y * y_axis.x;
-	let angle = if determinant < 0.0 { x_axis.y.atan2(-x_axis.x) } else { x_axis.y.atan2(x_axis.x) };
+	let reflection = determinant < 0.0;
+	let angle = if reflection { x_axis.y.atan2(-x_axis.x) } else { x_axis.y.atan2(x_axis.x) };
 	let (sin, cos) = angle.sin_cos();
 	let scale_x = if cos.abs() > 1e-10 { x_axis.x / cos } else { x_axis.y / sin };
 
