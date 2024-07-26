@@ -842,12 +842,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 										responses.add(NodeGraphMessage::InsertNodeBetween {
 											node_id: selected_node_id,
-											input_connector: overlapping_wire.wire_end,
+											input_connector: overlapping_wire.wire_end.clone(),
 											insert_node_input_index: selected_node_input_index,
 										});
 
-										if let OutputConnector::Node { node_id, .. } = overlapping_wire.wire_start {
-											if network_interface.connected_to_output(&node_id, selection_network_path) {
+										if let InputConnector::Node { node_id, .. } = &overlapping_wire.wire_end {
+											// TODO: This is false when inserting a chain onto a wire
+											if network_interface.connected_to_output(node_id, selection_network_path) {
 												responses.add(NodeGraphMessage::RunDocumentGraph);
 											}
 										} else {

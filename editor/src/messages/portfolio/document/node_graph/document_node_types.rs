@@ -3707,12 +3707,24 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(0), 0)],
-						nodes: vec![DocumentNode {
-							inputs: vec![NodeInput::network(concrete!(VectorData), 0), NodeInput::network(concrete!(vector::style::Fill), 1)],
-							implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::SetFillNode<_>")),
-							..Default::default()
-						}]
+						exports: vec![NodeInput::node(NodeId(1), 0)],
+						nodes: [
+							DocumentNode {
+								inputs: vec![
+									NodeInput::network(concrete!(graphene_core::vector::VectorData), 0),
+									NodeInput::network(concrete!(graphene_core::vector::VectorData), 1),
+									NodeInput::network(concrete!(vector::misc::BooleanOperation), 2),
+								],
+								implementation: DocumentNodeImplementation::proto("graphene_std::vector::BinaryBooleanOperationNode<_, _>"),
+								..Default::default()
+							},
+							DocumentNode {
+								inputs: vec![NodeInput::node(NodeId(0), 0)],
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode<_, _, _>")),
+								manual_composition: Some(concrete!(Footprint)),
+								..Default::default()
+							},
+						]
 						.into_iter()
 						.enumerate()
 						.map(|(id, node)| (NodeId(id as u64), node))
@@ -3721,22 +3733,32 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					}),
 					inputs: vec![
 						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-						NodeInput::value(TaggedValue::Fill(vector::style::Fill::Solid(Color::BLACK)), false),
-						NodeInput::value(TaggedValue::OptionalColor(Some(Color::BLACK)), false),
-						NodeInput::value(TaggedValue::Gradient(Default::default()), false),
+						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+						NodeInput::value(TaggedValue::BooleanOperation(vector::misc::BooleanOperation::Union), false),
 					],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [DocumentNodeMetadata {
-								persistent_metadata: DocumentNodePersistentMetadata {
-									display_name: "Set Fill".to_string(),
+							node_metadata: [
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "BinaryBooleanOperation".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-17, -3)),
+										..Default::default()
+									},
 									..Default::default()
 								},
-								..Default::default()
-							}]
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "MemoizeImpure".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-10, -3)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+							]
 							.into_iter()
 							.enumerate()
 							.map(|(id, node)| (NodeId(id as u64), node))
@@ -3745,13 +3767,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 						..Default::default()
 					}),
-					input_names: vec![
-						"Vector Data".to_string(),
-						"Fill".to_string(),
-						// These backup values aren't exposed to the user, but are used to store the previous fill choices so the user can flip back from Solid to Gradient (or vice versa) without losing their settings
-						"Backup Color".to_string(),
-						"Backup Gradient".to_string(),
-					],
+					input_names: vec!["Upper Vector Data".to_string(), "Lower Vector Data".to_string(), "Operation".to_string()],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
@@ -3769,28 +3785,34 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::BooleanOperation(vector::misc::BooleanOperation::Union), false),
 					],
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(4), 0)],
+						exports: vec![NodeInput::node(NodeId(5), 0)],
 						nodes: [
-							// Secondary (left) input type coercion
-							DocumentNode {
-								inputs: vec![NodeInput::network(generic!(T), 1), NodeInput::network(concrete!(vector::misc::BooleanOperation), 2)],
-								implementation: DocumentNodeImplementation::proto("graphene_std::vector::BooleanOperationNode<_>"),
-								..Default::default()
-							},
 							// Primary (bottom) input type coercion
 							DocumentNode {
 								inputs: vec![NodeInput::network(generic!(T), 0)],
 								implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicGroupNode"),
 								..Default::default()
 							},
+							// Secondary (left) input type coercion
 							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(0), 0)],
+								inputs: vec![NodeInput::network(generic!(T), 1), NodeInput::network(concrete!(vector::misc::BooleanOperation), 2)],
+								implementation: DocumentNodeImplementation::proto("graphene_std::vector::BooleanOperationNode<_>"),
+								..Default::default()
+							},
+							DocumentNode {
+								inputs: vec![NodeInput::node(NodeId(1), 0)],
 								implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicElementNode"),
+								..Default::default()
+							},
+							DocumentNode {
+								inputs: vec![NodeInput::node(NodeId(2), 0)],
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode<_, _, _>")),
+								manual_composition: Some(concrete!(Footprint)),
 								..Default::default()
 							},
 							// The monitor node is used to display a thumbnail in the UI
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(VectorData), 0)],
+								inputs: vec![NodeInput::node(NodeId(3), 0)],
 								implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"),
 								manual_composition: Some(generic!(T)),
 								skip_deduplication: true,
@@ -3798,7 +3820,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								manual_composition: Some(concrete!(Footprint)),
-								inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(3), 0)],
+								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(4), 0)],
 								implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _>"),
 								..Default::default()
 							},
@@ -3817,28 +3839,40 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Boolean Operation".to_string(),
+										display_name: "ToGraphicGroup".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-9, -3)),
 										..Default::default()
 									},
 									..Default::default()
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "To Graphic Group".to_string(),
+										display_name: "BooleanOperation".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-16, -1)),
 										..Default::default()
 									},
 									..Default::default()
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "To Graphic Element".to_string(),
+										display_name: "ToGraphicElement".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-9, -1)),
 										..Default::default()
 									},
 									..Default::default()
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "To Graphic Group".to_string(),
+										display_name: "MemoizeImpure".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-2, -1)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Monitor".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(5, -1)),
 										..Default::default()
 									},
 									..Default::default()
@@ -3846,6 +3880,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "ConstructLayer".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(12, -3)),
 										..Default::default()
 									},
 									..Default::default()
@@ -4424,13 +4459,14 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 			exports: vec![NodeInput::node(NodeId(2), 0)],
 			nodes: [
 				DocumentNode {
-					inputs: vec![NodeInput::network(concrete!(&WasmEditorApi), 1)],
-					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
+					inputs: vec![NodeInput::scope("editor-api")],
+					manual_composition: Some(concrete!(Footprint)),
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::CreateGpuSurfaceNode<_>")),
 					skip_deduplication: true,
 					..Default::default()
 				},
 				DocumentNode {
-					manual_composition: Some(concrete!(())),
+					manual_composition: Some(concrete!(Footprint)),
 					inputs: vec![NodeInput::node(NodeId(0), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode<_, _, _>")),
 					..Default::default()

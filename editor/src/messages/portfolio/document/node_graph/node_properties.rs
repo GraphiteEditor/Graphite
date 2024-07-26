@@ -73,11 +73,7 @@ fn add_blank_assist(widgets: &mut Vec<WidgetHolder>) {
 
 fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, data_type: FrontendGraphDataType, blank_assist: bool) -> Vec<WidgetHolder> {
 	let Some(input) = document_node.inputs.get(index) else {
-		log::warn!(
-			"A widget named '{name}' for node {} (alias '{}') failed to be built because its node's input index {index} is invalid.",
-			document_node.name,
-			document_node.alias
-		);
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
 	let mut widgets = vec![expose_widget(node_id, index, data_type, input.is_exposed()), TextLabel::new(name).widget_holder()];
