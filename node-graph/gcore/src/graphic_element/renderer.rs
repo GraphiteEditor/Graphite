@@ -272,16 +272,16 @@ impl GraphicElementRendered for GraphicGroup {
 		let kurbo_transform = kurbo::Affine::new((transform * self.transform).to_cols_array());
 		let Some(bounds) = self.bounding_box(DAffine2::IDENTITY) else { return };
 		let blending = vello::peniko::BlendMode::new(self.alpha_blending.blend_mode.into(), vello::peniko::Compose::SrcOver);
-		// scene.push_layer(
-		// 	blending,
-		// 	self.alpha_blending.opacity,
-		// 	kurbo_transform,
-		// 	&vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y),
-		// );
+		scene.push_layer(
+			blending,
+			self.alpha_blending.opacity,
+			kurbo_transform,
+			&vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y),
+		);
 		for element in self.iter() {
 			element.render_to_vello(scene, transform * self.transform);
 		}
-		// scene.pop_layer();
+		scene.pop_layer();
 	}
 
 	fn contains_artboard(&self) -> bool {
@@ -414,7 +414,9 @@ impl GraphicElementRendered for VectorData {
 				miter_limit: stroke.line_join_miter_limit,
 				..Default::default()
 			};
-			scene.stroke(&stroke, kurbo_transform, color, None, &path);
+			if stroke.width > 0. {
+				scene.stroke(&stroke, kurbo_transform, color, None, &path);
+			}
 		}
 	}
 }
