@@ -157,9 +157,29 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let node_template = document_node_type.default_node_template();
 				self.context_menu = None;
 
+				responses.add(DocumentMessage::StartTransaction);
+				responses.add(NodeGraphMessage::InsertNode {
+					node_id,
+					node_template: node_template.clone(),
+				});
+				responses.add(NodeGraphMessage::ShiftNodes {
+					node_ids: vec![node_id],
+					displacement_x: x,
+					displacement_y: y,
+					move_upstream: false,
+				});
 				// Only auto connect to the dragged wire if the node is being added to the currently opened network
 				if let Some(output_connector_position) = self.wire_in_progress_from_connector {
-					let Some(output_connector) = &network_interface.get_output_connector_from_click(output_connector_position, breadcrumb_network_path) else {
+					let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
+						log::error!("Could not get network metadata in CreateNodeFromContextMenu");
+						return;
+					};
+					let output_connector_position_viewport = network_metadata
+						.persistent_metadata
+						.navigation_metadata
+						.node_graph_to_viewport
+						.transform_point2(output_connector_position);
+					let Some(output_connector) = &network_interface.get_output_connector_from_click(output_connector_position_viewport, breadcrumb_network_path) else {
 						log::error!("Could not get output from connector start");
 						return;
 					};
@@ -184,21 +204,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							// Creating wire to export node, always run graph
 							responses.add(NodeGraphMessage::RunDocumentGraph);
 						}
-						responses.add(NodeGraphMessage::SendGraph);
 					}
 
 					self.wire_in_progress_from_connector = None;
 					self.wire_in_progress_to_connector = None;
 				}
-
-				responses.add(DocumentMessage::StartTransaction);
-				responses.add(NodeGraphMessage::InsertNode { node_id, node_template });
-				responses.add(NodeGraphMessage::ShiftNodes {
-					node_ids: vec![node_id],
-					displacement_x: x,
-					displacement_y: y,
-					move_upstream: false,
-				});
 				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 				responses.add(FrontendMessage::UpdateContextMenuInformation {
 					context_menu_information: self.context_menu.clone(),
@@ -973,11 +983,18 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				network_interface.set_input(&input_connector, input, selection_network_path);
 			}
 			NodeGraphMessage::ShiftNodes {
-				node_ids,
+				mut node_ids,
 				displacement_x,
 				displacement_y,
 				move_upstream,
 			} => {
+				if move_upstream {
+					for (_, node_id) in network_interface.upstream_flow_back_from_nodes(node_ids.clone(), selection_network_path, network_interface::FlowType::UpstreamFlow) {
+						if network_interface.is_absolute(&node_id, selection_network_path) && node_ids.iter().all(|id| *id != node_id) {
+							node_ids.push(node_id);
+						}
+					}
+				}
 				for node_id in node_ids {
 					network_interface.shift_node(&node_id, IVec2::new(displacement_x, displacement_y), selection_network_path);
 				}

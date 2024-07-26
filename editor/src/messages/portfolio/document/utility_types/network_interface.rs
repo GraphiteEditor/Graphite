@@ -741,6 +741,17 @@ impl NodeNetworkInterface {
 		node_metadata.persistent_metadata.has_primary_output
 	}
 
+	pub fn is_absolute(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
+		let Some(node_metadata) = self.get_node_metadata(node_id, network_path) else {
+			log::error!("Could not get node_metadata in is_absolute");
+			return false;
+		};
+		match &node_metadata.persistent_metadata.node_type_metadata {
+			NodeTypePersistentMetadata::Layer(layer_metadata) => matches!(layer_metadata.position, LayerPosition::Absolute(_)),
+			NodeTypePersistentMetadata::Node(node_metadata) => matches!(node_metadata.position, NodePosition::Absolute(_)),
+		}
+	}
+
 	pub fn is_chain(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
 		let Some(node_metadata) = self.get_node_metadata(node_id, network_path) else {
 			log::error!("Could not get node_metadata in is_chain");
@@ -1262,7 +1273,6 @@ impl NodeNetworkInterface {
 	pub fn load_layer_width(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
 		log::debug!("loading layer_width for node {node_id} in network {network_path:?}");
 
-		let half_grid_cell_offset = 24. / 2.;
 		let thumbnail_width = 3. * 24.;
 		let gap_width = 8.;
 		let text_width = self.get_text_width(node_id, network_path).unwrap_or_else(|| {
@@ -1272,7 +1282,7 @@ impl NodeNetworkInterface {
 		let icon_width = 24.;
 		let icon_overhang_width = icon_width / 2.;
 
-		let text_right = half_grid_cell_offset + thumbnail_width + gap_width + text_width;
+		let text_right = thumbnail_width + gap_width + text_width;
 		let layer_width_pixels = text_right + gap_width + icon_width - icon_overhang_width;
 		let layer_width = ((layer_width_pixels / 24.) as u32).max(8);
 
