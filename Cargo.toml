@@ -55,8 +55,8 @@ axum = "0.7"
 chrono = "0.4"
 ron = "0.8"
 fastnoise-lite = "1.1"
-spirv-std = { git = "https://github.com/EmbarkStudios/rust-gpu.git" }
-wgpu-types = "0.17"
+spirv-std = { git = "https://github.com/GraphiteEditor/rust-gpu.git" }
+wgpu-types = "0.20"
 wgpu = { version = "0.20", features = ["strict_asserts", "api_log_info"] }
 once_cell = "1.13" # Remove when `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) is stabilized in Rust 1.80 and we bump our MSRV
 wasm-bindgen = "=0.2.92" # NOTICE: ensure this stays in sync with the `wasm-bindgen-cli` version in `website/content/volunteer/guide/getting-started/_index.md`. We pin this version because wasm-bindgen upgrades may break various things.
@@ -66,12 +66,12 @@ web-sys = "=0.3.69"
 winit = "0.29"
 url = "2.5"
 tokio = { version = "1.29", features = ["fs", "io-std"] }
-vello = "0.1"
-resvg = "0.39"
-usvg = "0.39"
+vello = "0.2"
+resvg = "0.42"
+usvg = "0.42"
 rand = { version = "0.8", default-features = false }
 rand_chacha = "0.3"
-glam = { version = "0.25", default-features = false, features = ["serde"] }
+glam = { version = "0.28", default-features = false, features = ["serde"] }
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png"] }
 rustybuzz = "0.17"
@@ -83,15 +83,14 @@ num-derive = "0.4"
 num-traits = { version = "0.2", default-features = false, features = ["i128"] }
 specta = { git = "https://github.com/oscartbeaumont/specta.git", features = [
 	"glam",
+	"derive",
 	# "typescript",
 ] }
 syn = { version = "2.0", default-features = false, features = [
 	"full",
 	"derive",
 ] }
-kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
-	"serde",
-] }
+kurbo = { version = "0.11.0", features = ["serde"] }
 
 [profile.dev]
 opt-level = 1

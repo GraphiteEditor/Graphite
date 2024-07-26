@@ -1969,14 +1969,15 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
+								manual_composition: Some(concrete!(Footprint)),
 								inputs: vec![NodeInput::scope("editor-api")],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::CreateGpuSurfaceNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::CreateGpuSurfaceNode<_>")),
 								..Default::default()
 							},
 							DocumentNode {
-								manual_composition: Some(concrete!(())),
+								manual_composition: Some(concrete!(Footprint)),
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode<_, _, _>")),
 								..Default::default()
 							},
 						]
@@ -3705,16 +3706,52 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			identifier: "Binary Boolean Operation",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_std::vector::BinaryBooleanOperationNode<_, _>"),
+					implementation: DocumentNodeImplementation::Network(NodeNetwork {
+						exports: vec![NodeInput::node(NodeId(0), 0)],
+						nodes: vec![DocumentNode {
+							inputs: vec![NodeInput::network(concrete!(VectorData), 0), NodeInput::network(concrete!(vector::style::Fill), 1)],
+							implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::SetFillNode<_>")),
+							..Default::default()
+						}]
+						.into_iter()
+						.enumerate()
+						.map(|(id, node)| (NodeId(id as u64), node))
+						.collect(),
+						..Default::default()
+					}),
 					inputs: vec![
 						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-						NodeInput::value(TaggedValue::BooleanOperation(vector::misc::BooleanOperation::Union), false),
+						NodeInput::value(TaggedValue::Fill(vector::style::Fill::Solid(Color::BLACK)), false),
+						NodeInput::value(TaggedValue::OptionalColor(Some(Color::BLACK)), false),
+						NodeInput::value(TaggedValue::Gradient(Default::default()), false),
 					],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Upper Vector Data".to_string(), "Lower Vector Data".to_string(), "Operation".to_string(), "Instances".to_string()],
+					network_metadata: Some(NodeNetworkMetadata {
+						persistent_metadata: NodeNetworkPersistentMetadata {
+							node_metadata: [DocumentNodeMetadata {
+								persistent_metadata: DocumentNodePersistentMetadata {
+									display_name: "Set Fill".to_string(),
+									..Default::default()
+								},
+								..Default::default()
+							}]
+							.into_iter()
+							.enumerate()
+							.map(|(id, node)| (NodeId(id as u64), node))
+							.collect(),
+							..Default::default()
+						},
+						..Default::default()
+					}),
+					input_names: vec![
+						"Vector Data".to_string(),
+						"Fill".to_string(),
+						// These backup values aren't exposed to the user, but are used to store the previous fill choices so the user can flip back from Solid to Gradient (or vice versa) without losing their settings
+						"Backup Color".to_string(),
+						"Backup Gradient".to_string(),
+					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
@@ -4395,13 +4432,14 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 				DocumentNode {
 					manual_composition: Some(concrete!(())),
 					inputs: vec![NodeInput::node(NodeId(0), 0)],
-					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode<_, _, _>")),
 					..Default::default()
 				},
 				// TODO: Add conversion step
 				DocumentNode {
 					manual_composition: Some(concrete!(RenderConfig)),
 					inputs: vec![
+						NodeInput::scope("editor-api"),
 						NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T))), 0),
 						NodeInput::node(NodeId(1), 0),
 					],

@@ -7,6 +7,7 @@ pub enum PreferencesMessage {
 	ResetToDefaults,
 
 	ImaginateRefreshFrequency { seconds: f64 },
+	UseVello { use_vello: bool },
 	ImaginateServerHostname { hostname: String },
 	ModifyLayout { zoom_with_scroll: bool },
 }

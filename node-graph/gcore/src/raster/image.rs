@@ -12,14 +12,15 @@ mod base64_serde {
 
 	use super::super::Pixel;
 	use base64::Engine;
-	use serde::{Deserialize, Deserializer, Serializer};
+	use serde::{ser::SerializeTuple, Deserialize, Deserializer, Serialize, Serializer};
 
 	pub fn as_base64<S, P: Pixel>(key: &[P], serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
 	{
-		let u8_data = key.iter().flat_map(|color| color.to_bytes()).collect::<Vec<_>>();
-		serializer.serialize_str(&base64::engine::general_purpose::STANDARD.encode(u8_data))
+		let u8_data = bytemuck::cast_slice(key);
+		let string = base64::engine::general_purpose::STANDARD.encode(u8_data);
+		(key.len() as u64, string).serialize(serializer)
 	}
 
 	pub fn from_base64<'a, D, P: Pixel>(deserializer: D) -> Result<Vec<P>, D::Error>
@@ -27,14 +28,15 @@ mod base64_serde {
 		D: Deserializer<'a>,
 	{
 		use serde::de::Error;
+		<(u64, &[u8])>::deserialize(deserializer)
+			.and_then(|(len, str)| {
+				let mut output: Vec<P> = vec![P::zeroed(); len as usize];
+				base64::engine::general_purpose::STANDARD
+					.decode_slice(str, bytemuck::cast_slice_mut(output.as_mut_slice()))
+					.map_err(|err| Error::custom(err.to_string()))?;
 
-		let color_from_chunk = |chunk: &[u8]| P::from_bytes(chunk);
-
-		let colors_from_bytes = |bytes: Vec<u8>| bytes.chunks_exact(P::byte_size()).map(color_from_chunk).collect();
-
-		String::deserialize(deserializer)
-			.and_then(|string| base64::engine::general_purpose::STANDARD.decode(string).map_err(|err| Error::custom(err.to_string())))
-			.map(colors_from_bytes)
+				Ok(output)
+			})
 			.map_err(serde::de::Error::custom)
 	}
 }
@@ -412,5 +414,27 @@ impl From<ImageFrame<SRGBA8>> for ImageFrame<Color> {
 			transform: image.transform,
 			alpha_blending: image.alpha_blending,
 		}
+	}
+}
+
+#[cfg(test)]
+mod test {
+	#[test]
+	fn test_image_serialization_roundtrip() {
+		use super::*;
+		use crate::Color;
+		let image = Image {
+			width: 2,
+			height: 2,
+			data: vec![Color::WHITE, Color::BLACK, Color::RED, Color::GREEN],
+			base64_string: None,
+		};
+
+		let serialized = serde_json::to_string(&image).unwrap();
+		println!("{}", serialized);
+		let deserialized: Image<Color> = serde_json::from_str(&serialized).unwrap();
+		println!("{:?}", deserialized);
+
+		assert_eq!(image, deserialized);
 	}
 }

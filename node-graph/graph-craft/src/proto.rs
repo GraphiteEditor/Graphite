@@ -224,9 +224,6 @@ pub struct ProtoNode {
 	pub identifier: ProtoNodeIdentifier,
 	pub original_location: OriginalLocation,
 	pub skip_deduplication: bool,
-	// TODO: This is a hack, figure out a proper solution
-	/// Represents a global state on which the node depends.
-	pub world_state_hash: u64,
 }
 
 impl Default for ProtoNode {
@@ -237,7 +234,6 @@ impl Default for ProtoNode {
 			input: ProtoNodeInput::None,
 			original_location: OriginalLocation::default(),
 			skip_deduplication: false,
-			world_state_hash: 0,
 		}
 	}
 }
@@ -288,7 +284,6 @@ impl ProtoNode {
 		if self.skip_deduplication {
 			self.original_location.path.hash(&mut hasher);
 		}
-		self.world_state_hash.hash(&mut hasher);
 		std::mem::discriminant(&self.input).hash(&mut hasher);
 		match self.input {
 			ProtoNodeInput::None => (),
@@ -317,7 +312,6 @@ impl ProtoNode {
 				..Default::default()
 			},
 			skip_deduplication: false,
-			world_state_hash: 0,
 		}
 	}
 
@@ -451,7 +445,6 @@ impl ProtoNetwork {
 						input,
 						original_location: OriginalLocation { path, ..Default::default() },
 						skip_deduplication: false,
-						world_state_hash: 0,
 					},
 				));
 
@@ -947,12 +940,12 @@ mod test {
 		assert_eq!(
 			ids,
 			vec![
-				NodeId(8751908307531981068),
-				NodeId(3279077344149194814),
-				NodeId(532186116905587629),
-				NodeId(10764326338085309082),
-				NodeId(18015434340620913446),
-				NodeId(11801333199647382191)
+				NodeId(5686040524603683634),
+				NodeId(13787140740513543798),
+				NodeId(1280393769237740322),
+				NodeId(3100442468152897091),
+				NodeId(14834729712909816752),
+				NodeId(8678825113056010444)
 			]
 		);
 	}

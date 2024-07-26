@@ -3,7 +3,8 @@ use core::any::TypeId;
 use core::future::Future;
 use futures::{future::Either, TryFutureExt};
 use glam::{DVec2, U64Vec2};
-use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginatePreferences, ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus, ImaginateTerminationHandle};
+use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus, ImaginateTerminationHandle};
+use graph_craft::wasm_application_io::EditorPreferences;
 use graphene_core::application_io::NodeGraphUpdateMessage;
 use graphene_core::raster::{Color, Image, Luma, Pixel};
 use image::{DynamicImage, ImageBuffer, ImageFormat};
@@ -50,17 +51,19 @@ impl core::fmt::Debug for ImaginatePersistentData {
 
 impl Default for ImaginatePersistentData {
 	fn default() -> Self {
-		let mut status = ImaginateServerStatus::default();
+		let server_status = ImaginateServerStatus::default();
 		#[cfg(not(miri))]
-		let client = new_client().map_err(|err| status = ImaginateServerStatus::Failed(err.to_string())).ok();
+		let mut server_status = server_status;
+		#[cfg(not(miri))]
+		let client = new_client().map_err(|err| server_status = ImaginateServerStatus::Failed(err.to_string())).ok();
 		#[cfg(miri)]
 		let client = None;
-		let ImaginatePreferences { host_name } = Default::default();
+		let EditorPreferences { imaginate_hostname: host_name, .. } = Default::default();
 		Self {
 			pending_server_check: None,
 			host_name: parse_url(&host_name).unwrap(),
 			client,
-			server_status: status,
+			server_status,
 		}
 	}
 }
@@ -285,14 +288,14 @@ pub async fn imaginate<'a, P: Pixel>(
 ) -> Image<P> {
 	let WasmEditorApi {
 		node_graph_message_sender,
-		imaginate_preferences,
+		editor_preferences,
 		..
 	} = editor_api.await;
 	let set_progress = |progress: ImaginateStatus| {
 		controller.set_status(progress);
 		node_graph_message_sender.send(NodeGraphUpdateMessage::ImaginateStatusUpdate);
 	};
-	let host_name = imaginate_preferences.get_host_name();
+	let host_name = editor_preferences.hostname();
 	imaginate_maybe_fail(
 		image,
 		host_name,

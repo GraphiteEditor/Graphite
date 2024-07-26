@@ -29,10 +29,9 @@ You'll likely get faster build times if you manually install this specific versi
 cargo install -f wasm-bindgen-cli@0.2.92
 ```
 
-<!-- THESE INSTRUCTIONS ARE HIDDEN UNTIL WE NEED THEM AGAIN FOR TAURI DEVELOPMENT ONCE THAT HAS BEEN MERGED INTO MASTER -->
-<!--
-On Linux, you may need to install this set of additional packages if you run into issues:
+On Linux, you may need to install this set of additional packages, for the Tauri parts of our tech stack to work, if you run into issues:
 
+<br />
 <details>
 <summary>Click to view</summary>
 
@@ -43,12 +42,14 @@ sudo apt install libgtk-3-dev libsoup2.4-dev libjavascriptcoregtk-4.0-dev libweb
 # On Fedora-based (RHEL, CentOS, etc.) distributions:
 sudo dnf install gtk3-devel libsoup-devel javascriptcoregtk4.0-devel webkit2gtk4.0-devel
 
+# On OpenSUSE-based distributions:
+sudo zypper install gtk3-devel libsoup-devel webkit2gtk3-soup2-devel
+
 # On NixOS or when using the Nix package manager:
 nix-shell
 ```
 
 </details>
--->
 
 ## Repository
 

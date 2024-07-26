@@ -277,7 +277,7 @@ impl ManipulatorPointId {
 }
 
 /// The type of handle found on a bézier curve.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum HandleType {
 	/// The first handle on a cubic bézier or the only handle on a quadratic bézier.
@@ -287,7 +287,7 @@ pub enum HandleType {
 }
 
 /// Represents a primary or end handle found in a particular segment.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct HandleId {
 	pub ty: HandleType,

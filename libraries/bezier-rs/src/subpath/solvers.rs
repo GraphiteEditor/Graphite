@@ -377,7 +377,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 			// Draw the miter join if the intersection occurs in the correct direction with respect to the path
 			if start_to_intersection.normalize().abs_diff_eq(in_tangent, MAX_ABSOLUTE_DIFFERENCE)
 				&& intersection_to_end.normalize().abs_diff_eq(out_tangent, MAX_ABSOLUTE_DIFFERENCE)
-				&& miter_limit >= 1. / (start_to_intersection.angle_between(-intersection_to_end).abs() / 2.).sin()
+				&& miter_limit >= 1. / (start_to_intersection.angle_to(-intersection_to_end).abs() / 2.).sin()
 			{
 				return Some(ManipulatorGroup {
 					anchor: intersection,
@@ -406,10 +406,10 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		let in_segment = self.get_segment(self.len_segments() - 1).unwrap();
 		let in_tangent = in_segment.tangent(TValue::Parametric(1.));
 
-		let mut angle = center_to_right.angle_between(center_to_left) / 2.;
+		let mut angle = center_to_right.angle_to(center_to_left) / 2.;
 		let mut arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);
 
-		if (arc_point - left).angle_between(in_tangent).abs() > PI / 2. {
+		if (arc_point - left).angle_to(in_tangent).abs() > PI / 2. {
 			angle = angle - PI * (if angle < 0. { -1. } else { 1. });
 			arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);
 		}
@@ -874,8 +874,8 @@ mod tests {
 
 		let middle = (round_start + round_end) / 2.;
 
-		assert!((round_point - middle).angle_between(round_start - middle) > 0.);
-		assert!((round_end - middle).angle_between(round_point - middle) > 0.);
+		assert!((round_point - middle).angle_to(round_start - middle) > 0.);
+		assert!((round_end - middle).angle_to(round_point - middle) > 0.);
 	}
 
 	#[test]
@@ -915,7 +915,7 @@ mod tests {
 
 		let middle = (round_start + round_end) / 2.;
 
-		assert!((round_point - middle).angle_between(round_start - middle) < 0.);
-		assert!((round_end - middle).angle_between(round_point - middle) < 0.);
+		assert!((round_point - middle).angle_to(round_start - middle) < 0.);
+		assert!((round_end - middle).angle_to(round_point - middle) < 0.);
 	}
 }

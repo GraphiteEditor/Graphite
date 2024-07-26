@@ -308,7 +308,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				self.persistent_data.imaginate.poll_server_check();
 				responses.add(PropertiesPanelMessage::Refresh);
 			}
-			PortfolioMessage::ImaginatePreferences => self.executor.update_imaginate_preferences(preferences.get_imaginate_preferences()),
+			PortfolioMessage::EditorPreferences => self.executor.update_editor_preferences(preferences.editor_preferences()),
 			PortfolioMessage::ImaginateServerHostname => {
 				self.persistent_data.imaginate.set_host_name(&preferences.imaginate_server_hostname);
 			}
@@ -370,6 +370,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				document_is_saved,
 				document_serialized_content,
 			} => {
+				// It can be helpful to temporarily set `upgrade_from_before_editable_subgraphs` to true if it's desired to upgrade a piece of artwork to use fresh copies of all nodes
 				let upgrade_from_before_editable_subgraphs = document_serialized_content.contains("node_output_index");
 				let upgrade_vector_manipulation_format = document_serialized_content.contains("ManipulatorGroupIds") && !document_name.contains("__DO_NOT_UPGRADE__");
 				let document_name = document_name.replace("__DO_NOT_UPGRADE__", "");
@@ -522,6 +523,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 				document.set_auto_save_state(document_is_auto_saved);
 				document.set_save_state(document_is_saved);
+
 				self.load_document(document, document_id, responses);
 			}
 			PortfolioMessage::PasteIntoFolder { clipboard, parent, insert_index } => {
@@ -680,6 +682,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					})
 					.collect::<Vec<_>>();
 				responses.add(FrontendMessage::UpdateOpenDocumentsList { open_documents });
+			}
+			PortfolioMessage::UpdateVelloPreference => {
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				self.persistent_data.use_vello = preferences.use_vello;
 			}
 		}
 	}

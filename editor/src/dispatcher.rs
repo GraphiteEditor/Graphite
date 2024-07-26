@@ -37,6 +37,7 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::DocumentStructureChanged)),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::Overlays(OverlaysMessageDiscriminant::Draw))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderRulers)),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderScrollbars)),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
 ];
@@ -45,7 +46,7 @@ const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
 	MessageDiscriminant::InputPreprocessor(InputPreprocessorMessageDiscriminant::FrameTimeAdvance),
 ];
 // TODO: Find a way to combine these with the list above. We use strings for now since these are the standard variant names used by multiple messages. But having these also type-checked would be best.
-const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport"];
+const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport", "Overlays", "Draw"];
 
 impl Dispatcher {
 	pub fn new() -> Self {

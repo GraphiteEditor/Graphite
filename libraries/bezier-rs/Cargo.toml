@@ -15,11 +15,12 @@ documentation = "https://graphite.rs/libraries/bezier-rs/"
 
 [dependencies]
 # Required dependencies
-glam = { version = "0.25", features = ["serde"] }
+glam = { version = "0.28", features = ["serde"] }
 
 # Optional local dependencies
 dyn-any = { version = "0.3.0", path = "../dyn-any", optional = true }
 
 # Optional workspace dependencies
+kurbo = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 log = { workspace = true, optional = true }

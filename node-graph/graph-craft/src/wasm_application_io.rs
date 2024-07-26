@@ -1,7 +1,6 @@
 use dyn_any::StaticType;
 use graphene_core::application_io::SurfaceHandleFrame;
 use graphene_core::application_io::{ApplicationError, ApplicationIo, ResourceFuture, SurfaceHandle, SurfaceId};
-#[cfg(feature = "wgpu")]
 use wgpu_executor::WgpuExecutor;
 
 #[cfg(target_arch = "wasm32")]
@@ -34,9 +33,19 @@ pub struct WasmApplicationIo {
 	pub resources: HashMap<String, Arc<[u8]>>,
 }
 
+static WGPU_AVAILABLE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
+
+pub fn wgpu_available() -> Option<bool> {
+	match WGPU_AVAILABLE.load(::std::sync::atomic::Ordering::SeqCst) {
+		-1 => None,
+		0 => Some(false),
+		_ => Some(true),
+	}
+}
+
 impl WasmApplicationIo {
 	pub async fn new() -> Self {
-		#[cfg(all(feature = "wgpu", target_arch = "wasm32"))]
+		#[cfg(target_arch = "wasm32")]
 		let executor = if let Some(gpu) = web_sys::window().map(|w| w.navigator().gpu()) {
 			let request_adapter = || {
 				let request_adapter = js_sys::Reflect::get(&gpu, &wasm_bindgen::JsValue::from_str("requestAdapter")).ok()?;
@@ -51,8 +60,9 @@ impl WasmApplicationIo {
 		} else {
 			None
 		};
-		#[cfg(all(feature = "wgpu", not(target_arch = "wasm32")))]
+		#[cfg(not(target_arch = "wasm32"))]
 		let executor = WgpuExecutor::new().await;
+		WGPU_AVAILABLE.store(executor.is_some() as i8, ::std::sync::atomic::Ordering::SeqCst);
 		let mut io = Self {
 			#[cfg(target_arch = "wasm32")]
 			ids: AtomicU64::new(0),
@@ -220,3 +230,32 @@ impl ApplicationIo for WasmApplicationIo {
 
 pub type WasmSurfaceHandle = SurfaceHandle<wgpu_executor::Window>;
 pub type WasmSurfaceHandleFrame = SurfaceHandleFrame<wgpu_executor::Window>;
+
+#[derive(Clone, Debug, PartialEq, Hash, specta::Type)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct EditorPreferences {
+	pub imaginate_hostname: String,
+	pub use_vello: bool,
+}
+
+impl graphene_core::application_io::GetEditorPreferences for EditorPreferences {
+	fn hostname(&self) -> &str {
+		&self.imaginate_hostname
+	}
+	fn use_vello(&self) -> bool {
+		self.use_vello
+	}
+}
+
+impl Default for EditorPreferences {
+	fn default() -> Self {
+		Self {
+			imaginate_hostname: "http://localhost:7860/".into(),
+			use_vello: false,
+		}
+	}
+}
+
+unsafe impl dyn_any::StaticType for EditorPreferences {
+	type Static = EditorPreferences;
+}

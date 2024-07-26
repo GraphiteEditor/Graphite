@@ -81,7 +81,7 @@ impl<T: Linear + Debug + Copy> LinearChannel for T {}
 
 use num_derive::*;
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Num, NumCast, NumOps, One, Zero, ToPrimitive, FromPrimitive)]
-struct SRGBGammaFloat(f32);
+pub struct SRGBGammaFloat(f32);
 
 impl Channel for SRGBGammaFloat {
 	#[inline(always)]

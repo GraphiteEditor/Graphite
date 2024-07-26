@@ -11,6 +11,11 @@ rustup update stable
 echo rustc version:
 rustc --version
 
+echo 📦 Install wasm-pack
+cargo install wasm-pack
+echo wasm-pack version:
+wasm-pack --version
+
 echo 🚧 Print installed node and npm versions
 echo node version:
 node --version

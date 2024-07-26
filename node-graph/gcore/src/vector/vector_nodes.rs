@@ -433,7 +433,7 @@ async fn morph(footprint: Footprint, source: impl Node<Footprint, Output = Vecto
 	let mut source_paths = source.stroke_bezier_paths();
 	let mut target_paths = target.stroke_bezier_paths();
 	for (mut source_path, mut target_path) in (&mut source_paths).zip(&mut target_paths) {
-		// Deal with mistmatched transforms
+		// Deal with mismatched transforms
 		source_path.apply_transform(source.transform);
 		target_path.apply_transform(target.transform);
 
@@ -638,7 +638,7 @@ mod test {
 		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
 			let expected_angle = (index as f64 + 1.) * 45.;
 			let center = (subpath.manipulator_groups()[0].anchor + subpath.manipulator_groups()[2].anchor) / 2.;
-			let actual_angle = DVec2::Y.angle_between(center).to_degrees();
+			let actual_angle = DVec2::Y.angle_to(center).to_degrees();
 			assert!((actual_angle - expected_angle).abs() % 360. < 1e-5);
 		}
 	}

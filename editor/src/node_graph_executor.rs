@@ -9,8 +9,8 @@ use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
-use graph_craft::imaginate_input::ImaginatePreferences;
 use graph_craft::proto::GraphErrors;
+use graph_craft::wasm_application_io::EditorPreferences;
 use graphene_core::application_io::{NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_core::memo::IORecord;
 use graphene_core::raster::ImageFrame;
@@ -36,8 +36,9 @@ pub struct NodeRuntime {
 	executor: DynamicExecutor,
 	receiver: Receiver<NodeRuntimeMessage>,
 	sender: InternalNodeGraphUpdateSender,
-	imaginate_preferences: ImaginatePreferences,
-	recompile_graph: bool,
+	editor_preferences: EditorPreferences,
+	old_graph: Option<NodeNetwork>,
+	update_thumbnails: bool,
 
 	editor_api: Arc<WasmEditorApi>,
 	node_graph_errors: GraphErrors,
@@ -60,7 +61,7 @@ pub enum NodeRuntimeMessage {
 	GraphUpdate(NodeNetwork),
 	ExecutionRequest(ExecutionRequest),
 	FontCacheUpdate(FontCache),
-	ImaginatePreferencesUpdate(ImaginatePreferences),
+	EditorPreferencesUpdate(EditorPreferences),
 }
 
 #[derive(Default, Debug, Clone)]
@@ -127,12 +128,13 @@ impl NodeRuntime {
 			executor: DynamicExecutor::default(),
 			receiver,
 			sender: InternalNodeGraphUpdateSender(sender.clone()),
-			imaginate_preferences: ImaginatePreferences::default(),
-			recompile_graph: true,
+			editor_preferences: EditorPreferences::default(),
+			old_graph: None,
+			update_thumbnails: true,
 
 			editor_api: WasmEditorApi {
 				font_cache: FontCache::default(),
-				imaginate_preferences: Box::new(ImaginatePreferences::default()),
+				editor_preferences: Box::new(EditorPreferences::default()),
 				node_graph_message_sender: Box::new(InternalNodeGraphUpdateSender(sender)),
 
 				application_io: None,
@@ -151,10 +153,18 @@ impl NodeRuntime {
 	}
 
 	pub async fn run(&mut self) {
-		// TODO: Currently we still render the document after we submit the node graph execution request. This should be avoided in the future.
+		if self.editor_api.application_io.is_none() {
+			self.editor_api = WasmEditorApi {
+				application_io: Some(WasmApplicationIo::new().await.into()),
+				font_cache: self.editor_api.font_cache.clone(),
+				node_graph_message_sender: Box::new(self.sender.clone()),
+				editor_preferences: Box::new(self.editor_preferences.clone()),
+			}
+			.into();
+		}
 
 		let mut font = None;
-		let mut imaginate = None;
+		let mut preferences = None;
 		let mut graph = None;
 		let mut execution = None;
 		for request in self.receiver.try_iter() {
@@ -162,10 +172,10 @@ impl NodeRuntime {
 				NodeRuntimeMessage::GraphUpdate(_) => graph = Some(request),
 				NodeRuntimeMessage::ExecutionRequest(_) => execution = Some(request),
 				NodeRuntimeMessage::FontCacheUpdate(_) => font = Some(request),
-				NodeRuntimeMessage::ImaginatePreferencesUpdate(_) => imaginate = Some(request),
+				NodeRuntimeMessage::EditorPreferencesUpdate(_) => preferences = Some(request),
 			}
 		}
-		let requests = [font, imaginate, graph, execution].into_iter().flatten();
+		let requests = [font, preferences, graph, execution].into_iter().flatten();
 
 		for request in requests {
 			match request {
@@ -174,38 +184,46 @@ impl NodeRuntime {
 						font_cache,
 						application_io: self.editor_api.application_io.clone(),
 						node_graph_message_sender: Box::new(self.sender.clone()),
-						imaginate_preferences: Box::new(self.imaginate_preferences.clone()),
+						editor_preferences: Box::new(self.editor_preferences.clone()),
 					}
 					.into();
-					self.recompile_graph = true;
+					if let Some(graph) = self.old_graph.clone() {
+						// We ignore this result as compilation errors should have been reported in an earlier iteration
+						let _ = self.update_network(graph).await;
+					}
 				}
-				NodeRuntimeMessage::ImaginatePreferencesUpdate(preferences) => {
+				NodeRuntimeMessage::EditorPreferencesUpdate(preferences) => {
+					self.editor_preferences = preferences.clone();
 					self.editor_api = WasmEditorApi {
 						font_cache: self.editor_api.font_cache.clone(),
 						application_io: self.editor_api.application_io.clone(),
 						node_graph_message_sender: Box::new(self.sender.clone()),
-						imaginate_preferences: Box::new(preferences),
+						editor_preferences: Box::new(preferences),
 					}
 					.into();
-					self.recompile_graph = true;
+					if let Some(graph) = self.old_graph.clone() {
+						// We ignore this result as compilation errors should have been reported in an earlier iteration
+						let _ = self.update_network(graph).await;
+					}
 				}
 				NodeRuntimeMessage::GraphUpdate(graph) => {
+					self.old_graph = Some(graph.clone());
 					self.node_graph_errors.clear();
 					let result = self.update_network(graph).await;
+					self.update_thumbnails = true;
 					self.sender.send_generation_response(CompilationResponse {
 						result,
 						resolved_types: self.resolved_types.clone(),
 						node_graph_errors: self.node_graph_errors.clone(),
 					});
-					self.recompile_graph = true;
 				}
 				NodeRuntimeMessage::ExecutionRequest(ExecutionRequest { execution_id, render_config, .. }) => {
 					let transform = render_config.viewport.transform;
 
 					let result = self.execute_network(render_config).await;
-
 					let mut responses = VecDeque::new();
-					self.process_monitor_nodes(&mut responses);
+					self.process_monitor_nodes(&mut responses, self.update_thumbnails);
+					self.update_thumbnails = false;
 
 					self.sender.send_execution_response(ExecutionResponse {
 						execution_id,
@@ -222,16 +240,6 @@ impl NodeRuntime {
 	}
 
 	async fn update_network(&mut self, graph: NodeNetwork) -> Result<(), String> {
-		if self.editor_api.application_io.is_none() {
-			self.editor_api = WasmEditorApi {
-				application_io: Some(WasmApplicationIo::new().await.into()),
-				font_cache: self.editor_api.font_cache.clone(),
-				node_graph_message_sender: Box::new(self.sender.clone()),
-				imaginate_preferences: Box::new(ImaginatePreferences::default()),
-			}
-			.into();
-		}
-
 		let scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
 		self.monitor_nodes = scoped_network
 			.recursive_nodes()
@@ -274,7 +282,7 @@ impl NodeRuntime {
 	}
 
 	/// Updates state data
-	pub fn process_monitor_nodes(&mut self, responses: &mut VecDeque<FrontendMessage>) {
+	pub fn process_monitor_nodes(&mut self, responses: &mut VecDeque<FrontendMessage>, update_thumbnails: bool) {
 		// TODO: Consider optimizing this since it's currently O(m*n^2), with a sort it could be made O(m * n*log(n))
 		self.thumbnail_renders.retain(|id, _| self.monitor_nodes.iter().any(|monitor_node_path| monitor_node_path.contains(id)));
 
@@ -290,15 +298,15 @@ impl NodeRuntime {
 			let Some(introspected_data) = self.executor.introspect(monitor_node_path).flatten() else {
 				// TODO: Fix the root of the issue causing the spam of this warning (this at least temporarily disables it in release builds)
 				#[cfg(debug_assertions)]
-				warn!("Failed to introspect monitor node");
+				warn!("Failed to introspect monitor node {:?}", self.executor.introspect(monitor_node_path));
 
 				continue;
 			};
 
 			if let Some(io) = introspected_data.downcast_ref::<IORecord<Footprint, graphene_core::GraphicElement>>() {
-				Self::process_graphic_element(&mut self.thumbnail_renders, &mut self.click_targets, parent_network_node_id, &io.output, responses)
+				Self::process_graphic_element(&mut self.thumbnail_renders, &mut self.click_targets, parent_network_node_id, &io.output, responses, update_thumbnails)
 			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Footprint, graphene_core::Artboard>>() {
-				Self::process_graphic_element(&mut self.thumbnail_renders, &mut self.click_targets, parent_network_node_id, &io.output, responses)
+				Self::process_graphic_element(&mut self.thumbnail_renders, &mut self.click_targets, parent_network_node_id, &io.output, responses, update_thumbnails)
 			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<Footprint, VectorData>>() {
 				// Insert the vector modify if we are dealing with vector data
 				self.vector_modify.insert(parent_network_node_id, record.output.clone());
@@ -330,12 +338,17 @@ impl NodeRuntime {
 		parent_network_node_id: NodeId,
 		graphic_element: &impl GraphicElementRendered,
 		responses: &mut VecDeque<FrontendMessage>,
+		update_thumbnails: bool,
 	) {
 		let click_targets = click_targets.entry(parent_network_node_id).or_default();
 		click_targets.clear();
 		graphic_element.add_click_targets(click_targets);
 
 		// RENDER THUMBNAIL
+
+		if !update_thumbnails {
+			return;
+		}
 
 		let bounds = graphic_element.bounding_box(DAffine2::IDENTITY);
 
@@ -429,10 +442,10 @@ impl NodeGraphExecutor {
 		self.sender.send(NodeRuntimeMessage::FontCacheUpdate(font_cache)).expect("Failed to send font cache update");
 	}
 
-	pub fn update_imaginate_preferences(&self, imaginate_preferences: ImaginatePreferences) {
+	pub fn update_editor_preferences(&self, editor_preferences: EditorPreferences) {
 		self.sender
-			.send(NodeRuntimeMessage::ImaginatePreferencesUpdate(imaginate_preferences))
-			.expect("Failed to send imaginate preferences");
+			.send(NodeRuntimeMessage::EditorPreferencesUpdate(editor_preferences))
+			.expect("Failed to send editor preferences");
 	}
 
 	pub fn introspect_node_in_network<T: std::any::Any + core::fmt::Debug, U, F1: FnOnce(&NodeNetwork) -> Option<NodeId>, F2: FnOnce(&T) -> U>(
@@ -461,7 +474,9 @@ impl NodeGraphExecutor {
 		let network_hash = document.network_interface.network(&[]).unwrap().current_hash();
 		if network_hash != self.node_graph_hash || ignore_hash {
 			self.node_graph_hash = network_hash;
-			self.sender.send(NodeRuntimeMessage::GraphUpdate(document.network_interface.network(&[]).unwrap().clone())).map_err(|e| e.to_string())?;
+			self.sender
+				.send(NodeRuntimeMessage::GraphUpdate(document.network_interface.network(&[]).unwrap().clone()))
+				.map_err(|e| e.to_string())?;
 		}
 
 		let render_config = RenderConfig {
@@ -494,9 +509,7 @@ impl NodeGraphExecutor {
 		// Calculate the bounding box of the region to be exported
 		let bounds = match export_config.bounds {
 			ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space(!export_config.transparent_background),
-			ExportBounds::Selection => document
-				.network_interface
-				.selected_bounds_document_space(!export_config.transparent_background, &[]),
+			ExportBounds::Selection => document.network_interface.selected_bounds_document_space(!export_config.transparent_background, &[]),
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;
@@ -562,15 +575,13 @@ impl NodeGraphExecutor {
 					let ExecutionResponse {
 						execution_id,
 						result,
-						responses: existing_responses,
 						new_click_targets,
+						responses: existing_responses,
 						new_vector_modify,
 						new_upstream_transforms,
 						transform,
 					} = execution_response;
 
-					responses.extend(existing_responses.into_iter().map(Into::into));
-					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(OverlaysMessage::Draw);
 
 					let node_graph_output = match result {
@@ -583,6 +594,7 @@ impl NodeGraphExecutor {
 						}
 					};
 
+					responses.extend(existing_responses.into_iter().map(Into::into));
 					document.network_interface.document_metadata_mut().update_transforms(new_upstream_transforms);
 					document.network_interface.document_metadata_mut().update_from_monitor(new_click_targets, new_vector_modify);
 
@@ -608,6 +620,7 @@ impl NodeGraphExecutor {
 						return Err("Node graph evaluation failed".to_string());
 					};
 
+					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors });
 				}
 				NodeGraphUpdate::NodeGraphUpdateMessage(NodeGraphUpdateMessage::ImaginateStatusUpdate) => {
@@ -636,17 +649,17 @@ impl NodeGraphExecutor {
 
 	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, transform: DAffine2, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		match node_graph_output {
-			TaggedValue::SurfaceFrame(SurfaceFrame { surface_id: _, transform: _ }) => {
+			TaggedValue::SurfaceFrame(SurfaceFrame { .. }) => {
 				// TODO: Reimplement this now that document-legacy is gone
 			}
 			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg(svg)) => {
 				// Send to frontend
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 				responses.add(DocumentMessage::RenderScrollbars);
+				responses.add(DocumentMessage::RenderRulers);
 			}
 			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::CanvasFrame(frame)) => {
 				// Send to frontend
-				responses.add(DocumentMessage::RenderScrollbars);
 				let matrix = frame
 					.transform
 					.to_cols_array()
@@ -657,9 +670,11 @@ impl NodeGraphExecutor {
 					r#"
 					<svg><foreignObject width="{}" height="{}" transform="matrix({})"><div data-canvas-placeholder="canvas{}"></div></foreignObject></svg>
 					"#,
-					1920, 1080, matrix, frame.surface_id.0
+					frame.resolution.x, frame.resolution.y, matrix, frame.surface_id.0
 				);
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
+				responses.add(DocumentMessage::RenderScrollbars);
+				responses.add(DocumentMessage::RenderRulers);
 			}
 			TaggedValue::Bool(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::String(render_object) => Self::debug_render(render_object, transform, responses),

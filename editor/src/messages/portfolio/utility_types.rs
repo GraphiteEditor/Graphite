@@ -4,6 +4,7 @@ use graphene_std::{imaginate::ImaginatePersistentData, text::FontCache};
 pub struct PersistentData {
 	pub font_cache: FontCache,
 	pub imaginate: ImaginatePersistentData,
+	pub use_vello: bool,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize)]

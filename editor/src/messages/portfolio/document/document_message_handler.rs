@@ -953,7 +953,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				} else {
 					self.collapsed.0.push(layer);
 				}
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::ToggleGridVisibility => {
 				self.snapping_state.grid_snapping = !self.snapping_state.grid_snapping;
@@ -1034,9 +1034,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(DocumentMessage::UpdateDocumentTransform { transform });
 			}
 			DocumentMessage::UpdateDocumentTransform { transform } => {
-				responses.add(DocumentMessage::RenderRulers);
-				responses.add(DocumentMessage::RenderScrollbars);
-
 				if !self.graph_view_overlay_open {
 					self.network_interface.set_document_to_viewport_transform(transform);
 					responses.add(SelectToolMessage::PointerMove(SelectToolPointerKeys {
@@ -1058,8 +1055,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						},
 					})
 				}
-
-				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			DocumentMessage::ZoomCanvasTo100Percent => {
 				responses.add_front(NavigationMessage::CanvasZoomSet { zoom_factor: 1. });

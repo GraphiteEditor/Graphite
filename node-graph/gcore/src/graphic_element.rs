@@ -1,6 +1,5 @@
 use crate::application_io::SurfaceHandleFrame;
 use crate::raster::{BlendMode, ImageFrame};
-use crate::renderer::GraphicElementRendered;
 use crate::transform::Footprint;
 use crate::vector::VectorData;
 use crate::{Color, Node, SurfaceFrame};
@@ -9,7 +8,7 @@ use dyn_any::{DynAny, StaticType};
 use node_macro::node_fn;
 
 use core::ops::{Deref, DerefMut};
-use glam::{DAffine2, DVec2, IVec2, UVec2};
+use glam::{DAffine2, IVec2, UVec2};
 use web_sys::HtmlCanvasElement;
 
 pub mod renderer;
@@ -202,19 +201,7 @@ async fn add_artboard<Data: Into<Artboard> + Send>(footprint: Footprint, artboar
 }
 
 impl From<ImageFrame<Color>> for GraphicElement {
-	fn from(mut image_frame: ImageFrame<Color>) -> Self {
-		use base64::Engine;
-
-		let image = &image_frame.image;
-		if !image.data.is_empty() {
-			let output = image.to_png();
-			let preamble = "data:image/png;base64,";
-			let mut base64_string = String::with_capacity(preamble.len() + output.len() * 4);
-			base64_string.push_str(preamble);
-			base64::engine::general_purpose::STANDARD.encode_string(output, &mut base64_string);
-			image_frame.image.base64_string = Some(base64_string);
-		}
-
+	fn from(image_frame: ImageFrame<Color>) -> Self {
 		GraphicElement::ImageFrame(image_frame)
 	}
 }
@@ -237,14 +224,28 @@ impl From<alloc::sync::Arc<SurfaceHandleFrame<HtmlCanvasElement>>> for GraphicEl
 	fn from(surface: alloc::sync::Arc<SurfaceHandleFrame<HtmlCanvasElement>>) -> Self {
 		let surface_id = surface.surface_handle.surface_id;
 		let transform = surface.transform;
-		GraphicElement::Surface(SurfaceFrame { surface_id, transform })
+		GraphicElement::Surface(SurfaceFrame {
+			surface_id,
+			transform,
+			resolution: UVec2 {
+				x: surface.surface_handle.surface.width(),
+				y: surface.surface_handle.surface.height(),
+			},
+		})
 	}
 }
 impl From<SurfaceHandleFrame<HtmlCanvasElement>> for GraphicElement {
 	fn from(surface: SurfaceHandleFrame<HtmlCanvasElement>) -> Self {
 		let surface_id = surface.surface_handle.surface_id;
 		let transform = surface.transform;
-		GraphicElement::Surface(SurfaceFrame { surface_id, transform })
+		GraphicElement::Surface(SurfaceFrame {
+			surface_id,
+			transform,
+			resolution: UVec2 {
+				x: surface.surface_handle.surface.width(),
+				y: surface.surface_handle.surface.height(),
+			},
+		})
 	}
 }
 
@@ -287,21 +288,4 @@ impl GraphicGroup {
 		transform: DAffine2::IDENTITY,
 		alpha_blending: AlphaBlending::new(),
 	};
-
-	pub fn to_usvg_tree(&self, resolution: UVec2, viewbox: [DVec2; 2]) -> usvg::Tree {
-		let mut root_node = usvg::Group::default();
-		let tree = usvg::Tree {
-			size: usvg::Size::from_wh(resolution.x as f32, resolution.y as f32).unwrap(),
-			view_box: usvg::ViewBox {
-				rect: usvg::NonZeroRect::from_ltrb(viewbox[0].x as f32, viewbox[0].y as f32, viewbox[1].x as f32, viewbox[1].y as f32).unwrap(),
-				aspect: usvg::AspectRatio::default(),
-			},
-			root: root_node.clone(),
-		};
-
-		for element in self.iter() {
-			root_node.children.push(element.to_usvg_node());
-		}
-		tree
-	}
 }

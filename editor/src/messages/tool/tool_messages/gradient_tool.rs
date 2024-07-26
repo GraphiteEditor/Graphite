@@ -163,7 +163,7 @@ impl SelectedGradient {
 			let delta = point - mouse;
 
 			let length = delta.length();
-			let mut angle = -delta.angle_between(DVec2::X);
+			let mut angle = -delta.angle_to(DVec2::X);
 
 			let snap_resolution = LINE_ROTATE_SNAP_ANGLE.to_radians();
 			angle = (angle / snap_resolution).round() * snap_resolution;
@@ -181,7 +181,7 @@ impl SelectedGradient {
 				let (start, end) = (self.transform.transform_point2(self.gradient.start), self.transform.transform_point2(self.gradient.end));
 
 				// Calculate the new position by finding the closest point on the line
-				let new_pos = ((end - start).angle_between(mouse - start)).cos() * start.distance(mouse) / start.distance(end);
+				let new_pos = ((end - start).angle_to(mouse - start)).cos() * start.distance(mouse) / start.distance(end);
 
 				// Should not go off end but can swap
 				let clamped = new_pos.clamp(0., 1.);
@@ -332,7 +332,7 @@ impl Fsm for GradientToolFsmState {
 					let (start, end) = (transform.transform_point2(gradient.start), transform.transform_point2(gradient.end));
 
 					// Compute the distance from the mouse to the gradient line in viewport space
-					let distance = (end - start).angle_between(mouse - start).sin() * (mouse - start).length();
+					let distance = (end - start).angle_to(mouse - start).sin() * (mouse - start).length();
 
 					// If click is on the line then insert point
 					if distance < (SELECTION_THRESHOLD * 2.) {

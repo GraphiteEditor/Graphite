@@ -436,6 +436,9 @@ impl Fsm for SelectToolFsmState {
 					.next()
 					.map(|layer| document.metadata().transform_to_viewport(layer));
 				let transform = transform.unwrap_or(DAffine2::IDENTITY);
+				if transform.matrix2.determinant() == 0. {
+					return self;
+				}
 				let bounds = document
 					.network_interface
 					.selected_nodes(&[])
@@ -748,7 +751,7 @@ impl Fsm for SelectToolFsmState {
 						let start_offset = tool_data.drag_start - bounds.center_of_transformation;
 						let end_offset = input.mouse.position - bounds.center_of_transformation;
 
-						start_offset.angle_between(end_offset)
+						start_offset.angle_to(end_offset)
 					};
 
 					let snapped_angle = if input.keyboard.key(modifier_keys.snap_angle) {
@@ -1153,7 +1156,14 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 			.filter(not_artboard(document))
 			.find(|&ancestor| document.network_interface.selected_nodes(&[]).unwrap().selected_layers_contains(ancestor, document.metadata()));
 
-		let new_selected = ancestor.unwrap_or_else(|| layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(layer));
+		let new_selected = ancestor.unwrap_or_else(|| {
+			layer
+				.ancestors(document.metadata())
+				.filter(not_artboard(document))
+				.filter(|ancestor| *ancestor != LayerNodeIdentifier::ROOT_PARENT)
+				.last()
+				.unwrap_or(layer)
+		});
 		tool_data.layers_dragging.retain(|layer| !layer.ancestors(document.metadata()).any(|ancestor| ancestor == new_selected));
 		tool_data.layers_dragging.push(new_selected);
 	}

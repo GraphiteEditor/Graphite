@@ -16,6 +16,20 @@ pub struct PointModification {
 	delta: HashMap<PointId, DVec2>,
 }
 
+impl Hash for PointModification {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.add.hash(state);
+
+		let mut remove = self.remove.iter().collect::<Vec<_>>();
+		remove.sort_unstable();
+		remove.hash(state);
+
+		let mut delta = self.delta.iter().map(|(&a, &b)| (a, [b.x.to_bits(), b.y.to_bits()])).collect::<Vec<_>>();
+		delta.sort_unstable();
+		delta.hash(state);
+	}
+}
+
 impl PointModification {
 	/// Apply this modification to the specified [`PointDomain`].
 	pub fn apply(&self, point_domain: &mut PointDomain, segment_domain: &mut SegmentDomain) {
@@ -88,6 +102,36 @@ pub struct SegmentModification {
 	handle_end: HashMap<SegmentId, Option<DVec2>>,
 	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
 	stroke: HashMap<SegmentId, StrokeId>,
+}
+
+impl Hash for SegmentModification {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.add.hash(state);
+
+		let mut remove = self.remove.iter().collect::<Vec<_>>();
+		remove.sort_unstable();
+		remove.hash(state);
+
+		let mut start_point = self.start_point.iter().map(|(&a, &b)| (a, b)).collect::<Vec<_>>();
+		start_point.sort_unstable();
+		start_point.hash(state);
+
+		let mut end_point = self.end_point.iter().map(|(&a, &b)| (a, b)).collect::<Vec<_>>();
+		end_point.sort_unstable();
+		end_point.hash(state);
+
+		let mut handle_primary = self.handle_primary.iter().map(|(&a, &b)| (a, b.map(|b| [b.x.to_bits(), b.y.to_bits()]))).collect::<Vec<_>>();
+		handle_primary.sort_unstable();
+		handle_primary.hash(state);
+
+		let mut handle_end = self.handle_end.iter().map(|(&a, &b)| (a, b.map(|b| [b.x.to_bits(), b.y.to_bits()]))).collect::<Vec<_>>();
+		handle_end.sort_unstable();
+		handle_end.hash(state);
+
+		let mut stroke = self.stroke.iter().map(|(&a, &b)| (a, b)).collect::<Vec<_>>();
+		stroke.sort_unstable();
+		stroke.hash(state);
+	}
 }
 
 impl SegmentModification {
@@ -245,6 +289,24 @@ pub struct RegionModification {
 	fill: HashMap<RegionId, FillId>,
 }
 
+impl Hash for RegionModification {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.add.hash(state);
+
+		let mut remove = self.remove.iter().collect::<Vec<_>>();
+		remove.sort_unstable();
+		remove.hash(state);
+
+		let mut segment_range = self.segment_range.iter().map(|(&a, b)| (a, (*b.start(), *b.end()))).collect::<Vec<_>>();
+		segment_range.sort_unstable();
+		segment_range.hash(state);
+
+		let mut fill = self.fill.iter().map(|(&a, &b)| (a, b)).collect::<Vec<_>>();
+		fill.sort_unstable();
+		fill.hash(state);
+	}
+}
+
 impl RegionModification {
 	/// Apply this modification to the specified [`RegionDomain`].
 	pub fn apply(&self, region_domain: &mut RegionDomain) {
@@ -398,8 +460,19 @@ impl VectorModification {
 
 impl core::hash::Hash for VectorModification {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		// TODO: properly implement (hashing a hashset is difficult because ordering is unstable)
-		PointId::generate().hash(state);
+		self.points.hash(state);
+
+		self.segments.hash(state);
+
+		self.regions.hash(state);
+
+		let mut add_g1_continuous = self.add_g1_continuous.iter().copied().collect::<Vec<_>>();
+		add_g1_continuous.sort_unstable();
+		add_g1_continuous.hash(state);
+
+		let mut remove_g1_continuous = self.remove_g1_continuous.iter().copied().collect::<Vec<_>>();
+		remove_g1_continuous.sort_unstable();
+		remove_g1_continuous.hash(state);
 	}
 }
 

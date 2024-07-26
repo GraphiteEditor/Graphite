@@ -286,7 +286,6 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 	let canvas = editor_api.application_io.create_surface();
 
 	let surface = unsafe { executor.create_surface(canvas) }.unwrap();
-	// log::debug!("id: {surface:?}");
 	let surface_id = surface.surface_id;
 
 	let texture = executor.create_texture_buffer(image.image.clone(), TextureBufferOptions::Texture).unwrap();

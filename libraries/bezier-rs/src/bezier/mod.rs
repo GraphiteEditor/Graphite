@@ -124,7 +124,7 @@ unsafe impl dyn_any::StaticType for BezierHandles {
 pub struct Bezier {
 	/// Start point of the bezier curve.
 	pub start: DVec2,
-	/// Start point of the bezier curve.
+	/// End point of the bezier curve.
 	pub end: DVec2,
 	/// Handles of the bezier curve.
 	pub handles: BezierHandles,

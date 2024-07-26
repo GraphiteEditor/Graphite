@@ -147,7 +147,7 @@ pub struct Footprint {
 	pub resolution: glam::UVec2,
 	/// Quality of the render, this may be used by caching nodes to decide if the cached render is sufficient
 	pub quality: RenderQuality,
-	/// When the transform is set downstream, all upsream modifications have to be ignored
+	/// When the transform is set downstream, all upstream modifications have to be ignored
 	pub ignore_modifications: bool,
 }
 

@@ -14,6 +14,7 @@ nightly = []
 alloc = ["dyn-any", "bezier-rs"]
 type_id_logging = []
 wasm = ["web-sys"]
+vello = ["dep:vello", "bezier-rs/kurbo"]
 std = [
 	"dyn-any",
 	"dyn-any/std",
@@ -57,6 +58,7 @@ rand_chacha = { workspace = true, optional = true }
 bezier-rs = { workspace = true, optional = true }
 kurbo = { workspace = true, optional = true }
 base64 = { workspace = true, optional = true }
+vello = { workspace  = true, optional = true }
 specta = { workspace = true, optional = true }
 rustybuzz = { workspace = true, optional = true }
 wasm-bindgen = { workspace = true, optional = true }
@@ -71,6 +73,7 @@ image = { workspace = true, optional = true, default-features = false, features 
 [dev-dependencies]
 # Workspace dependencies
 tokio = { workspace = true, features = ["rt", "macros"] }
+serde_json = { workspace = true }
 
 [lints.rust]
 # the spirv target is not in the list of common cfgs so must be added manually

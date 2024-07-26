@@ -233,6 +233,37 @@ impl core::fmt::Display for BlendMode {
 	}
 }
 
+#[cfg(feature = "vello")]
+impl From<BlendMode> for vello::peniko::Mix {
+	fn from(val: BlendMode) -> Self {
+		match val {
+			// Normal group
+			BlendMode::Normal => vello::peniko::Mix::Normal,
+			// Darken group
+			BlendMode::Darken => vello::peniko::Mix::Darken,
+			BlendMode::Multiply => vello::peniko::Mix::Multiply,
+			BlendMode::ColorBurn => vello::peniko::Mix::ColorBurn,
+			// Lighten group
+			BlendMode::Lighten => vello::peniko::Mix::Lighten,
+			BlendMode::Screen => vello::peniko::Mix::Screen,
+			BlendMode::ColorDodge => vello::peniko::Mix::ColorDodge,
+			// Contrast group
+			BlendMode::Overlay => vello::peniko::Mix::Overlay,
+			BlendMode::SoftLight => vello::peniko::Mix::SoftLight,
+			BlendMode::HardLight => vello::peniko::Mix::HardLight,
+			// Inversion group
+			BlendMode::Difference => vello::peniko::Mix::Difference,
+			BlendMode::Exclusion => vello::peniko::Mix::Exclusion,
+			// Component group
+			BlendMode::Hue => vello::peniko::Mix::Hue,
+			BlendMode::Saturation => vello::peniko::Mix::Saturation,
+			BlendMode::Color => vello::peniko::Mix::Color,
+			BlendMode::Luminosity => vello::peniko::Mix::Luminosity,
+			_ => todo!(),
+		}
+	}
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LuminanceNode<LuminanceCalculation> {
 	luminance_calc: LuminanceCalculation,
@@ -1052,7 +1083,7 @@ fn selective_color_node(
 	.into_iter()
 	.fold((0., 0., 0.), |acc, (color_parameter_group, (c, m, y, k))| {
 		// Skip this color parameter group...
-		// ...if it's unchanged from the default of zero offset on all CMYK paramters, or...
+		// ...if it's unchanged from the default of zero offset on all CMYK parameters, or...
 		// ...if this pixel's color isn't in the range affected by this color parameter group
 		if (c < f32::EPSILON && m < f32::EPSILON && y < f32::EPSILON && k < f32::EPSILON) || (!pixel_color_range(color_parameter_group)) {
 			return acc;

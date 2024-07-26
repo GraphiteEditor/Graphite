@@ -1,5 +1,6 @@
 mod context;
 mod executor;
+
 pub use context::Context;
 pub use executor::GpuExecutor;
 
@@ -14,9 +15,10 @@ use graphene_core::{Color, Cow, Node, SurfaceFrame};
 
 use anyhow::{bail, Result};
 use futures::Future;
-use glam::DAffine2;
+use glam::{DAffine2, UVec2};
 use std::pin::Pin;
 use std::sync::Arc;
+use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
 use wgpu::util::DeviceExt;
 use wgpu::{Buffer, BufferDescriptor, ShaderModule, SurfaceConfiguration, SurfaceError, Texture, TextureView};
 
@@ -27,6 +29,7 @@ use web_sys::HtmlCanvasElement;
 pub struct WgpuExecutor {
 	pub context: Context,
 	render_configuration: RenderConfiguration,
+	vello_renderer: std::sync::Mutex<vello::Renderer>,
 }
 
 impl std::fmt::Debug for WgpuExecutor {
@@ -46,6 +49,12 @@ impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<&'a EditorApi<T>> for &
 
 pub type WgpuSurface = Arc<SurfaceHandle<Surface>>;
 pub type WgpuWindow = Arc<SurfaceHandle<WindowHandle>>;
+
+impl graphene_core::application_io::Size for Surface {
+	fn size(&self) -> UVec2 {
+		self.resolution
+	}
+}
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -107,7 +116,10 @@ pub struct ShaderModuleWrapper(ShaderModule);
 pub type ShaderHandle = ShaderModuleWrapper;
 pub type BufferHandle = Buffer;
 pub type TextureHandle = Texture;
-pub struct Surface(wgpu::Surface<'static>);
+pub struct Surface {
+	pub inner: wgpu::Surface<'static>,
+	resolution: UVec2,
+}
 #[cfg(target_arch = "wasm32")]
 pub type Window = HtmlCanvasElement;
 #[cfg(not(target_arch = "wasm32"))]
@@ -122,6 +134,44 @@ unsafe impl StaticType for Surface {
 // }
 
 impl WgpuExecutor {
+	pub async fn render_vello_scene(&self, scene: &Scene, surface: &WgpuSurface, width: u32, height: u32) -> Result<()> {
+		let surface = &surface.surface.inner;
+		let surface_caps = surface.get_capabilities(&self.context.adapter);
+		surface.configure(
+			&self.context.device,
+			&SurfaceConfiguration {
+				usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::STORAGE_BINDING,
+				format: wgpu::TextureFormat::Rgba8Unorm,
+				width,
+				height,
+				present_mode: surface_caps.present_modes[0],
+				alpha_mode: surface_caps.alpha_modes[0],
+				view_formats: vec![],
+				desired_maximum_frame_latency: 2,
+			},
+		);
+		let surface_texture = surface.get_current_texture()?;
+
+		let render_params = RenderParams {
+			base_color: vello::peniko::Color::TRANSPARENT,
+			width,
+			height,
+			antialiasing_method: AaConfig::Area,
+		};
+
+		{
+			let mut renderer = self.vello_renderer.lock().unwrap();
+			renderer
+				.render_to_surface_async(&self.context.device, &self.context.queue, scene, &surface_texture, &render_params)
+				.await
+				.unwrap();
+		}
+
+		surface_texture.present();
+
+		Ok(())
+	}
+
 	pub fn load_shader(&self, shader: Shader) -> Result<ShaderHandle> {
 		#[cfg(not(feature = "passthrough"))]
 		let shader_module = self.context.device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -300,11 +350,11 @@ impl WgpuExecutor {
 			..Default::default()
 		});
 
-		let surface = &canvas.as_ref().surface.0;
+		let surface = &canvas.as_ref().surface.inner;
 		let surface_caps = surface.get_capabilities(&self.context.adapter);
 		if surface_caps.formats.is_empty() {
 			log::warn!("No surface formats available");
-			// return Ok(());
+			return Ok(());
 		}
 		// TODO:
 		let resolution = transform.decompose_scale().as_uvec2();
@@ -455,8 +505,9 @@ impl WgpuExecutor {
 	}
 
 	#[cfg(target_arch = "wasm32")]
-	fn create_surface(&self, canvas: graphene_core::WasmSurfaceHandle) -> Result<SurfaceHandle<Surface>> {
+	pub fn create_surface(&self, canvas: graphene_core::WasmSurfaceHandle, resolution: Option<UVec2>) -> Result<SurfaceHandle<Surface>> {
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.surface))?;
+		let resolution = resolution.unwrap_or(UVec2::new(1920, 1080));
 
 		// let surface_caps = surface.get_capabilities(&self.context.adapter);
 		// let surface_format = wgpu::TextureFormat::Rgba16Float;
@@ -474,12 +525,13 @@ impl WgpuExecutor {
 		// self.surface_config.set(Some(config));
 		Ok(SurfaceHandle {
 			surface_id: canvas.surface_id,
-			surface: Surface(surface),
+			surface: Surface { inner: surface, resolution },
 		})
 	}
 	#[cfg(not(target_arch = "wasm32"))]
-	fn create_surface(&self, window: SurfaceHandle<Window>) -> Result<SurfaceHandle<Surface>> {
+	pub fn create_surface(&self, window: SurfaceHandle<Window>, resolution: Option<UVec2>) -> Result<SurfaceHandle<Surface>> {
 		let size = window.surface.inner_size();
+		let resolution = resolution.unwrap_or(UVec2 { x: size.width, y: size.height });
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Window(Box::new(window.surface)))?;
 
 		let surface_caps = surface.get_capabilities(&self.context.adapter);
@@ -488,8 +540,8 @@ impl WgpuExecutor {
 		let _config = wgpu::SurfaceConfiguration {
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
 			format: surface_format,
-			width: size.width,
-			height: size.height,
+			width: resolution.x,
+			height: resolution.y,
 			present_mode: surface_caps.present_modes[0],
 			alpha_mode: surface_caps.alpha_modes[0],
 			view_formats: vec![],
@@ -500,7 +552,7 @@ impl WgpuExecutor {
 		let surface_id = window.surface_id;
 		Ok(SurfaceHandle {
 			surface_id,
-			surface: Surface(surface),
+			surface: Surface { inner: surface, resolution },
 		})
 	}
 }
@@ -619,7 +671,23 @@ impl WgpuExecutor {
 			sampler,
 		};
 
-		Some(Self { context, render_configuration })
+		let vello_renderer = Renderer::new(
+			&context.device,
+			RendererOptions {
+				surface_format: Some(wgpu::TextureFormat::Rgba8Unorm),
+				use_cpu: false,
+				antialiasing_support: AaSupport::all(),
+				num_init_threads: std::num::NonZeroUsize::new(1),
+			},
+		)
+		.map_err(|e| anyhow::anyhow!("Failed to create Vello renderer: {:?}", e))
+		.ok()?;
+
+		Some(Self {
+			context,
+			render_configuration,
+			vello_renderer: vello_renderer.into(),
+		})
 	}
 }
 
@@ -861,15 +929,17 @@ async fn read_output_buffer_node<'a: 'input>(buffer: Arc<WgpuShaderInput>, execu
 	executor.read_output_buffer(buffer).await.unwrap()
 }
 
-pub struct CreateGpuSurfaceNode {}
+pub struct CreateGpuSurfaceNode<EditorApi> {
+	editor_api: EditorApi,
+}
 
 pub type WindowHandle = Arc<SurfaceHandle<Window>>;
 
 #[node_macro::node_fn(CreateGpuSurfaceNode)]
-async fn create_gpu_surface<'a: 'input, Io: ApplicationIo<Executor = WgpuExecutor, Surface = Window> + Send + Sync>(editor_api: &'a EditorApi<Io>) -> WgpuSurface {
-	let canvas = editor_api.application_io.as_ref().unwrap().create_surface();
-	let executor = editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap();
-	Arc::new(executor.create_surface(canvas).unwrap())
+async fn create_gpu_surface<'a: 'input, Io: ApplicationIo<Executor = WgpuExecutor, Surface = Window> + 'a + Send + Sync>(footprint: Footprint, editor_api: &'a EditorApi<Io>) -> Option<WgpuSurface> {
+	let canvas = editor_api.application_io.as_ref()?.create_surface();
+	let executor = editor_api.application_io.as_ref()?.gpu_executor()?;
+	Some(Arc::new(executor.create_surface(canvas, Some(footprint.resolution)).ok()?))
 }
 
 pub struct RenderTextureNode<Image, Surface, EditorApi> {
@@ -885,14 +955,19 @@ pub struct ShaderInputFrame {
 }
 
 #[node_macro::node_fn(RenderTextureNode)]
-async fn render_texture_node<'a: 'input>(footprint: Footprint, image: impl Node<Footprint, Output = ShaderInputFrame>, surface: WgpuSurface, executor: &'a WgpuExecutor) -> SurfaceFrame {
+async fn render_texture_node<'a: 'input>(footprint: Footprint, image: impl Node<Footprint, Output = ShaderInputFrame>, surface: Option<WgpuSurface>, executor: &'a WgpuExecutor) -> SurfaceFrame {
+	let surface = surface.unwrap();
 	let surface_id = surface.surface_id;
 	let image = self.image.eval(footprint).await;
 	let transform = image.transform;
 
 	executor.create_render_pass(footprint, image, surface).unwrap();
 
-	SurfaceFrame { surface_id, transform }
+	SurfaceFrame {
+		surface_id,
+		transform,
+		resolution: footprint.resolution,
+	}
 }
 
 pub struct UploadTextureNode<Executor> {

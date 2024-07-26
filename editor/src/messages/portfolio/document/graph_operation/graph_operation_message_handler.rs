@@ -223,7 +223,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				};
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 
-				import_usvg_node(&mut modify_inputs, &usvg::Node::Group(Box::new(tree.root)), transform, id, parent, insert_index);
+				import_usvg_node(&mut modify_inputs, &usvg::Node::Group(Box::new(tree.root().clone())), transform, id, parent, insert_index);
 			}
 		}
 	}
@@ -246,7 +246,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 	modify_inputs.layer_node = Some(layer);
 	match node {
 		usvg::Node::Group(group) => {
-			for child in &group.children {
+			for child in group.children() {
 				import_usvg_node(modify_inputs, child, transform, NodeId(generate_uuid()), layer, 0);
 			}
 			modify_inputs.layer_node = Some(layer);
@@ -254,11 +254,6 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 		usvg::Node::Path(path) => {
 			let subpaths = convert_usvg_path(path);
 			let bounds = subpaths.iter().filter_map(|subpath| subpath.bounding_box()).reduce(Quad::combine_bounds).unwrap_or_default();
-			let transformed_bounds = subpaths
-				.iter()
-				.filter_map(|subpath| subpath.bounding_box_with_transform(transform * usvg_transform(node.abs_transform())))
-				.reduce(Quad::combine_bounds)
-				.unwrap_or_default();
 			modify_inputs.insert_vector_data(subpaths, layer);
 
 			modify_inputs.network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
@@ -268,47 +263,40 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 			}
 
 			let bounds_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-			let transformed_bound_transform = DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);
-			apply_usvg_fill(
-				&path.fill,
-				modify_inputs,
-				transform * usvg_transform(node.abs_transform()),
-				bounds_transform,
-				transformed_bound_transform,
-			);
-			apply_usvg_stroke(&path.stroke, modify_inputs);
+			apply_usvg_fill(path.fill(), modify_inputs, transform * usvg_transform(node.abs_transform()), bounds_transform);
+			apply_usvg_stroke(path.stroke(), modify_inputs);
 		}
 		usvg::Node::Image(_image) => {
 			warn!("Skip image")
 		}
 		usvg::Node::Text(text) => {
 			let font = Font::new(graphene_core::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_core::consts::DEFAULT_FONT_STYLE.to_string());
-			modify_inputs.insert_text(text.chunks.iter().map(|chunk| chunk.text.clone()).collect(), font, 24., layer);
+			modify_inputs.insert_text(text.chunks().iter().map(|chunk| chunk.text()).collect(), font, 24., layer);
 			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
 		}
 	}
 }
 
-fn apply_usvg_stroke(stroke: &Option<usvg::Stroke>, modify_inputs: &mut ModifyInputsContext) {
+fn apply_usvg_stroke(stroke: Option<&usvg::Stroke>, modify_inputs: &mut ModifyInputsContext) {
 	if let Some(stroke) = stroke {
-		if let usvg::Paint::Color(color) = &stroke.paint {
+		if let usvg::Paint::Color(color) = &stroke.paint() {
 			modify_inputs.stroke_set(Stroke {
-				color: Some(usvg_color(*color, stroke.opacity.get())),
-				weight: stroke.width.get() as f64,
-				dash_lengths: stroke.dasharray.as_ref().map(|lengths| lengths.iter().map(|&length| length as f64).collect()).unwrap_or_default(),
-				dash_offset: stroke.dashoffset as f64,
-				line_cap: match stroke.linecap {
+				color: Some(usvg_color(*color, stroke.opacity().get())),
+				weight: stroke.width().get() as f64,
+				dash_lengths: stroke.dasharray().as_ref().map(|lengths| lengths.iter().map(|&length| length as f64).collect()).unwrap_or_default(),
+				dash_offset: stroke.dashoffset() as f64,
+				line_cap: match stroke.linecap() {
 					usvg::LineCap::Butt => LineCap::Butt,
 					usvg::LineCap::Round => LineCap::Round,
 					usvg::LineCap::Square => LineCap::Square,
 				},
-				line_join: match stroke.linejoin {
+				line_join: match stroke.linejoin() {
 					usvg::LineJoin::Miter => LineJoin::Miter,
 					usvg::LineJoin::MiterClip => LineJoin::Miter,
 					usvg::LineJoin::Round => LineJoin::Round,
 					usvg::LineJoin::Bevel => LineJoin::Bevel,
 				},
-				line_join_miter_limit: stroke.miterlimit.get() as f64,
+				line_join_miter_limit: stroke.miterlimit().get() as f64,
 			})
 		} else {
 			warn!("Skip non-solid stroke")
@@ -316,25 +304,27 @@ fn apply_usvg_stroke(stroke: &Option<usvg::Stroke>, modify_inputs: &mut ModifyIn
 	}
 }
 
-fn apply_usvg_fill(fill: &Option<usvg::Fill>, modify_inputs: &mut ModifyInputsContext, transform: DAffine2, bounds_transform: DAffine2, transformed_bound_transform: DAffine2) {
+fn apply_usvg_fill(fill: Option<&usvg::Fill>, modify_inputs: &mut ModifyInputsContext, transform: DAffine2, bounds_transform: DAffine2) {
 	if let Some(fill) = &fill {
-		modify_inputs.fill_set(match &fill.paint {
-			usvg::Paint::Color(color) => Fill::solid(usvg_color(*color, fill.opacity.get())),
+		modify_inputs.fill_set(match &fill.paint() {
+			usvg::Paint::Color(color) => Fill::solid(usvg_color(*color, fill.opacity().get())),
 			usvg::Paint::LinearGradient(linear) => {
-				let local = [DVec2::new(linear.x1 as f64, linear.y1 as f64), DVec2::new(linear.x2 as f64, linear.y2 as f64)];
+				let local = [DVec2::new(linear.x1() as f64, linear.y1() as f64), DVec2::new(linear.x2() as f64, linear.y2() as f64)];
 
-				let to_doc_transform = if linear.base.units == usvg::Units::UserSpaceOnUse {
-					transform
-				} else {
-					transformed_bound_transform
-				};
-				let to_doc = to_doc_transform * usvg_transform(linear.transform);
+				// TODO: fix this
+				// let to_doc_transform = if linear.base.units() == usvg::Units::UserSpaceOnUse {
+				// 	transform
+				// } else {
+				// 	transformed_bound_transform
+				// };
+				let to_doc_transform = transform;
+				let to_doc = to_doc_transform * usvg_transform(linear.transform());
 
 				let document = [to_doc.transform_point2(local[0]), to_doc.transform_point2(local[1])];
 				let layer = [transform.inverse().transform_point2(document[0]), transform.inverse().transform_point2(document[1])];
 
 				let [start, end] = [bounds_transform.inverse().transform_point2(layer[0]), bounds_transform.inverse().transform_point2(layer[1])];
-				let stops = linear.stops.iter().map(|stop| (stop.offset.get() as f64, usvg_color(stop.color, stop.opacity.get()))).collect();
+				let stops = linear.stops().iter().map(|stop| (stop.offset().get() as f64, usvg_color(stop.color(), stop.opacity().get()))).collect();
 				let stops = GradientStops(stops);
 
 				Fill::Gradient(Gradient {
@@ -346,20 +336,22 @@ fn apply_usvg_fill(fill: &Option<usvg::Fill>, modify_inputs: &mut ModifyInputsCo
 				})
 			}
 			usvg::Paint::RadialGradient(radial) => {
-				let local = [DVec2::new(radial.cx as f64, radial.cy as f64), DVec2::new(radial.fx as f64, radial.fy as f64)];
+				let local = [DVec2::new(radial.cx() as f64, radial.cy() as f64), DVec2::new(radial.fx() as f64, radial.fy() as f64)];
 
-				let to_doc_transform = if radial.base.units == usvg::Units::UserSpaceOnUse {
-					transform
-				} else {
-					transformed_bound_transform
-				};
-				let to_doc = to_doc_transform * usvg_transform(radial.transform);
+				// TODO: fix this
+				// let to_doc_transform = if radial.base.units == usvg::Units::UserSpaceOnUse {
+				// 	transform
+				// } else {
+				// 	transformed_bound_transform
+				// };
+				let to_doc_transform = transform;
+				let to_doc = to_doc_transform * usvg_transform(radial.transform());
 
 				let document = [to_doc.transform_point2(local[0]), to_doc.transform_point2(local[1])];
 				let layer = [transform.inverse().transform_point2(document[0]), transform.inverse().transform_point2(document[1])];
 
 				let [start, end] = [bounds_transform.inverse().transform_point2(layer[0]), bounds_transform.inverse().transform_point2(layer[1])];
-				let stops = radial.stops.iter().map(|stop| (stop.offset.get() as f64, usvg_color(stop.color, stop.opacity.get()))).collect();
+				let stops = radial.stops().iter().map(|stop| (stop.offset().get() as f64, usvg_color(stop.color(), stop.opacity().get()))).collect();
 				let stops = GradientStops(stops);
 
 				Fill::Gradient(Gradient {

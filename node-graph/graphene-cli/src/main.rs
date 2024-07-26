@@ -1,6 +1,6 @@
 use graph_craft::document::value::TaggedValue;
 use graph_craft::graphene_compiler::{Compiler, Executor};
-use graph_craft::imaginate_input::ImaginatePreferences;
+use graph_craft::wasm_application_io::EditorPreferences;
 use graph_craft::{concrete, ProtoNodeIdentifier};
 use graph_craft::{document::*, generic};
 use graphene_core::application_io::{ApplicationIo, NodeGraphUpdateSender};
@@ -47,7 +47,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		font_cache: FontCache::default(),
 		application_io: Some(application_io.into()),
 		node_graph_message_sender: Box::new(UpdateLogger {}),
-		imaginate_preferences: Box::new(ImaginatePreferences::default()),
+		editor_preferences: Box::new(EditorPreferences::default()),
 	});
 	let executor = create_executor(document_string, editor_api)?;
 	let render_config = graphene_core::application_io::RenderConfig::default();
@@ -126,7 +126,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 						NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T))), 0),
 						NodeInput::node(NodeId(1), 0),
 					],
-					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _, _>")),
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _, _, _>")),
 					..Default::default()
 				},
 			]
@@ -174,7 +174,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 // 			font_cache: &FontCache::default(),
 // 			application_io: &block_on(WasmApplicationIo::new()),
 // 			node_graph_message_sender: &UpdateLogger {},
-// 			imaginate_preferences: &ImaginatePreferences::default(),
+// 			editor_preferences: &EditorPreferences::default(),
 // 			render_config: graphene_core::application_io::RenderConfig::default(),
 // 		};
 // 		let result = (&executor).execute(editor_api.clone()).await.unwrap();
@@ -191,7 +191,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 // 			font_cache: &FontCache::default(),
 // 			application_io: &block_on(WasmApplicationIo::new()),
 // 			node_graph_message_sender: &UpdateLogger {},
-// 			imaginate_preferences: &ImaginatePreferences::default(),
+// 			editor_preferences: &EditorPreferences::default(),
 // 			render_config: graphene_core::application_io::RenderConfig::default(),
 // 		};
 // 		let result = (&executor).execute(editor_api.clone()).await.unwrap();
