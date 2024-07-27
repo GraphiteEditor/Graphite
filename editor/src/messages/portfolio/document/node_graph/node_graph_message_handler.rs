@@ -754,8 +754,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						}
 					}
 
-					// Check if a single node was dragged onto a wire
-					if selected_nodes.selected_nodes_ref().len() == 1 {
+					// Check if a single node was dragged onto a wire and that the node was dragged onto the wire
+					if selected_nodes.selected_nodes_ref().len() == 1 && !self.begin_dragging {
 						let selected_node_id = selected_nodes.selected_nodes_ref()[0];
 						let has_primary_output_connection = network_interface
 							.get_outward_wires(selection_network_path)

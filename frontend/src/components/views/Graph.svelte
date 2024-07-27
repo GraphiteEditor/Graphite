@@ -7,15 +7,7 @@
 	import type { IconName } from "@graphite/utility-functions/icons";
 	import type { Editor } from "@graphite/wasm-communication/editor";
 	import type { Node } from "@graphite/wasm-communication/messages";
-	import {
-		type FrontendNodeWire,
-		type FrontendNodeType,
-		type FrontendNode,
-		type FrontendGraphInput,
-		type FrontendGraphOutput,
-		type FrontendGraphDataType,
-		type WirePath,
-	} from "@graphite/wasm-communication/messages";
+	import type { FrontendNodeWire, FrontendNodeType, FrontendNode, FrontendGraphInput, FrontendGraphOutput, FrontendGraphDataType, WirePath } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -154,11 +146,12 @@
 
 	onMount(refreshWires);
 
-	function nodeIcon(nodeName: string): IconName {
+	function nodeIcon(icon?: string): IconName {
+		if (!icon) return "NodeNodes";
 		const iconMap: Record<string, IconName> = {
 			Output: "NodeOutput",
 		};
-		return iconMap[nodeName] || "NodeNodes";
+		return iconMap[icon] || "NodeNodes";
 	}
 
 	function buildWirePathLocations(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): { x: number; y: number }[] {
@@ -305,12 +298,31 @@
 		return value.resolvedType ? `Resolved Data: ${value.resolvedType}` : `Unresolved Data: ${value.dataType}`;
 	}
 
-	function connectedToText(output: FrontendGraphOutput): string {
+	function outputConnectedToText(output: FrontendGraphOutput): string {
 		if (output.connectedTo.length === 0) {
 			return "Connected to nothing";
 		} else {
-			return "";
-			//return output.connectedTo.map((input_connector) => `Connected to ${nodeId}, port index ${output.connectedIndex[index]}`).join("\n");
+			return output.connectedTo
+				.map((inputConnector) => {
+					if ((inputConnector as Node).nodeId === undefined) {
+						return `Connected to export index ${inputConnector.index}`;
+					} else {
+						return `Connected to ${(inputConnector as Node).nodeId}, port index ${inputConnector.index}`;
+					}
+				})
+				.join("\n");
+		}
+	}
+
+	function inputConnectedToText(input: FrontendGraphInput): string {
+		if (input.connectedTo === undefined) {
+			return "Connected to nothing";
+		} else {
+			if ((input.connectedTo as Node).nodeId === undefined) {
+				return `Connected to import index ${input.connectedTo.index}`;
+			} else {
+				return `Connected to ${(input.connectedTo as Node).nodeId}, port index ${input.connectedTo.index}`;
+			}
 		}
 	}
 
@@ -318,6 +330,7 @@
 		let firstConnectedNode = $nodeGraph.nodes.find((n) =>
 			node.primaryOutput?.connectedTo.some((connector) => {
 				if ((connector as Node).nodeId === undefined) return;
+				if (connector.index !== 0n) return;
 				return n.id === (connector as Node).nodeId;
 			}),
 		);
@@ -419,7 +432,7 @@
 				{#each $nodeGraph.clickTargets.visibilityClickTargets as pathString}
 					<path class="visibility" d={pathString} />
 				{/each}
-				<path class="allNodesBoundingBox" d={$nodeGraph.clickTargets.allNodesBoundingBox} />
+				<path class="all-nodes-bounding-box" d={$nodeGraph.clickTargets.allNodesBoundingBox} />
 			</svg>
 		</div>
 	{/if}
@@ -461,7 +474,7 @@
 				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
 				style:--layer-area-width={layerAreaWidth}
-				style:--node-chain-area-left-extension={layerChainWidth ? layerChainWidth + 0.5 : 0}
+				style:--node-chain-area-left-extension={layerChainWidth !== 0 ? layerChainWidth + 0.5 : 0}
 				data-node={node.id}
 				bind:this={nodeElements[nodeIndex]}
 			>
@@ -485,11 +498,10 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
 							bind:this={outputs[nodeIndex][0]}
 						>
-							<title>{`${dataTypeTooltip(node.primaryOutput)}\n${connectedToText(node.primaryOutput)}`}</title>
+							<title>{`${dataTypeTooltip(node.primaryOutput)}\n${outputConnectedToText(node.primaryOutput)}`}</title>
 							{#if node.primaryOutput.connectedTo.length > 0}
 								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color)" />
-								{@const outputIsLayer = node.primaryOutput?.connectedIndex?.length === 0 && primaryOutputConnectedToLayer(node)}
-								{#if outputIsLayer}
+								{#if primaryOutputConnectedToLayer(node)}
 									<path d="M0,-3.5h8v8l-2.521,-1.681a2.666,2.666,0,0,0,-2.959,0l-2.52,1.681z" fill="var(--data-color-dim)" />
 								{/if}
 							{:else}
@@ -509,7 +521,7 @@
 						bind:this={inputs[nodeIndex][0]}
 					>
 						{#if node.primaryInput}
-							<title>{`${dataTypeTooltip(node.primaryInput)}\nConnected to ${node.primaryInput?.connectedTo !== undefined ? node.primaryInput.connectedTo : "nothing"}`}</title>
+							<title>{`${dataTypeTooltip(node.primaryInput)}\n${inputConnectedToText(node.primaryInput)}`}</title>
 						{/if}
 						{#if node.primaryInput?.connectedTo !== undefined}
 							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color)" />
@@ -534,7 +546,7 @@
 							style:--data-color-dim={`var(--color-data-${stackDataInput.dataType.toLowerCase()}-dim)`}
 							bind:this={inputs[nodeIndex][1]}
 						>
-							<title>{`${dataTypeTooltip(stackDataInput)}\nConnected to ${stackDataInput.connectedTo !== undefined ? stackDataInput.connectedTo : "nothing"}`}</title>
+							<title>{`${dataTypeTooltip(stackDataInput)}\n${inputConnectedToText(stackDataInput)}`}</title>
 							{#if stackDataInput.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -593,7 +605,7 @@
 				{/if}
 				<!-- Primary row -->
 				<div class="primary" class:no-parameter-section={exposedInputsOutputs.length === 0}>
-					<IconLabel icon={nodeIcon(node.displayName)} />
+					<IconLabel icon={nodeIcon(node.reference)} />
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
 					<TextLabel tooltip={editor.handle.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined}>{node.displayName}</TextLabel>
 				</div>
@@ -620,7 +632,7 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryInput.dataType.toLowerCase()}-dim)`}
 							bind:this={inputs[nodeIndex][0]}
 						>
-							<title>{`${dataTypeTooltip(node.primaryInput)}\nConnected to ${node.primaryInput.connectedTo !== undefined ? node.primaryInput.connectedTo : "nothing"}`}</title>
+							<title>{`${dataTypeTooltip(node.primaryInput)}\n${inputConnectedToText(node.primaryInput)}`}</title>
 							{#if node.primaryInput.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -640,7 +652,7 @@
 								style:--data-color-dim={`var(--color-data-${parameter.dataType.toLowerCase()}-dim)`}
 								bind:this={inputs[nodeIndex][index + (node.primaryInput ? 1 : 0)]}
 							>
-								<title>{`${dataTypeTooltip(parameter)}\nConnected to ${parameter.connectedTo !== undefined ? parameter.connectedTo : "nothing"}`}</title>
+								<title>{`${dataTypeTooltip(parameter)}\n${inputConnectedToText(parameter)}`}</title>
 								{#if parameter.connectedTo !== undefined}
 									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 								{:else}
@@ -663,7 +675,7 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
 							bind:this={outputs[nodeIndex][0]}
 						>
-							<title>{`${dataTypeTooltip(node.primaryOutput)}\n${connectedToText(node.primaryOutput)}`}</title>
+							<title>{`${dataTypeTooltip(node.primaryOutput)}\n${outputConnectedToText(node.primaryOutput)}`}</title>
 							{#if node.primaryOutput.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -682,7 +694,7 @@
 							style:--data-color-dim={`var(--color-data-${parameter.dataType.toLowerCase()}-dim)`}
 							bind:this={outputs[nodeIndex][outputIndex + (node.primaryOutput ? 1 : 0)]}
 						>
-							<title>{`${dataTypeTooltip(parameter)}\n${connectedToText(parameter)}`}</title>
+							<title>{`${dataTypeTooltip(parameter)}\n${outputConnectedToText(parameter)}`}</title>
 							{#if parameter.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -820,29 +832,35 @@
 
 		.click-targets {
 			position: absolute;
-			z-index: 10;
 			pointer-events: none;
 			width: 100%;
 			height: 100%;
+			z-index: 10;
+
 			svg {
+				overflow: visible;
 				width: 100%;
 				height: 100%;
-				overflow: visible;
-				fill: none;
 				stroke-width: 1;
+				fill: none;
+
 				.layer {
 					stroke: yellow;
 				}
+
 				.node {
 					stroke: blue;
 				}
+
 				.port {
 					stroke: green;
 				}
+
 				.visibility {
 					stroke: red;
 				}
-				.allNodesBoundingBox {
+
+				.all-nodes-bounding-box {
 					stroke: purple;
 				}
 			}
@@ -984,7 +1002,7 @@
 				position: absolute;
 
 				&.input {
-					left: calc(-3px + var(--node-chain-area-left-extension) * 24px - 36px);
+					left: -3px;
 				}
 
 				&.output {
@@ -1009,10 +1027,11 @@
 			border-radius: 8px;
 			--extra-width-to-reach-grid-multiple: 8px;
 			--node-chain-area-left-extension: 0;
-			// Keep this equation in sync with the equivalent one in the Svelte template `<clipPath><path d="layerBorderMask(...)" /></clipPath>` above and the left port offset
+			// Keep this equation in sync with the equivalent one in the Svelte template `<clipPath><path d="layerBorderMask(...)" /></clipPath>` above,
+			// as well as the `left` port offset CSS rule above in `.ports.input` above.
 			width: calc((var(--layer-area-width) - 0.5) * 24px);
-			padding-left: calc(var(--node-chain-area-left-extension) * 24px); // 0; //36px;
-			margin-left: calc((0.5 - var(--node-chain-area-left-extension)) * 24px); //12px; //-24px;
+			padding-left: calc(var(--node-chain-area-left-extension) * 24px);
+			margin-left: calc((0.5 - var(--node-chain-area-left-extension)) * 24px);
 
 			&::after {
 				border: 1px solid var(--color-5-dullgray);
@@ -1081,6 +1100,10 @@
 			.visibility {
 				position: absolute;
 				right: -12px;
+			}
+
+			.input.ports {
+				left: calc(-3px + var(--node-chain-area-left-extension) * 24px - 36px);
 			}
 
 			.visibility,

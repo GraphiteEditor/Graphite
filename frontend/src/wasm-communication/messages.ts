@@ -163,6 +163,20 @@ export type OutputConnector = Node | Export;
 
 export type InputConnector = Node | Import;
 
+const CreateOutputConnectorOptional = Transform(({ obj }) => {
+	if (obj.connectedTo?.export !== undefined) {
+		return { index: obj.connectedTo?.export };
+	} else if (obj.connectedTo?.import !== undefined) {
+		return { index: obj.connectedTo?.import };
+	} else {
+		if (obj.connectedTo?.node.inputIndex !== undefined) {
+			return { nodeId: obj.connectedTo?.node.nodeId, index: obj.connectedTo?.node.inputIndex };
+		} else {
+			return { nodeId: obj.connectedTo?.node.nodeId, index: obj.connectedTo?.node.outputIndex };
+		}
+	}
+});
+
 export class FrontendGraphInput {
 	readonly dataType!: FrontendGraphDataType;
 
@@ -170,8 +184,27 @@ export class FrontendGraphInput {
 
 	readonly resolvedType!: string | undefined;
 
+	@CreateOutputConnectorOptional
 	readonly connectedTo!: OutputConnector | undefined;
 }
+
+const CreateInputConnectorArray = Transform(({ obj }) => {
+	const newInputConnectors: InputConnector[] = [];
+	obj.connectedTo.forEach((connector: any) => {
+		if (connector.export !== undefined) {
+			newInputConnectors.push({ index: connector.export });
+		} else if (connector.import !== undefined) {
+			newInputConnectors.push({ index: connector.import });
+		} else {
+			if (connector.node.inputIndex !== undefined) {
+				newInputConnectors.push({ nodeId: connector.node.nodeId, index: connector.node.inputIndex });
+			} else {
+				newInputConnectors.push({ nodeId: connector.node.nodeId, index: connector.node.outputIndex });
+			}
+		}
+	});
+	return newInputConnectors;
+});
 
 export class FrontendGraphOutput {
 	readonly dataType!: FrontendGraphDataType;
@@ -180,9 +213,8 @@ export class FrontendGraphOutput {
 
 	readonly resolvedType!: string | undefined;
 
+	@CreateInputConnectorArray
 	readonly connectedTo!: InputConnector[];
-
-	readonly connectedIndex!: bigint[];
 }
 
 export class FrontendNode {
@@ -196,12 +228,16 @@ export class FrontendNode {
 
 	readonly displayName!: string;
 
+	@Type(() => FrontendGraphInput)
 	readonly primaryInput!: FrontendGraphInput | undefined;
 
+	@Type(() => FrontendGraphInput)
 	readonly exposedInputs!: FrontendGraphInput[];
 
+	@Type(() => FrontendGraphOutput)
 	readonly primaryOutput!: FrontendGraphOutput | undefined;
 
+	@Type(() => FrontendGraphOutput)
 	readonly exposedOutputs!: FrontendGraphOutput[];
 
 	@TupleToVec2
@@ -1371,7 +1407,7 @@ export function isWidgetSpanRow(layoutRow: LayoutGroup): layoutRow is WidgetSpan
 	return Boolean((layoutRow as WidgetSpanRow)?.rowWidgets);
 }
 
-export type WidgetSection = { name: string; visible: boolean; id: bigint; networkPath: bigint[]; layout: LayoutGroup[] };
+export type WidgetSection = { name: string; visible: boolean; id: bigint; layout: LayoutGroup[] };
 export function isWidgetSection(layoutRow: LayoutGroup): layoutRow is WidgetSection {
 	return Boolean((layoutRow as WidgetSection)?.layout);
 }
@@ -1415,7 +1451,6 @@ function createLayoutGroup(layoutGroup: any): LayoutGroup {
 			name: layoutGroup.section.name,
 			visible: layoutGroup.section.visible,
 			id: layoutGroup.section.id,
-			networkPath: layoutGroup.networkPath,
 			layout: layoutGroup.section.layout.map(createLayoutGroup),
 		};
 		return result;
