@@ -377,9 +377,8 @@ impl GraphicElementRendered for VectorData {
 				let start = lerp_bounds(gradient.start);
 				let end = lerp_bounds(gradient.end);
 
-				let transform = self.transform /* * gradient.transform*/;
-				let start = transform.transform_point2(start);
-				let end = transform.transform_point2(end);
+				let start = self.transform.transform_point2(start);
+				let end = self.transform.transform_point2(end);
 				let fill = peniko::Brush::Gradient(peniko::Gradient {
 					kind: match gradient.gradient_type {
 						GradientType::Linear => peniko::GradientKind::Linear {
