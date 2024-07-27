@@ -377,9 +377,8 @@ impl GraphicElementRendered for VectorData {
 				let start = lerp_bounds(gradient.start);
 				let end = lerp_bounds(gradient.end);
 
-				let transform = self.transform * gradient.transform;
-				let start = transform.transform_point2(start);
-				let end = transform.transform_point2(end);
+				let start = self.transform.transform_point2(start);
+				let end = self.transform.transform_point2(end);
 				let fill = peniko::Brush::Gradient(peniko::Gradient {
 					kind: match gradient.gradient_type {
 						GradientType::Linear => peniko::GradientKind::Linear {
@@ -391,7 +390,7 @@ impl GraphicElementRendered for VectorData {
 							peniko::GradientKind::Radial {
 								start_center: to_point(start),
 								start_radius: 0.,
-								end_center: to_point(end),
+								end_center: to_point(start),
 								end_radius: radius as f32,
 							}
 						}
@@ -414,7 +413,9 @@ impl GraphicElementRendered for VectorData {
 				miter_limit: stroke.line_join_miter_limit,
 				..Default::default()
 			};
-			scene.stroke(&stroke, kurbo_transform, color, None, &path);
+			if stroke.width > 0. {
+				scene.stroke(&stroke, kurbo_transform, color, None, &path);
+			}
 		}
 	}
 }
