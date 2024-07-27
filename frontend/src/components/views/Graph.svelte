@@ -6,7 +6,16 @@
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import type { FrontendNodeWire, FrontendNodeType, FrontendNode, FrontendGraphInput, FrontendGraphOutput, FrontendGraphDataType, WirePath, Node } from "@graphite/wasm-communication/messages";
+	import type { Node } from "@graphite/wasm-communication/messages";
+	import {
+		type FrontendNodeWire,
+		type FrontendNodeType,
+		type FrontendNode,
+		type FrontendGraphInput,
+		type FrontendGraphOutput,
+		type FrontendGraphDataType,
+		type WirePath,
+	} from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -46,7 +55,7 @@
 	$: nodeCategories = buildNodeCategories($nodeGraph.nodeTypes, searchTerm);
 
 	$: (() => {
-		if ($nodeGraph.contextMenuInformation?.contextMenuData == "CreateNode") {
+		if ($nodeGraph.contextMenuInformation?.contextMenuData === "CreateNode") {
 			setTimeout(() => nodeSearchInput?.focus(), 0);
 		}
 	})();
@@ -117,12 +126,10 @@
 	}
 
 	function resolveWire(wire: FrontendNodeWire): { nodeOutput: SVGSVGElement | undefined; nodeInput: SVGSVGElement | undefined } {
-		const outputIndex = wire.wireStart.Node ? Number(wire.wireStart.Node?.output_index) : Number(wire.wireStart.Import?.output_index);
-		const inputIndex = wire.wireEnd.Node ? Number(wire.wireEnd.Node?.input_index) : Number(wire.wireEnd.Export?.input_index);
-
-		const nodeOutputConnectors = outputs[$nodeGraph.nodes.findIndex((n) => n.id === wire.wireStart.Node?.node_id)];
-		const nodeInputConnectors = inputs[$nodeGraph.nodes.findIndex((n) => n.id === wire.wireEnd.Node?.node_id)] || undefined;
-
+		const outputIndex = Number(wire.wireStart.index);
+		const inputIndex = Number(wire.wireEnd.index);
+		const nodeOutputConnectors = outputs[$nodeGraph.nodes.findIndex((n) => ((wire.wireStart as Node).nodeId !== undefined ? n.id === (wire.wireStart as Node).nodeId : false))];
+		const nodeInputConnectors = inputs[$nodeGraph.nodes.findIndex((n) => ((wire.wireEnd as Node).nodeId !== undefined ? n.id === (wire.wireEnd as Node).nodeId : false))] || undefined;
 		const nodeOutput = nodeOutputConnectors?.[outputIndex] as SVGSVGElement | undefined;
 		const nodeInput = nodeInputConnectors?.[inputIndex] as SVGSVGElement | undefined;
 		return { nodeOutput, nodeInput };
@@ -136,8 +143,10 @@
 			const { nodeInput, nodeOutput } = resolveWire(wire);
 			if (!nodeInput || !nodeOutput) return [];
 
-			const wireStart = $nodeGraph.nodes.find((n) => n.id === wire.wireStart.Node?.node_id)?.isLayer || false;
-			const wireEnd = ($nodeGraph.nodes.find((n) => n.id === wire.wireEnd.Node?.node_id)?.isLayer && Number(wire.wireEnd.Node?.input_index) == 0) || false;
+			const wireStart = $nodeGraph.nodes.find((n) => ((wire.wireStart as Node).nodeId !== undefined ? n.id === (wire.wireStart as Node).nodeId : undefined))?.isLayer || false;
+			const wireEnd =
+				($nodeGraph.nodes.find((n) => ((wire.wireEnd as Node).nodeId !== undefined ? n.id === (wire.wireEnd as Node).nodeId : undefined))?.isLayer && Number(wire.wireEnd.index) === 0) ||
+				false;
 
 			return [createWirePath(nodeOutput, nodeInput.getBoundingClientRect(), wireStart, wireEnd, wire.dashed)];
 		});
@@ -304,6 +313,25 @@
 			//return output.connectedTo.map((input_connector) => `Connected to ${nodeId}, port index ${output.connectedIndex[index]}`).join("\n");
 		}
 	}
+
+	function primaryOutputConnectedToLayer(node: FrontendNode): boolean {
+		let firstConnectedNode = $nodeGraph.nodes.find((n) =>
+			node.primaryOutput?.connectedTo.some((connector) => {
+				if ((connector as Node).nodeId === undefined) return;
+				return n.id === (connector as Node).nodeId;
+			}),
+		);
+		return firstConnectedNode?.isLayer || false;
+	}
+
+	function primaryInputConnectedToLayer(node: FrontendNode): boolean {
+		return (
+			$nodeGraph.nodes.find((n) => {
+				if ((node.primaryInput?.connectedTo as Node) === undefined) return;
+				return n.id === (node.primaryInput?.connectedTo as Node).nodeId;
+			})?.isLayer || false
+		);
+	}
 </script>
 
 <div
@@ -460,7 +488,8 @@
 							<title>{`${dataTypeTooltip(node.primaryOutput)}\n${connectedToText(node.primaryOutput)}`}</title>
 							{#if node.primaryOutput.connectedTo.length > 0}
 								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color)" />
-								{#if Number(node.primaryOutput?.connectedIndex) === 0 && $nodeGraph.nodes.find((n) => node.primaryOutput?.connectedTo.includes(n.id))?.isLayer}
+								{@const outputIsLayer = node.primaryOutput?.connectedIndex?.length === 0 && primaryOutputConnectedToLayer(node)}
+								{#if outputIsLayer}
 									<path d="M0,-3.5h8v8l-2.521,-1.681a2.666,2.666,0,0,0,-2.959,0l-2.52,1.681z" fill="var(--data-color-dim)" />
 								{/if}
 							{:else}
@@ -484,7 +513,7 @@
 						{/if}
 						{#if node.primaryInput?.connectedTo !== undefined}
 							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color)" />
-							{#if $nodeGraph.nodes.find((n) => n.id === node.primaryInput?.connectedTo)?.isLayer}
+							{#if primaryInputConnectedToLayer(node)}
 								<path d="M0,10.95l2.52,-1.69c0.89,-0.6,2.06,-0.6,2.96,0l2.52,1.69v5.05h-8v-5.05z" fill="var(--data-color-dim)" />
 							{/if}
 						{:else}
@@ -564,7 +593,7 @@
 				{/if}
 				<!-- Primary row -->
 				<div class="primary" class:no-parameter-section={exposedInputsOutputs.length === 0}>
-					<IconLabel icon={nodeIcon(node.name)} />
+					<IconLabel icon={nodeIcon(node.displayName)} />
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
 					<TextLabel tooltip={editor.handle.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined}>{node.displayName}</TextLabel>
 				</div>
@@ -591,8 +620,8 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryInput.dataType.toLowerCase()}-dim)`}
 							bind:this={inputs[nodeIndex][0]}
 						>
-							<title>{`${dataTypeTooltip(node.primaryInput)}\nConnected to ${node.primaryInput.connected !== undefined ? node.primaryInput.connected : "nothing"}`}</title>
-							{#if node.primaryInput.connected !== undefined}
+							<title>{`${dataTypeTooltip(node.primaryInput)}\nConnected to ${node.primaryInput.connectedTo !== undefined ? node.primaryInput.connectedTo : "nothing"}`}</title>
+							{#if node.primaryInput.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
@@ -611,8 +640,8 @@
 								style:--data-color-dim={`var(--color-data-${parameter.dataType.toLowerCase()}-dim)`}
 								bind:this={inputs[nodeIndex][index + (node.primaryInput ? 1 : 0)]}
 							>
-								<title>{`${dataTypeTooltip(parameter)}\nConnected to ${parameter.connected !== undefined ? parameter.connected : "nothing"}`}</title>
-								{#if parameter.connected !== undefined}
+								<title>{`${dataTypeTooltip(parameter)}\nConnected to ${parameter.connectedTo !== undefined ? parameter.connectedTo : "nothing"}`}</title>
+								{#if parameter.connectedTo !== undefined}
 									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 								{:else}
 									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
@@ -635,7 +664,7 @@
 							bind:this={outputs[nodeIndex][0]}
 						>
 							<title>{`${dataTypeTooltip(node.primaryOutput)}\n${connectedToText(node.primaryOutput)}`}</title>
-							{#if node.primaryOutput.connected !== undefined}
+							{#if node.primaryOutput.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
@@ -654,7 +683,7 @@
 							bind:this={outputs[nodeIndex][outputIndex + (node.primaryOutput ? 1 : 0)]}
 						>
 							<title>{`${dataTypeTooltip(parameter)}\n${connectedToText(parameter)}`}</title>
-							{#if parameter.connected !== undefined}
+							{#if parameter.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />

@@ -167,7 +167,7 @@ pub struct ContextMenuInformation {
 }
 
 #[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct FrontEndClickTargets {
+pub struct FrontendClickTargets {
 	#[serde(rename = "nodeClickTargets")]
 	pub node_click_targets: Vec<String>,
 	#[serde(rename = "layerClickTargets")]

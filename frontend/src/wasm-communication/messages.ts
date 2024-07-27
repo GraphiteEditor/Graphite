@@ -30,7 +30,7 @@ export class UpdateBox extends JsMessage {
 }
 
 export class UpdateClickTargets extends JsMessage {
-	readonly clickTargets!: ClickTargets | undefined;
+	readonly clickTargets!: FrontendClickTargets | undefined;
 }
 
 const ContextTupleToVec2 = Transform((data) => {
@@ -130,12 +130,12 @@ export class Box {
 	readonly endY!: number;
 }
 
-export type ClickTargets = {
+export type FrontendClickTargets = {
 	readonly nodeClickTargets: string[];
 	readonly layerClickTargets: string[];
 	readonly portClickTargets: string[];
 	readonly visibilityClickTargets: string[];
-	readonly allNodesBoundingBox: string[];
+	readonly allNodesBoundingBox: string;
 };
 
 export type ContextMenuInformation = {
@@ -220,9 +220,39 @@ export class FrontendNode {
 	readonly uiOnly!: boolean;
 }
 
+const CreateOutputConnector = Transform(({ obj }) => {
+	if (obj.wireStart.export !== undefined) {
+		return { index: obj.wireStart.export };
+	} else if (obj.wireStart.import !== undefined) {
+		return { index: obj.wireStart.import };
+	} else {
+		if (obj.wireStart.node.inputIndex !== undefined) {
+			return { nodeId: obj.wireStart.node.nodeId, index: obj.wireStart.node.inputIndex };
+		} else {
+			return { nodeId: obj.wireStart.node.nodeId, index: obj.wireStart.node.outputIndex };
+		}
+	}
+});
+
+const CreateInputConnector = Transform(({ obj }) => {
+	if (obj.wireEnd.export !== undefined) {
+		return { index: obj.wireEnd.export };
+	} else if (obj.wireEnd.import !== undefined) {
+		return { index: obj.wireEnd.import };
+	} else {
+		if (obj.wireEnd.node.inputIndex !== undefined) {
+			return { nodeId: obj.wireEnd.node.nodeId, index: obj.wireEnd.node.inputIndex };
+		} else {
+			return { nodeId: obj.wireEnd.node.nodeId, index: obj.wireEnd.node.outputIndex };
+		}
+	}
+});
+
 export class FrontendNodeWire {
+	@CreateOutputConnector
 	readonly wireStart!: OutputConnector;
 
+	@CreateInputConnector
 	readonly wireEnd!: InputConnector;
 
 	readonly dashed!: boolean;

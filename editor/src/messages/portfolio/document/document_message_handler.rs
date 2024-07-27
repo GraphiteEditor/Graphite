@@ -702,22 +702,24 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 			}
 			DocumentMessage::RenderRulers => {
-				let document_transform_scale = self.navigation_handler.snapped_zoom(self.document_ptz.zoom);
-
-				let ruler_origin = if !self.graph_view_overlay_open {
-					self.metadata().document_to_viewport.transform_point2(DVec2::ZERO)
+				let (ruler_scale, ruler_origin) = if !self.graph_view_overlay_open {
+					(
+						self.navigation_handler.snapped_zoom(self.document_ptz.zoom),
+						self.metadata().document_to_viewport.transform_point2(DVec2::ZERO),
+					)
 				} else {
-					self.network_interface
-						.network_metadata(&[])
-						.unwrap()
-						.persistent_metadata
-						.navigation_metadata
-						.node_graph_to_viewport
-						.transform_point2(DVec2::ZERO)
+					let Some(network_metadata) = self.network_interface.network_metadata(&self.breadcrumb_network_path) else {
+						return;
+					};
+					(
+						self.navigation_handler
+							.snapped_zoom(network_metadata.persistent_metadata.navigation_metadata.node_graph_ptz.zoom * (crate::consts::GRID_SIZE as f64)),
+						network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.transform_point2(DVec2::ZERO),
+					)
 				};
-				let log = document_transform_scale.log2();
+				let log = ruler_scale.log2();
 				let ruler_interval: f64 = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
-				let ruler_spacing = ruler_interval * document_transform_scale;
+				let ruler_spacing = ruler_interval * ruler_scale;
 
 				responses.add(FrontendMessage::UpdateDocumentRulers {
 					origin: ruler_origin.into(),
@@ -1045,6 +1047,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				} else {
 					self.network_interface.set_transform(transform, &self.breadcrumb_network_path);
+					responses.add(DocumentMessage::RenderRulers);
+					responses.add(DocumentMessage::RenderScrollbars);
 					responses.add(NodeGraphMessage::UpdateEdges);
 					responses.add(NodeGraphMessage::UpdateBoxSelection);
 					responses.add(FrontendMessage::UpdateNodeGraphTransform {

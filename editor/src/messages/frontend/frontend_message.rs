@@ -1,7 +1,7 @@
 use super::utility_types::{FrontendDocumentDetails, MouseCursorIcon};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
-	BoxSelection, ContextMenuInformation, FrontEndClickTargets, FrontendNode, FrontendNodeType, FrontendNodeWire, Transform, WirePath,
+	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendNode, FrontendNodeType, FrontendNodeWire, Transform, WirePath,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer};
 use crate::messages::prelude::*;
@@ -134,7 +134,7 @@ pub enum FrontendMessage {
 	},
 	UpdateClickTargets {
 		#[serde(rename = "clickTargets")]
-		click_targets: Option<FrontEndClickTargets>,
+		click_targets: Option<FrontendClickTargets>,
 	},
 	UpdateLayerWidths {
 		#[serde(rename = "layerWidths")]

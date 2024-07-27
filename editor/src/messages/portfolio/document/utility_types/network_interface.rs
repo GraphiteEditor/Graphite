@@ -1,4 +1,4 @@
-use crate::messages::portfolio::document::{graph_operation::utility_types::ModifyInputsContext, node_graph::utility_types::FrontEndClickTargets};
+use crate::messages::portfolio::document::{graph_operation::utility_types::ModifyInputsContext, node_graph::utility_types::FrontendClickTargets};
 use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::{
@@ -538,7 +538,7 @@ impl NodeNetworkInterface {
 								log::error!("Could not get layer width in get_position");
 								return None;
 							};
-							right_offset -= layer_width as i32 - 1;
+							right_offset -= layer_width as i32;
 						}
 
 						// Get the height of the node to ensure nodes do not overlap
@@ -1365,8 +1365,8 @@ impl NodeNetworkInterface {
 				output_row_count += 1;
 			}
 
-			let height = std::cmp::max(input_row_count, output_row_count) as u32 * NodeNetworkMetadata::GRID_SIZE;
-			let width = 5 * NodeNetworkMetadata::GRID_SIZE;
+			let height = std::cmp::max(input_row_count, output_row_count) as u32 * crate::consts::GRID_SIZE;
+			let width = 5 * crate::consts::GRID_SIZE;
 			let node_click_target_top_left = node_top_left + DVec2::new(0., 12.);
 			let node_click_target_bottom_right = node_click_target_top_left + DVec2::new(width as f64, height as f64);
 
@@ -1391,8 +1391,8 @@ impl NodeNetworkInterface {
 				log::error!("Could not get layer width in get_transient_node_metadata");
 				0
 			});
-			let width = layer_width_cells * NodeNetworkMetadata::GRID_SIZE;
-			let height = 2 * NodeNetworkMetadata::GRID_SIZE;
+			let width = layer_width_cells * crate::consts::GRID_SIZE;
+			let height = 2 * crate::consts::GRID_SIZE;
 
 			// Update visibility button click target
 			let visibility_offset = node_top_left + DVec2::new(width as f64, 24.);
@@ -1404,7 +1404,7 @@ impl NodeNetworkInterface {
 			let chain_width_grid_spaces = self.get_chain_width(node_id, network_path);
 
 			let node_bottom_right = node_top_left + DVec2::new(width as f64, height as f64);
-			let chain_top_left = node_top_left - DVec2::new((chain_width_grid_spaces * NodeNetworkMetadata::GRID_SIZE) as f64, 0.0);
+			let chain_top_left = node_top_left - DVec2::new((chain_width_grid_spaces * crate::consts::GRID_SIZE) as f64, 0.0);
 			let radius = 10.;
 			let subpath = bezier_rs::Subpath::new_rounded_rect(chain_top_left, node_bottom_right, [radius; 4]);
 			let node_click_target = ClickTarget { subpath, stroke_width: 1. };
@@ -1465,13 +1465,13 @@ impl NodeNetworkInterface {
 		all_selected_nodes
 	}
 
-	pub fn collect_front_end_click_targets(&mut self, network_path: &[NodeId]) -> FrontEndClickTargets {
+	pub fn collect_front_end_click_targets(&mut self, network_path: &[NodeId]) -> FrontendClickTargets {
 		let mut all_node_click_targets = Vec::new();
 		let mut port_click_targets = Vec::new();
 		let mut visibility_click_targets = Vec::new();
 		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in collect_front_end_click_targets");
-			return FrontEndClickTargets::default();
+			return FrontendClickTargets::default();
 		};
 		network_metadata.persistent_metadata.node_metadata.keys().copied().collect::<Vec<_>>().into_iter().for_each(|node_id| {
 			if let Some(node_click_targets) = self.get_node_click_targets(&node_id, network_path) {
@@ -1505,7 +1505,7 @@ impl NodeNetworkInterface {
 		let mut all_nodes_bounding_box = String::new();
 		rect.subpath_to_svg(&mut all_nodes_bounding_box, DAffine2::IDENTITY);
 
-		FrontEndClickTargets {
+		FrontendClickTargets {
 			node_click_targets,
 			layer_click_targets,
 			port_click_targets,
@@ -3044,7 +3044,14 @@ impl<'a> Iterator for FlowIter<'a> {
 /// Represents an input connector with index based on the [`DocumentNode::inputs`] index, not the visible input index
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum InputConnector {
-	Node { node_id: NodeId, input_index: usize },
+	#[serde(rename = "node")]
+	Node {
+		#[serde(rename = "nodeId")]
+		node_id: NodeId,
+		#[serde(rename = "inputIndex")]
+		input_index: usize,
+	},
+	#[serde(rename = "export")]
 	Export(usize),
 }
 
@@ -3076,7 +3083,14 @@ impl InputConnector {
 /// TODO: Layer could also be a variant, since the output index is always one. Layer(NodeId)
 #[derive(Debug, Clone, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum OutputConnector {
-	Node { node_id: NodeId, output_index: usize },
+	#[serde(rename = "node")]
+	Node {
+		#[serde(rename = "nodeId")]
+		node_id: NodeId,
+		#[serde(rename = "outputIndex")]
+		output_index: usize,
+	},
+	#[serde(rename = "import")]
 	Import(usize),
 }
 
@@ -3225,7 +3239,6 @@ impl PartialEq for NodeNetworkMetadata {
 }
 
 impl NodeNetworkMetadata {
-	pub const GRID_SIZE: u32 = 24;
 	pub fn nested_metadata(&self, nested_path: &[NodeId]) -> Option<&Self> {
 		let mut network_metadata = Some(self);
 

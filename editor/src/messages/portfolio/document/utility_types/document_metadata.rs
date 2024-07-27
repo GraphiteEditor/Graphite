@@ -25,6 +25,7 @@ pub struct DocumentMetadata {
 	pub structure: HashMap<LayerNodeIdentifier, NodeRelations>,
 	pub click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	pub vector_modify: HashMap<NodeId, VectorData>,
+	// TODO: Remove and derive from document_ptz in document message handler
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
 }

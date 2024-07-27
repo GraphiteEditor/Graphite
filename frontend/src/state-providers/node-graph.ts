@@ -3,7 +3,7 @@ import { writable } from "svelte/store";
 import { type Editor } from "@graphite/wasm-communication/editor";
 import {
 	type Box,
-	type ClickTargets,
+	type FrontendClickTargets,
 	type ContextMenuInformation,
 	type FrontendNode,
 	type FrontendNodeWire as FrontendNodeWire,
@@ -26,7 +26,7 @@ import {
 export function createNodeGraphState(editor: Editor) {
 	const { subscribe, update } = writable({
 		box: undefined as Box | undefined,
-		clickTargets: undefined as ClickTargets | undefined,
+		clickTargets: undefined as FrontendClickTargets | undefined,
 		contextMenuInformation: undefined as ContextMenuInformation | undefined,
 		layerWidths: new Map<bigint, number>(),
 		chainWidths: new Map<bigint, number>(),
