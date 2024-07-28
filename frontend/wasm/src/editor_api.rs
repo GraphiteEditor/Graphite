@@ -71,10 +71,10 @@ impl EditorHandle {
 	pub fn new(frontend_message_handler_callback: js_sys::Function) -> Self {
 		let editor = Editor::new();
 		let editor_handle = EditorHandle { frontend_message_handler_callback };
-		if EDITOR.with(|editor_cell| editor_cell.set(RefCell::new(editor))).is_err() {
+		if EDITOR.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
 			log::error!("Attempted to initialize the editor more than once");
 		}
-		if EDITOR_HANDLE.with(|handle_cell| handle_cell.set(RefCell::new(editor_handle.clone()))).is_err() {
+		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
 			log::error!("Attempted to initialize the editor handle more than once");
 		}
 		editor_handle
@@ -143,18 +143,20 @@ impl EditorHandle {
 			*g.borrow_mut() = Some(Closure::new(move |timestamp| {
 				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
-				editor_and_handle(|editor, handle| {
-					let micros: f64 = timestamp * 1000.;
-					let timestamp = Duration::from_micros(micros.round() as u64);
+				if !EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
+					editor_and_handle(|editor, handle| {
+						let micros: f64 = timestamp * 1000.;
+						let timestamp = Duration::from_micros(micros.round() as u64);
 
-					for message in editor.handle_message(InputPreprocessorMessage::FrameTimeAdvance { timestamp }) {
-						handle.send_frontend_message_to_js(message);
-					}
+						for message in editor.handle_message(InputPreprocessorMessage::FrameTimeAdvance { timestamp }) {
+							handle.send_frontend_message_to_js(message);
+						}
 
-					for message in editor.handle_message(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame)) {
-						handle.send_frontend_message_to_js(message);
-					}
-				});
+						for message in editor.handle_message(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame)) {
+							handle.send_frontend_message_to_js(message);
+						}
+					});
+				}
 
 				// Schedule ourself for another requestAnimationFrame callback
 				request_animation_frame(f.borrow().as_ref().unwrap());
@@ -893,29 +895,27 @@ fn set_timeout(f: &Closure<dyn FnMut()>, delay: Duration) {
 }
 
 /// Provides access to the `Editor` by calling the given closure with it as an argument.
-fn editor<T: Default>(callback: impl FnOnce(&mut editor::application::Editor) -> T) -> T {
+fn editor<T>(callback: impl FnOnce(&mut editor::application::Editor) -> T) -> T {
 	EDITOR.with(|editor| {
-		let Some(Ok(mut editor)) = editor.get().map(RefCell::try_borrow_mut) else {
-			// TODO: Investigate if this should just panic instead, and if not doing so right now may be the cause of silent crashes that don't inform the user that the app has panicked
-			log::error!("Failed to borrow the editor");
-			return T::default();
-		};
+		let mut guard = editor.lock();
+		let Ok(Some(ref mut editor)) = guard.as_deref_mut() else { panic!("Failed to borrow the editor") };
 
-		callback(&mut editor)
+		callback(editor)
 	})
 }
 
 /// Provides access to the `Editor` and its `EditorHandle` by calling the given closure with them as arguments.
-fn editor_and_handle(mut callback: impl FnMut(&mut Editor, &mut EditorHandle)) {
-	editor(|editor| {
-		EDITOR_HANDLE.with(|editor_handle| {
-			let Some(Ok(mut handle)) = editor_handle.get().map(RefCell::try_borrow_mut) else {
+pub(crate) fn editor_and_handle(mut callback: impl FnMut(&mut Editor, &mut EditorHandle)) {
+	EDITOR_HANDLE.with(|editor_handle| {
+		editor(|editor| {
+			let mut guard = editor_handle.lock();
+			let Ok(Some(ref mut editor_handle)) = guard.as_deref_mut() else {
 				log::error!("Failed to borrow editor handle");
 				return;
 			};
 
 			// Call the closure with the editor and its handle
-			callback(editor, &mut handle);
+			callback(editor, editor_handle);
 		})
 	});
 }
@@ -937,13 +937,18 @@ async fn poll_node_graph_evaluation() {
 			}
 		}
 
+		// Clear the error display if there are no more errors
+		if !messages.is_empty() {
+			crate::NODE_GRAPH_ERROR_DISPLAYED.store(false, Ordering::SeqCst);
+		}
+
 		// Send each `FrontendMessage` to the JavaScript frontend
 		for response in messages.into_iter().flat_map(|message| editor.handle_message(message)) {
 			handle.send_frontend_message_to_js(response);
 		}
 
 		// If the editor cannot be borrowed then it has encountered a panic - we should just ignore new dispatches
-	})
+	});
 }
 
 fn auto_save_all_documents() {
