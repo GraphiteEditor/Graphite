@@ -22,10 +22,10 @@ use graphene_core::vector::VectorData;
 use graphene_core::{Color, GraphicElement, SurfaceFrame};
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypes};
-use spin::Mutex;
 
 use glam::{DAffine2, DVec2, UVec2};
 use once_cell::sync::Lazy;
+use spin::Mutex;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
 

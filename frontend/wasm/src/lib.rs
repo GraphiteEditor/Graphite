@@ -38,11 +38,8 @@ pub fn init_graphite() {
 /// When a panic occurs, notify the user and log the error to the JS console before the backend dies
 pub fn panic_hook(info: &panic::PanicInfo) {
 	let info = info.to_string();
-	let e = Error::new("stack");
-	let stack = e.stack();
-	let backtrace = stack.to_string();
-	// error!("{:?}", backtrace);
-	if backtrace.to_string().contains("DynAnyNode") {
+	let backtrace = Error::new("stack").stack().to_string();
+	if backtrace.contains("DynAnyNode") {
 		log::error!("Node graph evaluation panicked {info}");
 
 		// When the graph panics, the node runtime lock may not be released properly
@@ -71,7 +68,7 @@ pub fn panic_hook(info: &panic::PanicInfo) {
 		EDITOR_HAS_CRASHED.store(true, Ordering::SeqCst);
 	}
 
-	error!("{info}");
+	log::error!("{info}");
 
 	EDITOR_HANDLE.with(|editor_handle| {
 		let mut guard = editor_handle.lock();

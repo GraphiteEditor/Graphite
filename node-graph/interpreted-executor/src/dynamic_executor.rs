@@ -107,15 +107,17 @@ impl<'a, I: StaticType + 'static + Send + Sync + std::panic::UnwindSafe> Executo
 	fn execute(&self, input: I) -> LocalFuture<Result<TaggedValue, Box<dyn Error>>> {
 		Box::pin(async move {
 			use futures::FutureExt;
+
 			let result = self.tree.eval_tagged_value(self.output, input);
 			let wrapped_result = std::panic::AssertUnwindSafe(result).catch_unwind().await;
+
 			match wrapped_result {
-				Ok(result) => return result.map_err(|e| e.into()),
+				Ok(result) => result.map_err(|e| e.into()),
 				Err(e) => {
 					Box::leak(e);
-					return Err("Node graph execution paniced".into());
+					Err("Node graph execution paniced".into())
 				}
-			};
+			}
 		})
 	}
 }

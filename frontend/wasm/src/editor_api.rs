@@ -898,9 +898,7 @@ fn set_timeout(f: &Closure<dyn FnMut()>, delay: Duration) {
 fn editor<T>(callback: impl FnOnce(&mut editor::application::Editor) -> T) -> T {
 	EDITOR.with(|editor| {
 		let mut guard = editor.lock();
-		let Ok(Some(ref mut editor)) = guard.as_deref_mut() else {
-			panic!("Failed to borrow the editor");
-		};
+		let Ok(Some(ref mut editor)) = guard.as_deref_mut() else { panic!("Failed to borrow the editor") };
 
 		callback(editor)
 	})
