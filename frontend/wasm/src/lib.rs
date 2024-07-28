@@ -95,7 +95,8 @@ impl log::Log for WasmLog {
 
 		let file = record.file().unwrap_or_else(|| record.target());
 		let line = record.line().map_or_else(|| "[Unknown]".to_string(), |line| line.to_string());
-		let msg = &format!("%c{} {file}:{line} \n{}%c", name, record.args());
+		let args = record.args();
+		let msg = &format!("%c{name}\t{file}:{line}\n{args}"); // The %c is replaced by the message color
 		log(msg, color)
 	}
 

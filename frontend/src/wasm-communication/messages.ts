@@ -812,6 +812,7 @@ export class CheckboxInput extends WidgetProps {
 
 export class ColorButton extends WidgetProps {
 	@Transform(({ value }) => {
+		if (value instanceof Gradient) return value;
 		const gradient = value["Gradient"];
 		if (gradient) {
 			const stops = gradient.map(([position, color]: [number, color: { red: number; green: number; blue: number; alpha: number }]) => ({
@@ -821,6 +822,7 @@ export class ColorButton extends WidgetProps {
 			return new Gradient(stops);
 		}
 
+		if (value instanceof Color) return value;
 		const solid = value["Solid"];
 		if (solid) {
 			return new Color(solid.red, solid.green, solid.blue, solid.alpha);

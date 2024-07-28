@@ -12,7 +12,7 @@ mod base64_serde {
 
 	use super::super::Pixel;
 	use base64::Engine;
-	use serde::{ser::SerializeTuple, Deserialize, Deserializer, Serialize, Serializer};
+	use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 	pub fn as_base64<S, P: Pixel>(key: &[P], serializer: S) -> Result<S::Ok, S::Error>
 	where
