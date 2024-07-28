@@ -35,6 +35,10 @@ All Q1 2024 commits may be [viewed in this list](https://github.com/GraphiteEdit
 	</p>
 </div>
 
+<!--
+EDITOR'S NOTE: The grammatical structure of each bullet point should follow the form: "Check out our new... [Bullet point description]"
+-->
+
 ## Additions
 
 - *Copy to Points* node improvements, including randomization of scale and rotation with biasing <small>([#1540](https://github.com/GraphiteEditor/Graphite/pull/1540), [#1541](https://github.com/GraphiteEditor/Graphite/pull/1541), [commit ed82c5](https://github.com/GraphiteEditor/Graphite/commit/ed82c5f20fccd66a959334dee33351657968cdb6), [#1592](https://github.com/GraphiteEditor/Graphite/pull/1592), [commit 7e5069](https://github.com/GraphiteEditor/Graphite/commit/7e5069f638cfcc3e7af21f32eded67a005490402))</small>

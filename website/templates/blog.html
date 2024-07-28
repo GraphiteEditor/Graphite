@@ -21,7 +21,7 @@
 			</div>
 			<span class="publication">By {{ page.extra.author }}. {{ page.date | date(format = "%B %d, %Y", timezone = "America/Los_Angeles") }}.</span>
 			<div class="summary">
-				<div>{{ page.summary | safe }}</div>
+				<p>{{ page.summary | striptags | safe }}</p>
 			</div>
 			<div class="keep-reading">
 				<a href="{{ page.path | safe }}" class="link arrow">Keep Reading</a>

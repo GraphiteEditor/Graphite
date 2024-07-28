@@ -99,6 +99,7 @@
 				flex-direction: column;
 				gap: 20px;
 				text-align: justify;
+				text-justify: inter-character; // Only supported in Firefox
 				-webkit-hyphens: auto;
 				hyphens: auto;
 				overflow: hidden;
