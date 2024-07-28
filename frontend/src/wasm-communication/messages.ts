@@ -649,6 +649,8 @@ export class TriggerCopyToClipboardBlobUrl extends JsMessage {
 	readonly blobUrl!: string;
 }
 
+export class TriggerDelayedZoomCanvasToFitAll extends JsMessage {}
+
 export class TriggerDownloadBlobUrl extends JsMessage {
 	readonly layerName!: string;
 
@@ -671,8 +673,6 @@ export class TriggerDownloadTextFile extends JsMessage {
 
 	readonly name!: string;
 }
-
-export class TriggerRefreshBoundsOfViewports extends JsMessage {}
 
 export class TriggerRevokeBlobUrl extends JsMessage {
 	readonly url!: string;
@@ -781,8 +781,6 @@ export class TriggerTextCopy extends JsMessage {
 export class TriggerAboutGraphiteLocalizedCommitDate extends JsMessage {
 	readonly commitDate!: string;
 }
-
-export class TriggerViewportResize extends JsMessage {}
 
 // TODO: Eventually remove this (probably starting late 2024)
 export class TriggerUpgradeDocumentToVectorManipulationFormat extends JsMessage {
@@ -1428,6 +1426,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayRemoveEditableTextbox,
 	TriggerAboutGraphiteLocalizedCommitDate,
 	TriggerCopyToClipboardBlobUrl,
+	TriggerDelayedZoomCanvasToFitAll,
 	TriggerFetchAndOpenDocument,
 	TriggerDownloadBlobUrl,
 	TriggerDownloadImage,
@@ -1441,13 +1440,11 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerLoadPreferences,
 	TriggerOpenDocument,
 	TriggerPaste,
-	TriggerRefreshBoundsOfViewports,
 	TriggerRevokeBlobUrl,
 	TriggerSavePreferences,
 	TriggerTextCommit,
 	TriggerTextCopy,
 	TriggerUpgradeDocumentToVectorManipulationFormat,
-	TriggerViewportResize,
 	TriggerVisitLink,
 	UpdateActiveDocument,
 	UpdateBox,

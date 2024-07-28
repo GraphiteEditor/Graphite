@@ -342,6 +342,13 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Zoom the canvas to fit all content
+	#[wasm_bindgen(js_name = zoomCanvasToFitAll)]
+	pub fn zoom_canvas_to_fit_all(&self) {
+		let message = DocumentMessage::ZoomCanvasToFitAll;
+		self.dispatch(message);
+	}
+
 	/// Mouse movement within the screenspace bounds of the viewport
 	#[wasm_bindgen(js_name = onMouseMove)]
 	pub fn on_mouse_move(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {

@@ -64,7 +64,7 @@ impl SnapConstraint {
 	}
 }
 pub fn snap_tolerance(document: &DocumentMessageHandler) -> f64 {
-	document.snapping_state.tolerance / document.document_ptz.zoom
+	document.snapping_state.tolerance / document.document_ptz.zoom()
 }
 
 fn compare_points(a: &&SnappedPoint, b: &&SnappedPoint) -> Ordering {

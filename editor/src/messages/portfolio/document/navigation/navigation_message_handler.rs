@@ -50,7 +50,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 		} else {
 			node_graph_ptz.entry(node_graph_handler.network.clone()).or_insert(PTZ::default())
 		};
-		let old_zoom = ptz.zoom;
+		let old_zoom = ptz.zoom();
 
 		match message {
 			NavigationMessage::BeginCanvasPan => {
@@ -110,8 +110,8 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				});
 
 				self.navigation_operation = NavigationOperation::Zoom {
-					zoom_raw_not_snapped: ptz.zoom,
-					zoom_original_for_abort: ptz.zoom,
+					zoom_raw_not_snapped: ptz.zoom(),
+					zoom_original_for_abort: ptz.zoom(),
 					snap: false,
 				};
 				self.mouse_position = ipp.mouse.position;
@@ -145,7 +145,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 			}
 			NavigationMessage::CanvasTiltResetAndZoomTo100Percent => {
 				ptz.tilt = 0.;
-				ptz.zoom = 1.;
+				ptz.set_zoom(1.);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
 			}
@@ -154,16 +154,16 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
 			}
 			NavigationMessage::CanvasZoomDecrease { center_on_mouse } => {
-				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().rev().find(|scale| **scale < ptz.zoom).unwrap_or(&ptz.zoom);
+				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().rev().find(|scale| **scale < ptz.zoom()).unwrap_or(&ptz.zoom());
 				if center_on_mouse {
-					responses.add(self.center_zoom(ipp.viewport_bounds.size(), new_scale / ptz.zoom, ipp.mouse.position));
+					responses.add(self.center_zoom(ipp.viewport_bounds.size(), new_scale / ptz.zoom(), ipp.mouse.position));
 				}
 				responses.add(NavigationMessage::CanvasZoomSet { zoom_factor: new_scale });
 			}
 			NavigationMessage::CanvasZoomIncrease { center_on_mouse } => {
-				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > ptz.zoom).unwrap_or(&ptz.zoom);
+				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > ptz.zoom()).unwrap_or(&ptz.zoom());
 				if center_on_mouse {
-					responses.add(self.center_zoom(ipp.viewport_bounds.size(), new_scale / ptz.zoom, ipp.mouse.position));
+					responses.add(self.center_zoom(ipp.viewport_bounds.size(), new_scale / ptz.zoom(), ipp.mouse.position));
 				}
 				responses.add(NavigationMessage::CanvasZoomSet { zoom_factor: new_scale });
 			}
@@ -179,10 +179,12 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				} else {
 					node_graph_handler.graph_bounds_viewport_space(*node_graph_to_viewport)
 				};
-				zoom_factor *= Self::clamp_zoom(ptz.zoom * zoom_factor, document_bounds, old_zoom, ipp);
+				zoom_factor *= Self::clamp_zoom(ptz.zoom() * zoom_factor, document_bounds, old_zoom, ipp);
 
 				responses.add(self.center_zoom(ipp.viewport_bounds.size(), zoom_factor, ipp.mouse.position));
-				responses.add(NavigationMessage::CanvasZoomSet { zoom_factor: ptz.zoom * zoom_factor });
+				responses.add(NavigationMessage::CanvasZoomSet {
+					zoom_factor: ptz.zoom() * zoom_factor,
+				});
 			}
 			NavigationMessage::CanvasZoomSet { zoom_factor } => {
 				let document_bounds = if !graph_view_overlay_open {
@@ -191,8 +193,9 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				} else {
 					node_graph_handler.graph_bounds_viewport_space(*node_graph_to_viewport)
 				};
-				ptz.zoom = zoom_factor.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
-				ptz.zoom *= Self::clamp_zoom(ptz.zoom, document_bounds, old_zoom, ipp);
+				let zoom = zoom_factor.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
+				let zoom = zoom * Self::clamp_zoom(zoom, document_bounds, old_zoom, ipp);
+				ptz.set_zoom(zoom);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
 			}
@@ -208,7 +211,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 							ptz.pan = pan_original_for_abort;
 						}
 						NavigationOperation::Zoom { zoom_original_for_abort, .. } => {
-							ptz.zoom = zoom_original_for_abort;
+							ptz.set_zoom(zoom_original_for_abort);
 						}
 					}
 
@@ -217,7 +220,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 
 				// Final chance to apply snapping if the key was pressed during this final frame
 				ptz.tilt = self.snapped_tilt(ptz.tilt);
-				ptz.zoom = self.snapped_zoom(ptz.zoom);
+				ptz.set_zoom(self.snapped_zoom(ptz.zoom()));
 
 				// Reset the navigation operation now that it's done
 				self.navigation_operation = NavigationOperation::None;
@@ -238,19 +241,18 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				bounds: [pos1, pos2],
 				prevent_zoom_past_100,
 			} => {
-				let v1 = if !graph_view_overlay_open {
-					metadata.document_to_viewport.inverse().transform_point2(DVec2::ZERO)
-				} else {
-					node_graph_to_viewport.inverse().transform_point2(DVec2::ZERO)
-				};
-				let v2 = if !graph_view_overlay_open {
-					metadata.document_to_viewport.inverse().transform_point2(ipp.viewport_bounds.size())
-				} else {
-					node_graph_to_viewport.inverse().transform_point2(ipp.viewport_bounds.size())
-				};
+				let (pos1, pos2) = (pos1.min(pos2), pos1.max(pos2));
+				let diagonal = pos2 - pos1;
 
-				let center = ((v1 + v2) - (pos1 + pos2)) / 2.;
-				let size = 1. / ((pos2 - pos1) / (v2 - v1));
+				if diagonal.length() < f64::EPSILON * 1000. || ipp.viewport_bounds.size() == DVec2::ZERO {
+					return;
+				}
+
+				let transform = (if graph_view_overlay_open { *node_graph_to_viewport } else { metadata.document_to_viewport }).inverse();
+				let (v1, v2) = (transform.transform_point2(DVec2::ZERO), transform.transform_point2(ipp.viewport_bounds.size()));
+
+				let center = ((v2 + v1) - (pos2 + pos1)) / 2.;
+				let size = (v2 - v1) / diagonal;
 				let new_scale = size.min_element();
 
 				let viewport_change = if !graph_view_overlay_open {
@@ -264,12 +266,12 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 					ptz.pan += center;
 				}
 
-				ptz.zoom *= new_scale * VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR;
+				ptz.set_zoom(ptz.zoom() * new_scale * VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR);
 
 				// Keep the canvas filling less than the full available viewport bounds if requested.
 				// And if the zoom is close to the full viewport bounds, we ignore the padding because 100% is preferrable if it still fits.
-				if prevent_zoom_past_100 && ptz.zoom > VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR {
-					ptz.zoom = 1.;
+				if prevent_zoom_past_100 && ptz.zoom() > VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR {
+					ptz.set_zoom(1.);
 				}
 
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
@@ -339,7 +341,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 
 							updated_zoom * Self::clamp_zoom(updated_zoom, document_bounds, old_zoom, ipp)
 						};
-						ptz.zoom = self.snapped_zoom(zoom_raw_not_snapped);
+						ptz.set_zoom(self.snapped_zoom(zoom_raw_not_snapped));
 
 						let snap = ipp.keyboard.get(snap as usize);
 
@@ -349,7 +351,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 							snap,
 						};
 
-						responses.add(NavigationMessage::CanvasZoomSet { zoom_factor: ptz.zoom });
+						responses.add(NavigationMessage::CanvasZoomSet { zoom_factor: ptz.zoom() });
 					}
 				}
 
@@ -427,7 +429,7 @@ impl NavigationMessageHandler {
 	}
 
 	fn create_document_transform(&self, viewport_center: DVec2, ptz: &PTZ, responses: &mut VecDeque<Message>) {
-		let transform = self.calculate_offset_transform(viewport_center, ptz.pan, ptz.tilt, ptz.zoom);
+		let transform = self.calculate_offset_transform(viewport_center, ptz.pan, ptz.tilt, ptz.zoom());
 		responses.add(DocumentMessage::UpdateDocumentTransform { transform });
 	}
 

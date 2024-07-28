@@ -119,7 +119,7 @@ impl Dispatcher {
 				}
 				Message::Frontend(message) => {
 					// Handle these messages immediately by returning early
-					if let FrontendMessage::TriggerFontLoad { .. } | FrontendMessage::TriggerRefreshBoundsOfViewports = message {
+					if let FrontendMessage::TriggerFontLoad { .. } = message {
 						self.responses.push(message);
 						self.cleanup_queues(false);
 

@@ -4,7 +4,7 @@ use crate::messages::prelude::*;
 use graph_craft::document::NodeId;
 use graphene_core::uuid::generate_uuid;
 
-use glam::{DVec2, IVec2, UVec2};
+use glam::{IVec2, UVec2};
 
 /// A dialog to allow users to set some initial options about a new document.
 #[derive(Debug, Clone, Default)]
@@ -26,16 +26,13 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 
 				let create_artboard = !self.infinite && self.dimensions.x > 0 && self.dimensions.y > 0;
 				if create_artboard {
-					let id = NodeId(generate_uuid());
 					responses.add(GraphOperationMessage::NewArtboard {
-						id,
+						id: NodeId(generate_uuid()),
 						artboard: graphene_core::Artboard::new(IVec2::ZERO, self.dimensions.as_ivec2()),
 					});
-					responses.add(NavigationMessage::FitViewportToBounds {
-						bounds: [DVec2::ZERO, self.dimensions.as_dvec2()],
-						prevent_zoom_past_100: true,
-					});
+					responses.add(FrontendMessage::TriggerDelayedZoomCanvasToFitAll);
 				}
+
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 			}

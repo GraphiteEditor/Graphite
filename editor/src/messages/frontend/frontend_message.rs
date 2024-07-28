@@ -46,6 +46,7 @@ pub enum FrontendMessage {
 		#[serde(rename = "blobUrl")]
 		blob_url: String,
 	},
+	TriggerDelayedZoomCanvasToFitAll,
 	TriggerDownloadBlobUrl {
 		#[serde(rename = "layerName")]
 		layer_name: String,
@@ -87,7 +88,6 @@ pub enum FrontendMessage {
 	TriggerLoadPreferences,
 	TriggerOpenDocument,
 	TriggerPaste,
-	TriggerRefreshBoundsOfViewports,
 	TriggerRevokeBlobUrl {
 		url: String,
 	},
@@ -112,7 +112,6 @@ pub enum FrontendMessage {
 		#[serde(rename = "documentSerializedContent")]
 		document_serialized_content: String,
 	},
-	TriggerViewportResize,
 	TriggerVisitLink {
 		url: String,
 	},

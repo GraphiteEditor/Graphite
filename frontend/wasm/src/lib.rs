@@ -93,11 +93,17 @@ impl log::Log for WasmLog {
 			log::Level::Error => (error, "error", "color:red"),
 		};
 
-		let file = record.file().unwrap_or_else(|| record.target());
-		let line = record.line().map_or_else(|| "[Unknown]".to_string(), |line| line.to_string());
-		let args = record.args();
-		let msg = &format!("%c{name}\t{file}:{line}\n{args}"); // The %c is replaced by the message color
-		log(msg, color)
+		// The %c is replaced by the message color
+		if record.level() == log::Level::Info {
+			// We don't print the file name and line number for info-level logs because it's used for printing the message system logs
+			log(&format!("%c{}\t{}", name, record.args()), color);
+		} else {
+			let file = record.file().unwrap_or_else(|| record.target());
+			let line = record.line().map_or_else(|| "[Unknown]".to_string(), |line| line.to_string());
+			let args = record.args();
+
+			log(&format!("%c{name}\t{file}:{line}\n{args}"), color);
+		}
 	}
 
 	fn flush(&self) {}

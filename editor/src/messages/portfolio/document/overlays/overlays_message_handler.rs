@@ -24,7 +24,13 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 				use super::utility_types::OverlayContext;
 				use wasm_bindgen::JsCast;
 
-				let canvas = self.canvas.get_or_insert_with(|| overlay_canvas_element().expect("Failed to get canvas element"));
+				let canvas = match &self.canvas {
+					Some(canvas) => canvas,
+					None => {
+						let Some(new_canvas) = overlay_canvas_element() else { return };
+						self.canvas.get_or_insert(new_canvas)
+					}
+				};
 
 				let context = self.context.get_or_insert_with(|| {
 					let context = canvas.get_context("2d").ok().flatten().expect("Failed to get canvas context");

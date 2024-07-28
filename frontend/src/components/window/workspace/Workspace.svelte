@@ -78,8 +78,6 @@
 
 			panelSizes[nextSiblingName] = ((nextSiblingSize + mouseDelta) / totalResizingSpaceOccupied) * proportionBeingResized * 100;
 			panelSizes[prevSiblingName] = ((prevSiblingSize - mouseDelta) / totalResizingSpaceOccupied) * proportionBeingResized * 100;
-
-			window.dispatchEvent(new CustomEvent("resize"));
 		};
 
 		const cleanup = (e: PointerEvent) => {
