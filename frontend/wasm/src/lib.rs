@@ -54,8 +54,8 @@ pub fn panic_hook(info: &panic::PanicInfo) {
 				<rect x="50%" y="50%" width="600" height="100" transform="translate(-300 -50)" rx="4" fill="var(--color-error-red)" />
 				<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="18" fill="var(--color-2-mildblack)">
 					<tspan x="50%" dy="-24" font-weight="bold">The document crashed while being rendered in its current state.</tspan>
-					<tspan x="50%" dy="24">Undo your last action to restore the artwork. However, the editor is now</tspan>
-					<tspan x="50%" dy="24">unstable! Save your document then restart the editor before continuing.</tspan>
+					<tspan x="50%" dy="24">The editor is now unstable! Undo your last action to restore the artwork,</tspan>
+					<tspan x="50%" dy="24">then save your document and restart the editor before continuing work.</tspan>
 				/text>"#
 				// It's a mystery why the `/text>` tag above needs to be missing its `<`, but when it exists it prints the `<` character in the text. However this works with it removed.
 				.to_string();
