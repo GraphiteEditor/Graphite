@@ -376,6 +376,7 @@
 					class="layer"
 					classes={{
 						selected: fakeHighlight !== undefined ? fakeHighlight === listing.entry.id : listing.entry.selected,
+						inSelectedNetwork: listing.entry.inSelectedNetwork,
 						"insert-folder": (draggingData?.highlightFolder || false) && draggingData?.insertParentId === listing.entry.id,
 					}}
 					styles={{ "--layer-indent-levels": `${listing.entry.depth - 1}` }}
@@ -497,6 +498,24 @@
 				margin: 0 4px;
 				padding-left: calc(var(--layer-indent-levels) * 16px);
 
+				// Inset border
+				// &.selected {
+				// 	//background: #404040;
+				// 	background: var(--color-4-dimgray);
+				// 	&.inSelectedNetwork {
+				// 		box-shadow: inset 0 0 1px 1px rgba(255, 255, 255, 0.1);
+				// 	}
+				// }
+
+				// Dimming
+				// &.selected {
+				// 	background: #404040;
+				// 	&.inSelectedNetwork {
+				// 		background: var(--color-4-dimgray);
+				// 	}
+				// }
+
+				// Previous
 				&.selected {
 					background: var(--color-4-dimgray);
 				}

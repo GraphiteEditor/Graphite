@@ -352,7 +352,6 @@ impl SelectToolData {
 				layer,
 				parent,
 				insert_index,
-				skip_rerender: true,
 			});
 		}
 		let nodes = new_dragging.iter().map(|layer| layer.to_node()).collect();

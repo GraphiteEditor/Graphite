@@ -620,8 +620,8 @@ impl NodeGraphExecutor {
 						return Err("Node graph evaluation failed".to_string());
 					};
 
-					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors });
+					responses.add(NodeGraphMessage::SendGraph);
 				}
 				NodeGraphUpdate::NodeGraphUpdateMessage(NodeGraphUpdateMessage::ImaginateStatusUpdate) => {
 					responses.add(DocumentMessage::PropertiesPanel(PropertiesPanelMessage::Refresh));

@@ -538,7 +538,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							layer,
 							parent,
 							insert_index,
-							skip_rerender: true,
 						});
 					}
 				};
@@ -567,7 +566,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 								layer,
 								parent,
 								insert_index: 0,
-								skip_rerender: true,
 							});
 						}
 						responses.add(NodeGraphMessage::RunDocumentGraph);

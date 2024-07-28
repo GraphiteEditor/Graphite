@@ -843,6 +843,8 @@ export class LayerPanelEntry {
 	parentId!: bigint | undefined;
 
 	selected!: boolean;
+
+	inSelectedNetwork!: boolean;
 }
 
 export class DisplayDialogDismiss extends JsMessage {}

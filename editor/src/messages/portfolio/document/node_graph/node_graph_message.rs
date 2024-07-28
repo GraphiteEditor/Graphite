@@ -60,7 +60,6 @@ pub enum NodeGraphMessage {
 		layer: LayerNodeIdentifier,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
-		skip_rerender: bool,
 	},
 	PasteNodes {
 		serialized_nodes: String,
@@ -147,6 +146,7 @@ pub enum NodeGraphMessage {
 	},
 	UpdateEdges,
 	UpdateBoxSelection,
+	UpdateLayerPanel,
 	UpdateNewNodeGraph,
 	UpdateTypes {
 		#[serde(skip)]

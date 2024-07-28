@@ -102,6 +102,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						new_layer: selected_layers.first().cloned(),
 					});
 				}
+				responses.add(NodeGraphMessage::UpdateLayerPanel);
 				responses.add(NodeGraphMessage::SendSelectedNodes);
 				responses.add(ArtboardToolMessage::UpdateSelectedArtboard);
 				responses.add(DocumentMessage::DocumentStructureChanged);
@@ -114,14 +115,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				}
 				network_interface.create_wire(&output_connector, &input_connector, selection_network_path);
-				if let OutputConnector::Node { node_id, .. } = output_connector {
-					if network_interface.connected_to_output(&node_id, selection_network_path) {
-						responses.add(NodeGraphMessage::RunDocumentGraph);
-					}
-				} else {
-					// Creating wire to export node, always run graph
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-				}
 			}
 			NodeGraphMessage::Copy => {
 				let all_selected_nodes = network_interface.get_upstream_chain_nodes(selection_network_path);
@@ -197,14 +190,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							output_connector: output_connector.clone(),
 							input_connector: InputConnector::node(node_id, input_index),
 						});
-						if let OutputConnector::Node { node_id, .. } = output_connector {
-							if network_interface.connected_to_output(&node_id, selection_network_path) {
-								responses.add(NodeGraphMessage::RunDocumentGraph);
-							}
-						} else {
-							// Creating wire to export node, always run graph
-							responses.add(NodeGraphMessage::RunDocumentGraph);
-						}
+
+						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 
 					self.wire_in_progress_from_connector = None;
@@ -245,14 +232,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::DisconnectInput { input_connector } => {
 				network_interface.disconnect_input(&input_connector, selection_network_path);
-				if let InputConnector::Node { node_id, .. } = input_connector {
-					if network_interface.connected_to_output(&node_id, selection_network_path) {
-						responses.add(NodeGraphMessage::RunDocumentGraph);
-					}
-				} else {
-					// Disconnecting export node, always run graph
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-				}
 			}
 			NodeGraphMessage::DuplicateSelectedNodes => {
 				let all_selected_nodes = network_interface.get_upstream_chain_nodes(selection_network_path);
@@ -324,16 +303,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			} => {
 				network_interface.insert_node_between(&node_id, &input_connector, insert_node_input_index, selection_network_path);
 			}
-			NodeGraphMessage::MoveLayerToStack {
-				layer,
-				parent,
-				insert_index,
-				skip_rerender,
-			} => {
+			NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index } => {
 				network_interface.move_layer_to_stack(layer, parent, insert_index, selection_network_path);
-				if !skip_rerender {
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-				}
 			}
 			NodeGraphMessage::PasteNodes { serialized_nodes } => {
 				let data = match serde_json::from_str::<Vec<(NodeId, NodeTemplate)>>(&serialized_nodes) {
@@ -594,6 +565,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 								input_connector: disconnecting.clone(),
 							});
 							// Update the front end that the node is disconnected
+							responses.add(NodeGraphMessage::RunDocumentGraph);
 							responses.add(NodeGraphMessage::SendGraph);
 							self.disconnecting = None;
 						}
@@ -706,14 +678,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							input_connector: input_connector.clone(),
 							output_connector: output_connector.clone(),
 						});
-						if let OutputConnector::Node { node_id, .. } = output_connector {
-							if network_interface.connected_to_output(node_id, selection_network_path) {
-								responses.add(NodeGraphMessage::RunDocumentGraph);
-							}
-						} else {
-							// Creating wire to export, always run graph
-							responses.add(NodeGraphMessage::RunDocumentGraph);
-						}
+
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+
 						responses.add(NodeGraphMessage::SendGraph);
 					} else if output_connector.is_some() && input_connector.is_none() && !self.initial_disconnecting {
 						// If the add node menu is already open, we don't want to open it again
@@ -846,15 +813,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 											insert_node_input_index: selected_node_input_index,
 										});
 
-										if let InputConnector::Node { node_id, .. } = &overlapping_wire.wire_end {
-											// TODO: This is false when inserting a chain onto a wire
-											if network_interface.connected_to_output(node_id, selection_network_path) {
-												responses.add(NodeGraphMessage::RunDocumentGraph);
-											}
-										} else {
-											// Creating wire to export node, always run graph
-											responses.add(NodeGraphMessage::RunDocumentGraph);
-										}
+										responses.add(NodeGraphMessage::RunDocumentGraph);
+
 										responses.add(NodeGraphMessage::SendGraph);
 									}
 								}
@@ -955,7 +915,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(DocumentMessage::DocumentStructureChanged);
 					responses.add(PropertiesPanelMessage::Refresh);
 
-					Self::update_layer_panel(network_interface, collapsed, responses);
+					responses.add(NodeGraphMessage::UpdateLayerPanel);
 
 					if graph_view_overlay_open {
 						let wires = Self::collect_wires(network_interface, breadcrumb_network_path);
@@ -1189,6 +1149,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 					responses.add(FrontendMessage::UpdateBox { box_selection })
 				}
+			}
+			NodeGraphMessage::UpdateLayerPanel => {
+				Self::update_layer_panel(network_interface, selection_network_path, collapsed, responses);
 			}
 			NodeGraphMessage::UpdateEdges => {
 				// Update the import/export UI edges whenever the PTZ changes or the bounding box of all nodes changes
@@ -1826,7 +1789,7 @@ impl NodeGraphMessageHandler {
 		Some(subgraph_names)
 	}
 
-	fn update_layer_panel(network_interface: &NodeNetworkInterface, collapsed: &CollapsedLayers, responses: &mut VecDeque<Message>) {
+	fn update_layer_panel(network_interface: &NodeNetworkInterface, selection_network_path: &[NodeId], collapsed: &CollapsedLayers, responses: &mut VecDeque<Message>) {
 		let Some(selected_nodes) = network_interface.selected_nodes(&[]) else {
 			log::error!("Could not get selected layers in update_layer_panel");
 			return;
@@ -1878,6 +1841,7 @@ impl NodeGraphMessageHandler {
 					unlocked: !network_interface.is_locked(&node_id, &[]),
 					parents_unlocked,
 					selected: selected_layers.contains(&node_id),
+					in_selected_network: selection_network_path.is_empty(),
 				};
 				responses.add(FrontendMessage::UpdateDocumentLayerDetails { data });
 			}

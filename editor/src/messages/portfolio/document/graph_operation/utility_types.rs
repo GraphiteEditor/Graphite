@@ -91,7 +91,7 @@ impl<'a> ModifyInputsContext<'a> {
 				// Input as a sibling to the Layer node above
 				post_node_input_connector = InputConnector::node(*next_node_in_stack_id, 0);
 			} else {
-				log::error!("Error creating layer: insert_index out of bounds");
+				log::error!("Error getting post node: insert_index out of bounds");
 				break;
 			};
 		}

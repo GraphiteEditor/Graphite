@@ -306,7 +306,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					layer: new_group_folder,
 					parent,
 					insert_index,
-					skip_rerender: true,
 				});
 
 				// Move all shallowest selected layers as children
@@ -447,19 +446,20 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				};
 				let insert_index = DocumentMessageHandler::get_calculated_insert_index(&self.metadata(), &self.network_interface.selected_nodes(&[]).unwrap(), parent);
 
-				let folder_id = NodeId(generate_uuid());
+				let node_id = NodeId(generate_uuid());
 				let new_group_node = super::node_graph::document_node_types::resolve_document_node_type("Merge")
 					.expect("Failed to create merge node")
 					.default_node_template();
-				self.network_interface.insert_node(folder_id, &[], new_group_node);
-				let new_group_folder = LayerNodeIdentifier::new(folder_id, &self.network_interface);
-
+				responses.add(NodeGraphMessage::InsertNode {
+					node_id,
+					node_template: new_group_node,
+				});
+				let new_group_folder = LayerNodeIdentifier::new(node_id, &self.network_interface);
 				// Move the new folder to the correct position
 				responses.add(NodeGraphMessage::MoveLayerToStack {
 					layer: new_group_folder,
 					parent,
 					insert_index,
-					skip_rerender: true,
 				});
 
 				responses.add(DocumentMessage::MoveSelectedLayersToGroup { parent: new_group_folder });
@@ -553,7 +553,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						layer: layer_to_move,
 						parent,
 						insert_index,
-						skip_rerender: true,
 					});
 				}
 
@@ -570,7 +569,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						layer: layer_to_group,
 						parent,
 						insert_index,
-						skip_rerender: true,
 					});
 				}
 
@@ -862,6 +860,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					_ => {}
 				}
 				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(NodeGraphMessage::UpdateLayerPanel);
 			}
 			DocumentMessage::SetBlendModeForSelectedLayers { blend_mode } => {
 				for layer in self.network_interface.selected_nodes(&[]).unwrap().selected_layers_except_artboards(&self.network_interface) {
@@ -1009,7 +1008,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 							layer: child,
 							parent,
 							insert_index: folder_index,
-							skip_rerender: true,
 						});
 					}
 
@@ -1068,7 +1066,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::ZoomCanvasToFitAll => {
 				let bounds = if self.graph_view_overlay_open {
-					self.network_interface.graph_bounds_viewport_space(&self.breadcrumb_network_path)
+					//self.network_interface.graph_bounds_viewport_space(&self.breadcrumb_network_path)
+					self.network_interface.get_all_nodes_bounding_box(&self.breadcrumb_network_path).cloned()
 				} else {
 					self.network_interface.document_bounds_document_space(true)
 				};

@@ -124,10 +124,10 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					log::error!("Artboard not created");
 					return;
 				};
-				let primary_input = artboard.inputs.get(0).expect("Artboard should have a primary input").clone();
+				let primary_input = artboard.inputs.first().expect("Artboard should have a primary input").clone();
 				if let NodeInput::Node { node_id, .. } = &primary_input {
-					if network_interface.is_layer(node_id, &[]) {
-						network_interface.move_layer_to_stack(LayerNodeIdentifier::new(*node_id, &network_interface), artboard_layer, 0, &[]);
+					if network_interface.is_layer(node_id, &[]) && !network_interface.is_artboard(node_id, &[]) {
+						network_interface.move_layer_to_stack(LayerNodeIdentifier::new(*node_id, network_interface), artboard_layer, 0, &[]);
 					} else {
 						network_interface.disconnect_input(&InputConnector::node(artboard_layer.to_node(), 0), &[]);
 						network_interface.set_input(&InputConnector::node(id, 0), primary_input, &[]);
@@ -163,12 +163,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					});
 				}
 				// Move the layer and all nodes to the correct position in the network
-				responses.add(NodeGraphMessage::MoveLayerToStack {
-					layer,
-					parent,
-					insert_index,
-					skip_rerender: false,
-				})
+				responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
