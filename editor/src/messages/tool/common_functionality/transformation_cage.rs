@@ -227,7 +227,7 @@ pub fn snap_drag(start: DVec2, current: DVec2, axis_align: bool, snap_data: Snap
 	let mut offset = mouse_delta_document;
 	let mut best_snap = SnappedPoint::infinite_snap(document.metadata.document_to_viewport.inverse().transform_point2(mouse_position));
 
-	let bbox = Rect::point_iter(candidates.iter().map(|candidate| candidate.document_point));
+	let bbox = Rect::point_iter(candidates.iter().map(|candidate| candidate.document_point + total_mouse_delta_document));
 
 	for point in candidates {
 		let mut point = point.clone();

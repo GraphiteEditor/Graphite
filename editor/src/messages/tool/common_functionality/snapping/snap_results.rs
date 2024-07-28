@@ -1,9 +1,15 @@
+use std::collections::VecDeque;
+
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::misc::{SnapSource, SnapTarget};
+use crate::messages::portfolio::document::utility_types::misc::{DistributionSnapTarget, SnapSource, SnapTarget};
+use crate::messages::tool::common_functionality::snapping::SnapCandidatePoint;
 use bezier_rs::Bezier;
 use glam::DVec2;
 use graphene_core::renderer::Quad;
 use graphene_core::vector::PointId;
+use graphene_std::renderer::Rect;
+
+use super::DistributionMatch;
 
 #[derive(Clone, Debug, Default)]
 pub struct SnapResults {
@@ -24,6 +30,8 @@ pub struct SnappedPoint {
 	pub curves: [Option<Bezier>; 2],
 	pub distance: f64,
 	pub tolerance: f64,
+	pub distribution_boxes: VecDeque<Rect>,
+	pub distribution_equal_distance: Option<f64>,
 	pub distance_to_align_target: f64, // If aligning so that the top is aligned but the X pos is 200 from the target, this is 200.
 	pub alignment_target: Option<DVec2>,
 	pub alignment_target_intersect: Option<DVec2>,
@@ -43,6 +51,20 @@ impl SnappedPoint {
 		Self {
 			snapped_point_document,
 			source,
+			..Default::default()
+		}
+	}
+	pub fn distribute(point: &SnapCandidatePoint, target: DistributionSnapTarget, distribution_boxes: VecDeque<Rect>, distribution_match: DistributionMatch, bounds: Rect, tolerance: f64) -> Self {
+		Self {
+			snapped_point_document: bounds.center(),
+			source: point.source,
+			target: SnapTarget::Distribution(target),
+			distribution_boxes,
+			distribution_equal_distance: Some(distribution_match.equal),
+			distance: (distribution_match.first - distribution_match.equal).abs(),
+			constrained: true,
+			source_bounds: Some(bounds.into()),
+			tolerance,
 			..Default::default()
 		}
 	}

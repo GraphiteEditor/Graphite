@@ -1,12 +1,7 @@
 use super::*;
-use crate::consts::HIDE_HANDLE_DISTANCE;
-use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::*;
-use crate::messages::prelude::*;
-use bezier_rs::{Bezier, Identifier, Subpath, TValue};
 use glam::{DAffine2, DVec2};
 use graphene_core::renderer::Quad;
-use graphene_core::vector::PointId;
 
 #[derive(Clone, Debug, Default)]
 pub struct AlignmentSnapper {
@@ -47,12 +42,10 @@ impl AlignmentSnapper {
 		}
 	}
 
-	pub fn snap_bbox_points(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint, projected: DVec2) {
+	pub fn snap_bbox_points(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint) {
 		self.collect_bounding_box_points(snap_data, point.source_index == 0);
 		// TODO: snap handle points
 		let document = snap_data.document;
-		let normals = document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Normal));
-		let tangents = document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Tangent));
 		let tolerance = snap_tolerance(document);
 
 		let mut consider_x = true;
@@ -149,7 +142,7 @@ impl AlignmentSnapper {
 
 		if is_bbox || (is_geometry && gemoetry_selected) || (is_geometry && point.alignment) {
 			info!("Snapping points");
-			self.snap_bbox_points(snap_data, point, snap_results, SnapConstraint::None, DVec2::ZERO);
+			self.snap_bbox_points(snap_data, point, snap_results, SnapConstraint::None);
 		}
 	}
 
@@ -159,7 +152,7 @@ impl AlignmentSnapper {
 		let gemoetry_selected = !snap_data.manipulators.is_empty();
 
 		if is_bbox || (is_geometry && gemoetry_selected) || (is_geometry && point.alignment) {
-			self.snap_bbox_points(snap_data, point, snap_results, constraint, constraint.projection(point.document_point));
+			self.snap_bbox_points(snap_data, point, snap_results, constraint);
 		}
 	}
 }

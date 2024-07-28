@@ -1,5 +1,7 @@
 use glam::{DAffine2, DVec2};
 
+use super::Quad;
+
 #[derive(Debug, Clone, Default, Copy, PartialEq)]
 /// An axis aligned rect defined by two vertices.
 pub struct Rect(pub [DVec2; 2]);
@@ -79,6 +81,21 @@ impl Rect {
 	pub fn contains(&self, p: DVec2) -> bool {
 		(self[0].x < p.x && p.x < self[1].x) && (self[0].y < p.y && p.y < self[1].y)
 	}
+
+	#[must_use]
+	pub fn min(&self) -> DVec2 {
+		self.0[0].min(self.0[1])
+	}
+
+	#[must_use]
+	pub fn max(&self) -> DVec2 {
+		self.0[0].max(self.0[1])
+	}
+
+	#[must_use]
+	pub fn translate(&self, offset: DVec2) -> Self {
+		Self([self.0[0] + offset, self.0[1] + offset])
+	}
 }
 
 impl core::ops::Mul<Rect> for DAffine2 {
@@ -98,5 +115,11 @@ impl core::ops::Index<usize> for Rect {
 impl core::ops::IndexMut<usize> for Rect {
 	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
 		&mut self.0[index]
+	}
+}
+
+impl Into<Quad> for Rect {
+	fn into(self) -> Quad {
+		Quad::from_box(self.0)
 	}
 }
