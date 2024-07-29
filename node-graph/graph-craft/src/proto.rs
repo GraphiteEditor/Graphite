@@ -160,7 +160,7 @@ impl core::fmt::Display for ProtoNetwork {
 /// Defines the arguments used to construct the boxed node struct. This is used to call the constructor function in the `node_registry.rs` file - which is hidden behind a wall of macros.
 pub enum ConstructionArgs {
 	/// A value of a type that is known, allowing serialization (serde::Deserialize is not object safe)
-	Value(value::TaggedValue),
+	Value(MemoHash<value::TaggedValue>),
 	// TODO: use a struct for clearer naming.
 	/// A list of nodes used as inputs to the constructor function in `node_registry.rs`.
 	/// The bool indicates whether to treat the node as lambda node.
@@ -230,7 +230,7 @@ impl Default for ProtoNode {
 	fn default() -> Self {
 		Self {
 			identifier: ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode"),
-			construction_args: ConstructionArgs::Value(value::TaggedValue::U32(0)),
+			construction_args: ConstructionArgs::Value(value::TaggedValue::U32(0).into()),
 			input: ProtoNodeInput::None,
 			original_location: OriginalLocation::default(),
 			skip_deduplication: false,

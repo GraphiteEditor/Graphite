@@ -3,7 +3,7 @@ use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 
 use dyn_any::{DynAny, StaticType};
 pub use graphene_core::uuid::generate_uuid;
-use graphene_core::{Cow, ProtoNodeIdentifier, Type};
+use graphene_core::{Cow, MemoHash, ProtoNodeIdentifier, Type};
 
 use glam::IVec2;
 use std::collections::hash_map::DefaultHasher;
@@ -442,7 +442,7 @@ pub enum NodeInput {
 	Node { node_id: NodeId, output_index: usize, lambda: bool },
 
 	/// A hardcoded value that can't change after the graph is compiled. Gets converted into a value node during graph compilation.
-	Value { tagged_value: TaggedValue, exposed: bool },
+	Value { tagged_value: MemoHash<TaggedValue>, exposed: bool },
 
 	// TODO: Remove import_type and get type from parent node input
 	/// Input that is provided by the parent network to this document node, instead of from a hardcoded value or another node within the same network.
@@ -478,8 +478,11 @@ impl NodeInput {
 		Self::Node { node_id, output_index, lambda: true }
 	}
 
-	pub const fn value(tagged_value: TaggedValue, exposed: bool) -> Self {
-		Self::Value { tagged_value, exposed }
+	pub fn value(tagged_value: TaggedValue, exposed: bool) -> Self {
+		Self::Value {
+			tagged_value: tagged_value.into(),
+			exposed,
+		}
 	}
 
 	pub const fn network(import_type: Type, import_index: usize) -> Self {

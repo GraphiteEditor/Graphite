@@ -5,7 +5,7 @@ use crate::wasm_application_io::WasmEditorApi;
 
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
-use graphene_core::{Color, Node, Type};
+use graphene_core::{Color, MemoHash, Node, Type};
 
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
@@ -207,17 +207,17 @@ impl Display for TaggedValue {
 }
 
 pub struct UpcastNode {
-	value: TaggedValue,
+	value: MemoHash<TaggedValue>,
 }
 impl<'input> Node<'input, DAny<'input>> for UpcastNode {
 	type Output = FutureAny<'input>;
 
 	fn eval(&'input self, _: DAny<'input>) -> Self::Output {
-		Box::pin(async move { self.value.clone().to_any() })
+		Box::pin(async move { self.value.clone().into_inner().to_any() })
 	}
 }
 impl UpcastNode {
-	pub fn new(value: TaggedValue) -> Self {
+	pub fn new(value: MemoHash<TaggedValue>) -> Self {
 		Self { value }
 	}
 }

@@ -221,7 +221,7 @@ impl BorrowTree {
 
 		match &proto_node.construction_args {
 			ConstructionArgs::Value(value) => {
-				let node = if let TaggedValue::EditorApi(api) = value {
+				let node = if let TaggedValue::EditorApi(api) = &**value {
 					let editor_api = UpcastAsRefNode::new(api.clone());
 					let node = Box::new(editor_api) as TypeErasedBox<'_>;
 					NodeContainer::new(node)
