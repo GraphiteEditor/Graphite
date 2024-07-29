@@ -752,26 +752,14 @@ impl EditorHandle {
 					}
 
 					let empty_vec = Vec::new();
-					let path_data = if let NodeInput::Value {
-						tagged_value: TaggedValue::Subpaths(translation),
-						..
-					} = &inputs[0]
-					{
+					let path_data = if let Some(TaggedValue::Subpaths(translation)) = &inputs[0].as_value() {
 						translation
 					} else {
 						&empty_vec
 					};
 
 					let empty_vec = Vec::new();
-					let colinear_manipulators = if let NodeInput::Value {
-						tagged_value: TaggedValue::PointIds(translation),
-						..
-					} = &inputs[1]
-					{
-						translation
-					} else {
-						&empty_vec
-					};
+					let colinear_manipulators = if let Some(TaggedValue::PointIds(translation)) = &inputs[1].as_value() { translation } else { &empty_vec };
 
 					let mut vector_data = VectorData::from_subpaths(path_data, false);
 					vector_data.colinear_manipulators = colinear_manipulators

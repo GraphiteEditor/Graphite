@@ -46,7 +46,7 @@ impl DocumentInputType {
 		Self { name, data_type, default }
 	}
 
-	pub const fn none() -> Self {
+	pub fn none() -> Self {
 		Self {
 			name: "None",
 			data_type: FrontendGraphDataType::General,

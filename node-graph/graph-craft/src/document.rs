@@ -530,6 +530,13 @@ impl NodeInput {
 			None
 		}
 	}
+	pub fn as_non_exposed_value(&self) -> Option<&TaggedValue> {
+		if let NodeInput::Value { tagged_value, exposed: false } = self {
+			Some(tagged_value)
+		} else {
+			None
+		}
+	}
 
 	pub fn as_node(&self) -> Option<NodeId> {
 		if let NodeInput::Node { node_id, .. } = self {

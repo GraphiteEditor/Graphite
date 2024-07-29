@@ -1,4 +1,4 @@
-use crate::{application_io::Size, Node, WasmNotSend};
+use crate::{Node, WasmNotSend};
 use core::future::Future;
 use core::ops::Deref;
 use std::sync::Mutex;
@@ -172,9 +172,12 @@ impl<T: Hash + serde::Serialize> serde::Serialize for MemoHash<T> {
 
 #[cfg(feature = "std")]
 impl<T: Hash> MemoHash<T> {
-	pub fn new(data: T) -> Self {
-		let hash = Self::calc_hash(&data);
-		Self { hash, value: data }
+	pub fn new(value: T) -> Self {
+		let hash = Self::calc_hash(&value);
+		Self { hash, value }
+	}
+	pub fn new_with_hash(value: T, hash: u64) -> Self {
+		Self { hash, value }
 	}
 
 	fn calc_hash(data: &T) -> u64 {
@@ -213,7 +216,7 @@ impl<T: Hash> core::ops::Deref for MemoHash<T> {
 	}
 }
 
-struct MemoHashGuard<'a, T: Hash> {
+pub struct MemoHashGuard<'a, T: Hash> {
 	inner: &'a mut MemoHash<T>,
 }
 
