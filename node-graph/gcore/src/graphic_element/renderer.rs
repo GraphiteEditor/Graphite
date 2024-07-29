@@ -269,17 +269,18 @@ impl GraphicElementRendered for GraphicGroup {
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2) {
-		let kurbo_transform = kurbo::Affine::new((transform * self.transform).to_cols_array());
-		let Some(bounds) = self.bounding_box(DAffine2::IDENTITY) else { return };
+		let child_transform = transform * self.transform;
+
+		let Some(bounds) = self.bounding_box(transform) else { return };
 		let blending = vello::peniko::BlendMode::new(self.alpha_blending.blend_mode.into(), vello::peniko::Compose::SrcOver);
 		scene.push_layer(
 			blending,
 			self.alpha_blending.opacity,
-			kurbo_transform,
+			kurbo::Affine::IDENTITY,
 			&vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y),
 		);
 		for element in self.iter() {
-			element.render_to_vello(scene, transform * self.transform);
+			element.render_to_vello(scene, child_transform);
 		}
 		scene.pop_layer();
 	}
@@ -327,7 +328,7 @@ impl GraphicElementRendered for VectorData {
 		let stroke_width = self.style.stroke().map(|s| s.weight()).unwrap_or_default();
 		let scale = transform.decompose_scale();
 		let offset = DVec2::splat(stroke_width * scale.x.max(scale.y) / 2.);
-		self.bounding_box_with_transform(self.transform * transform).map(|[a, b]| [a - offset, b + offset])
+		self.bounding_box_with_transform(transform * self.transform).map(|[a, b]| [a - offset, b + offset])
 	}
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
@@ -513,7 +514,7 @@ impl GraphicElementRendered for Artboard {
 		if self.clip {
 			scene.push_layer(blend_mode, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
 		}
-		self.graphic_group.render_to_vello(scene, transform * self.transform());
+		self.graphic_group.render_to_vello(scene, transform);
 		if self.clip {
 			scene.pop_layer();
 		}
