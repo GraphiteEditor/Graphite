@@ -1,4 +1,5 @@
 use super::*;
+use crate::uuid::generate_uuid;
 use crate::Node;
 
 use bezier_rs::BezierHandles;
@@ -18,15 +19,16 @@ pub struct PointModification {
 
 impl Hash for PointModification {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.add.hash(state);
+		generate_uuid().hash(state)
+		// self.add.hash(state);
 
-		let mut remove = self.remove.iter().collect::<Vec<_>>();
-		remove.sort_unstable();
-		remove.hash(state);
+		// let mut remove = self.remove.iter().collect::<Vec<_>>();
+		// remove.sort_unstable();
+		// remove.hash(state);
 
-		let mut delta = self.delta.iter().map(|(&a, &b)| (a, [b.x.to_bits(), b.y.to_bits()])).collect::<Vec<_>>();
-		delta.sort_unstable();
-		delta.hash(state);
+		// let mut delta = self.delta.iter().map(|(&a, &b)| (a, [b.x.to_bits(), b.y.to_bits()])).collect::<Vec<_>>();
+		// delta.sort_unstable();
+		// delta.hash(state);
 	}
 }
 
