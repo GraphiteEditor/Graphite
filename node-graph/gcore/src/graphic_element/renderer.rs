@@ -328,7 +328,8 @@ impl GraphicElementRendered for VectorData {
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		let stroke_width = self.style.stroke().map(|s| s.weight()).unwrap_or_default();
 		let scale = transform.decompose_scale();
-		let offset = DVec2::splat(stroke_width * scale.x.max(scale.y) / 2.);
+		// We use the full line width here to account for different styles of line caps
+		let offset = DVec2::splat(stroke_width * scale.x.max(scale.y));
 		self.bounding_box_with_transform(transform * self.transform).map(|[a, b]| [a - offset, b + offset])
 	}
 
@@ -439,7 +440,7 @@ impl GraphicElementRendered for VectorData {
 			let stroke = kurbo::Stroke {
 				width: stroke.weight,
 				miter_limit: stroke.line_join_miter_limit,
-				join: join,
+				join,
 				start_cap: cap,
 				end_cap: cap,
 				dash_pattern: stroke.dash_lengths.into(),
