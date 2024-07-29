@@ -348,6 +348,20 @@ impl GraphicElementRendered for VectorData {
 		use crate::vector::style::GradientType;
 		use vello::peniko;
 
+		let multiplied_transform = transform * self.transform;
+		let transformed_bounds = self.bounding_box_with_transform(multiplied_transform).unwrap_or_default();
+		let mut layer = false;
+
+		if self.alpha_blending.opacity < 1. || self.alpha_blending.blend_mode != BlendMode::default() {
+			layer = true;
+			scene.push_layer(
+				peniko::BlendMode::new(self.alpha_blending.blend_mode.into(), peniko::Compose::SrcOver),
+				self.alpha_blending.opacity,
+				kurbo::Affine::IDENTITY,
+				&kurbo::Rect::new(transformed_bounds[0].x, transformed_bounds[0].y, transformed_bounds[1].x, transformed_bounds[1].y),
+			);
+		}
+
 		let kurbo_transform = kurbo::Affine::new(transform.to_cols_array());
 		let to_point = |p: DVec2| kurbo::Point::new(p.x, p.y);
 		let mut path = kurbo::BezPath::new();
@@ -417,6 +431,9 @@ impl GraphicElementRendered for VectorData {
 			if stroke.width > 0. {
 				scene.stroke(&stroke, kurbo_transform, color, None, &path);
 			}
+		}
+		if layer {
+			scene.pop_layer();
 		}
 	}
 }
