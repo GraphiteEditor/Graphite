@@ -424,10 +424,26 @@ impl GraphicElementRendered for VectorData {
 				Some(color) => peniko::Color::rgba(color.r() as f64, color.g() as f64, color.b() as f64, color.a() as f64),
 				None => peniko::Color::TRANSPARENT,
 			};
+			use crate::vector::style::{LineCap, LineJoin};
+			use vello::kurbo::{Cap, Join};
+			let cap = match stroke.line_cap {
+				LineCap::Butt => Cap::Butt,
+				LineCap::Round => Cap::Round,
+				LineCap::Square => Cap::Square,
+			};
+			let join = match stroke.line_join {
+				LineJoin::Miter => Join::Miter,
+				LineJoin::Bevel => Join::Bevel,
+				LineJoin::Round => Join::Round,
+			};
 			let stroke = kurbo::Stroke {
 				width: stroke.weight,
 				miter_limit: stroke.line_join_miter_limit,
-				..Default::default()
+				join: join,
+				start_cap: cap,
+				end_cap: cap,
+				dash_pattern: stroke.dash_lengths.into(),
+				dash_offset: stroke.dash_offset,
 			};
 			if stroke.width > 0. {
 				scene.stroke(&stroke, kurbo_transform, color, None, &path);
