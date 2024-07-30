@@ -479,10 +479,8 @@ impl NodeInput {
 	}
 
 	pub fn value(tagged_value: TaggedValue, exposed: bool) -> Self {
-		Self::Value {
-			tagged_value: tagged_value.into(),
-			exposed,
-		}
+		let tagged_value = tagged_value.into();
+		Self::Value { tagged_value, exposed }
 	}
 
 	pub const fn network(import_type: Type, import_index: usize) -> Self {

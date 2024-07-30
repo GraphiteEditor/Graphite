@@ -1148,7 +1148,7 @@ pub fn adjust_channel_mixer_properties(document_node: &DocumentNode, node_id: No
 	// Monochrome
 	let monochrome_index = 1;
 	let monochrome = bool_widget(document_node, node_id, monochrome_index, "Monochrome", true);
-	let is_monochrome = if let Some(&TaggedValue::Bool(monochrome_choice)) = &document_node.inputs[monochrome_index].as_non_exposed_value() {
+	let is_monochrome = if let Some(&TaggedValue::Bool(monochrome_choice)) = &document_node.inputs[monochrome_index].as_value() {
 		monochrome_choice
 	} else {
 		false
@@ -1175,7 +1175,7 @@ pub fn adjust_channel_mixer_properties(document_node: &DocumentNode, node_id: No
 		];
 		output_channel.extend([RadioInput::new(entries).selected_index(Some(choice as u32)).widget_holder()]);
 	};
-	let is_output_channel = if let Some(&TaggedValue::RedGreenBlue(choice)) = &document_node.inputs[output_channel_index].as_non_exposed_value() {
+	let is_output_channel = if let Some(&TaggedValue::RedGreenBlue(choice)) = &document_node.inputs[output_channel_index].as_value() {
 		choice
 	} else {
 		warn!("Channel Mixer node properties panel could not be displayed.");
@@ -1261,7 +1261,7 @@ pub fn adjust_selective_color_properties(document_node: &DocumentNode, node_id: 
 			.collect();
 		colors.extend([DropdownInput::new(entries).selected_index(Some(choice as u32)).widget_holder()]);
 	};
-	let colors_choice_index = if let Some(&TaggedValue::SelectiveColorChoice(choice)) = &document_node.inputs[colors_index].as_non_exposed_value() {
+	let colors_choice_index = if let Some(&TaggedValue::SelectiveColorChoice(choice)) = &document_node.inputs[colors_index].as_value() {
 		choice
 	} else {
 		warn!("Selective Color node properties panel could not be displayed.");
@@ -1688,12 +1688,12 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		LayoutGroup::Row { widgets }.with_tooltip("Connection status to the server that computes generated images")
 	};
 
-	let Some(TaggedValue::ImaginateController(controller)) = controller.as_non_exposed_value() else {
+	let Some(TaggedValue::ImaginateController(controller)) = controller.as_value() else {
 		panic!("Invalid output status input")
 	};
 	let imaginate_status = controller.get_status();
 
-	let use_base_image = if let Some(&TaggedValue::Bool(use_base_image)) = &document_node.inputs[base_img_index].as_non_exposed_value() {
+	let use_base_image = if let Some(&TaggedValue::Bool(use_base_image)) = &document_node.inputs[base_img_index].as_value() {
 		use_base_image
 	} else {
 		true
