@@ -1804,7 +1804,7 @@ impl NodeGraphMessageHandler {
 	pub fn get_output_types(node: &DocumentNode, resolved_types: &ResolvedDocumentNodeTypes, node_id_path: &[NodeId]) -> Vec<Option<Type>> {
 		let mut output_types = Vec::new();
 
-		let primary_output_type = resolved_types.types.get(node_id_path).and_then(|ty| ty.outputs.get(0)).cloned();
+		let primary_output_type = resolved_types.types.get(node_id_path).map(|ty| ty.output.clone());
 		output_types.push(primary_output_type);
 
 		// If the node is not a protonode, get types by traversing across exports until a proto node is reached.
@@ -1830,11 +1830,11 @@ impl NodeGraphMessageHandler {
 				let output_type: Option<Type> = if let NodeInput::Node { output_index, .. } = current_export {
 					// Current export is pointing to a proto node where type can be derived
 					assert_eq!(*output_index, 0, "Output index for a proto node should always be 0");
-					resolved_types.types.get(&current_path).and_then(|ty| ty.outputs.get(0)).cloned()
+					resolved_types.types.get(&current_path).map(|ty| ty.output.clone())
 				} else if let NodeInput::Value { tagged_value, .. } = current_export {
 					Some(tagged_value.ty())
 				} else if let NodeInput::Network { import_index, .. } = current_export {
-					resolved_types.types.get(node_id_path).and_then(|ty| ty.outputs.get(*import_index)).cloned()
+					resolved_types.types.get(node_id_path).map(|ty| ty.output.clone())
 				} else {
 					None
 				};

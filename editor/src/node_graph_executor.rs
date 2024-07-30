@@ -22,7 +22,7 @@ use graphene_core::vector::VectorData;
 use graphene_core::{Color, GraphicElement, SurfaceFrame};
 use graphene_std::renderer::format_transform_matrix;
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
-use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypes};
+use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypes};
 
 use glam::{DAffine2, DVec2, UVec2};
 use once_cell::sync::Lazy;
@@ -296,10 +296,10 @@ impl NodeRuntime {
 			};
 
 			// Extract the monitor node's stored `GraphicElement` data.
-			let Some(introspected_data) = self.executor.introspect(monitor_node_path).flatten() else {
+			let Ok(introspected_data) = self.executor.introspect(monitor_node_path) else {
 				// TODO: Fix the root of the issue causing the spam of this warning (this at least temporarily disables it in release builds)
 				#[cfg(debug_assertions)]
-				warn!("Failed to introspect monitor node {:?}", self.executor.introspect(monitor_node_path));
+				warn!("Failed to introspect monitor node {}", self.executor.introspect(monitor_node_path).unwrap_err());
 
 				continue;
 			};
@@ -377,12 +377,12 @@ impl NodeRuntime {
 	}
 }
 
-pub async fn introspect_node(path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
+pub async fn introspect_node(path: &[NodeId]) -> Result<Arc<dyn std::any::Any>, IntrospectError> {
 	let runtime = NODE_RUNTIME.lock();
 	if let Some(ref mut runtime) = runtime.as_ref() {
-		return runtime.executor.introspect(path).flatten();
+		return runtime.executor.introspect(path);
 	}
-	None
+	Err(IntrospectError::RuntimeNotReady)
 }
 
 pub async fn run_node_graph() -> bool {
@@ -436,7 +436,7 @@ impl NodeGraphExecutor {
 		execution_id
 	}
 
-	pub async fn introspect_node(&self, path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
+	pub async fn introspect_node(&self, path: &[NodeId]) -> Result<Arc<dyn std::any::Any>, IntrospectError> {
 		introspect_node(path).await
 	}
 
@@ -462,7 +462,7 @@ impl NodeGraphExecutor {
 			return None;
 		};
 		let introspection_node = find_node(wrapped_network)?;
-		let introspection = futures::executor::block_on(self.introspect_node(&[node_path, &[introspection_node]].concat()))?;
+		let introspection = futures::executor::block_on(self.introspect_node(&[node_path, &[introspection_node]].concat())).ok()?;
 		let Some(downcasted): Option<&T> = <dyn std::any::Any>::downcast_ref(introspection.as_ref()) else {
 			log::warn!("Failed to downcast type for introspection");
 			return None;

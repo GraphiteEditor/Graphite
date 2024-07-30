@@ -35,10 +35,10 @@ impl Default for DynamicExecutor {
 	}
 }
 
-#[derive(PartialEq, Clone, Debug, Default)]
+#[derive(PartialEq, Clone, Debug)]
 pub struct NodeTypes {
 	pub inputs: Vec<Type>,
-	pub outputs: Vec<Type>,
+	pub output: Type,
 }
 
 #[derive(PartialEq, Clone, Debug, Default)]
@@ -77,7 +77,7 @@ impl DynamicExecutor {
 	}
 
 	/// Calls the `Node::serialize` for that specific node, returning for example the cached value for a monitor node. The node path must match the document node path.
-	pub fn introspect(&self, node_path: &[NodeId]) -> Option<Option<Arc<dyn std::any::Any>>> {
+	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any>, IntrospectError> {
 		self.tree.introspect(node_path)
 	}
 
@@ -117,6 +117,25 @@ impl<'a, I: StaticType + 'static + Send + Sync + std::panic::UnwindSafe> Executo
 	}
 }
 pub struct InputMapping {}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum IntrospectError {
+	PathNotFound(Vec<NodeId>),
+	ProtoNodeNotFound(NodeId),
+	NoData,
+	RuntimeNotReady,
+}
+
+impl std::fmt::Display for IntrospectError {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			IntrospectError::PathNotFound(path) => write!(f, "Path not found: {:?}", path),
+			IntrospectError::ProtoNodeNotFound(id) => write!(f, "ProtoNode not found: {:?}", id),
+			IntrospectError::NoData => write!(f, "No data found for this node"),
+			IntrospectError::RuntimeNotReady => write!(f, "Node runtime is not ready"),
+		}
+	}
+}
 
 #[derive(Default)]
 /// A store of the dynamically typed nodes and also the source map.
@@ -162,10 +181,10 @@ impl BorrowTree {
 	}
 
 	/// Calls the `Node::serialize` for that specific node, returning for example the cached value for a monitor node. The node path must match the document node path.
-	pub fn introspect(&self, node_path: &[NodeId]) -> Option<Option<Arc<dyn std::any::Any>>> {
-		let (id, _) = self.source_map.get(node_path)?;
-		let node = self.nodes.get(id)?;
-		Some(node.serialize())
+	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any>, IntrospectError> {
+		let (id, _) = self.source_map.get(node_path).ok_or_else(|| IntrospectError::PathNotFound(node_path.to_vec()))?;
+		let node = self.nodes.get(id).ok_or(IntrospectError::ProtoNodeNotFound(*id))?;
+		node.serialize().ok_or(IntrospectError::NoData)
 	}
 
 	pub fn get(&self, id: NodeId) -> Option<SharedNodeContainer> {
@@ -191,24 +210,29 @@ impl BorrowTree {
 	}
 
 	pub fn update_source_map(&mut self, id: NodeId, typing_context: &TypingContext, proto_node: &ProtoNode) {
-		let Some(node_io) = typing_context.type_of(id) else { return };
-		let inputs = [&node_io.input].into_iter().chain(&node_io.parameters).cloned().collect();
-
-		let Some((path, output_index)) = proto_node.original_location.outputs_source.iter().next() else {
+		let Some(node_io) = typing_context.type_of(id) else {
+			log::warn!("did not find type");
 			return;
 		};
-		let Some(ref node_path) = proto_node.original_location.path else { return };
+		let inputs = [&node_io.input].into_iter().chain(&node_io.parameters).cloned().collect();
+
+		let node_path = &proto_node.original_location.path.as_ref().unwrap_or(const { &vec![] });
+
+		// log::debug!("proto_node: {:?}", proto_node);
 		// assert_eq!(&path.node, node_path);
 		for x in proto_node.original_location.outputs_source.values() {
 			assert_eq!(*x, 0, "Proto nodes should refer to output index 0");
 		}
-		let mut entry = self
-			.source_map
-			.entry(proto_node.original_location.path.clone().unwrap())
-			.or_insert((id, NodeTypes { inputs, outputs: vec![] }));
+		// log::debug!("{:?}", node_path);
+		let mut entry = self.source_map.entry(node_path.to_vec()).or_insert((
+			id,
+			NodeTypes {
+				inputs,
+				output: node_io.output.clone(),
+			},
+		));
 
-		entry.1.outputs.extend((0..(output_index + 1 - entry.1.outputs.len())).map(|_| concrete!(())));
-		entry.1.outputs[*output_index] = node_io.output.clone();
+		entry.1.output = node_io.output.clone();
 	}
 
 	/// Insert a new node into the borrow tree, calling the constructor function from `node_registry.rs`.
