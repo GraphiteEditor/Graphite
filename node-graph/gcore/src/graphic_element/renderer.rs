@@ -1,4 +1,5 @@
 mod quad;
+pub use quad::Quad;
 
 use crate::raster::bbox::Bbox;
 use crate::raster::{BlendMode, Image, ImageFrame};
@@ -8,12 +9,13 @@ use crate::vector::style::{Fill, Stroke, ViewMode};
 use crate::vector::PointId;
 use crate::SurfaceFrame;
 use crate::{vector::VectorData, Artboard, Color, GraphicElement, GraphicGroup};
-pub use quad::Quad;
 
 use bezier_rs::Subpath;
 
 use base64::Engine;
 use glam::{DAffine2, DVec2};
+use num_traits::Zero;
+use std::fmt::Write;
 #[cfg(feature = "vello")]
 use vello::*;
 
@@ -107,11 +109,10 @@ impl SvgRender {
 			.map(|size| format!("viewbox=\"0 0 {} {}\" width=\"{}\" height=\"{}\"", size.x, size.y, size.x, size.y))
 			.unwrap_or_default();
 
-		let svg_header = format!(
-			r#"<svg xmlns="http://www.w3.org/2000/svg" {}><defs>{defs}</defs><g transform="{}">"#,
-			view_box,
-			format_transform_matrix(transform)
-		);
+		let matrix = format_transform_matrix(transform);
+		let transform = if matrix.is_empty() { String::new() } else { format!(r#" transform="{}""#, matrix) };
+
+		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" {}><defs>{defs}</defs><g{transform}>"#, view_box);
 		self.svg.insert(0, svg_header.into());
 		self.svg.push("</g></svg>".into());
 	}
@@ -193,17 +194,16 @@ impl RenderParams {
 }
 
 pub fn format_transform_matrix(transform: DAffine2) -> String {
-	use std::fmt::Write;
-	let mut result = "matrix(".to_string();
-	let cols = transform.to_cols_array();
-	for (index, item) in cols.iter().enumerate() {
-		write!(result, "{item}").unwrap();
-		if index != cols.len() - 1 {
-			result.push_str(", ");
-		}
+	if transform == DAffine2::IDENTITY {
+		return String::new();
 	}
-	result.push(')');
-	result
+
+	transform.to_cols_array().iter().enumerate().fold("matrix(".to_string(), |val, (i, num)| {
+		let num = if num.abs() < 1_000_000_000. { (num * 1_000_000_000.).round() / 1_000_000_000. } else { *num };
+		let num = if num.is_zero() { "0".to_string() } else { num.to_string() };
+		let comma = if i == 5 { "" } else { "," };
+		val + &(num + comma)
+	}) + ")"
 }
 
 pub fn to_transform(transform: DAffine2) -> usvg::Transform {
@@ -234,7 +234,10 @@ impl GraphicElementRendered for GraphicGroup {
 		render.parent_tag(
 			"g",
 			|attributes| {
-				attributes.push("transform", format_transform_matrix(self.transform));
+				let matrix = format_transform_matrix(self.transform);
+				if !matrix.is_empty() {
+					attributes.push("transform", matrix);
+				}
 
 				if self.alpha_blending.opacity < 1. {
 					attributes.push("opacity", self.alpha_blending.opacity.to_string());
@@ -305,8 +308,6 @@ impl GraphicElementRendered for VectorData {
 		}
 
 		render.leaf_tag("path", |attributes| {
-			attributes.push("class", "vector-data");
-
 			attributes.push("d", path);
 
 			let fill_and_stroke = self
@@ -443,8 +444,10 @@ impl GraphicElementRendered for Artboard {
 		if !render_params.hide_artboards {
 			// Background
 			render.leaf_tag("rect", |attributes| {
-				attributes.push("class", "artboard-bg");
-				attributes.push("fill", format!("#{}", self.background.rgba_hex()));
+				attributes.push("fill", format!("#{}", self.background.rgb_hex()));
+				if self.background.a() < 1. {
+					attributes.push("fill-opacity", ((self.background.a() * 1000.).round() / 1000.).to_string());
+				}
 				attributes.push("x", self.location.x.min(self.location.x + self.dimensions.x).to_string());
 				attributes.push("y", self.location.y.min(self.location.y + self.dimensions.y).to_string());
 				attributes.push("width", self.dimensions.x.abs().to_string());
@@ -456,7 +459,6 @@ impl GraphicElementRendered for Artboard {
 			render.parent_tag(
 				"text",
 				|attributes| {
-					attributes.push("class", "artboard-label");
 					attributes.push("fill", "white");
 					attributes.push("x", (self.location.x.min(self.location.x + self.dimensions.x)).to_string());
 					attributes.push("y", (self.location.y.min(self.location.y + self.dimensions.y) - 4).to_string());
@@ -475,23 +477,22 @@ impl GraphicElementRendered for Artboard {
 			"g",
 			// Group tag attributes
 			|attributes| {
-				attributes.push("class", "artboard");
-
-				attributes.push(
-					"transform",
-					format_transform_matrix(DAffine2::from_translation(self.location.as_dvec2()) * self.graphic_group.transform),
-				);
+				let matrix = format_transform_matrix(DAffine2::from_translation(self.location.as_dvec2()) * self.graphic_group.transform);
+				if !matrix.is_empty() {
+					attributes.push("transform", matrix);
+				}
 
 				if self.clip {
 					let id = format!("artboard-{}", generate_uuid());
 					let selector = format!("url(#{id})");
-					use std::fmt::Write;
+
+					let matrix = format_transform_matrix(self.graphic_group.transform.inverse());
+					let transform = if matrix.is_empty() { String::new() } else { format!(r#" transform="{matrix}""#) };
+
 					write!(
 						&mut attributes.0.svg_defs,
-						r##"<clipPath id="{id}"><rect x="0" y="0" width="{}" height="{}" transform="{}"/></clipPath>"##,
-						self.dimensions.x,
-						self.dimensions.y,
-						format_transform_matrix(self.graphic_group.transform.inverse())
+						r##"<clipPath id="{id}"><rect x="0" y="0" width="{}" height="{}"{transform} /></clipPath>"##,
+						self.dimensions.x, self.dimensions.y
 					)
 					.unwrap();
 					attributes.push("clip-path", selector);
@@ -580,18 +581,16 @@ impl GraphicElementRendered for crate::ArtboardGroup {
 impl GraphicElementRendered for SurfaceFrame {
 	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
 		let transform = self.transform;
+
 		let (width, height) = (transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
-		let matrix = (transform * DAffine2::from_scale((width, height).into()).inverse())
-			.to_cols_array()
-			.iter()
-			.enumerate()
-			.fold(String::new(), |val, (i, entry)| val + &(entry.to_string() + if i == 5 { "" } else { "," }));
+
+		let matrix = format_transform_matrix(transform * DAffine2::from_scale((width, height).into()).inverse());
+		let transform = if matrix.is_empty() { String::new() } else { format!(r#" transform="{}""#, matrix) };
 
 		let canvas = format!(
-			r#"<foreignObject width="{}" height="{}" transform="matrix({})"><div data-canvas-placeholder="canvas{}"></div></foreignObject>"#,
+			r#"<foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="canvas{}"></div></foreignObject>"#,
 			width.abs(),
 			height.abs(),
-			matrix,
 			self.surface_id
 		);
 		render.svg.push(canvas.into())
@@ -617,7 +616,7 @@ impl GraphicElementRendered for SurfaceFrame {
 
 impl GraphicElementRendered for ImageFrame<Color> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		let transform: String = format_transform_matrix(self.transform * render.transform);
+		let transform = self.transform * render.transform;
 
 		match render_params.image_render_mode {
 			ImageRenderMode::Base64 => {
@@ -638,8 +637,11 @@ impl GraphicElementRendered for ImageFrame<Color> {
 					attributes.push("width", 1.to_string());
 					attributes.push("height", 1.to_string());
 					attributes.push("preserveAspectRatio", "none");
-					attributes.push("transform", transform);
 					attributes.push("href", base64_string);
+					let matrix = format_transform_matrix(transform);
+					if !matrix.is_empty() {
+						attributes.push("transform", matrix);
+					}
 					if self.alpha_blending.blend_mode != BlendMode::default() {
 						attributes.push("style", self.alpha_blending.blend_mode.render());
 					}
@@ -765,7 +767,10 @@ impl GraphicElementRendered for Option<Color> {
 			attributes.push("width", "100");
 			attributes.push("height", "100");
 			attributes.push("y", "40");
-			attributes.push("fill", format!("#{}", color.rgba_hex()));
+			attributes.push("fill", format!("#{}", color.rgb_hex()));
+			if color.a() < 1. {
+				attributes.push("fill-opacity", ((color.a() * 1000.).round() / 1000.).to_string());
+			}
 		});
 		render.parent_tag("text", text_attributes, |render| render.leaf_node(color_info))
 	}
@@ -785,7 +790,10 @@ impl GraphicElementRendered for Vec<Color> {
 				attributes.push("height", "100");
 				attributes.push("x", (index * 120).to_string());
 				attributes.push("y", "40");
-				attributes.push("fill", format!("#{}", color.rgba_hex()));
+				attributes.push("fill", format!("#{}", color.rgb_hex()));
+				if color.a() < 1. {
+					attributes.push("fill-opacity", ((color.a() * 1000.).round() / 1000.).to_string());
+				}
 			});
 		}
 	}

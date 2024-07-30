@@ -20,6 +20,7 @@ use graphene_core::transform::{Footprint, Transform};
 use graphene_core::vector::style::ViewMode;
 use graphene_core::vector::VectorData;
 use graphene_core::{Color, GraphicElement, SurfaceFrame};
+use graphene_std::renderer::format_transform_matrix;
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypes};
 
@@ -657,18 +658,11 @@ impl NodeGraphExecutor {
 				responses.add(DocumentMessage::RenderRulers);
 			}
 			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::CanvasFrame(frame)) => {
-				// Send to frontend
-				let matrix = frame
-					.transform
-					.to_cols_array()
-					.iter()
-					.enumerate()
-					.fold(String::new(), |val, (i, entry)| val + &(entry.to_string() + if i == 5 { "" } else { "," }));
+				let matrix = format_transform_matrix(frame.transform);
+				let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{}\"", matrix) };
 				let svg = format!(
-					r#"
-					<svg><foreignObject width="{}" height="{}" transform="matrix({})"><div data-canvas-placeholder="canvas{}"></div></foreignObject></svg>
-					"#,
-					frame.resolution.x, frame.resolution.y, matrix, frame.surface_id.0
+					r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="canvas{}"></div></foreignObject></svg>"#,
+					frame.resolution.x, frame.resolution.y, frame.surface_id.0
 				);
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 				responses.add(DocumentMessage::RenderScrollbars);
