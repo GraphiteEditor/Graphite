@@ -293,17 +293,17 @@ extern "C" {
 }
 #[cfg(not(target_arch = "wasm32"))]
 fn boolean_union(_path1: String, _path2: String) -> String {
-	String::new()
+	String::from("M0,0 L1,0 L1,1 L0,1 Z")
 }
 #[cfg(not(target_arch = "wasm32"))]
 fn boolean_subtract(_path1: String, _path2: String) -> String {
-	String::new()
+	String::from("M0,0 L1,0 L1,1 L0,1 Z")
 }
 #[cfg(not(target_arch = "wasm32"))]
 fn boolean_intersect(_path1: String, _path2: String) -> String {
-	String::new()
+	String::from("M0,0 L1,0 L1,1 L0,1 Z")
 }
 #[cfg(not(target_arch = "wasm32"))]
 fn boolean_difference(_path1: String, _path2: String) -> String {
-	String::new()
+	String::from("M0,0 L1,0 L1,1 L0,1 Z")
 }
