@@ -6,7 +6,7 @@ use graph_craft::document::{NodeId, Source};
 use graph_craft::graphene_compiler::Executor;
 use graph_craft::proto::{ConstructionArgs, GraphError, LocalFuture, NodeContainer, ProtoNetwork, ProtoNode, SharedNodeContainer, TypeErasedBox, TypingContext};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
-use graph_craft::Type;
+use graph_craft::{concrete, Type};
 
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
@@ -36,10 +36,15 @@ impl Default for DynamicExecutor {
 }
 
 #[derive(PartialEq, Clone, Debug, Default)]
+pub struct NodeTypes {
+	pub inputs: Vec<Type>,
+	pub outputs: Vec<Type>,
+}
+
+#[derive(PartialEq, Clone, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ResolvedDocumentNodeTypes {
-	pub inputs: HashMap<Source, Type>,
-	pub outputs: HashMap<Source, Type>,
+	pub types: HashMap<Vec<NodeId>, NodeTypes>,
 }
 
 impl DynamicExecutor {
@@ -86,19 +91,9 @@ impl DynamicExecutor {
 
 	pub fn document_node_types(&self) -> ResolvedDocumentNodeTypes {
 		let mut resolved_document_node_types = ResolvedDocumentNodeTypes::default();
+		resolved_document_node_types.types = self.tree.node_types().map(|(a, b)| (a.to_vec(), b.clone())).collect();
 		// TODO: https://github.com/GraphiteEditor/Graphite/issues/1767
 		// TODO: Non exposed inputs are not added to the inputs_source_map, so they are not included in the resolved_document_node_types. The type is still available in the typing_context. This only affects the UI-only "Import" node.
-		for (source, &(protonode_id, protonode_index)) in self.tree.inputs_source_map() {
-			let Some(node_io) = self.typing_context.type_of(protonode_id) else { continue };
-			let Some(ty) = [&node_io.input].into_iter().chain(&node_io.parameters).nth(protonode_index) else {
-				continue;
-			};
-			resolved_document_node_types.inputs.insert(source.clone(), ty.clone());
-		}
-		for (source, &protonode_id) in self.tree.outputs_source_map() {
-			let Some(node_io) = self.typing_context.type_of(protonode_id) else { continue };
-			resolved_document_node_types.outputs.insert(source.clone(), node_io.output.clone());
-		}
 		resolved_document_node_types
 	}
 }
@@ -121,6 +116,7 @@ impl<'a, I: StaticType + 'static + Send + Sync + std::panic::UnwindSafe> Executo
 		})
 	}
 }
+pub struct InputMapping {}
 
 #[derive(Default)]
 /// A store of the dynamically typed nodes and also the source map.
@@ -128,11 +124,7 @@ pub struct BorrowTree {
 	/// A hashmap of node IDs and dynamically typed nodes.
 	nodes: HashMap<NodeId, SharedNodeContainer>,
 	/// A hashmap from the document path to the proto node ID.
-	source_map: HashMap<Vec<NodeId>, NodeId>,
-	/// Each document input source maps to one proto node input (however one proto node input may come from several sources)
-	inputs_source_map: HashMap<Source, (NodeId, usize)>,
-	/// A mapping of document input sources to the (single) proto node output
-	outputs_source_map: HashMap<Source, NodeId>,
+	source_map: HashMap<Vec<NodeId>, (NodeId, NodeTypes)>,
 }
 
 impl BorrowTree {
@@ -152,13 +144,11 @@ impl BorrowTree {
 			if !self.nodes.contains_key(&id) {
 				self.push_node(id, node, typing_context).await?;
 			} else {
-				self.update_source_map(id, &node);
+				self.update_source_map(id, typing_context, &node);
 			}
 			old_nodes.remove(&id);
 		}
-		self.source_map.retain(|_, nid| !old_nodes.contains(nid));
-		self.inputs_source_map.retain(|_, (nid, _)| !old_nodes.contains(nid));
-		self.outputs_source_map.retain(|_, nid| !old_nodes.contains(nid));
+		self.source_map.retain(|_, (nid, _)| !old_nodes.contains(nid));
 		self.nodes.retain(|nid, _| !old_nodes.contains(nid));
 		Ok(old_nodes.into_iter().collect())
 	}
@@ -173,7 +163,7 @@ impl BorrowTree {
 
 	/// Calls the `Node::serialize` for that specific node, returning for example the cached value for a monitor node. The node path must match the document node path.
 	pub fn introspect(&self, node_path: &[NodeId]) -> Option<Option<Arc<dyn std::any::Any>>> {
-		let id = self.source_map.get(node_path)?;
+		let (id, _) = self.source_map.get(node_path)?;
 		let node = self.nodes.get(id)?;
 		Some(node.serialize())
 	}
@@ -200,24 +190,30 @@ impl BorrowTree {
 		self.nodes.remove(&id);
 	}
 
-	pub fn update_source_map(&mut self, id: NodeId, proto_node: &ProtoNode) {
-		self.source_map.insert(proto_node.original_location.path.clone().unwrap_or_default(), id);
+	pub fn update_source_map(&mut self, id: NodeId, typing_context: &TypingContext, proto_node: &ProtoNode) {
+		let Some(node_io) = typing_context.type_of(id) else { return };
+		let inputs = [&node_io.input].into_iter().chain(&node_io.parameters).cloned().collect();
 
-		let params = match &proto_node.construction_args {
-			ConstructionArgs::Nodes(nodes) => nodes.len() + 1,
-			_ => 2,
+		let Some((path, output_index)) = proto_node.original_location.outputs_source.iter().next() else {
+			return;
 		};
-		self.inputs_source_map
-			.extend((0..params).flat_map(|i| proto_node.original_location.inputs(i).map(move |source| (source, (id, i)))));
-		self.outputs_source_map.extend(proto_node.original_location.outputs(0).map(|source| (source, id)));
+		let Some(ref node_path) = proto_node.original_location.path else { return };
+		// assert_eq!(&path.node, node_path);
 		for x in proto_node.original_location.outputs_source.values() {
 			assert_eq!(*x, 0, "Proto nodes should refer to output index 0");
 		}
+		let mut entry = self
+			.source_map
+			.entry(proto_node.original_location.path.clone().unwrap())
+			.or_insert((id, NodeTypes { inputs, outputs: vec![] }));
+
+		entry.1.outputs.extend((0..(output_index + 1 - entry.1.outputs.len())).map(|_| concrete!(())));
+		entry.1.outputs[*output_index] = node_io.output.clone();
 	}
 
 	/// Insert a new node into the borrow tree, calling the constructor function from `node_registry.rs`.
 	pub async fn push_node(&mut self, id: NodeId, proto_node: ProtoNode, typing_context: &TypingContext) -> Result<(), GraphErrors> {
-		self.update_source_map(id, &proto_node);
+		self.update_source_map(id, typing_context, &proto_node);
 
 		match &proto_node.construction_args {
 			ConstructionArgs::Value(value) => {
@@ -245,12 +241,8 @@ impl BorrowTree {
 		Ok(())
 	}
 
-	pub fn inputs_source_map(&self) -> impl Iterator<Item = (&Source, &(NodeId, usize))> {
-		self.inputs_source_map.iter()
-	}
-
-	pub fn outputs_source_map(&self) -> impl Iterator<Item = (&Source, &NodeId)> {
-		self.outputs_source_map.iter()
+	pub fn node_types(&self) -> impl Iterator<Item = (&[NodeId], &NodeTypes)> {
+		self.source_map.iter().map(|(path, (_, types))| (path.as_slice(), types))
 	}
 }
 

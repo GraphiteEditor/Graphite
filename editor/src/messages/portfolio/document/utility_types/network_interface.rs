@@ -386,11 +386,10 @@ impl NodeNetworkInterface {
 		// TODO: Store types for all document nodes, not just the compiled proto nodes, which currently skips isolated nodes
 		let node_type_from_compiled_network = if let Some(node_id) = input_connector.node_id() {
 			let node_id_path = [network_path, &[node_id]].concat().clone();
-			let input_type = self.resolved_types.inputs.get(&graph_craft::document::Source {
-				node: node_id_path,
-				index: input_connector.input_index(),
-			});
-			input_type.cloned()
+			self.resolved_types
+				.types
+				.get(node_id_path.as_slice())
+				.map(|node_types| node_types.inputs[input_connector.input_index()].clone())
 		} else if let Some(encapsulating_node) = self.encapsulating_node(network_path) {
 			let output_types = NodeGraphMessageHandler::get_output_types(encapsulating_node, &self.resolved_types, network_path);
 			output_types.get(input_connector.input_index()).map_or_else(
@@ -502,14 +501,7 @@ impl NodeNetworkInterface {
 					if !network_path.is_empty() {
 						// TODO: https://github.com/GraphiteEditor/Graphite/issues/1767
 						// TODO: Non exposed inputs are not added to the inputs_source_map, fix `pub fn document_node_types(&self) -> ResolvedDocumentNodeTypes`
-						let input_type = self
-							.resolved_types
-							.inputs
-							.get(&Source {
-								node: network_path.to_vec(),
-								index: *import_index,
-							})
-							.cloned();
+						let input_type = self.resolved_types.types.get(network_path).map(|nt| nt.inputs[*import_index].clone());
 
 						let frontend_data_type = if let Some(input_type) = input_type.clone() {
 							FrontendGraphDataType::with_type(&input_type)

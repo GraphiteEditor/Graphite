@@ -1573,11 +1573,11 @@ impl NodeGraphMessageHandler {
 			let frontend_graph_inputs = node.inputs.iter().enumerate().map(|(index, _)| {
 				// Convert the index in all inputs to the index in only the exposed inputs
 				// TODO: Only display input type if potential inputs in node_registry are all the same type
-				let input_type = network_interface.resolved_types.inputs.get(&Source { node: node_id_path.clone(), index }).cloned();
+				let node_types = network_interface.resolved_types.types.get(node_id_path.as_slice());
 
 				// TODO: Should display the color of the "most commonly relevant" (we'd need some sort of precedence) data type it allows given the current generic form that's constrained by the other present connections.
-				let frontend_data_type = if let Some(ref input_type) = input_type {
-					FrontendGraphDataType::with_type(input_type)
+				let frontend_data_type = if let Some(ref node_types) = node_types {
+					FrontendGraphDataType::with_type(&node_types.inputs[index])
 				} else {
 					FrontendGraphDataType::General
 				};
@@ -1592,7 +1592,7 @@ impl NodeGraphMessageHandler {
 				FrontendGraphInput {
 					data_type: frontend_data_type,
 					name: input_name,
-					resolved_type: input_type.map(|input| format!("{input:?}")),
+					resolved_type: node_types.map(|types| format!("{:?}", types.inputs[index])),
 					connected_to: None,
 				}
 			});
@@ -1804,13 +1804,7 @@ impl NodeGraphMessageHandler {
 	pub fn get_output_types(node: &DocumentNode, resolved_types: &ResolvedDocumentNodeTypes, node_id_path: &[NodeId]) -> Vec<Option<Type>> {
 		let mut output_types = Vec::new();
 
-		let primary_output_type = resolved_types
-			.outputs
-			.get(&Source {
-				node: node_id_path.to_owned(),
-				index: 0,
-			})
-			.cloned();
+		let primary_output_type = resolved_types.types.get(node_id_path).and_then(|ty| ty.outputs.get(0)).cloned();
 		output_types.push(primary_output_type);
 
 		// If the node is not a protonode, get types by traversing across exports until a proto node is reached.
@@ -1836,17 +1830,11 @@ impl NodeGraphMessageHandler {
 				let output_type: Option<Type> = if let NodeInput::Node { output_index, .. } = current_export {
 					// Current export is pointing to a proto node where type can be derived
 					assert_eq!(*output_index, 0, "Output index for a proto node should always be 0");
-					resolved_types.outputs.get(&Source { node: current_path.clone(), index: 0 }).cloned()
+					resolved_types.types.get(&current_path).and_then(|ty| ty.outputs.get(0)).cloned()
 				} else if let NodeInput::Value { tagged_value, .. } = current_export {
 					Some(tagged_value.ty())
 				} else if let NodeInput::Network { import_index, .. } = current_export {
-					resolved_types
-						.outputs
-						.get(&Source {
-							node: node_id_path.to_owned(),
-							index: *import_index,
-						})
-						.cloned()
+					resolved_types.types.get(node_id_path).and_then(|ty| ty.outputs.get(*import_index)).cloned()
 				} else {
 					None
 				};
