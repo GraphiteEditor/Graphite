@@ -41,23 +41,20 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 			graph_view_overlay_open,
 		} = data;
 
-		fn get_ptz<'a>(document_ptz: &'a PTZ, network_interface: &'a NodeNetworkInterface, graph_view_overlay_open: bool, selection_network_path: &[NodeId]) -> Option<&'a PTZ> {
+		fn get_ptz<'a>(document_ptz: &'a PTZ, network_interface: &'a NodeNetworkInterface, graph_view_overlay_open: bool, breadcrumb_network_path: &[NodeId]) -> Option<&'a PTZ> {
 			if !graph_view_overlay_open {
 				Some(document_ptz)
 			} else {
-				let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
-					log::error!("Could not get network_metadata in NavigationMessageHandler process_message");
-					return None;
-				};
+				let network_metadata = network_interface.network_metadata(breadcrumb_network_path)?;
 				Some(&network_metadata.persistent_metadata.navigation_metadata.node_graph_ptz)
 			}
 		}
 
-		fn get_ptz_mut<'a>(document_ptz: &'a mut PTZ, network_interface: &'a mut NodeNetworkInterface, graph_view_overlay_open: bool, network_path: &[NodeId]) -> Option<&'a mut PTZ> {
+		fn get_ptz_mut<'a>(document_ptz: &'a mut PTZ, network_interface: &'a mut NodeNetworkInterface, graph_view_overlay_open: bool, breadcrumb_network_path: &[NodeId]) -> Option<&'a mut PTZ> {
 			if !graph_view_overlay_open {
 				Some(document_ptz)
 			} else {
-				let Some(node_graph_ptz) = network_interface.get_node_graph_ptz_mut(network_path) else {
+				let Some(node_graph_ptz) = network_interface.get_node_graph_ptz_mut(breadcrumb_network_path) else {
 					log::error!("Could not get node graph PTZ in NavigationMessageHandler process_message");
 					return None;
 				};
@@ -146,49 +143,27 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				self.mouse_position = ipp.mouse.position;
 			}
 			NavigationMessage::CanvasPan { delta } => {
-				let transformed_delta = if !graph_view_overlay_open {
-					network_interface.document_metadata().document_to_viewport.inverse().transform_vector2(delta)
-				} else {
-					let Some(network_metadata) = network_interface.network_metadata(breadcrumb_network_path) else {
-						log::error!("Could not get network_metadata in CanvasPan");
-						return;
-					};
-					network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_vector2(delta)
-				};
-
 				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
-					log::error!("Could not get mutable PTZ in CanvasPan");
+					log::error!("Could not get PTZ in CanvasPan");
 					return;
 				};
+				let document_to_viewport = self.calculate_offset_transform(ipp.viewport_bounds.center(), ptz);
+				let transformed_delta = document_to_viewport.inverse().transform_vector2(delta);
+
 				ptz.pan += transformed_delta;
 				responses.add(BroadcastEvent::CanvasTransformed);
-				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
+				responses.add(DocumentMessage::PTZUpdate);
 			}
 			NavigationMessage::CanvasPanByViewportFraction { delta } => {
-				let transformed_delta = if !graph_view_overlay_open {
-					network_interface
-						.document_metadata()
-						.document_to_viewport
-						.inverse()
-						.transform_vector2(delta * ipp.viewport_bounds.size())
-				} else {
-					let Some(network_metadata) = network_interface.network_metadata(breadcrumb_network_path) else {
-						log::error!("Could not get network_metadata in CanvasPanByViewportFraction");
-						return;
-					};
-					network_metadata
-						.persistent_metadata
-						.navigation_metadata
-						.node_graph_to_viewport
-						.inverse()
-						.transform_vector2(delta * ipp.viewport_bounds.size())
-				};
 				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
-					log::error!("Could not get mutable PTZ in CanvasPanByViewportFraction");
+					log::error!("Could not get node graph PTZ in CanvasPanByViewportFraction");
 					return;
 				};
+				let document_to_viewport = self.calculate_offset_transform(ipp.viewport_bounds.center(), ptz);
+				let transformed_delta = document_to_viewport.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
+
 				ptz.pan += transformed_delta;
-				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
+				responses.add(DocumentMessage::PTZUpdate);
 			}
 			NavigationMessage::CanvasPanMouseWheel { use_y_as_x } => {
 				let delta = match use_y_as_x {
@@ -205,7 +180,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				ptz.tilt = 0.;
 				ptz.zoom = 1.;
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
-				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
+				responses.add(DocumentMessage::PTZUpdate);
 			}
 			NavigationMessage::CanvasTiltSet { angle_radians } => {
 				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
@@ -213,7 +188,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 					return;
 				};
 				ptz.tilt = angle_radians;
-				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
+				responses.add(DocumentMessage::PTZUpdate);
 			}
 			NavigationMessage::CanvasZoomDecrease { center_on_mouse } => {
 				let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
@@ -272,7 +247,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				ptz.zoom = zoom_factor.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 				ptz.zoom *= Self::clamp_zoom(ptz.zoom, document_bounds, old_zoom, ipp);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
-				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
+				responses.add(DocumentMessage::PTZUpdate);
 			}
 			NavigationMessage::EndCanvasPTZ { abort_transform } => {
 				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
@@ -294,7 +269,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 						}
 					}
 
-					self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
+					responses.add(DocumentMessage::PTZUpdate);
 				}
 
 				// Final chance to apply snapping if the key was pressed during this final frame
@@ -320,41 +295,22 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				bounds: [pos1, pos2],
 				prevent_zoom_past_100,
 			} => {
-				let Some(network_metadata) = network_interface.network_metadata(breadcrumb_network_path) else {
-					log::error!("Could not get network_metadata in FitViewportToBounds");
+				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
+					log::error!("Could not get node graph PTZ in CanvasPanByViewportFraction");
 					return;
 				};
-				let v1 = if !graph_view_overlay_open {
-					network_interface.document_metadata().document_to_viewport.inverse().transform_point2(DVec2::ZERO)
-				} else {
-					network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(DVec2::ZERO)
-				};
-				let v2 = if !graph_view_overlay_open {
-					network_interface.document_metadata().document_to_viewport.inverse().transform_point2(ipp.viewport_bounds.size())
-				} else {
-					network_metadata
-						.persistent_metadata
-						.navigation_metadata
-						.node_graph_to_viewport
-						.inverse()
-						.transform_point2(ipp.viewport_bounds.size())
-				};
+				let document_to_viewport = self.calculate_offset_transform(ipp.viewport_bounds.center(), ptz);
+
+				let v1 = document_to_viewport.inverse().transform_point2(DVec2::ZERO);
+				let v2 = document_to_viewport.inverse().transform_point2(ipp.viewport_bounds.size());
 
 				let center = ((v1 + v2) - (pos1 + pos2)) / 2.;
 				let size = 1. / ((pos2 - pos1) / (v2 - v1));
 				let new_scale = size.min_element();
 
-				let viewport_change = if !graph_view_overlay_open {
-					network_interface.document_metadata().document_to_viewport.transform_vector2(center)
-				} else {
-					network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.transform_vector2(center)
-				};
+				let viewport_change = document_to_viewport.transform_vector2(center);
 
 				// Only change the pan if the change will be visible in the viewport
-				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
-					log::error!("Could not get mutable PTZ in FitViewportToBounds");
-					return;
-				};
 				if viewport_change.x.abs() > 0.5 || viewport_change.y.abs() > 0.5 {
 					ptz.pan += center;
 				}
@@ -368,21 +324,17 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				}
 
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
-				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
+				responses.add(DocumentMessage::PTZUpdate);
 			}
 			NavigationMessage::FitViewportToSelection => {
 				if let Some(bounds) = selection_bounds {
-					let transform = if !graph_view_overlay_open {
-						network_interface.document_metadata().document_to_viewport.inverse()
-					} else {
-						let Some(network_metadata) = network_interface.network_metadata(breadcrumb_network_path) else {
-							log::error!("Could not get network_metadata in FitViewportToSelection");
-							return;
-						};
-						network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse()
+					let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
+						log::error!("Could not get node graph PTZ in FitViewportToSelection");
+						return;
 					};
+					let document_to_viewport = self.calculate_offset_transform(ipp.viewport_bounds.center(), ptz);
 					responses.add(NavigationMessage::FitViewportToBounds {
-						bounds: [transform.transform_point2(bounds[0]), transform.transform_point2(bounds[1])],
+						bounds: [document_to_viewport.transform_point2(bounds[0]), document_to_viewport.inverse().transform_point2(bounds[1])],
 						prevent_zoom_past_100: false,
 					})
 				}
@@ -518,7 +470,11 @@ impl NavigationMessageHandler {
 		}
 	}
 
-	pub fn calculate_offset_transform(&self, viewport_center: DVec2, pan: DVec2, tilt: f64, zoom: f64) -> DAffine2 {
+	pub fn calculate_offset_transform(&self, viewport_center: DVec2, ptz: &PTZ) -> DAffine2 {
+		let pan = ptz.pan;
+		let tilt = ptz.tilt;
+		let zoom = ptz.zoom;
+
 		let scaled_center = viewport_center / self.snapped_zoom(zoom);
 
 		// Try to avoid fractional coordinates to reduce anti aliasing.
@@ -531,11 +487,6 @@ impl NavigationMessageHandler {
 		let angle_transform = DAffine2::from_angle(self.snapped_tilt(tilt));
 		let translation_transform = DAffine2::from_translation(rounded_pan);
 		scale_transform * offset_transform * angle_transform * translation_transform
-	}
-
-	fn create_document_transform(&self, viewport_center: DVec2, ptz: &PTZ, responses: &mut VecDeque<Message>) {
-		let transform = self.calculate_offset_transform(viewport_center, ptz.pan, ptz.tilt, ptz.zoom);
-		responses.add(DocumentMessage::UpdateDocumentTransform { transform });
 	}
 
 	pub fn center_zoom(&self, viewport_bounds: DVec2, zoom_factor: f64, mouse: DVec2) -> Message {

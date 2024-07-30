@@ -79,6 +79,7 @@ pub enum NodeGraphMessage {
 	},
 	PrintSelectedNodeCoordinates,
 	RunDocumentGraph,
+	ForceRunDocumentGraph,
 	SelectedNodesAdd {
 		nodes: Vec<NodeId>,
 	},

@@ -46,7 +46,7 @@ pub struct DocumentMessageHandler {
 	// ======================
 	//
 	#[serde(skip)]
-	navigation_handler: NavigationMessageHandler,
+	pub navigation_handler: NavigationMessageHandler,
 	#[serde(skip)]
 	pub node_graph_handler: NodeGraphMessageHandler,
 	#[serde(skip)]
@@ -225,7 +225,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			// Messages
 			DocumentMessage::AbortTransaction => {
 				if !self.undo_in_progress {
-					self.undo(responses);
+					self.undo(ipp, responses);
 					responses.add(OverlaysMessage::Draw);
 				}
 			}
@@ -351,8 +351,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				self.layer_range_selection_reference = None;
 			}
-			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(responses),
-			DocumentMessage::DocumentHistoryForward => self.redo_with_history(responses),
+			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(ipp, responses),
+			DocumentMessage::DocumentHistoryForward => self.redo_with_history(ipp, responses),
 			DocumentMessage::DocumentStructureChanged => {
 				self.update_layers_panel_options_bar_widgets(responses);
 
@@ -363,7 +363,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::DuplicateSelectedLayers => {
 				let parent = self.new_layer_parent(false);
 				let calculated_insert_index =
-					DocumentMessageHandler::get_calculated_insert_index(&self.network_interface.document_metadata(), &self.network_interface.selected_nodes(&[]).unwrap(), parent);
+					DocumentMessageHandler::get_calculated_insert_index(self.network_interface.document_metadata(), self.network_interface.selected_nodes(&[]).unwrap(), parent);
 
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
@@ -384,8 +384,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					self.breadcrumb_network_path.pop();
 					self.selection_network_path = self.breadcrumb_network_path.clone();
 				}
+				responses.add(DocumentMessage::PTZUpdate);
 				responses.add(NodeGraphMessage::SendGraph);
-				responses.add(DocumentMessage::ResetTransform);
 			}
 			DocumentMessage::FlipSelectedLayers { flip_axis } => {
 				self.backup(responses);
@@ -444,7 +444,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					// TODO: Group each set of layers for each artboard separately
 					return;
 				};
-				let insert_index = DocumentMessageHandler::get_calculated_insert_index(&self.metadata(), &self.network_interface.selected_nodes(&[]).unwrap(), parent);
+				let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), self.network_interface.selected_nodes(&[]).unwrap(), parent);
 
 				let node_id = NodeId(generate_uuid());
 				let new_group_node = super::node_graph::document_node_types::resolve_document_node_type("Merge")
@@ -454,7 +454,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					node_id,
 					node_template: new_group_node,
 				});
-				let new_group_folder = LayerNodeIdentifier::new(node_id, &self.network_interface);
+				let new_group_folder = LayerNodeIdentifier::new_unchecked(node_id);
 				// Move the new folder to the correct position
 				responses.add(NodeGraphMessage::MoveLayerToStack {
 					layer: new_group_folder,
@@ -464,7 +464,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				responses.add(DocumentMessage::MoveSelectedLayersToGroup { parent: new_group_folder });
 			}
-			DocumentMessage::ImaginateGenerate => responses.add(PortfolioMessage::SubmitGraphRender { document_id }),
+			DocumentMessage::ImaginateGenerate => responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false }),
 			DocumentMessage::ImaginateRandom { imaginate_node, then_generate } => {
 				// Generate a random seed. We only want values between -2^53 and 2^53, because integer values
 				// outside of this range can get rounded in f64
@@ -624,12 +624,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						let scale = DAffine2::from_scale(enlargement_factor);
 						let pivot = DAffine2::from_translation(pivot);
 						let transformation = pivot * scale * pivot.inverse();
+						let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
 
 						for layer in self.network_interface.selected_nodes(&[]).unwrap().selected_layers(self.metadata()).filter(|&layer| {
 							self.network_interface.selected_nodes(&[]).unwrap().layer_visible(layer, &self.network_interface)
 								&& !self.network_interface.selected_nodes(&[]).unwrap().layer_locked(layer, &self.network_interface)
 						}) {
-							let to = self.metadata().document_to_viewport.inverse() * self.metadata().downstream_transform_to_viewport(layer);
+							let to = document_to_viewport.inverse() * self.metadata().downstream_transform_to_viewport(layer);
 							let original_transform = self.metadata().upstream_transform(layer.to_node());
 							let new = to.inverse() * transformation * to * original_transform;
 							responses.add(GraphOperationMessage::TransformSet {
@@ -649,7 +650,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				// Align the layer with the mouse or center of viewport
 				let viewport_location = mouse.map_or(ipp.viewport_bounds.center() + ipp.viewport_bounds.top_left, |pos| pos.into());
-				let center_in_viewport = DAffine2::from_translation(self.metadata().document_to_viewport.inverse().transform_point2(viewport_location - ipp.viewport_bounds.top_left));
+
+				let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
+				let center_in_viewport = DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_location - ipp.viewport_bounds.top_left));
 				let center_in_viewport_layerspace = center_in_viewport;
 
 				// Scale the image to fit into a 512x512 box
@@ -683,7 +686,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::PasteSvg { svg, mouse } => {
 				use crate::messages::tool::common_functionality::graph_modification_utils;
 				let viewport_location = mouse.map_or(ipp.viewport_bounds.center() + ipp.viewport_bounds.top_left, |pos| pos.into());
-				let center_in_viewport = DAffine2::from_translation(self.metadata().document_to_viewport.inverse().transform_point2(viewport_location - ipp.viewport_bounds.top_left));
+				let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
+				let center_in_viewport = DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_location - ipp.viewport_bounds.top_left));
 				let layer = graph_modification_utils::new_svg_layer(svg, center_in_viewport, NodeId(generate_uuid()), self.new_layer_parent(true), responses);
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 				responses.add(ToolMessage::ActivateTool { tool_type: ToolType::Select });
@@ -700,21 +704,23 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 			}
 			DocumentMessage::RenderRulers => {
-				let (ruler_scale, ruler_origin) = if !self.graph_view_overlay_open {
-					(
-						self.navigation_handler.snapped_zoom(self.document_ptz.zoom),
-						self.metadata().document_to_viewport.transform_point2(DVec2::ZERO),
-					)
-				} else {
+				let current_ptz = if self.graph_view_overlay_open {
 					let Some(network_metadata) = self.network_interface.network_metadata(&self.breadcrumb_network_path) else {
 						return;
 					};
-					(
-						self.navigation_handler
-							.snapped_zoom(network_metadata.persistent_metadata.navigation_metadata.node_graph_ptz.zoom * (crate::consts::GRID_SIZE as f64)),
-						network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.transform_point2(DVec2::ZERO),
-					)
+					&network_metadata.persistent_metadata.navigation_metadata.node_graph_ptz
+				} else {
+					&self.document_ptz
 				};
+				let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), current_ptz);
+
+				let ruler_scale = if !self.graph_view_overlay_open {
+					self.navigation_handler.snapped_zoom(current_ptz.zoom)
+				} else {
+					self.navigation_handler.snapped_zoom(current_ptz.zoom * (crate::consts::GRID_SIZE as f64))
+				};
+
+				let ruler_origin = document_to_viewport.transform_point2(DVec2::ZERO);
 				let log = ruler_scale.log2();
 				let ruler_interval: f64 = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
 				let ruler_spacing = ruler_interval * ruler_scale;
@@ -994,47 +1000,41 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						log::error!("ROOT_PARENT cannot be selected when ungrouping selected layers");
 						continue;
 					}
+
 					// Cannot ungroup artboard
 					if self.network_interface.is_artboard(&folder.to_node(), &self.selection_network_path) {
 						return;
 					}
 
-					let parent = folder.parent(self.metadata()).expect("Ungrouped folder must have a parent");
-					let folder_index = parent.children(self.metadata()).position(|child| child == folder).unwrap_or(0);
-
-					// Move all children of the folder above the folder in reverse order since each children is moved above the previous one
-					for child in folder.children(self.metadata()).collect::<Vec<_>>().into_iter().rev() {
-						responses.add(NodeGraphMessage::MoveLayerToStack {
-							layer: child,
-							parent,
-							insert_index: folder_index,
-						});
-					}
-
-					// Delete empty group folder
-					responses.add(NodeGraphMessage::DeleteNodes {
-						node_ids: vec![folder.to_node()],
-						reconnect: true,
-					});
+					responses.add(DocumentMessage::UngroupLayer { layer: folder });
 				}
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(DocumentMessage::DocumentStructureChanged);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
-			DocumentMessage::ResetTransform => {
-				let transform = if self.graph_view_overlay_open {
-					let Some(network_metadata) = self.network_interface.network_metadata(&self.breadcrumb_network_path) else {
-						return;
-					};
-					network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport
-				} else {
-					self.metadata().document_to_viewport
-				};
-				responses.add(DocumentMessage::UpdateDocumentTransform { transform });
+			DocumentMessage::UngroupLayer { layer } => {
+				let parent = layer.parent(self.metadata()).expect("Ungrouped folder must have a parent");
+				let folder_index = parent.children(self.metadata()).position(|child| child == layer).unwrap_or(0);
+
+				// Move all children of the folder above the folder in reverse order since each children is moved above the previous one
+				for child in layer.children(self.metadata()).collect::<Vec<_>>().into_iter().rev() {
+					responses.add(NodeGraphMessage::MoveLayerToStack {
+						layer: child,
+						parent,
+						insert_index: folder_index,
+					});
+				}
+
+				// Delete empty group folder
+				responses.add(NodeGraphMessage::DeleteNodes {
+					node_ids: vec![layer.to_node()],
+					reconnect: true,
+				});
 			}
-			DocumentMessage::UpdateDocumentTransform { transform } => {
+			DocumentMessage::PTZUpdate => {
 				if !self.graph_view_overlay_open {
+					let transform = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
 					self.network_interface.set_document_to_viewport_transform(transform);
 					responses.add(SelectToolMessage::PointerMove(SelectToolPointerKeys {
 						axis_align: Key::Shift,
@@ -1044,6 +1044,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					}));
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				} else {
+					let Some(network_metadata) = self.network_interface.network_metadata(&self.breadcrumb_network_path) else {
+						return;
+					};
+
+					let transform = self
+						.navigation_handler
+						.calculate_offset_transform(ipp.viewport_bounds.center(), &network_metadata.persistent_metadata.navigation_metadata.node_graph_ptz);
 					self.network_interface.set_transform(transform, &self.breadcrumb_network_path);
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(DocumentMessage::RenderScrollbars);
@@ -1131,8 +1138,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 impl DocumentMessageHandler {
 	/// Runs an intersection test with all layers and a viewport space quad
-	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
-		let document_quad = self.metadata().document_to_viewport.inverse() * viewport_quad;
+	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+		let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
+		let document_quad = document_to_viewport.inverse() * viewport_quad;
+
 		self.metadata()
 			.all_layers()
 			.filter(|&layer| self.network_interface.selected_nodes(&[]).unwrap().layer_visible(layer, &self.network_interface))
@@ -1148,8 +1157,9 @@ impl DocumentMessageHandler {
 	}
 
 	/// Find all of the layers that were clicked on from a viewport space location
-	pub fn click_xray(&self, viewport_location: DVec2) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
-		let point = self.metadata().document_to_viewport.inverse().transform_point2(viewport_location);
+	pub fn click_xray(&self, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
+		let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
+		let point = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
 		self.metadata()
 			.all_layers()
 			.filter(|&layer| self.network_interface.selected_nodes(&[]).unwrap().layer_visible(layer, &self.network_interface))
@@ -1174,14 +1184,10 @@ impl DocumentMessageHandler {
 			.copied()
 	}
 
-	/// Find any layers sorted by index that are under the given location in viewport space.
-	pub fn click_xray_no_artboards<'a>(&'a self, viewport_location: DVec2) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
-		self.click_xray(viewport_location).filter(move |&layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
-	}
-
 	/// Find layers under the location in viewport space that was clicked, listed by their depth in the layer tree hierarchy.
-	pub fn click_list<'a>(&'a self, viewport_location: DVec2) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
-		self.click_xray_no_artboards(viewport_location)
+	pub fn click_list<'a>(&'a self, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+		self.click_xray(ipp)
+			.filter(move |&layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 			.skip_while(|&layer| layer == LayerNodeIdentifier::ROOT_PARENT)
 			.scan(true, |last_had_children, layer| {
 				if *last_had_children {
@@ -1194,8 +1200,8 @@ impl DocumentMessageHandler {
 	}
 
 	/// Find the deepest layer that has been clicked on from a location in viewport space.
-	pub fn click(&self, viewport_location: DVec2) -> Option<LayerNodeIdentifier> {
-		self.click_list(viewport_location).last()
+	pub fn click(&self, ipp: &InputPreprocessorMessageHandler) -> Option<LayerNodeIdentifier> {
+		self.click_list(ipp).last()
 	}
 
 	/// Get the combined bounding box of the click targets of the selected visible layers in viewport space
@@ -1237,9 +1243,8 @@ impl DocumentMessageHandler {
 
 	pub fn with_name(name: String, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> Self {
 		let mut document = Self { name, ..Self::default() };
-		let transform = document.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2., DVec2::ZERO, 0., 1.);
-		document.network_interface.document_metadata_mut().document_to_viewport = transform;
-		responses.add(DocumentMessage::UpdateDocumentTransform { transform });
+
+		responses.add(DocumentMessage::PTZUpdate);
 
 		document
 	}
@@ -1343,33 +1348,38 @@ impl DocumentMessageHandler {
 		});
 	}
 
-	pub fn undo_with_history(&mut self, responses: &mut VecDeque<Message>) {
-		let Some(previous_network) = self.undo(responses) else { return };
+	pub fn undo_with_history(&mut self, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+		let Some(previous_network) = self.undo(ipp, responses) else { return };
 
 		self.document_redo_history.push_back(previous_network);
 		if self.document_redo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			self.document_redo_history.pop_front();
 		}
 	}
-	pub fn undo(&mut self, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
-		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
-		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 
+	pub fn undo(&mut self, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
 		// If there is no history return and don't broadcast SelectionChanged
 		let mut network_interface = self.document_undo_history.pop_back()?;
 
 		// Set the previous network navigation metadata to the current navigation metadata
 		network_interface.copy_all_navigation_metadata(&self.network_interface);
 
-		responses.add(BroadcastEvent::SelectionChanged);
+		//Update the metadata transform based on document PTZ
+		let transform = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
+		network_interface.set_document_to_viewport_transform(transform);
 
 		let previous_network = std::mem::replace(&mut self.network_interface, network_interface);
 
+		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
+		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+		responses.add(NodeGraphMessage::SelectedNodesUpdated);
+		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
+
 		Some(previous_network)
 	}
-	pub fn redo_with_history(&mut self, responses: &mut VecDeque<Message>) {
+	pub fn redo_with_history(&mut self, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
 		// Push the UpdateOpenDocumentsList message to the queue in order to update the save status of the open documents
-		let Some(previous_network) = self.redo(responses) else { return };
+		let Some(previous_network) = self.redo(ipp, responses) else { return };
 
 		self.document_undo_history.push_back(previous_network);
 		if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
@@ -1377,18 +1387,22 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	pub fn redo(&mut self, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
-		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
-		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+	pub fn redo(&mut self, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
 		// If there is no history return and don't broadcast SelectionChanged
 		let mut network_interface = self.document_redo_history.pop_back()?;
 
 		// Set the previous network navigation metadata to the current navigation metadata
 		network_interface.copy_all_navigation_metadata(&self.network_interface);
 
-		responses.add(BroadcastEvent::SelectionChanged);
+		//Update the metadata transform based on document PTZ
+		let transform = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
+		network_interface.set_document_to_viewport_transform(transform);
 
 		let previous_network = std::mem::replace(&mut self.network_interface, network_interface);
+		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
+		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+		responses.add(NodeGraphMessage::SelectedNodesUpdated);
+		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
 
 		Some(previous_network)
 	}

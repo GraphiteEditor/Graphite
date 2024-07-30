@@ -272,10 +272,10 @@ impl PathToolData {
 		PathToolFsmState::InsertPoint
 	}
 
-	fn update_insertion(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, mouse_position: DVec2) -> PathToolFsmState {
+	fn update_insertion(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, input: &InputPreprocessorMessageHandler) -> PathToolFsmState {
 		if let Some(closed_segment) = &mut self.segment {
-			closed_segment.update_closest_point(&document.metadata(), mouse_position);
-			if closed_segment.too_far(mouse_position, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE, &document.metadata()) {
+			closed_segment.update_closest_point(&document.metadata(), input.mouse.position);
+			if closed_segment.too_far(input.mouse.position, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE, &document.metadata()) {
 				self.end_insertion(shape_editor, responses, InsertEndKind::Abort)
 			} else {
 				PathToolFsmState::InsertPoint
@@ -338,7 +338,7 @@ impl PathToolData {
 			}
 		}
 		// We didn't find a segment path, so consider selecting the nearest shape instead
-		else if let Some(layer) = document.click(input.mouse.position) {
+		else if let Some(layer) = document.click(input) {
 			if add_to_selection {
 				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
 			} else {
@@ -451,7 +451,7 @@ impl Fsm for PathToolFsmState {
 						tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 					}
 					Self::InsertPoint => {
-						let state = tool_data.update_insertion(shape_editor, document, responses, input.mouse.position);
+						let state = tool_data.update_insertion(shape_editor, document, responses, input);
 
 						if let Some(closest_segment) = &tool_data.segment {
 							overlay_context.manipulator_anchor(closest_segment.closest_point_to_viewport(), false, Some(COLOR_OVERLAY_YELLOW));

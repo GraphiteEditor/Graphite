@@ -266,9 +266,16 @@ impl TextToolData {
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![self.layer.to_node()] });
 	}
 
-	fn interact(&mut self, state: TextToolFsmState, mouse: DVec2, document: &DocumentMessageHandler, font_cache: &FontCache, responses: &mut VecDeque<Message>) -> TextToolFsmState {
+	fn interact(
+		&mut self,
+		state: TextToolFsmState,
+		input: &InputPreprocessorMessageHandler,
+		document: &DocumentMessageHandler,
+		font_cache: &FontCache,
+		responses: &mut VecDeque<Message>,
+	) -> TextToolFsmState {
 		// Check if the user has selected an existing text layer
-		if let Some(clicked_text_layer_path) = document.click(mouse).filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text")) {
+		if let Some(clicked_text_layer_path) = document.click(input).filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text")) {
 			self.start_editing_layer(clicked_text_layer_path, state, document, font_cache, responses);
 
 			TextToolFsmState::Editing
@@ -384,7 +391,7 @@ impl Fsm for TextToolFsmState {
 				});
 				tool_data.new_text = String::new();
 
-				tool_data.interact(state, input.mouse.position, document, font_cache, responses)
+				tool_data.interact(state, input, document, font_cache, responses)
 			}
 			(state, TextToolMessage::EditSelected) => {
 				if let Some(layer) = can_edit_selected(document) {

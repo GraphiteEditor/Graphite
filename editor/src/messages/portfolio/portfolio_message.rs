@@ -103,6 +103,7 @@ pub enum PortfolioMessage {
 	},
 	SubmitGraphRender {
 		document_id: DocumentId,
+		ignore_hash: bool,
 	},
 	ToggleRulers,
 	UpdateDocumentWidgets,

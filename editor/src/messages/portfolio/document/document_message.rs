@@ -157,10 +157,10 @@ pub enum DocumentMessage {
 	Undo,
 	UndoFinished,
 	UngroupSelectedLayers,
-	ResetTransform,
-	UpdateDocumentTransform {
-		transform: glam::DAffine2,
+	UngroupLayer {
+		layer: LayerNodeIdentifier,
 	},
+	PTZUpdate,
 	ZoomCanvasTo100Percent,
 	ZoomCanvasTo200Percent,
 	ZoomCanvasToFitAll,

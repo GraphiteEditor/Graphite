@@ -637,11 +637,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					});
 				}
 			}
-			PortfolioMessage::SubmitGraphRender { document_id } => {
+			PortfolioMessage::SubmitGraphRender { document_id, ignore_hash } => {
 				let result = self.executor.submit_node_graph_evaluation(
 					self.documents.get_mut(&document_id).expect("Tried to render non-existent document"),
 					ipp.viewport_bounds.size().as_uvec2(),
-					false,
+					ignore_hash,
 				);
 
 				if let Err(description) = result {

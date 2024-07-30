@@ -870,7 +870,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				// }
 			}
 			NodeGraphMessage::RunDocumentGraph => {
-				responses.add(PortfolioMessage::SubmitGraphRender { document_id });
+				responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false });
+			}
+			NodeGraphMessage::ForceRunDocumentGraph => {
+				responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: true });
 			}
 			NodeGraphMessage::SelectedNodesAdd { nodes } => {
 				let Some(selected_nodes) = network_interface.selected_nodes_mut(selection_network_path) else {
@@ -902,22 +905,18 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}),
 			NodeGraphMessage::EndSendClickTargets => responses.add(FrontendMessage::UpdateClickTargets { click_targets: None }),
 			NodeGraphMessage::SendGraph => {
-				if breadcrumb_network_path == selection_network_path {
-					responses.add(DocumentMessage::DocumentStructureChanged);
-					responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(NodeGraphMessage::UpdateLayerPanel);
+				responses.add(DocumentMessage::DocumentStructureChanged);
+				responses.add(PropertiesPanelMessage::Refresh);
+				if breadcrumb_network_path == selection_network_path && graph_view_overlay_open {
+					// TODO: Implement culling of nodes and wires whose bounding boxes are outside of the viewport
+					let wires = Self::collect_wires(network_interface, breadcrumb_network_path);
+					let nodes = self.collect_nodes(network_interface, breadcrumb_network_path);
+					let (layer_widths, chain_widths) = network_interface.collect_layer_widths(breadcrumb_network_path);
 
-					responses.add(NodeGraphMessage::UpdateLayerPanel);
-
-					if graph_view_overlay_open {
-						// TODO: Implement culling of nodes and wires whose bounding boxes are outside of the viewport
-						let wires = Self::collect_wires(network_interface, breadcrumb_network_path);
-						let nodes = self.collect_nodes(network_interface, breadcrumb_network_path);
-						let (layer_widths, chain_widths) = network_interface.collect_layer_widths(breadcrumb_network_path);
-
-						responses.add(FrontendMessage::UpdateNodeGraph { nodes, wires });
-						responses.add(FrontendMessage::UpdateLayerWidths { layer_widths, chain_widths });
-						responses.add(NodeGraphMessage::SendSelectedNodes);
-					}
+					responses.add(FrontendMessage::UpdateNodeGraph { nodes, wires });
+					responses.add(FrontendMessage::UpdateLayerWidths { layer_widths, chain_widths });
+					responses.add(NodeGraphMessage::SendSelectedNodes);
 				}
 			}
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {

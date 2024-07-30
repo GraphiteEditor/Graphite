@@ -44,8 +44,8 @@ impl Resize {
 
 		let start = self.viewport_drag_start(document);
 		let mouse = input.mouse.position;
-		let to_viewport = document.metadata().document_to_viewport;
-		let document_mouse = to_viewport.inverse().transform_point2(mouse);
+		let document_to_viewport = document.navigation_handler.calculate_offset_transform(input.viewport_bounds.center(), &document.document_ptz);
+		let document_mouse = document_to_viewport.inverse().transform_point2(mouse);
 		let mut points_viewport = [start, mouse];
 		let ignore = if let Some(layer) = self.layer { vec![layer] } else { vec![] };
 		let ratio = input.keyboard.get(lock_ratio as usize);
@@ -55,7 +55,7 @@ impl Resize {
 			let size = points_viewport[1] - points_viewport[0];
 			let size = size.abs().max(size.abs().yx()) * size.signum();
 			points_viewport[1] = points_viewport[0] + size;
-			let end_document = to_viewport.inverse().transform_point2(points_viewport[1]);
+			let end_document = document_to_viewport.inverse().transform_point2(points_viewport[1]);
 			let constraint = SnapConstraint::Line {
 				origin: self.drag_start,
 				direction: end_document - self.drag_start,
@@ -65,24 +65,24 @@ impl Resize {
 				let far = SnapCandidatePoint::handle(2. * self.drag_start - end_document);
 				let snapped_far = self.snap_manager.constrained_snap(&snap_data, &far, constraint, None);
 				let best = if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far };
-				points_viewport[0] = to_viewport.transform_point2(best.snapped_point_document);
-				points_viewport[1] = to_viewport.transform_point2(self.drag_start * 2. - best.snapped_point_document);
+				points_viewport[0] = document_to_viewport.transform_point2(best.snapped_point_document);
+				points_viewport[1] = document_to_viewport.transform_point2(self.drag_start * 2. - best.snapped_point_document);
 				self.snap_manager.update_indicator(best);
 			} else {
 				let snapped = self.snap_manager.constrained_snap(&snap_data, &SnapCandidatePoint::handle(end_document), constraint, None);
-				points_viewport[1] = to_viewport.transform_point2(snapped.snapped_point_document);
+				points_viewport[1] = document_to_viewport.transform_point2(snapped.snapped_point_document);
 				self.snap_manager.update_indicator(snapped);
 			}
 		} else if center {
 			let snapped = self.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), None, false);
 			let snapped_far = self.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(2. * self.drag_start - document_mouse), None, false);
 			let best = if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far };
-			points_viewport[0] = to_viewport.transform_point2(best.snapped_point_document);
-			points_viewport[1] = to_viewport.transform_point2(self.drag_start * 2. - best.snapped_point_document);
+			points_viewport[0] = document_to_viewport.transform_point2(best.snapped_point_document);
+			points_viewport[1] = document_to_viewport.transform_point2(self.drag_start * 2. - best.snapped_point_document);
 			self.snap_manager.update_indicator(best);
 		} else {
 			let snapped = self.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), None, false);
-			points_viewport[1] = to_viewport.transform_point2(snapped.snapped_point_document);
+			points_viewport[1] = document_to_viewport.transform_point2(snapped.snapped_point_document);
 			self.snap_manager.update_indicator(snapped);
 		}
 

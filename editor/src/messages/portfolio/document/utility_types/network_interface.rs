@@ -717,7 +717,7 @@ impl NodeNetworkInterface {
 		};
 		let mut folders: Vec<_> = selected_nodes
 			.selected_layers(self.document_metadata())
-			.filter(|layer| layer.has_children(&self.document_metadata()))
+			.filter(|layer| layer.has_children(self.document_metadata()))
 			.collect();
 		folders.sort_by_cached_key(|a| std::cmp::Reverse(a.ancestors(self.document_metadata()).count()));
 		folders
@@ -2247,6 +2247,9 @@ impl NodeNetworkInterface {
 						}
 					}
 				}
+				if let Some(downstream_node) = &input_connector.node_id() {
+					self.unload_node_click_targets(downstream_node, network_path);
+				}
 				self.unload_upstream_node_click_targets(vec![*upstream_node_id], network_path);
 			}
 			// If a connection is made to the imports
@@ -2257,7 +2260,7 @@ impl NodeNetworkInterface {
 			(NodeInput::Network { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
 				self.unload_outward_wires(network_path);
 			}
-			// If a node is disconnected, then reload outward wires.
+			// If a node is disconnected.
 			(NodeInput::Node { node_id: upstream_node_id, .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
 				// Load structure if the change is to the document network and to the first or second
 				if network_path.is_empty() {
@@ -2270,6 +2273,7 @@ impl NodeNetworkInterface {
 						}
 					}
 				}
+				self.unload_node_click_targets(upstream_node_id, network_path);
 				self.unload_outward_wires(network_path);
 			}
 			_ => {}
@@ -2507,7 +2511,7 @@ impl NodeNetworkInterface {
 					}
 				}
 				// If the node is not a layer or an upstream layer is not found, reconnect to the first upstream node
-				if reconnect_to_input.is_none() && (matches!(node.inputs.get(0), Some(NodeInput::Node { .. })) || matches!(node.inputs.get(0), Some(NodeInput::Network { .. }))) {
+				if reconnect_to_input.is_none() && (matches!(node.inputs.first(), Some(NodeInput::Node { .. })) || matches!(node.inputs.first(), Some(NodeInput::Network { .. }))) {
 					reconnect_to_input = Some(node.inputs[0].clone());
 				}
 			}
@@ -3571,7 +3575,7 @@ pub struct NavigationMetadata {
 	/// The current pan, and zoom state of the viewport's view of the node graph.
 	/// Ensure `DocumentMessage::UpdateDocumentTransform` is called when the pan, zoom, or transform changes.
 	pub node_graph_ptz: PTZ,
-	// TODO: Remove and replace with calculate_offset_transform from the node_graph_ptz
+	// TODO: Remove and replace with calculate_offset_transform from the node_graph_ptz. This will be difficult since it requires both the navigation message handler and the IPP
 	/// Transform from node graph space to viewport space.
 	pub node_graph_to_viewport: DAffine2,
 }

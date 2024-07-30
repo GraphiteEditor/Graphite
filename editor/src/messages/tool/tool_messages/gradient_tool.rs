@@ -399,7 +399,7 @@ impl Fsm for GradientToolFsmState {
 					document.backup_nonmut(responses);
 					GradientToolFsmState::Drawing
 				} else {
-					let selected_layer = document.click(input.mouse.position);
+					let selected_layer = document.click(input);
 
 					// Apply the gradient to the selected layer
 					if let Some(layer) = selected_layer {

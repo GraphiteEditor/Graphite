@@ -508,17 +508,17 @@
 				// }
 
 				// Dimming
-				// &.selected {
-				// 	background: #404040;
-				// 	&.inSelectedNetwork {
-				// 		background: var(--color-4-dimgray);
-				// 	}
-				// }
+				&.selected {
+					background: #404040;
+					&.inSelectedNetwork {
+						background: var(--color-4-dimgray);
+					}
+				}
 
 				// Previous
-				&.selected {
-					background: var(--color-4-dimgray);
-				}
+				// &.selected {
+				// 	background: var(--color-4-dimgray);
+				// }
 
 				&.insert-folder {
 					outline: 3px solid var(--color-e-nearwhite);
