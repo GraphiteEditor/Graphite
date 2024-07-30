@@ -101,17 +101,14 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 			}
 			GraphOperationMessage::SetUpstreamToChain { layer } => {
-				for node_id in network_interface
+				let node_ids = network_interface
 					.upstream_flow_back_from_nodes(
 						vec![layer.to_node()],
 						&[],
 						crate::messages::portfolio::document::utility_types::network_interface::FlowType::HorizontalFlow,
 					)
-					.map(|(_, id)| id)
-					.collect::<Vec<_>>()
-				{
-					network_interface.set_chain_position(&node_id, &[]);
-				}
+					.collect::<Vec<_>>();
+				network_interface.set_chain_position(node_ids, &[]);
 			}
 			GraphOperationMessage::NewArtboard { id, artboard } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);

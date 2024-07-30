@@ -20,11 +20,38 @@ use vello::*;
 /// Represents a clickable target for the layer
 #[derive(Clone, Debug)]
 pub struct ClickTarget {
-	pub subpath: bezier_rs::Subpath<PointId>,
+	bbox: Option<[DVec2; 2]>,
+	subpath: bezier_rs::Subpath<PointId>,
 	pub stroke_width: f64,
 }
 
 impl ClickTarget {
+	pub fn new(subpath: bezier_rs::Subpath<PointId>, stroke_width: f64) -> Self {
+		let bbox = subpath.bounding_box();
+		Self { bbox, subpath, stroke_width }
+	}
+
+	pub fn get_subpath(&self) -> &bezier_rs::Subpath<PointId> {
+		&self.subpath
+	}
+
+	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {
+		self.bbox
+	}
+
+	pub fn bounding_box_with_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
+		self.bbox.map(|[a, b]| [transform.transform_point2(a), transform.transform_point2(b)])
+	}
+
+	pub fn apply_transform(&mut self, affine_transform: DAffine2) {
+		self.subpath.apply_transform(affine_transform);
+		self.update_bbox();
+	}
+
+	fn update_bbox(&mut self) {
+		self.bbox = self.subpath.bounding_box();
+	}
+
 	/// Does the click target intersect the rectangle
 	pub fn intersect_rectangle(&self, document_quad: Quad, layer_transform: DAffine2) -> bool {
 		// Check if the matrix is not invertible
@@ -61,6 +88,20 @@ impl ClickTarget {
 		// TODO: actual intersection of stroke
 		let inflated_quad = Quad::from_box([point - DVec2::splat(self.stroke_width / 2.), point + DVec2::splat(self.stroke_width / 2.)]);
 		self.intersect_rectangle(inflated_quad, layer_transform)
+	}
+
+	/// Does the click target intersect the point (not accounting for stroke size)
+	pub fn intersect_point_no_stroke(&self, point: DVec2) -> bool {
+		// Check if the point is within the bounding box
+		if self
+			.bbox
+			.is_some_and(|bbox| bbox[0].x <= point.x && point.x <= bbox[1].x && bbox[0].y <= point.y && point.y <= bbox[1].y)
+		{
+			// Check if the point is within the shape
+			self.subpath.closed() && self.subpath.contains_point(point)
+		} else {
+			false
+		}
 	}
 }
 
@@ -260,7 +301,7 @@ impl GraphicElementRendered for GraphicGroup {
 			let mut new_click_targets = Vec::new();
 			element.add_click_targets(&mut new_click_targets);
 			for click_target in new_click_targets.iter_mut() {
-				click_target.subpath.apply_transform(element.transform())
+				click_target.apply_transform(element.transform())
 			}
 			click_targets.extend(new_click_targets);
 		}
@@ -338,7 +379,7 @@ impl GraphicElementRendered for VectorData {
 			}
 			subpath
 		};
-		click_targets.extend(self.stroke_bezier_paths().map(fill).map(|subpath| ClickTarget { stroke_width, subpath }));
+		click_targets.extend(self.stroke_bezier_paths().map(fill).map(|subpath| ClickTarget::new(subpath, stroke_width)));
 	}
 
 	#[cfg(feature = "vello")]
@@ -520,7 +561,7 @@ impl GraphicElementRendered for Artboard {
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let mut subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
 		subpath.apply_transform(self.graphic_group.transform.inverse());
-		click_targets.push(ClickTarget { stroke_width: 0., subpath });
+		click_targets.push(ClickTarget::new(subpath, 0.));
 	}
 
 	fn contains_artboard(&self) -> bool {
@@ -635,7 +676,7 @@ impl GraphicElementRendered for ImageFrame<Color> {
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
-		click_targets.push(ClickTarget { subpath, stroke_width: 0. });
+		click_targets.push(ClickTarget::new(subpath, 0.));
 	}
 
 	#[cfg(feature = "vello")]

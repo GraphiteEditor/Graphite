@@ -266,7 +266,10 @@ impl BrushToolData {
 		let layer = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).next()?;
 
 		self.layer = Some(layer);
-		for (node, node_id) in document.network_interface.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::HorizontalFlow) {
+		for node_id in document.network_interface.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::HorizontalFlow) {
+			let Some(node) = document.network_interface.network(&[]).unwrap().nodes.get(&node_id) else {
+				continue;
+			};
 			let Some(reference) = document.network_interface.get_reference(&node_id, &[]) else {
 				continue;
 			};

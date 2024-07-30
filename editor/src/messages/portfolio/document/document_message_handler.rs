@@ -1332,8 +1332,6 @@ impl DocumentMessageHandler {
 	pub fn backup(&mut self, responses: &mut VecDeque<Message>) {
 		let mut network_interface_clone = self.network_interface.clone();
 
-		network_interface_clone.clear_transient_metadata();
-
 		self.backup_with_document(network_interface_clone, responses);
 	}
 
@@ -1356,8 +1354,12 @@ impl DocumentMessageHandler {
 	pub fn undo(&mut self, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+
 		// If there is no history return and don't broadcast SelectionChanged
-		let network_interface = self.document_undo_history.pop_back()?;
+		let mut network_interface = self.document_undo_history.pop_back()?;
+
+		// Set the previous network navigation metadata to the current navigation metadata
+		network_interface.copy_all_navigation_metadata(&self.network_interface);
 
 		responses.add(BroadcastEvent::SelectionChanged);
 
@@ -1379,7 +1381,10 @@ impl DocumentMessageHandler {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		// If there is no history return and don't broadcast SelectionChanged
-		let network_interface = self.document_redo_history.pop_back()?;
+		let mut network_interface = self.document_redo_history.pop_back()?;
+
+		// Set the previous network navigation metadata to the current navigation metadata
+		network_interface.copy_all_navigation_metadata(&self.network_interface);
 
 		responses.add(BroadcastEvent::SelectionChanged);
 

@@ -184,24 +184,23 @@ impl<'a> NodeGraphLayer<'a> {
 	}
 
 	/// Return an iterator up the horizontal flow of the layer
-	pub fn horizontal_layer_flow(&self) -> impl Iterator<Item = (&'a DocumentNode, NodeId)> {
+	pub fn horizontal_layer_flow(&self) -> impl Iterator<Item = NodeId> {
 		self.network_interface.upstream_flow_back_from_nodes(vec![self.layer_node], &[], FlowType::HorizontalFlow)
 	}
 
 	/// Node id of a node if it exists in the layer's primary flow
 	pub fn upstream_node_id_from_name(&self, node_name: &str) -> Option<NodeId> {
 		self.horizontal_layer_flow()
-			.find(|(_, node_id)| self.network_interface.get_reference(node_id, &[]).is_some_and(|reference| reference == node_name))
-			.map(|(_, id)| id)
+			.find(|node_id| self.network_interface.get_reference(node_id, &[]).is_some_and(|reference| reference == node_name))
 	}
 
 	/// Find all of the inputs of a specific node within the layer's primary flow, up until the next layer is reached.
 	pub fn find_node_inputs(&self, node_name: &str) -> Option<&'a Vec<NodeInput>> {
 		self.horizontal_layer_flow()
 			.skip(1)// Skip self
-			.take_while(|(_, node_id)| !self.network_interface.is_layer(node_id,&[]))
-			.find(|(_, node_id)| self.network_interface.get_reference(node_id,&[]).is_some_and(|reference| reference == node_name))
-			.map(|(node, _)| &node.inputs)
+			.take_while(|node_id| !self.network_interface.is_layer(node_id,&[]))
+			.find(|node_id| self.network_interface.get_reference(node_id,&[]).is_some_and(|reference| reference == node_name))
+			.and_then(|node_id| self.network_interface.network(&[]).unwrap().nodes.get(&node_id).map(|node| &node.inputs))
 	}
 
 	/// Find a specific input of a node within the layer's primary flow

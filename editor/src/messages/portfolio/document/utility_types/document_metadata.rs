@@ -73,7 +73,7 @@ impl DocumentMetadata {
 		}
 		self.click_targets
 			.get(&layer)
-			.map(|click| click.iter().map(|click| &click.subpath))
+			.map(|click| click.iter().map(|click| click.get_subpath()))
 			.map(|subpaths| VectorData::from_subpaths(subpaths, true))
 	}
 
@@ -151,7 +151,7 @@ impl DocumentMetadata {
 		self.click_targets
 			.get(&layer)?
 			.iter()
-			.filter_map(|click_target| click_target.subpath.bounding_box_with_transform(transform))
+			.filter_map(|click_target| click_target.bounding_box_with_transform(transform))
 			.reduce(Quad::combine_bounds)
 	}
 
@@ -190,7 +190,7 @@ impl DocumentMetadata {
 	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &bezier_rs::Subpath<PointId>> {
 		static EMPTY: Vec<ClickTarget> = Vec::new();
 		let click_targets = self.click_targets.get(&layer).unwrap_or(&EMPTY);
-		click_targets.iter().map(|click_target| &click_target.subpath)
+		click_targets.iter().map(|click_target| click_target.get_subpath())
 	}
 }
 

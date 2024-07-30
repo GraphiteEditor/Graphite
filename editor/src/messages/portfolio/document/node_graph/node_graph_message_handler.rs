@@ -208,14 +208,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::DeleteSelectedNodes { reconnect: true });
 			}
 			NodeGraphMessage::DeleteNodes { node_ids, reconnect } => {
-				// Update the selected nodes, and rerender the document
-				let Some(selected_nodes) = network_interface.selected_nodes_mut(selection_network_path) else {
-					log::error!("Could not get selected nodes in NodeGraphMessage::DeleteNodes");
-					return;
-				};
-				selected_nodes.retain_selected_nodes(|node_id| !node_ids.contains(node_id));
 				network_interface.delete_nodes(node_ids, reconnect, selection_network_path);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			// Deletes selected_nodes. If `reconnect` is true, then all children nodes (secondary input) of the selected nodes are deleted and the siblings (primary input/output) are reconnected.
 			// If `reconnect` is false, then only the selected nodes are deleted and not reconnected.
@@ -411,10 +406,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						DVec2::new(context_menu_viewport.x + width, context_menu_viewport.y + height),
 						[5.; 4],
 					);
-					let context_menu_click_target = ClickTarget {
-						subpath: context_menu_subpath,
-						stroke_width: 1.,
-					};
+					let context_menu_click_target = ClickTarget::new(context_menu_subpath, 0.);
 					if context_menu_click_target.intersect_point(click, DAffine2::IDENTITY) {
 						return;
 					}
@@ -548,7 +540,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					.transform_point2(viewport_location);
 
 				if self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none() {
-					if let Some(to_connector) = network_interface.get_input_connector_from_click(ipp.mouse.position, selection_network_path) {
+					let to_connector = network_interface.get_input_connector_from_click(ipp.mouse.position, selection_network_path);
+					if let Some(to_connector) = &to_connector {
 						let Some(input_position) = network_interface.get_input_position(&to_connector, selection_network_path) else {
 							log::error!("Could not get input position for connector: {to_connector:?}");
 							return;
@@ -598,15 +591,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							.navigation_metadata
 							.node_graph_to_viewport
 							.transform_point2(wire_in_progress_to_connector);
-						let to_connector_is_layer = network_interface
-							.get_input_connector_from_click(to_connector_viewport, selection_network_path)
-							.is_some_and(|input_connector| {
-								if let InputConnector::Node { node_id, input_index } = input_connector {
-									input_index == 0 && network_interface.is_layer(&node_id, selection_network_path)
-								} else {
-									false
-								}
-							});
+						let to_connector_is_layer = to_connector.is_some_and(|to_connector| {
+							if let InputConnector::Node { node_id, input_index } = to_connector {
+								input_index == 0 && network_interface.is_layer(&node_id, selection_network_path)
+							} else {
+								false
+							}
+						});
 						let wire_path = WirePath {
 							path_string: Self::build_wire_path_string(wire_in_progress_from_connector, wire_in_progress_to_connector, from_connector_is_layer, to_connector_is_layer),
 							data_type: FrontendGraphDataType::General,
@@ -744,7 +735,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 									// Prevent inserting on a link that is connected upstream to the selected node
 									if network_interface
 										.upstream_flow_back_from_nodes(vec![selected_node_id], selection_network_path, network_interface::FlowType::UpstreamFlow)
-										.any(|(_, upstream_id)| {
+										.any(|upstream_id| {
 											frontend_wire.wire_end.node_id().is_some_and(|wire_end_id| wire_end_id == upstream_id)
 												|| frontend_wire.wire_start.node_id().is_some_and(|wire_start_id| wire_start_id == upstream_id)
 										}) {
@@ -918,6 +909,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(NodeGraphMessage::UpdateLayerPanel);
 
 					if graph_view_overlay_open {
+						// TODO: Implement culling of nodes and wires whose bounding boxes are outside of the viewport
 						let wires = Self::collect_wires(network_interface, breadcrumb_network_path);
 						let nodes = self.collect_nodes(network_interface, breadcrumb_network_path);
 						let (layer_widths, chain_widths) = network_interface.collect_layer_widths(breadcrumb_network_path);
@@ -951,7 +943,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				move_upstream,
 			} => {
 				if move_upstream {
-					for (_, node_id) in network_interface.upstream_flow_back_from_nodes(node_ids.clone(), selection_network_path, network_interface::FlowType::UpstreamFlow) {
+					for node_id in network_interface.upstream_flow_back_from_nodes(node_ids.clone(), selection_network_path, network_interface::FlowType::UpstreamFlow) {
 						if network_interface.is_absolute(&node_id, selection_network_path) && node_ids.iter().all(|id| *id != node_id) {
 							node_ids.push(node_id);
 						}
@@ -1374,14 +1366,15 @@ impl NodeGraphMessageHandler {
 					.network_interface
 					.upstream_flow_back_from_nodes(vec![layers[0]], context.selection_network_path, network_interface::FlowType::HorizontalFlow)
 					.enumerate()
-					.take_while(|(i, (_, node_id))| {
+					.take_while(|(i, node_id)| {
 						if *i == 0 {
 							true
 						} else {
 							!context.network_interface.is_layer(node_id, context.selection_network_path)
 						}
 					})
-					.map(|(_, (node, node_id))| node_properties::generate_node_properties(node, node_id, context))
+					.filter_map(|(_, node_id)| network.nodes.get(&node_id).map(|node| (node, node_id)))
+					.map(|(node, node_id)| node_properties::generate_node_properties(node, node_id, context))
 					.collect()
 			}
 			// If multiple layers and/or nodes are selected, show nothing

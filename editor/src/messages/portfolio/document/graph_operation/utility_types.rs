@@ -208,8 +208,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let existing_node_id = self
 			.network_interface
 			.upstream_flow_back_from_nodes(self.get_output_layer().map_or(vec![], |layer| vec![layer.to_node()]), &[], network_interface::FlowType::HorizontalFlow)
-			.find(|(_, node_id)| self.network_interface.get_reference(node_id, &[]).is_some_and(|node_reference| node_reference == reference))
-			.map(|(_, id)| id);
+			.find(|node_id| self.network_interface.get_reference(node_id, &[]).is_some_and(|node_reference| node_reference == reference));
 
 		// Create a new node if the node does not exist and update its inputs
 		existing_node_id.or_else(|| {

@@ -334,7 +334,7 @@ impl SelectToolData {
 				.network_interface
 				.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::LayerChildrenUpstreamFlow)
 				.enumerate()
-				.for_each(|(index, (_, node_id))| {
+				.for_each(|(index,  node_id)| {
 					copy_ids.insert(node_id, NodeId((index + 1) as u64));
 				});
 

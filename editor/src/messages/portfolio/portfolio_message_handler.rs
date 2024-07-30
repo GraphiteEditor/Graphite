@@ -199,7 +199,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							.network_interface
 							.upstream_flow_back_from_nodes(vec![layer_node_id], &[], network_interface::FlowType::LayerChildrenUpstreamFlow)
 							.enumerate()
-							.for_each(|(index, (_, node_id))| {
+							.for_each(|(index, node_id)| {
 								copy_ids.insert(node_id, NodeId((index + 1) as u64));
 							});
 
