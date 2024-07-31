@@ -8,6 +8,7 @@ use graphene_core::{transform::Footprint, GraphicGroup};
 use graphene_core::{vector::misc::BooleanOperation, GraphicElement};
 
 use glam::{DAffine2, DVec2};
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
 pub struct BinaryBooleanOperationNode<LowerVectorData, BooleanOp> {

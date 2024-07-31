@@ -940,12 +940,12 @@ mod test {
 		assert_eq!(
 			ids,
 			vec![
-				NodeId(5686040524603683634),
-				NodeId(13787140740513543798),
-				NodeId(1280393769237740322),
-				NodeId(3100442468152897091),
-				NodeId(14834729712909816752),
-				NodeId(8678825113056010444)
+				NodeId(12083027370457564588),
+				NodeId(10127202135369428481),
+				NodeId(3781642984881236270),
+				NodeId(9447822059040146367),
+				NodeId(15916837829094140504),
+				NodeId(1758919868423328454)
 			]
 		);
 	}
@@ -996,7 +996,7 @@ mod test {
 					ProtoNode {
 						identifier: "value".into(),
 						input: ProtoNodeInput::None,
-						construction_args: ConstructionArgs::Value(value::TaggedValue::U32(2)),
+						construction_args: ConstructionArgs::Value(value::TaggedValue::U32(2).into()),
 						..Default::default()
 					},
 				),

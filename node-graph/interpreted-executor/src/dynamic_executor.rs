@@ -263,7 +263,7 @@ mod test {
 	#[test]
 	fn push_node_sync() {
 		let mut tree = BorrowTree::default();
-		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2u32)), vec![]);
+		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2u32).into()), vec![]);
 		let context = TypingContext::default();
 		let future = tree.push_node(NodeId(0), val_1_protonode, &context);
 		futures::executor::block_on(future).unwrap();

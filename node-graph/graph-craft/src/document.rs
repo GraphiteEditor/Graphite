@@ -1618,7 +1618,7 @@ mod test {
 		assert_eq!(extraction_network.nodes.len(), 1);
 		let inputs = extraction_network.nodes.get(&NodeId(1)).unwrap().inputs.clone();
 		assert_eq!(inputs.len(), 1);
-		assert!(matches!(&inputs[0], &NodeInput::Value{ tagged_value: TaggedValue::DocumentNode(ref network), ..} if network == &id_node));
+		assert!(matches!(&inputs[0].as_value(), &Some(TaggedValue::DocumentNode(ref network), ..) if network == &id_node));
 	}
 
 	#[test]
@@ -1629,13 +1629,7 @@ mod test {
 				NodeId(1),
 				DocumentNode {
 					name: "Inc".into(),
-					inputs: vec![
-						NodeInput::network(concrete!(u32), 0),
-						NodeInput::Value {
-							tagged_value: TaggedValue::U32(2),
-							exposed: false,
-						},
-					],
+					inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::value(TaggedValue::U32(2), false)],
 					implementation: DocumentNodeImplementation::Network(add_network()),
 					..Default::default()
 				},
@@ -1720,7 +1714,7 @@ mod test {
 					ProtoNode {
 						identifier: "graphene_core::value::ClonedNode".into(),
 						input: ProtoNodeInput::None,
-						construction_args: ConstructionArgs::Value(TaggedValue::U32(2)),
+						construction_args: ConstructionArgs::Value(TaggedValue::U32(2).into()),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(4)]),
 							inputs_source: HashMap::new(),
@@ -1767,10 +1761,7 @@ mod test {
 					NodeId(14),
 					DocumentNode {
 						name: "Value".into(),
-						inputs: vec![NodeInput::Value {
-							tagged_value: TaggedValue::U32(2),
-							exposed: false,
-						}],
+						inputs: vec![NodeInput::value(TaggedValue::U32(2), false)],
 						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::ClonedNode".into()),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(4)]),
