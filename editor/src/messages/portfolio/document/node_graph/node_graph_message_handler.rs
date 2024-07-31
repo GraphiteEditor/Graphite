@@ -950,6 +950,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 				for node_id in node_ids {
 					network_interface.shift_node(&node_id, IVec2::new(displacement_x, displacement_y), selection_network_path);
+
+					if let Some(outward_wires) = network_interface
+						.get_outward_wires(selection_network_path)
+						.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(node_id, 0)))
+						.cloned()
+					{
+						if outward_wires.len() == 1 {
+							network_interface.try_set_upstream_to_chain(&outward_wires[0], selection_network_path)
+						}
+					}
 				}
 				if graph_view_overlay_open {
 					responses.add(NodeGraphMessage::SendGraph);
@@ -957,6 +967,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(DocumentMessage::RenderScrollbars);
 				}
 			}
+
 			NodeGraphMessage::ToggleSelectedAsLayersOrNodes => {
 				let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else {
 					log::error!("Could not get selected nodes in NodeGraphMessage::ToggleSelectedAsLayersOrNodes");
@@ -985,7 +996,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					context_menu_information: self.context_menu.clone(),
 				});
 				responses.add(NodeGraphMessage::RunDocumentGraph);
-				responses.add(DocumentMessage::DocumentStructureChanged);
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::SetDisplayName { node_id, alias } => {
 				responses.add(DocumentMessage::StartTransaction);

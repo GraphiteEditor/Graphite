@@ -479,11 +479,9 @@ impl NodeGraphExecutor {
 				.map_err(|e| e.to_string())?;
 		}
 
-		let document_to_viewport = document.navigation_handler.calculate_offset_transform(viewport_resolution.as_dvec2() / 2., &document.document_ptz);
-
 		let render_config = RenderConfig {
 			viewport: Footprint {
-				transform: document_to_viewport,
+				transform: document.metadata().document_to_viewport,
 				resolution: viewport_resolution,
 				..Default::default()
 			},

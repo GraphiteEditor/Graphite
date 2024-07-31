@@ -48,7 +48,9 @@ pub fn new_svg_layer(svg: String, transform: glam::DAffine2, id: NodeId, parent:
 
 pub fn new_custom(id: NodeId, nodes: Vec<(NodeId, NodeTemplate)>, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
 	responses.add(GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index: 0 });
-	responses.add(GraphOperationMessage::SetUpstreamToChain { layer: parent });
+	responses.add(GraphOperationMessage::SetUpstreamToChain {
+		layer: LayerNodeIdentifier::new_unchecked(id),
+	});
 	responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
 	LayerNodeIdentifier::new_unchecked(id)
 }
