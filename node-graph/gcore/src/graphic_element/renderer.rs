@@ -327,9 +327,10 @@ impl GraphicElementRendered for VectorData {
 
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		let stroke_width = self.style.stroke().map(|s| s.weight()).unwrap_or_default();
+		let miter_limit = self.style.stroke().map(|s| s.line_join_miter_limit).unwrap_or(1.);
 		let scale = transform.decompose_scale();
 		// We use the full line width here to account for different styles of line caps
-		let offset = DVec2::splat(stroke_width * scale.x.max(scale.y));
+		let offset = DVec2::splat(stroke_width * scale.x.max(scale.y) * miter_limit);
 		self.bounding_box_with_transform(transform * self.transform).map(|[a, b]| [a - offset, b + offset])
 	}
 
