@@ -288,7 +288,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					// TODO: Group each set of layers for each artboard separately
 					return;
 				};
-				let insert_index = DocumentMessageHandler::get_calculated_insert_index(&self.metadata(), &self.network_interface.selected_nodes(&[]).unwrap(), parent);
+				let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), self.network_interface.selected_nodes(&[]).unwrap(), parent);
 
 				let folder_id = NodeId(generate_uuid());
 				let new_group_node = super::node_graph::document_node_types::resolve_document_node_type("Boolean Operation")
@@ -298,8 +298,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						Some(NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorData::empty()), true)),
 						Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
 					]);
-				self.network_interface.insert_node(folder_id, &[], new_group_node);
-				let new_group_folder = LayerNodeIdentifier::new(folder_id, &self.network_interface);
+				responses.add(NodeGraphMessage::InsertNode {
+					node_id: folder_id,
+					node_template: new_group_node,
+				});
+				let new_group_folder = LayerNodeIdentifier::new_unchecked(folder_id);
 
 				// Move the boolean operation to the correct position
 				responses.add(NodeGraphMessage::MoveLayerToStack {
@@ -1175,7 +1178,7 @@ impl DocumentMessageHandler {
 			.iter()
 			.find(|&&layer| {
 				if layer != LayerNodeIdentifier::ROOT_PARENT {
-					layer.has_children(self.network_interface.document_metadata())
+					!layer.has_children(self.network_interface.document_metadata())
 				} else {
 					log::error!("ROOT_PARENT should not exist in find_deepest");
 					false
@@ -1239,14 +1242,6 @@ impl DocumentMessageHandler {
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
 		serde_json::from_str(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string()))
-	}
-
-	pub fn with_name(name: String, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> Self {
-		let mut document = Self { name, ..Self::default() };
-
-		responses.add(DocumentMessage::PTZUpdate);
-
-		document
 	}
 
 	pub fn with_name_and_content(name: String, serialized_content: String) -> Result<Self, EditorError> {
@@ -1335,7 +1330,7 @@ impl DocumentMessageHandler {
 
 	/// Copies the entire document into the history system
 	pub fn backup(&mut self, responses: &mut VecDeque<Message>) {
-		let mut network_interface_clone = self.network_interface.clone();
+		let network_interface_clone = self.network_interface.clone();
 
 		self.backup_with_document(network_interface_clone, responses);
 	}

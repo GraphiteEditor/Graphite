@@ -2,7 +2,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
 use crate::messages::prelude::*;
 use bezier_rs::Subpath;
-use graph_craft::document::{value::TaggedValue, DocumentNode, NodeId, NodeInput};
+use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
 use graphene_core::vector::style::Gradient;

@@ -289,7 +289,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::InsertNode { node_id, node_template } => {
-				network_interface.insert_node(node_id, selection_network_path, node_template);
+				network_interface.insert_node(node_id, node_template, selection_network_path);
 			}
 			NodeGraphMessage::InsertNodeBetween {
 				node_id,
@@ -583,14 +583,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 									false
 								}
 							});
-						let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
-							return;
-						};
-						let to_connector_viewport = network_metadata
-							.persistent_metadata
-							.navigation_metadata
-							.node_graph_to_viewport
-							.transform_point2(wire_in_progress_to_connector);
 						let to_connector_is_layer = to_connector.is_some_and(|to_connector| {
 							if let InputConnector::Node { node_id, input_index } = to_connector {
 								input_index == 0 && network_interface.is_layer(&node_id, selection_network_path)
@@ -626,7 +618,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						drag_start.round_x = graph_delta.x;
 						drag_start.round_y = graph_delta.y;
 					}
-				} else if let Some(box_selection_start) = self.box_selection_start {
+				} else if self.box_selection_start.is_some() {
 					responses.add(NodeGraphMessage::UpdateBoxSelection);
 				}
 			}
@@ -1491,7 +1483,7 @@ impl NodeGraphMessageHandler {
 
 		let mut nodes = Vec::new();
 		for (&node_id, node) in &network.nodes {
-			let node_id_path = &[breadcrumb_network_path.clone(), (&[node_id])].concat();
+			let node_id_path = &[breadcrumb_network_path, (&[node_id])].concat();
 			let Some(node_metadata) = network_metadata.persistent_metadata.node_metadata.get(&node_id) else {
 				log::error!("Could not get node_metadata for {node_id_path:?}");
 				continue;
@@ -1607,7 +1599,6 @@ impl NodeGraphMessageHandler {
 			};
 			let is_export = network.exports.first().is_some_and(|export| export.as_node().is_some_and(|export_node_id| node_id == export_node_id));
 			let is_root_node = network_interface.get_root_node(breadcrumb_network_path).is_some_and(|root_node| root_node.node_id == node_id);
-			let reference = network_interface.get_reference(&node_id, breadcrumb_network_path);
 
 			let Some(position) = position_lookup.get(&node_id).map(|pos| (pos.x, pos.y)) else {
 				log::error!("Could not get position for node: {node_id}");
@@ -1721,12 +1712,6 @@ impl NodeGraphMessageHandler {
 				connected_to,
 			});
 		}
-		// Display error for document network export node
-		let errors = self
-			.node_graph_errors
-			.iter()
-			.find(|error| error.node_path.is_empty() && self.network.is_empty())
-			.map(|error| format!("{:?}", error.error.clone()));
 
 		// TODO: Replace with new UI
 		// Add "Import" UI-only node
@@ -1815,7 +1800,7 @@ impl NodeGraphMessageHandler {
 
 				let parents_unlocked: bool = layer.ancestors(network_interface.document_metadata()).filter(|&ancestor| ancestor != layer).all(|layer| {
 					if layer != LayerNodeIdentifier::ROOT_PARENT {
-						network_interface.is_locked(&layer.to_node(), &[])
+						!network_interface.is_locked(&layer.to_node(), &[])
 					} else {
 						true
 					}

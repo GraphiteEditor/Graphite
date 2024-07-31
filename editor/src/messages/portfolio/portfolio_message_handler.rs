@@ -328,8 +328,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					responses.add_front(FrontendMessage::TriggerFontLoad { font, is_default });
 				}
 			}
+
 			PortfolioMessage::NewDocumentWithName { name } => {
-				let new_document = DocumentMessageHandler::with_name(name, ipp, responses);
+				let mut new_document = DocumentMessageHandler::default();
+				new_document.name = name;
+				responses.add(DocumentMessage::PTZUpdate);
+
 				let document_id = DocumentId(generate_uuid());
 				if self.active_document().is_some() {
 					responses.add(BroadcastEvent::ToolAbort);
@@ -534,11 +538,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId(generate_uuid()))).collect();
 						let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
 						responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
-						responses.add(NodeGraphMessage::MoveLayerToStack {
-							layer,
-							parent,
-							insert_index,
-						});
+						responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index });
 					}
 				};
 
@@ -562,11 +562,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(id, _)| (*id, NodeId(generate_uuid()))).collect();
 							let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
 							responses.add(NodeGraphMessage::AddNodes { nodes: entry.nodes, new_ids });
-							responses.add(NodeGraphMessage::MoveLayerToStack {
-								layer,
-								parent,
-								insert_index: 0,
-							});
+							responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index: 0 });
 						}
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}

@@ -436,20 +436,6 @@
 			</svg>
 		</div>
 	{/if}
-	<!-- Node connection wires -->
-	<div class="wires" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
-		<svg>
-			{#each wirePaths as { pathString, dataType, thick, dashed }}
-				<path
-					d={pathString}
-					style:--data-line-width={`${thick ? 8 : 2}px`}
-					style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
-					style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
-					style:--data-dasharray={`3,${dashed ? 2 : 0}`}
-				/>
-			{/each}
-		</svg>
-	</div>
 	<!-- Layers and nodes -->
 	<div
 		class="layers-and-nodes"
@@ -582,6 +568,20 @@
 				</svg>
 			</div>
 		{/each}
+		<!-- Node connection wires -->
+		<div class="wires">
+			<svg>
+				{#each wirePaths as { pathString, dataType, thick, dashed }}
+					<path
+						d={pathString}
+						style:--data-line-width={`${thick ? 8 : 2}px`}
+						style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
+						style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
+						style:--data-dasharray={`3,${dashed ? 2 : 0}`}
+					/>
+				{/each}
+			</svg>
+		</div>
 		<!-- Nodes -->
 		{#each $nodeGraph.nodes.flatMap((node, nodeIndex) => (node.isLayer ? [] : [{ node, nodeIndex }])) as { node, nodeIndex } (nodeIndex)}
 			{@const exposedInputsOutputs = [...node.exposedInputs, ...node.exposedOutputs]}

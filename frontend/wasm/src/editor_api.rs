@@ -843,11 +843,11 @@ impl EditorHandle {
 
 				document.network_interface.insert_node(
 					node_id,
-					&[],
 					NodeTemplate {
 						document_node,
 						persistent_node_metadata: node_metadata.persistent_metadata,
 					},
+					&[]
 				);
 			}
 		}

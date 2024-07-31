@@ -143,7 +143,7 @@ impl NodeNetworkInterface {
 		}
 		Some(LayerNodeIdentifier::new(id, self))
 
-		/// Returns all downstream layer that are directly downstream
+		// Returns all downstream layer that are directly downstream
 		// let mut stack = vec![*node_id];
 		// let mut downstream_layers = vec![];
 		// while let Some(node_id) = stack.pop() {
@@ -353,7 +353,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get node {node_id} in create_node_template");
 			return None;
 		};
-		let Some(mut node_metadata) = self.get_node_metadata(node_id, network_path).cloned() else {
+		let Some(node_metadata) = self.get_node_metadata(node_id, network_path).cloned() else {
 			log::error!("Could not get node_metadata in create_node_template");
 			return None;
 		};
@@ -632,16 +632,6 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn is_eligible_to_be_layer(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
-		let Some(network) = self.network(network_path) else {
-			log::error!("Could not get network in is_eligible_to_be_layer");
-			return false;
-		};
-
-		let Some(node) = network.nodes.get(node_id) else {
-			log::error!("Could not get node {node_id} in is_eligible_to_be_layer");
-			return false;
-		};
-
 		let input_count = self.number_of_inputs(node_id, network_path);
 		let output_count = self.number_of_outputs(node_id, network_path);
 
@@ -947,19 +937,19 @@ impl NodeNetworkInterface {
 	}
 
 	/// Mutably get the node which encapsulates the currently viewed network. Will always be None in the document network.
-	fn get_encapsulating_node_mut(&mut self, network_path: &[NodeId]) -> Option<&mut DocumentNode> {
-		let mut encapsulating_path = network_path.to_vec();
-		let encapsulating_node_id = encapsulating_path.pop()?;
-		let Some(parent_network) = self.network_mut(&encapsulating_path) else {
-			log::error!("Could not get parent network in get_encapsulating_node_mut");
-			return None;
-		};
-		let Some(encapsulating_node) = parent_network.nodes.get_mut(&encapsulating_node_id) else {
-			log::error!("Could not get encapsulating node in get_encapsulating_node_mut");
-			return None;
-		};
-		Some(encapsulating_node)
-	}
+	// fn get_encapsulating_node_mut(&mut self, network_path: &[NodeId]) -> Option<&mut DocumentNode> {
+	// 	let mut encapsulating_path = network_path.to_vec();
+	// 	let encapsulating_node_id = encapsulating_path.pop()?;
+	// 	let Some(parent_network) = self.network_mut(&encapsulating_path) else {
+	// 		log::error!("Could not get parent network in get_encapsulating_node_mut");
+	// 		return None;
+	// 	};
+	// 	let Some(encapsulating_node) = parent_network.nodes.get_mut(&encapsulating_node_id) else {
+	// 		log::error!("Could not get encapsulating node in get_encapsulating_node_mut");
+	// 		return None;
+	// 	};
+	// 	Some(encapsulating_node)
+	// }
 
 	/// Get the node metadata for the node which encapsulates the currently viewed network. Will always be None in the document network.
 	fn get_encapsulating_node_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut DocumentNodeMetadata> {
@@ -1579,16 +1569,16 @@ impl NodeNetworkInterface {
 			if let Some(node_click_targets) = self.get_node_click_targets(&node_id, network_path) {
 				let mut node_path = String::new();
 
-				node_click_targets.node_click_target.get_subpath().subpath_to_svg(&mut node_path, DAffine2::IDENTITY);
+				let _ = node_click_targets.node_click_target.get_subpath().subpath_to_svg(&mut node_path, DAffine2::IDENTITY);
 				all_node_click_targets.push((node_id, node_path));
 				for port in node_click_targets.port_click_targets.get_click_targets() {
 					let mut port_path = String::new();
-					port.get_subpath().subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
+					let _ = port.get_subpath().subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
 					port_click_targets.push(port_path);
 				}
 				if let NodeTypeClickTargets::Layer(layer_metadata) = &node_click_targets.node_type_metadata {
 					let mut port_path = String::new();
-					layer_metadata.visibility_click_target.get_subpath().subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
+					let _ = layer_metadata.visibility_click_target.get_subpath().subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
 					visibility_click_targets.push(port_path);
 				}
 			}
@@ -1605,7 +1595,7 @@ impl NodeNetworkInterface {
 		let bounds = self.get_all_nodes_bounding_box(network_path).cloned().unwrap_or_else(|| [DVec2::ZERO, DVec2::ZERO]);
 		let rect = bezier_rs::Subpath::<PointId>::new_rect(bounds[0], bounds[1]);
 		let mut all_nodes_bounding_box = String::new();
-		rect.subpath_to_svg(&mut all_nodes_bounding_box, DAffine2::IDENTITY);
+		let _ = rect.subpath_to_svg(&mut all_nodes_bounding_box, DAffine2::IDENTITY);
 
 		FrontendClickTargets {
 			node_click_targets,
@@ -1809,7 +1799,7 @@ impl NodeNetworkInterface {
 			OutputConnector::Node { node_id, output_index } => self
 				.get_node_click_targets(node_id, network_path)
 				.and_then(|transient_node_metadata| transient_node_metadata.port_click_targets.get_output_port_position(*output_index)),
-			OutputConnector::Import(import_index) => None, // TODO: Implement getting position for the new import connection UI
+			OutputConnector::Import(_import_index) => None, // TODO: Implement getting position for the new import connection UI
 		}
 	}
 
@@ -2188,25 +2178,6 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		// If a node was previously connected, and it is no longer connected to any nodes, then set its position to absolute at its previous position
-		if let Some(((old_upstream_node_id, previous_position), previous_outward_wires_len)) = previous_metadata {
-			let mut set_to_absolute = true;
-			// Do not set to absolute if the node is connected to the same node
-			if let NodeInput::Node { node_id: new_upstream_node_id, .. } = &new_input {
-				if *new_upstream_node_id == old_upstream_node_id {
-					set_to_absolute = false;
-				}
-			}
-			// Do not set to absolute if the node is being disconnected, but still has another connection
-			if matches!(new_input, NodeInput::Value { .. }) && previous_outward_wires_len > 1 {
-				set_to_absolute = false;
-			}
-
-			if set_to_absolute {
-				self.set_absolute_position(&old_upstream_node_id, network_path, previous_position);
-			}
-		}
-
 		// Side effects
 		match (&old_input, &new_input) {
 			// If a node input is exposed or hidden reload the click targets and update the bounding box for all nodes
@@ -2269,7 +2240,7 @@ impl NodeNetworkInterface {
 							}
 						}
 					}
-					NodeTypePersistentMetadata::Node(node_metadata) => {}
+					NodeTypePersistentMetadata::Node(_) => {}
 				}
 				self.unload_upstream_node_click_targets(vec![*upstream_node_id], network_path);
 
@@ -2284,7 +2255,25 @@ impl NodeNetworkInterface {
 				self.unload_outward_wires(network_path);
 			}
 			// If a node is disconnected.
-			(NodeInput::Node { node_id: upstream_node_id, .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
+			(NodeInput::Node { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
+				// If a node was previously connected, and it is no longer connected to any nodes, then set its position to absolute at its previous position
+				if let Some(((old_upstream_node_id, previous_position), previous_outward_wires_len)) = previous_metadata {
+					let mut set_to_absolute = true;
+					// Do not set to absolute if the node is connected to the same node
+					if let NodeInput::Node { node_id: new_upstream_node_id, .. } = &new_input {
+						if *new_upstream_node_id == old_upstream_node_id {
+							set_to_absolute = false;
+						}
+					}
+					// Do not set to absolute if the node is being disconnected, but still has another connection
+					if matches!(new_input, NodeInput::Value { .. }) && previous_outward_wires_len > 1 {
+						set_to_absolute = false;
+					}
+
+					if set_to_absolute {
+						self.set_absolute_position(&old_upstream_node_id, network_path, previous_position);
+					}
+				}
 				// Load structure if the change is to the document network and to the first or second
 				if network_path.is_empty() {
 					if matches!(input_connector, InputConnector::Export(0)) {
@@ -2381,7 +2370,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Used to insert a node template with no node/network inputs into the network.
-	pub fn insert_node(&mut self, node_id: NodeId, network_path: &[NodeId], node_template: NodeTemplate) {
+	pub fn insert_node(&mut self, node_id: NodeId, node_template: NodeTemplate, network_path: &[NodeId]) {
 		let has_node_or_network_input = node_template
 			.document_node
 			.inputs
@@ -2906,7 +2895,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get node_metadata for node {node_id}");
 			return;
 		};
-		// Set any chain nodes to absolute positioning
+		// Set any absolute nodes to chain positioning
 		if let NodeTypePersistentMetadata::Node(NodePersistentMetadata { position }) = &mut node_metadata.persistent_metadata.node_type_metadata {
 			*position = NodePosition::Chain;
 		}

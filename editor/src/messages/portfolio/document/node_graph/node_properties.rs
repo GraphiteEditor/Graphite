@@ -1786,7 +1786,7 @@ pub fn text_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 }
 
 pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let imaginate_node = [context.selection_network_path.clone(), &[node_id]].concat();
+	let imaginate_node = [context.selection_network_path, &[node_id]].concat();
 
 	let resolve_input = |name: &str| {
 		IMAGINATE_NODE

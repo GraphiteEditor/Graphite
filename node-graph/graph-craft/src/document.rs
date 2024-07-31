@@ -44,15 +44,6 @@ fn return_true() -> bool {
 }
 
 // TODO: Eventually remove this (probably starting late 2024)
-fn migrate_layer_to_merge<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
-	let mut s: String = serde::Deserialize::deserialize(deserializer)?;
-	if s == "Layer" {
-		s = "Merge".to_string();
-	}
-	Ok(s)
-}
-
-// TODO: Eventually remove this (probably starting late 2024)
 #[derive(Debug, serde::Deserialize)]
 #[serde(untagged)]
 enum NodeInputVersions {

@@ -1,7 +1,7 @@
 use super::transform_utils;
 use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, NodeTemplate, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
@@ -96,18 +96,14 @@ impl<'a> ModifyInputsContext<'a> {
 			};
 		}
 
-		let mut pre_node_output_connector = None;
-
 		// Sink post_node down to the end of the non layer chain that feeds into post_node, such that pre_node is the layer node at insert_index + 1, or None if insert_index is the last layer
 		loop {
-			pre_node_output_connector = network_interface.get_upstream_output_connector(&post_node_input_connector, &[]);
+			let pre_node_output_connector = network_interface.get_upstream_output_connector(&post_node_input_connector, &[]);
 
 			match pre_node_output_connector {
 				Some(OutputConnector::Node { node_id: pre_node_id, .. }) if !network_interface.is_layer(&pre_node_id, &[]) => {
 					// Update post_node_input_connector for the next iteration
 					post_node_input_connector = InputConnector::node(pre_node_id, 0);
-					// Reset pre_node_output_connector to None to fetch new input in the next iteration
-					pre_node_output_connector = None;
 				}
 				_ => break, // Break if pre_node_output_connector is None or if pre_node_id is a layer
 			}
@@ -119,8 +115,8 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Creates a new layer and adds it to the document network. network_interface.move_layer_to_stack should be called after
 	pub fn create_layer(&mut self, new_id: NodeId) -> LayerNodeIdentifier {
 		let new_merge_node = resolve_document_node_type("Merge").expect("Merge node").default_node_template();
-		self.network_interface.insert_node(new_id, &[], new_merge_node);
-		LayerNodeIdentifier::new(new_id, &self.network_interface)
+		self.network_interface.insert_node(new_id, new_merge_node, &[]);
+		LayerNodeIdentifier::new(new_id, self.network_interface)
 	}
 
 	/// Creates an artboard as the primary export for the document network
@@ -133,26 +129,32 @@ impl<'a> ModifyInputsContext<'a> {
 			Some(NodeInput::value(TaggedValue::Color(artboard.background), false)),
 			Some(NodeInput::value(TaggedValue::Bool(artboard.clip), false)),
 		]);
-		self.network_interface.insert_node(new_id, &[], artboard_node_template);
+		self.network_interface.insert_node(new_id, artboard_node_template, &[]);
 		LayerNodeIdentifier::new(new_id, self.network_interface)
 	}
 	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<PointId>>, layer: LayerNodeIdentifier) {
 		let shape = resolve_document_node_type("Shape")
 			.expect("Shape node does not exist")
 			.node_template_input_override([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))]);
-
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
 		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_node_template();
 		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_node_template();
 
-		let stroke_id = NodeId(generate_uuid());
-		self.insert_node_to_chain(stroke_id, layer, stroke);
-		let fill_id = NodeId(generate_uuid());
-		self.insert_node_to_chain(fill_id, layer, fill);
-		let transform_id = NodeId(generate_uuid());
-		self.insert_node_to_chain(transform_id, layer, transform);
 		let shape_id = NodeId(generate_uuid());
-		self.insert_node_to_chain(shape_id, layer, shape);
+		self.network_interface.insert_node(shape_id, shape, &[]);
+		self.network_interface.move_node_to_chain_start(&shape_id, layer, &[]);
+
+		let transform_id = NodeId(generate_uuid());
+		self.network_interface.insert_node(transform_id, transform, &[]);
+		self.network_interface.move_node_to_chain_start(&transform_id, layer, &[]);
+
+		let fill_id = NodeId(generate_uuid());
+		self.network_interface.insert_node(fill_id, fill, &[]);
+		self.network_interface.move_node_to_chain_start(&fill_id, layer, &[]);
+
+		let stroke_id = NodeId(generate_uuid());
+		self.network_interface.insert_node(stroke_id, stroke, &[]);
+		self.network_interface.move_node_to_chain_start(&stroke_id, layer, &[]);
 	}
 
 	pub fn insert_text(&mut self, text: String, font: Font, size: f64, layer: LayerNodeIdentifier) {
@@ -166,14 +168,22 @@ impl<'a> ModifyInputsContext<'a> {
 			Some(NodeInput::value(TaggedValue::F64(size), false)),
 		]);
 
-		let stroke_id = NodeId(generate_uuid());
-		self.insert_node_to_chain(stroke_id, layer, stroke);
-		let fill_id = NodeId(generate_uuid());
-		self.insert_node_to_chain(fill_id, layer, fill);
-		let transform_id = NodeId(generate_uuid());
-		self.insert_node_to_chain(transform_id, layer, transform);
 		let text_id = NodeId(generate_uuid());
-		self.insert_node_to_chain(text_id, layer, text);
+		self.network_interface.insert_node(text_id, text, &[]);
+		self.network_interface.move_node_to_chain_start(&text_id, layer, &[]);
+
+		let transform_id = NodeId(generate_uuid());
+		self.network_interface.insert_node(transform_id, transform, &[]);
+		self.network_interface.move_node_to_chain_start(&transform_id, layer, &[]);
+
+		let fill_id = NodeId(generate_uuid());
+		self.network_interface.insert_node(fill_id, fill, &[]);
+		self.network_interface.move_node_to_chain_start(&fill_id, layer, &[]);
+
+		let stroke_id = NodeId(generate_uuid());
+		self.network_interface.insert_node(stroke_id, stroke, &[]);
+		self.network_interface.move_node_to_chain_start(&stroke_id, layer, &[]);
+
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
@@ -183,10 +193,13 @@ impl<'a> ModifyInputsContext<'a> {
 			.expect("Image node does not exist")
 			.node_template_input_override([Some(NodeInput::value(TaggedValue::ImageFrame(image_frame), false))]);
 
-		let transform_id = NodeId(generate_uuid());
-		self.insert_node_to_chain(transform_id, layer, transform);
 		let image_id = NodeId(generate_uuid());
-		self.insert_node_to_chain(image_id, layer, image);
+		self.network_interface.insert_node(image_id, image, &[]);
+		self.network_interface.move_node_to_chain_start(&image_id, layer, &[]);
+
+		let transform_id = NodeId(generate_uuid());
+		self.network_interface.insert_node(transform_id, transform, &[]);
+		self.network_interface.move_node_to_chain_start(&transform_id, layer, &[]);
 	}
 
 	fn get_output_layer(&self) -> Option<LayerNodeIdentifier> {
@@ -218,7 +231,7 @@ impl<'a> ModifyInputsContext<'a> {
 				return None;
 			};
 			let node_id = NodeId(generate_uuid());
-			self.network_interface.insert_node(node_id, &[], node_definition.default_node_template());
+			self.network_interface.insert_node(node_id, node_definition.default_node_template(), &[]);
 			self.network_interface.move_node_to_chain_start(&node_id, output_layer, &[]);
 			Some(node_id)
 		})
@@ -385,48 +398,5 @@ impl<'a> ModifyInputsContext<'a> {
 		if !skip_rerender {
 			self.responses.add(NodeGraphMessage::RunDocumentGraph);
 		}
-	}
-
-	/// Inserts a node at the end of the horizontal node chain from a layer node. The position will be `Position::Chain`
-	pub fn insert_node_to_chain(&mut self, new_id: NodeId, parent: LayerNodeIdentifier, mut node_template: NodeTemplate) {
-		assert!(
-			self.network_interface.network(&[]).unwrap().nodes.contains_key(&new_id),
-			"add_node_to_chain only works in the document network"
-		);
-		// TODO: node layout system and implementation
-	}
-
-	/// Inserts a node as a child of a layer at a certain stack index. The position will be `Position::Stack(calculated y position)`
-	pub fn insert_layer_to_stack(&mut self, new_id: NodeId, mut node_template: NodeTemplate, parent: LayerNodeIdentifier, insert_index: usize) {
-		assert!(
-			self.network_interface.network(&[]).unwrap().nodes.contains_key(&new_id),
-			"add_node_to_stack only works in the document network"
-		);
-		// TODO: node layout system and implementation
-		// Basic implementation
-		// assert!(!self.network_interface.network(&[]).unwrap().nodes.contains_key(&id), "Creating already existing node");
-
-		// let previous_root_node = self.network_interface.network(&[]).unwrap().get_root_node();
-
-		// // Add the new node as the first child of the exports
-		// self.network_interface.insert_layer_to_stack(id, self.network_interface.network(&[]).unwrap().exports_metadata.0, 0, new_node);
-		// self.network_interface.set_input(self.network_interface.network(&[]).unwrap().exports_metadata.0, id, 0);
-
-		// // If a node was previous connected to the exports
-		// if let Some(root_node) = previous_root_node {
-		// 	let previous_root_node = self.network_interface.network(&[]).unwrap().nodes.get(&root_node.id).expect("Root node should always exist");
-
-		// 	// Always move non layer nodes to the chain of the new export layer
-		// 	if !previous_root_node.is_layer {
-		// 		self.network_interface.move_node_to_chain(root_node.id, id)
-		// 	}
-		// 	// If the new layer is an artboard and the previous export is not an artboard, move it to be a child
-		// 	if new_node.is_artboard() && !previous_root_node.is_artboard() {
-		// 		// If that node is a layer, move it to be a child of the artboard.
-		// 		if previous_root_node.is_layer {
-		// 			self.network_interface.move_node_to_child(root_node.id, id)
-		// 		}
-		// 	}
-		// }
 	}
 }
