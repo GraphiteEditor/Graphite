@@ -56,7 +56,9 @@
 		const image = new Image();
 		image.onload = async function () {
 			const imageData = await extractPixelData(image);
-			editor.handle.openImageFile(file.name, image.width, image.height, new Uint8Array(imageData.data));
+			editor.handle.newDocument(file.name, image.width, image.height);
+			editor.handle.pasteImage(new Uint8Array(imageData.data), image.width, image.height);
+			// editor.handle.openImageFile(file.name, image.width, image.height, new Uint8Array(imageData.data));
 		};
 		const url = window.URL || window.webkitURL;
 		image.src = url.createObjectURL(file);

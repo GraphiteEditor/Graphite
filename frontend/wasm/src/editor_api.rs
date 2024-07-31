@@ -271,6 +271,13 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	#[wasm_bindgen(js_name = newDocument)]
+	pub fn new_document(&self, name: String, x: u32, y: u32) {
+		let dimensions = glam::UVec2::from_array([x, y]);
+		let message = PortfolioMessage::NewDocument { name, dimensions };
+		self.dispatch(message);
+	}
+
 	#[wasm_bindgen(js_name = newDocumentDialog)]
 	pub fn new_document_dialog(&self) {
 		let message = DialogMessage::RequestNewDocumentDialog;

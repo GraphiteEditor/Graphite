@@ -345,6 +345,21 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					responses.add_front(FrontendMessage::TriggerFontLoad { font, is_default });
 				}
 			}
+			PortfolioMessage::NewDocument { name, dimensions } => {
+				responses.add(PortfolioMessage::NewDocumentWithName { name });
+				debug!("{dimensions}");
+				let create_artboard = dimensions.x > 0 && dimensions.y > 0;
+				if create_artboard {
+					responses.add(GraphOperationMessage::NewArtboard {
+						id: NodeId(generate_uuid()),
+						artboard: graphene_core::Artboard::new(IVec2::ZERO, dimensions.as_ivec2()),
+					});
+					responses.add(FrontendMessage::TriggerDelayedZoomCanvasToFitAll);
+				}
+
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
+			}
 			PortfolioMessage::NewDocumentWithName { name } => {
 				let new_document = DocumentMessageHandler::with_name(name, ipp, responses);
 				let document_id = DocumentId(generate_uuid());

@@ -3,6 +3,7 @@ use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
 
+use glam::UVec2;
 use graphene_core::text::Font;
 
 #[impl_message(Message, Portfolio)]
@@ -61,6 +62,10 @@ pub enum PortfolioMessage {
 	LoadFont {
 		font: Font,
 		is_default: bool,
+	},
+	NewDocument {
+		name: String,
+		dimensions: UVec2,
 	},
 	NewDocumentWithName {
 		name: String,
