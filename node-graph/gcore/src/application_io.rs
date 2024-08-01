@@ -63,6 +63,41 @@ impl Size for web_sys::HtmlCanvasElement {
 	}
 }
 
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct TextureFrame {
+	pub texture: wgpu::Texture,
+	pub transform: DAffine2,
+}
+
+impl Hash for TextureFrame {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.texture.hash(state);
+		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
+	}
+}
+
+impl Transform for TextureFrame {
+	fn transform(&self) -> DAffine2 {
+		self.transform
+	}
+}
+impl TransformMut for TextureFrame {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		&mut self.transform
+	}
+}
+
+unsafe impl StaticType for TextureFrame {
+	type Static = TextureFrame;
+}
+
+impl Size for TextureFrame {
+	fn size(&self) -> UVec2 {
+		UVec2::new(self.texture.width(), self.texture.height())
+	}
+}
+
 impl<S: Size> From<SurfaceHandleFrame<S>> for SurfaceFrame {
 	fn from(x: SurfaceHandleFrame<S>) -> Self {
 		Self {

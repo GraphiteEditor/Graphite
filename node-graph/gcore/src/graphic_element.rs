@@ -1,6 +1,6 @@
-use crate::application_io::SurfaceHandleFrame;
+use crate::application_io::{SurfaceHandleFrame, TextureFrame};
 use crate::raster::{BlendMode, ImageFrame};
-use crate::transform::Footprint;
+use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::VectorData;
 use crate::{Color, Node, SurfaceFrame};
 
@@ -65,16 +65,47 @@ pub enum GraphicElement {
 	GraphicGroup(GraphicGroup),
 	/// A vector shape, equivalent to the SVG <path> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path
 	VectorData(Box<VectorData>),
-	/// A bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
-	ImageFrame(ImageFrame<Color>),
-	/// A Canvas element
-	Surface(SurfaceFrame),
+	Raster(Raster),
 }
 
 // TODO: Can this be removed? It doesn't necessarily make that much sense to have a default when, instead, the entire GraphicElement just shouldn't exist if there's no specific content to assign it.
 impl Default for GraphicElement {
 	fn default() -> Self {
 		Self::VectorData(Box::new(VectorData::empty()))
+	}
+}
+
+pub enum Raster {
+	/// A bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
+	ImageFrame(ImageFrame<Color>),
+	/// A Canvas element
+	Surface(SurfaceFrame),
+	Texture(TextureFrame),
+}
+
+impl Transform for Raster {
+	fn transform(&self) -> DAffine2 {
+		match self {
+			Raster::ImageFrame(frame) => frame.transform(),
+			Raster::Surface(frame) => frame.transform(),
+			Raster::Texture(frame) => frame.transform(),
+		}
+	}
+	fn local_pivot(&self, pivot: glam::DVec2) -> glam::DVec2 {
+		match self {
+			Raster::ImageFrame(frame) => frame.local_pivot(pivot),
+			Raster::Surface(frame) => frame.local_pivot(pivot),
+			Raster::Texture(frame) => frame.local_pivot(pivot),
+		}
+	}
+}
+impl TransformMut for Raster {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		match self {
+			Raster::ImageFrame(frame) => frame.transform_mut(),
+			Raster::Surface(frame) => frame.transform_mut(),
+			Raster::Texture(frame) => frame.transform_mut(),
+		}
 	}
 }
 

@@ -219,6 +219,11 @@ pub enum ImageRenderMode {
 	Base64,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct RenderContext {
+	pub ressource_overrides: std::collections::HashMap<u64, alloc::sync::Arc<wgpu::Texture>>,
+}
+
 /// Static state used whilst rendering
 #[derive(Default)]
 pub struct RenderParams {
@@ -268,13 +273,13 @@ pub trait GraphicElementRendered {
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]>;
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>);
 	#[cfg(feature = "vello")]
-	fn to_vello_scene(&self, transform: DAffine2) -> Scene {
+	fn to_vello_scene(&self, transform: DAffine2, context: &mut RenderContext) -> Scene {
 		let mut scene = vello::Scene::new();
-		self.render_to_vello(&mut scene, transform);
+		self.render_to_vello(&mut scene, transform, context);
 		scene
 	}
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2) {}
+	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2, _render_condext: &mut RenderContext) {}
 
 	fn contains_artboard(&self) -> bool {
 		false
@@ -323,7 +328,7 @@ impl GraphicElementRendered for GraphicGroup {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2) {
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
 		let child_transform = transform * self.transform;
 
 		let Some(bounds) = self.bounding_box(transform) else { return };
@@ -340,7 +345,7 @@ impl GraphicElementRendered for GraphicGroup {
 			);
 		}
 		for element in self.iter() {
-			element.render_to_vello(scene, child_transform);
+			element.render_to_vello(scene, child_transform, context);
 		}
 		if layer {
 			scene.pop_layer();
@@ -406,7 +411,7 @@ impl GraphicElementRendered for VectorData {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2) {
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext) {
 		use crate::vector::style::GradientType;
 		use vello::peniko;
 
@@ -593,7 +598,7 @@ impl GraphicElementRendered for Artboard {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2) {
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
 		use vello::peniko;
 
 		// Render background
@@ -608,7 +613,7 @@ impl GraphicElementRendered for Artboard {
 		if self.clip {
 			scene.push_layer(blend_mode, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
 		}
-		self.graphic_group.render_to_vello(scene, transform);
+		self.graphic_group.render_to_vello(scene, transform, context);
 		if self.clip {
 			scene.pop_layer();
 		}
@@ -643,9 +648,9 @@ impl GraphicElementRendered for crate::ArtboardGroup {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2) {
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
 		for artboard in &self.artboards {
-			artboard.render_to_vello(scene, transform)
+			artboard.render_to_vello(scene, transform, context)
 		}
 	}
 
@@ -673,8 +678,23 @@ impl GraphicElementRendered for SurfaceFrame {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2) {
-		todo!()
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
+		use vello::peniko;
+
+		let image = vello::peniko::Image {
+			data: vec![].into(),
+			// width: image.width,
+			// height: image.height,
+			width: 0,
+			height: 0,
+			format: peniko::Format::Rgba8,
+			extend: peniko::Extend::Repeat,
+		};
+		let id = image.data.id();
+		// context.ressource_overrides.insert(id, self.surface_id);
+		let transform = transform * self.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
+
+		scene.draw_image(&image, vello::kurbo::Affine::new(transform.to_cols_array()));
 	}
 
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
@@ -737,7 +757,7 @@ impl GraphicElementRendered for ImageFrame<Color> {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2) {
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext) {
 		use vello::peniko;
 
 		let image = &self.image;
@@ -761,9 +781,8 @@ impl GraphicElementRendered for GraphicElement {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.render_svg(render, render_params),
-			GraphicElement::ImageFrame(image_frame) => image_frame.render_svg(render, render_params),
+			GraphicElement::Raster(raster) => raster.render_svg(render, render_params),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.render_svg(render, render_params),
-			GraphicElement::Surface(surface) => surface.render_svg(render, render_params),
 		}
 	}
 
@@ -786,12 +805,12 @@ impl GraphicElementRendered for GraphicElement {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2) {
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
 		match self {
-			GraphicElement::VectorData(vector_data) => vector_data.render_to_vello(scene, transform),
-			GraphicElement::ImageFrame(image_frame) => image_frame.render_to_vello(scene, transform),
-			GraphicElement::GraphicGroup(graphic_group) => graphic_group.render_to_vello(scene, transform),
-			GraphicElement::Surface(surface) => surface.render_to_vello(scene, transform),
+			GraphicElement::VectorData(vector_data) => vector_data.render_to_vello(scene, transform, context),
+			GraphicElement::ImageFrame(image_frame) => image_frame.render_to_vello(scene, transform, context),
+			GraphicElement::GraphicGroup(graphic_group) => graphic_group.render_to_vello(scene, transform, context),
+			GraphicElement::Surface(surface) => surface.render_to_vello(scene, transform, context),
 		}
 	}
 

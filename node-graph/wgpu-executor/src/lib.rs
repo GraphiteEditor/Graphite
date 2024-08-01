@@ -16,6 +16,7 @@ use graphene_core::{Color, Cow, Node, SurfaceFrame};
 use anyhow::{bail, Result};
 use futures::Future;
 use glam::{DAffine2, UVec2};
+use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
@@ -129,12 +130,14 @@ unsafe impl StaticType for Surface {
 	type Static = Surface;
 }
 
+pub use graphene_core::renderer::RenderContext;
+
 // pub trait SpirVCompiler {
 // 	fn compile(&self, network: &[ProtoNetwork], io: &ShaderIO) -> Result<Shader>;
 // }
 
 impl WgpuExecutor {
-	pub async fn render_vello_scene(&self, scene: &Scene, surface: &WgpuSurface, width: u32, height: u32) -> Result<()> {
+	pub async fn render_vello_scene(&self, scene: &Scene, surface: &WgpuSurface, width: u32, height: u32, context: &RenderContext) -> Result<()> {
 		let surface = &surface.surface.inner;
 		let surface_caps = surface.get_capabilities(&self.context.adapter);
 		surface.configure(
@@ -163,8 +166,20 @@ impl WgpuExecutor {
 
 		{
 			let mut renderer = self.vello_renderer.lock().unwrap();
+			// for (id, &texture) in context.ressource_overrides.iter() {
+			// 	let texture_view = wgpu::ImageCopyTextureBase::from(*texture);
+			// 	renderer.override_image(
+			// 		&vello::peniko::Image::new(vello::peniko::Blob::from_raw_parts(Arc::new(vec![]), *id), vello::peniko::Format::Rgba8, 0, 0),
+			// 		Some(Arc::new(texture_view)),
+			// 	);
+			// }
 			renderer
-				.render_to_surface_async(&self.context.device, &self.context.queue, scene, &surface_texture, &render_params)
+				.render_to_surface_async(&self.context.device, &self.context.queue, scene, &surface_texture, &render_params, |id| {
+					let texture = context.ressource_overrides.get(&id)?;
+					Some(texture.as_image_copy())
+					// let texture_view = wgpu::ImageCopyTextureBase::from(*texture);
+					// texture_view
+				})
 				.await
 				.unwrap();
 		}
