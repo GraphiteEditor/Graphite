@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNodeMetadata, NodeId, NodeInput};
+use graph_craft::document::{DocumentNodeMetadata, NodeId};
 use graphene_core::raster::BlendMode;
 use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::brush_stroke::{BrushInputSample, BrushStroke, BrushStyle};
@@ -268,11 +268,7 @@ impl BrushToolData {
 		for (node, node_id) in document.network().upstream_flow_back_from_nodes(vec![layer.to_node()], graph_craft::document::FlowType::HorizontalFlow) {
 			if node.name == "Brush" && node_id != layer.to_node() {
 				let points_input = node.inputs.get(2)?;
-				let NodeInput::Value {
-					tagged_value: TaggedValue::BrushStrokes(strokes),
-					..
-				} = points_input
-				else {
+				let Some(TaggedValue::BrushStrokes(strokes)) = points_input.as_value() else {
 					continue;
 				};
 				self.strokes.clone_from(strokes);

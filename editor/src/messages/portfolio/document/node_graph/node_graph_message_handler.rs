@@ -1189,7 +1189,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				};
 				if let Some(node) = network.nodes.get(&node_id) {
-					let input = NodeInput::Value { tagged_value: value, exposed: false };
+					let input = NodeInput::value(value, false);
 					responses.add(NodeGraphMessage::SetNodeInput { node_id, input_index, input });
 					responses.add(PropertiesPanelMessage::Refresh);
 					if (node.name != "Imaginate" || input_index == 0) && network.connected_to_output(node_id) {
@@ -1214,7 +1214,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					if input_index >= node.inputs.len() {
 						node.inputs.extend(((node.inputs.len() - 1)..input_index).map(|_| NodeInput::network(generic!(T), 0)));
 					}
-					node.inputs[input_index] = NodeInput::Value { tagged_value: value, exposed: false };
+					node.inputs[input_index] = NodeInput::value(value, false);
 					if network.connected_to_output(node_id) {
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}

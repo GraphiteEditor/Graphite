@@ -48,13 +48,7 @@ mod tests {
 				NodeId(0),
 				DocumentNode {
 					name: "Inc".into(),
-					inputs: vec![
-						NodeInput::network(concrete!(u32), 0),
-						NodeInput::Value {
-							tagged_value: graph_craft::document::value::TaggedValue::U32(1u32),
-							exposed: false,
-						},
-					],
+					inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::value(graph_craft::document::value::TaggedValue::U32(1u32), false)],
 					implementation: DocumentNodeImplementation::Network(add_network()),
 					..Default::default()
 				},

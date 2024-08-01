@@ -221,7 +221,7 @@ impl BorrowTree {
 
 		match &proto_node.construction_args {
 			ConstructionArgs::Value(value) => {
-				let node = if let TaggedValue::EditorApi(api) = value {
+				let node = if let TaggedValue::EditorApi(api) = &**value {
 					let editor_api = UpcastAsRefNode::new(api.clone());
 					let node = Box::new(editor_api) as TypeErasedBox<'_>;
 					NodeContainer::new(node)
@@ -263,7 +263,7 @@ mod test {
 	#[test]
 	fn push_node_sync() {
 		let mut tree = BorrowTree::default();
-		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2u32)), vec![]);
+		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2u32).into()), vec![]);
 		let context = TypingContext::default();
 		let future = tree.push_node(NodeId(0), val_1_protonode, &context);
 		futures::executor::block_on(future).unwrap();
