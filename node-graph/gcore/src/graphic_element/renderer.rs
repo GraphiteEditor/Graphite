@@ -351,8 +351,7 @@ impl GraphicElementRendered for VectorData {
 		use crate::vector::style::GradientType;
 		use vello::peniko;
 
-		let multiplied_transform = transform * self.transform;
-		let transformed_bounds = self.bounding_box_with_transform(multiplied_transform).unwrap_or_default();
+		let transformed_bounds = GraphicElementRendered::bounding_box(self, transform).unwrap_or_default();
 		let mut layer = false;
 
 		if self.alpha_blending.opacity < 1. || self.alpha_blending.blend_mode != BlendMode::default() {
