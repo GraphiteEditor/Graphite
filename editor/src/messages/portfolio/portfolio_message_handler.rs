@@ -662,7 +662,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(MenuBarMessage::SendLayout);
-					responses.add(FrontendMessage::TriggerRefreshBoundsOfViewports);
 				}
 			}
 			PortfolioMessage::UpdateDocumentWidgets => {

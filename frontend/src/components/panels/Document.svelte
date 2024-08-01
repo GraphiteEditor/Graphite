@@ -4,6 +4,7 @@
 	import type { DocumentState } from "@graphite/state-providers/document";
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
 	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
+	import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
 	import type { Editor } from "@graphite/wasm-communication/editor";
 	import {
 		type MouseCursorIcon,
@@ -12,7 +13,6 @@
 		DisplayEditableTextboxTransform,
 		DisplayRemoveEditableTextbox,
 		TriggerTextCommit,
-		TriggerViewportResize,
 		UpdateDocumentArtwork,
 		UpdateDocumentRulers,
 		UpdateDocumentScrollbars,
@@ -344,19 +344,6 @@
 		showTextInput = false;
 	}
 
-	// Resize elements to render the new viewport size
-	export function viewportResize() {
-		if (!viewport) return;
-
-		// Resize the canvas
-		canvasSvgWidth = Math.ceil(parseFloat(getComputedStyle(viewport).width));
-		canvasSvgHeight = Math.ceil(parseFloat(getComputedStyle(viewport).height));
-
-		// Resize the rulers
-		rulerHorizontal?.resize();
-		rulerVertical?.resize();
-	}
-
 	onMount(() => {
 		// Update rendered SVGs
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentArtwork, async (data) => {
@@ -418,15 +405,24 @@
 			displayRemoveEditableTextbox();
 		});
 
-		// Resize elements to render the new viewport size
-		editor.subscriptions.subscribeJsMessage(TriggerViewportResize, async () => {
-			await tick();
-
-			viewportResize();
-		});
-
 		// Once this component is mounted, we want to resend the document bounds to the backend via the resize event handler which does that
 		window.dispatchEvent(new Event("resize"));
+
+		const viewportResizeObserver = new ResizeObserver(() => {
+			if (!viewport) return;
+
+			// Resize the canvas
+			canvasSvgWidth = Math.ceil(parseFloat(getComputedStyle(viewport).width));
+			canvasSvgHeight = Math.ceil(parseFloat(getComputedStyle(viewport).height));
+
+			// Resize the rulers
+			rulerHorizontal?.resize();
+			rulerVertical?.resize();
+
+			// Send the new bounds of the viewports to the backend
+			if (viewport.parentElement) updateBoundsOfViewports(editor, viewport.parentElement);
+		});
+		if (viewport) viewportResizeObserver.observe(viewport);
 	});
 </script>
 

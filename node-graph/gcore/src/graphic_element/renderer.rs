@@ -1,4 +1,5 @@
 mod quad;
+pub use quad::Quad;
 
 use crate::raster::bbox::Bbox;
 use crate::raster::{BlendMode, Image, ImageFrame};
@@ -8,12 +9,13 @@ use crate::vector::style::{Fill, Stroke, ViewMode};
 use crate::vector::PointId;
 use crate::SurfaceFrame;
 use crate::{vector::VectorData, Artboard, Color, GraphicElement, GraphicGroup};
-pub use quad::Quad;
 
 use bezier_rs::Subpath;
 
 use base64::Engine;
 use glam::{DAffine2, DVec2};
+use num_traits::Zero;
+use std::fmt::Write;
 #[cfg(feature = "vello")]
 use vello::*;
 
@@ -147,11 +149,10 @@ impl SvgRender {
 			.map(|size| format!("viewbox=\"0 0 {} {}\" width=\"{}\" height=\"{}\"", size.x, size.y, size.x, size.y))
 			.unwrap_or_default();
 
-		let svg_header = format!(
-			r#"<svg xmlns="http://www.w3.org/2000/svg" {}><defs>{defs}</defs><g transform="{}">"#,
-			view_box,
-			format_transform_matrix(transform)
-		);
+		let matrix = format_transform_matrix(transform);
+		let transform = if matrix.is_empty() { String::new() } else { format!(r#" transform="{}""#, matrix) };
+
+		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" {}><defs>{defs}</defs><g{transform}>"#, view_box);
 		self.svg.insert(0, svg_header.into());
 		self.svg.push("</g></svg>".into());
 	}
@@ -233,17 +234,16 @@ impl RenderParams {
 }
 
 pub fn format_transform_matrix(transform: DAffine2) -> String {
-	use std::fmt::Write;
-	let mut result = "matrix(".to_string();
-	let cols = transform.to_cols_array();
-	for (index, item) in cols.iter().enumerate() {
-		write!(result, "{item}").unwrap();
-		if index != cols.len() - 1 {
-			result.push_str(", ");
-		}
+	if transform == DAffine2::IDENTITY {
+		return String::new();
 	}
-	result.push(')');
-	result
+
+	transform.to_cols_array().iter().enumerate().fold("matrix(".to_string(), |val, (i, num)| {
+		let num = if num.abs() < 1_000_000_000. { (num * 1_000_000_000.).round() / 1_000_000_000. } else { *num };
+		let num = if num.is_zero() { "0".to_string() } else { num.to_string() };
+		let comma = if i == 5 { "" } else { "," };
+		val + &(num + comma)
+	}) + ")"
 }
 
 pub fn to_transform(transform: DAffine2) -> usvg::Transform {
@@ -274,7 +274,10 @@ impl GraphicElementRendered for GraphicGroup {
 		render.parent_tag(
 			"g",
 			|attributes| {
-				attributes.push("transform", format_transform_matrix(self.transform));
+				let matrix = format_transform_matrix(self.transform);
+				if !matrix.is_empty() {
+					attributes.push("transform", matrix);
+				}
 
 				if self.alpha_blending.opacity < 1. {
 					attributes.push("opacity", self.alpha_blending.opacity.to_string());
@@ -309,17 +312,18 @@ impl GraphicElementRendered for GraphicGroup {
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2) {
-		let kurbo_transform = kurbo::Affine::new((transform * self.transform).to_cols_array());
-		let Some(bounds) = self.bounding_box(DAffine2::IDENTITY) else { return };
+		let child_transform = transform * self.transform;
+
+		let Some(bounds) = self.bounding_box(transform) else { return };
 		let blending = vello::peniko::BlendMode::new(self.alpha_blending.blend_mode.into(), vello::peniko::Compose::SrcOver);
 		scene.push_layer(
 			blending,
 			self.alpha_blending.opacity,
-			kurbo_transform,
+			kurbo::Affine::IDENTITY,
 			&vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y),
 		);
 		for element in self.iter() {
-			element.render_to_vello(scene, transform * self.transform);
+			element.render_to_vello(scene, child_transform);
 		}
 		scene.pop_layer();
 	}
@@ -344,8 +348,6 @@ impl GraphicElementRendered for VectorData {
 		}
 
 		render.leaf_tag("path", |attributes| {
-			attributes.push("class", "vector-data");
-
 			attributes.push("d", path);
 
 			let fill_and_stroke = self
@@ -367,7 +369,7 @@ impl GraphicElementRendered for VectorData {
 		let stroke_width = self.style.stroke().map(|s| s.weight()).unwrap_or_default();
 		let scale = transform.decompose_scale();
 		let offset = DVec2::splat(stroke_width * scale.x.max(scale.y) / 2.);
-		self.bounding_box_with_transform(self.transform * transform).map(|[a, b]| [a - offset, b + offset])
+		self.bounding_box_with_transform(transform * self.transform).map(|[a, b]| [a - offset, b + offset])
 	}
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
@@ -386,6 +388,20 @@ impl GraphicElementRendered for VectorData {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2) {
 		use crate::vector::style::GradientType;
 		use vello::peniko;
+
+		let multiplied_transform = transform * self.transform;
+		let transformed_bounds = self.bounding_box_with_transform(multiplied_transform).unwrap_or_default();
+		let mut layer = false;
+
+		if self.alpha_blending.opacity < 1. || self.alpha_blending.blend_mode != BlendMode::default() {
+			layer = true;
+			scene.push_layer(
+				peniko::BlendMode::new(self.alpha_blending.blend_mode.into(), peniko::Compose::SrcOver),
+				self.alpha_blending.opacity,
+				kurbo::Affine::IDENTITY,
+				&kurbo::Rect::new(transformed_bounds[0].x, transformed_bounds[0].y, transformed_bounds[1].x, transformed_bounds[1].y),
+			);
+		}
 
 		let kurbo_transform = kurbo::Affine::new(transform.to_cols_array());
 		let to_point = |p: DVec2| kurbo::Point::new(p.x, p.y);
@@ -417,9 +433,8 @@ impl GraphicElementRendered for VectorData {
 				let start = lerp_bounds(gradient.start);
 				let end = lerp_bounds(gradient.end);
 
-				let transform = self.transform * gradient.transform;
-				let start = transform.transform_point2(start);
-				let end = transform.transform_point2(end);
+				let start = self.transform.transform_point2(start);
+				let end = self.transform.transform_point2(end);
 				let fill = peniko::Brush::Gradient(peniko::Gradient {
 					kind: match gradient.gradient_type {
 						GradientType::Linear => peniko::GradientKind::Linear {
@@ -431,7 +446,7 @@ impl GraphicElementRendered for VectorData {
 							peniko::GradientKind::Radial {
 								start_center: to_point(start),
 								start_radius: 0.,
-								end_center: to_point(end),
+								end_center: to_point(start),
 								end_radius: radius as f32,
 							}
 						}
@@ -454,7 +469,12 @@ impl GraphicElementRendered for VectorData {
 				miter_limit: stroke.line_join_miter_limit,
 				..Default::default()
 			};
-			scene.stroke(&stroke, kurbo_transform, color, None, &path);
+			if stroke.width > 0. {
+				scene.stroke(&stroke, kurbo_transform, color, None, &path);
+			}
+		}
+		if layer {
+			scene.pop_layer();
 		}
 	}
 }
@@ -464,8 +484,10 @@ impl GraphicElementRendered for Artboard {
 		if !render_params.hide_artboards {
 			// Background
 			render.leaf_tag("rect", |attributes| {
-				attributes.push("class", "artboard-bg");
-				attributes.push("fill", format!("#{}", self.background.rgba_hex()));
+				attributes.push("fill", format!("#{}", self.background.rgb_hex()));
+				if self.background.a() < 1. {
+					attributes.push("fill-opacity", ((self.background.a() * 1000.).round() / 1000.).to_string());
+				}
 				attributes.push("x", self.location.x.min(self.location.x + self.dimensions.x).to_string());
 				attributes.push("y", self.location.y.min(self.location.y + self.dimensions.y).to_string());
 				attributes.push("width", self.dimensions.x.abs().to_string());
@@ -477,7 +499,6 @@ impl GraphicElementRendered for Artboard {
 			render.parent_tag(
 				"text",
 				|attributes| {
-					attributes.push("class", "artboard-label");
 					attributes.push("fill", "white");
 					attributes.push("x", (self.location.x.min(self.location.x + self.dimensions.x)).to_string());
 					attributes.push("y", (self.location.y.min(self.location.y + self.dimensions.y) - 4).to_string());
@@ -496,23 +517,22 @@ impl GraphicElementRendered for Artboard {
 			"g",
 			// Group tag attributes
 			|attributes| {
-				attributes.push("class", "artboard");
-
-				attributes.push(
-					"transform",
-					format_transform_matrix(DAffine2::from_translation(self.location.as_dvec2()) * self.graphic_group.transform),
-				);
+				let matrix = format_transform_matrix(DAffine2::from_translation(self.location.as_dvec2()) * self.graphic_group.transform);
+				if !matrix.is_empty() {
+					attributes.push("transform", matrix);
+				}
 
 				if self.clip {
 					let id = format!("artboard-{}", generate_uuid());
 					let selector = format!("url(#{id})");
-					use std::fmt::Write;
+
+					let matrix = format_transform_matrix(self.graphic_group.transform.inverse());
+					let transform = if matrix.is_empty() { String::new() } else { format!(r#" transform="{matrix}""#) };
+
 					write!(
 						&mut attributes.0.svg_defs,
-						r##"<clipPath id="{id}"><rect x="0" y="0" width="{}" height="{}" transform="{}"/></clipPath>"##,
-						self.dimensions.x,
-						self.dimensions.y,
-						format_transform_matrix(self.graphic_group.transform.inverse())
+						r##"<clipPath id="{id}"><rect x="0" y="0" width="{}" height="{}"{transform} /></clipPath>"##,
+						self.dimensions.x, self.dimensions.y
 					)
 					.unwrap();
 					attributes.push("clip-path", selector);
@@ -552,7 +572,7 @@ impl GraphicElementRendered for Artboard {
 		if self.clip {
 			scene.push_layer(blend_mode, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
 		}
-		self.graphic_group.render_to_vello(scene, transform * self.transform());
+		self.graphic_group.render_to_vello(scene, transform);
 		if self.clip {
 			scene.pop_layer();
 		}
@@ -601,18 +621,16 @@ impl GraphicElementRendered for crate::ArtboardGroup {
 impl GraphicElementRendered for SurfaceFrame {
 	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
 		let transform = self.transform;
+
 		let (width, height) = (transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
-		let matrix = (transform * DAffine2::from_scale((width, height).into()).inverse())
-			.to_cols_array()
-			.iter()
-			.enumerate()
-			.fold(String::new(), |val, (i, entry)| val + &(entry.to_string() + if i == 5 { "" } else { "," }));
+
+		let matrix = format_transform_matrix(transform * DAffine2::from_scale((width, height).into()).inverse());
+		let transform = if matrix.is_empty() { String::new() } else { format!(r#" transform="{}""#, matrix) };
 
 		let canvas = format!(
-			r#"<foreignObject width="{}" height="{}" transform="matrix({})"><div data-canvas-placeholder="canvas{}"></div></foreignObject>"#,
+			r#"<foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="canvas{}"></div></foreignObject>"#,
 			width.abs(),
 			height.abs(),
-			matrix,
 			self.surface_id
 		);
 		render.svg.push(canvas.into())
@@ -638,7 +656,7 @@ impl GraphicElementRendered for SurfaceFrame {
 
 impl GraphicElementRendered for ImageFrame<Color> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		let transform: String = format_transform_matrix(self.transform * render.transform);
+		let transform = self.transform * render.transform;
 
 		match render_params.image_render_mode {
 			ImageRenderMode::Base64 => {
@@ -659,8 +677,11 @@ impl GraphicElementRendered for ImageFrame<Color> {
 					attributes.push("width", 1.to_string());
 					attributes.push("height", 1.to_string());
 					attributes.push("preserveAspectRatio", "none");
-					attributes.push("transform", transform);
 					attributes.push("href", base64_string);
+					let matrix = format_transform_matrix(transform);
+					if !matrix.is_empty() {
+						attributes.push("transform", matrix);
+					}
 					if self.alpha_blending.blend_mode != BlendMode::default() {
 						attributes.push("style", self.alpha_blending.blend_mode.render());
 					}
@@ -786,7 +807,10 @@ impl GraphicElementRendered for Option<Color> {
 			attributes.push("width", "100");
 			attributes.push("height", "100");
 			attributes.push("y", "40");
-			attributes.push("fill", format!("#{}", color.rgba_hex()));
+			attributes.push("fill", format!("#{}", color.rgb_hex()));
+			if color.a() < 1. {
+				attributes.push("fill-opacity", ((color.a() * 1000.).round() / 1000.).to_string());
+			}
 		});
 		render.parent_tag("text", text_attributes, |render| render.leaf_node(color_info))
 	}
@@ -806,7 +830,10 @@ impl GraphicElementRendered for Vec<Color> {
 				attributes.push("height", "100");
 				attributes.push("x", (index * 120).to_string());
 				attributes.push("y", "40");
-				attributes.push("fill", format!("#{}", color.rgba_hex()));
+				attributes.push("fill", format!("#{}", color.rgb_hex()));
+				if color.a() < 1. {
+					attributes.push("fill-opacity", ((color.a() * 1000.).round() / 1000.).to_string());
+				}
 			});
 		}
 	}

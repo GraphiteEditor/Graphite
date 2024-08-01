@@ -460,7 +460,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.graph_view_overlay_open = open;
 
 				responses.add(FrontendMessage::TriggerGraphViewOverlay { open });
-				responses.add(FrontendMessage::TriggerRefreshBoundsOfViewports);
 				// Update the tilt menu bar buttons to be disabled when the graph is open
 				responses.add(MenuBarMessage::SendLayout);
 				if open {
@@ -783,8 +782,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				});
 			}
 			DocumentMessage::RenderScrollbars => {
-				//TODO: This could be an issue for the node graph
-				let document_transform_scale = self.navigation_handler.snapped_zoom(self.document_ptz.zoom);
+				let document_transform_scale = self.navigation_handler.snapped_zoom(self.document_ptz.zoom());
 
 				let scale = 0.5 + ASYMPTOTIC_EFFECT + document_transform_scale * SCALE_EFFECT;
 
@@ -1776,7 +1774,7 @@ impl DocumentMessageHandler {
 				.tooltip("Reset Tilt and Zoom to 100%")
 				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasTiltResetAndZoomTo100Percent))
 				.on_update(|_| NavigationMessage::CanvasTiltResetAndZoomTo100Percent.into())
-				.disabled(self.document_ptz.tilt.abs() < 1e-4 && (self.document_ptz.zoom - 1.).abs() < 1e-4)
+				.disabled(self.document_ptz.tilt.abs() < 1e-4 && (self.document_ptz.zoom() - 1.).abs() < 1e-4)
 				.widget_holder(),
 			PopoverButton::new()
 				.popover_layout(vec![
@@ -1807,7 +1805,7 @@ impl DocumentMessageHandler {
 				])
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
-			NumberInput::new(Some(self.navigation_handler.snapped_zoom(self.document_ptz.zoom) * 100.))
+			NumberInput::new(Some(self.navigation_handler.snapped_zoom(self.document_ptz.zoom()) * 100.))
 				.unit("%")
 				.min(0.000001)
 				.max(1000000.)

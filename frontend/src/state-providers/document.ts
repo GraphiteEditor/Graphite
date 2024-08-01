@@ -5,7 +5,6 @@ import { type Editor } from "@graphite/wasm-communication/editor";
 import {
 	defaultWidgetLayout,
 	patchWidgetLayout,
-	TriggerRefreshBoundsOfViewports,
 	UpdateDocumentBarLayout,
 	UpdateDocumentModeLayout,
 	UpdateToolOptionsLayout,
@@ -13,6 +12,7 @@ import {
 	UpdateWorkingColorsLayout,
 	UpdateNodeGraphBarLayout,
 	TriggerGraphViewOverlay,
+	TriggerDelayedZoomCanvasToFitAll,
 } from "@graphite/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -83,22 +83,15 @@ export function createDocumentState(editor: Editor) {
 		});
 	});
 
-	// Other
-	editor.subscriptions.subscribeJsMessage(TriggerRefreshBoundsOfViewports, async () => {
-		// Wait to display the unpopulated document panel (missing: tools, options bar content, scrollbar positioning, and canvas)
-		await tick();
-		// Wait to display the populated document panel
-		await tick();
-
-		// Request a resize event so the viewport gets measured now that the canvas is populated and positioned correctly
-		window.dispatchEvent(new CustomEvent("resize"));
-	});
 	// Show or hide the graph view overlay
 	editor.subscriptions.subscribeJsMessage(TriggerGraphViewOverlay, (triggerGraphViewOverlay) => {
 		update((state) => {
 			state.graphViewOverlayOpen = triggerGraphViewOverlay.open;
 			return state;
 		});
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerDelayedZoomCanvasToFitAll, () => {
+		setTimeout(() => editor.handle.zoomCanvasToFitAll(), 0);
 	});
 
 	return {

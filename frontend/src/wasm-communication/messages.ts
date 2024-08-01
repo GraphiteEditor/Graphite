@@ -748,6 +748,8 @@ export class TriggerCopyToClipboardBlobUrl extends JsMessage {
 	readonly blobUrl!: string;
 }
 
+export class TriggerDelayedZoomCanvasToFitAll extends JsMessage {}
+
 export class TriggerDownloadBlobUrl extends JsMessage {
 	readonly layerName!: string;
 
@@ -770,8 +772,6 @@ export class TriggerDownloadTextFile extends JsMessage {
 
 	readonly name!: string;
 }
-
-export class TriggerRefreshBoundsOfViewports extends JsMessage {}
 
 export class TriggerRevokeBlobUrl extends JsMessage {
 	readonly url!: string;
@@ -885,8 +885,6 @@ export class TriggerAboutGraphiteLocalizedCommitDate extends JsMessage {
 	readonly commitDate!: string;
 }
 
-export class TriggerViewportResize extends JsMessage {}
-
 // TODO: Eventually remove this (probably starting late 2024)
 export class TriggerUpgradeDocumentToVectorManipulationFormat extends JsMessage {
 	readonly documentId!: bigint;
@@ -915,6 +913,7 @@ export class CheckboxInput extends WidgetProps {
 
 export class ColorButton extends WidgetProps {
 	@Transform(({ value }) => {
+		if (value instanceof Gradient) return value;
 		const gradient = value["Gradient"];
 		if (gradient) {
 			const stops = gradient.map(([position, color]: [number, color: { red: number; green: number; blue: number; alpha: number }]) => ({
@@ -924,6 +923,7 @@ export class ColorButton extends WidgetProps {
 			return new Gradient(stops);
 		}
 
+		if (value instanceof Color) return value;
 		const solid = value["Solid"];
 		if (solid) {
 			return new Color(solid.red, solid.green, solid.blue, solid.alpha);
@@ -1534,6 +1534,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayRemoveEditableTextbox,
 	TriggerAboutGraphiteLocalizedCommitDate,
 	TriggerCopyToClipboardBlobUrl,
+	TriggerDelayedZoomCanvasToFitAll,
 	TriggerFetchAndOpenDocument,
 	TriggerDownloadBlobUrl,
 	TriggerDownloadImage,
@@ -1547,13 +1548,11 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerLoadPreferences,
 	TriggerOpenDocument,
 	TriggerPaste,
-	TriggerRefreshBoundsOfViewports,
 	TriggerRevokeBlobUrl,
 	TriggerSavePreferences,
 	TriggerTextCommit,
 	TriggerTextCopy,
 	TriggerUpgradeDocumentToVectorManipulationFormat,
-	TriggerViewportResize,
 	TriggerVisitLink,
 	UpdateActiveDocument,
 	UpdateBox,

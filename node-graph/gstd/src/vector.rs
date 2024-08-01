@@ -279,6 +279,7 @@ pub fn convert_usvg_path(path: &usvg::Path) -> Vec<Subpath<PointId>> {
 	subpaths
 }
 
+#[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(module = "/../../frontend/src/utility-functions/computational-geometry.ts")]
 extern "C" {
 	#[wasm_bindgen(js_name = booleanUnion)]
@@ -289,4 +290,20 @@ extern "C" {
 	fn boolean_intersect(path1: String, path2: String) -> String;
 	#[wasm_bindgen(js_name = booleanDifference)]
 	fn boolean_difference(path1: String, path2: String) -> String;
+}
+#[cfg(not(target_arch = "wasm32"))]
+fn boolean_union(_path1: String, _path2: String) -> String {
+	String::from("M0,0 L1,0 L1,1 L0,1 Z")
+}
+#[cfg(not(target_arch = "wasm32"))]
+fn boolean_subtract(_path1: String, _path2: String) -> String {
+	String::from("M0,0 L1,0 L1,1 L0,1 Z")
+}
+#[cfg(not(target_arch = "wasm32"))]
+fn boolean_intersect(_path1: String, _path2: String) -> String {
+	String::from("M0,0 L1,0 L1,1 L0,1 Z")
+}
+#[cfg(not(target_arch = "wasm32"))]
+fn boolean_difference(_path1: String, _path2: String) -> String {
+	String::from("M0,0 L1,0 L1,1 L0,1 Z")
 }

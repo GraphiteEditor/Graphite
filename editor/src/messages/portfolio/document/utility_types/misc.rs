@@ -246,7 +246,7 @@ impl GridSnapping {
 	pub fn compute_rectangle_spacing(mut size: DVec2, navigation: &PTZ) -> Option<DVec2> {
 		let mut iterations = 0;
 		size = size.abs();
-		while (size * navigation.zoom).cmplt(DVec2::splat(10.)).any() {
+		while (size * navigation.zoom()).cmplt(DVec2::splat(10.)).any() {
 			if iterations > 100 {
 				return None;
 			}
@@ -261,7 +261,7 @@ impl GridSnapping {
 		let length = length.abs();
 		let mut iterations = 0;
 		let mut multiplier = 1.;
-		while (length / divisor.abs().max(1.)) * multiplier * navigation.zoom < 10. {
+		while (length / divisor.abs().max(1.)) * multiplier * navigation.zoom() < 10. {
 			if iterations > 100 {
 				return None;
 			}
@@ -409,12 +409,21 @@ impl fmt::Display for SnappingOptions {
 pub struct PTZ {
 	pub pan: DVec2,
 	pub tilt: f64,
-	// TODO: Make this private and add getter/setter methods which ensure zoom is always positive and greater than the smallest zoom level in `VIEWPORT_ZOOM_LEVELS`.
-	pub zoom: f64,
+	zoom: f64,
 }
 
 impl Default for PTZ {
 	fn default() -> Self {
 		Self { pan: DVec2::ZERO, tilt: 0., zoom: 1. }
+	}
+}
+
+impl PTZ {
+	pub fn zoom(&self) -> f64 {
+		self.zoom
+	}
+
+	pub fn set_zoom(&mut self, zoom: f64) {
+		self.zoom = zoom.clamp(crate::consts::VIEWPORT_ZOOM_SCALE_MIN, crate::consts::VIEWPORT_ZOOM_SCALE_MAX)
 	}
 }
