@@ -2,6 +2,7 @@ use crate::document::value::TaggedValue;
 use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 
 use dyn_any::{DynAny, StaticType};
+use glam::IVec2;
 pub use graphene_core::uuid::generate_uuid;
 use graphene_core::{Cow, ProtoNodeIdentifier, Type};
 
@@ -455,6 +456,41 @@ impl NodeInput {
 	}
 }
 
+#[derive(Clone, Debug, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+/// Represents the implementation of a node, which can be a nested [`NodeNetwork`], a proto [`ProtoNodeIdentifier`], or `Extract`.
+pub enum OldDocumentNodeImplementation {
+	/// This describes a (document) node built out of a subgraph of other (document) nodes.
+	///
+	/// A nested [`NodeNetwork`] that is flattened by the [`NodeNetwork::flatten`] function.
+	Network(OldNodeNetwork),
+	/// This describes a (document) node implemented as a proto node.
+	///
+	/// A proto node identifier which can be found in `node_registry.rs`.
+	#[serde(alias = "Unresolved")] // TODO: Eventually remove this alias (probably starting late 2024)
+	ProtoNode(ProtoNodeIdentifier),
+	/// The Extract variant is a tag which tells the compilation process to do something special. It invokes language-level functionality built for use by the ExtractNode to enable metaprogramming.
+	/// When the ExtractNode is compiled, it gets replaced by a value node containing a representation of the source code for the function/lambda of the document node that's fed into the ExtractNode
+	/// (but only that one document node, not upstream nodes).
+	///
+	/// This is explained in more detail here: <https://www.youtube.com/watch?v=72KJa3jQClo>
+	///
+	/// Currently we use it for GPU execution, where a node has to get "extracted" to its source code representation and stored as a value that can be given to the GpuCompiler node at runtime
+	/// (to become a compute shader). Future use could involve the addition of an InjectNode to convert the source code form back into an executable node, enabling metaprogramming in the node graph.
+	/// We would use an assortment of nodes that operate on Graphene source code (just data, no different from any other data flowing through the graph) to make graph transformations.
+	///
+	/// We use this for dealing with macros in a syntactic way of modifying the node graph from within the graph itself. Just like we often deal with lambdas to represent a whole group of
+	/// operations/code/logic, this allows us to basically deal with a lambda at a meta/source-code level, because we need to pass the GPU SPIR-V compiler the source code for a lambda,
+	/// not the executable logic of a lambda.
+	///
+	/// This is analogous to how Rust macros operate at the level of source code, not executable code. When we speak of source code, that represents Graphene's source code in the form of a
+	/// DocumentNode network, not the text form of Rust's source code. (Analogous to the token stream/AST of a Rust macro.)
+	///
+	/// `DocumentNode`s with a `DocumentNodeImplementation::Extract` are converted into a `ClonedNode` that returns the `DocumentNode` specified by the single `NodeInput::Node`. The referenced node
+	/// (specified by the single `NodeInput::Node`) is removed from the network, and any `NodeInput::Node`s used by the referenced node are replaced with a generically typed network input.
+	Extract,
+}
+
 #[derive(Clone, Debug, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// Represents the implementation of a node, which can be a nested [`NodeNetwork`], a proto [`ProtoNodeIdentifier`], or `Extract`.
@@ -553,6 +589,213 @@ where
 	Ok(inputs)
 }
 
+/// An instance of a [`DocumentNodeDefinition`] that has been instantiated in a [`NodeNetwork`].
+/// Currently, when an instance is made, it lives all on its own without any lasting connection to the definition.
+/// But we will want to change it in the future so it merely references its definition.
+#[derive(Clone, Debug, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct OldDocumentNode {
+	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the node definition's name is displayed to the user in italics.
+	///  Ensure the click target in the encapsulating network is updated when this is modified by using network.update_click_target(node_id).
+	#[serde(default)]
+	pub alias: String,
+	// TODO: Replace this name with a reference to the [`DocumentNodeDefinition`] node definition to use the name from there instead.
+	/// The name of the node definition, as originally set by [`DocumentNodeDefinition`], used to display in the UI and to display the appropriate properties.
+	#[serde(deserialize_with = "migrate_layer_to_merge")]
+	pub name: String,
+	/// The inputs to a node, which are either:
+	/// - From other nodes within this graph [`NodeInput::Node`],
+	/// - A constant value [`NodeInput::Value`],
+	/// - A [`NodeInput::Network`] which specifies that this input is from outside the graph, which is resolved in the graph flattening step in the case of nested networks.
+	///
+	/// In the root network, it is resolved when evaluating the borrow tree.
+	/// Ensure the click target in the encapsulating network is updated when the inputs cause the node shape to change (currently only when exposing/hiding an input) by using network.update_click_target(node_id).
+	#[serde(deserialize_with = "deserialize_inputs")]
+	pub inputs: Vec<NodeInput>,
+	/// Manual composition is a way to override the default composition flow of one node into another.
+	///
+	/// Through the usual node composition flow, the upstream node providing the primary input for a node is evaluated before the node itself is run.
+	/// - Abstract example: upstream node `G` is evaluated and its data feeds into the primary input of downstream node `F`,
+	///   just like function composition where function `G` is evaluated and its result is fed into function `F`.
+	/// - Concrete example: a node that takes an image as primary input will get that image data from an upstream node that produces image output data and is evaluated first before being fed downstream.
+	///
+	/// This is achieved by automatically inserting `ComposeNode`s, which run the first node with the overall input and then feed the resulting output into the second node.
+	/// The `ComposeNode` is basically a function composition operator: the parentheses in `F(G(x))` or circle math operator in `(F ∘ G)(x)`.
+	/// For flexibility, instead of being a language construct, Graphene splits out composition itself as its own low-level node so that behavior can be overridden.
+	/// The `ComposeNode`s are then inserted during the graph rewriting step for nodes that don't opt out with `manual_composition`.
+	/// Instead of node `G` feeding into node `F` feeding as the result back to the caller,
+	/// the graph is rewritten so nodes `G` and `F` both feed as lambdas into the parameters of a `ComposeNode` which calls `F(G(input))` and returns the result to the caller.
+	///
+	/// A node's manual composition input represents an input that is not resolved through graph rewriting with a `ComposeNode`,
+	/// and is instead just passed in when evaluating this node within the borrow tree.
+	/// This is similar to having the first input be a `NodeInput::Network` after the graph flattening.
+	///
+	/// ## Example Use Case: CacheNode
+	///
+	/// The `CacheNode` is a pass-through node on cache miss, but on cache hit it needs to avoid evaluating the upstream node and instead just return the cached value.
+	///
+	/// First, let's consider what that would look like using the default composition flow if the `CacheNode` instead just always acted as a pass-through (akin to a cache that always misses):
+	///
+	/// ```text
+	/// ┌───────────────┐    ┌───────────────┐    ┌───────────────┐
+	/// │               │◄───┤               │◄───┤               │◄─── EVAL (START)
+	/// │       G       │    │PassThroughNode│    │       F       │
+	/// │               ├───►│               ├───►│               │───► RESULT (END)
+	/// └───────────────┘    └───────────────┘    └───────────────┘
+	/// ```
+	///
+	/// This acts like the function call `F(PassThroughNode(G(input)))` when evaluating `F` with some `input`: `F.eval(input)`.
+	/// - The diagram's upper track of arrows represents the flow of building up the call stack:
+	///   since `F` is the output it is encountered first but deferred to its upstream caller `PassThroughNode` and that is once again deferred to its upstream caller `G`.
+	/// - The diagram's lower track of arrows represents the flow of evaluating the call stack:
+	///   `G` is evaluated first, then `PassThroughNode` is evaluated with the result of `G`, and finally `F` is evaluated with the result of `PassThroughNode`.
+	///
+	/// With the default composition flow (no manual composition), `ComposeNode`s would be automatically inserted during the graph rewriting step like this:
+	///
+	/// ```text
+	///                                           ┌───────────────┐
+	///                                           │               │◄─── EVAL (START)
+	///                                           │  ComposeNode  │
+	///                      ┌───────────────┐    │               ├───► RESULT (END)
+	///                      │               │◄─┐ ├───────────────┤
+	///                      │       G       │  └─┤               │
+	///                      │               ├─┐  │     First     │
+	///                      └───────────────┘ └─►│               │
+	///                      ┌───────────────┐    ├───────────────┤
+	///                      │               │◄───┤               │
+	///                      │  ComposeNode  │    │     Second    │
+	/// ┌───────────────┐    │               ├───►│               │
+	/// │               │◄─┐ ├───────────────┤    └───────────────┘
+	/// │PassThroughNode│  └─┤               │
+	/// │               ├─┐  │     First     │
+	/// └───────────────┘ └─►│               │
+	/// ┌───────────────┐    ├───────────────┤
+	/// |               │◄───┤               │
+	/// │       F       │    │     Second    │
+	/// │               ├───►│               │
+	/// └───────────────┘    └───────────────┘
+	/// ```
+	///
+	/// Now let's swap back from the `PassThroughNode` to the `CacheNode` to make caching actually work.
+	/// It needs to override the default composition flow so that `G` is not automatically evaluated when the cache is hit.
+	/// We need to give the `CacheNode` more manual control over the order of execution.
+	/// So the `CacheNode` opts into manual composition and, instead of deferring to its upstream caller, it consumes the input directly:
+	///
+	/// ```text
+	///                      ┌───────────────┐    ┌───────────────┐
+	///                      │               │◄───┤               │◄─── EVAL (START)
+	///                      │   CacheNode   │    │       F       │
+	///                      │               ├───►│               │───► RESULT (END)
+	/// ┌───────────────┐    ├───────────────┤    └───────────────┘
+	/// │               │◄───┤               │
+	/// │       G       │    │  Cached Data  │
+	/// │               ├───►│               │
+	/// └───────────────┘    └───────────────┘
+	/// ```
+	///
+	/// Now, the call from `F` directly reaches the `CacheNode` and the `CacheNode` can decide whether to call `G.eval(input_from_f)`
+	/// in the event of a cache miss or just return the cached data in the event of a cache hit.
+	pub manual_composition: Option<Type>,
+	// TODO: Remove once this references its definition instead (see above TODO).
+	/// Indicates to the UI if a primary output should be drawn for this node.
+	/// True for most nodes, but the Split Channels node is an example of a node that has multiple secondary outputs but no primary output.
+	#[serde(default = "return_true")]
+	pub has_primary_output: bool,
+	// A nested document network or a proto-node identifier.
+	pub implementation: OldDocumentNodeImplementation,
+	/// User chosen state for displaying this as a left-to-right node or bottom-to-top layer. Ensure the click target in the encapsulating network is updated when the node changes to a layer by using network.update_click_target(node_id).
+	#[serde(default)]
+	pub is_layer: bool,
+	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
+	#[serde(default = "return_true")]
+	pub visible: bool,
+	/// Represents the lock icon for locking/unlocking the node in the graph UI. When locked, a node cannot be moved in the graph UI.
+	#[serde(default)]
+	pub locked: bool,
+	/// Metadata about the node including its position in the graph UI. Ensure the click target in the encapsulating network is updated when the node moves by using network.update_click_target(node_id).
+	pub metadata: OldDocumentNodeMetadata,
+	/// When two different proto nodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
+	/// See [`crate::proto::ProtoNetwork::generate_stable_node_ids`] for details.
+	/// However sometimes this is not desirable, for example in the case of a [`graphene_core::memo::MonitorNode`] that needs to be accessed outside of the graph.
+	#[serde(default)]
+	pub skip_deduplication: bool,
+	/// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.
+	#[serde(skip)]
+	pub original_location: OriginalLocation,
+}
+
+// TODO: Eventually remove this (probably starting late 2024)
+#[derive(Clone, Debug, PartialEq, Default, specta::Type, Hash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+/// Metadata about the node including its position in the graph UI
+pub struct OldDocumentNodeMetadata {
+	pub position: IVec2,
+}
+
+// TODO: Eventually remove this (probably starting late 2024)
+#[derive(Clone, Copy, Debug, PartialEq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+/// Root Node is the "default" export for a node network. Used by document metadata, displaying UI-only "Export" node, and for restoring the default preview node.
+pub struct OldRootNode {
+	pub id: NodeId,
+	pub output_index: usize,
+}
+
+// TODO: Eventually remove this (probably starting late 2024)
+#[derive(PartialEq, Debug, Clone, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum OldPreviewing {
+	/// If there is a node to restore the connection to the export for, then it is stored in the option.
+	/// Otherwise, nothing gets restored and the primary export is disconnected.
+	Yes { root_node_to_restore: Option<OldRootNode> },
+	#[default]
+	No,
+}
+
+// TODO: Eventually remove this (probably starting late 2024)
+#[derive(Clone, Debug, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+/// A network (subgraph) of nodes containing each [`DocumentNode`] and its ID, as well as list mapping each export to its connected node, or a value if disconnected
+pub struct OldNodeNetwork {
+	/// The list of data outputs that are exported from this network to the parent network.
+	/// Each export is a reference to a node within this network, paired with its output index, that is the source of the network's exported data.
+	#[serde(alias = "outputs", deserialize_with = "deserialize_exports")] // TODO: Eventually remove this alias (probably starting late 2024)
+	pub exports: Vec<NodeInput>,
+	/// The list of all nodes in this network.
+	//#[serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap")]
+	pub nodes: HashMap<NodeId, OldDocumentNode>,
+	/// Indicates whether the network is currently rendered with a particular node that is previewed, and if so, which connection should be restored when the preview ends.
+	#[serde(default)]
+	pub previewing: OldPreviewing,
+	/// Temporary fields to store metadata for "Import"/"Export" UI-only nodes, eventually will be replaced with lines leading to edges
+	#[serde(default = "default_import_metadata")]
+	pub imports_metadata: (NodeId, IVec2),
+	#[serde(default = "default_export_metadata")]
+	pub exports_metadata: (NodeId, IVec2),
+
+	/// A network may expose nodes as constants which can by used by other nodes using a `NodeInput::Scope(key)`.
+	#[serde(default)]
+	//#[serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap")]
+	pub scope_injections: HashMap<String, (NodeId, Type)>,
+}
+
+// TODO: Eventually remove this (probably starting late 2024)
+fn migrate_layer_to_merge<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+	let mut s: String = serde::Deserialize::deserialize(deserializer)?;
+	if s == "Layer" {
+		s = "Merge".to_string();
+	}
+	Ok(s)
+}
+// TODO: Eventually remove this (probably starting late 2024)
+fn default_import_metadata() -> (NodeId, IVec2) {
+	(NodeId(generate_uuid()), IVec2::new(-25, -4))
+}
+// TODO: Eventually remove this (probably starting late 2024)
+fn default_export_metadata() -> (NodeId, IVec2) {
+	(NodeId(generate_uuid()), IVec2::new(8, -4))
+}
+
 #[derive(Clone, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// A network (subgraph) of nodes containing each [`DocumentNode`] and its ID, as well as list mapping each export to its connected node, or a value if disconnected
@@ -564,10 +807,11 @@ pub struct NodeNetwork {
 	/// TODO: Instead of storing import types in each NodeInput::Network connection, the types are stored here. This is similar to how types need to be defined for parameters when creating a function in Rust.
 	// pub import_types: Vec<Type>,
 	/// The list of all nodes in this network.
+	#[serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap")]
 	pub nodes: HashMap<NodeId, DocumentNode>,
-
 	/// A network may expose nodes as constants which can by used by other nodes using a `NodeInput::Scope(key)`.
 	#[serde(default)]
+	#[serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap")]
 	pub scope_injections: HashMap<String, (NodeId, Type)>,
 }
 

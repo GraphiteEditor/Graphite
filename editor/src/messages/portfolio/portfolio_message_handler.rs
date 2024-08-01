@@ -18,6 +18,7 @@ use graphene_core::text::Font;
 use graphene_std::vector::style::{Fill, FillType, Gradient};
 
 use std::sync::Arc;
+use std::vec;
 
 pub struct PortfolioMessageData<'a> {
 	pub ipp: &'a InputPreprocessorMessageHandler,
@@ -444,13 +445,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						continue;
 					};
 					let Some(node_metadata) = document.network_interface.network_metadata(&[]).unwrap().persistent_metadata.node_metadata.get(node_id) else {
-						log::error!("could not get node metadata in deserialize_document");
+						log::error!("could not get node metadata for node {node_id} in deserialize_document");
 						continue;
 					};
 
 					// Upgrade Fill nodes to the format change in #1778
 					// TODO: Eventually remove this (probably starting late 2024)
-					let Some(reference) = node_metadata.persistent_metadata.reference.as_ref() else {
+					let Some(ref reference) = node_metadata.persistent_metadata.reference.clone() else {
 						continue;
 					};
 					if reference == "Fill" && node.inputs.len() == 8 {
@@ -508,6 +509,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 									.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Gradient(gradient), false), &[]);
 							}
 						}
+					}
+
+					// Upgrade artboard name being passed as hidden value input to "To Artboard"
+					if reference == "Artboard" {
+						let label = document.network_interface.get_display_name(node_id, &[]);
+						document
+							.network_interface
+							.set_input(&InputConnector::node(NodeId(0), 1), NodeInput::value(TaggedValue::String(label), false), &[*node_id]);
 					}
 				}
 

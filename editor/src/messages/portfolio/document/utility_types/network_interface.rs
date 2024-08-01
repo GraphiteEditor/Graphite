@@ -3,7 +3,7 @@ use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::{
 	concrete,
-	document::{value::TaggedValue, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork},
+	document::{value::TaggedValue, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork},
 	Type,
 };
 use graphene_std::{
@@ -900,6 +900,73 @@ impl NodeNetworkInterface {
 		};
 
 		Some(text_width)
+	}
+
+	pub fn from_old_network(old_network: OldNodeNetwork) -> Self {
+		let mut node_network = NodeNetwork::default();
+		let mut network_metadata = NodeNetworkMetadata::default();
+		let mut stack = vec![(Vec::new(), old_network)];
+		while let Some((network_path, old_network)) = stack.pop() {
+			let Some(nested_network) = node_network.nested_network_mut(&network_path) else {
+				log::error!("Could not get nested network in from_old_network");
+				continue;
+			};
+			nested_network.exports = old_network.exports;
+			nested_network.scope_injections = old_network.scope_injections;
+			let Some(nested_network_metadata) = network_metadata.nested_metadata_mut(&network_path) else {
+				log::error!("Could not get nested network in from_old_network");
+				continue;
+			};
+			nested_network_metadata.persistent_metadata.previewing = Previewing::No;
+			for (node_id, old_node) in old_network.nodes {
+				let mut node = DocumentNode::default();
+				let mut node_metadata = DocumentNodeMetadata::default();
+
+				node.inputs = old_node.inputs;
+				node.manual_composition = old_node.manual_composition;
+				node.visible = old_node.visible;
+				node.skip_deduplication = old_node.skip_deduplication;
+				node.original_location = old_node.original_location;
+				node_metadata.persistent_metadata.display_name = old_node.alias;
+				node_metadata.persistent_metadata.reference = if old_node.name.is_empty() { None } else { Some(old_node.name) };
+				node_metadata.persistent_metadata.has_primary_output = old_node.has_primary_output;
+				node_metadata.persistent_metadata.locked = old_node.locked;
+				node_metadata.persistent_metadata.node_type_metadata = if old_node.is_layer {
+					NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
+						position: LayerPosition::Absolute(old_node.metadata.position),
+					})
+				} else {
+					NodeTypePersistentMetadata::Node(NodePersistentMetadata {
+						position: NodePosition::Absolute(old_node.metadata.position),
+					})
+				};
+
+				match old_node.implementation {
+					OldDocumentNodeImplementation::ProtoNode(protonode) => {
+						node.implementation = DocumentNodeImplementation::ProtoNode(protonode);
+					}
+					OldDocumentNodeImplementation::Network(old_network) => {
+						node.implementation = DocumentNodeImplementation::Network(NodeNetwork::default());
+						node_metadata.persistent_metadata.network_metadata = Some(NodeNetworkMetadata::default());
+						let mut nested_path = network_path.clone();
+						nested_path.push(node_id);
+						stack.push((nested_path, old_network));
+					}
+					OldDocumentNodeImplementation::Extract => {
+						node.implementation = DocumentNodeImplementation::Extract;
+					}
+				}
+
+				nested_network.nodes.insert(node_id, node);
+				nested_network_metadata.persistent_metadata.node_metadata.insert(node_id, node_metadata);
+			}
+		}
+		Self {
+			network: node_network,
+			network_metadata,
+			document_metadata: DocumentMetadata::default(),
+			resolved_types: ResolvedDocumentNodeTypes::default(),
+		}
 	}
 }
 
@@ -1983,7 +2050,7 @@ impl NodeNetworkInterface {
 	pub fn add_export(&mut self, default_value: TaggedValue, insert_index: isize, output_name: String, network_path: &[NodeId]) {
 		// Set the parent node (if it exists) to be a non layer if it is no longer eligible to be a layer
 		if let Some(parent_id) = network_path.last().cloned() {
-			if !self.is_eligible_to_be_layer(&parent_id, network_path) {
+			if !self.is_eligible_to_be_layer(&parent_id, network_path) && self.is_layer(&parent_id, network_path) {
 				self.set_to_node_or_layer(&parent_id, network_path, false);
 			}
 		};
@@ -2036,7 +2103,7 @@ impl NodeNetworkInterface {
 	/// Inserts a new input at insert index. If the insert index is -1 it is inserted at the end. The output_name is used by the encapsulating node.
 	pub fn add_input(&mut self, node_id: &NodeId, network_path: &[NodeId], default_value: TaggedValue, exposed: bool, insert_index: isize, input_name: String) {
 		// Set the node to be a non layer if it is no longer eligible to be a layer
-		if !self.is_eligible_to_be_layer(node_id, network_path) {
+		if !self.is_eligible_to_be_layer(node_id, network_path) && self.is_layer(node_id, network_path) {
 			self.set_to_node_or_layer(node_id, network_path, false);
 		}
 
@@ -2173,7 +2240,7 @@ impl NodeNetworkInterface {
 
 		// Ensure layer is toggled to non layer if it is no longer eligible to be a layer
 		if let InputConnector::Node { node_id, .. } = &input_connector {
-			if !self.is_eligible_to_be_layer(node_id, network_path) {
+			if !self.is_eligible_to_be_layer(node_id, network_path) && self.is_layer(node_id, network_path) {
 				self.set_to_node_or_layer(node_id, network_path, false);
 			}
 		}
@@ -2926,7 +2993,20 @@ impl NodeNetworkInterface {
 					.collect::<Vec<_>>()
 				{
 					if self.is_layer(&upstream_node, network_path) {
-						break;
+						return;
+					}
+					if !self.has_primary_output(&upstream_node, network_path) {
+						return;
+					}
+					let Some(outward_wires) = self
+						.get_outward_wires(network_path)
+						.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(upstream_node, 0)))
+					else {
+						log::error!("Could not get outward wires in try_set_upstream_to_chain");
+						return;
+					};
+					if outward_wires.len() != 1 {
+						return;
 					}
 					let downstream_position = self.get_position(&downstream_id, network_path);
 					let upstream_node_position = self.get_position(&upstream_node, network_path);
@@ -2937,10 +3017,10 @@ impl NodeNetworkInterface {
 						{
 							self.set_chain_position(&upstream_node, network_path);
 						} else {
-							break;
+							return;
 						}
 					} else {
-						break;
+						return;
 					}
 					downstream_id = upstream_node;
 				}
@@ -2949,7 +3029,7 @@ impl NodeNetworkInterface {
 	}
 	pub fn force_set_upstream_to_chain(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
 		for upstream_id in self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::HorizontalFlow).collect::<Vec<_>>().iter() {
-			if !self.is_layer(upstream_id, network_path) {
+			if !self.is_layer(upstream_id, network_path) && self.has_primary_output(node_id, network_path) {
 				self.set_chain_position(upstream_id, network_path);
 			}
 			// If there is an upstream layer then stop breaking the chain
@@ -3399,6 +3479,7 @@ impl NodeNetworkMetadata {
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeNetworkPersistentMetadata {
 	/// Node metadata must exist for every document node in the network
+	#[serde(serialize_with = "graphene_std::vector::serialize_hashmap", deserialize_with = "graphene_std::vector::deserialize_hashmap")]
 	pub node_metadata: HashMap<NodeId, DocumentNodeMetadata>,
 	/// Cached metadata for each node, which is calculated when adding a node to node_metadata
 	/// Indicates whether the network is currently rendered with a particular node that is previewed, and if so, which connection should be restored when the preview ends.

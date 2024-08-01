@@ -1172,8 +1172,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					self.update_selection_action_buttons(network_interface, breadcrumb_network_path, responses);
 				}
 			}
+			NodeGraphMessage::UpdateInSelectedNetwork => responses.add(FrontendMessage::UpdateInSelectedNetwork {
+				in_selected_network: selection_network_path == breadcrumb_network_path,
+			}),
 			NodeGraphMessage::SendSelectedNodes => {
-				let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else {
+				let Some(selected_nodes) = network_interface.selected_nodes(breadcrumb_network_path) else {
 					log::error!("Could not get selected nodes in NodeGraphMessage::SendSelectedNodes");
 					return;
 				};
@@ -1582,10 +1585,7 @@ impl NodeGraphMessageHandler {
 					.map(|output_name| output_name.to_string())
 					.unwrap_or(format!("Output {}", index + 1));
 
-				let connected_to = outward_wires.get(&OutputConnector::node(node_id, index)).cloned().unwrap_or_else(|| {
-					log::error!("Could not get OutputConnector::node({node_id}, {index}) in outward wires");
-					Vec::new()
-				});
+				let connected_to = outward_wires.get(&OutputConnector::node(node_id, index)).cloned().unwrap_or_else(|| Vec::new());
 				exposed_outputs.push(FrontendGraphOutput {
 					data_type: frontend_data_type,
 					name: output_name,

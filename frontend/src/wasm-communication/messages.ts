@@ -47,6 +47,11 @@ export class UpdateContextMenuInformation extends JsMessage {
 	@ContextTupleToVec2
 	readonly contextMenuInformation!: ContextMenuInformation | undefined;
 }
+
+export class UpdateInSelectedNetwork extends JsMessage {
+	readonly inSelectedNetwork!: boolean;
+}
+
 const LayerWidths = Transform(({ obj }) => obj.layerWidths);
 const ChainWidths = Transform(({ obj }) => obj.chainWidths);
 
@@ -1554,6 +1559,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateBox,
 	UpdateClickTargets,
 	UpdateContextMenuInformation,
+	UpdateInSelectedNetwork,
 	UpdateLayerWidths,
 	UpdateDialogButtons,
 	UpdateDialogColumn1,

@@ -12,6 +12,7 @@ import {
 	UpdateBox,
 	UpdateClickTargets,
 	UpdateContextMenuInformation,
+	UpdateInSelectedNetwork,
 	UpdateLayerWidths,
 	UpdateNodeGraph,
 	UpdateNodeGraphSelection,
@@ -38,6 +39,7 @@ export function createNodeGraphState(editor: Editor) {
 		thumbnails: new Map<bigint, string>(),
 		selected: [] as bigint[],
 		transform: { scale: 1, x: 0, y: 0 },
+		inSelectedNetwork: true,
 	});
 
 	// Set up message subscriptions on creation
@@ -56,6 +58,12 @@ export function createNodeGraphState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateContextMenuInformation, (updateContextMenuInformation) => {
 		update((state) => {
 			state.contextMenuInformation = updateContextMenuInformation.contextMenuInformation;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateInSelectedNetwork, (updateInSelectedNetwork) => {
+		update((state) => {
+			state.inSelectedNetwork = updateInSelectedNetwork.inSelectedNetwork;
 			return state;
 		});
 	});

@@ -436,6 +436,24 @@
 			</svg>
 		</div>
 	{/if}
+
+	<!-- Node connection wires -->
+	<div class="wires" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
+		<svg>
+			{#each wirePaths as { pathString, dataType, thick, dashed }}\
+				{#if thick}
+					<path
+						d={pathString}
+						style:--data-line-width={`${thick ? 8 : 2}px`}
+						style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
+						style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
+						style:--data-dasharray={`3,${dashed ? 2 : 0}`}
+					/>
+				{/if}
+			{/each}
+		</svg>
+	</div>
+
 	<!-- Layers and nodes -->
 	<div
 		class="layers-and-nodes"
@@ -452,6 +470,7 @@
 			<div
 				class="layer"
 				class:selected={$nodeGraph.selected.includes(node.id)}
+				class:in-selected-network={$nodeGraph.inSelectedNetwork}
 				class:previewed={node.previewed}
 				class:disabled={!node.visible}
 				style:--offset-left={node.position?.x || 0}
@@ -571,14 +590,16 @@
 		<!-- Node connection wires -->
 		<div class="wires">
 			<svg>
-				{#each wirePaths as { pathString, dataType, thick, dashed }}
-					<path
-						d={pathString}
-						style:--data-line-width={`${thick ? 8 : 2}px`}
-						style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
-						style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
-						style:--data-dasharray={`3,${dashed ? 2 : 0}`}
-					/>
+				{#each wirePaths as { pathString, dataType, thick, dashed }}\
+					{#if !thick}
+						<path
+							d={pathString}
+							style:--data-line-width={`${thick ? 8 : 2}px`}
+							style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
+							style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
+							style:--data-dasharray={`3,${dashed ? 2 : 0}`}
+						/>
+					{/if}
 				{/each}
 			</svg>
 		</div>
@@ -604,14 +625,14 @@
 					<span class="node-error hover" transition:fade={FADE_TRANSITION} data-node-error>{node.errors}</span>
 				{/if}
 				<!-- Primary row -->
-				<div class="primary" class:no-parameter-section={exposedInputsOutputs.length === 0}>
+				<div class="primary" class:in-selected-network={$nodeGraph.inSelectedNetwork} class:no-parameter-section={exposedInputsOutputs.length === 0}>
 					<IconLabel icon={nodeIcon(node.reference)} />
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
 					<TextLabel tooltip={editor.handle.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined}>{node.displayName}</TextLabel>
 				</div>
 				<!-- Parameter rows -->
 				{#if exposedInputsOutputs.length > 0}
-					<div class="parameters">
+					<div class="parameters" class:in-selected-network={$nodeGraph.inSelectedNetwork}>
 						{#each exposedInputsOutputs as parameter, index}
 							<div class={`parameter expanded ${index < node.exposedInputs.length ? "input" : "output"}`}>
 								<TextLabel tooltip={parameter.name}>{parameter.name}</TextLabel>
@@ -1041,6 +1062,10 @@
 			&.selected {
 				// This is the result of blending `rgba(255, 255, 255, 0.1)` over `rgba(0, 0, 0, 0.33)`
 				background: rgba(66, 66, 66, 0.4);
+
+				&.in-selected-network {
+					background: rgba(80, 80, 80, 0.5);
+				}
 			}
 
 			.thumbnail {
@@ -1134,10 +1159,18 @@
 			&.selected {
 				.primary {
 					background: rgba(255, 255, 255, 0.15);
+
+					&.in-selected-network {
+						background: rgba(255, 255, 255, 0.2);
+					}
 				}
 
 				.parameters {
 					background: rgba(255, 255, 255, 0.1);
+
+					&.in-selected-network {
+						background: rgba(255, 255, 255, 0.15);
+					}
 				}
 			}
 

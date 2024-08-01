@@ -124,6 +124,10 @@ pub enum FrontendMessage {
 		#[serde(rename = "documentId")]
 		document_id: DocumentId,
 	},
+	UpdateInSelectedNetwork {
+		#[serde(rename = "inSelectedNetwork")]
+		in_selected_network: bool,
+	},
 	UpdateBox {
 		#[serde(rename = "box")]
 		box_selection: Option<BoxSelection>,

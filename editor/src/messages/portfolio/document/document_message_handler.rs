@@ -24,18 +24,65 @@ use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeInput, NodeNetwork};
+use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::ImageFrame;
 use graphene_core::vector::style::ViewMode;
 
 use glam::{DAffine2, DVec2};
-
 pub struct DocumentMessageData<'a> {
 	pub document_id: DocumentId,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub persistent_data: &'a PersistentData,
 	pub executor: &'a mut NodeGraphExecutor,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct Test1 {
+	pub val1: u32,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct Test2 {
+	pub val2: u32,
+}
+
+// TODO: Eventually remove this (probably starting late 2024)
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct OldDocumentMessageHandler {
+	// ============================================
+	// Fields that are saved in the document format
+	// ============================================
+	//
+	/// The node graph that generates this document's artwork.
+	/// It recursively stores its sub-graphs, so this root graph is the whole snapshot of the document content.
+	pub network: OldNodeNetwork,
+	/// List of the [`NodeId`]s that are currently selected by the user.
+	pub selected_nodes: SelectedNodes,
+	/// List of the [`LayerNodeIdentifier`]s that are currently collapsed by the user in the Layers panel.
+	/// Collapsed means that the expansion arrow isn't set to show the children of these layers.
+	pub collapsed: CollapsedLayers,
+	/// The name of the document, which is displayed in the tab and title bar of the editor.
+	pub name: String,
+	/// The full Git commit hash of the Graphite repository that was used to build the editor.
+	/// We save this to provide a hint about which version of the editor was used to create the document.
+	pub commit_hash: String,
+	/// The current pan, tilt, and zoom state of the viewport's view of the document canvas.
+	pub document_ptz: PTZ,
+	/// The current mode that the document is in, which starts out as Design Mode. This choice affects the editing behavior of the tools.
+	pub document_mode: DocumentMode,
+	/// The current view mode that the user has set for rendering the document within the viewport.
+	/// This is usually "Normal" but can be set to "Outline" or "Pixels" to see the canvas differently.
+	pub view_mode: ViewMode,
+	/// Sets whether or not all the viewport overlays should be drawn on top of the artwork.
+	/// This includes tool interaction visualizations (like the transform cage and path anchors/handles), the grid, and more.
+	pub overlays_visible: bool,
+	/// Sets whether or not the rulers should be drawn along the top and left edges of the viewport area.
+	pub rulers_visible: bool,
+	/// Sets whether or not the node graph is drawn (as an overlay) on top of the viewport area, or otherwise if it's hidden.
+	pub graph_view_overlay_open: bool,
+	/// The current user choices for snapping behavior, including whether snapping is enabled at all.
+	pub snapping_state: SnappingState,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -67,21 +114,21 @@ pub struct DocumentMessageHandler {
 	pub name: String,
 	/// The full Git commit hash of the Graphite repository that was used to build the editor.
 	/// We save this to provide a hint about which version of the editor was used to create the document.
-	commit_hash: String,
+	pub commit_hash: String,
 	/// The current pan, tilt, and zoom state of the viewport's view of the document canvas.
 	pub document_ptz: PTZ,
 	/// The current mode that the document is in, which starts out as Design Mode. This choice affects the editing behavior of the tools.
-	document_mode: DocumentMode,
+	pub document_mode: DocumentMode,
 	/// The current view mode that the user has set for rendering the document within the viewport.
 	/// This is usually "Normal" but can be set to "Outline" or "Pixels" to see the canvas differently.
 	pub view_mode: ViewMode,
 	/// Sets whether or not all the viewport overlays should be drawn on top of the artwork.
 	/// This includes tool interaction visualizations (like the transform cage and path anchors/handles), the grid, and more.
-	overlays_visible: bool,
+	pub overlays_visible: bool,
 	/// Sets whether or not the rulers should be drawn along the top and left edges of the viewport area.
 	pub rulers_visible: bool,
 	/// Sets whether or not the node graph is drawn (as an overlay) on top of the viewport area, or otherwise if it's hidden.
-	graph_view_overlay_open: bool,
+	pub graph_view_overlay_open: bool,
 	/// The current user choices for snapping behavior, including whether snapping is enabled at all.
 	pub snapping_state: SnappingState,
 	// =============================================
@@ -870,6 +917,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				}
 				responses.add(PropertiesPanelMessage::Refresh);
 				responses.add(NodeGraphMessage::UpdateLayerPanel);
+				responses.add(NodeGraphMessage::UpdateInSelectedNetwork)
 			}
 			DocumentMessage::SetBlendModeForSelectedLayers { blend_mode } => {
 				for layer in self.network_interface.selected_nodes(&[]).unwrap().selected_layers_except_artboards(&self.network_interface) {
@@ -1241,7 +1289,30 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
-		serde_json::from_str(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string()))
+		let document_message_handler = serde_json::from_str::<OldDocumentMessageHandler>(serialized_content)
+			.map_or_else(
+				|_| serde_json::from_str::<DocumentMessageHandler>(serialized_content),
+				|old_message_handler| {
+					let network_interface = NodeNetworkInterface::from_old_network(old_message_handler.network);
+
+					let default_document_message_handler = DocumentMessageHandler {
+						network_interface: network_interface,
+						collapsed: old_message_handler.collapsed,
+						commit_hash: old_message_handler.commit_hash,
+						document_ptz: old_message_handler.document_ptz,
+						document_mode: old_message_handler.document_mode,
+						view_mode: old_message_handler.view_mode,
+						overlays_visible: old_message_handler.overlays_visible,
+						rulers_visible: old_message_handler.rulers_visible,
+						graph_view_overlay_open: old_message_handler.graph_view_overlay_open,
+						snapping_state: old_message_handler.snapping_state,
+						..Default::default()
+					};
+					Ok(default_document_message_handler)
+				},
+			)
+			.map_err(|e| EditorError::DocumentDeserialization(e.to_string()))?;
+		Ok(document_message_handler)
 	}
 
 	pub fn with_name_and_content(name: String, serialized_content: String) -> Result<Self, EditorError> {

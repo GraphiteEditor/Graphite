@@ -156,5 +156,6 @@ pub enum NodeGraphMessage {
 		node_graph_errors: GraphErrors,
 	},
 	UpdateActionButtons,
+	UpdateInSelectedNetwork,
 	SendSelectedNodes,
 }
