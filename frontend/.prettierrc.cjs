@@ -1,10 +1,10 @@
-{
+module.exports = {
 	"singleQuote": false,
 	"useTabs": true,
 	"tabWidth": 4,
 	"printWidth": 200,
 	"plugins": [
-		"prettier-plugin-svelte"
+		import("prettier-plugin-svelte")
 	],
 	"overrides": [
 		{

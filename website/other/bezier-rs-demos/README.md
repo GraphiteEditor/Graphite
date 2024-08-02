@@ -10,9 +10,9 @@ Make sure [Node.js](https://nodejs.org/) (the latest LTS version) and [Rust](htt
 
 - To run the development server with hot reloading:
   ```
-  npm start
+  yarn start
   ```
 - To compile an optimized production build:
   ```
-  npm run build
+  yarn build
   ```

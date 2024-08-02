@@ -2,3 +2,6 @@ node_modules/
 wasm/pkg/
 public/build/
 dist/
+.install-timestamp
+.pnp.cjs
+.pnp.loader.mjs

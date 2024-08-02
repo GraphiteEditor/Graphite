@@ -65,7 +65,7 @@ cd Graphite
 From either the `/` (root) or `/frontend` directories, you can run the project by executing:
 
 ```sh
-npm start
+yarn start
 ```
 
 This spins up the dev server at <http://localhost:8080> with a file watcher that performs hot reloading of the web page. You should be able to start the server, edit and save web and Rust code, and shut it down by double pressing <kbd>Ctrl</kbd><kbd>C</kbd>. You sometimes may need to reload the browser's page if hot reloading didn't behave right.
@@ -83,7 +83,7 @@ cargo install cargo-about
 And then running:
 
 ```sh
-npm run build
+yarn build
 ```
 
 This produces the `/frontend/dist` directory containing the static site files that must be served by your own web server.

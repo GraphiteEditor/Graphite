@@ -5,13 +5,13 @@
 	"type": "module",
 	"scripts": {
 		"---------- DEV SERVER ----------": "",
-		"start": "npm run setup && npm run wasm:build-dev && concurrently -k -n \"VITE,RUST\" \"vite\" \"npm run wasm:watch-dev\"",
-		"profiling": "npm run setup && npm run wasm:build-profiling && concurrently -k -n \"VITE,RUST\" \"vite\" \"npm run wasm:watch-profiling\"",
-		"production": "npm run setup && npm run wasm:build-production && concurrently -k -n \"VITE,RUST\" \"vite\" \"npm run wasm:watch-production\"",
+		"start": "yarn run setup && yarn run wasm:build-dev && concurrently -k -n \"VITE,RUST\" \"vite\" \"yarn run wasm:watch-dev\"",
+		"profiling": "yarn run setup && yarn run wasm:build-profiling && concurrently -k -n \"VITE,RUST\" \"vite\" \"yarn run wasm:watch-profiling\"",
+		"production": "yarn run setup && yarn run wasm:build-production && concurrently -k -n \"VITE,RUST\" \"vite\" \"yarn run wasm:watch-production\"",
 		"---------- BUILDS ----------": "",
-		"build-dev": "npm run wasm:build-dev && vite build",
-		"build-profiling": "npm run wasm:build-profiling && vite build",
-		"build": "npm run wasm:build-production && vite build",
+		"build-dev": "yarn run wasm:build-dev && vite build",
+		"build-profiling": "yarn run wasm:build-profiling && vite build",
+		"build": "yarn run wasm:build-production && vite build",
 		"---------- UTILITIES ----------": "",
 		"lint": "eslint .",
 		"lint-fix": "eslint . --fix",
@@ -29,6 +29,7 @@
 		"@typescript-eslint/eslint-plugin": "^7.17.0",
 		"@typescript-eslint/parser": "^7.17.0",
 		"concurrently": "^8.2.2",
+		"eslint": "^8.57.0",
 		"eslint-config-prettier": "^9.1.0",
 		"eslint-import-resolver-typescript": "^3.6.1",
 		"eslint-plugin-import": "^2.29.1",
@@ -37,5 +38,6 @@
 		"ts-node": "^10.9.2",
 		"typescript": "^5.5.4",
 		"vite": "^5.3.4"
-	}
+	},
+	"packageManager": "yarn@4.3.1"
 }

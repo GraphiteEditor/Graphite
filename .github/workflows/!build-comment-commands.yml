@@ -62,7 +62,8 @@ jobs:
       - name: 🚧 Install Node dependencies
         run: |
           cd frontend
-          npm ci
+          corepack enable
+          yarn install --imutable --immutable-cache
 
       - name: 🦀 Install the latest Rust
         run: |
@@ -96,7 +97,7 @@ jobs:
           NODE_ENV: production
         run: |
           cd frontend
-          mold -run npm run ${{ steps.build_command.outputs.command }}
+          mold -run yarn ${{ steps.build_command.outputs.command }}
 
       - name: 📤 Publish to Cloudflare Pages
         id: cloudflare

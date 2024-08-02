@@ -26,7 +26,7 @@ echo 👷 Build Bezier-rs demos to 'website/other/dist/libraries/bezier-rs'
 mkdir dist/libraries
 mkdir dist/libraries/bezier-rs
 cd bezier-rs-demos
-npm ci
-NODE_ENV=production npm run build
+yarn install --imutable --immutable-cache
+NODE_ENV=production yarn build
 mv dist/* ../dist/libraries/bezier-rs
 cd ..

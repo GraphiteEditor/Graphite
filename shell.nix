@@ -11,9 +11,9 @@
 # a reproducible development environment across different machines and developers.
 
 # You can enter the Nix shell and run Graphite like normal with:
-# > npm start
+# > yarn start
 # Or you can run it like this without needing to first enter the Nix shell:
-# > nix-shell --command "npm start"
+# > nix-shell --command "yarn start"
 
 let
   # Get oxalica's Rust overlay for better Rust integration

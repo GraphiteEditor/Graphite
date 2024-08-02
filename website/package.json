@@ -2,7 +2,6 @@
 	"name": "graphite-website",
 	"description": "Graphite's website. This npm package is for dev tooling only, such as eslint.",
 	"private": true,
-	"scripts": {},
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/GraphiteEditor/Graphite.git"
@@ -20,5 +19,6 @@
 		"eslint-plugin-prettier": "^5.1.3",
 		"prettier": "^3.2.5",
 		"sass": "^1.71.1"
-	}
+	},
+	"packageManager": "yarn@4.3.1"
 }

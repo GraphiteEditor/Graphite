@@ -3,3 +3,6 @@
 /public/build
 /dist
 /wasm/pkg
+.install-timestamp
+.pnp.cjs
+.pnp.loader.mjs
