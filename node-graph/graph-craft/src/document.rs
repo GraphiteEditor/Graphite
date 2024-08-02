@@ -3,7 +3,7 @@ use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 
 use dyn_any::{DynAny, StaticType};
 pub use graphene_core::uuid::generate_uuid;
-use graphene_core::{Cow, ProtoNodeIdentifier, Type};
+use graphene_core::{Cow, MemoHash, ProtoNodeIdentifier, Type};
 
 use glam::IVec2;
 use std::collections::hash_map::DefaultHasher;
@@ -442,7 +442,7 @@ pub enum NodeInput {
 	Node { node_id: NodeId, output_index: usize, lambda: bool },
 
 	/// A hardcoded value that can't change after the graph is compiled. Gets converted into a value node during graph compilation.
-	Value { tagged_value: TaggedValue, exposed: bool },
+	Value { tagged_value: MemoHash<TaggedValue>, exposed: bool },
 
 	// TODO: Remove import_type and get type from parent node input
 	/// Input that is provided by the parent network to this document node, instead of from a hardcoded value or another node within the same network.
@@ -478,7 +478,8 @@ impl NodeInput {
 		Self::Node { node_id, output_index, lambda: true }
 	}
 
-	pub const fn value(tagged_value: TaggedValue, exposed: bool) -> Self {
+	pub fn value(tagged_value: TaggedValue, exposed: bool) -> Self {
+		let tagged_value = tagged_value.into();
 		Self::Value { tagged_value, exposed }
 	}
 
@@ -522,6 +523,13 @@ impl NodeInput {
 
 	pub fn as_value(&self) -> Option<&TaggedValue> {
 		if let NodeInput::Value { tagged_value, .. } = self {
+			Some(tagged_value)
+		} else {
+			None
+		}
+	}
+	pub fn as_non_exposed_value(&self) -> Option<&TaggedValue> {
+		if let NodeInput::Value { tagged_value, exposed: false } = self {
 			Some(tagged_value)
 		} else {
 			None
@@ -1610,7 +1618,7 @@ mod test {
 		assert_eq!(extraction_network.nodes.len(), 1);
 		let inputs = extraction_network.nodes.get(&NodeId(1)).unwrap().inputs.clone();
 		assert_eq!(inputs.len(), 1);
-		assert!(matches!(&inputs[0], &NodeInput::Value{ tagged_value: TaggedValue::DocumentNode(ref network), ..} if network == &id_node));
+		assert!(matches!(&inputs[0].as_value(), &Some(TaggedValue::DocumentNode(ref network), ..) if network == &id_node));
 	}
 
 	#[test]
@@ -1621,13 +1629,7 @@ mod test {
 				NodeId(1),
 				DocumentNode {
 					name: "Inc".into(),
-					inputs: vec![
-						NodeInput::network(concrete!(u32), 0),
-						NodeInput::Value {
-							tagged_value: TaggedValue::U32(2),
-							exposed: false,
-						},
-					],
+					inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::value(TaggedValue::U32(2), false)],
 					implementation: DocumentNodeImplementation::Network(add_network()),
 					..Default::default()
 				},
@@ -1712,7 +1714,7 @@ mod test {
 					ProtoNode {
 						identifier: "graphene_core::value::ClonedNode".into(),
 						input: ProtoNodeInput::None,
-						construction_args: ConstructionArgs::Value(TaggedValue::U32(2)),
+						construction_args: ConstructionArgs::Value(TaggedValue::U32(2).into()),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(4)]),
 							inputs_source: HashMap::new(),
@@ -1759,10 +1761,7 @@ mod test {
 					NodeId(14),
 					DocumentNode {
 						name: "Value".into(),
-						inputs: vec![NodeInput::Value {
-							tagged_value: TaggedValue::U32(2),
-							exposed: false,
-						}],
+						inputs: vec![NodeInput::value(TaggedValue::U32(2), false)],
 						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::ClonedNode".into()),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(4)]),

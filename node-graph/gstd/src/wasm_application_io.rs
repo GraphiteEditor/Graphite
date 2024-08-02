@@ -93,7 +93,10 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 			attributes.push("y", "0");
 			attributes.push("width", footprint.resolution.x.to_string());
 			attributes.push("height", footprint.resolution.y.to_string());
-			attributes.push("transform", format_transform_matrix(footprint.transform.inverse()));
+			let matrix = format_transform_matrix(footprint.transform.inverse());
+			if !matrix.is_empty() {
+				attributes.push("transform", matrix);
+			}
 			attributes.push("fill", "white");
 		});
 	}

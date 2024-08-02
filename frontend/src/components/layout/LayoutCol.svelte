@@ -34,52 +34,55 @@
 	style={`${styleName} ${extraStyles}`.trim() || undefined}
 	title={tooltip}
 	bind:this={self}
-	on:focus
-	on:blur
-	on:fullscreenchange
-	on:fullscreenerror
-	on:scroll
-	on:cut
-	on:copy
-	on:paste
-	on:keydown
-	on:keypress
-	on:keyup
 	on:auxclick
+	on:blur
 	on:click
-	on:contextmenu
 	on:dblclick
-	on:mousedown
-	on:mouseenter
-	on:mouseleave
-	on:mousemove
-	on:mouseover
-	on:mouseout
-	on:mouseup
-	on:select
-	on:drag
 	on:dragend
-	on:dragenter
-	on:dragstart
 	on:dragleave
 	on:dragover
-	on:drop
-	on:touchcancel
-	on:touchend
-	on:pointerover
-	on:pointerenter
+	on:dragstart
+	on:mouseup
 	on:pointerdown
-	on:pointermove
-	on:pointerup
-	on:pointercancel
-	on:pointerout
+	on:pointerenter
 	on:pointerleave
-	on:gotpointercapture
-	on:lostpointercapture
+	on:scroll
 	{...$$restProps}
 >
 	<slot />
 </div>
+
+<!-- Unused (each impacts performance, see <https://github.com/GraphiteEditor/Graphite/issues/1877>):
+on:contextmenu
+on:copy
+on:cut
+on:drag
+on:dragenter
+on:drop
+on:focus
+on:fullscreenchange
+on:fullscreenerror
+on:gotpointercapture
+on:keydown
+on:keypress
+on:keyup
+on:lostpointercapture
+on:mousedown
+on:mouseenter
+on:mouseleave
+on:mousemove
+on:mouseout
+on:mouseover
+on:paste
+on:pointercancel
+on:pointermove
+on:pointerout
+on:pointerover
+on:pointerup
+on:select
+on:touchcancel
+on:touchend
+-->
 
 <style lang="scss" global>
 	.layout-col {

@@ -677,10 +677,7 @@ impl Fsm for PenToolFsmState {
 				]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "Snap 15°"), HintInfo::keys([Key::Control], "Lock Angle")]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Add Sharp Point"), HintInfo::mouse(MouseMotion::LmbDrag, "Add Smooth Point")]),
-				HintGroup(vec![
-					HintInfo::mouse(MouseMotion::Lmb, ""),
-					HintInfo::mouse(MouseMotion::LmbDrag, "Bend from Prev. Point").prepend_slash(),
-				]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, ""), HintInfo::mouse(MouseMotion::LmbDrag, "Bend Prev. Point").prepend_slash()]),
 			]),
 			PenToolFsmState::DraggingHandle => HintData(vec![
 				HintGroup(vec![

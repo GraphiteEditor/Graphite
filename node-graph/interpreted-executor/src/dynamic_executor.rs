@@ -10,6 +10,7 @@ use graph_craft::Type;
 
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
+use std::panic::UnwindSafe;
 use std::sync::Arc;
 
 /// An executor of a node graph that does not require an online compilation server, and instead uses `Box<dyn ...>`.
@@ -102,9 +103,22 @@ impl DynamicExecutor {
 	}
 }
 
-impl<'a, I: StaticType + 'static + Send + Sync> Executor<I, TaggedValue> for &'a DynamicExecutor {
+impl<'a, I: StaticType + 'static + Send + Sync + std::panic::UnwindSafe> Executor<I, TaggedValue> for &'a DynamicExecutor {
 	fn execute(&self, input: I) -> LocalFuture<Result<TaggedValue, Box<dyn Error>>> {
-		Box::pin(async move { self.tree.eval_tagged_value(self.output, input).await.map_err(|e| e.into()) })
+		Box::pin(async move {
+			use futures::FutureExt;
+
+			let result = self.tree.eval_tagged_value(self.output, input);
+			let wrapped_result = std::panic::AssertUnwindSafe(result).catch_unwind().await;
+
+			match wrapped_result {
+				Ok(result) => result.map_err(|e| e.into()),
+				Err(e) => {
+					Box::leak(e);
+					Err("Node graph execution paniced".into())
+				}
+			}
+		})
 	}
 }
 
@@ -176,7 +190,7 @@ impl BorrowTree {
 	}
 	/// Evaluate the output node of the [`BorrowTree`] and cast it to a tagged value.
 	/// This ensures that no borrowed data can escape the node graph.
-	pub async fn eval_tagged_value<I: StaticType + 'static + Send + Sync>(&self, id: NodeId, input: I) -> Result<TaggedValue, String> {
+	pub async fn eval_tagged_value<I: StaticType + 'static + Send + Sync + UnwindSafe>(&self, id: NodeId, input: I) -> Result<TaggedValue, String> {
 		let node = self.nodes.get(&id).cloned().ok_or("Output node not found in executor")?;
 		let output = node.eval(Box::new(input));
 		TaggedValue::try_from_any(output.await)
@@ -207,7 +221,7 @@ impl BorrowTree {
 
 		match &proto_node.construction_args {
 			ConstructionArgs::Value(value) => {
-				let node = if let TaggedValue::EditorApi(api) = value {
+				let node = if let TaggedValue::EditorApi(api) = &**value {
 					let editor_api = UpcastAsRefNode::new(api.clone());
 					let node = Box::new(editor_api) as TypeErasedBox<'_>;
 					NodeContainer::new(node)
@@ -249,7 +263,7 @@ mod test {
 	#[test]
 	fn push_node_sync() {
 		let mut tree = BorrowTree::default();
-		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2u32)), vec![]);
+		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2u32).into()), vec![]);
 		let context = TypingContext::default();
 		let future = tree.push_node(NodeId(0), val_1_protonode, &context);
 		futures::executor::block_on(future).unwrap();

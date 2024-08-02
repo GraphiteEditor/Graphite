@@ -160,7 +160,7 @@ impl core::fmt::Display for ProtoNetwork {
 /// Defines the arguments used to construct the boxed node struct. This is used to call the constructor function in the `node_registry.rs` file - which is hidden behind a wall of macros.
 pub enum ConstructionArgs {
 	/// A value of a type that is known, allowing serialization (serde::Deserialize is not object safe)
-	Value(value::TaggedValue),
+	Value(MemoHash<value::TaggedValue>),
 	// TODO: use a struct for clearer naming.
 	/// A list of nodes used as inputs to the constructor function in `node_registry.rs`.
 	/// The bool indicates whether to treat the node as lambda node.
@@ -230,7 +230,7 @@ impl Default for ProtoNode {
 	fn default() -> Self {
 		Self {
 			identifier: ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode"),
-			construction_args: ConstructionArgs::Value(value::TaggedValue::U32(0)),
+			construction_args: ConstructionArgs::Value(value::TaggedValue::U32(0).into()),
 			input: ProtoNodeInput::None,
 			original_location: OriginalLocation::default(),
 			skip_deduplication: false,
@@ -940,12 +940,12 @@ mod test {
 		assert_eq!(
 			ids,
 			vec![
-				NodeId(5686040524603683634),
-				NodeId(13787140740513543798),
-				NodeId(1280393769237740322),
-				NodeId(3100442468152897091),
-				NodeId(14834729712909816752),
-				NodeId(8678825113056010444)
+				NodeId(12083027370457564588),
+				NodeId(10127202135369428481),
+				NodeId(3781642984881236270),
+				NodeId(9447822059040146367),
+				NodeId(15916837829094140504),
+				NodeId(1758919868423328454)
 			]
 		);
 	}
@@ -996,7 +996,7 @@ mod test {
 					ProtoNode {
 						identifier: "value".into(),
 						input: ProtoNodeInput::None,
-						construction_args: ConstructionArgs::Value(value::TaggedValue::U32(2)),
+						construction_args: ConstructionArgs::Value(value::TaggedValue::U32(2).into()),
 						..Default::default()
 					},
 				),

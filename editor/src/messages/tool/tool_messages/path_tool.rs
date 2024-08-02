@@ -128,7 +128,7 @@ impl LayoutHolder for PathTool {
 		let related_seperator = Separator::new(SeparatorType::Related).widget_holder();
 		let unrelated_seperator = Separator::new(SeparatorType::Unrelated).widget_holder();
 
-		let colinear_handles_tooltip = "Ensures both handles remain 180° apart";
+		let colinear_handles_tooltip = "Keep both handles unbent, each 180° apart, when moving either";
 		let colinear_handles_state = manipulator_angle.and_then(|angle| match angle {
 			ManipulatorAngle::Colinear => Some(true),
 			ManipulatorAngle::Free => Some(false),

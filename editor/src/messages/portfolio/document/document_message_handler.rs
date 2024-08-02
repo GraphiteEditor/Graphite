@@ -1631,11 +1631,7 @@ impl DocumentMessageHandler {
 		let mut fonts = HashSet::new();
 		for (_node_id, node) in self.network.recursive_nodes() {
 			for input in &node.inputs {
-				if let NodeInput::Value {
-					tagged_value: TaggedValue::Font(font),
-					..
-				} = input
-				{
+				if let Some(TaggedValue::Font(font)) = input.as_value() {
 					fonts.insert(font.clone());
 				}
 			}
@@ -2134,7 +2130,7 @@ fn root_network() -> NodeNetwork {
 	{
 		NodeNetwork {
 			exports: vec![NodeInput::Value {
-				tagged_value: TaggedValue::ArtboardGroup(graphene_core::ArtboardGroup::EMPTY),
+				tagged_value: TaggedValue::ArtboardGroup(graphene_core::ArtboardGroup::EMPTY).into(),
 				exposed: true,
 			}],
 			..Default::default()

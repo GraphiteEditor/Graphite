@@ -2536,6 +2536,7 @@ dependencies = [
  "serde",
  "serde_json",
  "specta",
+ "spin",
  "thiserror",
  "tokio",
  "usvg",

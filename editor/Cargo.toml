@@ -61,6 +61,10 @@ web-sys = { workspace = true, features = [
 	"TextMetrics",
 ] }
 
+# Required dependencies
+async-mutex = "1.4.0"
+spin = "0.9.8"
+
 # Optional local dependencies
 wgpu-executor = { path = "../node-graph/wgpu-executor", optional = true }
 gpu-executor = { path = "../node-graph/gpu-executor", optional = true }
@@ -68,7 +72,6 @@ gpu-executor = { path = "../node-graph/gpu-executor", optional = true }
 # Optional workspace dependencies
 wasm-bindgen = { workspace = true, optional = true }
 wasm-bindgen-futures = { workspace = true, optional = true }
-async-mutex = "1.4.0"
 
 [dev-dependencies]
 # Workspace dependencies

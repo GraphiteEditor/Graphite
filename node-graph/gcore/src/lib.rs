@@ -43,6 +43,7 @@ pub mod application_io;
 pub mod quantization;
 
 use core::any::TypeId;
+pub use memo::MemoHash;
 pub use raster::Color;
 pub use types::Cow;
 

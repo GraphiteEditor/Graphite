@@ -1,20 +1,18 @@
-use core::hash::Hash;
-use half::f16;
+use super::discrete_srgb::{float_to_srgb_u8, srgb_u8_to_float};
+use super::{Alpha, AssociatedAlpha, Luminance, LuminanceMut, Pixel, RGBMut, Rec709Primaries, RGB, SRGB};
 
 use dyn_any::{DynAny, StaticType};
 #[cfg(feature = "serde")]
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
-
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::Euclid;
 
 use bytemuck::{Pod, Zeroable};
+use core::hash::Hash;
+use half::f16;
+use std::fmt::Write;
 
-use super::{
-	discrete_srgb::{float_to_srgb_u8, srgb_u8_to_float},
-	Alpha, AssociatedAlpha, Luminance, LuminanceMut, Pixel, RGBMut, Rec709Primaries, RGB, SRGB,
-};
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable)]
@@ -813,12 +811,12 @@ impl Color {
 	/// ```
 	/// use graphene_core::raster::color::Color;
 	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61).to_gamma_srgb();
-	/// assert_eq!("3240A261", color.rgba_hex())
+	/// assert_eq!("3240a261", color.rgba_hex())
 	/// ```
 	#[cfg(feature = "std")]
 	pub fn rgba_hex(&self) -> String {
 		format!(
-			"{:02X?}{:02X?}{:02X?}{:02X?}",
+			"{:02x?}{:02x?}{:02x?}{:02x?}",
 			(self.r() * 255.) as u8,
 			(self.g() * 255.) as u8,
 			(self.b() * 255.) as u8,
@@ -826,15 +824,34 @@ impl Color {
 		)
 	}
 
+	/// Return a 6-character RGB, or 8-character RGBA, hex string (without a # prefix). The shorter form is used if the alpha is 1.
+	///
+	/// # Examples
+	/// ```
+	/// use graphene_core::raster::color::Color;
+	/// let color1 = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61).to_gamma_srgb();
+	/// assert_eq!("3240a261", color1.rgb_optional_a_hex());
+	/// let color2 = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0xFF).to_gamma_srgb();
+	/// assert_eq!("5267fa", color2.rgb_optional_a_hex());
+	/// ```
+	#[cfg(feature = "std")]
+	pub fn rgb_optional_a_hex(&self) -> String {
+		let mut result = format!("{:02x?}{:02x?}{:02x?}", (self.r() * 255.) as u8, (self.g() * 255.) as u8, (self.b() * 255.) as u8);
+		if self.a() < 1. {
+			let _ = write!(&mut result, "{:02x?}", (self.a() * 255.) as u8);
+		}
+		result
+	}
+
 	/// Return a 6-character RGB hex string (without a # prefix).
 	/// ```
 	/// use graphene_core::raster::color::Color;
 	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61).to_gamma_srgb();
-	/// assert_eq!("3240A2", color.rgb_hex())
+	/// assert_eq!("3240a2", color.rgb_hex())
 	/// ```
 	#[cfg(feature = "std")]
 	pub fn rgb_hex(&self) -> String {
-		format!("{:02X?}{:02X?}{:02X?}", (self.r() * 255.) as u8, (self.g() * 255.) as u8, (self.b() * 255.) as u8)
+		format!("{:02x?}{:02x?}{:02x?}", (self.r() * 255.) as u8, (self.g() * 255.) as u8, (self.b() * 255.) as u8)
 	}
 
 	/// Return the all components as a u8 slice, first component is red, followed by green, followed by blue, followed by alpha.

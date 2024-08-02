@@ -70,56 +70,24 @@ impl LayerBounds {
 
 /// Get the current affine transform from the transform node's inputs
 pub fn get_current_transform(inputs: &[NodeInput]) -> DAffine2 {
-	let translation = if let NodeInput::Value {
-		tagged_value: TaggedValue::DVec2(translation),
-		..
-	} = inputs[1]
-	{
+	let translation = if let Some(&TaggedValue::DVec2(translation)) = inputs[1].as_value() {
 		translation
 	} else {
 		DVec2::ZERO
 	};
 
-	let angle = if let NodeInput::Value {
-		tagged_value: TaggedValue::F64(angle),
-		..
-	} = inputs[2]
-	{
-		angle
-	} else {
-		0.
-	};
+	let angle = if let Some(&TaggedValue::F64(angle)) = inputs[2].as_value() { angle } else { 0. };
 
-	let scale = if let NodeInput::Value {
-		tagged_value: TaggedValue::DVec2(scale),
-		..
-	} = inputs[3]
-	{
-		scale
-	} else {
-		DVec2::ONE
-	};
+	let scale = if let Some(&TaggedValue::DVec2(scale)) = inputs[3].as_value() { scale } else { DVec2::ONE };
 
-	let shear = if let NodeInput::Value {
-		tagged_value: TaggedValue::DVec2(shear),
-		..
-	} = inputs[4]
-	{
-		shear
-	} else {
-		DVec2::ZERO
-	};
+	let shear = if let Some(&TaggedValue::DVec2(shear)) = inputs[4].as_value() { shear } else { DVec2::ZERO };
 
 	DAffine2::from_scale_angle_translation(scale, angle, translation) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.])
 }
 
 /// Extract the current normalized pivot from the layer
 pub fn get_current_normalized_pivot(inputs: &[NodeInput]) -> DVec2 {
-	if let NodeInput::Value {
-		tagged_value: TaggedValue::DVec2(pivot),
-		..
-	} = inputs[5]
-	{
+	if let Some(&TaggedValue::DVec2(pivot)) = inputs[5].as_value() {
 		pivot
 	} else {
 		DVec2::splat(0.5)

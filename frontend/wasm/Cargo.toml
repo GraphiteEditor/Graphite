@@ -52,6 +52,9 @@ web-sys = { workspace = true, features = [
 # Optional workspace dependencies
 ron = { workspace = true, optional = true }
 
+[profile.release]
+debug = true
+
 [package.metadata.wasm-pack.profile.dev]
 wasm-opt = false
 
@@ -61,7 +64,7 @@ demangle-name-section = true
 dwarf-debug-info = true
 
 [package.metadata.wasm-pack.profile.release]
-wasm-opt = ["-Os"]
+wasm-opt = ["-Os", "-g"]
 
 [package.metadata.wasm-pack.profile.release.wasm-bindgen]
 debug-js-glue = false
