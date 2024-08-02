@@ -69,28 +69,23 @@ impl MessageHandler<DialogMessage, DialogMessageData<'_>> for DialogMessageHandl
 			}
 			DialogMessage::RequestExportDialog => {
 				if let Some(document) = portfolio.active_document() {
-					let mut index = 0;
 					let artboards = document
 						.metadata
 						.all_layers()
 						.filter(|&layer| document.metadata.is_artboard(layer))
 						.map(|layer| {
-							(
-								layer,
-								format!("Artboard: {}", {
-									index += 1;
-									format!("Untitled {index}")
-								}),
-							)
+							let name = document
+								.network
+								.nodes
+								.get(&layer.to_node())
+								.and_then(|node| if node.alias.is_empty() { None } else { Some(node.alias.clone()) })
+								.unwrap_or_else(|| "Artboard".to_string());
+							(layer, name)
 						})
 						.collect();
 
-					self.export_dialog = ExportDialogMessageHandler {
-						scale_factor: 1.,
-						artboards,
-						has_selection: document.selected_nodes.selected_layers(document.metadata()).next().is_some(),
-						..Default::default()
-					};
+					self.export_dialog.artboards = artboards;
+					self.export_dialog.has_selection = document.selected_nodes.selected_layers(document.metadata()).next().is_some();
 					self.export_dialog.send_dialog_to_frontend(responses);
 				}
 			}

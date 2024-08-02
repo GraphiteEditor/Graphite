@@ -8,7 +8,7 @@ pub struct ExportDialogMessageData<'a> {
 }
 
 /// A dialog to allow users to customize their file export.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ExportDialogMessageHandler {
 	pub file_type: FileType,
 	pub scale_factor: f64,
@@ -16,6 +16,19 @@ pub struct ExportDialogMessageHandler {
 	pub transparent_background: bool,
 	pub artboards: HashMap<LayerNodeIdentifier, String>,
 	pub has_selection: bool,
+}
+
+impl Default for ExportDialogMessageHandler {
+	fn default() -> Self {
+		Self {
+			file_type: Default::default(),
+			scale_factor: 1.,
+			bounds: Default::default(),
+			transparent_background: false,
+			artboards: Default::default(),
+			has_selection: false,
+		}
+	}
 }
 
 impl MessageHandler<ExportDialogMessage, ExportDialogMessageData<'_>> for ExportDialogMessageHandler {
@@ -91,22 +104,38 @@ impl LayoutHolder for ExportDialogMessageHandler {
 				.widget_holder(),
 		];
 
-		let artboards = self.artboards.iter().map(|(&layer, name)| (ExportBounds::Artboard(layer), name.to_string(), false));
-		let mut export_area_options = vec![
+		let standard_bounds = vec![
 			(ExportBounds::AllArtwork, "All Artwork".to_string(), false),
 			(ExportBounds::Selection, "Selection".to_string(), !self.has_selection),
 		];
-		export_area_options.extend(artboards);
-		let index = export_area_options.iter().position(|(val, _, _)| val == &self.bounds).unwrap();
-		let entries = vec![export_area_options
+		let artboards = self.artboards.iter().map(|(&layer, name)| (ExportBounds::Artboard(layer), name.to_string(), false)).collect();
+		let groups = [standard_bounds, artboards];
+
+		let current_bounds = if !self.has_selection && self.bounds == ExportBounds::Selection {
+			ExportBounds::AllArtwork
+		} else {
+			self.bounds
+		};
+		let index = groups.iter().flatten().position(|(bounds, _, _)| *bounds == current_bounds).unwrap();
+
+		let mut entries = groups
 			.into_iter()
-			.map(|(val, name, disabled)| {
-				MenuListEntry::new(format!("{val:?}"))
-					.label(name)
-					.on_commit(move |_| ExportDialogMessage::ExportBounds(val).into())
-					.disabled(disabled)
+			.map(|group| {
+				group
+					.into_iter()
+					.map(|(val, name, disabled)| {
+						MenuListEntry::new(format!("{val:?}"))
+							.label(name)
+							.on_commit(move |_| ExportDialogMessage::ExportBounds(val).into())
+							.disabled(disabled)
+					})
+					.collect::<Vec<_>>()
 			})
-			.collect()];
+			.collect::<Vec<_>>();
+
+		if entries[1].is_empty() {
+			entries.remove(1);
+		}
 
 		let export_area = vec![
 			TextLabel::new("Bounds").table_align(true).min_width(100).widget_holder(),
