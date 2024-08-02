@@ -87,11 +87,7 @@ fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 
-	if let NodeInput::Value {
-		tagged_value: TaggedValue::String(x),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
+	if let Some(TaggedValue::String(x)) = &document_node.inputs[index].as_non_exposed_value() {
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			TextInput::new(x.clone())
@@ -106,11 +102,7 @@ fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 fn text_area_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 
-	if let NodeInput::Value {
-		tagged_value: TaggedValue::String(x),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
+	if let Some(TaggedValue::String(x)) = &document_node.inputs[index].as_non_exposed_value() {
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			TextAreaInput::new(x.clone())
@@ -125,14 +117,10 @@ fn text_area_widget(document_node: &DocumentNode, node_id: NodeId, index: usize,
 fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 
-	if let NodeInput::Value {
-		tagged_value: TaggedValue::Bool(x),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
+	if let Some(&TaggedValue::Bool(x)) = &document_node.inputs[index].as_non_exposed_value() {
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			CheckboxInput::new(*x)
+			CheckboxInput::new(x)
 				.on_update(update_value(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, index))
 				.on_commit(commit_value)
 				.widget_holder(),
@@ -153,12 +141,7 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 	add_blank_assist(&mut resolution_widgets);
 	resolution_widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
-	if let NodeInput::Value {
-		tagged_value: TaggedValue::Footprint(footprint),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
-		let footprint = *footprint;
+	if let Some(&TaggedValue::Footprint(footprint)) = &document_node.inputs[index].as_non_exposed_value() {
 		let top_left = footprint.transform.transform_point2(DVec2::ZERO);
 		let bounds = footprint.scale();
 		let oversample = footprint.resolution.as_dvec2() / bounds;
@@ -288,11 +271,7 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 
 	assist(&mut widgets);
 
-	if let NodeInput::Value {
-		tagged_value: TaggedValue::DVec2(dvec2),
-		exposed: false,
-	} = document_node.inputs[index]
-	{
+	if let Some(&TaggedValue::DVec2(dvec2)) = document_node.inputs[index].as_non_exposed_value() {
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			NumberInput::new(Some(dvec2.x))
@@ -313,11 +292,7 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 				.on_commit(commit_value)
 				.widget_holder(),
 		]);
-	} else if let NodeInput::Value {
-		tagged_value: TaggedValue::IVec2(ivec2),
-		exposed: false,
-	} = document_node.inputs[index]
-	{
+	} else if let Some(&TaggedValue::IVec2(ivec2)) = document_node.inputs[index].as_non_exposed_value() {
 		let update_x = move |input: &NumberInput| TaggedValue::IVec2(IVec2::new(input.value.unwrap() as i32, ivec2.y));
 		let update_y = move |input: &NumberInput| TaggedValue::IVec2(IVec2::new(ivec2.x, input.value.unwrap() as i32));
 		widgets.extend_from_slice(&[
@@ -342,11 +317,7 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 				.on_commit(commit_value)
 				.widget_holder(),
 		]);
-	} else if let NodeInput::Value {
-		tagged_value: TaggedValue::UVec2(uvec2),
-		exposed: false,
-	} = document_node.inputs[index]
-	{
+	} else if let Some(&TaggedValue::UVec2(uvec2)) = document_node.inputs[index].as_non_exposed_value() {
 		let update_x = move |input: &NumberInput| TaggedValue::UVec2(UVec2::new(input.value.unwrap() as u32, uvec2.y));
 		let update_y = move |input: &NumberInput| TaggedValue::UVec2(UVec2::new(uvec2.x, input.value.unwrap() as u32));
 		widgets.extend_from_slice(&[
@@ -389,11 +360,7 @@ fn vec_f64_input(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 			.map(TaggedValue::VecF64)
 	};
 
-	if let NodeInput::Value {
-		tagged_value: TaggedValue::VecF64(x),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
+	if let Some(TaggedValue::VecF64(x)) = &document_node.inputs[index].as_non_exposed_value() {
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			text_props
@@ -418,11 +385,7 @@ fn vec_dvec2_input(document_node: &DocumentNode, node_id: NodeId, index: usize, 
 			.map(TaggedValue::VecDVec2)
 	};
 
-	if let NodeInput::Value {
-		tagged_value: TaggedValue::VecDVec2(x),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
+	if let Some(TaggedValue::VecDVec2(x)) = &document_node.inputs[index].as_non_exposed_value() {
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			text_props
@@ -440,11 +403,7 @@ fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 
 	let from_font_input = |font: &FontInput| TaggedValue::Font(Font::new(font.font_family.clone(), font.font_style.clone()));
 
-	if let NodeInput::Value {
-		tagged_value: TaggedValue::Font(font),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
+	if let Some(TaggedValue::Font(font)) = &document_node.inputs[index].as_non_exposed_value() {
 		first_widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			FontInput::new(font.font_family.clone(), font.font_style.clone())
@@ -480,11 +439,7 @@ fn vector_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, number_props: NumberInput, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, blank_assist);
 
-	if let NodeInput::Value {
-		tagged_value: TaggedValue::F64(x),
-		exposed: false,
-	} = document_node.inputs[index]
-	{
+	if let Some(&TaggedValue::F64(x)) = document_node.inputs[index].as_non_exposed_value() {
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			number_props
@@ -493,11 +448,7 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 				.on_commit(commit_value)
 				.widget_holder(),
 		])
-	} else if let NodeInput::Value {
-		tagged_value: TaggedValue::U32(x),
-		exposed: false,
-	} = document_node.inputs[index]
-	{
+	} else if let Some(&TaggedValue::U32(x)) = document_node.inputs[index].as_non_exposed_value() {
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			number_props
@@ -513,11 +464,7 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
 fn color_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
-	if let &NodeInput::Value {
-		tagged_value: TaggedValue::RedGreenBlue(mode),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
+	if let Some(&TaggedValue::RedGreenBlue(mode)) = &document_node.inputs[index].as_non_exposed_value() {
 		let calculation_modes = [RedGreenBlue::Red, RedGreenBlue::Green, RedGreenBlue::Blue];
 		let mut entries = Vec::with_capacity(calculation_modes.len());
 		for method in calculation_modes {
@@ -540,11 +487,7 @@ fn color_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 
 fn rgba_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
-	if let &NodeInput::Value {
-		tagged_value: TaggedValue::RedGreenBlueAlpha(mode),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
+	if let Some(&TaggedValue::RedGreenBlueAlpha(mode)) = &document_node.inputs[index].as_non_exposed_value() {
 		let calculation_modes = [RedGreenBlueAlpha::Red, RedGreenBlueAlpha::Green, RedGreenBlueAlpha::Blue, RedGreenBlueAlpha::Alpha];
 		let mut entries = Vec::with_capacity(calculation_modes.len());
 		for method in calculation_modes {
@@ -568,11 +511,7 @@ fn rgba_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, nam
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
 fn noise_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
-	if let &NodeInput::Value {
-		tagged_value: TaggedValue::NoiseType(noise_type),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
+	if let Some(&TaggedValue::NoiseType(noise_type)) = &document_node.inputs[index].as_non_exposed_value() {
 		let entries = NoiseType::list()
 			.iter()
 			.map(|noise_type| {
@@ -594,11 +533,7 @@ fn noise_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name:
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
 fn fractal_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
-	if let &NodeInput::Value {
-		tagged_value: TaggedValue::FractalType(fractal_type),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
+	if let Some(&TaggedValue::FractalType(fractal_type)) = &document_node.inputs[index].as_non_exposed_value() {
 		let entries = FractalType::list()
 			.iter()
 			.map(|fractal_type| {
@@ -620,11 +555,7 @@ fn fractal_type(document_node: &DocumentNode, node_id: NodeId, index: usize, nam
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
 fn cellular_distance_function(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
-	if let &NodeInput::Value {
-		tagged_value: TaggedValue::CellularDistanceFunction(cellular_distance_function),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
+	if let Some(&TaggedValue::CellularDistanceFunction(cellular_distance_function)) = &document_node.inputs[index].as_non_exposed_value() {
 		let entries = CellularDistanceFunction::list()
 			.iter()
 			.map(|cellular_distance_function| {
@@ -649,11 +580,7 @@ fn cellular_distance_function(document_node: &DocumentNode, node_id: NodeId, ind
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
 fn cellular_return_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
-	if let &NodeInput::Value {
-		tagged_value: TaggedValue::CellularReturnType(cellular_return_type),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
+	if let Some(&TaggedValue::CellularReturnType(cellular_return_type)) = &document_node.inputs[index].as_non_exposed_value() {
 		let entries = CellularReturnType::list()
 			.iter()
 			.map(|cellular_return_type| {
@@ -675,11 +602,7 @@ fn cellular_return_type(document_node: &DocumentNode, node_id: NodeId, index: us
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
 fn domain_warp_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
-	if let &NodeInput::Value {
-		tagged_value: TaggedValue::DomainWarpType(domain_warp_type),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
+	if let Some(&TaggedValue::DomainWarpType(domain_warp_type)) = &document_node.inputs[index].as_non_exposed_value() {
 		let entries = DomainWarpType::list()
 			.iter()
 			.map(|domain_warp_type| {
@@ -701,11 +624,7 @@ fn domain_warp_type(document_node: &DocumentNode, node_id: NodeId, index: usize,
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
 fn blend_mode(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
-	if let &NodeInput::Value {
-		tagged_value: TaggedValue::BlendMode(blend_mode),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
+	if let Some(&TaggedValue::BlendMode(blend_mode)) = &document_node.inputs[index].as_non_exposed_value() {
 		let entries = BlendMode::list_svg_subset()
 			.iter()
 			.map(|category| {
@@ -734,11 +653,7 @@ fn blend_mode(document_node: &DocumentNode, node_id: NodeId, index: usize, name:
 // TODO: Generalize this for all dropdowns (also see blend_mode and channel_extration)
 fn luminance_calculation(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
-	if let &NodeInput::Value {
-		tagged_value: TaggedValue::LuminanceCalculation(calculation),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
+	if let Some(&TaggedValue::LuminanceCalculation(calculation)) = &document_node.inputs[index].as_non_exposed_value() {
 		let calculation_modes = LuminanceCalculation::list();
 		let mut entries = Vec::with_capacity(calculation_modes.len());
 		for method in calculation_modes {
@@ -762,11 +677,7 @@ fn luminance_calculation(document_node: &DocumentNode, node_id: NodeId, index: u
 fn boolean_operation_radio_buttons(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 
-	if let &NodeInput::Value {
-		tagged_value: TaggedValue::BooleanOperation(calculation),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
+	if let Some(&TaggedValue::BooleanOperation(calculation)) = &document_node.inputs[index].as_non_exposed_value() {
 		let operations = BooleanOperation::list();
 		let icons = BooleanOperation::icons();
 		let mut entries = Vec::with_capacity(operations.len());
@@ -791,11 +702,7 @@ fn boolean_operation_radio_buttons(document_node: &DocumentNode, node_id: NodeId
 
 fn line_cap_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
-	if let &NodeInput::Value {
-		tagged_value: TaggedValue::LineCap(line_cap),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
+	if let Some(&TaggedValue::LineCap(line_cap)) = &document_node.inputs[index].as_non_exposed_value() {
 		let entries = [("Butt", LineCap::Butt), ("Round", LineCap::Round), ("Square", LineCap::Square)]
 			.into_iter()
 			.map(|(name, val)| {
@@ -816,11 +723,7 @@ fn line_cap_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, 
 
 fn line_join_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
-	if let &NodeInput::Value {
-		tagged_value: TaggedValue::LineJoin(line_join),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
+	if let Some(&TaggedValue::LineJoin(line_join)) = &document_node.inputs[index].as_non_exposed_value() {
 		let entries = [("Miter", LineJoin::Miter), ("Bevel", LineJoin::Bevel), ("Round", LineJoin::Round)]
 			.into_iter()
 			.map(|(name, val)| {
@@ -849,7 +752,7 @@ fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, nam
 
 	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
-	match tagged_value {
+	match &**tagged_value {
 		TaggedValue::Color(color) => widgets.push(
 			color_props
 				.value(FillChoice::Solid(*color))
@@ -887,11 +790,7 @@ fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, nam
 fn curves_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 
-	if let NodeInput::Value {
-		tagged_value: TaggedValue::Curve(curve),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
+	if let Some(TaggedValue::Curve(curve)) = &document_node.inputs[index].as_non_exposed_value() {
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CurveInput::new(curve.clone())
@@ -905,11 +804,7 @@ fn curves_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 
 fn centroid_widget(document_node: &DocumentNode, node_id: NodeId, index: usize) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, "Centroid Type", FrontendGraphDataType::General, true);
-	if let &NodeInput::Value {
-		tagged_value: TaggedValue::CentroidType(centroid_type),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
+	if let Some(&TaggedValue::CentroidType(centroid_type)) = &document_node.inputs[index].as_non_exposed_value() {
 		let entries = vec![
 			RadioEntryData::new("area")
 				.label("Area")
@@ -1050,25 +945,16 @@ pub fn extract_channel_properties(document_node: &DocumentNode, node_id: NodeId,
 // As soon as there are more types of noise, this should be uncommented.
 pub fn noise_pattern_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	// Get the current values of the inputs of interest so they can set whether certain inputs are disabled based on various conditions.
-	let current_noise_type = match &document_node.inputs[4] {
-		NodeInput::Value {
-			tagged_value: TaggedValue::NoiseType(noise_type),
-			..
-		} => Some(*noise_type),
+	let current_noise_type = match &document_node.inputs[4].as_value() {
+		Some(&TaggedValue::NoiseType(noise_type)) => Some(noise_type),
 		_ => None,
 	};
-	let current_domain_warp_type = match &document_node.inputs[5] {
-		NodeInput::Value {
-			tagged_value: TaggedValue::DomainWarpType(domain_warp_type),
-			..
-		} => Some(*domain_warp_type),
+	let current_domain_warp_type = match &document_node.inputs[5].as_value() {
+		Some(&TaggedValue::DomainWarpType(domain_warp_type)) => Some(domain_warp_type),
 		_ => None,
 	};
-	let current_fractal_type = match &document_node.inputs[7] {
-		NodeInput::Value {
-			tagged_value: TaggedValue::FractalType(fractal_type),
-			..
-		} => Some(*fractal_type),
+	let current_fractal_type = match &document_node.inputs[7].as_value() {
+		Some(&TaggedValue::FractalType(fractal_type)) => Some(fractal_type),
 		_ => None,
 	};
 	let fractal_active = current_fractal_type != Some(FractalType::None);
@@ -1258,11 +1144,7 @@ pub fn adjust_channel_mixer_properties(document_node: &DocumentNode, node_id: No
 	// Monochrome
 	let monochrome_index = 1;
 	let monochrome = bool_widget(document_node, node_id, monochrome_index, "Monochrome", true);
-	let is_monochrome = if let &NodeInput::Value {
-		tagged_value: TaggedValue::Bool(monochrome_choice),
-		..
-	} = &document_node.inputs[monochrome_index]
-	{
+	let is_monochrome = if let Some(&TaggedValue::Bool(monochrome_choice)) = &document_node.inputs[monochrome_index].as_value() {
 		monochrome_choice
 	} else {
 		false
@@ -1272,11 +1154,7 @@ pub fn adjust_channel_mixer_properties(document_node: &DocumentNode, node_id: No
 	let output_channel_index = 18;
 	let mut output_channel = vec![TextLabel::new("Output Channel").widget_holder(), Separator::new(SeparatorType::Unrelated).widget_holder()];
 	add_blank_assist(&mut output_channel);
-	if let &NodeInput::Value {
-		tagged_value: TaggedValue::RedGreenBlue(choice),
-		exposed: false,
-	} = &document_node.inputs[output_channel_index]
-	{
+	if let Some(&TaggedValue::RedGreenBlue(choice)) = &document_node.inputs[output_channel_index].as_non_exposed_value() {
 		let entries = vec![
 			RadioEntryData::new(format!("{:?}", RedGreenBlue::Red))
 				.label(RedGreenBlue::Red.to_string())
@@ -1293,11 +1171,7 @@ pub fn adjust_channel_mixer_properties(document_node: &DocumentNode, node_id: No
 		];
 		output_channel.extend([RadioInput::new(entries).selected_index(Some(choice as u32)).widget_holder()]);
 	};
-	let is_output_channel = if let &NodeInput::Value {
-		tagged_value: TaggedValue::RedGreenBlue(choice),
-		..
-	} = &document_node.inputs[output_channel_index]
-	{
+	let is_output_channel = if let Some(&TaggedValue::RedGreenBlue(choice)) = &document_node.inputs[output_channel_index].as_value() {
 		choice
 	} else {
 		warn!("Channel Mixer node properties panel could not be displayed.");
@@ -1365,11 +1239,7 @@ pub fn adjust_selective_color_properties(document_node: &DocumentNode, node_id: 
 	let colors_index = 38;
 	let mut colors = vec![TextLabel::new("Colors").widget_holder(), Separator::new(SeparatorType::Unrelated).widget_holder()];
 	add_blank_assist(&mut colors);
-	if let &NodeInput::Value {
-		tagged_value: TaggedValue::SelectiveColorChoice(choice),
-		exposed: false,
-	} = &document_node.inputs[colors_index]
-	{
+	if let Some(&TaggedValue::SelectiveColorChoice(choice)) = &document_node.inputs[colors_index].as_non_exposed_value() {
 		use SelectiveColorChoice::*;
 		let entries = [[Reds, Yellows, Greens, Cyans, Blues, Magentas].as_slice(), [Whites, Neutrals, Blacks].as_slice()]
 			.into_iter()
@@ -1387,11 +1257,7 @@ pub fn adjust_selective_color_properties(document_node: &DocumentNode, node_id: 
 			.collect();
 		colors.extend([DropdownInput::new(entries).selected_index(Some(choice as u32)).widget_holder()]);
 	};
-	let colors_choice_index = if let &NodeInput::Value {
-		tagged_value: TaggedValue::SelectiveColorChoice(choice),
-		..
-	} = &document_node.inputs[colors_index]
-	{
+	let colors_choice_index = if let Some(&TaggedValue::SelectiveColorChoice(choice)) = &document_node.inputs[colors_index].as_value() {
 		choice
 	} else {
 		warn!("Selective Color node properties panel could not be displayed.");
@@ -1419,11 +1285,7 @@ pub fn adjust_selective_color_properties(document_node: &DocumentNode, node_id: 
 	let mode_index = 1;
 	let mut mode = start_widgets(document_node, node_id, mode_index, "Mode", FrontendGraphDataType::General, true);
 	mode.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-	if let &NodeInput::Value {
-		tagged_value: TaggedValue::RelativeAbsolute(relative_or_absolute),
-		exposed: false,
-	} = &document_node.inputs[mode_index]
-	{
+	if let Some(&TaggedValue::RelativeAbsolute(relative_or_absolute)) = &document_node.inputs[mode_index].as_non_exposed_value() {
 		let entries = vec![
 			RadioEntryData::new("relative")
 				.label("Relative")
@@ -1593,32 +1455,16 @@ pub fn rectangle_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 	corner_radius_row_2.push(TextLabel::new("").widget_holder());
 	add_blank_assist(&mut corner_radius_row_2);
 
-	if let &NodeInput::Value {
-		tagged_value: TaggedValue::Bool(is_individual),
-		exposed: false,
-	} = &document_node.inputs[corner_rounding_type_index]
-	{
+	if let Some(&TaggedValue::Bool(is_individual)) = &document_node.inputs[corner_rounding_type_index].as_non_exposed_value() {
 		// Values
-		let uniform_val = match document_node.inputs[corner_radius_index] {
-			NodeInput::Value {
-				tagged_value: TaggedValue::F64(x),
-				exposed: false,
-			} => x,
-			NodeInput::Value {
-				tagged_value: TaggedValue::F64Array4(x),
-				exposed: false,
-			} => x[0],
+		let uniform_val = match document_node.inputs[corner_radius_index].as_non_exposed_value() {
+			Some(TaggedValue::F64(x)) => *x,
+			Some(TaggedValue::F64Array4(x)) => x[0],
 			_ => 0.,
 		};
-		let individual_val = match document_node.inputs[corner_radius_index] {
-			NodeInput::Value {
-				tagged_value: TaggedValue::F64Array4(x),
-				exposed: false,
-			} => x,
-			NodeInput::Value {
-				tagged_value: TaggedValue::F64(x),
-				exposed: false,
-			} => [x; 4],
+		let individual_val = match document_node.inputs[corner_radius_index].as_non_exposed_value() {
+			Some(&TaggedValue::F64Array4(x)) => x,
+			Some(&TaggedValue::F64(x)) => [x; 4],
 			_ => [0.; 4],
 		};
 
@@ -1743,11 +1589,7 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 
 		let mut widgets = start_widgets(document_node, node_id, index, "Rotation", FrontendGraphDataType::Number, true);
 
-		if let NodeInput::Value {
-			tagged_value: TaggedValue::F64(val),
-			exposed: false,
-		} = document_node.inputs[index]
-		{
+		if let Some(&TaggedValue::F64(val)) = document_node.inputs[index].as_non_exposed_value() {
 			widgets.extend_from_slice(&[
 				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				NumberInput::new(Some(val.to_degrees()))
@@ -1850,20 +1692,12 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		LayoutGroup::Row { widgets }.with_tooltip("Connection status to the server that computes generated images")
 	};
 
-	let &NodeInput::Value {
-		tagged_value: TaggedValue::ImaginateController(ref controller),
-		..
-	} = controller
-	else {
+	let Some(TaggedValue::ImaginateController(controller)) = controller.as_value() else {
 		panic!("Invalid output status input")
 	};
 	let imaginate_status = controller.get_status();
 
-	let use_base_image = if let &NodeInput::Value {
-		tagged_value: TaggedValue::Bool(use_base_image),
-		..
-	} = &document_node.inputs[base_img_index]
-	{
+	let use_base_image = if let Some(&TaggedValue::Bool(use_base_image)) = &document_node.inputs[base_img_index].as_value() {
 		use_base_image
 	} else {
 		true
@@ -1962,11 +1796,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	let seed = {
 		let mut widgets = start_widgets(document_node, node_id, seed_index, "Seed", FrontendGraphDataType::Number, false);
 
-		if let &NodeInput::Value {
-			tagged_value: TaggedValue::F64(seed),
-			exposed: false,
-		} = &document_node.inputs[seed_index]
-		{
+		if let Some(&TaggedValue::F64(seed)) = &document_node.inputs[seed_index].as_non_exposed_value() {
 			widgets.extend_from_slice(&[
 				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				IconButton::new("Regenerate", 24)
@@ -2033,11 +1863,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			DVec2::new(x as f64, y as f64)
 		};
 
-		if let &NodeInput::Value {
-			tagged_value: TaggedValue::OptionalDVec2(vec2),
-			exposed: false,
-		} = &document_node.inputs[resolution_index]
-		{
+		if let Some(&TaggedValue::OptionalDVec2(vec2)) = &document_node.inputs[resolution_index].as_non_exposed_value() {
 			let dimensions_is_auto = vec2.is_none();
 			let vec2 = vec2.unwrap_or_else(|| round((image_size.0 as f64, image_size.1 as f64).into()));
 
@@ -2116,11 +1942,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	let sampling_method = {
 		let mut widgets = start_widgets(document_node, node_id, sampling_method_index, "Sampling Method", FrontendGraphDataType::General, true);
 
-		if let &NodeInput::Value {
-			tagged_value: TaggedValue::ImaginateSamplingMethod(sampling_method),
-			exposed: false,
-		} = &document_node.inputs[sampling_method_index]
-		{
+		if let Some(&TaggedValue::ImaginateSamplingMethod(sampling_method)) = &document_node.inputs[sampling_method_index].as_non_exposed_value() {
 			let sampling_methods = ImaginateSamplingMethod::list();
 			let mut entries = Vec::with_capacity(sampling_methods.len());
 			for method in sampling_methods {
@@ -2201,10 +2023,8 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	// 	let in_paint = {
 	// 		let mut widgets = start_widgets(document_node, node_id, inpaint_index, "Inpaint", FrontendGraphDataType::Boolean, true);
 
-	// 		if let &NodeInput::Value {
-	// 			tagged_value: TaggedValue::Bool(in_paint),
-	// 			exposed: false,
-	// 		} = &document_node.inputs[inpaint_index]
+	// 		if let Some(& TaggedValue::Bool(in_paint)
+	//)/ 		} = &document_node.inputs[inpaint_index].as_non_exposed_value()
 	// 		{
 	// 			widgets.extend_from_slice(&[
 	// 				Separator::new(SeparatorType::Unrelated).widget_holder(),
@@ -2236,10 +2056,8 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	// 	let mask_starting_fill = {
 	// 		let mut widgets = start_widgets(document_node, node_id, mask_fill_index, "Mask Starting Fill", FrontendGraphDataType::General, true);
 
-	// 		if let &NodeInput::Value {
-	// 			tagged_value: TaggedValue::ImaginateMaskStartingFill(starting_fill),
-	// 			exposed: false,
-	// 		} = &document_node.inputs[mask_fill_index]
+	// 		if let Some(& TaggedValue::ImaginateMaskStartingFill(starting_fill)
+	//)/ 		} = &document_node.inputs[mask_fill_index].as_non_exposed_value()
 	// 		{
 	// 			let mask_fill_content_modes = ImaginateMaskStartingFill::list();
 	// 			let mut entries = Vec::with_capacity(mask_fill_content_modes.len());
@@ -2327,11 +2145,22 @@ pub fn stroke_properties(document_node: &DocumentNode, node_id: NodeId, _context
 
 	let color = color_widget(document_node, node_id, color_index, "Color", ColorButton::default(), true);
 	let weight = number_widget(document_node, node_id, weight_index, "Weight", NumberInput::default().unit("px").min(0.), true);
+
+	let dash_lengths_val = match &document_node.inputs[dash_lengths_index].as_value() {
+		Some(TaggedValue::VecF64(x)) => x,
+		_ => &vec![],
+	};
 	let dash_lengths = vec_f64_input(document_node, node_id, dash_lengths_index, "Dash Lengths", TextInput::default().centered(true), true);
-	let dash_offset = number_widget(document_node, node_id, dash_offset_index, "Dash Offset", NumberInput::default().unit("px").min(0.), true);
+	let number_input = NumberInput::default().unit("px").disabled(dash_lengths_val.is_empty());
+	let dash_offset = number_widget(document_node, node_id, dash_offset_index, "Dash Offset", number_input, true);
 	let line_cap = line_cap_widget(document_node, node_id, line_cap_index, "Line Cap", true);
 	let line_join = line_join_widget(document_node, node_id, line_join_index, "Line Join", true);
-	let miter_limit = number_widget(document_node, node_id, miter_limit_index, "Miter Limit", NumberInput::default().min(0.), true);
+	let line_join_val = match &document_node.inputs[line_join_index].as_value() {
+		Some(TaggedValue::LineJoin(x)) => x,
+		_ => &LineJoin::Miter,
+	};
+	let number_input = NumberInput::default().min(0.).disabled(line_join_val != &LineJoin::Miter);
+	let miter_limit = number_widget(document_node, node_id, miter_limit_index, "Miter Limit", number_input, true);
 
 	vec![
 		color,
@@ -2463,30 +2292,17 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 
 	let mut widgets_first_row = start_widgets(document_node, node_id, fill_index, "Fill", FrontendGraphDataType::General, true);
 
-	let (fill, backup_color, backup_gradient) = if let (
-		NodeInput::Value {
-			tagged_value: TaggedValue::Fill(fill),
-			..
-		},
-		NodeInput::Value {
-			tagged_value: TaggedValue::OptionalColor(backup_color),
-			..
-		},
-		NodeInput::Value {
-			tagged_value: TaggedValue::Gradient(backup_gradient),
-			..
-		},
-	) = (
-		&document_node.inputs[fill_index],
-		&document_node.inputs[backup_color_index],
-		&document_node.inputs[backup_gradient_index],
+	let (fill, backup_color, backup_gradient) = if let (Some(TaggedValue::Fill(fill)), Some(&TaggedValue::OptionalColor(backup_color)), Some(TaggedValue::Gradient(backup_gradient))) = (
+		&document_node.inputs[fill_index].as_value(),
+		&document_node.inputs[backup_color_index].as_value(),
+		&document_node.inputs[backup_gradient_index].as_value(),
 	) {
 		(fill, backup_color, backup_gradient)
 	} else {
 		return vec![LayoutGroup::Row { widgets: widgets_first_row }];
 	};
 	let fill2 = fill.clone();
-	let backup_color_fill: Fill = (*backup_color).into();
+	let backup_color_fill: Fill = backup_color.into();
 	let backup_gradient_fill: Fill = backup_gradient.clone().into();
 
 	widgets_first_row.push(Separator::new(SeparatorType::Unrelated).widget_holder());

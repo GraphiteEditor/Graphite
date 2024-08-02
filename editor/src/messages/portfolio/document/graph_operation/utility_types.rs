@@ -356,9 +356,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn vector_modify(&mut self, modification_type: VectorModificationType) {
-		let Some(path_node_id) = self.get_existing_node_id("Path") else {
-			return;
-		};
+		let Some(path_node_id) = self.get_existing_node_id("Path") else { return };
 		self.network_interface.vector_modify(&path_node_id, modification_type);
 		self.responses.add(PropertiesPanelMessage::Refresh);
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);

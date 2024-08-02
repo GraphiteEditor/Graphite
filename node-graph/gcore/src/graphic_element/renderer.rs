@@ -367,8 +367,10 @@ impl GraphicElementRendered for VectorData {
 
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		let stroke_width = self.style.stroke().map(|s| s.weight()).unwrap_or_default();
+		let miter_limit = self.style.stroke().map(|s| s.line_join_miter_limit).unwrap_or(1.);
 		let scale = transform.decompose_scale();
-		let offset = DVec2::splat(stroke_width * scale.x.max(scale.y) / 2.);
+		// We use the full line width here to account for different styles of line caps
+		let offset = DVec2::splat(stroke_width * scale.x.max(scale.y) * miter_limit);
 		self.bounding_box_with_transform(transform * self.transform).map(|[a, b]| [a - offset, b + offset])
 	}
 
@@ -389,8 +391,7 @@ impl GraphicElementRendered for VectorData {
 		use crate::vector::style::GradientType;
 		use vello::peniko;
 
-		let multiplied_transform = transform * self.transform;
-		let transformed_bounds = self.bounding_box_with_transform(multiplied_transform).unwrap_or_default();
+		let transformed_bounds = GraphicElementRendered::bounding_box(self, transform).unwrap_or_default();
 		let mut layer = false;
 
 		if self.alpha_blending.opacity < 1. || self.alpha_blending.blend_mode != BlendMode::default() {
@@ -464,10 +465,26 @@ impl GraphicElementRendered for VectorData {
 				Some(color) => peniko::Color::rgba(color.r() as f64, color.g() as f64, color.b() as f64, color.a() as f64),
 				None => peniko::Color::TRANSPARENT,
 			};
+			use crate::vector::style::{LineCap, LineJoin};
+			use vello::kurbo::{Cap, Join};
+			let cap = match stroke.line_cap {
+				LineCap::Butt => Cap::Butt,
+				LineCap::Round => Cap::Round,
+				LineCap::Square => Cap::Square,
+			};
+			let join = match stroke.line_join {
+				LineJoin::Miter => Join::Miter,
+				LineJoin::Bevel => Join::Bevel,
+				LineJoin::Round => Join::Round,
+			};
 			let stroke = kurbo::Stroke {
 				width: stroke.weight,
 				miter_limit: stroke.line_join_miter_limit,
-				..Default::default()
+				join,
+				start_cap: cap,
+				end_cap: cap,
+				dash_pattern: stroke.dash_lengths.into(),
+				dash_offset: stroke.dash_offset,
 			};
 			if stroke.width > 0. {
 				scene.stroke(&stroke, kurbo_transform, color, None, &path);

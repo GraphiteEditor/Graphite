@@ -128,29 +128,10 @@ pub fn get_text_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkIn
 /// Gets properties from the Text node
 pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<(&String, &Font, f64)> {
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Text")?;
-	let NodeInput::Value {
-		tagged_value: TaggedValue::String(text),
-		..
-	} = &inputs[1]
-	else {
-		return None;
-	};
 
-	let NodeInput::Value {
-		tagged_value: TaggedValue::Font(font),
-		..
-	} = &inputs[2]
-	else {
-		return None;
-	};
-
-	let NodeInput::Value {
-		tagged_value: TaggedValue::F64(font_size),
-		..
-	} = inputs[3]
-	else {
-		return None;
-	};
+	let Some(TaggedValue::String(text)) = &inputs[1].as_value() else { return None };
+	let Some(TaggedValue::Font(font)) = &inputs[2].as_value() else { return None };
+	let Some(&TaggedValue::F64(font_size)) = inputs[3].as_value() else { return None };
 
 	Some((text, font, font_size))
 }

@@ -372,12 +372,12 @@ impl NodeNetworkInterface {
 				} else {
 					// Disconnect node input if it is not connected to another node in new_ids
 					let tagged_value = TaggedValue::from_type(&self.input_type(&InputConnector::node(*node_id, input_index), network_path));
-					*input = NodeInput::Value { tagged_value, exposed: true };
+					*input = NodeInput::value(tagged_value, true);
 				}
 			} else if let &mut NodeInput::Network { .. } = input {
 				// Always disconnect network node input
 				let tagged_value = TaggedValue::from_type(&self.input_type(&InputConnector::node(*node_id, input_index), network_path));
-				*input = NodeInput::Value { tagged_value, exposed: true };
+				*input = NodeInput::value(tagged_value, true);
 			}
 		}
 		node_template
@@ -1660,13 +1660,11 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		let [_, NodeInput::Value {
-			tagged_value: TaggedValue::VectorModification(modification),
-			..
-		}] = node.inputs.as_mut_slice()
-		else {
+		let mut value = node.inputs.get_mut(1).and_then(|input| input.as_value_mut());
+		let Some(TaggedValue::VectorModification(ref mut modification)) = value.as_deref_mut() else {
 			panic!("Path node does not have modification input");
 		};
+
 		modification.modify(&modification_type);
 	}
 
@@ -2054,11 +2052,8 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network in add_export");
 			return;
 		};
-		let input = NodeInput::Value {
-			tagged_value: default_value,
-			exposed: true,
-		};
 
+		let input = NodeInput::value(default_value, true);
 		if insert_index == -1 {
 			network.exports.push(input);
 		} else {
@@ -2110,7 +2105,8 @@ impl NodeNetworkInterface {
 			log::error!("Could not get node in insert_input");
 			return;
 		};
-		let input = NodeInput::Value { tagged_value: default_value, exposed };
+
+		let input = NodeInput::value(default_value, exposed);
 		if insert_index == -1 {
 			node.inputs.push(input);
 		} else {

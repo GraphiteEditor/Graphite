@@ -142,3 +142,101 @@ impl<I, T, N> MonitorNode<I, T, N> {
 		MonitorNode { io: Arc::new(Mutex::new(None)), node }
 	}
 }
+
+use core::hash::{Hash, Hasher};
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct MemoHash<T: Hash> {
+	hash: u64,
+	value: T,
+}
+
+#[cfg(feature = "serde")]
+impl<'de, T: serde::Deserialize<'de> + Hash> serde::Deserialize<'de> for MemoHash<T> {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		T::deserialize(deserializer).map(|value| Self::new(value))
+	}
+}
+
+#[cfg(feature = "serde")]
+impl<T: Hash + serde::Serialize> serde::Serialize for MemoHash<T> {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		self.value.serialize(serializer)
+	}
+}
+
+#[cfg(feature = "std")]
+impl<T: Hash> MemoHash<T> {
+	pub fn new(value: T) -> Self {
+		let hash = Self::calc_hash(&value);
+		Self { hash, value }
+	}
+	pub fn new_with_hash(value: T, hash: u64) -> Self {
+		Self { hash, value }
+	}
+
+	fn calc_hash(data: &T) -> u64 {
+		let mut hasher = std::collections::hash_map::DefaultHasher::new();
+		data.hash(&mut hasher);
+		hasher.finish()
+	}
+
+	pub fn inner_mut<'a>(&'a mut self) -> MemoHashGuard<'a, T> {
+		MemoHashGuard { inner: self }
+	}
+	pub fn into_inner<'a>(self) -> T {
+		self.value
+	}
+	pub fn hash_code(&self) -> u64 {
+		self.hash
+	}
+}
+impl<T: Hash> From<T> for MemoHash<T> {
+	fn from(value: T) -> Self {
+		Self::new(value)
+	}
+}
+
+impl<T: Hash> Hash for MemoHash<T> {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.hash.hash(state)
+	}
+}
+
+impl<T: Hash> core::ops::Deref for MemoHash<T> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		&self.value
+	}
+}
+
+pub struct MemoHashGuard<'a, T: Hash> {
+	inner: &'a mut MemoHash<T>,
+}
+
+impl<'a, T: Hash> core::ops::Drop for MemoHashGuard<'a, T> {
+	fn drop(&mut self) {
+		let hash = MemoHash::<T>::calc_hash(&self.inner.value);
+		self.inner.hash = hash;
+	}
+}
+
+impl<'a, T: Hash> core::ops::Deref for MemoHashGuard<'a, T> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		&self.inner.value
+	}
+}
+
+impl<'a, T: Hash> core::ops::DerefMut for MemoHashGuard<'a, T> {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.inner.value
+	}
+}

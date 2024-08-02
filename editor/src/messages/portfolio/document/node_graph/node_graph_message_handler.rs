@@ -912,7 +912,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 			}
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
-				let input = NodeInput::Value { tagged_value: value, exposed: false };
+				let input = NodeInput::value(value, false);
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, input_index),
 					input,

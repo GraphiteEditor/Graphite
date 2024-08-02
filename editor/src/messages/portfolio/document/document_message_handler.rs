@@ -1514,11 +1514,7 @@ impl DocumentMessageHandler {
 		let mut fonts = HashSet::new();
 		for (_node_id, node) in self.document_network().recursive_nodes() {
 			for input in &node.inputs {
-				if let NodeInput::Value {
-					tagged_value: TaggedValue::Font(font),
-					..
-				} = input
-				{
+				if let Some(TaggedValue::Font(font)) = input.as_value() {
 					fonts.insert(font.clone());
 				}
 			}
