@@ -206,7 +206,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 					return;
 				};
 
-				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > ptz.zoom).unwrap_or(&ptz.zoom);
+				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > ptz.zoom()).unwrap_or(&ptz.zoom());
 				if center_on_mouse {
 					responses.add(self.center_zoom(ipp.viewport_bounds.size(), new_scale / ptz.zoom(), ipp.mouse.position));
 				}
@@ -344,7 +344,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 					};
 					let document_to_viewport = self.calculate_offset_transform(ipp.viewport_bounds.center(), ptz);
 					responses.add(NavigationMessage::FitViewportToBounds {
-						bounds: [document_to_viewport.transform_point2(bounds[0]), document_to_viewport.inverse().transform_point2(bounds[1])],
+						bounds: [document_to_viewport.inverse().transform_point2(bounds[0]), document_to_viewport.inverse().transform_point2(bounds[1])],
 						prevent_zoom_past_100: false,
 					})
 				}
@@ -483,7 +483,7 @@ impl NavigationMessageHandler {
 	pub fn calculate_offset_transform(&self, viewport_center: DVec2, ptz: &PTZ) -> DAffine2 {
 		let pan = ptz.pan;
 		let tilt = ptz.tilt;
-		let zoom = ptz.zoom;
+		let zoom = ptz.zoom();
 
 		let scaled_center = viewport_center / self.snapped_zoom(zoom);
 

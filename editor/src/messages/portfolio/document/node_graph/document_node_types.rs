@@ -55,17 +55,6 @@ pub struct DocumentNodeDefinition {
 	pub properties: fn(&DocumentNode, NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup>,
 }
 
-// impl Default for DocumentNodeDefinition {
-// 	fn default() -> Self {
-// 		Self {
-// 			identifier: "",
-// 			node_template: Default::default(),
-// 			category: Default::default(),
-// 			properties: node_properties::node_no_properties,
-// 		}
-// 	}
-// }
-
 // We use the once cell for lazy initialization to avoid the overhead of reconstructing the node list every time.
 // TODO: make document nodes not require a `'static` lifetime to avoid having to split the construction into const and non-const parts.
 static DOCUMENT_NODE_TYPES: once_cell::sync::Lazy<Vec<DocumentNodeDefinition>> = once_cell::sync::Lazy::new(static_nodes);
@@ -294,7 +283,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							DocumentNode {
 								manual_composition: Some(concrete!(Footprint)),
 								inputs: vec![
-									NodeInput::network(concrete!(graphene_core::GraphicGroup), 1),
+									NodeInput::network(concrete!(TaggedValue), 1),
 									NodeInput::value(TaggedValue::String(String::from("Artboard")), false),
 									NodeInput::network(concrete!(TaggedValue), 2),
 									NodeInput::network(concrete!(TaggedValue), 3),
@@ -342,7 +331,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				persistent_node_metadata: DocumentNodePersistentMetadata {
 					input_names: vec![
 						"Artboards".to_string(),
-						"Over".to_string(),
+						"Contents".to_string(),
 						"Location".to_string(),
 						"Dimensions".to_string(),
 						"Background".to_string(),
@@ -422,10 +411,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![
-						NodeInput::network(concrete!(WasmEditorApi), 0),
-						NodeInput::value(TaggedValue::String("graphite:null".to_string()), false),
-					],
+					inputs: vec![NodeInput::scope("editor-api"), NodeInput::value(TaggedValue::String("graphite:null".to_string()), false)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -481,7 +467,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(WasmEditorApi), 0)],
+								inputs: vec![NodeInput::scope("editor-api")],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
 								skip_deduplication: true,
 								..Default::default()
@@ -670,12 +656,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							}),
 							false,
 						),
-						NodeInput::network(concrete!(WasmEditorApi), 0),
 					],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Artwork".to_string(), "Footprint".to_string(), "In".to_string()],
+					input_names: vec!["Artwork".to_string(), "Footprint".to_string()],
 					output_names: vec!["Canvas".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1549,7 +1534,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::network(concrete!(Vec<u8>), 0), NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("gpu_executor::StorageNode<_>")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::StorageNode<_>")),
 								..Default::default()
 							},
 							DocumentNode {
@@ -4323,7 +4308,7 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 			}),
 			inputs: vec![
 				NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				NodeInput::network(concrete!(WasmEditorApi), 0),
+				NodeInput::scope("editor-api"),
 				NodeInput::value(TaggedValue::ImaginateController(Default::default()), false),
 				NodeInput::value(TaggedValue::U64(0), false), // Remember to keep index used in `ImaginateRandom` updated with this entry's index
 				NodeInput::value(TaggedValue::OptionalDVec2(None), false),

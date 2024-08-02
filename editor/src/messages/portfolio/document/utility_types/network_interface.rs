@@ -28,11 +28,12 @@ use super::{
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeNetworkInterface {
 	/// The node graph that generates this document's artwork. It recursively stores its sub-graphs, so this root graph is the whole snapshot of the document content.
-	/// A mutable reference should never be created. It should only be mutated through custom setters which perform the necessary side effects to keep network_metadata in sync
+	/// A public mutable reference should never be created. It should only be mutated through custom setters which perform the necessary side effects to keep network_metadata in sync
 	network: NodeNetwork,
-	/// Stores all editor information for a NodeNetwork. For the network this includes viewport transforms, outward links, and bounding boxes. For nodes this includes click target, position, and alias
+	/// Stores all editor information for a NodeNetwork. Should automatically kept in sync by the setter methods when changes to the document network are made.
 	network_metadata: NodeNetworkMetadata,
-	/// Stores the document network's structural topology. Should automatically kept in sync by the setter methods when changes to the document network are made, which is why it was moved within the interface,
+	// TODO: Wrap in TransientMetadata Option
+	/// Stores the document network's structural topology. Should automatically kept in sync by the setter methods when changes to the document network are made.
 	#[serde(skip)]
 	document_metadata: DocumentMetadata,
 	/// All input/output types based on the compiled network.
@@ -110,7 +111,6 @@ impl NodeNetworkInterface {
 		let mut encapsulating_path = network_path.to_vec();
 		let encapsulating_node_id = encapsulating_path.pop()?;
 		let Some(parent_network) = self.network(&encapsulating_path) else {
-			log::error!("Could not get parent network in get_encapsulating_node");
 			return None;
 		};
 		let Some(encapsulating_node) = parent_network.nodes.get(&encapsulating_node_id) else {
@@ -192,10 +192,6 @@ impl NodeNetworkInterface {
 						NodeTypePersistentMetadata::Node(node_persistent_metadata) => matches!(node_persistent_metadata.position, NodePosition::Chain),
 						_ => false,
 					});
-				// let has_single_output = self
-				// 	.get_outward_wires(network_path)
-				// 	.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(node_id, 0)))
-				// 	.is_some_and(|outward_wires| outward_wires.len() == 1);
 				if is_chain {
 					last_chain_node_distance = (index as u32) + 1;
 				} else {
@@ -264,9 +260,6 @@ impl NodeNetworkInterface {
 	}
 
 	fn number_of_imports(&self, network_path: &[NodeId]) -> usize {
-		if network_path.is_empty() {
-			return 1;
-		};
 		// TODO: Use network.import_types.len()
 		if let Some(encapsulating_node) = self.get_encapsulating_node(network_path) {
 			encapsulating_node.inputs.len()
@@ -529,15 +522,6 @@ impl NodeNetworkInterface {
 		node_height
 	}
 
-	pub fn get_upstream_output_connector(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<OutputConnector> {
-		let input = self.get_input(input_connector, network_path);
-		input.and_then(|input| match input {
-			NodeInput::Node { node_id, output_index, .. } => Some(OutputConnector::node(*node_id, *output_index)),
-			NodeInput::Network { import_index, .. } => Some(OutputConnector::Import(*import_index)),
-			_ => None,
-		})
-	}
-
 	pub fn previewing(&self, network_path: &[NodeId]) -> Previewing {
 		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in previewing");
@@ -629,25 +613,6 @@ impl NodeNetworkInterface {
 			return false;
 		};
 		node_metadata.persistent_metadata.is_layer()
-	}
-
-	pub fn is_eligible_to_be_layer(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
-		let input_count = self.number_of_inputs(node_id, network_path);
-		let output_count = self.number_of_outputs(node_id, network_path);
-
-		let outward_wires = self
-			.get_outward_wires(network_path)
-			.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(*node_id, 0)).cloned())
-			.unwrap_or(Vec::new());
-
-		let has_single_output_wire = outward_wires.len() <= 1;
-
-		// TODO: Eventually allow nodes at the bottom of a stack to be layers, where `input_count` is 0
-		self.get_node_metadata(node_id, network_path)
-			.is_some_and(|node_metadata| node_metadata.persistent_metadata.has_primary_output)
-			&& output_count == 1
-			&& (input_count == 1 || input_count == 2)
-			&& has_single_output_wire
 	}
 
 	pub fn has_primary_output(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
@@ -816,12 +781,16 @@ impl NodeNetworkInterface {
 			.and_then(|layer| layer.last().copied())
 	}
 
-	// TODO: Make this return just the NodeId, since the document node is almost never used.
 	/// Gives an iterator to all nodes connected to the given nodes by all inputs (primary or primary + secondary depending on `only_follow_primary` choice), traversing backwards upstream starting from the given node's inputs.
-	pub fn upstream_flow_back_from_nodes(&self, mut node_ids: Vec<NodeId>, network_path: &[NodeId], mut flow_type: FlowType) -> impl Iterator<Item = NodeId> {
-		let (Some(network), Some(network_metadata)) = (self.network(network_path), self.network_metadata(network_path)) else {
+	pub fn upstream_flow_back_from_nodes<'a>(&'a self, mut node_ids: Vec<NodeId>, network_path: &'a [NodeId], mut flow_type: FlowType) -> impl Iterator<Item = NodeId> + 'a {
+		let (Some(network), Some(network_metadata)) = (self.network(&network_path), self.network_metadata(&network_path)) else {
 			log::error!("Could not get network or network_metadata in upstream_flow_back_from_nodes");
-			return Vec::new().into_iter();
+			return FlowIter {
+				stack: Vec::new(),
+				network: &self.network,
+				network_metadata: &self.network_metadata,
+				flow_type: FlowType::UpstreamFlow,
+			};
 		};
 		if matches!(flow_type, FlowType::LayerChildrenUpstreamFlow) {
 			node_ids = node_ids
@@ -841,8 +810,16 @@ impl NodeNetworkInterface {
 			network,
 			network_metadata,
 			flow_type,
-		}.collect::<Vec<_>>() // TODO: Why is this necessary
-		.into_iter()
+		}
+	}
+
+	pub fn get_upstream_output_connector(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<OutputConnector> {
+		let input = self.get_input(input_connector, network_path);
+		input.and_then(|input| match input {
+			NodeInput::Node { node_id, output_index, .. } => Some(OutputConnector::node(*node_id, *output_index)),
+			NodeInput::Network { import_index, .. } => Some(OutputConnector::Import(*import_index)),
+			_ => None,
+		})
 	}
 
 	/// In the network `X -> Y -> Z`, `is_node_upstream_of_another_by_primary_flow(Z, X)` returns true.
@@ -1036,7 +1013,6 @@ impl NodeNetworkInterface {
 
 // Public mutable getters for data that involves transient network metadata
 // Mutable methods never recalculate the transient metadata, they only unload it. loading metadata should only be done by the getter.
-// TODO: Make document metadata loadable/unloadable
 impl NodeNetworkInterface {
 	/// Mutably get the selected nodes for the network at the network_path
 	pub fn selected_nodes_mut(&mut self, network_path: &[NodeId]) -> Option<&mut SelectedNodes> {
@@ -1602,7 +1578,7 @@ impl NodeNetworkInterface {
 	}
 }
 
-// Misc
+// Helper functions for mutable getters
 impl NodeNetworkInterface {
 	pub fn get_upstream_chain_nodes(&mut self, network_path: &[NodeId]) -> Vec<NodeId> {
 		let Some(selected_nodes) = self.selected_nodes(network_path) else {
@@ -1692,6 +1668,25 @@ impl NodeNetworkInterface {
 			panic!("Path node does not have modification input");
 		};
 		modification.modify(&modification_type);
+	}
+
+	pub fn is_eligible_to_be_layer(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
+		let input_count = self.number_of_inputs(node_id, network_path);
+		let output_count = self.number_of_outputs(node_id, network_path);
+
+		let outward_wires = self
+			.get_outward_wires(network_path)
+			.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(*node_id, 0)).cloned())
+			.unwrap_or(Vec::new());
+
+		let has_single_output_wire = outward_wires.len() <= 1;
+
+		// TODO: Eventually allow nodes at the bottom of a stack to be layers, where `input_count` is 0
+		self.get_node_metadata(node_id, network_path)
+			.is_some_and(|node_metadata| node_metadata.persistent_metadata.has_primary_output)
+			&& output_count == 1
+			&& (input_count == 1 || input_count == 2)
+			&& has_single_output_wire
 	}
 
 	pub fn get_node_graph_ptz_mut(&mut self, network_path: &[NodeId]) -> Option<&mut PTZ> {
@@ -3027,6 +3022,7 @@ impl NodeNetworkInterface {
 			}
 		}
 	}
+
 	pub fn force_set_upstream_to_chain(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
 		for upstream_id in self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::HorizontalFlow).collect::<Vec<_>>().iter() {
 			if !self.is_layer(upstream_id, network_path) && self.has_primary_output(node_id, network_path) {
@@ -3077,17 +3073,17 @@ impl NodeNetworkInterface {
 		} else if let NodeTypePersistentMetadata::Node(node_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
 			if let NodePosition::Absolute(node_metadata) = &mut node_metadata.position {
 				*node_metadata += shift;
-				// let Some(outward_wires) = self
-				// 	.get_outward_wires(network_path)
-				// 	.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(*node_id, 0)))
-				// 	.cloned()
-				// else {
-				// 	log::error!("Could not get outward wires in shift_node");
-				// 	return;
-				// };
-				// if outward_wires.len() == 1 {
-				// 	self.try_set_upstream_to_chain(&outward_wires[0], network_path)
-				// }
+			// let Some(outward_wires) = self
+			// 	.get_outward_wires(network_path)
+			// 	.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(*node_id, 0)))
+			// 	.cloned()
+			// else {
+			// 	log::error!("Could not get outward wires in shift_node");
+			// 	return;
+			// };
+			// if outward_wires.len() == 1 {
+			// 	self.try_set_upstream_to_chain(&outward_wires[0], network_path)
+			// }
 			} else if let NodePosition::Chain = node_metadata.position {
 				// TODO: Dont't break the chain when shifting a node left or right. Instead, shift the entire chain (?).
 				// TODO: Instead of outward wires to the export being based on the export (which changes when previewing), it should be based on the root node.
@@ -3223,12 +3219,6 @@ impl<'a> Iterator for FlowIter<'a> {
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
 			let node_id = self.stack.pop()?;
-
-			// Special handling for iterating from ROOT_PARENT in load_structure`
-			// TODO: Delete this
-			if node_id == NodeId(u64::MAX) {
-				panic!("ROOT_PARENT should not be iterated over in upstream_flow_back_from_nodes");
-			}
 
 			if let (Some(document_node), Some(node_metadata)) = (self.network.nodes.get(&node_id), self.network_metadata.persistent_metadata.node_metadata.get(&node_id)) {
 				let skip = if self.flow_type == FlowType::HorizontalFlow && node_metadata.persistent_metadata.is_layer() {
@@ -3640,6 +3630,7 @@ pub enum LayerPosition {
 	// Position of the node in grid spaces
 	Absolute(IVec2),
 	// A layer is in a Stack when it feeds into the secondary input of a layer input. The Y position stores the vertical distance between the layer and its parent.
+	// TODO: Store x offset
 	Stack(u32),
 }
 

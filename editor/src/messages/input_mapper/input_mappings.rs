@@ -62,7 +62,6 @@ pub fn input_mappings() -> Mapping {
 		entry!(PointerMove; refresh_keys=[Shift], action_dispatch=NodeGraphMessage::PointerMove {shift: Shift}),
 		entry!(KeyUp(Lmb); action_dispatch=NodeGraphMessage::PointerUp),
 		entry!(KeyUp(Escape); action_dispatch=NodeGraphMessage::CloseCreateNodeMenu),
-		//TODO: Delete
 		entry!(KeyDown(Delete); modifiers=[Accel], action_dispatch=NodeGraphMessage::DeleteSelectedNodes { reconnect: false }),
 		entry!(KeyDown(Backspace); modifiers=[Accel], action_dispatch=NodeGraphMessage::DeleteSelectedNodes { reconnect: false }),
 		entry!(KeyDown(Delete); action_dispatch=NodeGraphMessage::DeleteSelectedNodes { reconnect: true }),

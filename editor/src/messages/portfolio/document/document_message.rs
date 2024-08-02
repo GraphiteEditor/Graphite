@@ -14,6 +14,7 @@ use graphene_core::Color;
 use glam::DAffine2;
 
 use super::utility_types::misc::{OptionBoundsSnapping, OptionPointSnapping};
+use super::utility_types::network_interface::NodeNetworkInterface;
 
 #[impl_message(Message, PortfolioMessage, Document)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -38,7 +39,7 @@ pub enum DocumentMessage {
 		aggregate: AlignAggregate,
 	},
 	BackupDocument {
-		network_interface: super::utility_types::network_interface::NodeNetworkInterface,
+		network_interface: NodeNetworkInterface,
 	},
 	ClearArtboards,
 	ClearLayersPanel,

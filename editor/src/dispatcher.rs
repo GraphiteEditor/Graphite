@@ -165,18 +165,14 @@ impl Dispatcher {
 					self.message_handlers.preferences_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::Tool(message) => {
-					let document_id: DocumentId = self.message_handlers.portfolio_message_handler.active_document_id().unwrap();
-					let input = &self.message_handlers.input_preprocessor_message_handler;
-					let persistent_data = &self.message_handlers.portfolio_message_handler.persistent_data;
-					let node_graph = &self.message_handlers.portfolio_message_handler.executor;
-
+					let document_id = self.message_handlers.portfolio_message_handler.active_document_id().unwrap();
 					if let Some(document) = self.message_handlers.portfolio_message_handler.documents.get_mut(&document_id) {
 						let data = ToolMessageData {
 							document_id,
 							document,
-							input,
-							persistent_data,
-							node_graph,
+							input: &self.message_handlers.input_preprocessor_message_handler,
+							persistent_data: &self.message_handlers.portfolio_message_handler.persistent_data,
+							node_graph: &self.message_handlers.portfolio_message_handler.executor,
 						};
 
 						self.message_handlers.tool_message_handler.process_message(message, &mut queue, data);

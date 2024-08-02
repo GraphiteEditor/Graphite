@@ -37,16 +37,6 @@ pub struct DocumentMessageData<'a> {
 	pub executor: &'a mut NodeGraphExecutor,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct Test1 {
-	pub val1: u32,
-}
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct Test2 {
-	pub val2: u32,
-}
-
 // TODO: Eventually remove this (probably starting late 2024)
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct OldDocumentMessageHandler {
@@ -369,18 +359,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					.deepest_common_ancestor(&self.selection_network_path, true)
 					.unwrap_or(LayerNodeIdentifier::ROOT_PARENT);
 
-				let insert_index = parent
-					.children(self.metadata())
-					.enumerate()
-					.find_map(|(index, item)| {
-						self.network_interface
-							.selected_nodes(&[])
-							.unwrap()
-							.selected_layers(self.metadata())
-							.any(|x| x == item)
-							.then_some(index as usize)
-					})
-					.unwrap_or(0);
+				let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), self.network_interface.selected_nodes(&[]).unwrap(), parent);
 
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(GraphOperationMessage::NewCustomLayer {
@@ -764,9 +743,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), current_ptz);
 
 				let ruler_scale = if !self.graph_view_overlay_open {
-					self.navigation_handler.snapped_zoom(current_ptz.zoom)
+					self.navigation_handler.snapped_zoom(current_ptz.zoom())
 				} else {
-					self.navigation_handler.snapped_zoom(current_ptz.zoom * (crate::consts::GRID_SIZE as f64))
+					self.navigation_handler.snapped_zoom(current_ptz.zoom() * (crate::consts::GRID_SIZE as f64))
 				};
 
 				let ruler_origin = document_to_viewport.transform_point2(DVec2::ZERO);
@@ -1122,7 +1101,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::ZoomCanvasToFitAll => {
 				let bounds = if self.graph_view_overlay_open {
-					//self.network_interface.graph_bounds_viewport_space(&self.breadcrumb_network_path)
 					self.network_interface.get_all_nodes_bounding_box(&self.breadcrumb_network_path).cloned()
 				} else {
 					self.network_interface.document_bounds_document_space(true)

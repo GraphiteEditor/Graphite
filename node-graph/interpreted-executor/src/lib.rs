@@ -20,7 +20,6 @@ mod tests {
 					(
 						NodeId(0),
 						DocumentNode {
-							name: "Cons".into(),
 							inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::network(concrete!(&u32), 1)],
 							implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::structural::ConsNode<_, _>")),
 							..Default::default()
@@ -29,7 +28,6 @@ mod tests {
 					(
 						NodeId(1),
 						DocumentNode {
-							name: "Add".into(),
 							inputs: vec![NodeInput::node(NodeId(0), 0)],
 							implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::AddPairNode")),
 							..Default::default()
@@ -47,7 +45,6 @@ mod tests {
 			nodes: [(
 				NodeId(0),
 				DocumentNode {
-					name: "Inc".into(),
 					inputs: vec![
 						NodeInput::network(concrete!(u32), 0),
 						NodeInput::Value {
@@ -88,7 +85,6 @@ mod tests {
 				(
 					NodeId(0),
 					DocumentNode {
-						name: "id".into(),
 						inputs: vec![NodeInput::network(concrete!(u32), 0)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
 						..Default::default()
@@ -98,7 +94,6 @@ mod tests {
 				(
 					NodeId(1),
 					DocumentNode {
-						name: "Add".into(),
 						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(0), 0)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::AddNode<_>")),
 						..Default::default()

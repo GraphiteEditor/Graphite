@@ -101,7 +101,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 			}
 			GraphOperationMessage::SetUpstreamToChain { layer } => {
-				if let Some(first_chain_node) = network_interface
+				let Some(first_chain_node) = network_interface
 					.upstream_flow_back_from_nodes(
 						vec![layer.to_node()],
 						&[],
@@ -109,9 +109,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					)
 					.skip(1)
 					.next()
-				{
-					network_interface.force_set_upstream_to_chain(&first_chain_node, &[]);
-				}
+				else {
+					return;
+				};
+
+				network_interface.force_set_upstream_to_chain(&first_chain_node, &[]);
 			}
 			GraphOperationMessage::NewArtboard { id, artboard } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
@@ -134,6 +136,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					}
 				}
 				responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			GraphOperationMessage::NewBitmapLayer {
 				id,
@@ -145,6 +148,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				let layer = modify_inputs.create_layer(id);
 				modify_inputs.insert_image_data(image_frame, layer);
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
@@ -171,6 +175,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				let layer = modify_inputs.create_layer(id);
 				modify_inputs.insert_vector_data(subpaths, layer);
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			GraphOperationMessage::NewTextLayer {
 				id,
@@ -184,6 +189,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				let layer = modify_inputs.create_layer(id);
 				modify_inputs.insert_text(text, font, size, layer);
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			GraphOperationMessage::ResizeArtboard { layer, location, dimensions } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {

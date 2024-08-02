@@ -186,7 +186,7 @@ impl<'a> NodeGraphLayer<'a> {
 	}
 
 	/// Return an iterator up the horizontal flow of the layer
-	pub fn horizontal_layer_flow(&self) -> impl Iterator<Item = NodeId> {
+	pub fn horizontal_layer_flow(&self) -> impl Iterator<Item = NodeId> + 'a {
 		self.network_interface.upstream_flow_back_from_nodes(vec![self.layer_node], &[], FlowType::HorizontalFlow)
 	}
 

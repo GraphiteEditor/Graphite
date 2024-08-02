@@ -217,7 +217,7 @@ impl Default for LayerNodeIdentifier {
 }
 
 impl LayerNodeIdentifier {
-	/// A conceptual layer used to represent the parent of layers feed into the export
+	/// A conceptual layer used to represent the parent of layers that feed into the export
 	pub const ROOT_PARENT: Self = LayerNodeIdentifier::new_unchecked(NodeId(0));
 
 	/// Construct a [`LayerNodeIdentifier`] without checking if it is a layer node
