@@ -60,9 +60,15 @@ impl ClickTarget {
 
 	/// Does the click target intersect the point (accounting for stroke size)
 	pub fn intersect_point(&self, point: DVec2, layer_transform: DAffine2) -> bool {
+		let target_bounds = [point - DVec2::splat(self.stroke_width / 2.), point + DVec2::splat(self.stroke_width / 2.)];
+		let intersects = |a: [DVec2; 2], b: [DVec2; 2]| a[0].x <= b[1].x && a[1].x >= b[0].x && a[0].y <= b[1].y && a[1].y >= b[0].y;
+		if !self.subpath.loose_bounding_box_with_transform(layer_transform).is_some_and(|loose| intersects(loose, target_bounds)) {
+			return false;
+		}
+
 		// Allows for selecting lines
 		// TODO: actual intersection of stroke
-		let inflated_quad = Quad::from_box([point - DVec2::splat(self.stroke_width / 2.), point + DVec2::splat(self.stroke_width / 2.)]);
+		let inflated_quad = Quad::from_box(target_bounds);
 		self.intersect_rectangle(inflated_quad, layer_transform)
 	}
 }
