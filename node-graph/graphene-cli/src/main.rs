@@ -92,35 +92,29 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 	network.generate_node_paths(&[]);
 
 	let inner_network = DocumentNode {
-		name: "Scope".to_string(),
 		implementation: DocumentNodeImplementation::Network(network),
 		inputs: vec![NodeInput::node(NodeId(0), 1)],
-		metadata: DocumentNodeMetadata::position((-10, 0)),
 		..Default::default()
 	};
 
 	let render_node = graph_craft::document::DocumentNode {
-		name: "Output".into(),
 		inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(0), 1)],
 		implementation: graph_craft::document::DocumentNodeImplementation::Network(NodeNetwork {
 			exports: vec![NodeInput::node(NodeId(2), 0)],
 			nodes: [
 				DocumentNode {
-					name: "Create Canvas".to_string(),
 					inputs: vec![NodeInput::scope("editor-api")],
 					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
 					skip_deduplication: true,
 					..Default::default()
 				},
 				DocumentNode {
-					name: "Cache".to_string(),
 					manual_composition: Some(concrete!(())),
 					inputs: vec![NodeInput::node(NodeId(0), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 					..Default::default()
 				},
 				DocumentNode {
-					name: "RenderNode".to_string(),
 					inputs: vec![
 						NodeInput::network(concrete!(WasmEditorApi), 1),
 						NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T))), 0),
@@ -136,7 +130,6 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 			.collect(),
 			..Default::default()
 		}),
-		metadata: DocumentNodeMetadata::position((-3, 0)),
 		..Default::default()
 	};
 
@@ -145,7 +138,6 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 		inner_network,
 		render_node,
 		DocumentNode {
-			name: "Editor Api".into(),
 			implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
 			inputs: vec![NodeInput::value(TaggedValue::EditorApi(editor_api), false)],
 			..Default::default()

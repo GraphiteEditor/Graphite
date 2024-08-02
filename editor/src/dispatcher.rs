@@ -309,7 +309,7 @@ mod test {
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
 			parent: LayerNodeIdentifier::ROOT_PARENT,
-			insert_index: -1,
+			insert_index: 0,
 		});
 		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
 
@@ -345,7 +345,7 @@ mod test {
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
 			parent: LayerNodeIdentifier::ROOT_PARENT,
-			insert_index: -1,
+			insert_index: 0,
 		});
 
 		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
@@ -386,17 +386,17 @@ mod test {
 			nodes: vec![rect_id.to_node(), ellipse_id.to_node()],
 		});
 		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
-		editor.handle_message(NodeGraphMessage::DeleteSelectedLayers);
+		editor.handle_message(NodeGraphMessage::DeleteSelectedNodes { reconnect: true });
 		editor.draw_rect(0., 800., 12., 200.);
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
 			parent: LayerNodeIdentifier::ROOT_PARENT,
-			insert_index: -1,
+			insert_index: 0,
 		});
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
 			parent: LayerNodeIdentifier::ROOT_PARENT,
-			insert_index: -1,
+			insert_index: 0,
 		});
 
 		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
