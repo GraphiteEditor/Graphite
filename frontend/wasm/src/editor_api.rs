@@ -812,25 +812,15 @@ impl EditorHandle {
 					return;
 				};
 				let empty_vec = Vec::new();
-				let path_data = if let NodeInput::Value {
-					tagged_value: TaggedValue::Subpaths(translation),
-					..
-				} = &shape_node.inputs[0]
-				{
-					translation
-				} else {
-					&empty_vec
+				let path_data = match &shape_node.inputs[0].as_value() {
+					Some(TaggedValue::Subpaths(translation)) => translation,
+					_ => &Vec::new(),
 				};
 
 				let empty_vec = Vec::new();
-				let colinear_manipulators = if let NodeInput::Value {
-					tagged_value: TaggedValue::PointIds(translation),
-					..
-				} = &shape_node.inputs[1]
-				{
-					translation
-				} else {
-					&empty_vec
+				let colinear_manipulators = match &shape_node.inputs[1].as_value() {
+					Some(TaggedValue::PointIds(translation)) => translation,
+					_ => &Vec::new(),
 				};
 
 				let mut vector_data = VectorData::from_subpaths(path_data, false);
@@ -856,7 +846,7 @@ impl EditorHandle {
 						document_node,
 						persistent_node_metadata: node_metadata.persistent_metadata,
 					},
-					&[]
+					&[],
 				);
 			}
 		}
