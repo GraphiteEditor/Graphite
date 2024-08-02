@@ -6,11 +6,11 @@ pub struct DemoArtworkDialog;
 
 /// `(name, thumbnail, filename)`
 pub const ARTWORK: [(&str, &str, &str); 5] = [
-	("Valley of Spires", "ThumbnailValleyOfSpires", "valley-of-spires.graphite"),
-	("Red Dress", "ThumbnailRedDress", "red-dress.graphite"),
 	("Isometric Fountain", "ThumbnailIsometricFountain", "isometric-fountain.graphite"),
+	("Valley of Spires", "ThumbnailValleyOfSpires", "valley-of-spires.graphite"),
+	("Painted Dreams", "ThumbnailPaintedDreams", "painted-dreams.graphite"),
+	("Red Dress", "ThumbnailRedDress", "red-dress.graphite"),
 	("Procedural String Lights", "ThumbnailProceduralStringLights", "procedural-string-lights.graphite"),
-	("Just a Potted Cactus", "ThumbnailJustAPottedCactus", "just-a-potted-cactus.graphite"),
 ];
 
 impl DialogLayoutHolder for DemoArtworkDialog {

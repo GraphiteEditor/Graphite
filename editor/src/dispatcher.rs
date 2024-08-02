@@ -438,6 +438,7 @@ mod test {
 		// let files = [
 		// 	include_str!("../../demo-artwork/isometric-fountain.graphite"),
 		// 	include_str!("../../demo-artwork/just-a-potted-cactus.graphite"),
+		// 	include_str!("../../demo-artwork/painted-dreams.graphite"),
 		// 	include_str!("../../demo-artwork/procedural-string-lights.graphite"),
 		// 	include_str!("../../demo-artwork/red-dress.graphite"),
 		// 	include_str!("../../demo-artwork/valley-of-spires.graphite"),
