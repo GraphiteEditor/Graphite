@@ -25,9 +25,15 @@ use vello::*;
 pub struct ClickTarget {
 	pub subpath: bezier_rs::Subpath<PointId>,
 	pub stroke_width: f64,
+	bounding_box: Option<[DVec2; 2]>,
 }
 
 impl ClickTarget {
+	pub fn new(subpath: bezier_rs::Subpath<PointId>, stroke_width: f64) -> Self {
+		let bounding_box = subpath.loose_bounding_box();
+		Self { subpath, stroke_width, bounding_box }
+	}
+
 	/// Does the click target intersect the rectangle
 	pub fn intersect_rectangle(&self, document_quad: Quad, layer_transform: DAffine2) -> bool {
 		// Check if the matrix is not invertible
@@ -62,7 +68,11 @@ impl ClickTarget {
 	pub fn intersect_point(&self, point: DVec2, layer_transform: DAffine2) -> bool {
 		let target_bounds = [point - DVec2::splat(self.stroke_width / 2.), point + DVec2::splat(self.stroke_width / 2.)];
 		let intersects = |a: [DVec2; 2], b: [DVec2; 2]| a[0].x <= b[1].x && a[1].x >= b[0].x && a[0].y <= b[1].y && a[1].y >= b[0].y;
-		if !self.subpath.loose_bounding_box_with_transform(layer_transform).is_some_and(|loose| intersects(loose, target_bounds)) {
+		// This bounding box is not very accurate as it is the axis aligned version of the transformed bounding box. However it is fast.
+		if !self
+			.bounding_box
+			.is_some_and(|loose| intersects((layer_transform * Quad::from_box(loose)).bounding_box(), target_bounds))
+		{
 			return false;
 		}
 
@@ -349,7 +359,7 @@ impl GraphicElementRendered for VectorData {
 			}
 			subpath
 		};
-		click_targets.extend(self.stroke_bezier_paths().map(fill).map(|subpath| ClickTarget { stroke_width, subpath }));
+		click_targets.extend(self.stroke_bezier_paths().map(fill).map(|subpath| ClickTarget::new(subpath, stroke_width)));
 	}
 
 	#[cfg(feature = "vello")]
@@ -564,7 +574,7 @@ impl GraphicElementRendered for Artboard {
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let mut subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
 		subpath.apply_transform(self.graphic_group.transform.inverse());
-		click_targets.push(ClickTarget { stroke_width: 0., subpath });
+		click_targets.push(ClickTarget::new(subpath, 0.));
 	}
 
 	fn contains_artboard(&self) -> bool {
@@ -680,7 +690,7 @@ impl GraphicElementRendered for ImageFrame<Color> {
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
-		click_targets.push(ClickTarget { subpath, stroke_width: 0. });
+		click_targets.push(ClickTarget::new(subpath, 0.));
 	}
 
 	#[cfg(feature = "vello")]
