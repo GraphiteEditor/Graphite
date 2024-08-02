@@ -30,7 +30,7 @@ jobs:
       - name: 🕸 Install Zola
         uses: taiki-e/install-action@v2
         with:
-          tool: zola@0.17.2
+          tool: zola@0.19.1
 
       - name: ✂ Replace template in <head> of index.html
         run: |
