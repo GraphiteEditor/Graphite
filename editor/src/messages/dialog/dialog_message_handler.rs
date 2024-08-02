@@ -75,10 +75,10 @@ impl MessageHandler<DialogMessage, DialogMessageData<'_>> for DialogMessageHandl
 						.filter(|&layer| document.network_interface.is_artboard(&layer.to_node(), &[]))
 						.map(|layer| {
 							let name = document
-								.network
-								.nodes
-								.get(&layer.to_node())
-								.and_then(|node| if node.alias.is_empty() { None } else { Some(node.alias.clone()) })
+								.network_interface
+								.get_node_metadata(&layer.to_node(), &[])
+								.map(|node| node.persistent_metadata.display_name.clone())
+								.and_then(|name| if name.is_empty() { None } else { Some(name) })
 								.unwrap_or_else(|| "Artboard".to_string());
 							(layer, name)
 						})

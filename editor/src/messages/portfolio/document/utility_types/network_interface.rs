@@ -1660,7 +1660,8 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		let Some(TaggedValue::VectorModification(modification)) = node.inputs.get_mut(1).and_then(|input| input.as_value()) else {
+		let mut value = node.inputs.get_mut(1).and_then(|input| input.as_value_mut());
+		let Some(TaggedValue::VectorModification(ref mut modification)) = value.as_deref_mut() else {
 			panic!("Path node does not have modification input");
 		};
 

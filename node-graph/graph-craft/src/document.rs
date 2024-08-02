@@ -3,6 +3,7 @@ use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 
 use dyn_any::{DynAny, StaticType};
 use glam::IVec2;
+use graphene_core::memo::MemoHashGuard;
 pub use graphene_core::uuid::generate_uuid;
 use graphene_core::{Cow, MemoHash, ProtoNodeIdentifier, Type};
 
@@ -443,6 +444,13 @@ impl NodeInput {
 	pub fn as_value(&self) -> Option<&TaggedValue> {
 		if let NodeInput::Value { tagged_value, .. } = self {
 			Some(tagged_value)
+		} else {
+			None
+		}
+	}
+	pub fn as_value_mut<'a>(&'a mut self) -> Option<MemoHashGuard<'a, TaggedValue>> {
+		if let NodeInput::Value { tagged_value, .. } = self {
+			Some(tagged_value.inner_mut())
 		} else {
 			None
 		}
