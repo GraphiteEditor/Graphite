@@ -2678,6 +2678,18 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: node_properties::image_color_palette,
 			..Default::default()
 		},
+		DocumentNodeDefinition {
+			name: "Dehaze",
+			category: "Raster",
+			implementation: DocumentNodeImplementation::proto("graphene_std::dehaze::DehazeImageNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Strength", TaggedValue::F64(0.), false),
+			],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::dehaze_properties,
+			..Default::default()
+		},
 	]
 }
 
