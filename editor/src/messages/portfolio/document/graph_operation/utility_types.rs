@@ -80,7 +80,7 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 			let next_node_in_stack_id =
 				network_interface
-					.get_input(&post_node_input_connector, &[])
+					.input_from_connector(&post_node_input_connector, &[])
 					.and_then(|input_from_connector| if let NodeInput::Node { node_id, .. } = input_from_connector { Some(node_id) } else { None });
 
 			if let Some(next_node_in_stack_id) = next_node_in_stack_id {
@@ -98,7 +98,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 		// Sink post_node down to the end of the non layer chain that feeds into post_node, such that pre_node is the layer node at insert_index + 1, or None if insert_index is the last layer
 		loop {
-			let pre_node_output_connector = network_interface.get_upstream_output_connector(&post_node_input_connector, &[]);
+			let pre_node_output_connector = network_interface.upstream_output_connector(&post_node_input_connector, &[]);
 
 			match pre_node_output_connector {
 				Some(OutputConnector::Node { node_id: pre_node_id, .. }) if !network_interface.is_layer(&pre_node_id, &[]) => {
@@ -221,7 +221,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let existing_node_id = self
 			.network_interface
 			.upstream_flow_back_from_nodes(self.get_output_layer().map_or(vec![], |layer| vec![layer.to_node()]), &[], network_interface::FlowType::HorizontalFlow)
-			.find(|node_id| self.network_interface.get_reference(node_id, &[]).is_some_and(|node_reference| node_reference == reference));
+			.find(|node_id| self.network_interface.reference(node_id, &[]).is_some_and(|node_reference| node_reference == reference));
 
 		// Create a new node if the node does not exist and update its inputs
 		existing_node_id.or_else(|| {

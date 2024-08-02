@@ -1064,6 +1064,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				if !self.graph_view_overlay_open {
 					let transform = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
 					self.network_interface.set_document_to_viewport_transform(transform);
+					// Ensure selection box is kept in sync with the pointer when the PTZ changes
 					responses.add(SelectToolMessage::PointerMove(SelectToolPointerKeys {
 						axis_align: Key::Shift,
 						snap_angle: Key::Control,
@@ -1101,7 +1102,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::ZoomCanvasToFitAll => {
 				let bounds = if self.graph_view_overlay_open {
-					self.network_interface.get_all_nodes_bounding_box(&self.breadcrumb_network_path).cloned()
+					self.network_interface.all_nodes_bounding_box(&self.breadcrumb_network_path).cloned()
 				} else {
 					self.network_interface.document_bounds_document_space(true)
 				};

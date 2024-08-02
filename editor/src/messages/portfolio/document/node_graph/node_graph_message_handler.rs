@@ -117,7 +117,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				network_interface.create_wire(&output_connector, &input_connector, selection_network_path);
 			}
 			NodeGraphMessage::Copy => {
-				let all_selected_nodes = network_interface.get_upstream_chain_nodes(selection_network_path);
+				let all_selected_nodes = network_interface.upstream_chain_nodes(selection_network_path);
 				// Collect the selected nodes
 				let new_ids = &all_selected_nodes.iter().enumerate().map(|(new, old)| (*old, NodeId(new as u64))).collect();
 				let copied_nodes = network_interface.copy_nodes(new_ids, selection_network_path).collect::<Vec<_>>();
@@ -173,7 +173,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						.navigation_metadata
 						.node_graph_to_viewport
 						.transform_point2(output_connector_position);
-					let Some(output_connector) = &network_interface.get_output_connector_from_click(output_connector_position_viewport, breadcrumb_network_path) else {
+					let Some(output_connector) = &network_interface.output_connector_from_click(output_connector_position_viewport, breadcrumb_network_path) else {
 						log::error!("Could not get output from connector start");
 						return;
 					};
@@ -229,7 +229,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				network_interface.disconnect_input(&input_connector, selection_network_path);
 			}
 			NodeGraphMessage::DuplicateSelectedNodes => {
-				let all_selected_nodes = network_interface.get_upstream_chain_nodes(selection_network_path);
+				let all_selected_nodes = network_interface.upstream_chain_nodes(selection_network_path);
 
 				responses.add(DocumentMessage::StartTransaction);
 
@@ -241,10 +241,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
 			}
 			NodeGraphMessage::EnterNestedNetwork => {
-				let Some(node_id) = network_interface.get_node_from_click(ipp.mouse.position, selection_network_path) else {
+				let Some(node_id) = network_interface.node_from_click(ipp.mouse.position, selection_network_path) else {
 					return;
 				};
-				if network_interface.get_visibility_from_click(ipp.mouse.position, selection_network_path).is_some() {
+				if network_interface.visibility_from_click(ipp.mouse.position, selection_network_path).is_some() {
 					return;
 				};
 				let Some(network) = network_interface.network(selection_network_path) else {
@@ -341,14 +341,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let node_graph_point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
 
 				// Toggle visibility of clicked node and return
-				if let Some(clicked_visibility) = network_interface.get_visibility_from_click(click, selection_network_path) {
+				if let Some(clicked_visibility) = network_interface.visibility_from_click(click, selection_network_path) {
 					responses.add(NodeGraphMessage::ToggleVisibility { node_id: clicked_visibility });
 					return;
 				}
 
-				let clicked_id = network_interface.get_node_from_click(click, selection_network_path);
-				let clicked_input = network_interface.get_input_connector_from_click(click, selection_network_path);
-				let clicked_output = network_interface.get_output_connector_from_click(click, selection_network_path);
+				let clicked_id = network_interface.node_from_click(click, selection_network_path);
+				let clicked_input = network_interface.input_connector_from_click(click, selection_network_path);
+				let clicked_output = network_interface.output_connector_from_click(click, selection_network_path);
 				let network_metadata = network_interface.network_metadata(selection_network_path).unwrap();
 
 				// Create the add node popup on right click, then exit
@@ -436,11 +436,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					self.initial_disconnecting = true;
 					self.disconnecting = Some(clicked_input.clone());
 
-					let Some(output_connector) = network_interface.get_upstream_output_connector(clicked_input, selection_network_path) else {
+					let Some(output_connector) = network_interface.upstream_output_connector(clicked_input, selection_network_path) else {
 						log::error!("Could not get upstream node from {clicked_input:?} when moving existing wire");
 						return;
 					};
-					self.wire_in_progress_from_connector = network_interface.get_output_position(&output_connector, selection_network_path);
+					self.wire_in_progress_from_connector = network_interface.output_position(&output_connector, selection_network_path);
 					return;
 				}
 
@@ -450,13 +450,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					// Disconnect vertical output wire from an already-connected layer
 					if let OutputConnector::Node { node_id, .. } = clicked_output {
 						if network_interface.is_layer(&node_id, selection_network_path) {
-							if let Some(input_connectors) = network_interface.get_outward_wires(selection_network_path).and_then(|outward_wires| outward_wires.get(&clicked_output)) {
+							if let Some(input_connectors) = network_interface.outward_wires(selection_network_path).and_then(|outward_wires| outward_wires.get(&clicked_output)) {
 								self.disconnecting = input_connectors.first().cloned();
 							}
 						}
 					}
 
-					self.wire_in_progress_from_connector = network_interface.get_output_position(&clicked_output, selection_network_path);
+					self.wire_in_progress_from_connector = network_interface.output_position(&clicked_output, selection_network_path);
 					return;
 				}
 
@@ -540,9 +540,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					.transform_point2(viewport_location);
 
 				if self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none() {
-					let to_connector = network_interface.get_input_connector_from_click(ipp.mouse.position, selection_network_path);
+					let to_connector = network_interface.input_connector_from_click(ipp.mouse.position, selection_network_path);
 					if let Some(to_connector) = &to_connector {
-						let Some(input_position) = network_interface.get_input_position(&to_connector, selection_network_path) else {
+						let Some(input_position) = network_interface.input_position(&to_connector, selection_network_path) else {
 							log::error!("Could not get input position for connector: {to_connector:?}");
 							return;
 						};
@@ -575,7 +575,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							.node_graph_to_viewport
 							.transform_point2(wire_in_progress_from_connector);
 						let from_connector_is_layer = network_interface
-							.get_output_connector_from_click(from_connector_viewport, selection_network_path)
+							.output_connector_from_click(from_connector_viewport, selection_network_path)
 							.is_some_and(|output_connector| {
 								if let OutputConnector::Node { node_id, .. } = output_connector {
 									network_interface.is_layer(&node_id, selection_network_path)
@@ -653,8 +653,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					let node_graph_to_viewport = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport;
 					let from_connector_viewport = node_graph_to_viewport.transform_point2(wire_in_progress_from_connector);
 					let to_connector_viewport = node_graph_to_viewport.transform_point2(wire_in_progress_to_connector);
-					let output_connector = network_interface.get_output_connector_from_click(from_connector_viewport, selection_network_path);
-					let input_connector = network_interface.get_input_connector_from_click(to_connector_viewport, selection_network_path);
+					let output_connector = network_interface.output_connector_from_click(from_connector_viewport, selection_network_path);
+					let input_connector = network_interface.input_connector_from_click(to_connector_viewport, selection_network_path);
 
 					if let (Some(output_connector), Some(input_connector)) = (&output_connector, &input_connector) {
 						responses.add(NodeGraphMessage::CreateWire {
@@ -708,7 +708,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					if selected_nodes.selected_nodes_ref().len() == 1 && !self.begin_dragging {
 						let selected_node_id = selected_nodes.selected_nodes_ref()[0];
 						let has_primary_output_connection = network_interface
-							.get_outward_wires(selection_network_path)
+							.outward_wires(selection_network_path)
 							.is_some_and(|outward_wires| outward_wires.get(&OutputConnector::node(selected_node_id, 0)).is_some_and(|outward_wires| !outward_wires.is_empty()));
 						let Some(network) = network_interface.network(selection_network_path) else {
 							return;
@@ -744,12 +744,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 										return false;
 									}
 
-									let Some(input_position) = network_interface.get_input_position(&frontend_wire.wire_end, selection_network_path) else {
+									let Some(input_position) = network_interface.input_position(&frontend_wire.wire_end, selection_network_path) else {
 										log::error!("Could not get input port position for {:?}", frontend_wire.wire_end);
 										return false;
 									};
 
-									let Some(output_position) = network_interface.get_output_position(&frontend_wire.wire_start, selection_network_path) else {
+									let Some(output_position) = network_interface.output_position(&frontend_wire.wire_start, selection_network_path) else {
 										log::error!("Could not get output port position for {:?}", frontend_wire.wire_start);
 										return false;
 									};
@@ -918,7 +918,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					input,
 				});
 				responses.add(PropertiesPanelMessage::Refresh);
-				if (!network_interface.get_reference(&node_id, selection_network_path).is_some_and(|reference| reference == "Imaginate") || input_index == 0)
+				if (!network_interface.reference(&node_id, selection_network_path).is_some_and(|reference| reference == "Imaginate") || input_index == 0)
 					&& network_interface.connected_to_output(&node_id, selection_network_path)
 				{
 					responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -944,7 +944,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					network_interface.shift_node(&node_id, IVec2::new(displacement_x, displacement_y), selection_network_path);
 
 					if let Some(outward_wires) = network_interface
-						.get_outward_wires(selection_network_path)
+						.outward_wires(selection_network_path)
 						.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(node_id, 0)))
 						.cloned()
 					{
@@ -1129,7 +1129,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					let mut nodes = if shift { selected_nodes.selected_nodes_ref().clone() } else { Vec::new() };
 					let all_nodes = network_metadata.persistent_metadata.node_metadata.keys().cloned().collect::<Vec<_>>();
 					for node_id in all_nodes {
-						let Some(click_targets) = network_interface.get_node_click_targets(&node_id, selection_network_path) else {
+						let Some(click_targets) = network_interface.node_click_targets(&node_id, selection_network_path) else {
 							log::error!("Could not get transient metadata for node {node_id}");
 							continue;
 						};
@@ -1422,7 +1422,7 @@ impl NodeGraphMessageHandler {
 			.collect::<Vec<_>>();
 
 		// Connect primary export to root node, since previewing a node will change the primary export
-		if let Some(root_node) = network_interface.get_root_node(breadcrumb_network_path) {
+		if let Some(root_node) = network_interface.root_node(breadcrumb_network_path) {
 			wires.push(FrontendNodeWire {
 				wire_start: OutputConnector::node(root_node.node_id, root_node.output_index),
 				wire_end: InputConnector::Export(0),
@@ -1456,7 +1456,7 @@ impl NodeGraphMessageHandler {
 	}
 
 	fn collect_nodes(&self, network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId]) -> Vec<FrontendNode> {
-		let Some(outward_wires) = network_interface.get_outward_wires(breadcrumb_network_path).cloned() else {
+		let Some(outward_wires) = network_interface.outward_wires(breadcrumb_network_path).cloned() else {
 			return Vec::new();
 		};
 		let mut can_be_layer_lookup = HashSet::new();
@@ -1469,7 +1469,7 @@ impl NodeGraphMessageHandler {
 			if network_interface.is_eligible_to_be_layer(&node_id, breadcrumb_network_path) {
 				can_be_layer_lookup.insert(node_id);
 			}
-			if let Some(position) = network_interface.get_position(&node_id, breadcrumb_network_path) {
+			if let Some(position) = network_interface.position(&node_id, breadcrumb_network_path) {
 				position_lookup.insert(node_id, position);
 			} else {
 				log::error!("Could not get position for node {node_id}");
@@ -1504,12 +1504,12 @@ impl NodeGraphMessageHandler {
 					FrontendGraphDataType::General
 				};
 
-				let input_name = node_metadata.persistent_metadata.input_names.get(index).cloned().unwrap_or(
-					network_interface
-						.get_input_type(&InputConnector::node(node_id, index), breadcrumb_network_path)
-						.nested_type()
-						.to_string(),
-				);
+				let input_name = node_metadata
+					.persistent_metadata
+					.input_names
+					.get(index)
+					.cloned()
+					.unwrap_or(network_interface.input_type(&InputConnector::node(node_id, index), breadcrumb_network_path).nested_type().to_string());
 
 				FrontendGraphInput {
 					data_type: frontend_data_type,
@@ -1598,7 +1598,7 @@ impl NodeGraphMessageHandler {
 				return Vec::new();
 			};
 			let is_export = network.exports.first().is_some_and(|export| export.as_node().is_some_and(|export_node_id| node_id == export_node_id));
-			let is_root_node = network_interface.get_root_node(breadcrumb_network_path).is_some_and(|root_node| root_node.node_id == node_id);
+			let is_root_node = network_interface.root_node(breadcrumb_network_path).is_some_and(|root_node| root_node.node_id == node_id);
 
 			let Some(position) = position_lookup.get(&node_id).map(|pos| (pos.x, pos.y)) else {
 				log::error!("Could not get position for node: {node_id}");
@@ -1624,7 +1624,7 @@ impl NodeGraphMessageHandler {
 			nodes.push(FrontendNode {
 				id: node_id,
 				is_layer: network_interface
-					.get_node_metadata(&node_id, breadcrumb_network_path)
+					.node_metadata(&node_id, breadcrumb_network_path)
 					.is_some_and(|node_metadata| node_metadata.persistent_metadata.is_layer()),
 				can_be_layer: can_be_layer_lookup.contains(&node_id),
 				reference: None,
@@ -1650,7 +1650,7 @@ impl NodeGraphMessageHandler {
 		// Get import/export names from parent node metadata input/outputs, which must match the number of imports/exports.
 		// Empty string or no entry means to use type, or "Import/Export + index" if type can't be determined
 		// TODO: Get number of imports from parent node metadata
-		let (import_names, mut export_names) = if let Some(encapsulating_metadata) = network_interface.get_encapsulating_node_metadata(breadcrumb_network_path) {
+		let (import_names, mut export_names) = if let Some(encapsulating_metadata) = network_interface.encapsulating_node_metadata(breadcrumb_network_path) {
 			// Get all import/export names from encapsulating node metadata
 			(
 				encapsulating_metadata.persistent_metadata.input_names.clone(),
@@ -1688,7 +1688,7 @@ impl NodeGraphMessageHandler {
 			// First import index is visually connected to the root node instead of its actual export input so previewing does not change the connection
 			let connected_to = if index == 0 {
 				network_interface
-					.get_root_node(breadcrumb_network_path)
+					.root_node(breadcrumb_network_path)
 					.map(|root_node| OutputConnector::node(root_node.node_id, root_node.output_index))
 			} else if let NodeInput::Node { node_id, output_index, .. } = export {
 				Some(OutputConnector::node(*node_id, *output_index))
@@ -1739,7 +1739,7 @@ impl NodeGraphMessageHandler {
 				};
 
 				let connected_to = network_interface
-					.get_outward_wires(breadcrumb_network_path)
+					.outward_wires(breadcrumb_network_path)
 					.and_then(|outward_wires| outward_wires.get(&OutputConnector::Import(index)))
 					.cloned()
 					.unwrap_or_else(|| {

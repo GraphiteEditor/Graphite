@@ -708,7 +708,7 @@ impl EditorHandle {
 			if let Some(network) = document_node.implementation.get_network() {
 				let mut nodes_to_upgrade = Vec::new();
 				for (node_id, _) in network.nodes.iter().collect::<Vec<_>>() {
-					if document.network_interface.get_reference(node_id, &[]).is_some_and(|reference| reference == "To Artboard") {
+					if document.network_interface.reference(node_id, &[]).is_some_and(|reference| reference == "To Artboard") {
 						if document
 							.network_interface
 							.network(&[])
@@ -848,7 +848,7 @@ impl EditorHandle {
 					.node_template_input_override([None, Some(NodeInput::value(TaggedValue::VectorModification(modification), false))])
 					.document_node;
 
-				let node_metadata = document.network_interface.get_node_metadata(&node_id, &[]).cloned().unwrap_or_default();
+				let node_metadata = document.network_interface.node_metadata(&node_id, &[]).cloned().unwrap_or_default();
 
 				document.network_interface.insert_node(
 					node_id,
@@ -856,7 +856,7 @@ impl EditorHandle {
 						document_node,
 						persistent_node_metadata: node_metadata.persistent_metadata,
 					},
-					&[]
+					&[],
 				);
 			}
 		}

@@ -513,7 +513,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 					// Upgrade artboard name being passed as hidden value input to "To Artboard"
 					if reference == "Artboard" {
-						let label = document.network_interface.get_display_name(node_id, &[]);
+						let label = document.network_interface.display_name(node_id, &[]);
 						document
 							.network_interface
 							.set_input(&InputConnector::node(NodeId(0), 1), NodeInput::value(TaggedValue::String(label), false), &[*node_id]);

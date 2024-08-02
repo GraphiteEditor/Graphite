@@ -3,7 +3,7 @@
 use super::tool_prelude::*;
 use crate::application::generate_uuid;
 use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
-use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
+use crate::messages::input_mapper::utility_types::input_mouse::{MouseKeys, ViewportPosition};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -471,8 +471,10 @@ impl Fsm for SelectToolFsmState {
 
 					// Update the selection box
 					overlay_context.quad(quad);
-				} else {
+				// Only highlight layers if the viewport is not being panned (middle mouse button is pressed)
+				} else if !input.keyboard.get(Key::Mmb as usize) {
 					// Get the layer the user is hovering over
+					log::debug!("Document click");
 					let click = document.click(input);
 					let not_selected_click = click.filter(|&hovered_layer| !document.network_interface.selected_nodes(&[]).unwrap().selected_layers_contains(hovered_layer, document.metadata()));
 					if let Some(layer) = not_selected_click {
@@ -1181,7 +1183,7 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 
 fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
 	tool_data.layers_dragging.append(&mut vec![document.find_deepest(&selected).unwrap_or(LayerNodeIdentifier::new(
-		document.network_interface.get_root_node(&[]).expect("Root node should exist when dragging layers").node_id,
+		document.network_interface.root_node(&[]).expect("Root node should exist when dragging layers").node_id,
 		&document.network_interface,
 	))]);
 	responses.add(NodeGraphMessage::SelectedNodesSet {

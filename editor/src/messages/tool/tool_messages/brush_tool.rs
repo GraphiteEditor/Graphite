@@ -270,7 +270,7 @@ impl BrushToolData {
 			let Some(node) = document.network_interface.network(&[]).unwrap().nodes.get(&node_id) else {
 				continue;
 			};
-			let Some(reference) = document.network_interface.get_reference(&node_id, &[]) else {
+			let Some(reference) = document.network_interface.reference(&node_id, &[]) else {
 				continue;
 			};
 			if reference == "Brush" && node_id != layer.to_node() {

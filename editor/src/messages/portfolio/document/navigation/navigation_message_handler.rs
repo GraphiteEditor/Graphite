@@ -54,7 +54,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 			if !graph_view_overlay_open {
 				Some(document_ptz)
 			} else {
-				let Some(node_graph_ptz) = network_interface.get_node_graph_ptz_mut(breadcrumb_network_path) else {
+				let Some(node_graph_ptz) = network_interface.node_graph_ptz_mut(breadcrumb_network_path) else {
 					log::error!("Could not get node graph PTZ in NavigationMessageHandler process_message");
 					return None;
 				};

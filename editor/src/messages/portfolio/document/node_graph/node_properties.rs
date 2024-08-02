@@ -2298,7 +2298,7 @@ pub fn index_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 }
 
 pub fn generate_node_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> LayoutGroup {
-	let reference = context.network_interface.get_reference(&node_id, context.selection_network_path).clone();
+	let reference = context.network_interface.reference(&node_id, context.selection_network_path).clone();
 	let layout = if let Some(ref reference) = reference {
 		match super::document_node_types::resolve_document_node_type(reference) {
 			Some(document_node_type) => (document_node_type.properties)(document_node, node_id, context),
