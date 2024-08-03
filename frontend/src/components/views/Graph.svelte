@@ -326,7 +326,7 @@
 			return "Connected to nothing";
 		} else {
 			if ((input.connectedTo as Node).nodeId === undefined) {
-				return `Connected to import index ${input.connectedTo.outputIndex}`;
+				return `Connected to import index ${input.connectedTo.index}`;
 			} else {
 				return `Connected to ${(input.connectedTo as Node).nodeId}, port index ${input.connectedTo.index}`;
 			}
