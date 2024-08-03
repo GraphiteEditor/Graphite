@@ -1313,7 +1313,7 @@ impl DocumentMessageHandler {
 			.filter_map(|node| {
 				let node_metadata = self.node_graph_handler.node_metadata.get(node)?;
 				let node_graph_to_viewport = self.node_graph_to_viewport.get(&self.node_graph_handler.network)?;
-				node_metadata.node_click_target.subpath.bounding_box_with_transform(*node_graph_to_viewport)
+				node_metadata.node_click_target.subpath().bounding_box_with_transform(*node_graph_to_viewport)
 			})
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
 	}

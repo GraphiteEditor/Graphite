@@ -23,8 +23,8 @@ use vello::*;
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ClickTarget {
-	pub subpath: bezier_rs::Subpath<PointId>,
-	pub stroke_width: f64,
+	subpath: bezier_rs::Subpath<PointId>,
+	stroke_width: f64,
 	bounding_box: Option<[DVec2; 2]>,
 }
 
@@ -32,6 +32,10 @@ impl ClickTarget {
 	pub fn new(subpath: bezier_rs::Subpath<PointId>, stroke_width: f64) -> Self {
 		let bounding_box = subpath.loose_bounding_box();
 		Self { subpath, stroke_width, bounding_box }
+	}
+
+	pub fn subpath(&self) -> &bezier_rs::Subpath<PointId> {
+		&self.subpath
 	}
 
 	/// Does the click target intersect the rectangle

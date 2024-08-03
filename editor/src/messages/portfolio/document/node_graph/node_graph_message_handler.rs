@@ -1044,7 +1044,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 								let Some(bounding_box) = self
 									.node_metadata
 									.get(&selected_node_id)
-									.and_then(|node_metadata| node_metadata.node_click_target.subpath.bounding_box())
+									.and_then(|node_metadata| node_metadata.node_click_target.subpath().bounding_box())
 								else {
 									log::error!("Could not get bounding box for node: {selected_node_id}");
 									return;
@@ -1873,7 +1873,7 @@ impl NodeGraphMessageHandler {
 		let bounds = self
 			.node_metadata
 			.iter()
-			.filter_map(|(_, node_metadata)| node_metadata.node_click_target.subpath.bounding_box())
+			.filter_map(|(_, node_metadata)| node_metadata.node_click_target.subpath().bounding_box())
 			.reduce(Quad::combine_bounds);
 		self.bounding_box_subpath = bounds.map(|bounds| bezier_rs::Subpath::new_rect(bounds[0], bounds[1]));
 	}
