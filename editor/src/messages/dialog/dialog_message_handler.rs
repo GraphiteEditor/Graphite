@@ -76,7 +76,7 @@ impl MessageHandler<DialogMessage, DialogMessageData<'_>> for DialogMessageHandl
 						.map(|layer| {
 							let name = document
 								.network_interface
-								.get_node_metadata(&layer.to_node(), &[])
+								.node_metadata(&layer.to_node(), &[])
 								.map(|node| node.persistent_metadata.display_name.clone())
 								.and_then(|name| if name.is_empty() { None } else { Some(name) })
 								.unwrap_or_else(|| "Artboard".to_string());

@@ -1,6 +1,7 @@
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/wasm-communication/editor";
+import type { FrontendGraphOutput, FrontendGraphInput } from "@graphite/wasm-communication/messages";
 import {
 	type Box,
 	type FrontendClickTargets,
@@ -13,6 +14,7 @@ import {
 	UpdateClickTargets,
 	UpdateContextMenuInformation,
 	UpdateInSelectedNetwork,
+	UpdateImportsExports,
 	UpdateLayerWidths,
 	UpdateNodeGraph,
 	UpdateNodeGraphSelection,
@@ -31,6 +33,8 @@ export function createNodeGraphState(editor: Editor) {
 		contextMenuInformation: undefined as ContextMenuInformation | undefined,
 		layerWidths: new Map<bigint, number>(),
 		chainWidths: new Map<bigint, number>(),
+		imports: [] as { outputMetadata: FrontendGraphOutput; position: { x: number; y: number } }[],
+		exports: [] as { inputMetadata: FrontendGraphInput; position: { x: number; y: number } }[],
 		nodes: [] as FrontendNode[],
 		wires: [] as FrontendNodeWire[],
 		wirePathInProgress: undefined as WirePath | undefined,
@@ -58,6 +62,13 @@ export function createNodeGraphState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateContextMenuInformation, (updateContextMenuInformation) => {
 		update((state) => {
 			state.contextMenuInformation = updateContextMenuInformation.contextMenuInformation;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateImportsExports, (updateImportsExports) => {
+		update((state) => {
+			state.imports = updateImportsExports.imports;
+			state.exports = updateImportsExports.exports;
 			return state;
 		});
 	});

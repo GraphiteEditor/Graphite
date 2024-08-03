@@ -1,9 +1,12 @@
-use crate::messages::portfolio::document::{graph_operation::utility_types::ModifyInputsContext, node_graph::utility_types::FrontendClickTargets};
+use crate::messages::portfolio::document::{
+	graph_operation::utility_types::ModifyInputsContext,
+	node_graph::utility_types::{FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput},
+};
 use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::{
 	concrete,
-	document::{value::TaggedValue, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork},
+	document::{value::TaggedValue, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork, Source},
 	Type,
 };
 use graphene_std::{
@@ -269,6 +272,16 @@ impl NodeNetworkInterface {
 		}
 	}
 
+	fn number_of_displayed_imports(&self, network_path: &[NodeId]) -> usize {
+		// TODO: Use network.import_types.len()
+		if let Some(encapsulating_node) = self.encapsulating_node(network_path) {
+			encapsulating_node.inputs.len()
+		} else {
+			// There is one(?) import to the document network, but the imports are not displayed
+			0
+		}
+	}
+
 	fn number_of_inputs(&self, node_id: &NodeId, network_path: &[NodeId]) -> usize {
 		let Some(network) = self.network(network_path) else {
 			log::error!("Could not get network in number_of_input");
@@ -508,6 +521,160 @@ impl NodeNetworkInterface {
 			} else {
 				position
 			}
+		})
+	}
+
+	pub fn frontend_imports(&mut self, network_path: &[NodeId]) -> Option<Vec<(FrontendGraphOutput, i32, i32)>> {
+		self.import_export_ports(network_path).cloned().map(|import_export_ports| {
+			import_export_ports
+				.output_ports
+				.iter()
+				.filter_map(|(import_index, click_target)| {
+					// Get import name from parent node metadata input, which must match the number of imports.
+					// Empty string means to use type, or "Import + index" if type can't be determined
+					let import_name = self
+						.encapsulating_node_metadata(network_path)
+						.and_then(|encapsulating_metadata| encapsulating_metadata.persistent_metadata.input_names.get(*import_index).cloned())
+						.unwrap_or_default();
+
+					let mut import_metadata = None;
+
+					if !network_path.is_empty() {
+						// TODO: https://github.com/GraphiteEditor/Graphite/issues/1767
+						// TODO: Non exposed inputs are not added to the inputs_source_map, fix `pub fn document_node_types(&self) -> ResolvedDocumentNodeTypes`
+						let input_type = self
+							.resolved_types
+							.inputs
+							.get(&Source {
+								node: network_path.to_vec(),
+								index: *import_index,
+							})
+							.cloned();
+
+						let frontend_data_type = if let Some(input_type) = input_type.clone() {
+							FrontendGraphDataType::with_type(&input_type)
+						} else {
+							FrontendGraphDataType::General
+						};
+
+						let import_name = if import_name.is_empty() {
+							input_type
+								.clone()
+								.map(|input_type| TaggedValue::from_type(&input_type).ty().to_string())
+								.unwrap_or(format!("Import {}", import_index + 1))
+						} else {
+							import_name
+						};
+
+						let connected_to = self
+							.outward_wires(network_path)
+							.and_then(|outward_wires| outward_wires.get(&OutputConnector::Import(*import_index)))
+							.cloned()
+							.unwrap_or_else(|| {
+								log::error!("Could not get OutputConnector::Import({import_index}) in outward wires");
+								Vec::new()
+							});
+
+						import_metadata = Some((
+							FrontendGraphOutput {
+								data_type: frontend_data_type,
+								name: import_name,
+								resolved_type: input_type.map(|input| format!("{input:?}")),
+								connected_to,
+							},
+							click_target,
+						));
+					}
+					import_metadata
+				})
+				.filter_map(|(import_index, output_port)| {
+					output_port
+						.bounding_box()
+						.map(|bounding_box| (import_index, (bounding_box[0].x / 24.).ceil() as i32, (bounding_box[0].y / 24.).ceil() as i32))
+				})
+				.collect::<Vec<_>>()
+		})
+	}
+
+	pub fn frontend_exports(&mut self, network_path: &[NodeId]) -> Option<Vec<(FrontendGraphInput, i32, i32)>> {
+		self.import_export_ports(network_path).cloned().map(|import_export_ports| {
+			import_export_ports
+				.input_ports
+				.iter()
+				.filter_map(|(export_index, click_target)| {
+					let Some(network) = self.network(network_path) else {
+						log::error!("Could not get network in frontend_exports");
+						return None;
+					};
+
+					let Some(export) = network.exports.get(*export_index) else {
+						log::error!("Could not get export {export_index} in frontend_exports");
+						return None;
+					};
+
+					let (frontend_data_type, input_type) = if let NodeInput::Node { node_id, output_index, .. } = export {
+						let node = network.nodes.get(node_id).expect("Node should always exist");
+						let node_id_path = &[&network_path[..], &[*node_id]].concat();
+						let output_types = NodeGraphMessageHandler::get_output_types(node, &self.resolved_types, node_id_path);
+
+						if let Some(output_type) = output_types.get(*output_index).cloned().flatten() {
+							(FrontendGraphDataType::with_type(&output_type), Some(output_type.clone()))
+						} else {
+							(FrontendGraphDataType::General, None)
+						}
+					} else if let NodeInput::Value { tagged_value, .. } = export {
+						(FrontendGraphDataType::with_type(&tagged_value.ty()), Some(tagged_value.ty()))
+					// TODO: Get type from parent node input when <https://github.com/GraphiteEditor/Graphite/issues/1762> is possible
+					// else if let NodeInput::Network { import_type, .. } = export {
+					// 	(FrontendGraphDataType::with_type(import_type), Some(import_type.clone()))
+					// }
+					} else {
+						(FrontendGraphDataType::General, None)
+					};
+
+					// First import index is visually connected to the root node instead of its actual export input so previewing does not change the connection
+					let connected_to = if *export_index == 0 {
+						self.root_node(network_path).map(|root_node| OutputConnector::node(root_node.node_id, root_node.output_index))
+					} else if let NodeInput::Node { node_id, output_index, .. } = export {
+						Some(OutputConnector::node(*node_id, *output_index))
+					} else if let NodeInput::Network { import_index, .. } = export {
+						Some(OutputConnector::Import(*import_index))
+					} else {
+						None
+					};
+
+					// Get export name from parent node metadata input, which must match the number of exports.
+					// Empty string means to use type, or "Export + index" if type can't be determined
+					let export_name = self
+						.encapsulating_node_metadata(network_path)
+						.and_then(|encapsulating_metadata| encapsulating_metadata.persistent_metadata.output_names.get(*export_index).cloned())
+						.unwrap_or_default();
+
+					let export_name = if !export_name.is_empty() {
+						export_name
+					} else {
+						input_type
+							.clone()
+							.map(|input_type| TaggedValue::from_type(&input_type).ty().to_string())
+							.unwrap_or(format!("Export {}", export_index + 1))
+					};
+
+					Some((
+						FrontendGraphInput {
+							data_type: frontend_data_type,
+							name: export_name,
+							resolved_type: input_type.map(|input| format!("{input:?}")),
+							connected_to,
+						},
+						click_target,
+					))
+				})
+				.filter_map(|(export_metadata, output_port)| {
+					output_port
+						.bounding_box()
+						.map(|bounding_box| (export_metadata, (bounding_box[0].x / 24.).ceil() as i32, (bounding_box[0].y / 24.).ceil() as i32))
+				})
+				.collect::<Vec<_>>()
 		})
 	}
 
@@ -1023,86 +1190,58 @@ impl NodeNetworkInterface {
 		Some(&mut network_metadata.transient_metadata.selected_nodes)
 	}
 
-	pub fn import_ports(&mut self, network_path: &[NodeId]) -> Option<&Ports> {
+	pub fn import_export_ports(&mut self, network_path: &[NodeId]) -> Option<&Ports> {
 		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in import_ports");
+			log::error!("Could not get nested network_metadata in export_ports");
 			return None;
 		};
-		if !network_metadata.transient_metadata.import_ports.is_loaded() {
-			self.load_import_ports(network_path);
+		if !network_metadata.transient_metadata.import_export_ports.is_loaded() {
+			self.load_import_export_ports(network_path);
 		}
 		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in import_ports");
+			log::error!("Could not get nested network_metadata in export_ports");
 			return None;
 		};
-		let TransientMetadata::Loaded(ports) = &network_metadata.transient_metadata.import_ports else {
+		let TransientMetadata::Loaded(ports) = &network_metadata.transient_metadata.import_export_ports else {
 			log::error!("could not load import ports");
 			return None;
 		};
 		Some(ports)
 	}
 
-	fn load_import_ports(&mut self, network_path: &[NodeId]) {
-		let import_top_left = DVec2::new(0., 0.) * 24.;
-		let mut import_ports = Ports::new();
-		for import_index in 0..self.number_of_imports(network_path) {
-			// Skip first row since the first row is reserved for the "Exports" name
-			import_ports.insert_node_output(import_index, import_index + 1, import_top_left);
-		}
-		// If the network is the document network, then there are no import ports
-		if network_path.is_empty() {
-			import_ports = Ports::new()
-		}
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Could not get nested network_metadata in load_import_node_ports");
+	pub fn load_import_export_ports(&mut self, network_path: &[NodeId]) {
+		//let point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2();
+		let Some(all_nodes_bounding_box) = self.all_nodes_bounding_box(network_path).cloned() else {
+			log::error!("Could not get all nodes bounding box in load_export_ports");
 			return;
 		};
-		network_metadata.transient_metadata.import_ports = TransientMetadata::Loaded(import_ports);
-	}
-
-	pub fn export_ports(&mut self, network_path: &[NodeId]) -> Option<&Ports> {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in export_ports");
-			return None;
-		};
-		if !network_metadata.transient_metadata.export_ports.is_loaded() {
-			self.load_export_ports(network_path);
-		}
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in export_ports");
-			return None;
-		};
-		let TransientMetadata::Loaded(ports) = &network_metadata.transient_metadata.export_ports else {
-			log::error!("could not load import ports");
-			return None;
-		};
-		Some(ports)
-	}
-
-	pub fn load_export_ports(&mut self, network_path: &[NodeId]) {
 		let Some(network) = self.network(network_path) else {
 			log::error!("Could not get current network in load_export_ports");
 			return;
 		};
-		let export_top_left = DVec2::new(10., 0.) * 24.;
-		let mut export_ports = Ports::new();
-		for output_index in 0..network.exports.len() {
-			// Skip first row since the first row is reserved for the "Exports" name
-			export_ports.insert_node_input(output_index, output_index + 1, export_top_left);
+		let mut import_export_ports = Ports::new();
+		let export_top_right = DVec2::new((all_nodes_bounding_box[1].x / 24.).floor() * 24., (all_nodes_bounding_box[0].y / 24.).floor() * 24.) + DVec2::new(4. * 24., -2. * 24.);
+		for input_index in 0..network.exports.len() {
+			import_export_ports.insert_input_port_at_center(input_index, export_top_right + DVec2::new(0., input_index as f64 * 24.));
+		}
+		let import_top_left = DVec2::new((all_nodes_bounding_box[0].x / 24.).floor() * 24., (all_nodes_bounding_box[0].y / 24.).floor() * 24.) + DVec2::new(-4. * 24., 0.);
+		for output_index in 0..self.number_of_displayed_imports(network_path) {
+			import_export_ports.insert_output_port_at_center(output_index, import_top_left + DVec2::new(0., output_index as f64 * 24.));
 		}
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get current network in load_export_ports");
 			return;
 		};
-		network_metadata.transient_metadata.export_ports = TransientMetadata::Loaded(export_ports);
+
+		network_metadata.transient_metadata.import_export_ports = TransientMetadata::Loaded(import_export_ports);
 	}
 
-	fn unload_export_ports(&mut self, network_path: &[NodeId]) {
+	fn unload_import_export_ports(&mut self, network_path: &[NodeId]) {
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in unload_export_ports");
 			return;
 		};
-		network_metadata.transient_metadata.export_ports.unload();
+		network_metadata.transient_metadata.import_export_ports.unload();
 	}
 
 	pub fn all_nodes_bounding_box(&mut self, network_path: &[NodeId]) -> Option<&[DVec2; 2]> {
@@ -1152,6 +1291,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 		network_metadata.transient_metadata.all_nodes_bounding_box.unload();
+		network_metadata.transient_metadata.import_export_ports.unload();
 	}
 
 	pub fn outward_wires(&mut self, network_path: &[NodeId]) -> Option<&HashMap<OutputConnector, Vec<InputConnector>>> {
@@ -1609,12 +1749,12 @@ impl NodeNetworkInterface {
 			return FrontendClickTargets::default();
 		};
 		network_metadata.persistent_metadata.node_metadata.keys().copied().collect::<Vec<_>>().into_iter().for_each(|node_id| {
-			if let Some(node_click_targets) = self.node_click_targets(&node_id, network_path) {
+			if let (Some(import_export_click_targets), Some(node_click_targets)) = (self.import_export_ports(network_path).cloned(), self.node_click_targets(&node_id, network_path)) {
 				let mut node_path = String::new();
 
 				let _ = node_click_targets.node_click_target.get_subpath().subpath_to_svg(&mut node_path, DAffine2::IDENTITY);
 				all_node_click_targets.push((node_id, node_path));
-				for port in node_click_targets.port_click_targets.click_targets() {
+				for port in node_click_targets.port_click_targets.click_targets().chain(import_export_click_targets.click_targets()) {
 					let mut port_path = String::new();
 					let _ = port.get_subpath().subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
 					port_click_targets.push(port_path);
@@ -1787,8 +1927,8 @@ impl NodeNetworkInterface {
 							.map(|port| InputConnector::node(*node_id, port))
 					})
 					.or_else(|| {
-						self.export_ports(network_path)
-							.and_then(|export_ports| export_ports.clicked_input_port_from_point(point).map(|port| InputConnector::Export(port)))
+						self.import_export_ports(network_path)
+							.and_then(|import_export_ports| import_export_ports.clicked_input_port_from_point(point).map(|port| InputConnector::Export(port)))
 					})
 			})
 			.next()
@@ -1817,8 +1957,8 @@ impl NodeNetworkInterface {
 							.map(|output_index| OutputConnector::node(*node_id, output_index))
 					})
 					.or_else(|| {
-						self.export_ports(network_path)
-							.and_then(|export_ports| export_ports.clicked_output_port_from_point(point).map(|output_index| OutputConnector::Import(output_index)))
+						self.import_export_ports(network_path)
+							.and_then(|import_export_ports| import_export_ports.clicked_output_port_from_point(point).map(|output_index| OutputConnector::Import(output_index)))
 					})
 			})
 			.next()
@@ -2037,6 +2177,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 		network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport = transform;
+		self.unload_import_export_ports(network_path);
 	}
 
 	/// Inserts a new export at insert index. If the insert index is -1 it is inserted at the end. The output_name is used by the encapsulating node.
@@ -2070,7 +2211,7 @@ impl NodeNetworkInterface {
 		};
 
 		// Update the export ports and outward wires for the current network
-		self.unload_export_ports(network_path);
+		self.unload_import_export_ports(network_path);
 		self.unload_outward_wires(network_path);
 
 		// Update the outward wires and bounding box for all nodes in the encapsulating network
@@ -2125,7 +2266,7 @@ impl NodeNetworkInterface {
 
 		// Update the internal network import ports and outwards connections (if has a network implementation)
 		if let Some(internal_network) = &mut node_metadata.persistent_metadata.network_metadata {
-			internal_network.transient_metadata.import_ports.unload();
+			internal_network.transient_metadata.import_export_ports.unload();
 			internal_network.transient_metadata.outward_wires.unload();
 		}
 
@@ -3231,12 +3372,12 @@ impl Ports {
 			.chain(self.output_ports.iter().map(|(_, click_target)| click_target))
 	}
 
-	fn insert_input_port_at_center(&mut self, input_index: usize, center: DVec2) {
+	pub fn insert_input_port_at_center(&mut self, input_index: usize, center: DVec2) {
 		let subpath = Subpath::new_ellipse(center - DVec2::new(8., 8.), center + DVec2::new(8., 8.));
 		self.input_ports.push((input_index, ClickTarget::new(subpath, 0.)));
 	}
 
-	fn insert_output_port_at_center(&mut self, output_index: usize, center: DVec2) {
+	pub fn insert_output_port_at_center(&mut self, output_index: usize, center: DVec2) {
 		let subpath = Subpath::new_ellipse(center - DVec2::new(8., 8.), center + DVec2::new(8., 8.));
 		self.output_ports.push((output_index, ClickTarget::new(subpath, 0.)));
 	}
@@ -3403,10 +3544,8 @@ pub struct NodeNetworkTransientMetadata {
 	pub outward_wires: TransientMetadata<HashMap<OutputConnector, Vec<InputConnector>>>,
 	/// TODO: Cache all wire paths instead of calculating in Graph.svelte
 	// pub wire_paths: Vec<WirePath>
-	/// All import connector click targets
-	pub import_ports: TransientMetadata<Ports>,
 	/// All export connector click targets
-	pub export_ports: TransientMetadata<Ports>,
+	pub import_export_ports: TransientMetadata<Ports>,
 }
 
 /// Utility function for providing a default boolean value to serde.

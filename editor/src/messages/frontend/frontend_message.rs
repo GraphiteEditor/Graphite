@@ -1,7 +1,7 @@
 use super::utility_types::{FrontendDocumentDetails, MouseCursorIcon};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
-	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendNode, FrontendNodeType, FrontendNodeWire, Transform, WirePath,
+	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, FrontendNodeWire, Transform, WirePath
 };
 use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer};
 use crate::messages::prelude::*;
@@ -122,6 +122,10 @@ pub enum FrontendMessage {
 	UpdateActiveDocument {
 		#[serde(rename = "documentId")]
 		document_id: DocumentId,
+	},
+	UpdateImportsExports {
+		imports: Vec<(FrontendGraphOutput, i32, i32)>,
+		exports: Vec<(FrontendGraphInput, i32, i32)>,
 	},
 	UpdateInSelectedNetwork {
 		#[serde(rename = "inSelectedNetwork")]

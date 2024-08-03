@@ -11,7 +11,6 @@ use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 
-use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, Source};
 use graph_craft::proto::GraphErrors;
 use graphene_core::*;
@@ -905,7 +904,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					let wires = Self::collect_wires(network_interface, breadcrumb_network_path);
 					let nodes = self.collect_nodes(network_interface, breadcrumb_network_path);
 					let (layer_widths, chain_widths) = network_interface.collect_layer_widths(breadcrumb_network_path);
-
+					let imports = network_interface.frontend_imports(breadcrumb_network_path).unwrap_or_default();
+					let exports = network_interface.frontend_exports(breadcrumb_network_path).unwrap_or_default();
+					responses.add(FrontendMessage::UpdateImportsExports { imports, exports });
 					responses.add(FrontendMessage::UpdateNodeGraph { nodes, wires });
 					responses.add(FrontendMessage::UpdateLayerWidths { layer_widths, chain_widths });
 					responses.add(NodeGraphMessage::SendSelectedNodes);
@@ -1642,119 +1643,6 @@ impl NodeGraphMessageHandler {
 			});
 		}
 
-		let Some(network) = network_interface.network(breadcrumb_network_path) else {
-			log::error!("Could not get nested network when collecting nodes");
-			return Vec::new();
-		};
-
-		// Get import/export names from parent node metadata input/outputs, which must match the number of imports/exports.
-		// Empty string or no entry means to use type, or "Import/Export + index" if type can't be determined
-		// TODO: Get number of imports from parent node metadata
-		let (import_names, mut export_names) = if let Some(encapsulating_metadata) = network_interface.encapsulating_node_metadata(breadcrumb_network_path) {
-			// Get all import/export names from encapsulating node metadata
-			(
-				encapsulating_metadata.persistent_metadata.input_names.clone(),
-				encapsulating_metadata.persistent_metadata.output_names.clone(),
-			)
-		} else {
-			// Document network has no visible imports and a single export which should be the data type
-			(Vec::new(), Vec::new())
-		};
-
-		// TODO: Replace with new UI
-		// Add "Export" UI-only node
-		let mut export_node_inputs = Vec::new();
-		for (index, export) in network.exports.iter().enumerate() {
-			let (frontend_data_type, input_type) = if let NodeInput::Node { node_id, output_index, .. } = export {
-				let node = network.nodes.get(node_id).expect("Node should always exist");
-				let node_id_path = &[&self.network[..], &[*node_id]].concat();
-				let output_types = Self::get_output_types(node, &network_interface.resolved_types, node_id_path);
-
-				if let Some(output_type) = output_types.get(*output_index).cloned().flatten() {
-					(FrontendGraphDataType::with_type(&output_type), Some(output_type.clone()))
-				} else {
-					(FrontendGraphDataType::General, None)
-				}
-			} else if let NodeInput::Value { tagged_value, .. } = export {
-				(FrontendGraphDataType::with_type(&tagged_value.ty()), Some(tagged_value.ty()))
-			// TODO: Get type from parent node input when <https://github.com/GraphiteEditor/Graphite/issues/1762> is possible
-			// else if let NodeInput::Network { import_type, .. } = export {
-			// 	(FrontendGraphDataType::with_type(import_type), Some(import_type.clone()))
-			// }
-			} else {
-				(FrontendGraphDataType::General, None)
-			};
-
-			// First import index is visually connected to the root node instead of its actual export input so previewing does not change the connection
-			let connected_to = if index == 0 {
-				network_interface
-					.root_node(breadcrumb_network_path)
-					.map(|root_node| OutputConnector::node(root_node.node_id, root_node.output_index))
-			} else if let NodeInput::Node { node_id, output_index, .. } = export {
-				Some(OutputConnector::node(*node_id, *output_index))
-			} else if let NodeInput::Network { import_index, .. } = export {
-				Some(OutputConnector::Import(*import_index))
-			} else {
-				None
-			};
-
-			let export_name = export_names.get_mut(index).filter(|export| !export.is_empty()).map(|export| std::mem::take(export)).unwrap_or_else(|| {
-				input_type
-					.clone()
-					.map(|input_type| TaggedValue::from_type(&input_type).ty().to_string())
-					.unwrap_or(format!("Export {}", index + 1))
-			});
-
-			export_node_inputs.push(FrontendGraphInput {
-				data_type: frontend_data_type,
-				name: export_name,
-				resolved_type: input_type.map(|input| format!("{input:?}")),
-				connected_to,
-			});
-		}
-
-		// TODO: Replace with new UI
-		// Add "Import" UI-only node
-		if !breadcrumb_network_path.is_empty() {
-			let mut import_node_outputs = Vec::new();
-			// TODO: Loop of number of import types from the network
-			for (index, import_name) in import_names.into_iter().enumerate() {
-				// TODO: https://github.com/GraphiteEditor/Graphite/issues/1767
-				// TODO: Non exposed inputs are not added to the inputs_source_map, fix `pub fn document_node_types(&self) -> ResolvedDocumentNodeTypes`
-				let input_type = network_interface.resolved_types.inputs.get(&Source { node: self.network.clone(), index }).cloned();
-
-				let frontend_data_type = if let Some(input_type) = input_type.clone() {
-					FrontendGraphDataType::with_type(&input_type)
-				} else {
-					FrontendGraphDataType::General
-				};
-
-				let import_name = if import_name.is_empty() {
-					input_type
-						.clone()
-						.map(|input_type| TaggedValue::from_type(&input_type).ty().to_string())
-						.unwrap_or(format!("Import {}", index + 1))
-				} else {
-					import_name
-				};
-
-				let connected_to = network_interface
-					.outward_wires(breadcrumb_network_path)
-					.and_then(|outward_wires| outward_wires.get(&OutputConnector::Import(index)))
-					.cloned()
-					.unwrap_or_else(|| {
-						log::error!("Could not get OutputConnector::Import({index}) in outward wires");
-						Vec::new()
-					});
-
-				import_node_outputs.push(FrontendGraphOutput {
-					data_type: frontend_data_type,
-					name: import_name,
-					resolved_type: input_type.map(|input| format!("{input:?}")),
-					connected_to,
-				});
-			}
-		}
 		nodes
 	}
 

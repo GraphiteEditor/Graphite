@@ -12,6 +12,36 @@ export class JsMessage {
 }
 
 const TupleToVec2 = Transform(({ value }: { value: [number, number] | undefined }) => (value === undefined ? undefined : { x: value[0], y: value[1] }));
+const ImportsToVec2Array = Transform(({ obj }) => {
+	const imports: { outputMetadata: FrontendGraphOutput; position: XY }[] = [];
+	obj.imports.forEach((value: [FrontendGraphOutput, number, number]) => {
+		const connectedTo = [];
+		value[0].connectedTo.forEach((connector: InputConnector) => {
+			if (connector.export !== undefined) {
+				connector = { index: connector.export.index };
+			} else {
+				connector = { nodeId: connector.node.nodeId, index: connector.node.inputIndex };
+			}
+			connectedTo.push(connector);
+		});
+		value[0].connectedTo = connectedTo;
+		imports.push({ outputMetadata: value[0], position: { x: value[1], y: value[2] } });
+	});
+	return imports;
+});
+const ExportsToVec2Array = Transform(({ obj }) => {
+	const exports: { inputMetadata: FrontendGraphInput; position: XY }[] = [];
+	obj.exports.forEach((value: [FrontendGraphInput, number, number]) => {
+		if (value[0].connectedTo?.import !== undefined) {
+			value[0].connectedTo = { index: value[0].connectedTo?.import.index };
+		} else {
+			value[0].connectedTo = { nodeId: value[0].connectedTo?.node.nodeId, index: value[0].connectedTo?.node.outputIndex };
+		}
+		exports.push({ inputMetadata: value[0], position: { x: value[1], y: value[2] } });
+	});
+	return exports;
+});
+
 // const BigIntTupleToVec2 = Transform(({ value }: { value: [bigint, bigint] | undefined }) => (value === undefined ? undefined : { x: Number(value[0]), y: Number(value[1]) }));
 
 export type XY = { x: number; y: number };
@@ -46,6 +76,14 @@ const ContextTupleToVec2 = Transform((data) => {
 export class UpdateContextMenuInformation extends JsMessage {
 	@ContextTupleToVec2
 	readonly contextMenuInformation!: ContextMenuInformation | undefined;
+}
+
+export class UpdateImportsExports extends JsMessage {
+	@ImportsToVec2Array
+	readonly imports!: { outputMetadata: FrontendGraphOutput; position: XY }[];
+
+	@ExportsToVec2Array
+	readonly exports!: { inputMetadata: FrontendGraphInput; position: XY }[];
 }
 
 export class UpdateInSelectedNetwork extends JsMessage {
@@ -164,9 +202,9 @@ export class Import {
 	readonly index!: bigint;
 }
 
-export type OutputConnector = Node | Export;
+export type OutputConnector = Node | Import;
 
-export type InputConnector = Node | Import;
+export type InputConnector = Node | Export;
 
 const CreateOutputConnectorOptional = Transform(({ obj }) => {
 	if (obj.connectedTo?.export !== undefined) {
@@ -190,7 +228,7 @@ export class FrontendGraphInput {
 	readonly resolvedType!: string | undefined;
 
 	@CreateOutputConnectorOptional
-	readonly connectedTo!: OutputConnector | undefined;
+	connectedTo!: OutputConnector | undefined;
 }
 
 const CreateInputConnectorArray = Transform(({ obj }) => {
@@ -219,7 +257,7 @@ export class FrontendGraphOutput {
 	readonly resolvedType!: string | undefined;
 
 	@CreateInputConnectorArray
-	readonly connectedTo!: InputConnector[];
+	connectedTo!: InputConnector[];
 }
 
 export class FrontendNode {
@@ -1559,6 +1597,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateClickTargets,
 	UpdateContextMenuInformation,
 	UpdateInSelectedNetwork,
+	UpdateImportsExports,
 	UpdateLayerWidths,
 	UpdateDialogButtons,
 	UpdateDialogColumn1,

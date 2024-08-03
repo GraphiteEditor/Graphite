@@ -1081,10 +1081,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						.navigation_handler
 						.calculate_offset_transform(ipp.viewport_bounds.center(), &network_metadata.persistent_metadata.navigation_metadata.node_graph_ptz);
 					self.network_interface.set_transform(transform, &self.breadcrumb_network_path);
+					let imports = self.network_interface.frontend_imports(&self.breadcrumb_network_path).unwrap_or_default();
+					let exports = self.network_interface.frontend_exports(&self.breadcrumb_network_path).unwrap_or_default();
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(DocumentMessage::RenderScrollbars);
 					responses.add(NodeGraphMessage::UpdateEdges);
 					responses.add(NodeGraphMessage::UpdateBoxSelection);
+					responses.add(FrontendMessage::UpdateImportsExports { imports, exports });
 					responses.add(FrontendMessage::UpdateNodeGraphTransform {
 						transform: Transform {
 							scale: transform.matrix2.x_axis.x,

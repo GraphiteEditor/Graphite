@@ -110,9 +110,11 @@
 
 	async function watchNodes(nodes: FrontendNode[]) {
 		nodes.forEach((_, index) => {
-			if (!inputs[index]) inputs[index] = [];
-			if (!outputs[index]) outputs[index] = [];
+			if (!inputs[index + 1]) inputs[index + 1] = [];
+			if (!outputs[index + 1]) outputs[index + 1] = [];
 		});
+		if (!inputs[0]) inputs[0] = [];
+		if (!outputs[0]) outputs[0] = [];
 
 		await refreshWires();
 	}
@@ -120,8 +122,14 @@
 	function resolveWire(wire: FrontendNodeWire): { nodeOutput: SVGSVGElement | undefined; nodeInput: SVGSVGElement | undefined } {
 		const outputIndex = Number(wire.wireStart.index);
 		const inputIndex = Number(wire.wireEnd.index);
-		const nodeOutputConnectors = outputs[$nodeGraph.nodes.findIndex((n) => ((wire.wireStart as Node).nodeId !== undefined ? n.id === (wire.wireStart as Node).nodeId : false))];
-		const nodeInputConnectors = inputs[$nodeGraph.nodes.findIndex((n) => ((wire.wireEnd as Node).nodeId !== undefined ? n.id === (wire.wireEnd as Node).nodeId : false))] || undefined;
+		let nodeOutputConnectors = outputs[$nodeGraph.nodes.findIndex((n) => ((wire.wireStart as Node).nodeId !== undefined ? n.id === (wire.wireStart as Node).nodeId : false)) + 1];
+		if (nodeOutputConnectors === undefined && (wire.wireStart as Node).nodeId === undefined) {
+			nodeOutputConnectors = outputs[0];
+		}
+		let nodeInputConnectors = inputs[$nodeGraph.nodes.findIndex((n) => ((wire.wireEnd as Node).nodeId !== undefined ? n.id === (wire.wireEnd as Node).nodeId : false)) + 1] || undefined;
+		if (nodeInputConnectors === undefined && (wire.wireEnd as Node).nodeId === undefined) {
+			nodeInputConnectors = inputs[0];
+		}
 		const nodeOutput = nodeOutputConnectors?.[outputIndex] as SVGSVGElement | undefined;
 		const nodeInput = nodeInputConnectors?.[inputIndex] as SVGSVGElement | undefined;
 		return { nodeOutput, nodeInput };
@@ -139,7 +147,6 @@
 			const wireEnd =
 				($nodeGraph.nodes.find((n) => ((wire.wireEnd as Node).nodeId !== undefined ? n.id === (wire.wireEnd as Node).nodeId : undefined))?.isLayer && Number(wire.wireEnd.index) === 0) ||
 				false;
-
 			return [createWirePath(nodeOutput, nodeInput.getBoundingClientRect(), wireStart, wireEnd, wire.dashed)];
 		});
 	}
@@ -319,7 +326,7 @@
 			return "Connected to nothing";
 		} else {
 			if ((input.connectedTo as Node).nodeId === undefined) {
-				return `Connected to import index ${input.connectedTo.index}`;
+				return `Connected to import index ${input.connectedTo.outputIndex}`;
 			} else {
 				return `Connected to ${(input.connectedTo as Node).nodeId}, port index ${input.connectedTo.index}`;
 			}
@@ -453,7 +460,53 @@
 			{/each}
 		</svg>
 	</div>
-
+	<!-- Import and Export ports -->
+	<div class="imports-and-exports" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
+		{#each $nodeGraph.imports as { outputMetadata, position }, index}
+			<svg
+				xmlns="http://www.w3.org/2000/svg"
+				viewBox="0 0 8 8"
+				class="port"
+				data-port="output"
+				data-datatype={outputMetadata.dataType}
+				style:--data-color={`var(--color-data-${outputMetadata.dataType.toLowerCase()})`}
+				style:--data-color-dim={`var(--color-data-${outputMetadata.dataType.toLowerCase()}-dim)`}
+				style:--offset-left={position.x || 0}
+				style:--offset-top={position.y || 0}
+				bind:this={outputs[0][index]}
+			>
+				<title>{`${dataTypeTooltip(outputMetadata)}\n${outputConnectedToText(outputMetadata)}`}</title>
+				{#if outputMetadata.connectedTo !== undefined}
+					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+				{:else}
+					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+				{/if}
+			</svg>
+			<p class="import-text" style:--offset-left={position.x || 0} style:--offset-top={position.y || 0}>{outputMetadata.name}</p>
+		{/each}
+		{#each $nodeGraph.exports as { inputMetadata, position }, index}
+			<svg
+				xmlns="http://www.w3.org/2000/svg"
+				viewBox="0 0 8 8"
+				class="port"
+				data-port="input"
+				data-datatype={inputMetadata.dataType}
+				style:--data-color={`var(--color-data-${inputMetadata.dataType.toLowerCase()})`}
+				style:--data-color-dim={`var(--color-data-${inputMetadata.dataType.toLowerCase()}-dim)`}
+				style:--offset-left={position.x || 0}
+				style:--offset-top={position.y || 0}
+				bind:this={inputs[0][index]}
+			>
+				<title>{`${dataTypeTooltip(inputMetadata)}\n${inputConnectedToText(inputMetadata)}`}</title>
+				{#if inputMetadata.connectedTo !== undefined}
+					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+				{:else}
+					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+				{/if}
+			</svg>
+			<p class="export-text" style:--offset-left={position.x || 0} style:--offset-top={position.y || 0}>{inputMetadata.name}</p>
+		{/each}
+	</div>
 	<!-- Layers and nodes -->
 	<div
 		class="layers-and-nodes"
@@ -501,7 +554,7 @@
 							data-datatype={node.primaryOutput.dataType}
 							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
-							bind:this={outputs[nodeIndex][0]}
+							bind:this={outputs[nodeIndex + 1][0]}
 						>
 							<title>{`${dataTypeTooltip(node.primaryOutput)}\n${outputConnectedToText(node.primaryOutput)}`}</title>
 							{#if node.primaryOutput.connectedTo.length > 0}
@@ -523,7 +576,7 @@
 						data-datatype={node.primaryInput?.dataType}
 						style:--data-color={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()}-dim)`}
-						bind:this={inputs[nodeIndex][0]}
+						bind:this={inputs[nodeIndex + 1][0]}
 					>
 						{#if node.primaryInput}
 							<title>{`${dataTypeTooltip(node.primaryInput)}\n${inputConnectedToText(node.primaryInput)}`}</title>
@@ -549,7 +602,7 @@
 							data-datatype={stackDataInput.dataType}
 							style:--data-color={`var(--color-data-${stackDataInput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${stackDataInput.dataType.toLowerCase()}-dim)`}
-							bind:this={inputs[nodeIndex][1]}
+							bind:this={inputs[nodeIndex + 1][1]}
 						>
 							<title>{`${dataTypeTooltip(stackDataInput)}\n${inputConnectedToText(stackDataInput)}`}</title>
 							{#if stackDataInput.connectedTo !== undefined}
@@ -651,7 +704,7 @@
 							data-datatype={node.primaryInput?.dataType}
 							style:--data-color={`var(--color-data-${node.primaryInput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryInput.dataType.toLowerCase()}-dim)`}
-							bind:this={inputs[nodeIndex][0]}
+							bind:this={inputs[nodeIndex + 1][0]}
 						>
 							<title>{`${dataTypeTooltip(node.primaryInput)}\n${inputConnectedToText(node.primaryInput)}`}</title>
 							{#if node.primaryInput.connectedTo !== undefined}
@@ -671,7 +724,7 @@
 								data-datatype={parameter.dataType}
 								style:--data-color={`var(--color-data-${parameter.dataType.toLowerCase()})`}
 								style:--data-color-dim={`var(--color-data-${parameter.dataType.toLowerCase()}-dim)`}
-								bind:this={inputs[nodeIndex][index + (node.primaryInput ? 1 : 0)]}
+								bind:this={inputs[nodeIndex + 1][index + (node.primaryInput ? 1 : 0)]}
 							>
 								<title>{`${dataTypeTooltip(parameter)}\n${inputConnectedToText(parameter)}`}</title>
 								{#if parameter.connectedTo !== undefined}
@@ -694,7 +747,7 @@
 							data-datatype={node.primaryOutput.dataType}
 							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
-							bind:this={outputs[nodeIndex][0]}
+							bind:this={outputs[nodeIndex + 1][0]}
 						>
 							<title>{`${dataTypeTooltip(node.primaryOutput)}\n${outputConnectedToText(node.primaryOutput)}`}</title>
 							{#if node.primaryOutput.connectedTo !== undefined}
@@ -713,7 +766,7 @@
 							data-datatype={parameter.dataType}
 							style:--data-color={`var(--color-data-${parameter.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${parameter.dataType.toLowerCase()}-dim)`}
-							bind:this={outputs[nodeIndex][outputIndex + (node.primaryOutput ? 1 : 0)]}
+							bind:this={outputs[nodeIndex + 1][outputIndex + (node.primaryOutput ? 1 : 0)]}
 						>
 							<title>{`${dataTypeTooltip(parameter)}\n${outputConnectedToText(parameter)}`}</title>
 							{#if parameter.connectedTo !== undefined}
@@ -886,6 +939,7 @@
 				}
 			}
 		}
+
 		.wires {
 			pointer-events: none;
 			position: absolute;
@@ -903,6 +957,40 @@
 					stroke-width: var(--data-line-width);
 					stroke-dasharray: var(--data-dasharray);
 				}
+			}
+		}
+
+		.imports-and-exports {
+			position: absolute;
+			width: 100%;
+			height: 100%;
+
+			.port {
+				position: absolute;
+				width: 8px;
+				height: 8px;
+				margin-top: -4px;
+				margin-left: -3px;
+				top: calc(var(--offset-top) * 24px);
+				left: calc(var(--offset-left) * 24px);
+			}
+
+			.export-text {
+				position: absolute;
+				margin-top: -8px;
+				margin-left: 12px;
+				top: calc(var(--offset-top) * 24px);
+				left: calc(var(--offset-left) * 24px);
+			}
+
+			.import-text {
+				position: absolute;
+				text-align: right;
+				margin-top: -8px;
+				margin-left: -110px;
+				width: 100px;
+				top: calc(var(--offset-top) * 24px);
+				left: calc(var(--offset-left) * 24px);
 			}
 		}
 
