@@ -124,7 +124,6 @@ impl SelectedEdges {
 			let mut best_snap = SnappedPoint::infinite_snap(pivot);
 			let mut best_scale_factor = DVec2::ONE;
 			let tolerance = snapping::snap_tolerance(snap_data.document);
-			let bbox = Rect::point_iter(points.iter().map(|candidate| candidate.document_point));
 			for point in points {
 				let old_position = point.document_point;
 				let bounds_space = bounds_to_doc.inverse().transform_point2(point.document_point);
@@ -136,16 +135,16 @@ impl SelectedEdges {
 						origin: point.document_point,
 						direction: (point.document_point - bounds_to_doc.transform_point2(pivot)).normalize_or_zero(),
 					};
-					manager.constrained_snap(&snap_data, point, constraint, bbox)
+					manager.constrained_snap(&snap_data, point, constraint, None)
 				} else if !(self.top || self.bottom) || !(self.left || self.right) {
 					let axis = if !(self.top || self.bottom) { DVec2::X } else { DVec2::Y };
 					let constraint = SnapConstraint::Line {
 						origin: point.document_point,
 						direction: bounds_to_doc.transform_vector2(axis),
 					};
-					manager.constrained_snap(&snap_data, point, constraint, bbox)
+					manager.constrained_snap(&snap_data, point, constraint, None)
 				} else {
-					manager.free_snap(&snap_data, point, bbox, false)
+					manager.free_snap(&snap_data, point, None, false)
 				};
 				point.document_point = old_position;
 

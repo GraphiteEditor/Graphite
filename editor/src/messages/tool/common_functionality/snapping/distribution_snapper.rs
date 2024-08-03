@@ -53,7 +53,7 @@ impl DistributionSnapper {
 				self.left.push(bounds);
 			}
 		} else if y_bounds.intersects(bounds) {
-			if difference.x > 0. {
+			if difference.y > 0. {
 				self.down.push(bounds);
 			} else {
 				self.up.push(bounds);
@@ -181,7 +181,10 @@ impl DistributionSnapper {
 			}
 		}
 
-		info!("Distribution {:#?} {bounds:?} tolerance {tolerance}", self.right);
+		info!(
+			"Distribution right {:#?} left {:#?} top {:#?} bottom {:#?} {bounds:?} tolerance {tolerance}",
+			self.right, self.left, self.up, self.down
+		);
 
 		let mut snap_x: Option<SnappedPoint> = None;
 		let mut snap_y: Option<SnappedPoint> = None;
@@ -192,7 +195,20 @@ impl DistributionSnapper {
 		info!("Dist results {snap_x:#?} snap y {snap_y:#?}");
 
 		match (snap_x, snap_y) {
-			(Some(x), Some(y)) => unimplemented!(),
+			(Some(x), Some(y)) => {
+				let x_bounds = Rect::from_box(x.source_bounds.unwrap_or_default().bounding_box());
+				let y_bounds = Rect::from_box(y.source_bounds.unwrap_or_default().bounding_box());
+				let final_bounds = Rect::from_box([0, 1].map(|index| DVec2::new(x_bounds[index].x, y_bounds[index].y)));
+
+				let mut final_point = x;
+				final_point.snapped_point_document = final_bounds.center();
+				final_point.source_bounds = Some(final_bounds.into());
+				final_point.target = SnapTarget::Distribution(DistributionSnapTarget::Xy);
+				final_point.distribution_boxes_y = y.distribution_boxes_y;
+				final_point.distribution_equal_distance_y = y.distribution_equal_distance_y;
+				final_point.distance = (final_point.distance * final_point.distance + y.distance * y.distance).sqrt();
+				snap_results.points.push(final_point);
+			}
 			(Some(x), None) => snap_results.points.push(x),
 			(None, Some(y)) => snap_results.points.push(y),
 			(None, None) => {}
@@ -203,30 +219,31 @@ impl DistributionSnapper {
 		// Right
 		if consider_x && !self.right.is_empty() {
 			let (equal_dist, mut vec_right) = Self::top_level_matches(bounds, &self.right, tolerance, dist_right);
-			if let Some(distribution_match) = equal_dist {
-				let translation = bounds.translate(DVec2::X * (distribution_match.first - distribution_match.equal));
-				vec_right.push_front(translation);
+			if let Some(distances) = equal_dist {
+				let translation = DVec2::X * (distances.first - distances.equal);
+				vec_right.push_front(bounds.translate(translation));
 
-				for &left in Self::exact_further_matches(translation, &self.left, dist_left, distribution_match.equal, 2).iter().skip(1) {
+				for &left in Self::exact_further_matches(bounds.translate(translation), &self.left, dist_left, distances.equal, 2).iter().skip(1) {
 					vec_right.push_front(left);
 				}
 
-				*snap_x = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Right, vec_right, distribution_match, translation, tolerance))
+				*snap_x = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Right, vec_right, distances, bounds, translation, tolerance))
 			}
 		}
 
 		// Left
 		if consider_x && !self.left.is_empty() && snap_x.is_none() {
 			let (equal_dist, mut vec_left) = Self::top_level_matches(bounds, &self.left, tolerance, dist_left);
-			if let Some(distribution_match) = equal_dist {
-				let translation = bounds.translate(-DVec2::X * (distribution_match.first - distribution_match.equal));
-				vec_left.push_back(translation);
+			if let Some(distances) = equal_dist {
+				let translation = -DVec2::X * (distances.first - distances.equal);
+				vec_left.make_contiguous().reverse();
+				vec_left.push_back(bounds.translate(translation));
 
-				for &right in Self::exact_further_matches(translation, &self.right, dist_right, distribution_match.equal, 2).iter().skip(1) {
+				for &right in Self::exact_further_matches(bounds.translate(translation), &self.right, dist_right, distances.equal, 2).iter().skip(1) {
 					vec_left.push_back(right);
 				}
 
-				*snap_x = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Left, vec_left, distribution_match, translation, tolerance))
+				*snap_x = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Left, vec_left, distances, bounds, translation, tolerance))
 			}
 		}
 
@@ -237,12 +254,12 @@ impl DistributionSnapper {
 			let offset = target_x - bounds.center().x;
 
 			if offset.abs() < tolerance {
-				let translation = bounds.translate(DVec2::X * offset);
-				let equal = translation.min().x - self.left[0].max().x;
+				let translation = DVec2::X * offset;
+				let equal = bounds.translate(translation).min().x - self.left[0].max().x;
 				let first = equal + offset;
-				let distribution_match = DistributionMatch { first, equal };
-				let boxes = VecDeque::from([self.left[0], translation, self.right[0]]);
-				*snap_x = Some(SnappedPoint::distribute(point, DistributionSnapTarget::X, boxes, distribution_match, translation, tolerance))
+				let distances = DistributionMatch { first, equal };
+				let boxes = VecDeque::from([self.left[0], bounds.translate(translation), self.right[0]]);
+				*snap_x = Some(SnappedPoint::distribute(point, DistributionSnapTarget::X, boxes, distances, bounds, translation, tolerance))
 			}
 		}
 	}
@@ -251,30 +268,31 @@ impl DistributionSnapper {
 		// Down
 		if consider_y && !self.down.is_empty() {
 			let (equal_dist, mut vec_down) = Self::top_level_matches(bounds, &self.down, tolerance, dist_down);
-			if let Some(distribution_match) = equal_dist {
-				let translation = bounds.translate(DVec2::Y * (distribution_match.first - distribution_match.equal));
-				vec_down.push_front(translation);
+			if let Some(distances) = equal_dist {
+				let translation = DVec2::Y * (distances.first - distances.equal);
+				vec_down.push_front(bounds.translate(translation));
 
-				for &up in Self::exact_further_matches(translation, &self.up, dist_up, distribution_match.equal, 2).iter().skip(1) {
+				for &up in Self::exact_further_matches(bounds.translate(translation), &self.up, dist_up, distances.equal, 2).iter().skip(1) {
 					vec_down.push_front(up);
 				}
 
-				*snap_y = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Down, vec_down, distribution_match, translation, tolerance))
+				*snap_y = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Down, vec_down, distances, bounds, translation, tolerance))
 			}
 		}
 
 		// Up
 		if consider_y && !self.up.is_empty() && snap_y.is_none() {
 			let (equal_dist, mut vec_up) = Self::top_level_matches(bounds, &self.up, tolerance, dist_up);
-			if let Some(distribution_match) = equal_dist {
-				let translation = bounds.translate(-DVec2::Y * (distribution_match.first - distribution_match.equal));
-				vec_up.push_back(translation);
+			if let Some(distances) = equal_dist {
+				let translation = -DVec2::Y * (distances.first - distances.equal);
+				vec_up.make_contiguous().reverse();
+				vec_up.push_back(bounds.translate(translation));
 
-				for &down in Self::exact_further_matches(translation, &self.down, dist_down, distribution_match.equal, 2).iter().skip(1) {
+				for &down in Self::exact_further_matches(bounds.translate(translation), &self.down, dist_down, distances.equal, 2).iter().skip(1) {
 					vec_up.push_back(down);
 				}
 
-				*snap_y = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Up, vec_up, distribution_match, translation, tolerance))
+				*snap_y = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Up, vec_up, distances, bounds, translation, tolerance))
 			}
 		}
 
@@ -285,12 +303,12 @@ impl DistributionSnapper {
 			let offset = target_y - bounds.center().y;
 
 			if offset.abs() < tolerance {
-				let translation = bounds.translate(DVec2::Y * offset);
-				let equal = translation.min().y - self.up[0].max().y;
+				let translation = DVec2::Y * offset;
+				let equal = bounds.translate(translation).min().y - self.up[0].max().y;
 				let first = equal + offset;
-				let distribution_match = DistributionMatch { first, equal };
-				let boxes = VecDeque::from([self.up[0], translation, self.down[0]]);
-				*snap_y = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Y, boxes, distribution_match, translation, tolerance))
+				let distances = DistributionMatch { first, equal };
+				let boxes = VecDeque::from([self.up[0], bounds.translate(translation), self.down[0]]);
+				*snap_y = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Y, boxes, distances, bounds, translation, tolerance))
 			}
 		}
 	}
@@ -370,6 +388,13 @@ fn dist_withnonsense() {
 	assert_eq!(rects.len(), 2);
 }
 
+#[cfg(test)]
+fn assert_boxes_in_order(rects: &VecDeque<Rect>, index: usize) {
+	for (&first, &second) in rects.iter().zip(rects.iter().skip(1)) {
+		assert!(first.max()[index] < second.min()[index], "{first:?} {second:?} {index}")
+	}
+}
+
 #[test]
 fn dist_snap_point_right() {
 	let mut dist_snapper = DistributionSnapper::default();
@@ -380,9 +405,10 @@ fn dist_snap_point_right() {
 	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);
 	assert_eq!(snap_results.points.len(), 1);
 	assert_eq!(snap_results.points[0].distance, 0.5);
-	assert_eq!(snap_results.points[0].distribution_equal_distance, Some(6.));
-	assert_eq!(snap_results.points[0].distribution_boxes.len(), 3);
-	assert_eq!(snap_results.points[0].distribution_boxes[0], Rect::from_square(DVec2::new(0., 0.), 2.));
+	assert_eq!(snap_results.points[0].distribution_equal_distance_x, Some(6.));
+	assert_eq!(snap_results.points[0].distribution_boxes_x.len(), 3);
+	assert_eq!(snap_results.points[0].distribution_boxes_x[0], Rect::from_square(DVec2::new(0., 0.), 2.));
+	assert_boxes_in_order(&snap_results.points[0].distribution_boxes_x, 0);
 }
 
 #[test]
@@ -395,10 +421,11 @@ fn dist_snap_point_right_left() {
 	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);
 	assert_eq!(snap_results.points.len(), 1);
 	assert_eq!(snap_results.points[0].distance, 0.5);
-	assert_eq!(snap_results.points[0].distribution_equal_distance, Some(6.));
-	assert_eq!(snap_results.points[0].distribution_boxes.len(), 5);
-	assert_eq!(snap_results.points[0].distribution_boxes[1], Rect::from_square(DVec2::new(-10., 0.), 2.));
-	assert_eq!(snap_results.points[0].distribution_boxes[2], Rect::from_square(DVec2::new(0., 0.), 2.));
+	assert_eq!(snap_results.points[0].distribution_equal_distance_x, Some(6.));
+	assert_eq!(snap_results.points[0].distribution_boxes_x.len(), 5);
+	assert_eq!(snap_results.points[0].distribution_boxes_x[1], Rect::from_square(DVec2::new(-10., 0.), 2.));
+	assert_eq!(snap_results.points[0].distribution_boxes_x[2], Rect::from_square(DVec2::new(0., 0.), 2.));
+	assert_boxes_in_order(&snap_results.points[0].distribution_boxes_x, 0);
 }
 
 #[test]
@@ -410,9 +437,10 @@ fn dist_snap_point_left() {
 	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);
 	assert_eq!(snap_results.points.len(), 1);
 	assert_eq!(snap_results.points[0].distance, 0.5);
-	assert_eq!(snap_results.points[0].distribution_equal_distance, Some(6.));
-	assert_eq!(snap_results.points[0].distribution_boxes.len(), 3);
-	assert_eq!(snap_results.points[0].distribution_boxes[2], Rect::from_square(DVec2::new(0., 0.), 2.));
+	assert_eq!(snap_results.points[0].distribution_equal_distance_x, Some(6.));
+	assert_eq!(snap_results.points[0].distribution_boxes_x.len(), 3);
+	assert_eq!(snap_results.points[0].distribution_boxes_x[2], Rect::from_square(DVec2::new(0., 0.), 2.));
+	assert_boxes_in_order(&snap_results.points[0].distribution_boxes_x, 0);
 }
 
 #[test]
@@ -425,9 +453,10 @@ fn dist_snap_point_left_right() {
 	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);
 	assert_eq!(snap_results.points.len(), 1);
 	assert_eq!(snap_results.points[0].distance, 0.5);
-	assert_eq!(snap_results.points[0].distribution_equal_distance, Some(6.));
-	assert_eq!(snap_results.points[0].distribution_boxes.len(), 4);
-	assert_eq!(snap_results.points[0].distribution_boxes[2], Rect::from_square(DVec2::new(0., 0.), 2.));
+	assert_eq!(snap_results.points[0].distribution_equal_distance_x, Some(6.));
+	assert_eq!(snap_results.points[0].distribution_boxes_x.len(), 4);
+	assert_eq!(snap_results.points[0].distribution_boxes_x[2], Rect::from_square(DVec2::new(0., 0.), 2.));
+	assert_boxes_in_order(&snap_results.points[0].distribution_boxes_x, 0);
 }
 
 #[test]
@@ -440,9 +469,10 @@ fn dist_snap_point_centre_x() {
 	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);
 	assert_eq!(snap_results.points.len(), 1);
 	assert_eq!(snap_results.points[0].distance, 0.5);
-	assert_eq!(snap_results.points[0].distribution_equal_distance, Some(6.));
-	assert_eq!(snap_results.points[0].distribution_boxes.len(), 3);
-	assert_eq!(snap_results.points[0].distribution_boxes[1], Rect::from_square(DVec2::new(0., 0.), 2.));
+	assert_eq!(snap_results.points[0].distribution_equal_distance_x, Some(6.));
+	assert_eq!(snap_results.points[0].distribution_boxes_x.len(), 3);
+	assert_eq!(snap_results.points[0].distribution_boxes_x[1], Rect::from_square(DVec2::new(0., 0.), 2.));
+	assert_boxes_in_order(&snap_results.points[0].distribution_boxes_x, 0);
 }
 
 // ----------------------------------
@@ -457,9 +487,10 @@ fn dist_snap_point_down() {
 	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);
 	assert_eq!(snap_results.points.len(), 1);
 	assert_eq!(snap_results.points[0].distance, 0.5);
-	assert_eq!(snap_results.points[0].distribution_equal_distance, Some(6.));
-	assert_eq!(snap_results.points[0].distribution_boxes.len(), 3);
-	assert_eq!(snap_results.points[0].distribution_boxes[0], Rect::from_square(DVec2::new(0., 0.), 2.));
+	assert_eq!(snap_results.points[0].distribution_equal_distance_y, Some(6.));
+	assert_eq!(snap_results.points[0].distribution_boxes_y.len(), 3);
+	assert_eq!(snap_results.points[0].distribution_boxes_y[0], Rect::from_square(DVec2::new(0., 0.), 2.));
+	assert_boxes_in_order(&snap_results.points[0].distribution_boxes_y, 1);
 }
 
 #[test]
@@ -472,10 +503,11 @@ fn dist_snap_point_down_up() {
 	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);
 	assert_eq!(snap_results.points.len(), 1);
 	assert_eq!(snap_results.points[0].distance, 0.5);
-	assert_eq!(snap_results.points[0].distribution_equal_distance, Some(6.));
-	assert_eq!(snap_results.points[0].distribution_boxes.len(), 5);
-	assert_eq!(snap_results.points[0].distribution_boxes[1], Rect::from_square(DVec2::new(0., -10.), 2.));
-	assert_eq!(snap_results.points[0].distribution_boxes[2], Rect::from_square(DVec2::new(0., 0.), 2.));
+	assert_eq!(snap_results.points[0].distribution_equal_distance_y, Some(6.));
+	assert_eq!(snap_results.points[0].distribution_boxes_y.len(), 5);
+	assert_eq!(snap_results.points[0].distribution_boxes_y[1], Rect::from_square(DVec2::new(0., -10.), 2.));
+	assert_eq!(snap_results.points[0].distribution_boxes_y[2], Rect::from_square(DVec2::new(0., 0.), 2.));
+	assert_boxes_in_order(&snap_results.points[0].distribution_boxes_y, 1);
 }
 
 #[test]
@@ -487,9 +519,10 @@ fn dist_snap_point_up() {
 	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);
 	assert_eq!(snap_results.points.len(), 1);
 	assert_eq!(snap_results.points[0].distance, 0.5);
-	assert_eq!(snap_results.points[0].distribution_equal_distance, Some(6.));
-	assert_eq!(snap_results.points[0].distribution_boxes.len(), 3);
-	assert_eq!(snap_results.points[0].distribution_boxes[2], Rect::from_square(DVec2::new(0., 0.), 2.));
+	assert_eq!(snap_results.points[0].distribution_equal_distance_y, Some(6.));
+	assert_eq!(snap_results.points[0].distribution_boxes_y.len(), 3);
+	assert_eq!(snap_results.points[0].distribution_boxes_y[2], Rect::from_square(DVec2::new(0., 0.), 2.));
+	assert_boxes_in_order(&snap_results.points[0].distribution_boxes_y, 1);
 }
 
 #[test]
@@ -502,9 +535,10 @@ fn dist_snap_point_up_down() {
 	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);
 	assert_eq!(snap_results.points.len(), 1);
 	assert_eq!(snap_results.points[0].distance, 0.5);
-	assert_eq!(snap_results.points[0].distribution_equal_distance, Some(6.));
-	assert_eq!(snap_results.points[0].distribution_boxes.len(), 4);
-	assert_eq!(snap_results.points[0].distribution_boxes[2], Rect::from_square(DVec2::new(0., 0.), 2.));
+	assert_eq!(snap_results.points[0].distribution_equal_distance_y, Some(6.));
+	assert_eq!(snap_results.points[0].distribution_boxes_y.len(), 4);
+	assert_eq!(snap_results.points[0].distribution_boxes_y[2], Rect::from_square(DVec2::new(0., 0.), 2.));
+	assert_boxes_in_order(&snap_results.points[0].distribution_boxes_y, 1);
 }
 
 #[test]
@@ -517,7 +551,29 @@ fn dist_snap_point_centre_y() {
 	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);
 	assert_eq!(snap_results.points.len(), 1);
 	assert_eq!(snap_results.points[0].distance, 0.5);
-	assert_eq!(snap_results.points[0].distribution_equal_distance, Some(6.));
-	assert_eq!(snap_results.points[0].distribution_boxes.len(), 3);
-	assert_eq!(snap_results.points[0].distribution_boxes[1], Rect::from_square(DVec2::new(0., 0.), 2.));
+	assert_eq!(snap_results.points[0].distribution_equal_distance_y, Some(6.));
+	assert_eq!(snap_results.points[0].distribution_boxes_y.len(), 3);
+	assert_eq!(snap_results.points[0].distribution_boxes_y[1], Rect::from_square(DVec2::new(0., 0.), 2.));
+	assert_boxes_in_order(&snap_results.points[0].distribution_boxes_y, 1);
+}
+
+#[test]
+fn dist_snap_point_centre_xy() {
+	let mut dist_snapper = DistributionSnapper::default();
+	dist_snapper.up = [-10., -15.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec();
+	dist_snapper.down = [10., 15.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec();
+	dist_snapper.left = [-12., -15.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec();
+	dist_snapper.right = [12., 15.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec();
+	let source = Rect::from_square(DVec2::new(0.3, 0.4), 2.);
+	let snap_results = &mut SnapResults::default();
+	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);
+	assert_eq!(snap_results.points.len(), 1);
+	assert_eq!(snap_results.points[0].distance, 0.5000000000000001);
+	assert_eq!(snap_results.points[0].distribution_equal_distance_x, Some(8.));
+	assert_eq!(snap_results.points[0].distribution_equal_distance_y, Some(6.));
+	assert_eq!(snap_results.points[0].distribution_boxes_x.len(), 3);
+	assert_eq!(snap_results.points[0].distribution_boxes_y.len(), 3);
+	assert_eq!(Rect::from_box(snap_results.points[0].source_bounds.unwrap().bounding_box()), Rect::from_square(DVec2::new(0., 0.), 2.));
+	assert_boxes_in_order(&snap_results.points[0].distribution_boxes_x, 0);
+	assert_boxes_in_order(&snap_results.points[0].distribution_boxes_y, 1);
 }

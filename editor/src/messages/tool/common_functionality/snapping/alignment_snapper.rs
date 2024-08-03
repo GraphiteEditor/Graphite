@@ -107,7 +107,6 @@ impl AlignmentSnapper {
 				});
 			}
 		}
-		info!("Snap x {snap_x:?} snap y {snap_y:?}");
 		match (snap_x, snap_y) {
 			(Some(snap_x), Some(snap_y)) => {
 				let intersection = DVec2::new(snap_y.snapped_point_document.x, snap_x.snapped_point_document.y);
@@ -138,10 +137,8 @@ impl AlignmentSnapper {
 		let is_bbox = matches!(point.source, SnapSource::BoundingBox(_));
 		let is_geometry = matches!(point.source, SnapSource::Geometry(_));
 		let gemoetry_selected = !snap_data.manipulators.is_empty();
-		info!("src {:?}", point.source);
 
 		if is_bbox || (is_geometry && gemoetry_selected) || (is_geometry && point.alignment) {
-			info!("Snapping points");
 			self.snap_bbox_points(snap_data, point, snap_results, SnapConstraint::None);
 		}
 	}

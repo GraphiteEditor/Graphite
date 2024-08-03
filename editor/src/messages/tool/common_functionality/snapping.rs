@@ -366,6 +366,40 @@ impl SnapManager {
 		Self::find_best_snap(&mut snap_data, point, snap_results, true, false, false)
 	}
 
+	fn alignment_x_overlay(boxes: &VecDeque<Rect>, transform: DAffine2, overlay_context: &mut OverlayContext) {
+		let y_size = transform.inverse().transform_vector2(DVec2::Y * 8.).length();
+		for (&first, &second) in boxes.iter().zip(boxes.iter().skip(1)) {
+			let bottom = first.center().y < second.center().y + y_size;
+			let y = if bottom { first.max() } else { first.min() }.y;
+			let start = DVec2::new(first.max().x, y);
+			let end = DVec2::new(second.min().x, y);
+			let signed_size = if bottom { y_size } else { -y_size };
+			overlay_context.line(transform.transform_point2(start), transform.transform_point2(start + DVec2::Y * signed_size));
+			overlay_context.line(transform.transform_point2(end), transform.transform_point2(end + DVec2::Y * signed_size));
+			overlay_context.line(
+				transform.transform_point2(start + DVec2::Y * signed_size / 2.),
+				transform.transform_point2(end + DVec2::Y * signed_size / 2.),
+			);
+		}
+	}
+
+	fn alignment_y_overlay(boxes: &VecDeque<Rect>, transform: DAffine2, overlay_context: &mut OverlayContext) {
+		let x_size = transform.inverse().transform_vector2(DVec2::X * 8.).length();
+		for (&first, &second) in boxes.iter().zip(boxes.iter().skip(1)) {
+			let right = first.center().x < second.center().x + x_size;
+			let x = if right { first.max() } else { first.min() }.x;
+			let start = DVec2::new(x, first.max().y);
+			let end = DVec2::new(x, second.min().y);
+			let signed_size = if right { x_size } else { -x_size };
+			overlay_context.line(transform.transform_point2(start), transform.transform_point2(start + DVec2::X * signed_size));
+			overlay_context.line(transform.transform_point2(end), transform.transform_point2(end + DVec2::X * signed_size));
+			overlay_context.line(
+				transform.transform_point2(start + DVec2::X * signed_size / 2.),
+				transform.transform_point2(end + DVec2::X * signed_size / 2.),
+			);
+		}
+	}
+
 	pub fn draw_overlays(&mut self, snap_data: SnapData, overlay_context: &mut OverlayContext) {
 		let to_viewport = snap_data.document.metadata.document_to_viewport;
 		if let Some(ind) = &self.indicator {
@@ -378,6 +412,9 @@ impl SnapManager {
 			}
 			let viewport = to_viewport.transform_point2(ind.snapped_point_document);
 
+			Self::alignment_x_overlay(&ind.distribution_boxes_x, to_viewport, overlay_context);
+			Self::alignment_y_overlay(&ind.distribution_boxes_y, to_viewport, overlay_context);
+
 			if let Some(alignment_target) = ind.alignment_target {
 				let alignment_target = to_viewport.transform_point2(alignment_target);
 
@@ -389,7 +426,9 @@ impl SnapManager {
 				}
 				overlay_context.manipulator_handle(viewport, false);
 				overlay_context.manipulator_handle(alignment_target, false);
-			} else {
+			}
+
+			if ind.alignment_target.is_none() && ind.distribution_equal_distance_x.is_none() && ind.distribution_equal_distance_y.is_none() {
 				overlay_context.text(&format!("{:?} to {:?}", ind.source, ind.target), viewport - DVec2::new(0., 5.), "rgba(0, 0, 0, 0.8)", 3.);
 				overlay_context.square(viewport, Some(4.), Some(COLOR_OVERLAY_BLUE), Some(COLOR_OVERLAY_BLUE));
 			}

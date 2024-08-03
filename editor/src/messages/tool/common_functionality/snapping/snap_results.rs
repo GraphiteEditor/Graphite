@@ -30,8 +30,10 @@ pub struct SnappedPoint {
 	pub curves: [Option<Bezier>; 2],
 	pub distance: f64,
 	pub tolerance: f64,
-	pub distribution_boxes: VecDeque<Rect>,
-	pub distribution_equal_distance: Option<f64>,
+	pub distribution_boxes_x: VecDeque<Rect>,
+	pub distribution_equal_distance_x: Option<f64>,
+	pub distribution_boxes_y: VecDeque<Rect>,
+	pub distribution_equal_distance_y: Option<f64>,
 	pub distance_to_align_target: f64, // If aligning so that the top is aligned but the X pos is 200 from the target, this is 200.
 	pub alignment_target: Option<DVec2>,
 	pub alignment_target_intersect: Option<DVec2>,
@@ -54,16 +56,21 @@ impl SnappedPoint {
 			..Default::default()
 		}
 	}
-	pub fn distribute(point: &SnapCandidatePoint, target: DistributionSnapTarget, distribution_boxes: VecDeque<Rect>, distribution_match: DistributionMatch, bounds: Rect, tolerance: f64) -> Self {
+	pub fn distribute(point: &SnapCandidatePoint, target: DistributionSnapTarget, boxes: VecDeque<Rect>, distances: DistributionMatch, bounds: Rect, translation: DVec2, tolerance: f64) -> Self {
+		let is_x = matches!(target, DistributionSnapTarget::Left | DistributionSnapTarget::Right | DistributionSnapTarget::X);
+
+		let [distribution_boxes_x, distribution_boxes_y] = if is_x { [boxes, Default::default()] } else { [Default::default(), boxes] };
 		Self {
-			snapped_point_document: bounds.center(),
+			snapped_point_document: point.document_point + translation,
 			source: point.source,
 			target: SnapTarget::Distribution(target),
-			distribution_boxes,
-			distribution_equal_distance: Some(distribution_match.equal),
-			distance: (distribution_match.first - distribution_match.equal).abs(),
+			distribution_boxes_x,
+			distribution_equal_distance_x: is_x.then_some(distances.equal),
+			distribution_boxes_y,
+			distribution_equal_distance_y: (!is_x).then_some(distances.equal),
+			distance: (distances.first - distances.equal).abs(),
 			constrained: true,
-			source_bounds: Some(bounds.into()),
+			source_bounds: Some(bounds.translate(translation).into()),
 			tolerance,
 			..Default::default()
 		}
