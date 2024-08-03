@@ -651,10 +651,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						DVec2::new(context_menu_viewport.x + width, context_menu_viewport.y + height),
 						[5.; 4],
 					);
-					let context_menu_click_target = ClickTarget {
-						subpath: context_menu_subpath,
-						stroke_width: 1.,
-					};
+					let context_menu_click_target = ClickTarget::new(context_menu_subpath, 1.);
 					if context_menu_click_target.intersect_point(viewport_location, DAffine2::IDENTITY) {
 						return;
 					}
@@ -1047,7 +1044,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 								let Some(bounding_box) = self
 									.node_metadata
 									.get(&selected_node_id)
-									.and_then(|node_metadata| node_metadata.node_click_target.subpath.bounding_box())
+									.and_then(|node_metadata| node_metadata.node_click_target.subpath().bounding_box())
 								else {
 									log::error!("Could not get bounding box for node: {selected_node_id}");
 									return;
@@ -1692,7 +1689,7 @@ impl NodeGraphMessageHandler {
 
 			let subpath = bezier_rs::Subpath::new_rounded_rect(click_target_corner_1, corner2, [radius; 4]);
 			let stroke_width = 1.;
-			let node_click_target = ClickTarget { subpath, stroke_width };
+			let node_click_target = ClickTarget::new(subpath, stroke_width);
 
 			// Create input/output click targets
 			let mut input_click_targets = Vec::new();
@@ -1722,7 +1719,7 @@ impl NodeGraphMessageHandler {
 						input_top_left + corner1 + DVec2::new(0., node_row_index as f64 * 24.),
 						input_bottom_right + corner1 + DVec2::new(0., node_row_index as f64 * 24.),
 					);
-					let input_click_target = ClickTarget { subpath, stroke_width };
+					let input_click_target = ClickTarget::new(subpath, stroke_width);
 					input_click_targets.push(input_click_target);
 				}
 
@@ -1732,7 +1729,7 @@ impl NodeGraphMessageHandler {
 						input_top_left + node_top_right + DVec2::new(0., node_row_index as f64 * 24.),
 						input_bottom_right + node_top_right + DVec2::new(0., node_row_index as f64 * 24.),
 					);
-					let output_click_target = ClickTarget { subpath, stroke_width };
+					let output_click_target = ClickTarget::new(subpath, stroke_width);
 					output_click_targets.push(output_click_target);
 				}
 			} else {
@@ -1742,14 +1739,14 @@ impl NodeGraphMessageHandler {
 
 				let stroke_width = 1.;
 				let subpath = Subpath::new_ellipse(input_top_left + layer_input_offset, input_bottom_right + layer_input_offset);
-				let layer_input_click_target = ClickTarget { subpath, stroke_width };
+				let layer_input_click_target = ClickTarget::new(subpath, stroke_width);
 				input_click_targets.push(layer_input_click_target);
 
 				if node.inputs.iter().filter(|input| input.is_exposed()).count() > 1 {
 					let layer_input_offset = corner1 + DVec2::new(0., 24.);
 					let stroke_width = 1.;
 					let subpath = Subpath::new_ellipse(input_top_left + layer_input_offset, input_bottom_right + layer_input_offset);
-					let input_click_target = ClickTarget { subpath, stroke_width };
+					let input_click_target = ClickTarget::new(subpath, stroke_width);
 					input_click_targets.push(input_click_target);
 				}
 
@@ -1757,14 +1754,14 @@ impl NodeGraphMessageHandler {
 				let layer_output_offset = corner1 + DVec2::new(2. * 24., -8.);
 				let stroke_width = 1.;
 				let subpath = Subpath::new_ellipse(input_top_left + layer_output_offset, input_bottom_right + layer_output_offset);
-				let layer_output_click_target = ClickTarget { subpath, stroke_width };
+				let layer_output_click_target = ClickTarget::new(subpath, stroke_width);
 				output_click_targets.push(layer_output_click_target);
 
 				// Update visibility button click target
 				let visibility_offset = corner1 + DVec2::new(width as f64, 24.);
 				let subpath = Subpath::new_rounded_rect(DVec2::new(-12., -12.) + visibility_offset, DVec2::new(12., 12.) + visibility_offset, [3.; 4]);
 				let stroke_width = 1.;
-				let layer_visibility_click_target = ClickTarget { subpath, stroke_width };
+				let layer_visibility_click_target = ClickTarget::new(subpath, stroke_width);
 				visibility_click_target = Some(layer_visibility_click_target);
 			}
 			let node_metadata = NodeMetadata {
@@ -1785,7 +1782,7 @@ impl NodeGraphMessageHandler {
 			let radius = 3.;
 			let subpath = bezier_rs::Subpath::new_rounded_rect(corner1.into(), corner2.into(), [radius; 4]);
 			let stroke_width = 1.;
-			let node_click_target = ClickTarget { subpath, stroke_width };
+			let node_click_target = ClickTarget::new(subpath, stroke_width);
 
 			let node_top_left = network.exports_metadata.1 * grid_size as i32;
 			let mut node_top_left = DVec2::new(node_top_left.x as f64, node_top_left.y as f64);
@@ -1802,7 +1799,7 @@ impl NodeGraphMessageHandler {
 			for _ in 0..network.exports.len() {
 				let stroke_width = 1.;
 				let subpath = Subpath::new_ellipse(input_top_left + node_top_left, input_bottom_right + node_top_left);
-				let top_left_input = ClickTarget { subpath, stroke_width };
+				let top_left_input = ClickTarget::new(subpath, stroke_width);
 				input_click_targets.push(top_left_input);
 
 				node_top_left += 24.;
@@ -1840,7 +1837,7 @@ impl NodeGraphMessageHandler {
 				let radius = 3.;
 				let subpath = bezier_rs::Subpath::new_rounded_rect(corner1.into(), corner2.into(), [radius; 4]);
 				let stroke_width = 1.;
-				let node_click_target = ClickTarget { subpath, stroke_width };
+				let node_click_target = ClickTarget::new(subpath, stroke_width);
 
 				let node_top_right = network.imports_metadata.1 * grid_size as i32;
 				let mut node_top_right = DVec2::new(node_top_right.x as f64 + width as f64, node_top_right.y as f64);
@@ -1856,7 +1853,7 @@ impl NodeGraphMessageHandler {
 				for _ in 0..import_count {
 					let stroke_width = 1.;
 					let subpath = Subpath::new_ellipse(input_top_left + node_top_right, input_bottom_right + node_top_right);
-					let top_left_input = ClickTarget { subpath, stroke_width };
+					let top_left_input = ClickTarget::new(subpath, stroke_width);
 					output_click_targets.push(top_left_input);
 
 					node_top_right.y += 24.;
@@ -1876,7 +1873,7 @@ impl NodeGraphMessageHandler {
 		let bounds = self
 			.node_metadata
 			.iter()
-			.filter_map(|(_, node_metadata)| node_metadata.node_click_target.subpath.bounding_box())
+			.filter_map(|(_, node_metadata)| node_metadata.node_click_target.subpath().bounding_box())
 			.reduce(Quad::combine_bounds);
 		self.bounding_box_subpath = bounds.map(|bounds| bezier_rs::Subpath::new_rect(bounds[0], bounds[1]));
 	}
