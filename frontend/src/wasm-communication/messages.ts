@@ -14,30 +14,23 @@ export class JsMessage {
 const TupleToVec2 = Transform(({ value }: { value: [number, number] | undefined }) => (value === undefined ? undefined : { x: value[0], y: value[1] }));
 const ImportsToVec2Array = Transform(({ obj }) => {
 	const imports: { outputMetadata: FrontendGraphOutput; position: XY }[] = [];
-	obj.imports.forEach((value: [FrontendGraphOutput, number, number]) => {
-		const connectedTo = [];
-		value[0].connectedTo.forEach((connector: InputConnector) => {
-			if (connector.export !== undefined) {
-				connector = { index: connector.export.index };
-			} else {
-				connector = { nodeId: connector.node.nodeId, index: connector.node.inputIndex };
-			}
-			connectedTo.push(connector);
+	obj.imports.forEach(([outputMetadata, x, y]: [FrontendGraphOutput, number, number]) => {
+		outputMetadata.connectedTo = outputMetadata.connectedTo.map((connector: any) => {
+			if (connector.export !== undefined) return { index: connector.export.index };
+			return { nodeId: connector.node.nodeId, index: connector.node.inputIndex };
 		});
-		value[0].connectedTo = connectedTo;
-		imports.push({ outputMetadata: value[0], position: { x: value[1], y: value[2] } });
+		imports.push({ outputMetadata, position: { x, y } });
 	});
 	return imports;
 });
 const ExportsToVec2Array = Transform(({ obj }) => {
 	const exports: { inputMetadata: FrontendGraphInput; position: XY }[] = [];
-	obj.exports.forEach((value: [FrontendGraphInput, number, number]) => {
-		if (value[0].connectedTo?.import !== undefined) {
-			value[0].connectedTo = { index: value[0].connectedTo?.import.index };
-		} else {
-			value[0].connectedTo = { nodeId: value[0].connectedTo?.node.nodeId, index: value[0].connectedTo?.node.outputIndex };
-		}
-		exports.push({ inputMetadata: value[0], position: { x: value[1], y: value[2] } });
+	obj.exports.forEach(([inputMetadata, x, y]: [FrontendGraphInput, number, number]) => {
+		inputMetadata.connectedTo = ((connectedTo: any) => {
+			if (connectedTo?.import !== undefined) return { index: connectedTo?.import.index };
+			return { nodeId: connectedTo?.node.nodeId, index: connectedTo?.node.outputIndex };
+		})(inputMetadata.connectedTo);
+		exports.push({ inputMetadata, position: { x, y } });
 	});
 	return exports;
 });

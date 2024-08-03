@@ -56,7 +56,7 @@
 	}
 </script>
 
-<LayoutCol class="panel" on:pointerdown={(e) => editor.handle.setActivePanel(panelType)}>
+<LayoutCol class="panel" on:pointerdown={() => panelType && editor.handle.setActivePanel(panelType)}>
 	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
 		<LayoutRow class="tab-group" scrollableX={true}>
 			{#each tabLabels as tabLabel, tabIndex}
