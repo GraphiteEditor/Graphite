@@ -645,10 +645,13 @@ impl NodeNetworkInterface {
 
 					// Get export name from parent node metadata input, which must match the number of exports.
 					// Empty string means to use type, or "Export + index" if type can't be determined
-					let export_name = self
-						.encapsulating_node_metadata(network_path)
-						.and_then(|encapsulating_metadata| encapsulating_metadata.persistent_metadata.output_names.get(*export_index).cloned())
-						.unwrap_or_default();
+					let export_name = if network_path.is_empty() {
+						"Canvas".to_string()
+					} else {
+						self.encapsulating_node_metadata(network_path)
+							.and_then(|encapsulating_metadata| encapsulating_metadata.persistent_metadata.output_names.get(*export_index).cloned())
+							.unwrap_or_default()
+					};
 
 					let export_name = if !export_name.is_empty() {
 						export_name
@@ -1220,11 +1223,11 @@ impl NodeNetworkInterface {
 			return;
 		};
 		let mut import_export_ports = Ports::new();
-		let export_top_right = DVec2::new((all_nodes_bounding_box[1].x / 24.).floor() * 24., (all_nodes_bounding_box[0].y / 24.).floor() * 24.) + DVec2::new(4. * 24., -2. * 24.);
+		let export_top_right = DVec2::new((all_nodes_bounding_box[1].x / 24. + 0.5).floor() * 24., (all_nodes_bounding_box[0].y / 24. + 0.5).floor() * 24.) + DVec2::new(4. * 24., -2. * 24.);
 		for input_index in 0..network.exports.len() {
 			import_export_ports.insert_input_port_at_center(input_index, export_top_right + DVec2::new(0., input_index as f64 * 24.));
 		}
-		let import_top_left = DVec2::new((all_nodes_bounding_box[0].x / 24.).floor() * 24., (all_nodes_bounding_box[0].y / 24.).floor() * 24.) + DVec2::new(-4. * 24., 0.);
+		let import_top_left = DVec2::new((all_nodes_bounding_box[0].x / 24. + 0.5).floor() * 24., (all_nodes_bounding_box[0].y / 24. + 0.5).floor() * 24.) + DVec2::new(-4. * 24., 0.);
 		for output_index in 0..self.number_of_displayed_imports(network_path) {
 			import_export_ports.insert_output_port_at_center(output_index, import_top_left + DVec2::new(0., output_index as f64 * 24.));
 		}
@@ -1990,7 +1993,9 @@ impl NodeNetworkInterface {
 				self.node_click_targets(node_id, network_path)
 					.and_then(|transient_node_metadata| transient_node_metadata.port_click_targets.input_port_position(displayed_index))
 			}
-			InputConnector::Export(_import_index) => None, // TODO: Implement getting position for the new import connection UI
+			InputConnector::Export(export_index) => self
+				.import_export_ports(network_path)
+				.and_then(|import_export_ports| import_export_ports.input_port_position(*export_index)),
 		}
 	}
 
@@ -1999,7 +2004,9 @@ impl NodeNetworkInterface {
 			OutputConnector::Node { node_id, output_index } => self
 				.node_click_targets(node_id, network_path)
 				.and_then(|transient_node_metadata| transient_node_metadata.port_click_targets.output_port_position(*output_index)),
-			OutputConnector::Import(_import_index) => None, // TODO: Implement getting position for the new import connection UI
+			OutputConnector::Import(import_index) => self
+				.import_export_ports(network_path)
+				.and_then(|import_export_ports| import_export_ports.output_port_position(*import_index)),
 		}
 	}
 

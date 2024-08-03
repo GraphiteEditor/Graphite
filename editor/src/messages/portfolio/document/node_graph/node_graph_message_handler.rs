@@ -541,7 +541,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none() {
 					let to_connector = network_interface.input_connector_from_click(ipp.mouse.position, selection_network_path);
 					if let Some(to_connector) = &to_connector {
-						let Some(input_position) = network_interface.input_position(&to_connector, selection_network_path) else {
+						let Some(input_position) = network_interface.input_position(to_connector, selection_network_path) else {
 							log::error!("Could not get input position for connector: {to_connector:?}");
 							return;
 						};
