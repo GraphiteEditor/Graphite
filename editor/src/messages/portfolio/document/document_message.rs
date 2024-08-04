@@ -12,7 +12,7 @@ use graphene_core::Color;
 
 use glam::DAffine2;
 
-use super::utility_types::misc::{OptionBoundsSnapping, OptionPointSnapping};
+use super::utility_types::misc::SnappingState;
 
 #[impl_message(Message, PortfolioMessage, Document)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -131,9 +131,9 @@ pub enum DocumentMessage {
 		new_layer: Option<LayerNodeIdentifier>,
 	},
 	SetSnapping {
-		snapping_enabled: Option<bool>,
-		bounding_box_snapping: Option<OptionBoundsSnapping>,
-		geometry_snapping: Option<OptionPointSnapping>,
+		#[serde(skip)]
+		closure: Option<for<'a> fn(&'a mut SnappingState) -> &'a mut bool>,
+		val: bool,
 	},
 	SetViewMode {
 		view_mode: ViewMode,

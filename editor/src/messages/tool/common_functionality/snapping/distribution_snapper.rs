@@ -201,7 +201,7 @@ impl DistributionSnapper {
 				let final_bounds = Rect::from_box([0, 1].map(|index| DVec2::new(x_bounds[index].x, y_bounds[index].y)));
 
 				let mut final_point = x;
-				final_point.snapped_point_document = final_bounds.center();
+				final_point.snapped_point_document += y.snapped_point_document - point.document_point;
 				final_point.source_bounds = Some(final_bounds.into());
 				final_point.target = SnapTarget::Distribution(DistributionSnapTarget::Xy);
 				final_point.distribution_boxes_y = y.distribution_boxes_y;
@@ -315,7 +315,7 @@ impl DistributionSnapper {
 
 	pub fn free_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, bounds: Option<Rect>) {
 		let Some(bounds) = bounds else { return };
-		if point.source != SnapSource::BoundingBox(BoundingBoxSnapSource::Center) {
+		if point.source != SnapSource::BoundingBox(BoundingBoxSnapSource::Center) || !snap_data.document.snapping_state.bounds.distribute {
 			return;
 		}
 		info!("src {:?}", point.source);
@@ -326,7 +326,7 @@ impl DistributionSnapper {
 
 	pub fn constrained_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint, bounds: Option<Rect>) {
 		let Some(bounds) = bounds else { return };
-		if point.source != SnapSource::BoundingBox(BoundingBoxSnapSource::Center) {
+		if point.source != SnapSource::BoundingBox(BoundingBoxSnapSource::Center) || !snap_data.document.snapping_state.bounds.distribute {
 			return;
 		}
 		self.collect_bounding_box_points(snap_data, point.source_index == 0, bounds);

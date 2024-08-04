@@ -35,12 +35,12 @@ pub struct SnappedPoint {
 	pub distribution_boxes_y: VecDeque<Rect>,
 	pub distribution_equal_distance_y: Option<f64>,
 	pub distance_to_align_target: f64, // If aligning so that the top is aligned but the X pos is 200 from the target, this is 200.
-	pub alignment_target: Option<DVec2>,
-	pub alignment_target_intersect: Option<DVec2>,
+	pub alignment_target_x: Option<DVec2>,
+	pub alignment_target_y: Option<DVec2>,
 }
 impl SnappedPoint {
 	pub fn align(&self) -> bool {
-		self.alignment_target.is_some()
+		self.alignment_target_x.is_some() || self.alignment_target_y.is_some()
 	}
 	pub fn infinite_snap(snapped_point_document: DVec2) -> Self {
 		Self {
@@ -57,7 +57,7 @@ impl SnappedPoint {
 		}
 	}
 	pub fn distribute(point: &SnapCandidatePoint, target: DistributionSnapTarget, boxes: VecDeque<Rect>, distances: DistributionMatch, bounds: Rect, translation: DVec2, tolerance: f64) -> Self {
-		let is_x = matches!(target, DistributionSnapTarget::Left | DistributionSnapTarget::Right | DistributionSnapTarget::X);
+		let is_x = target.is_x();
 
 		let [distribution_boxes_x, distribution_boxes_y] = if is_x { [boxes, Default::default()] } else { [Default::default(), boxes] };
 		Self {

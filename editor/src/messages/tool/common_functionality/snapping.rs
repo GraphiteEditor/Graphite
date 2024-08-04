@@ -17,6 +17,7 @@ use graphene_core::vector::PointId;
 use graphene_std::renderer::Rect;
 
 use glam::{DAffine2, DVec2};
+use graphene_std::vector::NoHashBuilder;
 use std::cmp::Ordering;
 
 /// Handles snapping and snap overlays
@@ -83,17 +84,36 @@ fn compare_points(a: &&SnappedPoint, b: &&SnappedPoint) -> Ordering {
 	}
 }
 
-fn find_align(a: &&SnappedPoint, b: &&SnappedPoint) -> Ordering {
+fn find_align(a: &SnappedPoint, b: &SnappedPoint) -> Ordering {
 	(a.distance, a.distance_to_align_target).partial_cmp(&(b.distance, b.distance_to_align_target)).unwrap()
 }
 
-fn get_closest_point(points: &[SnappedPoint]) -> Option<&SnappedPoint> {
-	let not_align = points.iter().filter(|point| !point.align()).min_by(compare_points);
-	let align = points.iter().filter(|point| point.align()).min_by(find_align);
-	match (not_align, align) {
+fn get_closest_point(points: Vec<SnappedPoint>) -> Option<SnappedPoint> {
+	let mut best_not_align = None;
+	let mut best_align = None;
+	for point in points {
+		if !point.align() && !best_not_align.as_ref().is_some_and(|best| compare_points(&best, &&point).is_ge()) {
+			best_not_align = Some(point);
+		} else if point.align() && !best_align.as_ref().is_some_and(|best| find_align(best, &point).is_ge()) {
+			best_align = Some(point)
+		}
+	}
+	match (best_not_align, best_align) {
 		(None, None) => None,
 		(Some(result), None) | (None, Some(result)) => Some(result),
-		(Some(not_align), Some(align)) => Some(not_align),
+		(Some(mut result), Some(align)) => {
+			let SnapTarget::Distribution(distribution) = result.target else { return Some(result) };
+			if distribution.is_x() && align.alignment_target_x.is_some() {
+				result.snapped_point_document.y = align.snapped_point_document.y;
+				result.alignment_target_x = align.alignment_target_x;
+			}
+			if distribution.is_y() && align.alignment_target_y.is_some() {
+				result.snapped_point_document.x = align.snapped_point_document.x;
+				result.alignment_target_y = align.alignment_target_y;
+			}
+
+			Some(result)
+		}
 	}
 }
 fn get_closest_curve(curves: &[SnappedCurve], exclude_paths: bool) -> Option<&SnappedPoint> {
@@ -164,12 +184,19 @@ fn get_grid_intersection(snap_to: DVec2, lines: &[SnappedLine]) -> Option<Snappe
 	}
 	best
 }
+
+#[derive(Default)]
+pub struct SnapCache {
+	pub manipulators: HashMap<LayerNodeIdentifier, HashSet<PointId, NoHashBuilder>, NoHashBuilder>,
+	pub unselected: Vec<SnapCandidatePoint>,
+}
+
 #[derive(Clone)]
 pub struct SnapData<'a> {
 	pub document: &'a DocumentMessageHandler,
 	pub input: &'a InputPreprocessorMessageHandler,
 	pub ignore: &'a [LayerNodeIdentifier],
-	pub manipulators: Vec<(LayerNodeIdentifier, PointId)>,
+	pub node_snap_cache: Option<&'a SnapCache>,
 	pub candidates: Option<&'a Vec<LayerNodeIdentifier>>,
 	pub alignment_candidates: Option<&'a Vec<LayerNodeIdentifier>>,
 }
@@ -184,17 +211,26 @@ impl<'a> SnapData<'a> {
 			ignore,
 			candidates: None,
 			alignment_candidates: None,
-			manipulators: Vec::new(),
+			node_snap_cache: None,
+		}
+	}
+	pub fn new_snap_cache(document: &'a DocumentMessageHandler, input: &'a InputPreprocessorMessageHandler, snap_cache: &'a SnapCache) -> Self {
+		Self {
+			node_snap_cache: Some(snap_cache),
+			..Self::new(document, input)
 		}
 	}
 	fn get_candidates(&self) -> &[LayerNodeIdentifier] {
 		self.candidates.map_or([].as_slice(), |candidates| candidates.as_slice())
 	}
 	fn ignore_bounds(&self, layer: LayerNodeIdentifier) -> bool {
-		self.manipulators.iter().any(|&(ignore, _)| ignore == layer)
+		self.node_snap_cache.is_some_and(|cache| cache.manipulators.contains_key(&layer))
 	}
-	fn ignore_manipulator(&self, layer: LayerNodeIdentifier, manipulator: impl Into<PointId>) -> bool {
-		self.manipulators.contains(&(layer, manipulator.into()))
+	fn ignore_manipulator(&self, layer: LayerNodeIdentifier, target: PointId) -> bool {
+		self.node_snap_cache.and_then(|cache| cache.manipulators.get(&layer)).is_some_and(|points| points.contains(&target))
+	}
+	fn has_manipulators(&self) -> bool {
+		self.node_snap_cache.is_some_and(|cache| !cache.manipulators.is_empty())
 	}
 }
 impl SnapManager {
@@ -214,8 +250,8 @@ impl SnapManager {
 		let mut snapped_points = Vec::new();
 		let document = snap_data.document;
 
-		if let Some(closest_point) = get_closest_point(&snap_results.points) {
-			snapped_points.push(closest_point.clone());
+		if let Some(closest_point) = get_closest_point(snap_results.points) {
+			snapped_points.push(closest_point);
 		}
 		let exclude_paths = !document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Path));
 		if let Some(closest_curve) = get_closest_curve(&snap_results.curves, exclude_paths) {
@@ -287,10 +323,10 @@ impl SnapManager {
 		let screen_bounds = document.metadata.document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, snap_data.input.viewport_bounds.size()]);
 		if screen_bounds.intersects(layer_bounds) {
 			if !self.alignment_candidates.as_ref().is_some_and(|candidates| candidates.len() > 100) {
-				self.alignment_candidates.get_or_insert_with(|| Vec::new()).push(layer);
+				self.alignment_candidates.get_or_insert_with(Vec::new).push(layer);
 			}
 			if quad.intersects(layer_bounds) && !self.candidates.as_ref().is_some_and(|candidates| candidates.len() > 10) {
-				self.candidates.get_or_insert_with(|| Vec::new()).push(layer);
+				self.candidates.get_or_insert_with(Vec::new).push(layer);
 			}
 		}
 	}
@@ -415,20 +451,19 @@ impl SnapManager {
 			Self::alignment_x_overlay(&ind.distribution_boxes_x, to_viewport, overlay_context);
 			Self::alignment_y_overlay(&ind.distribution_boxes_y, to_viewport, overlay_context);
 
-			if let Some(alignment_target) = ind.alignment_target {
-				let alignment_target = to_viewport.transform_point2(alignment_target);
-
-				overlay_context.line(viewport, alignment_target);
-				if let Some(alignment_target_intersect) = ind.alignment_target_intersect {
-					let alignment_target_intersect = to_viewport.transform_point2(alignment_target_intersect);
-					overlay_context.line(viewport, alignment_target_intersect);
-					overlay_context.manipulator_handle(alignment_target_intersect, false);
-				}
+			let align = [ind.alignment_target_x, ind.alignment_target_y].map(|target| target.map(|target| to_viewport.transform_point2(target)));
+			let any_align = align.iter().flatten().next().is_some();
+			for &target in align.iter().flatten() {
+				overlay_context.line(viewport, target);
+			}
+			for &target in align.iter().flatten() {
+				overlay_context.manipulator_handle(target, false);
+			}
+			if any_align {
 				overlay_context.manipulator_handle(viewport, false);
-				overlay_context.manipulator_handle(alignment_target, false);
 			}
 
-			if ind.alignment_target.is_none() && ind.distribution_equal_distance_x.is_none() && ind.distribution_equal_distance_y.is_none() {
+			if !any_align && ind.distribution_equal_distance_x.is_none() && ind.distribution_equal_distance_y.is_none() {
 				overlay_context.text(&format!("{:?} to {:?}", ind.source, ind.target), viewport - DVec2::new(0., 5.), "rgba(0, 0, 0, 0.8)", 3.);
 				overlay_context.square(viewport, Some(4.), Some(COLOR_OVERLAY_BLUE), Some(COLOR_OVERLAY_BLUE));
 			}

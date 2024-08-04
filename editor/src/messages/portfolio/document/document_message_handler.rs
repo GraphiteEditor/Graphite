@@ -1,7 +1,7 @@
 use super::node_graph::utility_types::Transform;
 use super::utility_types::clipboards::Clipboard;
 use super::utility_types::error::EditorError;
-use super::utility_types::misc::{BoundingBoxSnapTarget, GeometrySnapTarget, OptionBoundsSnapping, OptionPointSnapping, SnappingOptions, SnappingState};
+use super::utility_types::misc::{SnappingOptions, SnappingState, GET_SNAP_BOX_FUNCTIONS, GET_SNAP_GEOMETRY_FUNCTIONS};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
@@ -943,63 +943,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::SetRangeSelectionLayer { new_layer } => {
 				self.layer_range_selection_reference = new_layer;
 			}
-			DocumentMessage::SetSnapping {
-				snapping_enabled,
-				bounding_box_snapping,
-				geometry_snapping,
-			} => {
-				if let Some(state) = snapping_enabled {
-					self.snapping_state.snapping_enabled = state
-				};
-
-				if let Some(OptionBoundsSnapping {
-					edge_midpoints,
-					edges,
-					centers,
-					corners,
-				}) = bounding_box_snapping
-				{
-					if let Some(state) = edge_midpoints {
-						self.snapping_state.bounds.edge_midpoints = state
-					};
-					if let Some(state) = edges {
-						self.snapping_state.bounds.edges = state
-					};
-					if let Some(state) = centers {
-						self.snapping_state.bounds.centers = state
-					};
-					if let Some(state) = corners {
-						self.snapping_state.bounds.corners = state
-					};
-				}
-
-				if let Some(OptionPointSnapping {
-					paths,
-					path_intersections,
-					anchors,
-					line_midpoints,
-					normals,
-					tangents,
-				}) = geometry_snapping
-				{
-					if let Some(state) = path_intersections {
-						self.snapping_state.nodes.path_intersections = state
-					};
-					if let Some(state) = paths {
-						self.snapping_state.nodes.paths = state
-					};
-					if let Some(state) = anchors {
-						self.snapping_state.nodes.anchors = state
-					};
-					if let Some(state) = line_midpoints {
-						self.snapping_state.nodes.line_midpoints = state
-					};
-					if let Some(state) = normals {
-						self.snapping_state.nodes.normals = state
-					};
-					if let Some(state) = tangents {
-						self.snapping_state.nodes.tangents = state
-					};
+			DocumentMessage::SetSnapping { closure, val } => {
+				if let Some(closure) = closure {
+					*closure(&mut self.snapping_state) = val;
 				}
 			}
 			DocumentMessage::SetViewMode { view_mode } => {
@@ -1675,7 +1621,8 @@ impl DocumentMessageHandler {
 
 		// Document bar (right portion of the bar above the viewport)
 
-		let snapping_state = self.snapping_state.clone();
+		let mut snapping_state = self.snapping_state.clone();
+		let mut snapping_state2 = self.snapping_state.clone();
 
 		let mut widgets = vec![
 			CheckboxInput::new(self.overlays_visible)
@@ -1700,11 +1647,9 @@ impl DocumentMessageHandler {
 				.tooltip("Snapping")
 				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleSnapping))
 				.on_update(move |optional_input: &CheckboxInput| {
-					let snapping_enabled = optional_input.checked;
 					DocumentMessage::SetSnapping {
-						snapping_enabled: Some(snapping_enabled),
-						bounding_box_snapping: None,
-						geometry_snapping: None,
+						closure: Some(|snapping_state| &mut snapping_state.snapping_enabled),
+						val: optional_input.checked,
 					}
 					.into()
 				})
@@ -1720,92 +1665,27 @@ impl DocumentMessageHandler {
 						},
 					]
 					.into_iter()
+					.chain(GET_SNAP_BOX_FUNCTIONS.into_iter().map(|(name, closure)| LayoutGroup::Row {
+						widgets: vec![
+									CheckboxInput::new(*closure(&mut snapping_state))
+										.on_update(move |input: &CheckboxInput| DocumentMessage::SetSnapping { closure: Some(closure), val: input.checked }.into())
+										.widget_holder(),
+									TextLabel::new(name).widget_holder(),
+								],
+					}))
 					.chain(
-						[
-							(BoundingBoxSnapTarget::Center, snapping_state.bounds.centers),
-							(BoundingBoxSnapTarget::Corner, snapping_state.bounds.corners),
-							(BoundingBoxSnapTarget::Edge, snapping_state.bounds.edges),
-							(BoundingBoxSnapTarget::EdgeMidpoint, snapping_state.bounds.edge_midpoints),
-						]
+						[LayoutGroup::Row {
+							widgets: vec![TextLabel::new(SnappingOptions::Geometry.to_string()).widget_holder()],
+						}]
 						.into_iter()
-						.map(|(enum_type, bound_state)| LayoutGroup::Row {
+						.chain(GET_SNAP_GEOMETRY_FUNCTIONS.into_iter().map(|(name, closure)| LayoutGroup::Row {
 							widgets: vec![
-								CheckboxInput::new(bound_state)
-									.on_update(move |input: &CheckboxInput| {
-										DocumentMessage::SetSnapping {
-											snapping_enabled: None,
-											bounding_box_snapping: Some(OptionBoundsSnapping {
-												edges: if enum_type == BoundingBoxSnapTarget::Edge { Some(input.checked) } else { None },
-												edge_midpoints: if enum_type == BoundingBoxSnapTarget::EdgeMidpoint { Some(input.checked) } else { None },
-												centers: if enum_type == BoundingBoxSnapTarget::Center { Some(input.checked) } else { None },
-												corners: if enum_type == BoundingBoxSnapTarget::Corner { Some(input.checked) } else { None },
-											}),
-											geometry_snapping: None,
-										}
-										.into()
-									})
-									.widget_holder(),
-								TextLabel::new(enum_type.to_string()).widget_holder(),
-							],
-						})
-						.chain(
-							[
-								LayoutGroup::Row {
-									widgets: vec![TextLabel::new(SnappingOptions::Geometry.to_string()).widget_holder()],
-								},
-								LayoutGroup::Row {
-									widgets: vec![
-										CheckboxInput::new(snapping_state.nodes.anchors)
-											.on_update(move |input: &CheckboxInput| {
-												DocumentMessage::SetSnapping {
-													snapping_enabled: None,
-													bounding_box_snapping: None,
-													geometry_snapping: Some(OptionPointSnapping {
-														anchors: Some(input.checked),
-														..Default::default()
-													}),
-												}
-												.into()
-											})
-											.widget_holder(),
-										TextLabel::new("Anchor").widget_holder(),
-									],
-								},
-							]
-							.into_iter()
-							.chain(
-								[
-									(GeometrySnapTarget::LineMidpoint, snapping_state.nodes.line_midpoints),
-									(GeometrySnapTarget::Path, snapping_state.nodes.paths),
-									(GeometrySnapTarget::Normal, snapping_state.nodes.normals),
-									(GeometrySnapTarget::Tangent, snapping_state.nodes.tangents),
-									(GeometrySnapTarget::Intersection, snapping_state.nodes.path_intersections),
-								]
-								.into_iter()
-								.map(|(enum_type, bound_state)| LayoutGroup::Row {
-									widgets: vec![
-										CheckboxInput::new(bound_state)
-											.on_update(move |input: &CheckboxInput| {
-												DocumentMessage::SetSnapping {
-													snapping_enabled: None,
-													bounding_box_snapping: None,
-													geometry_snapping: Some(OptionPointSnapping {
-														anchors: None,
-														line_midpoints: if enum_type == GeometrySnapTarget::LineMidpoint { Some(input.checked) } else { None },
-														paths: if enum_type == GeometrySnapTarget::Path { Some(input.checked) } else { None },
-														normals: if enum_type == GeometrySnapTarget::Normal { Some(input.checked) } else { None },
-														tangents: if enum_type == GeometrySnapTarget::Tangent { Some(input.checked) } else { None },
-														path_intersections: if enum_type == GeometrySnapTarget::Intersection { Some(input.checked) } else { None },
-													}),
-												}
-												.into()
-											})
-											.widget_holder(),
-										TextLabel::new(enum_type.to_string()).widget_holder(),
-									],
-								}),
-							),
-						),
+									CheckboxInput::new(*closure(&mut snapping_state2))
+										.on_update(move |input: &CheckboxInput| DocumentMessage::SetSnapping { closure: Some(closure), val: input.checked }.into())
+										.widget_holder(),
+									TextLabel::new(name).widget_holder(),
+								],
+						})),
 					)
 					.collect(),
 				)

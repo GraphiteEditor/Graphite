@@ -15,6 +15,9 @@ impl AlignmentSnapper {
 		}
 		let document = snap_data.document;
 		self.bounding_box_points.clear();
+		if !document.snapping_state.bounds.align {
+			return;
+		}
 
 		for layer in document.metadata.all_layers() {
 			if !document.metadata.is_artboard(layer) || snap_data.ignore.contains(&layer) {
@@ -44,6 +47,11 @@ impl AlignmentSnapper {
 
 	pub fn snap_bbox_points(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint) {
 		self.collect_bounding_box_points(snap_data, point.source_index == 0);
+		let unselected_geometry = if snap_data.document.snapping_state.target_enabled(SnapTarget::Alignment(AlignmentSnapTarget::Handle)) {
+			snap_data.node_snap_cache.map(|cache| cache.unselected.as_slice()).unwrap_or(&[])
+		} else {
+			&[]
+		};
 		// TODO: snap handle points
 		let document = snap_data.document;
 		let tolerance = snap_tolerance(document);
@@ -52,9 +60,9 @@ impl AlignmentSnapper {
 		let mut consider_y = true;
 		if let SnapConstraint::Line { direction, .. } = constraint {
 			let direction = direction.normalize_or_zero();
-			if direction.x == 0. {
+			if direction.x.abs() < 1e-5 {
 				consider_y = false;
-			} else if direction.y == 0. {
+			} else if direction.y.abs() < 1e-5 {
 				consider_x = false;
 			}
 		}
@@ -62,7 +70,7 @@ impl AlignmentSnapper {
 		let mut snap_x: Option<SnappedPoint> = None;
 		let mut snap_y: Option<SnappedPoint> = None;
 
-		for target_point in &self.bounding_box_points {
+		for target_point in self.bounding_box_points.iter().chain(unselected_geometry) {
 			let target_position = target_point.document_point;
 
 			let point_on_x = DVec2::new(point.document_point.x, target_position.y);
@@ -87,7 +95,7 @@ impl AlignmentSnapper {
 					distance: dist_x,
 					tolerance,
 					distance_to_align_target: dist_y,
-					alignment_target: Some(target_position),
+					alignment_target_x: Some(target_position),
 					fully_constrained: true,
 					..Default::default()
 				});
@@ -101,7 +109,7 @@ impl AlignmentSnapper {
 					distance: dist_y,
 					tolerance,
 					distance_to_align_target: dist_x,
-					alignment_target: Some(target_position),
+					alignment_target_y: Some(target_position),
 					fully_constrained: true,
 					..Default::default()
 				});
@@ -122,8 +130,8 @@ impl AlignmentSnapper {
 					target_bounds: snap_x.target_bounds,
 					distance,
 					tolerance,
-					alignment_target: snap_x.alignment_target,
-					alignment_target_intersect: snap_y.alignment_target,
+					alignment_target_x: snap_x.alignment_target_x,
+					alignment_target_y: snap_y.alignment_target_y,
 					constrained: true,
 					..Default::default()
 				});
@@ -136,7 +144,7 @@ impl AlignmentSnapper {
 	pub fn free_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults) {
 		let is_bbox = matches!(point.source, SnapSource::BoundingBox(_));
 		let is_geometry = matches!(point.source, SnapSource::Geometry(_));
-		let gemoetry_selected = !snap_data.manipulators.is_empty();
+		let gemoetry_selected = snap_data.has_manipulators();
 
 		if is_bbox || (is_geometry && gemoetry_selected) || (is_geometry && point.alignment) {
 			self.snap_bbox_points(snap_data, point, snap_results, SnapConstraint::None);
@@ -146,7 +154,7 @@ impl AlignmentSnapper {
 	pub fn constrained_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint) {
 		let is_bbox = matches!(point.source, SnapSource::BoundingBox(_));
 		let is_geometry = matches!(point.source, SnapSource::Geometry(_));
-		let gemoetry_selected = !snap_data.manipulators.is_empty();
+		let gemoetry_selected = snap_data.has_manipulators();
 
 		if is_bbox || (is_geometry && gemoetry_selected) || (is_geometry && point.alignment) {
 			self.snap_bbox_points(snap_data, point, snap_results, constraint);

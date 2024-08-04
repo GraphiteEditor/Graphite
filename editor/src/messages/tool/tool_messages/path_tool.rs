@@ -4,12 +4,13 @@ use crate::messages::portfolio::document::overlays::utility_functions::path_over
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::shape_editor::{ClosestSegment, ManipulatorAngle, ManipulatorPointInfo, OpposingHandleLengths, SelectedPointsInfo, ShapeState};
-use crate::messages::tool::common_functionality::snapping::{SnapData, SnapManager};
+use crate::messages::tool::common_functionality::shape_editor::{ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedPointsInfo, ShapeState};
+use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapData, SnapManager};
 
 use graph_craft::document::NodeNetwork;
 use graphene_core::renderer::Quad;
 use graphene_core::vector::ManipulatorPointId;
+use graphene_std::vector::NoHashBuilder;
 
 use std::vec;
 
@@ -258,6 +259,7 @@ struct PathToolData {
 	/// The available information varies depending on whether `None`, `One`, or `Multiple` points are currently selected.
 	selection_status: SelectionStatus,
 	segment: Option<ClosestSegment>,
+	snap_cache: SnapCache,
 	double_click_handled: bool,
 	auto_panning: AutoPanning,
 }
@@ -326,7 +328,7 @@ impl PathToolData {
 		if let Some(selected_points) = shape_editor.change_point_selection(document_network, document_metadata, input.mouse.position, SELECTION_THRESHOLD, add_to_selection) {
 			if let Some(selected_points) = selected_points {
 				self.drag_start_pos = input.mouse.position;
-				self.start_dragging_point(selected_points, input, document, responses);
+				self.start_dragging_point(selected_points, input, document, shape_editor, responses);
 				responses.add(OverlaysMessage::Draw);
 			}
 			PathToolFsmState::Dragging
@@ -362,26 +364,40 @@ impl PathToolData {
 		}
 	}
 
-	fn start_dragging_point(&mut self, mut selected_points: SelectedPointsInfo, input: &InputPreprocessorMessageHandler, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	fn start_dragging_point(
+		&mut self,
+		selected_points: SelectedPointsInfo,
+		input: &InputPreprocessorMessageHandler,
+		document: &DocumentMessageHandler,
+		shape_editor: &mut ShapeState,
+		responses: &mut VecDeque<Message>,
+	) {
 		responses.add(DocumentMessage::StartTransaction);
 
-		// TODO: enable snapping
+		let mut manipulators = HashMap::with_hasher(NoHashBuilder);
+		let mut unselected = Vec::new();
+		for (&layer, state) in &shape_editor.selected_shape_state {
+			let Some(vector_data) = document.metadata.compute_modified_vector(layer, &document.network) else {
+				continue;
+			};
+			let transform = document.metadata.transform_to_document(layer);
 
-		// self
-		// 	.snap_manager
-		// 	.start_snap(document, input, document.bounding_boxes(Some(&selected_layers), None, font_cache), true, true);
-
-		// Do not snap against handles when anchor is selected
-		let mut additional_selected_points = Vec::new();
-		for point in selected_points.points.iter() {
-			let Some(anchor) = point.point_id.as_anchor() else { continue };
-
-			let connected = selected_points.vector_data.segment_domain.all_connected(anchor).map(|handle| handle.to_manipulator_point());
-			let filtered = connected.filter(|point| point.get_position(&selected_points.vector_data).is_some());
-			let point_info = filtered.map(|point_id| ManipulatorPointInfo { layer: point.layer, point_id });
-			additional_selected_points.extend(point_info);
+			let mut layer_manipulators = HashSet::with_hasher(NoHashBuilder);
+			for point in state.selected() {
+				let Some(anchor) = point.get_anchor(&vector_data) else { continue };
+				layer_manipulators.insert(anchor);
+			}
+			for (&id, &position) in vector_data.point_domain.ids().iter().zip(vector_data.point_domain.positions()) {
+				if layer_manipulators.contains(&id) {
+					continue;
+				}
+				unselected.push(SnapCandidatePoint::handle(transform.transform_point2(position)))
+			}
+			if !layer_manipulators.is_empty() {
+				manipulators.insert(layer, layer_manipulators);
+			}
 		}
-		selected_points.points.extend(additional_selected_points);
+		self.snap_cache = SnapCache { manipulators, unselected };
 
 		let viewport_to_document = document.metadata.document_to_viewport.inverse();
 		self.previous_mouse_position = viewport_to_document.transform_point2(input.mouse.position - selected_points.offset);
@@ -415,7 +431,7 @@ impl PathToolData {
 	fn drag(&mut self, equidistant: bool, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
 		// Move the selected points with the mouse
 		let previous_mouse = document.metadata.document_to_viewport.transform_point2(self.previous_mouse_position);
-		let snapped_delta = shape_editor.snap(&mut self.snap_manager, document, input, previous_mouse);
+		let snapped_delta = shape_editor.snap(&mut self.snap_manager, &self.snap_cache, document, input, previous_mouse);
 		let handle_lengths = if equidistant { None } else { self.opposing_handle_lengths.take() };
 		shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, responses);
 		self.previous_mouse_position += document.metadata.document_to_viewport.inverse().transform_vector2(snapped_delta);
