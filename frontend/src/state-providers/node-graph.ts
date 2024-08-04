@@ -35,7 +35,7 @@ export function createNodeGraphState(editor: Editor) {
 		chainWidths: new Map<bigint, number>(),
 		imports: [] as { outputMetadata: FrontendGraphOutput; position: { x: number; y: number } }[],
 		exports: [] as { inputMetadata: FrontendGraphInput; position: { x: number; y: number } }[],
-		nodes: [] as FrontendNode[],
+		nodes: new Map<bigint, FrontendNode>(),
 		wires: [] as FrontendNodeWire[],
 		wirePathInProgress: undefined as WirePath | undefined,
 		nodeTypes: [] as FrontendNodeType[],
@@ -88,7 +88,10 @@ export function createNodeGraphState(editor: Editor) {
 	// TODO: Add a way to only update the nodes that have changed
 	editor.subscriptions.subscribeJsMessage(UpdateNodeGraph, (updateNodeGraph) => {
 		update((state) => {
-			state.nodes = updateNodeGraph.nodes;
+			state.nodes.clear();
+			updateNodeGraph.nodes.forEach((node) => {
+				state.nodes.set(node.id, node);
+			});
 			state.wires = updateNodeGraph.wires;
 			return state;
 		});

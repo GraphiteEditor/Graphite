@@ -36,6 +36,7 @@
 	let nodeWirePaths: WirePath[] = [];
 	let searchTerm = "";
 
+	// TODO: Convert these arrays-of-arrays to a Map?
 	let inputs: SVGSVGElement[][] = [];
 	let outputs: SVGSVGElement[][] = [];
 	let nodeElements: HTMLDivElement[] = [];
@@ -108,8 +109,8 @@
 		return [...maybeWirePathInProgress, ...nodeWirePaths];
 	}
 
-	async function watchNodes(nodes: FrontendNode[]) {
-		nodes.forEach((_, index) => {
+	async function watchNodes(nodes: Map<bigint, FrontendNode>) {
+		Array.from(nodes.keys()).forEach((_, index) => {
 			if (!inputs[index + 1]) inputs[index + 1] = [];
 			if (!outputs[index + 1]) outputs[index + 1] = [];
 		});
@@ -120,34 +121,53 @@
 	}
 
 	function resolveWire(wire: FrontendNodeWire): { nodeOutput: SVGSVGElement | undefined; nodeInput: SVGSVGElement | undefined } {
-		const outputIndex = Number(wire.wireStart.index);
-		const inputIndex = Number(wire.wireEnd.index);
-		let nodeOutputConnectors = outputs[$nodeGraph.nodes.findIndex((n) => ((wire.wireStart as Node).nodeId !== undefined ? n.id === (wire.wireStart as Node).nodeId : false)) + 1];
+		// TODO: Avoid the linear search
+		const wireStartNodeIdIndex = Array.from($nodeGraph.nodes.keys()).findIndex((nodeId) => nodeId === (wire.wireStart as Node).nodeId);
+		let nodeOutputConnectors = outputs[wireStartNodeIdIndex + 1];
 		if (nodeOutputConnectors === undefined && (wire.wireStart as Node).nodeId === undefined) {
 			nodeOutputConnectors = outputs[0];
 		}
-		let nodeInputConnectors = inputs[$nodeGraph.nodes.findIndex((n) => ((wire.wireEnd as Node).nodeId !== undefined ? n.id === (wire.wireEnd as Node).nodeId : false)) + 1] || undefined;
+		const indexOutput = Number(wire.wireStart.index);
+		const nodeOutput = nodeOutputConnectors?.[indexOutput] as SVGSVGElement | undefined;
+
+		// TODO: Avoid the linear search
+		const wireEndNodeIdIndex = Array.from($nodeGraph.nodes.keys()).findIndex((nodeId) => nodeId === (wire.wireEnd as Node).nodeId);
+		let nodeInputConnectors = inputs[wireEndNodeIdIndex + 1] || undefined;
 		if (nodeInputConnectors === undefined && (wire.wireEnd as Node).nodeId === undefined) {
 			nodeInputConnectors = inputs[0];
 		}
-		const nodeOutput = nodeOutputConnectors?.[outputIndex] as SVGSVGElement | undefined;
-		const nodeInput = nodeInputConnectors?.[inputIndex] as SVGSVGElement | undefined;
+		const indexInput = Number(wire.wireEnd.index);
+		const nodeInput = nodeInputConnectors?.[indexInput] as SVGSVGElement | undefined;
+
 		return { nodeOutput, nodeInput };
+	}
+
+	function createWirePath(outputPort: SVGSVGElement, inputPort: SVGSVGElement, verticalOut: boolean, verticalIn: boolean, dashed: boolean): WirePath {
+		const inputPortRect = inputPort.getBoundingClientRect();
+		const outputPortRect = outputPort.getBoundingClientRect();
+
+		const pathString = buildWirePathString(outputPortRect, inputPortRect, verticalOut, verticalIn);
+		const dataType = (outputPort.getAttribute("data-datatype") as FrontendGraphDataType) || "General";
+		const thick = verticalIn && verticalOut;
+
+		return { pathString, dataType, thick, dashed };
 	}
 
 	async function refreshWires() {
 		await tick();
 
-		const wires = $nodeGraph.wires;
-		nodeWirePaths = wires.flatMap((wire) => {
-			const { nodeInput, nodeOutput } = resolveWire(wire);
-			if (!nodeInput || !nodeOutput) return [];
+		nodeWirePaths = $nodeGraph.wires.flatMap((wire) => {
+			// TODO: This call contains linear searches, which combined with the loop we're in, causes O(n^2) complexity as the graph grows
+			const { nodeOutput, nodeInput } = resolveWire(wire);
+			if (!nodeOutput || !nodeInput) return [];
 
-			const wireStart = $nodeGraph.nodes.find((n) => ((wire.wireStart as Node).nodeId !== undefined ? n.id === (wire.wireStart as Node).nodeId : undefined))?.isLayer || false;
-			const wireEnd =
-				($nodeGraph.nodes.find((n) => ((wire.wireEnd as Node).nodeId !== undefined ? n.id === (wire.wireEnd as Node).nodeId : undefined))?.isLayer && Number(wire.wireEnd.index) === 0) ||
-				false;
-			return [createWirePath(nodeOutput, nodeInput.getBoundingClientRect(), wireStart, wireEnd, wire.dashed)];
+			const wireStartNode = $nodeGraph.nodes.get((wire.wireStart as Node).nodeId);
+			const wireStart = wireStartNode?.isLayer || false;
+
+			const wireEndNode = $nodeGraph.nodes.get((wire.wireEnd as Node).nodeId);
+			const wireEnd = (wireEndNode?.isLayer && Number(wire.wireEnd.index) === 0) || false;
+
+			return [createWirePath(nodeOutput, nodeInput, wireStart, wireEnd, wire.dashed)];
 		});
 	}
 
@@ -228,25 +248,13 @@
 			.join(" ");
 	}
 
-	function createWirePath(outputPort: SVGSVGElement, inputPort: SVGSVGElement | DOMRect, verticalOut: boolean, verticalIn: boolean, dashed: boolean): WirePath {
-		const inputPortRect = inputPort instanceof DOMRect ? inputPort : inputPort.getBoundingClientRect();
-		const outputPortRect = outputPort.getBoundingClientRect();
-
-		const pathString = buildWirePathString(outputPortRect, inputPortRect, verticalOut, verticalIn);
-		const dataType = (outputPort.getAttribute("data-datatype") as FrontendGraphDataType) || "General";
-
-		return { pathString, dataType, thick: verticalIn && verticalOut, dashed };
-	}
-
 	function toggleLayerDisplay(displayAsLayer: boolean, toggleId: bigint) {
-		let node = $nodeGraph.nodes.find((node) => node.id === toggleId);
-		if (node !== undefined) {
-			editor.handle.setToNodeOrLayer(node.id, displayAsLayer);
-		}
+		let node = $nodeGraph.nodes.get(toggleId);
+		if (node !== undefined) editor.handle.setToNodeOrLayer(node.id, displayAsLayer);
 	}
 
 	function canBeToggledBetweenNodeAndLayer(toggleDisplayAsLayerNodeId: bigint) {
-		return $nodeGraph.nodes.find((node) => node.id === toggleDisplayAsLayerNodeId)?.canBeLayer || false;
+		return $nodeGraph.nodes.get(toggleDisplayAsLayerNodeId)?.canBeLayer || false;
 	}
 
 	function createNode(nodeType: string) {
@@ -334,23 +342,22 @@
 	}
 
 	function primaryOutputConnectedToLayer(node: FrontendNode): boolean {
-		let firstConnectedNode = $nodeGraph.nodes.find((n) =>
+		let firstConnectedNode = Array.from($nodeGraph.nodes.values()).find((n) =>
 			node.primaryOutput?.connectedTo.some((connector) => {
-				if ((connector as Node).nodeId === undefined) return;
-				if (connector.index !== 0n) return;
-				return n.id === (connector as Node).nodeId;
+				if ((connector as Node).nodeId === undefined) return false;
+				if (connector.index !== 0n) return false;
+				return n.id === (connector as Node).nodeId || false;
 			}),
 		);
 		return firstConnectedNode?.isLayer || false;
 	}
 
 	function primaryInputConnectedToLayer(node: FrontendNode): boolean {
-		return (
-			$nodeGraph.nodes.find((n) => {
-				if ((node.primaryInput?.connectedTo as Node) === undefined) return;
-				return n.id === (node.primaryInput?.connectedTo as Node).nodeId;
-			})?.isLayer || false
-		);
+		const connectedNode = Array.from($nodeGraph.nodes.values()).find((n) => {
+			if ((node.primaryInput?.connectedTo as Node) === undefined) return false;
+			return n.id === (node.primaryInput?.connectedTo as Node).nodeId;
+		});
+		return connectedNode?.isLayer || false;
 	}
 </script>
 
@@ -515,7 +522,7 @@
 		bind:this={nodesContainer}
 	>
 		<!-- Layers -->
-		{#each $nodeGraph.nodes.flatMap((node, nodeIndex) => (node.isLayer ? [{ node, nodeIndex }] : [])) as { node, nodeIndex } (nodeIndex)}
+		{#each Array.from($nodeGraph.nodes.values()).flatMap((node, nodeIndex) => (node.isLayer ? [{ node, nodeIndex }] : [])) as { node, nodeIndex } (nodeIndex)}
 			{@const clipPathId = String(Math.random()).substring(2)}
 			{@const stackDataInput = node.exposedInputs[0]}
 			{@const layerAreaWidth = $nodeGraph.layerWidths.get(node.id) || 8}
@@ -657,7 +664,7 @@
 			</svg>
 		</div>
 		<!-- Nodes -->
-		{#each $nodeGraph.nodes.flatMap((node, nodeIndex) => (node.isLayer ? [] : [{ node, nodeIndex }])) as { node, nodeIndex } (nodeIndex)}
+		{#each Array.from($nodeGraph.nodes.values()).flatMap((node, nodeIndex) => (node.isLayer ? [] : [{ node, nodeIndex }])) as { node, nodeIndex } (nodeIndex)}
 			{@const exposedInputsOutputs = [...node.exposedInputs, ...node.exposedOutputs]}
 			{@const clipPathId = String(Math.random()).substring(2)}
 			<div

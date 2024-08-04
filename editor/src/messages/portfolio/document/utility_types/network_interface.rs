@@ -1224,9 +1224,9 @@ impl NodeNetworkInterface {
 			.navigation_metadata
 			.node_graph_to_viewport
 			.inverse()
-			.transform_point2(network_metadata.persistent_metadata.navigation_metadata.node_graph_top_right + DVec2::new(-84., 48.));
+			.transform_point2(network_metadata.persistent_metadata.navigation_metadata.node_graph_top_right + DVec2::new(-120., 0.));
 
-		let bounding_box_top_right = DVec2::new((all_nodes_bounding_box[1].x / 24. + 0.5).floor() * 24., (all_nodes_bounding_box[0].y / 24. + 0.5).floor() * 24.) + DVec2::new(4. * 24., -2. * 24.);
+		let bounding_box_top_right = DVec2::new((all_nodes_bounding_box[1].x / 24. + 0.5).floor() * 24., (all_nodes_bounding_box[0].y / 24. + 0.5).floor() * 24.) + DVec2::new(4. * 24., 0.);
 
 		let export_top_right = DVec2::new(viewport_top_right.x.max(bounding_box_top_right.x), bounding_box_top_right.y);
 		for input_index in 0..network.exports.len() {
@@ -1238,7 +1238,7 @@ impl NodeNetworkInterface {
 			.navigation_metadata
 			.node_graph_to_viewport
 			.inverse()
-			.transform_point2(DVec2::new(156., 96.));
+			.transform_point2(DVec2::new(120., 0.));
 
 		let bounding_box_top_left = DVec2::new((all_nodes_bounding_box[0].x / 24. + 0.5).floor() * 24., (all_nodes_bounding_box[0].y / 24. + 0.5).floor() * 24.) + DVec2::new(-4. * 24., 0.);
 		let import_top_left = DVec2::new(viewport_top_left.x.min(bounding_box_top_left.x), bounding_box_top_left.y);

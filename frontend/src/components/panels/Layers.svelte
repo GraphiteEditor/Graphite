@@ -371,7 +371,7 @@
 	</LayoutRow>
 	<LayoutRow class="list-area" scrollableY={true}>
 		<LayoutCol class="list" bind:this={list} on:click={() => deselectAllLayers()} on:dragover={(e) => draggable && updateInsertLine(e)} on:dragend={() => draggable && drop()}>
-			{#each layers as listing, index (String(listing.entry.id))}
+			{#each layers as listing, index}
 				<LayoutRow
 					class="layer"
 					classes={{
