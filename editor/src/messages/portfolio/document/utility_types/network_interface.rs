@@ -1228,7 +1228,7 @@ impl NodeNetworkInterface {
 
 		let bounding_box_top_right = DVec2::new((all_nodes_bounding_box[1].x / 24. + 0.5).floor() * 24., (all_nodes_bounding_box[0].y / 24. + 0.5).floor() * 24.) + DVec2::new(4. * 24., -2. * 24.);
 
-		let export_top_right = DVec2::new(viewport_top_right.x.max(bounding_box_top_right.x), viewport_top_right.y.min(bounding_box_top_right.y));
+		let export_top_right = DVec2::new(viewport_top_right.x.max(bounding_box_top_right.x), bounding_box_top_right.y);
 		for input_index in 0..network.exports.len() {
 			import_export_ports.insert_input_port_at_center(input_index, export_top_right + DVec2::new(0., input_index as f64 * 24.));
 		}
@@ -1241,7 +1241,7 @@ impl NodeNetworkInterface {
 			.transform_point2(DVec2::new(156., 96.));
 
 		let bounding_box_top_left = DVec2::new((all_nodes_bounding_box[0].x / 24. + 0.5).floor() * 24., (all_nodes_bounding_box[0].y / 24. + 0.5).floor() * 24.) + DVec2::new(-4. * 24., 0.);
-		let import_top_left = DVec2::new(viewport_top_left.x.min(bounding_box_top_left.x), viewport_top_left.y.min(bounding_box_top_left.y));
+		let import_top_left = DVec2::new(viewport_top_left.x.min(bounding_box_top_left.x), bounding_box_top_left.y);
 
 		for output_index in 0..self.number_of_displayed_imports(network_path) {
 			import_export_ports.insert_output_port_at_center(output_index, import_top_left + DVec2::new(0., output_index as f64 * 24.));
