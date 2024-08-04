@@ -37,3 +37,22 @@ pub enum KeyboardPlatformLayout {
 	/// Keyboard mapping used by Macs where Command is sometimes used in favor of Control
 	Mac,
 }
+
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub enum PanelType {
+	#[default]
+	Document,
+	Layers,
+	Properties,
+}
+
+impl From<String> for PanelType {
+	fn from(value: String) -> Self {
+		match value.as_str() {
+			"Document" => PanelType::Document,
+			"Layers" => PanelType::Layers,
+			"Properties" => PanelType::Properties,
+			_ => panic!("Unknown panel type: {}", value),
+		}
+	}
+}

@@ -2,12 +2,13 @@ use crate::document::value::TaggedValue;
 use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 
 use dyn_any::{DynAny, StaticType};
+use glam::IVec2;
+use graphene_core::memo::MemoHashGuard;
 pub use graphene_core::uuid::generate_uuid;
 use graphene_core::{Cow, MemoHash, ProtoNodeIdentifier, Type};
 
-use glam::IVec2;
 use std::collections::hash_map::DefaultHasher;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 pub mod value;
@@ -38,32 +39,10 @@ fn merge_ids(a: NodeId, b: NodeId) -> NodeId {
 	NodeId(hasher.finish())
 }
 
-#[derive(Clone, Debug, PartialEq, Default, specta::Type, Hash, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-/// Metadata about the node including its position in the graph UI
-pub struct DocumentNodeMetadata {
-	pub position: IVec2,
-}
-
-impl DocumentNodeMetadata {
-	pub fn position(position: impl Into<IVec2>) -> Self {
-		Self { position: position.into() }
-	}
-}
-
 /// Utility function for providing a default boolean value to serde.
 #[inline(always)]
 fn return_true() -> bool {
 	true
-}
-
-// TODO: Eventually remove this (probably starting late 2024)
-fn migrate_layer_to_merge<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
-	let mut s: String = serde::Deserialize::deserialize(deserializer)?;
-	if s == "Layer" {
-		s = "Merge".to_string();
-	}
-	Ok(s)
 }
 
 // TODO: Eventually remove this (probably starting late 2024)
@@ -124,14 +103,6 @@ where
 #[derive(Clone, Debug, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNode {
-	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the node definition's name is displayed to the user in italics.
-	///  Ensure the click target in the encapsulating network is updated when this is modified by using network.update_click_target(node_id).
-	#[serde(default)]
-	pub alias: String,
-	// TODO: Replace this name with a reference to the [`DocumentNodeDefinition`] node definition to use the name from there instead.
-	/// The name of the node definition, as originally set by [`DocumentNodeDefinition`], used to display in the UI and to display the appropriate properties.
-	#[serde(deserialize_with = "migrate_layer_to_merge")]
-	pub name: String,
 	/// The inputs to a node, which are either:
 	/// - From other nodes within this graph [`NodeInput::Node`],
 	/// - A constant value [`NodeInput::Value`],
@@ -225,24 +196,11 @@ pub struct DocumentNode {
 	/// Now, the call from `F` directly reaches the `CacheNode` and the `CacheNode` can decide whether to call `G.eval(input_from_f)`
 	/// in the event of a cache miss or just return the cached data in the event of a cache hit.
 	pub manual_composition: Option<Type>,
-	// TODO: Remove once this references its definition instead (see above TODO).
-	/// Indicates to the UI if a primary output should be drawn for this node.
-	/// True for most nodes, but the Split Channels node is an example of a node that has multiple secondary outputs but no primary output.
-	#[serde(default = "return_true")]
-	pub has_primary_output: bool,
 	// A nested document network or a proto-node identifier.
 	pub implementation: DocumentNodeImplementation,
-	/// User chosen state for displaying this as a left-to-right node or bottom-to-top layer. Ensure the click target in the encapsulating network is updated when the node changes to a layer by using network.update_click_target(node_id).
-	#[serde(default)]
-	pub is_layer: bool,
 	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
 	#[serde(default = "return_true")]
 	pub visible: bool,
-	/// Represents the lock icon for locking/unlocking the node in the graph UI. When locked, a node cannot be moved in the graph UI.
-	#[serde(default)]
-	pub locked: bool,
-	/// Metadata about the node including its position in the graph UI. Ensure the click target in the encapsulating network is updated when the node moves by using network.update_click_target(node_id).
-	pub metadata: DocumentNodeMetadata,
 	/// When two different proto nodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
 	/// See [`crate::proto::ProtoNetwork::generate_stable_node_ids`] for details.
 	/// However sometimes this is not desirable, for example in the case of a [`graphene_core::memo::MonitorNode`] that needs to be accessed outside of the graph.
@@ -279,16 +237,10 @@ pub struct OriginalLocation {
 impl Default for DocumentNode {
 	fn default() -> Self {
 		Self {
-			alias: Default::default(),
-			name: Default::default(),
 			inputs: Default::default(),
 			manual_composition: Default::default(),
-			has_primary_output: true,
 			implementation: Default::default(),
-			is_layer: false,
 			visible: true,
-			locked: Default::default(),
-			metadata: DocumentNodeMetadata::default(),
 			skip_deduplication: Default::default(),
 			original_location: OriginalLocation::default(),
 		}
@@ -351,11 +303,11 @@ impl DocumentNode {
 			let first = self.inputs.remove(0);
 			match first {
 				NodeInput::Value { tagged_value, .. } => {
-					assert_eq!(self.inputs.len(), 0, "{}, {:?}", self.name, self.inputs);
+					assert_eq!(self.inputs.len(), 0, "A value node cannot have any inputs. Current inputs: {:?}", self.inputs);
 					(ProtoNodeInput::None, ConstructionArgs::Value(tagged_value))
 				}
 				NodeInput::Node { node_id, output_index, lambda } => {
-					assert_eq!(output_index, 0, "Outputs should be flattened before converting to proto node. {:#?}", self.name);
+					assert_eq!(output_index, 0, "Outputs should be flattened before converting to proto node");
 					let node = if lambda { ProtoNodeInput::NodeLambda(node_id) } else { ProtoNodeInput::Node(node_id) };
 					(node, ConstructionArgs::Nodes(vec![]))
 				}
@@ -389,48 +341,6 @@ impl DocumentNode {
 			original_location: self.original_location,
 			skip_deduplication: self.skip_deduplication,
 		}
-	}
-
-	/// Converts all node id inputs to a new id based on a HashMap.
-	///
-	/// If the node is not in the hashmap then a default input is found based on the compiled network
-	pub fn map_ids(mut self, default_inputs: Vec<NodeInput>, new_ids: &HashMap<NodeId, NodeId>) -> Self {
-		for (input_index, input) in self.inputs.iter_mut().enumerate() {
-			if let &mut NodeInput::Node { node_id: id, output_index, lambda } = input {
-				if let Some(&new_id) = new_ids.get(&id) {
-					*input = NodeInput::Node {
-						node_id: new_id,
-						output_index,
-						lambda,
-					};
-				} else {
-					*input = default_inputs[input_index].clone();
-				}
-			} else if let &mut NodeInput::Network { .. } = input {
-				*input = default_inputs[input_index].clone();
-			}
-		}
-		self
-	}
-
-	pub fn is_artboard(&self) -> bool {
-		// TODO: Use something more robust than checking against a string.
-		// TODO: Or, more fundamentally separate the concept of a layer from a node.
-		self.name == "Artboard"
-	}
-
-	// TODO: Is this redundant with `LayerNodeIdentifier::has_children()`? Consider removing this in favor of that.
-	/// Determines if a document node acting as a layer has any nested children where its secondary input eventually leads to a layer along horizontal flow.
-	pub fn layer_has_child_layers(&self, network: &NodeNetwork) -> bool {
-		if !self.is_layer {
-			return false;
-		}
-
-		self.inputs.iter().skip(1).any(|input| {
-			input.as_node().map_or(false, |node_id| {
-				network.upstream_flow_back_from_nodes(vec![node_id], FlowType::HorizontalFlow).any(|(node, _)| node.is_layer)
-			})
-		})
 	}
 }
 
@@ -510,6 +420,16 @@ impl NodeInput {
 			NodeInput::Scope(_) => false,
 		}
 	}
+	/// Network node inputs in the document network are not displayed, but still exist in the compiled network
+	pub fn is_exposed_to_frontend(&self, is_document_network: bool) -> bool {
+		match self {
+			NodeInput::Node { .. } => true,
+			NodeInput::Value { exposed, .. } => *exposed,
+			NodeInput::Network { .. } => !is_document_network,
+			NodeInput::Inline(_) => false,
+			NodeInput::Scope(_) => false,
+		}
+	}
 
 	pub fn ty(&self) -> Type {
 		match self {
@@ -524,6 +444,13 @@ impl NodeInput {
 	pub fn as_value(&self) -> Option<&TaggedValue> {
 		if let NodeInput::Value { tagged_value, .. } = self {
 			Some(tagged_value)
+		} else {
+			None
+		}
+	}
+	pub fn as_value_mut(&mut self) -> Option<MemoHashGuard<TaggedValue>> {
+		if let NodeInput::Value { tagged_value, .. } = self {
+			Some(tagged_value.inner_mut())
 		} else {
 			None
 		}
@@ -543,6 +470,41 @@ impl NodeInput {
 			None
 		}
 	}
+}
+
+#[derive(Clone, Debug, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+/// Represents the implementation of a node, which can be a nested [`NodeNetwork`], a proto [`ProtoNodeIdentifier`], or `Extract`.
+pub enum OldDocumentNodeImplementation {
+	/// This describes a (document) node built out of a subgraph of other (document) nodes.
+	///
+	/// A nested [`NodeNetwork`] that is flattened by the [`NodeNetwork::flatten`] function.
+	Network(OldNodeNetwork),
+	/// This describes a (document) node implemented as a proto node.
+	///
+	/// A proto node identifier which can be found in `node_registry.rs`.
+	#[serde(alias = "Unresolved")] // TODO: Eventually remove this alias (probably starting late 2024)
+	ProtoNode(ProtoNodeIdentifier),
+	/// The Extract variant is a tag which tells the compilation process to do something special. It invokes language-level functionality built for use by the ExtractNode to enable metaprogramming.
+	/// When the ExtractNode is compiled, it gets replaced by a value node containing a representation of the source code for the function/lambda of the document node that's fed into the ExtractNode
+	/// (but only that one document node, not upstream nodes).
+	///
+	/// This is explained in more detail here: <https://www.youtube.com/watch?v=72KJa3jQClo>
+	///
+	/// Currently we use it for GPU execution, where a node has to get "extracted" to its source code representation and stored as a value that can be given to the GpuCompiler node at runtime
+	/// (to become a compute shader). Future use could involve the addition of an InjectNode to convert the source code form back into an executable node, enabling metaprogramming in the node graph.
+	/// We would use an assortment of nodes that operate on Graphene source code (just data, no different from any other data flowing through the graph) to make graph transformations.
+	///
+	/// We use this for dealing with macros in a syntactic way of modifying the node graph from within the graph itself. Just like we often deal with lambdas to represent a whole group of
+	/// operations/code/logic, this allows us to basically deal with a lambda at a meta/source-code level, because we need to pass the GPU SPIR-V compiler the source code for a lambda,
+	/// not the executable logic of a lambda.
+	///
+	/// This is analogous to how Rust macros operate at the level of source code, not executable code. When we speak of source code, that represents Graphene's source code in the form of a
+	/// DocumentNode network, not the text form of Rust's source code. (Analogous to the token stream/AST of a Rust macro.)
+	///
+	/// `DocumentNode`s with a `DocumentNodeImplementation::Extract` are converted into a `ClonedNode` that returns the `DocumentNode` specified by the single `NodeInput::Node`. The referenced node
+	/// (specified by the single `NodeInput::Node`) is removed from the network, and any `NodeInput::Node`s used by the referenced node are replaced with a generically typed network input.
+	Extract,
 }
 
 #[derive(Clone, Debug, PartialEq, Hash, DynAny)]
@@ -606,23 +568,6 @@ impl DocumentNodeImplementation {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-/// Root Node is the "default" export for a node network. Used by document metadata, displaying UI-only "Export" node, and for restoring the default preview node.
-pub struct RootNode {
-	pub id: NodeId,
-	pub output_index: usize,
-}
-#[derive(PartialEq, Debug, Clone, Hash, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum Previewing {
-	/// If there is a node to restore the connection to the export for, then it is stored in the option.
-	/// Otherwise, nothing gets restored and the primary export is disconnected.
-	Yes { root_node_to_restore: Option<RootNode> },
-	#[default]
-	No,
-}
-
 // TODO: Eventually remove this (probably starting late 2024)
 #[derive(Debug, serde::Deserialize)]
 #[serde(untagged)]
@@ -660,6 +605,121 @@ where
 	Ok(inputs)
 }
 
+/// An instance of a [`DocumentNodeDefinition`] that has been instantiated in a [`NodeNetwork`].
+/// Currently, when an instance is made, it lives all on its own without any lasting connection to the definition.
+/// But we will want to change it in the future so it merely references its definition.
+#[derive(Clone, Debug, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct OldDocumentNode {
+	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the node definition's name is displayed to the user in italics.
+	///  Ensure the click target in the encapsulating network is updated when this is modified by using network.update_click_target(node_id).
+	#[serde(default)]
+	pub alias: String,
+	// TODO: Replace this name with a reference to the [`DocumentNodeDefinition`] node definition to use the name from there instead.
+	/// The name of the node definition, as originally set by [`DocumentNodeDefinition`], used to display in the UI and to display the appropriate properties.
+	#[serde(deserialize_with = "migrate_layer_to_merge")]
+	pub name: String,
+	/// The inputs to a node, which are either:
+	/// - From other nodes within this graph [`NodeInput::Node`],
+	/// - A constant value [`NodeInput::Value`],
+	/// - A [`NodeInput::Network`] which specifies that this input is from outside the graph, which is resolved in the graph flattening step in the case of nested networks.
+	///
+	/// In the root network, it is resolved when evaluating the borrow tree.
+	/// Ensure the click target in the encapsulating network is updated when the inputs cause the node shape to change (currently only when exposing/hiding an input) by using network.update_click_target(node_id).
+	#[serde(deserialize_with = "deserialize_inputs")]
+	pub inputs: Vec<NodeInput>,
+	pub manual_composition: Option<Type>,
+	// TODO: Remove once this references its definition instead (see above TODO).
+	/// Indicates to the UI if a primary output should be drawn for this node.
+	/// True for most nodes, but the Split Channels node is an example of a node that has multiple secondary outputs but no primary output.
+	#[serde(default = "return_true")]
+	pub has_primary_output: bool,
+	// A nested document network or a proto-node identifier.
+	pub implementation: OldDocumentNodeImplementation,
+	/// User chosen state for displaying this as a left-to-right node or bottom-to-top layer. Ensure the click target in the encapsulating network is updated when the node changes to a layer by using network.update_click_target(node_id).
+	#[serde(default)]
+	pub is_layer: bool,
+	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
+	#[serde(default = "return_true")]
+	pub visible: bool,
+	/// Represents the lock icon for locking/unlocking the node in the graph UI. When locked, a node cannot be moved in the graph UI.
+	#[serde(default)]
+	pub locked: bool,
+	/// Metadata about the node including its position in the graph UI. Ensure the click target in the encapsulating network is updated when the node moves by using network.update_click_target(node_id).
+	pub metadata: OldDocumentNodeMetadata,
+	/// When two different proto nodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
+	/// See [`crate::proto::ProtoNetwork::generate_stable_node_ids`] for details.
+	/// However sometimes this is not desirable, for example in the case of a [`graphene_core::memo::MonitorNode`] that needs to be accessed outside of the graph.
+	#[serde(default)]
+	pub skip_deduplication: bool,
+	/// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.
+	#[serde(skip)]
+	pub original_location: OriginalLocation,
+}
+
+// TODO: Eventually remove this (probably starting late 2024)
+#[derive(Clone, Debug, PartialEq, Default, specta::Type, Hash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+/// Metadata about the node including its position in the graph UI
+pub struct OldDocumentNodeMetadata {
+	pub position: IVec2,
+}
+
+// TODO: Eventually remove this (probably starting late 2024)
+#[derive(Clone, Copy, Debug, PartialEq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+/// Root Node is the "default" export for a node network. Used by document metadata, displaying UI-only "Export" node, and for restoring the default preview node.
+pub struct OldRootNode {
+	pub id: NodeId,
+	pub output_index: usize,
+}
+
+// TODO: Eventually remove this (probably starting late 2024)
+#[derive(PartialEq, Debug, Clone, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum OldPreviewing {
+	/// If there is a node to restore the connection to the export for, then it is stored in the option.
+	/// Otherwise, nothing gets restored and the primary export is disconnected.
+	Yes { root_node_to_restore: Option<OldRootNode> },
+	#[default]
+	No,
+}
+
+// TODO: Eventually remove this (probably starting late 2024)
+#[derive(Clone, Debug, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+/// A network (subgraph) of nodes containing each [`DocumentNode`] and its ID, as well as list mapping each export to its connected node, or a value if disconnected
+pub struct OldNodeNetwork {
+	/// The list of data outputs that are exported from this network to the parent network.
+	/// Each export is a reference to a node within this network, paired with its output index, that is the source of the network's exported data.
+	#[serde(alias = "outputs", deserialize_with = "deserialize_exports")] // TODO: Eventually remove this alias (probably starting late 2024)
+	pub exports: Vec<NodeInput>,
+	/// The list of all nodes in this network.
+	//#[serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap")]
+	pub nodes: HashMap<NodeId, OldDocumentNode>,
+	/// Indicates whether the network is currently rendered with a particular node that is previewed, and if so, which connection should be restored when the preview ends.
+	#[serde(default)]
+	pub previewing: OldPreviewing,
+	/// Temporary fields to store metadata for "Import"/"Export" UI-only nodes, eventually will be replaced with lines leading to edges
+	#[serde(default = "default_import_metadata")]
+	pub imports_metadata: (NodeId, IVec2),
+	#[serde(default = "default_export_metadata")]
+	pub exports_metadata: (NodeId, IVec2),
+
+	/// A network may expose nodes as constants which can by used by other nodes using a `NodeInput::Scope(key)`.
+	#[serde(default)]
+	//#[serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap")]
+	pub scope_injections: HashMap<String, (NodeId, Type)>,
+}
+
+// TODO: Eventually remove this (probably starting late 2024)
+fn migrate_layer_to_merge<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+	let mut s: String = serde::Deserialize::deserialize(deserializer)?;
+	if s == "Layer" {
+		s = "Merge".to_string();
+	}
+	Ok(s)
+}
 // TODO: Eventually remove this (probably starting late 2024)
 fn default_import_metadata() -> (NodeId, IVec2) {
 	(NodeId(generate_uuid()), IVec2::new(-25, -4))
@@ -669,7 +729,7 @@ fn default_export_metadata() -> (NodeId, IVec2) {
 	(NodeId(generate_uuid()), IVec2::new(8, -4))
 }
 
-#[derive(Clone, Debug, DynAny)]
+#[derive(Clone, Default, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// A network (subgraph) of nodes containing each [`DocumentNode`] and its ID, as well as list mapping each export to its connected node, or a value if disconnected
 pub struct NodeNetwork {
@@ -677,19 +737,14 @@ pub struct NodeNetwork {
 	/// Each export is a reference to a node within this network, paired with its output index, that is the source of the network's exported data.
 	#[serde(alias = "outputs", deserialize_with = "deserialize_exports")] // TODO: Eventually remove this alias (probably starting late 2024)
 	pub exports: Vec<NodeInput>,
+	/// TODO: Instead of storing import types in each NodeInput::Network connection, the types are stored here. This is similar to how types need to be defined for parameters when creating a function in Rust.
+	// pub import_types: Vec<Type>,
 	/// The list of all nodes in this network.
+	#[serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap")]
 	pub nodes: HashMap<NodeId, DocumentNode>,
-	/// Indicates whether the network is currently rendered with a particular node that is previewed, and if so, which connection should be restored when the preview ends.
-	#[serde(default)]
-	pub previewing: Previewing,
-	/// Temporary fields to store metadata for "Import"/"Export" UI-only nodes, eventually will be replaced with lines leading to edges
-	#[serde(default = "default_import_metadata")]
-	pub imports_metadata: (NodeId, IVec2),
-	#[serde(default = "default_export_metadata")]
-	pub exports_metadata: (NodeId, IVec2),
-
 	/// A network may expose nodes as constants which can by used by other nodes using a `NodeInput::Scope(key)`.
 	#[serde(default)]
+	#[serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap")]
 	pub scope_injections: HashMap<String, (NodeId, Type)>,
 }
 
@@ -702,24 +757,12 @@ impl std::hash::Hash for NodeNetwork {
 			id.hash(state);
 			node.hash(state);
 		}
-		self.previewing.hash(state);
 	}
 }
-impl Default for NodeNetwork {
-	fn default() -> Self {
-		NodeNetwork {
-			exports: Default::default(),
-			nodes: Default::default(),
-			previewing: Default::default(),
-			imports_metadata: default_import_metadata(),
-			exports_metadata: default_export_metadata(),
-			scope_injections: Default::default(),
-		}
-	}
-}
+
 impl PartialEq for NodeNetwork {
 	fn eq(&self, other: &Self) -> bool {
-		self.exports == other.exports && self.previewing == other.previewing && self.imports_metadata == other.imports_metadata && self.exports_metadata == other.exports_metadata
+		self.exports == other.exports
 	}
 }
 
@@ -731,56 +774,6 @@ impl NodeNetwork {
 		hasher.finish()
 	}
 
-	/// Returns the root node (the node that the solid line is connect to), or None if no nodes are connected to the output
-	pub fn get_root_node(&self) -> Option<RootNode> {
-		match self.previewing {
-			Previewing::Yes { root_node_to_restore } => root_node_to_restore,
-			Previewing::No => self.exports.first().and_then(|export| {
-				if let NodeInput::Node { node_id, output_index, .. } = export {
-					Some(RootNode {
-						id: *node_id,
-						output_index: *output_index,
-					})
-				} else {
-					None
-				}
-			}),
-		}
-	}
-
-	/// Sets the root node only if a node is being previewed
-	pub fn update_root_node(&mut self, node_id: NodeId, output_index: usize) {
-		if let Previewing::Yes { root_node_to_restore } = self.previewing {
-			// Only continue previewing if the new root node is not the same as the primary export. If it is the same, end the preview
-			if let Some(root_node_to_restore) = root_node_to_restore {
-				if root_node_to_restore.id != node_id {
-					self.start_previewing(node_id, output_index);
-				} else {
-					self.stop_preview();
-				}
-			} else {
-				self.stop_preview();
-			}
-		}
-	}
-
-	/// Start previewing with a restore node
-	pub fn start_previewing(&mut self, previous_node_id: NodeId, output_index: usize) {
-		self.previewing = Previewing::Yes {
-			root_node_to_restore: Some(RootNode { id: previous_node_id, output_index }),
-		};
-	}
-
-	/// Start previewing without a restore node
-	pub fn start_previewing_without_restore(&mut self) {
-		self.previewing = Previewing::Yes { root_node_to_restore: None };
-	}
-
-	/// Stops preview, does not reset export
-	pub fn stop_preview(&mut self) {
-		self.previewing = Previewing::No;
-	}
-
 	pub fn value_network(node: DocumentNode) -> Self {
 		Self {
 			exports: vec![NodeInput::node(NodeId(0), 0)],
@@ -790,32 +783,32 @@ impl NodeNetwork {
 	}
 
 	/// A graph with just an input node
-	pub fn new_network() -> Self {
-		Self {
-			exports: vec![NodeInput::node(NodeId(0), 0)],
-			nodes: [(
-				NodeId(0),
-				DocumentNode {
-					name: "Input Frame".into(),
-					manual_composition: Some(concrete!(u32)),
-					implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into()),
-					metadata: DocumentNodeMetadata { position: (8, 4).into() },
-					..Default::default()
-				},
-			)]
-			.into_iter()
-			.collect(),
-			..Default::default()
-		}
-	}
+	// pub fn new_network() -> Self {
+	// 	Self {
+	// 		exports: vec![NodeInput::node(NodeId(0), 0)],
+	// 		nodes: [(
+	// 			NodeId(0),
+	// 			DocumentNode {
+	// 				name: "Input Frame".into(),
+	// 				manual_composition: Some(concrete!(u32)),
+	// 				implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into()),
+	// 				metadata: DocumentNodeMetadata { position: (8, 4).into() },
+	// 				..Default::default()
+	// 			},
+	// 		)]
+	// 		.into_iter()
+	// 		.collect(),
+	// 		..Default::default()
+	// 	}
+	// }
 
 	/// Appends a new node to the network after the output node and sets it as the new output
 	// pub fn push_node_to_document_network(&mut self, mut node: DocumentNode) -> NodeId {
 	// 	let id = NodeId(self.nodes.len().try_into().expect("Too many nodes in network"));
 	// 	// Set the correct position for the new node
-	// 	if node.metadata.position == IVec2::default() {
-	// 		if let Some(pos) = self.get_root_node().and_then(|root_node| self.nodes.get(&root_node.id)).map(|n| n.metadata.position) {
-	// 			node.metadata.position = pos + IVec2::new(8, 0);
+	// 	if node.metadata().position == IVec2::default() {
+	// 		if let Some(pos) = self.get_root_node().and_then(|root_node| self.nodes.get(&root_node.id)).map(|n| n.metadata().position) {
+	// 			node.metadata().position = pos + IVec2::new(8, 0);
 	// 		}
 	// 	}
 	// 	if !self.exports.is_empty() {
@@ -852,90 +845,11 @@ impl NodeNetwork {
 		network
 	}
 
-	/// Get the network the selected nodes are part of, which is either self or the nested network from nested_path. Used to get nodes selected in the layer panel when viewing a nested network.
-	pub fn nested_network_for_selected_nodes<'a>(&self, nested_path: &[NodeId], mut selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&Self> {
-		if selected_nodes.any(|node_id| self.nodes.contains_key(node_id) || self.exports_metadata.0 == *node_id || self.imports_metadata.0 == *node_id) {
-			Some(self)
-		} else {
-			self.nested_network(nested_path)
-		}
-	}
-
-	/// Get the mutable network the selected nodes are part of, which is either self or the nested network from nested_path. Used to modify nodes selected in the layer panel when viewing a nested network.
-	pub fn nested_network_for_selected_nodes_mut<'a>(&mut self, nested_path: &[NodeId], mut selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&mut Self> {
-		if selected_nodes.any(|node_id| self.nodes.contains_key(node_id)) {
-			Some(self)
-		} else {
-			self.nested_network_mut(nested_path)
-		}
-	}
-
-	/// Check if the specified node id is connected to the output
-	pub fn connected_to_output(&self, target_node_id: NodeId) -> bool {
-		// If the node is the output then return true
-		if self
-			.exports
-			.iter()
-			.any(|export| if let NodeInput::Node { node_id, .. } = export { *node_id == target_node_id } else { false })
-		{
-			return true;
-		}
-
-		if self.exports_metadata.0 == target_node_id {
-			return true;
-		}
-		// Get the outputs
-		let mut stack = self
-			.exports
-			.iter()
-			.filter_map(|output| if let NodeInput::Node { node_id, .. } = output { self.nodes.get(node_id) } else { None })
-			.collect::<Vec<_>>();
-		let mut already_visited = HashSet::new();
-		already_visited.extend(self.exports.iter().filter_map(|output| if let NodeInput::Node { node_id, .. } = output { Some(node_id) } else { None }));
-
-		while let Some(node) = stack.pop() {
-			for input in &node.inputs {
-				if let &NodeInput::Node { node_id: ref_id, .. } = input {
-					// Skip if already viewed
-					if already_visited.contains(&ref_id) {
-						continue;
-					}
-					// If the target node is used as input then return true
-					if ref_id == target_node_id {
-						return true;
-					}
-					// Add the referenced node to the stack
-					let Some(ref_node) = self.nodes.get(&ref_id) else {
-						continue;
-					};
-					already_visited.insert(ref_id);
-					stack.push(ref_node);
-				}
-			}
-		}
-
-		false
-	}
-
 	/// Is the node being used directly as an output?
 	pub fn outputs_contain(&self, node_id_to_check: NodeId) -> bool {
 		self.exports
 			.iter()
 			.any(|output| if let NodeInput::Node { node_id, .. } = output { *node_id == node_id_to_check } else { false })
-	}
-
-	/// Gives an iterator to all nodes connected to the given nodes (inclusive) by all inputs (primary or primary + secondary depending on `only_follow_primary` choice), traversing backwards upstream starting from the given node's inputs.
-	pub fn upstream_flow_back_from_nodes(&self, node_ids: Vec<NodeId>, flow_type: FlowType) -> impl Iterator<Item = (&DocumentNode, NodeId)> {
-		FlowIter {
-			stack: node_ids,
-			network: self,
-			flow_type,
-		}
-	}
-
-	/// In the network `X -> Y -> Z`, `is_node_upstream_of_another_by_primary_flow(Z, X)` returns true.
-	pub fn is_node_upstream_of_another_by_horizontal_flow(&self, node: NodeId, potentially_upstream_node: NodeId) -> bool {
-		self.upstream_flow_back_from_nodes(vec![node], FlowType::HorizontalFlow).any(|(_, id)| id == potentially_upstream_node)
 	}
 
 	/// Check there are no cycles in the graph (this should never happen).
@@ -964,54 +878,6 @@ impl NodeNetwork {
 	}
 }
 
-#[derive(PartialEq)]
-pub enum FlowType {
-	/// Iterate over all upstream nodes from every input (the primary and all secondary).
-	UpstreamFlow,
-	/// Iterate over nodes connected to the primary input.
-	PrimaryFlow,
-	/// Iterate over the secondary input for layer nodes and primary input for non layer nodes.
-	HorizontalFlow,
-}
-/// Iterate over upstream nodes. The behavior changes based on the `flow_type` that's set.
-/// - [`FlowType::UpstreamFlow`]: iterates over all upstream nodes from every input (the primary and all secondary).
-/// - [`FlowType::PrimaryFlow`]: iterates along the horizontal inputs of nodes, so in the case of a node chain `a -> b -> c`, this would yield `c, b, a` if we started from `c`.
-/// - [`FlowType::HorizontalFlow`]: iterates over the secondary input for layer nodes and primary input for non layer nodes.
-struct FlowIter<'a> {
-	stack: Vec<NodeId>,
-	network: &'a NodeNetwork,
-	flow_type: FlowType,
-}
-impl<'a> Iterator for FlowIter<'a> {
-	type Item = (&'a DocumentNode, NodeId);
-	fn next(&mut self) -> Option<Self::Item> {
-		loop {
-			let mut node_id = self.stack.pop()?;
-
-			// Special handling for iterating from ROOT_PARENT in load_structure`
-			if node_id == NodeId(u64::MAX) {
-				if let Some(root_node) = self.network.get_root_node() {
-					node_id = root_node.id
-				} else {
-					return None;
-				}
-			}
-
-			if let Some(document_node) = self.network.nodes.get(&node_id) {
-				let skip = if self.flow_type == FlowType::HorizontalFlow && document_node.is_layer { 1 } else { 0 };
-				let take = if self.flow_type == FlowType::UpstreamFlow { usize::MAX } else { 1 };
-				let inputs = document_node.inputs.iter().skip(skip).take(take);
-
-				let node_ids = inputs.filter_map(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id) } else { None });
-
-				self.stack.extend(node_ids);
-
-				return Some((document_node, node_id));
-			}
-		}
-	}
-}
-
 /// Functions for compiling the network
 impl NodeNetwork {
 	/// Replace all references in the graph of a node ID with a new node ID defined by the function `f`.
@@ -1021,11 +887,6 @@ impl NodeNetwork {
 				*node_id = f(*node_id)
 			}
 		});
-		if let Previewing::Yes { root_node_to_restore } = &mut self.previewing {
-			if let Some(root_node_to_restore) = root_node_to_restore.as_mut() {
-				root_node_to_restore.id = f(root_node_to_restore.id);
-			}
-		}
 		self.scope_injections.values_mut().for_each(|(id, _ty)| *id = f(*id));
 		let nodes = std::mem::take(&mut self.nodes);
 		self.nodes = nodes
@@ -1035,20 +896,6 @@ impl NodeNetwork {
 				(f(id), node)
 			})
 			.collect();
-	}
-
-	/// Collect a hashmap of nodes with a list of the nodes that use it as input
-	pub fn collect_outwards_wires(&self) -> HashMap<NodeId, Vec<NodeId>> {
-		let mut outwards_wires: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
-		for (current_node_id, node) in &self.nodes {
-			for input in &node.inputs {
-				if let NodeInput::Node { node_id, .. } = input {
-					let outward_wires_entry = outwards_wires.entry(*node_id).or_default();
-					outward_wires_entry.push(*current_node_id);
-				}
-			}
-		}
-		outwards_wires
 	}
 
 	/// Populate the [`DocumentNode::path`], which stores the location of the document node to allow for matching the resulting proto nodes to the document node for the purposes of typing and finding monitor nodes.
@@ -1189,7 +1036,6 @@ impl NodeNetwork {
 						nested_network.nodes.insert(
 							merged_node_id,
 							DocumentNode {
-								name: "Value".into(),
 								inputs: vec![NodeInput::Value { tagged_value, exposed }],
 								implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::ClonedNode".into()),
 								original_location,
@@ -1220,7 +1066,6 @@ impl NodeNetwork {
 					self.nodes.insert(
 						merged_node_id,
 						DocumentNode {
-							name: "Value".into(),
 							inputs: vec![NodeInput::Value { tagged_value, exposed }],
 							implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::ClonedNode".into()),
 							original_location,
@@ -1256,13 +1101,6 @@ impl NodeNetwork {
 
 			// Match the document node input and the inputs of the inner network
 			for (nested_node_id, mut nested_node) in inner_network.nodes.into_iter() {
-				if nested_node.name == "To Artboard" {
-					let label_index = 1;
-					let label = if !node.alias.is_empty() { node.alias.clone() } else { node.name.clone() };
-					let label_input = NodeInput::value(TaggedValue::String(label), false);
-					nested_node.inputs[label_index] = label_input;
-				}
-
 				for (nested_input_index, nested_input) in nested_node.clone().inputs.iter().enumerate() {
 					if let NodeInput::Network { import_index, .. } = nested_input {
 						let parent_input = node.inputs.get(*import_index).unwrap_or_else(|| panic!("Import index {} should always exist", import_index));
@@ -1529,7 +1367,6 @@ mod test {
 				(
 					NodeId(0),
 					DocumentNode {
-						name: "Cons".into(),
 						inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::network(concrete!(u32), 1)],
 						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::structural::ConsNode".into()),
 						..Default::default()
@@ -1538,7 +1375,6 @@ mod test {
 				(
 					NodeId(1),
 					DocumentNode {
-						name: "Add".into(),
 						inputs: vec![NodeInput::node(NodeId(0), 0)],
 						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::AddPairNode".into()),
 						..Default::default()
@@ -1555,13 +1391,12 @@ mod test {
 	fn map_ids() {
 		let mut network = add_network();
 		network.map_ids(|id| NodeId(id.0 + 1));
-		let mut mapped_add = NodeNetwork {
+		let mapped_add = NodeNetwork {
 			exports: vec![NodeInput::node(NodeId(2), 0)],
 			nodes: [
 				(
 					NodeId(1),
 					DocumentNode {
-						name: "Cons".into(),
 						inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::network(concrete!(u32), 1)],
 						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::structural::ConsNode".into()),
 						..Default::default()
@@ -1570,7 +1405,6 @@ mod test {
 				(
 					NodeId(2),
 					DocumentNode {
-						name: "Add".into(),
 						inputs: vec![NodeInput::node(NodeId(1), 0)],
 						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::AddPairNode".into()),
 						..Default::default()
@@ -1581,17 +1415,12 @@ mod test {
 			.collect(),
 			..Default::default()
 		};
-		network.exports_metadata.0 = NodeId(0);
-		network.imports_metadata.0 = NodeId(0);
-		mapped_add.exports_metadata.0 = NodeId(0);
-		mapped_add.imports_metadata.0 = NodeId(0);
 		assert_eq!(network, mapped_add);
 	}
 
 	#[test]
 	fn extract_node() {
 		let id_node = DocumentNode {
-			name: "Id".into(),
 			inputs: vec![],
 			implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into()),
 			..Default::default()
@@ -1602,7 +1431,6 @@ mod test {
 			nodes: [
 				id_node.clone(),
 				DocumentNode {
-					name: "Extract".into(),
 					inputs: vec![NodeInput::lambda(NodeId(0), 0)],
 					implementation: DocumentNodeImplementation::Extract,
 					..Default::default()
@@ -1628,7 +1456,6 @@ mod test {
 			nodes: [(
 				NodeId(1),
 				DocumentNode {
-					name: "Inc".into(),
 					inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::value(TaggedValue::U32(2), false)],
 					implementation: DocumentNodeImplementation::Network(add_network()),
 					..Default::default()
@@ -1640,11 +1467,7 @@ mod test {
 		};
 		network.generate_node_paths(&[]);
 		network.flatten_with_fns(NodeId(1), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), gen_node_id);
-		network.exports_metadata.0 = NodeId(0);
-		network.imports_metadata.0 = NodeId(0);
-		let mut flat_network = flat_network();
-		flat_network.imports_metadata.0 = NodeId(0);
-		flat_network.exports_metadata.0 = NodeId(0);
+		let flat_network = flat_network();
 		println!("{flat_network:#?}");
 		println!("{network:#?}");
 
@@ -1654,7 +1477,6 @@ mod test {
 	#[test]
 	fn resolve_proto_node_add() {
 		let document_node = DocumentNode {
-			name: "Cons".into(),
 			inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::node(NodeId(0), 0)],
 			implementation: DocumentNodeImplementation::ProtoNode("graphene_core::structural::ConsNode".into()),
 			..Default::default()
@@ -1744,7 +1566,6 @@ mod test {
 				(
 					NodeId(10),
 					DocumentNode {
-						name: "Cons".into(),
 						inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::node(NodeId(14), 0)],
 						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::structural::ConsNode".into()),
 						original_location: OriginalLocation {
@@ -1760,7 +1581,6 @@ mod test {
 				(
 					NodeId(14),
 					DocumentNode {
-						name: "Value".into(),
 						inputs: vec![NodeInput::value(TaggedValue::U32(2), false)],
 						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::ClonedNode".into()),
 						original_location: OriginalLocation {
@@ -1776,7 +1596,6 @@ mod test {
 				(
 					NodeId(11),
 					DocumentNode {
-						name: "Add".into(),
 						inputs: vec![NodeInput::node(NodeId(10), 0)],
 						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::AddPairNode".into()),
 						original_location: OriginalLocation {
@@ -1803,7 +1622,6 @@ mod test {
 				(
 					NodeId(1),
 					DocumentNode {
-						name: "Identity 1".into(),
 						inputs: vec![NodeInput::network(concrete!(u32), 0)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
 						..Default::default()
@@ -1812,7 +1630,6 @@ mod test {
 				(
 					NodeId(2),
 					DocumentNode {
-						name: "Identity 2".into(),
 						inputs: vec![NodeInput::network(concrete!(u32), 1)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
 						..Default::default()
@@ -1832,7 +1649,6 @@ mod test {
 				(
 					NodeId(1),
 					DocumentNode {
-						name: "Nested network".into(),
 						inputs: vec![NodeInput::value(TaggedValue::F64(1.), false), NodeInput::value(TaggedValue::F64(2.), false)],
 						implementation: DocumentNodeImplementation::Network(two_node_identity()),
 						..Default::default()
@@ -1841,7 +1657,6 @@ mod test {
 				(
 					NodeId(2),
 					DocumentNode {
-						name: "Result".into(),
 						inputs: vec![result_node_input],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
 						..Default::default()

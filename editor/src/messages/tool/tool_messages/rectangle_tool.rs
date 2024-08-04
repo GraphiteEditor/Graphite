@@ -207,15 +207,10 @@ impl Fsm for RectangleToolFsmState {
 
 				responses.add(DocumentMessage::StartTransaction);
 
-				let nodes = {
-					let node_type = resolve_document_node_type("Rectangle").expect("Rectangle node does not exist");
-					let node = node_type.to_document_node_default_inputs(
-						[None, Some(NodeInput::value(TaggedValue::F64(1.), false)), Some(NodeInput::value(TaggedValue::F64(1.), false))],
-						Default::default(),
-					);
+				let node_type = resolve_document_node_type("Rectangle").expect("Rectangle node does not exist");
+				let node = node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(1.), false)), Some(NodeInput::value(TaggedValue::F64(1.), false))]);
+				let nodes = vec![(NodeId(0), node)];
 
-					HashMap::from([(NodeId(0), node)])
-				};
 				let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, document.new_layer_parent(true), responses);
 				tool_options.fill.apply_fill(layer, responses);
 				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);

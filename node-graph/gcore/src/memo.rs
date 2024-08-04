@@ -186,10 +186,10 @@ impl<T: Hash> MemoHash<T> {
 		hasher.finish()
 	}
 
-	pub fn inner_mut<'a>(&'a mut self) -> MemoHashGuard<'a, T> {
+	pub fn inner_mut(&mut self) -> MemoHashGuard<T> {
 		MemoHashGuard { inner: self }
 	}
-	pub fn into_inner<'a>(self) -> T {
+	pub fn into_inner(self) -> T {
 		self.value
 	}
 	pub fn hash_code(&self) -> u64 {

@@ -8,6 +8,7 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Transf
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
@@ -15,7 +16,7 @@ use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 
-use graph_craft::document::{DocumentNode, NodeId, NodeNetwork};
+use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;
 use graphene_std::vector::misc::BooleanOperation;
 
@@ -288,8 +289,8 @@ impl SelectToolData {
 			if (self.snap_candidates.len() as f64) < document.snapping_state.tolerance {
 				snapping::get_layer_snap_points(layer, &SnapData::new(document, input), &mut self.snap_candidates);
 			}
-			if let Some(bounds) = document.metadata.bounding_box_with_transform(layer, DAffine2::IDENTITY) {
-				let quad = document.metadata.transform_to_document(layer) * Quad::from_box(bounds);
+			if let Some(bounds) = document.metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY) {
+				let quad = document.metadata().transform_to_document(layer) * Quad::from_box(bounds);
 				snapping::get_bbox_points(quad, &mut self.snap_candidates, snapping::BBoxSnapValues::BOUNDING_BOX, document);
 			}
 		}
@@ -310,20 +311,11 @@ impl SelectToolData {
 	}
 
 	/// Duplicates the currently dragging layers. Called when Alt is pressed and the layers have not yet been duplicated.
-	fn start_duplicates(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	fn start_duplicates(&mut self, document: &mut DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		self.non_duplicated_layers = Some(self.layers_dragging.clone());
 		let mut new_dragging = Vec::new();
-		for layer_ancestors in document.metadata().shallowest_unique_layers(self.layers_dragging.iter().copied().rev()) {
-			let Some(layer) = layer_ancestors.last().copied() else { continue };
-
-			// `layer` cannot be `ROOT_PARENT`, since `ROOT_PARENT` cannot be part of `layers_dragging`
-			if layer == LayerNodeIdentifier::ROOT_PARENT {
-				log::error!("ROOT_PARENT cannot be in layers_dragging");
-				continue;
-			}
-
-			// `parent` can be `ROOT_PARENT`
-			let Some(parent) = layer.parent(&document.metadata) else { continue };
+		for layer in document.network_interface.shallowest_unique_layers(&[]) {
+			let Some(parent) = layer.parent(document.metadata()) else { continue };
 
 			// Moves the layer back to its starting position.
 			responses.add(GraphOperationMessage::TransformChange {
@@ -335,36 +327,32 @@ impl SelectToolData {
 
 			// Copy the layer
 			let mut copy_ids = HashMap::new();
-			let node = layer.to_node();
-			copy_ids.insert(node, NodeId(0_u64));
-			if let Some(input_node) = document
-				.network()
-				.nodes
-				.get(&node)
-				.and_then(|node| if node.is_layer { node.inputs.get(1) } else { node.inputs.first() })
-				.and_then(|input| input.as_node())
-			{
-				document
-					.network()
-					.upstream_flow_back_from_nodes(vec![input_node], graph_craft::document::FlowType::UpstreamFlow)
-					.enumerate()
-					.for_each(|(index, (_, node_id))| {
-						copy_ids.insert(node_id, NodeId((index + 1) as u64));
-					});
-			};
-			let nodes: HashMap<NodeId, DocumentNode> =
-				NodeGraphMessageHandler::copy_nodes(document.network(), &document.node_graph_handler.network, &document.node_graph_handler.resolved_types, &copy_ids).collect();
+			let node_id = layer.to_node();
+			copy_ids.insert(node_id, NodeId(0));
 
-			let insert_index = DocumentMessageHandler::get_calculated_insert_index(&document.metadata, &document.selected_nodes, parent);
+			document
+				.network_interface
+				.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::LayerChildrenUpstreamFlow)
+				.enumerate()
+				.for_each(|(index, node_id)| {
+					copy_ids.insert(node_id, NodeId((index + 1) as u64));
+				});
 
-			let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
+			let nodes = document.network_interface.copy_nodes(&copy_ids, &[]).collect::<Vec<(NodeId, NodeTemplate)>>();
+
+			let insert_index = DocumentMessageHandler::get_calculated_insert_index(document.metadata(), document.network_interface.selected_nodes(&[]).unwrap(), parent);
+
+			let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId(generate_uuid()))).collect();
 
 			let layer_id = *new_ids.get(&NodeId(0)).expect("Node Id 0 should be a layer");
-			responses.add(GraphOperationMessage::AddNodesAsChild { nodes, new_ids, parent, insert_index });
-			new_dragging.push(LayerNodeIdentifier::new_unchecked(layer_id));
+			let layer = LayerNodeIdentifier::new_unchecked(layer_id);
+			new_dragging.push(layer);
+			responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
+			responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index });
 		}
 		let nodes = new_dragging.iter().map(|layer| layer.to_node()).collect();
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
+		responses.add(NodeGraphMessage::RunDocumentGraph);
 		self.layers_dragging = new_dragging;
 	}
 
@@ -375,12 +363,7 @@ impl SelectToolData {
 		};
 
 		// Delete the duplicated layers
-		for layer_ancestors in document.metadata().shallowest_unique_layers(self.layers_dragging.iter().copied()) {
-			let layer = layer_ancestors.last().unwrap();
-			if *layer == LayerNodeIdentifier::ROOT_PARENT {
-				log::error!("ROOT_PARENT cannot be in layers_dragging");
-				continue;
-			}
+		for layer in document.network_interface.shallowest_unique_layers(&[]) {
 			responses.add(NodeGraphMessage::DeleteNodes {
 				node_ids: vec![layer.to_node()],
 				reconnect: true,
@@ -425,19 +408,26 @@ impl Fsm for SelectToolFsmState {
 			(_, SelectToolMessage::Overlays(mut overlay_context)) => {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 
-				let selected_layers_count = document.selected_nodes.selected_unlocked_layers(document.metadata()).count();
+				let selected_layers_count = document.network_interface.selected_nodes(&[]).unwrap().selected_unlocked_layers(&document.network_interface).count();
 				tool_data.selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
 				tool_data.selected_layers_count = selected_layers_count;
 
 				// Outline selected layers
-				for layer in document.selected_nodes.selected_visible_and_unlocked_layers(document.metadata()) {
+				for layer in document
+					.network_interface
+					.selected_nodes(&[])
+					.unwrap()
+					.selected_visible_and_unlocked_layers(&document.network_interface)
+				{
 					overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
 				}
 
 				// Update bounds
 				let transform = document
-					.selected_nodes
-					.selected_visible_and_unlocked_layers(document.metadata())
+					.network_interface
+					.selected_nodes(&[])
+					.unwrap()
+					.selected_visible_and_unlocked_layers(&document.network_interface)
 					.next()
 					.map(|layer| document.metadata().transform_to_viewport(layer));
 				let transform = transform.unwrap_or(DAffine2::IDENTITY);
@@ -445,8 +435,10 @@ impl Fsm for SelectToolFsmState {
 					return self;
 				}
 				let bounds = document
-					.selected_nodes
-					.selected_visible_and_unlocked_layers(document.metadata())
+					.network_interface
+					.selected_nodes(&[])
+					.unwrap()
+					.selected_visible_and_unlocked_layers(&document.network_interface)
 					.filter_map(|layer| {
 						document
 							.metadata()
@@ -473,16 +465,17 @@ impl Fsm for SelectToolFsmState {
 					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
 
 					// Draw outline visualizations on the layers to be selected
-					for layer in document.intersect_quad(quad, &document.network) {
+					for layer in document.intersect_quad(quad, input) {
 						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
 					}
 
 					// Update the selection box
 					overlay_context.quad(quad);
-				} else {
+				// Only highlight layers if the viewport is not being panned (middle mouse button is pressed)
+				} else if !input.keyboard.get(Key::Mmb as usize) {
 					// Get the layer the user is hovering over
-					let click = document.click(input.mouse.position, &document.network);
-					let not_selected_click = click.filter(|&hovered_layer| !document.selected_nodes.selected_layers_contains(hovered_layer, document.metadata()));
+					let click = document.click(input);
+					let not_selected_click = click.filter(|&hovered_layer| !document.network_interface.selected_nodes(&[]).unwrap().selected_layers_contains(hovered_layer, document.metadata()));
 					if let Some(layer) = not_selected_click {
 						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
 					}
@@ -492,10 +485,10 @@ impl Fsm for SelectToolFsmState {
 			}
 			(_, SelectToolMessage::EditLayer) => {
 				// Edit the clicked layer
-				if let Some(intersect) = document.click(input.mouse.position, &document.network) {
+				if let Some(intersect) = document.click(input) {
 					match tool_data.nested_selection_behavior {
 						NestedSelectionBehavior::Shallowest => edit_layer_shallowest_manipulation(document, intersect, responses),
-						NestedSelectionBehavior::Deepest => edit_layer_deepest_manipulation(intersect, &document.network, responses),
+						NestedSelectionBehavior::Deepest => edit_layer_deepest_manipulation(intersect, &document.network_interface, responses),
 					}
 				}
 
@@ -523,9 +516,14 @@ impl Fsm for SelectToolFsmState {
 					.map(|bounding_box| bounding_box.check_rotate(input.mouse.position))
 					.unwrap_or_default();
 
-				let mut selected: Vec<_> = document.selected_nodes.selected_visible_and_unlocked_layers(document.metadata()).collect();
-				let intersection_list = document.click_list(input.mouse.position, &document.network).collect::<Vec<_>>();
-				let intersection = document.find_deepest(&intersection_list, &document.network);
+				let mut selected: Vec<_> = document
+					.network_interface
+					.selected_nodes(&[])
+					.unwrap()
+					.selected_visible_and_unlocked_layers(&document.network_interface)
+					.collect();
+				let intersection_list = document.click_list(input).collect::<Vec<_>>();
+				let intersection = document.find_deepest(&intersection_list);
 
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
 				// If the user is dragging the rotate trigger, go into RotatingBounds mode.
@@ -554,7 +552,7 @@ impl Fsm for SelectToolFsmState {
 
 						tool_data.layers_dragging.retain(|layer| {
 							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.network.nodes.contains_key(&layer.to_node())
+								document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
 							} else {
 								log::error!("ROOT_PARENT should not be part of layers_dragging");
 								false
@@ -566,8 +564,7 @@ impl Fsm for SelectToolFsmState {
 							&mut bounds.center_of_transformation,
 							&tool_data.layers_dragging,
 							responses,
-							&document.network,
-							&document.metadata,
+							&document.network_interface,
 							None,
 							&ToolType::Select,
 						);
@@ -584,7 +581,7 @@ impl Fsm for SelectToolFsmState {
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						tool_data.layers_dragging.retain(|layer| {
 							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.network.nodes.contains_key(&layer.to_node())
+								document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
 							} else {
 								log::error!("ROOT_PARENT should not be part of layers_dragging");
 								false
@@ -595,8 +592,7 @@ impl Fsm for SelectToolFsmState {
 							&mut bounds.center_of_transformation,
 							&selected,
 							responses,
-							&document.network,
-							&document.metadata,
+							&document.network_interface,
 							None,
 							&ToolType::Select,
 						);
@@ -615,7 +611,7 @@ impl Fsm for SelectToolFsmState {
 					if tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
 						tool_data.select_single_layer = intersection;
 					} else {
-						tool_data.select_single_layer = intersection.and_then(|intersection| intersection.ancestors(&document.metadata).find(|ancestor| selected.contains(ancestor)));
+						tool_data.select_single_layer = intersection.and_then(|intersection| intersection.ancestors(document.metadata()).find(|ancestor| selected.contains(ancestor)));
 					}
 
 					tool_data.layers_dragging = selected;
@@ -686,9 +682,9 @@ impl Fsm for SelectToolFsmState {
 				let mouse_delta = snap_drag(start, current, axis_align, snap_data, &mut tool_data.snap_manager, &tool_data.snap_candidates);
 
 				// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
-				for layer_ancestors in document.metadata().shallowest_unique_layers(tool_data.layers_dragging.iter().copied()) {
+				for layer in document.network_interface.shallowest_unique_layers(&[]) {
 					responses.add_front(GraphOperationMessage::TransformChange {
-						layer: *layer_ancestors.last().unwrap(),
+						layer,
 						transform: DAffine2::from_translation(mouse_delta),
 						transform_in: TransformIn::Viewport,
 						skip_rerender: false,
@@ -724,23 +720,14 @@ impl Fsm for SelectToolFsmState {
 
 						tool_data.layers_dragging.retain(|layer| {
 							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.network.nodes.contains_key(&layer.to_node())
+								document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
 							} else {
 								log::error!("ROOT_PARENT should not be part of layers_dragging");
 								false
 							}
 						});
 						let selected = &tool_data.layers_dragging;
-						let mut selected = Selected::new(
-							&mut bounds.original_transforms,
-							&mut pivot,
-							selected,
-							responses,
-							&document.network,
-							&document.metadata,
-							None,
-							&ToolType::Select,
-						);
+						let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, selected, responses, &document.network_interface, None, &ToolType::Select);
 
 						selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse());
 
@@ -774,7 +761,7 @@ impl Fsm for SelectToolFsmState {
 
 					tool_data.layers_dragging.retain(|layer| {
 						if *layer != LayerNodeIdentifier::ROOT_PARENT {
-							document.network().nodes.contains_key(&layer.to_node())
+							document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
 						} else {
 							log::error!("ROOT_PARENT should not be part of replacement_selected_layers");
 							false
@@ -785,8 +772,7 @@ impl Fsm for SelectToolFsmState {
 						&mut bounds.center_of_transformation,
 						&tool_data.layers_dragging,
 						responses,
-						&document.network,
-						&document.metadata,
+						&document.network_interface,
 						None,
 						&ToolType::Select,
 					);
@@ -902,11 +888,13 @@ impl Fsm for SelectToolFsmState {
 				// Deselect layer if not snap dragging
 				if !tool_data.has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
 					let quad = tool_data.selection_quad();
-					let intersection = document.intersect_quad(quad, &document.network);
+					let intersection = document.intersect_quad(quad, input);
 
 					if let Some(path) = intersection.last() {
 						let replacement_selected_layers: Vec<_> = document
-							.selected_nodes
+							.network_interface
+							.selected_nodes(&[])
+							.unwrap()
 							.selected_layers(document.metadata())
 							.filter(|&layer| !path.starts_with(layer, document.metadata()))
 							.collect();
@@ -994,8 +982,8 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::DrawingBox { .. }, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
 				let quad = tool_data.selection_quad();
-				let new_selected: HashSet<_> = document.intersect_quad(quad, &document.network).collect();
-				let current_selected: HashSet<_> = document.selected_nodes.selected_layers(document.metadata()).collect();
+				let new_selected: HashSet<_> = document.intersect_quad(quad, input).collect();
+				let current_selected: HashSet<_> = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
 				if new_selected != current_selected {
 					tool_data.layers_dragging = new_selected.into_iter().collect();
 					responses.add(DocumentMessage::StartTransaction);
@@ -1020,11 +1008,11 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::Ready { .. }, SelectToolMessage::Enter) => {
-				let mut selected_layers = document.selected_nodes.selected_layers(document.metadata());
+				let mut selected_layers = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata());
 
 				if let Some(layer) = selected_layers.next() {
 					// Check that only one layer is selected
-					if selected_layers.next().is_none() && is_layer_fed_by_node_of_name(layer, &document.network, "Text") {
+					if selected_layers.next().is_none() && is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
 						responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 						responses.add(TextToolMessage::EditSelected);
 					}
@@ -1044,7 +1032,7 @@ impl Fsm for SelectToolFsmState {
 			(_, SelectToolMessage::Abort) => {
 				tool_data.layers_dragging.retain(|layer| {
 					if *layer != LayerNodeIdentifier::ROOT_PARENT {
-						document.network().nodes.contains_key(&layer.to_node())
+						document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
 					} else {
 						false
 					}
@@ -1055,8 +1043,7 @@ impl Fsm for SelectToolFsmState {
 						&mut bounding_box_overlays.opposite_pivot,
 						&tool_data.layers_dragging,
 						responses,
-						&document.network,
-						&document.metadata,
+						&document.network_interface,
 						None,
 						&ToolType::Select,
 					);
@@ -1155,7 +1142,7 @@ impl Fsm for SelectToolFsmState {
 }
 
 fn not_artboard(document: &DocumentMessageHandler) -> impl Fn(&LayerNodeIdentifier) -> bool + '_ {
-	|&layer| !document.metadata.is_artboard(layer)
+	|&layer| !document.network_interface.is_artboard(&layer.to_node(), &[])
 }
 
 fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
@@ -1163,7 +1150,7 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 		let ancestor = layer
 			.ancestors(document.metadata())
 			.filter(not_artboard(document))
-			.find(|&ancestor| document.selected_nodes.selected_layers_contains(ancestor, document.metadata()));
+			.find(|&ancestor| document.network_interface.selected_nodes(&[]).unwrap().selected_layers_contains(ancestor, document.metadata()));
 
 		let new_selected = ancestor.unwrap_or_else(|| {
 			layer
@@ -1194,12 +1181,10 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 }
 
 fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
-	tool_data
-		.layers_dragging
-		.append(&mut vec![document.find_deepest(&selected, &document.network).unwrap_or(LayerNodeIdentifier::new(
-			document.network.get_root_node().expect("Root node should exist when dragging layers").id,
-			&document.network,
-		))]);
+	tool_data.layers_dragging.append(&mut vec![document.find_deepest(&selected).unwrap_or(LayerNodeIdentifier::new(
+		document.network_interface.root_node(&[]).expect("Root node should exist when dragging layers").node_id,
+		&document.network_interface,
+	))]);
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data
 			.layers_dragging
@@ -1217,7 +1202,7 @@ fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<La
 }
 
 fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
-	if document.selected_nodes.selected_layers_contains(layer, document.metadata()) {
+	if document.network_interface.selected_nodes(&[]).unwrap().selected_layers_contains(layer, document.metadata()) {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path });
 		return;
 	}
@@ -1225,7 +1210,7 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: 
 	let Some(new_selected) = layer.ancestors(document.metadata()).filter(not_artboard(document)).find(|ancestor| {
 		ancestor
 			.parent(document.metadata())
-			.is_some_and(|parent| document.selected_nodes.selected_layers_contains(parent, document.metadata()))
+			.is_some_and(|parent| document.network_interface.selected_nodes(&[]).unwrap().selected_layers_contains(parent, document.metadata()))
 	}) else {
 		return;
 	};
@@ -1238,11 +1223,11 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: 
 	responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![new_selected.to_node()] });
 }
 
-fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, document_network: &NodeNetwork, responses: &mut VecDeque<Message>) {
-	if is_layer_fed_by_node_of_name(layer, document_network, "Text") {
+fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, responses: &mut VecDeque<Message>) {
+	if is_layer_fed_by_node_of_name(layer, network_interface, "Text") {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 		responses.add(TextToolMessage::EditSelected);
-	} else if is_layer_fed_by_node_of_name(layer, document_network, "Path") {
+	} else if is_layer_fed_by_node_of_name(layer, network_interface, "Path") {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path });
 	}
 }

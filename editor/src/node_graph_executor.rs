@@ -472,15 +472,17 @@ impl NodeGraphExecutor {
 	/// Evaluates a node graph, computing the entire graph
 	pub fn submit_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2, ignore_hash: bool) -> Result<(), String> {
 		// Get the node graph layer
-		let network_hash = document.network().current_hash();
+		let network_hash = document.network_interface.network(&[]).unwrap().current_hash();
 		if network_hash != self.node_graph_hash || ignore_hash {
 			self.node_graph_hash = network_hash;
-			self.sender.send(NodeRuntimeMessage::GraphUpdate(document.network.clone())).map_err(|e| e.to_string())?;
+			self.sender
+				.send(NodeRuntimeMessage::GraphUpdate(document.network_interface.network(&[]).unwrap().clone()))
+				.map_err(|e| e.to_string())?;
 		}
 
 		let render_config = RenderConfig {
 			viewport: Footprint {
-				transform: document.metadata.document_to_viewport,
+				transform: document.metadata().document_to_viewport,
 				resolution: viewport_resolution,
 				..Default::default()
 			},
@@ -503,12 +505,12 @@ impl NodeGraphExecutor {
 
 	/// Evaluates a node graph for export
 	pub fn submit_document_export(&mut self, document: &mut DocumentMessageHandler, mut export_config: ExportConfig) -> Result<(), String> {
-		let network = document.network().clone();
+		let network = document.network_interface.network(&[]).unwrap().clone();
 
 		// Calculate the bounding box of the region to be exported
 		let bounds = match export_config.bounds {
-			ExportBounds::AllArtwork => document.metadata().document_bounds_document_space(!export_config.transparent_background),
-			ExportBounds::Selection => document.metadata().selected_bounds_document_space(!export_config.transparent_background, &document.selected_nodes),
+			ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space(!export_config.transparent_background),
+			ExportBounds::Selection => document.network_interface.selected_bounds_document_space(!export_config.transparent_background, &[]),
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;
@@ -587,15 +589,15 @@ impl NodeGraphExecutor {
 						Ok(output) => output,
 						Err(e) => {
 							// Clear the click targets while the graph is in an un-renderable state
-							document.metadata.update_from_monitor(HashMap::new(), HashMap::new());
+							document.network_interface.document_metadata_mut().update_from_monitor(HashMap::new(), HashMap::new());
 
 							return Err(format!("Node graph evaluation failed:\n{e}"));
 						}
 					};
 
 					responses.extend(existing_responses.into_iter().map(Into::into));
-					document.metadata.update_transforms(new_upstream_transforms);
-					document.metadata.update_from_monitor(new_click_targets, new_vector_modify);
+					document.network_interface.document_metadata_mut().update_transforms(new_upstream_transforms);
+					document.network_interface.document_metadata_mut().update_from_monitor(new_click_targets, new_vector_modify);
 
 					let execution_context = self.futures.remove(&execution_id).ok_or_else(|| "Invalid generation ID".to_string())?;
 					if let Some(export_config) = execution_context.export_config {
@@ -613,14 +615,14 @@ impl NodeGraphExecutor {
 					} = execution_response;
 					if let Err(e) = result {
 						// Clear the click targets while the graph is in an un-renderable state
-						document.metadata.update_from_monitor(HashMap::new(), HashMap::new());
+						document.network_interface.document_metadata_mut().update_from_monitor(HashMap::new(), HashMap::new());
 						log::trace!("{e}");
 
 						return Err("Node graph evaluation failed".to_string());
 					};
 
-					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors });
+					responses.add(NodeGraphMessage::SendGraph);
 				}
 				NodeGraphUpdate::NodeGraphUpdateMessage(NodeGraphUpdateMessage::ImaginateStatusUpdate) => {
 					responses.add(DocumentMessage::PropertiesPanel(PropertiesPanelMessage::Refresh));

@@ -45,7 +45,11 @@ impl Pivot {
 
 	/// Recomputes the pivot position and transform.
 	fn recalculate_pivot(&mut self, document: &DocumentMessageHandler) {
-		let mut layers = document.selected_nodes.selected_visible_and_unlocked_layers(document.metadata());
+		let mut layers = document
+			.network_interface
+			.selected_nodes(&[])
+			.unwrap()
+			.selected_visible_and_unlocked_layers(&document.network_interface);
 		let Some(first) = layers.next() else {
 			// If no layers are selected then we revert things back to default
 			self.normalized_pivot = DVec2::splat(0.5);
@@ -58,16 +62,18 @@ impl Pivot {
 
 		// If just one layer is selected we can use its inner transform (as it accounts for rotation)
 		if selected_layers_count == 1 {
-			let normalized_pivot = graph_modification_utils::get_pivot(first, &document.network).unwrap_or(DVec2::splat(0.5));
+			let normalized_pivot = graph_modification_utils::get_pivot(first, &document.network_interface).unwrap_or(DVec2::splat(0.5));
 			self.normalized_pivot = normalized_pivot;
 			self.transform_from_normalized = Self::get_layer_pivot_transform(first, document);
 			self.pivot = Some(self.transform_from_normalized.transform_point2(normalized_pivot));
 		} else {
 			// If more than one layer is selected we use the AABB with the mean of the pivots
 			let xy_summation = document
-				.selected_nodes
-				.selected_visible_and_unlocked_layers(document.metadata())
-				.map(|layer| graph_modification_utils::get_viewport_pivot(layer, &document.network, &document.metadata))
+				.network_interface
+				.selected_nodes(&[])
+				.unwrap()
+				.selected_visible_and_unlocked_layers(&document.network_interface)
+				.map(|layer| graph_modification_utils::get_viewport_pivot(layer, &document.network_interface))
 				.reduce(|a, b| a + b)
 				.unwrap_or_default();
 
@@ -101,7 +107,12 @@ impl Pivot {
 
 	/// Sets the viewport position of the pivot for all selected layers.
 	pub fn set_viewport_position(&self, position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		for layer in document.selected_nodes.selected_visible_and_unlocked_layers(document.metadata()) {
+		for layer in document
+			.network_interface
+			.selected_nodes(&[])
+			.unwrap()
+			.selected_visible_and_unlocked_layers(&document.network_interface)
+		{
 			let transform = Self::get_layer_pivot_transform(layer, document);
 			let pivot = transform.inverse().transform_point2(position);
 			// Only update the pivot when computed position is finite. Infinite can happen when scale is 0.

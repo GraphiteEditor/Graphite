@@ -1,4 +1,5 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
+use super::utility_types::PanelType;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
@@ -81,12 +82,15 @@ pub enum PortfolioMessage {
 	PasteIntoFolder {
 		clipboard: Clipboard,
 		parent: LayerNodeIdentifier,
-		insert_index: isize,
+		insert_index: usize,
 	},
 	PasteSerializedData {
 		data: String,
 	},
 	PrevDocument,
+	SetActivePanel {
+		panel: PanelType,
+	},
 	SelectDocument {
 		document_id: DocumentId,
 	},
@@ -99,6 +103,7 @@ pub enum PortfolioMessage {
 	},
 	SubmitGraphRender {
 		document_id: DocumentId,
+		ignore_hash: bool,
 	},
 	ToggleRulers,
 	UpdateDocumentWidgets,

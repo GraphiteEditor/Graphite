@@ -21,7 +21,6 @@ use vello::*;
 
 /// Represents a clickable target for the layer
 #[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ClickTarget {
 	subpath: bezier_rs::Subpath<PointId>,
 	stroke_width: f64,
@@ -36,6 +35,23 @@ impl ClickTarget {
 
 	pub fn subpath(&self) -> &bezier_rs::Subpath<PointId> {
 		&self.subpath
+	}
+
+	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {
+		self.bounding_box
+	}
+
+	pub fn bounding_box_with_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
+		self.bounding_box.map(|[a, b]| [transform.transform_point2(a), transform.transform_point2(b)])
+	}
+
+	pub fn apply_transform(&mut self, affine_transform: DAffine2) {
+		self.subpath.apply_transform(affine_transform);
+		self.update_bbox();
+	}
+
+	fn update_bbox(&mut self) {
+		self.bounding_box = self.subpath.bounding_box();
 	}
 
 	/// Does the click target intersect the rectangle
@@ -84,6 +100,20 @@ impl ClickTarget {
 		// TODO: actual intersection of stroke
 		let inflated_quad = Quad::from_box(target_bounds);
 		self.intersect_rectangle(inflated_quad, layer_transform)
+	}
+
+	/// Does the click target intersect the point (not accounting for stroke size)
+	pub fn intersect_point_no_stroke(&self, point: DVec2) -> bool {
+		// Check if the point is within the bounding box
+		if self
+			.bounding_box
+			.is_some_and(|bbox| bbox[0].x <= point.x && point.x <= bbox[1].x && bbox[0].y <= point.y && point.y <= bbox[1].y)
+		{
+			// Check if the point is within the shape
+			self.subpath.closed() && self.subpath.contains_point(point)
+		} else {
+			false
+		}
 	}
 }
 
@@ -284,7 +314,7 @@ impl GraphicElementRendered for GraphicGroup {
 			let mut new_click_targets = Vec::new();
 			element.add_click_targets(&mut new_click_targets);
 			for click_target in new_click_targets.iter_mut() {
-				click_target.subpath.apply_transform(element.transform())
+				click_target.apply_transform(element.transform())
 			}
 			click_targets.extend(new_click_targets);
 		}

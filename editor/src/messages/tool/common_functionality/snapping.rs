@@ -187,7 +187,7 @@ impl SnapManager {
 		self.indicator = None;
 	}
 	pub fn preview_draw(&mut self, snap_data: &SnapData, mouse: DVec2) {
-		let point = SnapCandidatePoint::handle(snap_data.document.metadata.document_to_viewport.inverse().transform_point2(mouse));
+		let point = SnapCandidatePoint::handle(snap_data.document.metadata().document_to_viewport.inverse().transform_point2(mouse));
 		let snapped = self.free_snap(snap_data, &point, None, false);
 		self.update_indicator(snapped);
 	}
@@ -230,7 +230,7 @@ impl SnapManager {
 		let mut best_point = None;
 
 		for point in snapped_points {
-			let viewport_point = document.metadata.document_to_viewport.transform_point2(point.snapped_point_document);
+			let viewport_point = document.metadata().document_to_viewport.transform_point2(point.snapped_point_document);
 			let on_screen = viewport_point.cmpgt(DVec2::ZERO).all() && viewport_point.cmplt(snap_data.input.viewport_bounds.size()).all();
 			if !on_screen && !off_screen {
 				continue;
@@ -258,29 +258,29 @@ impl SnapManager {
 			if candidates.len() > 10 {
 				return;
 			}
-			if !document.selected_nodes.layer_visible(layer, &document.metadata) {
+			if !document.network_interface.selected_nodes(&[]).unwrap().layer_visible(layer, &document.network_interface) {
 				return;
 			}
 			if snap_data.ignore.contains(&layer) {
 				return;
 			}
-			if document.metadata.is_folder(layer) {
-				for layer in layer.children(&document.metadata) {
+			if layer.has_children(document.metadata()) {
+				for layer in layer.children(document.metadata()) {
 					add_candidates(layer, snap_data, quad, candidates);
 				}
 				return;
 			}
-			let Some(bounds) = document.metadata.bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
+			let Some(bounds) = document.metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
 				return;
 			};
-			let layer_bounds = document.metadata.transform_to_document(layer) * Quad::from_box(bounds);
-			let screen_bounds = document.metadata.document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, snap_data.input.viewport_bounds.size()]);
+			let layer_bounds = document.metadata().transform_to_document(layer) * Quad::from_box(bounds);
+			let screen_bounds = document.metadata().document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, snap_data.input.viewport_bounds.size()]);
 			if quad.intersects(layer_bounds) && screen_bounds.intersects(layer_bounds) {
 				candidates.push(layer);
 			}
 		}
 
-		for layer in LayerNodeIdentifier::ROOT_PARENT.children(&document.metadata) {
+		for layer in LayerNodeIdentifier::ROOT_PARENT.children(document.metadata()) {
 			add_candidates(layer, snap_data, quad, &mut candidates);
 		}
 
@@ -330,7 +330,7 @@ impl SnapManager {
 	}
 
 	pub fn draw_overlays(&mut self, snap_data: SnapData, overlay_context: &mut OverlayContext) {
-		let to_viewport = snap_data.document.metadata.document_to_viewport;
+		let to_viewport = snap_data.document.metadata().document_to_viewport;
 		if let Some(ind) = &self.indicator {
 			for curve in &ind.curves {
 				let Some(curve) = curve else { continue };

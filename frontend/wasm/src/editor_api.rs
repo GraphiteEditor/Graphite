@@ -13,6 +13,7 @@ use editor::consts::FILE_SAVE_SUFFIX;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use editor::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
 use editor::messages::portfolio::utility_types::Platform;
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
@@ -525,7 +526,7 @@ impl EditorHandle {
 
 	/// Move a layer to within a folder and placed down at the given index.
 	/// If the folder is `None`, it is inserted into the document root.
-	/// If the insert index is `None`, it is inserted at the end of the folder (equivalent to index infinity).
+	/// If the insert index is `None`, it is inserted at the start of the folder.
 	#[wasm_bindgen(js_name = moveLayerInTree)]
 	pub fn move_layer_in_tree(&self, insert_parent_id: Option<u64>, insert_index: Option<usize>) {
 		let insert_parent_id = insert_parent_id.map(NodeId);
@@ -533,7 +534,7 @@ impl EditorHandle {
 
 		let message = DocumentMessage::MoveSelectedLayersTo {
 			parent,
-			insert_index: insert_index.map(|x| x as isize).unwrap_or(-1),
+			insert_index: insert_index.unwrap_or_default(),
 		};
 		self.dispatch(message);
 	}
@@ -542,7 +543,10 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = setLayerName)]
 	pub fn set_layer_name(&self, id: u64, name: String) {
 		let layer = LayerNodeIdentifier::new_unchecked(NodeId(id));
-		let message = GraphOperationMessage::SetName { layer, name };
+		let message = NodeGraphMessage::SetDisplayName {
+			node_id: layer.to_node(),
+			alias: name,
+		};
 		self.dispatch(message);
 	}
 
@@ -564,7 +568,12 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = createNode)]
 	pub fn create_node(&self, node_type: String, x: i32, y: i32) {
 		let id = NodeId(generate_uuid());
-		let message = NodeGraphMessage::CreateNode { node_id: Some(id), node_type, x, y };
+		let message = NodeGraphMessage::CreateNodeFromContextMenu {
+			node_id: Some(id),
+			node_type,
+			x: x / 24,
+			y: y / 24,
+		};
 		self.dispatch(message);
 	}
 
@@ -572,13 +581,6 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = pasteSerializedNodes)]
 	pub fn paste_serialized_nodes(&self, serialized_nodes: String) {
 		let message = NodeGraphMessage::PasteNodes { serialized_nodes };
-		self.dispatch(message);
-	}
-
-	/// Go back a certain number of nested levels
-	#[wasm_bindgen(js_name = exitNestedNetwork)]
-	pub fn exit_nested_network(&self, steps_back: usize) {
-		let message = NodeGraphMessage::ExitNestedNetwork { steps_back };
 		self.dispatch(message);
 	}
 
@@ -602,7 +604,7 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = toggleNodeVisibilityLayerPanel)]
 	pub fn toggle_node_visibility_layer(&self, id: u64) {
 		let node_id = NodeId(id);
-		let message = GraphOperationMessage::ToggleVisibility { node_id };
+		let message = NodeGraphMessage::ToggleVisibility { node_id };
 		self.dispatch(message);
 	}
 
@@ -619,9 +621,8 @@ impl EditorHandle {
 
 	/// Toggle lock state of a layer from the layer list
 	#[wasm_bindgen(js_name = toggleLayerLock)]
-	pub fn toggle_layer_lock(&self, id: u64) {
-		let node_id = NodeId(id);
-		let message = GraphOperationMessage::ToggleLocked { node_id };
+	pub fn toggle_layer_lock(&self, node_id: u64) {
+		let message = NodeGraphMessage::ToggleLocked { node_id: NodeId(node_id) };
 		self.dispatch(message);
 	}
 
@@ -633,10 +634,19 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Set the active panel to the most recently clicked panel
+	#[wasm_bindgen(js_name = setActivePanel)]
+	pub fn set_active_panel(&self, panel: String) {
+		let message = PortfolioMessage::SetActivePanel { panel: panel.into() };
+		self.dispatch(message);
+	}
+
 	/// Toggle display type for a layer
 	#[wasm_bindgen(js_name = setToNodeOrLayer)]
 	pub fn set_to_node_or_layer(&self, id: u64, is_layer: bool) {
 		let node_id = NodeId(id);
+		let message = DocumentMessage::StartTransaction;
+		self.dispatch(message);
 		let message = NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer };
 		self.dispatch(message);
 	}
@@ -680,15 +690,43 @@ impl EditorHandle {
 		});
 
 		let document = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap();
-		for node in document.network.nodes.values_mut().filter(|d| d.name == "Artboard") {
-			if let Some(network) = node.implementation.get_network_mut() {
-				for node in network.nodes.values_mut() {
-					if node.name == "To Artboard" {
-						node.implementation = DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _, _>");
-						if node.inputs.len() != 6 {
-							node.inputs.insert(2, NodeInput::value(TaggedValue::IVec2(glam::IVec2::default()), false));
-						}
+		for node in document
+			.network_interface
+			.network_metadata(&[])
+			.unwrap()
+			.persistent_metadata
+			.node_metadata
+			.iter()
+			.filter(|(_, d)| d.persistent_metadata.reference.as_ref().is_some_and(|reference| reference == "Artboard"))
+			.map(|(id, _)| *id)
+			.collect::<Vec<_>>()
+		{
+			let Some(document_node) = document.network_interface.network(&[]).unwrap().nodes.get(&node) else {
+				log::error!("Could not get document node in document network");
+				return;
+			};
+			if let Some(network) = document_node.implementation.get_network() {
+				let mut nodes_to_upgrade = Vec::new();
+				for (node_id, _) in network.nodes.iter().collect::<Vec<_>>() {
+					if document.network_interface.reference(node_id, &[]).is_some_and(|reference| reference == "To Artboard")
+						&& document
+							.network_interface
+							.network(&[])
+							.unwrap()
+							.nodes
+							.get(node_id)
+							.is_some_and(|document_node| document_node.inputs.len() != 6)
+					{
+						nodes_to_upgrade.push(*node_id);
 					}
+				}
+				for node_id in nodes_to_upgrade {
+					document
+						.network_interface
+						.set_implementation(&node_id, &[], DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _, _>"));
+					document
+						.network_interface
+						.add_input(&node_id, &[], TaggedValue::IVec2(glam::IVec2::default()), false, 2, "".to_string());
 				}
 			}
 		}
@@ -722,60 +760,87 @@ impl EditorHandle {
 
 		let mut updated_nodes = HashSet::new();
 		let document = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap();
-		document.metadata.load_structure(&document.network);
-		for node in document.network.nodes.iter().filter(|(_, d)| d.name == "Merge").map(|(id, _)| *id).collect::<Vec<_>>() {
-			let layer = LayerNodeIdentifier::new(node, &document.network);
-			if document.metadata.is_folder(layer) {
+		document.network_interface.load_structure();
+		for node in document
+			.network_interface
+			.network_metadata(&[])
+			.unwrap()
+			.persistent_metadata
+			.node_metadata
+			.iter()
+			.filter(|(_, d)| d.persistent_metadata.reference.as_ref().is_some_and(|reference| reference == "Merge"))
+			.map(|(id, _)| *id)
+			.collect::<Vec<_>>()
+		{
+			let layer = LayerNodeIdentifier::new(node, &document.network_interface);
+			if layer.has_children(document.metadata()) {
 				continue;
 			}
 
-			let bounds = LayerBounds::new(&document.metadata, layer);
+			let bounds = LayerBounds::new(document.metadata(), layer);
 
 			let mut responses = VecDeque::new();
 			let mut shape = None;
 
-			if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), &mut document.network, &mut document.metadata, &mut document.node_graph_handler, &mut responses) {
-				modify_inputs.modify_existing_inputs("Transform", |inputs, node_id, metadata| {
-					if !updated_nodes.insert(node_id) {
-						return;
-					}
+			if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, &mut document.network_interface, &mut responses) {
+				let Some(transform_node_id) = modify_inputs.get_existing_node_id("Transform") else { return };
+				if !updated_nodes.insert(transform_node_id) {
+					return;
+				}
+				let Some(inputs) = modify_inputs.network_interface.network(&[]).unwrap().nodes.get(&transform_node_id).map(|node| &node.inputs) else {
+					log::error!("Could not get transform node in document network");
+					return;
+				};
+				let transform = get_current_transform(inputs);
+				let upstream_transform = modify_inputs.network_interface.document_metadata().upstream_transform(transform_node_id);
+				let pivot_transform = glam::DAffine2::from_translation(upstream_transform.transform_point2(bounds.local_pivot(get_current_normalized_pivot(inputs))));
 
-					let transform = get_current_transform(inputs);
-					let upstream_transform = metadata.upstream_transform(node_id);
-					let pivot_transform = glam::DAffine2::from_translation(upstream_transform.transform_point2(bounds.local_pivot(get_current_normalized_pivot(inputs))));
-
-					update_transform(inputs, pivot_transform * transform * pivot_transform.inverse());
-				});
-				modify_inputs.modify_existing_inputs("Shape", |inputs, node_id, _metadata| {
-					if !updated_nodes.insert(node_id) {
-						return;
-					}
-
-					let path_data = match &inputs[0].as_value() {
-						Some(TaggedValue::Subpaths(translation)) => translation,
-						_ => &Vec::new(),
-					};
-
-					let colinear_manipulators = match &inputs[1].as_value() {
-						Some(TaggedValue::PointIds(translation)) => translation,
-						_ => &Vec::new(),
-					};
-
-					let mut vector_data = VectorData::from_subpaths(path_data, false);
-					vector_data.colinear_manipulators = colinear_manipulators
-						.iter()
-						.filter_map(|&point| ManipulatorPointId::Anchor(point).get_handle_pair(&vector_data))
-						.collect();
-
-					shape = Some((node_id, VectorModification::create_from_vector(&vector_data)));
-				});
+				update_transform(&mut document.network_interface, &transform_node_id, pivot_transform * transform * pivot_transform.inverse());
 			}
-			if let Some((id, modification)) = shape {
-				let metadata = document.network.nodes.remove(&id).map(|node| node.metadata).unwrap_or_default();
-				let node_type = resolve_document_node_type("Path").unwrap();
+			if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, &mut document.network_interface, &mut responses) {
+				let Some(shape_node_id) = modify_inputs.get_existing_node_id("Shape") else { return };
+				if !updated_nodes.insert(shape_node_id) {
+					return;
+				}
+				let Some(shape_node) = modify_inputs.network_interface.network(&[]).unwrap().nodes.get(&shape_node_id) else {
+					log::error!("Could not get shape node in document network");
+					return;
+				};
+				let path_data = match &shape_node.inputs[0].as_value() {
+					Some(TaggedValue::Subpaths(translation)) => translation,
+					_ => &Vec::new(),
+				};
 
-				let document_node = node_type.to_document_node_default_inputs([None, Some(NodeInput::value(TaggedValue::VectorModification(modification), false))], metadata);
-				document.network.nodes.insert(id, document_node);
+				let colinear_manipulators = match &shape_node.inputs[1].as_value() {
+					Some(TaggedValue::PointIds(translation)) => translation,
+					_ => &Vec::new(),
+				};
+
+				let mut vector_data = VectorData::from_subpaths(path_data, false);
+				vector_data.colinear_manipulators = colinear_manipulators
+					.iter()
+					.filter_map(|&point| ManipulatorPointId::Anchor(point).get_handle_pair(&vector_data))
+					.collect();
+
+				shape = Some((shape_node_id, VectorModification::create_from_vector(&vector_data)));
+			}
+
+			if let Some((node_id, modification)) = shape {
+				let node_type = resolve_document_node_type("Path").unwrap();
+				let document_node = node_type
+					.node_template_input_override([None, Some(NodeInput::value(TaggedValue::VectorModification(modification), false))])
+					.document_node;
+
+				let node_metadata = document.network_interface.node_metadata(&node_id, &[]).cloned().unwrap_or_default();
+
+				document.network_interface.insert_node(
+					node_id,
+					NodeTemplate {
+						document_node,
+						persistent_node_metadata: node_metadata.persistent_metadata,
+					},
+					&[],
+				);
 			}
 		}
 

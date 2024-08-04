@@ -241,7 +241,7 @@ impl PenToolData {
 
 		// Break the control
 		let Some(last_pos) = self.latest_point().map(|point| point.pos) else { return };
-		let transform = document.metadata.document_to_viewport * transform;
+		let transform = document.metadata().document_to_viewport * transform;
 		let on_top = transform.transform_point2(self.next_point).distance_squared(transform.transform_point2(last_pos)) < crate::consts::SNAP_POINT_TOLERANCE.powi(2);
 		if on_top {
 			if let Some(point) = self.latest_point_mut() {
@@ -269,9 +269,9 @@ impl PenToolData {
 		// Get close path
 		let mut end = None;
 		let layer = self.layer?;
-		let vector_data = document.metadata.compute_modified_vector(layer, &document.network)?;
+		let vector_data = document.metadata().compute_modified_vector(layer, &document.network_interface)?;
 		let start = self.latest_point()?.id;
-		let transform = document.metadata.document_to_viewport * transform;
+		let transform = document.metadata().document_to_viewport * transform;
 		for id in vector_data.single_connected_points().filter(|&point| point != start) {
 			let Some(pos) = vector_data.point_domain.position_from_id(id) else { continue };
 			let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(next_point));
@@ -348,7 +348,7 @@ impl PenToolData {
 	fn compute_snapped_angle(&mut self, snap_data: SnapData, transform: DAffine2, colinear: bool, mouse: DVec2, relative: Option<DVec2>, neighbor: bool) -> DVec2 {
 		let ModifierState { snap_angle, lock_angle, .. } = self.modifiers;
 		let document = snap_data.document;
-		let mut document_pos = document.metadata.document_to_viewport.inverse().transform_point2(mouse);
+		let mut document_pos = document.metadata().document_to_viewport.inverse().transform_point2(mouse);
 		let snap = &mut self.snap_manager;
 
 		let neighbors = relative.filter(|_| neighbor).map_or(Vec::new(), |neighbor| vec![neighbor]);
@@ -455,7 +455,7 @@ impl Fsm for PenToolFsmState {
 				self
 			}
 			(_, PenToolMessage::Overlays(mut overlay_context)) => {
-				let transform = document.metadata.document_to_viewport * transform;
+				let transform = document.metadata().document_to_viewport * transform;
 				if let (Some((start, handle_start)), Some(handle_end)) = (tool_data.latest_point().map(|point| (point.pos, point.handle_start)), tool_data.handle_end) {
 					let handles = BezierHandles::Cubic { handle_start, handle_end };
 					let bezier = Bezier {
@@ -508,9 +508,9 @@ impl Fsm for PenToolFsmState {
 			(PenToolFsmState::Ready, PenToolMessage::DragStart) => {
 				responses.add(DocumentMessage::StartTransaction);
 
-				let point = SnapCandidatePoint::handle(document.metadata.document_to_viewport.inverse().transform_point2(input.mouse.position));
+				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, None, false);
-				let viewport = document.metadata.document_to_viewport.transform_point2(snapped.snapped_point_document);
+				let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
 
 				// Perform extension of an existing path
 				if let Some((layer, point, position)) = should_extend(document, viewport, crate::consts::SNAP_POINT_TOLERANCE) {
@@ -525,10 +525,8 @@ impl Fsm for PenToolFsmState {
 					tool_data.next_handle_start = position;
 				} else {
 					// New path layer
-					let nodes = {
-						let node_type = resolve_document_node_type("Path").expect("Path node does not exist");
-						HashMap::from([(NodeId(0), node_type.to_document_node_default_inputs([], Default::default()))])
-					};
+					let node_type = resolve_document_node_type("Path").expect("Path node does not exist");
+					let nodes = vec![(NodeId(0), node_type.default_node_template())];
 
 					let parent = document.new_layer_parent(true);
 					let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, parent, responses);

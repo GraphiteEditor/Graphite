@@ -70,22 +70,25 @@ impl MessageHandler<DialogMessage, DialogMessageData<'_>> for DialogMessageHandl
 			DialogMessage::RequestExportDialog => {
 				if let Some(document) = portfolio.active_document() {
 					let artboards = document
-						.metadata
+						.metadata()
 						.all_layers()
-						.filter(|&layer| document.metadata.is_artboard(layer))
+						.filter(|&layer| document.network_interface.is_artboard(&layer.to_node(), &[]))
 						.map(|layer| {
 							let name = document
-								.network
-								.nodes
-								.get(&layer.to_node())
-								.and_then(|node| if node.alias.is_empty() { None } else { Some(node.alias.clone()) })
+								.network_interface
+								.node_metadata(&layer.to_node(), &[])
+								.map(|node| node.persistent_metadata.display_name.clone())
+								.and_then(|name| if name.is_empty() { None } else { Some(name) })
 								.unwrap_or_else(|| "Artboard".to_string());
 							(layer, name)
 						})
 						.collect();
 
 					self.export_dialog.artboards = artboards;
-					self.export_dialog.has_selection = document.selected_nodes.selected_layers(document.metadata()).next().is_some();
+					self.export_dialog.has_selection = document
+						.network_interface
+						.selected_nodes(&[])
+						.is_some_and(|selected_nodes| selected_nodes.selected_layers(document.metadata()).next().is_some());
 					self.export_dialog.send_dialog_to_frontend(responses);
 				}
 			}

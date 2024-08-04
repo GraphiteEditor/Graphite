@@ -73,11 +73,7 @@ fn add_blank_assist(widgets: &mut Vec<WidgetHolder>) {
 
 fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, data_type: FrontendGraphDataType, blank_assist: bool) -> Vec<WidgetHolder> {
 	let Some(input) = document_node.inputs.get(index) else {
-		log::warn!(
-			"A widget named '{name}' for node {} (alias '{}') failed to be built because its node's input index {index} is invalid.",
-			document_node.name,
-			document_node.alias
-		);
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
 	let mut widgets = vec![expose_widget(node_id, index, data_type, input.is_exposed()), TextLabel::new(name).widget_holder()];
@@ -1632,9 +1628,17 @@ pub fn text_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 }
 
 pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let imaginate_node = [context.nested_path, &[node_id]].concat();
+	let imaginate_node = [context.selection_network_path, &[node_id]].concat();
 
-	let resolve_input = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
+	let resolve_input = |name: &str| {
+		IMAGINATE_NODE
+			.default_node_template()
+			.persistent_node_metadata
+			.input_names
+			.iter()
+			.position(|input| input == name)
+			.unwrap_or_else(|| panic!("Input {name} not found"))
+	};
 	let seed_index = resolve_input("Seed");
 	let resolution_index = resolve_input("Resolution");
 	let samples_index = resolve_input("Samples");
@@ -1830,7 +1834,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	let image_size = context
 		.executor
 		.introspect_node_in_network(
-			context.document_network,
+			context.network_interface.network(&[]).unwrap(),
 			&imaginate_node,
 			|network| {
 				network
@@ -2093,12 +2097,16 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	layout
 }
 
-fn unknown_node_properties(document_node: &DocumentNode) -> Vec<LayoutGroup> {
-	string_properties(format!("Node '{}' cannot be found in library", document_node.name))
+fn unknown_node_properties(reference: &String) -> Vec<LayoutGroup> {
+	string_properties(format!("Node '{}' cannot be found in library", reference))
 }
 
-pub fn node_no_properties(document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	string_properties(if document_node.is_layer { "Layer has no properties" } else { "Node has no properties" })
+pub fn node_no_properties(_document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	string_properties(if context.network_interface.is_layer(&node_id, context.selection_network_path) {
+		"Layer has no properties"
+	} else {
+		"Node has no properties"
+	})
 }
 
 pub fn index_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -2108,13 +2116,18 @@ pub fn index_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 }
 
 pub fn generate_node_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> LayoutGroup {
-	let name = document_node.name.clone();
-	let layout = match super::document_node_types::resolve_document_node_type(&name) {
-		Some(document_node_type) => (document_node_type.properties)(document_node, node_id, context),
-		None => unknown_node_properties(document_node),
+	let reference = context.network_interface.reference(&node_id, context.selection_network_path).clone();
+	let layout = if let Some(ref reference) = reference {
+		match super::document_node_types::resolve_document_node_type(reference) {
+			Some(document_node_type) => (document_node_type.properties)(document_node, node_id, context),
+			None => unknown_node_properties(reference),
+		}
+	} else {
+		node_no_properties(document_node, node_id, context)
 	};
+
 	LayoutGroup::Section {
-		name,
+		name: reference.unwrap_or_default(),
 		visible: document_node.visible,
 		id: node_id.0,
 		layout,

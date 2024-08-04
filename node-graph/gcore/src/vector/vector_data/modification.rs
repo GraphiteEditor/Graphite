@@ -485,7 +485,7 @@ use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::hash::Hash;
-fn serialize_hashmap<K, V, S>(hashmap: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
+pub fn serialize_hashmap<K, V, S>(hashmap: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
 where
 	K: Serialize + Eq + Hash,
 	V: Serialize,
@@ -498,7 +498,7 @@ where
 	seq.end()
 }
 
-fn deserialize_hashmap<'de, K, V, D>(deserializer: D) -> Result<HashMap<K, V>, D::Error>
+pub fn deserialize_hashmap<'de, K, V, D>(deserializer: D) -> Result<HashMap<K, V>, D::Error>
 where
 	K: Deserialize<'de> + Eq + Hash,
 	V: Deserialize<'de>,

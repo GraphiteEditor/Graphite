@@ -216,12 +216,10 @@ impl Fsm for SplineToolFsmState {
 
 				tool_data.weight = tool_options.line_weight;
 
-				let nodes = {
-					let node_type = resolve_document_node_type("Spline").expect("Spline node does not exist");
-					let node = node_type.to_document_node_default_inputs([None, Some(NodeInput::value(TaggedValue::VecDVec2(Vec::new()), false))], Default::default());
+				let node_type = resolve_document_node_type("Spline").expect("Spline node does not exist");
+				let node = node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::VecDVec2(Vec::new()), false))]);
+				let nodes = vec![(NodeId(0), node)];
 
-					HashMap::from([(NodeId(0), node)])
-				};
 				let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, parent, responses);
 				tool_options.fill.apply_fill(layer, responses);
 				tool_options.stroke.apply_stroke(tool_data.weight, layer, responses);
@@ -330,7 +328,7 @@ fn update_spline(document: &DocumentMessageHandler, tool_data: &SplineToolData, 
 
 	let Some(layer) = tool_data.layer else { return };
 
-	let Some(node_id) = graph_modification_utils::NodeGraphLayer::new(layer, document.network()).upstream_node_id_from_name("Spline") else {
+	let Some(node_id) = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface).upstream_node_id_from_name("Spline") else {
 		return;
 	};
 	responses.add_front(NodeGraphMessage::SetInputValue { node_id, input_index: 1, value });
