@@ -224,10 +224,9 @@ impl Fsm for FreehandToolFsmState {
 
 				let parent = document.new_layer_parent(true);
 
-					let node_type = resolve_document_node_type("Path").expect("Path node does not exist");
-					let node = node_type.default_node_template();
+				let node_type = resolve_document_node_type("Path").expect("Path node does not exist");
+				let node = node_type.default_node_template();
 				let nodes = vec![(NodeId(0), node)];
-
 
 				let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, parent, responses);
 				tool_options.fill.apply_fill(layer, responses);

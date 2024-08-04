@@ -15,7 +15,7 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.document_ptz) else {
 		return;
 	};
-	let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size/2., &document.document_ptz);
+	let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size / 2., &document.document_ptz);
 
 	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
 
@@ -58,7 +58,7 @@ fn grid_overlay_rectangular_dot(document: &DocumentMessageHandler, overlay_conte
 	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.document_ptz) else {
 		return;
 	};
-	let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size/2., &document.document_ptz);
+	let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size / 2., &document.document_ptz);
 
 	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
 
@@ -94,7 +94,7 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 	let grid_color = document.snapping_state.grid.grid_color;
 	let cmp = |a: &f64, b: &f64| a.partial_cmp(b).unwrap();
 	let origin = document.snapping_state.grid.origin;
-		let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size/2., &document.document_ptz);
+	let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size / 2., &document.document_ptz);
 
 	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
 	let tan_a = angle_a.to_radians().tan();
@@ -145,7 +145,7 @@ fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context
 	let grid_color = document.snapping_state.grid.grid_color;
 	let cmp = |a: &f64, b: &f64| a.partial_cmp(b).unwrap();
 	let origin = document.snapping_state.grid.origin;
-		let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size/2., &document.document_ptz);
+	let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size / 2., &document.document_ptz);
 
 	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
 	let tan_a = angle_a.to_radians().tan();

@@ -2,7 +2,7 @@ use super::graph_modification_utils;
 use super::snapping::{SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{GeometrySnapSource, SnapSource};
-use crate::messages::portfolio::document::utility_types::network_interface::{NodeNetworkInterface};
+use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
 
 use bezier_rs::{Bezier, BezierHandles, TValue};
@@ -1146,7 +1146,7 @@ impl ShapeState {
 
 			let vector_data = network_interface.document_metadata().compute_modified_vector(layer, network_interface);
 			let Some(vector_data) = vector_data else { continue };
-			let transform =network_interface.document_metadata().transform_to_viewport(layer);
+			let transform = network_interface.document_metadata().transform_to_viewport(layer);
 
 			assert_eq!(vector_data.segment_domain.ids().len(), vector_data.segment_domain.start_point().len());
 			assert_eq!(vector_data.segment_domain.ids().len(), vector_data.segment_domain.end_point().len());

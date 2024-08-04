@@ -45,8 +45,10 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 		let using_path_tool = tool_data.active_tool_type == ToolType::Path;
 
 		// TODO: Add support for transforming layer not in the document network
-		let selected_layers = document.network_interface
-			.selected_nodes(&[]).unwrap()
+		let selected_layers = document
+			.network_interface
+			.selected_nodes(&[])
+			.unwrap()
 			.selected_layers(document.metadata())
 			.filter(|&layer| document.network_interface.is_visible(&layer.to_node(), &[]) && !document.network_interface.is_locked(&layer.to_node(), &[]))
 			.collect::<Vec<_>>();

@@ -66,7 +66,6 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Backspace); modifiers=[Accel], action_dispatch=NodeGraphMessage::DeleteSelectedNodes { reconnect: false }),
 		entry!(KeyDown(Delete); action_dispatch=NodeGraphMessage::DeleteSelectedNodes { reconnect: true }),
 		entry!(KeyDown(Backspace); action_dispatch=NodeGraphMessage::DeleteSelectedNodes { reconnect: true }),
-		
 		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=NodeGraphMessage::Cut),
 		entry!(KeyDown(KeyC); modifiers=[Accel], action_dispatch=NodeGraphMessage::Copy),
 		entry!(KeyDown(KeyD); modifiers=[Accel], action_dispatch=NodeGraphMessage::DuplicateSelectedNodes),

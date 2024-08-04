@@ -11,7 +11,7 @@ use graphene_core::vector::ManipulatorPointId;
 use graphene_core::vector::VectorModificationType;
 use graphene_std::vector::{HandleId, PointId};
 
-use super::network_interface::{NodeNetworkInterface};
+use super::network_interface::NodeNetworkInterface;
 use glam::{DAffine2, DVec2};
 use std::collections::{HashMap, VecDeque};
 
