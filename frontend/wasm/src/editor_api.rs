@@ -534,7 +534,7 @@ impl EditorHandle {
 
 		let message = DocumentMessage::MoveSelectedLayersTo {
 			parent,
-			insert_index: insert_index.map(|x| x as usize).unwrap_or(0),
+			insert_index: insert_index.unwrap_or_default(),
 		};
 		self.dispatch(message);
 	}
@@ -708,17 +708,16 @@ impl EditorHandle {
 			if let Some(network) = document_node.implementation.get_network() {
 				let mut nodes_to_upgrade = Vec::new();
 				for (node_id, _) in network.nodes.iter().collect::<Vec<_>>() {
-					if document.network_interface.reference(node_id, &[]).is_some_and(|reference| reference == "To Artboard") {
-						if document
+					if document.network_interface.reference(node_id, &[]).is_some_and(|reference| reference == "To Artboard")
+						&& document
 							.network_interface
 							.network(&[])
 							.unwrap()
 							.nodes
 							.get(node_id)
 							.is_some_and(|document_node| document_node.inputs.len() != 6)
-						{
-							nodes_to_upgrade.push(*node_id);
-						}
+					{
+						nodes_to_upgrade.push(*node_id);
 					}
 				}
 				for node_id in nodes_to_upgrade {
@@ -778,16 +777,14 @@ impl EditorHandle {
 				continue;
 			}
 
-			let bounds = LayerBounds::new(&document.metadata(), layer);
+			let bounds = LayerBounds::new(document.metadata(), layer);
 
 			let mut responses = VecDeque::new();
 			let mut shape = None;
 
 			if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, &mut document.network_interface, &mut responses) {
-				let Some(transform_node_id) = modify_inputs.get_existing_node_id("Transform") else {
-					return;
-				};
-				if !updated_nodes.insert(transform_node_id.clone()) {
+				let Some(transform_node_id) = modify_inputs.get_existing_node_id("Transform") else { return };
+				if !updated_nodes.insert(transform_node_id) {
 					return;
 				}
 				let Some(inputs) = modify_inputs.network_interface.network(&[]).unwrap().nodes.get(&transform_node_id).map(|node| &node.inputs) else {
@@ -795,15 +792,13 @@ impl EditorHandle {
 					return;
 				};
 				let transform = get_current_transform(inputs);
-				let upstream_transform = modify_inputs.network_interface.document_metadata().upstream_transform(transform_node_id.clone());
+				let upstream_transform = modify_inputs.network_interface.document_metadata().upstream_transform(transform_node_id);
 				let pivot_transform = glam::DAffine2::from_translation(upstream_transform.transform_point2(bounds.local_pivot(get_current_normalized_pivot(inputs))));
 
 				update_transform(&mut document.network_interface, &transform_node_id, pivot_transform * transform * pivot_transform.inverse());
 			}
 			if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, &mut document.network_interface, &mut responses) {
-				let Some(shape_node_id) = modify_inputs.get_existing_node_id("Shape") else {
-					return;
-				};
+				let Some(shape_node_id) = modify_inputs.get_existing_node_id("Shape") else { return };
 				if !updated_nodes.insert(shape_node_id) {
 					return;
 				}

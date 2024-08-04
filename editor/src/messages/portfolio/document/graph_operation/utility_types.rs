@@ -208,7 +208,7 @@ impl<'a> ModifyInputsContext<'a> {
 				log::error!("Document network does not exist in ModifyInputsContext::get_output_node");
 				return None;
 			};
-			let export_node = network.exports.get(0).and_then(|export| export.as_node())?;
+			let export_node = network.exports.first().and_then(|export| export.as_node())?;
 			if self.network_interface.is_layer(&export_node, &[]) {
 				Some(LayerNodeIdentifier::new(export_node, self.network_interface))
 			} else {
@@ -242,9 +242,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let backup_color_index = 2;
 		let backup_gradient_index = 3;
 
-		let Some(fill_node_id) = self.get_existing_node_id("Fill") else {
-			return;
-		};
+		let Some(fill_node_id) = self.get_existing_node_id("Fill") else { return };
 		match &fill {
 			Fill::None => {
 				let input_connector = InputConnector::node(fill_node_id, backup_color_index);
@@ -264,25 +262,19 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn opacity_set(&mut self, opacity: f64) {
-		let Some(opacity_node_id) = self.get_existing_node_id("Opacity") else {
-			return;
-		};
+		let Some(opacity_node_id) = self.get_existing_node_id("Opacity") else { return };
 		let input_connector = InputConnector::node(opacity_node_id, 1);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(opacity * 100.), false), false);
 	}
 
 	pub fn blend_mode_set(&mut self, blend_mode: BlendMode) {
-		let Some(blend_mode_node_id) = self.get_existing_node_id("Blend Mode") else {
-			return;
-		};
+		let Some(blend_mode_node_id) = self.get_existing_node_id("Blend Mode") else { return };
 		let input_connector = InputConnector::node(blend_mode_node_id, 1);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::BlendMode(blend_mode), false), false);
 	}
 
 	pub fn stroke_set(&mut self, stroke: Stroke) {
-		let Some(stroke_node_id) = self.get_existing_node_id("Stroke") else {
-			return;
-		};
+		let Some(stroke_node_id) = self.get_existing_node_id("Stroke") else { return };
 
 		let input_connector = InputConnector::node(stroke_node_id, 1);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::OptionalColor(stroke.color), false), true);
@@ -301,9 +293,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn transform_change(&mut self, transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, skip_rerender: bool) {
-		let Some(transform_node_id) = self.get_existing_node_id("Transform") else {
-			return;
-		};
+		let Some(transform_node_id) = self.get_existing_node_id("Transform") else { return };
 		let document_node = self.network_interface.network(&[]).unwrap().nodes.get(&transform_node_id).unwrap();
 		let layer_transform = transform_utils::get_current_transform(&document_node.inputs);
 		let to = match transform_in {
@@ -312,7 +302,7 @@ impl<'a> ModifyInputsContext<'a> {
 			TransformIn::Viewport => parent_transform,
 		};
 		let transform = to.inverse() * transform * to * layer_transform;
-		transform_utils::update_transform(&mut self.network_interface, &transform_node_id, transform);
+		transform_utils::update_transform(self.network_interface, &transform_node_id, transform);
 
 		self.responses.add(PropertiesPanelMessage::Refresh);
 
@@ -322,9 +312,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn transform_set(&mut self, mut transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, current_transform: Option<DAffine2>, skip_rerender: bool) {
-		let Some(transform_node_id) = self.get_existing_node_id("Transform") else {
-			return;
-		};
+		let Some(transform_node_id) = self.get_existing_node_id("Transform") else { return };
 		let upstream_transform = self.network_interface.document_metadata().upstream_transform(transform_node_id);
 		let to = match transform_in {
 			TransformIn::Local => DAffine2::IDENTITY,
@@ -339,7 +327,7 @@ impl<'a> ModifyInputsContext<'a> {
 			transform *= upstream_transform.inverse();
 		}
 		let final_transform = to.inverse() * transform;
-		transform_utils::update_transform(&mut self.network_interface, &transform_node_id, final_transform);
+		transform_utils::update_transform(self.network_interface, &transform_node_id, final_transform);
 
 		self.responses.add(PropertiesPanelMessage::Refresh);
 		if !skip_rerender {
@@ -348,9 +336,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn pivot_set(&mut self, new_pivot: DVec2) {
-		let Some(transform_node_id) = self.get_existing_node_id("Transform") else {
-			return;
-		};
+		let Some(transform_node_id) = self.get_existing_node_id("Transform") else { return };
 
 		self.set_input_with_refresh(InputConnector::node(transform_node_id, 5), NodeInput::value(TaggedValue::DVec2(new_pivot), false), false);
 	}
@@ -363,16 +349,12 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn brush_modify(&mut self, strokes: Vec<BrushStroke>) {
-		let Some(brush_node_id) = self.get_existing_node_id("Brush") else {
-			return;
-		};
+		let Some(brush_node_id) = self.get_existing_node_id("Brush") else { return };
 		self.set_input_with_refresh(InputConnector::node(brush_node_id, 2), NodeInput::value(TaggedValue::BrushStrokes(strokes), false), false);
 	}
 
 	pub fn resize_artboard(&mut self, location: IVec2, dimensions: IVec2) {
-		let Some(artboard_node_id) = self.get_existing_node_id("Artboard") else {
-			return;
-		};
+		let Some(artboard_node_id) = self.get_existing_node_id("Artboard") else { return };
 
 		let mut dimensions = dimensions;
 		let mut location = location;

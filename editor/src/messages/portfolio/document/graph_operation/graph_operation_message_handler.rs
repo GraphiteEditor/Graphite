@@ -27,11 +27,7 @@ pub struct GraphOperationMessageHandler {}
 // For changes to the selected network, use NodeGraphMessageHandler. No NodeGraphMessage's should be added here, since they will affect the selected nested network.
 impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for GraphOperationMessageHandler {
 	fn process_message(&mut self, message: GraphOperationMessage, responses: &mut VecDeque<Message>, data: GraphOperationMessageData) {
-		let GraphOperationMessageData {
-			network_interface,
-			collapsed: _,
-			node_graph: _,
-		} = data;
+		let network_interface = data.network_interface;
 
 		match message {
 			GraphOperationMessage::FillSet { layer, fill } => {
@@ -107,8 +103,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 						&[],
 						crate::messages::portfolio::document::utility_types::network_interface::FlowType::HorizontalFlow,
 					)
-					.skip(1)
-					.next()
+					.nth(1)
 				else {
 					return;
 				};
@@ -203,7 +198,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 						reconnect: false,
 					});
 				}
-				//TODO: Replace deleted artboards with merge nodes
+				// TODO: Replace deleted artboards with merge nodes
 			}
 			GraphOperationMessage::NewSvg {
 				id,

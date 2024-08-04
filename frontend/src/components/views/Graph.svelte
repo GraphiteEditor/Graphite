@@ -250,7 +250,7 @@
 
 	function toggleLayerDisplay(displayAsLayer: boolean, toggleId: bigint) {
 		let node = $nodeGraph.nodes.get(toggleId);
-		if (node !== undefined) editor.handle.setToNodeOrLayer(node.id, displayAsLayer);
+		if (node) editor.handle.setToNodeOrLayer(node.id, displayAsLayer);
 	}
 
 	function canBeToggledBetweenNodeAndLayer(toggleDisplayAsLayerNodeId: bigint) {
@@ -431,6 +431,8 @@
 			{/if}
 		</LayoutCol>
 	{/if}
+
+	<!-- Click target debug visualizations -->
 	{#if $nodeGraph.clickTargets}
 		<div class="click-targets" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
 			<svg>
@@ -454,7 +456,7 @@
 	<!-- Node connection wires -->
 	<div class="wires" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
 		<svg>
-			{#each wirePaths as { pathString, dataType, thick, dashed }}\
+			{#each wirePaths as { pathString, dataType, thick, dashed }}
 				{#if thick}
 					<path
 						d={pathString}
@@ -467,6 +469,7 @@
 			{/each}
 		</svg>
 	</div>
+
 	<!-- Import and Export ports -->
 	<div class="imports-and-exports" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
 		{#each $nodeGraph.imports as { outputMetadata, position }, index}
@@ -514,6 +517,7 @@
 			<p class="export-text" style:--offset-left={position.x / 24} style:--offset-top={position.y / 24}>{inputMetadata.name}</p>
 		{/each}
 	</div>
+
 	<!-- Layers and nodes -->
 	<div
 		class="layers-and-nodes"
@@ -647,6 +651,7 @@
 				</svg>
 			</div>
 		{/each}
+
 		<!-- Node connection wires -->
 		<div class="wires">
 			<svg>
@@ -657,12 +662,13 @@
 							style:--data-line-width={`${thick ? 8 : 2}px`}
 							style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
-							style:--data-dasharray={`3,${dashed ? 2 : 0}`}
+							style:--data-dasharray={dashed ? "4" : undefined}
 						/>
 					{/if}
 				{/each}
 			</svg>
 		</div>
+
 		<!-- Nodes -->
 		{#each Array.from($nodeGraph.nodes.values()).flatMap((node, nodeIndex) => (node.isLayer ? [] : [{ node, nodeIndex }])) as { node, nodeIndex } (nodeIndex)}
 			{@const exposedInputsOutputs = [...node.exposedInputs, ...node.exposedOutputs]}
@@ -984,7 +990,7 @@
 
 			.export-text {
 				position: absolute;
-				margin-top: 0px;
+				margin-top: 0;
 				margin-left: 20px;
 				top: calc(var(--offset-top) * 24px);
 				left: calc(var(--offset-left) * 24px);
@@ -993,11 +999,11 @@
 			.import-text {
 				position: absolute;
 				text-align: right;
-				margin-top: 0px;
-				margin-left: -110px;
-				width: 100px;
 				top: calc(var(--offset-top) * 24px);
 				left: calc(var(--offset-left) * 24px);
+				margin-top: 0;
+				margin-left: calc(-100px - 2px);
+				width: 100px;
 			}
 		}
 
@@ -1143,8 +1149,7 @@
 			border-radius: 8px;
 			--extra-width-to-reach-grid-multiple: 8px;
 			--node-chain-area-left-extension: 0;
-			// Keep this equation in sync with the equivalent one in the Svelte template `<clipPath><path d="layerBorderMask(...)" /></clipPath>` above,
-			// as well as the `left` port offset CSS rule above in `.ports.input` above.
+			// Keep this equation in sync with the equivalent one in the Svelte template `<clipPath><path d="layerBorderMask(...)" /></clipPath>` above, as well as the `left` port offset CSS rule above in `.ports.input` above.
 			width: calc((var(--layer-area-width) - 0.5) * 24px);
 			padding-left: calc(var(--node-chain-area-left-extension) * 24px);
 			margin-left: calc((0.5 - var(--node-chain-area-left-extension)) * 24px);

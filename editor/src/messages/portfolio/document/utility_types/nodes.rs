@@ -1,7 +1,5 @@
-use super::{
-	document_metadata::{DocumentMetadata, LayerNodeIdentifier},
-	network_interface::NodeNetworkInterface,
-};
+use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
+use super::network_interface::NodeNetworkInterface;
 
 use graph_craft::document::{NodeId, NodeNetwork};
 
@@ -109,7 +107,7 @@ impl SelectedNodes {
 		self.selected_layers(metadata).any(|selected| selected == layer)
 	}
 
-	pub fn selected_nodes<'a>(&'a self) -> impl Iterator<Item = &NodeId> + '_ {
+	pub fn selected_nodes(&self) -> impl Iterator<Item = &NodeId> + '_ {
 		self.0.iter()
 	}
 

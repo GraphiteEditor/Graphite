@@ -1,3 +1,4 @@
+use super::network_interface::NodeNetworkInterface;
 use crate::consts::{ROTATE_SNAP_ANGLE, SCALE_SNAP_INTERVAL};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
@@ -11,7 +12,6 @@ use graphene_core::vector::ManipulatorPointId;
 use graphene_core::vector::VectorModificationType;
 use graphene_std::vector::{HandleId, PointId};
 
-use super::network_interface::NodeNetworkInterface;
 use glam::{DAffine2, DVec2};
 use std::collections::{HashMap, VecDeque};
 
@@ -55,6 +55,7 @@ impl OriginalTransforms {
 
 	pub fn update<'a>(&mut self, selected: &'a [LayerNodeIdentifier], network_interface: &NodeNetworkInterface, shape_editor: Option<&'a ShapeState>) {
 		let document_metadata = network_interface.document_metadata();
+
 		match self {
 			OriginalTransforms::Layer(layer_map) => {
 				layer_map.retain(|layer, _| selected.contains(layer));

@@ -274,8 +274,8 @@ impl PathToolData {
 
 	fn update_insertion(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, input: &InputPreprocessorMessageHandler) -> PathToolFsmState {
 		if let Some(closed_segment) = &mut self.segment {
-			closed_segment.update_closest_point(&document.metadata(), input.mouse.position);
-			if closed_segment.too_far(input.mouse.position, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE, &document.metadata()) {
+			closed_segment.update_closest_point(document.metadata(), input.mouse.position);
+			if closed_segment.too_far(input.mouse.position, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE, document.metadata()) {
 				self.end_insertion(shape_editor, responses, InsertEndKind::Abort)
 			} else {
 				PathToolFsmState::InsertPoint

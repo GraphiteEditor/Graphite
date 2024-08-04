@@ -3,8 +3,5 @@
 	"private": true,
 	"scripts": {
 		"start": "cd frontend && npm start"
-	},
-	"dependencies": {
-		"concurrently": "^8.2.2"
 	}
 }

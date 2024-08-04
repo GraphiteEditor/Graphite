@@ -315,7 +315,7 @@ impl SelectToolData {
 		self.non_duplicated_layers = Some(self.layers_dragging.clone());
 		let mut new_dragging = Vec::new();
 		for layer in document.network_interface.shallowest_unique_layers(&[]) {
-			let Some(parent) = layer.parent(&document.metadata()) else { continue };
+			let Some(parent) = layer.parent(document.metadata()) else { continue };
 
 			// Moves the layer back to its starting position.
 			responses.add(GraphOperationMessage::TransformChange {
@@ -328,7 +328,7 @@ impl SelectToolData {
 			// Copy the layer
 			let mut copy_ids = HashMap::new();
 			let node_id = layer.to_node();
-			copy_ids.insert(node_id, NodeId(0 as u64));
+			copy_ids.insert(node_id, NodeId(0));
 
 			document
 				.network_interface
@@ -611,7 +611,7 @@ impl Fsm for SelectToolFsmState {
 					if tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
 						tool_data.select_single_layer = intersection;
 					} else {
-						tool_data.select_single_layer = intersection.and_then(|intersection| intersection.ancestors(&document.metadata()).find(|ancestor| selected.contains(ancestor)));
+						tool_data.select_single_layer = intersection.and_then(|intersection| intersection.ancestors(document.metadata()).find(|ancestor| selected.contains(ancestor)));
 					}
 
 					tool_data.layers_dragging = selected;

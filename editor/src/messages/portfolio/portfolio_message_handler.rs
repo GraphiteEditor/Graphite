@@ -194,7 +194,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						let layer_node_id = layer.to_node();
 
 						let mut copy_ids = HashMap::new();
-						copy_ids.insert(layer_node_id, NodeId(0 as u64));
+						copy_ids.insert(layer_node_id, NodeId(0));
 
 						active_document
 							.network_interface
@@ -329,7 +329,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					responses.add_front(FrontendMessage::TriggerFontLoad { font, is_default });
 				}
 			}
-
 			PortfolioMessage::NewDocumentWithName { name } => {
 				let mut new_document = DocumentMessageHandler::default();
 				new_document.name = name;
@@ -455,7 +454,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						continue;
 					};
 					if reference == "Fill" && node.inputs.len() == 8 {
-						let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(&reference).unwrap();
+						let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(reference).unwrap();
 						let document_node = node_definition.default_node_template().document_node;
 						document.network_interface.set_implementation(node_id, &[], document_node.implementation.clone());
 
@@ -785,7 +784,7 @@ impl PortfolioMessageHandler {
 			responses.add(ToolMessage::DeactivateTools);
 		}
 
-		//TODO: Remove this and find a way to fix the issue where creating a new document when the node graph is open causes the transform in the new document to be incorrect
+		// TODO: Remove this and find a way to fix the issue where creating a new document when the node graph is open causes the transform in the new document to be incorrect
 		responses.add(DocumentMessage::GraphViewOverlay { open: false });
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(PortfolioMessage::SelectDocument { document_id });

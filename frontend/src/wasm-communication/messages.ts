@@ -221,7 +221,7 @@ export class FrontendGraphInput {
 	readonly resolvedType!: string | undefined;
 
 	@CreateOutputConnectorOptional
-	connectedTo!: OutputConnector | undefined;
+	readonly connectedTo!: OutputConnector | undefined;
 }
 
 const CreateInputConnectorArray = Transform(({ obj }) => {
@@ -250,7 +250,7 @@ export class FrontendGraphOutput {
 	readonly resolvedType!: string | undefined;
 
 	@CreateInputConnectorArray
-	connectedTo!: InputConnector[];
+	readonly connectedTo!: InputConnector[];
 }
 
 export class FrontendNode {
@@ -279,7 +279,7 @@ export class FrontendNode {
 	@TupleToVec2
 	readonly position!: XY | undefined;
 
-	//TODO: Store field for the width of the left node chain
+	// TODO: Store field for the width of the left node chain
 
 	readonly previewed!: boolean;
 

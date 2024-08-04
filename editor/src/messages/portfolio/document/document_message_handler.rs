@@ -121,6 +121,7 @@ pub struct DocumentMessageHandler {
 	pub graph_view_overlay_open: bool,
 	/// The current user choices for snapping behavior, including whether snapping is enabled at all.
 	pub snapping_state: SnappingState,
+
 	// =============================================
 	// Fields omitted from the saved document format
 	// =============================================
@@ -404,14 +405,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::EnterNestedNetwork { node_id } => {
 				self.breadcrumb_network_path.push(node_id);
-				self.selection_network_path = self.breadcrumb_network_path.clone();
+				self.selection_network_path.clone_from(&self.breadcrumb_network_path);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::ZoomCanvasToFitAll);
 			}
 			DocumentMessage::ExitNestedNetwork { steps_back } => {
 				for _ in 0..steps_back {
 					self.breadcrumb_network_path.pop();
-					self.selection_network_path = self.breadcrumb_network_path.clone();
+					self.selection_network_path.clone_from(&self.breadcrumb_network_path);
 				}
 				responses.add(DocumentMessage::PTZUpdate);
 				responses.add(NodeGraphMessage::SendGraph);
@@ -884,7 +885,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				match panel {
 					PanelType::Document => {
 						if self.graph_view_overlay_open {
-							self.selection_network_path = self.breadcrumb_network_path.clone()
+							self.selection_network_path.clone_from(&self.breadcrumb_network_path);
 						} else {
 							self.selection_network_path = vec![]
 						}
@@ -1259,11 +1260,11 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn document_network(&self) -> &NodeNetwork {
-		&self.network_interface.network(&[]).unwrap()
+		self.network_interface.network(&[]).unwrap()
 	}
 
 	pub fn metadata(&self) -> &DocumentMetadata {
-		&self.network_interface.document_metadata()
+		self.network_interface.document_metadata()
 	}
 
 	pub fn serialize_document(&self) -> String {
@@ -1277,10 +1278,8 @@ impl DocumentMessageHandler {
 			.map_or_else(
 				|_| serde_json::from_str::<DocumentMessageHandler>(serialized_content),
 				|old_message_handler| {
-					let network_interface = NodeNetworkInterface::from_old_network(old_message_handler.network);
-
 					let default_document_message_handler = DocumentMessageHandler {
-						network_interface: network_interface,
+						network_interface: NodeNetworkInterface::from_old_network(old_message_handler.network),
 						collapsed: old_message_handler.collapsed,
 						commit_hash: old_message_handler.commit_hash,
 						document_ptz: old_message_handler.document_ptz,
@@ -1502,12 +1501,12 @@ impl DocumentMessageHandler {
 			.enumerate()
 			.find_map(|(index, direct_child)| {
 				if selected_nodes.selected_layers(metadata).any(|selected| selected == direct_child) {
-					return Some(index as usize);
+					return Some(index);
 				}
 
 				for descendant in direct_child.descendants(metadata) {
 					if selected_nodes.selected_layers(metadata).any(|selected| selected == descendant) {
-						return Some(index as usize);
+						return Some(index);
 					}
 				}
 

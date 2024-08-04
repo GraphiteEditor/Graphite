@@ -265,7 +265,7 @@ impl SnapManager {
 				return;
 			}
 			if layer.has_children(document.metadata()) {
-				for layer in layer.children(&document.metadata()) {
+				for layer in layer.children(document.metadata()) {
 					add_candidates(layer, snap_data, quad, candidates);
 				}
 				return;
@@ -280,7 +280,7 @@ impl SnapManager {
 			}
 		}
 
-		for layer in LayerNodeIdentifier::ROOT_PARENT.children(&document.metadata()) {
+		for layer in LayerNodeIdentifier::ROOT_PARENT.children(document.metadata()) {
 			add_candidates(layer, snap_data, quad, &mut candidates);
 		}
 

@@ -507,11 +507,6 @@
 					}
 				}
 
-				// Previous
-				// &.selected {
-				// 	background: var(--color-4-dimgray);
-				// }
-
 				&.insert-folder {
 					outline: 3px solid var(--color-e-nearwhite);
 					outline-offset: -3px;

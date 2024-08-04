@@ -52,9 +52,7 @@ impl From<String> for PanelType {
 			"Document" => PanelType::Document,
 			"Layers" => PanelType::Layers,
 			"Properties" => PanelType::Properties,
-			_ => {
-				panic!("Unknown panel type: {}", value);
-			}
+			_ => panic!("Unknown panel type: {}", value),
 		}
 	}
 }

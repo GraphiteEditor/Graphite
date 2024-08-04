@@ -448,7 +448,7 @@ impl NodeInput {
 			None
 		}
 	}
-	pub fn as_value_mut<'a>(&'a mut self) -> Option<MemoHashGuard<'a, TaggedValue>> {
+	pub fn as_value_mut(&mut self) -> Option<MemoHashGuard<TaggedValue>> {
 		if let NodeInput::Value { tagged_value, .. } = self {
 			Some(tagged_value.inner_mut())
 		} else {
@@ -628,89 +628,6 @@ pub struct OldDocumentNode {
 	/// Ensure the click target in the encapsulating network is updated when the inputs cause the node shape to change (currently only when exposing/hiding an input) by using network.update_click_target(node_id).
 	#[serde(deserialize_with = "deserialize_inputs")]
 	pub inputs: Vec<NodeInput>,
-	/// Manual composition is a way to override the default composition flow of one node into another.
-	///
-	/// Through the usual node composition flow, the upstream node providing the primary input for a node is evaluated before the node itself is run.
-	/// - Abstract example: upstream node `G` is evaluated and its data feeds into the primary input of downstream node `F`,
-	///   just like function composition where function `G` is evaluated and its result is fed into function `F`.
-	/// - Concrete example: a node that takes an image as primary input will get that image data from an upstream node that produces image output data and is evaluated first before being fed downstream.
-	///
-	/// This is achieved by automatically inserting `ComposeNode`s, which run the first node with the overall input and then feed the resulting output into the second node.
-	/// The `ComposeNode` is basically a function composition operator: the parentheses in `F(G(x))` or circle math operator in `(F ∘ G)(x)`.
-	/// For flexibility, instead of being a language construct, Graphene splits out composition itself as its own low-level node so that behavior can be overridden.
-	/// The `ComposeNode`s are then inserted during the graph rewriting step for nodes that don't opt out with `manual_composition`.
-	/// Instead of node `G` feeding into node `F` feeding as the result back to the caller,
-	/// the graph is rewritten so nodes `G` and `F` both feed as lambdas into the parameters of a `ComposeNode` which calls `F(G(input))` and returns the result to the caller.
-	///
-	/// A node's manual composition input represents an input that is not resolved through graph rewriting with a `ComposeNode`,
-	/// and is instead just passed in when evaluating this node within the borrow tree.
-	/// This is similar to having the first input be a `NodeInput::Network` after the graph flattening.
-	///
-	/// ## Example Use Case: CacheNode
-	///
-	/// The `CacheNode` is a pass-through node on cache miss, but on cache hit it needs to avoid evaluating the upstream node and instead just return the cached value.
-	///
-	/// First, let's consider what that would look like using the default composition flow if the `CacheNode` instead just always acted as a pass-through (akin to a cache that always misses):
-	///
-	/// ```text
-	/// ┌───────────────┐    ┌───────────────┐    ┌───────────────┐
-	/// │               │◄───┤               │◄───┤               │◄─── EVAL (START)
-	/// │       G       │    │PassThroughNode│    │       F       │
-	/// │               ├───►│               ├───►│               │───► RESULT (END)
-	/// └───────────────┘    └───────────────┘    └───────────────┘
-	/// ```
-	///
-	/// This acts like the function call `F(PassThroughNode(G(input)))` when evaluating `F` with some `input`: `F.eval(input)`.
-	/// - The diagram's upper track of arrows represents the flow of building up the call stack:
-	///   since `F` is the output it is encountered first but deferred to its upstream caller `PassThroughNode` and that is once again deferred to its upstream caller `G`.
-	/// - The diagram's lower track of arrows represents the flow of evaluating the call stack:
-	///   `G` is evaluated first, then `PassThroughNode` is evaluated with the result of `G`, and finally `F` is evaluated with the result of `PassThroughNode`.
-	///
-	/// With the default composition flow (no manual composition), `ComposeNode`s would be automatically inserted during the graph rewriting step like this:
-	///
-	/// ```text
-	///                                           ┌───────────────┐
-	///                                           │               │◄─── EVAL (START)
-	///                                           │  ComposeNode  │
-	///                      ┌───────────────┐    │               ├───► RESULT (END)
-	///                      │               │◄─┐ ├───────────────┤
-	///                      │       G       │  └─┤               │
-	///                      │               ├─┐  │     First     │
-	///                      └───────────────┘ └─►│               │
-	///                      ┌───────────────┐    ├───────────────┤
-	///                      │               │◄───┤               │
-	///                      │  ComposeNode  │    │     Second    │
-	/// ┌───────────────┐    │               ├───►│               │
-	/// │               │◄─┐ ├───────────────┤    └───────────────┘
-	/// │PassThroughNode│  └─┤               │
-	/// │               ├─┐  │     First     │
-	/// └───────────────┘ └─►│               │
-	/// ┌───────────────┐    ├───────────────┤
-	/// |               │◄───┤               │
-	/// │       F       │    │     Second    │
-	/// │               ├───►│               │
-	/// └───────────────┘    └───────────────┘
-	/// ```
-	///
-	/// Now let's swap back from the `PassThroughNode` to the `CacheNode` to make caching actually work.
-	/// It needs to override the default composition flow so that `G` is not automatically evaluated when the cache is hit.
-	/// We need to give the `CacheNode` more manual control over the order of execution.
-	/// So the `CacheNode` opts into manual composition and, instead of deferring to its upstream caller, it consumes the input directly:
-	///
-	/// ```text
-	///                      ┌───────────────┐    ┌───────────────┐
-	///                      │               │◄───┤               │◄─── EVAL (START)
-	///                      │   CacheNode   │    │       F       │
-	///                      │               ├───►│               │───► RESULT (END)
-	/// ┌───────────────┐    ├───────────────┤    └───────────────┘
-	/// │               │◄───┤               │
-	/// │       G       │    │  Cached Data  │
-	/// │               ├───►│               │
-	/// └───────────────┘    └───────────────┘
-	/// ```
-	///
-	/// Now, the call from `F` directly reaches the `CacheNode` and the `CacheNode` can decide whether to call `G.eval(input_from_f)`
-	/// in the event of a cache miss or just return the cached data in the event of a cache hit.
 	pub manual_composition: Option<Type>,
 	// TODO: Remove once this references its definition instead (see above TODO).
 	/// Indicates to the UI if a primary output should be drawn for this node.
@@ -812,7 +729,7 @@ fn default_export_metadata() -> (NodeId, IVec2) {
 	(NodeId(generate_uuid()), IVec2::new(8, -4))
 }
 
-#[derive(Clone, Debug, DynAny)]
+#[derive(Clone, Default, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// A network (subgraph) of nodes containing each [`DocumentNode`] and its ID, as well as list mapping each export to its connected node, or a value if disconnected
 pub struct NodeNetwork {
@@ -842,16 +759,7 @@ impl std::hash::Hash for NodeNetwork {
 		}
 	}
 }
-impl Default for NodeNetwork {
-	fn default() -> Self {
-		NodeNetwork {
-			exports: Default::default(),
-			//import_types: Default::default(),
-			nodes: Default::default(),
-			scope_injections: Default::default(),
-		}
-	}
-}
+
 impl PartialEq for NodeNetwork {
 	fn eq(&self, other: &Self) -> bool {
 		self.exports == other.exports
@@ -1483,7 +1391,7 @@ mod test {
 	fn map_ids() {
 		let mut network = add_network();
 		network.map_ids(|id| NodeId(id.0 + 1));
-		let mut mapped_add = NodeNetwork {
+		let mapped_add = NodeNetwork {
 			exports: vec![NodeInput::node(NodeId(2), 0)],
 			nodes: [
 				(
@@ -1559,7 +1467,7 @@ mod test {
 		};
 		network.generate_node_paths(&[]);
 		network.flatten_with_fns(NodeId(1), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), gen_node_id);
-		let mut flat_network = flat_network();
+		let flat_network = flat_network();
 		println!("{flat_network:#?}");
 		println!("{network:#?}");
 

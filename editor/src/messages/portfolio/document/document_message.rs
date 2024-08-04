@@ -1,3 +1,5 @@
+use super::utility_types::misc::{OptionBoundsSnapping, OptionPointSnapping};
+use super::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -12,9 +14,6 @@ use graphene_core::vector::style::ViewMode;
 use graphene_core::Color;
 
 use glam::DAffine2;
-
-use super::utility_types::misc::{OptionBoundsSnapping, OptionPointSnapping};
-use super::utility_types::network_interface::NodeNetworkInterface;
 
 #[impl_message(Message, PortfolioMessage, Document)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]

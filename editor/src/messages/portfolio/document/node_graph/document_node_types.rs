@@ -8,11 +8,9 @@ use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
 use crate::node_graph_executor::NodeGraphExecutor;
 
-use glam::DVec2;
 use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
-
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::ProtoNodeIdentifier;
 use graphene_core::raster::brush_cache::BrushCache;
@@ -26,6 +24,8 @@ use graphene_core::vector::VectorData;
 use graphene_core::*;
 use graphene_std::application_io::RenderConfig;
 use graphene_std::wasm_application_io::WasmEditorApi;
+
+use glam::DVec2;
 
 #[cfg(feature = "gpu")]
 use wgpu_executor::{Bindgroup, CommandBuffer, PipelineLayout, ShaderHandle, ShaderInputFrame, WgpuShaderInput};
@@ -4406,12 +4406,6 @@ impl DocumentNodeDefinition {
 			}
 		});
 
-		// Automatically set the import_types from the node input types
-		// if let Some(DocumentNodeImplementation::Network(network)) = &mut template.document_node.implementation {
-		// 	let input_types = template.document_node.inputs.iter().map(|input| input.ty()).collect::<Vec<_>>();
-		// 	network.import_types = input_types;
-		// }
-
 		// Set the reference to the node definition
 		template.persistent_node_metadata.reference = Some(self.identifier.to_string());
 		template
@@ -4419,7 +4413,7 @@ impl DocumentNodeDefinition {
 
 	/// Converts the [DocumentNodeDefinition] type to a [NodeTemplate], completely default.
 	pub fn default_node_template(&self) -> NodeTemplate {
-		self.node_template_input_override(self.node_template.document_node.inputs.clone().into_iter().map(|input| Some(input)))
+		self.node_template_input_override(self.node_template.document_node.inputs.clone().into_iter().map(Some))
 	}
 }
 
@@ -4492,7 +4486,6 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 		exports: vec![NodeInput::node(NodeId(1), 0)],
 		nodes: nodes.into_iter().enumerate().map(|(id, node)| (NodeId(id as u64), node)).collect(),
 		scope_injections: [("editor-api".to_string(), (NodeId(2), concrete!(&WasmEditorApi)))].into_iter().collect(),
-		..Default::default()
 	}
 }
 
@@ -4509,30 +4502,5 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 // 			.expect("Output node does not exist")
 // 			.to_document_node([NodeInput::node(output_node_id, 0)], DocumentNodeMetadata::position((output_offset + 8, 4))),
 // 	);
-// 	network
-// }
-
-// Unused
-// pub fn new_text_network(text: String, font: Font, size: f64) -> NodeNetwork {
-// 	let text_generator = resolve_document_node_type("Text").expect("Text node does not exist");
-// 	let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
-// 	let fill = resolve_document_node_type("Fill").expect("Fill node does not exist");
-// 	let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist");
-// 	let output = resolve_document_node_type("Output").expect("Output node does not exist");
-
-// 	let mut network = NodeNetwork { ..Default::default() };
-// 	network.push_node_to_document_network(text_generator.to_document_node(
-// 		[
-// 			NodeInput::scope("editor-api"),
-// 			NodeInput::value(TaggedValue::String(text), false),
-// 			NodeInput::value(TaggedValue::Font(font), false),
-// 			NodeInput::value(TaggedValue::F64(size), false),
-// 		],
-// 		DocumentNodeMetadata::position((0, 4)),
-// 	));
-// 	network.push_node_to_document_network(transform.to_document_node_default_inputs([None], Default::default()));
-// 	network.push_node_to_document_network(fill.to_document_node_default_inputs([None], Default::default()));
-// 	network.push_node_to_document_network(stroke.to_document_node_default_inputs([None], Default::default()));
-// 	network.push_node_to_document_network(output.to_document_node_default_inputs([None], Default::default()));
 // 	network
 // }

@@ -32,7 +32,7 @@ pub struct NodeGraphHandlerData<'a> {
 
 #[derive(Debug, Clone)]
 pub struct NodeGraphMessageHandler {
-	//TODO: Remove network and move to NodeNetworkInterface
+	// TODO: Remove network and move to NodeNetworkInterface
 	pub network: Vec<NodeId>,
 	pub node_graph_errors: GraphErrors,
 	has_selection: bool,
@@ -1061,7 +1061,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				for node_id in &node_ids {
 					responses.add(NodeGraphMessage::SetVisibility { node_id: *node_id, visible });
 				}
-				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids: node_ids });
+				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids });
 			}
 			NodeGraphMessage::ToggleVisibility { node_id } => {
 				let Some(network) = network_interface.network(selection_network_path) else {
@@ -1546,14 +1546,14 @@ impl NodeGraphMessageHandler {
 				.map(|(_, input_type)| input_type)
 				.collect();
 
-			let output_types = Self::get_output_types(node, &network_interface.resolved_types, &node_id_path);
+			let output_types = Self::get_output_types(node, &network_interface.resolved_types, node_id_path);
 			let primary_output_type = output_types.first().expect("Primary output should always exist");
 			let frontend_data_type = if let Some(output_type) = primary_output_type {
 				FrontendGraphDataType::with_type(output_type)
 			} else {
 				FrontendGraphDataType::General
 			};
-			let connected_to = outward_wires.get(&OutputConnector::node(node_id, 0)).cloned().unwrap_or_else(|| Vec::new());
+			let connected_to = outward_wires.get(&OutputConnector::node(node_id, 0)).cloned().unwrap_or_default();
 			let primary_output = if network_interface.has_primary_output(&node_id, breadcrumb_network_path) {
 				Some(FrontendGraphOutput {
 					data_type: frontend_data_type,
@@ -1586,7 +1586,7 @@ impl NodeGraphMessageHandler {
 					.map(|output_name| output_name.to_string())
 					.unwrap_or(format!("Output {}", index + 1));
 
-				let connected_to = outward_wires.get(&OutputConnector::node(node_id, index)).cloned().unwrap_or_else(|| Vec::new());
+				let connected_to = outward_wires.get(&OutputConnector::node(node_id, index)).cloned().unwrap_or_default();
 				exposed_outputs.push(FrontendGraphOutput {
 					data_type: frontend_data_type,
 					name: output_name,
