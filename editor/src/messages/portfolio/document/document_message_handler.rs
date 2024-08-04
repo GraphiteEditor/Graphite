@@ -759,6 +759,36 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				// Force chosen tool to be Select Tool after importing image.
 				responses.add(ToolMessage::ActivateTool { tool_type: ToolType::Select });
 			}
+			DocumentMessage::PasteImageAsBackground { image } => {
+				// All the image's pixels have been converted to 0..=1, linear, and premultiplied by `Color::from_rgba8_srgb`
+
+				let image_size = DVec2::new(image.width as f64, image.height as f64);
+
+				// Align the layer with the mouse or center of viewport
+				let center_in_viewport_layerspace = DAffine2::from_translation(self.metadata().document_to_viewport.inverse().transform_point2(ipp.viewport_bounds.center()));
+
+				// Make layer the size of the image
+				let fit_image_size = DAffine2::from_scale_angle_translation(image_size, 0., image_size / -2.);
+
+				let transform = center_in_viewport_layerspace * fit_image_size;
+
+				responses.add(DocumentMessage::StartTransaction);
+
+				let image_frame = ImageFrame { image, ..Default::default() };
+
+				use crate::messages::tool::common_functionality::graph_modification_utils;
+				let layer = graph_modification_utils::new_image_layer(image_frame, NodeId(generate_uuid()), self.new_layer_parent(true), responses);
+
+				// `layer` cannot be `ROOT_PARENT` since it is the newly created layer
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
+
+				responses.add(GraphOperationMessage::TransformSet {
+					layer,
+					transform,
+					transform_in: TransformIn::Local,
+					skip_rerender: false,
+				});
+			}
 			DocumentMessage::PasteSvg { svg, mouse } => {
 				use crate::messages::tool::common_functionality::graph_modification_utils;
 				let viewport_location = mouse.map_or(ipp.viewport_bounds.center() + ipp.viewport_bounds.top_left, |pos| pos.into());

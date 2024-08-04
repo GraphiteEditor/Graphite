@@ -271,6 +271,13 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	#[wasm_bindgen(js_name = newDocument)]
+	pub fn new_document(&self, name: String, x: u32, y: u32) {
+		let dimensions = glam::UVec2::from_array([x, y]);
+		let message = PortfolioMessage::NewDocument { name, dimensions };
+		self.dispatch(message);
+	}
+
 	#[wasm_bindgen(js_name = newDocumentDialog)]
 	pub fn new_document_dialog(&self) {
 		let message = DialogMessage::RequestNewDocumentDialog;
@@ -286,6 +293,17 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = demoArtworkDialog)]
 	pub fn demo_artwork_dialog(&self) {
 		let message = DialogMessage::RequestDemoArtworkDialog;
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = openImageFile)]
+	pub fn open_image_file(&self, image_name: String, image_width: u32, image_height: u32, image_data: Vec<u8>) {
+		let message = PortfolioMessage::OpenImageFile {
+			image_name,
+			image_width,
+			image_height,
+			image_data,
+		};
 		self.dispatch(message);
 	}
 

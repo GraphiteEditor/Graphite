@@ -3,6 +3,7 @@ use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
 
+use glam::UVec2;
 use graphene_core::text::Font;
 
 #[impl_message(Message, Portfolio)]
@@ -62,6 +63,10 @@ pub enum PortfolioMessage {
 		font: Font,
 		is_default: bool,
 	},
+	NewDocument {
+		name: String,
+		dimensions: UVec2,
+	},
 	NewDocumentWithName {
 		name: String,
 	},
@@ -77,6 +82,12 @@ pub enum PortfolioMessage {
 		document_is_auto_saved: bool,
 		document_is_saved: bool,
 		document_serialized_content: String,
+	},
+	OpenImageFile {
+		image_name: String,
+		image_width: u32,
+		image_height: u32,
+		image_data: Vec<u8>,
 	},
 	PasteIntoFolder {
 		clipboard: Clipboard,
