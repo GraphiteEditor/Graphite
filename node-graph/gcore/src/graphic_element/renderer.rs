@@ -37,6 +37,23 @@ impl ClickTarget {
 		&self.subpath
 	}
 
+	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {
+		self.bounding_box
+	}
+
+	pub fn bounding_box_with_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
+		self.bounding_box.map(|[a, b]| [transform.transform_point2(a), transform.transform_point2(b)])
+	}
+
+	pub fn apply_transform(&mut self, affine_transform: DAffine2) {
+		self.subpath.apply_transform(affine_transform);
+		self.update_bbox();
+	}
+
+	fn update_bbox(&mut self) {
+		self.bounding_box = self.subpath.bounding_box();
+	}
+
 	/// Does the click target intersect the rectangle
 	pub fn intersect_rectangle(&self, document_quad: Quad, layer_transform: DAffine2) -> bool {
 		// Check if the matrix is not invertible
@@ -89,7 +106,7 @@ impl ClickTarget {
 	pub fn intersect_point_no_stroke(&self, point: DVec2) -> bool {
 		// Check if the point is within the bounding box
 		if self
-			.bbox
+			.bounding_box
 			.is_some_and(|bbox| bbox[0].x <= point.x && point.x <= bbox[1].x && bbox[0].y <= point.y && point.y <= bbox[1].y)
 		{
 			// Check if the point is within the shape

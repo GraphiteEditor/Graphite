@@ -587,11 +587,7 @@ impl NodeNetworkInterface {
 					}
 					import_metadata
 				})
-				.filter_map(|(import_index, output_port)| {
-					output_port
-						.bounding_box()
-						.map(|bounding_box| (import_index, (bounding_box[0].x / 24.).ceil() as i32, (bounding_box[0].y / 24.).ceil() as i32))
-				})
+				.filter_map(|(import_index, output_port)| output_port.bounding_box().map(|bounding_box| (import_index, bounding_box[0].x as i32, bounding_box[0].y as i32)))
 				.collect::<Vec<_>>()
 		})
 	}
@@ -672,11 +668,7 @@ impl NodeNetworkInterface {
 						click_target,
 					))
 				})
-				.filter_map(|(export_metadata, output_port)| {
-					output_port
-						.bounding_box()
-						.map(|bounding_box| (export_metadata, (bounding_box[0].x / 24.).ceil() as i32, (bounding_box[0].y / 24.).ceil() as i32))
-				})
+				.filter_map(|(export_metadata, output_port)| output_port.bounding_box().map(|bounding_box| (export_metadata, bounding_box[0].x as i32, bounding_box[0].y as i32)))
 				.collect::<Vec<_>>()
 		})
 	}
@@ -1218,16 +1210,39 @@ impl NodeNetworkInterface {
 			log::error!("Could not get all nodes bounding box in load_export_ports");
 			return;
 		};
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in load_export_ports");
+			return;
+		};
 		let Some(network) = self.network(network_path) else {
 			log::error!("Could not get current network in load_export_ports");
 			return;
 		};
 		let mut import_export_ports = Ports::new();
-		let export_top_right = DVec2::new((all_nodes_bounding_box[1].x / 24. + 0.5).floor() * 24., (all_nodes_bounding_box[0].y / 24. + 0.5).floor() * 24.) + DVec2::new(4. * 24., -2. * 24.);
+		let viewport_top_right = network_metadata
+			.persistent_metadata
+			.navigation_metadata
+			.node_graph_to_viewport
+			.inverse()
+			.transform_point2(network_metadata.persistent_metadata.navigation_metadata.node_graph_top_right + DVec2::new(-84., 48.));
+
+		let bounding_box_top_right = DVec2::new((all_nodes_bounding_box[1].x / 24. + 0.5).floor() * 24., (all_nodes_bounding_box[0].y / 24. + 0.5).floor() * 24.) + DVec2::new(4. * 24., -2. * 24.);
+
+		let export_top_right = DVec2::new(viewport_top_right.x.max(bounding_box_top_right.x), viewport_top_right.y.min(bounding_box_top_right.y));
 		for input_index in 0..network.exports.len() {
 			import_export_ports.insert_input_port_at_center(input_index, export_top_right + DVec2::new(0., input_index as f64 * 24.));
 		}
-		let import_top_left = DVec2::new((all_nodes_bounding_box[0].x / 24. + 0.5).floor() * 24., (all_nodes_bounding_box[0].y / 24. + 0.5).floor() * 24.) + DVec2::new(-4. * 24., 0.);
+
+		let viewport_top_left = network_metadata
+			.persistent_metadata
+			.navigation_metadata
+			.node_graph_to_viewport
+			.inverse()
+			.transform_point2(DVec2::new(156., 96.));
+
+		let bounding_box_top_left = DVec2::new((all_nodes_bounding_box[0].x / 24. + 0.5).floor() * 24., (all_nodes_bounding_box[0].y / 24. + 0.5).floor() * 24.) + DVec2::new(-4. * 24., 0.);
+		let import_top_left = DVec2::new(viewport_top_left.x.min(bounding_box_top_left.x), viewport_top_left.y.min(bounding_box_top_left.y));
+
 		for output_index in 0..self.number_of_displayed_imports(network_path) {
 			import_export_ports.insert_output_port_at_center(output_index, import_top_left + DVec2::new(0., output_index as f64 * 24.));
 		}
@@ -1238,7 +1253,6 @@ impl NodeNetworkInterface {
 
 		network_metadata.transient_metadata.import_export_ports = TransientMetadata::Loaded(import_export_ports);
 	}
-
 	fn unload_import_export_ports(&mut self, network_path: &[NodeId]) {
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in unload_export_ports");
@@ -1755,16 +1769,16 @@ impl NodeNetworkInterface {
 			if let (Some(import_export_click_targets), Some(node_click_targets)) = (self.import_export_ports(network_path).cloned(), self.node_click_targets(&node_id, network_path)) {
 				let mut node_path = String::new();
 
-				let _ = node_click_targets.node_click_target.get_subpath().subpath_to_svg(&mut node_path, DAffine2::IDENTITY);
+				let _ = node_click_targets.node_click_target.subpath().subpath_to_svg(&mut node_path, DAffine2::IDENTITY);
 				all_node_click_targets.push((node_id, node_path));
 				for port in node_click_targets.port_click_targets.click_targets().chain(import_export_click_targets.click_targets()) {
 					let mut port_path = String::new();
-					let _ = port.get_subpath().subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
+					let _ = port.subpath().subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
 					port_click_targets.push(port_path);
 				}
 				if let NodeTypeClickTargets::Layer(layer_metadata) = &node_click_targets.node_type_metadata {
 					let mut port_path = String::new();
-					let _ = layer_metadata.visibility_click_target.get_subpath().subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
+					let _ = layer_metadata.visibility_click_target.subpath().subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
 					visibility_click_targets.push(port_path);
 				}
 			}
@@ -2178,15 +2192,15 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub fn set_transform(&mut self, transform: DAffine2, network_path: &[NodeId]) {
+	pub fn set_transform(&mut self, transform: DAffine2, node_graph_top_right: DVec2, network_path: &[NodeId]) {
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network in set_transform");
 			return;
 		};
 		network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport = transform;
+		network_metadata.persistent_metadata.navigation_metadata.node_graph_top_right = node_graph_top_right;
 		self.unload_import_export_ports(network_path);
 	}
-
 	/// Inserts a new export at insert index. If the insert index is -1 it is inserted at the end. The output_name is used by the encapsulating node.
 	pub fn add_export(&mut self, default_value: TaggedValue, insert_index: isize, output_name: String, network_path: &[NodeId]) {
 		// Set the parent node (if it exists) to be a non layer if it is no longer eligible to be a layer
@@ -3750,6 +3764,8 @@ pub struct NavigationMetadata {
 	// TODO: Remove and replace with calculate_offset_transform from the node_graph_ptz. This will be difficult since it requires both the navigation message handler and the IPP
 	/// Transform from node graph space to viewport space.
 	pub node_graph_to_viewport: DAffine2,
+	/// The top right of the node graph in viewport space
+	pub node_graph_top_right: DVec2,
 }
 
 impl Default for NavigationMetadata {
@@ -3758,6 +3774,7 @@ impl Default for NavigationMetadata {
 		NavigationMetadata {
 			node_graph_ptz: PTZ::default(),
 			node_graph_to_viewport: DAffine2::IDENTITY,
+			node_graph_top_right: DVec2::ZERO,
 		}
 	}
 }

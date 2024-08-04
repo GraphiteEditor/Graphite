@@ -471,8 +471,8 @@
 				data-datatype={outputMetadata.dataType}
 				style:--data-color={`var(--color-data-${outputMetadata.dataType.toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${outputMetadata.dataType.toLowerCase()}-dim)`}
-				style:--offset-left={position.x || 0}
-				style:--offset-top={position.y || 0}
+				style:--offset-left={position.x / 24}
+				style:--offset-top={position.y / 24}
 				bind:this={outputs[0][index]}
 			>
 				<title>{`${dataTypeTooltip(outputMetadata)}\n${outputConnectedToText(outputMetadata)}`}</title>
@@ -482,7 +482,7 @@
 					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
 				{/if}
 			</svg>
-			<p class="import-text" style:--offset-left={position.x || 0} style:--offset-top={position.y || 0}>{outputMetadata.name}</p>
+			<p class="import-text" style:--offset-left={position.x / 24} style:--offset-top={position.y / 24}>{outputMetadata.name}</p>
 		{/each}
 		{#each $nodeGraph.exports as { inputMetadata, position }, index}
 			<svg
@@ -493,8 +493,8 @@
 				data-datatype={inputMetadata.dataType}
 				style:--data-color={`var(--color-data-${inputMetadata.dataType.toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${inputMetadata.dataType.toLowerCase()}-dim)`}
-				style:--offset-left={position.x || 0}
-				style:--offset-top={position.y || 0}
+				style:--offset-left={position.x / 24}
+				style:--offset-top={position.y / 24}
 				bind:this={inputs[0][index]}
 			>
 				<title>{`${dataTypeTooltip(inputMetadata)}\n${inputConnectedToText(inputMetadata)}`}</title>
@@ -504,7 +504,7 @@
 					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
 				{/if}
 			</svg>
-			<p class="export-text" style:--offset-left={position.x || 0} style:--offset-top={position.y || 0}>{inputMetadata.name}</p>
+			<p class="export-text" style:--offset-left={position.x / 24} style:--offset-top={position.y / 24}>{inputMetadata.name}</p>
 		{/each}
 	</div>
 	<!-- Layers and nodes -->
@@ -969,16 +969,16 @@
 				position: absolute;
 				width: 8px;
 				height: 8px;
-				margin-top: -4px;
-				margin-left: -3px;
+				margin-top: 4px;
+				margin-left: 5px;
 				top: calc(var(--offset-top) * 24px);
 				left: calc(var(--offset-left) * 24px);
 			}
 
 			.export-text {
 				position: absolute;
-				margin-top: -8px;
-				margin-left: 12px;
+				margin-top: 0px;
+				margin-left: 20px;
 				top: calc(var(--offset-top) * 24px);
 				left: calc(var(--offset-left) * 24px);
 			}
@@ -986,7 +986,7 @@
 			.import-text {
 				position: absolute;
 				text-align: right;
-				margin-top: -8px;
+				margin-top: 0px;
 				margin-left: -110px;
 				width: 100px;
 				top: calc(var(--offset-top) * 24px);
