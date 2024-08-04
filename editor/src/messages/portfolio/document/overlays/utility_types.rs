@@ -260,4 +260,26 @@ impl OverlayContext {
 			.fill_text(text, pos.x + padding, pos.y - padding - metrics.font_bounding_box_descent())
 			.expect("draw text");
 	}
+
+	pub fn angle_text(&self, text: &str, pos: DVec2, direction: DVec2, padding: f64, pivot: Pivot) {
+		self.render_context.translate(pos.x, pos.y).expect("translate");
+		let angle = -direction.angle_to(DVec2::X);
+		self.render_context.rotate(angle).expect("rotate");
+		let metrics = self.render_context.measure_text(text).expect("measure text");
+		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_BLUE));
+		let local_position = match pivot {
+			Pivot::LeftCentreY => DVec2::new(padding, (metrics.actual_bounding_box_ascent() + metrics.actual_bounding_box_descent()) / 2.),
+			Pivot::TopCentreX => DVec2::new(
+				-(metrics.actual_bounding_box_right() + metrics.actual_bounding_box_left()) / 2.,
+				padding + metrics.font_bounding_box_ascent(),
+			),
+		};
+		self.render_context.fill_text(text, local_position.x, local_position.y).expect("draw text");
+		self.render_context.reset_transform().expect("reset transform");
+	}
+}
+
+pub enum Pivot {
+	LeftCentreY,
+	TopCentreX,
 }
