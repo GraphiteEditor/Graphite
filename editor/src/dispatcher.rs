@@ -165,9 +165,10 @@ impl Dispatcher {
 					self.message_handlers.preferences_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::Tool(message) => {
-					if let Some(document) = self.message_handlers.portfolio_message_handler.active_document() {
+					let document_id = self.message_handlers.portfolio_message_handler.active_document_id().unwrap();
+					if let Some(document) = self.message_handlers.portfolio_message_handler.documents.get_mut(&document_id) {
 						let data = ToolMessageData {
-							document_id: self.message_handlers.portfolio_message_handler.active_document_id().unwrap(),
+							document_id,
 							document,
 							input: &self.message_handlers.input_preprocessor_message_handler,
 							persistent_data: &self.message_handlers.portfolio_message_handler.persistent_data,
@@ -308,12 +309,12 @@ mod test {
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
 			parent: LayerNodeIdentifier::ROOT_PARENT,
-			insert_index: -1,
+			insert_index: 0,
 		});
 		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
 
-		let layers_before_copy = document_before_copy.metadata.all_layers().collect::<Vec<_>>();
-		let layers_after_copy = document_after_copy.metadata.all_layers().collect::<Vec<_>>();
+		let layers_before_copy = document_before_copy.metadata().all_layers().collect::<Vec<_>>();
+		let layers_after_copy = document_after_copy.metadata().all_layers().collect::<Vec<_>>();
 
 		assert_eq!(layers_before_copy.len(), 3);
 		assert_eq!(layers_after_copy.len(), 4);
@@ -337,20 +338,20 @@ mod test {
 		let mut editor = create_editor_with_three_layers();
 
 		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
-		let shape_id = document_before_copy.metadata.all_layers().nth(1).unwrap();
+		let shape_id = document_before_copy.metadata().all_layers().nth(1).unwrap();
 
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![shape_id.to_node()] });
 		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
 			parent: LayerNodeIdentifier::ROOT_PARENT,
-			insert_index: -1,
+			insert_index: 0,
 		});
 
 		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
 
-		let layers_before_copy = document_before_copy.metadata.all_layers().collect::<Vec<_>>();
-		let layers_after_copy = document_after_copy.metadata.all_layers().collect::<Vec<_>>();
+		let layers_before_copy = document_before_copy.metadata().all_layers().collect::<Vec<_>>();
+		let layers_after_copy = document_after_copy.metadata().all_layers().collect::<Vec<_>>();
 
 		assert_eq!(layers_before_copy.len(), 3);
 		assert_eq!(layers_after_copy.len(), 4);
@@ -376,7 +377,7 @@ mod test {
 		let mut editor = create_editor_with_three_layers();
 
 		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
-		let mut layers = document_before_copy.metadata.all_layers();
+		let mut layers = document_before_copy.metadata().all_layers();
 		let rect_id = layers.next().expect("rectangle");
 		let shape_id = layers.next().expect("shape");
 		let ellipse_id = layers.next().expect("ellipse");
@@ -385,23 +386,23 @@ mod test {
 			nodes: vec![rect_id.to_node(), ellipse_id.to_node()],
 		});
 		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
-		editor.handle_message(DocumentMessage::DeleteSelectedLayers);
+		editor.handle_message(NodeGraphMessage::DeleteSelectedNodes { reconnect: true });
 		editor.draw_rect(0., 800., 12., 200.);
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
 			parent: LayerNodeIdentifier::ROOT_PARENT,
-			insert_index: -1,
+			insert_index: 0,
 		});
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
 			parent: LayerNodeIdentifier::ROOT_PARENT,
-			insert_index: -1,
+			insert_index: 0,
 		});
 
 		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
 
-		let layers_before_copy = document_before_copy.metadata.all_layers().collect::<Vec<_>>();
-		let layers_after_copy = document_after_copy.metadata.all_layers().collect::<Vec<_>>();
+		let layers_before_copy = document_before_copy.metadata().all_layers().collect::<Vec<_>>();
+		let layers_after_copy = document_after_copy.metadata().all_layers().collect::<Vec<_>>();
 
 		assert_eq!(layers_before_copy.len(), 3);
 		assert_eq!(layers_after_copy.len(), 6);

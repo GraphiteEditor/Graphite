@@ -1,30 +1,33 @@
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::*;
 
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, NodeId, NodeInput};
+use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 
 #[impl_message(Message, DocumentMessage, NodeGraph)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum NodeGraphMessage {
-	// Messages
+	AddNodes {
+		nodes: Vec<(NodeId, NodeTemplate)>,
+		new_ids: HashMap<NodeId, NodeId>,
+	},
 	Init,
 	SelectedNodesUpdated,
-	ConnectNodesByWire {
-		output_node: NodeId,
-		output_node_connector_index: usize,
-		input_node: NodeId,
-		input_node_connector_index: usize,
-	},
 	Copy,
 	CloseCreateNodeMenu,
-	CreateNode {
+	CreateNodeFromContextMenu {
 		node_id: Option<NodeId>,
 		node_type: String,
 		x: i32,
 		y: i32,
+	},
+	CreateWire {
+		output_connector: OutputConnector,
+		input_connector: InputConnector,
 	},
 	Cut,
 	DeleteNodes {
@@ -35,17 +38,10 @@ pub enum NodeGraphMessage {
 		reconnect: bool,
 	},
 	DisconnectInput {
-		node_id: NodeId,
-		input_index: usize,
+		input_connector: InputConnector,
 	},
 	EnterNestedNetwork,
 	DuplicateSelectedNodes,
-	EnforceLayerHasNoMultiParams {
-		node_id: NodeId,
-	},
-	ExitNestedNetwork {
-		steps_back: usize,
-	},
 	ExposeInput {
 		node_id: NodeId,
 		input_index: usize,
@@ -53,21 +49,17 @@ pub enum NodeGraphMessage {
 	},
 	InsertNode {
 		node_id: NodeId,
-		document_node: DocumentNode,
+		node_template: NodeTemplate,
 	},
 	InsertNodeBetween {
-		post_node_id: NodeId,
-		post_node_input_index: usize,
-		insert_node_output_index: usize,
-		insert_node_id: NodeId,
+		node_id: NodeId,
+		input_connector: InputConnector,
 		insert_node_input_index: usize,
-		pre_node_output_index: usize,
-		pre_node_id: NodeId,
 	},
-	MoveSelectedNodes {
-		displacement_x: i32,
-		displacement_y: i32,
-		move_upstream: bool,
+	MoveLayerToStack {
+		layer: LayerNodeIdentifier,
+		parent: LayerNodeIdentifier,
+		insert_index: usize,
 	},
 	PasteNodes {
 		serialized_nodes: String,
@@ -87,6 +79,7 @@ pub enum NodeGraphMessage {
 	},
 	PrintSelectedNodeCoordinates,
 	RunDocumentGraph,
+	ForceRunDocumentGraph,
 	SelectedNodesAdd {
 		nodes: Vec<NodeId>,
 	},
@@ -96,48 +89,35 @@ pub enum NodeGraphMessage {
 	SelectedNodesSet {
 		nodes: Vec<NodeId>,
 	},
+	SendClickTargets,
+	EndSendClickTargets,
 	SendGraph,
 	SetInputValue {
 		node_id: NodeId,
 		input_index: usize,
 		value: TaggedValue,
 	},
-	SetNodeInput {
-		node_id: NodeId,
-		input_index: usize,
+	SetInput {
+		input_connector: InputConnector,
 		input: NodeInput,
 	},
-	SetQualifiedInputValue {
+	SetDisplayName {
 		node_id: NodeId,
-		input_index: usize,
-		value: TaggedValue,
+		alias: String,
 	},
-	/// Move all the downstream nodes to the right in the graph to allow space for a newly inserted node
-	ShiftNode {
+	SetDisplayNameImpl {
 		node_id: NodeId,
-	},
-	SetVisibility {
-		node_id: NodeId,
-		visible: bool,
-	},
-	SetLocked {
-		node_id: NodeId,
-		locked: bool,
-	},
-	SetName {
-		node_id: NodeId,
-		name: String,
-	},
-	SetNameImpl {
-		node_id: NodeId,
-		name: String,
+		alias: String,
 	},
 	SetToNodeOrLayer {
 		node_id: NodeId,
 		is_layer: bool,
 	},
-	StartPreviewingWithoutRestore {
-		node_id: NodeId,
+	ShiftNodes {
+		node_ids: Vec<NodeId>,
+		displacement_x: i32,
+		displacement_y: i32,
+		move_upstream: bool,
 	},
 	TogglePreview {
 		node_id: NodeId,
@@ -146,10 +126,28 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 	},
 	ToggleSelectedAsLayersOrNodes,
+	ToggleSelectedLocked,
+	ToggleLocked {
+		node_id: NodeId,
+	},
+	SetLocked {
+		node_id: NodeId,
+		locked: bool,
+	},
 	ToggleSelectedVisibility,
 	ToggleVisibility {
 		node_id: NodeId,
 	},
+	SetVisibility {
+		node_id: NodeId,
+		visible: bool,
+	},
+	SetLockedOrVisibilitySideEffects {
+		node_ids: Vec<NodeId>,
+	},
+	UpdateEdges,
+	UpdateBoxSelection,
+	UpdateLayerPanel,
 	UpdateNewNodeGraph,
 	UpdateTypes {
 		#[serde(skip)]
@@ -157,4 +155,7 @@ pub enum NodeGraphMessage {
 		#[serde(skip)]
 		node_graph_errors: GraphErrors,
 	},
+	UpdateActionButtons,
+	UpdateInSelectedNetwork,
+	SendSelectedNodes,
 }

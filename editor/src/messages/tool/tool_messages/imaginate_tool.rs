@@ -101,7 +101,7 @@ impl Fsm for ImaginateToolFsmState {
 			(ImaginateToolFsmState::Ready, ImaginateToolMessage::DragStart) => {
 				shape_data.start(document, input);
 				responses.add(DocumentMessage::StartTransaction);
-				shape_data.layer = Some(LayerNodeIdentifier::new(NodeId(generate_uuid()), document.network()));
+				shape_data.layer = Some(LayerNodeIdentifier::new(NodeId(generate_uuid()), &document.network_interface));
 				responses.add(DocumentMessage::DeselectAllLayers);
 
 				// // Utility function to offset the position of each consecutive node
@@ -120,7 +120,7 @@ impl Fsm for ImaginateToolFsmState {
 
 				// // Give them a unique ID
 				// let transform_node_id = NodeId(100);
-				let imaginate_node_id = NodeId(101);
+				//let imaginate_node_id = NodeId(101);
 
 				// Create the network based on the Input -> Output passthrough default network
 				// let mut network = new_image_network(16, imaginate_node_id);
@@ -134,7 +134,7 @@ impl Fsm for ImaginateToolFsmState {
 				// 	imaginate_node_id,
 				// 	imaginate_node_type.to_document_node_default_inputs([Some(NodeInput::node(transform_node_id, 0))], next_pos()),
 				// );
-				responses.add(NodeGraphMessage::ShiftNode { node_id: imaginate_node_id });
+				// responses.add(NodeGraphMessage::ShiftNode { node_id: imaginate_node_id });
 
 				// // Add a layer with a frame to the document
 				// responses.add(Operation::AddFrame {

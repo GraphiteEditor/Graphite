@@ -1,18 +1,19 @@
+use super::utility_types::misc::SnappingState;
+use super::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GridSnapping};
+use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 
-use graph_craft::document::{NodeId, NodeNetwork};
+use graph_craft::document::NodeId;
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::Image;
 use graphene_core::vector::style::ViewMode;
 use graphene_core::Color;
 
 use glam::DAffine2;
-
-use super::utility_types::misc::SnappingState;
 
 #[impl_message(Message, PortfolioMessage, Document)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -37,7 +38,7 @@ pub enum DocumentMessage {
 		aggregate: AlignAggregate,
 	},
 	BackupDocument {
-		network: NodeNetwork,
+		network_interface: NodeNetworkInterface,
 	},
 	ClearArtboards,
 	ClearLayersPanel,
@@ -47,15 +48,18 @@ pub enum DocumentMessage {
 	},
 	CreateEmptyFolder,
 	DebugPrintDocument,
-	DeleteLayer {
-		layer: LayerNodeIdentifier,
-	},
 	DeleteSelectedLayers,
 	DeselectAllLayers,
 	DocumentHistoryBackward,
 	DocumentHistoryForward,
 	DocumentStructureChanged,
 	DuplicateSelectedLayers,
+	EnterNestedNetwork {
+		node_id: NodeId,
+	},
+	ExitNestedNetwork {
+		steps_back: usize,
+	},
 	FlipSelectedLayers {
 		flip_axis: FlipAxis,
 	},
@@ -77,11 +81,14 @@ pub enum DocumentMessage {
 		svg: String,
 		transform: DAffine2,
 		parent: LayerNodeIdentifier,
-		insert_index: isize,
+		insert_index: usize,
 	},
 	MoveSelectedLayersTo {
 		parent: LayerNodeIdentifier,
-		insert_index: isize,
+		insert_index: usize,
+	},
+	MoveSelectedLayersToGroup {
+		parent: LayerNodeIdentifier,
 	},
 	NudgeSelectedLayers {
 		delta_x: f64,
@@ -103,7 +110,6 @@ pub enum DocumentMessage {
 	},
 	RenderRulers,
 	RenderScrollbars,
-	ResetTransform,
 	SaveDocument,
 	SelectAllLayers,
 	SelectedLayersLower,
@@ -117,6 +123,9 @@ pub enum DocumentMessage {
 		id: NodeId,
 		ctrl: bool,
 		shift: bool,
+	},
+	SetActivePanel {
+		active_panel: PanelType,
 	},
 	SetBlendModeForSelectedLayers {
 		blend_mode: BlendMode,
@@ -148,9 +157,10 @@ pub enum DocumentMessage {
 	Undo,
 	UndoFinished,
 	UngroupSelectedLayers,
-	UpdateDocumentTransform {
-		transform: glam::DAffine2,
+	UngroupLayer {
+		layer: LayerNodeIdentifier,
 	},
+	PTZUpdate,
 	ZoomCanvasTo100Percent,
 	ZoomCanvasTo200Percent,
 	ZoomCanvasToFitAll,

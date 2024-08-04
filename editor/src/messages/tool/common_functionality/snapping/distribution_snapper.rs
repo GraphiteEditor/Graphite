@@ -35,7 +35,7 @@ fn dist_up(a: Rect, b: Rect) -> f64 {
 impl DistributionSnapper {
 	fn add_bounds(&mut self, layer: LayerNodeIdentifier, snap_data: &mut SnapData, bbox_to_snap: Rect, max_extent: f64) {
 		let document = snap_data.document;
-		let Some(bounds) = document.metadata.bounding_box_with_transform(layer, document.metadata.transform_to_document(layer)) else {
+		let Some(bounds) = document.metadata().bounding_box_with_transform(layer, document.metadata().transform_to_document(layer)) else {
 			return;
 		};
 		let bounds = Rect::from_box(bounds);
@@ -70,11 +70,11 @@ impl DistributionSnapper {
 		self.left.clear();
 		self.down.clear();
 		self.up.clear();
-		let screen_bounds = (document.metadata.document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, snap_data.input.viewport_bounds.size()])).bounding_box();
+		let screen_bounds = (document.metadata().document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, snap_data.input.viewport_bounds.size()])).bounding_box();
 		let max_extent = (screen_bounds[1] - screen_bounds[0]).abs().max_element();
 
-		for layer in document.metadata.all_layers() {
-			if !document.metadata.is_artboard(layer) || snap_data.ignore.contains(&layer) {
+		for layer in document.metadata().all_layers() {
+			if !document.network_interface.is_artboard(&layer.to_node(), &[]) || snap_data.ignore.contains(&layer) {
 				continue;
 			}
 			self.add_bounds(layer, snap_data, bbox_to_snap, max_extent);

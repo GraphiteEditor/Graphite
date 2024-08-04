@@ -1,5 +1,7 @@
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
+
 use bezier_rs::Subpath;
-use graph_craft::document::{value::TaggedValue, NodeInput};
+use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
 use graphene_core::vector::PointId;
 
 use glam::{DAffine2, DVec2};
@@ -30,13 +32,13 @@ pub fn compute_scale_angle_translation_shear(transform: DAffine2) -> (DVec2, f64
 }
 
 /// Update the inputs of the transform node to match a new transform
-pub fn update_transform(inputs: &mut [NodeInput], transform: DAffine2) {
+pub fn update_transform(network_interface: &mut NodeNetworkInterface, node_id: &NodeId, transform: DAffine2) {
 	let (scale, angle, translation, shear) = compute_scale_angle_translation_shear(transform);
 
-	inputs[1] = NodeInput::value(TaggedValue::DVec2(translation), false);
-	inputs[2] = NodeInput::value(TaggedValue::F64(angle), false);
-	inputs[3] = NodeInput::value(TaggedValue::DVec2(scale), false);
-	inputs[4] = NodeInput::value(TaggedValue::DVec2(shear), false);
+	network_interface.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::DVec2(translation), false), &[]);
+	network_interface.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::F64(angle), false), &[]);
+	network_interface.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::DVec2(scale), false), &[]);
+	network_interface.set_input(&InputConnector::node(*node_id, 4), NodeInput::value(TaggedValue::DVec2(shear), false), &[]);
 }
 
 // TODO: This should be extracted from the graph at the location of the transform node.

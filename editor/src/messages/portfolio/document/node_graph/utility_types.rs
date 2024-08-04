@@ -1,7 +1,8 @@
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::NodeId;
 use graphene_core::Type;
-use graphene_std::renderer::ClickTarget;
+
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FrontendGraphDataType {
@@ -43,7 +44,8 @@ pub struct FrontendGraphInput {
 	pub name: String,
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: Option<String>,
-	pub connected: Option<NodeId>,
+	#[serde(rename = "connectedTo")]
+	pub connected_to: Option<OutputConnector>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -53,9 +55,8 @@ pub struct FrontendGraphOutput {
 	pub name: String,
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: Option<String>,
-	pub connected: Vec<NodeId>,
-	#[serde(rename = "connectedIndex")]
-	pub connected_index: Vec<usize>,
+	#[serde(rename = "connectedTo")]
+	pub connected_to: Vec<InputConnector>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -65,8 +66,9 @@ pub struct FrontendNode {
 	pub is_layer: bool,
 	#[serde(rename = "canBeLayer")]
 	pub can_be_layer: bool,
-	pub alias: String,
-	pub name: String,
+	pub reference: Option<String>,
+	#[serde(rename = "displayName")]
+	pub display_name: String,
 	#[serde(rename = "primaryInput")]
 	pub primary_input: Option<FrontendGraphInput>,
 	#[serde(rename = "exposedInputs")]
@@ -87,13 +89,9 @@ pub struct FrontendNode {
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendNodeWire {
 	#[serde(rename = "wireStart")]
-	pub wire_start: NodeId,
-	#[serde(rename = "wireStartOutputIndex")]
-	pub wire_start_output_index: usize,
+	pub wire_start: OutputConnector,
 	#[serde(rename = "wireEnd")]
-	pub wire_end: NodeId,
-	#[serde(rename = "wireEndInputIndex")]
-	pub wire_end_input_index: usize,
+	pub wire_end: InputConnector,
 	pub dashed: bool,
 }
 
@@ -168,16 +166,16 @@ pub struct ContextMenuInformation {
 	pub context_menu_data: ContextMenuData,
 }
 
-#[derive(Debug, Clone)]
-pub struct NodeMetadata {
-	/// Cache for all node click targets in node graph space. Ensure `update_click_target` is called when modifying a node property that changes its size. Currently this is `alias`, `inputs`, `is_layer`, and `metadata`.
-	pub node_click_target: ClickTarget,
-	/// Cache for all node inputs. Should be automatically updated when `update_click_target` is called.
-	pub input_click_targets: Vec<ClickTarget>,
-	/// Cache for all node outputs. Should be automatically updated when `update_click_target` is called.
-	pub output_click_targets: Vec<ClickTarget>,
-	/// Cache for all visibility buttons. Should be automatically updated when `update_click_target` is called.
-	pub visibility_click_target: Option<ClickTarget>,
-	/// Stores the width in grid cell units for layer nodes from the left edge of the thumbnail (+12px padding since thumbnail ends between grid spaces) to the end of the node.
-	pub layer_width: Option<u32>,
+#[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct FrontendClickTargets {
+	#[serde(rename = "nodeClickTargets")]
+	pub node_click_targets: Vec<String>,
+	#[serde(rename = "layerClickTargets")]
+	pub layer_click_targets: Vec<String>,
+	#[serde(rename = "portClickTargets")]
+	pub port_click_targets: Vec<String>,
+	#[serde(rename = "visibilityClickTargets")]
+	pub visibility_click_targets: Vec<String>,
+	#[serde(rename = "allNodesBoundingBox")]
+	pub all_nodes_bounding_box: String,
 }

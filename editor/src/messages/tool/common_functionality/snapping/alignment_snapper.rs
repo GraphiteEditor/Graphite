@@ -19,12 +19,12 @@ impl AlignmentSnapper {
 			return;
 		}
 
-		for layer in document.metadata.all_layers() {
-			if !document.metadata.is_artboard(layer) || snap_data.ignore.contains(&layer) {
+		for layer in document.metadata().all_layers() {
+			if !document.network_interface.is_artboard(&layer.to_node(), &[]) || snap_data.ignore.contains(&layer) {
 				continue;
 			}
 			if document.snapping_state.target_enabled(SnapTarget::Board(BoardSnapTarget::Corner)) {
-				let Some(bounds) = document.metadata.bounding_box_with_transform(layer, document.metadata.transform_to_document(layer)) else {
+				let Some(bounds) = document.metadata().bounding_box_with_transform(layer, document.metadata().transform_to_document(layer)) else {
 					continue;
 				};
 				get_bbox_points(Quad::from_box(bounds), &mut self.bounding_box_points, BBoxSnapValues::ALIGN_ARTBOARD, document);
@@ -36,10 +36,10 @@ impl AlignmentSnapper {
 			if snap_data.ignore_bounds(layer) {
 				continue;
 			}
-			let Some(bounds) = document.metadata.bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
+			let Some(bounds) = document.metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
 				continue;
 			};
-			let quad = document.metadata.transform_to_document(layer) * Quad::from_box(bounds);
+			let quad = document.metadata().transform_to_document(layer) * Quad::from_box(bounds);
 			let values = BBoxSnapValues::ALIGN_BOUNDING_BOX;
 			get_bbox_points(quad, &mut self.bounding_box_points, values, document);
 		}

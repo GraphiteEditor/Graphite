@@ -5,11 +5,12 @@ use crate::application::generate_uuid;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name};
 
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::NodeId;
+use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::renderer::Quad;
 use graphene_core::text::{load_face, Font, FontCache};
 use graphene_core::vector::style::Fill;
@@ -213,9 +214,8 @@ struct TextToolData {
 impl TextToolData {
 	/// Set the editing state of the currently modifying layer
 	fn set_editing(&self, editable: bool, font_cache: &FontCache, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		// TODO: Should always set visibility for document network, but `node_id` is not a layer so it crashes
-		if let Some(node_id) = graph_modification_utils::get_fill_id(self.layer, &document.network) {
-			responses.add(GraphOperationMessage::SetVisibility { node_id, visible: !editable });
+		if let Some(node_id) = graph_modification_utils::get_fill_id(self.layer, &document.network_interface) {
+			responses.add(NodeGraphMessage::SetVisibility { node_id, visible: !editable });
 		}
 
 		if let Some(editing_text) = self.editing_text.as_ref().filter(|_| editable) {
@@ -234,8 +234,8 @@ impl TextToolData {
 
 	fn load_layer_text_node(&mut self, document: &DocumentMessageHandler) -> Option<()> {
 		let transform = document.metadata().transform_to_viewport(self.layer);
-		let color = graph_modification_utils::get_fill_color(self.layer, &document.network).unwrap_or(Color::BLACK);
-		let (text, font, font_size) = graph_modification_utils::get_text(self.layer, &document.network)?;
+		let color = graph_modification_utils::get_fill_color(self.layer, &document.network_interface).unwrap_or(Color::BLACK);
+		let (text, font, font_size) = graph_modification_utils::get_text(self.layer, &document.network_interface)?;
 		self.editing_text = Some(EditingText {
 			text: text.clone(),
 			font: font.clone(),
@@ -266,12 +266,16 @@ impl TextToolData {
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![self.layer.to_node()] });
 	}
 
-	fn interact(&mut self, state: TextToolFsmState, mouse: DVec2, document: &DocumentMessageHandler, font_cache: &FontCache, responses: &mut VecDeque<Message>) -> TextToolFsmState {
+	fn interact(
+		&mut self,
+		state: TextToolFsmState,
+		input: &InputPreprocessorMessageHandler,
+		document: &DocumentMessageHandler,
+		font_cache: &FontCache,
+		responses: &mut VecDeque<Message>,
+	) -> TextToolFsmState {
 		// Check if the user has selected an existing text layer
-		if let Some(clicked_text_layer_path) = document
-			.click(mouse, document.network())
-			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network, "Text"))
-		{
+		if let Some(clicked_text_layer_path) = document.click(input).filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text")) {
 			self.start_editing_layer(clicked_text_layer_path, state, document, font_cache, responses);
 
 			TextToolFsmState::Editing
@@ -288,7 +292,7 @@ impl TextToolData {
 				font: editing_text.font.clone(),
 				size: editing_text.font_size,
 				parent: document.new_layer_parent(true),
-				insert_index: -1,
+				insert_index: 0,
 			});
 			responses.add(GraphOperationMessage::FillSet {
 				layer: self.layer,
@@ -316,7 +320,7 @@ impl TextToolData {
 }
 
 fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdentifier> {
-	let mut selected_layers = document.selected_nodes.selected_layers(document.metadata());
+	let mut selected_layers = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata());
 	let layer = selected_layers.next()?;
 
 	// Check that only one layer is selected
@@ -324,7 +328,7 @@ fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdent
 		return None;
 	}
 
-	if !is_layer_fed_by_node_of_name(layer, &document.network, "Text") {
+	if !is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
 		return None;
 	}
 
@@ -364,8 +368,8 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Editing
 			}
 			(_, TextToolMessage::Overlays(mut overlay_context)) => {
-				for layer in document.selected_nodes.selected_layers(document.metadata()) {
-					let Some((text, font, font_size)) = graph_modification_utils::get_text(layer, &document.network) else {
+				for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
+					let Some((text, font, font_size)) = graph_modification_utils::get_text(layer, &document.network_interface) else {
 						continue;
 					};
 					let buzz_face = font_cache.get(font).map(|data| load_face(data));
@@ -387,7 +391,7 @@ impl Fsm for TextToolFsmState {
 				});
 				tool_data.new_text = String::new();
 
-				tool_data.interact(state, input.mouse.position, document, font_cache, responses)
+				tool_data.interact(state, input, document, font_cache, responses)
 			}
 			(state, TextToolMessage::EditSelected) => {
 				if let Some(layer) = can_edit_selected(document) {
@@ -410,10 +414,9 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text }) => {
-				responses.add(NodeGraphMessage::SetQualifiedInputValue {
-					node_id: graph_modification_utils::get_text_id(tool_data.layer, &document.network).unwrap(),
-					input_index: 1,
-					value: TaggedValue::String(new_text),
+				responses.add(NodeGraphMessage::SetInput {
+					input_connector: InputConnector::node(graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface).unwrap(), 1),
+					input: NodeInput::value(TaggedValue::String(new_text), false),
 				});
 
 				tool_data.set_editing(false, font_cache, document, responses);

@@ -1,3 +1,6 @@
+// Graph
+pub const GRID_SIZE: u32 = 24;
+
 // Viewport
 pub const VIEWPORT_ZOOM_WHEEL_RATE: f64 = (1. / 600.) * 3.;
 pub const VIEWPORT_ZOOM_MOUSE_RATE: f64 = 1. / 400.;

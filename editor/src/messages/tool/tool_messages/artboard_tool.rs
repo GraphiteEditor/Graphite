@@ -119,7 +119,7 @@ impl ArtboardToolData {
 
 		let Some(layer) = self.selected_artboard else { return };
 
-		if let Some(bounds) = document.metadata.bounding_box_with_transform(layer, document.metadata.transform_to_document(layer)) {
+		if let Some(bounds) = document.metadata().bounding_box_with_transform(layer, document.metadata().transform_to_document(layer)) {
 			snapping::get_bbox_points(Quad::from_box(bounds), &mut self.snap_candidates, snapping::BBoxSnapValues::ARTBOARD, document);
 		}
 	}
@@ -142,9 +142,7 @@ impl ArtboardToolData {
 	}
 
 	fn hovered_artboard(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) -> Option<LayerNodeIdentifier> {
-		document
-			.click_xray(input.mouse.position)
-			.find(|&layer| document.network.nodes.get(&layer.to_node()).map_or(false, |document_node| document_node.is_artboard()))
+		document.click_xray(input).find(|&layer| document.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
 
 	fn select_artboard(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> bool {
@@ -196,7 +194,7 @@ impl ArtboardToolData {
 		let size = (max - min).abs();
 
 		responses.add(GraphOperationMessage::ResizeArtboard {
-			id: self.selected_artboard.unwrap().to_node(),
+			layer: self.selected_artboard.unwrap(),
 			location: position.round().as_ivec2(),
 			dimensions: size.round().as_ivec2(),
 		});
@@ -294,7 +292,7 @@ impl Fsm for ArtboardToolFsmState {
 						return ArtboardToolFsmState::Ready { hovered };
 					}
 					responses.add(GraphOperationMessage::ResizeArtboard {
-						id: tool_data.selected_artboard.unwrap().to_node(),
+						layer: tool_data.selected_artboard.unwrap(),
 						location: position.round().as_ivec2(),
 						dimensions: size.round().as_ivec2(),
 					});
@@ -350,7 +348,7 @@ impl Fsm for ArtboardToolFsmState {
 						log::error!("Selected artboard cannot be ROOT_PARENT");
 					} else {
 						responses.add(GraphOperationMessage::ResizeArtboard {
-							id: artboard.to_node(),
+							layer: artboard,
 							location: start.min(end).round().as_ivec2(),
 							dimensions: (start.round() - end.round()).abs().as_ivec2(),
 						});
@@ -460,12 +458,17 @@ impl Fsm for ArtboardToolFsmState {
 				ArtboardToolFsmState::Ready { hovered }
 			}
 			(_, ArtboardToolMessage::UpdateSelectedArtboard) => {
-				tool_data.selected_artboard = document.selected_nodes.selected_layers(document.metadata()).find(|layer| document.metadata().is_artboard(*layer));
+				tool_data.selected_artboard = document
+					.network_interface
+					.selected_nodes(&[])
+					.unwrap()
+					.selected_layers(document.metadata())
+					.find(|layer| document.network_interface.is_artboard(&layer.to_node(), &[]));
 				self
 			}
 			(_, ArtboardToolMessage::DeleteSelected) => {
 				tool_data.selected_artboard.take();
-				responses.add(NodeGraphMessage::DeleteSelectedNodes { reconnect: true });
+				responses.add(DocumentMessage::DeleteSelectedLayers);
 
 				ArtboardToolFsmState::Ready { hovered }
 			}
@@ -475,7 +478,7 @@ impl Fsm for ArtboardToolFsmState {
 						log::error!("Selected artboard cannot be ROOT_PARENT");
 					} else {
 						responses.add(GraphOperationMessage::ResizeArtboard {
-							id: tool_data.selected_artboard.unwrap().to_node(),
+							layer: tool_data.selected_artboard.unwrap(),
 							location: DVec2::new(bounds.bounds[0].x + delta_x, bounds.bounds[0].y + delta_y).round().as_ivec2(),
 							dimensions: (bounds.bounds[1] - bounds.bounds[0]).round().as_ivec2(),
 						});

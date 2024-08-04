@@ -371,11 +371,12 @@
 	</LayoutRow>
 	<LayoutRow class="list-area" scrollableY={true}>
 		<LayoutCol class="list" bind:this={list} on:click={() => deselectAllLayers()} on:dragover={(e) => draggable && updateInsertLine(e)} on:dragend={() => draggable && drop()}>
-			{#each layers as listing, index (String(listing.entry.id))}
+			{#each layers as listing, index}
 				<LayoutRow
 					class="layer"
 					classes={{
-						selected: fakeHighlight !== undefined ? fakeHighlight === listing.entry.id : $nodeGraph.selected.includes(listing.entry.id),
+						selected: fakeHighlight !== undefined ? fakeHighlight === listing.entry.id : listing.entry.selected,
+						"in-selected-network": listing.entry.inSelectedNetwork,
 						"insert-folder": (draggingData?.highlightFolder || false) && draggingData?.insertParentId === listing.entry.id,
 					}}
 					styles={{ "--layer-indent-levels": `${listing.entry.depth - 1}` }}
@@ -497,8 +498,13 @@
 				margin: 0 4px;
 				padding-left: calc(var(--layer-indent-levels) * 16px);
 
+				// Dimming
 				&.selected {
-					background: var(--color-4-dimgray);
+					background: #404040;
+
+					&.in-selected-network {
+						background: var(--color-4-dimgray);
+					}
 				}
 
 				&.insert-folder {

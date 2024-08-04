@@ -1,15 +1,20 @@
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/wasm-communication/editor";
+import type { FrontendGraphOutput, FrontendGraphInput } from "@graphite/wasm-communication/messages";
 import {
 	type Box,
+	type FrontendClickTargets,
 	type ContextMenuInformation,
 	type FrontendNode,
 	type FrontendNodeWire as FrontendNodeWire,
 	type FrontendNodeType,
 	type WirePath,
 	UpdateBox,
+	UpdateClickTargets,
 	UpdateContextMenuInformation,
+	UpdateInSelectedNetwork,
+	UpdateImportsExports,
 	UpdateLayerWidths,
 	UpdateNodeGraph,
 	UpdateNodeGraphSelection,
@@ -24,9 +29,13 @@ import {
 export function createNodeGraphState(editor: Editor) {
 	const { subscribe, update } = writable({
 		box: undefined as Box | undefined,
+		clickTargets: undefined as FrontendClickTargets | undefined,
 		contextMenuInformation: undefined as ContextMenuInformation | undefined,
 		layerWidths: new Map<bigint, number>(),
-		nodes: [] as FrontendNode[],
+		chainWidths: new Map<bigint, number>(),
+		imports: [] as { outputMetadata: FrontendGraphOutput; position: { x: number; y: number } }[],
+		exports: [] as { inputMetadata: FrontendGraphInput; position: { x: number; y: number } }[],
+		nodes: new Map<bigint, FrontendNode>(),
 		wires: [] as FrontendNodeWire[],
 		wirePathInProgress: undefined as WirePath | undefined,
 		nodeTypes: [] as FrontendNodeType[],
@@ -34,6 +43,7 @@ export function createNodeGraphState(editor: Editor) {
 		thumbnails: new Map<bigint, string>(),
 		selected: [] as bigint[],
 		transform: { scale: 1, x: 0, y: 0 },
+		inSelectedNetwork: true,
 	});
 
 	// Set up message subscriptions on creation
@@ -43,22 +53,45 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
+	editor.subscriptions.subscribeJsMessage(UpdateClickTargets, (UpdateClickTargets) => {
+		update((state) => {
+			state.clickTargets = UpdateClickTargets.clickTargets;
+			return state;
+		});
+	});
 	editor.subscriptions.subscribeJsMessage(UpdateContextMenuInformation, (updateContextMenuInformation) => {
 		update((state) => {
 			state.contextMenuInformation = updateContextMenuInformation.contextMenuInformation;
 			return state;
 		});
 	});
+	editor.subscriptions.subscribeJsMessage(UpdateImportsExports, (updateImportsExports) => {
+		update((state) => {
+			state.imports = updateImportsExports.imports;
+			state.exports = updateImportsExports.exports;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateInSelectedNetwork, (updateInSelectedNetwork) => {
+		update((state) => {
+			state.inSelectedNetwork = updateInSelectedNetwork.inSelectedNetwork;
+			return state;
+		});
+	});
 	editor.subscriptions.subscribeJsMessage(UpdateLayerWidths, (updateLayerWidths) => {
 		update((state) => {
 			state.layerWidths = updateLayerWidths.layerWidths;
+			state.chainWidths = updateLayerWidths.chainWidths;
 			return state;
 		});
 	});
 	// TODO: Add a way to only update the nodes that have changed
 	editor.subscriptions.subscribeJsMessage(UpdateNodeGraph, (updateNodeGraph) => {
 		update((state) => {
-			state.nodes = updateNodeGraph.nodes;
+			state.nodes.clear();
+			updateNodeGraph.nodes.forEach((node) => {
+				state.nodes.set(node.id, node);
+			});
 			state.wires = updateNodeGraph.wires;
 			return state;
 		});

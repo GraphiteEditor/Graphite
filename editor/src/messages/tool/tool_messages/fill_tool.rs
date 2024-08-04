@@ -87,7 +87,7 @@ impl Fsm for FillToolFsmState {
 
 		match (self, event) {
 			(FillToolFsmState::Ready, color_event) => {
-				let Some(layer_identifier) = document.click(input.mouse.position, &document.network) else {
+				let Some(layer_identifier) = document.click(input) else {
 					return self;
 				};
 				let fill = match color_event {

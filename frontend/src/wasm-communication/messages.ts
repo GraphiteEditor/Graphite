@@ -12,6 +12,29 @@ export class JsMessage {
 }
 
 const TupleToVec2 = Transform(({ value }: { value: [number, number] | undefined }) => (value === undefined ? undefined : { x: value[0], y: value[1] }));
+const ImportsToVec2Array = Transform(({ obj }) => {
+	const imports: { outputMetadata: FrontendGraphOutput; position: XY }[] = [];
+	obj.imports.forEach(([outputMetadata, x, y]: [FrontendGraphOutput, number, number]) => {
+		outputMetadata.connectedTo = outputMetadata.connectedTo.map((connector: any) => {
+			if (connector.export !== undefined) return { index: connector.export.index };
+			return { nodeId: connector.node.nodeId, index: connector.node.inputIndex };
+		});
+		imports.push({ outputMetadata, position: { x, y } });
+	});
+	return imports;
+});
+const ExportsToVec2Array = Transform(({ obj }) => {
+	const exports: { inputMetadata: FrontendGraphInput; position: XY }[] = [];
+	obj.exports.forEach(([inputMetadata, x, y]: [FrontendGraphInput, number, number]) => {
+		inputMetadata.connectedTo = ((connectedTo: any) => {
+			if (connectedTo?.import !== undefined) return { index: connectedTo?.import.index };
+			return { nodeId: connectedTo?.node.nodeId, index: connectedTo?.node.outputIndex };
+		})(inputMetadata.connectedTo);
+		exports.push({ inputMetadata, position: { x, y } });
+	});
+	return exports;
+});
+
 // const BigIntTupleToVec2 = Transform(({ value }: { value: [bigint, bigint] | undefined }) => (value === undefined ? undefined : { x: Number(value[0]), y: Number(value[1]) }));
 
 export type XY = { x: number; y: number };
@@ -29,6 +52,10 @@ export class UpdateBox extends JsMessage {
 	readonly box!: Box | undefined;
 }
 
+export class UpdateClickTargets extends JsMessage {
+	readonly clickTargets!: FrontendClickTargets | undefined;
+}
+
 const ContextTupleToVec2 = Transform((data) => {
 	if (data.obj.contextMenuInformation === undefined) return undefined;
 	const contextMenuCoordinates = { x: data.obj.contextMenuInformation.contextMenuCoordinates[0], y: data.obj.contextMenuInformation.contextMenuCoordinates[1] };
@@ -43,11 +70,27 @@ export class UpdateContextMenuInformation extends JsMessage {
 	@ContextTupleToVec2
 	readonly contextMenuInformation!: ContextMenuInformation | undefined;
 }
+
+export class UpdateImportsExports extends JsMessage {
+	@ImportsToVec2Array
+	readonly imports!: { outputMetadata: FrontendGraphOutput; position: XY }[];
+
+	@ExportsToVec2Array
+	readonly exports!: { inputMetadata: FrontendGraphInput; position: XY }[];
+}
+
+export class UpdateInSelectedNetwork extends JsMessage {
+	readonly inSelectedNetwork!: boolean;
+}
+
 const LayerWidths = Transform(({ obj }) => obj.layerWidths);
+const ChainWidths = Transform(({ obj }) => obj.chainWidths);
 
 export class UpdateLayerWidths extends JsMessage {
 	@LayerWidths
 	readonly layerWidths!: Map<bigint, number>;
+	@ChainWidths
+	readonly chainWidths!: Map<bigint, number>;
 }
 
 export class UpdateNodeGraph extends JsMessage {
@@ -123,6 +166,14 @@ export class Box {
 	readonly endY!: number;
 }
 
+export type FrontendClickTargets = {
+	readonly nodeClickTargets: string[];
+	readonly layerClickTargets: string[];
+	readonly portClickTargets: string[];
+	readonly visibilityClickTargets: string[];
+	readonly allNodesBoundingBox: string;
+};
+
 export type ContextMenuInformation = {
 	contextMenuCoordinates: XY;
 
@@ -131,6 +182,37 @@ export type ContextMenuInformation = {
 
 export type FrontendGraphDataType = "General" | "Raster" | "VectorData" | "Number" | "Graphic" | "Artboard";
 
+export class Node {
+	readonly nodeId!: bigint;
+	readonly index!: bigint;
+}
+
+export class Export {
+	readonly index!: bigint;
+}
+
+export class Import {
+	readonly index!: bigint;
+}
+
+export type OutputConnector = Node | Import;
+
+export type InputConnector = Node | Export;
+
+const CreateOutputConnectorOptional = Transform(({ obj }) => {
+	if (obj.connectedTo?.export !== undefined) {
+		return { index: obj.connectedTo?.export };
+	} else if (obj.connectedTo?.import !== undefined) {
+		return { index: obj.connectedTo?.import };
+	} else {
+		if (obj.connectedTo?.node.inputIndex !== undefined) {
+			return { nodeId: obj.connectedTo?.node.nodeId, index: obj.connectedTo?.node.inputIndex };
+		} else {
+			return { nodeId: obj.connectedTo?.node.nodeId, index: obj.connectedTo?.node.outputIndex };
+		}
+	}
+});
+
 export class FrontendGraphInput {
 	readonly dataType!: FrontendGraphDataType;
 
@@ -138,8 +220,27 @@ export class FrontendGraphInput {
 
 	readonly resolvedType!: string | undefined;
 
-	readonly connected!: bigint | undefined;
+	@CreateOutputConnectorOptional
+	readonly connectedTo!: OutputConnector | undefined;
 }
+
+const CreateInputConnectorArray = Transform(({ obj }) => {
+	const newInputConnectors: InputConnector[] = [];
+	obj.connectedTo.forEach((connector: any) => {
+		if (connector.export !== undefined) {
+			newInputConnectors.push({ index: connector.export });
+		} else if (connector.import !== undefined) {
+			newInputConnectors.push({ index: connector.import });
+		} else {
+			if (connector.node.inputIndex !== undefined) {
+				newInputConnectors.push({ nodeId: connector.node.nodeId, index: connector.node.inputIndex });
+			} else {
+				newInputConnectors.push({ nodeId: connector.node.nodeId, index: connector.node.outputIndex });
+			}
+		}
+	});
+	return newInputConnectors;
+});
 
 export class FrontendGraphOutput {
 	readonly dataType!: FrontendGraphDataType;
@@ -148,9 +249,8 @@ export class FrontendGraphOutput {
 
 	readonly resolvedType!: string | undefined;
 
-	readonly connected!: bigint[];
-
-	readonly connectedIndex!: bigint[];
+	@CreateInputConnectorArray
+	readonly connectedTo!: InputConnector[];
 }
 
 export class FrontendNode {
@@ -160,22 +260,26 @@ export class FrontendNode {
 
 	readonly id!: bigint;
 
-	readonly alias!: string;
+	readonly reference!: string | undefined;
 
-	readonly name!: string;
+	readonly displayName!: string;
 
+	@Type(() => FrontendGraphInput)
 	readonly primaryInput!: FrontendGraphInput | undefined;
 
+	@Type(() => FrontendGraphInput)
 	readonly exposedInputs!: FrontendGraphInput[];
 
+	@Type(() => FrontendGraphOutput)
 	readonly primaryOutput!: FrontendGraphOutput | undefined;
 
+	@Type(() => FrontendGraphOutput)
 	readonly exposedOutputs!: FrontendGraphOutput[];
 
 	@TupleToVec2
 	readonly position!: XY | undefined;
 
-	//TODO: Store field for the width of the left node chain
+	// TODO: Store field for the width of the left node chain
 
 	readonly previewed!: boolean;
 
@@ -188,14 +292,40 @@ export class FrontendNode {
 	readonly uiOnly!: boolean;
 }
 
+const CreateOutputConnector = Transform(({ obj }) => {
+	if (obj.wireStart.export !== undefined) {
+		return { index: obj.wireStart.export };
+	} else if (obj.wireStart.import !== undefined) {
+		return { index: obj.wireStart.import };
+	} else {
+		if (obj.wireStart.node.inputIndex !== undefined) {
+			return { nodeId: obj.wireStart.node.nodeId, index: obj.wireStart.node.inputIndex };
+		} else {
+			return { nodeId: obj.wireStart.node.nodeId, index: obj.wireStart.node.outputIndex };
+		}
+	}
+});
+
+const CreateInputConnector = Transform(({ obj }) => {
+	if (obj.wireEnd.export !== undefined) {
+		return { index: obj.wireEnd.export };
+	} else if (obj.wireEnd.import !== undefined) {
+		return { index: obj.wireEnd.import };
+	} else {
+		if (obj.wireEnd.node.inputIndex !== undefined) {
+			return { nodeId: obj.wireEnd.node.nodeId, index: obj.wireEnd.node.inputIndex };
+		} else {
+			return { nodeId: obj.wireEnd.node.nodeId, index: obj.wireEnd.node.outputIndex };
+		}
+	}
+});
+
 export class FrontendNodeWire {
-	readonly wireStart!: bigint;
+	@CreateOutputConnector
+	readonly wireStart!: OutputConnector;
 
-	readonly wireStartOutputIndex!: bigint;
-
-	readonly wireEnd!: bigint;
-
-	readonly wireEndInputIndex!: bigint;
+	@CreateInputConnector
+	readonly wireEnd!: InputConnector;
 
 	readonly dashed!: boolean;
 }
@@ -747,6 +877,10 @@ export class LayerPanelEntry {
 	parentsUnlocked!: boolean;
 
 	parentId!: bigint | undefined;
+
+	selected!: boolean;
+
+	inSelectedNetwork!: boolean;
 }
 
 export class DisplayDialogDismiss extends JsMessage {}
@@ -1351,7 +1485,12 @@ function createLayoutGroup(layoutGroup: any): LayoutGroup {
 	}
 
 	if (layoutGroup.section) {
-		const result: WidgetSection = { name: layoutGroup.section.name, visible: layoutGroup.section.visible, id: layoutGroup.section.id, layout: layoutGroup.section.layout.map(createLayoutGroup) };
+		const result: WidgetSection = {
+			name: layoutGroup.section.name,
+			visible: layoutGroup.section.visible,
+			id: layoutGroup.section.id,
+			layout: layoutGroup.section.layout.map(createLayoutGroup),
+		};
 		return result;
 	}
 
@@ -1448,7 +1587,10 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerVisitLink,
 	UpdateActiveDocument,
 	UpdateBox,
+	UpdateClickTargets,
 	UpdateContextMenuInformation,
+	UpdateInSelectedNetwork,
+	UpdateImportsExports,
 	UpdateLayerWidths,
 	UpdateDialogButtons,
 	UpdateDialogColumn1,
