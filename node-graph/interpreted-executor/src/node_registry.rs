@@ -771,11 +771,11 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_core::ToGraphicElementNode, input: graphene_core::vector::VectorData, params: []),
 		register_node!(graphene_core::ToGraphicElementNode, input: ImageFrame<Color>, params: []),
 		register_node!(graphene_core::ToGraphicElementNode, input: GraphicGroup, params: []),
-		register_node!(graphene_core::ToGraphicElementNode, input: graphene_std::SurfaceFrame, params: []),
-		#[cfg(target_arch = "wasm32")]
-		register_node!(graphene_core::ToGraphicElementNode, input: Arc<graphene_std::application_io::SurfaceHandleFrame<wgpu::web_sys::HtmlCanvasElement>>, params: []),
-		#[cfg(target_arch = "wasm32")]
-		register_node!(graphene_core::ToGraphicElementNode, input: graphene_std::application_io::SurfaceHandleFrame<wgpu::web_sys::HtmlCanvasElement>, params: []),
+		// register_node!(graphene_core::ToGraphicElementNode, input: graphene_std::SurfaceFrame, params: []),
+		// #[cfg(target_arch = "wasm32")]
+		// register_node!(graphene_core::ToGraphicElementNode, input: Arc<graphene_std::application_io::SurfaceHandleFrame<wgpu::web_sys::HtmlCanvasElement>>, params: []),
+		// #[cfg(target_arch = "wasm32")]
+		// register_node!(graphene_core::ToGraphicElementNode, input: graphene_std::application_io::SurfaceHandleFrame<wgpu::web_sys::HtmlCanvasElement>, params: []),
 		register_node!(graphene_core::ToGraphicGroupNode, input: graphene_core::vector::VectorData, params: []),
 		register_node!(graphene_core::ToGraphicGroupNode, input: ImageFrame<Color>, params: []),
 		register_node!(graphene_core::ToGraphicGroupNode, input: GraphicGroup, params: []),

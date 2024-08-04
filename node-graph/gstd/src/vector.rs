@@ -74,8 +74,7 @@ fn boolean_operation_node(graphic_group: GraphicGroup, boolean_operation: Boolea
 				let vector_data = collect_vector_data(graphic_group);
 				boolean_operation_on_vector_data(&vector_data, BooleanOperation::Union)
 			}
-			GraphicElement::ImageFrame(image) => vector_from_image(image),
-			GraphicElement::Surface(image) => vector_from_image(image),
+			GraphicElement::Raster(image) => vector_from_image(image),
 		}
 	}
 

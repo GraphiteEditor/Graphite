@@ -63,17 +63,22 @@ impl Size for web_sys::HtmlCanvasElement {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone)]
 pub struct TextureFrame {
-	pub texture: wgpu::Texture,
+	pub texture: Arc<wgpu::Texture>,
 	pub transform: DAffine2,
 }
 
 impl Hash for TextureFrame {
 	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.texture.hash(state);
 		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
+		self.texture.global_id().hash(state);
+	}
+}
+
+impl PartialEq for TextureFrame {
+	fn eq(&self, other: &Self) -> bool {
+		self.transform.eq(&other.transform) && self.texture.global_id() == other.texture.global_id()
 	}
 }
 
