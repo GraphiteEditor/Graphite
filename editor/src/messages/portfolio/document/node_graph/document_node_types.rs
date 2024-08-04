@@ -2250,7 +2250,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					implementation: DocumentNodeImplementation::proto("graphene_core::quantization::QuantizeNode<_>"),
 					inputs: vec![
 						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::Quantization(core::array::from_fn(|_| Default::default())), true),,
+						NodeInput::value(TaggedValue::Quantization(core::array::from_fn(|_| Default::default())), true),
 					],
 					..Default::default()
 				},

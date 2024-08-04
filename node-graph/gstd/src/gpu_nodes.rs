@@ -207,7 +207,6 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 			},*/
 			#[cfg(feature = "quantization")]
 			DocumentNode {
-				name: "Dequantize".into(),
 				inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(1), 0)],
 				implementation: DocumentNodeImplementation::proto("graphene_core::quantization::DeQuantizeNode"),
 				..Default::default()
@@ -222,7 +221,6 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 			},
 			#[cfg(feature = "quantization")]
 			DocumentNode {
-				name: "Quantize".into(),
 				inputs: vec![NodeInput::node(NodeId(4), 0), NodeInput::node(NodeId(1), 0)],
 				implementation: DocumentNodeImplementation::proto("graphene_core::quantization::QuantizeNode"),
 				..Default::default()
