@@ -734,7 +734,7 @@ impl GraphicElementRendered for Raster {
 			ImageRenderMode::Base64 => {
 				let image = match self {
 					Raster::ImageFrame(ref image) => image,
-					Raster::Texture(ref texture) => unreachable!("Tried to render a Texture as Base64, which is not supported."),
+					Raster::Texture(ref texture) => return,
 				};
 				let (image, blending) = (&image.image, image.alpha_blending);
 				if image.data.is_empty() {
@@ -773,7 +773,7 @@ impl GraphicElementRendered for Raster {
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
-		click_targets.push(ClickTarget { subpath, stroke_width: 0. });
+		click_targets.push(ClickTarget::new(subpath, 0.));
 	}
 
 	#[cfg(feature = "vello")]
@@ -799,9 +799,9 @@ impl GraphicElementRendered for Raster {
 			}
 			Raster::Texture(texture) => {
 				let image = vello::peniko::Image {
-					data: vec![].into(),
-					width: 0,
-					height: 0,
+					data: vec![255u8; (texture.texture.width() * texture.texture.height() * 4) as usize].into(),
+					width: texture.texture.width(),
+					height: texture.texture.height(),
 					format: peniko::Format::Rgba8,
 					extend: peniko::Extend::Repeat,
 				};

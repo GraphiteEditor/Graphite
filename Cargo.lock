@@ -3286,7 +3286,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4979f22fdb869068da03c9f7528f8297c6fd2606bc3a4affe42e6a823fdb8da4"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.6",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -6933,6 +6933,7 @@ dependencies = [
  "vello_encoding",
  "vello_shaders",
  "wgpu",
+ "wgpu-profiler",
 ]
 
 [[package]]
@@ -7456,6 +7457,17 @@ dependencies = [
  "web-sys",
  "wgpu-types",
  "winapi",
+]
+
+[[package]]
+name = "wgpu-profiler"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8065ff7bd32ba1b0b0de591cc124bb5ca2d0e7df294d31f7ea3aa8c19dc0924b"
+dependencies = [
+ "parking_lot",
+ "thiserror",
+ "wgpu",
 ]
 
 [[package]]

@@ -6,9 +6,9 @@ pub use executor::GpuExecutor;
 
 use dyn_any::{DynAny, StaticType};
 use gpu_executor::{ComputePassDimensions, GPUConstant, StorageBufferOptions, TextureBufferOptions, TextureBufferType, ToStorageBuffer, ToUniformBuffer};
-use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle};
+use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle, TextureFrame};
 use graphene_core::raster::color::RGBA16F;
-use graphene_core::raster::{Image, ImageFrame};
+use graphene_core::raster::{Image, ImageFrame, SRGBA8};
 use graphene_core::transform::{Footprint, Transform};
 use graphene_core::Type;
 use graphene_core::{Color, Cow, Node, SurfaceFrame};
@@ -244,14 +244,14 @@ impl WgpuExecutor {
 		let bytes = data.to_bytes();
 		let usage = match options {
 			TextureBufferOptions::Storage => wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC,
-			TextureBufferOptions::Texture => wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+			TextureBufferOptions::Texture => wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC,
 			TextureBufferOptions::Surface => wgpu::TextureUsages::RENDER_ATTACHMENT,
 		};
 
 		let format = match T::format() {
 			TextureBufferType::Rgba32Float => wgpu::TextureFormat::Rgba32Float,
 			TextureBufferType::Rgba16Float => wgpu::TextureFormat::Rgba16Float,
-			TextureBufferType::Rgba8Srgb => wgpu::TextureFormat::Bgra8UnormSrgb,
+			TextureBufferType::Rgba8Srgb => wgpu::TextureFormat::Rgba8UnormSrgb,
 		};
 
 		let buffer = self.context.device.create_texture_with_data(
@@ -964,8 +964,9 @@ pub struct UploadTextureNode<Executor> {
 }
 
 #[node_macro::node_fn(UploadTextureNode)]
-async fn upload_texture<'a: 'input>(input: ImageFrame<Color>, executor: &'a WgpuExecutor) -> ShaderInputFrame {
-	let new_data: Vec<RGBA16F> = input.image.data.into_iter().map(|c| c.into()).collect();
+async fn upload_texture<'a: 'input>(input: ImageFrame<Color>, executor: &'a WgpuExecutor) -> TextureFrame {
+	// let new_data: Vec<RGBA16F> = input.image.data.into_iter().map(|c| c.into()).collect();
+	let new_data = input.image.data.into_iter().map(|c| SRGBA8::from(c)).collect();
 	let new_image = Image {
 		width: input.image.width,
 		height: input.image.height,
@@ -974,9 +975,14 @@ async fn upload_texture<'a: 'input>(input: ImageFrame<Color>, executor: &'a Wgpu
 	};
 
 	let shader_input = executor.create_texture_buffer(new_image, TextureBufferOptions::Texture).unwrap();
+	let texture = match shader_input {
+		ShaderInput::TextureBuffer(buffer, _) => buffer,
+		ShaderInput::StorageTextureBuffer(buffer, _) => buffer,
+		_ => unreachable!("Unsupported ShaderInput type"),
+	};
 
-	ShaderInputFrame {
-		shader_input: Arc::new(shader_input),
+	TextureFrame {
+		texture: texture.into(),
 		transform: input.transform,
 	}
 }

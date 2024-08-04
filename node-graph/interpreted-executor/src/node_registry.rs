@@ -17,7 +17,7 @@ use graphene_core::{concrete, generic, Artboard, ArtboardGroup, GraphicGroup};
 use graphene_core::{Cow, ProtoNodeIdentifier, Type};
 use graphene_core::{Node, NodeIO, NodeIOTypes};
 use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DynAnyNode, FutureWrapperNode, IntoTypeErasedNode};
-use graphene_std::application_io::RenderConfig;
+use graphene_std::application_io::{RenderConfig, TextureFrame};
 use graphene_std::raster::*;
 use graphene_std::wasm_application_io::*;
 use graphene_std::GraphicElement;
@@ -389,7 +389,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(
 			wgpu_executor::UploadTextureNode<_>,
 			input: ImageFrame<Color>,
-			output: ShaderInputFrame,
+			output: TextureFrame,
 			params: [&WgpuExecutor]
 		),
 		#[cfg(feature = "gpu")]
@@ -608,6 +608,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: QuantizationChannels, params: [QuantizationChannels]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: Vec<DVec2>, params: [Vec<DVec2>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: Arc<WasmSurfaceHandle>, params: [Arc<WasmSurfaceHandle>]),
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: Arc<TextureFrame>, params: [Arc<WasmSurfaceHandle>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: WindowHandle, params: [WindowHandle]),
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: ShaderInputFrame, params: [ShaderInputFrame]),
@@ -771,6 +772,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_core::ToGraphicElementNode, input: graphene_core::vector::VectorData, params: []),
 		register_node!(graphene_core::ToGraphicElementNode, input: ImageFrame<Color>, params: []),
 		register_node!(graphene_core::ToGraphicElementNode, input: GraphicGroup, params: []),
+		register_node!(graphene_core::ToGraphicElementNode, input: TextureFrame, params: []),
 		// register_node!(graphene_core::ToGraphicElementNode, input: graphene_std::SurfaceFrame, params: []),
 		// #[cfg(target_arch = "wasm32")]
 		// register_node!(graphene_core::ToGraphicElementNode, input: Arc<graphene_std::application_io::SurfaceHandleFrame<wgpu::web_sys::HtmlCanvasElement>>, params: []),

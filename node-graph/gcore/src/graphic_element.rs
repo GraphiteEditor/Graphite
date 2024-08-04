@@ -255,6 +255,11 @@ impl From<ImageFrame<Color>> for GraphicElement {
 		GraphicElement::Raster(Raster::ImageFrame(image_frame))
 	}
 }
+impl From<TextureFrame> for GraphicElement {
+	fn from(texture: TextureFrame) -> Self {
+		GraphicElement::Raster(Raster::Texture(texture))
+	}
+}
 impl From<VectorData> for GraphicElement {
 	fn from(vector_data: VectorData) -> Self {
 		GraphicElement::VectorData(Box::new(vector_data))
