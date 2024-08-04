@@ -22,36 +22,19 @@ use vello::*;
 /// Represents a clickable target for the layer
 #[derive(Clone, Debug)]
 pub struct ClickTarget {
-	bbox: Option<[DVec2; 2]>,
 	subpath: bezier_rs::Subpath<PointId>,
-	pub stroke_width: f64,
+	stroke_width: f64,
+	bounding_box: Option<[DVec2; 2]>,
 }
 
 impl ClickTarget {
 	pub fn new(subpath: bezier_rs::Subpath<PointId>, stroke_width: f64) -> Self {
-		let bbox = subpath.bounding_box();
-		Self { bbox, subpath, stroke_width }
+		let bounding_box = subpath.loose_bounding_box();
+		Self { subpath, stroke_width, bounding_box }
 	}
 
-	pub fn get_subpath(&self) -> &bezier_rs::Subpath<PointId> {
+	pub fn subpath(&self) -> &bezier_rs::Subpath<PointId> {
 		&self.subpath
-	}
-
-	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {
-		self.bbox
-	}
-
-	pub fn bounding_box_with_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.bbox.map(|[a, b]| [transform.transform_point2(a), transform.transform_point2(b)])
-	}
-
-	pub fn apply_transform(&mut self, affine_transform: DAffine2) {
-		self.subpath.apply_transform(affine_transform);
-		self.update_bbox();
-	}
-
-	fn update_bbox(&mut self) {
-		self.bbox = self.subpath.bounding_box();
 	}
 
 	/// Does the click target intersect the rectangle
@@ -86,9 +69,19 @@ impl ClickTarget {
 
 	/// Does the click target intersect the point (accounting for stroke size)
 	pub fn intersect_point(&self, point: DVec2, layer_transform: DAffine2) -> bool {
+		let target_bounds = [point - DVec2::splat(self.stroke_width / 2.), point + DVec2::splat(self.stroke_width / 2.)];
+		let intersects = |a: [DVec2; 2], b: [DVec2; 2]| a[0].x <= b[1].x && a[1].x >= b[0].x && a[0].y <= b[1].y && a[1].y >= b[0].y;
+		// This bounding box is not very accurate as it is the axis aligned version of the transformed bounding box. However it is fast.
+		if !self
+			.bounding_box
+			.is_some_and(|loose| intersects((layer_transform * Quad::from_box(loose)).bounding_box(), target_bounds))
+		{
+			return false;
+		}
+
 		// Allows for selecting lines
 		// TODO: actual intersection of stroke
-		let inflated_quad = Quad::from_box([point - DVec2::splat(self.stroke_width / 2.), point + DVec2::splat(self.stroke_width / 2.)]);
+		let inflated_quad = Quad::from_box(target_bounds);
 		self.intersect_rectangle(inflated_quad, layer_transform)
 	}
 

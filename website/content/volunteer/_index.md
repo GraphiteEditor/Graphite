@@ -22,7 +22,7 @@ css = ["volunteer.css"]
 <div class="info-box">
 
 <a href="/volunteer/guide">
-	<img src="https://static.graphite.rs/content/volunteer/code-contributions.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Flavor graphic depicting a library of knowledge in a digital realm" />
+	<img src="https://static.graphite.rs/content/volunteer/code-contributions.avif" style="aspect-ratio: 3/1 auto; background: var(--color-seaside)" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Flavor graphic depicting a library of knowledge in a digital realm" />
 </a>
 
 **Get started by reading the contributor guide:**
@@ -37,14 +37,14 @@ css = ["volunteer.css"]
 
 ### EDITOR TEAM
 
-Write code to build and maintain the Graphite editor itself, ranging from the TypeScript/Svelte frontend UI to the tooling business logic written in Rust.
+The Graphite editor is built much like a game engine, split across user interface application tooling and a renderer with nodes implementing an assortment of graphics algorithms.
 
 </div>
 <div class="block info-box">
 
 ### GRAPHENE TEAM
 
-Develop the engine that powers Graphite's node graph and rendering. Graphene is a programming language, compiler, and distributed runtime ecosystem built upon Rust.
+[Graphene](/volunteer/guide/graphene) is a programming language, interpreter, and runtime environment built upon Rust which enables Graphite artwork to compile to executable programs for fast rendering.
 
 </div>
 
@@ -59,10 +59,10 @@ Develop the engine that powers Graphite's node graph and rendering. Graphene is 
 <div class="info-box">
 
 <a href="https://discord.graphite.rs">
-	<img src="https://static.graphite.rs/content/volunteer/creative-contributions.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Flavor graphic depicting a fountain pen, ink pots, and a book" />
+	<img src="https://static.graphite.rs/content/volunteer/creative-contributions.avif" style="aspect-ratio: 3/1 auto; background: var(--color-lemon)" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Flavor graphic depicting a fountain pen, ink pots, and a book" />
 </a>
 
-**Ask how to get started by reaching out to a [core team member](/about#core-team) on Discord:**
+**Ask how to get started by reaching out to a [core team](/about#core-team) member on Discord:**
 
 <a href="https://discord.graphite.rs" class="button arrow">Reach out on Discord</a>
 
@@ -74,14 +74,51 @@ Develop the engine that powers Graphite's node graph and rendering. Graphene is 
 
 ### ART TEAM
 
-Use your artistic talents to plan and produce ambitious open art projects published by the Graphite project to stress-test and showcase the editor's capabilities.
+Use your artistic talents to conceptualize and produce high-quality open art projects published by the Graphite project to stress-test and showcase the editor's capabilities.
 
 </div>
 <div class="block info-box">
 
-### PUBLICITY TEAM
+### MARKETING TEAM
 
-Become the author of release notes, feature announcements, blog posts, website content, the user manual, press releases, social media posts, and industry outreach.
+Help write, edit, and design content for this website, social media, newsletters, blog posts, user manual pages, videos, fundraising campaigns, press releases, and industry outreach.
+
+</div>
+
+</div>
+
+</section>
+
+<section>
+
+## User contributions
+
+<div class="info-box">
+
+<a href="/volunteer/guide">
+	<img src="https://files.keavon.com/-/KosherGregariousBluefish/qa_testing.png" style="aspect-ratio: 3/1 auto; background: var(--color-lilac)" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Flavor graphic depicting a library of knowledge in a digital realm" />
+</a>
+
+**Ask how to get started by reaching out to a [core team](/about#core-team) member on Discord:**
+
+<a href="https://discord.graphite.rs" class="button arrow">Reach out on Discord</a>
+
+</div>
+
+<div class="diptych user-contributions">
+
+<div class="block info-box">
+
+### QA TEAM
+
+Get familiar with the ins-and-outs of the editor and respond actively to developer requests on a recurring basis to test out new features and find bugs and breakages.
+
+</div>
+<div class="block info-box">
+
+### NODES TEAM
+
+Explore and push the limits of the node graph with complex procedural designs. Report your findings about limitations, opportunities, and use cases to help in designing new nodes.
 
 </div>
 

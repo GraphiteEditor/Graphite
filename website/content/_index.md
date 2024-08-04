@@ -438,20 +438,6 @@ Style shapes with strokes, fills, and gradients. Mix layers with blend modes. Th
 		<source src="https://static.graphite.rs/content/index/just-a-potted-cactus-timelapse.mp4" type="video/mp4" />
 	</video>
 </div>
-<div class="demo-artwork">
-	<a href="https://editor.graphite.rs/#demo/just-a-potted-cactus">
-		<img src="https://static.graphite.rs/content/index/just-a-potted-cactus-thumbnail.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Just of Potted Cactus" />
-	</a>
-	<p>
-		<span>
-			<em>Just a Potted Cactus</em>
-		</span>
-		<br />
-		<span>
-			<a href="https://editor.graphite.rs/#demo/just-a-potted-cactus">Open this artwork</a> to<br />explore it yourself.
-		</span>
-	</p>
-</div>
 
 </div>
 </section>

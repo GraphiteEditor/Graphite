@@ -276,6 +276,27 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 			.reduce(|bbox1, bbox2| [bbox1[0].min(bbox2[0]), bbox1[1].max(bbox2[1])])
 	}
 
+	/// Return the min and max corners that represent the loose bounding box of the subpath (bounding box of all handles and anchors).
+	pub fn loose_bounding_box(&self) -> Option<[DVec2; 2]> {
+		self.manipulator_groups
+			.iter()
+			.flat_map(|group| [group.in_handle, group.out_handle, Some(group.anchor)])
+			.flatten()
+			.map(|pos| [pos, pos])
+			.reduce(|bbox1, bbox2| [bbox1[0].min(bbox2[0]), bbox1[1].max(bbox2[1])])
+	}
+
+	/// Return the min and max corners that represent the loose bounding box of the subpath, after a given affine transform.
+	pub fn loose_bounding_box_with_transform(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {
+		self.manipulator_groups
+			.iter()
+			.flat_map(|group| [group.in_handle, group.out_handle, Some(group.anchor)])
+			.flatten()
+			.map(|pos| transform.transform_point2(pos))
+			.map(|pos| [pos, pos])
+			.reduce(|bbox1, bbox2| [bbox1[0].min(bbox2[0]), bbox1[1].max(bbox2[1])])
+	}
+
 	/// Returns list of `t`-values representing the inflection points of the subpath.
 	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`.
 	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#subpath/inflections/solo" title="Inflections Demo"></iframe>
