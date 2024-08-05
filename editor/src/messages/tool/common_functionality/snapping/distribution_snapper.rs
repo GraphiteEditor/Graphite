@@ -2,8 +2,10 @@ use super::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::*;
 use crate::messages::prelude::*;
-use glam::DVec2;
+
 use graphene_core::renderer::Quad;
+
+use glam::DVec2;
 
 #[derive(Clone, Debug, Default)]
 pub struct DistributionSnapper {
@@ -35,6 +37,7 @@ fn dist_up(a: Rect, b: Rect) -> f64 {
 impl DistributionSnapper {
 	fn add_bounds(&mut self, layer: LayerNodeIdentifier, snap_data: &mut SnapData, bbox_to_snap: Rect, max_extent: f64) {
 		let document = snap_data.document;
+
 		let Some(bounds) = document.metadata().bounding_box_with_transform(layer, document.metadata().transform_to_document(layer)) else {
 			return;
 		};
@@ -42,7 +45,9 @@ impl DistributionSnapper {
 		if bounds.intersects(bbox_to_snap) {
 			return;
 		}
+
 		let difference = bounds.center() - bbox_to_snap.center();
+
 		let x_bounds = bbox_to_snap.expand_by(max_extent, 0.);
 		let y_bounds = bbox_to_snap.expand_by(0., max_extent);
 
@@ -65,25 +70,27 @@ impl DistributionSnapper {
 		if !first_point {
 			return;
 		}
+
 		let document = snap_data.document;
+
 		self.right.clear();
 		self.left.clear();
 		self.down.clear();
 		self.up.clear();
+
 		let screen_bounds = (document.metadata().document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, snap_data.input.viewport_bounds.size()])).bounding_box();
 		let max_extent = (screen_bounds[1] - screen_bounds[0]).abs().max_element();
 
 		for layer in document.metadata().all_layers() {
-			if !document.network_interface.is_artboard(&layer.to_node(), &[]) || snap_data.ignore.contains(&layer) {
-				continue;
+			if document.network_interface.is_artboard(&layer.to_node(), &[]) && !snap_data.ignore.contains(&layer) {
+				self.add_bounds(layer, snap_data, bbox_to_snap, max_extent);
 			}
-			self.add_bounds(layer, snap_data, bbox_to_snap, max_extent);
 		}
+
 		for &layer in snap_data.alignment_candidates.map_or([].as_slice(), |candidates| candidates.as_slice()) {
-			if snap_data.ignore_bounds(layer) {
-				continue;
+			if !snap_data.ignore_bounds(layer) {
+				self.add_bounds(layer, snap_data, bbox_to_snap, max_extent);
 			}
-			self.add_bounds(layer, snap_data, bbox_to_snap, max_extent);
 		}
 
 		self.right.sort_unstable_by(|a, b| a.center().x.total_cmp(&b.center().x));
@@ -97,33 +104,36 @@ impl DistributionSnapper {
 		Self::merge_intersecting(&mut self.up);
 	}
 
-	fn merge_intersecting(rects: &mut Vec<Rect>) {
+	fn merge_intersecting(rectangles: &mut Vec<Rect>) {
 		let mut index = 0;
-		while index < rects.len() {
+		while index < rectangles.len() {
 			let insert_index = index;
-			let mut obelisk = rects[index];
-			while index + 1 < rects.len() && rects[index].intersects(rects[index + 1]) {
+			let mut obelisk = rectangles[index];
+
+			while index + 1 < rectangles.len() && rectangles[index].intersects(rectangles[index + 1]) {
 				index += 1;
-				obelisk = Rect::combine_bounds(obelisk, rects[index]);
+				obelisk = Rect::combine_bounds(obelisk, rectangles[index]);
 			}
+
 			if index > insert_index {
-				rects.insert(insert_index, obelisk);
+				rectangles.insert(insert_index, obelisk);
 				index += 1;
 			}
+
 			index += 1;
 		}
 	}
 
-	fn exact_further_matches(source: Rect, rects: &[Rect], dist_fn: fn(Rect, Rect) -> f64, first_dist: f64, depth: u8) -> VecDeque<Rect> {
-		if rects.is_empty() || depth > 10 {
+	fn exact_further_matches(source: Rect, rectangles: &[Rect], dist_fn: fn(Rect, Rect) -> f64, first_dist: f64, depth: u8) -> VecDeque<Rect> {
+		if rectangles.is_empty() || depth > 10 {
 			return VecDeque::from([source]);
 		}
-		for (index, &rect) in rects.iter().enumerate() {
+
+		for (index, &rect) in rectangles.iter().enumerate() {
 			let next_dist = dist_fn(source, rect);
-			println!("next {next_dist} first_dist {first_dist}");
 
 			if (first_dist - next_dist).abs() < 5e-5 * depth as f64 {
-				let mut results = Self::exact_further_matches(rect, &rects[(index + 1)..], dist_fn, first_dist, depth + 1);
+				let mut results = Self::exact_further_matches(rect, &rectangles[(index + 1)..], dist_fn, first_dist, depth + 1);
 				results.push_front(source);
 				return results;
 			}
@@ -132,13 +142,13 @@ impl DistributionSnapper {
 		VecDeque::from([source])
 	}
 
-	fn matches_within_tolerance(source: Rect, rects: &[Rect], tolerance: f64, dist_fn: fn(Rect, Rect) -> f64, first_dist: f64) -> Option<(f64, VecDeque<Rect>)> {
-		for (index, &rect) in rects.iter().enumerate() {
+	fn matches_within_tolerance(source: Rect, rectangles: &[Rect], tolerance: f64, dist_fn: fn(Rect, Rect) -> f64, first_dist: f64) -> Option<(f64, VecDeque<Rect>)> {
+		for (index, &rect) in rectangles.iter().enumerate() {
 			let next_dist = dist_fn(source, rect);
 
 			if (first_dist - next_dist).abs() < tolerance {
 				let this_dist = next_dist;
-				let results = Self::exact_further_matches(rect, &rects[(index + 1)..], dist_fn, this_dist, 2);
+				let results = Self::exact_further_matches(rect, &rectangles[(index + 1)..], dist_fn, this_dist, 2);
 				return Some((this_dist, results));
 			}
 		}
@@ -146,26 +156,30 @@ impl DistributionSnapper {
 		None
 	}
 
-	fn top_level_matches(source: Rect, rects: &[Rect], tolerance: f64, dist_fn: fn(Rect, Rect) -> f64) -> (Option<DistributionMatch>, VecDeque<Rect>) {
-		if rects.is_empty() {
+	fn top_level_matches(source: Rect, rectangles: &[Rect], tolerance: f64, dist_fn: fn(Rect, Rect) -> f64) -> (Option<DistributionMatch>, VecDeque<Rect>) {
+		if rectangles.is_empty() {
 			return (None, VecDeque::new());
 		}
+
 		let mut best: Option<(DistributionMatch, Rect, VecDeque<Rect>)> = None;
-		for (index, &rect) in rects.iter().enumerate() {
+		for (index, &rect) in rectangles.iter().enumerate() {
 			let first_dist = dist_fn(source, rect);
-			let Some((equal_dist, results)) = Self::matches_within_tolerance(rect, &rects[(index + 1)..], tolerance, dist_fn, first_dist) else {
+
+			let Some((equal_dist, results)) = Self::matches_within_tolerance(rect, &rectangles[(index + 1)..], tolerance, dist_fn, first_dist) else {
 				continue;
 			};
 			if best.as_ref().is_some_and(|(_, _, best)| best.len() >= results.len()) {
 				continue;
 			}
+
 			best = Some((DistributionMatch { first: first_dist, equal: equal_dist }, rect, results));
 		}
+
 		if let Some((dist, rect, mut results)) = best {
 			results.push_front(rect);
 			(Some(dist), results)
 		} else {
-			(None, VecDeque::from([rects[0]]))
+			(None, VecDeque::from([rectangles[0]]))
 		}
 	}
 
@@ -181,18 +195,11 @@ impl DistributionSnapper {
 			}
 		}
 
-		info!(
-			"Distribution right {:#?} left {:#?} top {:#?} bottom {:#?} {bounds:?} tolerance {tolerance}",
-			self.right, self.left, self.up, self.down
-		);
-
 		let mut snap_x: Option<SnappedPoint> = None;
 		let mut snap_y: Option<SnappedPoint> = None;
 
 		self.x(consider_x, bounds, tolerance, &mut snap_x, point);
 		self.y(consider_y, bounds, tolerance, &mut snap_y, point);
-
-		info!("Dist results {snap_x:#?} snap y {snap_y:#?}");
 
 		match (snap_x, snap_y) {
 			(Some(x), Some(y)) => {
@@ -247,7 +254,7 @@ impl DistributionSnapper {
 			}
 		}
 
-		// Centre X
+		// Center X
 		if consider_x && !self.left.is_empty() && !self.right.is_empty() && snap_x.is_none() {
 			let target_x = (self.right[0].min() + self.left[0].max()).x / 2.;
 
@@ -296,7 +303,7 @@ impl DistributionSnapper {
 			}
 		}
 
-		// Centre Y
+		// Center Y
 		if consider_y && !self.up.is_empty() && !self.down.is_empty() && snap_y.is_none() {
 			let target_y = (self.down[0].min() + self.up[0].max()).y / 2.;
 
@@ -304,10 +311,13 @@ impl DistributionSnapper {
 
 			if offset.abs() < tolerance {
 				let translation = DVec2::Y * offset;
+
 				let equal = bounds.translate(translation).min().y - self.up[0].max().y;
 				let first = equal + offset;
 				let distances = DistributionMatch { first, equal };
+
 				let boxes = VecDeque::from([self.up[0], bounds.translate(translation), self.down[0]]);
+
 				*snap_y = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Y, boxes, distances, bounds, translation, tolerance))
 			}
 		}
@@ -318,7 +328,6 @@ impl DistributionSnapper {
 		if point.source != SnapSource::BoundingBox(BoundingBoxSnapSource::Center) || !snap_data.document.snapping_state.bounds.distribute {
 			return;
 		}
-		info!("src {:?}", point.source);
 
 		self.collect_bounding_box_points(snap_data, point.source_index == 0, bounds);
 		self.snap_bbox_points(snap_tolerance(snap_data.document), point, snap_results, SnapConstraint::None, bounds);
@@ -336,61 +345,61 @@ impl DistributionSnapper {
 
 #[test]
 fn merge_intersecting_test() {
-	let mut rects = vec![Rect::from_square(DVec2::ZERO, 2.), Rect::from_square(DVec2::new(10., 0.), 2.)];
-	DistributionSnapper::merge_intersecting(&mut rects);
-	assert_eq!(rects.len(), 2);
+	let mut rectangles = vec![Rect::from_square(DVec2::ZERO, 2.), Rect::from_square(DVec2::new(10., 0.), 2.)];
+	DistributionSnapper::merge_intersecting(&mut rectangles);
+	assert_eq!(rectangles.len(), 2);
 
-	let mut rects = vec![
+	let mut rectangles = vec![
 		Rect::from_square(DVec2::ZERO, 2.),
 		Rect::from_square(DVec2::new(1., 0.), 2.),
 		Rect::from_square(DVec2::new(10., 0.), 2.),
 		Rect::from_square(DVec2::new(11., 0.), 2.),
 	];
-	DistributionSnapper::merge_intersecting(&mut rects);
-	assert_eq!(rects.len(), 6);
-	assert_eq!(rects[0], Rect::from_box([DVec2::new(-2., -2.), DVec2::new(3., 2.)]));
-	assert_eq!(rects[3], Rect::from_box([DVec2::new(8., -2.), DVec2::new(13., 2.)]));
+	DistributionSnapper::merge_intersecting(&mut rectangles);
+	assert_eq!(rectangles.len(), 6);
+	assert_eq!(rectangles[0], Rect::from_box([DVec2::new(-2., -2.), DVec2::new(3., 2.)]));
+	assert_eq!(rectangles[3], Rect::from_box([DVec2::new(8., -2.), DVec2::new(13., 2.)]));
 }
 
 #[test]
 fn dist_simple_2() {
-	let rects = [10., 20.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.));
+	let rectangles = [10., 20.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.));
 	let source = Rect::from_square(DVec2::new(0.5, 0.), 2.);
-	let (offset, rects) = DistributionSnapper::top_level_matches(source, &rects, 1., dist_right);
+	let (offset, rectangles) = DistributionSnapper::top_level_matches(source, &rectangles, 1., dist_right);
 	assert_eq!(offset, Some(DistributionMatch { first: 5.5, equal: 6. }));
-	assert_eq!(rects.len(), 2);
+	assert_eq!(rectangles.len(), 2);
 }
 
 #[test]
 fn dist_simple_3() {
-	let rects = [10., 20., 30.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.));
+	let rectangles = [10., 20., 30.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.));
 	let source = Rect::from_square(DVec2::new(0.5, 0.), 2.);
-	let (offset, rects) = DistributionSnapper::top_level_matches(source, &rects, 1., dist_right);
+	let (offset, rectangles) = DistributionSnapper::top_level_matches(source, &rectangles, 1., dist_right);
 	assert_eq!(offset, Some(DistributionMatch { first: 5.5, equal: 6. }));
-	assert_eq!(rects.len(), 3);
+	assert_eq!(rectangles.len(), 3);
 }
 
 #[test]
 fn dist_out_of_tolerance() {
-	let rects = [10., 20.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.));
+	let rectangles = [10., 20.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.));
 	let source = Rect::from_square(DVec2::new(0.5, 0.), 2.);
-	let (offset, rects) = DistributionSnapper::top_level_matches(source, &rects, 0.4, dist_right);
+	let (offset, rectangles) = DistributionSnapper::top_level_matches(source, &rectangles, 0.4, dist_right);
 	assert_eq!(offset, None);
-	assert_eq!(rects.len(), 1);
+	assert_eq!(rectangles.len(), 1);
 }
 
 #[test]
-fn dist_withnonsense() {
+fn dist_with_nonsense() {
 	let source = Rect::from_square(DVec2::new(0.5, 0.), 2.);
-	let rects = [2., 10., 15., 20.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.));
-	let (offset, rects) = DistributionSnapper::top_level_matches(source, &rects, 1., dist_right);
+	let rectangles = [2., 10., 15., 20.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.));
+	let (offset, rectangles) = DistributionSnapper::top_level_matches(source, &rectangles, 1., dist_right);
 	assert_eq!(offset, Some(DistributionMatch { first: 5.5, equal: 6. }));
-	assert_eq!(rects.len(), 2);
+	assert_eq!(rectangles.len(), 2);
 }
 
 #[cfg(test)]
-fn assert_boxes_in_order(rects: &VecDeque<Rect>, index: usize) {
-	for (&first, &second) in rects.iter().zip(rects.iter().skip(1)) {
+fn assert_boxes_in_order(rectangles: &VecDeque<Rect>, index: usize) {
+	for (&first, &second) in rectangles.iter().zip(rectangles.iter().skip(1)) {
 		assert!(first.max()[index] < second.min()[index], "{first:?} {second:?} {index}")
 	}
 }
@@ -460,7 +469,7 @@ fn dist_snap_point_left_right() {
 }
 
 #[test]
-fn dist_snap_point_centre_x() {
+fn dist_snap_point_center_x() {
 	let mut dist_snapper = DistributionSnapper::default();
 	dist_snapper.left = [-10., -15.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec();
 	dist_snapper.right = [10., 15.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec();
@@ -542,7 +551,7 @@ fn dist_snap_point_up_down() {
 }
 
 #[test]
-fn dist_snap_point_centre_y() {
+fn dist_snap_point_center_y() {
 	let mut dist_snapper = DistributionSnapper::default();
 	dist_snapper.up = [-10., -15.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec();
 	dist_snapper.down = [10., 15.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec();
@@ -558,7 +567,7 @@ fn dist_snap_point_centre_y() {
 }
 
 #[test]
-fn dist_snap_point_centre_xy() {
+fn dist_snap_point_center_xy() {
 	let mut dist_snapper = DistributionSnapper::default();
 	dist_snapper.up = [-10., -15.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec();
 	dist_snapper.down = [10., 15.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec();

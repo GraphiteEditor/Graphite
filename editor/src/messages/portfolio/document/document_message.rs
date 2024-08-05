@@ -142,7 +142,7 @@ pub enum DocumentMessage {
 	SetSnapping {
 		#[serde(skip)]
 		closure: Option<for<'a> fn(&'a mut SnappingState) -> &'a mut bool>,
-		val: bool,
+		snapping_state: bool,
 	},
 	SetViewMode {
 		view_mode: ViewMode,

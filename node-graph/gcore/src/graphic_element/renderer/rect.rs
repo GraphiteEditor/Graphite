@@ -19,10 +19,10 @@ impl Rect {
 		Self([bbox[0].min(bbox[1]), bbox[0].max(bbox[1])])
 	}
 
-	/// Create a quad from the centre and offset (distance from centre to middle of an edge)
+	/// Create a quad from the center and offset (distance from center to middle of an edge)
 	#[must_use]
-	pub fn from_square(centre: DVec2, offset: f64) -> Self {
-		Self::from_box([centre - offset, centre + offset])
+	pub fn from_square(center: DVec2, offset: f64) -> Self {
+		Self::from_box([center - offset, center + offset])
 	}
 
 	/// Create an AABB from an iter of points, returning None if empty.

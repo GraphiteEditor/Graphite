@@ -60,7 +60,7 @@ impl LayerSnapper {
 			if !document.network_interface.is_artboard(&layer.to_node(), &[]) || snap_data.ignore.contains(&layer) {
 				continue;
 			}
-			self.add_layer_bounds(document, layer, SnapTarget::Board(BoardSnapTarget::Edge));
+			self.add_layer_bounds(document, layer, SnapTarget::Artboard(ArtboardSnapTarget::Edge));
 		}
 		for &layer in snap_data.get_candidates() {
 			let transform = document.metadata().transform_to_document(layer);
@@ -183,7 +183,7 @@ impl LayerSnapper {
 				continue;
 			}
 
-			if document.snapping_state.target_enabled(SnapTarget::Board(BoardSnapTarget::Corner)) {
+			if document.snapping_state.target_enabled(SnapTarget::Artboard(ArtboardSnapTarget::Corner)) {
 				let Some(bounds) = document
 					.network_interface
 					.document_metadata()
@@ -364,12 +364,12 @@ impl BBoxSnapValues {
 	};
 
 	pub const ARTBOARD: Self = Self {
-		corner_source: SnapSource::Board(BoardSnapSource::Corner),
-		corner_target: SnapTarget::Board(BoardSnapTarget::Corner),
+		corner_source: SnapSource::Artboard(ArtboardSnapSource::Corner),
+		corner_target: SnapTarget::Artboard(ArtboardSnapTarget::Corner),
 		edge_source: SnapSource::None,
 		edge_target: SnapTarget::None,
-		center_source: SnapSource::Board(BoardSnapSource::Center),
-		center_target: SnapTarget::Board(BoardSnapTarget::Center),
+		center_source: SnapSource::Artboard(ArtboardSnapSource::Center),
+		center_target: SnapTarget::Artboard(ArtboardSnapTarget::Center),
 	};
 
 	pub const ALIGN_BOUNDING_BOX: Self = Self {
@@ -377,17 +377,17 @@ impl BBoxSnapValues {
 		corner_target: SnapTarget::Alignment(AlignmentSnapTarget::BoundsCorner),
 		edge_source: SnapSource::None,
 		edge_target: SnapTarget::None,
-		center_source: SnapSource::Alignment(AlignmentSnapSource::BoundsCentre),
-		center_target: SnapTarget::Alignment(AlignmentSnapTarget::BoundsCentre),
+		center_source: SnapSource::Alignment(AlignmentSnapSource::BoundsCenter),
+		center_target: SnapTarget::Alignment(AlignmentSnapTarget::BoundsCenter),
 	};
 
 	pub const ALIGN_ARTBOARD: Self = Self {
-		corner_source: SnapSource::Alignment(AlignmentSnapSource::BoardCorner),
-		corner_target: SnapTarget::Alignment(AlignmentSnapTarget::BoardCorner),
+		corner_source: SnapSource::Alignment(AlignmentSnapSource::ArtboardCorner),
+		corner_target: SnapTarget::Alignment(AlignmentSnapTarget::ArtboardCorner),
 		edge_source: SnapSource::None,
 		edge_target: SnapTarget::None,
-		center_source: SnapSource::Alignment(AlignmentSnapSource::BoardCentre),
-		center_target: SnapTarget::Alignment(AlignmentSnapTarget::BoardCentre),
+		center_source: SnapSource::Alignment(AlignmentSnapSource::ArtboardCenter),
+		center_target: SnapTarget::Alignment(AlignmentSnapTarget::ArtboardCenter),
 	};
 }
 pub fn get_bbox_points(quad: Quad, points: &mut Vec<SnapCandidatePoint>, values: BBoxSnapValues, document: &DocumentMessageHandler) {

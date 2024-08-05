@@ -1,7 +1,9 @@
 use super::*;
 use crate::messages::portfolio::document::utility_types::misc::*;
-use glam::{DAffine2, DVec2};
+
 use graphene_core::renderer::Quad;
+
+use glam::{DAffine2, DVec2};
 
 #[derive(Clone, Debug, Default)]
 pub struct AlignmentSnapper {
@@ -13,7 +15,9 @@ impl AlignmentSnapper {
 		if !first_point {
 			return;
 		}
+
 		let document = snap_data.document;
+
 		self.bounding_box_points.clear();
 		if !document.snapping_state.bounds.align {
 			return;
@@ -23,22 +27,23 @@ impl AlignmentSnapper {
 			if !document.network_interface.is_artboard(&layer.to_node(), &[]) || snap_data.ignore.contains(&layer) {
 				continue;
 			}
-			if document.snapping_state.target_enabled(SnapTarget::Board(BoardSnapTarget::Corner)) {
+
+			if document.snapping_state.target_enabled(SnapTarget::Artboard(ArtboardSnapTarget::Corner)) {
 				let Some(bounds) = document.metadata().bounding_box_with_transform(layer, document.metadata().transform_to_document(layer)) else {
 					continue;
 				};
+
 				get_bbox_points(Quad::from_box(bounds), &mut self.bounding_box_points, BBoxSnapValues::ALIGN_ARTBOARD, document);
 			}
 		}
 		for &layer in snap_data.alignment_candidates.map_or([].as_slice(), |candidates| candidates.as_slice()) {
-			// get_layer_snap_points(layer, snap_data, &mut self.bounding_box_points);
-
 			if snap_data.ignore_bounds(layer) {
 				continue;
 			}
 			let Some(bounds) = document.metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
 				continue;
 			};
+
 			let quad = document.metadata().transform_to_document(layer) * Quad::from_box(bounds);
 			let values = BBoxSnapValues::ALIGN_BOUNDING_BOX;
 			get_bbox_points(quad, &mut self.bounding_box_points, values, document);
@@ -52,6 +57,7 @@ impl AlignmentSnapper {
 		} else {
 			&[]
 		};
+
 		// TODO: snap handle points
 		let document = snap_data.document;
 		let tolerance = snap_tolerance(document);
@@ -115,17 +121,20 @@ impl AlignmentSnapper {
 				});
 			}
 		}
+
 		match (snap_x, snap_y) {
 			(Some(snap_x), Some(snap_y)) => {
 				let intersection = DVec2::new(snap_y.snapped_point_document.x, snap_x.snapped_point_document.y);
 				let distance = intersection.distance(point.document_point);
+
 				if distance >= tolerance {
 					snap_results.points.push(if snap_x.distance < snap_y.distance { snap_x } else { snap_y });
 					return;
 				}
+
 				snap_results.points.push(SnappedPoint {
 					snapped_point_document: intersection,
-					source: point.source, //ToDo map source
+					source: point.source, // TODO: map source
 					target: SnapTarget::Alignment(AlignmentSnapTarget::Intersection),
 					target_bounds: snap_x.target_bounds,
 					distance,
@@ -144,9 +153,9 @@ impl AlignmentSnapper {
 	pub fn free_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults) {
 		let is_bbox = matches!(point.source, SnapSource::BoundingBox(_));
 		let is_geometry = matches!(point.source, SnapSource::Geometry(_));
-		let gemoetry_selected = snap_data.has_manipulators();
+		let geometry_selected = snap_data.has_manipulators();
 
-		if is_bbox || (is_geometry && gemoetry_selected) || (is_geometry && point.alignment) {
+		if is_bbox || (is_geometry && geometry_selected) || (is_geometry && point.alignment) {
 			self.snap_bbox_points(snap_data, point, snap_results, SnapConstraint::None);
 		}
 	}
@@ -154,9 +163,9 @@ impl AlignmentSnapper {
 	pub fn constrained_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint) {
 		let is_bbox = matches!(point.source, SnapSource::BoundingBox(_));
 		let is_geometry = matches!(point.source, SnapSource::Geometry(_));
-		let gemoetry_selected = snap_data.has_manipulators();
+		let geometry_selected = snap_data.has_manipulators();
 
-		if is_bbox || (is_geometry && gemoetry_selected) || (is_geometry && point.alignment) {
+		if is_bbox || (is_geometry && geometry_selected) || (is_geometry && point.alignment) {
 			self.snap_bbox_points(snap_data, point, snap_results, constraint);
 		}
 	}

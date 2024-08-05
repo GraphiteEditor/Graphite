@@ -97,8 +97,8 @@ impl SnappedPoint {
 		let self_more_constrained = self.constrained && !other.constrained;
 
 		let both_align = other.align() && self.align();
-		let other_better_align = !other.align() && self.align() || (both_align && !self.source.centre() && other.source.centre());
-		let self_better_align = !self.align() && other.align() || (both_align && !other.source.centre() && self.source.centre());
+		let other_better_align = !other.align() && self.align() || (both_align && !self.source.center() && other.source.center());
+		let self_better_align = !self.align() && other.align() || (both_align && !other.source.center() && self.source.center());
 
 		// Prefer nodes to intersections if both are at the same position
 		let constrained_at_same_pos = other.constrained && self.constrained && self.snapped_point_document.abs_diff_eq(other.snapped_point_document, 1.);

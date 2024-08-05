@@ -918,9 +918,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::SetRangeSelectionLayer { new_layer } => {
 				self.layer_range_selection_reference = new_layer;
 			}
-			DocumentMessage::SetSnapping { closure, val } => {
+			DocumentMessage::SetSnapping { closure, snapping_state } => {
 				if let Some(closure) = closure {
-					*closure(&mut self.snapping_state) = val;
+					*closure(&mut self.snapping_state) = snapping_state;
 				}
 			}
 			DocumentMessage::SetViewMode { view_mode } => {
@@ -1538,7 +1538,7 @@ impl DocumentMessageHandler {
 				.on_update(move |optional_input: &CheckboxInput| {
 					DocumentMessage::SetSnapping {
 						closure: Some(|snapping_state| &mut snapping_state.snapping_enabled),
-						val: optional_input.checked,
+						snapping_state: optional_input.checked,
 					}
 					.into()
 				})
@@ -1557,7 +1557,7 @@ impl DocumentMessageHandler {
 					.chain(GET_SNAP_BOX_FUNCTIONS.into_iter().map(|(name, closure)| LayoutGroup::Row {
 						widgets: vec![
 									CheckboxInput::new(*closure(&mut snapping_state))
-										.on_update(move |input: &CheckboxInput| DocumentMessage::SetSnapping { closure: Some(closure), val: input.checked }.into())
+										.on_update(move |input: &CheckboxInput| DocumentMessage::SetSnapping { closure: Some(closure), snapping_state: input.checked }.into())
 										.widget_holder(),
 									TextLabel::new(name).widget_holder(),
 								],
@@ -1570,7 +1570,7 @@ impl DocumentMessageHandler {
 						.chain(GET_SNAP_GEOMETRY_FUNCTIONS.into_iter().map(|(name, closure)| LayoutGroup::Row {
 							widgets: vec![
 									CheckboxInput::new(*closure(&mut snapping_state2))
-										.on_update(move |input: &CheckboxInput| DocumentMessage::SetSnapping { closure: Some(closure), val: input.checked }.into())
+										.on_update(move |input: &CheckboxInput| DocumentMessage::SetSnapping { closure: Some(closure), snapping_state: input.checked }.into())
 										.widget_holder(),
 									TextLabel::new(name).widget_holder(),
 								],
