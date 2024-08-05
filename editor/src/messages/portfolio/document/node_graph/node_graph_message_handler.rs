@@ -1128,7 +1128,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						log::error!("Could not get selected nodes in PointerMove");
 						return;
 					};
-					let mut nodes = if shift { selected_nodes.selected_nodes_ref().clone() } else { Vec::new() };
+					let previous_selection = selected_nodes.selected_nodes_ref().clone();
+					let mut nodes = if shift { previous_selection.clone() } else { Vec::new() };
 					let all_nodes = network_metadata.persistent_metadata.node_metadata.keys().cloned().collect::<Vec<_>>();
 					for node_id in all_nodes {
 						let Some(click_targets) = network_interface.node_click_targets(&node_id, selection_network_path) else {
@@ -1142,7 +1143,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							nodes.push(node_id);
 						}
 					}
-					responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
+					if nodes != previous_selection {
+						responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
+					}
 					responses.add(FrontendMessage::UpdateBox { box_selection })
 				}
 			}
