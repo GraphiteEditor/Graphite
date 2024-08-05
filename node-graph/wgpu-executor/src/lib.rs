@@ -156,7 +156,7 @@ impl WgpuExecutor {
 			base_color: vello::peniko::Color::TRANSPARENT,
 			width,
 			height,
-			antialiasing_method: AaConfig::Area,
+			antialiasing_method: AaConfig::Msaa8,
 		};
 
 		{
