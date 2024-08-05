@@ -783,8 +783,10 @@ impl EditorHandle {
 			let mut shape = None;
 
 			if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, &mut document.network_interface, &mut responses) {
-				let Some(transform_node_id) = modify_inputs.get_existing_node_id("Transform") else { return };
-				if !updated_nodes.insert(transform_node_id) {
+				let Some(transform_node_id) = modify_inputs.existing_node_id("Transform") else {
+					return;
+				};
+				if !updated_nodes.insert(transform_node_id.clone()) {
 					return;
 				}
 				let Some(inputs) = modify_inputs.network_interface.network(&[]).unwrap().nodes.get(&transform_node_id).map(|node| &node.inputs) else {
@@ -798,7 +800,9 @@ impl EditorHandle {
 				update_transform(&mut document.network_interface, &transform_node_id, pivot_transform * transform * pivot_transform.inverse());
 			}
 			if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, &mut document.network_interface, &mut responses) {
-				let Some(shape_node_id) = modify_inputs.get_existing_node_id("Shape") else { return };
+				let Some(shape_node_id) = modify_inputs.existing_node_id("Shape") else {
+					return;
+				};
 				if !updated_nodes.insert(shape_node_id) {
 					return;
 				}

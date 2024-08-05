@@ -255,7 +255,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 
 			modify_inputs.network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 
-			if let Some(transform_node_id) = modify_inputs.get_existing_node_id("Transform") {
+			if let Some(transform_node_id) = modify_inputs.existing_node_id("Transform") {
 				transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, transform * usvg_transform(node.abs_transform()));
 			}
 

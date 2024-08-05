@@ -74,8 +74,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 		match message {
 			// TODO: automatically remove broadcast messages.
 			NodeGraphMessage::AddNodes { nodes, new_ids } => {
-				let Some(new_layer_id) = new_ids.get(&NodeId(0)).cloned() else {
-					error!("Could not get layer node when adding as child");
+				let Some(new_layer_id) = new_ids.get(&NodeId(0)).cloned().or_else(|| nodes.get(0).map(|(node_id, _)| *node_id)) else {
+					log::error!("No nodes to add in AddNodes");
 					return;
 				};
 				network_interface.insert_node_group(nodes, new_ids, selection_network_path);
@@ -232,11 +232,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				responses.add(DocumentMessage::StartTransaction);
 
-				let new_ids = all_selected_nodes.iter().map(|&id| (id, NodeId(generate_uuid()))).collect::<HashMap<NodeId, NodeId>>();
+				let copy_ids = all_selected_nodes.iter().enumerate().map(|(new, id)| (*id, NodeId(new as u64))).collect::<HashMap<NodeId, NodeId>>();
 
 				// Copy the selected nodes
-				let nodes = network_interface.copy_nodes(&new_ids, selection_network_path).collect::<Vec<_>>();
+				let nodes = network_interface.copy_nodes(&copy_ids, selection_network_path).collect::<Vec<_>>();
 
+				let new_ids = nodes.iter().map(|(id, _)| (*id, NodeId(generate_uuid()))).collect::<HashMap<_, _>>();
 				responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
 			}
 			NodeGraphMessage::EnterNestedNetwork => {
@@ -1015,13 +1016,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					log::error!("Could not get selected nodes in NodeGraphMessage::ToggleSelectedLocked");
 					return;
 				};
-
 				let node_ids = selected_nodes.selected_nodes().cloned().collect::<Vec<_>>();
 
 				// If any of the selected layers are locked, show them all. Otherwise, hide them all.
 				let locked = !node_ids.iter().all(|node_id| network_interface.is_locked(node_id, selection_network_path));
 
 				responses.add(DocumentMessage::StartTransaction);
+
 				for node_id in &node_ids {
 					responses.add(NodeGraphMessage::SetLocked { node_id: *node_id, locked });
 				}
@@ -1221,6 +1222,8 @@ impl NodeGraphMessageHandler {
 				DeleteSelectedNodes,
 				DuplicateSelectedNodes,
 				ToggleSelectedAsLayersOrNodes,
+				ToggleSelectedLocked,
+				ToggleSelectedVisibility,
 				PrintSelectedNodeCoordinates,
 			));
 		}

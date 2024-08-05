@@ -593,11 +593,18 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let all_layers_to_group = self.network_interface.shallowest_unique_layers(&self.selection_network_path).collect::<Vec<_>>();
 
 				// Ensure nodes are grouped in the correct order
-				for (insert_index, layer_to_group) in all_layers_to_group.into_iter().rev().enumerate() {
+				let mut all_layers_to_group_sorted = Vec::new();
+				for descendant in LayerNodeIdentifier::ROOT_PARENT.descendants(self.metadata()) {
+					if all_layers_to_group.contains(&descendant) {
+						all_layers_to_group_sorted.push(descendant);
+					};
+				}
+
+				for layer_to_group in all_layers_to_group_sorted.into_iter().rev() {
 					responses.add(NodeGraphMessage::MoveLayerToStack {
 						layer: layer_to_group,
 						parent,
-						insert_index,
+						insert_index: 0,
 					});
 				}
 

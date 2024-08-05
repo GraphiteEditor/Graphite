@@ -3107,19 +3107,6 @@ impl NodeNetworkInterface {
 		self.unload_all_nodes_bounding_box(network_path);
 	}
 
-	fn reconstruct_chain(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> bool {
-		let Some(previous_input) = self.input_from_connector(input_connector, network_path).cloned() else {
-			log::error!("Could not get previous input in reconstruct_chain");
-			return false;
-		};
-		//Reconstruct the chain if the upstream node is in a chain.
-		if let NodeInput::Node { node_id: previous_node_id, .. } = &previous_input {
-			self.is_chain(previous_node_id, network_path)
-		} else {
-			false
-		}
-	}
-
 	// TODO: Run the auto layout system to make space for the new nodes
 	// Disconnect the layers primary output and the input to the last non layer node feeding into it through primary flow, reconnects, then moves the layer to the new layer and stack index
 	pub fn move_layer_to_stack(&mut self, layer: LayerNodeIdentifier, mut parent: LayerNodeIdentifier, mut insert_index: usize, network_path: &[NodeId]) {
@@ -3168,7 +3155,7 @@ impl NodeNetworkInterface {
 			log::error!("Cannot insert a node onto a wire with no exposed inputs");
 			return;
 		}
-		let reconstruct_chain = self.reconstruct_chain(input_connector, network_path);
+
 		let Some(upstream_output) = self.upstream_output_connector(input_connector, network_path) else {
 			log::error!("Could not get upstream output in insert_node_between");
 			return;
@@ -3182,10 +3169,6 @@ impl NodeNetworkInterface {
 
 		// Connect the new node to the previous node
 		self.create_wire(&upstream_output, &InputConnector::node(*node_id, insert_node_input_index), network_path);
-
-		if reconstruct_chain {
-			self.force_set_upstream_to_chain(node_id, network_path);
-		}
 	}
 
 	// Moves a node and to the start of a layer chain (feeding into the secondary input of the layer)
@@ -3199,6 +3182,7 @@ impl NodeNetworkInterface {
 			self.set_chain_position(node_id, network_path);
 		} else {
 			self.insert_node_between(node_id, &InputConnector::node(parent.to_node(), 1), 0, network_path);
+			self.force_set_upstream_to_chain(node_id, network_path);
 		}
 	}
 }
