@@ -153,7 +153,7 @@ impl WgpuExecutor {
 		let surface_texture = surface.get_current_texture()?;
 
 		let render_params = RenderParams {
-			base_color: vello::peniko::Color::TRANSPARENT,
+			base_color: vello::peniko::Color::rgb8(34, 34, 34),
 			width,
 			height,
 			antialiasing_method: AaConfig::Msaa8,
