@@ -222,7 +222,7 @@ impl From<SurfaceFrame> for GraphicElement {
 }
 impl From<alloc::sync::Arc<SurfaceHandleFrame<HtmlCanvasElement>>> for GraphicElement {
 	fn from(surface: alloc::sync::Arc<SurfaceHandleFrame<HtmlCanvasElement>>) -> Self {
-		let surface_id = surface.surface_handle.surface_id;
+		let surface_id = surface.surface_handle.window_id;
 		let transform = surface.transform;
 		GraphicElement::Surface(SurfaceFrame {
 			surface_id,
@@ -236,7 +236,7 @@ impl From<alloc::sync::Arc<SurfaceHandleFrame<HtmlCanvasElement>>> for GraphicEl
 }
 impl From<SurfaceHandleFrame<HtmlCanvasElement>> for GraphicElement {
 	fn from(surface: SurfaceHandleFrame<HtmlCanvasElement>) -> Self {
-		let surface_id = surface.surface_handle.surface_id;
+		let surface_id = surface.surface_handle.window_id;
 		let transform = surface.transform;
 		GraphicElement::Surface(SurfaceFrame {
 			surface_id,
