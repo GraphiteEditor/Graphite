@@ -385,11 +385,12 @@ pub async fn introspect_node(path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> 
 	None
 }
 
-pub async fn run_node_graph() {
-	let Some(mut runtime) = NODE_RUNTIME.try_lock() else { return };
+pub async fn run_node_graph() -> bool {
+	let Some(mut runtime) = NODE_RUNTIME.try_lock() else { return false };
 	if let Some(ref mut runtime) = runtime.as_mut() {
 		runtime.run().await;
 	}
+	true
 }
 
 pub async fn replace_node_runtime(runtime: NodeRuntime) -> Option<NodeRuntime> {
