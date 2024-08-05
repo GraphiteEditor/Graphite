@@ -106,7 +106,9 @@ impl WasmApplicationIo {
 			windows: Vec::new().into(),
 			resources: HashMap::new(),
 		};
+		#[cfg(not(feature = "ci"))]
 		let window = io.create_window();
+		#[cfg(not(feature = "ci"))]
 		io.windows.push(WindowWrapper { window });
 
 		io.resources.insert("null".to_string(), Arc::from(include_bytes!("null.png").to_vec()));
