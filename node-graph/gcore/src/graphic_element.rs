@@ -1,16 +1,14 @@
-use crate::application_io::{SurfaceHandleFrame, TextureFrame};
+use crate::application_io::TextureFrame;
 use crate::raster::{BlendMode, ImageFrame};
 use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::VectorData;
-use crate::{Color, Node, SurfaceFrame};
+use crate::{Color, Node};
 
 use dyn_any::{DynAny, StaticType};
 use node_macro::node_fn;
-use serde::{Deserialize, Serialize};
 
 use core::ops::{Deref, DerefMut};
-use glam::{DAffine2, IVec2, UVec2};
-use web_sys::HtmlCanvasElement;
+use glam::{DAffine2, IVec2};
 
 pub mod renderer;
 

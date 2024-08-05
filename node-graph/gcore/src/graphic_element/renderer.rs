@@ -3,17 +3,15 @@ mod rect;
 pub use quad::Quad;
 pub use rect::Rect;
 
-use crate::raster::bbox::Bbox;
 use crate::raster::{BlendMode, Image, ImageFrame};
 use crate::transform::Transform;
 use crate::uuid::generate_uuid;
 use crate::vector::style::{Fill, Stroke, ViewMode};
 use crate::vector::PointId;
+use crate::Raster;
 use crate::{vector::VectorData, Artboard, Color, GraphicElement, GraphicGroup};
-use crate::{Raster, SurfaceFrame};
 
 use bezier_rs::Subpath;
-use dyn_any::StaticTypeSized;
 
 use base64::Engine;
 use glam::{DAffine2, DVec2};
@@ -222,6 +220,7 @@ pub enum ImageRenderMode {
 
 #[derive(Clone, Debug, Default)]
 pub struct RenderContext {
+	#[cfg(feature = "wgpu")]
 	pub ressource_overrides: std::collections::HashMap<u64, alloc::sync::Arc<wgpu::Texture>>,
 }
 
@@ -734,7 +733,7 @@ impl GraphicElementRendered for Raster {
 			ImageRenderMode::Base64 => {
 				let image = match self {
 					Raster::ImageFrame(ref image) => image,
-					Raster::Texture(ref texture) => return,
+					Raster::Texture(_) => return,
 				};
 				let (image, blending) = (&image.image, image.alpha_blending);
 				if image.data.is_empty() {

@@ -144,7 +144,6 @@ impl EditorHandle {
 			*g.borrow_mut() = Some(Closure::new(move |timestamp| {
 				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
-				/*
 				if !EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 					editor_and_handle(|editor, handle| {
 						let micros: f64 = timestamp * 1000.;
@@ -158,7 +157,7 @@ impl EditorHandle {
 							handle.send_frontend_message_to_js(message);
 						}
 					});
-				}*/
+				}
 
 				// Schedule ourself for another requestAnimationFrame callback
 				request_animation_frame(f.borrow().as_ref().unwrap());

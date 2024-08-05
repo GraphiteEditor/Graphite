@@ -14,7 +14,7 @@ passthrough = []
 gpu-executor = { path = "../gpu-executor" }
 
 # Workspace dependencies
-graphene-core = { workspace = true, features = ["std", "alloc", "gpu"] }
+graphene-core = { workspace = true, features = ["std", "alloc", "gpu", "wgpu"] }
 dyn-any = { workspace = true, features = ["log-bad-types", "rc", "glam"] }
 node-macro = { workspace = true }
 num-traits = { workspace = true }
