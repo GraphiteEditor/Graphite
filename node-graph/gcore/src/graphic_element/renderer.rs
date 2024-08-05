@@ -1,5 +1,7 @@
 mod quad;
+mod rect;
 pub use quad::Quad;
+pub use rect::Rect;
 
 use crate::raster::bbox::Bbox;
 use crate::raster::{BlendMode, Image, ImageFrame};

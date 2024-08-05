@@ -1,5 +1,5 @@
 use super::graph_modification_utils;
-use super::snapping::{SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
+use super::snapping::{SnapCache, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{GeometrySnapSource, SnapSource};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
@@ -25,6 +25,9 @@ pub struct SelectedLayerState {
 }
 
 impl SelectedLayerState {
+	pub fn selected(&self) -> impl Iterator<Item = ManipulatorPointId> + '_ {
+		self.selected_points.iter().copied()
+	}
 	pub fn is_selected(&self, point: ManipulatorPointId) -> bool {
 		self.selected_points.contains(&point)
 	}
@@ -167,18 +170,8 @@ impl ClosestSegment {
 // TODO Consider keeping a list of selected manipulators to minimize traversals of the layers
 impl ShapeState {
 	// Snap, returning a viewport delta
-	pub fn snap(&self, snap_manager: &mut SnapManager, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, previous_mouse: DVec2) -> DVec2 {
-		let mut snap_data = SnapData::new(document, input);
-
-		for (layer, state) in &self.selected_shape_state {
-			let Some(vector_data) = document.metadata().compute_modified_vector(*layer, &document.network_interface) else {
-				continue;
-			};
-			for point in &state.selected_points {
-				let Some(anchor) = point.get_anchor(&vector_data) else { continue };
-				snap_data.manipulators.push((*layer, anchor));
-			}
-		}
+	pub fn snap(&self, snap_manager: &mut SnapManager, snap_cache: &SnapCache, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, previous_mouse: DVec2) -> DVec2 {
+		let snap_data = SnapData::new_snap_cache(document, input, snap_cache);
 
 		let mouse_delta = document
 			.network_interface

@@ -104,8 +104,11 @@ impl SnappingState {
 				GeometrySnapTarget::Tangent => self.nodes.tangents,
 				GeometrySnapTarget::Intersection => self.nodes.path_intersections,
 			},
-			SnapTarget::Board(_) => self.artboards,
+			SnapTarget::Artboard(_) => self.artboards,
 			SnapTarget::Grid(_) => self.grid_snapping,
+			SnapTarget::Alignment(AlignmentSnapTarget::Handle) => self.nodes.align,
+			SnapTarget::Alignment(_) => self.bounds.align,
+			SnapTarget::Distribution(_) => self.bounds.distribute,
 			_ => false,
 		}
 	}
@@ -118,6 +121,8 @@ pub struct BoundsSnapping {
 	pub corners: bool,
 	pub edge_midpoints: bool,
 	pub centers: bool,
+	pub align: bool,
+	pub distribute: bool,
 }
 
 impl Default for BoundsSnapping {
@@ -127,16 +132,10 @@ impl Default for BoundsSnapping {
 			corners: true,
 			edge_midpoints: false,
 			centers: true,
+			align: true,
+			distribute: true,
 		}
 	}
-}
-
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct OptionBoundsSnapping {
-	pub edges: Option<bool>,
-	pub corners: Option<bool>,
-	pub edge_midpoints: Option<bool>,
-	pub centers: Option<bool>,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -148,6 +147,7 @@ pub struct PointSnapping {
 	pub line_midpoints: bool,
 	pub normals: bool,
 	pub tangents: bool,
+	pub align: bool,
 }
 
 impl Default for PointSnapping {
@@ -159,18 +159,9 @@ impl Default for PointSnapping {
 			line_midpoints: true,
 			normals: true,
 			tangents: true,
+			align: false,
 		}
 	}
-}
-
-#[derive(PartialEq, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
-pub struct OptionPointSnapping {
-	pub paths: Option<bool>,
-	pub path_intersections: Option<bool>,
-	pub anchors: Option<bool>,
-	pub line_midpoints: Option<bool>,
-	pub normals: Option<bool>,
-	pub tangents: Option<bool>,
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
@@ -280,7 +271,7 @@ pub enum BoundingBoxSnapSource {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BoardSnapSource {
+pub enum ArtboardSnapSource {
 	Center,
 	Corner,
 }
@@ -294,13 +285,24 @@ pub enum GeometrySnapSource {
 	Intersection,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AlignmentSnapSource {
+	BoundsCorner,
+	BoundsCenter,
+	BoundsEdgeMidpoint,
+	ArtboardCorner,
+	ArtboardCenter,
+	Handle,
+}
+
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SnapSource {
 	#[default]
 	None,
 	BoundingBox(BoundingBoxSnapSource),
-	Board(BoardSnapSource),
+	Artboard(ArtboardSnapSource),
 	Geometry(GeometrySnapSource),
+	Alignment(AlignmentSnapSource),
 }
 
 impl SnapSource {
@@ -308,9 +310,37 @@ impl SnapSource {
 		self != &Self::None
 	}
 	pub fn bounding_box(&self) -> bool {
-		matches!(self, Self::BoundingBox(_) | Self::Board(_))
+		matches!(self, Self::BoundingBox(_) | Self::Artboard(_))
+	}
+	pub fn align(&self) -> bool {
+		matches!(self, Self::Alignment(_))
+	}
+	pub fn center(&self) -> bool {
+		matches!(
+			self,
+			Self::Alignment(AlignmentSnapSource::ArtboardCenter | AlignmentSnapSource::BoundsCenter) | Self::Artboard(ArtboardSnapSource::Center) | Self::BoundingBox(BoundingBoxSnapSource::Center)
+		)
 	}
 }
+
+type GetSnapState = for<'a> fn(&'a mut SnappingState) -> &'a mut bool;
+pub const GET_SNAP_BOX_FUNCTIONS: [(&str, GetSnapState); 6] = [
+	("Box Center", (|snapping_state| &mut snapping_state.bounds.centers) as GetSnapState),
+	("Box Corner", (|snapping_state| &mut snapping_state.bounds.corners) as GetSnapState),
+	("Along Edge", (|snapping_state| &mut snapping_state.bounds.edges) as GetSnapState),
+	("Midpoint of Edge", (|snapping_state| &mut snapping_state.bounds.edge_midpoints) as GetSnapState),
+	("Align to Box", (|snapping_state| &mut snapping_state.bounds.align) as GetSnapState),
+	("Evenly Distribute Boxes", (|snapping_state| &mut snapping_state.bounds.distribute) as GetSnapState),
+];
+pub const GET_SNAP_GEOMETRY_FUNCTIONS: [(&str, GetSnapState); 7] = [
+	("Anchor", (|snapping_state: &mut SnappingState| &mut snapping_state.nodes.anchors) as GetSnapState),
+	("Line Midpoint", (|snapping_state: &mut SnappingState| &mut snapping_state.nodes.line_midpoints) as GetSnapState),
+	("Path", (|snapping_state: &mut SnappingState| &mut snapping_state.nodes.paths) as GetSnapState),
+	("Normal to Path", (|snapping_state: &mut SnappingState| &mut snapping_state.nodes.normals) as GetSnapState),
+	("Tangent to Path", (|snapping_state: &mut SnappingState| &mut snapping_state.nodes.tangents) as GetSnapState),
+	("Intersection", (|snapping_state: &mut SnappingState| &mut snapping_state.nodes.path_intersections) as GetSnapState),
+	("Align to Selected Path", (|snapping_state: &mut SnappingState| &mut snapping_state.nodes.align) as GetSnapState),
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BoundingBoxSnapTarget {
@@ -318,17 +348,6 @@ pub enum BoundingBoxSnapTarget {
 	Corner,
 	Edge,
 	EdgeMidpoint,
-}
-
-impl fmt::Display for BoundingBoxSnapTarget {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			Self::Center => write!(f, "Box Center"),
-			Self::Corner => write!(f, "Box Corner"),
-			Self::Edge => write!(f, "Along Edge"),
-			Self::EdgeMidpoint => write!(f, "Midpoint of Edge"),
-		}
-	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -342,22 +361,8 @@ pub enum GeometrySnapTarget {
 	Intersection,
 }
 
-impl fmt::Display for GeometrySnapTarget {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			Self::AnchorWithColinearHandles => write!(f, "Anchor (Colinear Handles)"),
-			Self::AnchorWithFreeHandles => write!(f, "Anchor (Free Handles)"),
-			Self::LineMidpoint => write!(f, "Line Midpoint"),
-			Self::Path => write!(f, "Path"),
-			Self::Normal => write!(f, "Normal to Path"),
-			Self::Tangent => write!(f, "Tangent to Path"),
-			Self::Intersection => write!(f, "Intersection"),
-		}
-	}
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BoardSnapTarget {
+pub enum ArtboardSnapTarget {
 	Edge,
 	Corner,
 	Center,
@@ -370,14 +375,46 @@ pub enum GridSnapTarget {
 	Intersection,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AlignmentSnapTarget {
+	BoundsCorner,
+	BoundsCenter,
+	ArtboardCorner,
+	ArtboardCenter,
+	Handle,
+	Intersection,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DistributionSnapTarget {
+	X,
+	Y,
+	Right,
+	Left,
+	Up,
+	Down,
+	Xy,
+}
+
+impl DistributionSnapTarget {
+	pub const fn is_x(&self) -> bool {
+		matches!(self, Self::Left | Self::Right | Self::X)
+	}
+	pub const fn is_y(&self) -> bool {
+		matches!(self, Self::Up | Self::Down | Self::Y)
+	}
+}
+
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SnapTarget {
 	#[default]
 	None,
 	BoundingBox(BoundingBoxSnapTarget),
 	Geometry(GeometrySnapTarget),
-	Board(BoardSnapTarget),
+	Artboard(ArtboardSnapTarget),
 	Grid(GridSnapTarget),
+	Alignment(AlignmentSnapTarget),
+	Distribution(DistributionSnapTarget),
 }
 
 impl SnapTarget {
@@ -385,7 +422,7 @@ impl SnapTarget {
 		self != &Self::None
 	}
 	pub fn bounding_box(&self) -> bool {
-		matches!(self, Self::BoundingBox(_) | Self::Board(_))
+		matches!(self, Self::BoundingBox(_) | Self::Artboard(_))
 	}
 }
 

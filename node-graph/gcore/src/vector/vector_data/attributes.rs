@@ -39,6 +39,34 @@ macro_rules! create_ids {
 
 create_ids! { PointId, SegmentId, RegionId, StrokeId, FillId }
 
+/// A no-op hasher that allows writing u64s (the id type).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct NoHash(Option<u64>);
+
+impl core::hash::Hasher for NoHash {
+	fn finish(&self) -> u64 {
+		self.0.unwrap()
+	}
+	fn write(&mut self, _bytes: &[u8]) {
+		unimplemented!()
+	}
+	fn write_u64(&mut self, i: u64) {
+		debug_assert!(self.0.is_none());
+		self.0 = Some(i)
+	}
+}
+
+/// A hash builder that builds the [`NoHash`] hasher.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct NoHashBuilder;
+
+impl core::hash::BuildHasher for NoHashBuilder {
+	type Hasher = NoHash;
+	fn build_hasher(&self) -> Self::Hasher {
+		NoHash::default()
+	}
+}
+
 #[derive(Clone, Debug, Default, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// Stores data which is per-point. Each point is merely a position and can be used in a point cloud or to for a bézier path. In future this will be extendable at runtime with custom attributes.

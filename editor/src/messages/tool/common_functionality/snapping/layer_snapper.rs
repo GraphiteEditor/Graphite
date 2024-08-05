@@ -60,7 +60,7 @@ impl LayerSnapper {
 			if !document.network_interface.is_artboard(&layer.to_node(), &[]) || snap_data.ignore.contains(&layer) {
 				continue;
 			}
-			self.add_layer_bounds(document, layer, SnapTarget::Board(BoardSnapTarget::Edge));
+			self.add_layer_bounds(document, layer, SnapTarget::Artboard(ArtboardSnapTarget::Edge));
 		}
 		for &layer in snap_data.get_candidates() {
 			let transform = document.metadata().transform_to_document(layer);
@@ -183,7 +183,7 @@ impl LayerSnapper {
 				continue;
 			}
 
-			if document.snapping_state.target_enabled(SnapTarget::Board(BoardSnapTarget::Corner)) {
+			if document.snapping_state.target_enabled(SnapTarget::Artboard(ArtboardSnapTarget::Corner)) {
 				let Some(bounds) = document
 					.network_interface
 					.document_metadata()
@@ -316,17 +316,19 @@ pub struct SnapCandidatePoint {
 	pub source_index: usize,
 	pub quad: Option<Quad>,
 	pub neighbors: Vec<DVec2>,
+	pub alignment: bool,
 }
 impl SnapCandidatePoint {
 	pub fn new(document_point: DVec2, source: SnapSource, target: SnapTarget) -> Self {
-		Self::new_quad(document_point, source, target, None)
+		Self::new_quad(document_point, source, target, None, true)
 	}
-	pub fn new_quad(document_point: DVec2, source: SnapSource, target: SnapTarget, quad: Option<Quad>) -> Self {
+	pub fn new_quad(document_point: DVec2, source: SnapSource, target: SnapTarget, quad: Option<Quad>, alignment: bool) -> Self {
 		Self {
 			document_point,
 			source,
 			target,
 			quad,
+			alignment,
 			..Default::default()
 		}
 	}
@@ -362,12 +364,30 @@ impl BBoxSnapValues {
 	};
 
 	pub const ARTBOARD: Self = Self {
-		corner_source: SnapSource::Board(BoardSnapSource::Corner),
-		corner_target: SnapTarget::Board(BoardSnapTarget::Corner),
+		corner_source: SnapSource::Artboard(ArtboardSnapSource::Corner),
+		corner_target: SnapTarget::Artboard(ArtboardSnapTarget::Corner),
 		edge_source: SnapSource::None,
 		edge_target: SnapTarget::None,
-		center_source: SnapSource::Board(BoardSnapSource::Center),
-		center_target: SnapTarget::Board(BoardSnapTarget::Center),
+		center_source: SnapSource::Artboard(ArtboardSnapSource::Center),
+		center_target: SnapTarget::Artboard(ArtboardSnapTarget::Center),
+	};
+
+	pub const ALIGN_BOUNDING_BOX: Self = Self {
+		corner_source: SnapSource::Alignment(AlignmentSnapSource::BoundsCorner),
+		corner_target: SnapTarget::Alignment(AlignmentSnapTarget::BoundsCorner),
+		edge_source: SnapSource::None,
+		edge_target: SnapTarget::None,
+		center_source: SnapSource::Alignment(AlignmentSnapSource::BoundsCenter),
+		center_target: SnapTarget::Alignment(AlignmentSnapTarget::BoundsCenter),
+	};
+
+	pub const ALIGN_ARTBOARD: Self = Self {
+		corner_source: SnapSource::Alignment(AlignmentSnapSource::ArtboardCorner),
+		corner_target: SnapTarget::Alignment(AlignmentSnapTarget::ArtboardCorner),
+		edge_source: SnapSource::None,
+		edge_target: SnapTarget::None,
+		center_source: SnapSource::Alignment(AlignmentSnapSource::ArtboardCenter),
+		center_target: SnapTarget::Alignment(AlignmentSnapTarget::ArtboardCenter),
 	};
 }
 pub fn get_bbox_points(quad: Quad, points: &mut Vec<SnapCandidatePoint>, values: BBoxSnapValues, document: &DocumentMessageHandler) {
@@ -375,14 +395,14 @@ pub fn get_bbox_points(quad: Quad, points: &mut Vec<SnapCandidatePoint>, values:
 		let start = quad.0[index];
 		let end = quad.0[(index + 1) % 4];
 		if document.snapping_state.target_enabled(values.corner_target) {
-			points.push(SnapCandidatePoint::new_quad(start, values.corner_source, values.corner_target, Some(quad)));
+			points.push(SnapCandidatePoint::new_quad(start, values.corner_source, values.corner_target, Some(quad), false));
 		}
 		if document.snapping_state.target_enabled(values.edge_target) {
-			points.push(SnapCandidatePoint::new_quad((start + end) / 2., values.edge_source, values.edge_target, Some(quad)));
+			points.push(SnapCandidatePoint::new_quad((start + end) / 2., values.edge_source, values.edge_target, Some(quad), false));
 		}
 	}
 	if document.snapping_state.target_enabled(values.center_target) {
-		points.push(SnapCandidatePoint::new_quad(quad.center(), values.center_source, values.center_target, Some(quad)));
+		points.push(SnapCandidatePoint::new_quad(quad.center(), values.center_source, values.center_target, Some(quad), false));
 	}
 }
 

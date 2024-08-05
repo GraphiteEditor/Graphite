@@ -1,4 +1,4 @@
-use super::utility_types::misc::{OptionBoundsSnapping, OptionPointSnapping};
+use super::utility_types::misc::SnappingState;
 use super::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -140,9 +140,9 @@ pub enum DocumentMessage {
 		new_layer: Option<LayerNodeIdentifier>,
 	},
 	SetSnapping {
-		snapping_enabled: Option<bool>,
-		bounding_box_snapping: Option<OptionBoundsSnapping>,
-		geometry_snapping: Option<OptionPointSnapping>,
+		#[serde(skip)]
+		closure: Option<for<'a> fn(&'a mut SnappingState) -> &'a mut bool>,
+		snapping_state: bool,
 	},
 	SetViewMode {
 		view_mode: ViewMode,
