@@ -328,16 +328,23 @@ impl GraphicElementRendered for GraphicGroup {
 
 		let Some(bounds) = self.bounding_box(transform) else { return };
 		let blending = vello::peniko::BlendMode::new(self.alpha_blending.blend_mode.into(), vello::peniko::Compose::SrcOver);
-		scene.push_layer(
-			blending,
-			self.alpha_blending.opacity,
-			kurbo::Affine::IDENTITY,
-			&vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y),
-		);
+		let mut layer = false;
+
+		if self.alpha_blending.opacity < 1. || self.alpha_blending.blend_mode != BlendMode::default() {
+			layer = true;
+			scene.push_layer(
+				blending,
+				self.alpha_blending.opacity,
+				kurbo::Affine::IDENTITY,
+				&vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y),
+			);
+		}
 		for element in self.iter() {
 			element.render_to_vello(scene, child_transform);
 		}
-		scene.pop_layer();
+		if layer {
+			scene.pop_layer();
+		}
 	}
 
 	fn contains_artboard(&self) -> bool {
