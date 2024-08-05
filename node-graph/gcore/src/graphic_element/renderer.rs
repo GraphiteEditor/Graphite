@@ -799,7 +799,7 @@ impl GraphicElementRendered for Raster {
 			}
 			Raster::Texture(texture) => {
 				let image = vello::peniko::Image {
-					data: vec![255u8; (texture.texture.width() * texture.texture.height() * 4) as usize].into(),
+					data: vec![].into(),
 					width: texture.texture.width(),
 					height: texture.texture.height(),
 					format: peniko::Format::Rgba8,

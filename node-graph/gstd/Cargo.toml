@@ -71,7 +71,7 @@ wasm-bindgen = { workspace = true, optional = true }
 js-sys = { workspace = true, optional = true }
 wasm-bindgen-futures = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true, features = ["fs", "io-std"] }
-vello = { workspace = true, optional = true, features = ["image-override", "wgpu-profiler"] }
+vello = { workspace = true, optional = true }
 resvg = { workspace = true, optional = true }
 serde = { workspace = true, optional = true, features = ["derive"] }
 web-sys = { workspace = true, optional = true, features = [

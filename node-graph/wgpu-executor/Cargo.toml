@@ -26,7 +26,6 @@ anyhow = { workspace = true }
 wgpu = { workspace = true, features = [
 	"spirv",
 	"strict_asserts",
-	"api_log_info",
 ] }
 spirv = { workspace = true }
 futures = { workspace = true }

@@ -38,6 +38,7 @@ impl Context {
 					#[cfg(feature = "passthrough")]
 					required_features: wgpu::Features::SPIRV_SHADER_PASSTHROUGH,
 					required_limits,
+					memory_hints: Default::default(),
 				},
 				None,
 			)

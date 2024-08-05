@@ -19,9 +19,9 @@ use glam::{DAffine2, UVec2};
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
-use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
+use vello::{AaConfig, AaSupport, DebugLayers, RenderParams, Renderer, RendererOptions, Scene};
 use wgpu::util::DeviceExt;
-use wgpu::{Buffer, BufferDescriptor, ShaderModule, SurfaceConfiguration, SurfaceError, Texture, TextureView};
+use wgpu::{Buffer, BufferDescriptor, Origin3d, ShaderModule, SurfaceConfiguration, SurfaceError, Texture, TextureAspect, TextureView};
 
 #[cfg(target_arch = "wasm32")]
 use web_sys::HtmlCanvasElement;
@@ -162,24 +162,25 @@ impl WgpuExecutor {
 			width,
 			height,
 			antialiasing_method: AaConfig::Msaa8,
+			debug: DebugLayers::all(),
 		};
 
 		{
 			let mut renderer = self.vello_renderer.lock().unwrap();
-			// for (id, &texture) in context.ressource_overrides.iter() {
-			// 	let texture_view = wgpu::ImageCopyTextureBase::from(*texture);
-			// 	renderer.override_image(
-			// 		&vello::peniko::Image::new(vello::peniko::Blob::from_raw_parts(Arc::new(vec![]), *id), vello::peniko::Format::Rgba8, 0, 0),
-			// 		Some(Arc::new(texture_view)),
-			// 	);
-			// }
+			for (id, texture) in context.ressource_overrides.iter() {
+				let texture_view = wgpu::ImageCopyTextureBase {
+					texture: texture.clone(),
+					mip_level: 0,
+					origin: Origin3d::ZERO,
+					aspect: TextureAspect::All,
+				};
+				renderer.override_image(
+					&vello::peniko::Image::new(vello::peniko::Blob::from_raw_parts(Arc::new(vec![]), *id), vello::peniko::Format::Rgba8, 0, 0),
+					Some(texture_view),
+				);
+			}
 			renderer
-				.render_to_surface_async(&self.context.device, &self.context.queue, scene, &surface_texture, &render_params, |id| {
-					let texture = context.ressource_overrides.get(&id)?;
-					Some(texture.as_image_copy())
-					// let texture_view = wgpu::ImageCopyTextureBase::from(*texture);
-					// texture_view
-				})
+				.render_to_surface_async(&self.context.device, &self.context.queue, scene, &surface_texture, &render_params)
 				.await
 				.unwrap();
 		}
@@ -303,6 +304,7 @@ impl WgpuExecutor {
 			module: &layout.shader.0,
 			entry_point: layout.entry_point.as_str(),
 			compilation_options: Default::default(),
+			cache: None,
 		});
 		let bind_group_layout = compute_pipeline.get_bind_group_layout(0);
 
@@ -640,6 +642,7 @@ impl WgpuExecutor {
 			// If the pipeline will be used with a multiview render pass, this
 			// indicates how many array layers the attachments will have.
 			multiview: None,
+			cache: None,
 		});
 
 		let vertex_buffer = context.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
