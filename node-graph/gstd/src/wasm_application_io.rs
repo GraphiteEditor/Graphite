@@ -120,12 +120,13 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 		let mut scene = Scene::new();
 		let mut child = Scene::new();
 
-		data.render_to_vello(&mut child, glam::DAffine2::IDENTITY);
+		let mut context = wgpu_executor::RenderContext::default();
+		data.render_to_vello(&mut child, glam::DAffine2::IDENTITY, &mut context);
 
 		// TODO: Instead of applying the transform here, pass the transform during the translation to avoid the O(Nr cost
 		scene.append(&child, Some(kurbo::Affine::new(footprint.transform.to_cols_array())));
 
-		exec.render_vello_scene(&scene, &surface_handle, footprint.resolution.x, footprint.resolution.y)
+		exec.render_vello_scene(&scene, &surface_handle, footprint.resolution.x, footprint.resolution.y, &context)
 			.await
 			.expect("Failed to render Vello scene");
 	} else {

@@ -1,15 +1,14 @@
-use crate::application_io::SurfaceHandleFrame;
+use crate::application_io::TextureFrame;
 use crate::raster::{BlendMode, ImageFrame};
-use crate::transform::Footprint;
+use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::VectorData;
-use crate::{Color, Node, SurfaceFrame};
+use crate::{Color, Node};
 
 use dyn_any::{DynAny, StaticType};
 use node_macro::node_fn;
 
 use core::ops::{Deref, DerefMut};
-use glam::{DAffine2, IVec2, UVec2};
-use web_sys::HtmlCanvasElement;
+use glam::{DAffine2, IVec2};
 
 pub mod renderer;
 
@@ -65,16 +64,65 @@ pub enum GraphicElement {
 	GraphicGroup(GraphicGroup),
 	/// A vector shape, equivalent to the SVG <path> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path
 	VectorData(Box<VectorData>),
-	/// A bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
-	ImageFrame(ImageFrame<Color>),
-	/// A Canvas element
-	Surface(SurfaceFrame),
+	Raster(Raster),
 }
 
 // TODO: Can this be removed? It doesn't necessarily make that much sense to have a default when, instead, the entire GraphicElement just shouldn't exist if there's no specific content to assign it.
 impl Default for GraphicElement {
 	fn default() -> Self {
 		Self::VectorData(Box::new(VectorData::empty()))
+	}
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
+pub enum Raster {
+	/// A bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
+	ImageFrame(ImageFrame<Color>),
+	Texture(TextureFrame),
+}
+
+impl<'de> serde::Deserialize<'de> for Raster {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		let frame = ImageFrame::deserialize(deserializer)?;
+		Ok(Raster::ImageFrame(frame))
+	}
+}
+
+impl serde::Serialize for Raster {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		match self {
+			Raster::ImageFrame(_) => self.serialize(serializer),
+			Raster::Texture(_) => todo!(),
+		}
+	}
+}
+
+impl Transform for Raster {
+	fn transform(&self) -> DAffine2 {
+		match self {
+			Raster::ImageFrame(frame) => frame.transform(),
+			Raster::Texture(frame) => frame.transform(),
+		}
+	}
+	fn local_pivot(&self, pivot: glam::DVec2) -> glam::DVec2 {
+		match self {
+			Raster::ImageFrame(frame) => frame.local_pivot(pivot),
+			Raster::Texture(frame) => frame.local_pivot(pivot),
+		}
+	}
+}
+impl TransformMut for Raster {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		match self {
+			Raster::ImageFrame(frame) => frame.transform_mut(),
+			Raster::Texture(frame) => frame.transform_mut(),
+		}
 	}
 }
 
@@ -202,7 +250,12 @@ async fn add_artboard<Data: Into<Artboard> + Send>(footprint: Footprint, artboar
 
 impl From<ImageFrame<Color>> for GraphicElement {
 	fn from(image_frame: ImageFrame<Color>) -> Self {
-		GraphicElement::ImageFrame(image_frame)
+		GraphicElement::Raster(Raster::ImageFrame(image_frame))
+	}
+}
+impl From<TextureFrame> for GraphicElement {
+	fn from(texture: TextureFrame) -> Self {
+		GraphicElement::Raster(Raster::Texture(texture))
 	}
 }
 impl From<VectorData> for GraphicElement {
@@ -213,39 +266,6 @@ impl From<VectorData> for GraphicElement {
 impl From<GraphicGroup> for GraphicElement {
 	fn from(graphic_group: GraphicGroup) -> Self {
 		GraphicElement::GraphicGroup(graphic_group)
-	}
-}
-impl From<SurfaceFrame> for GraphicElement {
-	fn from(surface: SurfaceFrame) -> Self {
-		GraphicElement::Surface(surface)
-	}
-}
-impl From<alloc::sync::Arc<SurfaceHandleFrame<HtmlCanvasElement>>> for GraphicElement {
-	fn from(surface: alloc::sync::Arc<SurfaceHandleFrame<HtmlCanvasElement>>) -> Self {
-		let surface_id = surface.surface_handle.window_id;
-		let transform = surface.transform;
-		GraphicElement::Surface(SurfaceFrame {
-			surface_id,
-			transform,
-			resolution: UVec2 {
-				x: surface.surface_handle.surface.width(),
-				y: surface.surface_handle.surface.height(),
-			},
-		})
-	}
-}
-impl From<SurfaceHandleFrame<HtmlCanvasElement>> for GraphicElement {
-	fn from(surface: SurfaceHandleFrame<HtmlCanvasElement>) -> Self {
-		let surface_id = surface.surface_handle.window_id;
-		let transform = surface.transform;
-		GraphicElement::Surface(SurfaceFrame {
-			surface_id,
-			transform,
-			resolution: UVec2 {
-				x: surface.surface_handle.surface.width(),
-				y: surface.surface_handle.surface.height(),
-			},
-		})
 	}
 }
 

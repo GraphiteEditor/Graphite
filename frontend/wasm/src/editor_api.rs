@@ -948,10 +948,10 @@ fn set_timeout(f: &Closure<dyn FnMut()>, delay: Duration) {
 }
 
 /// Provides access to the `Editor` by calling the given closure with it as an argument.
-fn editor<T>(callback: impl FnOnce(&mut editor::application::Editor) -> T) -> T {
+fn editor<T: Default>(callback: impl FnOnce(&mut editor::application::Editor) -> T) -> T {
 	EDITOR.with(|editor| {
-		let mut guard = editor.lock();
-		let Ok(Some(ref mut editor)) = guard.as_deref_mut() else { panic!("Failed to borrow the editor") };
+		let mut guard = editor.try_lock();
+		let Ok(Some(ref mut editor)) = guard.as_deref_mut() else { return T::default() };
 
 		callback(editor)
 	})
@@ -961,7 +961,7 @@ fn editor<T>(callback: impl FnOnce(&mut editor::application::Editor) -> T) -> T 
 pub(crate) fn editor_and_handle(mut callback: impl FnMut(&mut Editor, &mut EditorHandle)) {
 	EDITOR_HANDLE.with(|editor_handle| {
 		editor(|editor| {
-			let mut guard = editor_handle.lock();
+			let mut guard = editor_handle.try_lock();
 			let Ok(Some(ref mut editor_handle)) = guard.as_deref_mut() else {
 				log::error!("Failed to borrow editor handle");
 				return;
@@ -979,7 +979,9 @@ async fn poll_node_graph_evaluation() {
 		return;
 	}
 
-	editor::node_graph_executor::run_node_graph().await;
+	if !editor::node_graph_executor::run_node_graph().await {
+		return;
+	};
 
 	editor_and_handle(|editor, handle| {
 		let mut messages = VecDeque::new();

@@ -14,7 +14,8 @@ nightly = []
 alloc = ["dyn-any", "bezier-rs"]
 type_id_logging = []
 wasm = ["web-sys"]
-vello = ["dep:vello", "bezier-rs/kurbo"]
+wgpu = ["dep:wgpu"]
+vello = ["dep:vello", "bezier-rs/kurbo", "wgpu"]
 std = [
 	"dyn-any",
 	"dyn-any/std",
@@ -59,6 +60,7 @@ bezier-rs = { workspace = true, optional = true }
 kurbo = { workspace = true, optional = true }
 base64 = { workspace = true, optional = true }
 vello = { workspace  = true, optional = true }
+wgpu = { workspace = true, optional = true }
 specta = { workspace = true, optional = true }
 rustybuzz = { workspace = true, optional = true }
 wasm-bindgen = { workspace = true, optional = true }

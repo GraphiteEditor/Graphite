@@ -3,13 +3,12 @@ mod rect;
 pub use quad::Quad;
 pub use rect::Rect;
 
-use crate::raster::bbox::Bbox;
 use crate::raster::{BlendMode, Image, ImageFrame};
 use crate::transform::Transform;
 use crate::uuid::generate_uuid;
 use crate::vector::style::{Fill, Stroke, ViewMode};
 use crate::vector::PointId;
-use crate::SurfaceFrame;
+use crate::Raster;
 use crate::{vector::VectorData, Artboard, Color, GraphicElement, GraphicGroup};
 
 use bezier_rs::Subpath;
@@ -219,6 +218,12 @@ pub enum ImageRenderMode {
 	Base64,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct RenderContext {
+	#[cfg(feature = "wgpu")]
+	pub ressource_overrides: std::collections::HashMap<u64, alloc::sync::Arc<wgpu::Texture>>,
+}
+
 /// Static state used whilst rendering
 #[derive(Default)]
 pub struct RenderParams {
@@ -268,13 +273,13 @@ pub trait GraphicElementRendered {
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]>;
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>);
 	#[cfg(feature = "vello")]
-	fn to_vello_scene(&self, transform: DAffine2) -> Scene {
+	fn to_vello_scene(&self, transform: DAffine2, context: &mut RenderContext) -> Scene {
 		let mut scene = vello::Scene::new();
-		self.render_to_vello(&mut scene, transform);
+		self.render_to_vello(&mut scene, transform, context);
 		scene
 	}
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2) {}
+	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2, _render_condext: &mut RenderContext) {}
 
 	fn contains_artboard(&self) -> bool {
 		false
@@ -323,7 +328,7 @@ impl GraphicElementRendered for GraphicGroup {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2) {
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
 		let child_transform = transform * self.transform;
 
 		let Some(bounds) = self.bounding_box(transform) else { return };
@@ -340,7 +345,7 @@ impl GraphicElementRendered for GraphicGroup {
 			);
 		}
 		for element in self.iter() {
-			element.render_to_vello(scene, child_transform);
+			element.render_to_vello(scene, child_transform, context);
 		}
 		if layer {
 			scene.pop_layer();
@@ -406,7 +411,7 @@ impl GraphicElementRendered for VectorData {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2) {
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext) {
 		use crate::vector::style::GradientType;
 		use vello::peniko;
 
@@ -593,7 +598,7 @@ impl GraphicElementRendered for Artboard {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2) {
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
 		use vello::peniko;
 
 		// Render background
@@ -608,7 +613,7 @@ impl GraphicElementRendered for Artboard {
 		if self.clip {
 			scene.push_layer(blend_mode, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
 		}
-		self.graphic_group.render_to_vello(scene, transform);
+		self.graphic_group.render_to_vello(scene, transform, context);
 		if self.clip {
 			scene.pop_layer();
 		}
@@ -643,50 +648,14 @@ impl GraphicElementRendered for crate::ArtboardGroup {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2) {
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
 		for artboard in &self.artboards {
-			artboard.render_to_vello(scene, transform)
+			artboard.render_to_vello(scene, transform, context)
 		}
 	}
 
 	fn contains_artboard(&self) -> bool {
 		!self.artboards.is_empty()
-	}
-}
-
-impl GraphicElementRendered for SurfaceFrame {
-	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
-		let transform = self.transform;
-
-		let (width, height) = (transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
-
-		let matrix = format_transform_matrix(transform * DAffine2::from_scale((width, height).into()).inverse());
-		let transform = if matrix.is_empty() { String::new() } else { format!(r#" transform="{}""#, matrix) };
-
-		let canvas = format!(
-			r#"<foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="canvas{}"></div></foreignObject>"#,
-			width.abs(),
-			height.abs(),
-			self.surface_id
-		);
-		render.svg.push(canvas.into())
-	}
-
-	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2) {
-		todo!()
-	}
-
-	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		let bbox = Bbox::from_transform(transform);
-		let aabb = bbox.to_axis_aligned_bbox();
-		Some([aabb.start, aabb.end])
-	}
-
-	fn add_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
-
-	fn contains_artboard(&self) -> bool {
-		false
 	}
 }
 
@@ -737,7 +706,7 @@ impl GraphicElementRendered for ImageFrame<Color> {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2) {
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext) {
 		use vello::peniko;
 
 		let image = &self.image;
@@ -756,51 +725,135 @@ impl GraphicElementRendered for ImageFrame<Color> {
 		scene.draw_image(&image, vello::kurbo::Affine::new(transform.to_cols_array()));
 	}
 }
+impl GraphicElementRendered for Raster {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		let transform = self.transform() * render.transform;
+
+		match render_params.image_render_mode {
+			ImageRenderMode::Base64 => {
+				let image = match self {
+					Raster::ImageFrame(ref image) => image,
+					Raster::Texture(_) => return,
+				};
+				let (image, blending) = (&image.image, image.alpha_blending);
+				if image.data.is_empty() {
+					return;
+				}
+
+				let base64_string = image.base64_string.clone().unwrap_or_else(|| {
+					let output = image.to_png();
+					let preamble = "data:image/png;base64,";
+					let mut base64_string = String::with_capacity(preamble.len() + output.len() * 4);
+					base64_string.push_str(preamble);
+					base64::engine::general_purpose::STANDARD.encode_string(output, &mut base64_string);
+					base64_string
+				});
+				render.leaf_tag("image", |attributes| {
+					attributes.push("width", 1.to_string());
+					attributes.push("height", 1.to_string());
+					attributes.push("preserveAspectRatio", "none");
+					attributes.push("href", base64_string);
+					let matrix = format_transform_matrix(transform);
+					if !matrix.is_empty() {
+						attributes.push("transform", matrix);
+					}
+					if blending.blend_mode != BlendMode::default() {
+						attributes.push("style", blending.blend_mode.render());
+					}
+				});
+			}
+		}
+	}
+
+	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
+		let transform = self.transform() * transform;
+		(transform.matrix2 != glam::DMat2::ZERO).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
+	}
+
+	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+		click_targets.push(ClickTarget::new(subpath, 0.));
+	}
+
+	#[cfg(feature = "vello")]
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
+		use vello::peniko;
+
+		match self {
+			Raster::ImageFrame(image_frame) => {
+				let image = &image_frame.image;
+				if image.data.is_empty() {
+					return;
+				}
+				let image = vello::peniko::Image {
+					data: image.to_flat_u8().0.into(),
+					width: image.width,
+					height: image.height,
+					format: peniko::Format::Rgba8,
+					extend: peniko::Extend::Repeat,
+				};
+				let transform = transform * self.transform() * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
+
+				scene.draw_image(&image, vello::kurbo::Affine::new(transform.to_cols_array()));
+			}
+			Raster::Texture(texture) => {
+				let image = vello::peniko::Image {
+					data: vec![].into(),
+					width: texture.texture.width(),
+					height: texture.texture.height(),
+					format: peniko::Format::Rgba8,
+					extend: peniko::Extend::Repeat,
+				};
+				let id = image.data.id();
+				context.ressource_overrides.insert(id, texture.texture.clone());
+
+				let transform = transform * self.transform() * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
+
+				scene.draw_image(&image, vello::kurbo::Affine::new(transform.to_cols_array()));
+			}
+		};
+	}
+}
 
 impl GraphicElementRendered for GraphicElement {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.render_svg(render, render_params),
-			GraphicElement::ImageFrame(image_frame) => image_frame.render_svg(render, render_params),
+			GraphicElement::Raster(raster) => raster.render_svg(render, render_params),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.render_svg(render, render_params),
-			GraphicElement::Surface(surface) => surface.render_svg(render, render_params),
 		}
 	}
 
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		match self {
 			GraphicElement::VectorData(vector_data) => GraphicElementRendered::bounding_box(&**vector_data, transform),
-			GraphicElement::ImageFrame(image_frame) => image_frame.bounding_box(transform),
+			GraphicElement::Raster(raster) => raster.bounding_box(transform),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.bounding_box(transform),
-			GraphicElement::Surface(surface) => surface.bounding_box(transform),
 		}
 	}
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.add_click_targets(click_targets),
-			GraphicElement::ImageFrame(image_frame) => image_frame.add_click_targets(click_targets),
+			GraphicElement::Raster(raster) => raster.add_click_targets(click_targets),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.add_click_targets(click_targets),
-			GraphicElement::Surface(surface) => surface.add_click_targets(click_targets),
 		}
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2) {
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
 		match self {
-			GraphicElement::VectorData(vector_data) => vector_data.render_to_vello(scene, transform),
-			GraphicElement::ImageFrame(image_frame) => image_frame.render_to_vello(scene, transform),
-			GraphicElement::GraphicGroup(graphic_group) => graphic_group.render_to_vello(scene, transform),
-			GraphicElement::Surface(surface) => surface.render_to_vello(scene, transform),
+			GraphicElement::VectorData(vector_data) => vector_data.render_to_vello(scene, transform, context),
+			GraphicElement::GraphicGroup(graphic_group) => graphic_group.render_to_vello(scene, transform, context),
+			GraphicElement::Raster(raster) => raster.render_to_vello(scene, transform, context),
 		}
 	}
 
 	fn contains_artboard(&self) -> bool {
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.contains_artboard(),
-			GraphicElement::ImageFrame(image_frame) => image_frame.contains_artboard(),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.contains_artboard(),
-			GraphicElement::Surface(surface) => surface.contains_artboard(),
+			GraphicElement::Raster(raster) => raster.contains_artboard(),
 		}
 	}
 }

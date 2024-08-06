@@ -199,7 +199,7 @@ pub struct MaskImageNode<P, S, Stencil> {
 fn mask_image<
 	// _P is the color of the input image. It must have an alpha channel because that is going to
 	// be modified by the mask
-	_P: Copy + Alpha,
+	_P: Alpha,
 	// _S is the color of the stencil. It must have a luminance channel because that is used to
 	// mask the input image
 	_S: Luminance,
