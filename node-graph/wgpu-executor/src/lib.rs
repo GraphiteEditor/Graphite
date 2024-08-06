@@ -523,7 +523,10 @@ impl WgpuExecutor {
 
 		Ok(SurfaceHandle {
 			window_id: window.window_id,
-			surface: Surface { inner: surface, ..Default::default() },
+			surface: Surface {
+				inner: surface,
+				resolution: UVec2::ZERO,
+			},
 		})
 	}
 }
