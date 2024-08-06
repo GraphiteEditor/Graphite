@@ -4439,15 +4439,14 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 			nodes: [
 				DocumentNode {
 					inputs: vec![NodeInput::scope("editor-api")],
-					manual_composition: Some(concrete!(Footprint)),
-					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::CreateGpuSurfaceNode<_>")),
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::CreateGpuSurfaceNode")),
 					skip_deduplication: true,
 					..Default::default()
 				},
 				DocumentNode {
-					manual_composition: Some(concrete!(Footprint)),
+					manual_composition: Some(concrete!(())),
 					inputs: vec![NodeInput::node(NodeId(0), 0)],
-					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode<_, _, _>")),
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 					..Default::default()
 				},
 				// TODO: Add conversion step

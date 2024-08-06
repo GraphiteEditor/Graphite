@@ -66,7 +66,7 @@ impl Size for web_sys::HtmlCanvasElement {
 impl<S: Size> From<SurfaceHandleFrame<S>> for SurfaceFrame {
 	fn from(x: SurfaceHandleFrame<S>) -> Self {
 		Self {
-			surface_id: x.surface_handle.surface_id,
+			surface_id: x.surface_handle.window_id,
 			transform: x.transform,
 			resolution: x.surface_handle.surface.size(),
 		}
@@ -75,9 +75,10 @@ impl<S: Size> From<SurfaceHandleFrame<S>> for SurfaceFrame {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SurfaceHandle<Surface> {
-	pub surface_id: SurfaceId,
+	pub window_id: SurfaceId,
 	pub surface: Surface,
 }
+
 // #[cfg(target_arch = "wasm32")]
 // unsafe impl<T: dyn_any::WasmNotSend> Send for SurfaceHandle<T> {}
 // #[cfg(target_arch = "wasm32")]
@@ -131,8 +132,9 @@ pub type ResourceFuture = Pin<Box<dyn Future<Output = Result<Arc<[u8]>, Applicat
 pub trait ApplicationIo {
 	type Surface;
 	type Executor;
-	fn create_surface(&self) -> SurfaceHandle<Self::Surface>;
-	fn destroy_surface(&self, surface_id: SurfaceId);
+	fn window(&self) -> Option<SurfaceHandle<Self::Surface>>;
+	fn create_window(&self) -> SurfaceHandle<Self::Surface>;
+	fn destroy_window(&self, surface_id: SurfaceId);
 	fn gpu_executor(&self) -> Option<&Self::Executor> {
 		None
 	}
@@ -143,12 +145,16 @@ impl<T: ApplicationIo> ApplicationIo for &T {
 	type Surface = T::Surface;
 	type Executor = T::Executor;
 
-	fn create_surface(&self) -> SurfaceHandle<T::Surface> {
-		(**self).create_surface()
+	fn window(&self) -> Option<SurfaceHandle<Self::Surface>> {
+		(**self).window()
 	}
 
-	fn destroy_surface(&self, surface_id: SurfaceId) {
-		(**self).destroy_surface(surface_id)
+	fn create_window(&self) -> SurfaceHandle<T::Surface> {
+		(**self).create_window()
+	}
+
+	fn destroy_window(&self, surface_id: SurfaceId) {
+		(**self).destroy_window(surface_id)
 	}
 
 	fn gpu_executor(&self) -> Option<&T::Executor> {

@@ -123,7 +123,7 @@ pub struct Surface {
 #[cfg(target_arch = "wasm32")]
 pub type Window = HtmlCanvasElement;
 #[cfg(not(target_arch = "wasm32"))]
-pub type Window = winit::window::Window;
+pub type Window = Arc<winit::window::Window>;
 
 unsafe impl StaticType for Surface {
 	type Static = Surface;
@@ -509,22 +509,8 @@ impl WgpuExecutor {
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.surface))?;
 		let resolution = resolution.unwrap_or(UVec2::new(1920, 1080));
 
-		// let surface_caps = surface.get_capabilities(&self.context.adapter);
-		// let surface_format = wgpu::TextureFormat::Rgba16Float;
-		// let config = wgpu::SurfaceConfiguration {
-		// 	usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-		// 	format: surface_format,
-		// 	width: 1920,
-		// 	height: 1080,
-		// 	present_mode: surface_caps.present_modes[0],
-		// 	alpha_mode: surface_caps.alpha_modes[0],
-		// 	view_formats: vec![],
-		// 	desired_maximum_frame_latency: 2,
-		// };
-		// surface.configure(&self.context.device, &config);
-		// self.surface_config.set(Some(config));
 		Ok(SurfaceHandle {
-			surface_id: canvas.surface_id,
+			window_id: canvas.window_id,
 			surface: Surface { inner: surface, resolution },
 		})
 	}
@@ -534,24 +520,8 @@ impl WgpuExecutor {
 		let resolution = resolution.unwrap_or(UVec2 { x: size.width, y: size.height });
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Window(Box::new(window.surface)))?;
 
-		let surface_caps = surface.get_capabilities(&self.context.adapter);
-		println!("{surface_caps:?}");
-		let surface_format = wgpu::TextureFormat::Rgba16Float;
-		let _config = wgpu::SurfaceConfiguration {
-			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-			format: surface_format,
-			width: resolution.x,
-			height: resolution.y,
-			present_mode: surface_caps.present_modes[0],
-			alpha_mode: surface_caps.alpha_modes[0],
-			view_formats: vec![],
-			desired_maximum_frame_latency: 2,
-		};
-		// surface.configure(&self.context.device, &config);
-
-		let surface_id = window.surface_id;
 		Ok(SurfaceHandle {
-			surface_id,
+			window_id: window.window_id,
 			surface: Surface { inner: surface, resolution },
 		})
 	}
@@ -929,17 +899,25 @@ async fn read_output_buffer_node<'a: 'input>(buffer: Arc<WgpuShaderInput>, execu
 	executor.read_output_buffer(buffer).await.unwrap()
 }
 
-pub struct CreateGpuSurfaceNode<EditorApi> {
+pub type WindowHandle = Arc<SurfaceHandle<Window>>;
+
+pub struct CreateGpuSurfaceNode;
+
+#[node_macro::node_fn(CreateGpuSurfaceNode)]
+async fn create_gpu_surface<'a: 'input, Io: ApplicationIo<Executor = WgpuExecutor, Surface = Window> + 'a + Send + Sync>(editor_api: &'a EditorApi<Io>) -> Option<WgpuSurface> {
+	let canvas = editor_api.application_io.as_ref()?.window()?;
+	let executor = editor_api.application_io.as_ref()?.gpu_executor()?;
+	Some(Arc::new(executor.create_surface(canvas, None).ok()?))
+}
+pub struct ConfigureGpuSurfaceNode<EditorApi> {
 	editor_api: EditorApi,
 }
 
-pub type WindowHandle = Arc<SurfaceHandle<Window>>;
-
-#[node_macro::node_fn(CreateGpuSurfaceNode)]
-async fn create_gpu_surface<'a: 'input, Io: ApplicationIo<Executor = WgpuExecutor, Surface = Window> + 'a + Send + Sync>(footprint: Footprint, editor_api: &'a EditorApi<Io>) -> Option<WgpuSurface> {
-	let canvas = editor_api.application_io.as_ref()?.create_surface();
+#[node_macro::node_fn(ConfigureGpuSurfaceNode)]
+async fn create_gpu_surface<'a: 'input, Io: ApplicationIo<Executor = WgpuExecutor, Surface = Window> + 'a + Send + Sync>(resolution: UVec2, editor_api: &'a EditorApi<Io>) -> Option<WgpuSurface> {
+	let canvas = editor_api.application_io.as_ref()?.create_window();
 	let executor = editor_api.application_io.as_ref()?.gpu_executor()?;
-	Some(Arc::new(executor.create_surface(canvas, Some(footprint.resolution)).ok()?))
+	Some(Arc::new(executor.create_surface(canvas, Some(resolution)).ok()?))
 }
 
 pub struct RenderTextureNode<Image, Surface, EditorApi> {
@@ -957,7 +935,7 @@ pub struct ShaderInputFrame {
 #[node_macro::node_fn(RenderTextureNode)]
 async fn render_texture_node<'a: 'input>(footprint: Footprint, image: impl Node<Footprint, Output = ShaderInputFrame>, surface: Option<WgpuSurface>, executor: &'a WgpuExecutor) -> SurfaceFrame {
 	let surface = surface.unwrap();
-	let surface_id = surface.surface_id;
+	let surface_id = surface.window_id;
 	let image = self.image.eval(footprint).await;
 	let transform = image.transform;
 

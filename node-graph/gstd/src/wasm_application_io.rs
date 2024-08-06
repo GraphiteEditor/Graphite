@@ -28,7 +28,7 @@ pub struct CreateSurfaceNode {}
 
 #[node_macro::node_fn(CreateSurfaceNode)]
 async fn create_surface_node<'a: 'input>(editor: &'a WasmEditorApi) -> Arc<WasmSurfaceHandle> {
-	Arc::new(editor.application_io.as_ref().unwrap().create_surface())
+	Arc::new(editor.application_io.as_ref().unwrap().create_window())
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -207,7 +207,7 @@ async fn render_node<'a: 'input, T: 'input + GraphicElementRendered + WasmNotSen
 	render_config: RenderConfig,
 	editor_api: &'a WasmEditorApi,
 	data: impl Node<Footprint, Output = T>,
-	_surface_handle: impl Node<Footprint, Output = Option<wgpu_executor::WgpuSurface>>,
+	_surface_handle: impl Node<(), Output = Option<wgpu_executor::WgpuSurface>>,
 ) -> RenderOutput {
 	let footprint = render_config.viewport;
 
@@ -216,7 +216,7 @@ async fn render_node<'a: 'input, T: 'input + GraphicElementRendered + WasmNotSen
 
 	let data = self.data.eval(footprint).await;
 	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
-	let surface_handle = self._surface_handle.eval(footprint).await;
+	let surface_handle = self._surface_handle.eval(()).await;
 	let use_vello = editor_api.editor_preferences.use_vello();
 	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
 	let use_vello = use_vello && surface_handle.is_some();
