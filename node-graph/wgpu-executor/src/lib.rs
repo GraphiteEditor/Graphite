@@ -505,24 +505,22 @@ impl WgpuExecutor {
 	}
 
 	#[cfg(target_arch = "wasm32")]
-	pub fn create_surface(&self, canvas: graphene_core::WasmSurfaceHandle, resolution: Option<UVec2>) -> Result<SurfaceHandle<Surface>> {
+	pub fn create_surface(&self, canvas: graphene_core::WasmSurfaceHandle) -> Result<SurfaceHandle<Surface>> {
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.surface))?;
-		let resolution = resolution.unwrap_or(UVec2::new(1920, 1080));
 
 		Ok(SurfaceHandle {
 			window_id: canvas.window_id,
-			surface: Surface { inner: surface, resolution },
+			surface: Surface { inner: surface, ..Default::default() },
 		})
 	}
 	#[cfg(not(target_arch = "wasm32"))]
-	pub fn create_surface(&self, window: SurfaceHandle<Window>, resolution: Option<UVec2>) -> Result<SurfaceHandle<Surface>> {
+	pub fn create_surface(&self, window: SurfaceHandle<Window>) -> Result<SurfaceHandle<Surface>> {
 		let size = window.surface.inner_size();
-		let resolution = resolution.unwrap_or(UVec2 { x: size.width, y: size.height });
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Window(Box::new(window.surface)))?;
 
 		Ok(SurfaceHandle {
 			window_id: window.window_id,
-			surface: Surface { inner: surface, resolution },
+			surface: Surface { inner: surface, ..Default::default() },
 		})
 	}
 }
@@ -907,17 +905,7 @@ pub struct CreateGpuSurfaceNode;
 async fn create_gpu_surface<'a: 'input, Io: ApplicationIo<Executor = WgpuExecutor, Surface = Window> + 'a + Send + Sync>(editor_api: &'a EditorApi<Io>) -> Option<WgpuSurface> {
 	let canvas = editor_api.application_io.as_ref()?.window()?;
 	let executor = editor_api.application_io.as_ref()?.gpu_executor()?;
-	Some(Arc::new(executor.create_surface(canvas, None).ok()?))
-}
-pub struct ConfigureGpuSurfaceNode<EditorApi> {
-	editor_api: EditorApi,
-}
-
-#[node_macro::node_fn(ConfigureGpuSurfaceNode)]
-async fn create_gpu_surface<'a: 'input, Io: ApplicationIo<Executor = WgpuExecutor, Surface = Window> + 'a + Send + Sync>(resolution: UVec2, editor_api: &'a EditorApi<Io>) -> Option<WgpuSurface> {
-	let canvas = editor_api.application_io.as_ref()?.create_window();
-	let executor = editor_api.application_io.as_ref()?.gpu_executor()?;
-	Some(Arc::new(executor.create_surface(canvas, Some(resolution)).ok()?))
+	Some(Arc::new(executor.create_surface(canvas).ok()?))
 }
 
 pub struct RenderTextureNode<Image, Surface, EditorApi> {
