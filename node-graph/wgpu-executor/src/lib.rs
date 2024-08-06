@@ -510,7 +510,10 @@ impl WgpuExecutor {
 
 		Ok(SurfaceHandle {
 			window_id: canvas.window_id,
-			surface: Surface { inner: surface, ..Default::default() },
+			surface: Surface {
+				inner: surface,
+				resolution: UVec2::ZERO,
+			},
 		})
 	}
 	#[cfg(not(target_arch = "wasm32"))]
