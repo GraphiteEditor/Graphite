@@ -480,7 +480,7 @@ macro_rules! generate_imaginate_node {
 			generation_id: G,
 			$($val: $t,)*
 			cache: std::sync::Arc<std::sync::Mutex<HashMap<u64, Image<P>>>>,
-			last_generation: u64,
+			last_generation: std::sync::atomic::AtomicU64,
 		}
 
 		impl<'e, P: Pixel, E, C, G, $($t,)*> ImaginateNode<P, E, C, G, $($t,)*>
@@ -491,7 +491,7 @@ macro_rules! generate_imaginate_node {
 		{
 			#[allow(clippy::too_many_arguments)]
 			pub fn new(editor_api: E, controller: C, $($val: $t,)*  generation_id: G ) -> Self {
-				Self { editor_api, controller, generation_id, $($val,)* cache: Default::default(), last_generation: u64::MAX }
+				Self { editor_api, controller, generation_id, $($val,)* cache: Default::default(), last_generation: std::sync::atomic::AtomicU64::new(u64::MAX) }
 			}
 		}
 
@@ -513,22 +513,41 @@ macro_rules! generate_imaginate_node {
 				let hash = hasher.finish();
 				let editor_api = self.editor_api.eval(());
 				let cache = self.cache.clone();
+				let generation_future = self.generation_id.eval(());
+				let last_generation = &self.last_generation;
 
 				Box::pin(async move {
 					let controller: ImaginateController = controller.await;
-					let generation_id = self.generation_id.eval(()).await;
-					if generation_id !=  self.last_generation {
+					let generation_id = generation_future.await;
+					if generation_id !=  last_generation.swap(generation_id, std::sync::atomic::Ordering::SeqCst) {
 						let image = super::imaginate::imaginate(frame.image, editor_api, controller, $($val,)*).await;
 
 						cache.lock().unwrap().insert(hash, image.clone());
 
-						return ImageFrame { image, ..frame }
+						return wrap_image_frame(image, frame.transform);
 					}
 					let image = cache.lock().unwrap().get(&hash).cloned().unwrap_or_default();
 
-					ImageFrame { image, ..frame }
+					return wrap_image_frame(image, frame.transform);
 				})
 			}
+		}
+	}
+}
+
+fn wrap_image_frame<P: Pixel>(image: Image<P>, transform: DAffine2) -> ImageFrame<P> {
+	if !transform.decompose_scale().abs_diff_eq(DVec2::ZERO, 0.00001) {
+		ImageFrame {
+			image,
+			transform,
+			alpha_blending: AlphaBlending::default(),
+		}
+	} else {
+		let resolution = DVec2::new(image.height as f64, image.width as f64);
+		ImageFrame {
+			image,
+			transform: DAffine2::from_scale_angle_translation(resolution, 0., transform.translation),
+			alpha_blending: AlphaBlending::default(),
 		}
 	}
 }
