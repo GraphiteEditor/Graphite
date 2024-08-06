@@ -474,28 +474,32 @@ fn empty_image<_P: Pixel>(transform: DAffine2, color: _P) -> ImageFrame<_P> {
 #[cfg(feature = "serde")]
 macro_rules! generate_imaginate_node {
 	($($val:ident: $t:ident: $o:ty,)*) => {
-		pub struct ImaginateNode<P: Pixel, E, C, $($t,)*> {
+		pub struct ImaginateNode<P: Pixel, E, C, G, $($t,)*> {
 			editor_api: E,
 			controller: C,
+			generation_id: G,
 			$($val: $t,)*
 			cache: std::sync::Arc<std::sync::Mutex<HashMap<u64, Image<P>>>>,
+			last_generation: u64,
 		}
 
-		impl<'e, P: Pixel, E, C, $($t,)*> ImaginateNode<P, E, C, $($t,)*>
+		impl<'e, P: Pixel, E, C, G, $($t,)*> ImaginateNode<P, E, C, G, $($t,)*>
 		where $($t: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, $o>>,)*
 			E: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, &'e WasmEditorApi>>,
 			C: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, ImaginateController>>,
+			G: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, u64>>,
 		{
 			#[allow(clippy::too_many_arguments)]
-			pub fn new(editor_api: E, controller: C, $($val: $t,)* ) -> Self {
-				Self { editor_api, controller, $($val,)* cache: Default::default() }
+			pub fn new(editor_api: E, controller: C, $($val: $t,)*  generation_id: G ) -> Self {
+				Self { editor_api, controller, generation_id, $($val,)* cache: Default::default(), last_generation: u64::MAX }
 			}
 		}
 
-		impl<'i, 'e: 'i, P: Pixel + 'i + Hash + Default + Send, E: 'i, C: 'i, $($t: 'i,)*> Node<'i, ImageFrame<P>> for ImaginateNode<P, E, C, $($t,)*>
+		impl<'i, 'e: 'i, P: Pixel + 'i + Hash + Default + Send, E: 'i, C: 'i, G: 'i, $($t: 'i,)*> Node<'i, ImageFrame<P>> for ImaginateNode<P, E, C, G, $($t,)*>
 		where $($t: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, $o>>,)*
 			E: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, &'e WasmEditorApi>>,
 			C: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, ImaginateController>>,
+			G: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, u64>>,
 		{
 			type Output = DynFuture<'i, ImageFrame<P>>;
 
@@ -511,9 +515,9 @@ macro_rules! generate_imaginate_node {
 				let cache = self.cache.clone();
 
 				Box::pin(async move {
-					// let controller: std::pin::Pin<Box<dyn std::future::Future<Output = ImaginateController> + Send>> = controller;
 					let controller: ImaginateController = controller.await;
-					if controller.take_regenerate_trigger() {
+					let generation_id = self.generation_id.eval(()).await;
+					if generation_id !=  self.last_generation {
 						let image = super::imaginate::imaginate(frame.image, editor_api, controller, $($val,)*).await;
 
 						cache.lock().unwrap().insert(hash, image.clone());

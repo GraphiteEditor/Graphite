@@ -568,14 +568,14 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		raster_node!(graphene_core::raster::PosterizeNode<_>, params: [f64]),
 		raster_node!(graphene_core::raster::ExposureNode<_, _, _>, params: [f64, f64, f64]),
 		vec![(
-			ProtoNodeIdentifier::new("graphene_std::raster::ImaginateNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
+			ProtoNodeIdentifier::new("graphene_std::raster::ImaginateNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
 			|args: Vec<graph_craft::proto::SharedNodeContainer>| {
 				Box::pin(async move {
 					use graphene_std::raster::ImaginateNode;
 					macro_rules! instantiate_imaginate_node {
 								($($i:expr,)*) => { ImaginateNode::new($(graphene_std::any::input_node(args[$i].clone()),)* ) };
 							}
-					let node: ImaginateNode<Color, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _> = instantiate_imaginate_node!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,);
+					let node: ImaginateNode<Color, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _> = instantiate_imaginate_node!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,);
 					let any = graphene_std::any::DynAnyNode::new(node);
 					any.into_type_erased()
 				})
@@ -584,9 +584,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				concrete!(ImageFrame<Color>),
 				concrete!(ImageFrame<Color>),
 				vec![
-					fn_type!(WasmEditorApi),
+					fn_type!(&WasmEditorApi),
 					fn_type!(ImaginateController),
-					fn_type!(u64),
+					fn_type!(f64),
 					fn_type!(Option<DVec2>),
 					fn_type!(u32),
 					fn_type!(ImaginateSamplingMethod),
@@ -600,6 +600,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					fn_type!(ImaginateMaskStartingFill),
 					fn_type!(bool),
 					fn_type!(bool),
+					fn_type!(u64),
 				],
 			),
 		)],

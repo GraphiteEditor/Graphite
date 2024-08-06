@@ -493,7 +493,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				responses.add(DocumentMessage::MoveSelectedLayersToGroup { parent: new_group_folder });
 			}
-			DocumentMessage::ImaginateGenerate => responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false }),
+			DocumentMessage::ImaginateGenerate { imaginate_node } => {
+				let random_value = generate_uuid();
+				responses.add(NodeGraphMessage::SetInputValue {
+					node_id: *imaginate_node.last().unwrap(),
+					// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeDefinition` in `document_node_type.rs`
+					input_index: 17,
+					value: graph_craft::document::value::TaggedValue::U64(random_value),
+				});
+
+				responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false });
+			}
 			DocumentMessage::ImaginateRandom { imaginate_node, then_generate } => {
 				// Generate a random seed. We only want values between -2^53 and 2^53, because integer values
 				// outside of this range can get rounded in f64
@@ -511,7 +521,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				// Generate the image
 				if then_generate {
-					responses.add(DocumentMessage::ImaginateGenerate);
+					responses.add(DocumentMessage::ImaginateGenerate { imaginate_node });
 				}
 			}
 			DocumentMessage::ImportSvg {

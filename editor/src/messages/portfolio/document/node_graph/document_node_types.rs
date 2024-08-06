@@ -4272,14 +4272,14 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 					DocumentNode {
 						inputs: vec![NodeInput::network(concrete!(ImageFrame<Color>), 0)],
 						implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"),
-						manual_composition: Some(generic!(T)),
+						manual_composition: Some(concrete!(())),
 						skip_deduplication: true,
 						..Default::default()
 					},
 					DocumentNode {
 						inputs: vec![
 							NodeInput::node(NodeId(0), 0),
-							NodeInput::scope("editor-api"),
+							NodeInput::network(concrete!(&WasmEditorApi), 1),
 							NodeInput::network(concrete!(ImaginateController), 2),
 							NodeInput::network(concrete!(f64), 3),
 							NodeInput::network(concrete!(Option<DVec2>), 4),
@@ -4295,8 +4295,9 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 							NodeInput::network(concrete!(ImaginateMaskStartingFill), 14),
 							NodeInput::network(concrete!(bool), 15),
 							NodeInput::network(concrete!(bool), 16),
+							NodeInput::network(concrete!(u64), 17),
 						],
-						implementation: DocumentNodeImplementation::proto("graphene_std::raster::ImaginateNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
+						implementation: DocumentNodeImplementation::proto("graphene_std::raster::ImaginateNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
 						..Default::default()
 					},
 				]
@@ -4310,7 +4311,7 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 				NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				NodeInput::scope("editor-api"),
 				NodeInput::value(TaggedValue::ImaginateController(Default::default()), false),
-				NodeInput::value(TaggedValue::U64(0), false), // Remember to keep index used in `ImaginateRandom` updated with this entry's index
+				NodeInput::value(TaggedValue::F64(0.), false), // Remember to keep index used in `ImaginateRandom` updated with this entry's index
 				NodeInput::value(TaggedValue::OptionalDVec2(None), false),
 				NodeInput::value(TaggedValue::U32(30), false),
 				NodeInput::value(TaggedValue::ImaginateSamplingMethod(ImaginateSamplingMethod::EulerA), false),
@@ -4324,6 +4325,7 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 				NodeInput::value(TaggedValue::ImaginateMaskStartingFill(ImaginateMaskStartingFill::Fill), false),
 				NodeInput::value(TaggedValue::Bool(false), false),
 				NodeInput::value(TaggedValue::Bool(false), false),
+				NodeInput::value(TaggedValue::U64(0), false),
 			],
 			..Default::default()
 		},
