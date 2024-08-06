@@ -942,19 +942,23 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						}
 					}
 				}
-				for node_id in node_ids {
-					network_interface.shift_node(&node_id, IVec2::new(displacement_x, displacement_y), selection_network_path);
 
-					if let Some(outward_wires) = network_interface
-						.outward_wires(selection_network_path)
-						.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(node_id, 0)))
-						.cloned()
+				let mut filtered_node_ids = Vec::new();
+				for selected_node in &node_ids {
+					//Deselect chain nodes upstream from a selected layer
+					if !network_interface.is_chain(selected_node, selection_network_path)
+						|| !network_interface
+							.downstream_layer(selected_node, selection_network_path)
+							.is_some_and(|downstream_layer| node_ids.contains(&downstream_layer.to_node()))
 					{
-						if outward_wires.len() == 1 {
-							network_interface.try_set_upstream_to_chain(&outward_wires[0], selection_network_path)
-						}
+						filtered_node_ids.push(*selected_node)
 					}
 				}
+
+				for node_id in filtered_node_ids {
+					network_interface.shift_node(&node_id, IVec2::new(displacement_x, displacement_y), selection_network_path);
+				}
+
 				if graph_view_overlay_open {
 					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(DocumentMessage::RenderRulers);

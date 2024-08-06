@@ -2429,9 +2429,12 @@ impl NodeNetworkInterface {
 									// TODO: Layout system
 									NodeTypePersistentMetadata::Layer(_) => {
 										// If the layer feeds into the bottom input of layer, set its position to stack at its previous y position
-										// TODO: Retain y position
 										if *input_index == 0 {
-											self.set_stack_position(upstream_node_id, network_path, 0);
+											let Some(downstream_node_position) = self.position(downstream_node_id, network_path) else {
+												log::error!("Could not get downstream node position in set_input for node {downstream_node_id}");
+												return;
+											};
+											self.set_stack_position(upstream_node_id, network_path, (current_node_position.y - downstream_node_position.y - 3).max(0) as u32);
 										} else {
 											self.set_absolute_position(upstream_node_id, network_path, current_node_position);
 										}
@@ -2881,14 +2884,17 @@ impl NodeNetworkInterface {
 			}
 			(false, true) => {
 				// If a node is set to a layer
-				if !self.is_layer(node_id, network_path) && is_layer {
-					if let Some(upstream_sibling_id) = upstream_sibling_id {
-						if self.is_layer(&upstream_sibling_id, network_path) {
-							self.set_stack_position(&upstream_sibling_id, network_path, 0);
-						} else {
-							self.set_upstream_chain_to_absolute(&upstream_sibling_id, network_path);
-						}
+				if let Some(upstream_sibling_id) = upstream_sibling_id {
+					if self.is_layer(&upstream_sibling_id, network_path) {
+						let (Some(toggled_node_position), Some(upstream_node_position)) = (self.position(node_id, network_path), self.position(&upstream_sibling_id, network_path)) else {
+							log::error!("Could not get downstream node position in set_to_node_or_layer");
+							return;
+						};
+						self.set_stack_position(&upstream_sibling_id, network_path, (upstream_node_position.y - toggled_node_position.y - 3).max(0) as u32);
+					} else {
+						self.set_upstream_chain_to_absolute(&upstream_sibling_id, network_path);
 					}
+					self.try_set_upstream_to_chain(&InputConnector::node(*node_id, 1), network_path);
 				}
 			}
 			_ => return,
@@ -3069,7 +3075,7 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn try_set_upstream_to_chain(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) {
-		// If the new input is to a non layer node on the same y position as the input connector, and the input connector is the side input of a layer, then set it to chain position
+		// If the new input is to a non layer node on the same y position as the input connector, or the input connector is the side input of a layer, then set it to chain position
 		if let InputConnector::Node {
 			node_id: input_connector_node_id,
 			input_index,
@@ -3172,10 +3178,25 @@ impl NodeNetworkInterface {
 					return;
 				};
 				self.shift_node(&downstream_node, IVec2::new(shift.x, 0), network_path);
+				// Unload click targets for all upstream nodes, since they may have been derived from the node that was shifted
 			}
+			self.unload_upstream_node_click_targets(vec![*node_id], network_path);
+			self.try_set_upstream_to_chain(&InputConnector::node(*node_id, 1), network_path);
 		} else if let NodeTypePersistentMetadata::Node(node_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
 			if let NodePosition::Absolute(node_metadata) = &mut node_metadata.position {
 				*node_metadata += shift;
+				// Unload click targets for all upstream nodes, since they may have been derived from the node that was shifted
+				self.unload_upstream_node_click_targets(vec![*node_id], network_path);
+
+				if let Some(outward_wires) = self
+					.outward_wires(network_path)
+					.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(*node_id, 0)))
+					.cloned()
+				{
+					if outward_wires.len() == 1 {
+						self.try_set_upstream_to_chain(&outward_wires[0], network_path)
+					}
+				}
 			} else if let NodePosition::Chain = node_metadata.position {
 				// TODO: Don't break the chain when shifting a node left or right. Instead, shift the entire chain (?).
 				// TODO: Instead of outward wires to the export being based on the export (which changes when previewing), it should be based on the root node.
@@ -3183,8 +3204,7 @@ impl NodeNetworkInterface {
 				self.shift_node(node_id, shift, network_path);
 			}
 		}
-		// TODO: Update transient metadata based on the movement. Unloading it means it will be recalculated next time it is needed, which is a simple solution.
-		// Unload click targets for all nodes, since they may have been derived from the node that was shifted
+		// Unload click targets for all upstream nodes, since they may have been derived from the node that was shifted
 		self.unload_upstream_node_click_targets(vec![*node_id], network_path);
 		self.unload_all_nodes_bounding_box(network_path);
 	}
