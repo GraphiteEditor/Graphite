@@ -2662,8 +2662,11 @@ impl NodeNetworkInterface {
 		}
 
 		for delete_node_id in &delete_nodes {
-			let upstream_node = self.upstream_flow_back_from_nodes(vec![*delete_node_id], network_path, FlowType::PrimaryFlow).skip(1).next();
-			let is_chain = upstream_node.is_some_and(|upstream_node| upstream_node.is_chain(delete_node_id, network_path));
+			let upstream_chain_nodes = self
+				.upstream_flow_back_from_nodes(vec![*delete_node_id], network_path, FlowType::PrimaryFlow)
+				.skip(1)
+				.take_while(|upstream_node| self.is_chain(upstream_node, network_path))
+				.collect::<Vec<_>>();
 
 			if !self.remove_references_from_network(delete_node_id, reconnect, network_path) {
 				log::error!("could not remove references from network");
@@ -2691,8 +2694,8 @@ impl NodeNetworkInterface {
 				continue;
 			};
 			network_metadata.persistent_metadata.node_metadata.remove(delete_node_id);
-			if is_chain {
-				self.force_set_upstream_to_chain(upstream_node.unwrap(), network_path);
+			for previous_chain_node in upstream_chain_nodes {
+				self.set_chain_position(&previous_chain_node, network_path);
 			}
 		}
 		self.unload_all_nodes_bounding_box(network_path);
@@ -2860,10 +2863,37 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn set_to_node_or_layer(&mut self, node_id: &NodeId, network_path: &[NodeId], is_layer: bool) {
-		// If a node is set to a layer, or a layer is set to a node, set upstream nodes to absolute position
-		if !self.is_layer(node_id, network_path) && is_layer || self.is_layer(node_id, network_path) && !is_layer {
-			self.set_upstream_chain_to_absolute(node_id, network_path);
-		}
+		// If a layer is set to a node, set upstream nodes to absolute position, and upstream siblings to absolute position
+		let child_id = { self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::HorizontalFlow).skip(1).next() };
+		let upstream_sibling_id = { self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::PrimaryFlow).skip(1).next() };
+		match (self.is_layer(node_id, network_path), is_layer) {
+			(true, false) => {
+				if let Some(child_id) = child_id {
+					self.set_upstream_chain_to_absolute(&child_id, network_path);
+				}
+				if let Some(upstream_sibling_id) = upstream_sibling_id {
+					let Some(upstream_sibling_position) = self.position(&upstream_sibling_id, network_path) else {
+						log::error!("Could not get upstream sibling position in set_to_node_or_layer");
+						return;
+					};
+					self.set_absolute_position(&upstream_sibling_id, network_path, upstream_sibling_position);
+				}
+			}
+			(false, true) => {
+				// If a node is set to a layer
+				if !self.is_layer(node_id, network_path) && is_layer {
+					if let Some(upstream_sibling_id) = upstream_sibling_id {
+						if self.is_layer(&upstream_sibling_id, network_path) {
+							self.set_stack_position(&upstream_sibling_id, network_path, 0);
+						} else {
+							self.set_upstream_chain_to_absolute(&upstream_sibling_id, network_path);
+						}
+					}
+				}
+			}
+			_ => return,
+		};
+
 		let Some(position) = self.position(node_id, network_path) else {
 			log::error!("Could not get position in set_to_node_or_layer");
 			return;
@@ -3097,6 +3127,7 @@ impl NodeNetworkInterface {
 		}
 	}
 
+	/// node_id is the first chain node, not the layer
 	fn set_upstream_chain_to_absolute(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
 		for upstream_id in self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::HorizontalFlow).collect::<Vec<_>>().iter() {
 			let Some(previous_position) = self.position(upstream_id, network_path) else {
@@ -3180,9 +3211,30 @@ impl NodeNetworkInterface {
 			}
 		}
 
+		let previous_upstream_layer = self
+			.upstream_flow_back_from_nodes(vec![layer.to_node()], network_path, FlowType::PrimaryFlow)
+			.skip(1)
+			.find(|node_id| self.is_layer(node_id, network_path));
+
+		let Some(layer_to_move_position) = self.position(&layer.to_node(), network_path) else {
+			log::error!("Could not get layer to move position in move_layer_to_stack");
+			return;
+		};
+
+		// Get the distance between the layer to move and its upstream layer sibling
 		// Disconnect layer to move
 		self.remove_references_from_network(&layer.to_node(), true, network_path);
 		self.disconnect_input(&InputConnector::node(layer.to_node(), 0), network_path);
+
+		// Shift the previous upstream layer to the moved layers position
+		if let Some(previous_upstream_layer) = previous_upstream_layer {
+			let Some(previous_upstream_layer_position) = self.position(&previous_upstream_layer, network_path) else {
+				log::error!("Could not get previous upstream layer position in move_layer_to_stack");
+				return;
+			};
+			let y_offset = layer_to_move_position.y - previous_upstream_layer_position.y;
+			self.shift_node(&previous_upstream_layer, IVec2::new(0, y_offset), network_path);
+		}
 
 		let post_node = ModifyInputsContext::get_post_node_with_index(self, parent, insert_index);
 

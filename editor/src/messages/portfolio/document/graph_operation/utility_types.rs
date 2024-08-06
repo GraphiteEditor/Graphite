@@ -221,11 +221,15 @@ impl<'a> ModifyInputsContext<'a> {
 		// Start from the layer node or export
 		let node_id = self.get_output_layer().map_or(Vec::new(), |output_layer| vec![output_layer.to_node()]);
 
-		let upstream = self.network_interface.upstream_flow_back_from_nodes(node_id, &[], network_interface::FlowType::HorizontalFlow).skip(1);
+		let upstream = self.network_interface.upstream_flow_back_from_nodes(node_id, &[], network_interface::FlowType::HorizontalFlow);
+
+		let is_traversal_start = |node_id: NodeId| {
+			self.layer_node.map(|layer| layer.to_node()) == Some(node_id) || self.network_interface.network(&[]).unwrap().exports.iter().any(|export| export.as_node() == Some(node_id))
+		};
 
 		// Take until another layer node is found (but not the first layer node)
 		let existing_node_id = upstream
-			.take_while(|node_id| !self.network_interface.is_layer(node_id, &[]))
+			.take_while(|node_id| is_traversal_start(*node_id) || !self.network_interface.is_layer(node_id, &[]))
 			.find(|node_id| self.network_interface.reference(node_id, &[]).is_some_and(|node_reference| node_reference == reference));
 
 		// Create a new node if the node does not exist and update its inputs
