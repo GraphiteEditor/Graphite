@@ -1,4 +1,3 @@
-use glam::UVec2;
 pub use graph_craft::document::value::RenderOutput;
 pub use graph_craft::wasm_application_io::*;
 #[cfg(target_arch = "wasm32")]

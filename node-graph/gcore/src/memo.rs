@@ -1,11 +1,13 @@
 use crate::{Node, WasmNotSend};
-use core::future::Future;
-use core::ops::Deref;
-use std::{hash::DefaultHasher, sync::Mutex};
+
+use dyn_any::DynFuture;
 
 #[cfg(feature = "alloc")]
 use alloc::sync::Arc;
-use dyn_any::DynFuture;
+use core::future::Future;
+use core::ops::Deref;
+use std::hash::DefaultHasher;
+use std::sync::Mutex;
 
 /// Caches the output of a given Node and acts as a proxy
 #[derive(Default)]

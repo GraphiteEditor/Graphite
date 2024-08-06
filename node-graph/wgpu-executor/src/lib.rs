@@ -520,9 +520,8 @@ impl WgpuExecutor {
 		let resolution = resolution.unwrap_or(UVec2 { x: size.width, y: size.height });
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Window(Box::new(window.surface)))?;
 
-		let window_id = window.window_id;
 		Ok(SurfaceHandle {
-			window_id,
+			window_id: window.window_id,
 			surface: Surface { inner: surface, resolution },
 		})
 	}
