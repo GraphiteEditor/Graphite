@@ -145,7 +145,7 @@ impl WgpuExecutor {
 				width,
 				height,
 				present_mode: surface_caps.present_modes[0],
-				alpha_mode: surface_caps.alpha_modes[0],
+				alpha_mode: wgpu::CompositeAlphaMode::Opaque,
 				view_formats: vec![],
 				desired_maximum_frame_latency: 2,
 			},
@@ -153,7 +153,9 @@ impl WgpuExecutor {
 		let surface_texture = surface.get_current_texture()?;
 
 		let render_params = RenderParams {
-			base_color: vello::peniko::Color::TRANSPARENT,
+			// We are using an explicit opaque color here to eliminate the alpha premulitplication step
+			// which would be required to support a transparent webgpu canvas
+			base_color: vello::peniko::Color::rgb8(0x22, 0x22, 0x22),
 			width,
 			height,
 			antialiasing_method: AaConfig::Msaa8,
