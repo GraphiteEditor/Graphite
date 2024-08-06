@@ -110,6 +110,8 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 #[cfg(feature = "vello")]
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRendered, editor: &WasmEditorApi, surface_handle: wgpu_executor::WgpuSurface) -> RenderOutput {
+	use graphene_core::SurfaceFrame;
+
 	if let Some(exec) = editor.application_io.as_ref().unwrap().gpu_executor() {
 		use vello::*;
 
@@ -129,11 +131,12 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 	} else {
 		unreachable!("Attempted to render with Vello when no GPU executor is available");
 	}
-	let frame = graphene_core::application_io::SurfaceHandleFrame {
-		surface_handle,
+	let frame = SurfaceFrame {
+		surface_id: surface_handle.window_id,
+		resolution: render_config.viewport.resolution,
 		transform: glam::DAffine2::IDENTITY,
 	};
-	RenderOutput::CanvasFrame(frame.into())
+	RenderOutput::CanvasFrame(frame)
 }
 
 #[cfg(target_arch = "wasm32")]
