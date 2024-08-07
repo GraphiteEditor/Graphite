@@ -2360,7 +2360,7 @@ impl NodeNetworkInterface {
 						match &input_connector {
 							InputConnector::Export(_) => {
 								// If a layer is connected to the exports, it should be set to absolute position without being moved.
-								self.set_absolute_position(upstream_node_id, network_path, current_node_position)
+								self.set_absolute_position(upstream_node_id, current_node_position, network_path)
 							}
 							InputConnector::Node {
 								node_id: downstream_node_id,
@@ -2378,12 +2378,12 @@ impl NodeNetworkInterface {
 										if *input_index == 0 {
 											self.set_stack_position_calculated_offset(upstream_node_id, downstream_node_id, network_path);
 										} else {
-											self.set_absolute_position(upstream_node_id, network_path, current_node_position);
+											self.set_absolute_position(upstream_node_id, current_node_position, network_path);
 										}
 									}
 									NodeTypePersistentMetadata::Node(_) => {
 										// If the layer feeds into a node, set its y offset to 0
-										self.set_absolute_position(upstream_node_id, network_path, current_node_position);
+										self.set_absolute_position(upstream_node_id, current_node_position, network_path);
 									}
 								}
 							}
@@ -2420,7 +2420,7 @@ impl NodeNetworkInterface {
 					}
 
 					if set_to_absolute {
-						self.set_absolute_position(&old_upstream_node_id, network_path, previous_position);
+						self.set_absolute_position(&old_upstream_node_id, previous_position, network_path);
 					}
 				}
 				// Load structure if the change is to the document network and to the first or second
@@ -2838,7 +2838,7 @@ impl NodeNetworkInterface {
 						log::error!("Could not get upstream sibling position in set_to_node_or_layer");
 						return;
 					};
-					self.set_absolute_position(&upstream_sibling_id, network_path, upstream_sibling_position);
+					self.set_absolute_position(&upstream_sibling_id, upstream_sibling_position, network_path);
 				}
 			}
 			(false, true) => {
@@ -2995,7 +2995,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Sets the position of a node to an absolute position
-	fn set_absolute_position(&mut self, node_id: &NodeId, network_path: &[NodeId], position: IVec2) {
+	fn set_absolute_position(&mut self, node_id: &NodeId, position: IVec2, network_path: &[NodeId]) {
 		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
 			log::error!("Could not get node_metadata for node {node_id}");
 			return;
@@ -3124,7 +3124,7 @@ impl NodeNetworkInterface {
 			};
 			// Set any chain nodes to absolute positioning
 			if self.is_chain(upstream_id, network_path) {
-				self.set_absolute_position(upstream_id, network_path, previous_position);
+				self.set_absolute_position(upstream_id, previous_position, network_path);
 			}
 			// If there is an upstream layer then stop breaking the chain
 			else {
@@ -3192,8 +3192,9 @@ impl NodeNetworkInterface {
 	}
 
 	// TODO: Run the auto layout system to make space for the new nodes
-	// Disconnect the layers primary output and the input to the last non layer node feeding into it through primary flow, reconnects, then moves the layer to the new layer and stack index
+	/// Disconnect the layers primary output and the input to the last non layer node feeding into it through primary flow, reconnects, then moves the layer to the new layer and stack index
 	pub fn move_layer_to_stack(&mut self, layer: LayerNodeIdentifier, mut parent: LayerNodeIdentifier, mut insert_index: usize, network_path: &[NodeId]) {
+		// A layer is considered to be the height of that layer plus the height to the upstream layer sibling
 		// If a non artboard layer is attempted to be connected to the exports, and there is already an artboard connected, then connect the layer to the artboard.
 		if let Some(first_layer) = LayerNodeIdentifier::ROOT_PARENT.children(&self.document_metadata).next() {
 			if parent == LayerNodeIdentifier::ROOT_PARENT
@@ -3205,7 +3206,75 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		// If the moved layer is a child of the new parent, then get its index
+		// Disconnecting top of stack:
+		// 1. Get vertical offset 1 between the top of stack and the upstream layer
+		// 2. Set the position of the upstream layer to the top of stack
+		// 3. Remove the top of stack
+		// 4. Move top of stack to destination
+
+		// Disconnecting layer from stack:
+		// 1. Get vertical offset 1 between the layer and the upstream layer sibling
+		// 2. Get vertical offset 2 between the layer and the downstream layer sibling
+		// 3. Set the offset of the upstream layer to offset 2
+		// 4. Remove the layer from the stack
+		// 5. Move the layer to the destination
+
+		let previous_upstream_layer = self
+			.upstream_flow_back_from_nodes(vec![layer.to_node()], network_path, FlowType::PrimaryFlow)
+			.skip(1)
+			.find(|node_id| self.is_layer(node_id, network_path));
+
+		let vertical_offset_1 = if let Some(previous_upstream_layer) = previous_upstream_layer {
+			let Some(node_metadata) = self.node_metadata(&previous_upstream_layer, network_path) else {
+				log::error!("Could not get node_metadata in move_layer_to_stack");
+				return;
+			};
+			if let NodeTypePersistentMetadata::Layer(LayerPersistentMetadata { position }) = &node_metadata.persistent_metadata.node_type_metadata {
+				match position {
+					LayerPosition::Stack(y_offset) => *y_offset,
+					_ => 0,
+				}
+			} else {
+				let (Some(moved_layer_position), Some(previous_upstream_layer_position)) = (self.position(&layer.to_node(), network_path), self.position(&previous_upstream_layer, network_path))
+				else {
+					log::error!("Could not get moved layer position in move_layer_to_stack");
+					return;
+				};
+				(previous_upstream_layer_position.y - moved_layer_position.y - 3).max(0) as u32
+			}
+		} else {
+			0
+		};
+
+		let Some(moved_layer_metadata) = self.node_metadata(&layer.to_node(), network_path) else {
+			log::error!("Could not get node_metadata in move_layer_to_stack");
+			return;
+		};
+
+		let NodeTypePersistentMetadata::Layer(LayerPersistentMetadata { position }) = &moved_layer_metadata.persistent_metadata.node_type_metadata else {
+			log::error!("Could not get layer metadata for layer in move_layer_to_stack");
+			return;
+		};
+
+		log::debug!("moved layer position: {position:?}");
+		log::debug!("Previous upstream layer: {previous_upstream_layer:?}");
+		match &position {
+			LayerPosition::Stack(offset) => {
+				if let Some(previous_upstream_layer) = previous_upstream_layer {
+					self.set_stack_position(&previous_upstream_layer, *offset, network_path);
+					self.unload_upstream_node_click_targets(vec![previous_upstream_layer], network_path);
+				}
+			}
+			LayerPosition::Absolute(stack_top_position) => {
+				if let Some(previous_upstream_layer) = previous_upstream_layer {
+					log::debug!("Setting previous upstream layer to stack top position");
+					self.set_absolute_position(&previous_upstream_layer, *stack_top_position, network_path);
+					self.unload_upstream_node_click_targets(vec![previous_upstream_layer], network_path);
+				}
+			}
+		};
+
+		// If the moved layer is a child of the new parent, then get its index after the disconnect
 		if let Some(moved_layer_previous_index) = parent.children(&self.document_metadata).position(|child| child == layer) {
 			// Adjust the insert index if the layer's previous index is less than the insert index
 			if moved_layer_previous_index < insert_index {
@@ -3213,30 +3282,21 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		let previous_upstream_layer = self
-			.upstream_flow_back_from_nodes(vec![layer.to_node()], network_path, FlowType::PrimaryFlow)
-			.skip(1)
-			.find(|node_id| self.is_layer(node_id, network_path));
-
-		let Some(layer_to_move_position) = self.position(&layer.to_node(), network_path) else {
-			log::error!("Could not get layer to move position in move_layer_to_stack");
-			return;
-		};
-
-		// Get the distance between the layer to move and its upstream layer sibling
 		// Disconnect layer to move
 		self.remove_references_from_network(&layer.to_node(), true, network_path);
 		self.disconnect_input(&InputConnector::node(layer.to_node(), 0), network_path);
 
-		// Shift the previous upstream layer to the moved layers position
-		if let Some(previous_upstream_layer) = previous_upstream_layer {
-			let Some(previous_upstream_layer_position) = self.position(&previous_upstream_layer, network_path) else {
-				log::error!("Could not get previous upstream layer position in move_layer_to_stack");
-				return;
-			};
-			let y_offset = layer_to_move_position.y - previous_upstream_layer_position.y;
-			self.shift_node(&previous_upstream_layer, IVec2::new(0, y_offset), network_path);
-		}
+		// Moving layer to top of stack:
+		// 1. Get the position of the top of the stack. If a new stack is created, then offset by (-8, 3) from the parent
+		// 2. Move layer to the top of the stack
+		// 3. Connect layer to the top of stack
+		// 3. Set upstream layer to stack position with vertical offset 1
+
+		// Moving layer to stack:
+		// 1. Insert the layer into the stack
+		// 2. Get vertical offset 3 of the upstream layer
+		// 3. Set the stack offset of the moved layer to vertical offset 3
+		// 4. Set the stack offset of the upstream layer to vertical offset 1
 
 		let post_node = ModifyInputsContext::get_post_node_with_index(self, parent, insert_index);
 
@@ -3262,7 +3322,7 @@ impl NodeNetworkInterface {
 						return;
 					};
 					let offset = IVec2::new(-8, 3);
-					self.set_absolute_position(&layer.to_node(), network_path, post_node_position + offset);
+					self.set_absolute_position(&layer.to_node(), post_node_position + offset, network_path);
 				}
 				// Move to the top of a stack
 				NodeInput::Node { node_id, .. } => {
@@ -3270,29 +3330,46 @@ impl NodeNetworkInterface {
 						log::error!("Could not get top of stack position in move_layer_to_stack");
 						return;
 					};
-					self.set_absolute_position(&layer.to_node(), network_path, top_of_stack_position - IVec2::new(0, 3));
-					self.shift_node(&layer.to_node(), IVec2::new(0, 3), network_path);
+					self.set_absolute_position(&layer.to_node(), top_of_stack_position, network_path);
+					self.unload_upstream_node_click_targets(vec![layer.to_node()], network_path);
 					self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
+					self.set_stack_position(&node_id, vertical_offset_1, network_path);
 				}
 				NodeInput::Network { .. } => {
 					log::error!("Cannot move post node to parent which connects to the imports")
 				}
 			}
 		} else {
-			// Create a new stack
 			match post_node_input {
+				// Move to the bottom of the stack
 				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) => {
 					self.create_wire(&OutputConnector::node(layer.to_node(), 0), &post_node, network_path);
+					self.set_stack_position(&layer.to_node(), 0, network_path);
 				}
-				NodeInput::Node { .. } => {
+				// Insert into the stack
+				NodeInput::Node { node_id: upstream_node_id, .. } => {
+					let Some(upstream_node_metadata) = self.node_metadata(&upstream_node_id, network_path) else {
+						log::error!("Could not get upstream node metadata in move_layer_to_stack");
+						return;
+					};
+					let NodeTypePersistentMetadata::Layer(LayerPersistentMetadata { position }) = &upstream_node_metadata.persistent_metadata.node_type_metadata else {
+						log::error!("Could not get upstream node metadata in move_layer_to_stack");
+						return;
+					};
+					let LayerPosition::Stack(vertical_offset_3) = position.clone() else {
+						log::error!("Could not get vertical offset 3 in move_layer_to_stack");
+						return;
+					};
 					self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
+					self.set_stack_position(&layer.to_node(), vertical_offset_3, network_path);
+					self.set_stack_position(&upstream_node_id, vertical_offset_1, network_path);
 				}
 				NodeInput::Network { .. } => {
 					log::error!("Cannot move post node to parent which connects to the imports")
 				}
 			}
-			self.set_stack_position(&layer.to_node(), 0, network_path);
 		}
+		self.unload_upstream_node_click_targets(vec![layer.to_node()], network_path);
 	}
 
 	// Insert a node onto a wire. Ensure insert_node_input_index is an exposed input
