@@ -3282,7 +3282,7 @@ impl NodeNetworkInterface {
 						log::error!("Could not get post node position in move_layer_to_stack");
 						return;
 					};
-					let offset = IVec2::new(-7, 3);
+					let offset = IVec2::new(-8, 3);
 					self.set_absolute_position(&layer.to_node(), network_path, post_node_position + offset);
 				}
 				// Move to the top of a stack
