@@ -1,5 +1,5 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
-use super::document::utility_types::network_interface::{self, InputConnector};
+use super::document::utility_types::network_interface::{self, InputConnector, OutputConnector};
 use super::utility_types::{PanelType, PersistentData};
 use crate::application::generate_uuid;
 use crate::consts::DEFAULT_DOCUMENT_NAME;
@@ -531,6 +531,33 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						document_serialized_content,
 					});
 					return;
+				}
+
+				// Ensure layers are positioned as stacks if they upstream siblings of another layer
+				document.network_interface.load_structure();
+				let all_layers = LayerNodeIdentifier::ROOT_PARENT.descendants(document.network_interface.document_metadata()).collect::<Vec<_>>();
+				for layer in all_layers {
+					let Some((downstream_node, input_index)) = document
+						.network_interface
+						.outward_wires(&[])
+						.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(layer.to_node(), 0)))
+						.and_then(|outward_wires| outward_wires.first())
+						.and_then(|input_connector| input_connector.node_id().map(|node_id| (node_id, input_connector.input_index())))
+					else {
+						continue;
+					};
+					// If the downstream node is a layer and the input is the first input and the current layer is not in a stack
+					if input_index == 0 && document.network_interface.is_layer(&downstream_node, &[]) && document.network_interface.is_absolute(&layer.to_node(), &[]) {
+						let (Some(layer_position), Some(downstream_position)) =
+							(document.network_interface.position(&layer.to_node(), &[]), document.network_interface.position(&downstream_node, &[]))
+						else {
+							log::error!("Could not get downstream node position in PortfolioMessage::OpenDocumentFileWithId");
+							return;
+						};
+						document
+							.network_interface
+							.set_stack_position(&layer.to_node(), (layer_position.y - downstream_position.y - 3).max(0) as u32, &[]);
+					}
 				}
 
 				document.set_auto_save_state(document_is_auto_saved);

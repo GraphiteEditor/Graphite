@@ -74,8 +74,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 		match message {
 			// TODO: automatically remove broadcast messages.
 			NodeGraphMessage::AddNodes { nodes, new_ids } => {
-				let Some(new_layer_id) = new_ids.get(&NodeId(0)).cloned() else {
-					error!("Could not get layer node when adding as child");
+				let Some(new_layer_id) = new_ids.get(&NodeId(0)).cloned().or_else(|| nodes.get(0).map(|(node_id, _)| *node_id)) else {
+					log::error!("No nodes to add in AddNodes");
 					return;
 				};
 				network_interface.insert_node_group(nodes, new_ids, selection_network_path);
@@ -232,11 +232,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				responses.add(DocumentMessage::StartTransaction);
 
-				let new_ids = all_selected_nodes.iter().map(|&id| (id, NodeId(generate_uuid()))).collect::<HashMap<NodeId, NodeId>>();
+				let copy_ids = all_selected_nodes.iter().enumerate().map(|(new, id)| (*id, NodeId(new as u64))).collect::<HashMap<NodeId, NodeId>>();
 
 				// Copy the selected nodes
-				let nodes = network_interface.copy_nodes(&new_ids, selection_network_path).collect::<Vec<_>>();
+				let nodes = network_interface.copy_nodes(&copy_ids, selection_network_path).collect::<Vec<_>>();
 
+				let new_ids = nodes.iter().map(|(id, _)| (*id, NodeId(generate_uuid()))).collect::<HashMap<_, _>>();
 				responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
 			}
 			NodeGraphMessage::EnterNestedNetwork => {
@@ -519,7 +520,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::PointerMove { shift } => {
 				if selection_network_path != breadcrumb_network_path {
-					log::error!("Selection network path does not match breadcrumb network path in PointerUp");
+					log::error!("Selection network path does not match breadcrumb network path in PointerMove");
 					return;
 				}
 				let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
@@ -722,58 +723,92 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 									return;
 								};
 								// TODO: Cache all wire locations if this is a performance issue
-								let mut overlapping_wires = Self::collect_wires(network_interface, selection_network_path).into_iter().filter(|frontend_wire| {
-									// Prevent inserting on a link that is connected upstream to the selected node
-									if network_interface
-										.upstream_flow_back_from_nodes(vec![selected_node_id], selection_network_path, network_interface::FlowType::UpstreamFlow)
-										.any(|upstream_id| {
-											frontend_wire.wire_end.node_id().is_some_and(|wire_end_id| wire_end_id == upstream_id)
-												|| frontend_wire.wire_start.node_id().is_some_and(|wire_start_id| wire_start_id == upstream_id)
-										}) {
-										return false;
-									}
+								let mut overlapping_wires = Self::collect_wires(network_interface, selection_network_path)
+									.into_iter()
+									.filter(|frontend_wire| {
+										// Prevent inserting on a link that is connected upstream to the selected node
+										if network_interface
+											.upstream_flow_back_from_nodes(vec![selected_node_id], selection_network_path, network_interface::FlowType::UpstreamFlow)
+											.any(|upstream_id| {
+												frontend_wire.wire_end.node_id().is_some_and(|wire_end_id| wire_end_id == upstream_id)
+													|| frontend_wire.wire_start.node_id().is_some_and(|wire_start_id| wire_start_id == upstream_id)
+											}) {
+											return false;
+										}
 
-									// Prevent inserting a layer into a chain
-									if network_interface.is_layer(&selected_node_id, selection_network_path)
-										&& frontend_wire
-											.wire_start
+										// Prevent inserting a layer into a chain
+										if network_interface.is_layer(&selected_node_id, selection_network_path)
+											&& frontend_wire
+												.wire_start
+												.node_id()
+												.is_some_and(|wire_start_id| network_interface.is_chain(&wire_start_id, selection_network_path))
+										{
+											return false;
+										}
+
+										let Some(input_position) = network_interface.input_position(&frontend_wire.wire_end, selection_network_path) else {
+											log::error!("Could not get input port position for {:?}", frontend_wire.wire_end);
+											return false;
+										};
+
+										let Some(output_position) = network_interface.output_position(&frontend_wire.wire_start, selection_network_path) else {
+											log::error!("Could not get output port position for {:?}", frontend_wire.wire_start);
+											return false;
+										};
+
+										let start_node_is_layer = frontend_wire
+											.wire_end
 											.node_id()
-											.is_some_and(|wire_start_id| network_interface.is_chain(&wire_start_id, selection_network_path))
-									{
-										return false;
+											.is_some_and(|wire_start_id| network_interface.is_layer(&wire_start_id, selection_network_path));
+										let end_node_is_layer = frontend_wire
+											.wire_end
+											.node_id()
+											.is_some_and(|wire_end_id| network_interface.is_layer(&wire_end_id, selection_network_path));
+
+										let locations = Self::build_wire_path_locations(output_position, input_position, start_node_is_layer, end_node_is_layer);
+										let bezier = bezier_rs::Bezier::from_cubic_dvec2(
+											(locations[0].x, locations[0].y).into(),
+											(locations[1].x, locations[1].y).into(),
+											(locations[2].x, locations[2].y).into(),
+											(locations[3].x, locations[3].y).into(),
+										);
+
+										!bezier.rectangle_intersections(bounding_box[0], bounding_box[1]).is_empty() || bezier.is_contained_within(bounding_box[0], bounding_box[1])
+									})
+									.collect::<Vec<_>>();
+
+								let is_stack_wire = |wire: &FrontendNodeWire| match (wire.wire_start.node_id(), wire.wire_end.node_id(), wire.wire_end.input_index()) {
+									(Some(start_id), Some(end_id), input_index) => {
+										input_index == 0 && network_interface.is_layer(&start_id, selection_network_path) && network_interface.is_layer(&end_id, selection_network_path)
 									}
+									_ => false,
+								};
 
-									let Some(input_position) = network_interface.input_position(&frontend_wire.wire_end, selection_network_path) else {
-										log::error!("Could not get input port position for {:?}", frontend_wire.wire_end);
-										return false;
-									};
+								// Prioritize vertical thick lines and cancel if there are multiple potential wires
+								let mut node_wires = Vec::new();
+								let mut stack_wires = Vec::new();
+								for wire in overlapping_wires {
+									if is_stack_wire(&wire) {
+										stack_wires.push(wire)
+									} else {
+										node_wires.push(wire)
+									}
+								}
 
-									let Some(output_position) = network_interface.output_position(&frontend_wire.wire_start, selection_network_path) else {
-										log::error!("Could not get output port position for {:?}", frontend_wire.wire_start);
-										return false;
-									};
-
-									let start_node_is_layer = frontend_wire
-										.wire_end
-										.node_id()
-										.is_some_and(|wire_start_id| network_interface.is_layer(&wire_start_id, selection_network_path));
-									let end_node_is_layer = frontend_wire
-										.wire_end
-										.node_id()
-										.is_some_and(|wire_end_id| network_interface.is_layer(&wire_end_id, selection_network_path));
-
-									let locations = Self::build_wire_path_locations(output_position, input_position, start_node_is_layer, end_node_is_layer);
-									let bezier = bezier_rs::Bezier::from_cubic_dvec2(
-										(locations[0].x, locations[0].y).into(),
-										(locations[1].x, locations[1].y).into(),
-										(locations[2].x, locations[2].y).into(),
-										(locations[3].x, locations[3].y).into(),
-									);
-
-									!bezier.rectangle_intersections(bounding_box[0], bounding_box[1]).is_empty() || bezier.is_contained_within(bounding_box[0], bounding_box[1])
-								});
-
-								if let Some(overlapping_wire) = overlapping_wires.next() {
+								let overlapping_wire = if network_interface.is_layer(&selected_node_id, selection_network_path) {
+									if stack_wires.len() == 1 {
+										stack_wires.first()
+									} else if stack_wires.len() == 0 && node_wires.len() == 1 {
+										node_wires.first()
+									} else {
+										None
+									}
+								} else if node_wires.len() == 1 {
+									node_wires.first()
+								} else {
+									None
+								};
+								if let Some(overlapping_wire) = overlapping_wire {
 									let Some(network) = network_interface.network(selection_network_path) else {
 										return;
 									};
@@ -941,19 +976,56 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						}
 					}
 				}
-				for node_id in node_ids {
-					network_interface.shift_node(&node_id, IVec2::new(displacement_x, displacement_y), selection_network_path);
 
-					if let Some(outward_wires) = network_interface
-						.outward_wires(selection_network_path)
-						.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(node_id, 0)))
-						.cloned()
+				let mut filtered_node_ids = Vec::new();
+				for selected_node in &node_ids {
+					// Deselect chain nodes upstream from a selected layer
+					if network_interface.is_chain(selected_node, selection_network_path)
+						&& network_interface
+							.downstream_layer(selected_node, selection_network_path)
+							.is_some_and(|downstream_layer| node_ids.contains(&downstream_layer.to_node()))
 					{
-						if outward_wires.len() == 1 {
-							network_interface.try_set_upstream_to_chain(&outward_wires[0], selection_network_path)
-						}
+						// Deselect stack nodes upstream from a selected layer
+						continue;
 					}
+
+					let mut is_downstream_from_selected_absolute_layer = false;
+					let mut current_node = *selected_node;
+					loop {
+						let Some(outward_wires) = network_interface.outward_wires(selection_network_path) else {
+							break;
+						};
+						let Some(outward_wires) = outward_wires.get(&OutputConnector::node(current_node, 0)) else {
+							break;
+						};
+						if outward_wires.is_empty() {
+							break;
+						}
+						let Some(downstream_node) = outward_wires[0].node_id() else {
+							break;
+						};
+						if outward_wires[0].input_index() != 0 {
+							break;
+						}
+						if !network_interface.is_layer(&downstream_node, selection_network_path) {
+							break;
+						}
+						if network_interface.is_absolute(&downstream_node, selection_network_path) {
+							is_downstream_from_selected_absolute_layer = node_ids.contains(&downstream_node);
+							break;
+						}
+						current_node = downstream_node;
+					}
+					if is_downstream_from_selected_absolute_layer {
+						continue;
+					}
+					filtered_node_ids.push(*selected_node)
 				}
+
+				for node_id in filtered_node_ids {
+					network_interface.shift_node(&node_id, IVec2::new(displacement_x, displacement_y), selection_network_path);
+				}
+
 				if graph_view_overlay_open {
 					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(DocumentMessage::RenderRulers);
@@ -1015,13 +1087,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					log::error!("Could not get selected nodes in NodeGraphMessage::ToggleSelectedLocked");
 					return;
 				};
-
 				let node_ids = selected_nodes.selected_nodes().cloned().collect::<Vec<_>>();
 
 				// If any of the selected layers are locked, show them all. Otherwise, hide them all.
 				let locked = !node_ids.iter().all(|node_id| network_interface.is_locked(node_id, selection_network_path));
 
 				responses.add(DocumentMessage::StartTransaction);
+
 				for node_id in &node_ids {
 					responses.add(NodeGraphMessage::SetLocked { node_id: *node_id, locked });
 				}
@@ -1127,7 +1199,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						log::error!("Could not get selected nodes in PointerMove");
 						return;
 					};
-					let mut nodes = if shift { selected_nodes.selected_nodes_ref().clone() } else { Vec::new() };
+					let previous_selection = selected_nodes.selected_nodes_ref().clone();
+					let mut nodes = if shift { previous_selection.clone() } else { Vec::new() };
 					let all_nodes = network_metadata.persistent_metadata.node_metadata.keys().cloned().collect::<Vec<_>>();
 					for node_id in all_nodes {
 						let Some(click_targets) = network_interface.node_click_targets(&node_id, selection_network_path) else {
@@ -1141,7 +1214,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							nodes.push(node_id);
 						}
 					}
-					responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
+					if nodes != previous_selection {
+						responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
+					}
 					responses.add(FrontendMessage::UpdateBox { box_selection })
 				}
 			}
@@ -1221,6 +1296,8 @@ impl NodeGraphMessageHandler {
 				DeleteSelectedNodes,
 				DuplicateSelectedNodes,
 				ToggleSelectedAsLayersOrNodes,
+				ToggleSelectedLocked,
+				ToggleSelectedVisibility,
 				PrintSelectedNodeCoordinates,
 			));
 		}
