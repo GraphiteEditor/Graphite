@@ -1240,7 +1240,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(FrontendMessage::UpdateNodeTypes { node_types });
 			}
 			NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors } => {
-				network_interface.resolved_types = resolved_types;
+				for (path, node_type) in resolved_types.add {
+					network_interface.resolved_types.types.insert(path.to_vec(), node_type);
+				}
+				for path in resolved_types.remove {
+					network_interface.resolved_types.types.remove(&path.to_vec());
+				}
 				self.node_graph_errors = node_graph_errors;
 			}
 			NodeGraphMessage::UpdateActionButtons => {

@@ -22,7 +22,7 @@ use graphene_core::vector::VectorData;
 use graphene_core::{Color, GraphicElement, SurfaceFrame};
 use graphene_std::renderer::format_transform_matrix;
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
-use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypes};
+use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypes, ResolvedDocumentNodeTypesDelta};
 
 use glam::{DAffine2, DVec2, UVec2};
 use once_cell::sync::Lazy;
@@ -91,8 +91,7 @@ pub struct ExecutionResponse {
 }
 
 pub struct CompilationResponse {
-	result: Result<(), String>,
-	resolved_types: ResolvedDocumentNodeTypes,
+	result: Result<ResolvedDocumentNodeTypesDelta, String>,
 	node_graph_errors: GraphErrors,
 }
 
@@ -214,7 +213,6 @@ impl NodeRuntime {
 					self.update_thumbnails = true;
 					self.sender.send_generation_response(CompilationResponse {
 						result,
-						resolved_types: self.resolved_types.clone(),
 						node_graph_errors: self.node_graph_errors.clone(),
 					});
 				}
@@ -240,13 +238,8 @@ impl NodeRuntime {
 		}
 	}
 
-	async fn update_network(&mut self, graph: NodeNetwork) -> Result<(), String> {
+	async fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, String> {
 		let scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
-		self.monitor_nodes = scoped_network
-			.recursive_nodes()
-			.filter(|(_, node)| node.implementation == DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"))
-			.map(|(_, node)| node.original_location.path.clone().unwrap_or_default())
-			.collect::<Vec<_>>();
 
 		// We assume only one output
 		assert_eq!(scoped_network.exports.len(), 1, "Graph with multiple outputs not yet handled");
@@ -255,14 +248,18 @@ impl NodeRuntime {
 			Ok(network) => network,
 			Err(e) => return Err(e),
 		};
+		self.monitor_nodes = proto_network
+			.nodes
+			.iter()
+			.filter(|(_, node)| node.identifier == "graphene_core::memo::MonitorNode<_, _, _>".into())
+			.map(|(_, node)| node.original_location.path.clone().unwrap_or_default())
+			.collect::<Vec<_>>();
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
-		if let Err(e) = self.executor.update(proto_network).await {
-			self.node_graph_errors = e;
-		}
-		self.resolved_types = self.executor.document_node_types();
-
-		Ok(())
+		self.executor.update(proto_network).await.map_err(|e| {
+			self.node_graph_errors = e.clone();
+			format!("{e:?}")
+		})
 	}
 
 	async fn execute_network(&mut self, render_config: RenderConfig) -> Result<TaggedValue, String> {
@@ -609,11 +606,7 @@ impl NodeGraphExecutor {
 					}
 				}
 				NodeGraphUpdate::CompilationResponse(execution_response) => {
-					let CompilationResponse {
-						resolved_types,
-						node_graph_errors,
-						result,
-					} = execution_response;
+					let CompilationResponse { node_graph_errors, result } = execution_response;
 					if let Err(e) = result {
 						// Clear the click targets while the graph is in an un-renderable state
 						document.network_interface.document_metadata_mut().update_from_monitor(HashMap::new(), HashMap::new());
@@ -621,8 +614,12 @@ impl NodeGraphExecutor {
 
 						return Err("Node graph evaluation failed".to_string());
 					};
+					let type_delta = result.unwrap();
 
-					responses.add(NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors });
+					responses.add(NodeGraphMessage::UpdateTypes {
+						resolved_types: type_delta,
+						node_graph_errors,
+					});
 					responses.add(NodeGraphMessage::SendGraph);
 				}
 				NodeGraphUpdate::NodeGraphUpdateMessage(NodeGraphUpdateMessage::ImaginateStatusUpdate) => {

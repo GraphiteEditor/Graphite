@@ -8,6 +8,7 @@ use graph_craft::proto::{ConstructionArgs, GraphError, LocalFuture, NodeContaine
 use graph_craft::proto::{GraphErrorType, GraphErrors};
 use graph_craft::{concrete, Type};
 
+use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::panic::UnwindSafe;
@@ -21,7 +22,7 @@ pub struct DynamicExecutor {
 	/// Stores the types of the proto nodes.
 	typing_context: TypingContext,
 	// This allows us to keep the nodes around for one more frame which is used for introspection
-	orphaned_nodes: Vec<NodeId>,
+	orphaned_nodes: HashSet<NodeId>,
 }
 
 impl Default for DynamicExecutor {
@@ -30,7 +31,7 @@ impl Default for DynamicExecutor {
 			output: Default::default(),
 			tree: Default::default(),
 			typing_context: TypingContext::new(&node_registry::NODE_REGISTRY),
-			orphaned_nodes: Vec::new(),
+			orphaned_nodes: HashSet::new(),
 		}
 	}
 }
@@ -47,6 +48,15 @@ pub struct ResolvedDocumentNodeTypes {
 	pub types: HashMap<Vec<NodeId>, NodeTypes>,
 }
 
+type Path = Box<[NodeId]>;
+
+#[derive(PartialEq, Clone, Debug, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ResolvedDocumentNodeTypesDelta {
+	pub add: Vec<(Path, NodeTypes)>,
+	pub remove: Vec<Path>,
+}
+
 impl DynamicExecutor {
 	pub async fn new(proto_network: ProtoNetwork) -> Result<Self, GraphErrors> {
 		let mut typing_context = TypingContext::new(&node_registry::NODE_REGISTRY);
@@ -58,22 +68,29 @@ impl DynamicExecutor {
 			tree,
 			output,
 			typing_context,
-			orphaned_nodes: Vec::new(),
+			orphaned_nodes: HashSet::new(),
 		})
 	}
 
 	/// Updates the existing [`BorrowTree`] to reflect the new [`ProtoNetwork`], reusing nodes where possible.
-	pub async fn update(&mut self, proto_network: ProtoNetwork) -> Result<(), GraphErrors> {
+	#[cfg_attr(debug_assertions, inline(never))]
+	pub async fn update(&mut self, proto_network: ProtoNetwork) -> Result<ResolvedDocumentNodeTypesDelta, GraphErrors> {
 		self.output = proto_network.output;
 		self.typing_context.update(&proto_network)?;
-		let mut orphans = self.tree.update(proto_network, &self.typing_context).await?;
-		core::mem::swap(&mut self.orphaned_nodes, &mut orphans);
-		for node_id in orphans {
+		let (add, orphaned) = self.tree.update(proto_network, &self.typing_context).await?;
+		let old_to_remove = core::mem::replace(&mut self.orphaned_nodes, orphaned);
+		let mut remove = Vec::with_capacity(old_to_remove.len() - self.orphaned_nodes.len().min(old_to_remove.len()));
+		for node_id in old_to_remove {
 			if self.orphaned_nodes.contains(&node_id) {
-				self.tree.free_node(node_id)
+				let path = self.tree.free_node(node_id);
+				self.typing_context.remove_inference(node_id);
+				if let Some(path) = path {
+					remove.push(path);
+				}
 			}
 		}
-		Ok(())
+		let add = self.document_node_types(add.into_iter()).collect();
+		Ok(ResolvedDocumentNodeTypesDelta { add, remove })
 	}
 
 	/// Calls the `Node::serialize` for that specific node, returning for example the cached value for a monitor node. The node path must match the document node path.
@@ -89,12 +106,10 @@ impl DynamicExecutor {
 		self.typing_context.type_of(self.output).map(|node_io| node_io.output.clone())
 	}
 
-	pub fn document_node_types(&self) -> ResolvedDocumentNodeTypes {
-		let mut resolved_document_node_types = ResolvedDocumentNodeTypes::default();
-		resolved_document_node_types.types = self.tree.node_types().map(|(a, b)| (a.to_vec(), b.clone())).collect();
+	pub fn document_node_types<'a>(&'a self, nodes: impl Iterator<Item = Path> + 'a) -> impl Iterator<Item = (Path, NodeTypes)> + 'a {
+		nodes.flat_map(|id| self.tree.source_map().get(&id).map(|(_, b)| (id, b.clone())))
 		// TODO: https://github.com/GraphiteEditor/Graphite/issues/1767
 		// TODO: Non exposed inputs are not added to the inputs_source_map, so they are not included in the resolved_document_node_types. The type is still available in the typing_context. This only affects the UI-only "Import" node.
-		resolved_document_node_types
 	}
 }
 
@@ -141,9 +156,9 @@ impl std::fmt::Display for IntrospectError {
 /// A store of the dynamically typed nodes and also the source map.
 pub struct BorrowTree {
 	/// A hashmap of node IDs and dynamically typed nodes.
-	nodes: HashMap<NodeId, SharedNodeContainer>,
+	nodes: HashMap<NodeId, (SharedNodeContainer, Path)>,
 	/// A hashmap from the document path to the proto node ID.
-	source_map: HashMap<Vec<NodeId>, (NodeId, NodeTypes)>,
+	source_map: HashMap<Path, (NodeId, NodeTypes)>,
 }
 
 impl BorrowTree {
@@ -156,57 +171,59 @@ impl BorrowTree {
 	}
 
 	/// Pushes new nodes into the tree and return orphaned nodes
-	pub async fn update(&mut self, proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<Vec<NodeId>, GraphErrors> {
+	pub async fn update(&mut self, proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<(Vec<Path>, HashSet<NodeId>), GraphErrors> {
 		let mut old_nodes: HashSet<_> = self.nodes.keys().copied().collect();
+		let mut new_nodes: Vec<_> = Vec::new();
 		// TODO: Problem: When an identity node is connected directly to an export the first input to identity node is not added to the proto network, while the second input is. This means the primary input does not have a type.
 		for (id, node) in proto_network.nodes {
 			if !self.nodes.contains_key(&id) {
+				new_nodes.push(node.original_location.path.clone().unwrap_or_default().into());
 				self.push_node(id, node, typing_context).await?;
 			} else {
 				self.update_source_map(id, typing_context, &node);
 			}
 			old_nodes.remove(&id);
 		}
-		self.source_map.retain(|_, (nid, _)| !old_nodes.contains(nid));
-		self.nodes.retain(|nid, _| !old_nodes.contains(nid));
-		Ok(old_nodes.into_iter().collect())
+		Ok((new_nodes, old_nodes))
 	}
 
 	fn node_deps(&self, nodes: &[NodeId]) -> Vec<SharedNodeContainer> {
-		nodes.iter().map(|node| self.nodes.get(node).unwrap().clone()).collect()
+		nodes.iter().map(|node| self.nodes.get(node).unwrap().0.clone()).collect()
 	}
 
-	fn store_node(&mut self, node: SharedNodeContainer, id: NodeId) {
-		self.nodes.insert(id, node);
+	fn store_node(&mut self, node: SharedNodeContainer, id: NodeId, path: Path) {
+		self.nodes.insert(id, (node, path));
 	}
 
 	/// Calls the `Node::serialize` for that specific node, returning for example the cached value for a monitor node. The node path must match the document node path.
 	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any>, IntrospectError> {
 		let (id, _) = self.source_map.get(node_path).ok_or_else(|| IntrospectError::PathNotFound(node_path.to_vec()))?;
-		let node = self.nodes.get(id).ok_or(IntrospectError::ProtoNodeNotFound(*id))?;
+		let (node, _path) = self.nodes.get(id).ok_or(IntrospectError::ProtoNodeNotFound(*id))?;
 		node.serialize().ok_or(IntrospectError::NoData)
 	}
 
 	pub fn get(&self, id: NodeId) -> Option<SharedNodeContainer> {
-		self.nodes.get(&id).cloned()
+		self.nodes.get(&id).map(|(node, _)| node.clone())
 	}
 
 	/// Evaluate the output node of the [`BorrowTree`].
 	pub async fn eval<'i, I: StaticType + 'i + Send + Sync, O: StaticType + 'i>(&'i self, id: NodeId, input: I) -> Option<O> {
-		let node = self.nodes.get(&id).cloned()?;
+		let (node, _path) = self.nodes.get(&id).cloned()?;
 		let output = node.eval(Box::new(input));
 		dyn_any::downcast::<O>(output.await).ok().map(|o| *o)
 	}
 	/// Evaluate the output node of the [`BorrowTree`] and cast it to a tagged value.
 	/// This ensures that no borrowed data can escape the node graph.
 	pub async fn eval_tagged_value<I: StaticType + 'static + Send + Sync + UnwindSafe>(&self, id: NodeId, input: I) -> Result<TaggedValue, String> {
-		let node = self.nodes.get(&id).cloned().ok_or("Output node not found in executor")?;
+		let (node, _path) = self.nodes.get(&id).cloned().ok_or("Output node not found in executor")?;
 		let output = node.eval(Box::new(input));
 		TaggedValue::try_from_any(output.await)
 	}
 
-	pub fn free_node(&mut self, id: NodeId) {
-		self.nodes.remove(&id);
+	pub fn free_node(&mut self, id: NodeId) -> Option<Path> {
+		let (_, path) = self.nodes.remove(&id)?;
+		self.source_map.remove(&path);
+		Some(path)
 	}
 
 	pub fn update_source_map(&mut self, id: NodeId, typing_context: &TypingContext, proto_node: &ProtoNode) {
@@ -224,7 +241,7 @@ impl BorrowTree {
 			assert_eq!(*x, 0, "Proto nodes should refer to output index 0");
 		}
 		// log::debug!("{:?}", node_path);
-		let mut entry = self.source_map.entry(node_path.to_vec()).or_insert((
+		let mut entry = self.source_map.entry(node_path.to_vec().into()).or_insert((
 			id,
 			NodeTypes {
 				inputs,
@@ -232,12 +249,14 @@ impl BorrowTree {
 			},
 		));
 
+		entry.0 = id;
 		entry.1.output = node_io.output.clone();
 	}
 
 	/// Insert a new node into the borrow tree, calling the constructor function from `node_registry.rs`.
 	pub async fn push_node(&mut self, id: NodeId, proto_node: ProtoNode, typing_context: &TypingContext) -> Result<(), GraphErrors> {
 		self.update_source_map(id, typing_context, &proto_node);
+		let path = proto_node.original_location.path.clone().unwrap_or_default();
 
 		match &proto_node.construction_args {
 			ConstructionArgs::Value(value) => {
@@ -250,7 +269,7 @@ impl BorrowTree {
 					let node = Box::new(upcasted) as TypeErasedBox<'_>;
 					NodeContainer::new(node)
 				};
-				self.store_node(node, id);
+				self.store_node(node, id, path.into());
 			}
 			ConstructionArgs::Inline(_) => unimplemented!("Inline nodes are not supported yet"),
 			ConstructionArgs::Nodes(ids) => {
@@ -259,14 +278,14 @@ impl BorrowTree {
 				let constructor = typing_context.constructor(id).ok_or_else(|| vec![GraphError::new(&proto_node, GraphErrorType::NoConstructor)])?;
 				let node = constructor(construction_nodes).await;
 				let node = NodeContainer::new(node);
-				self.store_node(node, id);
+				self.store_node(node, id, path.into());
 			}
 		};
 		Ok(())
 	}
 
-	pub fn node_types(&self) -> impl Iterator<Item = (&[NodeId], &NodeTypes)> {
-		self.source_map.iter().map(|(path, (_, types))| (path.as_slice(), types))
+	pub fn source_map(&self) -> &HashMap<Path, (NodeId, NodeTypes)> {
+		&self.source_map
 	}
 }
 
