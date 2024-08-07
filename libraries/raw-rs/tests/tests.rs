@@ -4,10 +4,10 @@ use std::fmt::Write;
 use std::fs::{read_dir, File};
 use std::io::{BufWriter, Cursor, Read};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use raw_rs::RawImage;
 
-use downloader::{Download, Downloader};
 use image::{
 	codecs::png::{CompressionType, FilterType, PngEncoder},
 	ColorType, ImageEncoder,
@@ -98,21 +98,20 @@ fn store_image(path: &Path, suffix: &str, data: &mut [u8], width: usize, height:
 
 fn download_images() {
 	let mut path = Path::new(BASE_PATH).to_owned();
-	let mut downloads: Vec<Download> = Vec::new();
+	let client = reqwest::blocking::Client::builder()
+		.timeout(Duration::from_secs(60*5))
+		.build().unwrap();
 
 	for filename in TEST_FILES {
 		path.push(filename);
 		if !path.exists() {
 			let url = BASE_URL.to_owned() + filename;
-			downloads.push(Download::new(&url).file_name(Path::new(filename)));
+			// let mut response = reqwest::blocking::get(url).unwrap();
+			let mut response = client.get(url).send().unwrap();
+			let mut file = File::create(BASE_PATH.to_owned() + filename).unwrap();
+			std::io::copy(&mut response, &mut file).unwrap();
 		}
 		path.pop();
-	}
-
-	let mut downloader = Downloader::builder().download_folder(Path::new(BASE_PATH)).build().unwrap();
-
-	for download_summary in downloader.download(&downloads).unwrap() {
-		download_summary.unwrap();
 	}
 }
 
@@ -310,4 +309,42 @@ fn _test_final_image(content: &[u8], raw_image: RawImage) -> Result<(), String> 
 	}
 
 	Ok(())
+}
+
+// #[test]
+fn extract_data_from_dng_images() {
+	read_dir(BASE_PATH)
+		.unwrap()
+		.map(|dir_entry| dir_entry.unwrap().path())
+		.filter(|path| path.is_file() && path.file_name().map(|file_name| file_name != ".gitkeep").unwrap_or(false))
+		.for_each(|path| {
+			extract_data_from_dng_image(&path);
+		});
+}
+
+fn extract_data_from_dng_image(path: &Path) {
+	use std::io::{BufReader, Write};
+	use raw_rs::tiff::file::TiffRead;
+	use raw_rs::tiff::Ifd;
+	use raw_rs::tiff::tags::{ColorMatrix2, Make, Model};
+	use raw_rs::tiff::values::ToFloat;
+
+	let reader = BufReader::new(File::open(path).unwrap());
+	let mut file = TiffRead::new(reader).unwrap();
+	let ifd = Ifd::new_first_ifd(&mut file).unwrap();
+
+	let make = ifd.get_value::<Make, _>(&mut file).unwrap();
+	let model = ifd.get_value::<Model, _>(&mut file).unwrap();
+	let matrix = ifd.get_value::<ColorMatrix2, _>(&mut file).unwrap();
+
+	if model == "MODEL-NAME" {
+		println!("{}", path.display());
+		return;
+	}
+
+	let output_folder = path.parent().unwrap().join(make);
+	std::fs::create_dir_all(&output_folder).unwrap();
+	let mut output_file = File::create(output_folder.join(model + ".toml")).unwrap();
+	let matrix: Vec<_> = matrix.iter().map(|x| (x.to_float() * 10_000.) as i16).collect();
+	writeln!(output_file, "camera_to_xyz = {:?}", matrix).unwrap();
 }

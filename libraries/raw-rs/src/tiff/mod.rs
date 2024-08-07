@@ -32,6 +32,8 @@ pub enum TagId {
 	BlackLevel = 0x7310,
 	CfaPatternDim = 0x828d,
 	CfaPattern = 0x828e,
+	ColorMatrix1 = 0xc621,
+	ColorMatrix2 = 0xc622,
 
 	#[num_enum(catch_all)]
 	Unknown(u16),

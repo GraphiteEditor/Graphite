@@ -13,11 +13,12 @@ repository = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/r
 documentation = "https://docs.rs/raw-rs"
 
 [features]
-raw-rs-tests = ["dep:downloader", "dep:image", "dep:libraw-rs", "dep:palette"]
+raw-rs-tests = ["dep:image", "dep:libraw-rs", "dep:palette", "dep:reqwest"]
 
 [dependencies]
 # Local dependencies
 tag-derive = { path = "tag-derive" }
+build-camera-data = { path = "build-camera-data" }
 
 # Required dependencies
 bitstream-io = "2.3.0"
@@ -25,7 +26,7 @@ num_enum = "0.7.2"
 thiserror = { workspace = true }
 
 # Optional dependencies (Should be dev dependencies, but Cargo currently doesn't allow optional dev dependencies)
-downloader = { version = "0.2.7", optional = true }
 image = { workspace = true, optional = true }
 libraw-rs = { version = "0.0.4", optional = true }
 palette = { version = "0.7.6", optional = true }
+reqwest = { workspace = true, optional = true }

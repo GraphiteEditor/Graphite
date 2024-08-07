@@ -1,4 +1,4 @@
-use super::types::{Array, ConstArray, TagType, TypeByte, TypeIfd, TypeLong, TypeNumber, TypeShort, TypeSonyToneCurve, TypeString};
+use super::types::{Array, ConstArray, TagType, TypeByte, TypeIfd, TypeLong, TypeNumber, TypeShort, TypeSonyToneCurve, TypeString, TypeSRational};
 use super::{Ifd, TagId, TiffError, TiffRead};
 
 use std::io::{Read, Seek};
@@ -29,6 +29,8 @@ pub struct SonyToneCurve;
 pub struct BlackLevel;
 pub struct CfaPatternDim;
 pub struct CfaPattern;
+pub struct ColorMatrix1;
+pub struct ColorMatrix2;
 
 impl SimpleTag for ImageWidth {
 	type Type = TypeNumber;
@@ -140,6 +142,20 @@ impl SimpleTag for CfaPattern {
 
 	const ID: TagId = TagId::CfaPattern;
 	const NAME: &'static str = "CFA Pattern";
+}
+
+impl SimpleTag for ColorMatrix1 {
+	type Type = Array<TypeSRational>;
+
+	const ID: TagId = TagId::ColorMatrix1;
+	const NAME: &'static str = "Color Matrix 1";
+}
+
+impl SimpleTag for ColorMatrix2 {
+	type Type = Array<TypeSRational>;
+
+	const ID: TagId = TagId::ColorMatrix2;
+	const NAME: &'static str = "Color Matrix 2";
 }
 
 impl SimpleTag for SonyDataOffset {

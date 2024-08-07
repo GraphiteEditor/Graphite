@@ -27,7 +27,7 @@ pub struct RawImage {
 	pub cfa_pattern: [u8; 4],
 	pub maximum: u16,
 	pub black: SubtractBlack,
-	pub camera_to_xyz: Option<[f64; 12]>,
+	pub camera_to_xyz: Option<[f64; 9]>,
 }
 
 pub struct Image<T> {
@@ -49,6 +49,8 @@ struct ArwIfd {
 pub fn decode<R: Read + Seek>(reader: &mut R) -> Result<RawImage, DecoderError> {
 	let mut file = TiffRead::new(reader)?;
 	let ifd = Ifd::new_first_ifd(&mut file)?;
+
+	println!("{}", ifd);
 
 	let camera_model = metadata::identify::identify_camera_model(&ifd, &mut file).unwrap();
 

@@ -1,6 +1,28 @@
-pub struct Rational<T> {
+pub trait ToFloat {
+	fn to_float(&self) -> f64;
+}
+
+impl ToFloat for u32 {
+	fn to_float(&self) -> f64 {
+		*self as f64
+	}
+}
+
+impl ToFloat for i32 {
+	fn to_float(&self) -> f64 {
+		*self as f64
+	}
+}
+
+pub struct Rational<T: ToFloat> {
 	pub numerator: T,
 	pub denominator: T,
+}
+
+impl<T: ToFloat> ToFloat for Rational<T> {
+	fn to_float(&self) -> f64 {
+		self.numerator.to_float() / self.denominator.to_float()
+	}
 }
 
 pub struct CurveLookupTable {
