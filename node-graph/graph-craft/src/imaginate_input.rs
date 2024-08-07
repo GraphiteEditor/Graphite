@@ -25,7 +25,7 @@ impl std::cmp::PartialEq for ImaginateCache {
 
 impl core::hash::Hash for ImaginateCache {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		self.0.lock().unwrap().hash(state);
+		self.0.try_lock().map(|g| g.hash(state));
 	}
 }
 
@@ -50,11 +50,11 @@ pub struct ImaginateController(Arc<InternalImaginateControl>);
 
 impl ImaginateController {
 	pub fn get_status(&self) -> ImaginateStatus {
-		self.0.status.lock().as_deref().cloned().unwrap_or_default()
+		self.0.status.try_lock().as_deref().cloned().unwrap_or_default()
 	}
 
 	pub fn set_status(&self, status: ImaginateStatus) {
-		if let Ok(mut lock) = self.0.status.lock() {
+		if let Ok(mut lock) = self.0.status.try_lock() {
 			*lock = status
 		}
 	}
@@ -68,13 +68,13 @@ impl ImaginateController {
 	}
 
 	pub fn request_termination(&self) {
-		if let Some(handle) = self.0.termination_sender.lock().ok().and_then(|mut lock| lock.take()) {
+		if let Some(handle) = self.0.termination_sender.try_lock().ok().and_then(|mut lock| lock.take()) {
 			handle.terminate()
 		}
 	}
 
 	pub fn set_termination_handle<H: ImaginateTerminationHandle>(&self, handle: Box<H>) {
-		if let Ok(mut lock) = self.0.termination_sender.lock() {
+		if let Ok(mut lock) = self.0.termination_sender.try_lock() {
 			*lock = Some(handle)
 		}
 	}

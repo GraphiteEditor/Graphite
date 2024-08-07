@@ -474,28 +474,32 @@ fn empty_image<_P: Pixel>(transform: DAffine2, color: _P) -> ImageFrame<_P> {
 #[cfg(feature = "serde")]
 macro_rules! generate_imaginate_node {
 	($($val:ident: $t:ident: $o:ty,)*) => {
-		pub struct ImaginateNode<P: Pixel, E, C, $($t,)*> {
+		pub struct ImaginateNode<P: Pixel, E, C, G, $($t,)*> {
 			editor_api: E,
 			controller: C,
+			generation_id: G,
 			$($val: $t,)*
 			cache: std::sync::Arc<std::sync::Mutex<HashMap<u64, Image<P>>>>,
+			last_generation: std::sync::atomic::AtomicU64,
 		}
 
-		impl<'e, P: Pixel, E, C, $($t,)*> ImaginateNode<P, E, C, $($t,)*>
+		impl<'e, P: Pixel, E, C, G, $($t,)*> ImaginateNode<P, E, C, G, $($t,)*>
 		where $($t: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, $o>>,)*
 			E: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, &'e WasmEditorApi>>,
 			C: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, ImaginateController>>,
+			G: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, u64>>,
 		{
 			#[allow(clippy::too_many_arguments)]
-			pub fn new(editor_api: E, controller: C, $($val: $t,)* ) -> Self {
-				Self { editor_api, controller, $($val,)* cache: Default::default() }
+			pub fn new(editor_api: E, controller: C, $($val: $t,)*  generation_id: G ) -> Self {
+				Self { editor_api, controller, generation_id, $($val,)* cache: Default::default(), last_generation: std::sync::atomic::AtomicU64::new(u64::MAX) }
 			}
 		}
 
-		impl<'i, 'e: 'i, P: Pixel + 'i + Hash + Default + Send, E: 'i, C: 'i, $($t: 'i,)*> Node<'i, ImageFrame<P>> for ImaginateNode<P, E, C, $($t,)*>
+		impl<'i, 'e: 'i, P: Pixel + 'i + Hash + Default + Send, E: 'i, C: 'i, G: 'i, $($t: 'i,)*> Node<'i, ImageFrame<P>> for ImaginateNode<P, E, C, G, $($t,)*>
 		where $($t: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, $o>>,)*
 			E: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, &'e WasmEditorApi>>,
 			C: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, ImaginateController>>,
+			G: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, u64>>,
 		{
 			type Output = DynFuture<'i, ImageFrame<P>>;
 
@@ -509,22 +513,41 @@ macro_rules! generate_imaginate_node {
 				let hash = hasher.finish();
 				let editor_api = self.editor_api.eval(());
 				let cache = self.cache.clone();
+				let generation_future = self.generation_id.eval(());
+				let last_generation = &self.last_generation;
 
 				Box::pin(async move {
-					// let controller: std::pin::Pin<Box<dyn std::future::Future<Output = ImaginateController> + Send>> = controller;
 					let controller: ImaginateController = controller.await;
-					if controller.take_regenerate_trigger() {
+					let generation_id = generation_future.await;
+					if generation_id !=  last_generation.swap(generation_id, std::sync::atomic::Ordering::SeqCst) {
 						let image = super::imaginate::imaginate(frame.image, editor_api, controller, $($val,)*).await;
 
 						cache.lock().unwrap().insert(hash, image.clone());
 
-						return ImageFrame { image, ..frame }
+						return wrap_image_frame(image, frame.transform);
 					}
 					let image = cache.lock().unwrap().get(&hash).cloned().unwrap_or_default();
 
-					ImageFrame { image, ..frame }
+					return wrap_image_frame(image, frame.transform);
 				})
 			}
+		}
+	}
+}
+
+fn wrap_image_frame<P: Pixel>(image: Image<P>, transform: DAffine2) -> ImageFrame<P> {
+	if !transform.decompose_scale().abs_diff_eq(DVec2::ZERO, 0.00001) {
+		ImageFrame {
+			image,
+			transform,
+			alpha_blending: AlphaBlending::default(),
+		}
+	} else {
+		let resolution = DVec2::new(image.height as f64, image.width as f64);
+		ImageFrame {
+			image,
+			transform: DAffine2::from_scale_angle_translation(resolution, 0., transform.translation),
+			alpha_blending: AlphaBlending::default(),
 		}
 	}
 }

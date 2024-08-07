@@ -71,7 +71,9 @@ pub enum DocumentMessage {
 	GridOverlays(OverlayContext),
 	GridVisibility(bool),
 	GroupSelectedLayers,
-	ImaginateGenerate,
+	ImaginateGenerate {
+		imaginate_node: Vec<NodeId>,
+	},
 	ImaginateRandom {
 		imaginate_node: Vec<NodeId>,
 		then_generate: bool,

@@ -1769,9 +1769,13 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					.tooltip("Fill layer frame by generating a new image")
 					.on_update({
 						let controller = controller.clone();
+						let imaginate_node = imaginate_node.clone();
 						move |_| {
 							controller.trigger_regenerate();
-							DocumentMessage::ImaginateGenerate.into()
+							DocumentMessage::ImaginateGenerate {
+								imaginate_node: imaginate_node.clone(),
+							}
+							.into()
 						}
 					})
 					.widget_holder(),
@@ -1781,9 +1785,13 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					.disabled(!matches!(imaginate_status, ImaginateStatus::ReadyDone))
 					.on_update({
 						let controller = controller.clone();
+						let imaginate_node = imaginate_node.clone();
 						move |_| {
 							controller.set_status(ImaginateStatus::Ready);
-							DocumentMessage::ImaginateGenerate.into()
+							DocumentMessage::ImaginateGenerate {
+								imaginate_node: imaginate_node.clone(),
+							}
+							.into()
 						}
 					})
 					.widget_holder(),
@@ -1858,8 +1866,8 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 
 		let mut widgets = start_widgets(document_node, node_id, resolution_index, "Resolution", FrontendGraphDataType::Number, false);
 
-		let round = |x: DVec2| {
-			let (x, y) = pick_safe_imaginate_resolution(x.into());
+		let round = |size: DVec2| {
+			let (x, y) = pick_safe_imaginate_resolution(size.into());
 			DVec2::new(x as f64, y as f64)
 		};
 

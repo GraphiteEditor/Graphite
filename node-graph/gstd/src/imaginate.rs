@@ -500,28 +500,31 @@ fn base64_to_image<D: AsRef<[u8]>, P: Pixel>(base64_data: D) -> Result<Image<P>,
 }
 
 pub fn pick_safe_imaginate_resolution((width, height): (f64, f64)) -> (u64, u64) {
+	const NATIVE_MODEL_RESOLUTION: f64 = 512.;
+	let size = if width * height == 0. { DVec2::splat(NATIVE_MODEL_RESOLUTION) } else { DVec2::new(width, height) };
+
 	const MAX_RESOLUTION: u64 = 1000 * 1000;
 
-	// this is the maximum width/height that can be obtained
+	// This is the maximum width/height that can be obtained
 	const MAX_DIMENSION: u64 = (MAX_RESOLUTION / 64) & !63;
 
-	// round the resolution to the nearest multiple of 64
-	let size = (DVec2::new(width, height).round().clamp(DVec2::ZERO, DVec2::splat(MAX_DIMENSION as _)).as_u64vec2() + U64Vec2::splat(32)).max(U64Vec2::splat(64)) & !U64Vec2::splat(63);
+	// Round the resolution to the nearest multiple of 64
+	let size = (size.round().clamp(DVec2::ZERO, DVec2::splat(MAX_DIMENSION as _)).as_u64vec2() + U64Vec2::splat(32)).max(U64Vec2::splat(64)) & !U64Vec2::splat(63);
 	let resolution = size.x * size.y;
 
 	if resolution > MAX_RESOLUTION {
-		// scale down the image, so it is smaller than MAX_RESOLUTION
+		// Scale down the image, so it is smaller than MAX_RESOLUTION
 		let scale = (MAX_RESOLUTION as f64 / resolution as f64).sqrt();
 		let size = size.as_dvec2() * scale;
 
 		if size.x < 64.0 {
-			// the image is extremely wide
+			// The image is extremely wide
 			(64, MAX_DIMENSION)
 		} else if size.y < 64.0 {
-			// the image is extremely high
+			// The image is extremely high
 			(MAX_DIMENSION, 64)
 		} else {
-			// round down to a multiple of 64, so that the resolution still is smaller than MAX_RESOLUTION
+			// Round down to a multiple of 64, so that the resolution still is smaller than MAX_RESOLUTION
 			(size.as_u64vec2() & !U64Vec2::splat(63)).into()
 		}
 	} else {
