@@ -48,7 +48,7 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 		height: image_height,
 		cfa_pattern: ifd.cfa_pattern.try_into().unwrap(),
 		maximum: (1 << 14) - 1,
-		black: SubtractBlack::CfaGrid([512, 512, 512, 512]), // TODD: Find the correct way to do this
+		black: SubtractBlack::CfaGrid([512, 512, 512, 512]), // TODO: Find the correct way to do this
 		camera_to_xyz: None,
 	}
 }
