@@ -67,7 +67,7 @@ pub fn build_camera_data(_: TokenStream) -> TokenStream {
 				panic!("The folders within camera_data should only contain toml files")
 			}
 
-			let name = company_name.clone() + " " + model_path.file_name().unwrap().to_str().unwrap();
+			let name = company_name.clone() + " " + model_path.file_stem().unwrap().to_str().unwrap();
 
 			let values: Table = toml::from_str(&fs::read_to_string(model_path).unwrap()).unwrap();
 			camera_data.push((name, values))

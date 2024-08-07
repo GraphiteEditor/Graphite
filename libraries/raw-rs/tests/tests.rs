@@ -85,7 +85,7 @@ fn store_image(path: &Path, suffix: &str, data: &mut [u8], width: usize, height:
 		output_path.push(parent);
 	}
 	output_path.push("output");
-	if let Some(filename) = path.file_name() {
+	if let Some(filename) = path.file_stem() {
 		let new_filename = format!("{}_{}.{}", filename.to_string_lossy(), suffix, "png");
 		output_path.push(new_filename);
 	}
@@ -104,7 +104,6 @@ fn download_images() {
 		path.push(filename);
 		if !path.exists() {
 			let url = BASE_URL.to_owned() + filename;
-			// let mut response = reqwest::blocking::get(url).unwrap();
 			let mut response = client.get(url).send().unwrap();
 			let mut file = File::create(BASE_PATH.to_owned() + filename).unwrap();
 			std::io::copy(&mut response, &mut file).unwrap();
