@@ -1542,52 +1542,6 @@ impl NodeNetworkInterface {
 			NodeTypePersistentMetadata::Layer(layer_metadata) => {
 				match layer_metadata.position {
 					LayerPosition::Absolute(position) => Some(position),
-					// LayerPosition::StackTop(offset) => {
-					// 	let Some((downstream_node_id, input_index)) = downstream_connector else {
-					// 		log::error!("Could not get downstream node input connector for node {node_id}");
-					// 		return None;
-					// 	};
-					// 	// Ensure that the right edge of the layer is aligned with the vertical connection line if the input index is greater than 0
-					// 	let network = self.network(network_path)?;
-					// 	let downstream_node = network.nodes.get(&downstream_node_id)?;
-					// 	let inputs_len = downstream_node.inputs.len();
-					// 	let mut node_to_right = None;
-					// 	for post_input_index in (input_index + 1)..inputs_len {
-					// 		let Some(stack_node) = downstream_node.inputs.get(post_input_index).and_then(|input| input.as_node()) else {
-					// 			continue;
-					// 		};
-					// 		if self.is_layer(&stack_node, network_path) {
-					// 			node_to_right = Some(stack_node);
-					// 			break;
-					// 		}
-					// 	}
-					// 	// If there are no layers at a higher input index, use the parent layer stack
-					// 	let node_to_right = node_to_right.unwrap_or(downstream_node_id);
-					// 	let Some(node_to_right_position) = self.position(&node_to_right, network_path) else {
-					// 		log::error!("Could not get node_to_right_position in position_from_downstream_node");
-					// 		return None;
-					// 	};
-					// 	let mut max_layer_width = 0;
-					// 	// Get the width of the chain
-					// 	for upstream_layer in self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::PrimaryFlow).collect::<Vec<_>>() {
-					// 		let Some(upstream_layer_width) = self.layer_width(&upstream_layer, network_path) else {
-					// 			log::error!("Could not get upstream_layer_width in position_from_downstream_node");
-					// 			continue;
-					// 		};
-					// 		max_layer_width = max_layer_width.max(upstream_layer_width as i32);
-					// 	}
-					// 	let x_position = node_to_right_position.x - max_layer_width + offset.x;
-
-					// 	// Get the height of the node to ensure nodes do not overlap
-					// 	let Some(downstream_node_height) = self.height_from_click_target(&downstream_node_id, network_path) else {
-					// 		log::error!("Could not get click target height in position_from_downstream_node");
-					// 		return None;
-					// 	};
-					// 	// The node above is the parent layer node. TODO: Layout system to organize vertical position of stacks.
-					// 	let y_position = self.position(&downstream_node_id, network_path)?.y + offset.y + 1 + downstream_node_height as i32;
-
-					// 	Some(IVec2::new(x_position, y_position))
-					// }
 					LayerPosition::Stack(y_offset) => {
 						let Some(downstream_node_connectors) = self
 							.outward_wires(network_path)
@@ -2441,7 +2395,6 @@ impl NodeNetworkInterface {
 									}
 									NodeTypePersistentMetadata::Node(_) => {
 										// If the layer feeds into a node, set its y offset to 0
-										// TODO: Retain y position
 										self.set_absolute_position(upstream_node_id, network_path, current_node_position);
 									}
 								}
@@ -2524,6 +2477,7 @@ impl NodeNetworkInterface {
 		if matches!(input_connector, InputConnector::Node { .. }) {
 			self.set_input(input_connector, value_input, network_path);
 		} else {
+			// TODO: Allow the user to drag the solid line when previewing
 			// This causes a crash since when ending preview the NodeInput::Node to the previewed node needs to be disconnected.
 			// Since it is only possible to drag the solid line, if previewing then there must be a dashed connection, which becomes the new export
 			// if matches!(self.previewing(network_path), Previewing::Yes { .. }) {
