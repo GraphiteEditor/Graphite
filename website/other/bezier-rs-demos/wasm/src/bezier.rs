@@ -6,16 +6,6 @@ use bezier_rs::{ArcStrategy, ArcsOptions, Bezier, Identifier, TValue, TValueType
 use glam::DVec2;
 use wasm_bindgen::prelude::*;
 
-#[derive(serde::Serialize, serde::Deserialize)]
-struct CircleSector {
-	center: DVec2,
-	radius: f64,
-	#[serde(rename = "startAngle")]
-	start_angle: f64,
-	#[serde(rename = "endAngle")]
-	end_angle: f64,
-}
-
 #[wasm_bindgen]
 pub enum WasmMaximizeArcs {
 	Automatic, // 0

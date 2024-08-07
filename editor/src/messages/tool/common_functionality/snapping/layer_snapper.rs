@@ -22,13 +22,16 @@ impl LayerSnapper {
 			return;
 		}
 
-		let bounds = if document.metadata.is_artboard(layer) {
-			document.metadata.bounding_box_with_transform(layer, document.metadata.transform_to_document(layer)).map(Quad::from_box)
+		let bounds = if document.network_interface.is_artboard(&layer.to_node(), &[]) {
+			document
+				.metadata()
+				.bounding_box_with_transform(layer, document.metadata().transform_to_document(layer))
+				.map(Quad::from_box)
 		} else {
 			document
-				.metadata
+				.metadata()
 				.bounding_box_with_transform(layer, DAffine2::IDENTITY)
-				.map(|bounds| document.metadata.transform_to_document(layer) * Quad::from_box(bounds))
+				.map(|bounds| document.metadata().transform_to_document(layer) * Quad::from_box(bounds))
 		};
 		let Some(bounds) = bounds else { return };
 
@@ -53,21 +56,21 @@ impl LayerSnapper {
 		let document = snap_data.document;
 		self.paths_to_snap.clear();
 
-		for layer in document.metadata.all_layers() {
-			if !document.metadata.is_artboard(layer) || snap_data.ignore.contains(&layer) {
+		for layer in document.metadata().all_layers() {
+			if !document.network_interface.is_artboard(&layer.to_node(), &[]) || snap_data.ignore.contains(&layer) {
 				continue;
 			}
-			self.add_layer_bounds(document, layer, SnapTarget::Board(BoardSnapTarget::Edge));
+			self.add_layer_bounds(document, layer, SnapTarget::Artboard(ArtboardSnapTarget::Edge));
 		}
 		for &layer in snap_data.get_candidates() {
-			let transform = document.metadata.transform_to_document(layer);
+			let transform = document.metadata().transform_to_document(layer);
 			if !transform.is_finite() {
 				continue;
 			}
 
 			if document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Intersection)) || document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Path))
 			{
-				for subpath in document.metadata.layer_outline(layer) {
+				for subpath in document.metadata().layer_outline(layer) {
 					for (start_index, curve) in subpath.iter().enumerate() {
 						let document_curve = curve.apply_transformation(|p| transform.transform_point2(p));
 						let start = subpath.manipulator_groups()[start_index].id;
@@ -175,13 +178,17 @@ impl LayerSnapper {
 		let document = snap_data.document;
 		self.points_to_snap.clear();
 
-		for layer in document.metadata.all_layers() {
-			if !document.metadata.is_artboard(layer) || snap_data.ignore.contains(&layer) {
+		for layer in document.metadata().all_layers() {
+			if !document.network_interface.is_artboard(&layer.to_node(), &[]) || snap_data.ignore.contains(&layer) {
 				continue;
 			}
 
-			if document.snapping_state.target_enabled(SnapTarget::Board(BoardSnapTarget::Corner)) {
-				let Some(bounds) = document.metadata.bounding_box_with_transform(layer, document.metadata.transform_to_document(layer)) else {
+			if document.snapping_state.target_enabled(SnapTarget::Artboard(ArtboardSnapTarget::Corner)) {
+				let Some(bounds) = document
+					.network_interface
+					.document_metadata()
+					.bounding_box_with_transform(layer, document.metadata().transform_to_document(layer))
+				else {
 					continue;
 				};
 
@@ -194,10 +201,10 @@ impl LayerSnapper {
 			if snap_data.ignore_bounds(layer) {
 				continue;
 			}
-			let Some(bounds) = document.metadata.bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
+			let Some(bounds) = document.metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
 				continue;
 			};
-			let quad = document.metadata.transform_to_document(layer) * Quad::from_box(bounds);
+			let quad = document.metadata().transform_to_document(layer) * Quad::from_box(bounds);
 			let values = BBoxSnapValues::BOUNDING_BOX;
 			get_bbox_points(quad, &mut self.points_to_snap, values, document);
 		}
@@ -309,17 +316,19 @@ pub struct SnapCandidatePoint {
 	pub source_index: usize,
 	pub quad: Option<Quad>,
 	pub neighbors: Vec<DVec2>,
+	pub alignment: bool,
 }
 impl SnapCandidatePoint {
 	pub fn new(document_point: DVec2, source: SnapSource, target: SnapTarget) -> Self {
-		Self::new_quad(document_point, source, target, None)
+		Self::new_quad(document_point, source, target, None, true)
 	}
-	pub fn new_quad(document_point: DVec2, source: SnapSource, target: SnapTarget, quad: Option<Quad>) -> Self {
+	pub fn new_quad(document_point: DVec2, source: SnapSource, target: SnapTarget, quad: Option<Quad>, alignment: bool) -> Self {
 		Self {
 			document_point,
 			source,
 			target,
 			quad,
+			alignment,
 			..Default::default()
 		}
 	}
@@ -355,12 +364,30 @@ impl BBoxSnapValues {
 	};
 
 	pub const ARTBOARD: Self = Self {
-		corner_source: SnapSource::Board(BoardSnapSource::Corner),
-		corner_target: SnapTarget::Board(BoardSnapTarget::Corner),
+		corner_source: SnapSource::Artboard(ArtboardSnapSource::Corner),
+		corner_target: SnapTarget::Artboard(ArtboardSnapTarget::Corner),
 		edge_source: SnapSource::None,
 		edge_target: SnapTarget::None,
-		center_source: SnapSource::Board(BoardSnapSource::Center),
-		center_target: SnapTarget::Board(BoardSnapTarget::Center),
+		center_source: SnapSource::Artboard(ArtboardSnapSource::Center),
+		center_target: SnapTarget::Artboard(ArtboardSnapTarget::Center),
+	};
+
+	pub const ALIGN_BOUNDING_BOX: Self = Self {
+		corner_source: SnapSource::Alignment(AlignmentSnapSource::BoundsCorner),
+		corner_target: SnapTarget::Alignment(AlignmentSnapTarget::BoundsCorner),
+		edge_source: SnapSource::None,
+		edge_target: SnapTarget::None,
+		center_source: SnapSource::Alignment(AlignmentSnapSource::BoundsCenter),
+		center_target: SnapTarget::Alignment(AlignmentSnapTarget::BoundsCenter),
+	};
+
+	pub const ALIGN_ARTBOARD: Self = Self {
+		corner_source: SnapSource::Alignment(AlignmentSnapSource::ArtboardCorner),
+		corner_target: SnapTarget::Alignment(AlignmentSnapTarget::ArtboardCorner),
+		edge_source: SnapSource::None,
+		edge_target: SnapTarget::None,
+		center_source: SnapSource::Alignment(AlignmentSnapSource::ArtboardCenter),
+		center_target: SnapTarget::Alignment(AlignmentSnapTarget::ArtboardCenter),
 	};
 }
 pub fn get_bbox_points(quad: Quad, points: &mut Vec<SnapCandidatePoint>, values: BBoxSnapValues, document: &DocumentMessageHandler) {
@@ -368,14 +395,14 @@ pub fn get_bbox_points(quad: Quad, points: &mut Vec<SnapCandidatePoint>, values:
 		let start = quad.0[index];
 		let end = quad.0[(index + 1) % 4];
 		if document.snapping_state.target_enabled(values.corner_target) {
-			points.push(SnapCandidatePoint::new_quad(start, values.corner_source, values.corner_target, Some(quad)));
+			points.push(SnapCandidatePoint::new_quad(start, values.corner_source, values.corner_target, Some(quad), false));
 		}
 		if document.snapping_state.target_enabled(values.edge_target) {
-			points.push(SnapCandidatePoint::new_quad((start + end) / 2., values.edge_source, values.edge_target, Some(quad)));
+			points.push(SnapCandidatePoint::new_quad((start + end) / 2., values.edge_source, values.edge_target, Some(quad), false));
 		}
 	}
 	if document.snapping_state.target_enabled(values.center_target) {
-		points.push(SnapCandidatePoint::new_quad(quad.center(), values.center_source, values.center_target, Some(quad)));
+		points.push(SnapCandidatePoint::new_quad(quad.center(), values.center_source, values.center_target, Some(quad), false));
 	}
 }
 
@@ -435,23 +462,23 @@ pub fn are_manipulator_handles_colinear(group: &bezier_rs::ManipulatorGroup<Poin
 	let anchor_is_endpoint = !subpath.closed() && (index == 0 || index == subpath.len() - 1);
 
 	// Unless this is an endpoint, check if both handles are colinear (within an angular epsilon)
-	!anchor_is_endpoint && handle_in.is_some_and(|handle_in| handle_out.is_some_and(|handle_out| handle_in.angle_between(handle_out) < 1e-5))
+	!anchor_is_endpoint && handle_in.is_some_and(|handle_in| handle_out.is_some_and(|handle_out| handle_in.angle_to(handle_out) < 1e-5))
 }
 
 pub fn get_layer_snap_points(layer: LayerNodeIdentifier, snap_data: &SnapData, points: &mut Vec<SnapCandidatePoint>) {
 	let document = snap_data.document;
 
-	if document.metadata().is_artboard(layer) {
+	if document.network_interface.is_artboard(&layer.to_node(), &[]) {
 		return;
 	}
 
-	if document.metadata().is_folder(layer) {
+	if layer.has_children(document.metadata()) {
 		for child in layer.descendants(document.metadata()) {
 			get_layer_snap_points(child, snap_data, points);
 		}
-	} else if document.metadata.layer_outline(layer).next().is_some() {
-		let to_document = document.metadata.transform_to_document(layer);
-		for subpath in document.metadata.layer_outline(layer) {
+	} else if document.metadata().layer_outline(layer).next().is_some() {
+		let to_document = document.metadata().transform_to_document(layer);
+		for subpath in document.metadata().layer_outline(layer) {
 			subpath_anchor_snap_points(layer, subpath, snap_data, points, to_document);
 		}
 	}

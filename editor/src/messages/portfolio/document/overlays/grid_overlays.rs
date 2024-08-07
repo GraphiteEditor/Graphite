@@ -11,11 +11,12 @@ use graphene_std::vector::style::FillChoice;
 
 fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
 	let origin = document.snapping_state.grid.origin;
-	let grid_color: Color = document.snapping_state.grid.grid_color;
+	let grid_color = document.snapping_state.grid.grid_color;
 	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.document_ptz) else {
 		return;
 	};
-	let document_to_viewport = document.metadata().document_to_viewport;
+	let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size / 2., &document.document_ptz);
+
 	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
 
 	for primary in 0..2 {
@@ -51,13 +52,14 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 // The draw dashed line method will also be not grid aligned for tilted grids.
 // TODO: Potentially create an image and render the image onto the canvas a single time.
 // TODO: Implement this with a dashed line (`set_line_dash`), with integer spacing which is continuously adjusted to correct the accumulated error.
-fn grid_overlay_dot(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
+fn grid_overlay_rectangular_dot(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
 	let origin = document.snapping_state.grid.origin;
 	let grid_color = document.snapping_state.grid.grid_color;
 	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.document_ptz) else {
 		return;
 	};
-	let document_to_viewport = document.metadata().document_to_viewport;
+	let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size / 2., &document.document_ptz);
+
 	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
 
 	let min = bounds.0.iter().map(|corner| corner.y).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
@@ -92,7 +94,8 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 	let grid_color = document.snapping_state.grid.grid_color;
 	let cmp = |a: &f64, b: &f64| a.partial_cmp(b).unwrap();
 	let origin = document.snapping_state.grid.origin;
-	let document_to_viewport = document.metadata().document_to_viewport;
+	let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size / 2., &document.document_ptz);
+
 	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
 	let tan_a = angle_a.to_radians().tan();
 	let tan_b = angle_b.to_radians().tan();
@@ -142,7 +145,8 @@ fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context
 	let grid_color = document.snapping_state.grid.grid_color;
 	let cmp = |a: &f64, b: &f64| a.partial_cmp(b).unwrap();
 	let origin = document.snapping_state.grid.origin;
-	let document_to_viewport = document.metadata().document_to_viewport;
+	let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size / 2., &document.document_ptz);
+
 	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
 	let tan_a = angle_a.to_radians().tan();
 	let tan_b = angle_b.to_radians().tan();
@@ -188,7 +192,7 @@ pub fn grid_overlay(document: &DocumentMessageHandler, overlay_context: &mut Ove
 	match document.snapping_state.grid.grid_type {
 		GridType::Rectangle { spacing } => {
 			if document.snapping_state.grid.dot_display {
-				grid_overlay_dot(document, overlay_context, spacing)
+				grid_overlay_rectangular_dot(document, overlay_context, spacing)
 			} else {
 				grid_overlay_rectangular(document, overlay_context, spacing)
 			}
@@ -276,6 +280,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	color_widgets.push(
 		ColorButton::new(FillChoice::Solid(grid.grid_color))
 			.tooltip("Grid display color")
+			.allow_none(false)
 			.on_update(update_color(grid, |grid| Some(&mut grid.grid_color)))
 			.widget_holder(),
 	);

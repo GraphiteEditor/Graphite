@@ -1,24 +1,12 @@
 //! Contains stylistic options for SVG elements.
 
 use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
+use crate::renderer::format_transform_matrix;
 use crate::Color;
 
 use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
-
 use std::fmt::{self, Display, Write};
-
-/// Precision of the opacity value in digits after the decimal point.
-/// A value of 3 would correspond to a precision of 10^-3.
-const OPACITY_PRECISION: usize = 3;
-
-fn format_opacity(attribute: &str, opacity: f32) -> String {
-	if (opacity - 1.).abs() > 10_f32.powi(-(OPACITY_PRECISION as i32)) {
-		format!(r#" {attribute}="{opacity:.OPACITY_PRECISION$}""#)
-	} else {
-		String::new()
-	}
-}
 
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
 pub enum GradientType {
@@ -134,7 +122,15 @@ impl Gradient {
 
 		let mut stop = String::new();
 		for (position, color) in self.stops.0.iter() {
-			let _ = write!(stop, r##"<stop offset="{}" stop-color="#{}" />"##, position, color.with_alpha(color.a()).rgba_hex());
+			stop.push_str("<stop");
+			if *position != 0. {
+				let _ = write!(stop, r#" offset="{}""#, (position * 1_000_000.).round() / 1_000_000.);
+			}
+			let _ = write!(stop, r##" stop-color="#{}""##, color.rgb_hex());
+			if color.a() < 1. {
+				let _ = write!(stop, r#" stop-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
+			}
+			stop.push_str(" />")
 		}
 
 		let mod_gradient = transformed_bound_transform.inverse();
@@ -143,28 +139,25 @@ impl Gradient {
 		let start = mod_points.transform_point2(self.start);
 		let end = mod_points.transform_point2(self.end);
 
-		let transform = mod_gradient
-			.to_cols_array()
-			.iter()
-			.enumerate()
-			.map(|(i, entry)| entry.to_string() + if i == 5 { "" } else { "," })
-			.collect::<String>();
-
 		let gradient_id = crate::uuid::generate_uuid();
+
+		let matrix = format_transform_matrix(mod_gradient);
+		let gradient_transform = if matrix.is_empty() { String::new() } else { format!(r#" gradientTransform="{}""#, matrix) };
+
 		match self.gradient_type {
 			GradientType::Linear => {
 				let _ = write!(
 					svg_defs,
-					r#"<linearGradient id="{}" x1="{}" x2="{}" y1="{}" y2="{}" gradientTransform="matrix({})">{}</linearGradient>"#,
-					gradient_id, start.x, end.x, start.y, end.y, transform, stop
+					r#"<linearGradient id="{}" x1="{}" x2="{}" y1="{}" y2="{}"{gradient_transform}>{}</linearGradient>"#,
+					gradient_id, start.x, end.x, start.y, end.y, stop
 				);
 			}
 			GradientType::Radial => {
 				let radius = (f64::powi(start.x - end.x, 2) + f64::powi(start.y - end.y, 2)).sqrt();
 				let _ = write!(
 					svg_defs,
-					r#"<radialGradient id="{}" cx="{}" cy="{}" r="{}" gradientTransform="matrix({})">{}</radialGradient>"#,
-					gradient_id, start.x, start.y, radius, transform, stop
+					r#"<radialGradient id="{}" cx="{}" cy="{}" r="{}"{gradient_transform}>{}</radialGradient>"#,
+					gradient_id, start.x, start.y, radius, stop
 				);
 			}
 		}
@@ -178,7 +171,7 @@ impl Gradient {
 		let (start, end) = (transform.transform_point2(self.start), transform.transform_point2(self.end));
 
 		// Calculate the new position by finding the closest point on the line
-		let new_position = ((end - start).angle_between(mouse - start)).cos() * start.distance(mouse) / start.distance(end);
+		let new_position = ((end - start).angle_to(mouse - start)).cos() * start.distance(mouse) / start.distance(end);
 
 		// Don't insert point past end of line
 		if !(0. ..=1.).contains(&new_position) {
@@ -277,7 +270,13 @@ impl Fill {
 	pub fn render(&self, svg_defs: &mut String, multiplied_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> String {
 		match self {
 			Self::None => r#" fill="none""#.to_string(),
-			Self::Solid(color) => format!(r##" fill="#{}"{}"##, color.rgb_hex(), format_opacity("fill-opacity", color.a())),
+			Self::Solid(color) => {
+				let mut result = format!(r##" fill="#{}""##, color.rgb_hex());
+				if color.a() < 1. {
+					let _ = write!(result, r#" fill-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
+				}
+				result
+			}
 			Self::Gradient(gradient) => {
 				let gradient_id = gradient.render_defs(svg_defs, multiplied_transform, bounds, transformed_bounds);
 				format!(r##" fill="url('#{gradient_id}')""##)
@@ -505,21 +504,45 @@ impl Stroke {
 
 	/// Provide the SVG attributes for the stroke.
 	pub fn render(&self) -> String {
-		if let Some(color) = self.color {
-			format!(
-				r##" stroke="#{}"{} stroke-width="{}" stroke-dasharray="{}" stroke-dashoffset="{}" stroke-linecap="{}" stroke-linejoin="{}" stroke-miterlimit="{}" "##,
-				color.rgb_hex(),
-				format_opacity("stroke-opacity", color.a()),
-				self.weight,
-				self.dash_lengths(),
-				self.dash_offset,
-				self.line_cap,
-				self.line_join,
-				self.line_join_miter_limit
-			)
-		} else {
-			String::new()
+		// Don't render a stroke at all if it would be invisible
+		let Some(color) = self.color else { return String::new() };
+		if self.weight <= 0. || color.a() == 0. {
+			return String::new();
 		}
+
+		// Set to None if the value is the SVG default
+		let weight = (self.weight != 1.).then_some(self.weight);
+		let dash_array = (!self.dash_lengths.is_empty()).then_some(self.dash_lengths());
+		let dash_offset = (self.dash_offset != 0.).then_some(self.dash_offset);
+		let line_cap = (self.line_cap != LineCap::Butt).then_some(self.line_cap);
+		let line_join = (self.line_join != LineJoin::Miter).then_some(self.line_join);
+		let line_join_miter_limit = (self.line_join_miter_limit != 4.).then_some(self.line_join_miter_limit);
+
+		// Render the needed stroke attributes
+		let mut attributes = format!(r##" stroke="#{}""##, color.rgb_hex());
+		if color.a() < 1. {
+			let _ = write!(&mut attributes, r#" stroke-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
+		}
+		if let Some(weight) = weight {
+			let _ = write!(&mut attributes, r#" stroke-width="{}""#, weight);
+		}
+		if let Some(dash_array) = dash_array {
+			let _ = write!(&mut attributes, r#" stroke-dasharray="{}""#, dash_array);
+		}
+		if let Some(dash_offset) = dash_offset {
+			let _ = write!(&mut attributes, r#" stroke-dashoffset="{}""#, dash_offset);
+		}
+		if let Some(line_cap) = line_cap {
+			let _ = write!(&mut attributes, r#" stroke-linecap="{}""#, line_cap);
+		}
+		if let Some(line_join) = line_join {
+			let _ = write!(&mut attributes, r#" stroke-linejoin="{}""#, line_join);
+		}
+		if let Some(line_join_miter_limit) = line_join_miter_limit {
+			let _ = write!(&mut attributes, r#" stroke-miterlimit="{}""#, line_join_miter_limit);
+		}
+
+		attributes
 	}
 
 	pub fn with_color(mut self, color: &Option<Color>) -> Option<Self> {

@@ -140,8 +140,8 @@ impl Bezier {
 		}
 		// Verify all the handles are located on a single side of the curve.
 		if let BezierHandles::Cubic { handle_start, handle_end } = self.handles {
-			let angle_1 = (self.end - self.start).angle_between(handle_start - self.start);
-			let angle_2 = (self.end - self.start).angle_between(handle_end - self.start);
+			let angle_1 = (self.end - self.start).angle_to(handle_start - self.start);
+			let angle_2 = (self.end - self.start).angle_to(handle_end - self.start);
 			if (angle_1 > 0. && angle_2 < 0.) || (angle_1 < 0. && angle_2 > 0.) {
 				return false;
 			}
@@ -533,9 +533,9 @@ impl Bezier {
 				let center = wrapped_center.unwrap();
 				let radius = center.distance(p1);
 
-				let angle_p1 = DVec2::new(1., 0.).angle_between(p1 - center);
-				let angle_p2 = DVec2::new(1., 0.).angle_between(p2 - center);
-				let angle_p3 = DVec2::new(1., 0.).angle_between(p3 - center);
+				let angle_p1 = DVec2::new(1., 0.).angle_to(p1 - center);
+				let angle_p2 = DVec2::new(1., 0.).angle_to(p2 - center);
+				let angle_p3 = DVec2::new(1., 0.).angle_to(p3 - center);
 
 				let mut start_angle = angle_p1;
 				let mut end_angle = angle_p3;

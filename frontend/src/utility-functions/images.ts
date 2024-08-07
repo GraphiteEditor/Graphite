@@ -2,17 +2,17 @@
 
 // Demo artwork
 import ThumbnailIsometricFountain from "@graphite-frontend/assets/images/demo-artwork/thumbnail-isometric-fountain.png";
-import ThumbnailJustAPottedCactus from "@graphite-frontend/assets/images/demo-artwork/thumbnail-just-a-potted-cactus.png";
+import ThumbnailPaintedDreams from "@graphite-frontend/assets/images/demo-artwork/thumbnail-painted-dreams.png";
 import ThumbnailProceduralStringLights from "@graphite-frontend/assets/images/demo-artwork/thumbnail-procedural-string-lights.png";
 import ThumbnailRedDress from "@graphite-frontend/assets/images/demo-artwork/thumbnail-red-dress.png";
 import ThumbnailValleyOfSpires from "@graphite-frontend/assets/images/demo-artwork/thumbnail-valley-of-spires.png";
 
 const DEMO_ARTWORK = {
 	ThumbnailIsometricFountain,
-	ThumbnailJustAPottedCactus,
+	ThumbnailPaintedDreams,
 	ThumbnailProceduralStringLights,
-	ThumbnailValleyOfSpires,
 	ThumbnailRedDress,
+	ThumbnailValleyOfSpires,
 } as const;
 
 // All images

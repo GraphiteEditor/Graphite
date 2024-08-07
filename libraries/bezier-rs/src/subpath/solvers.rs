@@ -276,6 +276,27 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 			.reduce(|bbox1, bbox2| [bbox1[0].min(bbox2[0]), bbox1[1].max(bbox2[1])])
 	}
 
+	/// Return the min and max corners that represent the loose bounding box of the subpath (bounding box of all handles and anchors).
+	pub fn loose_bounding_box(&self) -> Option<[DVec2; 2]> {
+		self.manipulator_groups
+			.iter()
+			.flat_map(|group| [group.in_handle, group.out_handle, Some(group.anchor)])
+			.flatten()
+			.map(|pos| [pos, pos])
+			.reduce(|bbox1, bbox2| [bbox1[0].min(bbox2[0]), bbox1[1].max(bbox2[1])])
+	}
+
+	/// Return the min and max corners that represent the loose bounding box of the subpath, after a given affine transform.
+	pub fn loose_bounding_box_with_transform(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {
+		self.manipulator_groups
+			.iter()
+			.flat_map(|group| [group.in_handle, group.out_handle, Some(group.anchor)])
+			.flatten()
+			.map(|pos| transform.transform_point2(pos))
+			.map(|pos| [pos, pos])
+			.reduce(|bbox1, bbox2| [bbox1[0].min(bbox2[0]), bbox1[1].max(bbox2[1])])
+	}
+
 	/// Returns list of `t`-values representing the inflection points of the subpath.
 	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`.
 	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#subpath/inflections/solo" title="Inflections Demo"></iframe>
@@ -377,7 +398,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 			// Draw the miter join if the intersection occurs in the correct direction with respect to the path
 			if start_to_intersection.normalize().abs_diff_eq(in_tangent, MAX_ABSOLUTE_DIFFERENCE)
 				&& intersection_to_end.normalize().abs_diff_eq(out_tangent, MAX_ABSOLUTE_DIFFERENCE)
-				&& miter_limit >= 1. / (start_to_intersection.angle_between(-intersection_to_end).abs() / 2.).sin()
+				&& miter_limit >= 1. / (start_to_intersection.angle_to(-intersection_to_end).abs() / 2.).sin()
 			{
 				return Some(ManipulatorGroup {
 					anchor: intersection,
@@ -406,10 +427,10 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		let in_segment = self.get_segment(self.len_segments() - 1).unwrap();
 		let in_tangent = in_segment.tangent(TValue::Parametric(1.));
 
-		let mut angle = center_to_right.angle_between(center_to_left) / 2.;
+		let mut angle = center_to_right.angle_to(center_to_left) / 2.;
 		let mut arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);
 
-		if (arc_point - left).angle_between(in_tangent).abs() > PI / 2. {
+		if (arc_point - left).angle_to(in_tangent).abs() > PI / 2. {
 			angle = angle - PI * (if angle < 0. { -1. } else { 1. });
 			arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);
 		}
@@ -874,8 +895,8 @@ mod tests {
 
 		let middle = (round_start + round_end) / 2.;
 
-		assert!((round_point - middle).angle_between(round_start - middle) > 0.);
-		assert!((round_end - middle).angle_between(round_point - middle) > 0.);
+		assert!((round_point - middle).angle_to(round_start - middle) > 0.);
+		assert!((round_end - middle).angle_to(round_point - middle) > 0.);
 	}
 
 	#[test]
@@ -915,7 +936,7 @@ mod tests {
 
 		let middle = (round_start + round_end) / 2.;
 
-		assert!((round_point - middle).angle_between(round_start - middle) < 0.);
-		assert!((round_end - middle).angle_between(round_point - middle) < 0.);
+		assert!((round_point - middle).angle_to(round_start - middle) < 0.);
+		assert!((round_end - middle).angle_to(round_point - middle) < 0.);
 	}
 }

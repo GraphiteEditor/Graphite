@@ -439,9 +439,10 @@ h6 {
 
 p {
 	margin: 0;
+	text-align: justify;
+	text-justify: inter-character; // Only supported in Firefox
 	-webkit-hyphens: auto;
 	hyphens: auto;
-	text-align: justify;
 }
 
 h1,

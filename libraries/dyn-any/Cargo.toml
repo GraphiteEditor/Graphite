@@ -29,7 +29,7 @@ dyn-any-derive = { path = "derive", optional = true }
 
 # Optional dependencies
 log = { version = "0.4", optional = true }
-glam = { version = "0.25", optional = true, default-features = false }
+glam = { version = "0.28", optional = true, default-features = false }
 
 [package.metadata.docs.rs]
 all-features = true

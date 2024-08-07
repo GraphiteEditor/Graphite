@@ -8,6 +8,7 @@ import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode }
 import { platformIsMac } from "@graphite/utility-functions/platform";
 import { extractPixelData } from "@graphite/utility-functions/rasterization";
 import { stripIndents } from "@graphite/utility-functions/strip-indents";
+import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
 import { type Editor } from "@graphite/wasm-communication/editor";
 import { TriggerPaste } from "@graphite/wasm-communication/messages";
 
@@ -29,7 +30,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: AddEventListenerOptions }[] = [
-		{ target: window, eventName: "resize", action: () => onWindowResize(window.document.body) },
+		{ target: window, eventName: "resize", action: () => updateBoundsOfViewports(editor, window.document.body) },
 		{ target: window, eventName: "beforeunload", action: (e: BeforeUnloadEvent) => onBeforeUnload(e) },
 		{ target: window, eventName: "keyup", action: (e: KeyboardEvent) => onKeyUp(e) },
 		{ target: window, eventName: "keydown", action: (e: KeyboardEvent) => onKeyDown(e) },
@@ -240,19 +241,6 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	// Window events
 
-	function onWindowResize(container: HTMLElement) {
-		const viewports = Array.from(container.querySelectorAll("[data-viewport]"));
-		const boundsOfViewports = viewports.map((canvas) => {
-			const bounds = canvas.getBoundingClientRect();
-			return [bounds.left, bounds.top, bounds.right, bounds.bottom];
-		});
-
-		const flattened = boundsOfViewports.flat();
-		const data = Float64Array.from(flattened);
-
-		if (boundsOfViewports.length > 0) editor.handle.boundsOfViewports(data);
-	}
-
 	async function onBeforeUnload(e: BeforeUnloadEvent) {
 		const activeDocument = get(portfolio).documents[get(portfolio).activeDocumentIndex];
 		if (activeDocument && !activeDocument.isAutoSaved) editor.handle.triggerAutoSave(activeDocument.id);
@@ -390,7 +378,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	// Bind the event listeners
 	bindListeners();
 	// Resize on creation
-	onWindowResize(window.document.body);
+	updateBoundsOfViewports(editor, window.document.body);
 
 	// Return the destructor
 	return unbindListeners;

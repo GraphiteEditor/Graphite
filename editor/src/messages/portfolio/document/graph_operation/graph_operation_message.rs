@@ -1,9 +1,10 @@
 use super::utility_types::TransformIn;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
 use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
-use graph_craft::document::{DocumentNode, NodeId, NodeInput};
+use graph_craft::document::NodeId;
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
 use graphene_core::vector::brush_stroke::BrushStroke;
@@ -11,58 +12,15 @@ use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::PointId;
 use graphene_core::vector::VectorModificationType;
 use graphene_core::{Artboard, Color};
-use graphene_std::vector::misc::BooleanOperation;
 
 use glam::{DAffine2, DVec2, IVec2};
 
 #[impl_message(Message, DocumentMessage, GraphOperation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum GraphOperationMessage {
-	AddNodesAsChild {
-		nodes: HashMap<NodeId, DocumentNode>,
-		new_ids: HashMap<NodeId, NodeId>,
-		parent: LayerNodeIdentifier,
-		insert_index: isize,
-	},
-	CreateBooleanOperationNode {
-		node_id: NodeId,
-		operation: BooleanOperation,
-	},
-	DeleteLayer {
-		layer: LayerNodeIdentifier,
-		reconnect: bool,
-	},
-	DisconnectInput {
-		node_id: NodeId,
-		input_index: usize,
-	},
-	DisconnectNodeFromStack {
-		node_id: NodeId,
-		reconnect_to_sibling: bool,
-	},
 	FillSet {
 		layer: LayerNodeIdentifier,
 		fill: Fill,
-	},
-	InsertNodeAtStackIndex {
-		node_id: NodeId,
-		parent: LayerNodeIdentifier,
-		insert_index: usize,
-	},
-	InsertNodeBetween {
-		// Post node
-		post_node_id: NodeId,
-		post_node_input_index: usize,
-		// Inserted node
-		insert_node_id: NodeId,
-		insert_node_output_index: usize,
-		insert_node_input_index: usize,
-		// Pre node
-		pre_node_id: NodeId,
-		pre_node_output_index: usize,
-	},
-	MoveSelectedSiblingsToChild {
-		new_parent: LayerNodeIdentifier,
 	},
 	OpacitySet {
 		layer: LayerNodeIdentifier,
@@ -100,6 +58,9 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		strokes: Vec<BrushStroke>,
 	},
+	SetUpstreamToChain {
+		layer: LayerNodeIdentifier,
+	},
 	NewArtboard {
 		id: NodeId,
 		artboard: Artboard,
@@ -108,20 +69,19 @@ pub enum GraphOperationMessage {
 		id: NodeId,
 		image_frame: ImageFrame<Color>,
 		parent: LayerNodeIdentifier,
-		insert_index: isize,
+		insert_index: usize,
 	},
 	NewCustomLayer {
 		id: NodeId,
-		nodes: HashMap<NodeId, DocumentNode>,
+		nodes: Vec<(NodeId, NodeTemplate)>,
 		parent: LayerNodeIdentifier,
-		insert_index: isize,
-		alias: String,
+		insert_index: usize,
 	},
 	NewVectorLayer {
 		id: NodeId,
 		subpaths: Vec<Subpath<PointId>>,
 		parent: LayerNodeIdentifier,
-		insert_index: isize,
+		insert_index: usize,
 	},
 	NewTextLayer {
 		id: NodeId,
@@ -129,10 +89,10 @@ pub enum GraphOperationMessage {
 		font: Font,
 		size: f64,
 		parent: LayerNodeIdentifier,
-		insert_index: isize,
+		insert_index: usize,
 	},
 	ResizeArtboard {
-		id: NodeId,
+		layer: LayerNodeIdentifier,
 		location: IVec2,
 		dimensions: IVec2,
 	},
@@ -142,45 +102,6 @@ pub enum GraphOperationMessage {
 		svg: String,
 		transform: DAffine2,
 		parent: LayerNodeIdentifier,
-		insert_index: isize,
-	},
-	ShiftUpstream {
-		node_id: NodeId,
-		shift: IVec2,
-		shift_self: bool,
-	},
-	SetNodePosition {
-		node_id: NodeId,
-		position: IVec2,
-	},
-	SetName {
-		layer: LayerNodeIdentifier,
-		name: String,
-	},
-	SetNameImpl {
-		layer: LayerNodeIdentifier,
-		name: String,
-	},
-	SetNodeInput {
-		node_id: NodeId,
-		input_index: usize,
-		input: NodeInput,
-	},
-	ToggleSelectedVisibility,
-	ToggleVisibility {
-		node_id: NodeId,
-	},
-	SetVisibility {
-		node_id: NodeId,
-		visible: bool,
-	},
-	StartPreviewingWithoutRestore,
-	ToggleSelectedLocked,
-	ToggleLocked {
-		node_id: NodeId,
-	},
-	SetLocked {
-		node_id: NodeId,
-		locked: bool,
+		insert_index: usize,
 	},
 }

@@ -44,10 +44,13 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (document, input, tool_data, shape_editor): TransformData) {
 		let using_path_tool = tool_data.active_tool_type == ToolType::Path;
 
+		// TODO: Add support for transforming layer not in the document network
 		let selected_layers = document
-			.selected_nodes
+			.network_interface
+			.selected_nodes(&[])
+			.unwrap()
 			.selected_layers(document.metadata())
-			.filter(|&layer| document.metadata().node_is_visible(layer.to_node()) && !document.metadata().node_is_locked(layer.to_node()))
+			.filter(|&layer| document.network_interface.is_visible(&layer.to_node(), &[]) && !document.network_interface.is_locked(&layer.to_node(), &[]))
 			.collect::<Vec<_>>();
 
 		let mut selected = Selected::new(
@@ -55,8 +58,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 			&mut self.pivot,
 			&selected_layers,
 			responses,
-			&document.network,
-			&document.metadata,
+			&document.network_interface,
 			Some(shape_editor),
 			&tool_data.active_tool_type,
 		);
@@ -68,7 +70,10 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 			}
 
 			if using_path_tool {
-				if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.metadata.compute_modified_vector(layer, &document.network)) {
+				if let Some(vector_data) = selected_layers
+					.first()
+					.and_then(|&layer| document.metadata().compute_modified_vector(layer, &document.network_interface))
+				{
 					*selected.original_transforms = OriginalTransforms::default();
 					let viewspace = document.metadata().transform_to_viewport(selected_layers[0]);
 
@@ -186,7 +191,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 						TransformOperation::Rotating(rotation) => {
 							let start_offset = *selected.pivot - self.mouse_position;
 							let end_offset = *selected.pivot - input.mouse.position;
-							let angle = start_offset.angle_between(end_offset);
+							let angle = start_offset.angle_to(end_offset);
 
 							let change = if self.slow { angle / SLOWING_DIVISOR } else { angle };
 
@@ -212,7 +217,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				self.mouse_position = input.mouse.position;
 			}
 			TransformLayerMessage::SelectionChanged => {
-				let target_layers = document.selected_nodes.selected_layers(document.metadata()).collect();
+				let target_layers = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
 				shape_editor.set_selected_layers(target_layers);
 			}
 			TransformLayerMessage::TypeBackspace => self.transform_operation.grs_typed(self.typing.type_backspace(), &mut selected, self.snap),

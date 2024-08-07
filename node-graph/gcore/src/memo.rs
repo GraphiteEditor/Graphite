@@ -1,36 +1,40 @@
 use crate::{Node, WasmNotSend};
-use core::future::Future;
-use core::ops::Deref;
-use std::sync::Mutex;
+
+use dyn_any::DynFuture;
 
 #[cfg(feature = "alloc")]
 use alloc::sync::Arc;
-use dyn_any::DynFuture;
+use core::future::Future;
+use core::ops::Deref;
+use std::hash::DefaultHasher;
+use std::sync::Mutex;
 
 /// Caches the output of a given Node and acts as a proxy
 #[derive(Default)]
 pub struct MemoNode<T, CachedNode> {
-	cache: Arc<Mutex<Option<T>>>,
+	cache: Arc<Mutex<Option<(u64, T)>>>,
 	node: CachedNode,
 }
-impl<'i, 'o: 'i, T: 'i + Clone + 'o + WasmNotSend, CachedNode: 'i> Node<'i, ()> for MemoNode<T, CachedNode>
+impl<'i, 'o: 'i, I: Hash + 'i, T: 'i + Clone + 'o + WasmNotSend, CachedNode: 'i> Node<'i, I> for MemoNode<T, CachedNode>
 where
-	CachedNode: for<'any_input> Node<'any_input, ()>,
-	for<'a> <CachedNode as Node<'a, ()>>::Output: core::future::Future<Output = T> + WasmNotSend,
+	CachedNode: for<'any_input> Node<'any_input, I>,
+	for<'a> <CachedNode as Node<'a, I>>::Output: core::future::Future<Output = T> + WasmNotSend,
 {
 	// TODO: This should return a reference to the cached cached_value
 	// but that requires a lot of lifetime magic <- This was suggested by copilot but is pretty accurate xD
 	type Output = DynFuture<'i, T>;
-	fn eval(&'i self, input: ()) -> Self::Output {
-		if let Some(cached_value) = self.cache.lock().as_ref().unwrap().deref() {
-			let data = cached_value.clone();
+	fn eval(&'i self, input: I) -> Self::Output {
+		let mut hasher = DefaultHasher::new();
+		input.hash(&mut hasher);
+		let hash = hasher.finish();
+		if let Some(data) = self.cache.lock().as_ref().unwrap().as_ref().and_then(|data| (data.0 == hash).then_some(data.1.clone())) {
 			Box::pin(async move { data })
 		} else {
 			let fut = self.node.eval(input);
 			let cache = self.cache.clone();
 			Box::pin(async move {
 				let value = fut.await;
-				*cache.lock().unwrap() = Some(value.clone());
+				*cache.lock().unwrap() = Some((hash, value.clone()));
 				value
 			})
 		}
@@ -140,5 +144,103 @@ where
 impl<I, T, N> MonitorNode<I, T, N> {
 	pub fn new(node: N) -> MonitorNode<I, T, N> {
 		MonitorNode { io: Arc::new(Mutex::new(None)), node }
+	}
+}
+
+use core::hash::{Hash, Hasher};
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct MemoHash<T: Hash> {
+	hash: u64,
+	value: T,
+}
+
+#[cfg(feature = "serde")]
+impl<'de, T: serde::Deserialize<'de> + Hash> serde::Deserialize<'de> for MemoHash<T> {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		T::deserialize(deserializer).map(|value| Self::new(value))
+	}
+}
+
+#[cfg(feature = "serde")]
+impl<T: Hash + serde::Serialize> serde::Serialize for MemoHash<T> {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		self.value.serialize(serializer)
+	}
+}
+
+#[cfg(feature = "std")]
+impl<T: Hash> MemoHash<T> {
+	pub fn new(value: T) -> Self {
+		let hash = Self::calc_hash(&value);
+		Self { hash, value }
+	}
+	pub fn new_with_hash(value: T, hash: u64) -> Self {
+		Self { hash, value }
+	}
+
+	fn calc_hash(data: &T) -> u64 {
+		let mut hasher = std::collections::hash_map::DefaultHasher::new();
+		data.hash(&mut hasher);
+		hasher.finish()
+	}
+
+	pub fn inner_mut(&mut self) -> MemoHashGuard<T> {
+		MemoHashGuard { inner: self }
+	}
+	pub fn into_inner(self) -> T {
+		self.value
+	}
+	pub fn hash_code(&self) -> u64 {
+		self.hash
+	}
+}
+impl<T: Hash> From<T> for MemoHash<T> {
+	fn from(value: T) -> Self {
+		Self::new(value)
+	}
+}
+
+impl<T: Hash> Hash for MemoHash<T> {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.hash.hash(state)
+	}
+}
+
+impl<T: Hash> core::ops::Deref for MemoHash<T> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		&self.value
+	}
+}
+
+pub struct MemoHashGuard<'a, T: Hash> {
+	inner: &'a mut MemoHash<T>,
+}
+
+impl<'a, T: Hash> core::ops::Drop for MemoHashGuard<'a, T> {
+	fn drop(&mut self) {
+		let hash = MemoHash::<T>::calc_hash(&self.inner.value);
+		self.inner.hash = hash;
+	}
+}
+
+impl<'a, T: Hash> core::ops::Deref for MemoHashGuard<'a, T> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		&self.inner.value
+	}
+}
+
+impl<'a, T: Hash> core::ops::DerefMut for MemoHashGuard<'a, T> {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.inner.value
 	}
 }

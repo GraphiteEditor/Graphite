@@ -9,7 +9,7 @@ use std::collections::HashMap;
 macro_rules! create_ids {
 	($($id:ident),*) => {
 		$(
-			#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, DynAny)]
+			#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Ord, Eq, Hash, DynAny)]
 			#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 			/// A strongly typed ID
 			pub struct $id(u64);
@@ -38,6 +38,34 @@ macro_rules! create_ids {
 }
 
 create_ids! { PointId, SegmentId, RegionId, StrokeId, FillId }
+
+/// A no-op hasher that allows writing u64s (the id type).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct NoHash(Option<u64>);
+
+impl core::hash::Hasher for NoHash {
+	fn finish(&self) -> u64 {
+		self.0.unwrap()
+	}
+	fn write(&mut self, _bytes: &[u8]) {
+		unimplemented!()
+	}
+	fn write_u64(&mut self, i: u64) {
+		debug_assert!(self.0.is_none());
+		self.0 = Some(i)
+	}
+}
+
+/// A hash builder that builds the [`NoHash`] hasher.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct NoHashBuilder;
+
+impl core::hash::BuildHasher for NoHashBuilder {
+	type Hasher = NoHash;
+	fn build_hasher(&self) -> Self::Hasher {
+		NoHash::default()
+	}
+}
 
 #[derive(Clone, Debug, Default, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -419,7 +447,7 @@ impl super::VectorData {
 			.filter_map(to_bezier)
 	}
 
-	/// Construct a [`bezier_rs::Bezier`] curve from an iterator of segments with (handles, start point, end point). Returns None if any ids are invalid or if the semgents are not continuous.
+	/// Construct a [`bezier_rs::Bezier`] curve from an iterator of segments with (handles, start point, end point). Returns None if any ids are invalid or if the segments are not continuous.
 	fn subpath_from_segments(&self, segments: impl Iterator<Item = (bezier_rs::BezierHandles, PointId, PointId)>) -> Option<bezier_rs::Subpath<PointId>> {
 		let mut first_point = None;
 		let mut groups = Vec::new();

@@ -244,31 +244,24 @@ impl Fsm for PolygonToolFsmState {
 				polygon_data.start(document, input);
 				responses.add(DocumentMessage::StartTransaction);
 
-				let nodes = {
-					let node = match tool_options.polygon_type {
-						PolygonType::Convex => resolve_document_node_type("Regular Polygon")
-							.expect("Regular Polygon node does not exist")
-							.to_document_node_default_inputs(
-								[
-									None,
-									Some(NodeInput::value(TaggedValue::U32(tool_options.vertices), false)),
-									Some(NodeInput::value(TaggedValue::F64(0.5), false)),
-								],
-								Default::default(),
-							),
-						PolygonType::Star => resolve_document_node_type("Star").expect("Star node does not exist").to_document_node_default_inputs(
-							[
-								None,
-								Some(NodeInput::value(TaggedValue::U32(tool_options.vertices), false)),
-								Some(NodeInput::value(TaggedValue::F64(0.5), false)),
-								Some(NodeInput::value(TaggedValue::F64(0.25), false)),
-							],
-							Default::default(),
-						),
-					};
-
-					HashMap::from([(NodeId(0), node)])
+				let node = match tool_options.polygon_type {
+					PolygonType::Convex => resolve_document_node_type("Regular Polygon")
+						.expect("Regular Polygon node does not exist")
+						.node_template_input_override([
+							None,
+							Some(NodeInput::value(TaggedValue::U32(tool_options.vertices), false)),
+							Some(NodeInput::value(TaggedValue::F64(0.5), false)),
+						]),
+					PolygonType::Star => resolve_document_node_type("Star").expect("Star node does not exist").node_template_input_override([
+						None,
+						Some(NodeInput::value(TaggedValue::U32(tool_options.vertices), false)),
+						Some(NodeInput::value(TaggedValue::F64(0.5), false)),
+						Some(NodeInput::value(TaggedValue::F64(0.25), false)),
+					]),
 				};
+
+				let nodes = vec![(NodeId(0), node)];
+
 				let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, document.new_layer_parent(false), responses);
 				tool_options.fill.apply_fill(layer, responses);
 				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);

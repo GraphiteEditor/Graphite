@@ -4,6 +4,7 @@ use graphene_std::{imaginate::ImaginatePersistentData, text::FontCache};
 pub struct PersistentData {
 	pub font_cache: FontCache,
 	pub imaginate: ImaginatePersistentData,
+	pub use_vello: bool,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize)]
@@ -35,4 +36,23 @@ pub enum KeyboardPlatformLayout {
 	Standard,
 	/// Keyboard mapping used by Macs where Command is sometimes used in favor of Control
 	Mac,
+}
+
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub enum PanelType {
+	#[default]
+	Document,
+	Layers,
+	Properties,
+}
+
+impl From<String> for PanelType {
+	fn from(value: String) -> Self {
+		match value.as_str() {
+			"Document" => PanelType::Document,
+			"Layers" => PanelType::Layers,
+			"Properties" => PanelType::Properties,
+			_ => panic!("Unknown panel type: {}", value),
+		}
+	}
 }

@@ -104,6 +104,7 @@ async fn execute_shader<I: Pod + Send + Sync, O: Pod + Send + Sync>(device: Arc<
 		module: &cs_module,
 		entry_point: entry_point.as_str(),
 		compilation_options: Default::default(),
+		cache: None,
 	});
 
 	// Instantiates the bind group, once again specifying the binding of buffers.

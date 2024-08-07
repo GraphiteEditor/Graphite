@@ -46,6 +46,7 @@ in
       pkgs.cargo-nextest
       pkgs.cargo-expand
       pkgs.wasm-pack
+      pkgs.binaryen
       pkgs.wasm-bindgen-cli
       pkgs.vulkan-loader
       pkgs.libxkbcommon

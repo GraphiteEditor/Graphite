@@ -9,6 +9,7 @@
 		"skipLibCheck": true,
 		"esModuleInterop": true,
 		"allowSyntheticDefaultImports": true,
+		"verbatimModuleSyntax": true,
 		"sourceMap": true,
 		"types": ["node", "svelte", "svelte/store", "svelte/motion", "svelte/transition", "svelte/animate", "svelte/easing"],
 		"baseUrl": ".",

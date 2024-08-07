@@ -10,7 +10,7 @@
 		Layers,
 		Properties,
 	};
-	type PanelTypes = keyof typeof PANEL_COMPONENTS;
+	type PanelType = keyof typeof PANEL_COMPONENTS;
 </script>
 
 <script lang="ts">
@@ -33,7 +33,7 @@
 	export let tabCloseButtons = false;
 	export let tabLabels: { name: string; tooltip?: string }[];
 	export let tabActiveIndex: number;
-	export let panelType: PanelTypes | undefined = undefined;
+	export let panelType: PanelType | undefined = undefined;
 	export let clickAction: ((index: number) => void) | undefined = undefined;
 	export let closeAction: ((index: number) => void) | undefined = undefined;
 
@@ -56,7 +56,7 @@
 	}
 </script>
 
-<LayoutCol class="panel">
+<LayoutCol class="panel" on:pointerdown={() => panelType && editor.handle.setActivePanel(panelType)}>
 	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
 		<LayoutRow class="tab-group" scrollableX={true}>
 			{#each tabLabels as tabLabel, tabIndex}

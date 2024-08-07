@@ -11,7 +11,7 @@ use graphene_core::raster::color::Color;
 
 pub struct ToolMessageData<'a> {
 	pub document_id: DocumentId,
-	pub document: &'a DocumentMessageHandler,
+	pub document: &'a mut DocumentMessageHandler,
 	pub input: &'a InputPreprocessorMessageHandler,
 	pub persistent_data: &'a PersistentData,
 	pub node_graph: &'a NodeGraphExecutor,
@@ -151,7 +151,6 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 
 				// Notify the frontend about the initial working colors
 				document_data.update_working_colors(responses);
-				responses.add(FrontendMessage::TriggerRefreshBoundsOfViewports);
 
 				let mut data = ToolActionHandlerData {
 					document,

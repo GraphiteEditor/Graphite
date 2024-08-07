@@ -65,17 +65,15 @@ impl Transform for GraphicElement {
 	fn transform(&self) -> DAffine2 {
 		match self {
 			GraphicElement::VectorData(vector_shape) => vector_shape.transform(),
-			GraphicElement::ImageFrame(image_frame) => image_frame.transform(),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.transform(),
-			GraphicElement::Surface(surface) => surface.transform(),
+			GraphicElement::Raster(raster) => raster.transform(),
 		}
 	}
 	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
 		match self {
 			GraphicElement::VectorData(vector_shape) => vector_shape.local_pivot(pivot),
-			GraphicElement::ImageFrame(image_frame) => image_frame.local_pivot(pivot),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.local_pivot(pivot),
-			GraphicElement::Surface(surface) => surface.local_pivot(pivot),
+			GraphicElement::Raster(raster) => raster.local_pivot(pivot),
 		}
 	}
 }
@@ -83,9 +81,8 @@ impl TransformMut for GraphicElement {
 	fn transform_mut(&mut self) -> &mut DAffine2 {
 		match self {
 			GraphicElement::VectorData(vector_shape) => vector_shape.transform_mut(),
-			GraphicElement::ImageFrame(image_frame) => image_frame.transform_mut(),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.transform_mut(),
-			GraphicElement::Surface(surface) => surface.transform_mut(),
+			GraphicElement::Raster(raster) => raster.transform_mut(),
 		}
 	}
 }
@@ -147,7 +144,7 @@ pub struct Footprint {
 	pub resolution: glam::UVec2,
 	/// Quality of the render, this may be used by caching nodes to decide if the cached render is sufficient
 	pub quality: RenderQuality,
-	/// When the transform is set downstream, all upsream modifications have to be ignored
+	/// When the transform is set downstream, all upstream modifications have to be ignored
 	pub ignore_modifications: bool,
 }
 

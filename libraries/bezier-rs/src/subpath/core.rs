@@ -343,10 +343,34 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 
 		subpath
 	}
+
+	#[cfg(feature = "kurbo")]
+	pub fn to_vello_path(&self, transform: glam::DAffine2, path: &mut kurbo::BezPath) {
+		use crate::BezierHandles;
+
+		let to_point = |p: DVec2| {
+			let p = transform.transform_point2(p);
+			kurbo::Point::new(p.x, p.y)
+		};
+		path.move_to(to_point(self.iter().next().unwrap().start));
+		for segment in self.iter() {
+			match segment.handles {
+				BezierHandles::Linear => path.line_to(to_point(segment.end)),
+				BezierHandles::Quadratic { handle } => path.quad_to(to_point(handle), to_point(segment.end)),
+				BezierHandles::Cubic { handle_start, handle_end } => path.curve_to(to_point(handle_start), to_point(handle_end), to_point(segment.end)),
+			}
+		}
+		if self.closed {
+			path.close_path();
+		}
+	}
 }
 
 pub fn solve_spline_first_handle(points: &[DVec2]) -> Vec<DVec2> {
 	let len_points = points.len();
+	if len_points == 0 {
+		return Vec::new();
+	}
 
 	// Matrix coefficients a, b and c (see https://mathworld.wolfram.com/CubicSpline.html).
 	// Because the 'a' coefficients are all 1, they need not be stored.

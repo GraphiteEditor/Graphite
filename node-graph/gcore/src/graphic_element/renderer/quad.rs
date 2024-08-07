@@ -16,6 +16,11 @@ impl Quad {
 		Self([bbox[0], bbox[0] + size * DVec2::X, bbox[1], bbox[0] + size * DVec2::Y])
 	}
 
+	/// Create a quad from the center and offset (distance from center to middle of an edge)
+	pub fn from_square(center: DVec2, offset: f64) -> Self {
+		Self::from_box([center - offset, center + offset])
+	}
+
 	/// Get all the edges in the quad.
 	pub fn edges(&self) -> [[DVec2; 2]; 4] {
 		[[self.0[0], self.0[1]], [self.0[1], self.0[2]], [self.0[2], self.0[3]], [self.0[3], self.0[0]]]
@@ -51,7 +56,7 @@ impl Quad {
 		let offset = |index_before, index, index_after| {
 			let [point_before, point, point_after]: [DVec2; 3] = [self.0[index_before], self.0[index], self.0[index_after]];
 			let [line_in, line_out] = [point - point_before, point_after - point];
-			let angle = line_in.angle_between(-line_out);
+			let angle = line_in.angle_to(-line_out);
 			let offset_length = offset / (std::f64::consts::FRAC_PI_2 - angle / 2.).cos();
 			point + (line_in.perp().normalize_or_zero() + line_out.perp().normalize_or_zero()).normalize_or_zero() * offset_length
 		};

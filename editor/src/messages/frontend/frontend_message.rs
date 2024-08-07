@@ -1,6 +1,8 @@
 use super::utility_types::{FrontendDocumentDetails, MouseCursorIcon};
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::node_graph::utility_types::{BoxSelection, ContextMenuInformation, FrontendNode, FrontendNodeType, FrontendNodeWire, Transform, WirePath};
+use crate::messages::portfolio::document::node_graph::utility_types::{
+	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, FrontendNodeWire, Transform, WirePath,
+};
 use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer};
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
@@ -46,6 +48,7 @@ pub enum FrontendMessage {
 		#[serde(rename = "blobUrl")]
 		blob_url: String,
 	},
+	TriggerDelayedZoomCanvasToFitAll,
 	TriggerDownloadBlobUrl {
 		#[serde(rename = "layerName")]
 		layer_name: String,
@@ -87,7 +90,6 @@ pub enum FrontendMessage {
 	TriggerLoadPreferences,
 	TriggerOpenDocument,
 	TriggerPaste,
-	TriggerRefreshBoundsOfViewports,
 	TriggerRevokeBlobUrl {
 		url: String,
 	},
@@ -112,7 +114,6 @@ pub enum FrontendMessage {
 		#[serde(rename = "documentSerializedContent")]
 		document_serialized_content: String,
 	},
-	TriggerViewportResize,
 	TriggerVisitLink {
 		url: String,
 	},
@@ -122,6 +123,14 @@ pub enum FrontendMessage {
 		#[serde(rename = "documentId")]
 		document_id: DocumentId,
 	},
+	UpdateImportsExports {
+		imports: Vec<(FrontendGraphOutput, i32, i32)>,
+		exports: Vec<(FrontendGraphInput, i32, i32)>,
+	},
+	UpdateInSelectedNetwork {
+		#[serde(rename = "inSelectedNetwork")]
+		in_selected_network: bool,
+	},
 	UpdateBox {
 		#[serde(rename = "box")]
 		box_selection: Option<BoxSelection>,
@@ -130,9 +139,15 @@ pub enum FrontendMessage {
 		#[serde(rename = "contextMenuInformation")]
 		context_menu_information: Option<ContextMenuInformation>,
 	},
+	UpdateClickTargets {
+		#[serde(rename = "clickTargets")]
+		click_targets: Option<FrontendClickTargets>,
+	},
 	UpdateLayerWidths {
 		#[serde(rename = "layerWidths")]
 		layer_widths: HashMap<NodeId, u32>,
+		#[serde(rename = "chainWidths")]
+		chain_widths: HashMap<NodeId, u32>,
 	},
 	UpdateDialogButtons {
 		#[serde(rename = "layoutTarget")]

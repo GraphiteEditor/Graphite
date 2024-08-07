@@ -1,24 +1,25 @@
 mod context;
 mod executor;
+
 pub use context::Context;
 pub use executor::GpuExecutor;
 
 use dyn_any::{DynAny, StaticType};
 use gpu_executor::{ComputePassDimensions, GPUConstant, StorageBufferOptions, TextureBufferOptions, TextureBufferType, ToStorageBuffer, ToUniformBuffer};
-use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle};
-use graphene_core::raster::color::RGBA16F;
-use graphene_core::raster::{Image, ImageFrame};
+use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle, TextureFrame};
+use graphene_core::raster::{Image, ImageFrame, SRGBA8};
 use graphene_core::transform::{Footprint, Transform};
 use graphene_core::Type;
 use graphene_core::{Color, Cow, Node, SurfaceFrame};
 
 use anyhow::{bail, Result};
 use futures::Future;
-use glam::DAffine2;
+use glam::{DAffine2, UVec2};
 use std::pin::Pin;
 use std::sync::Arc;
+use vello::{AaConfig, AaSupport, DebugLayers, RenderParams, Renderer, RendererOptions, Scene};
 use wgpu::util::DeviceExt;
-use wgpu::{Buffer, BufferDescriptor, ShaderModule, SurfaceConfiguration, SurfaceError, Texture, TextureView};
+use wgpu::{Buffer, BufferDescriptor, Origin3d, ShaderModule, SurfaceConfiguration, SurfaceError, Texture, TextureAspect, TextureView};
 
 #[cfg(target_arch = "wasm32")]
 use web_sys::HtmlCanvasElement;
@@ -27,6 +28,7 @@ use web_sys::HtmlCanvasElement;
 pub struct WgpuExecutor {
 	pub context: Context,
 	render_configuration: RenderConfiguration,
+	vello_renderer: std::sync::Mutex<vello::Renderer>,
 }
 
 impl std::fmt::Debug for WgpuExecutor {
@@ -46,6 +48,12 @@ impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<&'a EditorApi<T>> for &
 
 pub type WgpuSurface = Arc<SurfaceHandle<Surface>>;
 pub type WgpuWindow = Arc<SurfaceHandle<WindowHandle>>;
+
+impl graphene_core::application_io::Size for Surface {
+	fn size(&self) -> UVec2 {
+		self.resolution
+	}
+}
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -107,21 +115,79 @@ pub struct ShaderModuleWrapper(ShaderModule);
 pub type ShaderHandle = ShaderModuleWrapper;
 pub type BufferHandle = Buffer;
 pub type TextureHandle = Texture;
-pub struct Surface(wgpu::Surface<'static>);
+pub struct Surface {
+	pub inner: wgpu::Surface<'static>,
+	resolution: UVec2,
+}
 #[cfg(target_arch = "wasm32")]
 pub type Window = HtmlCanvasElement;
 #[cfg(not(target_arch = "wasm32"))]
-pub type Window = winit::window::Window;
+pub type Window = Arc<winit::window::Window>;
 
 unsafe impl StaticType for Surface {
 	type Static = Surface;
 }
+
+pub use graphene_core::renderer::RenderContext;
 
 // pub trait SpirVCompiler {
 // 	fn compile(&self, network: &[ProtoNetwork], io: &ShaderIO) -> Result<Shader>;
 // }
 
 impl WgpuExecutor {
+	pub async fn render_vello_scene(&self, scene: &Scene, surface: &WgpuSurface, width: u32, height: u32, context: &RenderContext) -> Result<()> {
+		let surface = &surface.surface.inner;
+		let surface_caps = surface.get_capabilities(&self.context.adapter);
+		surface.configure(
+			&self.context.device,
+			&SurfaceConfiguration {
+				usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::STORAGE_BINDING,
+				format: wgpu::TextureFormat::Rgba8Unorm,
+				width,
+				height,
+				present_mode: surface_caps.present_modes[0],
+				alpha_mode: wgpu::CompositeAlphaMode::Opaque,
+				view_formats: vec![],
+				desired_maximum_frame_latency: 2,
+			},
+		);
+		let surface_texture = surface.get_current_texture()?;
+
+		let render_params = RenderParams {
+			// We are using an explicit opaque color here to eliminate the alpha premulitplication step
+			// which would be required to support a transparent webgpu canvas
+			base_color: vello::peniko::Color::rgb8(0x22, 0x22, 0x22),
+			width,
+			height,
+			antialiasing_method: AaConfig::Msaa8,
+			debug: DebugLayers::all(),
+		};
+
+		{
+			let mut renderer = self.vello_renderer.lock().unwrap();
+			for (id, texture) in context.ressource_overrides.iter() {
+				let texture_view = wgpu::ImageCopyTextureBase {
+					texture: texture.clone(),
+					mip_level: 0,
+					origin: Origin3d::ZERO,
+					aspect: TextureAspect::All,
+				};
+				renderer.override_image(
+					&vello::peniko::Image::new(vello::peniko::Blob::from_raw_parts(Arc::new(vec![]), *id), vello::peniko::Format::Rgba8, 0, 0),
+					Some(texture_view),
+				);
+			}
+			renderer
+				.render_to_surface_async(&self.context.device, &self.context.queue, scene, &surface_texture, &render_params)
+				.await
+				.unwrap();
+		}
+
+		surface_texture.present();
+
+		Ok(())
+	}
+
 	pub fn load_shader(&self, shader: Shader) -> Result<ShaderHandle> {
 		#[cfg(not(feature = "passthrough"))]
 		let shader_module = self.context.device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -177,14 +243,14 @@ impl WgpuExecutor {
 		let bytes = data.to_bytes();
 		let usage = match options {
 			TextureBufferOptions::Storage => wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC,
-			TextureBufferOptions::Texture => wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+			TextureBufferOptions::Texture => wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC,
 			TextureBufferOptions::Surface => wgpu::TextureUsages::RENDER_ATTACHMENT,
 		};
 
 		let format = match T::format() {
 			TextureBufferType::Rgba32Float => wgpu::TextureFormat::Rgba32Float,
 			TextureBufferType::Rgba16Float => wgpu::TextureFormat::Rgba16Float,
-			TextureBufferType::Rgba8Srgb => wgpu::TextureFormat::Bgra8UnormSrgb,
+			TextureBufferType::Rgba8Srgb => wgpu::TextureFormat::Rgba8UnormSrgb,
 		};
 
 		let buffer = self.context.device.create_texture_with_data(
@@ -236,6 +302,7 @@ impl WgpuExecutor {
 			module: &layout.shader.0,
 			entry_point: layout.entry_point.as_str(),
 			compilation_options: Default::default(),
+			cache: None,
 		});
 		let bind_group_layout = compute_pipeline.get_bind_group_layout(0);
 
@@ -300,11 +367,11 @@ impl WgpuExecutor {
 			..Default::default()
 		});
 
-		let surface = &canvas.as_ref().surface.0;
+		let surface = &canvas.as_ref().surface.inner;
 		let surface_caps = surface.get_capabilities(&self.context.adapter);
 		if surface_caps.formats.is_empty() {
 			log::warn!("No surface formats available");
-			// return Ok(());
+			return Ok(());
 		}
 		// TODO:
 		let resolution = transform.decompose_scale().as_uvec2();
@@ -455,52 +522,28 @@ impl WgpuExecutor {
 	}
 
 	#[cfg(target_arch = "wasm32")]
-	fn create_surface(&self, canvas: graphene_core::WasmSurfaceHandle) -> Result<SurfaceHandle<Surface>> {
+	pub fn create_surface(&self, canvas: graphene_core::WasmSurfaceHandle) -> Result<SurfaceHandle<Surface>> {
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.surface))?;
 
-		// let surface_caps = surface.get_capabilities(&self.context.adapter);
-		// let surface_format = wgpu::TextureFormat::Rgba16Float;
-		// let config = wgpu::SurfaceConfiguration {
-		// 	usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-		// 	format: surface_format,
-		// 	width: 1920,
-		// 	height: 1080,
-		// 	present_mode: surface_caps.present_modes[0],
-		// 	alpha_mode: surface_caps.alpha_modes[0],
-		// 	view_formats: vec![],
-		// 	desired_maximum_frame_latency: 2,
-		// };
-		// surface.configure(&self.context.device, &config);
-		// self.surface_config.set(Some(config));
 		Ok(SurfaceHandle {
-			surface_id: canvas.surface_id,
-			surface: Surface(surface),
+			window_id: canvas.window_id,
+			surface: Surface {
+				inner: surface,
+				resolution: UVec2::ZERO,
+			},
 		})
 	}
 	#[cfg(not(target_arch = "wasm32"))]
-	fn create_surface(&self, window: SurfaceHandle<Window>) -> Result<SurfaceHandle<Surface>> {
+	pub fn create_surface(&self, window: SurfaceHandle<Window>) -> Result<SurfaceHandle<Surface>> {
 		let size = window.surface.inner_size();
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Window(Box::new(window.surface)))?;
 
-		let surface_caps = surface.get_capabilities(&self.context.adapter);
-		println!("{surface_caps:?}");
-		let surface_format = wgpu::TextureFormat::Rgba16Float;
-		let _config = wgpu::SurfaceConfiguration {
-			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-			format: surface_format,
-			width: size.width,
-			height: size.height,
-			present_mode: surface_caps.present_modes[0],
-			alpha_mode: surface_caps.alpha_modes[0],
-			view_formats: vec![],
-			desired_maximum_frame_latency: 2,
-		};
-		// surface.configure(&self.context.device, &config);
-
-		let surface_id = window.surface_id;
 		Ok(SurfaceHandle {
-			surface_id,
-			surface: Surface(surface),
+			window_id: window.window_id,
+			surface: Surface {
+				inner: surface,
+				resolution: UVec2::ZERO,
+			},
 		})
 	}
 }
@@ -597,6 +640,7 @@ impl WgpuExecutor {
 			// If the pipeline will be used with a multiview render pass, this
 			// indicates how many array layers the attachments will have.
 			multiview: None,
+			cache: None,
 		});
 
 		let vertex_buffer = context.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -619,7 +663,23 @@ impl WgpuExecutor {
 			sampler,
 		};
 
-		Some(Self { context, render_configuration })
+		let vello_renderer = Renderer::new(
+			&context.device,
+			RendererOptions {
+				surface_format: Some(wgpu::TextureFormat::Rgba8Unorm),
+				use_cpu: false,
+				antialiasing_support: AaSupport::all(),
+				num_init_threads: std::num::NonZeroUsize::new(1),
+			},
+		)
+		.map_err(|e| anyhow::anyhow!("Failed to create Vello renderer: {:?}", e))
+		.ok()?;
+
+		Some(Self {
+			context,
+			render_configuration,
+			vello_renderer: vello_renderer.into(),
+		})
 	}
 }
 
@@ -861,15 +921,15 @@ async fn read_output_buffer_node<'a: 'input>(buffer: Arc<WgpuShaderInput>, execu
 	executor.read_output_buffer(buffer).await.unwrap()
 }
 
-pub struct CreateGpuSurfaceNode {}
-
 pub type WindowHandle = Arc<SurfaceHandle<Window>>;
 
+pub struct CreateGpuSurfaceNode;
+
 #[node_macro::node_fn(CreateGpuSurfaceNode)]
-async fn create_gpu_surface<'a: 'input, Io: ApplicationIo<Executor = WgpuExecutor, Surface = Window> + Send + Sync>(editor_api: &'a EditorApi<Io>) -> WgpuSurface {
-	let canvas = editor_api.application_io.as_ref().unwrap().create_surface();
-	let executor = editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap();
-	Arc::new(executor.create_surface(canvas).unwrap())
+async fn create_gpu_surface<'a: 'input, Io: ApplicationIo<Executor = WgpuExecutor, Surface = Window> + 'a + Send + Sync>(editor_api: &'a EditorApi<Io>) -> Option<WgpuSurface> {
+	let canvas = editor_api.application_io.as_ref()?.window()?;
+	let executor = editor_api.application_io.as_ref()?.gpu_executor()?;
+	Some(Arc::new(executor.create_surface(canvas).ok()?))
 }
 
 pub struct RenderTextureNode<Image, Surface, EditorApi> {
@@ -885,14 +945,19 @@ pub struct ShaderInputFrame {
 }
 
 #[node_macro::node_fn(RenderTextureNode)]
-async fn render_texture_node<'a: 'input>(footprint: Footprint, image: impl Node<Footprint, Output = ShaderInputFrame>, surface: WgpuSurface, executor: &'a WgpuExecutor) -> SurfaceFrame {
-	let surface_id = surface.surface_id;
+async fn render_texture_node<'a: 'input>(footprint: Footprint, image: impl Node<Footprint, Output = ShaderInputFrame>, surface: Option<WgpuSurface>, executor: &'a WgpuExecutor) -> SurfaceFrame {
+	let surface = surface.unwrap();
+	let surface_id = surface.window_id;
 	let image = self.image.eval(footprint).await;
 	let transform = image.transform;
 
 	executor.create_render_pass(footprint, image, surface).unwrap();
 
-	SurfaceFrame { surface_id, transform }
+	SurfaceFrame {
+		surface_id,
+		transform,
+		resolution: footprint.resolution,
+	}
 }
 
 pub struct UploadTextureNode<Executor> {
@@ -900,8 +965,9 @@ pub struct UploadTextureNode<Executor> {
 }
 
 #[node_macro::node_fn(UploadTextureNode)]
-async fn upload_texture<'a: 'input>(input: ImageFrame<Color>, executor: &'a WgpuExecutor) -> ShaderInputFrame {
-	let new_data: Vec<RGBA16F> = input.image.data.into_iter().map(|c| c.into()).collect();
+async fn upload_texture<'a: 'input>(input: ImageFrame<Color>, executor: &'a WgpuExecutor) -> TextureFrame {
+	// let new_data: Vec<RGBA16F> = input.image.data.into_iter().map(|c| c.into()).collect();
+	let new_data = input.image.data.into_iter().map(|c| SRGBA8::from(c)).collect();
 	let new_image = Image {
 		width: input.image.width,
 		height: input.image.height,
@@ -910,9 +976,14 @@ async fn upload_texture<'a: 'input>(input: ImageFrame<Color>, executor: &'a Wgpu
 	};
 
 	let shader_input = executor.create_texture_buffer(new_image, TextureBufferOptions::Texture).unwrap();
+	let texture = match shader_input {
+		ShaderInput::TextureBuffer(buffer, _) => buffer,
+		ShaderInput::StorageTextureBuffer(buffer, _) => buffer,
+		_ => unreachable!("Unsupported ShaderInput type"),
+	};
 
-	ShaderInputFrame {
-		shader_input: Arc::new(shader_input),
+	TextureFrame {
+		texture: texture.into(),
 		transform: input.transform,
 	}
 }

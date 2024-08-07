@@ -173,25 +173,20 @@ impl Fsm for LineToolFsmState {
 				self
 			}
 			(LineToolFsmState::Ready, LineToolMessage::DragStart) => {
-				let point = SnapCandidatePoint::handle(document.metadata.document_to_viewport.inverse().transform_point2(input.mouse.position));
+				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, None, false);
 				tool_data.drag_start = snapped.snapped_point_document;
 
 				responses.add(DocumentMessage::StartTransaction);
 
-				let nodes = {
-					let node_type = resolve_document_node_type("Line").expect("Line node does not exist");
-					let node = node_type.to_document_node_default_inputs(
-						[
-							None,
-							Some(NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false)),
-							Some(NodeInput::value(TaggedValue::DVec2(DVec2::X), false)),
-						],
-						Default::default(),
-					);
+				let node_type = resolve_document_node_type("Line").expect("Line node does not exist");
+				let node = node_type.node_template_input_override([
+					None,
+					Some(NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false)),
+					Some(NodeInput::value(TaggedValue::DVec2(DVec2::X), false)),
+				]);
+				let nodes = vec![(NodeId(0), node)];
 
-					HashMap::from([(NodeId(0), node)])
-				};
 				let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, document.new_layer_parent(false), responses);
 				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
 				tool_data.layer = Some(layer);
@@ -296,10 +291,10 @@ impl Fsm for LineToolFsmState {
 }
 
 fn generate_transform(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: bool, snap_angle: bool, center: bool) -> Message {
-	let document_to_viewport = snap_data.document.metadata.document_to_viewport;
+	let document_to_viewport = snap_data.document.metadata().document_to_viewport;
 	let mut document_points = [tool_data.drag_start, document_to_viewport.inverse().transform_point2(tool_data.drag_current)];
 
-	let mut angle = -(document_points[1] - document_points[0]).angle_between(DVec2::X);
+	let mut angle = -(document_points[1] - document_points[0]).angle_to(DVec2::X);
 	let mut line_length = (document_points[1] - document_points[0]).length();
 	if lock_angle {
 		angle = tool_data.angle;
@@ -352,11 +347,11 @@ fn generate_transform(tool_data: &mut LineToolData, snap_data: SnapData, lock_an
 	}
 
 	// Used for keeping the same angle next frame
-	tool_data.angle = -(document_points[1] - document_points[0]).angle_between(DVec2::X);
+	tool_data.angle = -(document_points[1] - document_points[0]).angle_to(DVec2::X);
 
 	let viewport_points = [document_to_viewport.transform_point2(document_points[0]), document_to_viewport.transform_point2(document_points[1])];
 	let line_length = (viewport_points[1] - viewport_points[0]).length();
-	let angle = -(viewport_points[1] - viewport_points[0]).angle_between(DVec2::X);
+	let angle = -(viewport_points[1] - viewport_points[0]).angle_to(DVec2::X);
 	GraphOperationMessage::TransformSet {
 		layer: tool_data.layer.unwrap(),
 		transform: glam::DAffine2::from_scale_angle_translation(DVec2::new(line_length, 1.), angle, viewport_points[0]),

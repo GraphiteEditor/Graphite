@@ -14,7 +14,7 @@ passthrough = []
 gpu-executor = { path = "../gpu-executor" }
 
 # Workspace dependencies
-graphene-core = { workspace = true, features = ["std", "alloc", "gpu"] }
+graphene-core = { workspace = true, features = ["std", "alloc", "gpu", "wgpu"] }
 dyn-any = { workspace = true, features = ["log-bad-types", "rc", "glam"] }
 node-macro = { workspace = true }
 num-traits = { workspace = true }
@@ -26,13 +26,13 @@ anyhow = { workspace = true }
 wgpu = { workspace = true, features = [
 	"spirv",
 	"strict_asserts",
-	"api_log_info",
 ] }
 spirv = { workspace = true }
 futures = { workspace = true }
 web-sys = { workspace = true, features = ["HtmlCanvasElement"] }
 winit = { workspace = true }
 serde = { workspace = true }
+vello = { workspace = true }
 
 # Required dependencies
 futures-intrusive = { version = "0.5.0", features = ["alloc"] }

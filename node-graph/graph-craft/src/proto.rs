@@ -160,7 +160,7 @@ impl core::fmt::Display for ProtoNetwork {
 /// Defines the arguments used to construct the boxed node struct. This is used to call the constructor function in the `node_registry.rs` file - which is hidden behind a wall of macros.
 pub enum ConstructionArgs {
 	/// A value of a type that is known, allowing serialization (serde::Deserialize is not object safe)
-	Value(value::TaggedValue),
+	Value(MemoHash<value::TaggedValue>),
 	// TODO: use a struct for clearer naming.
 	/// A list of nodes used as inputs to the constructor function in `node_registry.rs`.
 	/// The bool indicates whether to treat the node as lambda node.
@@ -224,20 +224,16 @@ pub struct ProtoNode {
 	pub identifier: ProtoNodeIdentifier,
 	pub original_location: OriginalLocation,
 	pub skip_deduplication: bool,
-	// TODO: This is a hack, figure out a proper solution
-	/// Represents a global state on which the node depends.
-	pub world_state_hash: u64,
 }
 
 impl Default for ProtoNode {
 	fn default() -> Self {
 		Self {
 			identifier: ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode"),
-			construction_args: ConstructionArgs::Value(value::TaggedValue::U32(0)),
+			construction_args: ConstructionArgs::Value(value::TaggedValue::U32(0).into()),
 			input: ProtoNodeInput::None,
 			original_location: OriginalLocation::default(),
 			skip_deduplication: false,
-			world_state_hash: 0,
 		}
 	}
 }
@@ -288,7 +284,6 @@ impl ProtoNode {
 		if self.skip_deduplication {
 			self.original_location.path.hash(&mut hasher);
 		}
-		self.world_state_hash.hash(&mut hasher);
 		std::mem::discriminant(&self.input).hash(&mut hasher);
 		match self.input {
 			ProtoNodeInput::None => (),
@@ -317,7 +312,6 @@ impl ProtoNode {
 				..Default::default()
 			},
 			skip_deduplication: false,
-			world_state_hash: 0,
 		}
 	}
 
@@ -451,7 +445,6 @@ impl ProtoNetwork {
 						input,
 						original_location: OriginalLocation { path, ..Default::default() },
 						skip_deduplication: false,
-						world_state_hash: 0,
 					},
 				));
 
@@ -947,12 +940,12 @@ mod test {
 		assert_eq!(
 			ids,
 			vec![
-				NodeId(8751908307531981068),
-				NodeId(3279077344149194814),
-				NodeId(532186116905587629),
-				NodeId(10764326338085309082),
-				NodeId(18015434340620913446),
-				NodeId(11801333199647382191)
+				NodeId(12083027370457564588),
+				NodeId(10127202135369428481),
+				NodeId(3781642984881236270),
+				NodeId(9447822059040146367),
+				NodeId(15916837829094140504),
+				NodeId(1758919868423328454)
 			]
 		);
 	}
@@ -1003,7 +996,7 @@ mod test {
 					ProtoNode {
 						identifier: "value".into(),
 						input: ProtoNodeInput::None,
-						construction_args: ConstructionArgs::Value(value::TaggedValue::U32(2)),
+						construction_args: ConstructionArgs::Value(value::TaggedValue::U32(2).into()),
 						..Default::default()
 					},
 				),

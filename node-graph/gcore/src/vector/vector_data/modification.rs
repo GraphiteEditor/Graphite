@@ -1,4 +1,5 @@
 use super::*;
+use crate::uuid::generate_uuid;
 use crate::Node;
 
 use bezier_rs::BezierHandles;
@@ -14,6 +15,12 @@ pub struct PointModification {
 	remove: HashSet<PointId>,
 	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
 	delta: HashMap<PointId, DVec2>,
+}
+
+impl Hash for PointModification {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		generate_uuid().hash(state)
+	}
 }
 
 impl PointModification {
@@ -398,8 +405,7 @@ impl VectorModification {
 
 impl core::hash::Hash for VectorModification {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		// TODO: properly implement (hashing a hashset is difficult because ordering is unstable)
-		PointId::generate().hash(state);
+		generate_uuid().hash(state)
 	}
 }
 
@@ -479,7 +485,7 @@ use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::hash::Hash;
-fn serialize_hashmap<K, V, S>(hashmap: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
+pub fn serialize_hashmap<K, V, S>(hashmap: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
 where
 	K: Serialize + Eq + Hash,
 	V: Serialize,
@@ -492,7 +498,7 @@ where
 	seq.end()
 }
 
-fn deserialize_hashmap<'de, K, V, D>(deserializer: D) -> Result<HashMap<K, V>, D::Error>
+pub fn deserialize_hashmap<'de, K, V, D>(deserializer: D) -> Result<HashMap<K, V>, D::Error>
 where
 	K: Deserialize<'de> + Eq + Hash,
 	V: Deserialize<'de>,

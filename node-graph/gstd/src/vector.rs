@@ -8,6 +8,7 @@ use graphene_core::{transform::Footprint, GraphicGroup};
 use graphene_core::{vector::misc::BooleanOperation, GraphicElement};
 
 use glam::{DAffine2, DVec2};
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
 pub struct BinaryBooleanOperationNode<LowerVectorData, BooleanOp> {
@@ -73,8 +74,7 @@ fn boolean_operation_node(graphic_group: GraphicGroup, boolean_operation: Boolea
 				let vector_data = collect_vector_data(graphic_group);
 				boolean_operation_on_vector_data(&vector_data, BooleanOperation::Union)
 			}
-			GraphicElement::ImageFrame(image) => vector_from_image(image),
-			GraphicElement::Surface(image) => vector_from_image(image),
+			GraphicElement::Raster(image) => vector_from_image(image),
 		}
 	}
 
@@ -228,7 +228,7 @@ fn from_svg_string(svg_string: &str) -> VectorData {
 	let Some(tree) = usvg::Tree::from_str(&svg, &Default::default()).ok() else {
 		return VectorData::empty();
 	};
-	let Some(usvg::Node::Path(path)) = tree.root.children.first() else {
+	let Some(usvg::Node::Path(path)) = tree.root().children().first() else {
 		return VectorData::empty();
 	};
 
@@ -239,10 +239,10 @@ pub fn convert_usvg_path(path: &usvg::Path) -> Vec<Subpath<PointId>> {
 	let mut subpaths = Vec::new();
 	let mut groups = Vec::new();
 
-	let mut points = path.data.points().iter();
+	let mut points = path.data().points().iter();
 	let to_vec = |p: &usvg::tiny_skia_path::Point| DVec2::new(p.x as f64, p.y as f64);
 
-	for verb in path.data.verbs() {
+	for verb in path.data().verbs() {
 		match verb {
 			usvg::tiny_skia_path::PathVerb::Move => {
 				subpaths.push(Subpath::new(std::mem::take(&mut groups), false));
@@ -279,6 +279,7 @@ pub fn convert_usvg_path(path: &usvg::Path) -> Vec<Subpath<PointId>> {
 	subpaths
 }
 
+#[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(module = "/../../frontend/src/utility-functions/computational-geometry.ts")]
 extern "C" {
 	#[wasm_bindgen(js_name = booleanUnion)]
@@ -289,4 +290,20 @@ extern "C" {
 	fn boolean_intersect(path1: String, path2: String) -> String;
 	#[wasm_bindgen(js_name = booleanDifference)]
 	fn boolean_difference(path1: String, path2: String) -> String;
+}
+#[cfg(not(target_arch = "wasm32"))]
+fn boolean_union(_path1: String, _path2: String) -> String {
+	String::from("M0,0 L1,0 L1,1 L0,1 Z")
+}
+#[cfg(not(target_arch = "wasm32"))]
+fn boolean_subtract(_path1: String, _path2: String) -> String {
+	String::from("M0,0 L1,0 L1,1 L0,1 Z")
+}
+#[cfg(not(target_arch = "wasm32"))]
+fn boolean_intersect(_path1: String, _path2: String) -> String {
+	String::from("M0,0 L1,0 L1,1 L0,1 Z")
+}
+#[cfg(not(target_arch = "wasm32"))]
+fn boolean_difference(_path1: String, _path2: String) -> String {
+	String::from("M0,0 L1,0 L1,1 L0,1 Z")
 }
