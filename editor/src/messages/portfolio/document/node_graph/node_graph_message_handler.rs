@@ -227,6 +227,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			NodeGraphMessage::DisconnectInput { input_connector } => {
 				network_interface.disconnect_input(&input_connector, selection_network_path);
 			}
+			NodeGraphMessage::DisconnectRootNode => {
+				network_interface.start_previewing_without_restore(selection_network_path);
+			}
 			NodeGraphMessage::DuplicateSelectedNodes => {
 				let all_selected_nodes = network_interface.upstream_chain_nodes(selection_network_path);
 
@@ -436,7 +439,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					self.initial_disconnecting = true;
 					self.disconnecting = Some(clicked_input.clone());
 
-					let Some(output_connector) = network_interface.upstream_output_connector(clicked_input, selection_network_path) else {
+					let output_connector = if *clicked_input == InputConnector::Export(0) {
+						network_interface.root_node(selection_network_path).map(|root_node| root_node.to_connector())
+					} else {
+						network_interface.upstream_output_connector(clicked_input, selection_network_path)
+					};
+					let Some(output_connector) = output_connector else {
 						log::error!("Could not get upstream node from {clicked_input:?} when moving existing wire");
 						return;
 					};
@@ -554,9 +562,22 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						// Disconnect if the wire was previously connected to an input
 						if let Some(disconnecting) = &self.disconnecting {
 							responses.add(DocumentMessage::StartTransaction);
-							responses.add(NodeGraphMessage::DisconnectInput {
-								input_connector: disconnecting.clone(),
-							});
+							let mut disconnect_root_node = false;
+							if let Previewing::Yes {
+								root_node_to_restore: Some(root_node_to_restore),
+							} = network_interface.previewing(selection_network_path)
+							{
+								if *disconnecting == InputConnector::Export(0) {
+									disconnect_root_node = true;
+								}
+							}
+							if disconnect_root_node {
+								responses.add(NodeGraphMessage::DisconnectRootNode);
+							} else {
+								responses.add(NodeGraphMessage::DisconnectInput {
+									input_connector: disconnecting.clone(),
+								});
+							}
 							// Update the front end that the node is disconnected
 							responses.add(NodeGraphMessage::RunDocumentGraph);
 							responses.add(NodeGraphMessage::SendGraph);

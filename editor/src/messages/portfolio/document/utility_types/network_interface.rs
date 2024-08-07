@@ -2466,21 +2466,7 @@ impl NodeNetworkInterface {
 
 		let value_input = NodeInput::value(tagged_value, true);
 
-		if matches!(input_connector, InputConnector::Node { .. }) {
-			self.set_input(input_connector, value_input, network_path);
-		} else {
-			// TODO: Allow the user to drag the solid line when previewing
-			// This causes a crash since when ending preview the NodeInput::Node to the previewed node needs to be disconnected.
-			// Since it is only possible to drag the solid line, if previewing then there must be a dashed connection, which becomes the new export
-			// if matches!(self.previewing(network_path), Previewing::Yes { .. }) {
-			// 	self.start_previewing_without_restore(network_path);
-			// }
-			// // If there is no preview, then disconnect
-			// else {
-			// 	self.set_input(input_connector, value_input, network_path);
-			// }
-			self.set_input(input_connector, value_input, network_path);
-		}
+		self.set_input(input_connector, value_input, network_path);
 	}
 
 	pub fn create_wire(&mut self, output_connector: &OutputConnector, input_connector: &InputConnector, network_path: &[NodeId]) {
@@ -2714,7 +2700,7 @@ impl NodeNetworkInterface {
 		true
 	}
 
-	fn start_previewing_without_restore(&mut self, network_path: &[NodeId]) {
+	pub fn start_previewing_without_restore(&mut self, network_path: &[NodeId]) {
 		// Some logic will have to be performed to prevent the graph positions from being completely changed when the export changes to some previewed node
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in start_previewing_without_restore");
