@@ -396,6 +396,10 @@ fn splines_from_points(mut vector_data: VectorData) -> VectorData {
 
 	vector_data.segment_domain.clear();
 
+	if points.positions().is_empty() {
+		return vector_data;
+	}
+
 	let first_handles = bezier_rs::solve_spline_first_handle(points.positions());
 
 	let stroke_id = StrokeId::ZERO;

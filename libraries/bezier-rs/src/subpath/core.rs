@@ -368,6 +368,9 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 
 pub fn solve_spline_first_handle(points: &[DVec2]) -> Vec<DVec2> {
 	let len_points = points.len();
+	if len_points == 0 {
+		return Vec::new();
+	}
 
 	// Matrix coefficients a, b and c (see https://mathworld.wolfram.com/CubicSpline.html).
 	// Because the 'a' coefficients are all 1, they need not be stored.

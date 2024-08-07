@@ -520,7 +520,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::PointerMove { shift } => {
 				if selection_network_path != breadcrumb_network_path {
-					log::error!("Selection network path does not match breadcrumb network path in PointerUp");
+					log::error!("Selection network path does not match breadcrumb network path in PointerMove");
 					return;
 				}
 				let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
@@ -723,58 +723,92 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 									return;
 								};
 								// TODO: Cache all wire locations if this is a performance issue
-								let mut overlapping_wires = Self::collect_wires(network_interface, selection_network_path).into_iter().filter(|frontend_wire| {
-									// Prevent inserting on a link that is connected upstream to the selected node
-									if network_interface
-										.upstream_flow_back_from_nodes(vec![selected_node_id], selection_network_path, network_interface::FlowType::UpstreamFlow)
-										.any(|upstream_id| {
-											frontend_wire.wire_end.node_id().is_some_and(|wire_end_id| wire_end_id == upstream_id)
-												|| frontend_wire.wire_start.node_id().is_some_and(|wire_start_id| wire_start_id == upstream_id)
-										}) {
-										return false;
-									}
+								let mut overlapping_wires = Self::collect_wires(network_interface, selection_network_path)
+									.into_iter()
+									.filter(|frontend_wire| {
+										// Prevent inserting on a link that is connected upstream to the selected node
+										if network_interface
+											.upstream_flow_back_from_nodes(vec![selected_node_id], selection_network_path, network_interface::FlowType::UpstreamFlow)
+											.any(|upstream_id| {
+												frontend_wire.wire_end.node_id().is_some_and(|wire_end_id| wire_end_id == upstream_id)
+													|| frontend_wire.wire_start.node_id().is_some_and(|wire_start_id| wire_start_id == upstream_id)
+											}) {
+											return false;
+										}
 
-									// Prevent inserting a layer into a chain
-									if network_interface.is_layer(&selected_node_id, selection_network_path)
-										&& frontend_wire
-											.wire_start
+										// Prevent inserting a layer into a chain
+										if network_interface.is_layer(&selected_node_id, selection_network_path)
+											&& frontend_wire
+												.wire_start
+												.node_id()
+												.is_some_and(|wire_start_id| network_interface.is_chain(&wire_start_id, selection_network_path))
+										{
+											return false;
+										}
+
+										let Some(input_position) = network_interface.input_position(&frontend_wire.wire_end, selection_network_path) else {
+											log::error!("Could not get input port position for {:?}", frontend_wire.wire_end);
+											return false;
+										};
+
+										let Some(output_position) = network_interface.output_position(&frontend_wire.wire_start, selection_network_path) else {
+											log::error!("Could not get output port position for {:?}", frontend_wire.wire_start);
+											return false;
+										};
+
+										let start_node_is_layer = frontend_wire
+											.wire_end
 											.node_id()
-											.is_some_and(|wire_start_id| network_interface.is_chain(&wire_start_id, selection_network_path))
-									{
-										return false;
+											.is_some_and(|wire_start_id| network_interface.is_layer(&wire_start_id, selection_network_path));
+										let end_node_is_layer = frontend_wire
+											.wire_end
+											.node_id()
+											.is_some_and(|wire_end_id| network_interface.is_layer(&wire_end_id, selection_network_path));
+
+										let locations = Self::build_wire_path_locations(output_position, input_position, start_node_is_layer, end_node_is_layer);
+										let bezier = bezier_rs::Bezier::from_cubic_dvec2(
+											(locations[0].x, locations[0].y).into(),
+											(locations[1].x, locations[1].y).into(),
+											(locations[2].x, locations[2].y).into(),
+											(locations[3].x, locations[3].y).into(),
+										);
+
+										!bezier.rectangle_intersections(bounding_box[0], bounding_box[1]).is_empty() || bezier.is_contained_within(bounding_box[0], bounding_box[1])
+									})
+									.collect::<Vec<_>>();
+
+								let is_stack_wire = |wire: &FrontendNodeWire| match (wire.wire_start.node_id(), wire.wire_end.node_id(), wire.wire_end.input_index()) {
+									(Some(start_id), Some(end_id), input_index) => {
+										input_index == 0 && network_interface.is_layer(&start_id, selection_network_path) && network_interface.is_layer(&end_id, selection_network_path)
 									}
+									_ => false,
+								};
 
-									let Some(input_position) = network_interface.input_position(&frontend_wire.wire_end, selection_network_path) else {
-										log::error!("Could not get input port position for {:?}", frontend_wire.wire_end);
-										return false;
-									};
+								// Prioritize vertical thick lines and cancel if there are multiple potential wires
+								let mut node_wires = Vec::new();
+								let mut stack_wires = Vec::new();
+								for wire in overlapping_wires {
+									if is_stack_wire(&wire) {
+										stack_wires.push(wire)
+									} else {
+										node_wires.push(wire)
+									}
+								}
 
-									let Some(output_position) = network_interface.output_position(&frontend_wire.wire_start, selection_network_path) else {
-										log::error!("Could not get output port position for {:?}", frontend_wire.wire_start);
-										return false;
-									};
-
-									let start_node_is_layer = frontend_wire
-										.wire_end
-										.node_id()
-										.is_some_and(|wire_start_id| network_interface.is_layer(&wire_start_id, selection_network_path));
-									let end_node_is_layer = frontend_wire
-										.wire_end
-										.node_id()
-										.is_some_and(|wire_end_id| network_interface.is_layer(&wire_end_id, selection_network_path));
-
-									let locations = Self::build_wire_path_locations(output_position, input_position, start_node_is_layer, end_node_is_layer);
-									let bezier = bezier_rs::Bezier::from_cubic_dvec2(
-										(locations[0].x, locations[0].y).into(),
-										(locations[1].x, locations[1].y).into(),
-										(locations[2].x, locations[2].y).into(),
-										(locations[3].x, locations[3].y).into(),
-									);
-
-									!bezier.rectangle_intersections(bounding_box[0], bounding_box[1]).is_empty() || bezier.is_contained_within(bounding_box[0], bounding_box[1])
-								});
-
-								if let Some(overlapping_wire) = overlapping_wires.next() {
+								let overlapping_wire = if network_interface.is_layer(&selected_node_id, selection_network_path) {
+									if stack_wires.len() == 1 {
+										stack_wires.first()
+									} else if stack_wires.len() == 0 && node_wires.len() == 1 {
+										node_wires.first()
+									} else {
+										None
+									}
+								} else if node_wires.len() == 1 {
+									node_wires.first()
+								} else {
+									None
+								};
+								if let Some(overlapping_wire) = overlapping_wire {
 									let Some(network) = network_interface.network(selection_network_path) else {
 										return;
 									};

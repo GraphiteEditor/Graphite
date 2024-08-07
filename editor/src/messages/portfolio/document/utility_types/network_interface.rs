@@ -2934,6 +2934,7 @@ impl NodeNetworkInterface {
 				position: NodePosition::Absolute(position),
 			})
 		};
+
 		if is_layer {
 			node_metadata.transient_metadata.node_type_metadata = NodeTypeTransientMetadata::Layer(LayerTransientMetadata::default());
 		} else {
@@ -2942,6 +2943,10 @@ impl NodeNetworkInterface {
 
 		if is_layer {
 			self.try_set_upstream_to_chain(&InputConnector::node(*node_id, 1), network_path);
+			// Reload click target of the layer which used to encapsulate the node
+			if let Some(downstream_layer) = self.downstream_layer(node_id, network_path) {
+				self.unload_node_click_targets(&downstream_layer.to_node(), network_path);
+			}
 		}
 
 		self.unload_upstream_node_click_targets(vec![*node_id], network_path);
