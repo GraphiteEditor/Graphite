@@ -549,15 +549,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					};
 					// If the downstream node is a layer and the input is the first input and the current layer is not in a stack
 					if input_index == 0 && document.network_interface.is_layer(&downstream_node, &[]) && document.network_interface.is_absolute(&layer.to_node(), &[]) {
-						let (Some(layer_position), Some(downstream_position)) =
-							(document.network_interface.position(&layer.to_node(), &[]), document.network_interface.position(&downstream_node, &[]))
-						else {
-							log::error!("Could not get downstream node position in PortfolioMessage::OpenDocumentFileWithId");
-							return;
-						};
-						document
-							.network_interface
-							.set_stack_position(&layer.to_node(), (layer_position.y - downstream_position.y - 3).max(0) as u32, &[]);
+						document.network_interface.set_stack_position_calculated_offset(&layer.to_node(), &downstream_node, &[]);
 					}
 				}
 

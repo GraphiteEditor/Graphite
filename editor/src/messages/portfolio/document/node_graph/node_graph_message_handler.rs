@@ -563,11 +563,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						if let Some(disconnecting) = &self.disconnecting {
 							responses.add(DocumentMessage::StartTransaction);
 							let mut disconnect_root_node = false;
-							if let Previewing::Yes {
-								root_node_to_restore: Some(root_node_to_restore),
-							} = network_interface.previewing(selection_network_path)
-							{
-								if *disconnecting == InputConnector::Export(0) {
+							if let Previewing::Yes { root_node_to_restore } = network_interface.previewing(selection_network_path) {
+								if root_node_to_restore.is_some() && *disconnecting == InputConnector::Export(0) {
 									disconnect_root_node = true;
 								}
 							}

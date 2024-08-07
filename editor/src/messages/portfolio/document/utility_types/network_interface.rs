@@ -2376,11 +2376,7 @@ impl NodeNetworkInterface {
 									NodeTypePersistentMetadata::Layer(_) => {
 										// If the layer feeds into the bottom input of layer, set its position to stack at its previous y position
 										if *input_index == 0 {
-											let Some(downstream_node_position) = self.position(downstream_node_id, network_path) else {
-												log::error!("Could not get downstream node position in set_input for node {downstream_node_id}");
-												return;
-											};
-											self.set_stack_position(upstream_node_id, (current_node_position.y - downstream_node_position.y - 3).max(0) as u32, network_path);
+											self.set_stack_position_calculated_offset(upstream_node_id, downstream_node_id, network_path);
 										} else {
 											self.set_absolute_position(upstream_node_id, network_path, current_node_position);
 										}
@@ -2455,10 +2451,39 @@ impl NodeNetworkInterface {
 			return;
 		}
 
-		// If the node upstream from the disconnected input is a chain, then break the chain by setting it to absolute positioning
-		if let NodeInput::Node { node_id: upstream_node_id, .. } = &current_input {
+		if let NodeInput::Node {
+			node_id: upstream_node_id,
+			output_index,
+			..
+		} = &current_input
+		{
+			// If the node upstream from the disconnected input is a chain, then break the chain by setting it to absolute positioning
 			if self.is_chain(upstream_node_id, network_path) {
 				self.set_upstream_chain_to_absolute(upstream_node_id, network_path);
+			}
+			// If the node upstream from the disconnected input has an outward wire to the bottom of a layer, set it back to stack positioning
+			if self.is_layer(upstream_node_id, network_path) {
+				let Some(outward_wires) = self
+					.outward_wires(network_path)
+					.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(*upstream_node_id, *output_index)))
+				else {
+					log::error!("Could not get outward wires in disconnect_input");
+					return;
+				};
+				let mut other_outward_wires = outward_wires.iter().filter(|outward_wire| *outward_wire != input_connector);
+				if let Some(other_outward_wire) = other_outward_wires.next().cloned() {
+					if other_outward_wires.next().is_none() {
+						if let InputConnector::Node {
+							node_id: downstream_node_id,
+							input_index,
+						} = other_outward_wire
+						{
+							if self.is_layer(&downstream_node_id, network_path) && input_index == 0 {
+								self.set_stack_position_calculated_offset(upstream_node_id, &downstream_node_id, network_path);
+							}
+						}
+					}
+				}
 			}
 		}
 
@@ -2820,11 +2845,7 @@ impl NodeNetworkInterface {
 				// If a node is set to a layer
 				if let Some(upstream_sibling_id) = upstream_sibling_id {
 					if self.is_layer(&upstream_sibling_id, network_path) {
-						let (Some(toggled_node_position), Some(upstream_node_position)) = (self.position(node_id, network_path), self.position(&upstream_sibling_id, network_path)) else {
-							log::error!("Could not get downstream node position in set_to_node_or_layer");
-							return;
-						};
-						self.set_stack_position(&upstream_sibling_id, (upstream_node_position.y - toggled_node_position.y - 3).max(0) as u32, network_path);
+						self.set_stack_position_calculated_offset(&upstream_sibling_id, node_id, network_path);
 					} else {
 						self.set_upstream_chain_to_absolute(&upstream_sibling_id, network_path);
 					}
@@ -2928,6 +2949,11 @@ impl NodeNetworkInterface {
 							if root_node_to_restore.node_id == toggle_id {
 								new_export = Some(OutputConnector::node(toggle_id, 0));
 								new_previewing_state = Previewing::Yes { root_node_to_restore: None };
+							} else {
+								// Root node to restore does not change
+								new_previewing_state = Previewing::Yes {
+									root_node_to_restore: Some(root_node_to_restore),
+								};
 							}
 						}
 						// There is a dashed line without a solid line.
@@ -2992,6 +3018,20 @@ impl NodeNetworkInterface {
 		} else {
 			log::error!("Could not set stack position for non layer node {node_id}");
 		}
+	}
+
+	/// Sets the position of a node to a stack position without changing its y offset
+	pub fn set_stack_position_calculated_offset(&mut self, node_id: &NodeId, downstream_layer: &NodeId, network_path: &[NodeId]) {
+		let Some(node_position) = self.position(node_id, network_path) else {
+			log::error!("Could not get node position for node {node_id}");
+			return;
+		};
+		let Some(downstream_position) = self.position(downstream_layer, network_path) else {
+			log::error!("Could not get downstream position for node {downstream_layer}");
+			return;
+		};
+
+		self.set_stack_position(node_id, (node_position.y - downstream_position.y - 3).max(0) as u32, network_path);
 	}
 
 	/// Sets the position of a node to a chain position
