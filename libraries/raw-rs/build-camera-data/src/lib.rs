@@ -9,10 +9,10 @@ use std::path::Path;
 
 enum CustomValue {
 	String(String),
-    Integer(i64),
-    Float(f64),
-    Boolean(bool),
-    Array(Vec<CustomValue>),
+	Integer(i64),
+	Float(f64),
+	Boolean(bool),
+	Array(Vec<CustomValue>),
 }
 
 impl ToTokens for CustomValue {
@@ -22,11 +22,11 @@ impl ToTokens for CustomValue {
 			CustomValue::Integer(x) => {
 				let x: proc_macro2::TokenStream = format!("{:?}", x).parse().unwrap();
 				x.to_tokens(tokens)
-			},
+			}
 			CustomValue::Float(x) => {
 				let x: proc_macro2::TokenStream = format!("{:?}", x).parse().unwrap();
 				x.to_tokens(tokens)
-			},
+			}
 			CustomValue::Boolean(x) => x.to_tokens(tokens),
 			CustomValue::Array(x) => quote! { [ #( #x ),* ] }.to_tokens(tokens),
 		}
@@ -74,20 +74,23 @@ pub fn build_camera_data(_: TokenStream) -> TokenStream {
 		});
 	});
 
-	let x: Vec<_> = camera_data.iter().map(|(name, camera_data)| {
-		let keys: Vec<_> = camera_data.keys().map(|key| syn::Ident::new(key, proc_macro2::Span::call_site())).collect();
-	    let values: Vec<CustomValue> = camera_data.values().cloned().map(|x| x.into()).collect();
+	let x: Vec<_> = camera_data
+		.iter()
+		.map(|(name, camera_data)| {
+			let keys: Vec<_> = camera_data.keys().map(|key| syn::Ident::new(key, proc_macro2::Span::call_site())).collect();
+			let values: Vec<CustomValue> = camera_data.values().cloned().map(|x| x.into()).collect();
 
-		quote! {
-			(
-				#name,
-				CameraData {
-					#( #keys: #values, )*
-					..CameraData::DEFAULT
-				}
-			)
-		}
-	}).collect();
+			quote! {
+				(
+					#name,
+					CameraData {
+						#( #keys: #values, )*
+						..CameraData::DEFAULT
+					}
+				)
+			}
+		})
+		.collect();
 
 	quote!([ #(#x),* ]).into()
 }

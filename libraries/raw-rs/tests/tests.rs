@@ -98,9 +98,7 @@ fn store_image(path: &Path, suffix: &str, data: &mut [u8], width: usize, height:
 
 fn download_images() {
 	let mut path = Path::new(BASE_PATH).to_owned();
-	let client = reqwest::blocking::Client::builder()
-		.timeout(Duration::from_secs(60*5))
-		.build().unwrap();
+	let client = reqwest::blocking::Client::builder().timeout(Duration::from_secs(60 * 5)).build().unwrap();
 
 	for filename in TEST_FILES {
 		path.push(filename);
@@ -323,11 +321,11 @@ fn extract_data_from_dng_images() {
 }
 
 fn extract_data_from_dng_image(path: &Path) {
-	use std::io::{BufReader, Write};
 	use raw_rs::tiff::file::TiffRead;
-	use raw_rs::tiff::Ifd;
 	use raw_rs::tiff::tags::{ColorMatrix2, Make, Model};
 	use raw_rs::tiff::values::ToFloat;
+	use raw_rs::tiff::Ifd;
+	use std::io::{BufReader, Write};
 
 	let reader = BufReader::new(File::open(path).unwrap());
 	let mut file = TiffRead::new(reader).unwrap();

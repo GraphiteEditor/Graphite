@@ -8,7 +8,11 @@ pub struct CameraData {
 }
 
 impl CameraData {
-	const DEFAULT: CameraData = CameraData { black: 0, maximum: 0, camera_to_xyz: [0; 9] };
+	const DEFAULT: CameraData = CameraData {
+		black: 0,
+		maximum: 0,
+		camera_to_xyz: [0; 9],
+	};
 }
 
 const CAMERA_DATA: [(&str, CameraData); 40] = build_camera_data!();
