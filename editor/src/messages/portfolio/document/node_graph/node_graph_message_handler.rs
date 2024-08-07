@@ -945,14 +945,47 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				let mut filtered_node_ids = Vec::new();
 				for selected_node in &node_ids {
-					//Deselect chain nodes upstream from a selected layer
-					if !network_interface.is_chain(selected_node, selection_network_path)
-						|| !network_interface
+					// Deselect chain nodes upstream from a selected layer
+					if network_interface.is_chain(selected_node, selection_network_path)
+						&& network_interface
 							.downstream_layer(selected_node, selection_network_path)
 							.is_some_and(|downstream_layer| node_ids.contains(&downstream_layer.to_node()))
 					{
-						filtered_node_ids.push(*selected_node)
+						// Deselect stack nodes upstream from a selected layer
+						continue;
 					}
+
+					let mut is_downstream_from_selected_absolute_layer = false;
+					let mut current_node = *selected_node;
+					loop {
+						let Some(outward_wires) = network_interface.outward_wires(selection_network_path) else {
+							break;
+						};
+						let Some(outward_wires) = outward_wires.get(&OutputConnector::node(current_node, 0)) else {
+							break;
+						};
+						if outward_wires.is_empty() {
+							break;
+						}
+						let Some(downstream_node) = outward_wires[0].node_id() else {
+							break;
+						};
+						if outward_wires[0].input_index() != 0 {
+							break;
+						}
+						if !network_interface.is_layer(&downstream_node, selection_network_path) {
+							break;
+						}
+						if network_interface.is_absolute(&downstream_node, selection_network_path) {
+							is_downstream_from_selected_absolute_layer = node_ids.contains(&downstream_node);
+							break;
+						}
+						current_node = downstream_node;
+					}
+					if is_downstream_from_selected_absolute_layer {
+						continue;
+					}
+					filtered_node_ids.push(*selected_node)
 				}
 
 				for node_id in filtered_node_ids {

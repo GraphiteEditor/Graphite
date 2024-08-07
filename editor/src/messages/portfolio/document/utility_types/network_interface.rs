@@ -2894,7 +2894,6 @@ impl NodeNetworkInterface {
 					} else {
 						self.set_upstream_chain_to_absolute(&upstream_sibling_id, network_path);
 					}
-					self.try_set_upstream_to_chain(&InputConnector::node(*node_id, 1), network_path);
 				}
 			}
 			_ => return,
@@ -2937,6 +2936,10 @@ impl NodeNetworkInterface {
 			node_metadata.transient_metadata.node_type_metadata = NodeTypeTransientMetadata::Layer(LayerTransientMetadata::default());
 		} else {
 			node_metadata.transient_metadata.node_type_metadata = NodeTypeTransientMetadata::Node;
+		}
+
+		if is_layer {
+			self.try_set_upstream_to_chain(&InputConnector::node(*node_id, 1), network_path);
 		}
 
 		self.unload_upstream_node_click_targets(vec![*node_id], network_path);
@@ -3266,11 +3269,10 @@ impl NodeNetworkInterface {
 
 		// Connect the layer to a parent layer/node at the top of the stack
 		if post_node.input_index() == 1 || matches!(post_node, InputConnector::Export(_)) {
-			// Create a new stack
 			match post_node_input {
+				// Create a new stack
 				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) => {
 					self.create_wire(&OutputConnector::node(layer.to_node(), 0), &post_node, network_path);
-
 					let post_node_position = if let Some(post_node_id) = post_node.node_id() {
 						self.position(&post_node_id, network_path)
 					} else {
@@ -3283,14 +3285,15 @@ impl NodeNetworkInterface {
 					let offset = IVec2::new(-7, 3);
 					self.set_absolute_position(&layer.to_node(), network_path, post_node_position + offset);
 				}
+				// Move to the top of a stack
 				NodeInput::Node { node_id, .. } => {
 					let Some(top_of_stack_position) = self.position(&node_id, network_path) else {
 						log::error!("Could not get top of stack position in move_layer_to_stack");
 						return;
 					};
-					self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
 					self.set_absolute_position(&layer.to_node(), network_path, top_of_stack_position - IVec2::new(0, 3));
 					self.shift_node(&layer.to_node(), IVec2::new(0, 3), network_path);
+					self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
 				}
 				NodeInput::Network { .. } => {
 					log::error!("Cannot move post node to parent which connects to the imports")
