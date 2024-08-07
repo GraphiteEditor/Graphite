@@ -2434,7 +2434,7 @@ impl NodeNetworkInterface {
 												log::error!("Could not get downstream node position in set_input for node {downstream_node_id}");
 												return;
 											};
-											self.set_stack_position(upstream_node_id, network_path, (current_node_position.y - downstream_node_position.y - 3).max(0) as u32);
+											self.set_stack_position(upstream_node_id, (current_node_position.y - downstream_node_position.y - 3).max(0) as u32, network_path);
 										} else {
 											self.set_absolute_position(upstream_node_id, network_path, current_node_position);
 										}
@@ -2524,14 +2524,16 @@ impl NodeNetworkInterface {
 		if matches!(input_connector, InputConnector::Node { .. }) {
 			self.set_input(input_connector, value_input, network_path);
 		} else {
+			// This causes a crash since when ending preview the NodeInput::Node to the previewed node needs to be disconnected.
 			// Since it is only possible to drag the solid line, if previewing then there must be a dashed connection, which becomes the new export
-			if matches!(self.previewing(network_path), Previewing::Yes { .. }) {
-				self.start_previewing_without_restore(network_path);
-			}
-			// If there is no preview, then disconnect
-			else {
-				self.set_input(input_connector, value_input, network_path);
-			}
+			// if matches!(self.previewing(network_path), Previewing::Yes { .. }) {
+			// 	self.start_previewing_without_restore(network_path);
+			// }
+			// // If there is no preview, then disconnect
+			// else {
+			// 	self.set_input(input_connector, value_input, network_path);
+			// }
+			self.set_input(input_connector, value_input, network_path);
 		}
 	}
 
@@ -2890,7 +2892,7 @@ impl NodeNetworkInterface {
 							log::error!("Could not get downstream node position in set_to_node_or_layer");
 							return;
 						};
-						self.set_stack_position(&upstream_sibling_id, network_path, (upstream_node_position.y - toggled_node_position.y - 3).max(0) as u32);
+						self.set_stack_position(&upstream_sibling_id, (upstream_node_position.y - toggled_node_position.y - 3).max(0) as u32, network_path);
 					} else {
 						self.set_upstream_chain_to_absolute(&upstream_sibling_id, network_path);
 					}
@@ -3043,7 +3045,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Sets the position of a layer to a stack position
-	fn set_stack_position(&mut self, node_id: &NodeId, network_path: &[NodeId], y_offset: u32) {
+	pub fn set_stack_position(&mut self, node_id: &NodeId, y_offset: u32, network_path: &[NodeId]) {
 		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
 			log::error!("Could not get node_metadata for node {node_id}");
 			return;
@@ -3312,7 +3314,7 @@ impl NodeNetworkInterface {
 					log::error!("Cannot move post node to parent which connects to the imports")
 				}
 			}
-			self.set_stack_position(&layer.to_node(), network_path, 0);
+			self.set_stack_position(&layer.to_node(), 0, network_path);
 		}
 	}
 
