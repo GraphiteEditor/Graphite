@@ -2,7 +2,7 @@ use crate::tiff::file::{Endian, TiffRead};
 use crate::tiff::tags::{BitsPerSample, CfaPattern, CfaPatternDim, Compression, ImageLength, ImageWidth, SonyToneCurve, StripByteCounts, StripOffsets, Tag};
 use crate::tiff::values::CurveLookupTable;
 use crate::tiff::{Ifd, TiffError};
-use crate::RawImage;
+use crate::{RawImage, SubtractBlack};
 
 use std::io::{Read, Seek};
 use tag_derive::Tag;
@@ -30,7 +30,9 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 
 	let image_width: usize = ifd.image_width.try_into().unwrap();
 	let image_height: usize = ifd.image_height.try_into().unwrap();
-	let _bits_per_sample: usize = ifd.bits_per_sample.into();
+	let bits_per_sample: usize = ifd.bits_per_sample.into();
+	assert!(bits_per_sample == 12);
+
 	let [cfa_pattern_width, cfa_pattern_height] = ifd.cfa_pattern_dim;
 	assert!(cfa_pattern_width == 2 && cfa_pattern_height == 2);
 
@@ -44,6 +46,10 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 		data: image,
 		width: image_width,
 		height: image_height,
+		cfa_pattern: ifd.cfa_pattern.try_into().unwrap(),
+		maximum: (1 << 14) - 1,
+		black: SubtractBlack::CfaGrid([512, 512, 512, 512]), // TODO: Find the correct way to do this
+		camera_to_xyz: None,
 	}
 }
 
