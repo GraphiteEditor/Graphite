@@ -1,6 +1,7 @@
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier, NodeRelations};
 use super::misc::PTZ;
 use super::nodes::SelectedNodes;
+use crate::consts::{EXPORTS_TO_EDGE_PIXEL_GAP, IMPORTS_TO_EDGE_PIXEL_GAP};
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::utility_types::{FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
 use crate::messages::prelude::NodeGraphMessageHandler;
@@ -1172,30 +1173,29 @@ impl NodeNetworkInterface {
 			return;
 		};
 		let mut import_export_ports = Ports::new();
+
+		let exports_to_edge_distance = network_metadata.persistent_metadata.navigation_metadata.exports_to_edge_distance;
 		let viewport_top_right = network_metadata
 			.persistent_metadata
 			.navigation_metadata
 			.node_graph_to_viewport
 			.inverse()
-			.transform_point2(network_metadata.persistent_metadata.navigation_metadata.node_graph_top_right + DVec2::new(-120., 0.));
-
+			.transform_point2(DVec2::new(exports_to_edge_distance, 0.));
 		let bounding_box_top_right = DVec2::new((all_nodes_bounding_box[1].x / 24. + 0.5).floor() * 24., (all_nodes_bounding_box[0].y / 24. + 0.5).floor() * 24.) + DVec2::new(4. * 24., 0.);
-
 		let export_top_right = DVec2::new(viewport_top_right.x.max(bounding_box_top_right.x), bounding_box_top_right.y);
 		for input_index in 0..network.exports.len() {
 			import_export_ports.insert_input_port_at_center(input_index, export_top_right + DVec2::new(0., input_index as f64 * 24.));
 		}
 
+		let imports_to_edge_distance = network_metadata.persistent_metadata.navigation_metadata.imports_to_edge_distance;
 		let viewport_top_left = network_metadata
 			.persistent_metadata
 			.navigation_metadata
 			.node_graph_to_viewport
 			.inverse()
-			.transform_point2(DVec2::new(120., 0.));
-
-		let bounding_box_top_left = DVec2::new((all_nodes_bounding_box[0].x / 24. + 0.5).floor() * 24., (all_nodes_bounding_box[0].y / 24. + 0.5).floor() * 24.) + DVec2::new(-4. * 24., 0.);
+			.transform_point2(DVec2::new(imports_to_edge_distance, 0.));
+		let bounding_box_top_left = DVec2::new((all_nodes_bounding_box[0].x / 24. + 0.5).floor() * 24., (all_nodes_bounding_box[0].y / 24. + 0.5).floor() * 24.) + DVec2::new(-96., 0.);
 		let import_top_left = DVec2::new(viewport_top_left.x.min(bounding_box_top_left.x), bounding_box_top_left.y);
-
 		for output_index in 0..self.number_of_displayed_imports(network_path) {
 			import_export_ports.insert_output_port_at_center(output_index, import_top_left + DVec2::new(0., output_index as f64 * 24.));
 		}
@@ -1717,10 +1717,35 @@ impl NodeNetworkInterface {
 				node_click_targets.push(path);
 			}
 		});
+
 		let bounds = self.all_nodes_bounding_box(network_path).cloned().unwrap_or([DVec2::ZERO, DVec2::ZERO]);
 		let rect = bezier_rs::Subpath::<PointId>::new_rect(bounds[0], bounds[1]);
 		let mut all_nodes_bounding_box = String::new();
 		let _ = rect.subpath_to_svg(&mut all_nodes_bounding_box, DAffine2::IDENTITY);
+
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in collect_front_end_click_targets");
+			return FrontendClickTargets::default();
+		};
+		let import_exports_viewport_top_left = DVec2::new(network_metadata.persistent_metadata.navigation_metadata.imports_to_edge_distance, -10.);
+		let import_exports_viewport_bottom_right = DVec2::new(network_metadata.persistent_metadata.navigation_metadata.exports_to_edge_distance, 2000.);
+
+		let node_graph_top_left = network_metadata
+			.persistent_metadata
+			.navigation_metadata
+			.node_graph_to_viewport
+			.inverse()
+			.transform_point2(import_exports_viewport_top_left);
+		let node_graph_bottom_right = network_metadata
+			.persistent_metadata
+			.navigation_metadata
+			.node_graph_to_viewport
+			.inverse()
+			.transform_point2(import_exports_viewport_bottom_right);
+
+		let import_exports_target = bezier_rs::Subpath::<PointId>::new_rect(node_graph_top_left, node_graph_bottom_right);
+		let mut import_exports_bounding_box = String::new();
+		let _ = import_exports_target.subpath_to_svg(&mut import_exports_bounding_box, DAffine2::IDENTITY);
 
 		FrontendClickTargets {
 			node_click_targets,
@@ -1728,6 +1753,7 @@ impl NodeNetworkInterface {
 			port_click_targets,
 			visibility_click_targets,
 			all_nodes_bounding_box,
+			import_exports_bounding_box,
 		}
 	}
 
@@ -2120,13 +2146,39 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub fn set_transform(&mut self, transform: DAffine2, node_graph_top_right: DVec2, network_path: &[NodeId]) {
+	pub fn set_transform(&mut self, transform: DAffine2, network_path: &[NodeId]) {
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network in set_transform");
 			return;
 		};
 		network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport = transform;
-		network_metadata.persistent_metadata.navigation_metadata.node_graph_top_right = node_graph_top_right;
+		self.unload_import_export_ports(network_path);
+	}
+
+	// This should be run whenever the pan ends, a zoom occurs, or the network is opened
+	pub fn set_grid_aligned_edges(&mut self, node_graph_top_right: DVec2, network_path: &[NodeId]) {
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+			log::error!("Could not get nested network in set_grid_aligned_edges");
+			return;
+		};
+		// When setting the edges to be grid aligned, update the pixel offset to ensure the next pan starts from the snapped import/export position
+		let node_graph_to_viewport = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport;
+
+		let target_exports_distance = node_graph_to_viewport
+			.inverse()
+			.transform_point2(DVec2::new(node_graph_top_right.x - EXPORTS_TO_EDGE_PIXEL_GAP as f64, 0.));
+
+		let target_imports_distance = node_graph_to_viewport.inverse().transform_point2(DVec2::new(IMPORTS_TO_EDGE_PIXEL_GAP as f64, 0.));
+
+		let rounded_exports_distance = (target_exports_distance.x / 24. + 0.5).floor() * 24.;
+		let rounded_imports_distance = (target_imports_distance.x / 24. + 0.5).floor() * 24.;
+
+		let rounded_viewport_exports_distance = node_graph_to_viewport.transform_point2(DVec2::new(rounded_exports_distance, 0.));
+		let rounded_viewport_imports_distance = node_graph_to_viewport.transform_point2(DVec2::new(rounded_imports_distance, 0.));
+
+		network_metadata.persistent_metadata.navigation_metadata.exports_to_edge_distance = rounded_viewport_exports_distance.x;
+		network_metadata.persistent_metadata.navigation_metadata.imports_to_edge_distance = rounded_viewport_imports_distance.x;
+
 		self.unload_import_export_ports(network_path);
 	}
 
@@ -2912,6 +2964,8 @@ impl NodeNetworkInterface {
 			if let Some(downstream_layer) = self.downstream_layer(node_id, network_path) {
 				self.unload_node_click_targets(&downstream_layer.to_node(), network_path);
 			}
+		} else {
+			self.try_set_upstream_to_chain(&InputConnector::node(*node_id, 0), network_path);
 		}
 
 		self.unload_upstream_node_click_targets(vec![*node_id], network_path);
@@ -3946,8 +4000,10 @@ pub struct NavigationMetadata {
 	// TODO: Remove and replace with calculate_offset_transform from the node_graph_ptz. This will be difficult since it requires both the navigation message handler and the IPP
 	/// Transform from node graph space to viewport space.
 	pub node_graph_to_viewport: DAffine2,
-	/// The top right of the node graph in viewport space
-	pub node_graph_top_right: DVec2,
+	/// The viewport pixel distance distance between the left edge of the node graph and the exports. Rounded to nearest grid space when the panning ends.
+	pub exports_to_edge_distance: f64,
+	/// The viewport pixel distance between the left edge of the node graph and the imports. Rounded to nearest grid space when the panning ends.
+	pub imports_to_edge_distance: f64,
 }
 
 impl Default for NavigationMetadata {
@@ -3956,7 +4012,8 @@ impl Default for NavigationMetadata {
 		NavigationMetadata {
 			node_graph_ptz: PTZ::default(),
 			node_graph_to_viewport: DAffine2::IDENTITY,
-			node_graph_top_right: DVec2::ZERO,
+			exports_to_edge_distance: 0.,
+			imports_to_edge_distance: 0.,
 		}
 	}
 }

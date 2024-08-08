@@ -415,6 +415,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					self.selection_network_path.clone_from(&self.breadcrumb_network_path);
 				}
 				responses.add(DocumentMessage::PTZUpdate);
+				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::FlipSelectedLayers { flip_axis } => {
@@ -1036,11 +1037,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					let transform = self
 						.navigation_handler
 						.calculate_offset_transform(ipp.viewport_bounds.center(), &network_metadata.persistent_metadata.navigation_metadata.node_graph_ptz);
-					self.network_interface.set_transform(
-						transform,
-						DVec2::new(ipp.viewport_bounds.bottom_right.x - ipp.viewport_bounds.top_left.x, 0.),
-						&self.breadcrumb_network_path,
-					);
+					self.network_interface.set_transform(transform, &self.breadcrumb_network_path);
 					let imports = self.network_interface.frontend_imports(&self.breadcrumb_network_path).unwrap_or_default();
 					let exports = self.network_interface.frontend_exports(&self.breadcrumb_network_path).unwrap_or_default();
 					responses.add(DocumentMessage::RenderRulers);
