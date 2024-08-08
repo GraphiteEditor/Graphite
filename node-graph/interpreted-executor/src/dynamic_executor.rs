@@ -293,7 +293,7 @@ impl BorrowTree {
 	/// - Removes the node from `nodes` HashMap.
 	/// - If the node is the primary node for its path in the `source_map`, it's also removed from there.
 	/// - Returns `None` if the node is not found in the `nodes` HashMap.
-	fn free_node(&mut self, id: NodeId) -> Option<Path> {
+	pub fn free_node(&mut self, id: NodeId) -> Option<Path> {
 		let (_, path) = self.nodes.remove(&id)?;
 		if self.source_map.get(&path)?.0 == id {
 			self.source_map.remove(&path);
@@ -317,33 +317,6 @@ impl BorrowTree {
 	/// # Returns
 	///
 	/// `bool` - `true` if a new entry was inserted, `false` if an existing entry was updated.
-	///
-	/// # Example
-	///
-	/// ```rust
-	/// use std::collections::HashMap;
-	/// use graph_craft::{proto::*, document::*};
-	/// use interpreted_executor::{node_registry, dynamic_executor::BorrowTree};
-	///
-	/// async fn example() -> Result<(), GraphErrors> {
-	///     let (proto_network, node_id, proto_node) = ProtoNetwork::example();
-	///     let typing_context = TypingContext::new(&node_registry::NODE_REGISTRY);
-	///     let mut borrow_tree = BorrowTree::new(proto_network, &typing_context).await?;
-	///     
-	///     // Update the source map
-	///     let inserted = borrow_tree.update_source_map(node_id, &typing_context, &proto_node);
-	///     assert!(inserted, "First update should insert a new entry");
-	///     
-	///     // Update the same node again
-	///     let updated = borrow_tree.update_source_map(node_id, &typing_context, &proto_node);
-	///     
-	///     assert!(!updated, "Second update should not insert a new entry");
-	///     assert!(borrow_tree.source_map().contains_key(&Box::from(proto_node.original_location.path.unwrap_or_default())),
-	///             "Node should exist in the source map");
-	///     
-	///     Ok(())
-	/// }
-	/// ```
 	///
 	/// # Notes
 	///
@@ -380,39 +353,6 @@ impl BorrowTree {
 	/// This method creates a new node contianer based on the provided `ProtoNode`, updates the source map,
 	/// and stores the node container in the `BorrowTree`.
 	///
-	/// # Arguments
-	///
-	/// * `self` - Mutable reference to the [`BorrowTree`].
-	/// * `id` - The `NodeId` of the node to be inserted.
-	/// * `proto_node` - The `ProtoNode` containing the construction arguments and other metadata.
-	/// * `typing_context` - A reference to the `TypingContext` containing type information.
-	///
-	/// # Returns
-	///
-	/// `Result<(), GraphErrors>` - Ok(()) if the node was successfully inserted, or an error if there was a problem.
-	///
-	/// # Example
-	///
-	/// ```rust
-	/// use graph_craft::{proto::*, document::*};
-	/// use interpreted_executor::{node_registry, dynamic_executor::BorrowTree};
-	///
-	/// async fn example() -> Result<(), GraphErrors> {
-	///     let (proto_network, node_id, proto_node) = ProtoNetwork::example();
-	///     let typing_context = TypingContext::new(&node_registry::NODE_REGISTRY);
-	///     let mut borrow_tree = BorrowTree::new(proto_network, &typing_context).await?;
-	///     
-	///     // Push a new node
-	///     let result = borrow_tree.push_node(node_id, proto_node.clone(), &typing_context).await;
-	///     
-	///     assert!(result.is_ok(), "Node should be successfully pushed");
-	///     assert!(borrow_tree.get(node_id).is_some(), "Node should exist in the borrow tree");
-	///     assert!(borrow_tree.source_map().contains_key(&Box::from(proto_node.original_location.path.unwrap_or_default())),
-	///             "Node should exist in the source map");
-	///     
-	///     Ok(())
-	/// }
-	/// ```
 	///
 	/// # Notes
 	///
