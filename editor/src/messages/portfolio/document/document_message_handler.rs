@@ -585,7 +585,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					return;
 				}
 
-				let layers_to_move = self.network_interface.shallowest_unique_layers(&self.selection_network_path).collect::<Vec<_>>();
+				let layers_to_move = self.network_interface.shallowest_unique_layers_sorted(&self.selection_network_path);
 
 				for layer_to_move in layers_to_move.into_iter().rev() {
 					responses.add(NodeGraphMessage::MoveLayerToStack {
@@ -600,15 +600,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::MoveSelectedLayersToGroup { parent } => {
 				// Group all shallowest unique selected layers in order
-				let all_layers_to_group = self.network_interface.shallowest_unique_layers(&self.selection_network_path).collect::<Vec<_>>();
-
-				// Ensure nodes are grouped in the correct order
-				let mut all_layers_to_group_sorted = Vec::new();
-				for descendant in LayerNodeIdentifier::ROOT_PARENT.descendants(self.metadata()) {
-					if all_layers_to_group.contains(&descendant) {
-						all_layers_to_group_sorted.push(descendant);
-					};
-				}
+				let all_layers_to_group_sorted = self.network_interface.shallowest_unique_layers_sorted(&self.selection_network_path);
 
 				for layer_to_group in all_layers_to_group_sorted.into_iter().rev() {
 					responses.add(NodeGraphMessage::MoveLayerToStack {

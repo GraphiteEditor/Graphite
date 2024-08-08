@@ -856,6 +856,18 @@ impl NodeNetworkInterface {
 		})
 	}
 
+	pub fn shallowest_unique_layers_sorted(&self, network_path: &[NodeId]) -> Vec<LayerNodeIdentifier> {
+		let all_layers_to_group = self.shallowest_unique_layers(network_path).collect::<Vec<_>>();
+		// Ensure nodes are grouped in the correct order
+		let mut all_layers_to_group_sorted = Vec::new();
+		for descendant in LayerNodeIdentifier::ROOT_PARENT.descendants(self.document_metadata()) {
+			if all_layers_to_group.contains(&descendant) {
+				all_layers_to_group_sorted.push(descendant);
+			};
+		}
+		all_layers_to_group_sorted
+	}
+
 	/// Ancestor that is shared by all layers and that is deepest (more nested). Default may be the root. Skips selected non-folder, non-artboard layers
 	pub fn deepest_common_ancestor(&self, network_path: &[NodeId], include_self: bool) -> Option<LayerNodeIdentifier> {
 		if !network_path.is_empty() {
@@ -3256,8 +3268,6 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		log::debug!("moved layer position: {position:?}");
-		log::debug!("Previous upstream layer: {previous_upstream_layer:?}");
 		match &position {
 			LayerPosition::Stack(offset) => {
 				if let Some(previous_upstream_layer) = previous_upstream_layer {
@@ -3267,7 +3277,6 @@ impl NodeNetworkInterface {
 			}
 			LayerPosition::Absolute(stack_top_position) => {
 				if let Some(previous_upstream_layer) = previous_upstream_layer {
-					log::debug!("Setting previous upstream layer to stack top position");
 					self.set_absolute_position(&previous_upstream_layer, *stack_top_position, network_path);
 					self.unload_upstream_node_click_targets(vec![previous_upstream_layer], network_path);
 				}
