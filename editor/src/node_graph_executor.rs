@@ -22,7 +22,7 @@ use graphene_core::vector::VectorData;
 use graphene_core::{Color, GraphicElement, SurfaceFrame};
 use graphene_std::renderer::format_transform_matrix;
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
-use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypes, ResolvedDocumentNodeTypesDelta};
+use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
 
 use glam::{DAffine2, DVec2, UVec2};
 use once_cell::sync::Lazy;
@@ -43,7 +43,6 @@ pub struct NodeRuntime {
 
 	editor_api: Arc<WasmEditorApi>,
 	node_graph_errors: GraphErrors,
-	resolved_types: ResolvedDocumentNodeTypes,
 	monitor_nodes: Vec<Vec<NodeId>>,
 
 	// TODO: Remove, it doesn't need to be persisted anymore
@@ -142,7 +141,6 @@ impl NodeRuntime {
 			.into(),
 
 			node_graph_errors: Vec::new(),
-			resolved_types: ResolvedDocumentNodeTypes::default(),
 			monitor_nodes: Vec::new(),
 
 			thumbnail_renders: Default::default(),

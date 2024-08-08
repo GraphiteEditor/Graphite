@@ -103,13 +103,13 @@ impl WasmApplicationIo {
 			ids: AtomicU64::new(0),
 			#[cfg(feature = "wgpu")]
 			gpu_executor: executor,
-			windows: Vec::new().into(),
+			windows: Vec::new(),
 			resources: HashMap::new(),
 		};
-		#[cfg(not(feature = "ci"))]
-		let window = io.create_window();
-		#[cfg(not(feature = "ci"))]
-		io.windows.push(WindowWrapper { window });
+		if cfg!(target_arch = "wasm32") {
+			let window = io.create_window();
+			io.windows.push(WindowWrapper { window });
+		}
 
 		io.resources.insert("null".to_string(), Arc::from(include_bytes!("null.png").to_vec()));
 		io
@@ -267,7 +267,7 @@ impl ApplicationIo for WasmApplicationIo {
 	}
 
 	fn window(&self) -> Option<SurfaceHandle<Self::Surface>> {
-		self.windows.iter().next().map(|wrapper| wrapper.window.clone())
+		self.windows.first().map(|wrapper| wrapper.window.clone())
 	}
 }
 

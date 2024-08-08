@@ -6,7 +6,7 @@ use crate::messages::portfolio::document::node_graph::utility_types::{FrontendCl
 use crate::messages::prelude::NodeGraphMessageHandler;
 
 use bezier_rs::Subpath;
-use graph_craft::document::{value::TaggedValue, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork, Source};
+use graph_craft::document::{value::TaggedValue, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graph_craft::{concrete, Type};
 use graphene_std::renderer::{ClickTarget, Quad};
 use graphene_std::vector::{PointId, VectorModificationType};
@@ -2815,8 +2815,8 @@ impl NodeNetworkInterface {
 
 	pub fn set_to_node_or_layer(&mut self, node_id: &NodeId, network_path: &[NodeId], is_layer: bool) {
 		// If a layer is set to a node, set upstream nodes to absolute position, and upstream siblings to absolute position
-		let child_id = { self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::HorizontalFlow).skip(1).next() };
-		let upstream_sibling_id = { self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::PrimaryFlow).skip(1).next() };
+		let child_id = { self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::HorizontalFlow).nth(1) };
+		let upstream_sibling_id = { self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::PrimaryFlow).nth(1) };
 		match (self.is_layer(node_id, network_path), is_layer) {
 			(true, false) => {
 				if let Some(child_id) = child_id {
@@ -2857,7 +2857,7 @@ impl NodeNetworkInterface {
 			.and_then(|outward_wires| {
 				outward_wires
 					.get(&OutputConnector::node(*node_id, 0))
-					.and_then(|outward_wires| outward_wires.get(0))
+					.and_then(|outward_wires| outward_wires.first())
 					.and_then(|downstream_connector| if downstream_connector.input_index() == 0 { downstream_connector.node_id() } else { None })
 			})
 			.is_some_and(|downstream_node_id| self.is_layer(&downstream_node_id, network_path));

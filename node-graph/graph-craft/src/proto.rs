@@ -349,6 +349,18 @@ impl ProtoNetwork {
 		);
 	}
 
+	#[cfg(debug_assertions)]
+	pub fn example() -> (Self, NodeId, ProtoNode) {
+		let node_id = NodeId(1);
+		let proto_node = ProtoNode::default();
+		let proto_network = ProtoNetwork {
+			inputs: vec![node_id],
+			output: node_id,
+			nodes: vec![(node_id, proto_node.clone())],
+		};
+		(proto_network, node_id, proto_node)
+	}
+
 	/// Construct a hashmap containing a list of the nodes that depend on this proto network.
 	pub fn collect_outwards_edges(&self) -> HashMap<NodeId, Vec<NodeId>> {
 		let mut edges: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
