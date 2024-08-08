@@ -222,7 +222,9 @@ impl BorrowTree {
 
 	pub fn free_node(&mut self, id: NodeId) -> Option<Path> {
 		let (_, path) = self.nodes.remove(&id)?;
-		self.source_map.remove(&path);
+		if self.source_map.get(&path)?.0 == id {
+			self.source_map.remove(&path);
+		}
 		Some(path)
 	}
 
