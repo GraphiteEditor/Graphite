@@ -198,8 +198,9 @@ impl BorrowTree {
 				new_nodes.push(node.original_location.path.clone().unwrap_or_default().into());
 				self.push_node(id, node, typing_context).await?;
 			} else {
-				self.update_source_map(id, typing_context, &node);
-				new_nodes.push(node.original_location.path.clone().unwrap_or_default().into());
+				if self.update_source_map(id, typing_context, &node) {
+					new_nodes.push(node.original_location.path.clone().unwrap_or_default().into());
+				}
 			}
 			old_nodes.remove(&id);
 		}
@@ -279,7 +280,6 @@ impl BorrowTree {
 	///     // Try to remove the same node again
 	///     let second_removal = borrow_tree.free_node(node_id);
 	///     
-	///     // Assert that the second removal returns None
 	///     assert_eq!(second_removal, None, "Second removal should return None");
 	///     
 	///     println!("All assertions passed. free_node function works as expected.");
@@ -293,12 +293,13 @@ impl BorrowTree {
 	/// - Removes the node from `nodes` HashMap.
 	/// - If the node is the primary node for its path in the `source_map`, it's also removed from there.
 	/// - Returns `None` if the node is not found in the `nodes` HashMap.
-	pub fn free_node(&mut self, id: NodeId) -> Option<Path> {
+	fn free_node(&mut self, id: NodeId) -> Option<Path> {
 		let (_, path) = self.nodes.remove(&id)?;
 		if self.source_map.get(&path)?.0 == id {
 			self.source_map.remove(&path);
+			return Some(path);
 		}
-		Some(path)
+		None
 	}
 
 	/// Updates the source map for a given node in the [`BorrowTree`].
@@ -331,17 +332,12 @@ impl BorrowTree {
 	///     
 	///     // Update the source map
 	///     let inserted = borrow_tree.update_source_map(node_id, &typing_context, &proto_node);
-	///     
-	///     // Assert that the update was successful
 	///     assert!(inserted, "First update should insert a new entry");
 	///     
 	///     // Update the same node again
 	///     let updated = borrow_tree.update_source_map(node_id, &typing_context, &proto_node);
 	///     
-	///     // Assert that the second update didn't insert a new entry
 	///     assert!(!updated, "Second update should not insert a new entry");
-	///     
-	///     // Verify that the node exists in the source map
 	///     assert!(borrow_tree.source_map().contains_key(&Box::from(proto_node.original_location.path.unwrap_or_default())),
 	///             "Node should exist in the source map");
 	///     
@@ -355,7 +351,7 @@ impl BorrowTree {
 	/// - Uses the `ProtoNode`'s original location path as the key for the source map.
 	/// - Collects input types from both the main input and parameters.
 	/// - Returns `false` and logs a warning if the node's type information is not found in the typing context.
-	pub fn update_source_map(&mut self, id: NodeId, typing_context: &TypingContext, proto_node: &ProtoNode) -> bool {
+	fn update_source_map(&mut self, id: NodeId, typing_context: &TypingContext, proto_node: &ProtoNode) -> bool {
 		let Some(node_io) = typing_context.type_of(id) else {
 			log::warn!("did not find type");
 			return false;
@@ -409,13 +405,8 @@ impl BorrowTree {
 	///     // Push a new node
 	///     let result = borrow_tree.push_node(node_id, proto_node.clone(), &typing_context).await;
 	///     
-	///     // Assert that the node was successfully pushed
 	///     assert!(result.is_ok(), "Node should be successfully pushed");
-	///     
-	///     // Verify that the node exists in the borrow tree
 	///     assert!(borrow_tree.get(node_id).is_some(), "Node should exist in the borrow tree");
-	///     
-	///     // Verify that the node exists in the source map
 	///     assert!(borrow_tree.source_map().contains_key(&Box::from(proto_node.original_location.path.unwrap_or_default())),
 	///             "Node should exist in the source map");
 	///     
@@ -432,7 +423,7 @@ impl BorrowTree {
 	///   - `Nodes`: Constructs a node using other nodes as dependencies.
 	/// - Uses the constructor function from the `typing_context` for `Nodes` construction arguments.
 	/// - Returns an error if no constructor is found for the given node ID.
-	pub async fn push_node(&mut self, id: NodeId, proto_node: ProtoNode, typing_context: &TypingContext) -> Result<(), GraphErrors> {
+	async fn push_node(&mut self, id: NodeId, proto_node: ProtoNode, typing_context: &TypingContext) -> Result<(), GraphErrors> {
 		self.update_source_map(id, typing_context, &proto_node);
 		let path = proto_node.original_location.path.clone().unwrap_or_default();
 
