@@ -178,4 +178,6 @@ pub struct FrontendClickTargets {
 	pub visibility_click_targets: Vec<String>,
 	#[serde(rename = "allNodesBoundingBox")]
 	pub all_nodes_bounding_box: String,
+	#[serde(rename = "importExportsBoundingBox")]
+	pub import_exports_bounding_box: String,
 }

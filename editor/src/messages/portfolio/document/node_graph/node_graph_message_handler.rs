@@ -965,6 +965,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(NodeGraphMessage::SendSelectedNodes);
 				}
 			}
+			NodeGraphMessage::SetGridAlignedEdges => {
+				network_interface.set_grid_aligned_edges(DVec2::new(ipp.viewport_bounds.bottom_right.x - ipp.viewport_bounds.top_left.x, 0.), breadcrumb_network_path);
+				// Send the new edges to the frontend
+				let imports = network_interface.frontend_imports(breadcrumb_network_path).unwrap_or_default();
+				let exports = network_interface.frontend_exports(breadcrumb_network_path).unwrap_or_default();
+				responses.add(FrontendMessage::UpdateImportsExports { imports, exports });
+			}
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
 				let input = NodeInput::value(value, false);
 				responses.add(NodeGraphMessage::SetInput {
@@ -1071,7 +1078,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if is_layer && !network_interface.is_eligible_to_be_layer(&node_id, selection_network_path) {
 					return;
 				}
-
 				network_interface.set_to_node_or_layer(&node_id, selection_network_path, is_layer);
 
 				self.context_menu = None;

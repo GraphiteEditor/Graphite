@@ -1,5 +1,7 @@
 // Graph
 pub const GRID_SIZE: u32 = 24;
+pub const EXPORTS_TO_EDGE_PIXEL_GAP: u32 = 120;
+pub const IMPORTS_TO_EDGE_PIXEL_GAP: u32 = 120;
 
 // Viewport
 pub const VIEWPORT_ZOOM_WHEEL_RATE: f64 = (1. / 600.) * 3.;

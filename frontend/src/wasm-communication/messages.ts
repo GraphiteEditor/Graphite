@@ -172,6 +172,7 @@ export type FrontendClickTargets = {
 	readonly portClickTargets: string[];
 	readonly visibilityClickTargets: string[];
 	readonly allNodesBoundingBox: string;
+	readonly importExportsBoundingBox: string;
 };
 
 export type ContextMenuInformation = {

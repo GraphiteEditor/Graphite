@@ -93,6 +93,7 @@ pub enum NodeGraphMessage {
 	SendClickTargets,
 	EndSendClickTargets,
 	SendGraph,
+	SetGridAlignedEdges,
 	SetInputValue {
 		node_id: NodeId,
 		input_index: usize,

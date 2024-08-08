@@ -31,6 +31,7 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageData> for 
 					self.viewport_bounds = bounds;
 
 					responses.add(NavigationMessage::CanvasPan { delta: DVec2::ZERO });
+					responses.add(NodeGraphMessage::SetGridAlignedEdges);
 				}
 			}
 			InputPreprocessorMessage::DoubleClick { editor_mouse_state, modifier_keys } => {
