@@ -2343,12 +2343,8 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		let previous_metadata = if let NodeInput::Node { node_id, output_index, .. } = &previous_input {
-			let previous_position = self.position(node_id, network_path).map(|position| (*node_id, position));
-			let previous_outward_wires = self
-				.outward_wires(network_path)
-				.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(*node_id, *output_index)).map(|outward_wires| outward_wires.len()));
-			previous_position.zip(previous_outward_wires)
+		let previous_metadata = if let NodeInput::Node { node_id, .. } = &previous_input {
+			self.position(node_id, network_path).map(|position| (*node_id, position))
 		} else {
 			None
 		};
@@ -2469,18 +2465,23 @@ impl NodeNetworkInterface {
 			}
 			// If a node is disconnected.
 			(NodeInput::Node { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
+				self.unload_outward_wires(network_path);
 				// If a node was previously connected, and it is no longer connected to any nodes, then set its position to absolute at its previous position
-				if let Some(((old_upstream_node_id, previous_position), previous_outward_wires_len)) = previous_metadata {
+				if let Some((old_upstream_node_id, previous_position)) = previous_metadata {
 					let mut set_to_absolute = true;
-					// Do not set to absolute if the node is connected to the same node
-					if let NodeInput::Node { node_id: new_upstream_node_id, .. } = &new_input {
-						if *new_upstream_node_id == old_upstream_node_id {
-							set_to_absolute = false;
+					// Do not set to absolute if the node is being disconnected, but still has another connection to a layer node
+					if matches!(new_input, NodeInput::Value { .. }) {
+						if let Some(outward_wires) = self
+							.outward_wires(network_path)
+							.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(old_upstream_node_id, 0)))
+						{
+							if outward_wires.len() == 1
+								&& outward_wires[0].input_index() == 0
+								&& outward_wires[0].node_id().is_some_and(|downstream_node| self.is_layer(&downstream_node, network_path))
+							{
+								set_to_absolute = false;
+							}
 						}
-					}
-					// Do not set to absolute if the node is being disconnected, but still has another connection
-					if matches!(new_input, NodeInput::Value { .. }) && previous_outward_wires_len > 1 {
-						set_to_absolute = false;
 					}
 
 					if set_to_absolute {
@@ -2498,7 +2499,6 @@ impl NodeNetworkInterface {
 						}
 					}
 				}
-				self.unload_outward_wires(network_path);
 			}
 			_ => {}
 		}
@@ -2981,8 +2981,24 @@ impl NodeNetworkInterface {
 		if is_layer {
 			self.try_set_upstream_to_chain(&InputConnector::node(*node_id, 1), network_path);
 			// Reload click target of the layer which used to encapsulate the node
-			if let Some(downstream_layer) = self.downstream_layer(node_id, network_path) {
-				self.unload_node_click_targets(&downstream_layer.to_node(), network_path);
+
+			let mut downstream_layer = Some(*node_id);
+			while let Some(downstream_layer_id) = downstream_layer {
+				if downstream_layer_id == *node_id || !self.is_layer(&downstream_layer_id, network_path) {
+					let Some(outward_wires) = self.outward_wires(network_path) else {
+						log::error!("Could not get outward wires in set_to_node_or_layer");
+						downstream_layer = None;
+						break;
+					};
+					downstream_layer = outward_wires
+						.get(&OutputConnector::node(downstream_layer_id, 0))
+						.and_then(|outward_wires| if outward_wires.len() == 1 { outward_wires[0].node_id() } else { None });
+				} else {
+					break;
+				}
+			}
+			if let Some(downstream_layer) = downstream_layer {
+				self.unload_node_click_targets(&downstream_layer, network_path);
 			}
 		} else {
 			self.try_set_upstream_to_chain(&InputConnector::node(*node_id, 0), network_path);
@@ -3389,8 +3405,8 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		// Connect the layer to a parent layer/node at the top of the stack
-		if post_node.input_index() == 1 || matches!(post_node, InputConnector::Export(_)) {
+		// Connect the layer to a parent layer/node at the top of the stack, or a non layer node midway down the stack
+		if post_node.input_index() == 1 || matches!(post_node, InputConnector::Export(_)) || !post_node.node_id().is_some_and(|post_node_id| self.is_layer(&post_node_id, network_path)) {
 			match post_node_input {
 				// Create a new stack
 				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) => {

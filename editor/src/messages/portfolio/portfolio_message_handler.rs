@@ -553,7 +553,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					};
 					// If the downstream node is a layer and the input is the first input and the current layer is not in a stack
 					if input_index == 0 && document.network_interface.is_layer(&downstream_node, &[]) && document.network_interface.is_absolute(&layer.to_node(), &[]) {
-						document.network_interface.set_stack_position_calculated_offset(&layer.to_node(), &downstream_node, &[]);
+						// Ensure the layer is horizontally aligned with the downstream layer to prevent changing the layout of old files
+						let (Some(layer_position), Some(downstream_position)) =
+							(document.network_interface.position(&layer.to_node(), &[]), document.network_interface.position(&downstream_node, &[]))
+						else {
+							log::error!("Could not get position for layer {:?} or downstream node {} when opening file", layer.to_node(), downstream_node);
+							continue;
+						};
+						if layer_position.x == downstream_position.x {
+							document.network_interface.set_stack_position_calculated_offset(&layer.to_node(), &downstream_node, &[]);
+						}
 					}
 				}
 

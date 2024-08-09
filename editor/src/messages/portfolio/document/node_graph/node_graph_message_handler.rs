@@ -445,7 +445,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						network_interface.upstream_output_connector(clicked_input, selection_network_path)
 					};
 					let Some(output_connector) = output_connector else {
-						log::error!("Could not get upstream node from {clicked_input:?} when moving existing wire");
 						return;
 					};
 					self.wire_in_progress_from_connector = network_interface.output_position(&output_connector, selection_network_path);
@@ -1014,9 +1013,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						continue;
 					}
 
-					let mut is_downstream_from_selected_absolute_layer = false;
+					// Deselect stack nodes upstream from a selected layer
+					let mut is_upstream_from_selected_absolute_layer = false;
 					let mut current_node = *selected_node;
 					loop {
+						if network_interface.is_absolute(selected_node, selection_network_path) {
+							break;
+						}
 						let Some(outward_wires) = network_interface.outward_wires(selection_network_path) else {
 							break;
 						};
@@ -1035,16 +1038,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						if !network_interface.is_layer(&downstream_node, selection_network_path) {
 							break;
 						}
-						if network_interface.is_absolute(&downstream_node, selection_network_path) {
-							is_downstream_from_selected_absolute_layer = node_ids.contains(&downstream_node);
+						// Break the iteration if the layer is absolute(top of stack), or it is selected
+						if network_interface.is_absolute(&downstream_node, selection_network_path) || node_ids.contains(&downstream_node) {
+							is_upstream_from_selected_absolute_layer = node_ids.contains(&downstream_node);
 							break;
 						}
 						current_node = downstream_node;
 					}
-					if is_downstream_from_selected_absolute_layer {
-						continue;
+					if !is_upstream_from_selected_absolute_layer {
+						filtered_node_ids.push(*selected_node)
 					}
-					filtered_node_ids.push(*selected_node)
 				}
 
 				for node_id in filtered_node_ids {
