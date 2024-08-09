@@ -2781,7 +2781,27 @@ impl NodeNetworkInterface {
 
 		for input_to_disconnect in &downstream_inputs_to_disconnect {
 			if let Some(reconnect_input) = reconnect_to_input.take() {
-				self.set_input(input_to_disconnect, reconnect_input, network_path)
+				self.set_input(input_to_disconnect, reconnect_input.clone(), network_path);
+				if let Some(node_metadata) = self.node_metadata(deleting_node_id, network_path) {
+					if let NodeTypePersistentMetadata::Layer(layer_metadata) = &node_metadata.persistent_metadata.node_type_metadata {
+						if let LayerPosition::Stack(deleted_layer_offset) = layer_metadata.position {
+							if let NodeInput::Node { node_id, .. } = reconnect_input {
+								self.set_stack_position(&node_id, deleted_layer_offset, network_path);
+								self.unload_upstream_node_click_targets(vec![node_id], network_path);
+							}
+						} else {
+							// Move upstream layer to the top of the stack
+							let Some(deleted_node_position) = self.position(deleting_node_id, network_path) else {
+								log::error!("Could not get position in remove_references_from_network");
+								return false;
+							};
+							if let NodeInput::Node { node_id, .. } = reconnect_input {
+								self.set_absolute_position(&node_id, deleted_node_position, network_path);
+								self.unload_upstream_node_click_targets(vec![node_id], network_path);
+							}
+						}
+					}
+				}
 			} else {
 				self.disconnect_input(input_to_disconnect, network_path);
 			}
@@ -4001,8 +4021,10 @@ pub struct NavigationMetadata {
 	/// Transform from node graph space to viewport space.
 	pub node_graph_to_viewport: DAffine2,
 	/// The viewport pixel distance distance between the left edge of the node graph and the exports. Rounded to nearest grid space when the panning ends.
+	#[serde(default)]
 	pub exports_to_edge_distance: f64,
 	/// The viewport pixel distance between the left edge of the node graph and the imports. Rounded to nearest grid space when the panning ends.
+	#[serde(default)]
 	pub imports_to_edge_distance: f64,
 }
 

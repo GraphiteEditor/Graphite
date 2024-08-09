@@ -380,7 +380,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				let upgrade_vector_manipulation_format = document_serialized_content.contains("ManipulatorGroupIds") && !document_name.contains("__DO_NOT_UPGRADE__");
 				let document_name = document_name.replace("__DO_NOT_UPGRADE__", "");
 
-				let document = DocumentMessageHandler::with_name_and_content(document_name.clone(), document_serialized_content);
+				let document = DocumentMessageHandler::deserialize_document(&document_serialized_content).map(|mut document| {
+					document.name = document_name.clone();
+					document
+				});
+
 				let mut document = match document {
 					Ok(document) => document,
 					Err(e) => {
