@@ -644,7 +644,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Footprint, output: TextureFrame, fn_params: [Footprint => TextureFrame]),
 		register_node!(graphene_core::structural::ConsNode<_, _>, input: Image<Color>, params: [&str]),
 		register_node!(graphene_std::raster::ImageFrameNode<_, _>, input: Image<Color>, params: [DAffine2]),
-		register_node!(graphene_std::raster::NoisePatternNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _>, input: (), params: [UVec2, u32, f64, NoiseType, DomainWarpType, f64, FractalType, u32, f64, f64, f64, f64, CellularDistanceFunction, CellularReturnType, f64]),
+		register_node!(graphene_std::raster::NoisePatternNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _>, input: Footprint, params: [bool, u32, f64, NoiseType, DomainWarpType, f64, FractalType, u32, f64, f64, f64, f64, CellularDistanceFunction, CellularReturnType, f64]),
 		#[cfg(feature = "quantization")]
 		register_node!(graphene_std::quantization::GenerateQuantizationNode<_, _>, input: ImageFrame<Color>, params: [u32, u32]),
 		register_node!(graphene_core::quantization::QuantizeNode<_>, input: Color, params: [QuantizationChannels]),
