@@ -232,8 +232,9 @@ async fn construct_artboard(
 	let intersection = viewport_bounds.intersect(&artboard_bounds);
 	let offset = intersection.start;
 	let scale = footprint.scale();
-	let intersection = intersection.transformed(footprint.transform);
+	// let intersection = intersection.transformed(footprint.transform);
 	let resolution = (scale * intersection.size()).as_uvec2();
+	log::debug!("intersection: {intersection:?}");
 	log::debug!("offset: {offset:?}, resolution: {resolution:?}");
 
 	if clip {

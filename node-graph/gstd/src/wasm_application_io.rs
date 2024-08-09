@@ -126,7 +126,6 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 		// TODO: Instead of applying the transform here, pass the transform during the translation to avoid the O(Nr cost
 		scene.append(&child, Some(kurbo::Affine::new(footprint.transform.to_cols_array())));
 		let resolution = footprint.resolution();
-		log::debug!("rendering using resolution: {resolution:?}");
 
 		exec.render_vello_scene(&scene, &surface_handle, resolution.x, resolution.y, &context)
 			.await

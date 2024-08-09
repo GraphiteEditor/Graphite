@@ -656,15 +656,17 @@ fn noise_pattern(
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
+		log::debug!("empty size, aborting");
 		return ImageFrame::empty();
 	}
 
 	let footprint_scale = footprint.scale();
 	let width = (size.x * footprint_scale.x) as u32;
 	let height = (size.y * footprint_scale.y) as u32;
-	log::debug!("resolution: {:?}", footprint.resolution());
-	let width = footprint.resolution().x;
-	let height = footprint.resolution().y;
+	log::debug!("w: {width} h: {height}");
+	// log::debug!("resolution: {:?}", footprint.resolution());
+	// let width = footprint.resolution().x;
+	// let height = footprint.resolution().y;
 
 	// All
 	let mut image = Image::new(width, height, Color::from_luminance(0.5));
