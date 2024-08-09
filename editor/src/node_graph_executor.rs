@@ -616,6 +616,7 @@ impl NodeGraphExecutor {
 								node_graph_errors,
 							});
 							responses.add(NodeGraphMessage::SendGraph);
+
 							return Err("Node graph evaluation failed".to_string());
 						}
 						Ok(result) => result,
