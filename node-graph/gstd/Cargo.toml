@@ -21,7 +21,7 @@ imaginate = ["image/png", "base64", "js-sys", "web-sys", "wasm-bindgen-futures"]
 image-compare = ["dep:image-compare"]
 vello = ["dep:vello", "resvg", "gpu"]
 resvg = ["dep:resvg"]
-wayland = []
+wayland = ["graph-craft/wayland"]
 
 [dependencies]
 # Local dependencies

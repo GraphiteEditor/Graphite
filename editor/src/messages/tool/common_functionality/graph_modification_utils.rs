@@ -108,6 +108,7 @@ pub fn get_blend_mode(layer: LayerNodeIdentifier, network_interface: &NodeNetwor
 /// - Set by an Opacity node with an exposed parameter value driven by another node
 /// - Already factored into the pixel alpha channel of an image
 /// - The default value of 100% if no Opacity node is present, but this function returns None in that case
+///
 /// With those limitations in mind, the intention of this function is to show just the value already present in an upstream Opacity node so that value can be directly edited.
 pub fn get_opacity(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Opacity")?;

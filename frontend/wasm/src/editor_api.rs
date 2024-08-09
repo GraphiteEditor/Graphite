@@ -786,7 +786,7 @@ impl EditorHandle {
 				let Some(transform_node_id) = modify_inputs.existing_node_id("Transform") else {
 					return;
 				};
-				if !updated_nodes.insert(transform_node_id.clone()) {
+				if !updated_nodes.insert(transform_node_id) {
 					return;
 				}
 				let Some(inputs) = modify_inputs.network_interface.network(&[]).unwrap().nodes.get(&transform_node_id).map(|node| &node.inputs) else {

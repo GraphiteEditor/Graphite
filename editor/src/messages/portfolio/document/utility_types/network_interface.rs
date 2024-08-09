@@ -6,7 +6,7 @@ use crate::messages::portfolio::document::node_graph::utility_types::{FrontendCl
 use crate::messages::prelude::NodeGraphMessageHandler;
 
 use bezier_rs::Subpath;
-use graph_craft::document::{value::TaggedValue, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork, Source};
+use graph_craft::document::{value::TaggedValue, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graph_craft::{concrete, Type};
 use graphene_std::renderer::{ClickTarget, Quad};
 use graphene_std::vector::{PointId, VectorModificationType};
@@ -386,11 +386,10 @@ impl NodeNetworkInterface {
 		// TODO: Store types for all document nodes, not just the compiled proto nodes, which currently skips isolated nodes
 		let node_type_from_compiled_network = if let Some(node_id) = input_connector.node_id() {
 			let node_id_path = [network_path, &[node_id]].concat().clone();
-			let input_type = self.resolved_types.inputs.get(&graph_craft::document::Source {
-				node: node_id_path,
-				index: input_connector.input_index(),
-			});
-			input_type.cloned()
+			self.resolved_types
+				.types
+				.get(node_id_path.as_slice())
+				.map(|node_types| node_types.inputs[input_connector.input_index()].clone())
 		} else if let Some(encapsulating_node) = self.encapsulating_node(network_path) {
 			let output_types = NodeGraphMessageHandler::get_output_types(encapsulating_node, &self.resolved_types, network_path);
 			output_types.get(input_connector.input_index()).map_or_else(
@@ -502,14 +501,7 @@ impl NodeNetworkInterface {
 					if !network_path.is_empty() {
 						// TODO: https://github.com/GraphiteEditor/Graphite/issues/1767
 						// TODO: Non exposed inputs are not added to the inputs_source_map, fix `pub fn document_node_types(&self) -> ResolvedDocumentNodeTypes`
-						let input_type = self
-							.resolved_types
-							.inputs
-							.get(&Source {
-								node: network_path.to_vec(),
-								index: *import_index,
-							})
-							.cloned();
+						let input_type = self.resolved_types.types.get(network_path).map(|nt| nt.inputs[*import_index].clone());
 
 						let frontend_data_type = if let Some(input_type) = input_type.clone() {
 							FrontendGraphDataType::with_type(&input_type)
@@ -2823,8 +2815,8 @@ impl NodeNetworkInterface {
 
 	pub fn set_to_node_or_layer(&mut self, node_id: &NodeId, network_path: &[NodeId], is_layer: bool) {
 		// If a layer is set to a node, set upstream nodes to absolute position, and upstream siblings to absolute position
-		let child_id = { self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::HorizontalFlow).skip(1).next() };
-		let upstream_sibling_id = { self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::PrimaryFlow).skip(1).next() };
+		let child_id = { self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::HorizontalFlow).nth(1) };
+		let upstream_sibling_id = { self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::PrimaryFlow).nth(1) };
 		match (self.is_layer(node_id, network_path), is_layer) {
 			(true, false) => {
 				if let Some(child_id) = child_id {
@@ -2865,7 +2857,7 @@ impl NodeNetworkInterface {
 			.and_then(|outward_wires| {
 				outward_wires
 					.get(&OutputConnector::node(*node_id, 0))
-					.and_then(|outward_wires| outward_wires.get(0))
+					.and_then(|outward_wires| outward_wires.first())
 					.and_then(|downstream_connector| if downstream_connector.input_index() == 0 { downstream_connector.node_id() } else { None })
 			})
 			.is_some_and(|downstream_node_id| self.is_layer(&downstream_node_id, network_path));

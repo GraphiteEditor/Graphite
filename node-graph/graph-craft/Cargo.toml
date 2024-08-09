@@ -9,8 +9,8 @@ default = ["dealloc_nodes"]
 serde = ["dep:serde", "graphene-core/serde", "glam/serde", "bezier-rs/serde"]
 dealloc_nodes = []
 wgpu = []
-ci = []
 tokio = ["dep:tokio"]
+wayland = []
 
 [dependencies]
 # Local dependencies

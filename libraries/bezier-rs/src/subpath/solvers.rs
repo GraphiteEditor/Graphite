@@ -22,6 +22,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	/// - `other`: a [Bezier] curve to check intersections against
 	/// - `error`: an optional f64 value to provide an error bound
 	/// - `minimum_separation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
+	///
 	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two.
 	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/libraries/bezier-rs#subpath/intersect-linear/solo" title="Intersection Demo"></iframe>
 	///
@@ -107,6 +108,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	/// Returns a list of `t` values that correspond to the self intersection points of the subpath. For each intersection point, the returned `t` value is the smaller of the two that correspond to the point.
 	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
 	/// - `minimum_separation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
+	///
 	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two
 	///
 	/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
@@ -134,6 +136,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	/// The points will be sorted based on their index and `t` repsectively.
 	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
 	/// - `minimum_separation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
+	///
 	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two
 	///
 	/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
@@ -168,6 +171,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	/// - `corner2`: the corner opposite to `corner1`
 	/// - `error`: an optional f64 value to provide an error bound
 	/// - `minimum_separation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
+	///
 	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two.
 	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/libraries/bezier-rs#subpath/intersect-rectangle/solo" title="Intersection Demo"></iframe>
 	pub fn rectangle_intersections(&self, corner1: DVec2, corner2: DVec2, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
@@ -340,6 +344,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	/// Conceptually, this works by "throwing a dart" at the subpath's bounding box and keeping the dart only if:
 	/// - It's inside the shape
 	/// - It's not closer than `separation_disk_diameter` to any other point from a previous accepted dart throw
+	///
 	/// This repeats until accepted darts fill all possible areas between one another.
 	///
 	/// While the conceptual process described above asymptotically slows down and is never guaranteed to produce a maximal set in finite time,
@@ -372,6 +377,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 
 	/// Returns the manipulator point that is needed for a miter join if it is possible.
 	/// - `miter_limit`: Defines a limit for the ratio between the miter length and the stroke width.
+	///
 	/// Alternatively, this can be interpreted as limiting the angle that the miter can form.
 	/// When the limit is exceeded, no manipulator group will be returned.
 	/// This value should be at least 1. If not, the default of 4 will be used.
