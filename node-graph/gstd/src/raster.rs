@@ -13,7 +13,7 @@ use graphene_core::value::CopiedNode;
 use graphene_core::{AlphaBlending, Color, Node, WasmNotSend};
 
 use fastnoise_lite;
-use glam::{DAffine2, DVec2, UVec2, Vec2};
+use glam::{DAffine2, DVec2, Vec2};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use std::collections::HashMap;
@@ -644,7 +644,9 @@ fn noise_pattern(
 	let mut size = viewport_bounds.size();
 	let mut offset = viewport_bounds.start;
 	if clip {
-		let image_bounds = Bbox::from_transform(DAffine2::IDENTITY).to_axis_aligned_bbox();
+		// TODO: Remove "clip" entirely (and its arbitrary 100x100 clipping square) once we have proper resolution-aware layer clipping
+		const CLIPPING_SQUARE_SIZE: f64 = 100.;
+		let image_bounds = Bbox::from_transform(DAffine2::from_scale(DVec2::splat(CLIPPING_SQUARE_SIZE))).to_axis_aligned_bbox();
 		let intersection = viewport_bounds.intersect(&image_bounds);
 
 		offset = (intersection.start - image_bounds.start).max(DVec2::ZERO);
@@ -661,10 +663,9 @@ fn noise_pattern(
 	let height = (size.y * footprint_scale.y) as u32;
 
 	// All
-	// let [width, height] = dimensions.to_array();
 	let mut image = Image::new(width, height, Color::from_luminance(0.5));
 	let mut noise = fastnoise_lite::FastNoiseLite::with_seed(seed as i32);
-	noise.set_frequency(Some(scale as f32));
+	noise.set_frequency(Some(1. / (scale as f32).max(f32::EPSILON)));
 
 	// Domain Warp
 	let domain_warp_type = match domain_warp_type {
@@ -686,6 +687,8 @@ fn noise_pattern(
 		NoiseType::ValueCubic => fastnoise_lite::NoiseType::ValueCubic,
 		NoiseType::Value => fastnoise_lite::NoiseType::Value,
 		NoiseType::WhiteNoise => {
+			// TODO: Generate in layer space, not viewport space
+
 			let mut rng = ChaCha8Rng::seed_from_u64(seed as u64);
 
 			for y in 0..height {
