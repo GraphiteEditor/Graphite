@@ -301,10 +301,44 @@ impl NodeNetworkInterface {
 						};
 						match &mut node_template.persistent_node_metadata.node_type_metadata {
 							// TODO: Remove 2x2 offset and replace with layout system to find space for new node
-							NodeTypePersistentMetadata::Layer(layer_metadata) => layer_metadata.position = LayerPosition::Absolute(position + IVec2::new(2, 2)),
-							NodeTypePersistentMetadata::Node(node_metadata) => node_metadata.position = NodePosition::Absolute(position + IVec2::new(2, 2)),
+							NodeTypePersistentMetadata::Layer(layer_metadata) => layer_metadata.position = LayerPosition::Absolute(position),
+							NodeTypePersistentMetadata::Node(node_metadata) => node_metadata.position = NodePosition::Absolute(position),
 						};
 					}
+
+					// Ensure a chain node has a selected downstream layer
+					if let NodeTypePersistentMetadata::Node(node_metadata) = &node_template.persistent_node_metadata.node_type_metadata {
+						if matches!(node_metadata.position, NodePosition::Chain) {
+							let Some(downstream_layer) = self.downstream_layer(node_id, network_path) else {
+								log::error!("Could not get downstream layer in copy_nodes");
+								return None;
+							};
+							if new_ids.keys().all(|key| *key != downstream_layer.to_node()) {
+								let Some(position) = self.position(node_id, network_path) else {
+									log::error!("Could not get position in create_node_template");
+									return None;
+								};
+								node_template.persistent_node_metadata.node_type_metadata = NodeTypePersistentMetadata::Node(NodePersistentMetadata {
+									position: NodePosition::Absolute(position + IVec2::new(2, 2)),
+								});
+							}
+						}
+					}
+
+					// Shift all absolute nodes 2 to the right and 2 down
+					match &mut node_template.persistent_node_metadata.node_type_metadata {
+						NodeTypePersistentMetadata::Layer(layer_metadata) => {
+							if let LayerPosition::Absolute(position) = &mut layer_metadata.position {
+								*position += IVec2::new(2, 2)
+							}
+						}
+						NodeTypePersistentMetadata::Node(node_metadata) => {
+							if let NodePosition::Absolute(position) = &mut node_metadata.position {
+								*position += IVec2::new(2, 2)
+							}
+						}
+					}
+
 					Some((new, node_id, node_template))
 				})
 			})
