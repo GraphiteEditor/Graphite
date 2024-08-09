@@ -13,7 +13,7 @@ use graphene_core::value::CopiedNode;
 use graphene_core::{AlphaBlending, Color, Node, WasmNotSend};
 
 use fastnoise_lite;
-use glam::{DAffine2, DVec2, UVec2, Vec2};
+use glam::{DAffine2, DVec2, Vec2};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use std::collections::HashMap;
@@ -586,7 +586,7 @@ fn image_frame<_P: Pixel>(image: Image<_P>, transform: DAffine2) -> graphene_cor
 
 #[derive(Debug, Clone, Copy)]
 pub struct NoisePatternNode<
-	Dimensions,
+	Clip,
 	Seed,
 	Scale,
 	NoiseType,
@@ -602,7 +602,7 @@ pub struct NoisePatternNode<
 	CellularReturnType,
 	CellularJitter,
 > {
-	dimensions: Dimensions,
+	clip: Clip,
 	seed: Seed,
 	scale: Scale,
 	noise_type: NoiseType,
@@ -622,8 +622,8 @@ pub struct NoisePatternNode<
 #[node_macro::node_fn(NoisePatternNode)]
 #[allow(clippy::too_many_arguments)]
 fn noise_pattern(
-	_no_primary_input: (),
-	dimensions: UVec2,
+	footprint: Footprint,
+	clip: bool,
 	seed: u32,
 	scale: f64,
 	noise_type: NoiseType,
@@ -639,11 +639,33 @@ fn noise_pattern(
 	cellular_return_type: CellularReturnType,
 	cellular_jitter: f64,
 ) -> graphene_core::raster::ImageFrame<Color> {
+	let viewport_bounds = footprint.viewport_bounds_in_local_space();
+
+	let mut size = viewport_bounds.size();
+	let mut offset = viewport_bounds.start;
+	if clip {
+		// TODO: Remove "clip" entirely (and its arbitrary 100x100 clipping square) once we have proper resolution-aware layer clipping
+		const CLIPPING_SQUARE_SIZE: f64 = 100.;
+		let image_bounds = Bbox::from_transform(DAffine2::from_scale(DVec2::splat(CLIPPING_SQUARE_SIZE))).to_axis_aligned_bbox();
+		let intersection = viewport_bounds.intersect(&image_bounds);
+
+		offset = (intersection.start - image_bounds.start).max(DVec2::ZERO);
+		size = intersection.size();
+	}
+
+	// If the image would not be visible, return an empty image
+	if size.x <= 0. || size.y <= 0. {
+		return ImageFrame::empty();
+	}
+
+	let footprint_scale = footprint.scale();
+	let width = (size.x * footprint_scale.x) as u32;
+	let height = (size.y * footprint_scale.y) as u32;
+
 	// All
-	let [width, height] = dimensions.to_array();
 	let mut image = Image::new(width, height, Color::from_luminance(0.5));
 	let mut noise = fastnoise_lite::FastNoiseLite::with_seed(seed as i32);
-	noise.set_frequency(Some(scale as f32 / 1000.));
+	noise.set_frequency(Some(1. / (scale as f32).max(f32::EPSILON)));
 
 	// Domain Warp
 	let domain_warp_type = match domain_warp_type {
@@ -665,6 +687,8 @@ fn noise_pattern(
 		NoiseType::ValueCubic => fastnoise_lite::NoiseType::ValueCubic,
 		NoiseType::Value => fastnoise_lite::NoiseType::Value,
 		NoiseType::WhiteNoise => {
+			// TODO: Generate in layer space, not viewport space
+
 			let mut rng = ChaCha8Rng::seed_from_u64(seed as u64);
 
 			for y in 0..height {
@@ -677,7 +701,7 @@ fn noise_pattern(
 
 			return ImageFrame::<Color> {
 				image,
-				transform: DAffine2::from_scale(DVec2::new(width as f64, height as f64)),
+				transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
 				alpha_blending: AlphaBlending::default(),
 			};
 		}
@@ -718,12 +742,16 @@ fn noise_pattern(
 	noise.set_cellular_return_type(Some(cellular_return_type));
 	noise.set_cellular_jitter(Some(cellular_jitter as f32));
 
+	let coordinate_offset = offset.as_vec2();
+	let scale = size.as_vec2() / Vec2::new(width as f32, height as f32);
 	// Calculate the noise for every pixel
 	for y in 0..height {
 		for x in 0..width {
 			let pixel = image.get_pixel_mut(x, y).unwrap();
+			let pos = Vec2::new(x as f32, y as f32);
+			let vec = pos * scale + coordinate_offset;
 
-			let (mut x, mut y) = (x as f32, y as f32);
+			let (mut x, mut y) = (vec.x, vec.y);
 			if domain_warp_active && domain_warp_amplitude > 0. {
 				(x, y) = noise.domain_warp_2d(x, y);
 			}
@@ -736,7 +764,7 @@ fn noise_pattern(
 	// Return the coherent noise image
 	ImageFrame::<Color> {
 		image,
-		transform: DAffine2::from_scale(DVec2::new(width as f64, height as f64)),
+		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
 		alpha_blending: AlphaBlending::default(),
 	}
 }
@@ -748,19 +776,16 @@ pub struct MandelbrotNode;
 fn mandelbrot_node(footprint: Footprint) -> ImageFrame<Color> {
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
-	let width = footprint.resolution.x;
-	let height = footprint.resolution.y;
-
 	let image_bounds = Bbox::from_transform(DAffine2::IDENTITY).to_axis_aligned_bbox();
 	let intersection = viewport_bounds.intersect(&image_bounds);
 	let size = intersection.size();
+
+	let offset = (intersection.start - image_bounds.start).max(DVec2::ZERO);
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
 		return ImageFrame::empty();
 	}
-
-	let offset = (intersection.start - image_bounds.start).max(DVec2::ZERO);
 
 	let scale = footprint.scale();
 	let width = (size.x * scale.x) as u32;

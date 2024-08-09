@@ -406,9 +406,11 @@ fn assert_boxes_in_order(rectangles: &VecDeque<Rect>, index: usize) {
 
 #[test]
 fn dist_snap_point_right() {
-	let mut dist_snapper = DistributionSnapper::default();
-	dist_snapper.right = [2., 10., 15., 20.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec();
-	dist_snapper.left = [-2.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec();
+	let dist_snapper = DistributionSnapper {
+		right: [2., 10., 15., 20.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec(),
+		left: [-2.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec(),
+		..Default::default()
+	};
 	let source = Rect::from_square(DVec2::new(0.5, 0.), 2.);
 	let snap_results = &mut SnapResults::default();
 	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);
@@ -422,9 +424,11 @@ fn dist_snap_point_right() {
 
 #[test]
 fn dist_snap_point_right_left() {
-	let mut dist_snapper = DistributionSnapper::default();
-	dist_snapper.right = [2., 10., 15., 20.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec();
-	dist_snapper.left = [-2., -10., -15., -20.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec();
+	let dist_snapper = DistributionSnapper {
+		right: [2., 10., 15., 20.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec(),
+		left: [-2., -10., -15., -20.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec(),
+		..Default::default()
+	};
 	let source = Rect::from_square(DVec2::new(0.5, 0.), 2.);
 	let snap_results = &mut SnapResults::default();
 	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);
@@ -439,8 +443,10 @@ fn dist_snap_point_right_left() {
 
 #[test]
 fn dist_snap_point_left() {
-	let mut dist_snapper = DistributionSnapper::default();
-	dist_snapper.left = [-2., -10., -15., -20.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec();
+	let dist_snapper = DistributionSnapper {
+		left: [-2., -10., -15., -20.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec(),
+		..Default::default()
+	};
 	let source = Rect::from_square(DVec2::new(0.5, 0.), 2.);
 	let snap_results = &mut SnapResults::default();
 	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);
@@ -454,9 +460,11 @@ fn dist_snap_point_left() {
 
 #[test]
 fn dist_snap_point_left_right() {
-	let mut dist_snapper = DistributionSnapper::default();
-	dist_snapper.left = [-2., -10., -15., -20.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec();
-	dist_snapper.right = [2., 10., 15.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec();
+	let dist_snapper = DistributionSnapper {
+		left: [-2., -10., -15., -20.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec(),
+		right: [2., 10., 15.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec(),
+		..Default::default()
+	};
 	let source = Rect::from_square(DVec2::new(0.5, 0.), 2.);
 	let snap_results = &mut SnapResults::default();
 	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);
@@ -470,9 +478,11 @@ fn dist_snap_point_left_right() {
 
 #[test]
 fn dist_snap_point_center_x() {
-	let mut dist_snapper = DistributionSnapper::default();
-	dist_snapper.left = [-10., -15.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec();
-	dist_snapper.right = [10., 15.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec();
+	let dist_snapper = DistributionSnapper {
+		left: [-10., -15.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec(),
+		right: [10., 15.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec(),
+		..Default::default()
+	};
 	let source = Rect::from_square(DVec2::new(0.5, 0.), 2.);
 	let snap_results = &mut SnapResults::default();
 	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);
@@ -488,9 +498,11 @@ fn dist_snap_point_center_x() {
 
 #[test]
 fn dist_snap_point_down() {
-	let mut dist_snapper = DistributionSnapper::default();
-	dist_snapper.down = [2., 10., 15., 20.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec();
-	dist_snapper.up = [-2.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec();
+	let dist_snapper = DistributionSnapper {
+		down: [2., 10., 15., 20.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec(),
+		up: [-2.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec(),
+		..Default::default()
+	};
 	let source = Rect::from_square(DVec2::new(0., 0.5), 2.);
 	let snap_results = &mut SnapResults::default();
 	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);
@@ -504,9 +516,11 @@ fn dist_snap_point_down() {
 
 #[test]
 fn dist_snap_point_down_up() {
-	let mut dist_snapper = DistributionSnapper::default();
-	dist_snapper.down = [2., 10., 15., 20.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec();
-	dist_snapper.up = [-2., -10., -15., -20.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec();
+	let dist_snapper = DistributionSnapper {
+		down: [2., 10., 15., 20.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec(),
+		up: [-2., -10., -15., -20.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec(),
+		..Default::default()
+	};
 	let source = Rect::from_square(DVec2::new(0., 0.5), 2.);
 	let snap_results = &mut SnapResults::default();
 	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);
@@ -521,8 +535,10 @@ fn dist_snap_point_down_up() {
 
 #[test]
 fn dist_snap_point_up() {
-	let mut dist_snapper = DistributionSnapper::default();
-	dist_snapper.up = [-2., -10., -15., -20.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec();
+	let dist_snapper = DistributionSnapper {
+		up: [-2., -10., -15., -20.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec(),
+		..Default::default()
+	};
 	let source = Rect::from_square(DVec2::new(0., 0.5), 2.);
 	let snap_results = &mut SnapResults::default();
 	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);
@@ -536,9 +552,11 @@ fn dist_snap_point_up() {
 
 #[test]
 fn dist_snap_point_up_down() {
-	let mut dist_snapper = DistributionSnapper::default();
-	dist_snapper.up = [-2., -10., -15., -20.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec();
-	dist_snapper.down = [2., 10., 15.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec();
+	let dist_snapper = DistributionSnapper {
+		up: [-2., -10., -15., -20.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec(),
+		down: [2., 10., 15.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec(),
+		..Default::default()
+	};
 	let source = Rect::from_square(DVec2::new(0., 0.5), 2.);
 	let snap_results = &mut SnapResults::default();
 	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);
@@ -552,9 +570,11 @@ fn dist_snap_point_up_down() {
 
 #[test]
 fn dist_snap_point_center_y() {
-	let mut dist_snapper = DistributionSnapper::default();
-	dist_snapper.up = [-10., -15.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec();
-	dist_snapper.down = [10., 15.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec();
+	let dist_snapper = DistributionSnapper {
+		up: [-10., -15.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec(),
+		down: [10., 15.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec(),
+		..Default::default()
+	};
 	let source = Rect::from_square(DVec2::new(0., 0.5), 2.);
 	let snap_results = &mut SnapResults::default();
 	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);
@@ -568,11 +588,12 @@ fn dist_snap_point_center_y() {
 
 #[test]
 fn dist_snap_point_center_xy() {
-	let mut dist_snapper = DistributionSnapper::default();
-	dist_snapper.up = [-10., -15.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec();
-	dist_snapper.down = [10., 15.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec();
-	dist_snapper.left = [-12., -15.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec();
-	dist_snapper.right = [12., 15.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec();
+	let dist_snapper = DistributionSnapper {
+		up: [-10., -15.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec(),
+		down: [10., 15.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec(),
+		left: [-12., -15.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec(),
+		right: [12., 15.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec(),
+	};
 	let source = Rect::from_square(DVec2::new(0.3, 0.4), 2.);
 	let snap_results = &mut SnapResults::default();
 	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);

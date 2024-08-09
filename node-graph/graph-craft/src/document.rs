@@ -227,8 +227,7 @@ pub struct OriginalLocation {
 	pub path: Option<Vec<NodeId>>,
 	/// Each document input source maps to one proto node input (however one proto node input may come from several sources)
 	pub inputs_source: HashMap<Source, usize>,
-	/// A list of document sources for the node's output
-	pub outputs_source: HashMap<Source, usize>,
+	/// A list of flags indicating whether the input is exposed in the UI
 	pub inputs_exposed: Vec<bool>,
 	/// Skipping inputs is useful for the manual composition thing - whereby a hidden `Footprint` input is added as the first input.
 	pub skip_inputs: usize,
@@ -251,7 +250,6 @@ impl Hash for OriginalLocation {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.path.hash(state);
 		self.inputs_source.iter().for_each(|val| val.hash(state));
-		self.outputs_source.iter().for_each(|val| val.hash(state));
 		self.inputs_exposed.hash(state);
 		self.skip_inputs.hash(state);
 	}
@@ -265,14 +263,6 @@ impl OriginalLocation {
 		.into_iter()
 		.flatten()
 		.chain(self.inputs_source.iter().filter(move |x| *x.1 == index).map(|(source, _)| source.clone()))
-	}
-	pub fn outputs(&self, index: usize) -> impl Iterator<Item = Source> + '_ {
-		[Source {
-			node: self.path.clone().unwrap_or_default(),
-			index,
-		}]
-		.into_iter()
-		.chain(self.outputs_source.iter().filter(move |x| *x.1 == index).map(|(source, _)| source.clone()))
 	}
 }
 impl DocumentNode {
@@ -1161,11 +1151,6 @@ impl NodeNetwork {
 				if let NodeInput::Node { node_id, output_index, .. } = &export {
 					self.replace_node_inputs(node_input(id, i, false), node_input(*node_id, *output_index, false));
 					self.replace_node_inputs(node_input(id, i, true), node_input(*node_id, *output_index, true));
-					if let Some(new_output_node) = self.nodes.get_mut(node_id) {
-						for source in node.original_location.outputs(i) {
-							new_output_node.original_location.outputs_source.insert(source, *output_index);
-						}
-					}
 				}
 
 				self.replace_network_outputs(NodeInput::node(id, i), export);
@@ -1197,11 +1182,6 @@ impl NodeNetwork {
 				assert_eq!(node.inputs.len(), 1, "Id node has more than one input");
 				if let NodeInput::Node { node_id, output_index, .. } = node.inputs[0] {
 					let node_input_output_index = output_index;
-					if let Some(input_node) = self.nodes.get_mut(&node_id) {
-						for source in node.original_location.outputs(0) {
-							input_node.original_location.outputs_source.insert(source, node_input_output_index);
-						}
-					}
 
 					let input_node_id = node_id;
 					for output in self.nodes.values_mut() {
@@ -1507,7 +1487,6 @@ mod test {
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(0)]),
 							inputs_source: [(Source { node: vec![NodeId(1)], index: 1 }, 1)].into(),
-							outputs_source: HashMap::new(),
 							inputs_exposed: vec![true, true],
 							skip_inputs: 0,
 						},
@@ -1524,7 +1503,6 @@ mod test {
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(1)]),
 							inputs_source: HashMap::new(),
-							outputs_source: [(Source { node: vec![NodeId(1)], index: 0 }, 0)].into(),
 							inputs_exposed: vec![true],
 							skip_inputs: 0,
 						},
@@ -1540,7 +1518,6 @@ mod test {
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(4)]),
 							inputs_source: HashMap::new(),
-							outputs_source: HashMap::new(),
 							inputs_exposed: vec![true, false],
 							skip_inputs: 0,
 						},
@@ -1571,7 +1548,6 @@ mod test {
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(0)]),
 							inputs_source: [(Source { node: vec![NodeId(1)], index: 1 }, 1)].into(),
-							outputs_source: HashMap::new(),
 							inputs_exposed: vec![true, true],
 							skip_inputs: 0,
 						},
@@ -1586,7 +1562,6 @@ mod test {
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(4)]),
 							inputs_source: HashMap::new(),
-							outputs_source: HashMap::new(),
 							inputs_exposed: vec![true, false],
 							skip_inputs: 0,
 						},
@@ -1601,7 +1576,6 @@ mod test {
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(1)]),
 							inputs_source: HashMap::new(),
-							outputs_source: [(Source { node: vec![NodeId(1)], index: 0 }, 0)].into(),
 							inputs_exposed: vec![true],
 							skip_inputs: 0,
 						},

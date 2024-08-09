@@ -349,6 +349,18 @@ impl ProtoNetwork {
 		);
 	}
 
+	#[cfg(debug_assertions)]
+	pub fn example() -> (Self, NodeId, ProtoNode) {
+		let node_id = NodeId(1);
+		let proto_node = ProtoNode::default();
+		let proto_network = ProtoNetwork {
+			inputs: vec![node_id],
+			output: node_id,
+			nodes: vec![(node_id, proto_node.clone())],
+		};
+		(proto_network, node_id, proto_node)
+	}
+
 	/// Construct a hashmap containing a list of the nodes that depend on this proto network.
 	pub fn collect_outwards_edges(&self) -> HashMap<NodeId, Vec<NodeId>> {
 		let mut edges: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
@@ -675,18 +687,16 @@ impl TypingContext {
 	/// and store them in the `inferred` field. The proto network has to be topologically sorted
 	/// and contain fully resolved stable node ids.
 	pub fn update(&mut self, network: &ProtoNetwork) -> Result<(), GraphErrors> {
-		let mut deleted_nodes = self.inferred.keys().copied().collect::<HashSet<_>>();
-
 		for (id, node) in network.nodes.iter() {
 			self.infer(*id, node)?;
-			deleted_nodes.remove(id);
-		}
-
-		for node in deleted_nodes {
-			self.inferred.remove(&node);
 		}
 
 		Ok(())
+	}
+
+	pub fn remove_inference(&mut self, node_id: NodeId) -> Option<NodeIOTypes> {
+		self.constructor.remove(&node_id);
+		self.inferred.remove(&node_id)
 	}
 
 	/// Returns the node constructor for a given node id.

@@ -82,6 +82,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	/// - `IgnoreStart`: drops the bezier's start point in favor of the subpath's last anchor
 	/// - `SmoothJoin(f64)`: joins the subpath's endpoint with the bezier's start with a another Bezier segment that is continuous up to the second derivative
 	///   if the difference between the subpath's end point and Bezier's start point exceeds the wrapped integer value.
+	///
 	/// This function assumes that the position of the [Bezier]'s starting point is equal to that of the Subpath's last manipulator group.
 	pub fn append_bezier(&mut self, bezier: &Bezier, append_type: AppendType) {
 		if self.manipulator_groups.is_empty() {

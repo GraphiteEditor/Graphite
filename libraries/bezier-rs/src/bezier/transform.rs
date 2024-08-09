@@ -133,6 +133,7 @@ impl Bezier {
 	/// Determine if it is possible to scale the given curve, using the following conditions:
 	/// 1. All the handles are located on a single side of the curve.
 	/// 2. The on-curve point for `t = 0.5` must occur roughly in the center of the polygon defined by the curve's endpoint normals.
+	///
 	/// See [the offset section](https://pomax.github.io/bezierinfo/#offsetting) of Pomax's bezier curve primer for more details.
 	fn is_scalable(&self) -> bool {
 		if self.handles == BezierHandles::Linear {
@@ -345,7 +346,7 @@ impl Bezier {
 	/// A proof for why this is true can be found in the [Curve offsetting section](https://pomax.github.io/bezierinfo/#offsetting) of Pomax's bezier curve primer.
 	/// Offset takes the following parameter:
 	/// - `distance` - The offset's distance from the curve. Positive values will offset the curve in the same direction as the endpoint normals,
-	/// while negative values will offset in the opposite direction.
+	///   while negative values will offset in the opposite direction.
 	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/libraries/bezier-rs#bezier/offset/solo" title="Offset Demo"></iframe>
 	pub fn offset<PointId: crate::Identifier>(&self, distance: f64) -> Subpath<PointId> {
 		if self.is_point() {

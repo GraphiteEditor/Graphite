@@ -118,8 +118,8 @@ impl core::ops::IndexMut<usize> for Rect {
 	}
 }
 
-impl Into<Quad> for Rect {
-	fn into(self) -> Quad {
-		Quad::from_box(self.0)
+impl From<Rect> for Quad {
+	fn from(val: Rect) -> Self {
+		Quad::from_box(val.0)
 	}
 }

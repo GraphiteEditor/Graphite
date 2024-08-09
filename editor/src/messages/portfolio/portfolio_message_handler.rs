@@ -16,6 +16,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::text::Font;
 use graphene_std::vector::style::{Fill, FillType, Gradient};
+use interpreted_executor::dynamic_executor::IntrospectError;
 
 use std::sync::Arc;
 use std::vec;
@@ -749,7 +750,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 }
 
 impl PortfolioMessageHandler {
-	pub async fn introspect_node(&self, node_path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
+	pub async fn introspect_node(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any>, IntrospectError> {
 		self.executor.introspect_node(node_path).await
 	}
 

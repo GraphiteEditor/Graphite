@@ -22,7 +22,7 @@ use graphene_core::vector::VectorData;
 use graphene_core::{Color, GraphicElement, SurfaceFrame};
 use graphene_std::renderer::format_transform_matrix;
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
-use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypes};
+use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
 
 use glam::{DAffine2, DVec2, UVec2};
 use once_cell::sync::Lazy;
@@ -43,7 +43,6 @@ pub struct NodeRuntime {
 
 	editor_api: Arc<WasmEditorApi>,
 	node_graph_errors: GraphErrors,
-	resolved_types: ResolvedDocumentNodeTypes,
 	monitor_nodes: Vec<Vec<NodeId>>,
 
 	// TODO: Remove, it doesn't need to be persisted anymore
@@ -91,8 +90,7 @@ pub struct ExecutionResponse {
 }
 
 pub struct CompilationResponse {
-	result: Result<(), String>,
-	resolved_types: ResolvedDocumentNodeTypes,
+	result: Result<ResolvedDocumentNodeTypesDelta, String>,
 	node_graph_errors: GraphErrors,
 }
 
@@ -143,7 +141,6 @@ impl NodeRuntime {
 			.into(),
 
 			node_graph_errors: Vec::new(),
-			resolved_types: ResolvedDocumentNodeTypes::default(),
 			monitor_nodes: Vec::new(),
 
 			thumbnail_renders: Default::default(),
@@ -214,7 +211,6 @@ impl NodeRuntime {
 					self.update_thumbnails = true;
 					self.sender.send_generation_response(CompilationResponse {
 						result,
-						resolved_types: self.resolved_types.clone(),
 						node_graph_errors: self.node_graph_errors.clone(),
 					});
 				}
@@ -240,13 +236,8 @@ impl NodeRuntime {
 		}
 	}
 
-	async fn update_network(&mut self, graph: NodeNetwork) -> Result<(), String> {
+	async fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, String> {
 		let scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
-		self.monitor_nodes = scoped_network
-			.recursive_nodes()
-			.filter(|(_, node)| node.implementation == DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"))
-			.map(|(_, node)| node.original_location.path.clone().unwrap_or_default())
-			.collect::<Vec<_>>();
 
 		// We assume only one output
 		assert_eq!(scoped_network.exports.len(), 1, "Graph with multiple outputs not yet handled");
@@ -255,14 +246,18 @@ impl NodeRuntime {
 			Ok(network) => network,
 			Err(e) => return Err(e),
 		};
+		self.monitor_nodes = proto_network
+			.nodes
+			.iter()
+			.filter(|(_, node)| node.identifier == "graphene_core::memo::MonitorNode<_, _, _>".into())
+			.map(|(_, node)| node.original_location.path.clone().unwrap_or_default())
+			.collect::<Vec<_>>();
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
-		if let Err(e) = self.executor.update(proto_network).await {
-			self.node_graph_errors = e;
-		}
-		self.resolved_types = self.executor.document_node_types();
-
-		Ok(())
+		self.executor.update(proto_network).await.map_err(|e| {
+			self.node_graph_errors = e.clone();
+			format!("{e:?}")
+		})
 	}
 
 	async fn execute_network(&mut self, render_config: RenderConfig) -> Result<TaggedValue, String> {
@@ -296,10 +291,10 @@ impl NodeRuntime {
 			};
 
 			// Extract the monitor node's stored `GraphicElement` data.
-			let Some(introspected_data) = self.executor.introspect(monitor_node_path).flatten() else {
+			let Ok(introspected_data) = self.executor.introspect(monitor_node_path) else {
 				// TODO: Fix the root of the issue causing the spam of this warning (this at least temporarily disables it in release builds)
 				#[cfg(debug_assertions)]
-				warn!("Failed to introspect monitor node {:?}", self.executor.introspect(monitor_node_path));
+				warn!("Failed to introspect monitor node {}", self.executor.introspect(monitor_node_path).unwrap_err());
 
 				continue;
 			};
@@ -377,12 +372,12 @@ impl NodeRuntime {
 	}
 }
 
-pub async fn introspect_node(path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
+pub async fn introspect_node(path: &[NodeId]) -> Result<Arc<dyn std::any::Any>, IntrospectError> {
 	let runtime = NODE_RUNTIME.lock();
 	if let Some(ref mut runtime) = runtime.as_ref() {
-		return runtime.executor.introspect(path).flatten();
+		return runtime.executor.introspect(path);
 	}
-	None
+	Err(IntrospectError::RuntimeNotReady)
 }
 
 pub async fn run_node_graph() -> bool {
@@ -436,7 +431,7 @@ impl NodeGraphExecutor {
 		execution_id
 	}
 
-	pub async fn introspect_node(&self, path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
+	pub async fn introspect_node(&self, path: &[NodeId]) -> Result<Arc<dyn std::any::Any>, IntrospectError> {
 		introspect_node(path).await
 	}
 
@@ -462,7 +457,7 @@ impl NodeGraphExecutor {
 			return None;
 		};
 		let introspection_node = find_node(wrapped_network)?;
-		let introspection = futures::executor::block_on(self.introspect_node(&[node_path, &[introspection_node]].concat()))?;
+		let introspection = futures::executor::block_on(self.introspect_node(&[node_path, &[introspection_node]].concat())).ok()?;
 		let Some(downcasted): Option<&T> = <dyn std::any::Any>::downcast_ref(introspection.as_ref()) else {
 			log::warn!("Failed to downcast type for introspection");
 			return None;
@@ -609,20 +604,22 @@ impl NodeGraphExecutor {
 					}
 				}
 				NodeGraphUpdate::CompilationResponse(execution_response) => {
-					let CompilationResponse {
-						resolved_types,
-						node_graph_errors,
-						result,
-					} = execution_response;
-					if let Err(e) = result {
-						// Clear the click targets while the graph is in an un-renderable state
-						document.network_interface.document_metadata_mut().update_from_monitor(HashMap::new(), HashMap::new());
-						log::trace!("{e}");
+					let CompilationResponse { node_graph_errors, result } = execution_response;
+					let type_delta = match result {
+						Err(e) => {
+							// Clear the click targets while the graph is in an un-renderable state
+							document.network_interface.document_metadata_mut().update_from_monitor(HashMap::new(), HashMap::new());
+							log::trace!("{e}");
 
-						return Err("Node graph evaluation failed".to_string());
+							return Err("Node graph evaluation failed".to_string());
+						}
+						Ok(result) => result,
 					};
 
-					responses.add(NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors });
+					responses.add(NodeGraphMessage::UpdateTypes {
+						resolved_types: type_delta,
+						node_graph_errors,
+					});
 					responses.add(NodeGraphMessage::SendGraph);
 				}
 				NodeGraphUpdate::NodeGraphUpdateMessage(NodeGraphUpdateMessage::ImaginateStatusUpdate) => {

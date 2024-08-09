@@ -11,7 +11,7 @@ use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, Source};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graphene_core::*;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
@@ -74,7 +74,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 		match message {
 			// TODO: automatically remove broadcast messages.
 			NodeGraphMessage::AddNodes { nodes, new_ids } => {
-				let Some(new_layer_id) = new_ids.get(&NodeId(0)).cloned().or_else(|| nodes.get(0).map(|(node_id, _)| *node_id)) else {
+				let Some(new_layer_id) = new_ids.get(&NodeId(0)).cloned().or_else(|| nodes.first().map(|(node_id, _)| *node_id)) else {
 					log::error!("No nodes to add in AddNodes");
 					return;
 				};
@@ -723,7 +723,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 									return;
 								};
 								// TODO: Cache all wire locations if this is a performance issue
-								let mut overlapping_wires = Self::collect_wires(network_interface, selection_network_path)
+								let overlapping_wires = Self::collect_wires(network_interface, selection_network_path)
 									.into_iter()
 									.filter(|frontend_wire| {
 										// Prevent inserting on a link that is connected upstream to the selected node
@@ -798,7 +798,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 								let overlapping_wire = if network_interface.is_layer(&selected_node_id, selection_network_path) {
 									if stack_wires.len() == 1 {
 										stack_wires.first()
-									} else if stack_wires.len() == 0 && node_wires.len() == 1 {
+									} else if stack_wires.is_empty() && node_wires.len() == 1 {
 										node_wires.first()
 									} else {
 										None
@@ -1240,7 +1240,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(FrontendMessage::UpdateNodeTypes { node_types });
 			}
 			NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors } => {
-				network_interface.resolved_types = resolved_types;
+				for (path, node_type) in resolved_types.add {
+					network_interface.resolved_types.types.insert(path.to_vec(), node_type);
+				}
+				for path in resolved_types.remove {
+					network_interface.resolved_types.types.remove(&path.to_vec());
+				}
 				self.node_graph_errors = node_graph_errors;
 			}
 			NodeGraphMessage::UpdateActionButtons => {
@@ -1573,11 +1578,11 @@ impl NodeGraphMessageHandler {
 			let frontend_graph_inputs = node.inputs.iter().enumerate().map(|(index, _)| {
 				// Convert the index in all inputs to the index in only the exposed inputs
 				// TODO: Only display input type if potential inputs in node_registry are all the same type
-				let input_type = network_interface.resolved_types.inputs.get(&Source { node: node_id_path.clone(), index }).cloned();
+				let node_types = network_interface.resolved_types.types.get(node_id_path.as_slice());
 
 				// TODO: Should display the color of the "most commonly relevant" (we'd need some sort of precedence) data type it allows given the current generic form that's constrained by the other present connections.
-				let frontend_data_type = if let Some(ref input_type) = input_type {
-					FrontendGraphDataType::with_type(input_type)
+				let frontend_data_type = if let Some(node_types) = node_types {
+					FrontendGraphDataType::with_type(&node_types.inputs[index])
 				} else {
 					FrontendGraphDataType::General
 				};
@@ -1592,7 +1597,7 @@ impl NodeGraphMessageHandler {
 				FrontendGraphInput {
 					data_type: frontend_data_type,
 					name: input_name,
-					resolved_type: input_type.map(|input| format!("{input:?}")),
+					resolved_type: node_types.map(|types| format!("{:?}", types.inputs[index])),
 					connected_to: None,
 				}
 			});
@@ -1801,21 +1806,45 @@ impl NodeGraphMessageHandler {
 		}
 	}
 
+	/// Retrieves the output types for a given document node and its exports.
+	///
+	/// This function traverses the node and its nested network structure (if applicable) to determine
+	/// the types of all outputs, including the primary output and any additional exports.
+	///
+	/// # Arguments
+	///
+	/// * `node` - A reference to the `DocumentNode` for which to determine output types.
+	/// * `resolved_types` - A reference to `ResolvedDocumentNodeTypes` containing pre-resolved type information.
+	/// * `node_id_path` - A slice of `NodeId`s representing the path to the current node in the document graph.
+	///
+	/// # Returns
+	///
+	/// A `Vec<Option<Type>>` where:
+	/// - The first element is the primary output type of the node.
+	/// - Subsequent elements are types of additional exports (if the node is a network).
+	/// - `None` values indicate that a type couldn't be resolved for a particular output.
+	///
+	/// # Behavior
+	///
+	/// 1. Retrieves the primary output type from `resolved_types`.
+	/// 2. If the node is a network:
+	///    - Iterates through its exports (skipping the first/primary export).
+	///    - For each export, traverses the network until reaching a protonode or terminal condition.
+	///    - Determines the output type based on the final node/value encountered.
+	/// 3. Collects and returns all resolved types.
+	///
+	/// # Note
+	///
+	/// This function assumes that export indices and node IDs always exist within their respective
+	/// collections. It will panic if these assumptions are violated.
 	pub fn get_output_types(node: &DocumentNode, resolved_types: &ResolvedDocumentNodeTypes, node_id_path: &[NodeId]) -> Vec<Option<Type>> {
 		let mut output_types = Vec::new();
 
-		let primary_output_type = resolved_types
-			.outputs
-			.get(&Source {
-				node: node_id_path.to_owned(),
-				index: 0,
-			})
-			.cloned();
-		output_types.push(primary_output_type);
+		let primary_output_type = resolved_types.types.get(node_id_path).map(|ty| ty.output.clone());
 
 		// If the node is not a protonode, get types by traversing across exports until a proto node is reached.
 		if let graph_craft::document::DocumentNodeImplementation::Network(internal_network) = &node.implementation {
-			for export in internal_network.exports.iter().skip(1) {
+			for export in internal_network.exports.iter() {
 				let mut current_export = export;
 				let mut current_network = internal_network;
 				let mut current_path = node_id_path.to_owned();
@@ -1833,25 +1862,23 @@ impl NodeGraphMessageHandler {
 					}
 				}
 
-				let output_type: Option<Type> = if let NodeInput::Node { output_index, .. } = current_export {
-					// Current export is pointing to a proto node where type can be derived
-					assert_eq!(*output_index, 0, "Output index for a proto node should always be 0");
-					resolved_types.outputs.get(&Source { node: current_path.clone(), index: 0 }).cloned()
-				} else if let NodeInput::Value { tagged_value, .. } = current_export {
-					Some(tagged_value.ty())
-				} else if let NodeInput::Network { import_index, .. } = current_export {
-					resolved_types
-						.outputs
-						.get(&Source {
-							node: node_id_path.to_owned(),
-							index: *import_index,
-						})
-						.cloned()
-				} else {
-					None
+				let output_type: Option<Type> = match current_export {
+					NodeInput::Node { output_index, .. } => {
+						// Current export is pointing to a proto node where type can be derived
+						assert_eq!(*output_index, 0, "Output index for a proto node should always be 0");
+						resolved_types.types.get(&current_path).map(|ty| ty.output.clone())
+					}
+					NodeInput::Value { tagged_value, .. } => Some(tagged_value.ty()),
+					NodeInput::Network { import_type, .. } => Some(import_type.clone()),
+					_ => None,
 				};
 				output_types.push(output_type);
 			}
+		} else {
+			if primary_output_type.is_none() {
+				log::warn!("no output type found for {:?} {:?}", node_id_path, &node.implementation);
+			}
+			output_types.push(primary_output_type);
 		}
 		output_types
 	}

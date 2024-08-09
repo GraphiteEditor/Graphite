@@ -776,48 +776,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			identifier: "Noise Pattern",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(1), 0)],
-						nodes: vec![
-							DocumentNode {
-								inputs: vec![
-									NodeInput::network(concrete!(()), 0),
-									NodeInput::network(concrete!(UVec2), 1),
-									NodeInput::network(concrete!(u32), 2),
-									NodeInput::network(concrete!(f64), 3),
-									NodeInput::network(concrete!(graphene_core::raster::NoiseType), 4),
-									NodeInput::network(concrete!(graphene_core::raster::FractalType), 5),
-									NodeInput::network(concrete!(f64), 6),
-									NodeInput::network(concrete!(graphene_core::raster::FractalType), 7),
-									NodeInput::network(concrete!(u32), 8),
-									NodeInput::network(concrete!(f64), 9),
-									NodeInput::network(concrete!(f64), 10),
-									NodeInput::network(concrete!(f64), 11),
-									NodeInput::network(concrete!(f64), 12),
-									NodeInput::network(concrete!(graphene_core::raster::CellularDistanceFunction), 13),
-									NodeInput::network(concrete!(graphene_core::raster::CellularReturnType), 14),
-									NodeInput::network(concrete!(f64), 15),
-								],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::raster::NoisePatternNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _>")),
-								..Default::default()
-							},
-							// TODO: Make noise pattern node resolution aware and remove the cull node
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::CullNode<_>")),
-								manual_composition: Some(concrete!(Footprint)),
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
+					manual_composition: Some(concrete!(Footprint)),
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::raster::NoisePatternNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _>")),
 					inputs: vec![
-						NodeInput::value(TaggedValue::None, false),
-						NodeInput::value(TaggedValue::UVec2((512, 512).into()), false),
+						NodeInput::value(TaggedValue::Bool(true), false),
 						NodeInput::value(TaggedValue::U32(0), false),
 						NodeInput::value(TaggedValue::F64(10.), false),
 						NodeInput::value(TaggedValue::NoiseType(NoiseType::default()), false),
@@ -837,8 +799,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
 					input_names: vec![
-						"None".to_string(),
-						"Dimensions".to_string(),
+						"Clip".to_string(),
 						"Seed".to_string(),
 						"Scale".to_string(),
 						"Noise Type".to_string(),

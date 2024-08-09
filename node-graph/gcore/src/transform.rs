@@ -168,9 +168,7 @@ impl Footprint {
 	}
 
 	pub fn scale(&self) -> DVec2 {
-		let x = self.transform.transform_vector2((1., 0.).into()).length();
-		let y = self.transform.transform_vector2((0., 1.).into()).length();
-		DVec2::new(x, y)
+		self.transform.decompose_scale()
 	}
 
 	pub fn offset(&self) -> DVec2 {

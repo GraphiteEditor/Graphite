@@ -38,35 +38,35 @@ let
 in
   # Make a shell with the dependencies we need
   pkgs.mkShell {
-    packages = [
+    packages = with pkgs; [
       rustc-wasm
-      pkgs.nodejs
-      pkgs.cargo
-      pkgs.cargo-watch
-      pkgs.cargo-nextest
-      pkgs.cargo-expand
-      pkgs.wasm-pack
-      pkgs.binaryen
-      pkgs.wasm-bindgen-cli
-      pkgs.vulkan-loader
-      pkgs.libxkbcommon
-      pkgs.llvm
-      pkgs.gcc-unwrapped.lib
-      pkgs.llvmPackages.libcxxStdenv
-      pkgs.pkg-config
+      nodejs
+      cargo
+      cargo-watch
+      cargo-nextest
+      cargo-expand
+      wasm-pack
+      binaryen
+      wasm-bindgen-cli
+      vulkan-loader
+      libxkbcommon
+      llvm
+      gcc-unwrapped.lib
+      llvmPackages.libcxxStdenv
+      pkg-config
 
       # For Tauri
-      pkgs.openssl
-      pkgs.glib
-      pkgs.gtk3
-      pkgs.libsoup
-      pkgs.webkitgtk
+      openssl
+      glib
+      gtk3
+      libsoup
+      webkitgtk
 
       # For Raw-rs tests
-      pkgs.libraw
+      libraw
 
       # Use Mold as a linker
-      pkgs.mold
+      mold
     ];
 
     # Hacky way to run Cargo through Mold
