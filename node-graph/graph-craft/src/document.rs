@@ -227,7 +227,7 @@ pub struct OriginalLocation {
 	pub path: Option<Vec<NodeId>>,
 	/// Each document input source maps to one proto node input (however one proto node input may come from several sources)
 	pub inputs_source: HashMap<Source, usize>,
-	/// A list of flags indicating wether whether the input is exposed in the ui
+	/// A list of flags indicating whether the input is exposed in the UI
 	pub inputs_exposed: Vec<bool>,
 	/// Skipping inputs is useful for the manual composition thing - whereby a hidden `Footprint` input is added as the first input.
 	pub skip_inputs: usize,

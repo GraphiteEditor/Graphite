@@ -605,14 +605,16 @@ impl NodeGraphExecutor {
 				}
 				NodeGraphUpdate::CompilationResponse(execution_response) => {
 					let CompilationResponse { node_graph_errors, result } = execution_response;
-					if let Err(e) = result {
-						// Clear the click targets while the graph is in an un-renderable state
-						document.network_interface.document_metadata_mut().update_from_monitor(HashMap::new(), HashMap::new());
-						log::trace!("{e}");
+					let type_delta = match result {
+						Err(e) => {
+							// Clear the click targets while the graph is in an un-renderable state
+							document.network_interface.document_metadata_mut().update_from_monitor(HashMap::new(), HashMap::new());
+							log::trace!("{e}");
 
-						return Err("Node graph evaluation failed".to_string());
+							return Err("Node graph evaluation failed".to_string());
+						}
+						Ok(result) => result,
 					};
-					let type_delta = result.unwrap();
 
 					responses.add(NodeGraphMessage::UpdateTypes {
 						resolved_types: type_delta,

@@ -197,10 +197,8 @@ impl BorrowTree {
 			if !self.nodes.contains_key(&id) {
 				new_nodes.push(node.original_location.path.clone().unwrap_or_default().into());
 				self.push_node(id, node, typing_context).await?;
-			} else {
-				if self.update_source_map(id, typing_context, &node) {
-					new_nodes.push(node.original_location.path.clone().unwrap_or_default().into());
-				}
+			} else if self.update_source_map(id, typing_context, &node) {
+				new_nodes.push(node.original_location.path.clone().unwrap_or_default().into());
 			}
 			old_nodes.remove(&id);
 		}
