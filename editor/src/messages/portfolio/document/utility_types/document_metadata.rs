@@ -284,10 +284,10 @@ impl LayerNodeIdentifier {
 		}
 	}
 
-	pub fn upstream_siblings(self, metadata: &DocumentMetadata) -> AxisIter {
+	pub fn downstream_siblings(self, metadata: &DocumentMetadata) -> AxisIter {
 		AxisIter {
 			layer_node: Some(self),
-			next_node: Self::next_sibling,
+			next_node: Self::previous_sibling,
 			metadata,
 		}
 	}

@@ -40,6 +40,7 @@ pub enum NodeGraphMessage {
 	DisconnectInput {
 		input_connector: InputConnector,
 	},
+	DisconnectRootNode,
 	EnterNestedNetwork,
 	DuplicateSelectedNodes,
 	ExposeInput {
@@ -92,6 +93,7 @@ pub enum NodeGraphMessage {
 	SendClickTargets,
 	EndSendClickTargets,
 	SendGraph,
+	SetGridAlignedEdges,
 	SetInputValue {
 		node_id: NodeId,
 		input_index: usize,
