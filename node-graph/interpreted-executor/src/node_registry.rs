@@ -621,6 +621,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: RenderOutput, params: [RenderOutput]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Footprint, output: Image<Color>, fn_params: [Footprint => Image<Color>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Footprint, output: ImageFrame<Color>, fn_params: [Footprint => ImageFrame<Color>]),
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: Footprint, output: TextureFrame, fn_params: [Footprint => TextureFrame]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Footprint, output: QuantizationChannels, fn_params: [Footprint => QuantizationChannels]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Footprint, output: Vec<DVec2>, fn_params: [Footprint => Vec<DVec2>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Footprint, output: Arc<WasmSurfaceHandle>, fn_params: [Footprint => Arc<WasmSurfaceHandle>]),

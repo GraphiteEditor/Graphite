@@ -651,7 +651,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(
 							TaggedValue::Footprint(Footprint {
 								transform: DAffine2::from_scale_angle_translation(DVec2::new(100., 100.), 0., DVec2::new(0., 0.)),
-								resolution: UVec2::new(100, 100),
+								clip: raster::bbox::AxisAlignedBbox {
+									start: DVec2::ZERO,
+									end: DVec2::new(100., 100.),
+								},
 								..Default::default()
 							}),
 							false,
@@ -2062,7 +2065,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							DocumentNode {
 								manual_composition: Some(concrete!(Footprint)),
 								inputs: vec![NodeInput::node(NodeId(1), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode<_, _, _>")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 								..Default::default()
 							},
 						]
