@@ -1,16 +1,30 @@
 use dyn_any::{DynAny, StaticType};
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DVec2, Vec2Swizzles};
 
 #[cfg_attr(not(target_arch = "spirv"), derive(Debug))]
-#[derive(Clone, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, dyn_any::DynAny, PartialEq)]
 pub struct AxisAlignedBbox {
 	pub start: DVec2,
 	pub end: DVec2,
 }
 
+impl core::hash::Hash for AxisAlignedBbox {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.start.x.to_bits().hash(state);
+		self.start.y.to_bits().hash(state);
+		self.end.x.to_bits().hash(state);
+		self.end.y.to_bits().hash(state);
+	}
+}
+
 impl AxisAlignedBbox {
 	pub const ZERO: Self = Self { start: DVec2::ZERO, end: DVec2::ZERO };
 	pub const ONE: Self = Self { start: DVec2::ZERO, end: DVec2::ONE };
+
+	pub fn from_size(size: DVec2) -> Self {
+		Self { start: DVec2::ZERO, end: size }
+	}
 
 	pub fn size(&self) -> DVec2 {
 		self.end - self.start
@@ -28,12 +42,14 @@ impl AxisAlignedBbox {
 		other.start.x <= self.end.x && other.end.x >= self.start.x && other.start.y <= self.end.y && other.end.y >= self.start.y
 	}
 
+	#[must_use]
 	pub fn union(&self, other: &AxisAlignedBbox) -> AxisAlignedBbox {
 		AxisAlignedBbox {
 			start: DVec2::new(self.start.x.min(other.start.x), self.start.y.min(other.start.y)),
 			end: DVec2::new(self.end.x.max(other.end.x), self.end.y.max(other.end.y)),
 		}
 	}
+	#[must_use]
 	pub fn union_non_empty(&self, other: &AxisAlignedBbox) -> Option<AxisAlignedBbox> {
 		match (self.size() == DVec2::ZERO, other.size() == DVec2::ZERO) {
 			(true, true) => None,
@@ -46,10 +62,19 @@ impl AxisAlignedBbox {
 		}
 	}
 
+	#[must_use]
 	pub fn intersect(&self, other: &AxisAlignedBbox) -> AxisAlignedBbox {
 		AxisAlignedBbox {
 			start: DVec2::new(self.start.x.max(other.start.x), self.start.y.max(other.start.y)),
 			end: DVec2::new(self.end.x.min(other.end.x), self.end.y.min(other.end.y)),
+		}
+	}
+
+	#[must_use]
+	pub fn transformed(&self, transform: DAffine2) -> Self {
+		Self {
+			start: transform.transform_point2(self.start),
+			end: transform.transform_point2(self.end),
 		}
 	}
 }

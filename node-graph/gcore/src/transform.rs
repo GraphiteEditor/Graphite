@@ -2,6 +2,7 @@ use dyn_any::StaticType;
 use glam::DAffine2;
 
 use glam::DVec2;
+use glam::UVec2;
 
 use crate::raster::bbox::AxisAlignedBbox;
 use crate::raster::ImageFrame;
@@ -140,8 +141,8 @@ pub enum RenderQuality {
 pub struct Footprint {
 	/// Inverse of the transform which will be applied to the node output during the rendering process
 	pub transform: DAffine2,
-	/// Resolution of the target output area in pixels
-	pub resolution: glam::UVec2,
+	/// Target area which is displayed on the screen
+	pub clip: AxisAlignedBbox,
 	/// Quality of the render, this may be used by caching nodes to decide if the cached render is sufficient
 	pub quality: RenderQuality,
 	/// When the transform is set downstream, all upstream modifications have to be ignored
@@ -152,7 +153,10 @@ impl Default for Footprint {
 	fn default() -> Self {
 		Self {
 			transform: DAffine2::IDENTITY,
-			resolution: glam::UVec2::new(1920, 1080),
+			clip: AxisAlignedBbox {
+				start: DVec2::ZERO,
+				end: DVec2::new(1920., 1080.),
+			},
 			quality: RenderQuality::Full,
 			ignore_modifications: false,
 		}
@@ -162,8 +166,8 @@ impl Default for Footprint {
 impl Footprint {
 	pub fn viewport_bounds_in_local_space(&self) -> AxisAlignedBbox {
 		let inverse = self.transform.inverse();
-		let start = inverse.transform_point2((0., 0.).into());
-		let end = inverse.transform_point2(self.resolution.as_dvec2());
+		let start = inverse.transform_point2(self.clip.start);
+		let end = inverse.transform_point2(self.clip.end);
 		AxisAlignedBbox { start, end }
 	}
 
@@ -173,6 +177,10 @@ impl Footprint {
 
 	pub fn offset(&self) -> DVec2 {
 		self.transform.transform_point2(DVec2::ZERO)
+	}
+
+	pub fn resolution(&self) -> UVec2 {
+		self.clip.size().as_uvec2()
 	}
 }
 
@@ -190,7 +198,7 @@ fn cull_vector_data<T>(footprint: Footprint, vector_data: T) -> T {
 impl core::hash::Hash for Footprint {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.transform.to_cols_array().iter().for_each(|x| x.to_le_bytes().hash(state));
-		self.resolution.hash(state)
+		self.clip.hash(state)
 	}
 }
 

@@ -955,7 +955,7 @@ async fn render_texture_node<'a: 'input>(footprint: Footprint, image: impl Node<
 	SurfaceFrame {
 		surface_id,
 		transform,
-		resolution: footprint.resolution,
+		resolution: footprint.resolution(),
 	}
 }
 

@@ -91,8 +91,8 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 		render.leaf_tag("rect", |attributes| {
 			attributes.push("x", "0");
 			attributes.push("y", "0");
-			attributes.push("width", footprint.resolution.x.to_string());
-			attributes.push("height", footprint.resolution.y.to_string());
+			attributes.push("width", footprint.resolution().x.to_string());
+			attributes.push("height", footprint.resolution().y.to_string());
 			let matrix = format_transform_matrix(footprint.transform.inverse());
 			if !matrix.is_empty() {
 				attributes.push("transform", matrix);
@@ -102,7 +102,7 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 	}
 
 	data.render_svg(&mut render, &render_params);
-	render.wrap_with_transform(footprint.transform, Some(footprint.resolution.as_dvec2()));
+	render.wrap_with_transform(footprint.transform, Some(footprint.clip.size()));
 
 	RenderOutput::Svg(render.svg.to_svg_string())
 }
@@ -125,8 +125,10 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 
 		// TODO: Instead of applying the transform here, pass the transform during the translation to avoid the O(Nr cost
 		scene.append(&child, Some(kurbo::Affine::new(footprint.transform.to_cols_array())));
+		let resolution = footprint.resolution();
+		log::debug!("rendering using resolution: {resolution:?}");
 
-		exec.render_vello_scene(&scene, &surface_handle, footprint.resolution.x, footprint.resolution.y, &context)
+		exec.render_vello_scene(&scene, &surface_handle, resolution.x, resolution.y, &context)
 			.await
 			.expect("Failed to render Vello scene");
 	} else {
@@ -134,7 +136,7 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 	}
 	let frame = SurfaceFrame {
 		surface_id: surface_handle.window_id,
-		resolution: render_config.viewport.resolution,
+		resolution: render_config.viewport.resolution(),
 		transform: glam::DAffine2::IDENTITY,
 	};
 	RenderOutput::CanvasFrame(frame)
@@ -161,7 +163,7 @@ async fn rasterize<_T: GraphicElementRendered + graphene_core::transform::Transf
 	}
 	let aabb = Bbox::from_transform(footprint.transform).to_axis_aligned_bbox();
 	let size = aabb.size();
-	let resolution = footprint.resolution;
+	let resolution = footprint.resolution();
 	let render_params = RenderParams {
 		culling_bounds: None,
 		..Default::default()

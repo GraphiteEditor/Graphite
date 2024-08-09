@@ -12,6 +12,7 @@ use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
 use graphene_core::application_io::{NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_core::memo::IORecord;
+use graphene_core::raster::bbox::AxisAlignedBbox;
 use graphene_core::raster::ImageFrame;
 use graphene_core::renderer::{ClickTarget, GraphicElementRendered, ImageRenderMode, RenderParams, SvgRender};
 use graphene_core::renderer::{RenderSvgSegmentList, SvgSegment};
@@ -479,7 +480,7 @@ impl NodeGraphExecutor {
 		let render_config = RenderConfig {
 			viewport: Footprint {
 				transform: document.metadata().document_to_viewport,
-				resolution: viewport_resolution,
+				clip: AxisAlignedBbox::from_size(viewport_resolution.as_dvec2()),
 				..Default::default()
 			},
 			#[cfg(any(feature = "resvg", feature = "vello"))]
@@ -516,7 +517,7 @@ impl NodeGraphExecutor {
 		let render_config = RenderConfig {
 			viewport: Footprint {
 				transform: transform * DAffine2::from_scale(DVec2::splat(export_config.scale_factor)),
-				resolution: (size * export_config.scale_factor).as_uvec2(),
+				clip: AxisAlignedBbox::from_size(size * export_config.scale_factor),
 				..Default::default()
 			},
 			export_format: graphene_core::application_io::ExportFormat::Svg,

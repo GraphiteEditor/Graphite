@@ -643,6 +643,7 @@ fn noise_pattern(
 
 	let mut size = viewport_bounds.size();
 	let mut offset = viewport_bounds.start;
+	log::debug!("size: {size:?}, offset: {offset:?}");
 	if clip {
 		// TODO: Remove "clip" entirely (and its arbitrary 100x100 clipping square) once we have proper resolution-aware layer clipping
 		const CLIPPING_SQUARE_SIZE: f64 = 100.;
@@ -661,6 +662,9 @@ fn noise_pattern(
 	let footprint_scale = footprint.scale();
 	let width = (size.x * footprint_scale.x) as u32;
 	let height = (size.y * footprint_scale.y) as u32;
+	log::debug!("resolution: {:?}", footprint.resolution());
+	let width = footprint.resolution().x;
+	let height = footprint.resolution().y;
 
 	// All
 	let mut image = Image::new(width, height, Color::from_luminance(0.5));
@@ -761,10 +765,11 @@ fn noise_pattern(
 		}
 	}
 
+	log::debug!("clip: {:?}", footprint.clip);
 	// Return the coherent noise image
 	ImageFrame::<Color> {
 		image,
-		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
+		transform: DAffine2::from_translation(footprint.clip.start) * DAffine2::from_scale(footprint.clip.size() * footprint.scale()),
 		alpha_blending: AlphaBlending::default(),
 	}
 }

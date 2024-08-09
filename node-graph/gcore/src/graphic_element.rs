@@ -1,4 +1,5 @@
 use crate::application_io::TextureFrame;
+use crate::raster::bbox::AxisAlignedBbox;
 use crate::raster::{BlendMode, ImageFrame};
 use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::VectorData;
@@ -221,8 +222,34 @@ async fn construct_artboard(
 	background: Color,
 	clip: bool,
 ) -> Artboard {
-	footprint.transform *= DAffine2::from_translation(location.as_dvec2());
-	let graphic_group = self.contents.eval(footprint).await;
+	let mut new_footprint = footprint;
+
+	let viewport_bounds = footprint.viewport_bounds_in_local_space();
+	let artboard_bounds = AxisAlignedBbox {
+		start: location.as_dvec2(),
+		end: (location + dimensions).as_dvec2(),
+	};
+	let intersection = viewport_bounds.intersect(&artboard_bounds);
+	let offset = intersection.start;
+	let scale = footprint.scale();
+	let intersection = intersection.transformed(footprint.transform);
+	let resolution = (scale * intersection.size()).as_uvec2();
+	log::debug!("offset: {offset:?}, resolution: {resolution:?}");
+
+	if clip {
+		new_footprint = Footprint {
+			transform: DAffine2::IDENTITY,
+			clip: intersection,
+			..footprint
+		};
+	}
+
+	let mut graphic_group = self.contents.eval(new_footprint).await;
+
+	if clip {
+		let mut data_transform = graphic_group.transform_mut();
+		// *data_transform = DAffine2::from_translation(offset) * *data_transform;
+	}
 
 	Artboard {
 		graphic_group,

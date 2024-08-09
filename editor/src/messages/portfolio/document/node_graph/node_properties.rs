@@ -9,6 +9,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::{ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus};
 use graphene_core::memo::IORecord;
+use graphene_core::raster::bbox::AxisAlignedBbox;
 use graphene_core::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
 	SelectiveColorChoice,
@@ -144,7 +145,7 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 	if let Some(&TaggedValue::Footprint(footprint)) = &document_node.inputs[index].as_non_exposed_value() {
 		let top_left = footprint.transform.transform_point2(DVec2::ZERO);
 		let bounds = footprint.scale();
-		let oversample = footprint.resolution.as_dvec2() / bounds;
+		let oversample = footprint.clip.size() / bounds;
 
 		location_widgets.extend_from_slice(&[
 			NumberInput::new(Some(top_left.x))
@@ -159,7 +160,7 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 
 						let footprint = Footprint {
 							transform: DAffine2::from_scale_angle_translation(scale, 0., offset),
-							resolution: (oversample * scale).as_uvec2(),
+							clip: AxisAlignedBbox::from_size(oversample * scale),
 							..footprint
 						};
 
@@ -183,7 +184,7 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 
 						let footprint = Footprint {
 							transform: DAffine2::from_scale_angle_translation(scale, 0., offset),
-							resolution: (oversample * scale).as_uvec2(),
+							clip: AxisAlignedBbox::from_size(oversample * scale),
 							..footprint
 						};
 
@@ -206,7 +207,7 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 
 						let footprint = Footprint {
 							transform: DAffine2::from_scale_angle_translation(scale, 0., offset),
-							resolution: (oversample * scale).as_uvec2(),
+							clip: AxisAlignedBbox::from_size(oversample * scale),
 							..footprint
 						};
 
@@ -227,7 +228,7 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 
 						let footprint = Footprint {
 							transform: DAffine2::from_scale_angle_translation(scale, 0., offset),
-							resolution: (oversample * scale).as_uvec2(),
+							clip: AxisAlignedBbox::from_size(oversample * scale),
 							..footprint
 						};
 
@@ -241,14 +242,15 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 		]);
 
 		resolution_widgets.push(
-			NumberInput::new(Some((footprint.resolution.as_dvec2() / bounds).x * 100.))
+			NumberInput::new(Some((footprint.clip.size() / bounds).x * 100.))
 				.label("Resolution")
 				.unit("%")
 				.on_update(update_value(
 					move |x: &NumberInput| {
-						let resolution = (bounds * x.value.unwrap_or(100.) / 100.).as_uvec2().max((1, 1).into()).min((4000, 4000).into());
+						let resolution = (bounds * x.value.unwrap_or(100.) / 100.).max((1., 1.).into()).min((4000., 4000.).into());
+						let clip = AxisAlignedBbox::from_size(resolution);
 
-						let footprint = Footprint { resolution, ..footprint };
+						let footprint = Footprint { clip, ..footprint };
 						TaggedValue::Footprint(footprint)
 					},
 					node_id,
