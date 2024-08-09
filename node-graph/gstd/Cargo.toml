@@ -91,3 +91,5 @@ autoquant = { git = "https://github.com/truedoctor/autoquant", optional = true, 
 
 # Optional dependencies
 image-compare = { version = "0.4.1", optional = true }
+imageproc = "0.25.0"
+ndarray = "0.15.6"

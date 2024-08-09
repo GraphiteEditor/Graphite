@@ -2458,3 +2458,9 @@ pub fn centroid_properties(document_node: &DocumentNode, node_id: NodeId, _conte
 
 	vec![centroid_type]
 }
+
+pub fn dehaze_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let widgets = number_widget(document_node, node_id, 1, "Strength", NumberInput::default().mode_range().min(-100.).max(100.).unit("%"), true);
+
+	vec![LayoutGroup::Row { widgets }]
+}

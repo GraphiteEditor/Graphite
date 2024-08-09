@@ -188,6 +188,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			NodeIOTypes::new(generic!(I), generic!(I), vec![]),
 		)],
 		// TODO: create macro to impl for all types
+		register_node!(graphene_std::dehaze::DehazeImageNode<_>, input: ImageFrame<Color>, params: [f64]),
 		register_node!(graphene_core::structural::ConsNode<_, _>, input: u32, params: [u32]),
 		register_node!(graphene_core::structural::ConsNode<_, _>, input: u32, params: [&u32]),
 		register_node!(graphene_core::structural::ConsNode<_, _>, input: &u32, params: [u32]),
