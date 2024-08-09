@@ -946,11 +946,30 @@ impl NodeNetworkInterface {
 
 	/// Calculates the document bounds in document space
 	pub fn document_bounds_document_space(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
-		self.document_metadata
+		let all_layers_bounds = self
+			.document_metadata
 			.all_layers()
 			.filter(|layer| include_artboards || !self.is_artboard(&layer.to_node(), &[]))
 			.filter_map(|layer| self.document_metadata.bounding_box_document(layer))
-			.reduce(Quad::combine_bounds)
+			.reduce(Quad::combine_bounds);
+
+		let artboard_clip_bounds = self
+			.all_artboards()
+			.into_iter()
+			.filter(|layer| {
+				let artboard = self.network(&[]).unwrap().nodes.get(&layer.to_node());
+				let clip_input = artboard.unwrap().inputs.get(5).unwrap();
+				if let NodeInput::Value { tagged_value, .. } = clip_input {
+					if tagged_value.to_primitive_string() == "true" {
+						return true;
+					}
+				}
+				false
+			})
+			.filter_map(|layer| self.document_metadata.bounding_box_document(layer))
+			.reduce(Quad::combine_bounds);
+
+		Some(Quad::constraint_bounds(all_layers_bounds.unwrap_or_default(), artboard_clip_bounds.unwrap_or_default()))
 	}
 
 	/// Calculates the selected layer bounds in document space
