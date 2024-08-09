@@ -611,6 +611,11 @@ impl NodeGraphExecutor {
 							document.network_interface.document_metadata_mut().update_from_monitor(HashMap::new(), HashMap::new());
 							log::trace!("{e}");
 
+							responses.add(NodeGraphMessage::UpdateTypes {
+								resolved_types: Default::default(),
+								node_graph_errors,
+							});
+							responses.add(NodeGraphMessage::SendGraph);
 							return Err("Node graph evaluation failed".to_string());
 						}
 						Ok(result) => result,
