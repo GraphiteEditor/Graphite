@@ -609,7 +609,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: QuantizationChannels, params: [QuantizationChannels]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: Vec<DVec2>, params: [Vec<DVec2>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: Arc<WasmSurfaceHandle>, params: [Arc<WasmSurfaceHandle>]),
-		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: Arc<TextureFrame>, params: [Arc<WasmSurfaceHandle>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: WindowHandle, params: [WindowHandle]),
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: ShaderInputFrame, params: [ShaderInputFrame]),
