@@ -905,6 +905,15 @@ impl NodeNetworkInterface {
 			.is_some_and(|reference| reference == "Artboard" && self.connected_to_output(node_id, &[]))
 	}
 
+	pub fn parent_artboard(&self, layer: LayerNodeIdentifier) -> Option<LayerNodeIdentifier> {
+		let ancestors: Vec<_> = layer.ancestors(self.document_metadata()).collect();
+		match ancestors.as_slice() {
+			[_, second_last, _last] if self.is_artboard(&second_last.to_node(), &[]) => Some(*second_last),
+			[_, last] if self.is_artboard(&last.to_node(), &[]) => Some(*last),
+			_ => None,
+		}
+	}
+
 	pub fn all_artboards(&self) -> HashSet<LayerNodeIdentifier> {
 		self.network_metadata(&[])
 			.unwrap()
@@ -946,30 +955,47 @@ impl NodeNetworkInterface {
 
 	/// Calculates the document bounds in document space
 	pub fn document_bounds_document_space(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
-		let all_layers_bounds = self
-			.document_metadata
+		self.document_metadata
 			.all_layers()
 			.filter(|layer| include_artboards || !self.is_artboard(&layer.to_node(), &[]))
-			.filter_map(|layer| self.document_metadata.bounding_box_document(layer))
-			.reduce(Quad::combine_bounds);
-
-		let artboard_clip_bounds = self
-			.all_artboards()
-			.into_iter()
-			.filter(|layer| {
-				let artboard = self.network(&[]).unwrap().nodes.get(&layer.to_node());
-				let clip_input = artboard.unwrap().inputs.get(5).unwrap();
-				if let NodeInput::Value { tagged_value, .. } = clip_input {
-					if tagged_value.to_primitive_string() == "true" {
-						return true;
+			.filter_map(|layer| {
+				if !self.is_artboard(&layer.to_node(), &[]) {
+					if let Some(artboard_node_identifier) = self.parent_artboard(layer) {
+						let artboard = self.network(&[]).unwrap().nodes.get(&artboard_node_identifier.to_node());
+						let clip_input = artboard.unwrap().inputs.get(5).unwrap();
+						if let NodeInput::Value { tagged_value, .. } = clip_input {
+							if tagged_value.to_primitive_string() == "true" {
+								return Some(Quad::constraint_bounds(
+									self.document_metadata.bounding_box_document(layer).unwrap_or_default(),
+									self.document_metadata.bounding_box_document(artboard_node_identifier).unwrap_or_default(),
+								));
+							}
+						}
 					}
 				}
-				false
+				self.document_metadata.bounding_box_document(layer)
 			})
-			.filter_map(|layer| self.document_metadata.bounding_box_document(layer))
-			.reduce(Quad::combine_bounds);
+			.reduce(Quad::combine_bounds)
 
-		Some(Quad::constraint_bounds(all_layers_bounds.unwrap_or_default(), artboard_clip_bounds.unwrap_or_default()))
+		// let artboard_clip_bounds = self
+		// 	.all_artboards()
+		// 	.into_iter()
+		// 	.filter(|layer| {
+		// 		let artboard = self.network(&[]).unwrap().nodes.get(&layer.to_node());
+		// 		let clip_input = artboard.unwrap().inputs.get(5).unwrap();
+		// 		if let NodeInput::Value { tagged_value, .. } = clip_input {
+		// 			if tagged_value.to_primitive_string() == "true" {
+		// 				return true;
+		// 			}
+		// 		}
+		// 		false
+		// 	})
+		// 	.filter_map(|layer| self.document_metadata.bounding_box_document(layer))
+		// 	.reduce(Quad::combine_bounds);
+		// if artboard_clip_bounds.is_none() {
+		// 	return all_layers_bounds;
+		// }
+		// Some(Quad::constraint_bounds(all_layers_bounds.unwrap_or_default(), artboard_clip_bounds.unwrap_or_default()))
 	}
 
 	/// Calculates the selected layer bounds in document space
