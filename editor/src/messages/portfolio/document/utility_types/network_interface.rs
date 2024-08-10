@@ -575,7 +575,6 @@ impl NodeNetworkInterface {
 		} else if let graph_craft::document::DocumentNodeImplementation::ProtoNode(protonode) = &node.implementation {
 			let node_id_path = &[network_path, &[*node_id]].concat();
 			let primary_output_type = self.resolved_types.types.get(node_id_path).map(|ty| ty.output.clone()).or_else(|| {
-				log::warn!("no compiled output type found for {:?} {:?}", node_id_path, &node.implementation);
 				let Some(node_io_hashmap) = NODE_REGISTRY.get(protonode) else {
 					log::error!("Could not get hashmap for proto node: {protonode:?}");
 					return None;
