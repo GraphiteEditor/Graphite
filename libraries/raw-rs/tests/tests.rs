@@ -342,6 +342,6 @@ fn extract_data_from_dng_image(path: &Path) {
 	let output_folder = path.parent().unwrap().join(make);
 	std::fs::create_dir_all(&output_folder).unwrap();
 	let mut output_file = File::create(output_folder.join(model + ".toml")).unwrap();
-	let matrix: Vec<_> = matrix.iter().map(|x| (x.to_float() * 10_000.) as i16).collect();
-	writeln!(output_file, "camera_to_xyz = {:?}", matrix).unwrap();
+	let matrix: Vec<_> = matrix.iter().map(|x| x.to_float()).collect();
+	writeln!(output_file, "camera_to_xyz = {:.4?}", matrix).unwrap();
 }

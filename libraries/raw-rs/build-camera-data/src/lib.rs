@@ -69,7 +69,12 @@ pub fn build_camera_data(_: TokenStream) -> TokenStream {
 
 			let name = company_name.clone() + " " + model_path.file_stem().unwrap().to_str().unwrap();
 
-			let values: Table = toml::from_str(&fs::read_to_string(model_path).unwrap()).unwrap();
+			let mut values: Table = toml::from_str(&fs::read_to_string(model_path).unwrap()).unwrap();
+
+			if let Some(val) = values.get_mut("camera_to_xyz") {
+				*val = Value::Array(val.as_array().unwrap().iter().map(|x| Value::Integer((x.as_float().unwrap() * 10_000.) as i64)).collect());
+			}
+
 			camera_data.push((name, values))
 		});
 	});
