@@ -36,6 +36,32 @@ impl Default for GradientStops {
 	}
 }
 
+impl GradientStops {
+	pub fn evalute(&self, t: f64) -> Color {
+		if self.0.is_empty() {
+			return Color::BLACK;
+		}
+
+		if t <= self.0[0].0 {
+			return self.0[0].1;
+		}
+		if t >= self.0[self.0.len() - 1].0 {
+			return self.0[self.0.len() - 1].1;
+		}
+
+		for i in 0..self.0.len() - 1 {
+			let (t1, c1) = self.0[i];
+			let (t2, c2) = self.0[i + 1];
+			if t >= t1 && t <= t2 {
+				let normalized_t = (t - t1) / (t2 - t1);
+				return c1.lerp(&c2, normalized_t as f32);
+			}
+		}
+
+		Color::BLACK
+	}
+}
+
 /// A gradient fill.
 ///
 /// Contains the start and end points, along with the colors at varying points along the length.

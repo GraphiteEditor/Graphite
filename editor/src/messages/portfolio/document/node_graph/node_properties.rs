@@ -1091,7 +1091,7 @@ pub fn noise_pattern_properties(document_node: &DocumentNode, node_id: NodeId, _
 	]
 }
 
-pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn hue_saturation_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let hue_shift = number_widget(document_node, node_id, 1, "Hue Shift", NumberInput::default().min(-180.).max(180.).unit("°"), true);
 	let saturation_shift = number_widget(document_node, node_id, 2, "Saturation Shift", NumberInput::default().mode_range().min(-100.).max(100.).unit("%"), true);
 	let lightness_shift = number_widget(document_node, node_id, 3, "Lightness Shift", NumberInput::default().mode_range().min(-100.).max(100.).unit("%"), true);
@@ -1128,7 +1128,7 @@ pub fn _blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _co
 	vec![LayoutGroup::Row { widgets: radius }, LayoutGroup::Row { widgets: sigma }]
 }
 
-pub fn adjust_threshold_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn threshold_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let thereshold_min = number_widget(document_node, node_id, 1, "Min Luminance", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
 	let thereshold_max = number_widget(document_node, node_id, 2, "Max Luminance", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
 	let luminance_calc = luminance_calculation(document_node, node_id, 3, "Luminance Calc", true);
@@ -1136,13 +1136,46 @@ pub fn adjust_threshold_properties(document_node: &DocumentNode, node_id: NodeId
 	vec![LayoutGroup::Row { widgets: thereshold_min }, LayoutGroup::Row { widgets: thereshold_max }, luminance_calc]
 }
 
-pub fn adjust_vibrance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn gradient_map_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let gradient_input = 1;
+	let reverse_input = 2;
+
+	let gradient = if let Some(TaggedValue::GradientStops(gradient)) = &document_node.inputs[gradient_input].as_value() {
+		gradient.clone()
+	} else {
+		return vec![LayoutGroup::Row { widgets: vec![] }];
+	};
+	let mut gradient_row = vec![TextLabel::new("Gradient").widget_holder()];
+	add_blank_assist(&mut gradient_row);
+	gradient_row.extend([
+		Separator::new(SeparatorType::Unrelated).widget_holder(),
+		ColorButton::default()
+			.allow_none(false)
+			.value(FillChoice::Gradient(gradient))
+			.on_update(move |x: &ColorButton| {
+				NodeGraphMessage::SetInputValue {
+					node_id,
+					input_index: gradient_input,
+					value: TaggedValue::GradientStops(x.value.as_gradient().unwrap().clone()),
+				}
+				.into()
+			})
+			.on_commit(commit_value)
+			.widget_holder(),
+	]);
+
+	let reverse_row = bool_widget(document_node, node_id, reverse_input, "Reverse", true);
+
+	vec![LayoutGroup::Row { widgets: gradient_row }, LayoutGroup::Row { widgets: reverse_row }]
+}
+
+pub fn vibrance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let vibrance = number_widget(document_node, node_id, 1, "Vibrance", NumberInput::default().mode_range().min(-100.).max(100.).unit("%"), true);
 
 	vec![LayoutGroup::Row { widgets: vibrance }]
 }
 
-pub fn adjust_channel_mixer_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn channel_mixer_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	// Monochrome
 	let monochrome_index = 1;
 	let monochrome = bool_widget(document_node, node_id, monochrome_index, "Monochrome", true);
@@ -1236,7 +1269,7 @@ pub fn adjust_channel_mixer_properties(document_node: &DocumentNode, node_id: No
 	layout
 }
 
-pub fn adjust_selective_color_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn selective_color_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	// Colors choice
 	let colors_index = 38;
 	let mut colors = vec![TextLabel::new("Colors").widget_holder(), Separator::new(SeparatorType::Unrelated).widget_holder()];

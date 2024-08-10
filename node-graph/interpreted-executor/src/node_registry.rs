@@ -19,6 +19,7 @@ use graphene_core::{Node, NodeIO, NodeIOTypes};
 use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DynAnyNode, FutureWrapperNode, IntoTypeErasedNode};
 use graphene_std::application_io::{RenderConfig, TextureFrame};
 use graphene_std::raster::*;
+use graphene_std::vector::style::GradientStops;
 use graphene_std::wasm_application_io::*;
 use graphene_std::GraphicElement;
 #[cfg(feature = "gpu")]
@@ -484,6 +485,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		raster_node!(graphene_core::raster::HueSaturationNode<_, _, _>, params: [f64, f64, f64]),
 		raster_node!(graphene_core::raster::InvertRGBNode, params: []),
 		raster_node!(graphene_core::raster::ThresholdNode<_, _, _>, params: [f64, f64, LuminanceCalculation]),
+		raster_node!(graphene_core::raster::GradientMapNode<_, _>, params: [GradientStops, bool]),
 		raster_node!(graphene_core::raster::VibranceNode<_>, params: [f64]),
 		raster_node!(
 			graphene_core::raster::ChannelMixerNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>,

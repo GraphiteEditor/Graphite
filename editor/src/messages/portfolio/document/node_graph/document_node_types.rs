@@ -2282,7 +2282,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Raster",
-			properties: node_properties::adjust_hsl_properties,
+			properties: node_properties::hue_saturation_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Brightness/Contrast",
@@ -2346,7 +2346,28 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Raster",
-			properties: node_properties::adjust_threshold_properties,
+			properties: node_properties::threshold_properties,
+		},
+		DocumentNodeDefinition {
+			identifier: "Gradient Map",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::proto("graphene_core::raster::GradientMapNode<_, _>"),
+					inputs: vec![
+						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
+						NodeInput::value(TaggedValue::GradientStops(vector::style::GradientStops::default()), false),
+						NodeInput::value(TaggedValue::Bool(false), false),
+					],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_names: vec!["Image".to_string(), "Gradient".to_string()],
+					output_names: vec!["Image".to_string()],
+					..Default::default()
+				},
+			},
+			category: "Raster",
+			properties: node_properties::gradient_map_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Vibrance",
@@ -2363,7 +2384,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Raster",
-			properties: node_properties::adjust_vibrance_properties,
+			properties: node_properties::vibrance_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Channel Mixer",
@@ -2426,7 +2447,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Raster",
-			properties: node_properties::adjust_channel_mixer_properties,
+			properties: node_properties::channel_mixer_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Selective Color",
@@ -2536,7 +2557,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Raster",
-			properties: node_properties::adjust_selective_color_properties,
+			properties: node_properties::selective_color_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Opacity",
