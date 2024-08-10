@@ -963,11 +963,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 			}
 			NodeGraphMessage::SetGridAlignedEdges => {
-				network_interface.set_grid_aligned_edges(DVec2::new(ipp.viewport_bounds.bottom_right.x - ipp.viewport_bounds.top_left.x, 0.), breadcrumb_network_path);
-				// Send the new edges to the frontend
-				let imports = network_interface.frontend_imports(breadcrumb_network_path).unwrap_or_default();
-				let exports = network_interface.frontend_exports(breadcrumb_network_path).unwrap_or_default();
-				responses.add(FrontendMessage::UpdateImportsExports { imports, exports });
+				if graph_view_overlay_open {
+					network_interface.set_grid_aligned_edges(DVec2::new(ipp.viewport_bounds.bottom_right.x - ipp.viewport_bounds.top_left.x, 0.), breadcrumb_network_path);
+					// Send the new edges to the frontend
+					let imports = network_interface.frontend_imports(breadcrumb_network_path).unwrap_or_default();
+					let exports = network_interface.frontend_exports(breadcrumb_network_path).unwrap_or_default();
+					responses.add(FrontendMessage::UpdateImportsExports { imports, exports });
+				}
 			}
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
 				let input = NodeInput::value(value, false);

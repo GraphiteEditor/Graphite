@@ -514,6 +514,7 @@
 					handlePosition={scrollbarPos.x}
 					on:handlePosition={({ detail }) => panCanvasX(detail)}
 					on:pressTrack={({ detail }) => pageX(detail)}
+					on:pointerup={() => editor.handle.setGridAlignedEdges()}
 				/>
 			</LayoutRow>
 		</LayoutCol>

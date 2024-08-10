@@ -2794,7 +2794,7 @@ impl NodeNetworkInterface {
 					}
 				}
 				// If the node is not a layer or an upstream layer is not found, reconnect to the first upstream node
-				if reconnect_to_input.is_none() && (matches!(node.inputs.first(), Some(NodeInput::Node { .. })) || matches!(node.inputs.first(), Some(NodeInput::Network { .. }))) {
+				if reconnect_to_input.is_none() && (matches!(node.inputs.first(), Some(NodeInput::Node { .. }) | Some(NodeInput::Network { .. }))) {
 					reconnect_to_input = Some(node.inputs[0].clone());
 				}
 			}
@@ -2814,7 +2814,10 @@ impl NodeNetworkInterface {
 		}
 
 		for input_to_disconnect in &downstream_inputs_to_disconnect {
-			if let Some(reconnect_input) = reconnect_to_input.take() {
+			// Prevent reconnecting export to import until https://github.com/GraphiteEditor/Graphite/issues/1762 is solved
+			if matches!(reconnect_to_input, Some(NodeInput::Network { .. })) && matches!(input_to_disconnect, InputConnector::Export(_)) {
+				self.disconnect_input(input_to_disconnect, network_path);
+			} else if let Some(reconnect_input) = reconnect_to_input.take() {
 				self.set_input(input_to_disconnect, reconnect_input.clone(), network_path);
 				if let Some(node_metadata) = self.node_metadata(deleting_node_id, network_path) {
 					if let NodeTypePersistentMetadata::Layer(layer_metadata) = &node_metadata.persistent_metadata.node_type_metadata {
