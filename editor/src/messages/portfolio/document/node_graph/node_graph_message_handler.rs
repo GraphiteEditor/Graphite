@@ -11,11 +11,12 @@ use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 
-use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graphene_core::*;
 use renderer::{ClickTarget, Quad};
+
+use glam::{DAffine2, DVec2, IVec2};
 
 #[derive(Debug)]
 pub struct NodeGraphHandlerData<'a> {
@@ -555,7 +556,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							responses.add(NodeGraphMessage::DisconnectInput {
 								input_connector: disconnecting.clone(),
 							});
-							// Update the front end that the node is disconnected
+							// Update the frontend that the node is disconnected
 							responses.add(NodeGraphMessage::RunDocumentGraph);
 							responses.add(NodeGraphMessage::SendGraph);
 							self.disconnecting = None;
