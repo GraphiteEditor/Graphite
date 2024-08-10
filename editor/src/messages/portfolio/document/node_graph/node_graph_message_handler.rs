@@ -11,10 +11,9 @@ use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
+use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graphene_core::*;
-use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 use renderer::{ClickTarget, Quad};
 
 use glam::{DAffine2, DVec2, IVec2};
@@ -572,7 +571,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 									input_connector: disconnecting.clone(),
 								});
 							}
-							// Update the front end that the node is disconnected
+							// Update the frontend that the node is disconnected
 							responses.add(NodeGraphMessage::RunDocumentGraph);
 							responses.add(NodeGraphMessage::SendGraph);
 							self.disconnecting = None;
@@ -942,7 +941,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(PropertiesPanelMessage::Refresh);
 			}
 			NodeGraphMessage::SendClickTargets => responses.add(FrontendMessage::UpdateClickTargets {
-				click_targets: Some(network_interface.collect_front_end_click_targets(breadcrumb_network_path)),
+				click_targets: Some(network_interface.collect_frontend_click_targets(breadcrumb_network_path)),
 			}),
 			NodeGraphMessage::EndSendClickTargets => responses.add(FrontendMessage::UpdateClickTargets { click_targets: None }),
 			NodeGraphMessage::SendGraph => {
@@ -1605,14 +1604,9 @@ impl NodeGraphMessageHandler {
 			let frontend_graph_inputs = node.inputs.iter().enumerate().map(|(index, _)| {
 				// Convert the index in all inputs to the index in only the exposed inputs
 				// TODO: Only display input type if potential inputs in node_registry are all the same type
-				let node_types = network_interface.resolved_types.types.get(node_id_path.as_slice());
-
+				let node_type = network_interface.input_type(&InputConnector::node(node_id, index), breadcrumb_network_path);
 				// TODO: Should display the color of the "most commonly relevant" (we'd need some sort of precedence) data type it allows given the current generic form that's constrained by the other present connections.
-				let frontend_data_type = if let Some(node_types) = node_types {
-					FrontendGraphDataType::with_type(&node_types.inputs[index])
-				} else {
-					FrontendGraphDataType::General
-				};
+				let data_type = FrontendGraphDataType::with_type(&node_type);
 
 				let input_name = node_metadata
 					.persistent_metadata
@@ -1622,9 +1616,9 @@ impl NodeGraphMessageHandler {
 					.unwrap_or(network_interface.input_type(&InputConnector::node(node_id, index), breadcrumb_network_path).nested_type().to_string());
 
 				FrontendGraphInput {
-					data_type: frontend_data_type,
+					data_type,
 					name: input_name,
-					resolved_type: node_types.map(|types| format!("{:?}", types.inputs[index])),
+					resolved_type: Some(format!("{:?}", node_type)),
 					connected_to: None,
 				}
 			});
@@ -1655,7 +1649,7 @@ impl NodeGraphMessageHandler {
 				.map(|(_, input_type)| input_type)
 				.collect();
 
-			let output_types = Self::get_output_types(node, &network_interface.resolved_types, node_id_path);
+			let output_types = network_interface.output_types(&node_id, breadcrumb_network_path);
 			let primary_output_type = output_types.first().expect("Primary output should always exist");
 			let frontend_data_type = if let Some(output_type) = primary_output_type {
 				FrontendGraphDataType::with_type(output_type)
@@ -1831,83 +1825,6 @@ impl NodeGraphMessageHandler {
 				responses.add(FrontendMessage::UpdateDocumentLayerDetails { data });
 			}
 		}
-	}
-
-	/// Retrieves the output types for a given document node and its exports.
-	///
-	/// This function traverses the node and its nested network structure (if applicable) to determine
-	/// the types of all outputs, including the primary output and any additional exports.
-	///
-	/// # Arguments
-	///
-	/// * `node` - A reference to the `DocumentNode` for which to determine output types.
-	/// * `resolved_types` - A reference to `ResolvedDocumentNodeTypes` containing pre-resolved type information.
-	/// * `node_id_path` - A slice of `NodeId`s representing the path to the current node in the document graph.
-	///
-	/// # Returns
-	///
-	/// A `Vec<Option<Type>>` where:
-	/// - The first element is the primary output type of the node.
-	/// - Subsequent elements are types of additional exports (if the node is a network).
-	/// - `None` values indicate that a type couldn't be resolved for a particular output.
-	///
-	/// # Behavior
-	///
-	/// 1. Retrieves the primary output type from `resolved_types`.
-	/// 2. If the node is a network:
-	///    - Iterates through its exports (skipping the first/primary export).
-	///    - For each export, traverses the network until reaching a protonode or terminal condition.
-	///    - Determines the output type based on the final node/value encountered.
-	/// 3. Collects and returns all resolved types.
-	///
-	/// # Note
-	///
-	/// This function assumes that export indices and node IDs always exist within their respective
-	/// collections. It will panic if these assumptions are violated.
-	pub fn get_output_types(node: &DocumentNode, resolved_types: &ResolvedDocumentNodeTypes, node_id_path: &[NodeId]) -> Vec<Option<Type>> {
-		let mut output_types = Vec::new();
-
-		let primary_output_type = resolved_types.types.get(node_id_path).map(|ty| ty.output.clone());
-
-		// If the node is not a protonode, get types by traversing across exports until a proto node is reached.
-		if let graph_craft::document::DocumentNodeImplementation::Network(internal_network) = &node.implementation {
-			for export in internal_network.exports.iter() {
-				let mut current_export = export;
-				let mut current_network = internal_network;
-				let mut current_path = node_id_path.to_owned();
-
-				while let NodeInput::Node { node_id, output_index, .. } = current_export {
-					current_path.push(*node_id);
-
-					let next_node = current_network.nodes.get(node_id).expect("Export node id should always exist");
-
-					if let graph_craft::document::DocumentNodeImplementation::Network(next_network) = &next_node.implementation {
-						current_network = next_network;
-						current_export = next_network.exports.get(*output_index).expect("Export at output index should always exist");
-					} else {
-						break;
-					}
-				}
-
-				let output_type: Option<Type> = match current_export {
-					NodeInput::Node { output_index, .. } => {
-						// Current export is pointing to a proto node where type can be derived
-						assert_eq!(*output_index, 0, "Output index for a proto node should always be 0");
-						resolved_types.types.get(&current_path).map(|ty| ty.output.clone())
-					}
-					NodeInput::Value { tagged_value, .. } => Some(tagged_value.ty()),
-					NodeInput::Network { import_type, .. } => Some(import_type.clone()),
-					_ => None,
-				};
-				output_types.push(output_type);
-			}
-		} else {
-			if primary_output_type.is_none() {
-				log::warn!("no output type found for {:?} {:?}", node_id_path, &node.implementation);
-			}
-			output_types.push(primary_output_type);
-		}
-		output_types
 	}
 
 	fn build_wire_path_string(output_position: DVec2, input_position: DVec2, vertical_out: bool, vertical_in: bool) -> String {

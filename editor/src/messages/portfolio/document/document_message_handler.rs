@@ -1382,6 +1382,7 @@ impl DocumentMessageHandler {
 
 		// Set the previous network navigation metadata to the current navigation metadata
 		network_interface.copy_all_navigation_metadata(&self.network_interface);
+		std::mem::swap(&mut network_interface.resolved_types, &mut self.network_interface.resolved_types);
 
 		//Update the metadata transform based on document PTZ
 		let transform = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);

@@ -486,6 +486,7 @@ impl Fsm for PathToolFsmState {
 			// `Self::InsertPoint` case:
 			(Self::InsertPoint, PathToolMessage::MouseDown { .. } | PathToolMessage::Enter { .. }) => {
 				tool_data.double_click_handled = true;
+				// TODO: Don't use `Key::Shift` directly, instead take it as a variable from the input mappings list like in all other places
 				let shift = input.keyboard.get(Key::Shift as usize);
 				tool_data.end_insertion(shape_editor, responses, InsertEndKind::Add { shift })
 			}
@@ -499,8 +500,11 @@ impl Fsm for PathToolFsmState {
 			(Self::InsertPoint, PathToolMessage::GRS { key: propagate }) => {
 				// MAYBE: use `InputMapperMessage::KeyDown(..)` instead
 				match propagate {
+					// TODO: Don't use `Key::G` directly, instead take it as a variable from the input mappings list like in all other places
 					Key::KeyG => responses.add(TransformLayerMessage::BeginGrab),
+					// TODO: Don't use `Key::R` directly, instead take it as a variable from the input mappings list like in all other places
 					Key::KeyR => responses.add(TransformLayerMessage::BeginRotate),
+					// TODO: Don't use `Key::S` directly, instead take it as a variable from the input mappings list like in all other places
 					Key::KeyS => responses.add(TransformLayerMessage::BeginScale),
 					_ => warn!("Unexpected GRS key"),
 				}

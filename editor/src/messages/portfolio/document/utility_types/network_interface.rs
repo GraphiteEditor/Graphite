@@ -4,7 +4,6 @@ use super::nodes::SelectedNodes;
 use crate::consts::{EXPORTS_TO_EDGE_PIXEL_GAP, IMPORTS_TO_EDGE_PIXEL_GAP};
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::utility_types::{FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
-use crate::messages::prelude::NodeGraphMessageHandler;
 
 use bezier_rs::Subpath;
 use graph_craft::document::{value::TaggedValue, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
@@ -413,20 +412,54 @@ impl NodeNetworkInterface {
 
 	/// Get the [`Type`] for any InputConnector
 	pub fn input_type(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Type {
-		let Some(network) = self.network(network_path) else {
-			log::error!("Could not get network in input_type");
-			return concrete!(());
-		};
-
+		// TODO: If the input_connector is a NodeInput::Value, return the type of the tagged value
 		// TODO: Store types for all document nodes, not just the compiled proto nodes, which currently skips isolated nodes
 		let node_type_from_compiled_network = if let Some(node_id) = input_connector.node_id() {
+			let Some(current_network) = self.network(network_path) else {
+				log::error!("Could not get current network in input_type");
+				return concrete!(());
+			};
+			let Some(node) = current_network.nodes.get(&node_id) else {
+				log::error!("Could not get node {node_id} in input_type");
+				return concrete!(());
+			};
 			let node_id_path = [network_path, &[node_id]].concat().clone();
-			self.resolved_types
-				.types
-				.get(node_id_path.as_slice())
-				.map(|node_types| node_types.inputs[input_connector.input_index()].clone())
-		} else if let Some(encapsulating_node) = self.encapsulating_node(network_path) {
-			let output_types = NodeGraphMessageHandler::get_output_types(encapsulating_node, &self.resolved_types, network_path);
+			match &node.implementation {
+				DocumentNodeImplementation::Network(nested_network) => {
+					let downstream_connection = nested_network
+						.nodes
+						.iter()
+						.flat_map(|(node_id, node)| node.inputs.iter().enumerate().map(|(input_index, input)| (InputConnector::node(*node_id, input_index), input)))
+						.chain(nested_network.exports.iter().enumerate().map(|(export_index, export)| (InputConnector::Export(export_index), export)))
+						.find(|(_, input)| {
+							if let NodeInput::Network { import_index, .. } = input {
+								*import_index == input_connector.input_index()
+							} else {
+								false
+							}
+						});
+					if let Some((input_connector, _)) = downstream_connection {
+						Some(self.input_type(&input_connector, &node_id_path))
+					}
+					// Nothing is connected to the import
+					else {
+						Some(concrete!(()))
+					}
+				}
+				DocumentNodeImplementation::ProtoNode(_) => {
+					// If a node has manual composition, then offset the input index by 1 since the proto node also includes the type of the parameter passed through manual composition.
+					let manual_composition_offset = if node.manual_composition.is_some() { 1 } else { 0 };
+					self.resolved_types
+						.types
+						.get(node_id_path.as_slice())
+						.map(|node_types| node_types.inputs[input_connector.input_index() + manual_composition_offset].clone())
+				}
+				DocumentNodeImplementation::Extract => Some(concrete!(())),
+			}
+		} else if let Some(encapsulating_node_id) = network_path.last() {
+			let mut encapsulating_node_id_path = network_path.to_vec();
+			encapsulating_node_id_path.pop();
+			let output_types: Vec<Option<Type>> = self.output_types(encapsulating_node_id, &encapsulating_node_id_path);
 			output_types.get(input_connector.input_index()).map_or_else(
 				|| {
 					warn!("Could not find output type for export node");
@@ -441,7 +474,10 @@ impl NodeNetworkInterface {
 		node_type_from_compiled_network.unwrap_or_else(|| {
 			// TODO: Once there is type inference (#1621), replace this workaround approach when disconnecting node inputs with NodeInput::Node(ToDefaultNode),
 			// TODO: which would be a new node that implements the Default trait (i.e. `Default::default()`)
-
+			let Some(network) = self.network(network_path) else {
+				log::error!("Could not get network in input_type");
+				return concrete!(());
+			};
 			// Resolve types from proto nodes in node_registry
 			let Some(node_id) = input_connector.node_id() else {
 				return concrete!(());
@@ -453,21 +489,7 @@ impl NodeNetworkInterface {
 			fn type_from_node(node: &DocumentNode, input_index: usize) -> Type {
 				match &node.implementation {
 					DocumentNodeImplementation::ProtoNode(protonode) => {
-						let Some(node_io_hashmap) = NODE_REGISTRY.get(protonode) else {
-							log::error!("Could not get hashmap for proto node: {protonode:?}");
-							return concrete!(());
-						};
-
-						let mut all_node_io_types = node_io_hashmap.keys().collect::<Vec<_>>();
-						all_node_io_types.sort_by_key(|node_io_types| {
-							let mut hasher = DefaultHasher::new();
-							node_io_types.hash(&mut hasher);
-							hasher.finish()
-						});
-						let Some(node_types) = all_node_io_types.first() else {
-							log::error!("Could not get node_types from hashmap");
-							return concrete!(());
-						};
+						let Some(node_types) = proto_node_type(protonode) else { return concrete!(()) };
 
 						let skip_footprint = if node.manual_composition.is_some() { 1 } else { 0 };
 
@@ -497,6 +519,96 @@ impl NodeNetworkInterface {
 
 			type_from_node(node, input_connector.input_index())
 		})
+	}
+
+	/// Retrieves the output types for a given document node and its exports.
+	///
+	/// This function traverses the node and its nested network structure (if applicable) to determine
+	/// the types of all outputs, including the primary output and any additional exports.
+	///
+	/// # Arguments
+	///
+	/// * `node` - A reference to the `DocumentNode` for which to determine output types.
+	/// * `resolved_types` - A reference to `ResolvedDocumentNodeTypes` containing pre-resolved type information.
+	/// * `node_id_path` - A slice of `NodeId`s representing the path to the current node in the document graph.
+	///
+	/// # Returns
+	///
+	/// A `Vec<Option<Type>>` where:
+	/// - The first element is the primary output type of the node.
+	/// - Subsequent elements are types of additional exports (if the node is a network).
+	/// - `None` values indicate that a type couldn't be resolved for a particular output.
+	///
+	/// # Behavior
+	///
+	/// 1. Retrieves the primary output type from `resolved_types`.
+	/// 2. If the node is a network:
+	///    - Iterates through its exports (skipping the first/primary export).
+	///    - For each export, traverses the network until reaching a protonode or terminal condition.
+	///    - Determines the output type based on the final node/value encountered.
+	/// 3. Collects and returns all resolved types.
+	///
+	/// # Note
+	///
+	/// This function assumes that export indices and node IDs always exist within their respective
+	/// collections. It will panic if these assumptions are violated.
+	pub fn output_types(&self, node_id: &NodeId, network_path: &[NodeId]) -> Vec<Option<Type>> {
+		let Some(network) = self.network(network_path) else {
+			log::error!("Could not get network in output_types");
+			return Vec::new();
+		};
+		let Some(node) = network.nodes.get(node_id) else {
+			log::error!("Could not get node {node_id} in output_types");
+			return Vec::new();
+		};
+
+		let mut output_types = Vec::new();
+
+		// If the node is not a protonode, get types by traversing across exports until a proto node is reached.
+		match &node.implementation {
+			graph_craft::document::DocumentNodeImplementation::Network(internal_network) => {
+				for export in internal_network.exports.iter() {
+					match export {
+						NodeInput::Node {
+							node_id: nested_node_id,
+							output_index,
+							..
+						} => {
+							let nested_output_types = self.output_types(nested_node_id, &[network_path, &[*node_id]].concat());
+							let Some(nested_nodes_output_types) = nested_output_types.get(*output_index) else {
+								log::error!("Could not get nested nodes output in output_types");
+								return Vec::new();
+							};
+							output_types.push(nested_nodes_output_types.clone());
+						}
+						NodeInput::Value { tagged_value, .. } => {
+							output_types.push(Some(tagged_value.ty()));
+						}
+
+						NodeInput::Network { .. } => {
+							// https://github.com/GraphiteEditor/Graphite/issues/1762
+							log::error!("Network input type cannot be connected to export");
+							return Vec::new();
+						}
+						NodeInput::Scope(_) => todo!(),
+						NodeInput::Inline(_) => todo!(),
+					}
+				}
+			}
+			graph_craft::document::DocumentNodeImplementation::ProtoNode(protonode) => {
+				let node_id_path = &[network_path, &[*node_id]].concat();
+				let primary_output_type = self.resolved_types.types.get(node_id_path).map(|ty| ty.output.clone()).or_else(|| {
+					let node_types = proto_node_type(protonode)?;
+					Some(node_types.output.clone())
+				});
+
+				output_types.push(primary_output_type);
+			}
+			graph_craft::document::DocumentNodeImplementation::Extract => {
+				output_types.push(Some(concrete!(())));
+			}
+		}
+		output_types
 	}
 
 	pub fn position(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<IVec2> {
@@ -536,19 +648,14 @@ impl NodeNetworkInterface {
 					if !network_path.is_empty() {
 						// TODO: https://github.com/GraphiteEditor/Graphite/issues/1767
 						// TODO: Non exposed inputs are not added to the inputs_source_map, fix `pub fn document_node_types(&self) -> ResolvedDocumentNodeTypes`
-						let input_type = self.resolved_types.types.get(network_path).map(|nt| nt.inputs[*import_index].clone());
+						let mut encapsulating_path = network_path.to_vec();
+						let encapsulating_node_id = encapsulating_path.pop().unwrap();
 
-						let frontend_data_type = if let Some(input_type) = input_type.clone() {
-							FrontendGraphDataType::with_type(&input_type)
-						} else {
-							FrontendGraphDataType::General
-						};
+						let input_type = self.input_type(&InputConnector::node(encapsulating_node_id, *import_index), &encapsulating_path);
+						let data_type = FrontendGraphDataType::with_type(&input_type);
 
 						let import_name = if import_name.is_empty() {
-							input_type
-								.clone()
-								.map(|input_type| TaggedValue::from_type(&input_type).ty().to_string())
-								.unwrap_or(format!("Import {}", import_index + 1))
+							TaggedValue::from_type(&input_type).ty().to_string()
 						} else {
 							import_name
 						};
@@ -564,9 +671,9 @@ impl NodeNetworkInterface {
 
 						import_metadata = Some((
 							FrontendGraphOutput {
-								data_type: frontend_data_type,
+								data_type,
 								name: import_name,
-								resolved_type: input_type.map(|input| format!("{input:?}")),
+								resolved_type: Some(format!("{input_type:?}")),
 								connected_to,
 							},
 							click_target,
@@ -596,9 +703,7 @@ impl NodeNetworkInterface {
 					};
 
 					let (frontend_data_type, input_type) = if let NodeInput::Node { node_id, output_index, .. } = export {
-						let node = network.nodes.get(node_id).expect("Node should always exist");
-						let node_id_path = &[network_path, &[*node_id]].concat();
-						let output_types = NodeGraphMessageHandler::get_output_types(node, &self.resolved_types, node_id_path);
+						let output_types = self.output_types(node_id, network_path);
 
 						if let Some(output_type) = output_types.get(*output_index).cloned().flatten() {
 							(FrontendGraphDataType::with_type(&output_type), Some(output_type.clone()))
@@ -1095,6 +1200,24 @@ impl NodeNetworkInterface {
 			resolved_types: ResolvedDocumentNodeTypes::default(),
 		}
 	}
+}
+
+fn proto_node_type(protonode: &graph_craft::ProtoNodeIdentifier) -> Option<&graphene_std::NodeIOTypes> {
+	let Some(node_io_hashmap) = NODE_REGISTRY.get(protonode) else {
+		log::error!("Could not get hashmap for proto node: {protonode:?}");
+		return None;
+	};
+
+	let node_types = node_io_hashmap.keys().min_by_key(|node_io_types| {
+		let mut hasher = DefaultHasher::new();
+		node_io_types.hash(&mut hasher);
+		hasher.finish()
+	});
+
+	if node_types.is_none() {
+		log::error!("Could not get node_types from hashmap");
+	};
+	node_types
 }
 
 // Private mutable getters for use within the network interface
@@ -1716,12 +1839,12 @@ impl NodeNetworkInterface {
 		all_selected_nodes
 	}
 
-	pub fn collect_front_end_click_targets(&mut self, network_path: &[NodeId]) -> FrontendClickTargets {
+	pub fn collect_frontend_click_targets(&mut self, network_path: &[NodeId]) -> FrontendClickTargets {
 		let mut all_node_click_targets = Vec::new();
 		let mut port_click_targets = Vec::new();
 		let mut visibility_click_targets = Vec::new();
 		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in collect_front_end_click_targets");
+			log::error!("Could not get nested network_metadata in collect_frontend_click_targets");
 			return FrontendClickTargets::default();
 		};
 		network_metadata.persistent_metadata.node_metadata.keys().copied().collect::<Vec<_>>().into_iter().for_each(|node_id| {
