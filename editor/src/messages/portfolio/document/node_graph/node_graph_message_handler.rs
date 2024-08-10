@@ -444,9 +444,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					} else {
 						network_interface.upstream_output_connector(clicked_input, selection_network_path)
 					};
-					let Some(output_connector) = output_connector else {
-						return;
-					};
+					let Some(output_connector) = output_connector else { return };
 					self.wire_in_progress_from_connector = network_interface.output_position(&output_connector, selection_network_path);
 					return;
 				}
