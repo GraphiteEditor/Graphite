@@ -83,7 +83,7 @@ impl DynamicExecutor {
 		let mut remove = Vec::with_capacity(old_to_remove.len() - self.orphaned_nodes.len().min(old_to_remove.len()));
 		for node_id in old_to_remove {
 			if self.orphaned_nodes.contains(&node_id) {
-				let path = self.tree.free_node(node_id);
+				let path: Option<Box<[NodeId]>> = self.tree.free_node(node_id);
 				self.typing_context.remove_inference(node_id);
 				if let Some(path) = path {
 					remove.push(path);
@@ -111,6 +111,10 @@ impl DynamicExecutor {
 		nodes.flat_map(|id| self.tree.source_map().get(&id).map(|(_, b)| (id, b.clone())))
 		// TODO: https://github.com/GraphiteEditor/Graphite/issues/1767
 		// TODO: Non exposed inputs are not added to the inputs_source_map, so they are not included in the resolved_document_node_types. The type is still available in the typing_context. This only affects the UI-only "Import" node.
+	}
+
+	pub fn all_document_node_types(&self) -> impl Iterator<Item = (Path, NodeTypes)> + '_ {
+		self.tree.nodes.values().flat_map(|(_, id)| self.tree.source_map().get(id).map(|(_, b)| (id.clone(), b.clone())))
 	}
 }
 
