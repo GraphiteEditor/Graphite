@@ -530,42 +530,48 @@ impl NodeNetworkInterface {
 		let mut output_types = Vec::new();
 
 		// If the node is not a protonode, get types by traversing across exports until a proto node is reached.
-		if let graph_craft::document::DocumentNodeImplementation::Network(internal_network) = &node.implementation {
-			for export in internal_network.exports.iter() {
-				match export {
-					NodeInput::Node {
-						node_id: nested_node_id,
-						output_index,
-						..
-					} => {
-						let nested_output_types = self.output_types(nested_node_id, &[network_path, &[*node_id]].concat());
-						let Some(nested_nodes_output_types) = nested_output_types.get(*output_index) else {
-							log::error!("Could not get nested nodes output in output_types");
-							return Vec::new();
-						};
-						output_types.push(nested_nodes_output_types.clone());
-					}
-					NodeInput::Value { tagged_value, .. } => {
-						output_types.push(Some(tagged_value.ty()));
-					}
+		match &node.implementation {
+			graph_craft::document::DocumentNodeImplementation::Network(internal_network) => {
+				for export in internal_network.exports.iter() {
+					match export {
+						NodeInput::Node {
+							node_id: nested_node_id,
+							output_index,
+							..
+						} => {
+							let nested_output_types = self.output_types(nested_node_id, &[network_path, &[*node_id]].concat());
+							let Some(nested_nodes_output_types) = nested_output_types.get(*output_index) else {
+								log::error!("Could not get nested nodes output in output_types");
+								return Vec::new();
+							};
+							output_types.push(nested_nodes_output_types.clone());
+						}
+						NodeInput::Value { tagged_value, .. } => {
+							output_types.push(Some(tagged_value.ty()));
+						}
 
-					NodeInput::Network { .. } => {
-						// https://github.com/GraphiteEditor/Graphite/issues/1762
-						log::error!("Network input type cannot be connected to export");
-						return Vec::new();
+						NodeInput::Network { .. } => {
+							// https://github.com/GraphiteEditor/Graphite/issues/1762
+							log::error!("Network input type cannot be connected to export");
+							return Vec::new();
+						}
+						NodeInput::Scope(_) => todo!(),
+						NodeInput::Inline(_) => todo!(),
 					}
-					NodeInput::Scope(_) => todo!(),
-					NodeInput::Inline(_) => todo!(),
 				}
 			}
-		} else if let graph_craft::document::DocumentNodeImplementation::ProtoNode(protonode) = &node.implementation {
-			let node_id_path = &[network_path, &[*node_id]].concat();
-			let primary_output_type = self.resolved_types.types.get(node_id_path).map(|ty| ty.output.clone()).or_else(|| {
-				let node_types = proto_node_type(protonode)?;
-				Some(node_types.output.clone())
-			});
+			graph_craft::document::DocumentNodeImplementation::ProtoNode(protonode) => {
+				let node_id_path = &[network_path, &[*node_id]].concat();
+				let primary_output_type = self.resolved_types.types.get(node_id_path).map(|ty| ty.output.clone()).or_else(|| {
+					let node_types = proto_node_type(protonode)?;
+					Some(node_types.output.clone())
+				});
 
-			output_types.push(primary_output_type);
+				output_types.push(primary_output_type);
+			}
+			graph_craft::document::DocumentNodeImplementation::Extract => {
+				output_types.push(Some(concrete!(())));
+			}
 		}
 		output_types
 	}
