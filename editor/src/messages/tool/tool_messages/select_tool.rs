@@ -472,15 +472,18 @@ impl Fsm for SelectToolFsmState {
 
 					// Update the selection box
 					overlay_context.quad(quad);
+				}
 				// Only highlight layers if the viewport is not being panned (middle mouse button is pressed)
-				} else if !input.keyboard.get(Key::Mmb as usize) {
+				// TODO: Don't use `Key::Mmb` directly, instead take it as a variable from the input mappings list like in all other places
+				else if !input.keyboard.get(Key::Mmb as usize) {
 					// Get the layer the user is hovering over
 					let click = document.click(input);
 					let not_selected_click = click.filter(|&hovered_layer| !document.network_interface.selected_nodes(&[]).unwrap().selected_layers_contains(hovered_layer, document.metadata()));
 					if let Some(layer) = not_selected_click {
 						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
 
-						// Measure with alt
+						// Measure with Alt held down
+						// TODO: Don't use `Key::Alt` directly, instead take it as a variable from the input mappings list like in all other places
 						if input.keyboard.get(Key::Alt as usize) {
 							let hovered_bounds = document
 								.metadata()

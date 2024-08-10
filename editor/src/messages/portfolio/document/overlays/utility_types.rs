@@ -78,7 +78,9 @@ impl OverlayContext {
 		let position = position.round() - DVec2::splat(0.5);
 
 		self.render_context.begin_path();
-		self.render_context.arc(position.x, position.y, MANIPULATOR_GROUP_MARKER_SIZE / 2., 0., TAU).expect("draw circle");
+		self.render_context
+			.arc(position.x, position.y, MANIPULATOR_GROUP_MARKER_SIZE / 2., 0., TAU)
+			.expect("Failed to draw the circle");
 
 		let fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
 		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(fill));
@@ -127,7 +129,7 @@ impl OverlayContext {
 		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
 		let position = position.round();
 		self.render_context.begin_path();
-		self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("draw circle");
+		self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("Failed to draw the circle");
 		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(color_fill));
 		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(color_stroke));
 		self.render_context.fill();
@@ -139,7 +141,7 @@ impl OverlayContext {
 		// Circle
 
 		self.render_context.begin_path();
-		self.render_context.arc(x, y, PIVOT_DIAMETER / 2., 0., TAU).expect("draw circle");
+		self.render_context.arc(x, y, PIVOT_DIAMETER / 2., 0., TAU).expect("Failed to draw the circle");
 		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_YELLOW));
 		self.render_context.fill();
 
@@ -247,7 +249,7 @@ impl OverlayContext {
 
 	pub fn text(&self, text: &str, pos: DVec2, background: &str, padding: f64) {
 		let pos = pos.round();
-		let metrics = self.render_context.measure_text(text).expect("measure text");
+		let metrics = self.render_context.measure_text(text).expect("Failed to measure the text dimensions");
 		self.render_context.set_fill_style(&background.into());
 		self.render_context.fill_rect(
 			pos.x + metrics.actual_bounding_box_left(),
@@ -258,15 +260,19 @@ impl OverlayContext {
 		self.render_context.set_fill_style(&"white".into());
 		self.render_context
 			.fill_text(text, pos.x + padding, pos.y - padding - metrics.font_bounding_box_descent())
-			.expect("draw text");
+			.expect("Failed to draw the text on the canvas");
 	}
 
 	pub fn angle_text(&self, text: &str, pos: DVec2, direction: DVec2, padding: f64, pivot: Pivot) {
-		self.render_context.translate(pos.x, pos.y).expect("translate");
+		self.render_context.translate(pos.x, pos.y).expect("Failed to translate the render context to the specified position");
+
 		let angle = -direction.angle_to(DVec2::X);
-		self.render_context.rotate(angle).expect("rotate");
-		let metrics = self.render_context.measure_text(text).expect("measure text");
+		self.render_context.rotate(angle).expect("Failed to rotate the render context to the specified angle");
+
+		let metrics = self.render_context.measure_text(text).expect("Failed to measure the text dimensions");
+
 		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_BLUE));
+
 		let local_position = match pivot {
 			Pivot::LeftCentreY => DVec2::new(padding, (metrics.actual_bounding_box_ascent() + metrics.actual_bounding_box_descent()) / 2.),
 			Pivot::TopCentreX => DVec2::new(
@@ -274,8 +280,10 @@ impl OverlayContext {
 				padding + metrics.font_bounding_box_ascent(),
 			),
 		};
-		self.render_context.fill_text(text, local_position.x, local_position.y).expect("draw text");
-		self.render_context.reset_transform().expect("reset transform");
+		self.render_context
+			.fill_text(text, local_position.x, local_position.y)
+			.expect("Failed to draw the text at the calculated position");
+		self.render_context.reset_transform().expect("Failed to reset the render context transform");
 	}
 }
 

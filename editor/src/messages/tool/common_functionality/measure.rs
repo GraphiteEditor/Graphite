@@ -1,12 +1,12 @@
-use graphene_std::renderer::Rect;
-
 use crate::messages::portfolio::document::overlays::utility_types::{self, OverlayContext};
 use crate::messages::tool::tool_messages::tool_prelude::*;
+
+use graphene_std::renderer::Rect;
 
 pub fn overlay(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2, document_to_viewport: DAffine2, overlay_context: &mut OverlayContext) {
 	let transform_to_document = document_to_viewport.inverse() * transform;
 	if selected_bounds.intersects(hovered_bounds) {
-		warn!("I'm not sure what to do here?");
+		// TODO: I'm not sure what to do here?
 		return;
 	}
 
