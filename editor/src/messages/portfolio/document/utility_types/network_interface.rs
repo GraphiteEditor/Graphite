@@ -454,21 +454,7 @@ impl NodeNetworkInterface {
 			fn type_from_node(node: &DocumentNode, input_index: usize) -> Type {
 				match &node.implementation {
 					DocumentNodeImplementation::ProtoNode(protonode) => {
-						let Some(node_io_hashmap) = NODE_REGISTRY.get(protonode) else {
-							log::error!("Could not get hashmap for proto node: {protonode:?}");
-							return concrete!(());
-						};
-
-						let mut all_node_io_types = node_io_hashmap.keys().collect::<Vec<_>>();
-						all_node_io_types.sort_by_key(|node_io_types| {
-							let mut hasher = DefaultHasher::new();
-							node_io_types.hash(&mut hasher);
-							hasher.finish()
-						});
-						let Some(node_types) = all_node_io_types.first() else {
-							log::error!("Could not get node_types from hashmap");
-							return concrete!(());
-						};
+						let Some(node_types) = proto_node_type(protonode) else { return concrete!(()) };
 
 						let skip_footprint = if node.manual_composition.is_some() { 1 } else { 0 };
 
@@ -575,21 +561,7 @@ impl NodeNetworkInterface {
 		} else if let graph_craft::document::DocumentNodeImplementation::ProtoNode(protonode) = &node.implementation {
 			let node_id_path = &[network_path, &[*node_id]].concat();
 			let primary_output_type = self.resolved_types.types.get(node_id_path).map(|ty| ty.output.clone()).or_else(|| {
-				let Some(node_io_hashmap) = NODE_REGISTRY.get(protonode) else {
-					log::error!("Could not get hashmap for proto node: {protonode:?}");
-					return None;
-				};
-
-				let mut all_node_io_types = node_io_hashmap.keys().collect::<Vec<_>>();
-				all_node_io_types.sort_by_key(|node_io_types| {
-					let mut hasher = DefaultHasher::new();
-					node_io_types.hash(&mut hasher);
-					hasher.finish()
-				});
-				let Some(node_types) = all_node_io_types.first() else {
-					log::error!("Could not get node_types from hashmap");
-					return None;
-				};
+				let node_types = proto_node_type(protonode)?;
 				Some(node_types.output.clone())
 			});
 
@@ -1175,6 +1147,24 @@ impl NodeNetworkInterface {
 			resolved_types: ResolvedDocumentNodeTypes::default(),
 		}
 	}
+}
+
+fn proto_node_type(protonode: &graph_craft::ProtoNodeIdentifier) -> Option<&graphene_std::NodeIOTypes> {
+	let Some(node_io_hashmap) = NODE_REGISTRY.get(protonode) else {
+		log::error!("Could not get hashmap for proto node: {protonode:?}");
+		return None;
+	};
+
+	let node_types = node_io_hashmap.keys().min_by_key(|node_io_types| {
+		let mut hasher = DefaultHasher::new();
+		node_io_types.hash(&mut hasher);
+		hasher.finish()
+	});
+
+	if node_types.is_none() {
+		log::error!("Could not get node_types from hashmap");
+	};
+	node_types
 }
 
 // Private mutable getters for use within the network interface
