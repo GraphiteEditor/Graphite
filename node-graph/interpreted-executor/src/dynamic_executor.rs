@@ -8,7 +8,6 @@ use graph_craft::proto::{ConstructionArgs, GraphError, LocalFuture, NodeContaine
 use graph_craft::proto::{GraphErrorType, GraphErrors};
 use graph_craft::Type;
 
-use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::panic::UnwindSafe;
@@ -36,7 +35,7 @@ impl Default for DynamicExecutor {
 	}
 }
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NodeTypes {
 	pub inputs: Vec<Type>,
@@ -331,33 +330,17 @@ impl BorrowTree {
 
 		let node_path = &proto_node.original_location.path.as_ref().unwrap_or(const { &vec![] });
 
-		let mut entry = self.source_map.entry(node_path.to_vec().into());
-		let modified = match entry {
-			Entry::Occupied(ref mut entry) => {
-				let modified = entry.get().0 != id || entry.get().1.inputs != inputs || entry.get().1.output != node_io.output;
-				if modified {
-					entry.insert((
-						id,
-						NodeTypes {
-							inputs,
-							output: node_io.output.clone(),
-						},
-					));
-				};
-				modified
-			}
-			Entry::Vacant(entry) => {
-				entry.insert((
-					id,
-					NodeTypes {
-						inputs,
-						output: node_io.output.clone(),
-					},
-				));
-				true
-			}
-		};
+		let entry = self.source_map.entry(node_path.to_vec().into()).or_default();
 
+		let update = (
+			id,
+			NodeTypes {
+				inputs,
+				output: node_io.output.clone(),
+			},
+		);
+		let modified = *entry != update;
+		*entry = update;
 		modified
 	}
 

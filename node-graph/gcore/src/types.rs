@@ -140,6 +140,12 @@ pub enum Type {
 	Future(Box<Type>),
 }
 
+impl Default for Type {
+	fn default() -> Self {
+		concrete!(())
+	}
+}
+
 unsafe impl StaticType for Type {
 	type Static = Self;
 }
