@@ -8,7 +8,6 @@ use graph_craft::proto::{ConstructionArgs, GraphError, LocalFuture, NodeContaine
 use graph_craft::proto::{GraphErrorType, GraphErrors};
 use graph_craft::Type;
 
-use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::panic::UnwindSafe;
@@ -36,7 +35,7 @@ impl Default for DynamicExecutor {
 	}
 }
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NodeTypes {
 	pub inputs: Vec<Type>,
@@ -331,24 +330,23 @@ impl BorrowTree {
 
 		let node_path = &proto_node.original_location.path.as_ref().unwrap_or(const { &vec![] });
 
-		let entry = self.source_map.entry(node_path.to_vec().into());
-		let newly_inserted = matches!(entry, Entry::Vacant(_));
-		let entry = entry.or_insert((
+		let entry = self.source_map.entry(node_path.to_vec().into()).or_default();
+
+		let update = (
 			id,
 			NodeTypes {
 				inputs,
 				output: node_io.output.clone(),
 			},
-		));
-
-		entry.0 = id;
-		entry.1.output = node_io.output.clone();
-		newly_inserted
+		);
+		let modified = *entry != update;
+		*entry = update;
+		modified
 	}
 
 	/// Inserts a new node into the [`BorrowTree`], calling the constructor function from `node_registry.rs`.
 	///
-	/// This method creates a new node contianer based on the provided `ProtoNode`, updates the source map,
+	/// This method creates a new node container based on the provided `ProtoNode`, updates the source map,
 	/// and stores the node container in the `BorrowTree`.
 	///
 	///
