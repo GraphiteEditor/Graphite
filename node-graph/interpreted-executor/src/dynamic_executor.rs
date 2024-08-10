@@ -331,24 +331,39 @@ impl BorrowTree {
 
 		let node_path = &proto_node.original_location.path.as_ref().unwrap_or(const { &vec![] });
 
-		let entry = self.source_map.entry(node_path.to_vec().into());
-		let newly_inserted = matches!(entry, Entry::Vacant(_));
-		let entry = entry.or_insert((
-			id,
-			NodeTypes {
-				inputs,
-				output: node_io.output.clone(),
-			},
-		));
+		let mut entry = self.source_map.entry(node_path.to_vec().into());
+		let modified = match entry {
+			Entry::Occupied(ref mut entry) => {
+				let modified = entry.get().0 != id || entry.get().1.inputs != inputs || entry.get().1.output != node_io.output;
+				if modified {
+					entry.insert((
+						id,
+						NodeTypes {
+							inputs,
+							output: node_io.output.clone(),
+						},
+					));
+				};
+				modified
+			}
+			Entry::Vacant(entry) => {
+				entry.insert((
+					id,
+					NodeTypes {
+						inputs,
+						output: node_io.output.clone(),
+					},
+				));
+				true
+			}
+		};
 
-		entry.0 = id;
-		entry.1.output = node_io.output.clone();
-		newly_inserted
+		modified
 	}
 
 	/// Inserts a new node into the [`BorrowTree`], calling the constructor function from `node_registry.rs`.
 	///
-	/// This method creates a new node contianer based on the provided `ProtoNode`, updates the source map,
+	/// This method creates a new node container based on the provided `ProtoNode`, updates the source map,
 	/// and stores the node container in the `BorrowTree`.
 	///
 	///
