@@ -49,6 +49,14 @@ impl Quad {
 		[a[0].min(b[0]), a[1].max(b[1])]
 	}
 
+	/// "Clip" bounds of 'a' to the limits of 'b'
+	pub fn constraint_bounds(a: [DVec2; 2], b: [DVec2; 2]) -> [DVec2; 2] {
+		[
+			a[0].max(b[0]), // Constrain min corner
+			a[1].min(b[1]), // Constrain max corner
+		]
+	}
+
 	/// Expand a quad by a certain amount on all sides.
 	///
 	/// Not currently very optimised
