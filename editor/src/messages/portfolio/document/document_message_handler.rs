@@ -444,6 +444,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				// Update the tilt menu bar buttons to be disabled when the graph is open
 				responses.add(MenuBarMessage::SendLayout);
 				if open {
+					responses.add(NodeGraphMessage::SetGridAlignedEdges);
 					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
 				}
