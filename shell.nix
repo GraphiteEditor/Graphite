@@ -30,7 +30,7 @@ let
   };
 
   # Define the rustc we need
-  rustc-wasm = pkgs.rust-bin.nightly.latest.default.override {
+  rustc-wasm = pkgs.rust-bin.stable.latest.default.override {
     targets = [ "wasm32-unknown-unknown" ];
     # wasm-pack needs this
     extensions = [ "rust-src" "rust-analyzer" "clippy"];

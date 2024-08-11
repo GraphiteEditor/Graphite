@@ -63,9 +63,6 @@ graph-craft = { workspace = true, features = ["serde"] }
 name = "compile_demo_art"
 harness = false
 
-[profile.release]
-debug=true
-
 # [[bench]]
 # name = "exec_demo_art"
 # harness = false
