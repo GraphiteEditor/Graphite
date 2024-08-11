@@ -5,6 +5,7 @@ use crate::Node;
 use bezier_rs::BezierHandles;
 use dyn_any::{DynAny, StaticType};
 
+use core::hash::BuildHasher;
 use std::collections::{HashMap, HashSet};
 
 /// Represents a procedural change to the [`PointDomain`] in [`VectorData`].
@@ -485,11 +486,12 @@ use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::hash::Hash;
-pub fn serialize_hashmap<K, V, S>(hashmap: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
+pub fn serialize_hashmap<K, V, S, H>(hashmap: &HashMap<K, V, H>, serializer: S) -> Result<S::Ok, S::Error>
 where
 	K: Serialize + Eq + Hash,
 	V: Serialize,
 	S: Serializer,
+	H: BuildHasher,
 {
 	let mut seq = serializer.serialize_seq(Some(hashmap.len()))?;
 	for (key, value) in hashmap {
@@ -498,22 +500,24 @@ where
 	seq.end()
 }
 
-pub fn deserialize_hashmap<'de, K, V, D>(deserializer: D) -> Result<HashMap<K, V>, D::Error>
+pub fn deserialize_hashmap<'de, K, V, D, H>(deserializer: D) -> Result<HashMap<K, V, H>, D::Error>
 where
 	K: Deserialize<'de> + Eq + Hash,
 	V: Deserialize<'de>,
 	D: Deserializer<'de>,
+	H: BuildHasher + Default,
 {
-	struct HashMapVisitor<K, V> {
-		marker: std::marker::PhantomData<fn() -> HashMap<K, V>>,
+	struct HashMapVisitor<K, V, H> {
+		marker: std::marker::PhantomData<fn() -> HashMap<K, V, H>>,
 	}
 
-	impl<'de, K, V> Visitor<'de> for HashMapVisitor<K, V>
+	impl<'de, K, V, H> Visitor<'de> for HashMapVisitor<K, V, H>
 	where
 		K: Deserialize<'de> + Eq + Hash,
 		V: Deserialize<'de>,
+		H: BuildHasher + Default,
 	{
-		type Value = HashMap<K, V>;
+		type Value = HashMap<K, V, H>;
 
 		fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 			formatter.write_str("a sequence of tuples")
@@ -523,7 +527,7 @@ where
 		where
 			A: SeqAccess<'de>,
 		{
-			let mut hashmap = HashMap::new();
+			let mut hashmap = HashMap::default();
 			while let Some((key, value)) = seq.next_element()? {
 				hashmap.insert(key, value);
 			}

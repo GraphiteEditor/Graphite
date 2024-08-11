@@ -6,7 +6,7 @@ use glam::IVec2;
 use graphene_core::memo::MemoHashGuard;
 pub use graphene_core::uuid::generate_uuid;
 use graphene_core::{Cow, MemoHash, ProtoNodeIdentifier, Type};
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
@@ -746,7 +746,7 @@ pub struct NodeNetwork {
 	/// A network may expose nodes as constants which can by used by other nodes using a `NodeInput::Scope(key)`.
 	#[serde(default)]
 	#[serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap")]
-	pub scope_injections: HashMap<String, (NodeId, Type)>,
+	pub scope_injections: FxHashMap<String, (NodeId, Type)>,
 }
 
 impl std::hash::Hash for NodeNetwork {
@@ -1303,22 +1303,38 @@ impl NodeNetwork {
 	pub fn into_proto_networks(self) -> impl Iterator<Item = ProtoNetwork> {
 		// let input_node = self.nodes.iter().find_map(|(node_id, node)| if node.name == "SetNode" { Some(node_id.clone()) } else { None });
 		let mut nodes: Vec<_> = self.nodes.into_iter().map(|(id, node)| (id, node.resolve_proto_node())).collect();
-		nodes.sort_unstable_by_key(|(i, _)| *i);
 
 		// Create a network to evaluate each output
-		self.exports.into_iter().filter_map(move |output| {
-			if let NodeInput::Node { node_id, .. } = output {
-				Some(ProtoNetwork {
-					inputs: Vec::new(), // Inputs field is not used. Should be deleted
-					// inputs: vec![input_node.expect("Set node should always exist")],
-					// inputs: self.imports.clone(),
+		if self.exports.len() == 1 {
+			if let NodeInput::Node { node_id, .. } = self.exports[0] {
+				return vec![ProtoNetwork {
+					inputs: Vec::new(),
 					output: node_id,
-					nodes: nodes.clone(),
-				})
-			} else {
-				None
+					nodes: nodes,
+				}]
+				.into_iter();
 			}
-		})
+		}
+
+		// Create a network to evaluate each output
+		let networks: Vec<_> = self
+			.exports
+			.into_iter()
+			.filter_map(move |output| {
+				if let NodeInput::Node { node_id, .. } = output {
+					Some(ProtoNetwork {
+						inputs: Vec::new(), // Inputs field is not used. Should be deleted
+						// inputs: vec![input_node.expect("Set node should always exist")],
+						// inputs: self.imports.clone(),
+						output: node_id,
+						nodes: nodes.clone(),
+					})
+				} else {
+					None
+				}
+			})
+			.collect();
+		networks.into_iter()
 	}
 
 	/// Create a [`RecursiveNodeIter`] that iterates over all [`DocumentNode`]s, including ones that are deeply nested.
