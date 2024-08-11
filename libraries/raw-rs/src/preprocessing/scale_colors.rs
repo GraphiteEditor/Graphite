@@ -1,20 +1,7 @@
 use crate::RawImage;
 
-const XYZ_TO_RGB: [[f64; 3]; 3] = [[0.412453, 0.357580, 0.180423], [0.212671, 0.715160, 0.072169], [0.019334, 0.119193, 0.950227]];
-
 pub fn scale_colors(mut raw_image: RawImage) -> RawImage {
-	if let Some(camera_to_xyz) = raw_image.camera_to_xyz {
-		let mut camera_to_rgb = [[0.; 3]; 3];
-		for i in 0..3 {
-			for j in 0..3 {
-				for k in 0..3 {
-					camera_to_rgb[i][j] += camera_to_xyz[i * 3 + k] * XYZ_TO_RGB[k][j];
-				}
-			}
-		}
-
-		let mut white_balance_multiplier = camera_to_rgb.map(|x| 1. / x.iter().sum::<f64>());
-
+	if let Some(mut white_balance_multiplier) = raw_image.white_balance_multiplier {
 		if white_balance_multiplier[1] == 0. {
 			white_balance_multiplier[1] = 1.;
 		}

@@ -79,6 +79,8 @@ fn store_image(path: &Path, suffix: &str, data: &mut [u8], width: usize, height:
 		}
 	}
 
+	println!("{}: {:?}", suffix, &data[..10]);
+
 	let mut output_path = PathBuf::new();
 	if let Some(parent) = path.parent() {
 		output_path.push(parent);
