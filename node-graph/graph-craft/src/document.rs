@@ -1083,28 +1083,6 @@ impl NodeNetwork {
 			self.nodes.insert(nested_node_id, nested_node);
 		}
 		// TODO: Add support for flattening exports that are NodeInput::Network (https://github.com/GraphiteEditor/Graphite/issues/1762)
-		// Match the document node input and the exports of the inner network if the export is a NodeInput::Network
-		// for (i, export) in inner_network.exports.iter().enumerate() {
-		// 	if let NodeInput::Network { import_index, .. } = export {
-		// 		let parent_input = node.inputs.get(*import_index).expect(&format!("Import index {} should always exist", import_index));
-		// 		match *parent_input {
-		// 			// If the input to self is a node, connect the corresponding output of the inner network to it
-		// 			NodeInput::Node { node_id, output_index, lambda } => {
-		// 				inner_network.populate_first_network_export(&mut node, node_id, output_index, lambda, i, node.original_location.outputs(i), 0);
-		// 			}
-		// 			NodeInput::Network { import_index, .. } => {
-		// 				let parent_input_index = import_index;
-		// 				let Some(NodeInput::Network { import_index, .. }) = inner_network.exports.get_mut(i) else {
-		// 					log::error!("Nested node should have a network input");
-		// 					continue;
-		// 				};
-		// 				*import_index = parent_input_index;
-		// 			}
-		// 			NodeInput::Value { .. } => unreachable!("Value inputs should have been replaced with value nodes"),
-		// 			NodeInput::Inline(_) => (),
-		// 		}
-		// 	}
-		// }
 
 		// Connect all nodes that were previously connected to this node to the nodes of the inner network
 		for (i, export) in inner_network.exports.into_iter().enumerate() {
@@ -1116,10 +1094,6 @@ impl NodeNetwork {
 				}
 
 				if let Some(new_output_node) = self.nodes.get_mut(node_id) {
-					let len = node.original_location.dependants.len();
-					node.original_location.dependants.extend(vec![vec![]; (i + 1).max(len) - len]);
-					let len = new_output_node.original_location.dependants.len();
-					new_output_node.original_location.dependants.extend(vec![vec![]; (*output_index + 1).max(len) - len]);
 					for dep in &node.original_location.dependants[i] {
 						new_output_node.original_location.dependants[*output_index].push(*dep);
 					}
