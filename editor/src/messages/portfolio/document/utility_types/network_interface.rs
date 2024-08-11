@@ -1169,7 +1169,7 @@ impl NodeNetworkInterface {
 				continue;
 			};
 			nested_network.exports = old_network.exports;
-			nested_network.scope_injections = old_network.scope_injections;
+			nested_network.scope_injections = old_network.scope_injections.into_iter().collect();
 			let Some(nested_network_metadata) = network_metadata.nested_metadata_mut(&network_path) else {
 				log::error!("Could not get nested network in from_old_network");
 				continue;

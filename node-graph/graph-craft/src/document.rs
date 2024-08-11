@@ -1566,7 +1566,8 @@ mod test {
 			.collect(),
 		};
 		let network = flat_network();
-		let resolved_network = network.into_proto_networks().collect::<Vec<_>>();
+		let mut resolved_network = network.into_proto_networks().collect::<Vec<_>>();
+		resolved_network[0].nodes.sort_unstable_by_key(|(id, _)| *id);
 
 		println!("{:#?}", resolved_network[0]);
 		println!("{construction_network:#?}");
