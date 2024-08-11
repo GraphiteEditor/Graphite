@@ -1,13 +1,18 @@
+// Only compile this file if the feature "raw-rs-tests" is enabled
 #![cfg(feature = "raw-rs-tests")]
-use std::collections::HashMap;
-use std::fmt::Write;
-use std::fs::{read_dir, File};
-use std::io::{Cursor, Read};
-use std::path::Path;
 
 use raw_rs::RawImage;
 
-use downloader::{Download, Downloader};
+use image::codecs::png::{CompressionType, FilterType, PngEncoder};
+use image::{ColorType, ImageEncoder};
+use libraw::Processor;
+use palette::{LinSrgb, Srgb};
+use std::collections::HashMap;
+use std::fmt::Write;
+use std::fs::{read_dir, File};
+use std::io::{BufWriter, Cursor, Read};
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 const TEST_FILES: [&str; 3] = ["ILCE-7M3-ARW2.3.5-blossoms.arw", "ILCE-7RM4-ARW2.3.5-kestrel.arw", "ILCE-6000-ARW2.3.1-windsock.arw"];
 const BASE_URL: &str = "https://static.graphite.rs/test-data/libraries/raw-rs/";
@@ -30,7 +35,7 @@ fn test_images_match_with_libraw() {
 
 			print!("{} => ", path.display());
 
-			let _raw_image = match test_raw_data(&content) {
+			let raw_image = match test_raw_data(&content) {
 				Err(err_msg) => {
 					failed_tests += 1;
 					return println!("{}", err_msg);
@@ -47,6 +52,15 @@ fn test_images_match_with_libraw() {
 			// };
 
 			println!("Passed");
+
+			// TODO: Remove this later
+			let mut image = raw_rs::process_8bit(raw_image);
+			store_image(&path, "raw_rs", &mut image.data, image.width, image.height);
+
+			let processor = Processor::new();
+			let libraw_image = processor.process_8bit(&content).unwrap();
+			let mut data = Vec::from_iter(libraw_image.iter().copied());
+			store_image(&path, "libraw_rs", &mut data[..], libraw_image.width() as usize, libraw_image.height() as usize);
 		});
 
 	if failed_tests != 0 {
@@ -54,23 +68,46 @@ fn test_images_match_with_libraw() {
 	}
 }
 
+fn store_image(path: &Path, suffix: &str, data: &mut [u8], width: usize, height: usize) {
+	if suffix == "raw_rs" {
+		for pixel in data.chunks_mut(3) {
+			let lin_srgb: LinSrgb<f64> = LinSrgb::new(pixel[0], pixel[1], pixel[2]).into_format();
+			let output: Srgb<u8> = Srgb::from_linear(lin_srgb);
+			pixel[0] = output.red;
+			pixel[1] = output.green;
+			pixel[2] = output.blue;
+		}
+	}
+
+	let mut output_path = PathBuf::new();
+	if let Some(parent) = path.parent() {
+		output_path.push(parent);
+	}
+	output_path.push("output");
+	if let Some(filename) = path.file_stem() {
+		let new_filename = format!("{}_{}.{}", filename.to_string_lossy(), suffix, "png");
+		output_path.push(new_filename);
+	}
+	output_path.set_extension("png");
+
+	let file = BufWriter::new(File::create(output_path).unwrap());
+	let png_encoder = PngEncoder::new_with_quality(file, CompressionType::Best, FilterType::Adaptive);
+	png_encoder.write_image(data, width as u32, height as u32, ColorType::Rgb8.into()).unwrap();
+}
+
 fn download_images() {
 	let mut path = Path::new(BASE_PATH).to_owned();
-	let mut downloads: Vec<Download> = Vec::new();
+	let client = reqwest::blocking::Client::builder().timeout(Duration::from_secs(60 * 5)).build().unwrap();
 
 	for filename in TEST_FILES {
 		path.push(filename);
 		if !path.exists() {
 			let url = BASE_URL.to_owned() + filename;
-			downloads.push(Download::new(&url).file_name(Path::new(filename)));
+			let mut response = client.get(url).send().unwrap();
+			let mut file = File::create(BASE_PATH.to_owned() + filename).unwrap();
+			std::io::copy(&mut response, &mut file).unwrap();
 		}
 		path.pop();
-	}
-
-	let mut downloader = Downloader::builder().download_folder(Path::new(BASE_PATH)).build().unwrap();
-
-	for download_summary in downloader.download(&downloads).unwrap() {
-		download_summary.unwrap();
 	}
 }
 
@@ -268,4 +305,42 @@ fn _test_final_image(content: &[u8], raw_image: RawImage) -> Result<(), String> 
 	}
 
 	Ok(())
+}
+
+// #[test]
+fn extract_data_from_dng_images() {
+	read_dir(BASE_PATH)
+		.unwrap()
+		.map(|dir_entry| dir_entry.unwrap().path())
+		.filter(|path| path.is_file() && path.file_name().map(|file_name| file_name != ".gitkeep").unwrap_or(false))
+		.for_each(|path| {
+			extract_data_from_dng_image(&path);
+		});
+}
+
+fn extract_data_from_dng_image(path: &Path) {
+	use raw_rs::tiff::file::TiffRead;
+	use raw_rs::tiff::tags::{ColorMatrix2, Make, Model};
+	use raw_rs::tiff::values::ToFloat;
+	use raw_rs::tiff::Ifd;
+	use std::io::{BufReader, Write};
+
+	let reader = BufReader::new(File::open(path).unwrap());
+	let mut file = TiffRead::new(reader).unwrap();
+	let ifd = Ifd::new_first_ifd(&mut file).unwrap();
+
+	let make = ifd.get_value::<Make, _>(&mut file).unwrap();
+	let model = ifd.get_value::<Model, _>(&mut file).unwrap();
+	let matrix = ifd.get_value::<ColorMatrix2, _>(&mut file).unwrap();
+
+	if model == "MODEL-NAME" {
+		println!("{}", path.display());
+		return;
+	}
+
+	let output_folder = path.parent().unwrap().join(make);
+	std::fs::create_dir_all(&output_folder).unwrap();
+	let mut output_file = File::create(output_folder.join(model + ".toml")).unwrap();
+	let matrix: Vec<_> = matrix.iter().map(|x| x.to_float()).collect();
+	writeln!(output_file, "camera_to_xyz = {:.4?}", matrix).unwrap();
 }

@@ -29,8 +29,11 @@ pub enum TagId {
 	JpegOffset = 0x201,
 	JpegLength = 0x202,
 	SonyToneCurve = 0x7010,
+	BlackLevel = 0x7310,
 	CfaPatternDim = 0x828d,
 	CfaPattern = 0x828e,
+	ColorMatrix1 = 0xc621,
+	ColorMatrix2 = 0xc622,
 
 	#[num_enum(catch_all)]
 	Unknown(u16),

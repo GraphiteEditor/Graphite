@@ -1,18 +1,33 @@
 pub mod decoder;
+pub mod demosaicing;
+pub mod metadata;
+pub mod preprocessing;
 pub mod tiff;
+
+use crate::preprocessing::camera_data::camera_to_xyz;
 
 use tag_derive::Tag;
 use tiff::file::TiffRead;
-use tiff::tags::{Compression, ImageLength, ImageWidth, Model, StripByteCounts, SubIfd, Tag};
+use tiff::tags::{Compression, ImageLength, ImageWidth, StripByteCounts, SubIfd, Tag};
 use tiff::{Ifd, TiffError};
 
 use std::io::{Read, Seek};
 use thiserror::Error;
 
+pub enum SubtractBlack {
+	None,
+	Value(u16),
+	CfaGrid([u16; 4]),
+}
+
 pub struct RawImage {
 	pub data: Vec<u16>,
 	pub width: usize,
 	pub height: usize,
+	pub cfa_pattern: [u8; 4],
+	pub maximum: u16,
+	pub black: SubtractBlack,
+	pub camera_to_xyz: Option<[f64; 9]>,
 }
 
 pub struct Image<T> {
@@ -35,28 +50,41 @@ pub fn decode<R: Read + Seek>(reader: &mut R) -> Result<RawImage, DecoderError> 
 	let mut file = TiffRead::new(reader)?;
 	let ifd = Ifd::new_first_ifd(&mut file)?;
 
-	// TODO: This is only for the tests to pass for now. Replace this with the correct implementation when the decoder is complete.
-	let model = ifd.get_value::<Model, _>(&mut file)?;
+	let camera_model = metadata::identify::identify_camera_model(&ifd, &mut file).unwrap();
 
-	if model == "DSLR-A100" {
-		Ok(decoder::arw1::decode_a100(ifd, &mut file))
+	let mut raw_image = if camera_model.model == "DSLR-A100" {
+		decoder::arw1::decode_a100(ifd, &mut file)
 	} else {
 		let sub_ifd = ifd.get_value::<SubIfd, _>(&mut file)?;
 		let arw_ifd = sub_ifd.get_value::<ArwIfd, _>(&mut file)?;
 
 		if arw_ifd.compression == 1 {
-			Ok(decoder::uncompressed::decode(sub_ifd, &mut file))
+			decoder::uncompressed::decode(sub_ifd, &mut file)
 		} else if arw_ifd.strip_byte_counts[0] == arw_ifd.image_width * arw_ifd.image_height {
-			Ok(decoder::arw2::decode(sub_ifd, &mut file))
+			decoder::arw2::decode(sub_ifd, &mut file)
 		} else {
 			// TODO: implement for arw 1.
 			todo!()
 		}
-	}
+	};
+
+	raw_image.camera_to_xyz = camera_to_xyz(&camera_model);
+
+	Ok(raw_image)
 }
 
-pub fn process_8bit(_image: RawImage) -> Image<u8> {
-	todo!()
+pub fn process_8bit(raw_image: RawImage) -> Image<u8> {
+	let raw_image = crate::preprocessing::subtract_black::subtract_black(raw_image);
+	let raw_image = crate::preprocessing::raw_to_image::raw_to_image(raw_image);
+	let raw_image = crate::preprocessing::scale_colors::scale_colors(raw_image);
+	let image = crate::demosaicing::linear_demosaicing::linear_demosaic(raw_image);
+
+	Image {
+		channels: image.channels,
+		data: image.data.iter().map(|x| (x >> 8) as u8).collect(),
+		width: image.width,
+		height: image.height,
+	}
 }
 
 pub fn process_16bit(_image: RawImage) -> Image<u16> {
