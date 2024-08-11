@@ -5,6 +5,7 @@ use super::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
 #[cfg(feature = "alloc")]
 use super::ImageFrame;
 use super::{Channel, Color, Node, RGBMut};
+use crate::vector::style::GradientStops;
 use crate::vector::VectorData;
 use crate::GraphicGroup;
 
@@ -552,6 +553,21 @@ pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode,
 	};
 
 	background.alpha_blend(target_color.to_associated_alpha(opacity))
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct GradientMapNode<Gradient, Reverse> {
+	gradient: Gradient,
+	reverse: Reverse,
+	// TODO: Add support for dithering to break up gradient color banding
+	// TODO: Add support for controlling the gradient interpolation method (instead of always `luminance_srgb()`)
+}
+
+#[node_macro::node_fn(GradientMapNode)]
+fn gradient_map_node(color: Color, gradient: GradientStops, reverse: bool) -> Color {
+	let intensity = color.luminance_srgb();
+	let intensity = if reverse { 1. - intensity } else { intensity };
+	gradient.evalute(intensity as f64)
 }
 
 #[derive(Debug, Clone, Copy)]

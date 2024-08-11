@@ -28,7 +28,7 @@ use web_sys::HtmlCanvasElement;
 pub struct WgpuExecutor {
 	pub context: Context,
 	render_configuration: RenderConfiguration,
-	vello_renderer: std::sync::Mutex<vello::Renderer>,
+	vello_renderer: futures::lock::Mutex<vello::Renderer>,
 }
 
 impl std::fmt::Debug for WgpuExecutor {
@@ -160,11 +160,12 @@ impl WgpuExecutor {
 			width,
 			height,
 			antialiasing_method: AaConfig::Msaa8,
-			debug: DebugLayers::all(),
+			// This setting can be used to visualize things like bounding boxes used for rendering
+			debug: DebugLayers::none(),
 		};
 
 		{
-			let mut renderer = self.vello_renderer.lock().unwrap();
+			let mut renderer = self.vello_renderer.lock().await;
 			for (id, texture) in context.ressource_overrides.iter() {
 				let texture_view = wgpu::ImageCopyTextureBase {
 					texture: texture.clone(),
@@ -536,14 +537,12 @@ impl WgpuExecutor {
 	#[cfg(not(target_arch = "wasm32"))]
 	pub fn create_surface(&self, window: SurfaceHandle<Window>) -> Result<SurfaceHandle<Surface>> {
 		let size = window.surface.inner_size();
+		let resolution = UVec2::new(size.width, size.height);
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Window(Box::new(window.surface)))?;
 
 		Ok(SurfaceHandle {
 			window_id: window.window_id,
-			surface: Surface {
-				inner: surface,
-				resolution: UVec2::ZERO,
-			},
+			surface: Surface { inner: surface, resolution },
 		})
 	}
 }
@@ -967,7 +966,7 @@ pub struct UploadTextureNode<Executor> {
 #[node_macro::node_fn(UploadTextureNode)]
 async fn upload_texture<'a: 'input>(input: ImageFrame<Color>, executor: &'a WgpuExecutor) -> TextureFrame {
 	// let new_data: Vec<RGBA16F> = input.image.data.into_iter().map(|c| c.into()).collect();
-	let new_data = input.image.data.into_iter().map(|c| SRGBA8::from(c)).collect();
+	let new_data = input.image.data.into_iter().map(SRGBA8::from).collect();
 	let new_image = Image {
 		width: input.image.width,
 		height: input.image.height,

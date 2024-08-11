@@ -945,15 +945,15 @@ pub fn extract_channel_properties(document_node: &DocumentNode, node_id: NodeId,
 // As soon as there are more types of noise, this should be uncommented.
 pub fn noise_pattern_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	// Get the current values of the inputs of interest so they can set whether certain inputs are disabled based on various conditions.
-	let current_noise_type = match &document_node.inputs[4].as_value() {
+	let current_noise_type = match &document_node.inputs[3].as_value() {
 		Some(&TaggedValue::NoiseType(noise_type)) => Some(noise_type),
 		_ => None,
 	};
-	let current_domain_warp_type = match &document_node.inputs[5].as_value() {
+	let current_domain_warp_type = match &document_node.inputs[4].as_value() {
 		Some(&TaggedValue::DomainWarpType(domain_warp_type)) => Some(domain_warp_type),
 		_ => None,
 	};
-	let current_fractal_type = match &document_node.inputs[7].as_value() {
+	let current_fractal_type = match &document_node.inputs[6].as_value() {
 		Some(&TaggedValue::FractalType(fractal_type)) => Some(fractal_type),
 		_ => None,
 	};
@@ -966,28 +966,30 @@ pub fn noise_pattern_properties(document_node: &DocumentNode, node_id: NodeId, _
 		!domain_warp_active && (current_fractal_type == Some(FractalType::DomainWarpIndependent) || current_fractal_type == Some(FractalType::DomainWarpProgressive));
 
 	// All
-	let dimensions = vec2_widget(document_node, node_id, 1, "Dimensions", "W", "H", "px", Some(1.), add_blank_assist);
-	let seed = number_widget(document_node, node_id, 2, "Seed", NumberInput::default().min(0.).is_integer(true), true);
-	let scale = number_widget(document_node, node_id, 3, "Scale", NumberInput::default().min(0.).disabled(!coherent_noise_active), true);
-	let noise_type_row = noise_type(document_node, node_id, 4, "Noise Type", true);
+	let clip = LayoutGroup::Row {
+		widgets: bool_widget(document_node, node_id, 0, "Clip", true),
+	};
+	let seed = number_widget(document_node, node_id, 1, "Seed", NumberInput::default().min(0.).is_integer(true), true);
+	let scale = number_widget(document_node, node_id, 2, "Scale", NumberInput::default().min(0.).disabled(!coherent_noise_active), true);
+	let noise_type_row = noise_type(document_node, node_id, 3, "Noise Type", true);
 
 	// Domain Warp
-	let domain_warp_type_row = domain_warp_type(document_node, node_id, 5, "Domain Warp Type", true, !coherent_noise_active);
+	let domain_warp_type_row = domain_warp_type(document_node, node_id, 4, "Domain Warp Type", true, !coherent_noise_active);
 	let domain_warp_amplitude = number_widget(
 		document_node,
 		node_id,
-		6,
+		5,
 		"Domain Warp Amplitude",
 		NumberInput::default().min(0.).disabled(!coherent_noise_active || !domain_warp_active),
 		true,
 	);
 
 	// Fractal
-	let fractal_type_row = fractal_type(document_node, node_id, 7, "Fractal Type", true, !coherent_noise_active);
+	let fractal_type_row = fractal_type(document_node, node_id, 6, "Fractal Type", true, !coherent_noise_active);
 	let fractal_octaves = number_widget(
 		document_node,
 		node_id,
-		8,
+		7,
 		"Fractal Octaves",
 		NumberInput::default()
 			.mode_range()
@@ -1001,7 +1003,7 @@ pub fn noise_pattern_properties(document_node: &DocumentNode, node_id: NodeId, _
 	let fractal_lacunarity = number_widget(
 		document_node,
 		node_id,
-		9,
+		8,
 		"Fractal Lacunarity",
 		NumberInput::default()
 			.mode_range()
@@ -1013,7 +1015,7 @@ pub fn noise_pattern_properties(document_node: &DocumentNode, node_id: NodeId, _
 	let fractal_gain = number_widget(
 		document_node,
 		node_id,
-		10,
+		9,
 		"Fractal Gain",
 		NumberInput::default()
 			.mode_range()
@@ -1025,7 +1027,7 @@ pub fn noise_pattern_properties(document_node: &DocumentNode, node_id: NodeId, _
 	let fractal_weighted_strength = number_widget(
 		document_node,
 		node_id,
-		11,
+		10,
 		"Fractal Weighted Strength",
 		NumberInput::default()
 			.mode_range()
@@ -1037,7 +1039,7 @@ pub fn noise_pattern_properties(document_node: &DocumentNode, node_id: NodeId, _
 	let fractal_ping_pong_strength = number_widget(
 		document_node,
 		node_id,
-		12,
+		11,
 		"Fractal Ping Pong Strength",
 		NumberInput::default()
 			.mode_range()
@@ -1048,12 +1050,12 @@ pub fn noise_pattern_properties(document_node: &DocumentNode, node_id: NodeId, _
 	);
 
 	// Cellular
-	let cellular_distance_function_row = cellular_distance_function(document_node, node_id, 13, "Cellular Distance Function", true, !coherent_noise_active || !cellular_noise_active);
-	let cellular_return_type = cellular_return_type(document_node, node_id, 14, "Cellular Return Type", true, !coherent_noise_active || !cellular_noise_active);
+	let cellular_distance_function_row = cellular_distance_function(document_node, node_id, 12, "Cellular Distance Function", true, !coherent_noise_active || !cellular_noise_active);
+	let cellular_return_type = cellular_return_type(document_node, node_id, 13, "Cellular Return Type", true, !coherent_noise_active || !cellular_noise_active);
 	let cellular_jitter = number_widget(
 		document_node,
 		node_id,
-		15,
+		14,
 		"Cellular Jitter",
 		NumberInput::default()
 			.mode_range()
@@ -1065,7 +1067,7 @@ pub fn noise_pattern_properties(document_node: &DocumentNode, node_id: NodeId, _
 
 	vec![
 		// All
-		dimensions,
+		clip,
 		LayoutGroup::Row { widgets: seed },
 		LayoutGroup::Row { widgets: scale },
 		noise_type_row,
@@ -1089,7 +1091,7 @@ pub fn noise_pattern_properties(document_node: &DocumentNode, node_id: NodeId, _
 	]
 }
 
-pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn hue_saturation_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let hue_shift = number_widget(document_node, node_id, 1, "Hue Shift", NumberInput::default().min(-180.).max(180.).unit("°"), true);
 	let saturation_shift = number_widget(document_node, node_id, 2, "Saturation Shift", NumberInput::default().mode_range().min(-100.).max(100.).unit("%"), true);
 	let lightness_shift = number_widget(document_node, node_id, 3, "Lightness Shift", NumberInput::default().mode_range().min(-100.).max(100.).unit("%"), true);
@@ -1126,7 +1128,7 @@ pub fn _blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _co
 	vec![LayoutGroup::Row { widgets: radius }, LayoutGroup::Row { widgets: sigma }]
 }
 
-pub fn adjust_threshold_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn threshold_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let thereshold_min = number_widget(document_node, node_id, 1, "Min Luminance", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
 	let thereshold_max = number_widget(document_node, node_id, 2, "Max Luminance", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
 	let luminance_calc = luminance_calculation(document_node, node_id, 3, "Luminance Calc", true);
@@ -1134,13 +1136,46 @@ pub fn adjust_threshold_properties(document_node: &DocumentNode, node_id: NodeId
 	vec![LayoutGroup::Row { widgets: thereshold_min }, LayoutGroup::Row { widgets: thereshold_max }, luminance_calc]
 }
 
-pub fn adjust_vibrance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn gradient_map_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let gradient_input = 1;
+	let reverse_input = 2;
+
+	let gradient = if let Some(TaggedValue::GradientStops(gradient)) = &document_node.inputs[gradient_input].as_value() {
+		gradient.clone()
+	} else {
+		return vec![LayoutGroup::Row { widgets: vec![] }];
+	};
+	let mut gradient_row = vec![TextLabel::new("Gradient").widget_holder()];
+	add_blank_assist(&mut gradient_row);
+	gradient_row.extend([
+		Separator::new(SeparatorType::Unrelated).widget_holder(),
+		ColorButton::default()
+			.allow_none(false)
+			.value(FillChoice::Gradient(gradient))
+			.on_update(move |x: &ColorButton| {
+				NodeGraphMessage::SetInputValue {
+					node_id,
+					input_index: gradient_input,
+					value: TaggedValue::GradientStops(x.value.as_gradient().unwrap().clone()),
+				}
+				.into()
+			})
+			.on_commit(commit_value)
+			.widget_holder(),
+	]);
+
+	let reverse_row = bool_widget(document_node, node_id, reverse_input, "Reverse", true);
+
+	vec![LayoutGroup::Row { widgets: gradient_row }, LayoutGroup::Row { widgets: reverse_row }]
+}
+
+pub fn vibrance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let vibrance = number_widget(document_node, node_id, 1, "Vibrance", NumberInput::default().mode_range().min(-100.).max(100.).unit("%"), true);
 
 	vec![LayoutGroup::Row { widgets: vibrance }]
 }
 
-pub fn adjust_channel_mixer_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn channel_mixer_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	// Monochrome
 	let monochrome_index = 1;
 	let monochrome = bool_widget(document_node, node_id, monochrome_index, "Monochrome", true);
@@ -1234,7 +1269,7 @@ pub fn adjust_channel_mixer_properties(document_node: &DocumentNode, node_id: No
 	layout
 }
 
-pub fn adjust_selective_color_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn selective_color_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	// Colors choice
 	let colors_index = 38;
 	let mut colors = vec![TextLabel::new("Colors").widget_holder(), Separator::new(SeparatorType::Unrelated).widget_holder()];

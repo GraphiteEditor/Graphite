@@ -26,10 +26,13 @@ const ImportsToVec2Array = Transform(({ obj }) => {
 const ExportsToVec2Array = Transform(({ obj }) => {
 	const exports: { inputMetadata: FrontendGraphInput; position: XY }[] = [];
 	obj.exports.forEach(([inputMetadata, x, y]: [FrontendGraphInput, number, number]) => {
-		inputMetadata.connectedTo = ((connectedTo: any) => {
-			if (connectedTo?.import !== undefined) return { index: connectedTo?.import.index };
-			return { nodeId: connectedTo?.node.nodeId, index: connectedTo?.node.outputIndex };
-		})(inputMetadata.connectedTo);
+		if (inputMetadata.connectedTo !== undefined) {
+			if (inputMetadata.connectedTo?.import !== undefined) {
+				inputMetadata.connectedTo = { index: inputMetadata.connectedTo?.import.index };
+			} else {
+				inputMetadata.connectedTo = { nodeId: inputMetadata.connectedTo?.node.nodeId, index: inputMetadata.connectedTo?.node.outputIndex };
+			}
+		}
 		exports.push({ inputMetadata, position: { x, y } });
 	});
 	return exports;
@@ -172,6 +175,7 @@ export type FrontendClickTargets = {
 	readonly portClickTargets: string[];
 	readonly visibilityClickTargets: string[];
 	readonly allNodesBoundingBox: string;
+	readonly importExportsBoundingBox: string;
 };
 
 export type ContextMenuInformation = {
@@ -200,6 +204,9 @@ export type OutputConnector = Node | Import;
 export type InputConnector = Node | Export;
 
 const CreateOutputConnectorOptional = Transform(({ obj }) => {
+	if (obj.connectedTo == undefined) {
+		return undefined;
+	}
 	if (obj.connectedTo?.export !== undefined) {
 		return { index: obj.connectedTo?.export };
 	} else if (obj.connectedTo?.import !== undefined) {
@@ -221,7 +228,7 @@ export class FrontendGraphInput {
 	readonly resolvedType!: string | undefined;
 
 	@CreateOutputConnectorOptional
-	readonly connectedTo!: OutputConnector | undefined;
+	connectedTo!: OutputConnector | undefined;
 }
 
 const CreateInputConnectorArray = Transform(({ obj }) => {

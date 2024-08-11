@@ -14,7 +14,7 @@
 
 	const pointerPosition = (direction: ScrollbarDirection, e: PointerEvent): number => (direction === "Vertical" ? e.clientY : e.clientX);
 
-	const dispatch = createEventDispatcher<{ handlePosition: number; pressTrack: number }>();
+	const dispatch = createEventDispatcher<{ handlePosition: number; pressTrack: number; pointerup }>();
 
 	export let direction: ScrollbarDirection = "Vertical";
 	export let handlePosition = 0.5;
@@ -102,7 +102,7 @@
 	});
 </script>
 
-<div class={`scrollbar-input ${direction.toLowerCase()}`}>
+<div class={`scrollbar-input ${direction.toLowerCase()}`} on:pointerup={() => dispatch("pointerup")}>
 	<button class="arrow decrease" on:pointerdown={() => changePosition(-50)} tabindex="-1" />
 	<div class="scroll-track" bind:this={scrollTrack} on:pointerdown={grabArea}>
 		<div class="scroll-thumb" on:pointerdown={grabHandle} class:dragging style:top={thumbTop} style:bottom={thumbBottom} style:left={thumbLeft} style:right={thumbRight} />

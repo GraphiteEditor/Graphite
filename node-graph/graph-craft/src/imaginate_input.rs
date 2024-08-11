@@ -25,7 +25,7 @@ impl std::cmp::PartialEq for ImaginateCache {
 
 impl core::hash::Hash for ImaginateCache {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		self.0.try_lock().map(|g| g.hash(state));
+		let _ = self.0.try_lock().map(|g| g.hash(state)).map_err(|_| "error".hash(state));
 	}
 }
 

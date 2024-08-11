@@ -10,14 +10,15 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
-use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
+use crate::messages::tool::common_functionality::{auto_panning::AutoPanning, measure};
 
 use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;
+use graphene_std::renderer::Rect;
 use graphene_std::vector::misc::BooleanOperation;
 
 use std::fmt;
@@ -471,13 +472,27 @@ impl Fsm for SelectToolFsmState {
 
 					// Update the selection box
 					overlay_context.quad(quad);
+				}
 				// Only highlight layers if the viewport is not being panned (middle mouse button is pressed)
-				} else if !input.keyboard.get(Key::Mmb as usize) {
+				// TODO: Don't use `Key::Mmb` directly, instead take it as a variable from the input mappings list like in all other places
+				else if !input.keyboard.get(Key::Mmb as usize) {
 					// Get the layer the user is hovering over
 					let click = document.click(input);
 					let not_selected_click = click.filter(|&hovered_layer| !document.network_interface.selected_nodes(&[]).unwrap().selected_layers_contains(hovered_layer, document.metadata()));
 					if let Some(layer) = not_selected_click {
 						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+
+						// Measure with Alt held down
+						// TODO: Don't use `Key::Alt` directly, instead take it as a variable from the input mappings list like in all other places
+						if input.keyboard.get(Key::Alt as usize) {
+							let hovered_bounds = document
+								.metadata()
+								.bounding_box_with_transform(layer, transform.inverse() * document.metadata().transform_to_viewport(layer));
+
+							if let [Some(selected_bounds), Some(hovered_bounds)] = [bounds, hovered_bounds].map(|rect| rect.map(Rect::from_box)) {
+								measure::overlay(selected_bounds, hovered_bounds, transform, document.metadata().document_to_viewport, &mut overlay_context);
+							}
+						}
 					}
 				}
 

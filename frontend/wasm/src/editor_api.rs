@@ -564,6 +564,13 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Snaps the import/export edges to a grid space when the scroll bar is released
+	#[wasm_bindgen(js_name = setGridAlignedEdges)]
+	pub fn set_grid_aligned_edges(&self) {
+		let message = NodeGraphMessage::SetGridAlignedEdges;
+		self.dispatch(message);
+	}
+
 	/// Creates a new document node in the node graph
 	#[wasm_bindgen(js_name = createNode)]
 	pub fn create_node(&self, node_type: String, x: i32, y: i32) {
@@ -786,7 +793,7 @@ impl EditorHandle {
 				let Some(transform_node_id) = modify_inputs.existing_node_id("Transform") else {
 					return;
 				};
-				if !updated_nodes.insert(transform_node_id.clone()) {
+				if !updated_nodes.insert(transform_node_id) {
 					return;
 				}
 				let Some(inputs) = modify_inputs.network_interface.network(&[]).unwrap().nodes.get(&transform_node_id).map(|node| &node.inputs) else {

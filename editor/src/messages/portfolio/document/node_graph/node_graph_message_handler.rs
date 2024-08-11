@@ -11,10 +11,9 @@ use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, Source};
+use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graphene_core::*;
-use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 use renderer::{ClickTarget, Quad};
 
 use glam::{DAffine2, DVec2, IVec2};
@@ -74,7 +73,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 		match message {
 			// TODO: automatically remove broadcast messages.
 			NodeGraphMessage::AddNodes { nodes, new_ids } => {
-				let Some(new_layer_id) = new_ids.get(&NodeId(0)).cloned().or_else(|| nodes.get(0).map(|(node_id, _)| *node_id)) else {
+				let Some(new_layer_id) = new_ids.get(&NodeId(0)).cloned().or_else(|| nodes.first().map(|(node_id, _)| *node_id)) else {
 					log::error!("No nodes to add in AddNodes");
 					return;
 				};
@@ -226,6 +225,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::DisconnectInput { input_connector } => {
 				network_interface.disconnect_input(&input_connector, selection_network_path);
+			}
+			NodeGraphMessage::DisconnectRootNode => {
+				network_interface.start_previewing_without_restore(selection_network_path);
 			}
 			NodeGraphMessage::DuplicateSelectedNodes => {
 				let all_selected_nodes = network_interface.upstream_chain_nodes(selection_network_path);
@@ -436,10 +438,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					self.initial_disconnecting = true;
 					self.disconnecting = Some(clicked_input.clone());
 
-					let Some(output_connector) = network_interface.upstream_output_connector(clicked_input, selection_network_path) else {
-						log::error!("Could not get upstream node from {clicked_input:?} when moving existing wire");
-						return;
+					let output_connector = if *clicked_input == InputConnector::Export(0) {
+						network_interface.root_node(selection_network_path).map(|root_node| root_node.to_connector())
+					} else {
+						network_interface.upstream_output_connector(clicked_input, selection_network_path)
 					};
+					let Some(output_connector) = output_connector else { return };
 					self.wire_in_progress_from_connector = network_interface.output_position(&output_connector, selection_network_path);
 					return;
 				}
@@ -554,10 +558,20 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						// Disconnect if the wire was previously connected to an input
 						if let Some(disconnecting) = &self.disconnecting {
 							responses.add(DocumentMessage::StartTransaction);
-							responses.add(NodeGraphMessage::DisconnectInput {
-								input_connector: disconnecting.clone(),
-							});
-							// Update the front end that the node is disconnected
+							let mut disconnect_root_node = false;
+							if let Previewing::Yes { root_node_to_restore } = network_interface.previewing(selection_network_path) {
+								if root_node_to_restore.is_some() && *disconnecting == InputConnector::Export(0) {
+									disconnect_root_node = true;
+								}
+							}
+							if disconnect_root_node {
+								responses.add(NodeGraphMessage::DisconnectRootNode);
+							} else {
+								responses.add(NodeGraphMessage::DisconnectInput {
+									input_connector: disconnecting.clone(),
+								});
+							}
+							// Update the frontend that the node is disconnected
 							responses.add(NodeGraphMessage::RunDocumentGraph);
 							responses.add(NodeGraphMessage::SendGraph);
 							self.disconnecting = None;
@@ -723,7 +737,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 									return;
 								};
 								// TODO: Cache all wire locations if this is a performance issue
-								let mut overlapping_wires = Self::collect_wires(network_interface, selection_network_path)
+								let overlapping_wires = Self::collect_wires(network_interface, selection_network_path)
 									.into_iter()
 									.filter(|frontend_wire| {
 										// Prevent inserting on a link that is connected upstream to the selected node
@@ -798,7 +812,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 								let overlapping_wire = if network_interface.is_layer(&selected_node_id, selection_network_path) {
 									if stack_wires.len() == 1 {
 										stack_wires.first()
-									} else if stack_wires.len() == 0 && node_wires.len() == 1 {
+									} else if stack_wires.is_empty() && node_wires.len() == 1 {
 										node_wires.first()
 									} else {
 										None
@@ -927,7 +941,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(PropertiesPanelMessage::Refresh);
 			}
 			NodeGraphMessage::SendClickTargets => responses.add(FrontendMessage::UpdateClickTargets {
-				click_targets: Some(network_interface.collect_front_end_click_targets(breadcrumb_network_path)),
+				click_targets: Some(network_interface.collect_frontend_click_targets(breadcrumb_network_path)),
 			}),
 			NodeGraphMessage::EndSendClickTargets => responses.add(FrontendMessage::UpdateClickTargets { click_targets: None }),
 			NodeGraphMessage::SendGraph => {
@@ -945,6 +959,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(FrontendMessage::UpdateNodeGraph { nodes, wires });
 					responses.add(FrontendMessage::UpdateLayerWidths { layer_widths, chain_widths });
 					responses.add(NodeGraphMessage::SendSelectedNodes);
+				}
+			}
+			NodeGraphMessage::SetGridAlignedEdges => {
+				if graph_view_overlay_open {
+					network_interface.set_grid_aligned_edges(DVec2::new(ipp.viewport_bounds.bottom_right.x - ipp.viewport_bounds.top_left.x, 0.), breadcrumb_network_path);
+					// Send the new edges to the frontend
+					let imports = network_interface.frontend_imports(breadcrumb_network_path).unwrap_or_default();
+					let exports = network_interface.frontend_exports(breadcrumb_network_path).unwrap_or_default();
+					responses.add(FrontendMessage::UpdateImportsExports { imports, exports });
 				}
 			}
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
@@ -989,9 +1012,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						continue;
 					}
 
-					let mut is_downstream_from_selected_absolute_layer = false;
+					// Deselect stack nodes upstream from a selected layer
+					let mut is_upstream_from_selected_absolute_layer = false;
 					let mut current_node = *selected_node;
 					loop {
+						if network_interface.is_absolute(selected_node, selection_network_path) {
+							break;
+						}
 						let Some(outward_wires) = network_interface.outward_wires(selection_network_path) else {
 							break;
 						};
@@ -1010,16 +1037,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						if !network_interface.is_layer(&downstream_node, selection_network_path) {
 							break;
 						}
-						if network_interface.is_absolute(&downstream_node, selection_network_path) {
-							is_downstream_from_selected_absolute_layer = node_ids.contains(&downstream_node);
+						// Break the iteration if the layer is absolute(top of stack), or it is selected
+						if network_interface.is_absolute(&downstream_node, selection_network_path) || node_ids.contains(&downstream_node) {
+							is_upstream_from_selected_absolute_layer = node_ids.contains(&downstream_node);
 							break;
 						}
 						current_node = downstream_node;
 					}
-					if is_downstream_from_selected_absolute_layer {
-						continue;
+					if !is_upstream_from_selected_absolute_layer {
+						filtered_node_ids.push(*selected_node)
 					}
-					filtered_node_ids.push(*selected_node)
 				}
 
 				for node_id in filtered_node_ids {
@@ -1053,7 +1080,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if is_layer && !network_interface.is_eligible_to_be_layer(&node_id, selection_network_path) {
 					return;
 				}
-
 				network_interface.set_to_node_or_layer(&node_id, selection_network_path, is_layer);
 
 				self.context_menu = None;
@@ -1240,7 +1266,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(FrontendMessage::UpdateNodeTypes { node_types });
 			}
 			NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors } => {
-				network_interface.resolved_types = resolved_types;
+				for (path, node_type) in resolved_types.add {
+					network_interface.resolved_types.types.insert(path.to_vec(), node_type);
+				}
+				for path in resolved_types.remove {
+					network_interface.resolved_types.types.remove(&path.to_vec());
+				}
 				self.node_graph_errors = node_graph_errors;
 			}
 			NodeGraphMessage::UpdateActionButtons => {
@@ -1573,14 +1604,9 @@ impl NodeGraphMessageHandler {
 			let frontend_graph_inputs = node.inputs.iter().enumerate().map(|(index, _)| {
 				// Convert the index in all inputs to the index in only the exposed inputs
 				// TODO: Only display input type if potential inputs in node_registry are all the same type
-				let input_type = network_interface.resolved_types.inputs.get(&Source { node: node_id_path.clone(), index }).cloned();
-
+				let node_type = network_interface.input_type(&InputConnector::node(node_id, index), breadcrumb_network_path);
 				// TODO: Should display the color of the "most commonly relevant" (we'd need some sort of precedence) data type it allows given the current generic form that's constrained by the other present connections.
-				let frontend_data_type = if let Some(ref input_type) = input_type {
-					FrontendGraphDataType::with_type(input_type)
-				} else {
-					FrontendGraphDataType::General
-				};
+				let data_type = FrontendGraphDataType::with_type(&node_type);
 
 				let input_name = node_metadata
 					.persistent_metadata
@@ -1590,9 +1616,9 @@ impl NodeGraphMessageHandler {
 					.unwrap_or(network_interface.input_type(&InputConnector::node(node_id, index), breadcrumb_network_path).nested_type().to_string());
 
 				FrontendGraphInput {
-					data_type: frontend_data_type,
+					data_type,
 					name: input_name,
-					resolved_type: input_type.map(|input| format!("{input:?}")),
+					resolved_type: Some(format!("{:?}", node_type)),
 					connected_to: None,
 				}
 			});
@@ -1623,7 +1649,7 @@ impl NodeGraphMessageHandler {
 				.map(|(_, input_type)| input_type)
 				.collect();
 
-			let output_types = Self::get_output_types(node, &network_interface.resolved_types, node_id_path);
+			let output_types = network_interface.output_types(&node_id, breadcrumb_network_path);
 			let primary_output_type = output_types.first().expect("Primary output should always exist");
 			let frontend_data_type = if let Some(output_type) = primary_output_type {
 				FrontendGraphDataType::with_type(output_type)
@@ -1799,61 +1825,6 @@ impl NodeGraphMessageHandler {
 				responses.add(FrontendMessage::UpdateDocumentLayerDetails { data });
 			}
 		}
-	}
-
-	pub fn get_output_types(node: &DocumentNode, resolved_types: &ResolvedDocumentNodeTypes, node_id_path: &[NodeId]) -> Vec<Option<Type>> {
-		let mut output_types = Vec::new();
-
-		let primary_output_type = resolved_types
-			.outputs
-			.get(&Source {
-				node: node_id_path.to_owned(),
-				index: 0,
-			})
-			.cloned();
-		output_types.push(primary_output_type);
-
-		// If the node is not a protonode, get types by traversing across exports until a proto node is reached.
-		if let graph_craft::document::DocumentNodeImplementation::Network(internal_network) = &node.implementation {
-			for export in internal_network.exports.iter().skip(1) {
-				let mut current_export = export;
-				let mut current_network = internal_network;
-				let mut current_path = node_id_path.to_owned();
-
-				while let NodeInput::Node { node_id, output_index, .. } = current_export {
-					current_path.push(*node_id);
-
-					let next_node = current_network.nodes.get(node_id).expect("Export node id should always exist");
-
-					if let graph_craft::document::DocumentNodeImplementation::Network(next_network) = &next_node.implementation {
-						current_network = next_network;
-						current_export = next_network.exports.get(*output_index).expect("Export at output index should always exist");
-					} else {
-						break;
-					}
-				}
-
-				let output_type: Option<Type> = if let NodeInput::Node { output_index, .. } = current_export {
-					// Current export is pointing to a proto node where type can be derived
-					assert_eq!(*output_index, 0, "Output index for a proto node should always be 0");
-					resolved_types.outputs.get(&Source { node: current_path.clone(), index: 0 }).cloned()
-				} else if let NodeInput::Value { tagged_value, .. } = current_export {
-					Some(tagged_value.ty())
-				} else if let NodeInput::Network { import_index, .. } = current_export {
-					resolved_types
-						.outputs
-						.get(&Source {
-							node: node_id_path.to_owned(),
-							index: *import_index,
-						})
-						.cloned()
-				} else {
-					None
-				};
-				output_types.push(output_type);
-			}
-		}
-		output_types
 	}
 
 	fn build_wire_path_string(output_position: DVec2, input_position: DVec2, vertical_out: bool, vertical_in: bool) -> String {

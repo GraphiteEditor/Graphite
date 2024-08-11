@@ -16,6 +16,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::text::Font;
 use graphene_std::vector::style::{Fill, FillType, Gradient};
+use interpreted_executor::dynamic_executor::IntrospectError;
 
 use std::sync::Arc;
 use std::vec;
@@ -379,7 +380,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				let upgrade_vector_manipulation_format = document_serialized_content.contains("ManipulatorGroupIds") && !document_name.contains("__DO_NOT_UPGRADE__");
 				let document_name = document_name.replace("__DO_NOT_UPGRADE__", "");
 
-				let document = DocumentMessageHandler::with_name_and_content(document_name.clone(), document_serialized_content);
+				let document = DocumentMessageHandler::deserialize_document(&document_serialized_content).map(|mut document| {
+					document.name = document_name.clone();
+					document
+				});
+
 				let mut document = match document {
 					Ok(document) => document,
 					Err(e) => {
@@ -548,15 +553,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					};
 					// If the downstream node is a layer and the input is the first input and the current layer is not in a stack
 					if input_index == 0 && document.network_interface.is_layer(&downstream_node, &[]) && document.network_interface.is_absolute(&layer.to_node(), &[]) {
+						// Ensure the layer is horizontally aligned with the downstream layer to prevent changing the layout of old files
 						let (Some(layer_position), Some(downstream_position)) =
 							(document.network_interface.position(&layer.to_node(), &[]), document.network_interface.position(&downstream_node, &[]))
 						else {
-							log::error!("Could not get downstream node position in PortfolioMessage::OpenDocumentFileWithId");
-							return;
+							log::error!("Could not get position for layer {:?} or downstream node {} when opening file", layer.to_node(), downstream_node);
+							continue;
 						};
-						document
-							.network_interface
-							.set_stack_position(&layer.to_node(), (layer_position.y - downstream_position.y - 3).max(0) as u32, &[]);
+						if layer_position.x == downstream_position.x {
+							document.network_interface.set_stack_position_calculated_offset(&layer.to_node(), &downstream_node, &[]);
+						}
 					}
 				}
 
@@ -749,7 +755,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 }
 
 impl PortfolioMessageHandler {
-	pub async fn introspect_node(&self, node_path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
+	pub async fn introspect_node(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any>, IntrospectError> {
 		self.executor.introspect_node(node_path).await
 	}
 

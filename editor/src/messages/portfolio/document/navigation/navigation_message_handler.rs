@@ -71,9 +71,6 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 
 		match message {
 			NavigationMessage::BeginCanvasPan => {
-				let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
-					return;
-				};
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grabbing });
 
 				responses.add(FrontendMessage::UpdateInputHints {
@@ -81,6 +78,9 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				});
 
 				self.mouse_position = ipp.mouse.position;
+				let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
+					return;
+				};
 				self.navigation_operation = NavigationOperation::Pan { pan_original_for_abort: ptz.pan };
 			}
 			NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu } => {
@@ -172,6 +172,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 					true => (-ipp.mouse.scroll_delta.y, 0.).into(),
 				} * VIEWPORT_SCROLL_RATE;
 				responses.add(NavigationMessage::CanvasPan { delta });
+				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 			}
 			NavigationMessage::CanvasTiltResetAndZoomTo100Percent => {
 				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
@@ -182,6 +183,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				ptz.set_zoom(1.);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				responses.add(DocumentMessage::PTZUpdate);
+				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 			}
 			NavigationMessage::CanvasTiltSet { angle_radians } => {
 				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
@@ -252,6 +254,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				ptz.set_zoom(zoom);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				responses.add(DocumentMessage::PTZUpdate);
+				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 			}
 			NavigationMessage::EndCanvasPTZ { abort_transform } => {
 				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
@@ -272,14 +275,13 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 							ptz.set_zoom(zoom_original_for_abort);
 						}
 					}
-
-					responses.add(DocumentMessage::PTZUpdate);
 				}
 
 				// Final chance to apply snapping if the key was pressed during this final frame
 				ptz.tilt = self.snapped_tilt(ptz.tilt);
 				ptz.set_zoom(self.snapped_zoom(ptz.zoom()));
-
+				responses.add(DocumentMessage::PTZUpdate);
+				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 				// Reset the navigation operation now that it's done
 				self.navigation_operation = NavigationOperation::None;
 
@@ -336,6 +338,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				responses.add(DocumentMessage::PTZUpdate);
+				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 			}
 			NavigationMessage::FitViewportToSelection => {
 				if let Some(bounds) = selection_bounds {
@@ -420,6 +423,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 						};
 
 						responses.add(NavigationMessage::CanvasZoomSet { zoom_factor: ptz.zoom() });
+						responses.add(NodeGraphMessage::SetGridAlignedEdges);
 					}
 				}
 
