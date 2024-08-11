@@ -226,6 +226,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			NodeGraphMessage::DisconnectInput { input_connector } => {
 				network_interface.disconnect_input(&input_connector, selection_network_path);
 			}
+			NodeGraphMessage::DisconnectRootNode => {
+				network_interface.start_previewing_without_restore(selection_network_path);
+			}
 			NodeGraphMessage::DuplicateSelectedNodes => {
 				let all_selected_nodes = network_interface.upstream_chain_nodes(selection_network_path);
 
@@ -435,10 +438,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					self.initial_disconnecting = true;
 					self.disconnecting = Some(clicked_input.clone());
 
-					let Some(output_connector) = network_interface.upstream_output_connector(clicked_input, selection_network_path) else {
-						log::error!("Could not get upstream node from {clicked_input:?} when moving existing wire");
-						return;
+					let output_connector = if *clicked_input == InputConnector::Export(0) {
+						network_interface.root_node(selection_network_path).map(|root_node| root_node.to_connector())
+					} else {
+						network_interface.upstream_output_connector(clicked_input, selection_network_path)
 					};
+					let Some(output_connector) = output_connector else { return };
 					self.wire_in_progress_from_connector = network_interface.output_position(&output_connector, selection_network_path);
 					return;
 				}
@@ -553,9 +558,19 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						// Disconnect if the wire was previously connected to an input
 						if let Some(disconnecting) = &self.disconnecting {
 							responses.add(DocumentMessage::StartTransaction);
-							responses.add(NodeGraphMessage::DisconnectInput {
-								input_connector: disconnecting.clone(),
-							});
+							let mut disconnect_root_node = false;
+							if let Previewing::Yes { root_node_to_restore } = network_interface.previewing(selection_network_path) {
+								if root_node_to_restore.is_some() && *disconnecting == InputConnector::Export(0) {
+									disconnect_root_node = true;
+								}
+							}
+							if disconnect_root_node {
+								responses.add(NodeGraphMessage::DisconnectRootNode);
+							} else {
+								responses.add(NodeGraphMessage::DisconnectInput {
+									input_connector: disconnecting.clone(),
+								});
+							}
 							// Update the frontend that the node is disconnected
 							responses.add(NodeGraphMessage::RunDocumentGraph);
 							responses.add(NodeGraphMessage::SendGraph);
@@ -946,6 +961,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(NodeGraphMessage::SendSelectedNodes);
 				}
 			}
+			NodeGraphMessage::SetGridAlignedEdges => {
+				if graph_view_overlay_open {
+					network_interface.set_grid_aligned_edges(DVec2::new(ipp.viewport_bounds.bottom_right.x - ipp.viewport_bounds.top_left.x, 0.), breadcrumb_network_path);
+					// Send the new edges to the frontend
+					let imports = network_interface.frontend_imports(breadcrumb_network_path).unwrap_or_default();
+					let exports = network_interface.frontend_exports(breadcrumb_network_path).unwrap_or_default();
+					responses.add(FrontendMessage::UpdateImportsExports { imports, exports });
+				}
+			}
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
 				let input = NodeInput::value(value, false);
 				responses.add(NodeGraphMessage::SetInput {
@@ -988,9 +1012,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						continue;
 					}
 
-					let mut is_downstream_from_selected_absolute_layer = false;
+					// Deselect stack nodes upstream from a selected layer
+					let mut is_upstream_from_selected_absolute_layer = false;
 					let mut current_node = *selected_node;
 					loop {
+						if network_interface.is_absolute(selected_node, selection_network_path) {
+							break;
+						}
 						let Some(outward_wires) = network_interface.outward_wires(selection_network_path) else {
 							break;
 						};
@@ -1009,16 +1037,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						if !network_interface.is_layer(&downstream_node, selection_network_path) {
 							break;
 						}
-						if network_interface.is_absolute(&downstream_node, selection_network_path) {
-							is_downstream_from_selected_absolute_layer = node_ids.contains(&downstream_node);
+						// Break the iteration if the layer is absolute(top of stack), or it is selected
+						if network_interface.is_absolute(&downstream_node, selection_network_path) || node_ids.contains(&downstream_node) {
+							is_upstream_from_selected_absolute_layer = node_ids.contains(&downstream_node);
 							break;
 						}
 						current_node = downstream_node;
 					}
-					if is_downstream_from_selected_absolute_layer {
-						continue;
+					if !is_upstream_from_selected_absolute_layer {
+						filtered_node_ids.push(*selected_node)
 					}
-					filtered_node_ids.push(*selected_node)
 				}
 
 				for node_id in filtered_node_ids {
@@ -1052,7 +1080,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if is_layer && !network_interface.is_eligible_to_be_layer(&node_id, selection_network_path) {
 					return;
 				}
-
 				network_interface.set_to_node_or_layer(&node_id, selection_network_path, is_layer);
 
 				self.context_menu = None;

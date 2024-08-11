@@ -21,9 +21,6 @@
 		entry: LayerPanelEntry;
 	};
 
-	const RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT = 20;
-	const INSERT_MARK_OFFSET = 2;
-
 	type DraggingData = {
 		select?: () => void;
 		insertParentId: bigint | undefined;
@@ -207,9 +204,6 @@
 		const treeChildren = tree.div()?.children;
 		const treeOffset = tree.div()?.getBoundingClientRect().top;
 
-		// Closest distance to the middle of the row along the Y axis
-		let closest = Infinity;
-
 		// Folder to insert into
 		let insertParentId: bigint | undefined = undefined;
 		let insertDepth = 0;
@@ -221,30 +215,26 @@
 		let highlightFolder = false;
 
 		let markerHeight = 0;
-		let previousHeight: number | undefined = undefined;
-
-		if (treeChildren !== undefined && treeOffset !== undefined) {
-			Array.from(treeChildren).forEach((treeChild, index) => {
+		const layerPanel = document.querySelector("[data-layer-panel]"); // Selects the element with the data-layer-panel attribute
+		if (layerPanel !== null && treeChildren !== undefined && treeOffset !== undefined) {
+			let layerPanelTop = layerPanel.getBoundingClientRect().top;
+			Array.from(treeChildren).forEach((treeChild) => {
 				const indexAttribute = treeChild.getAttribute("data-index");
 				if (!indexAttribute) return;
 				const { folderIndex, entry: layer } = layers[parseInt(indexAttribute, 10)];
 
 				const rect = treeChild.getBoundingClientRect();
-				const position = rect.top + rect.height / 2;
-				const distance = position - clientY;
-
-				// Inserting above current row
-				if (distance > 0 && distance < closest) {
-					insertParentId = layer.parentId;
-					insertDepth = layer.depth - 1;
-					insertIndex = folderIndex;
-					highlightFolder = false;
-					closest = distance;
-					markerHeight = previousHeight || treeOffset + INSERT_MARK_OFFSET;
+				if (rect.top > clientY || rect.bottom < clientY) {
+					return;
 				}
-				// Inserting below current row
-				else if (distance > -closest && distance > -RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT && distance < 0) {
-					if (layer.childrenAllowed) {
+				const pointerPercentage = (clientY - rect.top) / rect.height;
+				if (layer.childrenAllowed) {
+					if (pointerPercentage < 0.25) {
+						insertParentId = layer.parentId;
+						insertDepth = layer.depth - 1;
+						insertIndex = folderIndex;
+						markerHeight = rect.top - layerPanelTop;
+					} else if (pointerPercentage < 0.75 || (layer.childrenPresent && layer.expanded)) {
 						insertParentId = layer.id;
 						insertDepth = layer.depth;
 						insertIndex = 0;
@@ -253,23 +243,32 @@
 						insertParentId = layer.parentId;
 						insertDepth = layer.depth - 1;
 						insertIndex = folderIndex + 1;
-						highlightFolder = false;
+						markerHeight = rect.bottom - layerPanelTop;
 					}
-
-					closest = -distance;
-					markerHeight = index === treeChildren.length - 1 ? rect.bottom - INSERT_MARK_OFFSET : rect.bottom;
+				} else {
+					if (pointerPercentage < 0.5) {
+						insertParentId = layer.parentId;
+						insertDepth = layer.depth - 1;
+						insertIndex = folderIndex;
+						markerHeight = rect.top - layerPanelTop;
+					} else {
+						insertParentId = layer.parentId;
+						insertDepth = layer.depth - 1;
+						insertIndex = folderIndex + 1;
+						markerHeight = rect.bottom - layerPanelTop;
+					}
 				}
-				// Inserting with no nesting at the end of the panel
-				else if (closest === Infinity) {
-					if (layer.parentId === undefined) insertIndex = folderIndex + 1;
-
-					markerHeight = rect.bottom - INSERT_MARK_OFFSET;
-				}
-				previousHeight = rect.bottom;
 			});
+			// Dragging to the empty space below all layers
+			let lastLayer = treeChildren[treeChildren.length - 1];
+			if (lastLayer.getBoundingClientRect().bottom < clientY) {
+				const numberRootLayers = layers.filter((layer) => layer.entry.depth === 1).length;
+				insertParentId = undefined;
+				insertDepth = 0;
+				insertIndex = numberRootLayers;
+				markerHeight = lastLayer.getBoundingClientRect().bottom - layerPanelTop;
+			}
 		}
-
-		markerHeight -= treeOffset || 0;
 
 		return {
 			select,
@@ -370,7 +369,7 @@
 		<WidgetLayout layout={layersPanelOptionsLayout} />
 	</LayoutRow>
 	<LayoutRow class="list-area" scrollableY={true}>
-		<LayoutCol class="list" bind:this={list} on:click={() => deselectAllLayers()} on:dragover={(e) => draggable && updateInsertLine(e)} on:dragend={() => draggable && drop()}>
+		<LayoutCol class="list" data-layer-panel bind:this={list} on:click={() => deselectAllLayers()} on:dragover={(e) => draggable && updateInsertLine(e)} on:dragend={() => draggable && drop()}>
 			{#each layers as listing, index}
 				<LayoutRow
 					class="layer"

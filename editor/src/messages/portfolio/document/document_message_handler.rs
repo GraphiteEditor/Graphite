@@ -415,6 +415,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					self.selection_network_path.clone_from(&self.breadcrumb_network_path);
 				}
 				responses.add(DocumentMessage::PTZUpdate);
+				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::FlipSelectedLayers { flip_axis } => {
@@ -443,6 +444,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				// Update the tilt menu bar buttons to be disabled when the graph is open
 				responses.add(MenuBarMessage::SendLayout);
 				if open {
+					responses.add(NodeGraphMessage::SetGridAlignedEdges);
 					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
 				}
@@ -585,13 +587,37 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					return;
 				}
 
-				let layers_to_move = self.network_interface.shallowest_unique_layers(&self.selection_network_path).collect::<Vec<_>>();
+				let layers_to_move = self.network_interface.shallowest_unique_layers_sorted(&self.selection_network_path);
+				// Offset the index for layers to move that are below another layer to move. For example when moving 1 and 2 between 3 and 4, 2 should be inserted at the same index as 1 since 1 is moved first.
+				let layers_to_move_with_insert_offset: Vec<(LayerNodeIdentifier, usize)> = layers_to_move
+					.iter()
+					.map(|layer| {
+						if layer.parent(self.metadata()) != Some(parent) {
+							(*layer, 0)
+						} else {
+							let upstream_selected_siblings = layer
+								.downstream_siblings(self.network_interface.document_metadata())
+								.filter(|sibling| {
+									sibling != layer
+										&& layers_to_move.iter().any(|layer| {
+											layer == sibling
+												&& layer
+													.parent(self.metadata())
+													.is_some_and(|parent| parent.children(self.metadata()).position(|child| child == *layer) < Some(insert_index))
+										})
+								})
+								.count();
+							(*layer, upstream_selected_siblings)
+						}
+					})
+					.collect::<Vec<_>>();
 
-				for layer_to_move in layers_to_move.into_iter().rev() {
+				for (layer_index, (layer_to_move, insert_offset)) in layers_to_move_with_insert_offset.into_iter().enumerate() {
+					let calculated_insert_index = insert_index + layer_index - insert_offset;
 					responses.add(NodeGraphMessage::MoveLayerToStack {
 						layer: layer_to_move,
 						parent,
-						insert_index,
+						insert_index: calculated_insert_index,
 					});
 				}
 
@@ -600,15 +626,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::MoveSelectedLayersToGroup { parent } => {
 				// Group all shallowest unique selected layers in order
-				let all_layers_to_group = self.network_interface.shallowest_unique_layers(&self.selection_network_path).collect::<Vec<_>>();
-
-				// Ensure nodes are grouped in the correct order
-				let mut all_layers_to_group_sorted = Vec::new();
-				for descendant in LayerNodeIdentifier::ROOT_PARENT.descendants(self.metadata()) {
-					if all_layers_to_group.contains(&descendant) {
-						all_layers_to_group_sorted.push(descendant);
-					};
-				}
+				let all_layers_to_group_sorted = self.network_interface.shallowest_unique_layers_sorted(&self.selection_network_path);
 
 				for layer_to_group in all_layers_to_group_sorted.into_iter().rev() {
 					responses.add(NodeGraphMessage::MoveLayerToStack {
@@ -1044,11 +1062,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					let transform = self
 						.navigation_handler
 						.calculate_offset_transform(ipp.viewport_bounds.center(), &network_metadata.persistent_metadata.navigation_metadata.node_graph_ptz);
-					self.network_interface.set_transform(
-						transform,
-						DVec2::new(ipp.viewport_bounds.bottom_right.x - ipp.viewport_bounds.top_left.x, 0.),
-						&self.breadcrumb_network_path,
-					);
+					self.network_interface.set_transform(transform, &self.breadcrumb_network_path);
 					let imports = self.network_interface.frontend_imports(&self.breadcrumb_network_path).unwrap_or_default();
 					let exports = self.network_interface.frontend_exports(&self.breadcrumb_network_path).unwrap_or_default();
 					responses.add(DocumentMessage::RenderRulers);
@@ -1259,12 +1273,6 @@ impl DocumentMessageHandler {
 			)
 			.map_err(|e| EditorError::DocumentDeserialization(e.to_string()))?;
 		Ok(document_message_handler)
-	}
-
-	pub fn with_name_and_content(name: String, serialized_content: String) -> Result<Self, EditorError> {
-		let mut document = Self::deserialize_document(&serialized_content)?;
-		document.name = name;
-		Ok(document)
 	}
 
 	/// Called recursively by the entry function [`serialize_root`].
