@@ -22,5 +22,5 @@ pub fn camera_to_xyz(camera_model: &CameraModel) -> Option<[f64; 9]> {
 	CAMERA_DATA
 		.iter()
 		.find(|(camera_name_haystack, _)| camera_name_needle == *camera_name_haystack)
-		.map(|(_, data)| data.camera_to_xyz.map(|x| (x as f64) / 10000.))
+		.map(|(_, data)| data.camera_to_xyz.map(|x| (x as f64) / 10_000.))
 }

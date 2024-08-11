@@ -1,10 +1,10 @@
 use crate::{Image, RawImage};
 
-fn average(data: &[u16], indexes: &[i64]) -> u16 {
-	let mut sum: u32 = 0;
+fn average(data: &[u16], indexes: impl Iterator<Item = i64>) -> u16 {
+	let mut sum = 0;
 	let mut count = 0;
-	for &index in indexes {
-		if index >= 0 && index < data.len() as i64 {
+	for index in indexes {
+		if index >= 0 && (index as usize) < data.len() {
 			sum += data[index as usize] as u32;
 			count += 1;
 		}
@@ -25,39 +25,44 @@ fn linear_demosaic_rggb(mut raw_image: RawImage) -> Image<u16> {
 	let height = raw_image.height as i64;
 
 	for row in 0..height {
+		let row_by_width = row * width;
+
 		for col in 0..width {
-			let pixel_index = row * width + col;
+			let pixel_index = row_by_width + col;
+
 			let vertical_indexes = [pixel_index + width, pixel_index - width];
 			let horizontal_indexes = [pixel_index + 1, pixel_index - 1];
 			let cross_indexes = [pixel_index + width, pixel_index - width, pixel_index + 1, pixel_index - 1];
 			let diagonal_indexes = [pixel_index + width + 1, pixel_index - width + 1, pixel_index + width - 1, pixel_index - width - 1];
-			if row % 2 == 0 {
-				if col % 2 == 0 {
-					let indexes: Vec<_> = cross_indexes.iter().map(|x| 3 * x + 1).collect();
-					raw_image.data[3 * (pixel_index as usize) + 1] = average(&raw_image.data, &indexes);
 
-					let indexes: Vec<_> = diagonal_indexes.iter().map(|x| 3 * x + 2).collect();
-					raw_image.data[3 * (pixel_index as usize) + 2] = average(&raw_image.data, &indexes);
-				} else {
-					let indexes: Vec<_> = horizontal_indexes.iter().map(|x| 3 * x).collect();
-					raw_image.data[3 * (pixel_index as usize)] = average(&raw_image.data, &indexes);
+			match (row % 2 == 0, col % 2 == 0) {
+				(true, true) => {
+					let indexes = cross_indexes.iter().map(|x| 3 * x + 1);
+					raw_image.data[3 * (pixel_index as usize) + 1] = average(&raw_image.data, indexes);
 
-					let indexes: Vec<_> = vertical_indexes.iter().map(|x| 3 * x + 2).collect();
-					raw_image.data[3 * (pixel_index as usize) + 2] = average(&raw_image.data, &indexes);
+					let indexes = diagonal_indexes.iter().map(|x| 3 * x + 2);
+					raw_image.data[3 * (pixel_index as usize) + 2] = average(&raw_image.data, indexes);
 				}
-			} else {
-				if col % 2 == 0 {
-					let indexes: Vec<_> = vertical_indexes.iter().map(|x| 3 * x).collect();
-					raw_image.data[3 * (pixel_index as usize)] = average(&raw_image.data, &indexes);
+				(true, false) => {
+					let indexes = horizontal_indexes.iter().map(|x| 3 * x);
+					raw_image.data[3 * (pixel_index as usize)] = average(&raw_image.data, indexes);
 
-					let indexes: Vec<_> = horizontal_indexes.iter().map(|x| 3 * x + 2).collect();
-					raw_image.data[3 * (pixel_index as usize) + 2] = average(&raw_image.data, &indexes);
-				} else {
-					let indexes: Vec<_> = cross_indexes.iter().map(|x| 3 * x + 1).collect();
-					raw_image.data[3 * (pixel_index as usize) + 1] = average(&raw_image.data, &indexes);
+					let indexes = vertical_indexes.iter().map(|x| 3 * x + 2);
+					raw_image.data[3 * (pixel_index as usize) + 2] = average(&raw_image.data, indexes);
+				}
+				(false, true) => {
+					let indexes = vertical_indexes.iter().map(|x| 3 * x);
+					raw_image.data[3 * (pixel_index as usize)] = average(&raw_image.data, indexes);
 
-					let indexes: Vec<_> = diagonal_indexes.iter().map(|x| 3 * x).collect();
-					raw_image.data[3 * (pixel_index as usize)] = average(&raw_image.data, &indexes);
+					let indexes = horizontal_indexes.iter().map(|x| 3 * x + 2);
+					raw_image.data[3 * (pixel_index as usize) + 2] = average(&raw_image.data, indexes);
+				}
+				(false, false) => {
+					let indexes = cross_indexes.iter().map(|x| 3 * x + 1);
+					raw_image.data[3 * (pixel_index as usize) + 1] = average(&raw_image.data, indexes);
+
+					let indexes = diagonal_indexes.iter().map(|x| 3 * x);
+					raw_image.data[3 * (pixel_index as usize)] = average(&raw_image.data, indexes);
 				}
 			}
 		}

@@ -20,13 +20,17 @@ raw-rs-tests = ["dep:image", "dep:libraw-rs", "dep:palette", "dep:reqwest"]
 tag-derive = { path = "tag-derive" }
 build-camera-data = { path = "build-camera-data" }
 
+# Workspace dependencies
+thiserror = { workspace = true }
+
 # Required dependencies
 bitstream-io = "2.3.0"
 num_enum = "0.7.2"
-thiserror = { workspace = true }
 
-# Optional dependencies (Should be dev dependencies, but Cargo currently doesn't allow optional dev dependencies)
+# Optional workspace dependencies
 image = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
+
+# Optional dependencies (should be dev dependencies, but Cargo currently doesn't allow optional dev dependencies)
 libraw-rs = { version = "0.0.4", optional = true }
 palette = { version = "0.7.6", optional = true }
-reqwest = { workspace = true, optional = true }

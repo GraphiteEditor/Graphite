@@ -1,19 +1,18 @@
+// Only compile this file if the feature "raw-rs-tests" is enabled
 #![cfg(feature = "raw-rs-tests")]
+
+use raw_rs::RawImage;
+
+use image::codecs::png::{CompressionType, FilterType, PngEncoder};
+use image::{ColorType, ImageEncoder};
+use libraw::Processor;
+use palette::{LinSrgb, Srgb};
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::fs::{read_dir, File};
 use std::io::{BufWriter, Cursor, Read};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-
-use raw_rs::RawImage;
-
-use image::{
-	codecs::png::{CompressionType, FilterType, PngEncoder},
-	ColorType, ImageEncoder,
-};
-use libraw::Processor;
-use palette::{LinSrgb, Srgb};
 
 const TEST_FILES: [&str; 3] = ["ILCE-7M3-ARW2.3.5-blossoms.arw", "ILCE-7RM4-ARW2.3.5-kestrel.arw", "ILCE-6000-ARW2.3.1-windsock.arw"];
 const BASE_URL: &str = "https://static.graphite.rs/test-data/libraries/raw-rs/";

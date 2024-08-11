@@ -50,8 +50,6 @@ pub fn decode<R: Read + Seek>(reader: &mut R) -> Result<RawImage, DecoderError> 
 	let mut file = TiffRead::new(reader)?;
 	let ifd = Ifd::new_first_ifd(&mut file)?;
 
-	println!("{}", ifd);
-
 	let camera_model = metadata::identify::identify_camera_model(&ifd, &mut file).unwrap();
 
 	let mut raw_image = if camera_model.model == "DSLR-A100" {
