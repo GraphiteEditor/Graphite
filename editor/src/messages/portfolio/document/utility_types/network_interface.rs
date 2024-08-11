@@ -1111,7 +1111,7 @@ impl NodeNetworkInterface {
 	#[cfg(not(target_arch = "wasm32"))]
 	fn text_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<f64> {
 		warn!("Failed to find width of {node_id:#?} in network_path {network_path:?} due to non-wasm arch");
-		None
+		Some(0.)
 	}
 
 	#[cfg(target_arch = "wasm32")]

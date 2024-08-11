@@ -6,7 +6,7 @@ use glam::IVec2;
 use graphene_core::memo::MemoHashGuard;
 pub use graphene_core::uuid::generate_uuid;
 use graphene_core::{Cow, MemoHash, ProtoNodeIdentifier, Type};
-use rustc_hash::FxBuildHasher;
+use rustc_hash::FxHashSet;
 
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
@@ -223,11 +223,14 @@ pub struct Source {
 /// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.
 #[derive(Clone, Debug, PartialEq, Eq, DynAny, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
 pub struct OriginalLocation {
 	/// The original location to the document node - e.g. [grandparent_id, parent_id, node_id].
 	pub path: Option<Vec<NodeId>>,
 	/// Each document input source maps to one proto node input (however one proto node input may come from several sources)
 	pub inputs_source: HashMap<Source, usize>,
+	/// List of nodes which depend on this node
+	pub dependants: Vec<Vec<NodeId>>,
 	/// A list of flags indicating whether the input is exposed in the UI
 	pub inputs_exposed: Vec<bool>,
 	/// Skipping inputs is useful for the manual composition thing - whereby a hidden `Footprint` input is added as the first input.
@@ -557,6 +560,13 @@ impl DocumentNodeImplementation {
 	pub const fn proto(name: &'static str) -> Self {
 		Self::ProtoNode(ProtoNodeIdentifier::new(name))
 	}
+
+	pub fn output_count(&self) -> usize {
+		match self {
+			DocumentNodeImplementation::Network(network) => network.exports.len(),
+			_ => 1,
+		}
+	}
 }
 
 // TODO: Eventually remove this (probably starting late 2024)
@@ -826,8 +836,6 @@ impl NodeNetwork {
 	}
 }
 
-type SubstitutionMap = HashMap<(NodeId, usize), (NodeId, usize), FxBuildHasher>;
-
 /// Functions for compiling the network
 impl NodeNetwork {
 	/// Replace all references in the graph of a node ID with a new node ID defined by the function `f`.
@@ -843,6 +851,7 @@ impl NodeNetwork {
 			.into_iter()
 			.map(|(id, mut node)| {
 				node.inputs.iter_mut().for_each(|input| input.map_ids(f));
+				node.original_location.dependants.iter_mut().for_each(|deps| deps.iter_mut().for_each(|id| *id = f(*id)));
 				(f(id), node)
 			})
 			.collect();
@@ -863,31 +872,49 @@ impl NodeNetwork {
 					path: Some(new_path),
 					inputs_exposed: node.inputs.iter().map(|input| input.is_exposed()).collect(),
 					skip_inputs: if node.manual_composition.is_some() { 1 } else { 0 },
+					dependants: (0..node.implementation.output_count()).map(|_| Vec::new()).collect(),
 					..Default::default()
-				}
+				};
 			}
 		}
 	}
 
-	/// Replace all references in any node of `old_input` with `new_input`
-	fn replace_node_inputs(&mut self, substitutions: &SubstitutionMap) {
-		for node in self.nodes.values_mut() {
-			node.inputs.iter_mut().for_each(|input| {
-				if let NodeInput::Node {
-					ref mut node_id,
-					ref mut output_index,
-					..
-				} = input
-				{
-					let mut lookup = (*node_id, *output_index);
-					lookup = loop {
-						let Some(new_lookup) = substitutions.get(&lookup) else { break lookup };
-						lookup = *new_lookup
-					};
-					(*node_id, *output_index) = lookup;
+	pub fn populate_dependants(&mut self) {
+		let mut dep_changes = Vec::new();
+		for (node_id, node) in &mut self.nodes {
+			let len = node.original_location.dependants.len();
+			node.original_location.dependants.extend(vec![vec![]; (node.implementation.output_count()).max(len) - len]);
+			for input in &node.inputs {
+				if let NodeInput::Node { node_id: dep_id, output_index, .. } = input {
+					dep_changes.push((*dep_id, *output_index, *node_id));
 				}
-			});
+			}
 		}
+		// println!("{:#?}", self.nodes.get(&NodeId(1)));
+		for (dep_id, output_index, node_id) in dep_changes {
+			let node = self.nodes.get_mut(&dep_id).expect("Encountered invalid node id");
+			let len = node.original_location.dependants.len();
+			node.original_location.dependants.extend(vec![vec![]; (output_index).max(len) - len]);
+			// println!("{node_id} {output_index} {}", node.implementation.output_count());
+			node.original_location.dependants[output_index].push(node_id);
+		}
+	}
+
+	/// Replace all references in any node of `old_input` with `new_input`
+	fn replace_node_inputs(&mut self, node_id: NodeId, old_input: (NodeId, usize), new_input: (NodeId, usize)) {
+		let Some(node) = self.nodes.get_mut(&node_id) else { return };
+		node.inputs.iter_mut().for_each(|input| {
+			if let NodeInput::Node {
+				node_id: ref mut input_id,
+				ref mut output_index,
+				..
+			} = input
+			{
+				if (*input_id, *output_index) == old_input {
+					(*input_id, *output_index) = new_input;
+				}
+			}
+		});
 	}
 
 	/// Replace all references in any node of `old_output` with `new_output`
@@ -958,13 +985,11 @@ impl NodeNetwork {
 
 	/// Remove all nodes that contain [`DocumentNodeImplementation::Network`] by moving the nested nodes into the parent network.
 	pub fn flatten(&mut self, node_id: NodeId) {
-		let mut subtitutions = HashMap::with_capacity_and_hasher(self.nodes.len(), FxBuildHasher);
-		self.flatten_with_fns(node_id, merge_ids, || NodeId(generate_uuid()), &mut subtitutions);
-		self.replace_node_inputs(&subtitutions);
+		self.flatten_with_fns(node_id, merge_ids, || NodeId(generate_uuid()))
 	}
 
 	/// Remove all nodes that contain [`DocumentNodeImplementation::Network`] by moving the nested nodes into the parent network.
-	pub fn flatten_with_fns(&mut self, node_id: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy, gen_id: impl Fn() -> NodeId + Copy, substitutions: &mut SubstitutionMap) {
+	pub fn flatten_with_fns(&mut self, node_id: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy, gen_id: impl Fn() -> NodeId + Copy) {
 		let Some((id, mut node)) = self.nodes.remove_entry(&node_id) else {
 			warn!("The node which was supposed to be flattened does not exist in the network, id {node_id} network {self:#?}");
 			return;
@@ -1048,6 +1073,7 @@ impl NodeNetwork {
 		if let DocumentNodeImplementation::Network(mut inner_network) = node.implementation {
 			// Connect all network inputs to either the parent network nodes, or newly created value nodes for the parent node.
 			inner_network.map_ids(|inner_id| map_ids(id, inner_id));
+			inner_network.populate_dependants();
 			let new_nodes = inner_network.nodes.keys().cloned().collect::<Vec<_>>();
 
 			for (key, value) in inner_network.scope_injections.into_iter() {
@@ -1071,6 +1097,9 @@ impl NodeNetwork {
 							NodeInput::Node { node_id, output_index, lambda } => {
 								let skip = node.original_location.skip_inputs;
 								nested_node.populate_first_network_input(node_id, output_index, nested_input_index, lambda, node.original_location.inputs(*import_index), skip);
+								if let input_node = self.nodes.get_mut(&node_id).unwrap() {
+									input_node.original_location.dependants[output_index].push(nested_node_id);
+								};
 							}
 							NodeInput::Network { import_index, .. } => {
 								let parent_input_index = import_index;
@@ -1119,14 +1148,28 @@ impl NodeNetwork {
 			// Connect all nodes that were previously connected to this node to the nodes of the inner network
 			for (i, export) in inner_network.exports.into_iter().enumerate() {
 				if let NodeInput::Node { node_id, output_index, .. } = &export {
-					substitutions.insert((id, i), (*node_id, *output_index));
+					for deps in &node.original_location.dependants {
+						for dep in deps {
+							self.replace_node_inputs(*dep, (id, i), (*node_id, *output_index));
+						}
+					}
+
+					if let Some(new_output_node) = self.nodes.get_mut(node_id) {
+						let len = node.original_location.dependants.len();
+						node.original_location.dependants.extend(vec![vec![]; (i + 1).max(len) - len]);
+						let len = new_output_node.original_location.dependants.len();
+						new_output_node.original_location.dependants.extend(vec![vec![]; (*output_index + 1).max(len) - len]);
+						for dep in &node.original_location.dependants[i] {
+							new_output_node.original_location.dependants[*output_index].push(*dep);
+						}
+					}
 				}
 
 				self.replace_network_outputs(NodeInput::node(id, i), export);
 			}
 
 			for node_id in new_nodes {
-				self.flatten_with_fns(node_id, map_ids, gen_id, substitutions);
+				self.flatten_with_fns(node_id, map_ids, gen_id);
 			}
 		} else {
 			// If the node is not a network, it is a primitive node and can be inserted into the network as is.
@@ -1151,6 +1194,12 @@ impl NodeNetwork {
 				assert_eq!(node.inputs.len(), 1, "Id node has more than one input");
 				if let NodeInput::Node { node_id, output_index, .. } = node.inputs[0] {
 					let node_input_output_index = output_index;
+					// TODO fix
+					if let Some(input_node) = self.nodes.get_mut(&node_id) {
+						for &dep in &node.original_location.dependants[0] {
+							input_node.original_location.dependants[output_index].push(dep);
+						}
+					}
 
 					let input_node_id = node_id;
 					for output in self.nodes.values_mut() {
@@ -1301,7 +1350,6 @@ mod test {
 	use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 
 	use graphene_core::ProtoNodeIdentifier;
-	use rustc_hash::FxHashMap;
 
 	use std::sync::atomic::AtomicU64;
 
@@ -1415,8 +1463,8 @@ mod test {
 			.collect(),
 			..Default::default()
 		};
-		network.generate_node_paths(&[]);
-		network.flatten_with_fns(NodeId(1), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), gen_node_id, &mut FxHashMap::default());
+		network.populate_dependants();
+		network.flatten_with_fns(NodeId(1), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), gen_node_id);
 		let flat_network = flat_network();
 		println!("{flat_network:#?}");
 		println!("{network:#?}");
@@ -1459,6 +1507,7 @@ mod test {
 							inputs_source: [(Source { node: vec![NodeId(1)], index: 1 }, 1)].into(),
 							inputs_exposed: vec![true, true],
 							skip_inputs: 0,
+							..Default::default()
 						},
 
 						..Default::default()
@@ -1475,6 +1524,7 @@ mod test {
 							inputs_source: HashMap::new(),
 							inputs_exposed: vec![true],
 							skip_inputs: 0,
+							..Default::default()
 						},
 						..Default::default()
 					},
@@ -1490,6 +1540,7 @@ mod test {
 							inputs_source: HashMap::new(),
 							inputs_exposed: vec![true, false],
 							skip_inputs: 0,
+							..Default::default()
 						},
 						..Default::default()
 					},
@@ -1520,6 +1571,7 @@ mod test {
 							inputs_source: [(Source { node: vec![NodeId(1)], index: 1 }, 1)].into(),
 							inputs_exposed: vec![true, true],
 							skip_inputs: 0,
+							..Default::default()
 						},
 						..Default::default()
 					},
@@ -1534,6 +1586,7 @@ mod test {
 							inputs_source: HashMap::new(),
 							inputs_exposed: vec![true, false],
 							skip_inputs: 0,
+							..Default::default()
 						},
 						..Default::default()
 					},
@@ -1548,6 +1601,7 @@ mod test {
 							inputs_source: HashMap::new(),
 							inputs_exposed: vec![true],
 							skip_inputs: 0,
+							..Default::default()
 						},
 						..Default::default()
 					},
@@ -1612,10 +1666,9 @@ mod test {
 			..Default::default()
 		};
 		let _new_ids = 101..;
-		let mut substitutions = FxHashMap::default();
-		network.flatten_with_fns(NodeId(1), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), || NodeId(10000), &mut substitutions);
-		network.flatten_with_fns(NodeId(2), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), || NodeId(10001), &mut substitutions);
-		network.replace_node_inputs(&substitutions);
+		network.populate_dependants();
+		network.flatten_with_fns(NodeId(1), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), || NodeId(10000));
+		network.flatten_with_fns(NodeId(2), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), || NodeId(10001));
 		network.remove_dead_nodes(0);
 		network
 	}
