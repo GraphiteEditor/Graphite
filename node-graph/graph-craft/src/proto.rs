@@ -406,33 +406,7 @@ impl ProtoNetwork {
 		}
 	}
 
-	fn collect_inwards_edges_with_mapping(&self) -> (Vec<Vec<usize>>, FxHashMap<NodeId, usize>) {
-		let mut id_map = FxHashMap::with_capacity_and_hasher(self.nodes.len(), Default::default());
-
-		// Create dense mapping
-		id_map = self.nodes.iter().enumerate().map(|(idx, (id, _))| (*id, idx)).collect();
-
-		// Collect inwards edges using dense indices
-		let mut inwards_edges = vec![Vec::new(); self.nodes.len()];
-		for (node_id, node) in &self.nodes {
-			let node_index = id_map[node_id];
-			match &node.input {
-				ProtoNodeInput::Node(ref_id) | ProtoNodeInput::NodeLambda(ref_id) => {
-					inwards_edges[node_index].push(id_map[ref_id]);
-				}
-				_ => {}
-			}
-
-			if let ConstructionArgs::Nodes(ref_nodes) = &node.construction_args {
-				for (ref_id, _) in ref_nodes {
-					inwards_edges[node_index].push(id_map[ref_id]);
-				}
-			}
-		}
-
-		(inwards_edges, id_map)
-	}
-
+	// TODO: Remsove
 	/// Create a hashmap with the list of nodes this proto network depends on/uses as inputs.
 	pub fn collect_inwards_edges(&self) -> HashMap<NodeId, Vec<NodeId>> {
 		let mut edges: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
@@ -453,6 +427,35 @@ impl ProtoNetwork {
 			}
 		}
 		edges
+	}
+
+	fn collect_inwards_edges_with_mapping(&self) -> (Vec<Vec<usize>>, FxHashMap<NodeId, usize>) {
+		let mut id_map = FxHashMap::with_capacity_and_hasher(self.nodes.len(), Default::default());
+
+		// Create dense mapping
+		id_map = self.nodes.iter().enumerate().map(|(idx, (id, _))| (*id, idx)).collect();
+
+		// Collect inwards edges using dense indices
+		let mut inwards_edges = vec![Vec::new(); self.nodes.len()];
+		for (node_id, node) in &self.nodes {
+			let node_index = id_map[node_id];
+			match &node.input {
+				ProtoNodeInput::Node(ref_id) | ProtoNodeInput::NodeLambda(ref_id) => {
+					self.check_ref(ref_id, &NodeId(node_index as u64));
+					inwards_edges[node_index].push(id_map[ref_id]);
+				}
+				_ => {}
+			}
+
+			if let ConstructionArgs::Nodes(ref_nodes) = &node.construction_args {
+				for (ref_id, _) in ref_nodes {
+					self.check_ref(ref_id, &NodeId(node_index as u64));
+					inwards_edges[node_index].push(id_map[ref_id]);
+				}
+			}
+		}
+
+		(inwards_edges, id_map)
 	}
 
 	/// Inserts a [`graphene_core::structural::ComposeNode`] for each node that has a [`ProtoNodeInput::Node`]. The compose node evaluates the first node, and then sends the result into the second node.
@@ -525,7 +528,7 @@ impl ProtoNetwork {
 
 	// Based on https://en.wikipedia.org/wiki/Topological_sorting#Depth-first_search
 	// This approach excludes nodes that are not connected
-	pub fn topological_sort(&self) -> Result<Vec<NodeId>, String> {
+	pub fn topological_sort(&self) -> Result<(Vec<NodeId>, FxHashMap<NodeId, usize>), String> {
 		let (inwards_edges, id_map) = self.collect_inwards_edges_with_mapping();
 		let mut sorted = Vec::with_capacity(self.nodes.len());
 		let mut stack = vec![id_map[&self.output]];
@@ -550,7 +553,7 @@ impl ProtoNetwork {
 				NodeState::Visiting => {
 					stack.pop();
 					state[node_index] = NodeState::Visited;
-					sorted.push(self.nodes[node_index].0);
+					sorted.push(NodeId(node_index as u64));
 				}
 				NodeState::Visited => {
 					stack.pop();
@@ -558,36 +561,8 @@ impl ProtoNetwork {
 			}
 		}
 
-		Ok(sorted)
+		Ok((sorted, id_map))
 	}
-	// pub fn topological_sort(&self) -> Result<Vec<NodeId>, String> {
-	// 	let mut sorted = Vec::new();
-	// 	let (inwards_edges, id_map) = self.collect_inwards_edges_with_mapping();
-	// 	fn visit(node_id: NodeId, temp_marks: &mut HashSet<NodeId>, sorted: &mut Vec<NodeId>, inwards_edges: &HashMap<NodeId, Vec<NodeId>>, network: &ProtoNetwork) -> Result<(), String> {
-	// 		if sorted.contains(&node_id) {
-	// 			return Ok(());
-	// 		};
-	// 		if temp_marks.contains(&node_id) {
-	// 			return Err(format!("Cycle detected {inwards_edges:#?}, {network:#?}"));
-	// 		}
-
-	// 		if let Some(dependencies) = inwards_edges.get(&node_id) {
-	// 			temp_marks.insert(node_id);
-	// 			for &dependant in dependencies {
-	// 				visit(dependant, temp_marks, sorted, inwards_edges, network)?;
-	// 			}
-	// 			temp_marks.remove(&node_id);
-	// 		}
-	// 		sorted.push(node_id);
-	// 		Ok(())
-	// 	}
-
-	// 	if !self.nodes.iter().any(|(id, _)| *id == self.output) {
-	// 		return Err(format!("Output id {} does not exist", self.output));
-	// 	}
-	// 	visit(self.output, &mut HashSet::new(), &mut sorted, &inwards_edges, self)?;
-	// 	Ok(sorted)
-	// }
 
 	fn is_topologically_sorted(&self) -> bool {
 		let mut visited = HashSet::new();
@@ -609,30 +584,34 @@ impl ProtoNetwork {
 
 	/// Sort the nodes vec so it is in a topological order. This ensures that no node takes an input from a node that is found later in the list.
 	fn reorder_ids(&mut self) -> Result<(), String> {
-		let order = self.topological_sort()?;
+		let (order, id_map) = self.topological_sort()?;
 
-		// Map of node ids to their current index in the nodes vector
-		let current_positions: HashMap<_, _> = self.nodes.iter().enumerate().map(|(pos, (id, _))| (*id, pos)).collect();
+		// // Map of node ids to their current index in the nodes vector
+		// let current_positions: FxHashMap<_, _> = self.nodes.iter().enumerate().map(|(pos, (id, _))| (*id, pos)).collect();
 
-		// Map of node ids to their new index based on topological order
-		let new_positions: HashMap<_, _> = order.iter().enumerate().map(|(pos, id)| (*id, NodeId(pos as u64))).collect();
+		// // Map of node ids to their new index based on topological order
+		let new_positions: FxHashMap<_, _> = order.iter().enumerate().map(|(pos, id)| (self.nodes[id.0 as usize].0, pos)).collect();
+		// assert_eq!(id_map, current_positions);
 
 		// Create a new nodes vector based on the topological order
+
 		let mut new_nodes = Vec::with_capacity(order.len());
 		for (index, &id) in order.iter().enumerate() {
-			let current_pos = *current_positions.get(&id).unwrap();
-			new_nodes.push((NodeId(index as u64), self.nodes[current_pos].1.clone()));
+			let mut node = std::mem::take(&mut self.nodes[id.0 as usize].1);
+			// Update node references to reflect the new order
+			node.map_ids(|id| NodeId(*new_positions.get(&id).expect("node not found in lookup table") as u64), false);
+			new_nodes.push((NodeId(index as u64), node));
 		}
 
 		// Update node references to reflect the new order
-		new_nodes.iter_mut().for_each(|(_, node)| {
-			node.map_ids(|id| *new_positions.get(&id).expect("node not found in lookup table"), false);
-		});
+		// new_nodes.iter_mut().for_each(|(_, node)| {
+		// 	node.map_ids(|id| *new_positions.get(&id).expect("node not found in lookup table"), false);
+		// });
 
 		// Update the nodes vector and other references
 		self.nodes = new_nodes;
-		self.inputs = self.inputs.iter().filter_map(|id| new_positions.get(id).copied()).collect();
-		self.output = *new_positions.get(&self.output).unwrap();
+		self.inputs = self.inputs.iter().filter_map(|id| new_positions.get(id).map(|x| NodeId(*x as u64))).collect();
+		self.output = NodeId(*new_positions.get(&self.output).unwrap() as u64);
 
 		assert_eq!(order.len(), self.nodes.len());
 		Ok(())
@@ -936,7 +915,8 @@ mod test {
 	#[test]
 	fn topological_sort() {
 		let construction_network = test_network();
-		let sorted = construction_network.topological_sort().expect("Error when calling 'topological_sort' on 'construction_network.");
+		let (sorted, _) = construction_network.topological_sort().expect("Error when calling 'topological_sort' on 'construction_network.");
+		let sorted: Vec<_> = sorted.iter().map(|x| construction_network.nodes[x.0 as usize].0).collect();
 		println!("{sorted:#?}");
 		assert_eq!(sorted, vec![NodeId(14), NodeId(10), NodeId(11), NodeId(1)]);
 	}
@@ -953,7 +933,8 @@ mod test {
 	fn id_reordering() {
 		let mut construction_network = test_network();
 		construction_network.reorder_ids().expect("Error when calling 'reorder_ids' on 'construction_network.");
-		let sorted = construction_network.topological_sort().expect("Error when calling 'topological_sort' on 'construction_network.");
+		let (sorted, _) = construction_network.topological_sort().expect("Error when calling 'topological_sort' on 'construction_network.");
+		let sorted: Vec<_> = sorted.iter().map(|x| construction_network.nodes[x.0 as usize].0).collect();
 		println!("nodes: {:#?}", construction_network.nodes);
 		assert_eq!(sorted, vec![NodeId(0), NodeId(1), NodeId(2), NodeId(3)]);
 		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();
@@ -968,7 +949,7 @@ mod test {
 		let mut construction_network = test_network();
 		construction_network.reorder_ids().expect("Error when calling 'reorder_ids' on 'construction_network.");
 		construction_network.reorder_ids().expect("Error when calling 'reorder_ids' on 'construction_network.");
-		let sorted = construction_network.topological_sort().expect("Error when calling 'topological_sort' on 'construction_network.");
+		let (sorted, _) = construction_network.topological_sort().expect("Error when calling 'topological_sort' on 'construction_network.");
 		assert_eq!(sorted, vec![NodeId(0), NodeId(1), NodeId(2), NodeId(3)]);
 		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();
 		println!("{ids:#?}");
