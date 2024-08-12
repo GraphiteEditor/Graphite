@@ -21,16 +21,19 @@ jobs:
           toolchain: stable
           override: true
           components: clippy
+
+      - name: Install Deps
+        run: sudo apt-get install libgtk-3-dev libsoup2.4-dev libjavascriptcoregtk-4.0-dev libwebkit2gtk-4.0-dev
       
       - name: Run Clippy
         id: clippy
         run: |
           # Run Clippy and filter output
-          FILTERED_OUTPUT=$(cargo clippy --all-targets --all-features -- -W clippy::all 2>&1 | grep -E "^(warning|error)")
+          CLIPPY_OUTPUT=$(cargo clippy --all-targets --all-features -- -W clippy::all 2>&1 | grep -vE "^(\s*Updating|\s*Download|\s*Compiling|\s*Checking|Finished)")
           # Escape special characters for JSON
-          ESCAPED_OUTPUT=$(echo "$FILTERED_OUTPUT" | jq -sR .)
+          ESCAPED_OUTPUT=$(echo "$CLIPPY_OUTPUT" | jq -sR .)
           echo "CLIPPY_OUTPUT=$ESCAPED_OUTPUT" >> $GITHUB_OUTPUT
-          if [ -n "$FILTERED_OUTPUT" ]; then
+          if echo "$CLIPPY_OUTPUT" | grep -qE "^(warning|error)"; then
             echo "CLIPPY_ISSUES_FOUND=true" >> $GITHUB_OUTPUT
           else
             echo "CLIPPY_ISSUES_FOUND=false" >> $GITHUB_OUTPUT
@@ -55,3 +58,4 @@ jobs:
               repo: context.repo.repo,
               body: output
             })
+
