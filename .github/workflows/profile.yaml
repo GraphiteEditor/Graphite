@@ -39,14 +39,14 @@ jobs:
       run: |
         cargo install iai-callgrind-runner@0.12.3
 
-    - name: Checkout main branch
+    - name: Checkout master branch
       run: |
-        git fetch origin main:main
-        git checkout main
+        git fetch origin master:master
+        git checkout master
 
     - name: Run baseline benchmarks
       run: |
-        cargo bench --bench compile_demo_art --features=iai -- --save-baseline=main
+        cargo bench --bench compile_demo_art --features=iai -- --save-baseline=master
 
     - name: Checkout PR branch
       run: |
@@ -54,7 +54,7 @@ jobs:
 
     - name: Run PR benchmarks
       run: |
-        cargo bench --bench compile_demo_art --features=iai -- --baseline main > benchmark_results.txt
+        cargo bench --bench compile_demo_art --features=iai -- --baseline master > benchmark_results.txt
 
     - name: Parse benchmark results
       id: parse_results
