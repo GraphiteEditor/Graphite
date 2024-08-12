@@ -53,24 +53,27 @@ jobs:
         git checkout ${{ github.event.pull_request.head.sha }}
 
     - name: Run PR benchmarks
+      id: benchmark
       run: |
-        cargo bench --bench compile_demo_art --features=iai -- --baseline master > benchmark_results.txt
+        cargo bench --bench compile_demo_art_iai -- --baseline main > benchmark_results.txt
+        echo "BENCHMARK_OUTPUT<<EOF" >> $GITHUB_OUTPUT
+        cat benchmark_results.txt >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
 
     - name: Comment PR
       uses: actions/github-script@v6
       with:
         github-token: ${{secrets.GITHUB_TOKEN}}
         script: |
-          const fs = require('fs');
-          const benchmarkResults = fs.readFileSync('benchmark_results.txt', 'utf8');
-          
-          await github.rest.issues.createComment({
-            owner: context.repo.owner,
-            repo: context.repo.name,
-            issue_number: context.issue.number,
-            body: `## Performance Benchmark Results
-
+          const output = `#### Performance Benchmark Results
           \`\`\`
-          ${benchmarkResults}
-          \`\`\``
-          });
+          ${{ steps.benchmark.outputs.BENCHMARK_OUTPUT }}
+          \`\`\`
+          `;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: output
+          })
