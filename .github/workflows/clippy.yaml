@@ -1,0 +1,56 @@
+name: Clippy Check with PR Comments
+
+on:
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  clippy:
+    name: Run Clippy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          components: clippy
+      
+      - name: Run Clippy
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-targets --all-features -- -D warnings
+          
+      - name: Get Clippy Output
+        id: clippy
+        run: |
+          OUTPUT=$(cargo clippy --all-targets --all-features -- -D warnings 2>&1)
+          echo "CLIPPY_OUTPUT<<EOF" >> $GITHUB_OUTPUT
+          echo "$OUTPUT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        
+      - name: Comment PR
+        uses: actions/github-script@v6
+        if: failure()
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const output = `#### Clippy Results
+            \`\`\`
+            ${{ steps.clippy.outputs.CLIPPY_OUTPUT }}
+            \`\`\`
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
