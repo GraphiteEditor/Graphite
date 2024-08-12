@@ -11,6 +11,8 @@ dealloc_nodes = []
 wgpu = []
 tokio = ["dep:tokio"]
 wayland = []
+criterion = []
+iai = []
 
 [dependencies]
 # Local dependencies
@@ -56,10 +58,12 @@ glob = "0.3"
 pprof = { version = "0.13", features = ["flamegraph"] }
 serde_json = { workspace = true }
 graph-craft = { workspace = true, features = ["serde"] }
+iai-callgrind = "0.12.3"
 
 [[bench]]
 name = "compile_demo_art"
 harness = false
+
 
 # [[bench]]
 # name = "exec_demo_art"

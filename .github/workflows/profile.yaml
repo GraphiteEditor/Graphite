@@ -1,0 +1,85 @@
+name: Rust Profiling with iai-callgrind
+
+on:
+  pull_request:
+    branches: [ master ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+
+    - name: Install Valgrind
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y valgrind
+
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Install iai-callgrind
+      run: |
+        cargo install iai-callgrind-runner@0.12.3
+        cargo add --dev iai-callgrind@0.12.3
+
+    - name: Checkout main branch
+      run: |
+        git fetch origin main:main
+        git checkout main
+
+    - name: Run baseline benchmarks
+      run: |
+        cargo bench --bench compile_demo_art --features=iai -- --save-baseline=main
+
+    - name: Checkout PR branch
+      run: |
+        git checkout ${{ github.event.pull_request.head.sha }}
+
+    - name: Run PR benchmarks
+      run: |
+        cargo bench --bench compile_demo_art --features=iai -- --baseline main > benchmark_results.txt
+
+    - name: Parse benchmark results
+      id: parse_results
+      run: |
+        COMMENT="## Performance Benchmark Results\n\n"
+        while IFS= read -r line; do
+          if [[ $line == *"Comparison with"* ]]; then
+            COMMENT+="### $line\n"
+          elif [[ $line == *"Instructions:"* || $line == *"L1 Hits:"* || $line == *"Estimated Cycles:"* ]]; then
+            COMMENT+="$line\n"
+          fi
+        done < benchmark_results.txt
+        echo "comment<<EOF" >> $GITHUB_OUTPUT
+        echo -e "$COMMENT" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Comment PR
+      uses: actions/github-script@v6
+      with:
+        github-token: ${{secrets.GITHUB_TOKEN}}
+        script: |
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.name,
+            body: ${{steps.parse_results.outputs.comment}}
+          })
