@@ -54,6 +54,10 @@ in
       gcc-unwrapped.lib
       llvmPackages.libcxxStdenv
       pkg-config
+      # used for profiling
+      gnuplot
+      samply
+      cargo-flamegraph
 
       # For Tauri
       openssl

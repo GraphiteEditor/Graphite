@@ -104,13 +104,13 @@ graphite-editor = { opt-level = 1 }
 graphene-core = { opt-level = 1 }
 graphene-std = { opt-level = 1 }
 interpreted-executor = { opt-level = 1 } # This is a mitigation for https://github.com/rustwasm/wasm-pack/issues/981 which is needed because the node_registry function is too large
-graphite-proc-macros = { opt-level = 3 }
+graphite-proc-macros = { opt-level = 1 }
 autoquant = { opt-level = 3 }
-image = { opt-level = 3 }
+image = { opt-level = 2 }
 rustc-hash = { opt-level = 3 }
-serde_derive = { opt-level = 3 }
-specta-macros = { opt-level = 3 }
-syn = { opt-level = 3 }
+serde_derive = { opt-level = 1 }
+specta-macros = { opt-level = 1 }
+syn = { opt-level = 1 }
 
 [profile.release]
 lto = "thin"

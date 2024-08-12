@@ -4406,7 +4406,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 
 	let inner_network = DocumentNode {
 		implementation: DocumentNodeImplementation::Network(network),
-		inputs: vec![NodeInput::node(NodeId(0), 1)],
+		inputs: vec![],
 		..Default::default()
 	};
 

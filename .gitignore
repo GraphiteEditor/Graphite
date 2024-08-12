@@ -1,3 +1,6 @@
 target/
 *.spv
 *.exrc
+perf.data*
+profile.json
+flamegraph.svg

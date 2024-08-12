@@ -1111,7 +1111,7 @@ impl NodeNetworkInterface {
 	#[cfg(not(target_arch = "wasm32"))]
 	fn text_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<f64> {
 		warn!("Failed to find width of {node_id:#?} in network_path {network_path:?} due to non-wasm arch");
-		None
+		Some(0.)
 	}
 
 	#[cfg(target_arch = "wasm32")]
@@ -1169,7 +1169,7 @@ impl NodeNetworkInterface {
 				continue;
 			};
 			nested_network.exports = old_network.exports;
-			nested_network.scope_injections = old_network.scope_injections;
+			nested_network.scope_injections = old_network.scope_injections.into_iter().collect();
 			let Some(nested_network_metadata) = network_metadata.nested_metadata_mut(&network_path) else {
 				log::error!("Could not get nested network in from_old_network");
 				continue;

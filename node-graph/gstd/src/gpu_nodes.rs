@@ -31,7 +31,8 @@ async fn compile_gpu(node: &'input DocumentNode, typing_context: TypingContext, 
 	let mut typing_context = typing_context;
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let DocumentNodeImplementation::Network(ref network) = node.implementation else { panic!() };
-	let proto_networks: Vec<_> = compiler.compile(network.clone())?.collect();
+	let proto_networks: Result<Vec<_>, _> = compiler.compile(network.clone()).collect();
+	let proto_networks = proto_networks?;
 
 	for network in proto_networks.iter() {
 		typing_context.update(network).expect("Failed to type check network");
@@ -248,10 +249,10 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 		..Default::default()
 	};
 	log::debug!("compiling network");
-	let proto_networks = compiler.compile(network.clone())?.collect();
+	let proto_networks: Result<Vec<_>, _> = compiler.compile(network.clone()).collect();
 	log::debug!("compiling shader");
 	let shader = compilation_client::compile(
-		proto_networks,
+		proto_networks?,
 		vec![concrete!(u32), concrete!(Color)],
 		vec![concrete!(Color)],
 		ShaderIO {
@@ -463,11 +464,12 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 		..Default::default()
 	};
 	log::debug!("compiling network");
-	let Ok(proto_networks_result) = compiler.compile(network.clone()) else {
+	let proto_networks: Result<Vec<_>, _> = compiler.compile(network.clone()).collect();
+	let Ok(proto_networks_result) = proto_networks else {
 		log::error!("Error compiling network in 'blend_gpu_image()");
 		return ImageFrame::empty();
 	};
-	let proto_networks = proto_networks_result.collect();
+	let proto_networks = proto_networks_result;
 	log::debug!("compiling shader");
 
 	let shader = compilation_client::compile(
