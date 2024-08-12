@@ -3,6 +3,7 @@ use crate::document::{NodeId, OriginalLocation};
 
 use dyn_any::DynAny;
 use graphene_core::*;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 #[cfg(feature = "serde")]
 use std::borrow::Cow;
@@ -341,9 +342,16 @@ impl ProtoNode {
 	}
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum NodeState {
+	Unvisited,
+	Visiting,
+	Visited,
+}
+
 impl ProtoNetwork {
 	fn check_ref(&self, ref_id: &NodeId, id: &NodeId) {
-		assert!(
+		debug_assert!(
 			self.nodes.iter().any(|(check_id, _)| check_id == ref_id),
 			"Node id:{id} has a reference which uses node id:{ref_id} which doesn't exist in network {self:#?}"
 		);
@@ -396,6 +404,33 @@ impl ProtoNetwork {
 			self.replace_node_id(&outwards_edges, NodeId(index as u64), sni, false);
 			self.nodes[index].0 = sni;
 		}
+	}
+
+	fn collect_inwards_edges_with_mapping(&self) -> (Vec<Vec<usize>>, FxHashMap<NodeId, usize>) {
+		let mut id_map = FxHashMap::with_capacity_and_hasher(self.nodes.len(), Default::default());
+
+		// Create dense mapping
+		id_map = self.nodes.iter().enumerate().map(|(idx, (id, _))| (*id, idx)).collect();
+
+		// Collect inwards edges using dense indices
+		let mut inwards_edges = vec![Vec::new(); self.nodes.len()];
+		for (node_id, node) in &self.nodes {
+			let node_index = id_map[node_id];
+			match &node.input {
+				ProtoNodeInput::Node(ref_id) | ProtoNodeInput::NodeLambda(ref_id) => {
+					inwards_edges[node_index].push(id_map[ref_id]);
+				}
+				_ => {}
+			}
+
+			if let ConstructionArgs::Nodes(ref_nodes) = &node.construction_args {
+				for (ref_id, _) in ref_nodes {
+					inwards_edges[node_index].push(id_map[ref_id]);
+				}
+			}
+		}
+
+		(inwards_edges, id_map)
 	}
 
 	/// Create a hashmap with the list of nodes this proto network depends on/uses as inputs.
@@ -487,36 +522,72 @@ impl ProtoNetwork {
 			}
 		});
 	}
+
 	// Based on https://en.wikipedia.org/wiki/Topological_sorting#Depth-first_search
 	// This approach excludes nodes that are not connected
 	pub fn topological_sort(&self) -> Result<Vec<NodeId>, String> {
-		let mut sorted = Vec::new();
-		let inwards_edges = self.collect_inwards_edges();
-		fn visit(node_id: NodeId, temp_marks: &mut HashSet<NodeId>, sorted: &mut Vec<NodeId>, inwards_edges: &HashMap<NodeId, Vec<NodeId>>, network: &ProtoNetwork) -> Result<(), String> {
-			if sorted.contains(&node_id) {
-				return Ok(());
-			};
-			if temp_marks.contains(&node_id) {
-				return Err(format!("Cycle detected {inwards_edges:#?}, {network:#?}"));
-			}
+		let (inwards_edges, id_map) = self.collect_inwards_edges_with_mapping();
+		let mut sorted = Vec::with_capacity(self.nodes.len());
+		let mut stack = vec![id_map[&self.output]];
+		let mut state = vec![NodeState::Unvisited; self.nodes.len()];
 
-			if let Some(dependencies) = inwards_edges.get(&node_id) {
-				temp_marks.insert(node_id);
-				for &dependant in dependencies {
-					visit(dependant, temp_marks, sorted, inwards_edges, network)?;
+		while let Some(&node_index) = stack.last() {
+			match state[node_index] {
+				NodeState::Unvisited => {
+					state[node_index] = NodeState::Visiting;
+					for &dep_index in inwards_edges[node_index].iter().rev() {
+						match state[dep_index] {
+							NodeState::Visiting => {
+								return Err(format!("Cycle detected involving node {}", self.nodes[dep_index].0));
+							}
+							NodeState::Unvisited => {
+								stack.push(dep_index);
+							}
+							NodeState::Visited => {}
+						}
+					}
 				}
-				temp_marks.remove(&node_id);
+				NodeState::Visiting => {
+					stack.pop();
+					state[node_index] = NodeState::Visited;
+					sorted.push(self.nodes[node_index].0);
+				}
+				NodeState::Visited => {
+					stack.pop();
+				}
 			}
-			sorted.push(node_id);
-			Ok(())
 		}
 
-		if !self.nodes.iter().any(|(id, _)| *id == self.output) {
-			return Err(format!("Output id {} does not exist", self.output));
-		}
-		visit(self.output, &mut HashSet::new(), &mut sorted, &inwards_edges, self)?;
 		Ok(sorted)
 	}
+	// pub fn topological_sort(&self) -> Result<Vec<NodeId>, String> {
+	// 	let mut sorted = Vec::new();
+	// 	let (inwards_edges, id_map) = self.collect_inwards_edges_with_mapping();
+	// 	fn visit(node_id: NodeId, temp_marks: &mut HashSet<NodeId>, sorted: &mut Vec<NodeId>, inwards_edges: &HashMap<NodeId, Vec<NodeId>>, network: &ProtoNetwork) -> Result<(), String> {
+	// 		if sorted.contains(&node_id) {
+	// 			return Ok(());
+	// 		};
+	// 		if temp_marks.contains(&node_id) {
+	// 			return Err(format!("Cycle detected {inwards_edges:#?}, {network:#?}"));
+	// 		}
+
+	// 		if let Some(dependencies) = inwards_edges.get(&node_id) {
+	// 			temp_marks.insert(node_id);
+	// 			for &dependant in dependencies {
+	// 				visit(dependant, temp_marks, sorted, inwards_edges, network)?;
+	// 			}
+	// 			temp_marks.remove(&node_id);
+	// 		}
+	// 		sorted.push(node_id);
+	// 		Ok(())
+	// 	}
+
+	// 	if !self.nodes.iter().any(|(id, _)| *id == self.output) {
+	// 		return Err(format!("Output id {} does not exist", self.output));
+	// 	}
+	// 	visit(self.output, &mut HashSet::new(), &mut sorted, &inwards_edges, self)?;
+	// 	Ok(sorted)
+	// }
 
 	fn is_topologically_sorted(&self) -> bool {
 		let mut visited = HashSet::new();
@@ -535,31 +606,6 @@ impl ProtoNetwork {
 		}
 		true
 	}
-
-	/*// Based on https://en.wikipedia.org/wiki/Topological_sorting#Kahn's_algorithm
-	pub fn topological_sort(&self) -> Vec<NodeId> {
-		let mut sorted = Vec::new();
-		let outwards_edges = self.collect_outwards_edges();
-		let mut inwards_edges = self.collect_inwards_edges();
-		let mut no_incoming_edges: Vec<_> = self.nodes.iter().map(|entry| entry.0).filter(|id| !inwards_edges.contains_key(id)).collect();
-
-		assert_ne!(no_incoming_edges.len(), 0, "Acyclic graphs must have at least one node with no incoming edge");
-
-		while let Some(node_id) = no_incoming_edges.pop() {
-			sorted.push(node_id);
-
-			if let Some(outwards_edges) = outwards_edges.get(&node_id) {
-				for &ref_id in outwards_edges {
-					let dependencies = inwards_edges.get_mut(&ref_id).unwrap();
-					dependencies.retain(|&id| id != node_id);
-					if dependencies.is_empty() {
-						no_incoming_edges.push(ref_id)
-					}
-				}
-			}
-		}
-		sorted
-	}*/
 
 	/// Sort the nodes vec so it is in a topological order. This ensures that no node takes an input from a node that is found later in the list.
 	fn reorder_ids(&mut self) -> Result<(), String> {
