@@ -2,7 +2,7 @@ name: Clippy Check with PR Comments
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [ master ]
 
 jobs:
   clippy:
@@ -25,26 +25,27 @@ jobs:
       - name: Run Clippy
         id: clippy
         run: |
-          OUTPUT=$(cargo clippy --all-targets --all-features -- -D warnings 2>&1)
-          echo "CLIPPY_OUTPUT<<EOF" >> $GITHUB_OUTPUT
-          echo "$OUTPUT" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          if echo "$OUTPUT" | grep -q "error:"; then
-            echo "CLIPPY_FAILED=true" >> $GITHUB_OUTPUT
+          # Run Clippy and filter output
+          FILTERED_OUTPUT=$(cargo clippy --all-targets --all-features -- -W clippy::all 2>&1 | grep -E "^(warning|error)")
+          # Escape special characters for JSON
+          ESCAPED_OUTPUT=$(echo "$FILTERED_OUTPUT" | jq -sR .)
+          echo "CLIPPY_OUTPUT=$ESCAPED_OUTPUT" >> $GITHUB_OUTPUT
+          if [ -n "$FILTERED_OUTPUT" ]; then
+            echo "CLIPPY_ISSUES_FOUND=true" >> $GITHUB_OUTPUT
           else
-            echo "CLIPPY_FAILED=false" >> $GITHUB_OUTPUT
+            echo "CLIPPY_ISSUES_FOUND=false" >> $GITHUB_OUTPUT
           fi
-        continue-on-error: true
         
       - name: Comment PR
-        if: steps.clippy.outputs.CLIPPY_FAILED == 'true'
+        if: steps.clippy.outputs.CLIPPY_ISSUES_FOUND == 'true'
         uses: actions/github-script@v6
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
-            const output = `#### Clippy Found Warnings/Errors
+            const clippy_output = ${{ steps.clippy.outputs.CLIPPY_OUTPUT }};
+            const output = `#### Clippy Warnings/Errors
             \`\`\`
-            ${{ steps.clippy.outputs.CLIPPY_OUTPUT }}
+            ${clippy_output}
             \`\`\`
             `;
             
