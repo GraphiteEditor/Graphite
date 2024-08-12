@@ -38,7 +38,6 @@ jobs:
     - name: Install iai-callgrind
       run: |
         cargo install iai-callgrind-runner@0.12.3
-        cargo add --dev iai-callgrind@0.12.3
 
     - name: Checkout main branch
       run: |
