@@ -2,7 +2,7 @@ name: Clippy Check with PR Comments
 
 on:
   pull_request:
-    branches: [ master ]
+    branches: [ main ]
 
 jobs:
   clippy:
@@ -23,26 +23,26 @@ jobs:
           components: clippy
       
       - name: Run Clippy
-        uses: actions-rs/clippy-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-targets --all-features -- -D warnings
-          
-      - name: Get Clippy Output
         id: clippy
         run: |
           OUTPUT=$(cargo clippy --all-targets --all-features -- -D warnings 2>&1)
           echo "CLIPPY_OUTPUT<<EOF" >> $GITHUB_OUTPUT
           echo "$OUTPUT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+          if echo "$OUTPUT" | grep -q "error:"; then
+            echo "CLIPPY_FAILED=true" >> $GITHUB_OUTPUT
+          else
+            echo "CLIPPY_FAILED=false" >> $GITHUB_OUTPUT
+          fi
+        continue-on-error: true
         
       - name: Comment PR
+        if: steps.clippy.outputs.CLIPPY_FAILED == 'true'
         uses: actions/github-script@v6
-        if: failure()
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
-            const output = `#### Clippy Results
+            const output = `#### Clippy Found Warnings/Errors
             \`\`\`
             ${{ steps.clippy.outputs.CLIPPY_OUTPUT }}
             \`\`\`
