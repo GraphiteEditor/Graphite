@@ -55,7 +55,7 @@ jobs:
     - name: Run PR benchmarks
       id: benchmark
       run: |
-        cargo bench --bench compile_demo_art_iai -- --baseline main > benchmark_results.txt
+        cargo bench --bench compile_demo_art --features=iai -- --baseline main > benchmark_results.txt
         echo "BENCHMARK_OUTPUT<<EOF" >> $GITHUB_OUTPUT
         cat benchmark_results.txt >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
