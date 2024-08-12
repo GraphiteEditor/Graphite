@@ -76,9 +76,14 @@ jobs:
       with:
         github-token: ${{secrets.GITHUB_TOKEN}}
         script: |
+          const fs = require('fs');
+          const benchmarkResults = fs.readFileSync('benchmark_results.txt', 'utf8');
           github.rest.issues.createComment({
             issue_number: context.issue.number,
             owner: context.repo.owner,
             repo: context.repo.name,
-            body: ${{steps.parse_results.outputs.comment}}
+            body: `## Performance Benchmark Results
+
+          ${benchmarkResults}`
           })
+
