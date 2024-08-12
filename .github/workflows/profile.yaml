@@ -56,21 +56,6 @@ jobs:
       run: |
         cargo bench --bench compile_demo_art --features=iai -- --baseline master > benchmark_results.txt
 
-    - name: Parse benchmark results
-      id: parse_results
-      run: |
-        COMMENT="## Performance Benchmark Results\n\n"
-        while IFS= read -r line; do
-          if [[ $line == *"Comparison with"* ]]; then
-            COMMENT+="### $line\n"
-          elif [[ $line == *"Instructions:"* || $line == *"L1 Hits:"* || $line == *"Estimated Cycles:"* ]]; then
-            COMMENT+="$line\n"
-          fi
-        done < benchmark_results.txt
-        echo "comment<<EOF" >> $GITHUB_OUTPUT
-        echo -e "$COMMENT" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
-
     - name: Comment PR
       uses: actions/github-script@v6
       with:
@@ -78,12 +63,14 @@ jobs:
         script: |
           const fs = require('fs');
           const benchmarkResults = fs.readFileSync('benchmark_results.txt', 'utf8');
-          github.rest.issues.createComment({
-            issue_number: context.issue.number,
+          
+          await github.rest.issues.createComment({
             owner: context.repo.owner,
             repo: context.repo.name,
+            issue_number: context.issue.number,
             body: `## Performance Benchmark Results
 
-          ${benchmarkResults}`
-          })
-
+          \`\`\`
+          ${benchmarkResults}
+          \`\`\``
+          });
