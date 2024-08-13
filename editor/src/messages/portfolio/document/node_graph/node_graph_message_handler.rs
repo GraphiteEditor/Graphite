@@ -987,71 +987,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				network_interface.set_input(&input_connector, input, selection_network_path);
 			}
 			NodeGraphMessage::ShiftNodes {
-				mut node_ids,
+				node_ids,
 				displacement_x,
 				displacement_y,
 				move_upstream,
 			} => {
-				if move_upstream {
-					for node_id in network_interface.upstream_flow_back_from_nodes(node_ids.clone(), selection_network_path, network_interface::FlowType::UpstreamFlow) {
-						if network_interface.is_absolute(&node_id, selection_network_path) && node_ids.iter().all(|id| *id != node_id) {
-							node_ids.push(node_id);
-						}
-					}
-				}
-
-				let mut filtered_node_ids = Vec::new();
-				for selected_node in &node_ids {
-					// Deselect chain nodes upstream from a selected layer
-					if network_interface.is_chain(selected_node, selection_network_path)
-						&& network_interface
-							.downstream_layer(selected_node, selection_network_path)
-							.is_some_and(|downstream_layer| node_ids.contains(&downstream_layer.to_node()))
-					{
-						// Deselect stack nodes upstream from a selected layer
-						continue;
-					}
-
-					// Deselect stack nodes upstream from a selected layer
-					let mut is_upstream_from_selected_absolute_layer = false;
-					let mut current_node = *selected_node;
-					loop {
-						if network_interface.is_absolute(selected_node, selection_network_path) {
-							break;
-						}
-						let Some(outward_wires) = network_interface.outward_wires(selection_network_path) else {
-							break;
-						};
-						let Some(outward_wires) = outward_wires.get(&OutputConnector::node(current_node, 0)) else {
-							break;
-						};
-						if outward_wires.is_empty() {
-							break;
-						}
-						let Some(downstream_node) = outward_wires[0].node_id() else {
-							break;
-						};
-						if outward_wires[0].input_index() != 0 {
-							break;
-						}
-						if !network_interface.is_layer(&downstream_node, selection_network_path) {
-							break;
-						}
-						// Break the iteration if the layer is absolute(top of stack), or it is selected
-						if network_interface.is_absolute(&downstream_node, selection_network_path) || node_ids.contains(&downstream_node) {
-							is_upstream_from_selected_absolute_layer = node_ids.contains(&downstream_node);
-							break;
-						}
-						current_node = downstream_node;
-					}
-					if !is_upstream_from_selected_absolute_layer {
-						filtered_node_ids.push(*selected_node)
-					}
-				}
-
-				for node_id in filtered_node_ids {
-					network_interface.shift_node(&node_id, IVec2::new(displacement_x, displacement_y), selection_network_path);
-				}
+				network_interface.shift_selected_nodes(node_ids, displacement_x, displacement_y, move_upstream, selection_network_path);
 
 				if graph_view_overlay_open {
 					responses.add(NodeGraphMessage::SendGraph);
