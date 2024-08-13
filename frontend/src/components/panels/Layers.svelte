@@ -375,7 +375,7 @@
 					class="layer"
 					classes={{
 						selected: fakeHighlight !== undefined ? fakeHighlight === listing.entry.id : listing.entry.selected,
-						"in-selected-network": listing.entry.inSelectedNetwork,
+						"full-highlight": listing.entry.inSelectedNetwork && !listing.entry.selectedParent,
 						"insert-folder": (draggingData?.highlightFolder || false) && draggingData?.insertParentId === listing.entry.id,
 					}}
 					styles={{ "--layer-indent-levels": `${listing.entry.depth - 1}` }}
@@ -499,9 +499,9 @@
 
 				// Dimming
 				&.selected {
-					background: #404040;
+					background: #3a3a3a;
 
-					&.in-selected-network {
+					&.full-highlight {
 						background: var(--color-4-dimgray);
 					}
 				}

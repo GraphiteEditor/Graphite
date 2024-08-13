@@ -888,6 +888,8 @@ export class LayerPanelEntry {
 	selected!: boolean;
 
 	inSelectedNetwork!: boolean;
+
+	selectedParent!: boolean;
 }
 
 export class DisplayDialogDismiss extends JsMessage {}

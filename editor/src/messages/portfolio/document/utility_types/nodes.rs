@@ -53,6 +53,8 @@ pub struct LayerPanelEntry {
 	pub selected: bool,
 	#[serde(rename = "inSelectedNetwork")]
 	pub in_selected_network: bool,
+	#[serde(rename = "selectedParent")]
+	pub selected_parent: bool,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]

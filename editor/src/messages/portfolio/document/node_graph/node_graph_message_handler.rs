@@ -1718,6 +1718,16 @@ impl NodeGraphMessageHandler {
 			.selected_layers(network_interface.document_metadata())
 			.map(|layer| layer.to_node())
 			.collect::<HashSet<_>>();
+	
+		let mut selected_parents = HashSet::new();
+		for selected_layer in &selected_layers {
+			for ancestor in LayerNodeIdentifier::new(*selected_layer, network_interface).ancestors(network_interface.document_metadata()) {
+				if ancestor != LayerNodeIdentifier::ROOT_PARENT && !selected_layers.contains(&ancestor.to_node()) {
+					selected_parents.insert(ancestor.to_node());
+				}
+			}
+		}
+
 		for (&node_id, node_metadata) in &network_interface.network_metadata(&[]).unwrap().persistent_metadata.node_metadata {
 			if node_metadata.persistent_metadata.is_layer() {
 				let layer = LayerNodeIdentifier::new(node_id, network_interface);
@@ -1737,6 +1747,8 @@ impl NodeGraphMessageHandler {
 						true
 					}
 				});
+
+				let is_selected_parent = selected_parents.contains(&node_id);
 
 				let data = LayerPanelEntry {
 					id: node_id,
@@ -1760,8 +1772,9 @@ impl NodeGraphMessageHandler {
 					parents_visible,
 					unlocked: !network_interface.is_locked(&node_id, &[]),
 					parents_unlocked,
-					selected: selected_layers.contains(&node_id),
+					selected: selected_layers.contains(&node_id) || is_selected_parent,
 					in_selected_network: selection_network_path.is_empty(),
+					selected_parent: is_selected_parent, 
 				};
 				responses.add(FrontendMessage::UpdateDocumentLayerDetails { data });
 			}
