@@ -288,7 +288,7 @@ impl BoundingBoxManager {
 
 	/// Update the position of the bounding box and transform handles
 	pub fn render_overlays(&mut self, overlay_context: &mut OverlayContext) {
-		overlay_context.quad(self.transform * Quad::from_box(self.bounds));
+		overlay_context.quad(self.transform * Quad::from_box(self.bounds), None);
 
 		for position in self.evaluate_transform_handle_positions() {
 			overlay_context.square(position, Some(6.), None, None);

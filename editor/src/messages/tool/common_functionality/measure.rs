@@ -20,7 +20,7 @@ pub fn overlay(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2,
 	if turn_x != selected_x {
 		let min_viewport = transform.transform_point2(DVec2::new(turn_x.min(selected_x), turn_y));
 		let max_viewport = transform.transform_point2(DVec2::new(turn_x.max(selected_x), turn_y));
-		overlay_context.line(min_viewport, max_viewport);
+		overlay_context.line(min_viewport, max_viewport, None);
 		let length = format!("{:.2}", transform_to_document.transform_vector2(DVec2::X * (turn_x - selected_x)).length());
 		let direction = -(min_viewport - max_viewport).normalize_or_zero();
 		overlay_context.angle_text(&length, (min_viewport + max_viewport) / 2., direction, 5., utility_types::Pivot::TopCentreX);
@@ -28,7 +28,7 @@ pub fn overlay(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2,
 	if turn_y != hovered_y {
 		let min_viewport = transform.transform_point2(DVec2::new(turn_x, turn_y.min(hovered_y)));
 		let max_viewport = transform.transform_point2(DVec2::new(turn_x, turn_y.max(hovered_y)));
-		overlay_context.line(min_viewport, max_viewport);
+		overlay_context.line(min_viewport, max_viewport, None);
 		let length = format!("{:.2}", transform_to_document.transform_vector2(DVec2::Y * (turn_y - hovered_y)).length());
 		let direction = (min_viewport - max_viewport).normalize_or_zero().perp();
 		overlay_context.angle_text(&length, (min_viewport + max_viewport) / 2., direction, 5., utility_types::Pivot::LeftCentreY);

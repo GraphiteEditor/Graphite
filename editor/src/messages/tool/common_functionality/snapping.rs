@@ -410,11 +410,12 @@ impl SnapManager {
 			let start = DVec2::new(first.max().x, y);
 			let end = DVec2::new(second.min().x, y);
 			let signed_size = if bottom { y_size } else { -y_size };
-			overlay_context.line(transform.transform_point2(start), transform.transform_point2(start + DVec2::Y * signed_size));
-			overlay_context.line(transform.transform_point2(end), transform.transform_point2(end + DVec2::Y * signed_size));
+			overlay_context.line(transform.transform_point2(start), transform.transform_point2(start + DVec2::Y * signed_size), None);
+			overlay_context.line(transform.transform_point2(end), transform.transform_point2(end + DVec2::Y * signed_size), None);
 			overlay_context.line(
 				transform.transform_point2(start + DVec2::Y * signed_size / 2.),
 				transform.transform_point2(end + DVec2::Y * signed_size / 2.),
+				None,
 			);
 		}
 	}
@@ -427,11 +428,12 @@ impl SnapManager {
 			let start = DVec2::new(x, first.max().y);
 			let end = DVec2::new(x, second.min().y);
 			let signed_size = if right { x_size } else { -x_size };
-			overlay_context.line(transform.transform_point2(start), transform.transform_point2(start + DVec2::X * signed_size));
-			overlay_context.line(transform.transform_point2(end), transform.transform_point2(end + DVec2::X * signed_size));
+			overlay_context.line(transform.transform_point2(start), transform.transform_point2(start + DVec2::X * signed_size), None);
+			overlay_context.line(transform.transform_point2(end), transform.transform_point2(end + DVec2::X * signed_size), None);
 			overlay_context.line(
 				transform.transform_point2(start + DVec2::X * signed_size / 2.),
 				transform.transform_point2(end + DVec2::X * signed_size / 2.),
+				None,
 			);
 		}
 	}
@@ -444,7 +446,7 @@ impl SnapManager {
 				overlay_context.outline([Subpath::from_bezier(curve)].iter(), to_viewport);
 			}
 			if let Some(quad) = ind.target_bounds {
-				overlay_context.quad(to_viewport * quad);
+				overlay_context.quad(to_viewport * quad, None);
 			}
 			let viewport = to_viewport.transform_point2(ind.snapped_point_document);
 
@@ -454,7 +456,7 @@ impl SnapManager {
 			let align = [ind.alignment_target_x, ind.alignment_target_y].map(|target| target.map(|target| to_viewport.transform_point2(target)));
 			let any_align = align.iter().flatten().next().is_some();
 			for &target in align.iter().flatten() {
-				overlay_context.line(viewport, target);
+				overlay_context.line(viewport, target, None);
 			}
 			for &target in align.iter().flatten() {
 				overlay_context.manipulator_handle(target, false);

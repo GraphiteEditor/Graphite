@@ -461,7 +461,12 @@ impl Fsm for PathToolFsmState {
 
 				match self {
 					Self::DrawingBox => {
-						overlay_context.quad(Quad::from_box([tool_data.drag_start_pos, tool_data.previous_mouse_position]));
+						let fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+							.unwrap()
+							.with_alpha(0.05)
+							.rgba_hex();
+
+						overlay_context.quad(Quad::from_box([tool_data.drag_start_pos, tool_data.previous_mouse_position]), Some(&("#".to_string() + &fill_color)));
 					}
 					Self::Dragging => {
 						tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);

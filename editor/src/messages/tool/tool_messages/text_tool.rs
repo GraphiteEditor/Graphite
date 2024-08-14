@@ -361,7 +361,7 @@ impl Fsm for TextToolFsmState {
 					if far.x != 0. && far.y != 0. {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
 						let transformed_quad = document.metadata().transform_to_viewport(tool_data.layer) * quad;
-						overlay_context.quad(transformed_quad);
+						overlay_context.quad(transformed_quad, None);
 					}
 				}
 
@@ -376,7 +376,7 @@ impl Fsm for TextToolFsmState {
 					let far = graphene_core::text::bounding_box(text, buzz_face, font_size, None);
 					let quad = Quad::from_box([DVec2::ZERO, far]);
 					let multiplied = document.metadata().transform_to_viewport(layer) * quad;
-					overlay_context.quad(multiplied);
+					overlay_context.quad(multiplied, None);
 				}
 
 				self

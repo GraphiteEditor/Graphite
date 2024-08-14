@@ -259,7 +259,7 @@ impl Fsm for GradientToolFsmState {
 					let Gradient { start, end, stops, .. } = gradient;
 					let (start, end) = (transform.transform_point2(start), transform.transform_point2(end));
 
-					overlay_context.line(start, end);
+					overlay_context.line(start, end, None);
 					overlay_context.manipulator_handle(start, dragging == Some(GradientDragTarget::Start));
 					overlay_context.manipulator_handle(end, dragging == Some(GradientDragTarget::End));
 

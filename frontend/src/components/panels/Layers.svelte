@@ -375,7 +375,7 @@
 					class="layer"
 					classes={{
 						selected: fakeHighlight !== undefined ? fakeHighlight === listing.entry.id : listing.entry.selected,
-						"in-selected-network": listing.entry.inSelectedNetwork,
+						"full-highlight": listing.entry.inSelectedNetwork && !listing.entry.selectedParent,
 						"insert-folder": (draggingData?.highlightFolder || false) && draggingData?.insertParentId === listing.entry.id,
 					}}
 					styles={{ "--layer-indent-levels": `${listing.entry.depth - 1}` }}
@@ -499,9 +499,11 @@
 
 				// Dimming
 				&.selected {
-					background: #404040;
+					// Halfway between 3-darkgray and 4-dimgray (this interpolation approach only works on grayscale values)
+					--component: calc((Max(var(--color-3-darkgray-rgb)) + Max(var(--color-4-dimgray-rgb))) / 2);
+					background: rgb(var(--component), var(--component), var(--component));
 
-					&.in-selected-network {
+					&.full-highlight {
 						background: var(--color-4-dimgray);
 					}
 				}

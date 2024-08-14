@@ -469,15 +469,15 @@ impl Fsm for PenToolFsmState {
 				let valid = |point: DVec2, handle: DVec2| point.distance_squared(handle) >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE;
 				let next_point = transform.transform_point2(tool_data.next_point);
 				let next_handle_start = transform.transform_point2(tool_data.next_handle_start);
-				overlay_context.line(next_point, next_handle_start);
+				overlay_context.line(next_point, next_handle_start, None);
 				let start = tool_data.latest_point().map(|point| transform.transform_point2(point.pos));
 
 				let handle_start = tool_data.latest_point().map(|point| transform.transform_point2(point.handle_start));
 				let handle_end = tool_data.handle_end.map(|point| transform.transform_point2(point));
 
 				if let (Some(start), Some(handle_start), Some(handle_end)) = (start, handle_start, handle_end) {
-					overlay_context.line(start, handle_start);
-					overlay_context.line(next_point, handle_end);
+					overlay_context.line(start, handle_start, None);
+					overlay_context.line(next_point, handle_end, None);
 
 					path_overlays(document, shape_editor, &mut overlay_context);
 

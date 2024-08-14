@@ -70,6 +70,7 @@ pub const ASYMPTOTIC_EFFECT: f64 = 0.5;
 pub const SCALE_EFFECT: f64 = 0.5;
 
 // Colors
+// Keep changes to these colors updated with `Editor.svelte`
 pub const COLOR_OVERLAY_BLUE: &str = "#00a8ff";
 pub const COLOR_OVERLAY_YELLOW: &str = "#ffc848";
 pub const COLOR_OVERLAY_WHITE: &str = "#ffffff";

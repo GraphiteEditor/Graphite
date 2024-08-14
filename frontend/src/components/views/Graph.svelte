@@ -1027,7 +1027,7 @@
 			// ancestor elements, `.graph` and `.panel`, each have the simultaneous pairing of `overflow: hidden` and `border-radius`.
 			// See: https://stackoverflow.com/questions/75137879/bug-with-backdrop-filter-in-firefox
 			// backdrop-filter: blur(4px);
-			background: rgba(0, 0, 0, 0.33);
+			background: rgba(var(--color-0-black-rgb), 0.33);
 
 			.node-error {
 				position: absolute;
@@ -1161,11 +1161,10 @@
 			}
 
 			&.selected {
-				// This is the result of blending `rgba(255, 255, 255, 0.1)` over `rgba(0, 0, 0, 0.33)`
-				background: rgba(66, 66, 66, 0.4);
+				background: rgba(var(--color-5-dullgray-rgb), 0.5);
 
 				&.in-selected-network {
-					background: rgba(80, 80, 80, 0.5);
+					background: rgba(var(--color-6-lowergray-rgb), 0.5);
 				}
 			}
 
@@ -1259,18 +1258,18 @@
 
 			&.selected {
 				.primary {
-					background: rgba(255, 255, 255, 0.15);
+					background: rgba(var(--color-f-white-rgb), 0.15);
 
 					&.in-selected-network {
-						background: rgba(255, 255, 255, 0.2);
+						background: rgba(var(--color-f-white-rgb), 0.2);
 					}
 				}
 
 				.parameters {
-					background: rgba(255, 255, 255, 0.1);
+					background: rgba(var(--color-f-white-rgb), 0.1);
 
 					&.in-selected-network {
-						background: rgba(255, 255, 255, 0.15);
+						background: rgba(var(--color-f-white-rgb), 0.15);
 					}
 				}
 			}
@@ -1296,7 +1295,7 @@
 				width: 100%;
 				height: 24px;
 				border-radius: 2px 2px 0 0;
-				background: rgba(255, 255, 255, 0.05);
+				background: rgba(var(--color-f-white-rgb), 0.05);
 
 				&.no-parameter-section {
 					border-radius: 2px;
@@ -1359,9 +1358,9 @@
 
 	.box-selection {
 		position: absolute;
-		z-index: 2;
-		background-color: rgba(77, 168, 221, 0.2);
-		border: 1px solid rgba(77, 168, 221);
 		pointer-events: none;
+		background: rgba(var(--color-overlay-blue-rgb), 0.05);
+		border: 1px solid var(--color-overlay-blue);
+		z-index: 2;
 	}
 </style>

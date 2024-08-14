@@ -809,6 +809,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 									}
 								}
 
+								// Auto convert node to layer when inserting on a single stack wire
+								if stack_wires.len() == 1 && node_wires.is_empty() {
+									network_interface.set_to_node_or_layer(&selected_node_id, selection_network_path, true)
+								}
+
 								let overlapping_wire = if network_interface.is_layer(&selected_node_id, selection_network_path) {
 									if stack_wires.len() == 1 {
 										stack_wires.first()
@@ -987,71 +992,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				network_interface.set_input(&input_connector, input, selection_network_path);
 			}
 			NodeGraphMessage::ShiftNodes {
-				mut node_ids,
+				node_ids,
 				displacement_x,
 				displacement_y,
 				move_upstream,
 			} => {
-				if move_upstream {
-					for node_id in network_interface.upstream_flow_back_from_nodes(node_ids.clone(), selection_network_path, network_interface::FlowType::UpstreamFlow) {
-						if network_interface.is_absolute(&node_id, selection_network_path) && node_ids.iter().all(|id| *id != node_id) {
-							node_ids.push(node_id);
-						}
-					}
-				}
-
-				let mut filtered_node_ids = Vec::new();
-				for selected_node in &node_ids {
-					// Deselect chain nodes upstream from a selected layer
-					if network_interface.is_chain(selected_node, selection_network_path)
-						&& network_interface
-							.downstream_layer(selected_node, selection_network_path)
-							.is_some_and(|downstream_layer| node_ids.contains(&downstream_layer.to_node()))
-					{
-						// Deselect stack nodes upstream from a selected layer
-						continue;
-					}
-
-					// Deselect stack nodes upstream from a selected layer
-					let mut is_upstream_from_selected_absolute_layer = false;
-					let mut current_node = *selected_node;
-					loop {
-						if network_interface.is_absolute(selected_node, selection_network_path) {
-							break;
-						}
-						let Some(outward_wires) = network_interface.outward_wires(selection_network_path) else {
-							break;
-						};
-						let Some(outward_wires) = outward_wires.get(&OutputConnector::node(current_node, 0)) else {
-							break;
-						};
-						if outward_wires.is_empty() {
-							break;
-						}
-						let Some(downstream_node) = outward_wires[0].node_id() else {
-							break;
-						};
-						if outward_wires[0].input_index() != 0 {
-							break;
-						}
-						if !network_interface.is_layer(&downstream_node, selection_network_path) {
-							break;
-						}
-						// Break the iteration if the layer is absolute(top of stack), or it is selected
-						if network_interface.is_absolute(&downstream_node, selection_network_path) || node_ids.contains(&downstream_node) {
-							is_upstream_from_selected_absolute_layer = node_ids.contains(&downstream_node);
-							break;
-						}
-						current_node = downstream_node;
-					}
-					if !is_upstream_from_selected_absolute_layer {
-						filtered_node_ids.push(*selected_node)
-					}
-				}
-
-				for node_id in filtered_node_ids {
-					network_interface.shift_node(&node_id, IVec2::new(displacement_x, displacement_y), selection_network_path);
-				}
+				network_interface.shift_selected_nodes(node_ids, displacement_x, displacement_y, move_upstream, selection_network_path);
 
 				if graph_view_overlay_open {
 					responses.add(NodeGraphMessage::SendGraph);
@@ -1225,8 +1171,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						log::error!("Could not get selected nodes in PointerMove");
 						return;
 					};
-					let previous_selection = selected_nodes.selected_nodes_ref().clone();
-					let mut nodes = if shift { previous_selection.clone() } else { Vec::new() };
+					let previous_selection = selected_nodes.selected_nodes_ref().iter().cloned().collect::<HashSet<_>>();
+					let mut nodes = if shift {
+						selected_nodes.selected_nodes_ref().iter().cloned().collect::<HashSet<_>>()
+					} else {
+						HashSet::new()
+					};
 					let all_nodes = network_metadata.persistent_metadata.node_metadata.keys().cloned().collect::<Vec<_>>();
 					for node_id in all_nodes {
 						let Some(click_targets) = network_interface.node_click_targets(&node_id, selection_network_path) else {
@@ -1237,11 +1187,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							.node_click_target
 							.intersect_rectangle(Quad::from_box([box_selection_start, box_selection_end_graph]), DAffine2::IDENTITY)
 						{
-							nodes.push(node_id);
+							nodes.insert(node_id);
 						}
 					}
 					if nodes != previous_selection {
-						responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
+						responses.add(NodeGraphMessage::SelectedNodesSet {
+							nodes: nodes.into_iter().collect::<Vec<_>>(),
+						});
 					}
 					responses.add(FrontendMessage::UpdateBox { box_selection })
 				}
@@ -1777,9 +1729,34 @@ impl NodeGraphMessageHandler {
 			.selected_layers(network_interface.document_metadata())
 			.map(|layer| layer.to_node())
 			.collect::<HashSet<_>>();
+
+		let mut selected_parents = HashSet::new();
+		for selected_layer in &selected_layers {
+			for ancestor in LayerNodeIdentifier::new(*selected_layer, network_interface).ancestors(network_interface.document_metadata()) {
+				if ancestor != LayerNodeIdentifier::ROOT_PARENT && !selected_layers.contains(&ancestor.to_node()) {
+					selected_parents.insert(ancestor.to_node());
+				}
+			}
+		}
+
 		for (&node_id, node_metadata) in &network_interface.network_metadata(&[]).unwrap().persistent_metadata.node_metadata {
 			if node_metadata.persistent_metadata.is_layer() {
 				let layer = LayerNodeIdentifier::new(node_id, network_interface);
+
+				let children_allowed =
+						// The layer has other layers as children along the secondary input's horizontal flow
+						layer.has_children(network_interface.document_metadata())
+						|| (
+							// Check if the last node in the chain has an exposed left input
+							network_interface.upstream_flow_back_from_nodes(vec![node_id], &[], network_interface::FlowType::HorizontalFlow).last().is_some_and(|node_id|
+								network_interface.network(&[]).unwrap().nodes.get(&node_id).map_or_else(||{log::error!("Could not get node {node_id} in update_layer_panel"); false}, |node| {
+									if network_interface.is_layer(&node_id, &[]) {
+										node.inputs.iter().filter(|input| input.is_exposed_to_frontend(true)).nth(1).is_some_and(|input| input.as_value().is_some())
+									} else {
+										node.inputs.iter().filter(|input| input.is_exposed_to_frontend(true)).nth(0).is_some_and(|input| input.as_value().is_some())
+									}
+								}))
+						);
 
 				let parents_visible = layer.ancestors(network_interface.document_metadata()).filter(|&ancestor| ancestor != layer).all(|layer| {
 					if layer != LayerNodeIdentifier::ROOT_PARENT {
@@ -1797,30 +1774,26 @@ impl NodeGraphMessageHandler {
 					}
 				});
 
+				let is_selected_parent = selected_parents.contains(&node_id);
+
 				let data = LayerPanelEntry {
 					id: node_id,
-					children_allowed:
-						// The layer has other layers as children along the secondary input's horizontal flow
-						layer.has_children(network_interface.document_metadata())
-						|| (
-							// At least one secondary input is exposed on this layer node
-							network_interface.network(&[]).unwrap().nodes.get(&node_id).map_or_else(||{log::error!("Could not get node {node_id} in update_layer_panel"); false}, |node_id| node_id.inputs.iter().skip(1).any(|input| input.is_exposed())) &&
-							// But nothing is connected to it, since we only get 1 item (ourself) when we ask for the flow from the secondary input
-							network_interface.upstream_flow_back_from_nodes(vec![node_id], &[], network_interface::FlowType::HorizontalFlow).count() == 1
-						),
+					children_allowed,
 					children_present: layer.has_children(network_interface.document_metadata()),
 					expanded: layer.has_children(network_interface.document_metadata()) && !collapsed.0.contains(&layer),
 					depth: layer.ancestors(network_interface.document_metadata()).count() - 1,
-					parent_id: layer.parent(network_interface.document_metadata()).and_then(|parent| if parent != LayerNodeIdentifier::ROOT_PARENT { Some(parent.to_node()) } else { None }),
-					//reference: network_interface.get_reference(&node_id),
+					parent_id: layer
+						.parent(network_interface.document_metadata())
+						.and_then(|parent| if parent != LayerNodeIdentifier::ROOT_PARENT { Some(parent.to_node()) } else { None }),
 					alias: network_interface.frontend_display_name(&node_id, &[]),
 					tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}") } else { "".into() },
 					visible: network_interface.is_visible(&node_id, &[]),
 					parents_visible,
 					unlocked: !network_interface.is_locked(&node_id, &[]),
 					parents_unlocked,
-					selected: selected_layers.contains(&node_id),
+					selected: selected_layers.contains(&node_id) || is_selected_parent,
 					in_selected_network: selection_network_path.is_empty(),
+					selected_parent: is_selected_parent,
 				};
 				responses.add(FrontendMessage::UpdateDocumentLayerDetails { data });
 			}
