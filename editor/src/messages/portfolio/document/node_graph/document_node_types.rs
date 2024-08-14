@@ -3720,19 +3720,19 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: node_properties::circular_repeat_properties,
 		},
 		DocumentNodeDefinition {
-			identifier: "Binary Boolean Operation",
+			identifier: "Boolean Operation",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
+					inputs: vec![
+						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
+						NodeInput::value(TaggedValue::BooleanOperation(vector::misc::BooleanOperation::Union), false),
+					],
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
 						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![
-									NodeInput::network(concrete!(graphene_core::vector::VectorData), 0),
-									NodeInput::network(concrete!(graphene_core::vector::VectorData), 1),
-									NodeInput::network(concrete!(vector::misc::BooleanOperation), 2),
-								],
-								implementation: DocumentNodeImplementation::proto("graphene_std::vector::BinaryBooleanOperationNode<_, _>"),
+								inputs: vec![NodeInput::network(generic!(T), 0), NodeInput::network(concrete!(vector::misc::BooleanOperation), 1)],
+								implementation: DocumentNodeImplementation::proto("graphene_std::vector::BooleanOperationNode<_>"),
 								..Default::default()
 							},
 							DocumentNode {
@@ -3748,132 +3748,16 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![
-						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-						NodeInput::value(TaggedValue::BooleanOperation(vector::misc::BooleanOperation::Union), false),
-					],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
 							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "BinaryBooleanOperation".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-17, -3)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "MemoizeImpure".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-10, -3)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
-							..Default::default()
-						},
-						..Default::default()
-					}),
-					input_names: vec!["Upper Vector Data".to_string(), "Lower Vector Data".to_string(), "Operation".to_string()],
-					output_names: vec!["Vector".to_string()],
-					..Default::default()
-				},
-			},
-			category: "Vector",
-			properties: node_properties::binary_boolean_operation_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Boolean Operation",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					inputs: vec![
-						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
-						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
-						NodeInput::value(TaggedValue::BooleanOperation(vector::misc::BooleanOperation::Union), false),
-					],
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(5), 0)],
-						nodes: [
-							// Primary (bottom) input type coercion
-							DocumentNode {
-								inputs: vec![NodeInput::network(generic!(T), 0)],
-								implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicGroupNode"),
-								..Default::default()
-							},
-							// Secondary (left) input type coercion
-							DocumentNode {
-								inputs: vec![NodeInput::network(generic!(T), 1), NodeInput::network(concrete!(vector::misc::BooleanOperation), 2)],
-								implementation: DocumentNodeImplementation::proto("graphene_std::vector::BooleanOperationNode<_>"),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(1), 0)],
-								implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicElementNode"),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(2), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode<_, _, _>")),
-								manual_composition: Some(concrete!(Footprint)),
-								..Default::default()
-							},
-							// The monitor node is used to display a thumbnail in the UI
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(3), 0)],
-								implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"),
-								manual_composition: Some(generic!(T)),
-								skip_deduplication: true,
-								..Default::default()
-							},
-							DocumentNode {
-								manual_composition: Some(concrete!(Footprint)),
-								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(4), 0)],
-								implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _>"),
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "ToGraphicGroup".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-9, -3)),
-										..Default::default()
-									},
-									..Default::default()
-								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "BooleanOperation".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-16, -1)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "ToGraphicElement".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-9, -1)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -3881,23 +3765,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "MemoizeImpure".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-2, -1)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Monitor".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(5, -1)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "ConstructLayer".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(12, -3)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -3911,9 +3779,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 						..Default::default()
 					}),
-					input_names: vec!["Graphical Data".to_string(), "Vector Data".to_string(), "Operation".to_string()],
+					input_names: vec!["Graphical Data".to_string(), "Operation".to_string()],
 					output_names: vec!["Vector".to_string()],
-					node_type_metadata: NodeTypePersistentMetadata::layer(IVec2::new(0, 0)),
 					..Default::default()
 				},
 			},

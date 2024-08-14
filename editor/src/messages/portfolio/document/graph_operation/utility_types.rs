@@ -132,6 +132,18 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.insert_node(new_id, artboard_node_template, &[]);
 		LayerNodeIdentifier::new(new_id, self.network_interface)
 	}
+
+	pub fn insert_boolean_data(&mut self, operation: graphene_std::vector::misc::BooleanOperation, layer: LayerNodeIdentifier) {
+		let boolean = resolve_document_node_type("Boolean Operation").expect("Boolean node does not exist").node_template_input_override([
+			Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_std::GraphicGroup::EMPTY), true)),
+			Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
+		]);
+
+		let boolean_id = NodeId(generate_uuid());
+		self.network_interface.insert_node(boolean_id, boolean, &[]);
+		self.network_interface.move_node_to_chain_start(&boolean_id, layer, &[]);
+	}
+
 	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<PointId>>, layer: LayerNodeIdentifier) {
 		let shape = resolve_document_node_type("Shape")
 			.expect("Shape node does not exist")

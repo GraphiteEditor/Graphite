@@ -329,28 +329,16 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), self.network_interface.selected_nodes(&[]).unwrap(), parent);
 
 				let folder_id = NodeId(generate_uuid());
-				let new_group_node = super::node_graph::document_node_types::resolve_document_node_type("Boolean Operation")
-					.expect("Failed to create merge node")
-					.node_template_input_override([
-						Some(NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorData::empty()), true)),
-						Some(NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorData::empty()), true)),
-						Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
-					]);
-				responses.add(NodeGraphMessage::InsertNode {
-					node_id: folder_id,
-					node_template: new_group_node,
-				});
-				let new_group_folder = LayerNodeIdentifier::new_unchecked(folder_id);
-
-				// Move the boolean operation to the correct position
-				responses.add(NodeGraphMessage::MoveLayerToStack {
-					layer: new_group_folder,
+				let boolean_operation_layer = LayerNodeIdentifier::new_unchecked(folder_id);
+				responses.add(GraphOperationMessage::NewBooleanOperationLayer {
+					id: folder_id,
+					operation,
 					parent,
 					insert_index,
 				});
 
 				// Move all shallowest selected layers as children
-				responses.add(DocumentMessage::MoveSelectedLayersToGroup { parent: new_group_folder });
+				responses.add(DocumentMessage::MoveSelectedLayersToGroup { parent: boolean_operation_layer });
 			}
 			DocumentMessage::CreateEmptyFolder => {
 				let id = NodeId(generate_uuid());
@@ -651,10 +639,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				if self.graph_view_overlay_open {
 					responses.add(NodeGraphMessage::ShiftNodes {
 						node_ids: self.network_interface.selected_nodes(&[]).unwrap().selected_nodes().cloned().collect(),
-						displacement_x: delta_x.signum() as i32,
-						displacement_y: delta_y.signum() as i32,
+						displacement_x: if delta_x == 0.0 { 0 } else { delta_x.signum() as i32 },
+						displacement_y: if delta_y == 0.0 { 0 } else { delta_y.signum() as i32 },
 						move_upstream: ipp.keyboard.get(Key::Shift as usize),
 					});
+
 					return;
 				}
 
