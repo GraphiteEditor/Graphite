@@ -255,7 +255,7 @@ impl NodeRuntime {
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
 		self.executor.update(proto_network).await.map_err(|e| {
-			self.node_graph_errors = e.clone();
+			self.node_graph_errors.clone_from(&e);
 			format!("{e:?}")
 		})
 	}

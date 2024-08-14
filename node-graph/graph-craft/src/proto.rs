@@ -3,8 +3,8 @@ use crate::document::{NodeId, OriginalLocation};
 
 use dyn_any::DynAny;
 use graphene_core::*;
-use rustc_hash::{FxHashMap, FxHashSet};
 
+use rustc_hash::FxHashMap;
 #[cfg(feature = "serde")]
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
@@ -430,10 +430,7 @@ impl ProtoNetwork {
 	}
 
 	fn collect_inwards_edges_with_mapping(&self) -> (Vec<Vec<usize>>, FxHashMap<NodeId, usize>) {
-		let mut id_map = FxHashMap::with_capacity_and_hasher(self.nodes.len(), Default::default());
-
-		// Create dense mapping
-		id_map = self.nodes.iter().enumerate().map(|(idx, (id, _))| (*id, idx)).collect();
+		let id_map: FxHashMap<_, _> = self.nodes.iter().enumerate().map(|(idx, (id, _))| (*id, idx)).collect();
 
 		// Collect inwards edges using dense indices
 		let mut inwards_edges = vec![Vec::new(); self.nodes.len()];
@@ -584,7 +581,7 @@ impl ProtoNetwork {
 
 	/// Sort the nodes vec so it is in a topological order. This ensures that no node takes an input from a node that is found later in the list.
 	fn reorder_ids(&mut self) -> Result<(), String> {
-		let (order, id_map) = self.topological_sort()?;
+		let (order, _id_map) = self.topological_sort()?;
 
 		// // Map of node ids to their current index in the nodes vector
 		// let current_positions: FxHashMap<_, _> = self.nodes.iter().enumerate().map(|(pos, (id, _))| (*id, pos)).collect();

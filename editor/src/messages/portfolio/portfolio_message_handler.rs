@@ -381,7 +381,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				let document_name = document_name.replace("__DO_NOT_UPGRADE__", "");
 
 				let document = DocumentMessageHandler::deserialize_document(&document_serialized_content).map(|mut document| {
-					document.name = document_name.clone();
+					document.name.clone_from(&document_name);
 					document
 				});
 

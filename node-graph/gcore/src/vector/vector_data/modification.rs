@@ -508,6 +508,7 @@ where
 	H: BuildHasher + Default,
 {
 	struct HashMapVisitor<K, V, H> {
+		#[allow(clippy::type_complexity)]
 		marker: std::marker::PhantomData<fn() -> HashMap<K, V, H>>,
 	}
 
