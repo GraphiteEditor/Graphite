@@ -105,6 +105,7 @@
 		--color-error-red: #d6536e;
 		--color-error-red-rgb: 214, 83, 110;
 
+		// Keep changes to these colors updated with `editor/src/consts.rs`
 		--color-overlay-blue: #00a8ff;
 		--color-overlay-blue-rgb: 0, 168, 255;
 		--color-overlay-yellow: #ffc848;

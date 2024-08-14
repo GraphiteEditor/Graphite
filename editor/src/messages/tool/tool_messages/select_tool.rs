@@ -471,10 +471,11 @@ impl Fsm for SelectToolFsmState {
 					}
 
 					// Update the selection box
-					let fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix("#").unwrap())
+					let fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
 						.unwrap()
-						.with_alpha(0.05);
-					overlay_context.quad(quad, Some(fill_color));
+						.with_alpha(0.05)
+						.rgba_hex();
+					overlay_context.quad(quad, Some(&("#".to_string() + &fill_color)));
 				}
 				// Only highlight layers if the viewport is not being panned (middle mouse button is pressed)
 				// TODO: Don't use `Key::Mmb` directly, instead take it as a variable from the input mappings list like in all other places

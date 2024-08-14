@@ -31,26 +31,22 @@ impl core::hash::Hash for OverlayContext {
 }
 
 impl OverlayContext {
-	pub fn quad(&mut self, quad: Quad, fill_color: Option<graphene_std::Color>) {
+	pub fn quad(&mut self, quad: Quad, color_fill: Option<&str>) {
 		self.render_context.begin_path();
 		self.render_context.move_to(quad.0[3].x.round() - 0.5, quad.0[3].y.round() - 0.5);
 		for i in 0..4 {
 			self.render_context.line_to(quad.0[i].x.round() - 0.5, quad.0[i].y.round() - 0.5);
 		}
-		if let Some(fill_color) = fill_color {
-			self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(&("#".to_string() + &fill_color.rgba_hex())));
+		if let Some(color_fill) = color_fill {
+			self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(color_fill));
 			self.render_context.fill();
 		}
 		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_BLUE));
 		self.render_context.stroke();
 	}
 
-	pub fn line(&mut self, start: DVec2, end: DVec2) {
-		self.dashed_line(start, end, None, None)
-	}
-
-	pub fn colored_line(&mut self, start: DVec2, end: DVec2, color: &str) {
-		self.dashed_line(start, end, Some(color), None)
+	pub fn line(&mut self, start: DVec2, end: DVec2, color: Option<&str>) {
+		self.dashed_line(start, end, color, None)
 	}
 
 	pub fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, dash_width: Option<f64>) {
@@ -74,8 +70,7 @@ impl OverlayContext {
 		self.render_context.begin_path();
 		self.render_context.move_to(start.x, start.y);
 		self.render_context.line_to(end.x, end.y);
-		self.render_context
-			.set_stroke_style(&wasm_bindgen::JsValue::from_str(color.unwrap_or(&("#".to_string() + COLOR_OVERLAY_BLUE))));
+		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(color.unwrap_or(COLOR_OVERLAY_BLUE)));
 		self.render_context.stroke();
 	}
 

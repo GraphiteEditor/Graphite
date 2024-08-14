@@ -499,7 +499,9 @@
 
 				// Dimming
 				&.selected {
-					background: #3a3a3a;
+					// Halfway between 3-darkgray and 4-dimgray (this interpolation approach only works on grayscale values)
+					--component: calc((Max(var(--color-3-darkgray-rgb)) + Max(var(--color-4-dimgray-rgb))) / 2);
+					background: rgb(var(--component), var(--component), var(--component));
 
 					&.full-highlight {
 						background: var(--color-4-dimgray);
