@@ -55,7 +55,7 @@ jobs:
     - name: Run PR benchmarks
       id: benchmark
       run: |
-        BENCH_OUTPUT=$(cargo bench --bench compile_demo_art --features=iai -- --baseline=master --output-format=json  | jq -s)
+        BENCH_OUTPUT=$(cargo bench --bench compile_demo_art --features=iai -- --baseline=master --output-format=json  | jq -sc)
         echo "BENCHMARK_OUTPUT<<EOF" >> $GITHUB_OUTPUT
         echo "$BENCH_OUTPUT" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
@@ -65,7 +65,7 @@ jobs:
       with:
         github-token: ${{secrets.GITHUB_TOKEN}}
         script: |
-          const benchmarkOutput = JSON.parse('${{ steps.benchmark.outputs.BENCHMARK_OUTPUT }}');
+          const benchmarkOutput = JSON.parse(`${{ steps.benchmark.outputs.BENCHMARK_OUTPUT }}`);
           
           let significantChanges = false;
           let commentBody = "#### Performance Benchmark Results\n\n";
