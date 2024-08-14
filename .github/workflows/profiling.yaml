@@ -1,4 +1,4 @@
-name: Rust Profiling with iai-callgrind
+name: Profiling
 
 on:
   pull_request:
