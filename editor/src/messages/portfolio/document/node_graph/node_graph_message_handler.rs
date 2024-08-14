@@ -1043,7 +1043,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::SetDisplayNameImpl { node_id, alias } => {
-				network_interface.set_display_name(&node_id, selection_network_path, alias);
+				network_interface.set_display_name(&node_id, alias, selection_network_path);
 			}
 			NodeGraphMessage::TogglePreview { node_id } => {
 				responses.add(DocumentMessage::StartTransaction);

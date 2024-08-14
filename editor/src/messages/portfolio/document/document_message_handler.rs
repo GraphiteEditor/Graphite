@@ -336,7 +336,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					parent,
 					insert_index,
 				});
-
+				responses.add(NodeGraphMessage::SetDisplayNameImpl {
+					node_id: folder_id,
+					alias: "Boolean Operation".to_string(),
+				});
 				// Move all shallowest selected layers as children
 				responses.add(DocumentMessage::MoveSelectedLayersToGroup { parent: boolean_operation_layer });
 			}
