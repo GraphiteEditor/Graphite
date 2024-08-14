@@ -370,7 +370,7 @@ async fn imaginate_maybe_fail<'a, P: Pixel, F: Fn(ImaginateStatus)>(
 		prompt: prompt.await,
 		seed: seed.await,
 		steps: samples.await,
-		cfg_scale: prompt_guidance.await as f64,
+		cfg_scale: prompt_guidance.await,
 		width: res.x,
 		height: res.y,
 		restore_faces: improve_faces.await,
@@ -385,7 +385,7 @@ async fn imaginate_maybe_fail<'a, P: Pixel, F: Fn(ImaginateStatus)>(
 			override_settings: Default::default(),
 
 			init_images: vec![base64_data],
-			denoising_strength: image_creativity.await as f64 * 0.01,
+			denoising_strength: image_creativity.await * 0.01,
 			mask: None,
 		};
 		let url = join_url(&base_url, SDAPI_IMAGE_TO_IMAGE)?;

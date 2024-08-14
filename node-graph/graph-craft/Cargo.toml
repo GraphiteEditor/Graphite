@@ -50,14 +50,12 @@ wasm-bindgen-futures = { workspace = true }
 # Workspace dependencies
 winit = { workspace = true }
 
-
 [dev-dependencies]
-criterion = { version = "0.3", features = ["html_reports"] }
+criterion = { version = "0.5", features = ["html_reports"] }
 glob = "0.3"
 pprof = { version = "0.13", features = ["flamegraph"] }
 serde_json = { workspace = true }
 graph-craft = { workspace = true, features = ["serde"] }
-
 
 [[bench]]
 name = "compile_demo_art"

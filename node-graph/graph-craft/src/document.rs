@@ -2,12 +2,12 @@ use crate::document::value::TaggedValue;
 use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 
 use dyn_any::{DynAny, StaticType};
-use glam::IVec2;
 use graphene_core::memo::MemoHashGuard;
 pub use graphene_core::uuid::generate_uuid;
 use graphene_core::{Cow, MemoHash, ProtoNodeIdentifier, Type};
-use rustc_hash::{FxHashMap, FxHashSet};
 
+use glam::IVec2;
+use rustc_hash::FxHashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -1026,7 +1026,7 @@ impl NodeNetwork {
 		Self::replace_value_inputs_with_nodes(
 			&mut inner_network.exports,
 			&mut inner_network.nodes,
-			&node.original_location.path.as_ref().unwrap_or(&vec![]),
+			node.original_location.path.as_ref().unwrap_or(&vec![]),
 			gen_id,
 			map_ids,
 			id,
@@ -1058,9 +1058,8 @@ impl NodeNetwork {
 						NodeInput::Node { node_id, output_index, lambda } => {
 							let skip = node.original_location.skip_inputs;
 							nested_node.populate_first_network_input(node_id, output_index, nested_input_index, lambda, node.original_location.inputs(*import_index), skip);
-							if let input_node = self.nodes.get_mut(&node_id).unwrap() {
-								input_node.original_location.dependants[output_index].push(nested_node_id);
-							};
+							let input_node = self.nodes.get_mut(&node_id).unwrap();
+							input_node.original_location.dependants[output_index].push(nested_node_id);
 						}
 						NodeInput::Network { import_index, .. } => {
 							let parent_input_index = import_index;
@@ -1276,8 +1275,7 @@ impl NodeNetwork {
 
 	/// Creates a proto network for evaluating each output of this network.
 	pub fn into_proto_networks(self) -> impl Iterator<Item = ProtoNetwork> {
-		// let input_node = self.nodes.iter().find_map(|(node_id, node)| if node.name == "SetNode" { Some(node_id.clone()) } else { None });
-		let mut nodes: Vec<_> = self.nodes.into_iter().map(|(id, node)| (id, node.resolve_proto_node())).collect();
+		let nodes: Vec<_> = self.nodes.into_iter().map(|(id, node)| (id, node.resolve_proto_node())).collect();
 
 		// Create a network to evaluate each output
 		if self.exports.len() == 1 {
@@ -1285,7 +1283,7 @@ impl NodeNetwork {
 				return vec![ProtoNetwork {
 					inputs: Vec::new(),
 					output: node_id,
-					nodes: nodes,
+					nodes,
 				}]
 				.into_iter();
 			}

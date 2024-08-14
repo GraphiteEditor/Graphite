@@ -52,7 +52,6 @@ web-sys = { workspace = true, features = [
 # Optional workspace dependencies
 ron = { workspace = true, optional = true }
 
-
 [package.metadata.wasm-pack.profile.dev]
 wasm-opt = false
 

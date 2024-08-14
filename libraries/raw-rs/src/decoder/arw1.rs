@@ -23,6 +23,7 @@ pub fn decode_a100<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage
 		width: image_width,
 		height: image_height,
 		cfa_pattern: todo!(),
+		#[allow(unreachable_code)]
 		maximum: (1 << 12) - 1,
 		black: SubtractBlack::None,
 		camera_to_xyz: None,
