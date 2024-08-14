@@ -39,10 +39,10 @@ jobs:
       run: |
         cargo install iai-callgrind-runner@0.12.3
 
-    # - name: Checkout master branch
-    #   run: |
-    #     git fetch origin master:master
-    #     git checkout master
+    - name: Checkout master branch
+      run: |
+        git fetch origin master:master
+        git checkout master
 
     - name: Run baseline benchmarks
       run: |
