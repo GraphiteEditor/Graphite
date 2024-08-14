@@ -19,10 +19,10 @@ fn compile(network: NodeNetwork) -> ProtoNetwork {
 	compiler.compile_single(network).unwrap()
 }
 
-fn bench_compile(path: PathBuf) {
-	let content = std::fs::read(&path).expect("failed to read file");
-	let network = load_network(std::str::from_utf8(&content).unwrap());
-	black_box(compile(black_box(network)));
+fn load_from_name(name: &str) -> NodeNetwork {
+	let content = std::fs::read(&format!("../../demo-artwork/{name}.graphite")).expect("failed to read file");
+	let content = std::str::from_utf8(&content).unwrap();
+	load_network(content)
 }
 
 #[cfg(feature = "criterion")]
@@ -31,17 +31,16 @@ fn compile_to_proto(c: &mut Criterion) {
 	for path in artworks {
 		let Ok(path) = path else { continue };
 		let name = path.file_stem().unwrap().to_str().unwrap();
-		c.bench_function(name, |b| b.iter(|| bench_compile(path.clone())));
+		let content = std::fs::read(&path).expect("failed to read file");
+		let network = load_network(std::str::from_utf8(&content).unwrap());
+		c.bench_function(name, |b| b.iter_batched(|| network.clone(), |network| compile(black_box(network)), criterion::BatchSize::SmallInput));
 	}
 }
 
 #[cfg_attr(feature = "iai", library_benchmark)]
-fn iai_compile_to_proto() {
-	let artworks = glob::glob("../../demo-artwork/*.graphite").expect("failed to read glob pattern");
-	for path in artworks {
-		let Ok(path) = path else { continue };
-		bench_compile(path);
-	}
+#[cfg_attr(feature = "iai", benches::with_setup(args = ["isometric-fountain", "painted-dreams", "procedural-string-lights", "red-dress", "valley-of-spires"], setup = load_from_name))]
+fn iai_compile_to_proto(input: NodeNetwork) {
+	black_box(compile(input));
 }
 
 #[cfg(feature = "criterion")]
