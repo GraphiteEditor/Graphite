@@ -38,6 +38,29 @@ jobs:
           else
             echo "CLIPPY_ISSUES_FOUND=false" >> $GITHUB_OUTPUT
           fi
+
+      - name: Delete previous comments
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const { data: comments } = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            
+            const botComments = comments.filter(comment => 
+              comment.user.type === 'Bot' && comment.body.includes('Clippy Warnings/Errors')
+            );
+            
+            for (const comment of botComments) {
+              await github.rest.issues.deleteComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: comment.id,
+              });
+            }
         
       - name: Comment PR
         if: steps.clippy.outputs.CLIPPY_ISSUES_FOUND == 'true'
