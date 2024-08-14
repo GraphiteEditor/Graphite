@@ -444,7 +444,7 @@ impl SnapManager {
 				overlay_context.outline([Subpath::from_bezier(curve)].iter(), to_viewport);
 			}
 			if let Some(quad) = ind.target_bounds {
-				overlay_context.quad(to_viewport * quad);
+				overlay_context.quad(to_viewport * quad, None);
 			}
 			let viewport = to_viewport.transform_point2(ind.snapped_point_document);
 

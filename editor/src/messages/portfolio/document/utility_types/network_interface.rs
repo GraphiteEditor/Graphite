@@ -305,23 +305,19 @@ impl NodeNetworkInterface {
 					}
 
 					// Ensure a chain node has a selected downstream layer, and set absolute nodes to a chain if there is a downstream layer
-
-					if let NodeTypePersistentMetadata::Node(node_metadata) = &node_template.persistent_node_metadata.node_type_metadata {
-						let Some(downstream_layer) = self.downstream_layer(node_id, network_path) else {
-							log::error!("Could not get downstream layer in copy_nodes");
+					if self
+						.downstream_layer(node_id, network_path)
+						.map_or(true, |downstream_layer| new_ids.keys().all(|key| *key != downstream_layer.to_node()))
+					{
+						let Some(position) = self.position(node_id, network_path) else {
+							log::error!("Could not get position in create_node_template");
 							return None;
 						};
-						if new_ids.keys().all(|key| *key != downstream_layer.to_node()) {
-							let Some(position) = self.position(node_id, network_path) else {
-								log::error!("Could not get position in create_node_template");
-								return None;
-							};
-							node_template.persistent_node_metadata.node_type_metadata = NodeTypePersistentMetadata::Node(NodePersistentMetadata {
-								position: NodePosition::Absolute(position),
-							});
-						} else {
-							node_template.persistent_node_metadata.node_type_metadata = NodeTypePersistentMetadata::Node(NodePersistentMetadata { position: NodePosition::Chain });
-						}
+						node_template.persistent_node_metadata.node_type_metadata = NodeTypePersistentMetadata::Node(NodePersistentMetadata {
+							position: NodePosition::Absolute(position),
+						});
+					} else if let NodeTypePersistentMetadata::Node(NodePersistentMetadata { position }) = &mut node_template.persistent_node_metadata.node_type_metadata {
+						*position = NodePosition::Chain;
 					}
 
 					// Shift all absolute nodes 2 to the right and 2 down
@@ -3387,7 +3383,12 @@ impl NodeNetworkInterface {
 
 	pub fn force_set_upstream_to_chain(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
 		for upstream_id in self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::HorizontalFlow).collect::<Vec<_>>().iter() {
-			if !self.is_layer(upstream_id, network_path) && self.has_primary_output(node_id, network_path) {
+			if !self.is_layer(upstream_id, network_path)
+				&& self.has_primary_output(node_id, network_path)
+				&& self
+					.outward_wires(network_path)
+					.is_some_and(|outward_wires| outward_wires.get(&OutputConnector::node(*upstream_id, 0)).is_some_and(|outward_wires| outward_wires.len() == 1))
+			{
 				self.set_chain_position(upstream_id, network_path);
 			}
 			// If there is an upstream layer then stop breaking the chain
@@ -3633,8 +3634,9 @@ impl NodeNetworkInterface {
 		let after_move_post_layer_position = if let Some(post_node_id) = post_node.node_id() {
 			self.position(&post_node_id, network_path)
 		} else {
-			Some(IVec2::ZERO)
+			Some(IVec2::new(8, -3))
 		};
+
 		let Some(after_move_post_layer_position) = after_move_post_layer_position else {
 			log::error!("Could not get post node position in move_layer_to_stack");
 			return;

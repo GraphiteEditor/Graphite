@@ -125,7 +125,7 @@ impl<'a, I: StaticType + 'static + Send + Sync + std::panic::UnwindSafe> Executo
 				Ok(result) => result.map_err(|e| e.into()),
 				Err(e) => {
 					Box::leak(e);
-					Err("Node graph execution paniced".into())
+					Err("Node graph execution panicked".into())
 				}
 			}
 		})
