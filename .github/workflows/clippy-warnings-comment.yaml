@@ -1,8 +1,8 @@
-name: Clippy Check with PR Comments
+name: Clippy Check
 
 on:
   pull_request:
-    branches: [ master ]
+    branches: [master]
 
 jobs:
   clippy:
@@ -13,7 +13,7 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v3
-      
+
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
@@ -24,7 +24,7 @@ jobs:
 
       - name: Install Deps
         run: sudo apt-get install libgtk-3-dev libsoup2.4-dev libjavascriptcoregtk-4.0-dev libwebkit2gtk-4.0-dev
-      
+
       - name: Run Clippy
         id: clippy
         run: |
@@ -49,11 +49,11 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
             });
-            
+
             const botComments = comments.filter(comment => 
               comment.user.type === 'Bot' && comment.body.includes('Clippy Warnings/Errors')
             );
-            
+
             for (const comment of botComments) {
               await github.rest.issues.deleteComment({
                 owner: context.repo.owner,
@@ -61,7 +61,7 @@ jobs:
                 comment_id: comment.id,
               });
             }
-        
+
       - name: Comment PR
         if: steps.clippy.outputs.CLIPPY_ISSUES_FOUND == 'true'
         uses: actions/github-script@v6
@@ -70,9 +70,9 @@ jobs:
           script: |
             const clippy_output = ${{ steps.clippy.outputs.CLIPPY_OUTPUT }};
             const output = `
-            <details>
+            <details open>
 
-            <summary> Found Clippy warnings </summary>
+            <summary>Found Clippy warnings</summary>
 
             #### Clippy Warnings/Errors
 
@@ -82,11 +82,10 @@ jobs:
 
             </details>
             `;
-            
+
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
               body: output
             })
-

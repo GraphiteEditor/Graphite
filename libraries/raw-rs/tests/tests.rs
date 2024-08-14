@@ -307,7 +307,8 @@ fn _test_final_image(content: &[u8], raw_image: RawImage) -> Result<(), String> 
 	Ok(())
 }
 
-// #[test]
+#[ignore]
+#[test]
 fn extract_data_from_dng_images() {
 	read_dir(BASE_PATH)
 		.unwrap()
