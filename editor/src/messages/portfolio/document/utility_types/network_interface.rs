@@ -299,32 +299,33 @@ impl NodeNetworkInterface {
 							return None;
 						};
 						match &mut node_template.persistent_node_metadata.node_type_metadata {
-							// TODO: Remove 2x2 offset and replace with layout system to find space for new node
 							NodeTypePersistentMetadata::Layer(layer_metadata) => layer_metadata.position = LayerPosition::Absolute(position),
 							NodeTypePersistentMetadata::Node(node_metadata) => node_metadata.position = NodePosition::Absolute(position),
 						};
 					}
 
-					// Ensure a chain node has a selected downstream layer
+					// Ensure a chain node has a selected downstream layer, and set absolute nodes to a chain if there is a downstream layer
+
 					if let NodeTypePersistentMetadata::Node(node_metadata) = &node_template.persistent_node_metadata.node_type_metadata {
-						if matches!(node_metadata.position, NodePosition::Chain) {
-							let Some(downstream_layer) = self.downstream_layer(node_id, network_path) else {
-								log::error!("Could not get downstream layer in copy_nodes");
+						let Some(downstream_layer) = self.downstream_layer(node_id, network_path) else {
+							log::error!("Could not get downstream layer in copy_nodes");
+							return None;
+						};
+						if new_ids.keys().all(|key| *key != downstream_layer.to_node()) {
+							let Some(position) = self.position(node_id, network_path) else {
+								log::error!("Could not get position in create_node_template");
 								return None;
 							};
-							if new_ids.keys().all(|key| *key != downstream_layer.to_node()) {
-								let Some(position) = self.position(node_id, network_path) else {
-									log::error!("Could not get position in create_node_template");
-									return None;
-								};
-								node_template.persistent_node_metadata.node_type_metadata = NodeTypePersistentMetadata::Node(NodePersistentMetadata {
-									position: NodePosition::Absolute(position + IVec2::new(2, 2)),
-								});
-							}
+							node_template.persistent_node_metadata.node_type_metadata = NodeTypePersistentMetadata::Node(NodePersistentMetadata {
+								position: NodePosition::Absolute(position),
+							});
+						} else {
+							node_template.persistent_node_metadata.node_type_metadata = NodeTypePersistentMetadata::Node(NodePersistentMetadata { position: NodePosition::Chain });
 						}
 					}
 
 					// Shift all absolute nodes 2 to the right and 2 down
+					// TODO: Remove 2x2 offset and replace with layout system to find space for new node
 					match &mut node_template.persistent_node_metadata.node_type_metadata {
 						NodeTypePersistentMetadata::Layer(layer_metadata) => {
 							if let LayerPosition::Absolute(position) = &mut layer_metadata.position {
@@ -2966,7 +2967,7 @@ impl NodeNetworkInterface {
 			if matches!(reconnect_to_input, Some(NodeInput::Network { .. })) && matches!(input_to_disconnect, InputConnector::Export(_)) {
 				self.disconnect_input(input_to_disconnect, network_path);
 			} else if let Some(reconnect_input) = reconnect_to_input.take() {
-				let original_position = reconnect_input.as_node().and_then(|node| self.position(deleting_node_id, network_path));
+				let original_position = reconnect_input.as_node().and_then(|downstream_node| self.position(&downstream_node, network_path));
 				let original_downstream_position = input_to_disconnect.node_id().and_then(|downstream_id| self.position(&downstream_id, network_path));
 
 				self.set_input(input_to_disconnect, reconnect_input.clone(), network_path);
@@ -3423,19 +3424,8 @@ impl NodeNetworkInterface {
 	pub fn shift_selected_nodes(&mut self, mut node_ids: Vec<NodeId>, displacement_x: i32, mut displacement_y: i32, move_upstream: bool, network_path: &[NodeId]) {
 		if move_upstream {
 			for node_id in self.upstream_flow_back_from_nodes(node_ids.clone(), network_path, self::FlowType::UpstreamFlow).collect::<Vec<_>>() {
-				if node_ids.iter().all(|id| *id != node_id) {
-					if self.is_absolute(&node_id, network_path) {
-						node_ids.push(node_id);
-					}
-					// Only select upstream chain nodes if the downstream layer is not being moved
-					if self.is_chain(&node_id, network_path)
-						&& self.downstream_layer(&node_id, network_path).is_some_and(|downstream_layer| {
-							!downstream_layer
-								.downstream_siblings(&self.document_metadata)
-								.any(|downstream_layer| node_ids.contains(&downstream_layer.to_node()))
-						}) {
-						node_ids.push(node_id);
-					}
+				if !node_ids.contains(&node_id) {
+					node_ids.push(node_id);
 				}
 			}
 		}
@@ -3515,6 +3505,14 @@ impl NodeNetworkInterface {
 		if let NodeTypePersistentMetadata::Layer(layer_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
 			if let LayerPosition::Absolute(layer_position) = &mut layer_metadata.position {
 				*layer_position += shift;
+				self.unload_upstream_node_click_targets(vec![*node_id], network_path);
+				for upstream_sibling in self
+					.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::PrimaryFlow)
+					.take_while(|upstream_layer| self.is_layer(upstream_layer, network_path))
+					.collect::<Vec<_>>()
+				{
+					self.try_set_upstream_to_chain(&InputConnector::node(upstream_sibling, 1), network_path);
+				}
 			} else if let LayerPosition::Stack(y_offset) = &mut layer_metadata.position {
 				let shifted_y_offset = *y_offset as i32 + shift.y;
 				// A layer can only be shifted to a positive y_offset
@@ -3580,7 +3578,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		let previous_upstream_node = self.upstream_flow_back_from_nodes(vec![layer.to_node()], network_path, FlowType::PrimaryFlow).skip(1).next();
+		let previous_upstream_node = self.upstream_flow_back_from_nodes(vec![layer.to_node()], network_path, FlowType::PrimaryFlow).nth(1);
 		let mut height_below_layer = 0;
 
 		if let Some(previous_upstream_node) = previous_upstream_node {
@@ -3697,7 +3695,7 @@ impl NodeNetworkInterface {
 					};
 					let offset = after_move_post_layer_position - previous_layer_position + IVec2::new(0, 3 + post_node_height as i32);
 					self.shift_selected_nodes(vec![layer.to_node()], offset.x, offset.y, true, network_path);
-					let upstream_offset = layer_to_move_height as i32 - post_node_height as i32 + 3;
+					let upstream_offset = layer_to_move_height as i32 + 3;
 					self.shift_selected_nodes(vec![upstream_node_id], 0, upstream_offset, true, network_path);
 
 					self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);

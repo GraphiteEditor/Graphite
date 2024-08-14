@@ -1732,6 +1732,23 @@ impl NodeGraphMessageHandler {
 			if node_metadata.persistent_metadata.is_layer() {
 				let layer = LayerNodeIdentifier::new(node_id, network_interface);
 
+				let children_allowed = 
+						// The layer has other layers as children along the secondary input's horizontal flow
+						layer.has_children(network_interface.document_metadata())
+						|| (
+							// At least one secondary input is exposed on this layer node or an upstream node
+							
+							// But nothing is connected to it, since we only get 1 item (ourself) when we ask for the flow from the secondary input
+							network_interface.upstream_flow_back_from_nodes(vec![node_id], &[], network_interface::FlowType::HorizontalFlow).last().is_some_and(|node_id| 
+								network_interface.network(&[]).unwrap().nodes.get(&node_id).map_or_else(||{log::error!("Could not get node {node_id} in update_layer_panel"); false}, |node| {
+									if network_interface.is_layer(&node_id, &[]) {
+										node.inputs.iter().filter(|input| input.is_exposed_to_frontend(true)).nth(1).is_some_and(|input| input.as_value().is_some())
+									} else {
+										node.inputs.iter().filter(|input| input.is_exposed_to_frontend(true)).nth(0).is_some_and(|input| input.as_value().is_some())
+									}
+								}))
+						);
+
 				let parents_visible = layer.ancestors(network_interface.document_metadata()).filter(|&ancestor| ancestor != layer).all(|layer| {
 					if layer != LayerNodeIdentifier::ROOT_PARENT {
 						network_interface.network(&[]).unwrap().nodes.get(&layer.to_node()).map(|node| node.visible).unwrap_or_default()
@@ -1752,15 +1769,7 @@ impl NodeGraphMessageHandler {
 
 				let data = LayerPanelEntry {
 					id: node_id,
-					children_allowed:
-						// The layer has other layers as children along the secondary input's horizontal flow
-						layer.has_children(network_interface.document_metadata())
-						|| (
-							// At least one secondary input is exposed on this layer node
-							network_interface.network(&[]).unwrap().nodes.get(&node_id).map_or_else(||{log::error!("Could not get node {node_id} in update_layer_panel"); false}, |node_id| node_id.inputs.iter().skip(1).any(|input| input.is_exposed())) &&
-							// But nothing is connected to it, since we only get 1 item (ourself) when we ask for the flow from the secondary input
-							network_interface.upstream_flow_back_from_nodes(vec![node_id], &[], network_interface::FlowType::HorizontalFlow).count() == 1
-						),
+					children_allowed,
 					children_present: layer.has_children(network_interface.document_metadata()),
 					expanded: layer.has_children(network_interface.document_metadata()) && !collapsed.0.contains(&layer),
 					depth: layer.ancestors(network_interface.document_metadata()).count() - 1,

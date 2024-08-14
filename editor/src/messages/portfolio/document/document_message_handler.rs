@@ -648,6 +648,27 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				resize_opposite_corner,
 			} => {
 				self.backup(responses);
+				if self.graph_view_overlay_open {
+					responses.add(NodeGraphMessage::ShiftNodes {
+						node_ids: self.network_interface.selected_nodes(&[]).unwrap().selected_nodes().cloned().collect(),
+						displacement_x: if delta_x > 0. {
+							1
+						} else if delta_x < 0. {
+							-1
+						} else {
+							0
+						},
+						displacement_y: if delta_y > 0. {
+							1
+						} else if delta_y < 0. {
+							-1
+						} else {
+							0
+						},
+						move_upstream: ipp.keyboard.get(Key::Shift as usize),
+					});
+					return;
+				}
 
 				let opposite_corner = ipp.keyboard.key(resize_opposite_corner);
 				let delta = DVec2::new(delta_x, delta_y);
