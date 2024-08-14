@@ -48,11 +48,15 @@ jobs:
             const clippy_output = ${{ steps.clippy.outputs.CLIPPY_OUTPUT }};
             const output = `
             <details>
+
             <summary> Found Clippy warnings </summary>
+
             #### Clippy Warnings/Errors
+
             \`\`\`
             ${clippy_output}
             \`\`\`
+
             </details>
             `;
             
