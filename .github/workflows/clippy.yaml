@@ -46,10 +46,14 @@ jobs:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
             const clippy_output = ${{ steps.clippy.outputs.CLIPPY_OUTPUT }};
-            const output = `#### Clippy Warnings/Errors
+            const output = `
+            <details>
+            <summary> Found Clippy warnings </summary>
+            #### Clippy Warnings/Errors
             \`\`\`
             ${clippy_output}
             \`\`\`
+            </details>
             `;
             
             github.rest.issues.createComment({
