@@ -55,24 +55,45 @@ jobs:
     - name: Run PR benchmarks
       id: benchmark
       run: |
-        BENCH_OUTPUT=$(cargo bench --bench compile_demo_art --features=iai -- --baseline=master)
-        ESCAPED_OUTPUT=$(echo "$BENCH_OUTPUT" | jq -sR .)
-        echo "BENCHMARK_OUTPUT=$ESCAPED_OUTPUT" >> $GITHUB_OUTPUT
+        BENCH_OUTPUT=$(cargo bench --bench compile_demo_art --features=iai -- --baseline=master --output-format=json)
+        echo "BENCHMARK_OUTPUT<<EOF" >> $GITHUB_OUTPUT
+        echo "$BENCH_OUTPUT" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
 
     - name: Comment PR
       uses: actions/github-script@v6
       with:
         github-token: ${{secrets.GITHUB_TOKEN}}
         script: |
-          const output = `#### Performance Benchmark Results
-          \`\`\`
-          ${{ steps.benchmark.outputs.BENCHMARK_OUTPUT }}
-          \`\`\`
-          `;
+          const benchmarkOutput = JSON.parse('${{ steps.benchmark.outputs.BENCHMARK_OUTPUT }}');
           
-          github.rest.issues.createComment({
-            issue_number: context.issue.number,
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            body: output
-          })
+          let significantChanges = false;
+          let commentBody = "#### Performance Benchmark Results\n\n";
+          
+          for (const benchmark of benchmarkOutput) {
+            if (benchmark.callgrind_summary && benchmark.callgrind_summary.summaries) {
+              for (const summary of benchmark.callgrind_summary.summaries) {
+                for (const [eventKind, costsDiff] of Object.entries(summary.events)) {
+                  if (costsDiff.diff_pct !== null && Math.abs(costsDiff.diff_pct) > 5) {
+                    significantChanges = true;
+                    const changeDirection = costsDiff.diff_pct > 0 ? "increase" : "decrease";
+                    const color = costsDiff.diff_pct > 0 ? "red" : "green";
+                    commentBody += `\`${benchmark.module_path}\` - ${eventKind}:\n`;
+                    commentBody += `\\color{${color}}${changeDirection} of ${Math.abs(costsDiff.diff_pct).toFixed(2)}%\n`;
+                    commentBody += `Old: ${costsDiff.old}, New: ${costsDiff.new}\n\n`;
+                  }
+                }
+              }
+            }
+          }
+          
+          if (significantChanges) {
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: commentBody
+            });
+          } else {
+            console.log("No significant performance changes detected. Skipping comment.");
+          }
