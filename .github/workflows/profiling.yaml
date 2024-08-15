@@ -2,7 +2,7 @@ name: Profiling
 
 on:
   pull_request:
-    branches: [ master ]
+    branches: [master]
 
 env:
   CARGO_TERM_COLOR: always
@@ -11,90 +11,90 @@ jobs:
   profile:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
-    - name: Install Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        profile: minimal
-        toolchain: stable
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
 
-    - name: Install Valgrind
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y valgrind
+      - name: Install Valgrind
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind
 
-    - name: Cache dependencies
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-    - name: Install iai-callgrind
-      run: |
-        cargo install iai-callgrind-runner@0.12.3
+      - name: Install iai-callgrind
+        run: |
+          cargo install iai-callgrind-runner@0.12.3
 
-    - name: Checkout master branch
-      run: |
-        git fetch origin master:master
-        git checkout master
+      - name: Checkout master branch
+        run: |
+          git fetch origin master:master
+          git checkout master
 
-    - name: Run baseline benchmarks
-      run: |
-        cargo bench --bench compile_demo_art --features=iai -- --save-baseline=master
+      - name: Run baseline benchmarks
+        run: |
+          cargo bench --bench compile_demo_art --features=iai -- --save-baseline=master
 
-    - name: Checkout PR branch
-      run: |
-        git checkout ${{ github.event.pull_request.head.sha }}
+      - name: Checkout PR branch
+        run: |
+          git checkout ${{ github.event.pull_request.head.sha }}
 
-    - name: Run PR benchmarks
-      id: benchmark
-      run: |
-        BENCH_OUTPUT=$(cargo bench --bench compile_demo_art --features=iai -- --baseline=master --output-format=json  | jq -sc | sed 's/\\"//g')
-        echo "BENCHMARK_OUTPUT<<EOF" >> $GITHUB_OUTPUT
-        echo "$BENCH_OUTPUT" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
+      - name: Run PR benchmarks
+        id: benchmark
+        run: |
+          BENCH_OUTPUT=$(cargo bench --bench compile_demo_art --features=iai -- --baseline=master --output-format=json  | jq -sc | sed 's/\\"//g')
+          echo "BENCHMARK_OUTPUT<<EOF" >> $GITHUB_OUTPUT
+          echo "$BENCH_OUTPUT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
-    - name: Comment PR
-      uses: actions/github-script@v6
-      with:
-        github-token: ${{secrets.GITHUB_TOKEN}}
-        script: |
-          const benchmarkOutput = JSON.parse(`${{ steps.benchmark.outputs.BENCHMARK_OUTPUT }}`);
-          
-          let significantChanges = false;
-          let commentBody = "#### Performance Benchmark Results\n\n";
-          
-          for (const benchmark of benchmarkOutput) {
-            if (benchmark.callgrind_summary && benchmark.callgrind_summary.summaries) {
-              for (const summary of benchmark.callgrind_summary.summaries) {
-                for (const [eventKind, costsDiff] of Object.entries(summary.events)) {
-                  if (costsDiff.diff_pct !== null && Math.abs(costsDiff.diff_pct) > 5) {
-                    significantChanges = true;
-                    const changeDirection = costsDiff.diff_pct > 0 ? "increase" : "decrease";
-                    const color = costsDiff.diff_pct > 0 ? "red" : "green";
-                    commentBody += `\`${benchmark.module_path}\` - ${eventKind}:\n`;
-                    commentBody += `\\color{${color}}${changeDirection} of ${Math.abs(costsDiff.diff_pct).toFixed(2)}%\n`;
-                    commentBody += `Old: ${costsDiff.old}, New: ${costsDiff.new}\n\n`;
+      - name: Comment PR
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const benchmarkOutput = JSON.parse(`${{ steps.benchmark.outputs.BENCHMARK_OUTPUT }}`);
+
+            let significantChanges = false;
+            let commentBody = "#### Performance Benchmark Results\n\n";
+
+            for (const benchmark of benchmarkOutput) {
+              if (benchmark.callgrind_summary && benchmark.callgrind_summary.summaries) {
+                for (const summary of benchmark.callgrind_summary.summaries) {
+                  for (const [eventKind, costsDiff] of Object.entries(summary.events)) {
+                    if (costsDiff.diff_pct !== null && Math.abs(costsDiff.diff_pct) > 5) {
+                      significantChanges = true;
+                      const changeDirection = costsDiff.diff_pct > 0 ? "Increase" : "Decrease";
+                      const color = costsDiff.diff_pct > 0 ? "red" : "lime";
+                      commentBody += `\`${benchmark.module_path}\` - ${eventKind}:\n`;
+                      commentBody += `${changeDirection} of $$\\color{${color}}${Math.abs(costsDiff.diff_pct).toFixed(2)}\\\\%$$\n`;
+                      commentBody += `Old: ${costsDiff.old}, New: ${costsDiff.new}\n\n`;
+                    }
                   }
                 }
               }
             }
-          }
-          
-          if (significantChanges) {
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: commentBody
-            });
-          } else {
-            console.log("No significant performance changes detected. Skipping comment.");
-            console.log(commentBody);
-          }
+
+            if (significantChanges) {
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: commentBody
+              });
+            } else {
+              console.log("No significant performance changes detected. Skipping comment.");
+              console.log(commentBody);
+            }
