@@ -1208,15 +1208,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cpp_demangle"
-version = "0.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e8227005286ec39567949b33df9896bcadfa6051bccca2488129f108ca23119"
-dependencies = [
- "cfg-if",
-]
-
-[[package]]
 name = "cpufeatures"
 version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1414,15 +1405,6 @@ name = "data-url"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c297a1c74b71ae29df00c3e22dd9534821d60eb9af5a0192823fa2acea70c2a"
-
-[[package]]
-name = "debugid"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bef552e6f588e446098f6ba40d89ac146c8c7b64aade83c051ee00bb5d2bc18d"
-dependencies = [
- "uuid",
-]
 
 [[package]]
 name = "deranged"
@@ -1773,18 +1755,6 @@ dependencies = [
  "libc",
  "redox_syscall 0.4.1",
  "windows-sys 0.52.0",
-]
-
-[[package]]
-name = "findshlibs"
-version = "0.10.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40b9e59cd0f7e0806cca4be089683ecb6434e602038df21fe6bf6711b2f07f64"
-dependencies = [
- "cc",
- "lazy_static",
- "libc",
- "winapi",
 ]
 
 [[package]]
@@ -2436,7 +2406,6 @@ dependencies = [
  "js-sys",
  "log",
  "num-traits",
- "pprof",
  "reqwest 0.12.5",
  "rustc-hash 2.0.0",
  "serde",
@@ -3230,24 +3199,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "inferno"
-version = "0.11.21"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "232929e1d75fe899576a3d5c7416ad0d88dbfbb3c3d6aa00873a7408a50ddb88"
-dependencies = [
- "ahash",
- "indexmap 2.2.6",
- "is-terminal",
- "itoa 1.0.11",
- "log",
- "num-format",
- "once_cell",
- "quick-xml 0.26.0",
- "rgb",
- "str_stack",
-]
-
-[[package]]
 name = "instant"
 version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4012,16 +3963,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.72",
-]
-
-[[package]]
-name = "num-format"
-version = "0.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a652d9771a63711fd3c3deb670acfbe5c30a4072e664d7a3bf5a9e1056ac72c3"
-dependencies = [
- "arrayvec",
- "itoa 1.0.11",
 ]
 
 [[package]]
@@ -4791,27 +4732,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
 
 [[package]]
-name = "pprof"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef5c97c51bd34c7e742402e216abdeb44d415fbe6ae41d56b114723e953711cb"
-dependencies = [
- "backtrace",
- "cfg-if",
- "findshlibs",
- "inferno",
- "libc",
- "log",
- "nix 0.26.4",
- "once_cell",
- "parking_lot",
- "smallvec",
- "symbolic-demangle",
- "tempfile",
- "thiserror",
-]
-
-[[package]]
 name = "ppv-lite86"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4892,15 +4812,6 @@ name = "profiling"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "43d84d1d7a6ac92673717f9f6d1518374ef257669c24ebc5ac25d5033828be58"
-
-[[package]]
-name = "quick-xml"
-version = "0.26.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f50b1c63b38611e7d4d7f68b82d3ad0cc71a2ad2e7f61fc10f1328d917c93cd"
-dependencies = [
- "memchr",
-]
 
 [[package]]
 name = "quick-xml"
@@ -6130,12 +6041,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
-name = "str_stack"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9091b6114800a5f2141aee1d1b9d6ca3592ac062dc5decb3764ec5895a47b4eb"
-
-[[package]]
 name = "strict-num"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6196,29 +6101,6 @@ checksum = "fae3064df9b89391c9a76a0425a69d124aee9c5c28455204709e72c39868a43c"
 dependencies = [
  "kurbo",
  "siphasher 1.0.1",
-]
-
-[[package]]
-name = "symbolic-common"
-version = "12.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16629323a4ec5268ad23a575110a724ad4544aae623451de600c747bf87b36cf"
-dependencies = [
- "debugid",
- "memmap2",
- "stable_deref_trait",
- "uuid",
-]
-
-[[package]]
-name = "symbolic-demangle"
-version = "12.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48c043a45f08f41187414592b3ceb53fb0687da57209cc77401767fb69d5b596"
-dependencies = [
- "cpp_demangle",
- "rustc-demangle",
- "symbolic-common",
 ]
 
 [[package]]
