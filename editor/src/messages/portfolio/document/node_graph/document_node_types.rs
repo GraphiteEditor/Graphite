@@ -173,6 +173,23 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("The Monitor node stores the value of its last evaluation"),
 		},
 		DocumentNodeDefinition {
+			identifier: "Group",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicGroupNode"),
+					inputs: vec![NodeInput::value(TaggedValue::VectorData(VectorData::empty()), true)],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_names: vec!["Element".to_string()],
+					output_names: vec!["Graphic Group".to_string()],
+					..Default::default()
+				},
+			},
+			category: "General",
+			properties: node_properties::node_no_properties,
+		},
+		DocumentNodeDefinition {
 			identifier: "Merge",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
@@ -235,7 +252,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "To Graphic Group".to_string(),
+										display_name: "Group".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -3)),
 										..Default::default()
 									},

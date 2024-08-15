@@ -1000,7 +1000,7 @@ pub fn color_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 }
 
 pub fn load_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let url = text_widget(document_node, node_id, 1, "Url", true);
+	let url = text_widget(document_node, node_id, 1, "URL", true);
 
 	vec![LayoutGroup::Row { widgets: url }]
 }
