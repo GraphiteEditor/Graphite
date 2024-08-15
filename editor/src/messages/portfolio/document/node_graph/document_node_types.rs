@@ -3727,58 +3727,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
 						NodeInput::value(TaggedValue::BooleanOperation(vector::misc::BooleanOperation::Union), false),
 					],
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(1), 0)],
-						nodes: [
-							DocumentNode {
-								inputs: vec![NodeInput::network(generic!(T), 0), NodeInput::network(concrete!(vector::misc::BooleanOperation), 1)],
-								implementation: DocumentNodeImplementation::proto("graphene_std::vector::BooleanOperationNode<_>"),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode<_, _, _>")),
-								manual_composition: Some(concrete!(Footprint)),
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::vector::BooleanOperationNode<_>")),
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "BooleanOperation".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "MemoizeImpure".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
-							..Default::default()
-						},
-						..Default::default()
-					}),
 					input_names: vec!["Graphical Data".to_string(), "Operation".to_string()],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()

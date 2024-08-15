@@ -24,7 +24,7 @@ use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
+use graph_craft::document::{NodeId, NodeNetwork, OldNodeNetwork};
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::ImageFrame;
 use graphene_core::vector::style::ViewMode;
