@@ -1,5 +1,5 @@
 use super::misc::CentroidType;
-use super::style::{Fill, Stroke};
+use super::style::{Fill, GradientStops, Stroke};
 use super::{PointId, SegmentId, StrokeId, VectorData};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
@@ -8,6 +8,78 @@ use crate::{Color, GraphicGroup, Node};
 use bezier_rs::{Cap, Join, Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
 use rand::{Rng, SeedableRng};
+
+#[derive(Debug, Clone, Copy)]
+pub struct AssignColorsNode<Fill, Stroke, Gradient, Reverse, Randomize, RepeatEvery> {
+	fill: Fill,
+	stroke: Stroke,
+	gradient: Gradient,
+	reverse: Reverse,
+	randomize: Randomize,
+	repeat_every: RepeatEvery,
+}
+
+#[node_macro::node_fn(AssignColorsNode)]
+fn assign_colors_node(group: GraphicGroup, fill: bool, stroke: bool, gradient: GradientStops, reverse: bool, randomize: bool, repeat_every: u32) -> GraphicGroup {
+	let mut group = group;
+	let vector_data_list: Vec<_> = group.iter_mut().filter_map(|element| element.as_vector_data_mut()).collect();
+	let list = (vector_data_list.len(), vector_data_list.into_iter());
+
+	assign_colors(list, fill, stroke, gradient, reverse, randomize, repeat_every);
+
+	group
+}
+
+#[node_macro::node_impl(AssignColorsNode)]
+fn assign_colors_node(vector_data: VectorData, fill: bool, stroke: bool, gradient: GradientStops, reverse: bool, randomize: bool, repeat_every: u32) -> GraphicGroup {
+	let mut vector_data_list: Vec<_> = vector_data
+		.region_bezier_paths()
+		.map(|(_, subpath)| {
+			let mut vector = VectorData::from_subpath(subpath);
+
+			vector.style = vector_data.style.clone();
+
+			crate::GraphicElement::VectorData(Box::new(vector))
+		})
+		.collect();
+	let list = (vector_data_list.len(), vector_data_list.iter_mut().map(|element| element.as_vector_data_mut().unwrap()));
+
+	assign_colors(list, fill, stroke, gradient, reverse, randomize, repeat_every);
+
+	let mut group = GraphicGroup::new(vector_data_list);
+	group.transform = vector_data.transform;
+	group.alpha_blending = vector_data.alpha_blending;
+
+	group
+}
+
+fn assign_colors<'a>((length, vector_data): (usize, impl Iterator<Item = &'a mut VectorData>), fill: bool, stroke: bool, gradient: GradientStops, reverse: bool, randomize: bool, repeat_every: u32) {
+	let gradient = if reverse { gradient.reversed() } else { gradient };
+
+	let mut rng = rand::rngs::StdRng::seed_from_u64(0);
+
+	for (i, vector_data) in vector_data.enumerate() {
+		let factor = match randomize {
+			true => rng.gen::<f64>(),
+			false => match repeat_every {
+				0 => i as f64 / (length - 1) as f64,
+				1 => 0.,
+				_ => i as f64 % repeat_every as f64 / (repeat_every - 1) as f64,
+			},
+		};
+
+		let color = gradient.evalute(factor);
+
+		if fill {
+			vector_data.style.set_fill(Fill::Solid(color));
+		}
+		if stroke {
+			if let Some(stroke) = vector_data.style.stroke().and_then(|stroke| stroke.with_color(&Some(color))) {
+				vector_data.style.set_stroke(stroke);
+			}
+		}
+	}
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct SetFillNode<Fill> {

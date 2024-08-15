@@ -60,6 +60,10 @@ impl GradientStops {
 
 		Color::BLACK
 	}
+
+	pub fn reversed(&self) -> Self {
+		Self(self.0.iter().rev().map(|(position, color)| (1. - position, *color)).collect())
+	}
 }
 
 /// A gradient fill.

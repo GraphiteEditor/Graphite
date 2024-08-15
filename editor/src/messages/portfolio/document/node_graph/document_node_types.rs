@@ -3500,6 +3500,39 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
+			identifier: "Assign Colors",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::proto("graphene_core::vector::AssignColorsNode<_, _, _, _, _, _>"),
+					inputs: vec![
+						NodeInput::value(TaggedValue::GraphicGroup(graphene_core::GraphicGroup::default()), true),
+						NodeInput::value(TaggedValue::Bool(true), false),
+						NodeInput::value(TaggedValue::Bool(false), false),
+						NodeInput::value(TaggedValue::GradientStops(vector::style::GradientStops::default()), false),
+						NodeInput::value(TaggedValue::Bool(false), false),
+						NodeInput::value(TaggedValue::Bool(false), false),
+						NodeInput::value(TaggedValue::U32(0), false),
+					],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_names: vec![
+						"Vector Group".to_string(),
+						"Fill".to_string(),
+						"Stroke".to_string(),
+						"Gradient".to_string(),
+						"Reverse".to_string(),
+						"Randomize".to_string(),
+						"Repeat Every".to_string(),
+					],
+					output_names: vec!["Vector Group".to_string()],
+					..Default::default()
+				},
+			},
+			category: "Vector",
+			properties: node_properties::assign_colors_properties,
+		},
+		DocumentNodeDefinition {
 			identifier: "Fill",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
