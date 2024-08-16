@@ -77,7 +77,15 @@ jobs:
               const sign = pct >= 0 ? '+' : '';
               return `${sign}${pct.toFixed(2)}%`;
             }
-          
+            
+            function padRight(str, len) {
+              return str.padEnd(len);
+            }
+            
+            function padLeft(str, len) {
+              return str.padStart(len);
+            }
+            
             for (const benchmark of benchmarkOutput) {
               if (benchmark.callgrind_summary && benchmark.callgrind_summary.summaries) {
                 const summary = benchmark.callgrind_summary.summaries[0];
@@ -88,18 +96,17 @@ jobs:
                   const color = irDiff.diff_pct > 0 ? "red" : "green";
                   
                   commentBody += `${benchmark.module_path} ${benchmark.id}:${benchmark.details}\n`;
-                  commentBody += `Instructions: ${formatNumber(irDiff.new)}|${formatNumber(irDiff.old)} `;
+                  commentBody += `Instructions: ${padLeft(formatNumber(irDiff.new), 11)}|${padLeft(formatNumber(irDiff.old), 11)} `;
                   commentBody += `($$\\color{${color}}${changePercentage}$$)\n\n`;
                   
-                  commentBody += "<details>\n<summary>Detailed metrics</summary>\n\n";
-                  commentBody += "```\n";
+                  commentBody += "<details>\n<summary>Detailed metrics</summary>\n\n```\n";
                   commentBody += `Baselines:                       |master\n`;
                   
                   for (const [eventKind, costsDiff] of Object.entries(summary.events)) {
                     if (costsDiff.diff_pct !== null) {
                       const changePercentage = formatPercentage(costsDiff.diff_pct);
-                      commentBody += `${eventKind.padEnd(20)} ${formatNumber(costsDiff.new)}|${formatNumber(costsDiff.old)}`.padEnd(50);
-                      commentBody += `(${changePercentage})\n`;
+                      const line = `${padRight(eventKind, 20)} ${padLeft(formatNumber(costsDiff.new), 11)}|${padLeft(formatNumber(costsDiff.old), 11)} ${padLeft(changePercentage, 15)}`;
+                      commentBody += `${line}\n`;
                     }
                   }
                   
@@ -123,4 +130,3 @@ jobs:
               console.log("No significant performance changes detected. Skipping comment.");
               console.log(commentBody);
             }
-            
