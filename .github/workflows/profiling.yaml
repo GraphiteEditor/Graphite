@@ -95,8 +95,9 @@ jobs:
                   const changePercentage = formatPercentage(irDiff.diff_pct);
                   const color = irDiff.diff_pct > 0 ? "red" : "lime";
                   
+                  commentBody += "---\n\n";
                   commentBody += `${benchmark.module_path} ${benchmark.id}:${benchmark.details}\n`;
-                  commentBody += `Instructions: ${padLeft(formatNumber(irDiff.new), 11)} -> ${padLeft(formatNumber(irDiff.old), 11)} `;
+                  commentBody += `Instructions: \`${padLeft(formatNumber(irDiff.old), 11)}\` (master) -> \`${padLeft(formatNumber(irDiff.new), 11)}\` (HEAD)`;
                   commentBody += `($$\\color{${color}}${changePercentage.replace("%", "\\\\%")}$$)\n\n`;
                   
                   commentBody += "<details>\n<summary>Detailed metrics</summary>\n\n```\n";
@@ -111,7 +112,6 @@ jobs:
                   }
                   
                   commentBody += "```\n</details>\n\n";
-                  commentBody += "---\n\n";
                   
                   if (Math.abs(irDiff.diff_pct) > 5) {
                     significantChanges = true;
