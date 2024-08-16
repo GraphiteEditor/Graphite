@@ -16,11 +16,7 @@ export function booleanIntersect(path1: string, path2: string): string {
 	return booleanOperation(path1, path2, "intersect");
 }
 
-export function booleanDifference(path1: string, path2: string): string {
-	return booleanOperation(path1, path2, "exclude");
-}
-
-function booleanOperation(path1: string, path2: string, operation: "unite" | "subtract" | "intersect" | "exclude"): string {
+function booleanOperation(path1: string, path2: string, operation: "unite" | "subtract" | "intersect"): string {
 	const paperPath1 = new paper.CompoundPath(path1);
 	const paperPath2 = new paper.CompoundPath(path2);
 	const result = paperPath1[operation](paperPath2);
