@@ -145,6 +145,13 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
+			GraphOperationMessage::NewBooleanOperationLayer { id, operation, parent, insert_index } => {
+				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
+				let layer = modify_inputs.create_layer(id);
+				modify_inputs.insert_boolean_data(operation, layer);
+				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
 			GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(id);

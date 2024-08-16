@@ -71,6 +71,12 @@ pub enum GraphOperationMessage {
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
+	NewBooleanOperationLayer {
+		id: NodeId,
+		operation: graphene_std::vector::misc::BooleanOperation,
+		parent: LayerNodeIdentifier,
+		insert_index: usize,
+	},
 	NewCustomLayer {
 		id: NodeId,
 		nodes: Vec<(NodeId, NodeTemplate)>,

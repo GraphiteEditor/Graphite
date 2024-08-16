@@ -2398,18 +2398,18 @@ pub fn circular_repeat_properties(document_node: &DocumentNode, node_id: NodeId,
 	]
 }
 
-pub fn binary_boolean_operation_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let lower_vector_data = vector_widget(document_node, node_id, 1, "Lower Vector Data", true);
-	let operation = boolean_operation_radio_buttons(document_node, node_id, 2, "Operation", true);
-
-	vec![LayoutGroup::Row { widgets: lower_vector_data }, operation]
-}
-
 pub fn boolean_operation_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let vector_data = vector_widget(document_node, node_id, 1, "Vector Data", true);
-	let operation = boolean_operation_radio_buttons(document_node, node_id, 2, "Operation", true);
+	let group_of_paths_index = 0;
+	let operation_index = 1;
 
-	vec![LayoutGroup::Row { widgets: vector_data }, operation]
+	let mut widgets = start_widgets(document_node, node_id, group_of_paths_index, "Group of Paths", FrontendGraphDataType::Graphic, true);
+
+	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+	widgets.push(TextLabel::new("The output of a layer stack, which contains all elements to operate on").widget_holder());
+
+	let operation = boolean_operation_radio_buttons(document_node, node_id, operation_index, "Operation", true);
+
+	vec![LayoutGroup::Row { widgets }, operation]
 }
 
 pub fn copy_to_points_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
