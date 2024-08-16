@@ -3497,14 +3497,30 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub fn shift_selected_nodes(&mut self, mut node_ids: Vec<NodeId>, shift: IVec2, move_upstream: bool, upstream_nodes_below_layers: &mut HashMap<NodeId, Vec<NodeId>>, network_path: &[NodeId]) {
-		log::debug!("upstream_nodes_below_layers: {:?}", upstream_nodes_below_layers);
+	pub fn shift_selected_nodes(
+		&mut self,
+		mut node_ids: Vec<NodeId>,
+		shift: IVec2,
+		move_upstream: bool,
+		upstream_nodes_below_layers: &mut HashMap<NodeId, Vec<NodeId>>,
+		layer_offsets: &mut HashMap<NodeId, i32>,
+		network_path: &[NodeId],
+	) {
+		//log::debug!("upstream_nodes_below_layers: {:?}", upstream_nodes_below_layers);
 
 		if move_upstream {
 			for node_id in self.upstream_flow_back_from_nodes(node_ids.clone(), network_path, self::FlowType::UpstreamFlow).collect::<Vec<_>>() {
 				if !node_ids.contains(&node_id) {
 					node_ids.push(node_id);
 				}
+			}
+		}
+
+		log::debug!("shift_offsets: {:?}", layer_offsets);
+		// Select layers with a shift offset with opposite sign of the current shift
+		for (layer, offset) in layer_offsets.iter() {
+			if *offset != 0 && offset.signum() != shift.y.signum() && !node_ids.contains(layer) {
+				node_ids.push(*layer);
 			}
 		}
 
@@ -3557,7 +3573,7 @@ impl NodeNetworkInterface {
 		}
 		// Move nodes before layers
 		//sorted_node_ids.sort_unstable_by_key(|a| self.is_layer(a, network_path));
-		log::debug!("sorted_node_ids: {sorted_node_ids:?}");
+		//log::debug!("sorted_node_ids: {sorted_node_ids:?}");
 
 		// Ensure the top of each stack is only shifted left/right once
 		let mut shifted_absolute_layers = Vec::new();
@@ -3599,6 +3615,7 @@ impl NodeNetworkInterface {
 							.collect::<Vec<_>>();
 
 						self.shift_node(&downstream_absolute_layer, IVec2::new(shift.x, 0), network_path);
+						let mut nodes_upstream_from_upstream_layers = HashSet::new();
 						for upstream_layer in upstream_layers {
 							let Some(upstream_nodes_below_layer) = upstream_nodes_below_layers.get(&upstream_layer) else {
 								log::error!("Could not get upstream nodes below layer in shift_selected_nodes");
@@ -3606,10 +3623,13 @@ impl NodeNetworkInterface {
 							};
 							for node_id in upstream_nodes_below_layer {
 								// Don't shift nodes in sorted_node_ids
-								if self.is_absolute(node_id, network_path) && !sorted_node_ids.contains(&node_id) {
-									self.shift_node(node_id, IVec2::new(shift.x, 0), network_path);
+								if self.is_absolute(node_id, network_path) && !sorted_node_ids.contains(node_id) {
+									nodes_upstream_from_upstream_layers.insert(node_id);
 								}
 							}
+						}
+						for node_to_shift in nodes_upstream_from_upstream_layers {
+							self.shift_node(node_to_shift, IVec2::new(shift.x, 0), network_path);
 						}
 					}
 				}
@@ -3627,7 +3647,7 @@ impl NodeNetworkInterface {
 
 			// Check if the node has a downstream layer(inclusive) that is also being moved. If it does, then apply the pushing system
 			let all_downstream_layers = self.downstream_layers(node_id, network_path);
-			log::debug!("downstream_layers: {all_downstream_layers:?} for node {node_id}");
+			//log::debug!("downstream_layers: {all_downstream_layers:?} for node {node_id}");
 			let selected_downstream_layers = all_downstream_layers.iter().filter(|downstream_layer| sorted_node_ids.contains(downstream_layer)).collect::<Vec<_>>();
 			let mut layers_to_check_collision = HashSet::new();
 
@@ -3658,7 +3678,7 @@ impl NodeNetworkInterface {
 					});
 			}
 
-			log::debug!("layers_to_check_collision: {layers_to_check_collision:?}");
+			//log::debug!("layers_to_check_collision: {layers_to_check_collision:?}");
 
 			let mut nodes_to_check_collision = HashSet::new();
 			for layer_to_check_collision in layers_to_check_collision {
@@ -3673,8 +3693,8 @@ impl NodeNetworkInterface {
 			// Ensure no nodes to check collision are in the current nodes to be moved
 			nodes_to_check_collision.retain(|node_id| !current_nodes_to_check_collision.contains(node_id));
 
-			log::debug!("nodes_to_check_collision: {nodes_to_check_collision:?}");
-			log::debug!("current_nodes_to_check_collision: {current_nodes_to_check_collision:?}");
+			//log::debug!("nodes_to_check_collision: {nodes_to_check_collision:?}");
+			//log::debug!("current_nodes_to_check_collision: {current_nodes_to_check_collision:?}");
 			// Shift the node one grid space at a time up/down to ensure nodes get pushed corrected
 			let mut current_node_y_shift = shift.y;
 			while current_node_y_shift != 0 {
@@ -3683,13 +3703,13 @@ impl NodeNetworkInterface {
 
 					for node_to_check_collision in &nodes_to_check_collision {
 						for current_node in &current_nodes_to_check_collision {
-							log::debug!("current_node: {current_node}");
+							//log::debug!("current_node: {current_node}");
 							let Some(mut current_node_bounding_box) = self.node_bounding_box(current_node, network_path) else {
 								log::error!("Could not get bounding box for node {node_id} in shift_selected_nodes");
 								continue;
 							};
 
-							log::debug!("node_to_check_collision: {node_to_check_collision}");
+							//log::debug!("node_to_check_collision: {node_to_check_collision}");
 							let Some(node_bounding_box) = self.node_bounding_box(node_to_check_collision, network_path) else {
 								log::error!("Could not get bounding box for node {node_to_check_collision} in shift_selected_nodes");
 								continue;
@@ -3709,13 +3729,13 @@ impl NodeNetworkInterface {
 
 							let collision = current_node_bounding_box[1].y >= node_bounding_box[0].y - 0.1 && current_node_bounding_box[0].y <= node_bounding_box[1].y + 0.1;
 							if collision {
-								log::debug!("Collision detected between node {node_id} and node {node_to_check_collision}");
+								//log::debug!("Collision detected between node {node_id} and node {node_to_check_collision}");
 								// Filter out the nodes that are currently being moved to avoid infinite recursion
 								let mut unfiltered_elements_map = HashMap::new();
 								for collision_layer in nodes_to_check_collision.iter().filter(|node_id| self.is_layer(node_id, network_path)) {
 									if let Some(nodes_below_collision) = upstream_nodes_below_layers.get_mut(collision_layer) {
 										let filtered_elements = nodes_below_collision.iter().filter(|node_id| !sorted_node_ids.contains(node_id)).cloned().collect::<Vec<_>>();
-										log::debug!("filtered_elements: {filtered_elements:?} for collision_layer {collision_layer}");
+										//log::debug!("filtered_elements: {filtered_elements:?} for collision_layer {collision_layer}");
 										let nodes_below_collision = std::mem::replace(nodes_below_collision, filtered_elements);
 										unfiltered_elements_map.insert(*collision_layer, nodes_below_collision);
 									}
@@ -3733,7 +3753,14 @@ impl NodeNetworkInterface {
 									.collect::<Vec<_>>();
 
 								// Shift the node which collides up/down and break
-								self.shift_selected_nodes(collision_group, IVec2::new(0, current_node_y_shift.signum()), false, upstream_nodes_below_layers, network_path);
+								self.shift_selected_nodes(
+									collision_group,
+									IVec2::new(0, current_node_y_shift.signum()),
+									false,
+									upstream_nodes_below_layers,
+									layer_offsets,
+									network_path,
+								);
 
 								for collision_layer in nodes_to_check_collision.iter().filter(|node_id| self.is_layer(node_id, network_path)) {
 									if let Some(nodes_below_collision) = upstream_nodes_below_layers.get_mut(collision_layer) {
@@ -3760,16 +3787,25 @@ impl NodeNetworkInterface {
 					}
 				}
 
+				let mut shift_down = true;
 				if current_node_y_shift > 0 {
 					self.shift_node(node_id, IVec2::new(0, 1), network_path);
 					current_node_y_shift -= 1;
 				} else {
-					log::debug!("shifting up");
+					//log::debug!("shifting up");
 					self.shift_node(node_id, IVec2::new(0, -1), network_path);
 					current_node_y_shift += 1;
+					shift_down = false;
 				}
 				// Shift the upstream layer so that it stays in the same place
 				if self.is_layer(node_id, network_path) {
+					let current_offset = layer_offsets.entry(*node_id).or_insert(0);
+					if shift_down {
+						*current_offset += 1;
+					} else {
+						*current_offset -= 1;
+					}
+
 					let upstream_layer = {
 						self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::PrimaryFlow)
 							.nth(1)
@@ -3786,7 +3822,7 @@ impl NodeNetworkInterface {
 	/// Shifts a node by a certain offset without the auto layout system. If the node is a layer in a stack, the y_offset is shifted. If the node is a node in a chain, its position gets set to absolute.
 	// TODO: Check for unnecessary unloading of click targets
 	pub fn shift_node(&mut self, node_id: &NodeId, shift: IVec2, network_path: &[NodeId]) {
-		log::debug!("Shifting node {node_id} by {shift:?}");
+		//log::debug!("Shifting node {node_id} by {shift:?}");
 		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
 			log::error!("Could not get node_metadata for node {node_id}");
 			return;
@@ -3939,7 +3975,7 @@ impl NodeNetworkInterface {
 
 					let final_layer_position = after_move_post_layer_position + IVec2::new(-8, 3);
 					let shift = final_layer_position - previous_layer_position;
-					self.shift_selected_nodes(vec![layer.to_node()], shift, true, &mut HashMap::new(), network_path);
+					self.shift_selected_nodes(vec![layer.to_node()], shift, true, &mut HashMap::new(), &mut HashMap::new(), network_path);
 				}
 				// Move to the top of a stack
 				NodeInput::Node { node_id, .. } => {
@@ -3948,9 +3984,16 @@ impl NodeNetworkInterface {
 						return;
 					};
 					let shift = top_of_stack_position - previous_layer_position;
-					self.shift_selected_nodes(vec![layer.to_node()], shift, true, &mut HashMap::new(), network_path);
+					self.shift_selected_nodes(vec![layer.to_node()], shift, true, &mut HashMap::new(), &mut HashMap::new(), network_path);
 					self.unload_upstream_node_click_targets(vec![layer.to_node()], network_path);
-					self.shift_selected_nodes(vec![node_id], IVec2::new(0, layer_to_move_height as i32 + 3), true, &mut HashMap::new(), network_path);
+					self.shift_selected_nodes(
+						vec![node_id],
+						IVec2::new(0, layer_to_move_height as i32 + 3),
+						true,
+						&mut HashMap::new(),
+						&mut HashMap::new(),
+						network_path,
+					);
 					self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
 					self.set_stack_position_calculated_offset(&node_id, &layer.to_node(), network_path);
 				}
@@ -3964,7 +4007,7 @@ impl NodeNetworkInterface {
 				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) => {
 					// TODO: Calculate height of bottom layer by getting height of upstream nodes instead of setting to 3
 					let offset = after_move_post_layer_position - previous_layer_position + IVec2::new(0, 3);
-					self.shift_selected_nodes(vec![layer.to_node()], offset, true, &mut HashMap::new(), network_path);
+					self.shift_selected_nodes(vec![layer.to_node()], offset, true, &mut HashMap::new(), &mut HashMap::new(), network_path);
 					self.create_wire(&OutputConnector::node(layer.to_node(), 0), &post_node, network_path);
 					self.set_stack_position_calculated_offset(&layer.to_node(), &post_node.node_id().unwrap(), network_path);
 				}
@@ -3984,9 +4027,9 @@ impl NodeNetworkInterface {
 						return;
 					};
 					let offset = after_move_post_layer_position - previous_layer_position + IVec2::new(0, 3 + post_node_height as i32);
-					self.shift_selected_nodes(vec![layer.to_node()], offset, true, &mut HashMap::new(), network_path);
+					self.shift_selected_nodes(vec![layer.to_node()], offset, true, &mut HashMap::new(), &mut HashMap::new(), network_path);
 					let upstream_offset = layer_to_move_height as i32 + 3;
-					self.shift_selected_nodes(vec![upstream_node_id], IVec2::new(0, upstream_offset), true, &mut HashMap::new(), network_path);
+					self.shift_selected_nodes(vec![upstream_node_id], IVec2::new(0, upstream_offset), true, &mut HashMap::new(), &mut HashMap::new(), network_path);
 
 					self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
 

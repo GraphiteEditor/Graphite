@@ -56,7 +56,7 @@ pub struct NodeGraphMessageHandler {
 	/// Adds the auto panning functionality to the node graph when dragging a node or selection box to the edge of the viewport.
 	auto_panning: AutoPanning,
 	/// The vertical offsets of all layer nodes, starting at the top of the stack, which are used to rubber band positions when dragging
-	layer_offsets: Vec<i32>,
+	layer_offsets: HashMap<NodeId, i32>,
 	/// Stores all upstream nodes directly below the layer node, which is used when dragging
 	upstream_nodes_below_layers: HashMap<NodeId, Vec<NodeId>>,
 }
@@ -1028,6 +1028,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					IVec2::new(displacement_x, displacement_y),
 					move_upstream,
 					&mut self.upstream_nodes_below_layers,
+					&mut self.layer_offsets,
 					selection_network_path,
 				);
 
@@ -1327,6 +1328,7 @@ impl NodeGraphMessageHandler {
 			return;
 		};
 		self.upstream_nodes_below_layers.clear();
+		self.layer_offsets.clear();
 		for node_id in network_metadata
 			.persistent_metadata
 			.node_metadata
@@ -1944,7 +1946,7 @@ impl Default for NodeGraphMessageHandler {
 			context_menu: None,
 			deselect_on_pointer_up: None,
 			auto_panning: Default::default(),
-			layer_offsets: Vec::new(),
+			layer_offsets: HashMap::new(),
 			upstream_nodes_below_layers: HashMap::new(),
 		}
 	}
