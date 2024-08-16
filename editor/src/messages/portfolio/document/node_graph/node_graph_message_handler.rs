@@ -55,6 +55,10 @@ pub struct NodeGraphMessageHandler {
 	pub deselect_on_pointer_up: Option<usize>,
 	/// Adds the auto panning functionality to the node graph when dragging a node or selection box to the edge of the viewport.
 	auto_panning: AutoPanning,
+	/// The vertical offsets of all layer nodes, starting at the top of the stack, which are used to rubber band positions when dragging
+	layer_offsets: Vec<i32>,
+	/// Stores all upstream nodes directly below the layer node, which is used when dragging
+	upstream_nodes_below_layers: HashMap<NodeId, Vec<NodeId>>,
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
@@ -232,15 +236,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			NodeGraphMessage::DuplicateSelectedNodes => {
 				let all_selected_nodes = network_interface.upstream_chain_nodes(selection_network_path);
 
-				responses.add(DocumentMessage::StartTransaction);
-
 				let copy_ids = all_selected_nodes.iter().enumerate().map(|(new, id)| (*id, NodeId(new as u64))).collect::<HashMap<NodeId, NodeId>>();
 
 				// Copy the selected nodes
 				let nodes = network_interface.copy_nodes(&copy_ids, selection_network_path).collect::<Vec<_>>();
 
 				let new_ids = nodes.iter().map(|(id, _)| (*id, NodeId(generate_uuid()))).collect::<HashMap<_, _>>();
-				responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
+				responses.add(DocumentMessage::StartTransaction);
+				responses.add(NodeGraphMessage::AddNodes { nodes, new_ids: new_ids.clone() });
+				responses.add(NodeGraphMessage::SelectedNodesSet {
+					nodes: new_ids.values().cloned().collect(),
+				});
 			}
 			NodeGraphMessage::EnterNestedNetwork => {
 				let Some(node_id) = network_interface.node_from_click(ipp.mouse.position, selection_network_path) else {
@@ -513,6 +519,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: updated_selected })
 					}
 
+					self.load_upstream_nodes_below_layers(network_interface, selection_network_path);
+
 					return;
 				}
 
@@ -649,6 +657,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					warn!("No network_metadata");
 					return;
 				};
+
 				if let Some(node_to_deselect) = self.deselect_on_pointer_up {
 					let mut new_selected_nodes = selected_nodes.selected_nodes_ref().clone();
 					new_selected_nodes.remove(node_to_deselect);
@@ -718,6 +727,22 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						}
 					}
 
+					// Try expand the upstream chain for all layers if there is an eligible node
+					let Some(network) = network_interface.network(selection_network_path) else {
+						return;
+					};
+					for layer in network
+						.nodes
+						.keys()
+						.filter(|node_id| network_interface.is_layer(node_id, selection_network_path))
+						.cloned()
+						.collect::<Vec<_>>()
+					{
+						network_interface.try_set_upstream_to_chain(&InputConnector::node(layer, 1), selection_network_path);
+					}
+					responses.add(NodeGraphMessage::SendGraph);
+
+					let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else { return };
 					// Check if a single node was dragged onto a wire and that the node was dragged onto the wire
 					if selected_nodes.selected_nodes_ref().len() == 1 && !self.begin_dragging {
 						let selected_node_id = selected_nodes.selected_nodes_ref()[0];
@@ -732,7 +757,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							let primary_input_is_value = selected_node.inputs.first().is_some_and(|first_input| first_input.as_value().is_some());
 							// Check that neither the primary input or output of the selected node are already connected.
 							if !has_primary_output_connection && primary_input_is_value {
-								let Some(bounding_box) = network_interface.node_bounding_box(selected_node_id, selection_network_path) else {
+								let Some(bounding_box) = network_interface.node_bounding_box(&selected_node_id, selection_network_path) else {
 									log::error!("Could not get bounding box for node: {selected_node_id}");
 									return;
 								};
@@ -857,8 +882,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							}
 						}
 					}
-					self.select_if_not_dragged = None
+					self.select_if_not_dragged = None;
 				}
+
 				self.drag_start = None;
 				self.begin_dragging = false;
 				self.box_selection_start = None;
@@ -997,7 +1023,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				displacement_y,
 				move_upstream,
 			} => {
-				network_interface.shift_selected_nodes(node_ids, displacement_x, displacement_y, move_upstream, selection_network_path);
+				network_interface.shift_selected_nodes(
+					node_ids,
+					IVec2::new(displacement_x, displacement_y),
+					move_upstream,
+					&mut self.upstream_nodes_below_layers,
+					selection_network_path,
+				);
 
 				if graph_view_overlay_open {
 					responses.add(NodeGraphMessage::SendGraph);
@@ -1286,6 +1318,26 @@ impl NodeGraphMessageHandler {
 		}
 
 		common
+	}
+
+	pub fn load_upstream_nodes_below_layers(&mut self, network_interface: &mut NodeNetworkInterface, selection_network_path: &[NodeId]) {
+		// Load the upstream nodes directly under each layer, which is used during the drag
+		let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
+			log::error!("Could not get network metadata in PointerDown");
+			return;
+		};
+		self.upstream_nodes_below_layers.clear();
+		for node_id in network_metadata
+			.persistent_metadata
+			.node_metadata
+			.keys()
+			.filter(|node_id| network_interface.is_layer(node_id, selection_network_path))
+			.cloned()
+			.collect::<Vec<_>>()
+		{
+			self.upstream_nodes_below_layers
+				.insert(node_id, network_interface.upstream_nodes_below_layer(&node_id, selection_network_path));
+		}
 	}
 
 	/// Send the cached layout to the frontend for the options bar at the top of the node panel
@@ -1892,6 +1944,8 @@ impl Default for NodeGraphMessageHandler {
 			context_menu: None,
 			deselect_on_pointer_up: None,
 			auto_panning: Default::default(),
+			layer_offsets: Vec::new(),
+			upstream_nodes_below_layers: HashMap::new(),
 		}
 	}
 }
