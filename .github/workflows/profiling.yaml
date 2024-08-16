@@ -96,8 +96,8 @@ jobs:
                   const color = irDiff.diff_pct > 0 ? "red" : "green";
                   
                   commentBody += `${benchmark.module_path} ${benchmark.id}:${benchmark.details}\n`;
-                  commentBody += `Instructions: ${padLeft(formatNumber(irDiff.new), 11)}|${padLeft(formatNumber(irDiff.old), 11)} `;
-                  commentBody += `($$\\color{${color}}${changePercentage}$$)\n\n`;
+                  commentBody += `Instructions: ${padLeft(formatNumber(irDiff.new), 11)} -> ${padLeft(formatNumber(irDiff.old), 11)} `;
+                  commentBody += `($$\\color{${color}}${changePercentage.replace("%", "\\\\%")}$$)\n\n`;
                   
                   commentBody += "<details>\n<summary>Detailed metrics</summary>\n\n```\n";
                   commentBody += `Baselines:                       |master\n`;
