@@ -111,6 +111,7 @@ jobs:
                   }
                   
                   commentBody += "```\n</details>\n\n";
+                  commentBody += "---\n\n";
                   
                   if (Math.abs(irDiff.diff_pct) > 5) {
                     significantChanges = true;
