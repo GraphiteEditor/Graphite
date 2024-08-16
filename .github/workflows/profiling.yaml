@@ -66,27 +66,60 @@ jobs:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
             const benchmarkOutput = JSON.parse(`${{ steps.benchmark.outputs.BENCHMARK_OUTPUT }}`);
-
             let significantChanges = false;
             let commentBody = "#### Performance Benchmark Results\n\n";
-
+            
+            function formatNumber(num) {
+              return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+            }
+            
+            function formatPercentage(pct) {
+              const sign = pct >= 0 ? '+' : '';
+              return `${sign}${pct.toFixed(2)}%`;
+            }
+            
+            function padRight(str, len) {
+              return str.padEnd(len);
+            }
+            
+            function padLeft(str, len) {
+              return str.padStart(len);
+            }
+            
             for (const benchmark of benchmarkOutput) {
               if (benchmark.callgrind_summary && benchmark.callgrind_summary.summaries) {
-                for (const summary of benchmark.callgrind_summary.summaries) {
+                const summary = benchmark.callgrind_summary.summaries[0];
+                const irDiff = summary.events.Ir;
+                
+                if (irDiff.diff_pct !== null) {
+                  const changePercentage = formatPercentage(irDiff.diff_pct);
+                  const color = irDiff.diff_pct > 0 ? "red" : "lime";
+                  
+                  commentBody += "---\n\n";
+                  commentBody += `${benchmark.module_path} ${benchmark.id}:${benchmark.details}\n`;
+                  commentBody += `Instructions: \`${formatNumber(irDiff.old)}\` (master) -> \`${formatNumber(irDiff.new)}\` (HEAD) : `;
+                  commentBody += `$$\\color{${color}}${changePercentage.replace("%", "\\\\%")}$$\n\n`;
+                  
+                  commentBody += "<details>\n<summary>Detailed metrics</summary>\n\n```\n";
+                  commentBody += `Baselines:                master|       HEAD\n`;
+                  
                   for (const [eventKind, costsDiff] of Object.entries(summary.events)) {
-                    if (costsDiff.diff_pct !== null && Math.abs(costsDiff.diff_pct) > 5) {
-                      significantChanges = true;
-                      const changeDirection = costsDiff.diff_pct > 0 ? "Increase" : "Decrease";
-                      const color = costsDiff.diff_pct > 0 ? "red" : "lime";
-                      commentBody += `\`${benchmark.module_path}\` - ${eventKind}:\n`;
-                      commentBody += `${changeDirection} of $$\\color{${color}}${Math.abs(costsDiff.diff_pct).toFixed(2)}\\\\%$$\n`;
-                      commentBody += `Old: ${costsDiff.old}, New: ${costsDiff.new}\n\n`;
+                    if (costsDiff.diff_pct !== null) {
+                      const changePercentage = formatPercentage(costsDiff.diff_pct);
+                      const line = `${padRight(eventKind, 20)} ${padLeft(formatNumber(costsDiff.old), 11)}|${padLeft(formatNumber(costsDiff.new), 11)} ${padLeft(changePercentage, 15)}`;
+                      commentBody += `${line}\n`;
                     }
+                  }
+                  
+                  commentBody += "```\n</details>\n\n";
+                  
+                  if (Math.abs(irDiff.diff_pct) > 5) {
+                    significantChanges = true;
                   }
                 }
               }
             }
-
+            
             if (significantChanges) {
               github.rest.issues.createComment({
                 issue_number: context.issue.number,
