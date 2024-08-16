@@ -101,12 +101,12 @@ jobs:
                   commentBody += `($$\\color{${color}}${changePercentage.replace("%", "\\\\%")}$$)\n\n`;
                   
                   commentBody += "<details>\n<summary>Detailed metrics</summary>\n\n```\n";
-                  commentBody += `Baselines:                  HEAD|     master\n`;
+                  commentBody += `Baselines:                master|       HEAD\n`;
                   
                   for (const [eventKind, costsDiff] of Object.entries(summary.events)) {
                     if (costsDiff.diff_pct !== null) {
                       const changePercentage = formatPercentage(costsDiff.diff_pct);
-                      const line = `${padRight(eventKind, 20)} ${padLeft(formatNumber(costsDiff.new), 11)}|${padLeft(formatNumber(costsDiff.old), 11)} ${padLeft(changePercentage, 15)}`;
+                      const line = `${padRight(eventKind, 20)} ${padLeft(formatNumber(costsDiff.old), 11)}|${padLeft(formatNumber(costsDiff.new), 11)} ${padLeft(changePercentage, 15)}`;
                       commentBody += `${line}\n`;
                     }
                   }
