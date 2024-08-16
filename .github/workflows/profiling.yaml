@@ -100,7 +100,7 @@ jobs:
                   commentBody += `($$\\color{${color}}${changePercentage.replace("%", "\\\\%")}$$)\n\n`;
                   
                   commentBody += "<details>\n<summary>Detailed metrics</summary>\n\n```\n";
-                  commentBody += `Baselines:                       |master\n`;
+                  commentBody += `Baselines:                  HEAD|     master\n`;
                   
                   for (const [eventKind, costsDiff] of Object.entries(summary.events)) {
                     if (costsDiff.diff_pct !== null) {
