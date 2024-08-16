@@ -3731,7 +3731,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Graphical Data".to_string(), "Operation".to_string()],
+					input_names: vec!["Group of Paths".to_string(), "Operation".to_string()],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
