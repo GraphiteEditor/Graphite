@@ -19,8 +19,6 @@
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	const GRID_COLLAPSE_SPACING = 10;
 	const GRID_SIZE = 24;
-	const ADD_NODE_MENU_WIDTH = 180;
-	const ADD_NODE_MENU_HEIGHT = 200;
 
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
@@ -101,7 +99,26 @@
 				});
 		});
 
-		return Array.from(categories);
+		const START_CATEGORIES_ORDER = ["General", "Value", "Math", "Style"];
+		const END_CATEGORIES_ORDER = ["Debug"];
+		return Array.from(categories)
+			.sort((a, b) => a[0].localeCompare(b[0]))
+			.sort((a, b) => {
+				const aIndex = START_CATEGORIES_ORDER.findIndex((x) => a[0].startsWith(x));
+				const bIndex = START_CATEGORIES_ORDER.findIndex((x) => b[0].startsWith(x));
+				if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+				if (aIndex !== -1) return -1;
+				if (bIndex !== -1) return 1;
+				return 0;
+			})
+			.sort((a, b) => {
+				const aIndex = END_CATEGORIES_ORDER.findIndex((x) => a[0].startsWith(x));
+				const bIndex = END_CATEGORIES_ORDER.findIndex((x) => b[0].startsWith(x));
+				if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+				if (aIndex !== -1) return 1;
+				if (bIndex !== -1) return -1;
+				return 0;
+			});
 	}
 
 	function createWirePaths(wirePathInProgress: WirePath | undefined, nodeWirePaths: WirePath[]): WirePath[] {
@@ -374,17 +391,11 @@
 	{#if $nodeGraph.contextMenuInformation}
 		<LayoutCol
 			class="context-menu"
+			classes={{ "create-node-menu": $nodeGraph.contextMenuInformation.contextMenuData === "CreateNode" }}
 			data-context-menu
 			styles={{
 				left: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates.x * $nodeGraph.transform.scale + $nodeGraph.transform.x}px`,
 				top: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates.y * $nodeGraph.transform.scale + $nodeGraph.transform.y}px`,
-				...($nodeGraph.contextMenuInformation.contextMenuData === "CreateNode"
-					? {
-							transform: `translate(0%, 0%)`,
-							width: `${ADD_NODE_MENU_WIDTH}px`,
-							height: `${ADD_NODE_MENU_HEIGHT}px`,
-						}
-					: {}),
 			}}
 		>
 			{#if $nodeGraph.contextMenuInformation.contextMenuData === "CreateNode"}
@@ -858,6 +869,11 @@
 			z-index: 3;
 			background-color: var(--color-3-darkgray);
 			border-radius: 4px;
+
+			&.create-node-menu {
+				height: 200px; // For some reason, when attemping to make this taller, the bottom few categories don't open when clicked, but instead immediately close the menu
+				width: 180px; // Also when making this wider, clicking the scrollbar on the right edge of the menu causes the menu to close immediately
+			}
 
 			.text-input {
 				flex: 0 0 auto;

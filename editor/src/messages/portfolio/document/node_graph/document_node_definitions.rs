@@ -65,7 +65,8 @@ static DOCUMENT_NODE_TYPES: once_cell::sync::Lazy<Vec<DocumentNodeDefinition>> =
 fn static_nodes() -> Vec<DocumentNodeDefinition> {
 	vec![
 		DocumentNodeDefinition {
-			identifier: "Boolean",
+			identifier: "Bool Value",
+			category: "Value",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
@@ -78,11 +79,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Inputs",
 			properties: node_properties::boolean_properties,
 		},
 		DocumentNodeDefinition {
-			identifier: "Number",
+			identifier: "Number Value",
+			category: "Value",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
@@ -95,11 +96,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Inputs",
 			properties: node_properties::number_properties,
 		},
 		DocumentNodeDefinition {
-			identifier: "Color",
+			identifier: "Color Value",
+			category: "Value",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
@@ -112,11 +113,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Inputs",
 			properties: node_properties::color_properties,
 		},
 		DocumentNodeDefinition {
-			identifier: "Vector2",
+			identifier: "Vector2 Value",
+			category: "Value",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::ConstructVector2<_, _>"),
@@ -133,11 +134,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Inputs",
 			properties: node_properties::vector2_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Identity",
+			category: "General",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
@@ -150,11 +151,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Structural",
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("The identity node simply returns the input"),
 		},
 		DocumentNodeDefinition {
 			identifier: "Monitor",
+			category: "Debug",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"),
@@ -169,11 +170,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Structural",
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("The Monitor node stores the value of its last evaluation"),
 		},
 		DocumentNodeDefinition {
 			identifier: "Group",
+			category: "General",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicGroupNode"),
@@ -186,11 +187,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "General",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Merge",
+			category: "General",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -286,11 +287,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "General",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Artboard",
+			category: "General",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -395,11 +396,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "General",
 			properties: node_properties::artboard_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Load Image",
+			category: "Raster: Generator",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -473,11 +474,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Structural",
 			properties: node_properties::load_image_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Create Canvas",
+			category: "Debug: GPU",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -537,11 +538,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Structural",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Draw Canvas",
+			category: "Debug: GPU",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -629,11 +630,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Structural",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Rasterize",
+			category: "Raster",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -718,11 +719,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::rasterize_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Image Frame",
+			category: "Debug",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -786,11 +787,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "General",
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("Creates an embedded image with the given transform"),
 		},
 		DocumentNodeDefinition {
 			identifier: "Noise Pattern",
+			category: "Raster",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					manual_composition: Some(concrete!(Footprint)),
@@ -864,12 +865,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "General",
 			properties: node_properties::noise_pattern_properties,
 		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
 		DocumentNodeDefinition {
 			identifier: "Mask",
+			category: "Raster",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_std::raster::MaskImageNode<_, _, _>"),
@@ -885,12 +886,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::mask_properties,
 		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
 		DocumentNodeDefinition {
 			identifier: "Insert Channel",
+			category: "Raster",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_std::raster::InsertChannelNode<_, _, _, _>"),
@@ -907,12 +908,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::insert_channel_properties,
 		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
 		DocumentNodeDefinition {
 			identifier: "Combine Channels",
+			category: "Raster",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_std::raster::CombineChannelsNode"),
@@ -931,12 +932,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::node_no_properties,
 		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
 		DocumentNodeDefinition {
 			identifier: "Blend",
+			category: "Raster",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::raster::BlendNode<_, _, _, _>"),
@@ -954,11 +955,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::blend_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Levels",
+			category: "Raster: Adjustment",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::raster::LevelsNode<_, _, _, _, _>"),
@@ -985,11 +986,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::levels_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Black & White",
+			category: "Raster: Adjustment",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::raster::BlackAndWhiteNode<_, _, _, _, _, _, _>"),
@@ -1020,11 +1021,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::black_and_white_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Color Channel",
+			category: "Raster: Adjustment",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
@@ -1037,11 +1038,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
 			properties: node_properties::color_channel_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Color Channel",
+			category: "Raster: Adjustment",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
@@ -1054,11 +1055,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::color_channel_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Blend Mode Value",
+			category: "Value",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
@@ -1071,11 +1072,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Inputs",
 			properties: node_properties::blend_mode_value_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Luminance",
+			category: "Raster",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::raster::LuminanceNode<_>"),
@@ -1091,11 +1092,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::luminance_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Extract Channel",
+			category: "Raster",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::raster::ExtractChannelNode<_>"),
@@ -1111,11 +1112,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::extract_channel_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Extract Opaque",
+			category: "Raster",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::raster::ExtractOpaqueNode<>"),
@@ -1131,11 +1132,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Split Channels",
+			category: "Raster",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -1240,11 +1241,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Brush",
+			category: "Raster",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -1315,11 +1316,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Brush",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Extract Vector Points",
+			category: "Vector",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_std::brush::VectorPointsNode"),
@@ -1332,11 +1333,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Brush",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Memoize",
+			category: "Debug",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::memo::MemoNode<_, _>"),
@@ -1350,11 +1351,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Structural",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "MemoizeImpure",
+			category: "Debug",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::memo::ImpureMemoNode<_, _, _>"),
@@ -1368,11 +1369,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Structural",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Image",
+			category: "Ignore",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -1416,12 +1417,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Ignore",
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("A bitmap image embedded in this node"),
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
 			identifier: "Uniform",
+			category: "Debug: GPU",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -1495,11 +1496,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Gpu",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Storage",
+			category: "Debug: GPU",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -1573,11 +1574,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Gpu",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "CreateOutputBuffer",
+			category: "Debug: GPU",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -1651,12 +1652,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Gpu",
 			properties: node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
 			identifier: "CreateComputePass",
+			category: "Debug: GPU",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -1739,12 +1740,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Gpu",
 			properties: node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
 			identifier: "CreatePipelineLayout",
+			category: "Debug: GPU",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("wgpu_executor::CreatePipelineLayoutNode<_, _, _>"),
@@ -1762,12 +1763,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Gpu",
 			properties: node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
 			identifier: "ExecuteComputePipeline",
+			category: "Debug: GPU",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -1841,12 +1842,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Gpu",
 			properties: node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
 			identifier: "ReadOutputBuffer",
+			category: "Debug: GPU",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -1920,12 +1921,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Gpu",
 			properties: node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
 			identifier: "CreateGpuSurface",
+			category: "Debug: GPU",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -1985,12 +1986,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Gpu",
 			properties: node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
 			identifier: "RenderTexture",
+			category: "Debug: GPU",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -2055,12 +2056,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Gpu",
 			properties: node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
 			identifier: "UploadTexture",
+			category: "Debug: GPU",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -2134,12 +2135,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Gpu",
 			properties: node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
 			identifier: "GpuImage",
+			category: "Debug: GPU",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_std::executor::MapGpuSingleImageNode<_>"),
@@ -2155,12 +2156,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
 			identifier: "Blend (GPU)",
+			category: "Debug: GPU",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_std::executor::BlendGpuImageNode<_, _, _>"),
@@ -2178,11 +2179,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::blend_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Extract",
+			category: "Debug",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Extract,
@@ -2195,12 +2196,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Macros",
 			properties: node_properties::node_no_properties,
 		},
 		#[cfg(feature = "quantization")]
 		DocumentNodeDefinition {
 			identifier: "Generate Quantization",
+			category: "Debug: Quantization",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_std::quantization::GenerateQuantizationNode<_, _>"),
@@ -2217,12 +2218,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Quantization",
 			properties: node_properties::quantize_properties,
 		},
 		#[cfg(feature = "quantization")]
 		DocumentNodeDefinition {
 			identifier: "Quantize Image",
+			category: "Debug: Quantization",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::quantization::QuantizeNode<_>"),
@@ -2238,12 +2239,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Quantization",
 			properties: node_properties::quantize_properties,
 		},
 		#[cfg(feature = "quantization")]
 		DocumentNodeDefinition {
 			identifier: "DeQuantize Image",
+			category: "Debug: Quantization",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::quantization::DeQuantizeNode<_>"),
@@ -2259,14 +2260,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Quantization",
 			properties: node_properties::quantize_properties,
 		},
 		DocumentNodeDefinition {
-			identifier: "Invert RGB",
+			identifier: "Invert",
+			category: "Raster: Adjustment",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::raster::InvertRGBNode"),
+					implementation: DocumentNodeImplementation::proto("graphene_core::raster::InvertNode"),
 					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 					..Default::default()
 				},
@@ -2276,11 +2277,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Hue/Saturation",
+			category: "Raster: Adjustment",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::raster::HueSaturationNode<_, _, _>"),
@@ -2298,11 +2299,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::hue_saturation_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Brightness/Contrast",
+			category: "Raster: Adjustment",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::raster::BrightnessContrastNode<_, _, _>"),
@@ -2320,11 +2321,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::brightness_contrast_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Curves",
+			category: "Raster: Adjustment",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::raster::CurvesNode<_>"),
@@ -2340,11 +2341,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::curves_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Threshold",
+			category: "Raster: Adjustment",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::raster::ThresholdNode<_, _, _>"),
@@ -2362,11 +2363,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::threshold_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Gradient Map",
+			category: "Raster: Adjustment",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::raster::GradientMapNode<_, _>"),
@@ -2383,11 +2384,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::gradient_map_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Vibrance",
+			category: "Raster: Adjustment",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::raster::VibranceNode<_>"),
@@ -2400,11 +2401,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::vibrance_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Channel Mixer",
+			category: "Raster: Adjustment",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::raster::ChannelMixerNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
@@ -2463,11 +2464,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::channel_mixer_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Selective Color",
+			category: "Raster: Adjustment",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto(
@@ -2573,11 +2574,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::selective_color_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Opacity",
+			category: "Style",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::raster::OpacityNode<_>"),
@@ -2590,11 +2591,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::opacity_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Blend Mode",
+			category: "Style",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::raster::BlendModeNode<_>"),
@@ -2610,11 +2611,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::blend_mode_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Posterize",
+			category: "Raster: Adjustment",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::raster::PosterizeNode<_>"),
@@ -2627,11 +2628,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::posterize_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Exposure",
+			category: "Raster: Adjustment",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::raster::ExposureNode<_, _, _>"),
@@ -2649,11 +2650,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::exposure_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Add",
+			category: "Math",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::AddNode<_>"),
@@ -2666,11 +2667,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Math",
 			properties: node_properties::add_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Subtract",
+			category: "Math",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::SubtractNode<_>"),
@@ -2683,11 +2684,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Math",
 			properties: node_properties::subtract_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Divide",
+			category: "Math",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::DivideNode<_>"),
@@ -2700,11 +2701,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Math",
 			properties: node_properties::divide_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Multiply",
+			category: "Math",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::MultiplyNode<_>"),
@@ -2717,11 +2718,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Math",
 			properties: node_properties::multiply_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Exponent",
+			category: "Math",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::ExponentNode<_>"),
@@ -2734,11 +2735,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Math",
 			properties: node_properties::exponent_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Floor",
+			category: "Math",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::FloorNode"),
@@ -2751,11 +2752,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Math",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Ceil",
+			category: "Math",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::CeilingNode"),
@@ -2768,11 +2769,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Math",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Round",
+			category: "Math",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::RoundNode"),
@@ -2785,11 +2786,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Math",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Absolute Value",
+			category: "Math",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::AbsoluteValue"),
@@ -2802,11 +2803,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Math",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Logarithm",
+			category: "Math",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::LogarithmNode<_>"),
@@ -2819,11 +2820,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Math",
 			properties: node_properties::log_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Natural Logarithm",
+			category: "Math",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::NaturalLogarithmNode"),
@@ -2836,11 +2837,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Math",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Sine",
+			category: "Math",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::SineNode"),
@@ -2853,11 +2854,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Math",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Cosine",
+			category: "Math",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::CosineNode"),
@@ -2870,11 +2871,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Math",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Tangent",
+			category: "Math",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::TangentNode"),
@@ -2887,11 +2888,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Math",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Max",
+			category: "Math",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::MaximumNode<_>"),
@@ -2904,11 +2905,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Math",
 			properties: node_properties::max_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Min",
+			category: "Math",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::MinimumNode<_>"),
@@ -2921,11 +2922,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Math",
 			properties: node_properties::min_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Equals",
+			category: "Math",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::EqualsNode<_>"),
@@ -2938,11 +2939,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Math",
 			properties: node_properties::eq_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Modulo",
+			category: "Math",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::ModuloNode<_>"),
@@ -2955,11 +2956,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Math",
 			properties: node_properties::modulo_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Log to Console",
+			category: "Debug",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::logic::LogToConsoleNode"),
@@ -2972,11 +2973,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Logic",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Or",
+			category: "Math",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::logic::LogicOrNode<_>"),
@@ -2989,11 +2990,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Logic",
 			properties: node_properties::logic_operator_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "And",
+			category: "Math",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::logic::LogicAndNode<_>"),
@@ -3006,11 +3007,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Logic",
 			properties: node_properties::logic_operator_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "XOR",
+			category: "Math",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::logic::LogicXorNode<_>"),
@@ -3023,11 +3024,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Logic",
 			properties: node_properties::logic_operator_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Not",
+			category: "Math",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::logic::LogicNotNode"),
@@ -3040,12 +3041,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Logic",
 			properties: node_properties::node_no_properties,
 		},
 		(*IMAGINATE_NODE).clone(),
 		DocumentNodeDefinition {
 			identifier: "Circle",
+			category: "Vector: Generator",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -3106,11 +3107,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::circle_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Ellipse",
+			category: "Vector: Generator",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::EllipseGenerator<_, _>"),
@@ -3127,11 +3128,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::ellipse_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Rectangle",
+			category: "Vector: Generator",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::RectangleGenerator<_, _, _, _, _>"),
@@ -3158,11 +3159,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::rectangle_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Regular Polygon",
+			category: "Vector: Generator",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::RegularPolygonGenerator<_, _>"),
@@ -3179,11 +3180,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::regular_polygon_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Star",
+			category: "Vector: Generator",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::StarGenerator<_, _, _>"),
@@ -3201,11 +3202,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::star_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Line",
+			category: "Vector: Generator",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::LineGenerator<_, _>"),
@@ -3222,11 +3223,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::line_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Spline",
+			category: "Vector: Generator",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::SplineGenerator<_>"),
@@ -3242,11 +3243,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::spline_properties,
 		},
 		DocumentNodeDefinition {
-			identifier: "Shape",
+			identifier: "Shape", // TODO: What is this and is it used? What is the difference between this and "Path"?
+			category: "Ignore",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::PathGenerator<_>"),
@@ -3259,11 +3260,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Path",
+			category: "Vector",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -3328,11 +3329,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Sample",
+			category: "Debug",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_std::raster::SampleNode<_>"),
@@ -3346,11 +3347,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Structural",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Mandelbrot",
+			category: "Raster: Generator",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_std::raster::MandelbrotNode"),
@@ -3364,11 +3365,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Generators",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Cull",
+			category: "Debug",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::transform::CullNode<_>"),
@@ -3382,11 +3383,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Text",
+			category: "Vector",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::text::TextGeneratorNode<_, _, _>"),
@@ -3407,11 +3408,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::text_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Transform",
+			category: "General",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					inputs: vec![
@@ -3493,11 +3494,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Transform",
 			properties: node_properties::transform_properties,
 		},
 		DocumentNodeDefinition {
-			identifier: "SetTransform",
+			identifier: "Set Transform",
+			category: "General",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::transform::SetTransformNode<_>"),
@@ -3513,11 +3514,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Transform",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Assign Colors",
+			category: "Vector: Style",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::vector::AssignColorsNode<_, _, _, _, _, _>"),
@@ -3546,11 +3547,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::assign_colors_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Fill",
+			category: "Vector: Style",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -3603,11 +3604,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::fill_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Stroke",
+			category: "Vector: Style",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::vector::SetStrokeNode<_, _, _, _, _, _, _>"),
@@ -3638,11 +3639,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::stroke_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Bounding Box",
+			category: "Vector",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::vector::BoundingBoxNode"),
@@ -3655,11 +3656,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Solidify Stroke",
+			category: "Vector",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::vector::SolidifyStrokeNode"),
@@ -3672,11 +3673,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Repeat",
+			category: "Vector",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::vector::RepeatNode<_, _, _>"),
@@ -3694,11 +3695,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::repeat_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Circular Repeat",
+			category: "Vector",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::vector::CircularRepeatNode<_, _, _>"),
@@ -3716,11 +3717,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::circular_repeat_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Boolean Operation",
+			category: "Vector",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					inputs: vec![
@@ -3736,11 +3737,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::boolean_operation_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Copy to Points",
+			category: "Vector",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					// TODO: Wrap this implementation with a document node that has a cache node so the output is cached?
@@ -3769,11 +3770,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::copy_to_points_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Sample Points",
+			category: "Vector",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -3864,11 +3865,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::sample_points_properties,
 		},
 		DocumentNodeDefinition {
-			identifier: "Poisson-Disk Points",
+			identifier: "Scatter Points",
+			category: "Vector",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -3930,11 +3931,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::poisson_disk_points_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Splines from Points",
+			category: "Vector",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::vector::SplinesFromPointsNode"),
@@ -3947,11 +3948,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Area",
+			category: "Vector",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::vector::AreaNode<_>"),
@@ -3965,11 +3966,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Centroid",
+			category: "Vector",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::vector::CentroidNode<_, _>"),
@@ -3986,11 +3987,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::centroid_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Morph",
+			category: "Vector",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::vector::MorphNode<_, _, _, _>"),
@@ -4009,12 +4010,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Vector",
 			properties: node_properties::morph_properties,
 		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
 		DocumentNodeDefinition {
 			identifier: "Image Segmentation",
+			category: "Ignore",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_std::image_segmentation::ImageSegmentationNode<_>"),
@@ -4030,11 +4031,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Index",
+			category: "Debug",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::raster::IndexNode<_>"),
@@ -4047,12 +4048,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::index_properties,
 		},
 		// Applies the given color to each pixel of an image but maintains the alpha value
 		DocumentNodeDefinition {
 			identifier: "Color Fill",
+			category: "Raster",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::raster::adjustments::ColorFillNode<_>"),
@@ -4068,11 +4069,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::color_fill_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Color Overlay",
+			category: "Raster",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::raster::adjustments::ColorOverlayNode<_, _, _>"),
@@ -4090,11 +4091,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::color_overlay_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Image Color Palette",
+			category: "Raster",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_std::image_color_palette::ImageColorPaletteNode<_>"),
@@ -4107,7 +4108,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Raster",
 			properties: node_properties::image_color_palette,
 		},
 	]
@@ -4115,6 +4115,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 
 pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentNodeDefinition {
 	identifier: "Imaginate",
+	category: "Raster: Generator",
 	node_template: NodeTemplate {
 		document_node: DocumentNode {
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -4230,7 +4231,6 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 			..Default::default()
 		},
 	},
-	category: "Image Synthesis",
 	properties: node_properties::imaginate_properties,
 });
 

@@ -441,10 +441,10 @@ fn hue_shift_color_node(color: Color, hue_shift: f64, saturation_shift: f64, lig
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct InvertRGBNode;
+pub struct InvertNode;
 
-#[node_macro::node_fn(InvertRGBNode)]
-fn invert_image(color: Color) -> Color {
+#[node_macro::node_fn(InvertNode)]
+fn invert_node(color: Color) -> Color {
 	let color = color.to_gamma_srgb();
 
 	let color = color.map_rgb(|c| color.a() - c);
@@ -453,7 +453,7 @@ fn invert_image(color: Color) -> Color {
 }
 
 // TODO replace with trait based implementation
-impl<'i> Node<'i, &'i Color> for InvertRGBNode {
+impl<'i> Node<'i, &'i Color> for InvertNode {
 	type Output = Color;
 
 	fn eval(&'i self, color: &'i Color) -> Self::Output {
