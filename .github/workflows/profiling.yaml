@@ -93,7 +93,7 @@ jobs:
                 
                 if (irDiff.diff_pct !== null) {
                   const changePercentage = formatPercentage(irDiff.diff_pct);
-                  const color = irDiff.diff_pct > 0 ? "red" : "green";
+                  const color = irDiff.diff_pct > 0 ? "red" : "lime";
                   
                   commentBody += `${benchmark.module_path} ${benchmark.id}:${benchmark.details}\n`;
                   commentBody += `Instructions: ${padLeft(formatNumber(irDiff.new), 11)} -> ${padLeft(formatNumber(irDiff.old), 11)} `;
