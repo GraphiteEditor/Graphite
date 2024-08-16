@@ -1,7 +1,7 @@
 use super::tool_prelude::*;
 use crate::consts::HIDE_HANDLE_DISTANCE;
 use crate::consts::LINE_ROTATE_SNAP_ANGLE;
-use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;

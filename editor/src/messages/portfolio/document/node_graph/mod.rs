@@ -1,4 +1,4 @@
-pub mod document_node_types;
+pub mod document_node_definitions;
 mod node_graph_message;
 mod node_graph_message_handler;
 pub mod node_properties;

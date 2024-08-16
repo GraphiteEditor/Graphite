@@ -675,7 +675,7 @@ impl EditorHandle {
 	) {
 		use editor::messages::portfolio::document::graph_operation::transform_utils::*;
 		use editor::messages::portfolio::document::graph_operation::utility_types::*;
-		use editor::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
+		use editor::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 		use editor::node_graph_executor::replace_node_runtime;
 		use editor::node_graph_executor::NodeRuntime;
 		use graph_craft::document::NodeInput;

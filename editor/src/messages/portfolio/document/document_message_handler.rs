@@ -469,7 +469,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), self.network_interface.selected_nodes(&[]).unwrap(), parent);
 
 				let node_id = NodeId(generate_uuid());
-				let new_group_node = super::node_graph::document_node_types::resolve_document_node_type("Merge")
+				let new_group_node = super::node_graph::document_node_definitions::resolve_document_node_type("Merge")
 					.expect("Failed to create merge node")
 					.default_node_template();
 				responses.add(NodeGraphMessage::InsertNode {

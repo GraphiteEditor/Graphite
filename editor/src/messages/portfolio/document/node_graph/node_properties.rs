@@ -1,6 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
-use super::document_node_types::{NodePropertiesContext, IMAGINATE_NODE};
+use super::document_node_definitions::{NodePropertiesContext, IMAGINATE_NODE};
 use super::utility_types::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
@@ -2323,7 +2323,7 @@ pub fn index_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 pub fn generate_node_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> LayoutGroup {
 	let reference = context.network_interface.reference(&node_id, context.selection_network_path).clone();
 	let layout = if let Some(ref reference) = reference {
-		match super::document_node_types::resolve_document_node_type(reference) {
+		match super::document_node_definitions::resolve_document_node_type(reference) {
 			Some(document_node_type) => (document_node_type.properties)(document_node, node_id, context),
 			None => unknown_node_properties(reference),
 		}
