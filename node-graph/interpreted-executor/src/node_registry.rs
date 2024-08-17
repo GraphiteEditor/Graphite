@@ -142,6 +142,23 @@ macro_rules! raster_node {
 					NodeIOTypes::new(concrete!(Color), concrete!(Color), params)
 				},
 			),
+			// TODO: Remove this one when we have automatic IntoNode insertion as part of the graph compilation process
+			(
+				ProtoNodeIdentifier::new(stringify!($path)),
+				|args| {
+					Box::pin(async move {
+						let node = construct_node!(args, $path, [$(() => $type),*]).await;
+						let map_node = graphene_core::ops::MapOptionNode::new(graphene_core::value::ValueNode::new(node));
+						let node = graphene_std::any::FutureWrapperNode::new(map_node);
+						let any: DynAnyNode<Option<Color>, _, _> = graphene_std::any::DynAnyNode::new(node);
+						any.into_type_erased()
+					})
+				},
+				{
+					let params = vec![$(fn_type!($type)),*];
+					NodeIOTypes::new(concrete!(Option<Color>), concrete!(Option<Color>), params)
+				},
+			),
 			(
 				ProtoNodeIdentifier::new(stringify!($path)),
 				|args| {
@@ -271,6 +288,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_core::ops::ModuloNode<_>, input: &f64, params: [&f64]),
 		register_node!(graphene_core::ops::ConstructVector2<_, _>, input: (), params: [f64, f64]),
 		register_node!(graphene_core::ops::SomeNode, input: &WasmEditorApi, params: []),
+		register_node!(graphene_core::ops::UnwrapNode, input: Option<Color>, params: []),
 		register_node!(graphene_core::logic::LogToConsoleNode, input: bool, params: []),
 		register_node!(graphene_core::logic::LogToConsoleNode, input: f64, params: []),
 		register_node!(graphene_core::logic::LogToConsoleNode, input: f64, params: []),
@@ -455,6 +473,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		raster_node!(graphene_core::raster::ExtractChannelNode<_>, params: [RedGreenBlueAlpha]),
 		raster_node!(graphene_core::raster::ExtractOpaqueNode<>, params: []),
 		raster_node!(graphene_core::raster::LevelsNode<_, _, _, _, _>, params: [f64, f64, f64, f64, f64]),
+		raster_node!(graphene_core::raster::BlendColorsNode<_, _, _>, params: [Color, BlendMode, f64]),
+		register_node!(graphene_core::raster::BlendColorsNode<_, _, _>, input: GradientStops, params: [GradientStops, BlendMode, f64]),
 		register_node!(graphene_std::image_segmentation::ImageSegmentationNode<_>, input: ImageFrame<Color>, params: [ImageFrame<Color>]),
 		register_node!(graphene_std::image_color_palette::ImageColorPaletteNode<_>, input: ImageFrame<Color>, params: [u32]),
 		register_node!(graphene_core::raster::IndexNode<_>, input: Vec<ImageFrame<Color>>, params: [u32]),
@@ -621,6 +641,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: graphene_std::SurfaceFrame, params: [graphene_std::SurfaceFrame]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: RenderOutput, params: [RenderOutput]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Footprint, output: Image<Color>, fn_params: [Footprint => Image<Color>]),
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: Footprint, output: VectorData, fn_params: [Footprint => VectorData]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Footprint, output: ImageFrame<Color>, fn_params: [Footprint => ImageFrame<Color>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Footprint, output: QuantizationChannels, fn_params: [Footprint => QuantizationChannels]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Footprint, output: Vec<DVec2>, fn_params: [Footprint => Vec<DVec2>]),

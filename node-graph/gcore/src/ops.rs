@@ -218,6 +218,14 @@ fn some<T>(input: T) -> Option<T> {
 	Some(input)
 }
 
+// Unwrap
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct UnwrapNode;
+#[node_macro::node_fn(UnwrapNode)]
+fn some<T: Default>(input: Option<T>) -> T {
+	input.unwrap_or_default()
+}
+
 // Clone
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct CloneNode<O>(PhantomData<O>);
@@ -337,14 +345,27 @@ impl<'i, N: for<'a> Node<'a, I> + Clone, I: 'i> Clone for TypeNode<N, I, <N as N
 }
 impl<'i, N: for<'a> Node<'a, I> + Copy, I: 'i> Copy for TypeNode<N, I, <N as Node<'i, I>>::Output> {}
 
+// Map Option
+pub struct MapOptionNode<I, Mn> {
+	node: Mn,
+	_i: PhantomData<I>,
+}
+#[node_macro::node_fn(MapOptionNode<_I>)]
+fn map_option_node<_I, N>(input: Option<_I>, node: &'input N) -> Option<<N as Node<'input, _I>>::Output>
+where
+	N: for<'a> Node<'a, _I>,
+{
+	input.map(|x| node.eval(x))
+}
+
 // Map Result
 pub struct MapResultNode<I, E, Mn> {
 	node: Mn,
 	_i: PhantomData<I>,
 	_e: PhantomData<E>,
 }
-#[node_macro::node_fn(MapResultNode<_I,  _E>)]
-fn flat_map<_I, _E, N>(input: Result<_I, _E>, node: &'input N) -> Result<<N as Node<'input, _I>>::Output, _E>
+#[node_macro::node_fn(MapResultNode<_I, _E>)]
+fn map_result_node<_I, _E, N>(input: Result<_I, _E>, node: &'input N) -> Result<<N as Node<'input, _I>>::Output, _E>
 where
 	N: for<'a> Node<'a, _I>,
 {
@@ -359,7 +380,7 @@ pub struct FlatMapResultNode<I, O, E, Mn> {
 	_e: PhantomData<E>,
 }
 #[node_macro::node_fn(FlatMapResultNode<_I, _O, _E>)]
-fn flat_map<_I, _O, _E, N>(input: Result<_I, _E>, node: &'input N) -> Result<_O, _E>
+fn flat_map_node<_I, _O, _E, N>(input: Result<_I, _E>, node: &'input N) -> Result<_O, _E>
 where
 	N: for<'a> Node<'a, _I, Output = Result<_O, _E>>,
 {

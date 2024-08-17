@@ -969,6 +969,14 @@ pub fn black_and_white_properties(document_node: &DocumentNode, node_id: NodeId,
 	]
 }
 
+pub fn blend_color_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let under = color_widget(document_node, node_id, 1, "Under", ColorButton::default(), true);
+	let blend_mode = blend_mode(document_node, node_id, 2, "Blend Mode", true);
+	let opacity = number_widget(document_node, node_id, 3, "Opacity", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
+
+	vec![under, blend_mode, LayoutGroup::Row { widgets: opacity }]
+}
+
 pub fn blend_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let backdrop = color_widget(document_node, node_id, 1, "Backdrop", ColorButton::default(), true);
 	let blend_mode = blend_mode(document_node, node_id, 2, "Blend Mode", true);
@@ -979,6 +987,12 @@ pub fn blend_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 
 pub fn number_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let widgets = number_widget(document_node, node_id, 0, "Number", NumberInput::default(), true);
+
+	vec![LayoutGroup::Row { widgets }]
+}
+
+pub fn percentage_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let widgets = number_widget(document_node, node_id, 0, "Percentage", NumberInput::default().min(0.).max(100.).mode_range(), true);
 
 	vec![LayoutGroup::Row { widgets }]
 }
@@ -998,6 +1012,10 @@ pub fn boolean_properties(document_node: &DocumentNode, node_id: NodeId, _contex
 
 pub fn color_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	vec![color_widget(document_node, node_id, 0, "Color", ColorButton::default(), true)]
+}
+
+pub fn gradient_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	vec![color_widget(document_node, node_id, 0, "Gradient", ColorButton::default().allow_none(false), true)]
 }
 
 pub fn load_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

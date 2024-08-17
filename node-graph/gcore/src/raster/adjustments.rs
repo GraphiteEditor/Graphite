@@ -11,6 +11,7 @@ use crate::GraphicGroup;
 
 use dyn_any::{DynAny, StaticType};
 
+use core::cmp::Ordering;
 use core::fmt::Debug;
 #[cfg(feature = "serde")]
 #[cfg(target_arch = "spirv")]
@@ -493,6 +494,37 @@ fn threshold_node(color: Color, min_luminance: f64, max_luminance: f64, luminanc
 }
 
 #[derive(Debug, Clone, Copy)]
+pub struct BlendColorsNode<Under, BlendMode, Opacity> {
+	under: Under,
+	blend_mode: BlendMode,
+	opacity: Opacity,
+}
+
+#[node_macro::node_fn(BlendColorsNode)]
+fn blend_node(over: Color, under: Color, blend_mode: BlendMode, opacity: f64) -> Color {
+	blend_colors(over, under, blend_mode, opacity / 100.)
+}
+
+#[node_macro::node_impl(BlendColorsNode)]
+fn blend_colors(over: GradientStops, under: GradientStops, blend_mode: BlendMode, opacity: f64) -> GradientStops {
+	let mut combined_stops = over.0.iter().map(|(position, _)| position).chain(under.0.iter().map(|(position, _)| position)).collect::<Vec<_>>();
+	combined_stops.dedup_by(|&mut a, &mut b| (a - b).abs() < 1e-6);
+	combined_stops.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
+
+	let stops = combined_stops
+		.into_iter()
+		.map(|&position| {
+			let over_color = over.evalute(position);
+			let under_color = under.evalute(position);
+			let color = blend_colors(over_color, under_color, blend_mode, opacity / 100.);
+			(position, color)
+		})
+		.collect::<Vec<_>>();
+
+	GradientStops(stops)
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct BlendNode<BlendMode, Opacity> {
 	blend_mode: BlendMode,
 	opacity: Opacity,
@@ -500,7 +532,7 @@ pub struct BlendNode<BlendMode, Opacity> {
 
 #[node_macro::node_fn(BlendNode)]
 fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Color {
-	blend_colors(input.0, input.1, blend_mode, opacity as f32 / 100.)
+	blend_colors(input.0, input.1, blend_mode, opacity / 100.)
 }
 
 pub fn apply_blend_mode(foreground: Color, background: Color, blend_mode: BlendMode) -> Color {
@@ -543,7 +575,7 @@ pub fn apply_blend_mode(foreground: Color, background: Color, blend_mode: BlendM
 }
 
 #[inline(always)]
-pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode, opacity: f32) -> Color {
+pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode, opacity: f64) -> Color {
 	let target_color = match blend_mode {
 		// Other utility blend modes (hidden from the normal list) - do not have alpha blend
 		BlendMode::Erase => return background.alpha_subtract(foreground),
@@ -552,7 +584,7 @@ pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode,
 		blend_mode => apply_blend_mode(foreground, background, blend_mode),
 	};
 
-	background.alpha_blend(target_color.to_associated_alpha(opacity))
+	background.alpha_blend(target_color.to_associated_alpha(opacity as f32))
 }
 
 #[derive(Debug, Clone, Copy)]

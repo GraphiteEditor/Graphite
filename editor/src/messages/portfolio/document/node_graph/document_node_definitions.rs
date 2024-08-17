@@ -99,6 +99,23 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: node_properties::number_properties,
 		},
 		DocumentNodeDefinition {
+			identifier: "Percentage Value",
+			category: "Value",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
+					inputs: vec![NodeInput::value(TaggedValue::F64(0.), false)],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_names: vec!["Percentage".to_string()],
+					output_names: vec!["Out".to_string()],
+					..Default::default()
+				},
+			},
+			properties: node_properties::percentage_properties,
+		},
+		DocumentNodeDefinition {
 			identifier: "Color Value",
 			category: "Value",
 			node_template: NodeTemplate {
@@ -114,6 +131,23 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			properties: node_properties::color_properties,
+		},
+		DocumentNodeDefinition {
+			identifier: "Gradient Value",
+			category: "Value",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
+					inputs: vec![NodeInput::value(TaggedValue::GradientStops(vector::style::GradientStops::default()), false)],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_names: vec!["Gradient".to_string()],
+					output_names: vec!["Out".to_string()],
+					..Default::default()
+				},
+			},
+			properties: node_properties::gradient_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Vector2 Value",
@@ -934,6 +968,46 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			properties: node_properties::node_no_properties,
 		},
+		DocumentNodeDefinition {
+			identifier: "Unwrap",
+			category: "Debug",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::proto("graphene_core::ops::UnwrapNode"),
+					inputs: vec![NodeInput::value(TaggedValue::OptionalColor(None), true)],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_names: vec!["Value".to_string()],
+					output_names: vec!["Value".to_string()],
+					..Default::default()
+				},
+			},
+			properties: node_properties::node_no_properties,
+		},
+		// TODO: Consolidate this into the regular Blend node once we can make its generic types all compatible, and not break the brush tool which uses that Blend node
+		DocumentNodeDefinition {
+			identifier: "Blend Colors",
+			category: "Raster",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::proto("graphene_core::raster::BlendColorsNode<_, _, _>"),
+					inputs: vec![
+						NodeInput::value(TaggedValue::Color(Color::TRANSPARENT), true),
+						NodeInput::value(TaggedValue::Color(Color::TRANSPARENT), true),
+						NodeInput::value(TaggedValue::BlendMode(BlendMode::Normal), false),
+						NodeInput::value(TaggedValue::F64(100.), false),
+					],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_names: vec!["Over".to_string(), "Under".to_string(), "Blend Mode".to_string(), "Opacity".to_string()],
+					output_names: vec!["Combined".to_string()],
+					..Default::default()
+				},
+			},
+			properties: node_properties::blend_color_properties,
+		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
 		DocumentNodeDefinition {
 			identifier: "Blend",
@@ -950,7 +1024,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Second".to_string(), "BlendMode".to_string(), "Opacity".to_string()],
+					input_names: vec!["Image".to_string(), "Second".to_string(), "Blend Mode".to_string(), "Opacity".to_string()],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
