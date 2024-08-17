@@ -6,7 +6,6 @@ use raw_rs::RawImage;
 use image::codecs::png::{CompressionType, FilterType, PngEncoder};
 use image::{ColorType, ImageEncoder};
 use libraw::Processor;
-use palette::{LinSrgb, Srgb};
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::fs::{read_dir, File};
