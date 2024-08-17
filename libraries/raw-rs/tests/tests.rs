@@ -69,18 +69,6 @@ fn test_images_match_with_libraw() {
 }
 
 fn store_image(path: &Path, suffix: &str, data: &mut [u8], width: usize, height: usize) {
-	if suffix == "raw_rs" {
-		for pixel in data.chunks_mut(3) {
-			let lin_srgb: LinSrgb<f64> = LinSrgb::new(pixel[0], pixel[1], pixel[2]).into_format();
-			let output: Srgb<u8> = Srgb::from_linear(lin_srgb);
-			pixel[0] = output.red;
-			pixel[1] = output.green;
-			pixel[2] = output.blue;
-		}
-	}
-
-	println!("{}: {:?}", suffix, &data[..10]);
-
 	let mut output_path = PathBuf::new();
 	if let Some(parent) = path.parent() {
 		output_path.push(parent);

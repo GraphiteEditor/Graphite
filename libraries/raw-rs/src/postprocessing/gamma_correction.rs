@@ -2,10 +2,34 @@ use crate::Image;
 use std::f64::consts::E;
 
 pub fn gamma_correction(mut image: Image<u16>) -> Image<u16> {
-	todo!()
+	if let Some(histogram) = image.histogram {
+		let percentage = image.width as f64 * image.height as f64 * 0.01;
+
+		let mut white = 0;
+		for channel_histogram in histogram {
+			let mut total = 0;
+			for i in (32..0x2000).rev() {
+				total += channel_histogram[i];
+				if total as f64 > percentage {
+					white = white.max(i);
+					break;
+				}
+			}
+		}
+
+		let curve = generate_gamma_curve(0.45, 4.5, (white << 3) as f64);
+
+		for value in image.data.iter_mut() {
+			*value = curve[*value as usize];
+		}
+
+		image.histogram = None;
+	}
+
+	image
 }
 
-fn generate_gamma_curve(power: f64, threshold: f64, max_intensity: i32) -> Vec<u16> {
+fn generate_gamma_curve(power: f64, threshold: f64, max_intensity: f64) -> Vec<u16> {
 	let mut bounds = if threshold >= 1.0 { [0., 1.] } else { [1., 0.] };
 
 	let mut transition_point = 0.;
@@ -29,7 +53,7 @@ fn generate_gamma_curve(power: f64, threshold: f64, max_intensity: i32) -> Vec<u
 
 	let mut curve = vec![0xffffu16; 0x10000];
 	for i in 0..0x10000 {
-		let ratio = (i as f64) / (max_intensity as f64);
+		let ratio = (i as f64) / max_intensity;
 		if ratio < 1.0 {
 			curve[i as usize] = (0x10000 as f64
 				* if ratio < transition_ratio {

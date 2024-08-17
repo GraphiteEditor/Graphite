@@ -40,6 +40,7 @@ pub struct Image<T> {
 	pub height: usize,
 	pub channels: u8,
 	pub rgb_to_camera: Option<[[f64; 3]; 3]>,
+	pub histogram: Option<[[usize; 0x2000]; 3]>
 }
 
 #[allow(dead_code)]
@@ -87,23 +88,18 @@ pub fn process_8bit(raw_image: RawImage) -> Image<u8> {
 		width: image.width,
 		height: image.height,
 		rgb_to_camera: image.rgb_to_camera,
+		histogram: image.histogram,
 	}
 }
 
 pub fn process_16bit(raw_image: RawImage) -> Image<u16> {
 	let raw_image = crate::preprocessing::camera_data::calculate_conversion_matrices(raw_image);
 	let raw_image = crate::preprocessing::subtract_black::subtract_black(raw_image);
-	println!("After subtract black: {:?}", &raw_image.data[..10]);
 	let raw_image = crate::preprocessing::raw_to_image::raw_to_image(raw_image);
-	println!("After raw_to_image: {:?}", &raw_image.data[..10]);
 	let raw_image = crate::preprocessing::scale_colors::scale_colors(raw_image);
-	println!("After scale_colors: {:?}", &raw_image.data[..10]);
 	let image = crate::demosaicing::linear_demosaicing::linear_demosaic(raw_image);
-	println!("After demosaicing: {:?}", &image.data[..10]);
 	let image = crate::postprocessing::convert_to_rgb::convert_to_rgb(image);
-	println!("After convert_to_rgb: {:?}", &image.data[..10]);
-
-	image
+	crate::postprocessing::gamma_correction::gamma_correction(image)
 }
 
 #[derive(Error, Debug)]
