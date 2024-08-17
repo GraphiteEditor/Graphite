@@ -58,7 +58,7 @@ pub struct NodeGraphMessageHandler {
 	/// The vertical offsets of all layer nodes, starting at the top of the stack, which are used to rubber band positions when dragging
 	layer_offsets: HashMap<NodeId, i32>,
 	/// Stores all upstream nodes directly below the layer node, which is used when dragging
-	upstream_nodes_below_layers: HashMap<NodeId, Vec<NodeId>>,
+	upstream_nodes_below_layers: HashMap<NodeId, HashSet<NodeId>>,
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
@@ -1786,7 +1786,7 @@ impl NodeGraphMessageHandler {
 
 		let mut selected_parents = HashSet::new();
 		for selected_layer in &selected_layers {
-			for ancestor in LayerNodeIdentifier::new(*selected_layer, network_interface).ancestors(network_interface.document_metadata()) {
+			for ancestor in LayerNodeIdentifier::new(*selected_layer, network_interface, &[]).ancestors(network_interface.document_metadata()) {
 				if ancestor != LayerNodeIdentifier::ROOT_PARENT && !selected_layers.contains(&ancestor.to_node()) {
 					selected_parents.insert(ancestor.to_node());
 				}
@@ -1795,7 +1795,7 @@ impl NodeGraphMessageHandler {
 
 		for (&node_id, node_metadata) in &network_interface.network_metadata(&[]).unwrap().persistent_metadata.node_metadata {
 			if node_metadata.persistent_metadata.is_layer() {
-				let layer = LayerNodeIdentifier::new(node_id, network_interface);
+				let layer = LayerNodeIdentifier::new(node_id, network_interface, &[]);
 
 				let children_allowed =
 						// The layer has other layers as children along the secondary input's horizontal flow

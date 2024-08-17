@@ -779,7 +779,7 @@ impl EditorHandle {
 			.map(|(id, _)| *id)
 			.collect::<Vec<_>>()
 		{
-			let layer = LayerNodeIdentifier::new(node, &document.network_interface);
+			let layer = LayerNodeIdentifier::new(node, &document.network_interface, &[]);
 			if layer.has_children(document.metadata()) {
 				continue;
 			}

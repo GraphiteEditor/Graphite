@@ -871,7 +871,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.selected_layers_reorder(relative_index_offset, responses);
 			}
 			DocumentMessage::SelectLayer { id, ctrl, shift } => {
-				let layer = LayerNodeIdentifier::new(id, &self.network_interface);
+				let layer = LayerNodeIdentifier::new(id, &self.network_interface, &[]);
 
 				let mut nodes = vec![];
 
@@ -974,7 +974,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::StartTransaction => self.backup(responses),
 			DocumentMessage::ToggleLayerExpansion { id } => {
-				let layer = LayerNodeIdentifier::new(id, &self.network_interface);
+				let layer = LayerNodeIdentifier::new(id, &self.network_interface, &[]);
 				if self.collapsed.0.contains(&layer) {
 					self.collapsed.0.retain(|&collapsed_layer| collapsed_layer != layer);
 				} else {
