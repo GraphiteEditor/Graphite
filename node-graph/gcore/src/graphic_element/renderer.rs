@@ -268,40 +268,15 @@ pub fn to_transform(transform: DAffine2) -> usvg::Transform {
 	usvg::Transform::from_row(cols[0] as f32, cols[1] as f32, cols[2] as f32, cols[3] as f32, cols[4] as f32, cols[5] as f32)
 }
 
-// TODO: Consider renaming this to better express what it does
 pub trait GraphicElementRendered {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
-
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]>;
-
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>);
-
-	fn to_usvg_node(&self) -> usvg::Node {
-		let mut render = SvgRender::new();
-		let render_params = RenderParams::new(crate::vector::style::ViewMode::Normal, ImageRenderMode::Base64, None, false, false, false);
-		self.render_svg(&mut render, &render_params);
-		render.format_svg(DVec2::ZERO, DVec2::ONE);
-		let svg = render.svg.to_svg_string();
-
-		let opt = usvg::Options::default();
-
-		let tree = usvg::Tree::from_str(&svg, &opt).expect("Failed to parse SVG");
-		usvg::Node::Group(Box::new(tree.root.clone()))
-	}
-
-	fn to_usvg_tree(&self, resolution: glam::UVec2, viewbox: [DVec2; 2]) -> usvg::Tree {
-		let root = match self.to_usvg_node() {
-			usvg::Node::Group(root_node) => *root_node,
-			_ => usvg::Group::default(),
-		};
-		usvg::Tree {
-			size: usvg::Size::from_wh(resolution.x as f32, resolution.y as f32).unwrap(),
-			view_box: usvg::ViewBox {
-				rect: usvg::NonZeroRect::from_ltrb(viewbox[0].x as f32, viewbox[0].y as f32, viewbox[1].x as f32, viewbox[1].y as f32).unwrap(),
-				aspect: usvg::AspectRatio::default(),
-			},
-			root,
-		}
+	#[cfg(feature = "vello")]
+	fn to_vello_scene(&self, transform: DAffine2, context: &mut RenderContext) -> Scene {
+		let mut scene = vello::Scene::new();
+		self.render_to_vello(&mut scene, transform, context);
+		scene
 	}
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2, _render_condext: &mut RenderContext) {}
