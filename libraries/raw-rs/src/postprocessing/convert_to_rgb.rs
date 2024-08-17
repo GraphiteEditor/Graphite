@@ -9,9 +9,9 @@ pub fn convert_to_rgb(mut image: Image<u16>) -> Image<u16> {
 		for i in 0..(image.height * image.width) {
 			let input_pixel = &mut image.data[channels * i..channels * (i + 1)];
 			let mut output_pixel = [0.; 3];
-			for c in 0..channels {
+			for (channel, &value) in input_pixel.iter().enumerate() {
 				for i in 0..3 {
-					output_pixel[i] += rgb_to_camera[i][c] * input_pixel[c] as f64;
+					output_pixel[i] += rgb_to_camera[i][channel] * value as f64;
 				}
 			}
 

@@ -53,6 +53,7 @@ pub fn calculate_conversion_matrices(mut raw_image: RawImage) -> RawImage {
 	raw_image
 }
 
+#[allow(clippy::needless_range_loop)]
 fn pseudoinverse<const N: usize>(matrix: [[f64; 3]; N]) -> [[f64; 3]; N] {
 	let mut output_matrix = [[0.; 3]; N];
 	let mut work = [[0.; 6]; 3];
@@ -98,9 +99,10 @@ fn pseudoinverse<const N: usize>(matrix: [[f64; 3]; N]) -> [[f64; 3]; N] {
 
 fn transpose<const N: usize>(matrix: [[f64; 3]; N]) -> [[f64; N]; 3] {
 	let mut output_matrix = [[0.; N]; 3];
-	for i in 0..N {
-		for j in 0..3 {
-			output_matrix[i][j] = matrix[j][i];
+
+	for (i, row) in matrix.iter().enumerate() {
+		for (j, &value) in row.iter().enumerate() {
+			output_matrix[j][i] = value;
 		}
 	}
 

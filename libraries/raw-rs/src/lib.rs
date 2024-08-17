@@ -40,7 +40,7 @@ pub struct Image<T> {
 	pub height: usize,
 	pub channels: u8,
 	pub rgb_to_camera: Option<[[f64; 3]; 3]>,
-	pub histogram: Option<[[usize; 0x2000]; 3]>
+	pub histogram: Option<[[usize; 0x2000]; 3]>,
 }
 
 #[allow(dead_code)]
