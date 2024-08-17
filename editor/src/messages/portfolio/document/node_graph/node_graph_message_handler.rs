@@ -1825,7 +1825,7 @@ impl NodeGraphMessageHandler {
 	fn build_wire_path_locations(output_position: DVec2, input_position: DVec2, vertical_out: bool, vertical_in: bool) -> Vec<DVec2> {
 		let horizontal_gap = (output_position.x - input_position.x).abs();
 		let vertical_gap = (output_position.y - input_position.y).abs();
-		// TODO: Finish this commented out code replacement for the code below it based on this diagram: <https://files.keavon.com/-/InsubstantialElegantQueenant/capture.png>
+		// TODO: Finish this commented out code replacement for the code below it based on this diagram: <https://files.keavon.com/-/SuperbWideFoxterrier/capture.png>
 		// // Straight: stacking lines which are always straight, or a straight horizontal wire between two aligned nodes
 		// if ((verticalOut && vertical_in) || (!verticalOut && !vertical_in && vertical_gap === 0)) {
 		// 	return [

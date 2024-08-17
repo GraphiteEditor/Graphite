@@ -122,7 +122,7 @@ fn text_area_widget(document_node: &DocumentNode, node_id: NodeId, index: usize,
 	widgets
 }
 
-fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
+fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, checkbox_input: CheckboxInput, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 
 	let Some(input) = document_node.inputs.get(index) else {
@@ -132,7 +132,8 @@ fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 	if let Some(&TaggedValue::Bool(x)) = &input.as_non_exposed_value() {
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			CheckboxInput::new(x)
+			checkbox_input
+				.checked(x)
 				.on_update(update_value(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, index))
 				.on_commit(commit_value)
 				.widget_holder(),
@@ -372,7 +373,7 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 	LayoutGroup::Row { widgets }
 }
 
-fn vec_f64_input(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, text_props: TextInput, blank_assist: bool) -> Vec<WidgetHolder> {
+fn vec_f64_input(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, text_input: TextInput, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, blank_assist);
 
 	let from_string = |string: &str| {
@@ -392,7 +393,7 @@ fn vec_f64_input(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	if let Some(TaggedValue::VecF64(x)) = &input.as_non_exposed_value() {
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			text_props
+			text_input
 				.value(x.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
 				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, index))
 				.widget_holder(),
@@ -990,7 +991,7 @@ pub fn vector2_properties(document_node: &DocumentNode, node_id: NodeId, _contex
 }
 
 pub fn boolean_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let widgets = bool_widget(document_node, node_id, 0, "Bool", true);
+	let widgets = bool_widget(document_node, node_id, 0, "Bool", CheckboxInput::default(), true);
 
 	vec![LayoutGroup::Row { widgets }]
 }
@@ -1065,7 +1066,7 @@ pub fn noise_pattern_properties(document_node: &DocumentNode, node_id: NodeId, _
 
 	// All
 	let clip = LayoutGroup::Row {
-		widgets: bool_widget(document_node, node_id, 0, "Clip", true),
+		widgets: bool_widget(document_node, node_id, 0, "Clip", CheckboxInput::default(), true),
 	};
 	let seed = number_widget(document_node, node_id, 1, "Seed", NumberInput::default().min(0.).is_integer(true), true);
 	let scale = number_widget(document_node, node_id, 2, "Scale", NumberInput::default().min(0.).disabled(!coherent_noise_active), true);
@@ -1204,7 +1205,7 @@ pub fn hue_saturation_properties(document_node: &DocumentNode, node_id: NodeId, 
 pub fn brightness_contrast_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let brightness = number_widget(document_node, node_id, 1, "Brightness", NumberInput::default().min(-150.).max(150.), true);
 	let contrast = number_widget(document_node, node_id, 2, "Contrast", NumberInput::default().min(-100.).max(100.), true);
-	let use_legacy = bool_widget(document_node, node_id, 3, "Use Legacy", true);
+	let use_legacy = bool_widget(document_node, node_id, 3, "Use Legacy", CheckboxInput::default(), true);
 
 	vec![
 		LayoutGroup::Row { widgets: brightness },
@@ -1239,7 +1240,7 @@ pub fn gradient_map_properties(document_node: &DocumentNode, node_id: NodeId, _c
 	let reverse_index = 2;
 
 	let gradient_row = color_widget(document_node, node_id, gradient_index, "Gradient", ColorButton::default().allow_none(false), true);
-	let reverse_row = bool_widget(document_node, node_id, reverse_index, "Reverse", true);
+	let reverse_row = bool_widget(document_node, node_id, reverse_index, "Reverse", CheckboxInput::default(), true);
 
 	vec![gradient_row, LayoutGroup::Row { widgets: reverse_row }]
 }
@@ -1250,18 +1251,20 @@ pub fn assign_colors_properties(document_node: &DocumentNode, node_id: NodeId, _
 	let gradient_index = 3;
 	let reverse_index = 4;
 	let randomize_index = 5;
-	let repeat_every_index = 6;
+	let seed_index = 6;
+	let repeat_every_index = 7;
 
-	let fill_row = bool_widget(document_node, node_id, fill_index, "Fill", true);
-	let stroke_row = bool_widget(document_node, node_id, stroke_index, "Stroke", true);
+	let fill_row = bool_widget(document_node, node_id, fill_index, "Fill", CheckboxInput::default(), true);
+	let stroke_row = bool_widget(document_node, node_id, stroke_index, "Stroke", CheckboxInput::default(), true);
 	let gradient_row = color_widget(document_node, node_id, gradient_index, "Gradient", ColorButton::default().allow_none(false), true);
-	let reverse_row = bool_widget(document_node, node_id, reverse_index, "Reverse", true);
-	let randomize_row = bool_widget(document_node, node_id, randomize_index, "Randomize", true);
+	let reverse_row = bool_widget(document_node, node_id, reverse_index, "Reverse", CheckboxInput::default(), true);
 	let randomize_enabled = if let Some(&TaggedValue::Bool(randomize_enabled)) = &document_node.inputs[randomize_index].as_value() {
 		randomize_enabled
 	} else {
 		false
 	};
+	let randomize_row = bool_widget(document_node, node_id, randomize_index, "Randomize", CheckboxInput::default(), true);
+	let seed_row = number_widget(document_node, node_id, seed_index, "Seed", NumberInput::default().min(0.).int().disabled(!randomize_enabled), true);
 	let repeat_every_row = number_widget(
 		document_node,
 		node_id,
@@ -1277,6 +1280,7 @@ pub fn assign_colors_properties(document_node: &DocumentNode, node_id: NodeId, _
 		gradient_row,
 		LayoutGroup::Row { widgets: reverse_row },
 		LayoutGroup::Row { widgets: randomize_row },
+		LayoutGroup::Row { widgets: seed_row },
 		LayoutGroup::Row { widgets: repeat_every_row },
 	]
 }
@@ -1299,7 +1303,7 @@ pub fn vibrance_properties(document_node: &DocumentNode, node_id: NodeId, _conte
 pub fn channel_mixer_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	// Monochrome
 	let monochrome_index = 1;
-	let monochrome = bool_widget(document_node, node_id, monochrome_index, "Monochrome", true);
+	let monochrome = bool_widget(document_node, node_id, monochrome_index, "Monochrome", CheckboxInput::default(), true);
 	let is_monochrome = if let Some(&TaggedValue::Bool(monochrome_choice)) = &document_node.inputs[monochrome_index].as_value() {
 		monochrome_choice
 	} else {
@@ -1721,7 +1725,7 @@ pub fn rectangle_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 	}
 
 	// Clamped
-	let clamped = bool_widget(document_node, node_id, clamped_index, "Clamped", true);
+	let clamped = bool_widget(document_node, node_id, clamped_index, "Clamped", CheckboxInput::default(), true);
 
 	vec![
 		LayoutGroup::Row { widgets: size_x },
@@ -1758,7 +1762,7 @@ pub fn spline_properties(document_node: &DocumentNode, node_id: NodeId, _context
 }
 
 pub fn logic_operator_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let widgets = bool_widget(document_node, node_id, 0, "Operand B", true);
+	let widgets = bool_widget(document_node, node_id, 0, "Operand B", CheckboxInput::default(), true);
 	vec![LayoutGroup::Row { widgets }]
 }
 
@@ -2195,7 +2199,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		LayoutGroup::Row { widgets }.with_tooltip("A negative text prompt can be used to list things like objects or colors to avoid")
 	};
 	let base_image = {
-		let widgets = bool_widget(document_node, node_id, base_img_index, "Adapt Input Image", true);
+		let widgets = bool_widget(document_node, node_id, base_img_index, "Adapt Input Image", CheckboxInput::default(), true);
 		LayoutGroup::Row { widgets }.with_tooltip("Generate an image based upon the bitmap data plugged into this node")
 	};
 	let image_creativity = {
@@ -2286,7 +2290,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	// }
 
 	let improve_faces = {
-		let widgets = bool_widget(document_node, node_id, faces_index, "Improve Faces", true);
+		let widgets = bool_widget(document_node, node_id, faces_index, "Improve Faces", CheckboxInput::default(), true);
 		LayoutGroup::Row { widgets }.with_tooltip(
 			"Postprocess human (or human-like) faces to look subtly less distorted.\n\
 			\n\
@@ -2294,7 +2298,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		)
 	};
 	let tiling = {
-		let widgets = bool_widget(document_node, node_id, tiling_index, "Tiling", true);
+		let widgets = bool_widget(document_node, node_id, tiling_index, "Tiling", CheckboxInput::default(), true);
 		LayoutGroup::Row { widgets }.with_tooltip("Generate the image so its edges loop seamlessly to make repeatable patterns or textures")
 	};
 	layout.extend_from_slice(&[improve_faces, tiling]);
@@ -2413,12 +2417,20 @@ pub fn boolean_operation_properties(document_node: &DocumentNode, node_id: NodeI
 }
 
 pub fn copy_to_points_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let instance = vector_widget(document_node, node_id, 1, "Instance", true);
+	let instance_index = 1;
+	let random_scale_min_index = 2;
+	let random_scale_max_index = 3;
+	let random_scale_bias_index = 4;
+	let random_scale_seed_index = 5;
+	let random_rotation_index = 6;
+	let random_rotation_seed_index = 7;
+
+	let instance = vector_widget(document_node, node_id, instance_index, "Instance", true);
 
 	let random_scale_min = number_widget(
 		document_node,
 		node_id,
-		2,
+		random_scale_min_index,
 		"Random Scale Min",
 		NumberInput::default().min(0.).mode_range().range_min(Some(0.)).range_max(Some(2.)).unit("x"),
 		true,
@@ -2426,7 +2438,7 @@ pub fn copy_to_points_properties(document_node: &DocumentNode, node_id: NodeId, 
 	let random_scale_max = number_widget(
 		document_node,
 		node_id,
-		3,
+		random_scale_max_index,
 		"Random Scale Max",
 		NumberInput::default().min(0.).mode_range().range_min(Some(0.)).range_max(Some(2.)).unit("x"),
 		true,
@@ -2434,13 +2446,22 @@ pub fn copy_to_points_properties(document_node: &DocumentNode, node_id: NodeId, 
 	let random_scale_bias = number_widget(
 		document_node,
 		node_id,
-		4,
+		random_scale_bias_index,
 		"Random Scale Bias",
 		NumberInput::default().mode_range().range_min(Some(-50.)).range_max(Some(50.)),
 		true,
 	);
+	let random_scale_seed = number_widget(document_node, node_id, random_scale_seed_index, "Random Scale Seed", NumberInput::default().int().min(0.), true);
 
-	let random_rotation = number_widget(document_node, node_id, 5, "Random Rotation", NumberInput::default().min(0.).max(360.).mode_range().unit("°"), true);
+	let random_rotation = number_widget(
+		document_node,
+		node_id,
+		random_rotation_index,
+		"Random Rotation",
+		NumberInput::default().min(0.).max(360.).mode_range().unit("°"),
+		true,
+	);
+	let random_rotation_seed = number_widget(document_node, node_id, random_rotation_seed_index, "Random Rotation Seed", NumberInput::default().int().min(0.), true);
 
 	vec![
 		LayoutGroup::Row { widgets: instance }.with_tooltip("Artwork to be copied and placed at each point"),
@@ -2448,7 +2469,9 @@ pub fn copy_to_points_properties(document_node: &DocumentNode, node_id: NodeId, 
 		LayoutGroup::Row { widgets: random_scale_max }.with_tooltip("Maximum range of randomized sizes given to each instance"),
 		LayoutGroup::Row { widgets: random_scale_bias }
 			.with_tooltip("Bias for the probability distribution of randomized sizes (0 is uniform, negatives favor more of small sizes, positives favor more of large sizes)"),
+		LayoutGroup::Row { widgets: random_scale_seed }.with_tooltip("Seed to determine unique variations on all the randomized instance sizes"),
 		LayoutGroup::Row { widgets: random_rotation }.with_tooltip("Range of randomized angles given to each instance, in degrees ranging from furthest clockwise to counterclockwise"),
+		LayoutGroup::Row { widgets: random_rotation_seed }.with_tooltip("Seed to determine unique variations on all the randomized instance angles"),
 	]
 }
 
@@ -2456,7 +2479,7 @@ pub fn sample_points_properties(document_node: &DocumentNode, node_id: NodeId, _
 	let spacing = number_widget(document_node, node_id, 1, "Spacing", NumberInput::default().min(1.).unit(" px"), true);
 	let start_offset = number_widget(document_node, node_id, 2, "Start Offset", NumberInput::default().min(0.).unit(" px"), true);
 	let stop_offset = number_widget(document_node, node_id, 3, "Stop Offset", NumberInput::default().min(0.).unit(" px"), true);
-	let adaptive_spacing = bool_widget(document_node, node_id, 4, "Adaptive Spacing", true);
+	let adaptive_spacing = bool_widget(document_node, node_id, 4, "Adaptive Spacing", CheckboxInput::default(), true);
 
 	vec![
 		LayoutGroup::Row { widgets: spacing }.with_tooltip("Distance between each instance (exact if 'Adaptive Spacing' is disabled, approximate if enabled)"),
@@ -2467,16 +2490,21 @@ pub fn sample_points_properties(document_node: &DocumentNode, node_id: NodeId, _
 }
 
 pub fn poisson_disk_points_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let separation_disk_diameter_index = 1;
+	let seed_index = 2;
+
 	let spacing = number_widget(
 		document_node,
 		node_id,
-		1,
+		separation_disk_diameter_index,
 		"Separation Disk Diameter",
 		NumberInput::default().min(0.01).mode_range().range_min(Some(1.)).range_max(Some(100.)),
 		true,
 	);
 
-	vec![LayoutGroup::Row { widgets: spacing }]
+	let seed = number_widget(document_node, node_id, seed_index, "Seed", NumberInput::default().int().min(0.), true);
+
+	vec![LayoutGroup::Row { widgets: spacing }, LayoutGroup::Row { widgets: seed }]
 }
 
 pub fn morph_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -2622,7 +2650,7 @@ pub fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _conte
 	let location = vec2_widget(document_node, node_id, 2, "Location", "X", "Y", " px", None, add_blank_assist);
 	let dimensions = vec2_widget(document_node, node_id, 3, "Dimensions", "W", "H", " px", None, add_blank_assist);
 	let background = color_widget(document_node, node_id, 4, "Background", ColorButton::default().allow_none(false), true);
-	let clip = bool_widget(document_node, node_id, 5, "Clip", true);
+	let clip = bool_widget(document_node, node_id, 5, "Clip", CheckboxInput::default(), true);
 
 	let clip_row = LayoutGroup::Row { widgets: clip };
 

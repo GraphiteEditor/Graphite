@@ -3521,7 +3521,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Vector: Style",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::vector::AssignColorsNode<_, _, _, _, _, _>"),
+					implementation: DocumentNodeImplementation::proto("graphene_core::vector::AssignColorsNode<_, _, _, _, _, _, _>"),
 					inputs: vec![
 						NodeInput::value(TaggedValue::GraphicGroup(graphene_core::GraphicGroup::default()), true),
 						NodeInput::value(TaggedValue::Bool(true), false),
@@ -3529,6 +3529,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::GradientStops(vector::style::GradientStops::default()), false),
 						NodeInput::value(TaggedValue::Bool(false), false),
 						NodeInput::value(TaggedValue::Bool(false), false),
+						NodeInput::value(TaggedValue::U32(0), false),
 						NodeInput::value(TaggedValue::U32(0), false),
 					],
 					..Default::default()
@@ -3541,6 +3542,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						"Gradient".to_string(),
 						"Reverse".to_string(),
 						"Randomize".to_string(),
+						"Seed".to_string(),
 						"Repeat Every".to_string(),
 					],
 					output_names: vec!["Vector Group".to_string()],
@@ -3745,14 +3747,16 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					// TODO: Wrap this implementation with a document node that has a cache node so the output is cached?
-					implementation: DocumentNodeImplementation::proto("graphene_core::vector::CopyToPoints<_, _, _, _, _, _>"),
+					implementation: DocumentNodeImplementation::proto("graphene_core::vector::CopyToPoints<_, _, _, _, _, _, _, _>"),
 					inputs: vec![
 						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 						NodeInput::value(TaggedValue::F64(1.), false),
 						NodeInput::value(TaggedValue::F64(1.), false),
 						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::U32(0), false),
 						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::U32(0), false),
 					],
 					manual_composition: Some(concrete!(Footprint)),
 					..Default::default()
@@ -3764,7 +3768,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						"Random Scale Min".to_string(),
 						"Random Scale Max".to_string(),
 						"Random Scale Bias".to_string(),
+						"Random Scale Seed".to_string(),
 						"Random Rotation".to_string(),
+						"Random Rotation Seed".to_string(),
 					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
@@ -3876,8 +3882,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(graphene_core::vector::VectorData), 0), NodeInput::network(concrete!(f64), 1)],
-								implementation: DocumentNodeImplementation::proto("graphene_core::vector::PoissonDiskPoints<_>"),
+								inputs: vec![
+									NodeInput::network(concrete!(graphene_core::vector::VectorData), 0),
+									NodeInput::network(concrete!(f64), 1),
+									NodeInput::network(concrete!(u32), 2),
+								],
+								implementation: DocumentNodeImplementation::proto("graphene_core::vector::PoissonDiskPoints<_, _>"),
 								..Default::default()
 							},
 							DocumentNode {
@@ -3896,6 +3906,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					inputs: vec![
 						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 						NodeInput::value(TaggedValue::F64(10.), false),
+						NodeInput::value(TaggedValue::U32(0), false),
 					],
 					..Default::default()
 				},
@@ -3926,7 +3937,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 						..Default::default()
 					}),
-					input_names: vec!["Vector Data".to_string(), "Separation Disk Diameter".to_string()],
+					input_names: vec!["Vector Data".to_string(), "Separation Disk Diameter".to_string(), "Seed".to_string()],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
