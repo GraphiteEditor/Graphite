@@ -57,8 +57,28 @@
 
 // ▛ TAGLINE ▜
 #tagline {
+	h1 {
+		span {
+		position: relative;
+
+		&::after {
+			content: "";
+			pointer-events: none;
+			position: absolute;
+			left: 0;
+			right: 0;
+			top: 100%;
+			// Dimensions: 480x40
+			height: 100%;
+			margin-top: -0.2em;
+			background: url("https://static.graphite.rs/textures/text-sketch-underline.png");
+			background-repeat: no-repeat;
+			background-size: contain;
+		}
+	}}
+	
 	p {
-		font-size: calc(1rem * 10 / 9);
+		font-size: 1.2rem;
 
 		@media screen and (max-width: 1400px) {
 			max-width: unset;
@@ -131,15 +151,20 @@
 // ▙ SCREENSHOTS ▟
 
 // ▛ TODAY AND TOMORROW ▜
+#today-and-tomorrow h1 span {
+	background: var(--color-crimson);
+	white-space: nowrap;
+	color: white;
+	font-size: 1rem;
+	line-height: 1.2;
+	padding: 0.25em 0.5em;
+	vertical-align: middle;
+}
 // ▙ TODAY AND TOMORROW ▟
 
 // ▛ DISCIPLINES ▜
-#disciplines .block {
-	align-items: center;
-
-	.feature-icons .feature-icon {
-		margin-top: 40px;
-	}
+#disciplines .block .feature-icons .feature-icon {
+	margin-top: 40px;
 }
 // ▙ DISCIPLINES ▟
 
@@ -301,21 +326,67 @@
 }
 // ▙ NEWSLETTER ▟
 
-// ▛ JUMP RIGHT IN ▜
-// #jump-right-in {
-// 	max-width: 1000px;
-
-// 	.block {
-// 		align-items: center;
-// 	}
-// }
-// ▙ JUMP RIGHT IN ▟
-
 // ▛ PROCEDURALISM ▜
-#proceduralism .block,
-#proceduralism-demo .block,
-#proceduralism-features .block {
-	align-items: center;
+#proceduralism-red-dress .diptych,
+#proceduralism-leaves .diptych {
+	overflow: hidden; // Clip off a 1px overflow beneath the video which appears at some screen widths
+	align-items: stretch;
+	justify-content: center;
+	gap: 0;
+	--video-width: calc(540 * var(--variable-px));
+
+	@media screen and (max-width: 1260px) {
+		--video-width: calc(480 * var(--variable-px));
+	}
+
+	@media screen and (max-width: 1200px) {
+		--video-width: calc(440 * var(--variable-px));
+	}
+
+	@media screen and (max-width: 1160px) {
+		--video-width: calc(400 * var(--variable-px));
+	}
+
+	@media screen and (max-width: 640px) {
+		--video-width: 100%;
+	}
+
+	a {
+		color: var(--color-mustard);
+	}
+
+	.video-background {
+		flex: 1 0 var(--video-width);
+		justify-content: center;
+
+		&,
+		video {
+			max-width: var(--video-width);
+		}
+
+		&::after {
+			content: none;
+		}
+	}
+
+	.description {
+		margin: calc(80 * var(--variable-px));
+	}
+}
+
+#proceduralism-red-dress .diptych {
+	background: var(--color-black);
+	color: var(--color-fog);
+
+}
+
+#proceduralism-leaves {
+	margin-top: calc(40 * var(--variable-px));
+	
+	.diptych {
+		background: var(--color-crimson);
+		color: var(--color-fog);
+	}
 }
 // ▙ PROCEDURALISM ▟
 
@@ -328,14 +399,6 @@
 	}
 }
 // ▙ DONATE ▟
-
-// ▛ VECTOR ART ▜
-#vector-art {
-	.block {
-		align-items: center;
-	}
-}
-// ▙ VECTOR ART ▟
 
 // ▛ IMAGINATE ▜
 // #imaginate {
@@ -408,10 +471,24 @@
 // ▙ IMAGINATE ▟
 
 // ▛ DEMO VIDEO ▜
-#demo-video {
-	max-width: 1000px;
-}
+// #demo-video {
+// 	max-width: 1000px;
+// }
 // ▙ DEMO VIDEO ▟
+
+// ▛ DIVE IN ▜
+#dive-in {
+	.video-container {
+		margin: calc(40 * var(--variable-px)) auto;
+		width: 100%;
+		max-width: 800px;
+
+		+ p {
+			margin-top: 0;
+		}
+	}
+}
+// ▙ DIVE IN ▟
 
 // ▛ RECENT NEWS ▜
 #recent-news {

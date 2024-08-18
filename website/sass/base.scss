@@ -372,7 +372,7 @@ body > .page {
 // =====================
 
 :is(h1, h2, h3, h4, article > :first-child) ~ :is(p, ul, ol, ol li p, img, a:has(> img:only-child)),
-:is(h1, p) ~ .feature-icons,
+:is(h1, h2, h3, h4, p) ~ .feature-icons,
 p ~ :is(h1, h2, h3, h4, details summary, blockquote, .image-comparison, .video-background, .video-embed),
 .video-embed + :is(p, .link, .button),
 p + p > .button,
@@ -759,12 +759,25 @@ hr,
 	}
 }
 
-.info-box,
+.feature-box-narrow,
 .feature-box-outer {
 	padding: calc(80 * var(--variable-px));
 	background-image: url("https://static.graphite.rs/textures/noise.png");
 	background-blend-mode: overlay;
 	background-position: center;
+}
+
+:where(h1, h2, h3, h4, p) + .feature-box-narrow {
+	margin-top: calc(40 * var(--variable-px));
+}
+
+.feature-box-full-image {
+	width: calc(100% + 2 * 80 * var(--variable-px));
+	height: auto;
+	margin-left: calc(-80 * var(--variable-px));
+	margin-top: calc(-80 * var(--variable-px));
+	margin-bottom: calc(40 * var(--variable-px));
+	display: block;
 }
 
 .feature-box-outer {
@@ -784,22 +797,26 @@ hr,
 	.feature-box-inner {
 		max-width: var(--max-width);
 		margin: 0 auto;
+	}
+}
 
-		h1.feature-box-header {
-			font-family: "Inter", sans-serif;
-			line-height: 1.5;
-			font-size: var(--font-size-link);
-			font-weight: 800;
-			text-transform: uppercase;
+h1.feature-box-header.feature-box-header {
+	font-family: "Inter", sans-serif;
+	line-height: 1.5;
+	font-size: var(--font-size-link);
+	font-weight: 800;
+	text-transform: uppercase;
 
-			span {
-				white-space: pre;
-			}
+	span {
+		white-space: pre;
+	}
 
-			~ hr {
-				margin-top: 20px;
-				margin-bottom: 40px;
-			}
+	~ hr {
+		margin-top: 20px;
+		margin-bottom: 40px;
+
+		+ p {
+			margin-top: 0;
 		}
 	}
 }
@@ -893,18 +910,6 @@ hr,
 .arrow::after {
 	content: " »";
 	font-family: "Inter", sans-serif;
-}
-
-.status-flag {
-	background: var(--color-crimson);
-	white-space: nowrap;
-	color: white;
-	font-size: 1rem;
-	padding: 0.25em 0.5em;
-	vertical-align: middle;
-	font-family: "Bona Nova", Palatino, serif;
-	line-height: 1.2;
-	font-weight: 500;
 }
 
 .demo-artwork {
@@ -1142,8 +1147,9 @@ hr,
 
 			&:first-child,
 			&:last-child {
+				--fade-factor: Min(calc(var(--over-slide-factor, 0) / 1.5 + 0.5), 1);
 				// Fade to white (combining invert and brightness, see <https://stackoverflow.com/a/78478074/775283>) and desaturate
-				filter: Invert(calc(var(--over-slide-factor) / 2)) Brightness(calc(1 + var(--over-slide-factor))) Grayscale(var(--over-slide-factor));
+				filter: Invert(calc(var(--fade-factor) / 2)) Brightness(calc(1 + var(--fade-factor))) Grayscale(var(--fade-factor));
 			}
 
 			&:first-child {

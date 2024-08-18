@@ -19,10 +19,10 @@ css = ["volunteer.css"]
 
 ## Code contributions
 
-<div class="info-box">
+<div class="feature-box-narrow">
 
 <a href="/volunteer/guide">
-	<img src="https://static.graphite.rs/content/volunteer/code-contributions.avif" style="aspect-ratio: 3/1 auto; background: var(--color-seaside)" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Flavor graphic depicting a library of knowledge in a digital realm" />
+	<img src="https://static.graphite.rs/content/volunteer/code-contributions.avif" class="feature-box-full-image" style="aspect-ratio: 3/1 auto; background: var(--color-seaside)" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Flavor graphic depicting a library of knowledge in a digital realm" />
 </a>
 
 **Get started by reading the contributor guide:**
@@ -33,14 +33,14 @@ css = ["volunteer.css"]
 
 <div class="diptych code-contributions">
 
-<div class="block info-box">
+<div class="block feature-box-narrow">
 
 ### EDITOR TEAM
 
 The Graphite editor is built much like a game engine, split across user interface application tooling and a renderer with nodes implementing an assortment of graphics algorithms.
 
 </div>
-<div class="block info-box">
+<div class="block feature-box-narrow">
 
 ### GRAPHENE TEAM
 
@@ -56,10 +56,9 @@ The Graphite editor is built much like a game engine, split across user interfac
 
 ## Creative contributions
 
-<div class="info-box">
+<div class="feature-box-narrow">
 
-<a href="https://discord.graphite.rs">
-	<img src="https://static.graphite.rs/content/volunteer/creative-contributions.avif" style="aspect-ratio: 3/1 auto; background: var(--color-lemon)" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Flavor graphic depicting a fountain pen, ink pots, and a book" />
+<img src="https://static.graphite.rs/content/volunteer/creative-contributions.avif" class="feature-box-full-image" style="aspect-ratio: 3/1 auto; background: var(--color-lemon)" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Flavor graphic depicting a fountain pen, ink pots, and a book" />
 </a>
 
 **Ask how to get started by reaching out to a [core team](/about#core-team) member on Discord:**
@@ -70,14 +69,14 @@ The Graphite editor is built much like a game engine, split across user interfac
 
 <div class="diptych creative-contributions">
 
-<div class="block info-box">
+<div class="block feature-box-narrow">
 
 ### ART TEAM
 
 Use your artistic talents to conceptualize and produce high-quality open art projects published by the Graphite project to stress-test and showcase the editor's capabilities.
 
 </div>
-<div class="block info-box">
+<div class="block feature-box-narrow">
 
 ### MARKETING TEAM
 
@@ -93,11 +92,9 @@ Help write, edit, and design content for this website, social media, newsletters
 
 ## User contributions
 
-<div class="info-box">
+<div class="feature-box-narrow">
 
-<a href="/volunteer/guide">
-	<img src="https://files.keavon.com/-/KosherGregariousBluefish/qa_testing.png" style="aspect-ratio: 3/1 auto; background: var(--color-lilac)" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Flavor graphic depicting a library of knowledge in a digital realm" />
-</a>
+<img src="https://static.graphite.rs/content/volunteer/user-contributions.avif" class="feature-box-full-image" style="aspect-ratio: 3/1 auto; background: var(--color-lilac)" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Flavor graphic depicting a magnifying glass on the search for a software bug" />
 
 **Ask how to get started by reaching out to a [core team](/about#core-team) member on Discord:**
 
@@ -107,14 +104,14 @@ Help write, edit, and design content for this website, social media, newsletters
 
 <div class="diptych user-contributions">
 
-<div class="block info-box">
+<div class="block feature-box-narrow">
 
 ### QA TEAM
 
 Get familiar with the ins-and-outs of the editor and respond actively to developer requests on a recurring basis to test out new features and find bugs and breakages.
 
 </div>
-<div class="block info-box">
+<div class="block feature-box-narrow">
 
 ### NODES TEAM
 
