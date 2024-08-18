@@ -41,7 +41,7 @@
 	{%- endfor %}
 	<script src="/js/text-justification.js"></script>
 	<script src="/js/navbar.js"></script>
-	{{- get_env(name = "INDEX_HTML_HEAD_INCLUSION", default = "") }}
+	{{- get_env(name = "INDEX_HTML_HEAD_INCLUSION", default = "") | safe }}
 	<style>
 	.balance-text {
 		visibility: hidden;
