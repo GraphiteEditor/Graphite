@@ -332,6 +332,14 @@ where
 	fn eval(&'i self, input: I) -> Self::Output {
 		self.0.eval(input)
 	}
+
+	fn reset(&self) {
+		self.0.reset();
+	}
+
+	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
+		self.0.serialize()
+	}
 }
 impl<'i, N: for<'a> Node<'a, I>, I: 'i> TypeNode<N, I, <N as Node<'i, I>>::Output> {
 	pub fn new(node: N) -> Self {

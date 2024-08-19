@@ -160,14 +160,17 @@ where
 	N: Node<'i, T, Output: WasmNotSend> + WasmNotSend,
 {
 	type Output = DynFuture<'i, N::Output>;
+	#[inline(always)]
 	fn eval(&'i self, input: T) -> Self::Output {
 		let result = self.node.eval(input);
 		Box::pin(async move { result })
 	}
+	#[inline(always)]
 	fn reset(&self) {
 		self.node.reset();
 	}
 
+	#[inline(always)]
 	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
 		self.node.serialize()
 	}
@@ -231,37 +234,38 @@ where
 	}
 }
 
+async fn construct_vector2<'n, IY: Into<f64> + Send + 'n, IC: Into<u64> + Send + 'n>(_: (), x: f64, y: IY, c: impl Node<'n, (), Output: core::future::Future<Output = IC>>) -> glam::DVec2 {
+	glam::DVec2::new(x, y.into())
+}
 mod construct_vector2 {
 	use super::*;
-	use crate::registry::{DowncastBothNode, DynAnyNode, FieldMetadata, FutureWrapperNode, NodeMetadata, NODE_METADATA, NODE_REGISTRY};
-	use crate::{concrete, fn_type, Node, NodeIOTypes, ProtoNodeIdentifier};
-	use core::future::Future;
+	use crate as gcore;
 	use ctor::ctor;
+	use gcore::ops::TypeNode;
+	use gcore::registry::{DowncastBothNode, DynAnyNode, DynFuture, FieldMetadata, NodeMetadata, TypeErasedBox, NODE_METADATA, NODE_REGISTRY};
+	use gcore::value::ClonedNode;
+	use gcore::{concrete, fn_type, Node, NodeIOTypes, ProtoNodeIdentifier, WasmNotSync};
 	pub struct ConstructVector2<Node0, Node1, Node2> {
 		x: Node0,
 		y: Node1,
 		c: Node2,
 	}
-	#[allow(non_snake_case)]
-	async fn construct_vector2<'n, IY: Into<f64>>(_: (), x: f64, y: IY, c: impl Node<'n, (), Output: Future<Output = u32>>) -> glam::DVec2 {
-		glam::DVec2::new(x, y.into())
-	}
-	impl<'n, IY: Into<f64>, Node0, Node1, Node2> Node<'n, ()> for ConstructVector2<Node0, Node1, Node2>
+	#[automatically_derived]
+	impl<'n, IY: Into<f64> + Send + 'n, IC: Into<u64> + Send + 'n, Node0, Node1, Node2> Node<'n, ()> for ConstructVector2<Node0, Node1, Node2>
 	where
 		Node0: Node<'n, (), Output = f64>,
 		Node1: Node<'n, (), Output = IY>,
-		Node2: Node<'n, (), Output: Future<Output = u32>>,
+		Node2: Node<'n, (), Output: core::future::Future<Output = IC>> + WasmNotSync + 'n,
 	{
-		type Output = Pin<Box<dyn Future<Output = glam::DVec2> + 'n>>;
+		type Output = DynFuture<'n, glam::DVec2>;
 		fn eval(&'n self, input: ()) -> Self::Output {
-			Box::pin(async move {
-				let x = self.x.eval(());
-				let y = self.y.eval(());
-				let c = &self.c;
-				construct_vector2(input, x, y, c).await
-			})
+			let x = self.x.eval(());
+			let y = self.y.eval(());
+			let c = &self.c;
+			Box::pin(construct_vector2(input, x, y, c))
 		}
 	}
+	#[automatically_derived]
 	impl<'n, Node0, Node1, Node2> ConstructVector2<Node0, Node1, Node2> {
 		pub fn new(x: Node0, y: Node1, c: Node2) -> Self {
 			Self { x, y, c }
@@ -277,28 +281,40 @@ mod construct_vector2 {
 					|args| {
 						Box::pin(async move {
 							let x: DowncastBothNode<(), f64> = DowncastBothNode::new(args[0usize].clone());
+							let value = x.eval(()).await;
+							let x = ClonedNode::new(value);
+							let x: TypeNode<_, (), f64> = TypeNode::new(x);
 							let y: DowncastBothNode<(), f32> = DowncastBothNode::new(args[1usize].clone());
+							let value = y.eval(()).await;
+							let y = ClonedNode::new(value);
+							let y: TypeNode<_, (), f32> = TypeNode::new(y);
 							let c: DowncastBothNode<(), u32> = DowncastBothNode::new(args[2usize].clone());
 							let node = ConstructVector2::new(x, y, c);
 							let any: DynAnyNode<(), _, _> = DynAnyNode::new(node);
-							any.into_type_erased()
+							Box::new(any) as TypeErasedBox<'_>
 						})
 					},
-					NodeIOTypes::new(concrete!(()), concrete!(glam::DVec2), vec![fn_type!((), f64), fn_type!((), f32), fn_type!((), u32),],)
-				);
+					NodeIOTypes::new(concrete!(()), concrete!(glam::DVec2), vec![fn_type!((), f64), fn_type!((), f32), fn_type!((), u32)]),
+				),
 				(
 					|args| {
 						Box::pin(async move {
 							let x: DowncastBothNode<(), f64> = DowncastBothNode::new(args[0usize].clone());
+							let value = x.eval(()).await;
+							let x = ClonedNode::new(value);
+							let x: TypeNode<_, (), f64> = TypeNode::new(x);
 							let y: DowncastBothNode<(), f64> = DowncastBothNode::new(args[1usize].clone());
+							let value = y.eval(()).await;
+							let y = ClonedNode::new(value);
+							let y: TypeNode<_, (), f64> = TypeNode::new(y);
 							let c: DowncastBothNode<(), u64> = DowncastBothNode::new(args[2usize].clone());
 							let node = ConstructVector2::new(x, y, c);
 							let any: DynAnyNode<(), _, _> = DynAnyNode::new(node);
-							any.into_type_erased()
+							Box::new(any) as TypeErasedBox<'_>
 						})
 					},
-					NodeIOTypes::new(concrete!(()), concrete!(glam::DVec2), vec![fn_type!((), f64), fn_type!((), f64), fn_type!((), u64),],)
-				)
+					NodeIOTypes::new(concrete!(()), concrete!(glam::DVec2), vec![fn_type!((), f64), fn_type!((), f64), fn_type!((), u64)]),
+				),
 			],
 		);
 	}
