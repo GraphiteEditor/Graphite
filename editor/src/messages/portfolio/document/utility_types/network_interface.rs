@@ -3,7 +3,7 @@ use super::misc::PTZ;
 use super::nodes::SelectedNodes;
 use crate::consts::{EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP};
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
-use crate::messages::portfolio::document::node_graph::utility_types::{FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
+use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
 
 use bezier_rs::Subpath;
 use graph_craft::document::{value::TaggedValue, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
@@ -802,13 +802,10 @@ impl NodeNetworkInterface {
 		node_height
 	}
 
+	// All chain nodes and branches from the chain which are sole dependents of the layer
 	pub fn upstream_nodes_below_layer(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> HashSet<NodeId> {
 		let Some(layer_click_target) = self.node_click_targets(node_id, network_path) else {
 			log::error!("Could not load layer_click_target");
-			return HashSet::new();
-		};
-		let Some((left_bound, right_bound, top_bound)) = layer_click_target.node_click_target.bounding_box().map(|bbox| (bbox[0].x, bbox[1].x, bbox[0].y)) else {
-			log::error!("Could not get left or right bound for layer click target");
 			return HashSet::new();
 		};
 
@@ -1491,13 +1488,69 @@ impl NodeNetworkInterface {
 // Public mutable getters for data that involves transient network metadata
 // Mutable methods never recalculate the transient metadata, they only unload it. Loading metadata should only be done by the getter.
 impl NodeNetworkInterface {
-	/// Mutably get the selected nodes for the network at the network_path
+	/// Mutably get the selected nodes for the network at the network_path. Every time they are mutated, the transient metadata for the top of the stack gets unloaded.
 	pub fn selected_nodes_mut(&mut self, network_path: &[NodeId]) -> Option<&mut SelectedNodes> {
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in selected_nodes");
 			return None;
 		};
+		network_metadata.transient_metadata.stack_dependents.unload();
 		Some(&mut network_metadata.transient_metadata.selected_nodes)
+	}
+
+	fn stack_dependents(&mut self, network_path: &[NodeId]) -> Option<&Vec<(NodeId, LayerOwner)>> {
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+			log::error!("Could not get nested network_metadata in stack_dependents");
+			return None;
+		};
+
+		if !network_metadata.transient_metadata.stack_dependents.is_loaded() {
+			self.load_stack_dependents(network_path);
+		}
+		Some(&network_metadata.transient_metadata.stack_dependents)
+	}
+
+	// This function always has to be in sync with the selected nodes.
+	fn load_stack_dependents(&mut self, network_path: &[NodeId]) {
+		let Some(selected_nodes) = self.selected_nodes(network_path) else {
+			log::error!("Could not get selected nodes in load_stack_dependents");
+			return;
+		};
+
+		let mut selected_layers = selected_nodes.selected_nodes().filter(|node_id| self.is_layer(node_id, network_path)).cloned().collect::<HashSet<_>>();
+
+		// Deselect all layers that are upstream of other selected layers
+		let removed_layers = Vec::new();
+		for layer in selected_layers.clone() {
+			if removed_layers.contains(&layer) {
+				continue;
+			}
+			self.upstream_flow_back_from_nodes(vec![layer], network_path, FlowType::UpstreamFlow).skip(1).any(|upstream_node| {
+				if selected_layers.remove(&upstream_node) {
+					removed_layers.push(upstream_node);
+				}
+			});
+		}
+
+		// Get a unique list of the top of each stack for each layer
+		// Add all sole dependents to the stack dependents
+		// map layers to their sole dependents, which is stored in LayerPersistentMetadata owned_nodes
+	}
+
+	/// Resets all the offsets for nodes with no LayerOwner when the drag ends
+	pub fn unload_stack_dependents_y_offset(&mut self, network_path: &[NodeId]) {
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+			log::error!("Could not get nested network_metadata in unload_stack_dependents_y_offset");
+			return;
+		};
+
+		if let TransientMetadata::Loaded(stack_dependents) = &mut network_metadata.transient_metadata.stack_dependents {
+			for (_, layer_owner) in stack_dependents {
+				if let LayerOwner::None(offset) = layer_owner {
+					*offset = 0;
+				}
+			}
+		}
 	}
 
 	pub fn import_export_ports(&mut self, network_path: &[NodeId]) -> Option<&Ports> {
@@ -1821,19 +1874,19 @@ impl NodeNetworkInterface {
 
 	pub fn load_node_click_targets(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
 		let Some(node_position) = self.position_from_downstream_node(node_id, network_path) else {
-			log::error!("Could not get node position in new DocumentNodeTransientMetadata for node {node_id}");
+			log::error!("Could not get node position in load_node_click_targets for node {node_id}");
 			return;
 		};
 		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
-			log::error!("Could not get nested node_metadata in new DocumentNodeTransientMetadata");
+			log::error!("Could not get nested node_metadata in load_node_click_targets");
 			return;
 		};
 		let Some(network) = self.network(network_path) else {
-			log::error!("Could not get network in new DocumentNodeTransientMetadata");
+			log::error!("Could not get network in load_node_click_targets");
 			return;
 		};
 		let Some(document_node) = network.nodes.get(node_id) else {
-			log::error!("Could not get document node in new DocumentNodeTransientMetadata");
+			log::error!("Could not get document node in load_node_click_targets");
 			return;
 		};
 
@@ -1924,7 +1977,7 @@ impl NodeNetworkInterface {
 	/// Get the top left position in node graph coordinates for a node by recursively iterating downstream through cached positions, which means the iteration can be broken once a known position is reached.
 	pub fn position_from_downstream_node(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<IVec2> {
 		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
-			log::error!("Could not get nested node_metadata in new DocumentNodeTransientMetadata");
+			log::error!("Could not get nested node_metadata in position_from_downstream_node");
 			return None;
 		};
 		match &node_metadata.persistent_metadata.node_type_metadata.clone() {
@@ -3637,21 +3690,47 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub fn shift_selected_nodes(
-		&mut self,
-		mut node_ids: Vec<NodeId>,
-		shift: IVec2,
-		move_upstream: bool,
-		upstream_nodes_below_layers: &mut HashMap<NodeId, HashSet<NodeId>>,
-		layer_offsets: &mut HashMap<NodeId, i32>,
-		network_path: &[NodeId],
-	) {
-		log::debug!("upstream_nodes_below_layers: {upstream_nodes_below_layers:?}");
-		if move_upstream {
-			for node_id in self.upstream_flow_back_from_nodes(node_ids.clone(), network_path, self::FlowType::UpstreamFlow).collect::<Vec<_>>() {
-				if !node_ids.contains(&node_id) {
-					node_ids.push(node_id);
+	/// Get the nodes to shift based on a group of selected nodes, and whether or not all upstream nodes are being moved
+	pub fn nodes_to_shift(&self, node_ids: &[NodeId], move_upstream: bool, network_path: &[NodeId]) -> Vec<NodeId> {
+		let mut nodes_to_shift = Vec::new();
+		nodes_to_shift
+	}
+
+	// Used when moving layer by the layer panel, does not run any pushing logic. Moves all sole dependents of the layer as well
+	// Ensure that the layer is absolute position
+	pub fn shift_absolute_layer_position(&mut self, layer: &NodeId, shift: IVec2, network_path: &[NodeId]) {
+		let mut nodes_to_shift = self.upstream_nodes_below_layer(&[layer], network_path);
+		nodes_to_shift.push(*layer);
+
+		for node_id in nodes_to_shift {
+			let Some(node_to_shift_metadata) = self.node_metadata(&node_id, network_path) else {
+				log::error!("Could not get node metadata for node {node_id} in set_layer_position");
+				continue;
+			};
+			match &mut node_to_shift_metadata.persistent_metadata.node_type_metadata {
+				NodeTypePersistentMetadata::Layer(layer_metadata) => {
+					if let LayerPosition::Absolute(layer_position) = &mut layer_metadata.position {
+						*layer_position += shift;
+					}
 				}
+				NodeTypePersistentMetadata::Node(node_metadata) => {
+					if let NodePosition::Absolute(node_position) = &mut node_metadata.position {
+						node_position += shift;
+					}
+				}
+			}
+		}
+	}
+
+	pub fn shift_selected_nodes(&mut self, direction: Direction, shift_upstream: bool, network_path: &[NodeId]) {
+		let Some(mut node_ids) = self.selected_nodes(network_path).map(|selected_nodes| selected_nodes.selected_nodes().cloned().collect::<HashSet<_>>()) else {
+			log::error!("Could not get selected nodes in shift_selected_nodes");
+			return;
+		};
+
+		if shift_upstream {
+			for node_id in self.upstream_flow_back_from_nodes(node_ids.clone(), network_path, self::FlowType::UpstreamFlow) {
+				node_ids.insert(node_id);
 			}
 		}
 
@@ -3880,14 +3959,14 @@ impl NodeNetworkInterface {
 									.collect::<Vec<_>>();
 
 								// Shift the node which collides up/down and break
-								self.shift_selected_nodes(
-									collision_group,
-									IVec2::new(0, current_node_y_shift.signum()),
-									false,
-									upstream_nodes_below_layers,
-									layer_offsets,
-									network_path,
-								);
+								// self.move_selected_nodes(
+								// 	collision_group,
+								// 	IVec2::new(0, current_node_y_shift.signum()),
+								// 	false,
+								// 	upstream_nodes_below_layers,
+								// 	layer_offsets,
+								// 	network_path,
+								// );
 
 								// for collision_layer in nodes_to_check_collision.iter().filter(|node_id| self.is_layer(node_id, network_path)) {
 								// 	if let Some(nodes_below_collision) = upstream_nodes_below_layers.get_mut(collision_layer) {
@@ -4100,7 +4179,7 @@ impl NodeNetworkInterface {
 
 					let final_layer_position = after_move_post_layer_position + IVec2::new(-8, 3);
 					let shift = final_layer_position - previous_layer_position;
-					self.shift_selected_nodes(vec![layer.to_node()], shift, true, &mut HashMap::new(), &mut HashMap::new(), network_path);
+					self.shift_absolute_layer_position(&layer.to_node(), shift, network_path);
 				}
 				// Move to the top of a stack
 				NodeInput::Node { node_id, .. } => {
@@ -4109,16 +4188,9 @@ impl NodeNetworkInterface {
 						return;
 					};
 					let shift = top_of_stack_position - previous_layer_position;
-					self.shift_selected_nodes(vec![layer.to_node()], shift, true, &mut HashMap::new(), &mut HashMap::new(), network_path);
-					self.unload_upstream_node_click_targets(vec![layer.to_node()], network_path);
-					self.shift_selected_nodes(
-						vec![node_id],
-						IVec2::new(0, layer_to_move_height as i32 + 3),
-						true,
-						&mut HashMap::new(),
-						&mut HashMap::new(),
-						network_path,
-					);
+					self.shift_absolute_layer_position(&layer.to_node(), shift, network_path);
+					// self.unload_upstream_node_click_targets(&layer.to_node(), network_path);
+					self.shift_absolute_layer_position(&node_id, IVec2::new(0, layer_to_move_height as i32 + 3), network_path);
 					self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
 					self.set_stack_position_calculated_offset(&node_id, &layer.to_node(), network_path);
 				}
@@ -4132,7 +4204,7 @@ impl NodeNetworkInterface {
 				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) => {
 					// TODO: Calculate height of bottom layer by getting height of upstream nodes instead of setting to 3
 					let offset = after_move_post_layer_position - previous_layer_position + IVec2::new(0, 3);
-					self.shift_selected_nodes(vec![layer.to_node()], offset, true, &mut HashMap::new(), &mut HashMap::new(), network_path);
+					self.shift_absolute_layer_position(&layer.to_node(), offset, network_path);
 					self.create_wire(&OutputConnector::node(layer.to_node(), 0), &post_node, network_path);
 					self.set_stack_position_calculated_offset(&layer.to_node(), &post_node.node_id().unwrap(), network_path);
 				}
@@ -4151,10 +4223,17 @@ impl NodeNetworkInterface {
 						log::error!("Could not get vertical offset 3 in move_layer_to_stack");
 						return;
 					};
+
+					let Some(upstream_node_position) = self.position(&upstream_node_id, network_path) else {
+						log::error!("Could not get upstream node position in move_layer_to_stack");
+						return;
+					};
+					self.set_absolute_position(&upstream_node_id, upstream_node_position, network_path);
+
 					let offset = after_move_post_layer_position - previous_layer_position + IVec2::new(0, 3 + post_node_height as i32);
-					self.shift_selected_nodes(vec![layer.to_node()], offset, true, &mut HashMap::new(), &mut HashMap::new(), network_path);
+					self.shift_absolute_layer_position(&layer.to_node(), offset, network_path);
 					let upstream_offset = layer_to_move_height as i32 + 3;
-					self.shift_selected_nodes(vec![upstream_node_id], IVec2::new(0, upstream_offset), true, &mut HashMap::new(), &mut HashMap::new(), network_path);
+					self.shift_absolute_layer_position(&upstream_node_id, IVec2::new(0, upstream_offset), network_path);
 
 					self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
 
@@ -4528,6 +4607,9 @@ impl<T> TransientMetadata<T> {
 #[derive(Debug, Default, Clone)]
 pub struct NodeNetworkTransientMetadata {
 	pub selected_nodes: SelectedNodes,
+	/// Sole dependents of the top of the stack of all selected nodes. Used to determine which nodes are checked for collision when shifting.
+	/// The LayerOwner is used to determine whether the collided node should be shifted, or the layer that owns it.
+	pub stack_dependents: TransientMetadata<Vec<(NodeId, LayerOwner)>>,
 	/// Cache for the bounding box around all nodes in node graph space.
 	pub all_nodes_bounding_box: TransientMetadata<[DVec2; 2]>,
 	/// Cache bounding box for all "groups of nodes", which will be used to prevent overlapping nodes
@@ -4538,6 +4620,15 @@ pub struct NodeNetworkTransientMetadata {
 	// pub wire_paths: Vec<WirePath>
 	/// All export connector click targets
 	pub import_export_ports: TransientMetadata<Ports>,
+}
+
+pub struct AbsoluteMetadata {}
+
+pub enum LayerOwner {
+	// Used to get the layer that should be shifted when there is a collision.
+	Layer(NodeId),
+	// The vertical offset of a node from the start of its shift. Should be reset when the drag ends.
+	None(i32),
 }
 
 /// Utility function for providing a default boolean value to serde.
@@ -4647,6 +4738,15 @@ pub struct LayerPersistentMetadata {
 	// preview_click_target: Option<ClickTarget>,
 	/// Stores the position of a layer node, which can either be Absolute or Stack
 	pub position: LayerPosition,
+	/// All nodes that should be moved when the layer is moved.
+	#[serde(skip)]
+	pub owned_nodes: TransientMetadata<HashSet<NodeId>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NodePersistentMetadata {
+	/// Stores the position of a non layer node, which can either be Absolute or Chain
+	position: NodePosition,
 }
 
 /// A layer can either be position as Absolute or in a Stack
@@ -4656,12 +4756,6 @@ pub enum LayerPosition {
 	Absolute(IVec2),
 	// A layer is in a Stack when it feeds into the bottom input of a layer. The Y position stores the vertical distance between the layer and its upstream sibling/parent.
 	Stack(u32),
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct NodePersistentMetadata {
-	/// Stores the position of a non layer node, which can either be Absolute or Chain
-	position: NodePosition,
 }
 
 /// A node can either be position as Absolute or in a Chain

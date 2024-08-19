@@ -181,3 +181,11 @@ pub struct FrontendClickTargets {
 	#[serde(rename = "importExportsBoundingBox")]
 	pub import_exports_bounding_box: String,
 }
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum Direction {
+	Up,
+	Down,
+	Left,
+	Right,
+}

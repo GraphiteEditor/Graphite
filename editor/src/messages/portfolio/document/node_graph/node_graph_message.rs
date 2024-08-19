@@ -8,6 +8,8 @@ use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 
+use super::utility_types::Direction;
+
 #[impl_message(Message, DocumentMessage, NodeGraph)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum NodeGraphMessage {
@@ -115,11 +117,9 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		is_layer: bool,
 	},
-	ShiftNodes {
-		node_ids: Vec<NodeId>,
-		displacement_x: i32,
-		displacement_y: i32,
-		move_upstream: bool,
+	ShiftSelectedNodes {
+		direction: Direction,
+		rubber_band: bool,
 	},
 	TogglePreview {
 		node_id: NodeId,

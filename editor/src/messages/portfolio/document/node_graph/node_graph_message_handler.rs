@@ -4,7 +4,7 @@ use crate::application::generate_uuid;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_types::NodePropertiesContext;
-use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, FrontendGraphDataType};
+use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, NodeTemplate, OutputConnector, Previewing};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
@@ -158,11 +158,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					node_id,
 					node_template: node_template.clone(),
 				});
-				responses.add(NodeGraphMessage::ShiftNodes {
-					node_ids: vec![node_id],
+				responses.add(NodeGraphMessage::MoveNodes {
+					node_id,
 					displacement_x: x,
 					displacement_y: y,
-					move_upstream: false,
 				});
 				// Only auto connect to the dragged wire if the node is being added to the currently opened network
 				if let Some(output_connector_position) = self.wire_in_progress_from_connector {
@@ -519,8 +518,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: updated_selected })
 					}
 
-					self.load_upstream_nodes_below_layers(network_interface, selection_network_path);
-
 					return;
 				}
 
@@ -629,17 +626,30 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						responses.add(DocumentMessage::StartTransaction);
 						self.begin_dragging = false;
 					}
-					let graph_delta = IVec2::new(((point.x - drag_start.start_x) / 24.).round() as i32, ((point.y - drag_start.start_y) / 24.).round() as i32);
-					if drag_start.round_x != graph_delta.x || drag_start.round_y != graph_delta.y {
-						responses.add(NodeGraphMessage::ShiftNodes {
-							node_ids: selected_nodes.selected_nodes().cloned().collect(),
-							displacement_x: graph_delta.x - drag_start.round_x,
-							displacement_y: graph_delta.y - drag_start.round_y,
-							move_upstream: ipp.keyboard.get(shift as usize),
-						});
-						drag_start.round_x = graph_delta.x;
-						drag_start.round_y = graph_delta.y;
+
+					let mut graph_delta = IVec2::new(((point.x - drag_start.start_x) / 24.).round() as i32, ((point.y - drag_start.start_y) / 24.).round() as i32);
+					graph_delta.x -= drag_start.round_x;
+					graph_delta.y -= drag_start.round_y;
+
+					while graph_delta != IVec2::ZERO {
+						log::debug!("Graph delta: {graph_delta}");
+						if graph_delta.x > 0 {
+							responses.add(NodeGraphMessage::ShiftSelectedNodes { direction: Right, rubber_band: true });
+							graph_delta.x -= 1;
+						} else if graph_delta.x < 0 {
+							responses.add(NodeGraphMessage::ShiftSelectedNodes { direction: Left, rubber_band: true });
+							graph_delta.x += 1;
+						}
+						if graph_delta.y > 0 {
+							responses.add(NodeGraphMessage::ShiftSelectedNodes { direction: Down, rubber_band: true });
+							graph_delta.y -= 1;
+						} else if graph_delta.y < 0 {
+							responses.add(NodeGraphMessage::ShiftSelectedNodes { direction: Up, rubber_band: true });
+							graph_delta.y += 1;
+						}
 					}
+					drag_start.round_x = graph_delta.x;
+					drag_start.round_y = graph_delta.y;
 				} else if self.box_selection_start.is_some() {
 					responses.add(NodeGraphMessage::UpdateBoxSelection);
 				}
@@ -712,7 +722,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						});
 						return;
 					}
-				} else if let Some(drag_start) = &self.drag_start {
+				}
+				// End of dragging a node
+				else if let Some(drag_start) = &self.drag_start {
+					// Reset all offsets to end the rubber banding while dragging
+					network_interface.unload_stack_dependents_y_offset(selection_network_path);
+
 					// Only select clicked node if multiple are selected and they were not dragged
 					if let Some(select_if_not_dragged) = self.select_if_not_dragged {
 						if drag_start.start_x == point.x
@@ -1017,20 +1032,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			NodeGraphMessage::SetInput { input_connector, input } => {
 				network_interface.set_input(&input_connector, input, selection_network_path);
 			}
-			NodeGraphMessage::ShiftNodes {
-				node_ids,
-				displacement_x,
-				displacement_y,
-				move_upstream,
-			} => {
-				network_interface.shift_selected_nodes(
-					node_ids,
-					IVec2::new(displacement_x, displacement_y),
-					move_upstream,
-					&mut self.upstream_nodes_below_layers,
-					&mut self.layer_offsets,
-					selection_network_path,
-				);
+			NodeGraphMessage::ShiftSelectedNodes { direction, rubber_band } => {
+				let shift_upstream = ipp.keyboard.get(crate::messages::tool::tool_messages::tool_prelude::Key::Shift as usize);
+				network_interface.shift_selected_nodes(direction, shift_upstream, selection_network_path);
+
+				if !rubber_band {
+					network_interface.unload_stack_dependents_y_offset(selection_network_path);
+				}
 
 				if graph_view_overlay_open {
 					responses.add(NodeGraphMessage::SendGraph);
@@ -1319,27 +1327,6 @@ impl NodeGraphMessageHandler {
 		}
 
 		common
-	}
-
-	pub fn load_upstream_nodes_below_layers(&mut self, network_interface: &mut NodeNetworkInterface, selection_network_path: &[NodeId]) {
-		// Load the upstream nodes directly under each layer, which is used during the drag
-		let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
-			log::error!("Could not get network metadata in PointerDown");
-			return;
-		};
-		self.upstream_nodes_below_layers.clear();
-		self.layer_offsets.clear();
-		for node_id in network_metadata
-			.persistent_metadata
-			.node_metadata
-			.keys()
-			.filter(|node_id| network_interface.is_layer(node_id, selection_network_path))
-			.cloned()
-			.collect::<Vec<_>>()
-		{
-			self.upstream_nodes_below_layers
-				.insert(node_id, network_interface.upstream_nodes_below_layer(&node_id, selection_network_path));
-		}
 	}
 
 	/// Send the cached layout to the frontend for the options bar at the top of the node panel
