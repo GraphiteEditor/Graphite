@@ -1,5 +1,5 @@
 use crate::tiff::file::{Endian, TiffRead};
-use crate::tiff::tags::{BitsPerSample, CfaPattern, CfaPatternDim, Compression, ImageLength, ImageWidth, SonyToneCurve, StripByteCounts, StripOffsets, Tag};
+use crate::tiff::tags::{BitsPerSample, CfaPattern, CfaPatternDim, Compression, ImageLength, ImageWidth, SonyToneCurve, StripByteCounts, StripOffsets, Tag, WhiteBalanceRggbLevels};
 use crate::tiff::values::CurveLookupTable;
 use crate::tiff::{Ifd, TiffError};
 use crate::{RawImage, SubtractBlack};
@@ -19,6 +19,7 @@ struct Arw2Ifd {
 	strip_offsets: StripOffsets,
 	strip_byte_counts: StripByteCounts,
 	sony_tone_curve: SonyToneCurve,
+	white_balance_levels: WhiteBalanceRggbLevels,
 }
 
 pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {

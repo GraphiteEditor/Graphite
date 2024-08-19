@@ -42,7 +42,7 @@ pub struct Image<T> {
 	/// See <https://github.com/GraphiteEditor/Graphite/pull/1923#discussion_r1725070342> for more information.
 	pub channels: u8,
 	pub rgb_to_camera: Option<[[f64; 3]; 3]>,
-	pub histogram: Option<[[usize; 0x2000]; 3]>,
+	pub(crate) histogram: Option<[[usize; 0x2000]; 3]>,
 }
 
 #[allow(dead_code)]
