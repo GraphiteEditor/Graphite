@@ -70,7 +70,7 @@ macro_rules! fn_type {
 		$crate::Type::Fn(Box::new(concrete!(())), Box::new(concrete!($type)))
 	};
 	($in_type:ty, $type:ty) => {
-		$crate::Type::Fn(Box::new(concrete!(($in_type))), Box::new(concrete!($type)))
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(concrete!($type)))
 	};
 }
 

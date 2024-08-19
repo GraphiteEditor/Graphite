@@ -7,7 +7,7 @@ license = "MIT OR Apache-2.0"
 [features]
 default = ["dealloc_nodes"]
 serde = ["dep:serde", "graphene-core/serde", "glam/serde", "bezier-rs/serde"]
-dealloc_nodes = []
+dealloc_nodes = ["graphene-core/dealloc_nodes"]
 wgpu = []
 tokio = ["dep:tokio"]
 wayland = []

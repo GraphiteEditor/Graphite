@@ -40,6 +40,9 @@ pub mod vector;
 #[cfg(feature = "alloc")]
 pub mod application_io;
 
+#[cfg(feature = "alloc")]
+pub mod registry;
+
 pub mod quantization;
 
 use core::any::TypeId;

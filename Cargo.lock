@@ -2441,6 +2441,7 @@ dependencies = [
  "base64 0.22.1",
  "bezier-rs",
  "bytemuck",
+ "ctor",
  "dyn-any",
  "glam",
  "half",
