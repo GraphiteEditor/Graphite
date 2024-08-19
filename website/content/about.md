@@ -6,6 +6,7 @@ css = ["about.css"]
 +++
 
 <section>
+
 <div class="block">
 
 # About Graphite
@@ -13,9 +14,7 @@ css = ["about.css"]
 Graphite is a community-built free software project. If you find it valuable, consider [donating](/donate) or [getting involved](/volunteer) to keep it sustainable.
 
 </div>
-</section>
 
-<section>
 <div class="block">
 
 ## Project
@@ -23,9 +22,6 @@ Graphite is a community-built free software project. If you find it valuable, co
 The idea for Graphite began with a desire to create artwork and edit photos using free software that felt user-friendly and truly modern. Over time, that dream evolved to reconsider what "modern" meant for the landscape of 2D graphics editing. By borrowing concepts popular in 3D software, what could a procedural, nondestructive design tool look like if nothing was too ambitious? Answering that question took years of design exploration, leading to a community of savvy developers volunteering to turn that formidable dream into a reality.
 
 </div>
-</section>
-
-<section>
 
 <div class="diptych">
 
@@ -163,7 +159,6 @@ Dennis is a mix between a mathematician and a mad scientist. While still enjoyin
 
 
 <section>
-
 <div class="triptych">
 
 <div class="block">
@@ -195,5 +190,4 @@ More information about the Graphite logo, including its community-focused usage 
 </div>
 
 </div>
-
 </section>

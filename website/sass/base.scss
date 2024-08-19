@@ -6,21 +6,24 @@
 	--color-black: #000000;
 	--color-white: #ffffff;
 	--color-fog: #eeeeee;
-	--color-parchment: #f5edeb;
+	--color-parchment: #faefe2;
+	--color-cloud: #d9e1e4;
 	--color-mustard: #e5c299;
 	--color-navy: #16323f;
 	--color-walnut: #473a3a;
+	--color-slate: #3a4047;
 	--color-crimson: #803847;
 	--color-lilac: #cabdc8;
-	--color-lime: #c5e0af;
+	// --color-lime: #c5e0af;
 	--color-lemon: #efe2b2;
+	--color-peach: #ebb29f;
 	--color-ale: #cd8f7a;
-	--color-flamingo: #d2697c;
+	// --color-flamingo: #d2697c;
 	--color-seaside: #b0d6cb;
 	--color-seaside-rgb: 176, 214, 203;
-	--color-cove: #83c0b9;
-	--color-storm: #627088;
+	// --color-cove: #83c0b9;
 	--color-sage: #91b99a;
+	--color-storm: #627088;
 
 	--max-width: 1200px;
 	--max-width-plus-padding: calc(var(--max-width) + 40px * 2);
@@ -507,6 +510,11 @@ ol {
 	}
 }
 
+hr {
+	// Reset Firefox user agent style that is overriding `currentColor` that we set
+	color: unset;
+}
+
 code {
 	color: var(--color-black);
 	background: var(--color-fog);
@@ -759,6 +767,10 @@ hr,
 	}
 }
 
+:not(.diptych, .triptych) > :is(.block, .diptych, .triptych) + :is(.block, .diptych, .triptych) {
+	margin-top: calc(120 * var(--variable-px));
+}
+
 .feature-box-narrow,
 .feature-box-outer {
 	padding: calc(80 * var(--variable-px));
@@ -801,11 +813,14 @@ hr,
 }
 
 h1.feature-box-header.feature-box-header {
-	font-family: "Inter", sans-serif;
-	line-height: 1.5;
-	font-size: var(--font-size-link);
-	font-weight: 800;
-	text-transform: uppercase;
+	&,
+	& a {
+		font-family: "Inter", sans-serif;
+		line-height: 1.5;
+		font-weight: 800;
+		text-transform: uppercase;
+		font-size: calc(1rem * 14 / 9);
+	}
 
 	span {
 		white-space: pre;
@@ -1401,4 +1416,8 @@ h1.feature-box-header.feature-box-header {
 			}
 		}
 	}
+}
+
+p + .feature-icons .feature-icon.feature-icon {
+	margin-top: calc(40 * var(--variable-px));
 }

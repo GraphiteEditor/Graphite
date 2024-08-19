@@ -10,7 +10,7 @@ css = ["volunteer.css"]
 
 # Volunteer
 
-**Graphite is built by volunteers.** Join the effort to bring great, free creative software to the world.
+**Graphite is 100% built by volunteers.** Get involved in the effort to bring great, free creative software to the world.
 
 </div>
 </section>
@@ -35,14 +35,14 @@ css = ["volunteer.css"]
 
 <div class="block feature-box-narrow">
 
-### EDITOR TEAM
+<h1 class="feature-box-header">Editor team</h1>
 
 The Graphite editor is built much like a game engine, split across user interface application tooling and a renderer with nodes implementing an assortment of graphics algorithms.
 
 </div>
 <div class="block feature-box-narrow">
 
-### GRAPHENE TEAM
+<h1 class="feature-box-header">Graphene team</h1>
 
 [Graphene](/volunteer/guide/graphene) is a programming language, interpreter, and runtime environment built upon Rust which enables Graphite artwork to compile to executable programs for fast rendering.
 
@@ -71,14 +71,14 @@ The Graphite editor is built much like a game engine, split across user interfac
 
 <div class="block feature-box-narrow">
 
-### ART TEAM
+<h1 class="feature-box-header">Art team</h1>
 
 Use your artistic talents to conceptualize and produce high-quality open art projects published by the Graphite project to stress-test and showcase the editor's capabilities.
 
 </div>
 <div class="block feature-box-narrow">
 
-### MARKETING TEAM
+<h1 class="feature-box-header">Marketing team</h1>
 
 Help write, edit, and design content for this website, social media, newsletters, blog posts, user manual pages, videos, fundraising campaigns, press releases, and industry outreach.
 
@@ -106,14 +106,14 @@ Help write, edit, and design content for this website, social media, newsletters
 
 <div class="block feature-box-narrow">
 
-### QA TEAM
+<h1 class="feature-box-header">QA team</h1>
 
 Get familiar with the ins-and-outs of the editor and respond actively to developer requests on a recurring basis to test out new features and find bugs and breakages.
 
 </div>
 <div class="block feature-box-narrow">
 
-### NODES TEAM
+<h1 class="feature-box-header">Nodes team</h1>
 
 Explore and push the limits of the node graph with complex procedural designs. Report your findings about limitations, opportunities, and use cases to help in designing new nodes.
 

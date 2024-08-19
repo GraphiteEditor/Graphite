@@ -4,47 +4,6 @@
 	overflow: hidden;
 }
 
-.hexagons {
-	max-width: var(--max-width);
-	margin: auto;
-	position: relative;
-	bottom: calc(-80 * var(--variable-px));
-
-	div {
-		position: absolute;
-		top: 0;
-		right: 10%;
-
-		svg {
-			position: absolute;
-			margin: auto;
-			top: 0;
-			right: 0;
-			bottom: 0;
-			left: 0;
-			transform: translate(-50%) rotate(347deg);
-			opacity: 0.25;
-			--hexagon-max-size: 1100;
-			--mexagon-min-size: 900;
-			--hexagon-shrink-start-viewport-width: 1640;
-			width: Max(
-				Min(
-					calc(var(--hexagon-max-size) * 1px),
-					calc(var(--hexagon-max-size) / var(--hexagon-shrink-start-viewport-width) * 100vw)
-				),
-				calc(var(--mexagon-min-size) * 1px)
-			);
-			height: auto;
-
-			polygon {
-				fill: none;
-				stroke: #aaa;
-				stroke-width: 1px;
-			}
-		}
-	}
-}
-
 // ▛ LOGO ▜
 #logo {
 	img {
@@ -147,38 +106,137 @@
 }
 // ▙ QUICK LINKS ▟
 
-// ▛ SCREENSHOTS ▜
+// ▛ HEXAGONS ▜
+.hexagons {
+	max-width: var(--max-width);
+	margin: auto;
+	position: relative;
+	bottom: calc(-80 * var(--variable-px));
+
+	div {
+		position: absolute;
+		top: 0;
+		right: 10%;
+
+		svg {
+			position: absolute;
+			margin: auto;
+			top: 0;
+			right: 0;
+			bottom: 0;
+			left: 0;
+			transform: translate(-50%) rotate(347deg);
+			opacity: 0.25;
+			--hexagon-max-size: 1100;
+			--mexagon-min-size: 900;
+			--hexagon-shrink-start-viewport-width: 1640;
+			width: Max(
+				Min(
+					calc(var(--hexagon-max-size) * 1px),
+					calc(var(--hexagon-max-size) / var(--hexagon-shrink-start-viewport-width) * 100vw)
+				),
+				calc(var(--mexagon-min-size) * 1px)
+			);
+			height: auto;
+
+			polygon {
+				fill: none;
+				stroke: #aaa;
+				stroke-width: 1px;
+			}
+		}
+	}
+}
+// ▙ HEXAGONS ▟
+
+// ▙ SCREENSHOTS ▟
 // ▙ SCREENSHOTS ▟
 
-// ▛ TODAY AND TOMORROW ▜
-#today-and-tomorrow h1 span {
-	background: var(--color-crimson);
-	white-space: nowrap;
-	color: white;
-	font-size: 1rem;
-	line-height: 1.2;
-	padding: 0.25em 0.5em;
-	vertical-align: middle;
+// ▛ OVERVIEW ▜
+#overview {
+	background-color: var(--color-cloud);
 }
-// ▙ TODAY AND TOMORROW ▟
+// ▙ OVERVIEW ▟
 
-// ▛ DISCIPLINES ▜
-#disciplines .block .feature-icons .feature-icon {
-	margin-top: 40px;
+// ▛ PROCEDURALISM ▜
+#proceduralism {
+	background-color: var(--color-slate);
+	color: var(--color-white);
+	margin-top: 0;
+	
+	.diptych {
+		background: var(--color-black);
+		color: var(--color-fog);
+		overflow: hidden; // Clip off a 1px overflow beneath the video which appears at some screen widths
+		align-items: stretch;
+		justify-content: center;
+		gap: 0;
+		--video-width: calc(460 * var(--variable-px));
+
+		@media screen and (max-width: 1360px) {
+			--video-width: calc(400 * var(--variable-px));
+		}
+
+		@media screen and (max-width: 1280px) {
+			--video-width: calc(300 * var(--variable-px));
+		}
+
+		@media screen and (max-width: 1080px) {
+			--video-width: calc(500 * var(--variable-px));
+		}
+
+		@media screen and (max-width: 640px) {
+			--video-width: 100%;
+		}
+
+		a {
+			color: var(--color-mustard);
+		}
+
+		.video-background {
+			flex: 1 0 var(--video-width);
+			justify-content: center;
+
+			&,
+			video {
+				max-width: var(--video-width);
+			}
+
+			&::after {
+				content: none;
+			}
+		}
+
+		.description {
+			margin: calc(80 * var(--variable-px));
+		}
+
+		+ .diptych {
+			margin-top: calc(40 * var(--variable-px));
+		}
+	}
+
+	.pipelines .feature-icon {
+		background: rgba(255, 255, 255, 0.0625);
+
+		img {
+			filter: brightness(100);
+		}
+	}
 }
-// ▙ DISCIPLINES ▟
+// ▙ PROCEDURALISM ▟
 
 // ▛ NEWSLETTER ▜
 #newsletter {
-	background-color: var(--color-mustard);
+	background-color: var(--color-peach);
 	position: relative;
 
 	#newsletter-success {
 		position: absolute;
 		top: 0;
 
-		&:not(:target) ~ .feature-box-inner .diptych .newsletter-success,
-		&:target ~ .feature-box-inner .diptych form {
+		&:not(:target) ~ .diptych .newsletter-success,
+		&:target ~ .diptych form {
 			display: none;
 		}
 	}
@@ -326,79 +384,94 @@
 }
 // ▙ NEWSLETTER ▟
 
-// ▛ PROCEDURALISM ▜
-#proceduralism-red-dress .diptych,
-#proceduralism-leaves .diptych {
-	overflow: hidden; // Clip off a 1px overflow beneath the video which appears at some screen widths
-	align-items: stretch;
-	justify-content: center;
-	gap: 0;
-	--video-width: calc(540 * var(--variable-px));
+// ▛ DONATE ▜
+#donate {
+	background-color: var(--color-peach);
+}
+// ▙ DONATE ▟
 
-	@media screen and (max-width: 1260px) {
-		--video-width: calc(480 * var(--variable-px));
+// ▛ DIVE IN ▜
+#dive-in {
+	.video-container {
+		background: var(--color-fog);
+		margin-top: calc(40 * var(--variable-px));
+
+		> div {
+			margin: calc(20 * var(--variable-px)) auto;
+			width: 100%;
+			max-width: 800px;
+	
+			+ p {
+				margin-top: 0;
+			}
+		}
 	}
 
-	@media screen and (max-width: 1200px) {
-		--video-width: calc(440 * var(--variable-px));
-	}
+	.buttons {
+		display: flex;
+		gap: calc(var(--font-size-link) * 0.8);
+		margin-top: calc(40 * var(--variable-px));
 
-	@media screen and (max-width: 1160px) {
-		--video-width: calc(400 * var(--variable-px));
+		@media screen and (max-width: 600px) {
+			flex-direction: column;
+		}
 	}
+}
+// ▙ DIVE IN ▟
 
-	@media screen and (max-width: 640px) {
-		--video-width: 100%;
-	}
-
+// ▛ RECENT NEWS ▜
+#recent-news {
+	background-color: var(--color-navy);
+	color: var(--color-white);
+	
 	a {
 		color: var(--color-mustard);
 	}
 
-	.video-background {
-		flex: 1 0 var(--video-width);
-		justify-content: center;
+	.banner img {
+		width: 100%;
+		height: auto;
+		margin-bottom: 20px;
+	}
 
-		&,
-		video {
-			max-width: var(--video-width);
+	.headline a {
+		text-decoration: none;
+		font-weight: 700;
+	}
+
+	.summary {
+		margin: 20px 0;
+		flex-direction: column;
+		gap: 20px;
+		text-align: justify;
+		text-justify: inter-character; // Only supported in Firefox
+		-webkit-hyphens: auto;
+		hyphens: auto;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 6;
+
+		// Safari workaround: https://stackoverflow.com/a/72170897/775283
+		// But there remains an issue where the ellipsis is rendered inside the text. There doesn't appear to be a fix, or even a way to disable the ellipsis in Safari.
+		p {
+			display: inline;
+
+			&::after {
+				content: "\A\A"; // Double new line
+				white-space: pre;
+			}
 		}
-
-		&::after {
-			content: none;
-		}
-	}
-
-	.description {
-		margin: calc(80 * var(--variable-px));
 	}
 }
+// ▙ RECENT NEWS ▟
 
-#proceduralism-red-dress .diptych {
-	background: var(--color-black);
-	color: var(--color-fog);
-
-}
-
-#proceduralism-leaves {
-	margin-top: calc(40 * var(--variable-px));
-	
-	.diptych {
-		background: var(--color-crimson);
-		color: var(--color-fog);
-	}
-}
-// ▙ PROCEDURALISM ▟
-
-// ▛ DONATE ▜
-#donate {
-	background-color: var(--color-lilac);
-
-	.graphic {
-		max-width: 400px;
-	}
-}
-// ▙ DONATE ▟
+// ▛ DEMO VIDEO ▜
+// #demo-video {
+// 	max-width: 1000px;
+// }
+// ▙ DEMO VIDEO ▟
 
 // ▛ IMAGINATE ▜
 // #imaginate {
@@ -469,71 +542,3 @@
 // 	// }
 // }
 // ▙ IMAGINATE ▟
-
-// ▛ DEMO VIDEO ▜
-// #demo-video {
-// 	max-width: 1000px;
-// }
-// ▙ DEMO VIDEO ▟
-
-// ▛ DIVE IN ▜
-#dive-in {
-	.video-container {
-		margin: calc(40 * var(--variable-px)) auto;
-		width: 100%;
-		max-width: 800px;
-
-		+ p {
-			margin-top: 0;
-		}
-	}
-}
-// ▙ DIVE IN ▟
-
-// ▛ RECENT NEWS ▜
-#recent-news {
-	background-color: var(--color-walnut);
-	color: var(--color-white);
-	
-	a {
-		color: var(--color-mustard);
-	}
-
-	.banner img {
-		width: 100%;
-		height: auto;
-		margin-bottom: 20px;
-	}
-
-	.headline a {
-		text-decoration: none;
-		font-weight: 700;
-	}
-
-	.summary {
-		margin: 20px 0;
-		flex-direction: column;
-		gap: 20px;
-		text-align: justify;
-		text-justify: inter-character; // Only supported in Firefox
-		-webkit-hyphens: auto;
-		hyphens: auto;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		display: -webkit-box;
-		-webkit-box-orient: vertical;
-		-webkit-line-clamp: 6;
-
-		// Safari workaround: https://stackoverflow.com/a/72170897/775283
-		// But there remains an issue where the ellipsis is rendered inside the text. There doesn't appear to be a fix, or even a way to disable the ellipsis in Safari.
-		p {
-			display: inline;
-
-			&::after {
-				content: "\A\A"; // Double new line
-				white-space: pre;
-			}
-		}
-	}
-}
-// ▙ RECENT NEWS ▟

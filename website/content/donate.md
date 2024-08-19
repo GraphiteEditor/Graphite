@@ -19,7 +19,7 @@ Your monthly support (or one-off contribution) helps provide the resources neede
 
 <br />
 
-(Additionally, boosting the [Graphite Discord server](https://discord.graphite.rs) is helpful if you already have spare Nitro boosts!)
+(Additionally, boosting the [Graphite Discord server](https://discord.graphite.rs) is helpful if you already have spare Nitro boosts.)
 
 </div>
 </section>
