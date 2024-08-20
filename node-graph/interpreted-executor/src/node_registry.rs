@@ -286,7 +286,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_core::ops::ModuloNode<_>, input: &f64, params: [f64]),
 		register_node!(graphene_core::ops::ModuloNode<_>, input: f64, params: [&f64]),
 		register_node!(graphene_core::ops::ModuloNode<_>, input: &f64, params: [&f64]),
-		register_node!(graphene_core::ops::ConstructVector2<_, _>, input: (), params: [f64, f64]),
 		register_node!(graphene_core::ops::SomeNode, input: &WasmEditorApi, params: []),
 		register_node!(graphene_core::ops::UnwrapNode, input: Option<Color>, params: []),
 		register_node!(graphene_core::logic::LogToConsoleNode, input: bool, params: []),
@@ -806,6 +805,12 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::AddArtboardNode<_, _>, input: Footprint, output: ArtboardGroup, fn_params: [Footprint => ArtboardGroup, Footprint => Artboard]),
 	];
 	let mut map: HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> = HashMap::new();
+	for (id, entry) in graphene_core::registry::NODE_REGISTRY.lock().unwrap().drain() {
+		log::debug!("id: {id:?}");
+		for (constructor, types) in entry.into_iter() {
+			map.entry(id.clone()).or_default().insert(types, constructor);
+		}
+	}
 	for (id, c, types) in node_types.into_iter().flatten() {
 		// TODO: this is a hack to remove the newline from the node new_name
 		// This occurs for the ChannelMixerNode presumably because of the long name.

@@ -40,7 +40,7 @@ pub mod vector;
 #[cfg(feature = "alloc")]
 pub mod application_io;
 
-#[cfg(feature = "alloc")]
+#[cfg(feature = "reflections")]
 pub mod registry;
 
 pub mod quantization;

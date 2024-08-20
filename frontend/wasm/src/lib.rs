@@ -8,6 +8,7 @@ pub mod editor_api;
 pub mod helpers;
 
 use editor::messages::prelude::*;
+use js_sys::{Array, Function, Object, Reflect};
 
 use std::panic;
 use std::sync::atomic::{AtomicBool, Ordering};

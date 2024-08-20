@@ -6,6 +6,9 @@ use syn::{
 	PathSegment, PredicateType, ReturnType, Token, TraitBound, Type, TypeImplTrait, TypeParam, TypeParamBound, TypeTuple, WhereClause, WherePredicate,
 };
 
+mod codegen;
+mod parsing;
+
 /// A macro used to construct a proto node implementation from the given struct and the decorated function.
 ///
 /// This works by generating two `impl` blocks for the given struct:
@@ -97,6 +100,12 @@ pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 	new_constructor.extend(node_impl);
 
 	new_constructor
+}
+
+#[proc_macro_attribute]
+pub fn new_node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
+	// Performs the `node_impl` macro's functionality of attaching an `impl Node for TheGivenStruct` block to the node struct
+	parsing::new_node_fn(attr.into(), item.into()).into()
 }
 
 /// Attaches an `impl TheGivenStruct` block to the node struct, containing a `new` constructor method. This is almost always called by the combined [`node_fn`] macro instead of using this one, however it can be used separately if needed. See that macro's documentation for more information.

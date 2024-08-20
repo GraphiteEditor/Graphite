@@ -154,7 +154,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Value",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::ops::ConstructVector2<_, _>"),
+					implementation: DocumentNodeImplementation::proto("graphene_core::ops::construct_vector2::ConstructVector2"),
 					inputs: vec![
 						NodeInput::value(TaggedValue::None, false),
 						NodeInput::value(TaggedValue::F64(0.), false),

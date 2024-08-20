@@ -30,7 +30,7 @@ std = [
 ]
 reflections = [
 	"alloc",
-	"ctor"
+	"ctor",
 ]
 serde = [
 	"dep:serde",
