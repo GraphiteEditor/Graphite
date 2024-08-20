@@ -3897,10 +3897,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			.map(|(field, ty)| {
 				let default = field.default_value.and_then(|x| TaggedValue::from_primitive_string(x, ty));
 				if let Some(default) = default {
-					return NodeInput::value(default, false);
+					return NodeInput::value(default, field.exposed);
 				}
 				if let Some(type_default) = TaggedValue::from_type(ty) {
-					return NodeInput::value(type_default, false);
+					return NodeInput::value(type_default, field.exposed);
 				}
 				NodeInput::value(TaggedValue::None, true)
 			})

@@ -38,6 +38,7 @@ pub(crate) enum ParsedField {
 	Regular {
 		name: Ident,
 		ty: Type,
+		exposed: bool,
 		default_value: Option<TokenStream2>,
 		implementations: Punctuated<Type, Comma>,
 	},
@@ -175,6 +176,7 @@ fn parse_field(name: Ident, ty: Type, attrs: &[Attribute], is_async: bool) -> sy
 			.map_err(|e| Error::new_spanned(attr, format!("Invalid default value for field '{}': {}", name, e)))
 			.ok()
 	});
+	let exposed = extract_attribute(attrs, "expose").is_some();
 
 	fn parse_implementations<T: Parse>(attr: &Attribute, name: &Ident) -> syn::Result<Punctuated<T, Comma>> {
 		let content: TokenStream2 = attr
@@ -220,6 +222,7 @@ fn parse_field(name: Ident, ty: Type, attrs: &[Attribute], is_async: bool) -> sy
 	} else {
 		Ok(ParsedField::Regular {
 			name,
+			exposed,
 			ty,
 			default_value,
 			implementations,

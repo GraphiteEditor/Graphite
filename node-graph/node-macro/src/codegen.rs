@@ -65,6 +65,14 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 		})
 		.collect();
 
+	let exposed: Vec<_> = fields
+		.iter()
+		.map(|field| match field {
+			ParsedField::Regular { exposed, .. } => quote!(#exposed),
+			_ => quote!(true),
+		})
+		.collect();
+
 	let eval_args = fields.iter().map(|field| match field {
 		ParsedField::Regular { name, .. } => {
 			quote! { let #name = self.#name.eval(()); }
@@ -170,6 +178,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 						#(
 							FieldMetadata {
 								name: stringify!(#field_names).to_string(),
+								exposed: #exposed,
 								default_value: #default_values,
 							},
 						)*

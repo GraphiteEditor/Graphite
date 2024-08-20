@@ -19,13 +19,10 @@ export async function initWasm() {
 
 	// Import the WASM module JS bindings and wrap them in the panic proxy
 	// eslint-disable-next-line import/no-cycle
-	let wasm = await init();
+	const wasm = await init();
 	// console.log(wasm);
 	for (const [name, f] of Object.entries(wasm)) {
-		if (name.startsWith("__node_registry")) {
-				console.log(f);
-				f();
-		}
+		if (name.startsWith("__node_registry")) f();
 	}
 	
 	wasmImport = await wasmMemory();

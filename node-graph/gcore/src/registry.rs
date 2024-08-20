@@ -28,6 +28,7 @@ pub struct NodeMetadata {
 #[derive(Clone)]
 pub struct FieldMetadata {
 	pub name: String,
+	pub exposed: bool,
 	pub default_value: Option<&'static str>,
 }
 pub static NODE_REGISTRY: LazyLock<Mutex<HashMap<&str, Vec<(NodeConstructor, NodeIOTypes)>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
