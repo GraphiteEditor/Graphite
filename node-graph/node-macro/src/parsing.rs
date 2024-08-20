@@ -272,6 +272,7 @@ pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
 	match parse_node_fn(attr, item.clone()) {
 		Ok(parsed) => {
 			let generated_code = generate_node_code(&parsed);
+			// panic!("{}", generated_code.to_string());
 			quote! {
 				// #item
 				#generated_code

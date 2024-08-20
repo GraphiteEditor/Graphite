@@ -2,6 +2,8 @@
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
+#[cfg(feature = "alloc")]
+use core::future::Future;
 
 #[cfg_attr(feature = "log", macro_use)]
 #[cfg(feature = "log")]
@@ -124,6 +126,18 @@ where
 		NodeIOTypes {
 			input: concrete!(<Input as StaticTypeSized>::Static),
 			output: concrete!(<Self::Output as StaticTypeSized>::Static),
+			parameters,
+		}
+	}
+	#[cfg(feature = "alloc")]
+	fn to_async_node_io(&self, parameters: Vec<Type>) -> NodeIOTypes
+	where
+		<Self::Output as Future>::Output: StaticTypeSized,
+		Self::Output: Future,
+	{
+		NodeIOTypes {
+			input: concrete!(<Input as StaticTypeSized>::Static),
+			output: Type::Future(Box::new(concrete!(<<Self::Output as Future>::Output as StaticTypeSized>::Static))),
 			parameters,
 		}
 	}

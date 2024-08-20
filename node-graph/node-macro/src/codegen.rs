@@ -88,6 +88,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 	let where_clause = quote! {
 		where
 			#(#clauses,)*
+			#output_type: 'n,
 	};
 
 	let new_args = struct_generics.iter().zip(field_names.iter()).map(|(gen, name)| {
@@ -131,10 +132,10 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 		mod #mod_name {
 			use super::*;
 			use #graphene_core as gcore;
-			use gcore::{Node, NodeIOTypes, concrete, fn_type, ProtoNodeIdentifier, WasmNotSync};
+			use gcore::{Node, NodeIOTypes, concrete, fn_type, ProtoNodeIdentifier, WasmNotSync, NodeIO};
 			use gcore::value::ClonedNode;
 			use gcore::ops::TypeNode;
-			use gcore::registry::{NodeMetadata, FieldMetadata, NODE_REGISTRY, NODE_METADATA, DynAnyNode, DowncastBothNode, DynFuture, TypeErasedBox};
+			use gcore::registry::{NodeMetadata, FieldMetadata, NODE_REGISTRY, NODE_METADATA, DynAnyNode, DowncastBothNode, DynFuture, TypeErasedBox, PanicNode};
 			use ctor::ctor;
 
 			pub struct #struct_name<#(#struct_generics,)*> {
@@ -165,8 +166,6 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 				let metadata = NodeMetadata {
 					display_name: #display_name,
 					category: #category,
-					input_type: concrete!(#input_type),
-					output_type: concrete!(#output_type),
 					fields: vec![
 						#(
 							FieldMetadata {
@@ -226,22 +225,24 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 
 			let node = matches!(parsed.fields[j], ParsedField::Node { .. });
 
+			let downcast_node = quote!(
+			let #field_name: DowncastBothNode<#input_type, #output_type> = DowncastBothNode::new(args[#j].clone());
+			 );
 			temp_constructors.push(if node {
 				assert!(parsed.is_async, "Node needs to be async if you want to use lambda parameters");
-				quote!(
-				let #field_name: DowncastBothNode<#input_type, #output_type> = DowncastBothNode::new(args[#j].clone());
-				 )
+				downcast_node
 			} else {
 				quote!(
-						let #field_name: DowncastBothNode<#input_type, #output_type> = DowncastBothNode::new(args[#j].clone());
+						#downcast_node
 						let value = #field_name.eval(()).await;
 						let #field_name = ClonedNode::new(value);
 						let #field_name: TypeNode<_, #input_type, #output_type> = TypeNode::new(#field_name);
 						// try polling futures
 				)
 			});
-			temp_node_io.push(quote!(fn_type!(#input_type, #output_type)));
+			temp_node_io.push(quote!(#input_type, #output_type));
 		}
+		let node_io = if parsed.is_async { quote!(to_async_node_io) } else { quote!(to_node_io) };
 		constructors.push(quote!(
 			(
 				|args| {
@@ -253,12 +254,13 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 						let any: DynAnyNode<#input_type, _, _> = DynAnyNode::new(node);
 						Box::new(any)  as TypeErasedBox<'_>
 					})
-				},
-				NodeIOTypes::new(
-					concrete!(#input_type),
-					concrete!(#output_type),
-					vec![#(#temp_node_io,)*],
-				)
+				}, {
+					let node = #struct_name::new(#(PanicNode::<#temp_node_io>::new(),)*);
+					let params = vec![#(fn_type!(#temp_node_io),)*];
+					let mut node_io = NodeIO::<'_, #input_type>::#node_io(&node, params);
+					node_io
+
+				}
 			)
 		));
 	}
@@ -268,7 +270,6 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 
 		#[cfg_attr(not(target_arch = "wasm32"), ctor)]
 		fn register_node() {
-			log::debug!("hello from node fn!");
 			let mut registry = NODE_REGISTRY.lock().unwrap();
 			registry.insert(
 				#identifer,

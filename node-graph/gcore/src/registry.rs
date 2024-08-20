@@ -22,8 +22,6 @@ pub mod types {
 pub struct NodeMetadata {
 	pub display_name: &'static str,
 	pub category: Option<&'static str>,
-	pub input_type: Type,
-	pub output_type: Type,
 	pub fields: Vec<FieldMetadata>,
 }
 
@@ -240,5 +238,25 @@ where
 			_i: core::marker::PhantomData,
 			_o: core::marker::PhantomData,
 		}
+	}
+}
+pub struct PanicNode<I: WasmNotSend, O: WasmNotSend>(PhantomData<I>, PhantomData<O>);
+
+impl<'i, I: 'i + WasmNotSend, O: 'i + WasmNotSend> Node<'i, I> for PanicNode<I, O> {
+	type Output = O;
+	fn eval(&'i self, _: I) -> Self::Output {
+		unimplemented!("This node should never be evaluated")
+	}
+}
+
+impl<I: WasmNotSend, O: WasmNotSend> PanicNode<I, O> {
+	pub const fn new() -> Self {
+		Self(PhantomData, PhantomData)
+	}
+}
+
+impl<I: WasmNotSend, O: WasmNotSend> Default for PanicNode<I, O> {
+	fn default() -> Self {
+		Self::new()
 	}
 }

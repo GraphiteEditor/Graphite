@@ -4192,14 +4192,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		}
 
 		use graphene_core::registry::*;
-		let NodeMetadata {
-			display_name,
-			category,
-			input_type,
-			output_type,
-			fields,
-		} = metadata;
+		let NodeMetadata { display_name, category, fields } = metadata;
 		let first_node_io = &node_registry.get(id).unwrap()[0].1;
+		let input_type = first_node_io.input;
+		let output_type = first_node_io.otput;
 
 		let inputs = fields
 			.iter()
