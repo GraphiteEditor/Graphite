@@ -23,173 +23,164 @@ impl AddPairNode {
 }
 
 // Add
-pub struct AddNode<Second> {
-	second: Second,
-}
-#[node_macro::node_fn(AddNode)]
-fn add_parameter<U, T>(first: U, second: T) -> <U as Add<T>>::Output
-where
-	U: Add<T>,
-{
-	first + second
+#[node_macro::new_node_fn(category("Math"))]
+fn add<U: std::ops::Add<T>, T>(
+	_: (),
+	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64, glam::DVec2)] primary: U,
+	#[implementations(u32, u32, &u32, &u32, f32, f32, &f32, &f32, f64, f64, &f64, &f64, glam::DVec2)] addend: T,
+) -> <U as std::ops::Add<T>>::Output {
+	primary + addend
 }
 
 // Subtract
-pub struct SubtractNode<Second> {
-	second: Second,
-}
-#[node_macro::node_fn(SubtractNode)]
-fn sub<U, T>(first: U, second: T) -> <U as Sub<T>>::Output
-where
-	U: Sub<T>,
-{
-	first - second
+#[node_macro::new_node_fn(category("Math"))]
+fn subtract<U: std::ops::Sub<T>, T>(
+	_: (),
+	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64, glam::DVec2)] primary: U,
+	#[implementations(u32, u32, &u32, &u32, f32, f32, &f32, &f32, f64, f64, &f64, &f64, glam::DVec2)] subtrahend: T,
+) -> <U as std::ops::Sub<T>>::Output {
+	primary - subtrahend
 }
 
 // Divide
-pub struct DivideNode<Second> {
-	second: Second,
-}
-#[node_macro::node_fn(DivideNode)]
-fn div<U, T>(first: U, second: T) -> <U as Div<T>>::Output
-where
-	U: Div<T>,
-{
-	first / second
+#[node_macro::new_node_fn(category("Math"))]
+fn divide<U: std::ops::Div<T>, T>(
+	_: (),
+	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64, glam::DVec2, glam::DVec2)] primary: U,
+	#[default(1.)]
+	#[implementations(u32, u32, &u32, &u32, f32, f32, &f32, &f32, f64, f64, &f64, &f64, glam::DVec2, f64)]
+	divisor: T,
+) -> <U as std::ops::Div<T>>::Output {
+	primary / divisor
 }
 
 // Multiply
-pub struct MultiplyNode<Second> {
-	second: Second,
-}
-#[node_macro::node_fn(MultiplyNode)]
-fn mul<U, T>(first: U, second: T) -> <U as Mul<T>>::Output
-where
-	U: Mul<T>,
-{
-	first * second
+#[node_macro::new_node_fn(category("Math"))]
+fn multiply<U: std::ops::Mul<T>, T>(
+	_: (),
+	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64, glam::DVec2, f64)] primary: U,
+	#[default(1.)]
+	#[implementations(u32, u32, &u32, &u32, f32, f32, &f32, &f32, f64, f64, &f64, &f64, glam::DVec2, glam::DVec2)]
+	multiplicant: T,
+) -> <U as std::ops::Mul<T>>::Output {
+	primary * multiplicant
 }
 
 // Exponent
-pub struct ExponentNode<Second> {
-	second: Second,
-}
-#[node_macro::node_fn(ExponentNode)]
-fn exp<U, T>(first: U, second: T) -> <U as Pow<T>>::Output
-where
-	U: Pow<T>,
-{
-	first.pow(second)
+#[node_macro::new_node_fn(category("Math"))]
+fn exponent<U: num_traits::Pow<T>, T>(
+	_: (),
+	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64)] primary: U,
+	#[default(2.)]
+	#[implementations(u32, u32, &u32, &u32, f32, f32, &f32, &f32, f64, f64, &f64, &f64)]
+	power: T,
+) -> <U as num_traits::Pow<T>>::Output {
+	primary.pow(power)
 }
 
 // Floor
-pub struct FloorNode;
-#[node_macro::node_fn(FloorNode)]
-fn floor(input: f64) -> f64 {
-	input.floor()
+#[node_macro::new_node_fn(category("Math"))]
+fn floor(_: (), primary: f64) -> f64 {
+	primary.floor()
 }
 
 // Ceil
-pub struct CeilingNode;
-#[node_macro::node_fn(CeilingNode)]
-fn ceil(input: f64) -> f64 {
-	input.ceil()
+#[node_macro::new_node_fn(category("Math"))]
+fn ceiling(_: (), primary: f64) -> f64 {
+	primary.ceil()
 }
 
 // Round
-pub struct RoundNode;
-#[node_macro::node_fn(RoundNode)]
-fn round(input: f64) -> f64 {
-	input.round()
+#[node_macro::new_node_fn(category("Math"))]
+fn round(_: (), primary: f64) -> f64 {
+	primary.round()
 }
 
 // Absolute Value
-pub struct AbsoluteValue;
-#[node_macro::node_fn(AbsoluteValue)]
-fn abs(input: f64) -> f64 {
-	input.abs()
+#[node_macro::new_node_fn(category("Math"))]
+fn absolute_value(_: (), primary: f64) -> f64 {
+	primary.abs()
 }
 
 // Log
-pub struct LogarithmNode<Second> {
-	second: Second,
-}
-#[node_macro::node_fn(LogarithmNode)]
-fn ln<U: num_traits::float::Float>(first: U, second: U) -> U {
-	first.log(second)
+#[node_macro::new_node_fn(category("Math"))]
+fn logarithm<U: num_traits::float::Float>(
+	_: (),
+	#[implementations(f32, f64)] first: U,
+	#[default(2.)]
+	#[implementations(f32, f64)]
+	base: U,
+) -> U {
+	first.log(base)
 }
 
 // Natural Log
-pub struct NaturalLogarithmNode;
-#[node_macro::node_fn(NaturalLogarithmNode)]
-fn ln(input: f64) -> f64 {
-	input.ln()
+#[node_macro::new_node_fn(category("Math"))]
+fn natural_logarithm<U: num_traits::float::Float>(
+	_: (),
+	#[default(1.)]
+	#[implementations(f32, f64)]
+	first: U,
+) -> U {
+	first.ln()
 }
 
 // Sine
-pub struct SineNode;
-#[node_macro::node_fn(SineNode)]
-fn ln(input: f64) -> f64 {
-	input.sin()
+#[node_macro::new_node_fn(category("Math"))]
+fn sine(_: (), primary: f64) -> f64 {
+	primary.sin()
 }
 
 // Cosine
-pub struct CosineNode;
-#[node_macro::node_fn(CosineNode)]
-fn ln(input: f64) -> f64 {
-	input.cos()
+#[node_macro::new_node_fn(category("Math"))]
+fn cosine(_: (), primary: f64) -> f64 {
+	primary.cos()
 }
 
 // Tangent
-pub struct TangentNode;
-#[node_macro::node_fn(TangentNode)]
-fn ln(input: f64) -> f64 {
-	input.tan()
+#[node_macro::new_node_fn(category("Math"))]
+fn tangent(_: (), primary: f64) -> f64 {
+	primary.tan()
 }
 
 // Min
-pub struct MinimumNode<Second> {
-	second: Second,
-}
-#[node_macro::node_fn(MinimumNode)]
-fn min<T: core::cmp::PartialOrd>(first: T, second: T) -> T {
-	match first < second {
-		true => first,
-		false => second,
+#[node_macro::new_node_fn(category("Math"))]
+fn min<T: core::cmp::PartialOrd>(_: (), #[implementations(u32, &u32, f32, &f32, f64, &f64, &str)] operand_a: T, #[implementations(u32, &u32, f32, &f32, f64, &f64, &str)] operand_b: T) -> T {
+	match operand_a < operand_b {
+		true => operand_a,
+		false => operand_b,
 	}
 }
 
 // Maxi
-pub struct MaximumNode<Second> {
-	second: Second,
-}
-#[node_macro::node_fn(MaximumNode)]
-fn max<T: core::cmp::PartialOrd>(first: T, second: T) -> T {
-	match first > second {
-		true => first,
-		false => second,
+#[node_macro::new_node_fn(category("Math"))]
+fn max<T: core::cmp::PartialOrd>(_: (), #[implementations(u32, &u32, f32, &f32, f64, &f64, &str)] operand_a: T, #[implementations(u32, &u32, f32, &f32, f64, &f64, &str)] operand_b: T) -> T {
+	match operand_a > operand_b {
+		true => operand_a,
+		false => operand_b,
 	}
 }
 
 // Equals
-pub struct EqualsNode<Second> {
-	second: Second,
-}
-#[node_macro::node_fn(EqualsNode)]
-fn eq<T: core::cmp::PartialEq>(first: T, second: T) -> bool {
-	first == second
+#[node_macro::new_node_fn(category("Math"))]
+fn equals<U: core::cmp::PartialEq<T>, T>(
+	_: (),
+	#[implementations(u32, &u32, f32, &f32, f64, &f64, &str)] operand_a: T,
+	#[implementations(u32, &u32, f32, &f32, f64, &f64, &str)] operand_b: U,
+) -> bool {
+	operand_b == operand_a
 }
 
 // Modulo
-pub struct ModuloNode<Second> {
-	second: Second,
-}
-#[node_macro::node_fn(ModuloNode)]
-fn modulo<U, T>(first: U, second: T) -> <U as Rem<T>>::Output
-where
-	U: Rem<T>,
-{
-	first % second
+#[node_macro::new_node_fn(category("Math"))]
+fn modulo<U: std::ops::Rem<T>, T>(
+	_: (),
+	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64)] primary: U,
+	#[default(1.)]
+	#[implementations(u32, u32, &u32, &u32, f32, f32, &f32, &f32, f64, f64, &f64, &f64)]
+	modulus: T,
+) -> <U as std::ops::Rem<T>>::Output {
+	primary % modulus
 }
 
 #[node_macro::new_node_fn]

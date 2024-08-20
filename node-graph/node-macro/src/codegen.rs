@@ -100,17 +100,17 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 	let eval_impl = if *is_async {
 		quote! {
 			type Output = DynFuture<'n, #output_type>;
-			fn eval(&'n self, input: #input_type) -> Self::Output {
+			fn eval(&'n self, __input: #input_type) -> Self::Output {
 				#(#eval_args)*
-				Box::pin(#fn_name(input #(, #field_names)*))
+				Box::pin(#fn_name(__input #(, #field_names)*))
 			}
 		}
 	} else {
 		quote! {
 			type Output = #output_type;
-			fn eval(&'n self, input: #input_type) -> Self::Output {
+			fn eval(&'n self, __input: #input_type) -> Self::Output {
 				#(#eval_args)*
-				#fn_name(input #(, #field_names)*)
+				#fn_name(__input #(, #field_names)*)
 			}
 		}
 	};

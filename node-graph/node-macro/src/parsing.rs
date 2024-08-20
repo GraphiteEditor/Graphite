@@ -55,11 +55,9 @@ impl Parse for NodeFnAttributes {
 		let mut category = None;
 		let mut display_name = None;
 
-		if !input.peek(Comma) {
-			return Ok(Self::default());
-		}
-		let content;
-		syn::parenthesized!(content in input);
+		let content = input;
+		// let content;
+		// syn::parenthesized!(content in input);
 
 		let nested = content.call(Punctuated::<Meta, Comma>::parse_terminated)?;
 		for meta in nested {
@@ -86,10 +84,10 @@ impl Parse for NodeFnAttributes {
 						indoc!(
 							r#"
                             Unsupported attribute in `node_fn`.
-                            Supported attributes are 'category' and 'path'.
+                            Supported attributes are 'category' and 'name'.
                             
                             Example usage:
-                            #[node_fn(category("Value"), path(graphene_core::TestNode))]
+                            #[node_fn(category("Value"), name("TestNode"))]
                             "#
 						),
 					));
