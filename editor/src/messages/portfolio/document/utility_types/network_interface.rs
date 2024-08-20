@@ -1507,7 +1507,15 @@ impl NodeNetworkInterface {
 		if !network_metadata.transient_metadata.stack_dependents.is_loaded() {
 			self.load_stack_dependents(network_path);
 		}
-		Some(&network_metadata.transient_metadata.stack_dependents)
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in export_ports");
+			return None;
+		};
+		let TransientMetadata::Loaded(stack_dependents) = &network_metadata.transient_metadata.stack_dependents else {
+			log::error!("could not load import ports");
+			return None;
+		};
+		Some(stack_dependents)
 	}
 
 	// This function always has to be in sync with the selected nodes.
@@ -1533,8 +1541,80 @@ impl NodeNetworkInterface {
 		}
 
 		// Get a unique list of the top of each stack for each layer
-		// Add all sole dependents to the stack dependents
-		// map layers to their sole dependents, which is stored in LayerPersistentMetadata owned_nodes
+		let stack_tops = HashSet::new();
+
+		let Some(outward_wires) = self.outward_wires(network_path) else {
+			log::error!("Cannot load outward wires in load_stack_dependents");
+			return;
+		};
+
+		for layer in &selected_layers {
+			let mut current_node = *layer;
+			loop {
+				if self.is_layer(&current_node, network_path) && self.is_absolute(&current_node, network_path) {
+					stack_tops.insert(current_node);
+					break;
+				};
+				let Some(layer_outward_wires) = outward_wires.get(&OutputConnector::node(current_node, 0)) else {
+					log::error!("Could not get outward_wires for layer {current_node}");
+					break;
+				};
+				match layer_outward_wires.first() {
+					Some(downstream_input) => {
+						let Some(downstream_node) = downstream_input.node_id() else {
+							log::error!("Node connected to export should be absolute");
+							break;
+						};
+						current_node = downstream_node
+					},
+					None => break,
+				}
+			}			
+		}
+		log::debug!("stack_tops: {}", stack_tops);
+		let mut stack_dependents = Vec::new();
+
+		// Loop through all layers below the stack_tops, and set sole dependents upstream from that layer to be owned by that layer. Ensure LayerOwner is kept in sync
+		for stack_top in &stack_tops {
+			for upstream_layer in self.upstream_flow_back_from_nodes(vec![stack_top], network_path, FlowType::PrimaryFlow).take_while(|upstream_node| self.is_layer(upstream_node, network_path)) {
+				let mut owned_nodes = HashSet::new();
+				for layer_sole_dependent in &self.upstream_nodes_below_layer(&[upstream_layer], network_path) {
+					// TODO: remove this check
+					if stack_dependents.iter().any(|(node_id, _)| node_id == layer_sole_dependent ) else {
+						log::error!("No stack dependents should exist with a sole dependent node id");
+						continue;
+					};
+					stack_dependents.push((*layer_sole_dependent, LayerOwner::Layer(upstream_layer)));
+					owned_nodes.insert(*layer_sole_dependent);
+				}
+				let Some(layer_node) = self.node_metadata_mut(&upstream_layer, network_path) else {
+					log::error!("Could not get layer node in load_stack_dependents");
+					continue;
+				};
+				let NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {owned_nodes, ..}) = &mut layer_node.persistent_metadata.node_type_metadata else {
+					log::error!("upstream layer should be a layer");
+					 return;
+				};
+				*owned_nodes = TransientMetadata::Loaded(owned_nodes);
+			}
+		}
+
+		// Set any sole dependents of the stack top that are not dependents of a layer in the stack to LayerOwner::None
+		for stack_top in &stack_tops {
+			for sole_dependent in &self.upstream_nodes_below_layer(stack_top, network_path) {
+				if stack_dependents.iter().all(|owned_sole_dependent| owned_sole_dependent.0 != *sole_dependent) {
+					stack_dependents.push((*sole_dependent, LayerOwner::None(0)));
+				}
+			}
+		}
+
+		log::debug!("Stack dependents: {:?}", stack_dependents);
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+			log::error!("Could not get current network in load_export_ports");
+			return;
+		};
+
+		network_metadata.transient_metadata.stack_dependents = TransientMetadata::Loaded(stack_dependents);
 	}
 
 	/// Resets all the offsets for nodes with no LayerOwner when the drag ends
@@ -1645,6 +1725,22 @@ impl NodeNetworkInterface {
 			return;
 		};
 		network_metadata.transient_metadata.import_export_ports.unload();
+	}
+
+	// TODO: Move this
+	fn owned_nodes(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&HashSet<NodeId>>{
+		let Some(layer_node) = self.node_metadata(&upstream_layer, network_path) else {
+			return None;
+		};
+		let NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {owned_nodes, ..}) = &layer_node.persistent_metadata.node_type_metadata else {
+			log::error!("upstream layer should be a layer");
+				return None;
+		};
+		let TransientMetadata::Loaded(owned_nodes) = owned_nodes else {
+			log::error!("Owned nodes not loaded for layer {node_id}");
+			return None;
+		}
+		Some(owned_nodes)
 	}
 
 	pub fn all_nodes_bounding_box(&mut self, network_path: &[NodeId]) -> Option<&[DVec2; 2]> {
@@ -3715,41 +3811,49 @@ impl NodeNetworkInterface {
 				}
 				NodeTypePersistentMetadata::Node(node_metadata) => {
 					if let NodePosition::Absolute(node_position) = &mut node_metadata.position {
-						node_position += shift;
+						*node_position += shift;
 					}
 				}
 			}
 		}
 	}
 
-	pub fn shift_selected_nodes(&mut self, direction: Direction, shift_upstream: bool, network_path: &[NodeId]) {
+	pub fn shift_selected_nodes(&mut self, direction: Direction, shift_upstream: bool, shifted_nodes: &mut HashSet<NodeId>, network_path: &[NodeId]) {
+
+		// TODO: Deselect layers that are owned by another layer
 		let Some(mut node_ids) = self.selected_nodes(network_path).map(|selected_nodes| selected_nodes.selected_nodes().cloned().collect::<HashSet<_>>()) else {
 			log::error!("Could not get selected nodes in shift_selected_nodes");
 			return;
 		};
 
-		if shift_upstream {
-			for node_id in self.upstream_flow_back_from_nodes(node_ids.clone(), network_path, self::FlowType::UpstreamFlow) {
-				node_ids.insert(node_id);
-			}
-		}
+		// if shift_upstream {
+		// 	for node_id in self.upstream_flow_back_from_nodes(node_ids.clone(), network_path, self::FlowType::UpstreamFlow) {
+		// 		node_ids.insert(node_id);
+		// 	}
+		// }
+
+		let Some(stack_dependents) = self.stack_dependents(network_path) else {
+			log::error!("Could not load stack dependents in shift_selected_nodes");
+			return;
+		};
 
 		// Select layers with a shift offset with opposite sign of the current shift
-		for (layer, offset) in layer_offsets.iter() {
-			if *offset != 0 && offset.signum() != shift.y.signum() && !node_ids.contains(layer) {
-				node_ids.push(*layer);
+		for (layer, owner) in stack_dependents.iter() {
+			if let LayerOwner::None(offset) = owner {
+				if *offset != 0 && (*offset.signum() == 1 && direction == Direction::Up) || *offset.signum() == 1 && direction == Direction::Down {
+					node_ids.insert(*layer);
+				}
 			}
-		}
+		};
 
+		// TODO: Deselect instead of select the owned nodes for each selected layer. 
 		for node_id in node_ids.clone() {
 			if self.is_layer(&node_id, network_path) {
-				if let Some(upstream_nodes) = upstream_nodes_below_layers.get(&node_id) {
-					for node_id in upstream_nodes {
-						if !node_ids.contains(node_id) {
-							node_ids.push(*node_id);
-						}
-					}
-				}
+				let Some(owned_nodes) = self.owned_nodes(&node_id, network_path) else {
+					log::error!("Could not get owned nodes in shift_selected_nodes");
+					continue;
+				};
+				node_ids.extend(owned_nodes);
 			}
 		}
 
@@ -3766,7 +3870,7 @@ impl NodeNetworkInterface {
 			filtered_node_ids.insert(*selected_node);
 		}
 
-		let mut node_ids_with_position: Vec<(NodeId, i32)> = filtered_node_ids
+		let mut node_ids_with_position = filtered_node_ids
 			.iter()
 			.filter_map(|&node_id| {
 				let Some(position) = self.position(&node_id, network_path) else {
@@ -3775,7 +3879,7 @@ impl NodeNetworkInterface {
 				};
 				Some((node_id, position.y))
 			})
-			.collect();
+			.collect::<Vec<(NodeId, i32)>>();
 
 		if node_ids_with_position.len() != filtered_node_ids.len() {
 			log::error!("Could not get position for all nodes in shift_selected_nodes");
@@ -3785,19 +3889,26 @@ impl NodeNetworkInterface {
 		node_ids_with_position.sort_unstable_by(|a, b| a.1.cmp(&b.1));
 		// If shifting down, then the lowest node (greatest y value) should be shifted first
 		let mut sorted_node_ids = node_ids_with_position.into_iter().map(|(node_id, _)| node_id).collect::<Vec<_>>();
-		if shift.y > 0 {
+		if direction == Direction::Down {
 			sorted_node_ids.reverse();
 		}
 
 		// Ensure the top of each stack is only shifted left/right once
 		let mut shifted_absolute_layers = Vec::new();
 
+		let shift_sign = if direction == Direction::Left || direction == Direction::Up {-1} else {1};
+
 		for node_id in &sorted_node_ids {
-			// First shift the node left/right
-			if shift.x != 0 {
+			// Do not shift a node more than once
+			if shifted_nodes.contains(node_id) {
+				continue;
+			}
+			shifted_nodes.insert(*node_id);
+			match direction {
+				Direction::Left | Direction::Right => {
 				// If the node is a non layer, then directly shift it
 				if !self.is_layer(node_id, network_path) {
-					self.shift_node(node_id, IVec2::new(shift.x, 0), network_path);
+					self.shift_node(node_id, IVec2::new(shift_sign, 0), network_path);
 				} else {
 					// Get the downstream absolute layer (inclusive)
 					let mut downstream_absolute_layer = *node_id;
@@ -3820,179 +3931,69 @@ impl NodeNetworkInterface {
 					// Shift the upstream nodes below the stack layers only once
 					if !shifted_absolute_layers.contains(&downstream_absolute_layer) {
 						shifted_absolute_layers.push(downstream_absolute_layer);
-						let upstream_layers = std::iter::once(downstream_absolute_layer)
-							.chain(
-								self.upstream_flow_back_from_nodes(vec![downstream_absolute_layer], network_path, FlowType::PrimaryFlow)
-									.skip(1)
-									.take_while(|upstream_layer| self.is_stack(upstream_layer, network_path) && self.is_layer(upstream_layer, network_path)),
-							)
-							.collect::<Vec<_>>();
-
-						self.shift_node(&downstream_absolute_layer, IVec2::new(shift.x, 0), network_path);
-						let mut nodes_upstream_from_upstream_layers = HashSet::new();
-						for upstream_layer in upstream_layers {
-							let Some(upstream_nodes_below_layer) = upstream_nodes_below_layers.get(&upstream_layer) else {
-								log::error!("Could not get upstream nodes below layer in shift_selected_nodes");
-								continue;
-							};
-							for node_id in upstream_nodes_below_layer {
-								// Don't shift nodes in sorted_node_ids
-								if self.is_absolute(node_id, network_path) && !sorted_node_ids.contains(node_id) {
-									nodes_upstream_from_upstream_layers.insert(node_id);
+						self.shift_node(&downstream_absolute_layer, IVec2::new(shift_sign, 0), network_path);
+						for stack_nodes in self.upstream_flow_back_from_nodes(vec![downstream_absolute_layer], network_path, FlowType::PrimaryFlow).take_while(|layer| self.is_layer(layer, network_path)) {
+							for sole_dependent in &self.upstream_nodes_below_layer(&stack_nodes, network_path) {
+								if self.is_absolute(sole_dependent, network_path) {
+									self.shift_node(sole_dependent, IVec2::new(shift_sign, 0), network_path);
 								}
-							}
-						}
-						for node_to_shift in nodes_upstream_from_upstream_layers {
-							self.shift_node(node_to_shift, IVec2::new(shift.x, 0), network_path);
-						}
+							};
+						};
 					}
 				}
-			}
-
-			let mut current_nodes_to_check_collision = vec![*node_id];
-			// If the current node is a layer, then also check collisions with all chain nodes
-			if self.is_layer(node_id, network_path) {
-				let chain_nodes = self
-					.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::HorizontalFlow)
-					.skip(1)
-					.take_while(|upstream_node| self.is_chain(upstream_node, network_path));
-				current_nodes_to_check_collision.extend(chain_nodes);
-			}
-
-			// Check if the node has a downstream layer(inclusive) that is also being moved. If it does, then apply the pushing system
-			let all_downstream_layers = self.downstream_layers(node_id, network_path);
-			let selected_downstream_layers = all_downstream_layers.iter().filter(|downstream_layer| sorted_node_ids.contains(downstream_layer)).collect::<Vec<_>>();
-			let mut layers_to_check_collision = HashSet::new();
-
-			for selected_downstream_layer in selected_downstream_layers {
-				let mut downstream_layer = *selected_downstream_layer;
-				loop {
-					layers_to_check_collision.insert(downstream_layer);
-					if self.is_absolute(&downstream_layer, network_path) {
-						break;
-					}
-					let Some(downstream_node) = self
-						.outward_wires(network_path)
-						.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(downstream_layer, 0)))
-						.and_then(|downstream_nodes| downstream_nodes.first())
-						.and_then(|downstream_node| downstream_node.node_id())
-					else {
-						log::error!("Could not get downstream node when deselecting stack layer in shift_selected_nodes");
-						break;
-					};
-					downstream_layer = downstream_node;
-				}
-				layers_to_check_collision.insert(*selected_downstream_layer);
-				self.upstream_flow_back_from_nodes(vec![*selected_downstream_layer], network_path, FlowType::PrimaryFlow)
-					.skip(1)
-					.take_while(|upstream_layer| self.is_stack(upstream_layer, network_path) && self.is_layer(upstream_layer, network_path))
-					.for_each(|upstream_layer| {
-						layers_to_check_collision.insert(upstream_layer);
-					});
-			}
-
-			let mut nodes_to_check_collision = HashSet::new();
-			for layer_to_check_collision in layers_to_check_collision {
-				let Some(upstream_nodes_below_layer) = upstream_nodes_below_layers.get(&layer_to_check_collision) else {
-					log::error!("Could not get upstream nodes below layer in shift_selected_nodes");
+			},
+			Direction::Up | Direction::Down => {
+				// Also check collisions and shift for all owned nodes
+				let Some(owned_nodes_and_layer) = self.owned_nodes(node_id, network_path) else {
+					log::error!("Could not get owned nodes in shift_selected_nodes");
 					continue;
 				};
-				nodes_to_check_collision.extend(upstream_nodes_below_layer);
-				nodes_to_check_collision.insert(layer_to_check_collision);
-			}
+				owned_nodes_and_layer.extend(node_id);
 
-			// Ensure no nodes to check collision are in the current nodes to be moved
-			nodes_to_check_collision.retain(|node_id| !current_nodes_to_check_collision.contains(node_id));
+				for node_to_check_collision in stack_dependents {
+					for current_node in owned_nodes_and_layer {
+						let Some(mut current_node_bounding_box) = self.node_bounding_box(current_node, network_path) else {
+							log::error!("Could not get bounding box for node {node_id} in shift_selected_nodes");
+							continue;
+						};
 
-			// Shift the node one grid space at a time up/down to ensure nodes get pushed corrected
-			let mut current_node_y_shift = shift.y;
-			while current_node_y_shift != 0 {
-				loop {
-					let mut has_collision = false;
-
-					for node_to_check_collision in &nodes_to_check_collision {
-						for current_node in &current_nodes_to_check_collision {
-							let Some(mut current_node_bounding_box) = self.node_bounding_box(current_node, network_path) else {
-								log::error!("Could not get bounding box for node {node_id} in shift_selected_nodes");
-								continue;
-							};
-
-							let Some(node_bounding_box) = self.node_bounding_box(node_to_check_collision, network_path) else {
-								log::error!("Could not get bounding box for node {node_to_check_collision} in shift_selected_nodes");
-								continue;
-							};
-							// If the nodes do not intersect horizontally, then there is no collision
-							if current_node_bounding_box[1].x < node_bounding_box[0].x || current_node_bounding_box[0].x > node_bounding_box[1].x {
-								continue;
-							}
-
-							if current_node_y_shift > 0 {
-								current_node_bounding_box[1].y += GRID_SIZE as f64;
-								current_node_bounding_box[0].y += GRID_SIZE as f64;
-							} else {
-								current_node_bounding_box[1].y -= GRID_SIZE as f64;
-								current_node_bounding_box[0].y -= GRID_SIZE as f64;
-							};
-
-							let collision = current_node_bounding_box[1].y >= node_bounding_box[0].y - 0.1 && current_node_bounding_box[0].y <= node_bounding_box[1].y + 0.1;
-							if collision {
-								// Filter out the nodes that are currently being moved to avoid infinite recursion
-								// let mut unfiltered_elements_map = HashMap::new();
-								// for collision_layer in nodes_to_check_collision.iter().filter(|node_id| self.is_layer(node_id, network_path)) {
-								// 	if let Some(nodes_below_collision) = upstream_nodes_below_layers.get_mut(collision_layer) {
-								// 		let filtered_elements = nodes_below_collision.iter().filter(|node_id| !sorted_node_ids.contains(node_id)).cloned().collect::<Vec<_>>();
-								// 		//log::debug!("filtered_elements: {filtered_elements:?} for collision_layer {collision_layer}");
-								// 		let nodes_below_collision = std::mem::replace(nodes_below_collision, filtered_elements);
-								// 		unfiltered_elements_map.insert(*collision_layer, nodes_below_collision);
-								// 	}
-								// }
-
-								// Shift the group that the collided node is part of, excluding any nodes that are currently being moved
-								let mut downstream_layers = self.downstream_layers(node_to_check_collision, network_path);
-								downstream_layers.retain(|layer| !sorted_node_ids.contains(layer));
-								let collision_group = downstream_layers
-									.clone()
-									.iter()
-									.flat_map(|downstream_layer| upstream_nodes_below_layers.get(downstream_layer).cloned().unwrap_or_default())
-									.chain(downstream_layers)
-									.filter(|node_id| !current_nodes_to_check_collision.contains(node_id))
-									.collect::<Vec<_>>();
-
-								// Shift the node which collides up/down and break
-								// self.move_selected_nodes(
-								// 	collision_group,
-								// 	IVec2::new(0, current_node_y_shift.signum()),
-								// 	false,
-								// 	upstream_nodes_below_layers,
-								// 	layer_offsets,
-								// 	network_path,
-								// );
-
-								// for collision_layer in nodes_to_check_collision.iter().filter(|node_id| self.is_layer(node_id, network_path)) {
-								// 	if let Some(nodes_below_collision) = upstream_nodes_below_layers.get_mut(collision_layer) {
-								// 		let Some(unfiltered_elements) = unfiltered_elements_map.remove(collision_layer) else {
-								// 			log::error!("Could not get unfiltered elements in shift_selected_nodes");
-								// 			continue;
-								// 		};
-								// 		let _ = std::mem::replace(nodes_below_collision, unfiltered_elements);
-								// 	}
-								// }
-
-								has_collision = true;
-								break;
-							}
+						let Some(node_bounding_box) = self.node_bounding_box(node_to_check_collision, network_path) else {
+							log::error!("Could not get bounding box for node {node_to_check_collision} in shift_selected_nodes");
+							continue;
+						};
+						// If the nodes do not intersect horizontally, then there is no collision
+						if current_node_bounding_box[1].x < node_bounding_box[0].x || current_node_bounding_box[0].x > node_bounding_box[1].x {
+							continue;
 						}
-						if has_collision {
+
+						if direction == Direction::Down {
+							current_node_bounding_box[1].y += GRID_SIZE as f64;
+							current_node_bounding_box[0].y += GRID_SIZE as f64;
+						} else {
+							current_node_bounding_box[1].y -= GRID_SIZE as f64;
+							current_node_bounding_box[0].y -= GRID_SIZE as f64;
+						};
+
+						let collision = current_node_bounding_box[1].y >= node_bounding_box[0].y - 0.1 && current_node_bounding_box[0].y <= node_bounding_box[1].y + 0.1;
+						
+						if collision {
+							// Shift the group that the collided node is part of, excluding any nodes that are currently being moved
+							let mut downstream_layers = self.downstream_layers(node_to_check_collision, network_path);
+							downstream_layers.retain(|layer| !sorted_node_ids.contains(layer));
+							let collision_group = downstream_layers
+								.clone()
+								.iter()
+								.flat_map(|downstream_layer| upstream_nodes_below_layers.get(downstream_layer).cloned().unwrap_or_default())
+								.chain(downstream_layers)
+								.filter(|node_id| !current_nodes_to_check_collision.contains(node_id))
+								.collect::<Vec<_>>();
+
+							has_collision = true;
 							break;
 						}
 					}
-
-					// If there is a collision, then retry the loop until there is no collision
-					if !has_collision {
-						break;
-					}
 				}
-
+		
 				let mut shift_down = true;
 				if current_node_y_shift > 0 {
 					self.shift_node(node_id, IVec2::new(0, 1), network_path);
@@ -4021,6 +4022,67 @@ impl NodeNetworkInterface {
 					}
 				}
 			}
+
+
+		
+					// Check if the node has a downstream layer(inclusive) that is also being moved. If it does, then apply the pushing system
+					let all_downstream_layers = self.downstream_layers(node_id, network_path);
+					let selected_downstream_layers = all_downstream_layers.iter().filter(|downstream_layer| sorted_node_ids.contains(downstream_layer)).collect::<Vec<_>>();
+					let mut layers_to_check_collision = HashSet::new();
+		
+					for selected_downstream_layer in selected_downstream_layers {
+						let mut downstream_layer = *selected_downstream_layer;
+						loop {
+							layers_to_check_collision.insert(downstream_layer);
+							if self.is_absolute(&downstream_layer, network_path) {
+								break;
+							}
+							let Some(downstream_node) = self
+								.outward_wires(network_path)
+								.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(downstream_layer, 0)))
+								.and_then(|downstream_nodes| downstream_nodes.first())
+								.and_then(|downstream_node| downstream_node.node_id())
+							else {
+								log::error!("Could not get downstream node when deselecting stack layer in shift_selected_nodes");
+								break;
+							};
+							downstream_layer = downstream_node;
+						}
+						layers_to_check_collision.insert(*selected_downstream_layer);
+						self.upstream_flow_back_from_nodes(vec![*selected_downstream_layer], network_path, FlowType::PrimaryFlow)
+							.skip(1)
+							.take_while(|upstream_layer| self.is_stack(upstream_layer, network_path) && self.is_layer(upstream_layer, network_path))
+							.for_each(|upstream_layer| {
+								layers_to_check_collision.insert(upstream_layer);
+							});
+					}
+		
+					let mut nodes_to_check_collision = HashSet::new();
+					for layer_to_check_collision in layers_to_check_collision {
+						let Some(upstream_nodes_below_layer) = upstream_nodes_below_layers.get(&layer_to_check_collision) else {
+							log::error!("Could not get upstream nodes below layer in shift_selected_nodes");
+							continue;
+						};
+						nodes_to_check_collision.extend(upstream_nodes_below_layer);
+						nodes_to_check_collision.insert(layer_to_check_collision);
+					}
+		
+					// Ensure no nodes to check collision are in the current nodes to be moved
+					nodes_to_check_collision.retain(|node_id| !current_nodes_to_check_collision.contains(node_id));
+		
+					// Shift the node one grid space at a time up/down to ensure nodes get pushed corrected
+					let mut current_node_y_shift = shift.y;
+					while current_node_y_shift != 0 {
+						loop {
+							let mut has_collision = false;
+		
+							
+					}
+
+				},
+			}
+			
+
 		}
 	}
 
@@ -4621,8 +4683,6 @@ pub struct NodeNetworkTransientMetadata {
 	/// All export connector click targets
 	pub import_export_ports: TransientMetadata<Ports>,
 }
-
-pub struct AbsoluteMetadata {}
 
 pub enum LayerOwner {
 	// Used to get the layer that should be shifted when there is a collision.

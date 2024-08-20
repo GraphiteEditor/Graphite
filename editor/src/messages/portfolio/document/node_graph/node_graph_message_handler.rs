@@ -1034,7 +1034,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::ShiftSelectedNodes { direction, rubber_band } => {
 				let shift_upstream = ipp.keyboard.get(crate::messages::tool::tool_messages::tool_prelude::Key::Shift as usize);
-				network_interface.shift_selected_nodes(direction, shift_upstream, selection_network_path);
+				let shifted_nodes = HashSet::new();
+				network_interface.shift_selected_nodes(direction, shift_upstream, &mut shifted_nodes, selection_network_path);
 
 				if !rubber_band {
 					network_interface.unload_stack_dependents_y_offset(selection_network_path);
