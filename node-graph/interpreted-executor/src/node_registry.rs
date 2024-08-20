@@ -805,10 +805,10 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::AddArtboardNode<_, _>, input: Footprint, output: ArtboardGroup, fn_params: [Footprint => ArtboardGroup, Footprint => Artboard]),
 	];
 	let mut map: HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> = HashMap::new();
-	for (id, entry) in graphene_core::registry::NODE_REGISTRY.lock().unwrap().drain() {
+	for (&id, entry) in graphene_core::registry::NODE_REGISTRY.lock().unwrap().iter() {
 		log::debug!("id: {id:?}");
-		for (constructor, types) in entry.into_iter() {
-			map.entry(id.clone()).or_default().insert(types, constructor);
+		for (constructor, types) in entry.iter() {
+			map.entry(id.into()).or_default().insert(types.clone(), *constructor);
 		}
 	}
 	for (id, c, types) in node_types.into_iter().flatten() {

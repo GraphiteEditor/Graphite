@@ -39,6 +39,7 @@ graphene-std = { path = "../node-graph/gstd", features = ["serde"] }
 js-sys = { workspace = true }
 log = { workspace = true }
 bitflags = { workspace = true }
+convert_case = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

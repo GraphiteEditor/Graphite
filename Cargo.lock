@@ -2543,6 +2543,7 @@ dependencies = [
  "async-mutex",
  "bezier-rs",
  "bitflags 2.6.0",
+ "convert_case 0.6.0",
  "derivative",
  "dyn-any",
  "env_logger",

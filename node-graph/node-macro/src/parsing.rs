@@ -29,7 +29,7 @@ pub(crate) struct ParsedNodeFn {
 #[derive(Debug, Default)]
 pub(crate) struct NodeFnAttributes {
 	pub(crate) category: Option<LitStr>,
-	pub(crate) path: Option<syn::Path>,
+	pub(crate) display_name: Option<LitStr>,
 	// Add more attributes as needed
 }
 
@@ -53,7 +53,7 @@ pub(crate) enum ParsedField {
 impl Parse for NodeFnAttributes {
 	fn parse(input: ParseStream) -> syn::Result<Self> {
 		let mut category = None;
-		let mut path = None;
+		let mut display_name = None;
 
 		if !input.peek(Comma) {
 			return Ok(Self::default());
@@ -73,14 +73,12 @@ impl Parse for NodeFnAttributes {
 						.map_err(|_| Error::new_spanned(meta, "Expected a string literal for 'category', e.g., category(\"Value\")"))?;
 					category = Some(lit);
 				}
-				Meta::List(meta) if meta.path.is_ident("path") => {
-					if path.is_some() {
-						return Err(Error::new_spanned(meta, "Multiple 'path' attributes are not allowed"));
+				Meta::List(meta) if meta.path.is_ident("name") => {
+					if display_name.is_some() {
+						return Err(Error::new_spanned(meta, "Multiple 'name' attributes are not allowed"));
 					}
-					let parsed_path: syn::Path = meta
-						.parse_args()
-						.map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'path', e.g., path(graphene_core::TestNode)"))?;
-					path = Some(parsed_path);
+					let parsed_name: LitStr = meta.parse_args().map_err(|_| Error::new_spanned(meta, "Expected a string for 'name', e.g., name(\"Memoize\")"))?;
+					display_name = Some(parsed_name);
 				}
 				_ => {
 					return Err(Error::new_spanned(
@@ -99,7 +97,7 @@ impl Parse for NodeFnAttributes {
 			}
 		}
 
-		Ok(NodeFnAttributes { category, path })
+		Ok(NodeFnAttributes { category, display_name })
 	}
 }
 

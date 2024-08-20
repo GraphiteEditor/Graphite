@@ -47,6 +47,7 @@ env_logger = "0.11"
 log = "0.4"
 bitflags = { version = "2.4", features = ["serde"] }
 ctor = "0.2"
+convert_case = "0.6"
 derivative = "2.2"
 tempfile = "3.6"
 thiserror = "1.0"

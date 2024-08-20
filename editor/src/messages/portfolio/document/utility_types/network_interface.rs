@@ -424,12 +424,12 @@ impl NodeNetworkInterface {
 					};
 				} else {
 					// Disconnect node input if it is not connected to another node in new_ids
-					let tagged_value = TaggedValue::from_type(&self.input_type(&InputConnector::node(*node_id, input_index), network_path));
+					let tagged_value = TaggedValue::from_type_or_none(&self.input_type(&InputConnector::node(*node_id, input_index), network_path));
 					*input = NodeInput::value(tagged_value, true);
 				}
 			} else if let &mut NodeInput::Network { .. } = input {
 				// Always disconnect network node input
-				let tagged_value = TaggedValue::from_type(&self.input_type(&InputConnector::node(*node_id, input_index), network_path));
+				let tagged_value = TaggedValue::from_type_or_none(&self.input_type(&InputConnector::node(*node_id, input_index), network_path));
 				*input = NodeInput::value(tagged_value, true);
 			}
 		}
@@ -3325,7 +3325,7 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		let tagged_value = TaggedValue::from_type(&self.input_type(input_connector, network_path));
+		let tagged_value = TaggedValue::from_type_or_none(&self.input_type(input_connector, network_path));
 
 		let value_input = NodeInput::value(tagged_value, true);
 

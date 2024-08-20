@@ -1,6 +1,7 @@
 use std::sync::atomic::AtomicU64;
 
 use crate::parsing::*;
+use convert_case::{Case, Casing};
 use proc_macro2::TokenStream as TokenStream2;
 use proc_macro_crate::FoundCrate;
 use quote::{format_ident, quote};
@@ -26,7 +27,10 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 
 	let category = &attributes.category.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 
-	let path = &attributes.path;
+	let display_name = match &attributes.display_name.as_ref() {
+		Some(lit) => lit.value(),
+		_ => struct_name.to_string().to_case(Case::Title),
+	};
 
 	let struct_generics: Vec<Ident> = fields.iter().enumerate().map(|(i, _)| format_ident!("Node{}", i)).collect();
 
@@ -109,8 +113,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 			}
 		}
 	};
-	let identifier = quote!(ProtoNodeIdentifier::new(concat![std::module_path!(), "::", stringify!(#struct_name)]));
-	let register_path = path.clone().unwrap_or_else(|| parse_quote!(#struct_name));
+	let identifier = quote!(concat![std::module_path!(), "::", stringify!(#struct_name)]);
 
 	let register_node_impl = generate_register_node_impl(parsed, &field_names, struct_name, &identifier);
 
@@ -160,7 +163,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 			#[cfg_attr(not(target_arch = "wasm32"), ctor)]
 			fn register_metadata() {
 				let metadata = NodeMetadata {
-					identifier: #identifier,
+					display_name: #display_name,
 					category: #category,
 					input_type: concrete!(#input_type),
 					output_type: concrete!(#output_type),
@@ -264,7 +267,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 	quote! {
 
 		#[cfg_attr(not(target_arch = "wasm32"), ctor)]
-		pub fn register_node() {
+		fn register_node() {
 			log::debug!("hello from node fn!");
 			let mut registry = NODE_REGISTRY.lock().unwrap();
 			registry.insert(

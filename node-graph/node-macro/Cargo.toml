@@ -18,8 +18,8 @@ proc-macro = true
 syn = { workspace = true, features = ["extra-traits", "full"] }
 proc-macro2 = { workspace = true }
 quote = { workspace = true }
+convert_case = { workspace = true }
 
-convert_case = "0.6.0"
 indoc = "2.0.5"
 proc-macro-crate = "3.1.0"
 

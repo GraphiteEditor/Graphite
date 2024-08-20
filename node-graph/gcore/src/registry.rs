@@ -9,9 +9,18 @@ use dyn_any::DynAny;
 use crate::NodeIO;
 use crate::NodeIOTypes;
 
+pub mod types {
+	type Percentage = f64;
+	type Angle = f64;
+	type PixelLength = f64;
+	type IntegerCount = u32;
+	type SeedValue = u64;
+	type Resolution = glam::UVec2;
+}
+
 #[derive(Clone)]
 pub struct NodeMetadata {
-	pub identifier: ProtoNodeIdentifier,
+	pub display_name: &'static str,
 	pub category: Option<&'static str>,
 	pub input_type: Type,
 	pub output_type: Type,
@@ -23,9 +32,9 @@ pub struct FieldMetadata {
 	pub name: String,
 	pub default_value: Option<&'static str>,
 }
-pub static NODE_REGISTRY: LazyLock<Mutex<HashMap<ProtoNodeIdentifier, Vec<(NodeConstructor, NodeIOTypes)>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+pub static NODE_REGISTRY: LazyLock<Mutex<HashMap<&str, Vec<(NodeConstructor, NodeIOTypes)>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
-pub static NODE_METADATA: LazyLock<Mutex<HashMap<ProtoNodeIdentifier, NodeMetadata>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+pub static NODE_METADATA: LazyLock<Mutex<HashMap<&str, NodeMetadata>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[cfg(not(target_arch = "wasm32"))]
 pub type DynFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n + Send>>;
