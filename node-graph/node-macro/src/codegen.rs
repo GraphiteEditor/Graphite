@@ -38,7 +38,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 		let name = match field {
 			ParsedField::Regular { name, .. } | ParsedField::Node { name, .. } => name,
 		};
-		quote! { #name: #gen }
+		quote! { pub(super) #name: #gen }
 	});
 
 	let field_names: Vec<_> = fields
@@ -129,6 +129,13 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 	quote! {
 		#async_keyword fn #fn_name <'n, #(#fn_generics,)*> (#input_name: #input_type #(, #field_names: #field_types)*) -> #output_type #body
 
+		#[automatically_derived]
+		impl<'n,  #(#fn_generics,)* #(#struct_generics,)*> #graphene_core::Node<'n, #input_type> for #mod_name::#struct_name<#(#struct_generics,)*>
+		#where_clause
+		{
+			#eval_impl
+		}
+
 		mod #mod_name {
 			use super::*;
 			use #graphene_core as gcore;
@@ -140,13 +147,6 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 
 			pub struct #struct_name<#(#struct_generics,)*> {
 				#(#struct_fields,)*
-			}
-
-			#[automatically_derived]
-			impl<'n,  #(#fn_generics,)* #(#struct_generics,)*> Node<'n, #input_type> for #struct_name<#(#struct_generics,)*>
-			#where_clause
-			{
-				#eval_impl
 			}
 
 			#[automatically_derived]

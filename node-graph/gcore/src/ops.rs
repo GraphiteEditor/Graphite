@@ -24,45 +24,45 @@ impl AddPairNode {
 
 // Add
 #[node_macro::new_node_fn(category("Math"))]
-fn add<U: std::ops::Add<T>, T>(
+fn add<U: Add<T>, T>(
 	_: (),
 	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64, glam::DVec2)] primary: U,
 	#[implementations(u32, u32, &u32, &u32, f32, f32, &f32, &f32, f64, f64, &f64, &f64, glam::DVec2)] addend: T,
-) -> <U as std::ops::Add<T>>::Output {
+) -> <U as Add<T>>::Output {
 	primary + addend
 }
 
 // Subtract
 #[node_macro::new_node_fn(category("Math"))]
-fn subtract<U: std::ops::Sub<T>, T>(
+fn subtract<U: Sub<T>, T>(
 	_: (),
 	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64, glam::DVec2)] primary: U,
 	#[implementations(u32, u32, &u32, &u32, f32, f32, &f32, &f32, f64, f64, &f64, &f64, glam::DVec2)] subtrahend: T,
-) -> <U as std::ops::Sub<T>>::Output {
+) -> <U as Sub<T>>::Output {
 	primary - subtrahend
 }
 
 // Divide
 #[node_macro::new_node_fn(category("Math"))]
-fn divide<U: std::ops::Div<T>, T>(
+fn divide<U: Div<T>, T>(
 	_: (),
 	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64, glam::DVec2, glam::DVec2)] primary: U,
 	#[default(1.)]
 	#[implementations(u32, u32, &u32, &u32, f32, f32, &f32, &f32, f64, f64, &f64, &f64, glam::DVec2, f64)]
 	divisor: T,
-) -> <U as std::ops::Div<T>>::Output {
+) -> <U as Div<T>>::Output {
 	primary / divisor
 }
 
 // Multiply
 #[node_macro::new_node_fn(category("Math"))]
-fn multiply<U: std::ops::Mul<T>, T>(
+fn multiply<U: Mul<T>, T>(
 	_: (),
 	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64, glam::DVec2, f64)] primary: U,
 	#[default(1.)]
 	#[implementations(u32, u32, &u32, &u32, f32, f32, &f32, &f32, f64, f64, &f64, &f64, glam::DVec2, glam::DVec2)]
 	multiplicant: T,
-) -> <U as std::ops::Mul<T>>::Output {
+) -> <U as Mul<T>>::Output {
 	primary * multiplicant
 }
 
@@ -173,13 +173,13 @@ fn equals<U: core::cmp::PartialEq<T>, T>(
 
 // Modulo
 #[node_macro::new_node_fn(category("Math"))]
-fn modulo<U: std::ops::Rem<T>, T>(
+fn modulo<U: Rem<T>, T>(
 	_: (),
 	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64)] primary: U,
 	#[default(1.)]
 	#[implementations(u32, u32, &u32, &u32, f32, f32, &f32, &f32, f64, f64, &f64, &f64)]
 	modulus: T,
-) -> <U as std::ops::Rem<T>>::Output {
+) -> <U as Rem<T>>::Output {
 	primary % modulus
 }
 
