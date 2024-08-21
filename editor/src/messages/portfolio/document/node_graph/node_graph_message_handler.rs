@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeWire, WirePath};
 use super::{document_node_definitions, node_properties};
 use crate::application::generate_uuid;
@@ -632,31 +634,40 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					graph_delta.y -= previous_round_y;
 
 					while graph_delta != IVec2::ZERO {
-						if graph_delta.x > 0 {
-							responses.add(NodeGraphMessage::ShiftSelectedNodes {
-								direction: Direction::Right,
-								rubber_band: true,
-							});
-							graph_delta.x -= 1;
-						} else if graph_delta.x < 0 {
-							responses.add(NodeGraphMessage::ShiftSelectedNodes {
-								direction: Direction::Left,
-								rubber_band: true,
-							});
-							graph_delta.x += 1;
+						match graph_delta.x.cmp(&0) {
+							Ordering::Greater => {
+								responses.add(NodeGraphMessage::ShiftSelectedNodes {
+									direction: Direction::Right,
+									rubber_band: true,
+								});
+								graph_delta.x -= 1;
+							}
+							Ordering::Less => {
+								responses.add(NodeGraphMessage::ShiftSelectedNodes {
+									direction: Direction::Left,
+									rubber_band: true,
+								});
+								graph_delta.x += 1;
+							}
+							Ordering::Equal => {}
 						}
-						if graph_delta.y > 0 {
-							responses.add(NodeGraphMessage::ShiftSelectedNodes {
-								direction: Direction::Down,
-								rubber_band: true,
-							});
-							graph_delta.y -= 1;
-						} else if graph_delta.y < 0 {
-							responses.add(NodeGraphMessage::ShiftSelectedNodes {
-								direction: Direction::Up,
-								rubber_band: true,
-							});
-							graph_delta.y += 1;
+
+						match graph_delta.y.cmp(&0) {
+							Ordering::Greater => {
+								responses.add(NodeGraphMessage::ShiftSelectedNodes {
+									direction: Direction::Down,
+									rubber_band: true,
+								});
+								graph_delta.y -= 1;
+							}
+							Ordering::Less => {
+								responses.add(NodeGraphMessage::ShiftSelectedNodes {
+									direction: Direction::Up,
+									rubber_band: true,
+								});
+								graph_delta.y += 1;
+							}
+							Ordering::Equal => {}
 						}
 					}
 				} else if self.box_selection_start.is_some() {

@@ -891,7 +891,7 @@ impl NodeNetworkInterface {
 								input_index,
 							} => {
 								// Stop iterating once the downstream node is the left input to the chain or a sole dependent
-								if !(downstream_node_id == node_id && *input_index == 1) && !sole_dependents.contains(downstream_node_id) {
+								if !(sole_dependents.contains(downstream_node_id) || downstream_node_id == node_id && *input_index == 1) {
 									// Continue iterating downstream for the downstream node
 									let number_of_outputs = self.number_of_outputs(downstream_node_id, network_path);
 									let Some(outward_wires) = self.outward_wires(network_path) else {
@@ -1676,7 +1676,7 @@ impl NodeNetworkInterface {
 		};
 
 		if let TransientMetadata::Loaded(stack_dependents) = &mut network_metadata.transient_metadata.stack_dependents {
-			for (_, layer_owner) in stack_dependents {
+			for layer_owner in stack_dependents.values_mut() {
 				if let LayerOwner::None(offset) = layer_owner {
 					*offset = 0;
 				}
@@ -1975,7 +1975,6 @@ impl NodeNetworkInterface {
 				// Set the entire transient node type metadata to be a layer, in case it was previously a node
 				node_metadata.transient_metadata.node_type_metadata = NodeTypeTransientMetadata::Layer(LayerTransientMetadata {
 					layer_width: TransientMetadata::Loaded(layer_width),
-					..LayerTransientMetadata::default()
 				});
 			}
 		} else {
@@ -3865,7 +3864,7 @@ impl NodeNetworkInterface {
 	// Used when moving layer by the layer panel, does not run any pushing logic. Moves all sole dependents of the layer as well
 	// Ensure that the layer is absolute position
 	pub fn shift_absolute_node_position(&mut self, layer: &NodeId, shift: IVec2, network_path: &[NodeId]) {
-		let mut nodes_to_shift = self.upstream_nodes_below_layer(&layer, network_path);
+		let mut nodes_to_shift = self.upstream_nodes_below_layer(layer, network_path);
 		nodes_to_shift.insert(*layer);
 
 		for node_id in nodes_to_shift {
