@@ -4174,6 +4174,10 @@ impl NodeNetworkInterface {
 				if current_node_bounding_box[1].x < node_bounding_box[0].x || current_node_bounding_box[0].x > node_bounding_box[1].x {
 					continue;
 				}
+				// Do not check collision if the nodes are currently intersecting
+				if current_node_bounding_box[1].y >= node_bounding_box[0].y - 0.1 && current_node_bounding_box[0].y <= node_bounding_box[1].y + 0.1 {
+					continue;
+				}
 
 				current_node_bounding_box[1].y += GRID_SIZE as f64 * shift_sign as f64;
 				current_node_bounding_box[0].y += GRID_SIZE as f64 * shift_sign as f64;
