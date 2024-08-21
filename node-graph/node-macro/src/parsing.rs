@@ -6,7 +6,7 @@ use quote::{format_ident, ToTokens};
 use syn::parse::{Parse, ParseStream, Parser};
 use syn::punctuated::Punctuated;
 use syn::token::Comma;
-use syn::{parse_quote, Attribute, Error, FnArg, GenericParam, Ident, ItemFn, LitStr, Meta, Pat, PatType, ReturnType, Type, TypeTuple};
+use syn::{parse_quote, Attribute, Error, FnArg, GenericParam, Ident, ItemFn, LitStr, Meta, Pat, PatType, ReturnType, Type, TypeTuple, WhereClause};
 
 use crate::codegen::generate_node_code;
 
@@ -17,6 +17,7 @@ pub(crate) struct ParsedNodeFn {
 	pub(crate) struct_name: Ident,
 	pub(crate) mod_name: Ident,
 	pub(crate) fn_generics: Vec<GenericParam>,
+	pub(crate) where_clause: Option<WhereClause>,
 	pub(crate) input_type: Type,
 	pub(crate) input_name: Ident,
 	pub(crate) output_type: Type,
@@ -112,6 +113,7 @@ fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNo
 
 	let (input_name, input_type, fields) = parse_inputs(&input_fn.sig.inputs, is_async)?;
 	let output_type = parse_output(&input_fn.sig.output)?;
+	let where_clause = input_fn.sig.generics.where_clause;
 	let body = input_fn.block.to_token_stream();
 	let crate_name = proc_macro_crate::crate_name("graphene_core").unwrap_or(proc_macro_crate::FoundCrate::Itself);
 
@@ -133,6 +135,7 @@ fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNo
 		output_type,
 		is_async,
 		fields,
+		where_clause,
 		body,
 		crate_name,
 	})
@@ -370,6 +373,7 @@ mod tests {
 			struct_name: Ident::new("Add", Span::call_site()),
 			mod_name: Ident::new("add", Span::call_site()),
 			fn_generics: vec![],
+			where_clause: None,
 			input_type: parse_quote!(f64),
 			input_name: Ident::new("a", Span::call_site()),
 			output_type: parse_quote!(f64),
@@ -407,6 +411,7 @@ mod tests {
 			struct_name: Ident::new("Transform", Span::call_site()),
 			mod_name: Ident::new("transform", Span::call_site()),
 			fn_generics: vec![parse_quote!(T: 'static)],
+			where_clause: None,
 			input_type: parse_quote!(Footprint),
 			input_name: Ident::new("footprint", Span::call_site()),
 			output_type: parse_quote!(T),
@@ -453,6 +458,7 @@ mod tests {
 			struct_name: Ident::new("Circle", Span::call_site()),
 			mod_name: Ident::new("circle", Span::call_site()),
 			fn_generics: vec![],
+			where_clause: None,
 			input_type: parse_quote!(()),
 			output_type: parse_quote!(VectorData),
 			is_async: false,
@@ -490,6 +496,7 @@ mod tests {
 			struct_name: Ident::new("Levels", Span::call_site()),
 			mod_name: Ident::new("levels", Span::call_site()),
 			fn_generics: vec![parse_quote!(P: Pixel)],
+			where_clause: None,
 			input_type: parse_quote!(ImageFrame<P>),
 			input_name: Ident::new("image", Span::call_site()),
 			output_type: parse_quote!(ImageFrame<P>),
@@ -532,6 +539,7 @@ mod tests {
 			struct_name: Ident::new("LoadImage", Span::call_site()),
 			mod_name: Ident::new("load_image", Span::call_site()),
 			fn_generics: vec![],
+			where_clause: None,
 			input_type: parse_quote!(&WasmEditorApi),
 			input_name: Ident::new("api", Span::call_site()),
 			output_type: parse_quote!(ImageFrame<Color>),
@@ -569,6 +577,7 @@ mod tests {
 			struct_name: Ident::new("CustomNode", Span::call_site()),
 			mod_name: Ident::new("custom_node", Span::call_site()),
 			fn_generics: vec![],
+			where_clause: None,
 			input_type: parse_quote!(i32),
 			input_name: Ident::new("input", Span::call_site()),
 			output_type: parse_quote!(i32),

@@ -98,7 +98,7 @@ pub(crate) fn property_from_type(document_node: &DocumentNode, node_id: NodeId, 
 				"PixelLength" => number_widget(document_node, node_id, index, name, NumberInput::default().min(0.).unit("px"), false).into(),
 				"IntegerCount" => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(1.), false).into(),
 				"SeedValue" => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(0.), false).into(),
-				"Resolution" => vec2_widget(document_node, node_id, index, name, "W", "H", "px", Some(64.), add_blank_assist).into(),
+				"Resolution" => vec2_widget(document_node, node_id, index, name, "W", "H", "px", Some(64.), add_blank_assist),
 
 				// For all other types, use TypeId-based matching
 				_ => {
@@ -1835,11 +1835,6 @@ pub(crate) fn spline_properties(document_node: &DocumentNode, node_id: NodeId, _
 	vec![LayoutGroup::Row {
 		widgets: vec_dvec2_input(document_node, node_id, 1, "Points", TextInput::default().centered(true), true),
 	}]
-}
-
-pub(crate) fn logic_operator_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let widgets = bool_widget(document_node, node_id, 0, "Operand B", CheckboxInput::default(), true);
-	vec![LayoutGroup::Row { widgets }]
 }
 
 pub(crate) fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

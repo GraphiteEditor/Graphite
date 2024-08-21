@@ -41,8 +41,9 @@ fn compile_to_proto(c: &mut Criterion) {
 
 #[cfg_attr(all(feature = "iai", not(feature = "criterion")), library_benchmark)]
 #[cfg_attr(all(feature = "iai", not(feature="criterion")), benches::with_setup(args = ["isometric-fountain", "painted-dreams", "procedural-string-lights", "red-dress", "valley-of-spires"], setup = load_from_name))]
-pub fn iai_compile_to_proto(input: NodeNetwork) {
-	black_box(compile(input));
+pub fn iai_compile_to_proto(_input: NodeNetwork) {
+	#[cfg(all(feature = "iai", not(feature = "criterion")))]
+	black_box(compile(_input));
 }
 
 #[cfg(feature = "criterion")]
@@ -56,3 +57,6 @@ library_benchmark_group!(name = compile_group; benchmarks = iai_compile_to_proto
 
 #[cfg(all(not(feature = "criterion"), feature = "iai"))]
 main!(library_benchmark_groups = compile_group);
+
+#[cfg(all(not(feature = "criterion"), not(feature = "iai")))]
+fn main() {}

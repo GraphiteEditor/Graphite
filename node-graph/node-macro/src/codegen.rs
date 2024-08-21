@@ -5,7 +5,7 @@ use convert_case::{Case, Casing};
 use proc_macro2::TokenStream as TokenStream2;
 use proc_macro_crate::FoundCrate;
 use quote::{format_ident, quote};
-use syn::{parse_quote, Ident};
+use syn::{parse_quote, punctuated::Punctuated, spanned::Spanned, token::Comma, Ident, Token, WhereClause, WherePredicate};
 static NODE_ID: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
@@ -15,6 +15,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 		struct_name,
 		mod_name,
 		fn_generics,
+		where_clause,
 		input_type,
 		input_name,
 		output_type,
@@ -35,8 +36,11 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 
 	let struct_generics: Vec<Ident> = fields.iter().enumerate().map(|(i, _)| format_ident!("Node{}", i)).collect();
 
-	let struct_fields = struct_generics.iter().map(|gen| {
-		quote! { pub(super) #gen }
+	let struct_fields = fields.iter().zip(struct_generics.iter()).map(|(field, gen)| {
+		let name = match field {
+			ParsedField::Regular { name, .. } | ParsedField::Node { name, .. } => name,
+		};
+		quote! { pub(super) #name: #gen }
 	});
 
 	let field_names: Vec<_> = fields
@@ -71,15 +75,12 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 		})
 		.collect();
 
-	let eval_args = fields.iter().enumerate().map(|(i, field)| {
-		let i = syn::Index::from(i);
-		match field {
-			ParsedField::Regular { name, .. } => {
-				quote! { let #name = self.#i.eval(()); }
-			}
-			ParsedField::Node { name, .. } => {
-				quote! { let #name = &self.#i; }
-			}
+	let eval_args = fields.iter().map(|field| match field {
+		ParsedField::Regular { name, .. } => {
+			quote! { let #name = self.#name.eval(()); }
+		}
+		ParsedField::Node { name, .. } => {
+			quote! { let #name = &self.#name; }
 		}
 	});
 
@@ -98,12 +99,17 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 			}
 		});
 	}
+	let where_clause = where_clause.clone().unwrap_or(WhereClause {
+		where_token: Token![where](output_type.span()),
+		predicates: Default::default(),
+	});
 
-	let where_clause = quote! {
-		where
-			#(#clauses,)*
-			#output_type: 'n,
-	};
+	let mut struct_where_clause = where_clause.clone();
+	let extra_where: Punctuated<WherePredicate, Comma> = parse_quote!(
+		#(#clauses,)*
+		#output_type: 'n,
+	);
+	struct_where_clause.predicates.extend(extra_where);
 
 	let new_args = struct_generics.iter().zip(field_names.iter()).map(|(gen, name)| {
 		quote! { #name: #gen }
@@ -142,11 +148,11 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 
 	quote! {
 		/// Underlying implementation for [#struct_name]
-		#async_keyword fn #fn_name <'n, #(#fn_generics,)*> (#input_name: #input_type #(, #field_names: #field_types)*) -> #output_type #body
+		#async_keyword fn #fn_name <'n, #(#fn_generics,)*> (#input_name: #input_type #(, #field_names: #field_types)*) -> #output_type #where_clause #body
 
 		#[automatically_derived]
 		impl<'n,  #(#fn_generics,)* #(#struct_generics,)*> #graphene_core::Node<'n, #input_type> for #mod_name::#struct_name<#(#struct_generics,)*>
-		#where_clause
+		#struct_where_clause
 		{
 			#eval_impl
 		}
@@ -168,17 +174,17 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 			static _IMPORTS: core::marker::PhantomData<#(#all_implementation_types,)*> = core::marker::PhantomData;
 
 			#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-			pub struct #struct_name<#(#struct_generics,)*> (
+			pub struct #struct_name<#(#struct_generics,)*> {
 				#(#struct_fields,)*
-			);
+			}
 
 			#[automatically_derived]
 			impl<'n, #(#struct_generics,)*> #struct_name<#(#struct_generics,)*>
 			{
 				pub fn new(#(#new_args,)*) -> Self {
-					Self (
+					Self {
 						#(#field_names,)*
-					)
+					}
 				}
 			}
 

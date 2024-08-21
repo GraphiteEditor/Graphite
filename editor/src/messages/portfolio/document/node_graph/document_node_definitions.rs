@@ -2688,74 +2688,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			properties: &node_properties::exposure_properties,
 		},
-		DocumentNodeDefinition {
-			identifier: "Or",
-			category: "Math",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::logic::LogicOrNode<_>"),
-					inputs: vec![NodeInput::value(TaggedValue::Bool(false), true), NodeInput::value(TaggedValue::Bool(false), true)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Operand A".to_string(), "Operand B".to_string()],
-					output_names: vec!["Output".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::logic_operator_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "And",
-			category: "Math",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::logic::LogicAndNode<_>"),
-					inputs: vec![NodeInput::value(TaggedValue::Bool(false), true), NodeInput::value(TaggedValue::Bool(false), true)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Operand A".to_string(), "Operand B".to_string()],
-					output_names: vec!["Output".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::logic_operator_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "XOR",
-			category: "Math",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::logic::LogicXorNode<_>"),
-					inputs: vec![NodeInput::value(TaggedValue::Bool(false), true), NodeInput::value(TaggedValue::Bool(false), true)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Operand A".to_string(), "Operand B".to_string()],
-					output_names: vec!["Output".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::logic_operator_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Not",
-			category: "Math",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::logic::LogicNotNode"),
-					inputs: vec![NodeInput::value(TaggedValue::Bool(false), true)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Input".to_string()],
-					output_names: vec!["Output".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::node_no_properties,
-		},
 		(*IMAGINATE_NODE).clone(),
 		DocumentNodeDefinition {
 			identifier: "Circle",
@@ -3853,7 +3785,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 
 		use graphene_core::registry::*;
 		let NodeMetadata { display_name, category, fields } = metadata;
-		let first_node_io = &node_registry.get(id).unwrap().get(0).map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
+		let first_node_io = &node_registry
+			.get(id)
+			.expect("Did not find node registry entry for auto generated node metadata")
+			.first()
+			.map(|(_, node_io)| node_io)
+			.unwrap_or(const { &NodeIOTypes::empty() });
 		let input_type = &first_node_io.input;
 		let output_type = &first_node_io.output;
 

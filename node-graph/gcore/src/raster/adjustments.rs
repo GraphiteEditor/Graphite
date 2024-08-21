@@ -266,12 +266,7 @@ impl From<BlendMode> for vello::peniko::Mix {
 	}
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct LuminanceNode<LuminanceCalculation> {
-	luminance_calc: LuminanceCalculation,
-}
-
-#[node_macro::node_fn(LuminanceNode)]
+#[node_macro::new_node_fn(category("Adjustments"))]
 fn luminance_color_node(color: Color, luminance_calc: LuminanceCalculation) -> Color {
 	let luminance = match luminance_calc {
 		LuminanceCalculation::SRGB => color.luminance_srgb(),
@@ -283,12 +278,7 @@ fn luminance_color_node(color: Color, luminance_calc: LuminanceCalculation) -> C
 	color.map_rgb(|_| luminance)
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ExtractChannelNode<TargetChannel> {
-	channel: TargetChannel,
-}
-
-#[node_macro::node_fn(ExtractChannelNode)]
+#[node_macro::new_node_fn(category("Adjustments"))]
 fn extract_channel_node(color: Color, channel: RedGreenBlueAlpha) -> Color {
 	let extracted_value = match channel {
 		RedGreenBlueAlpha::Red => color.r(),
@@ -299,10 +289,7 @@ fn extract_channel_node(color: Color, channel: RedGreenBlueAlpha) -> Color {
 	color.map_rgba(|_| extracted_value)
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ExtractOpaqueNode;
-
-#[node_macro::node_fn(ExtractOpaqueNode)]
+#[node_macro::new_node_fn(category("Adjustments"))]
 fn extract_opaque_node(color: Color) -> Color {
 	if color.a() == 0. {
 		return color.with_alpha(1.);
@@ -310,17 +297,8 @@ fn extract_opaque_node(color: Color) -> Color {
 	Color::from_rgbaf32(color.r() / color.a(), color.g() / color.a(), color.b() / color.a(), 1.).unwrap()
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct LevelsNode<InputStart, InputMid, InputEnd, OutputStart, OutputEnd> {
-	input_start: InputStart,
-	input_mid: InputMid,
-	input_end: InputEnd,
-	output_start: OutputStart,
-	output_end: OutputEnd,
-}
-
 // From https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
-#[node_macro::node_fn(LevelsNode)]
+#[node_macro::new_node_fn(category("Adjustments"))]
 fn levels_node(color: Color, input_start: f64, input_mid: f64, input_end: f64, output_start: f64, output_end: f64) -> Color {
 	let color = color.to_gamma_srgb();
 
@@ -364,20 +342,9 @@ fn levels_node(color: Color, input_start: f64, input_mid: f64, input_end: f64, o
 	color.to_linear_srgb()
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct BlackAndWhiteNode<Tint, Reds, Yellows, Greens, Cyans, Blues, Magentas> {
-	tint: Tint,
-	reds: Reds,
-	yellows: Yellows,
-	greens: Greens,
-	cyans: Cyans,
-	blues: Blues,
-	magentas: Magentas,
-}
-
 // From <https://stackoverflow.com/a/55233732/775283>
 // Works the same for gamma and linear color
-#[node_macro::node_fn(BlackAndWhiteNode)]
+#[node_macro::new_node_fn(category("Adjustments"))]
 fn black_and_white_color_node(color: Color, tint: Color, reds: f64, yellows: f64, greens: f64, cyans: f64, blues: f64, magentas: f64) -> Color {
 	let color = color.to_gamma_srgb();
 
@@ -416,14 +383,7 @@ fn black_and_white_color_node(color: Color, tint: Color, reds: f64, yellows: f64
 	color.to_linear_srgb()
 }
 
-#[derive(Debug)]
-pub struct HueSaturationNode<Hue, Saturation, Lightness> {
-	hue_shift: Hue,
-	saturation_shift: Saturation,
-	lightness_shift: Lightness,
-}
-
-#[node_macro::node_fn(HueSaturationNode)]
+#[node_macro::new_node_fn(category("Adjustments"))]
 fn hue_shift_color_node(color: Color, hue_shift: f64, saturation_shift: f64, lightness_shift: f64) -> Color {
 	let color = color.to_gamma_srgb();
 
@@ -441,10 +401,7 @@ fn hue_shift_color_node(color: Color, hue_shift: f64, saturation_shift: f64, lig
 	color.to_linear_srgb()
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct InvertNode;
-
-#[node_macro::node_fn(InvertNode)]
+#[node_macro::new_node_fn(category("Adjustments"))]
 fn invert_node(color: Color) -> Color {
 	let color = color.to_gamma_srgb();
 
@@ -466,14 +423,7 @@ impl<'i> Node<'i, &'i Color> for InvertNode {
 	}
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct ThresholdNode<MinLuminance, MaxLuminance, LuminanceCalc> {
-	min_luminance: MinLuminance,
-	max_luminance: MaxLuminance,
-	luminance_calc: LuminanceCalc,
-}
-
-#[node_macro::node_fn(ThresholdNode)]
+#[node_macro::new_node_fn(category("Adjustments"))]
 fn threshold_node(color: Color, min_luminance: f64, max_luminance: f64, luminance_calc: LuminanceCalculation) -> Color {
 	let min_luminance = Color::srgb_to_linear(min_luminance as f32 / 100.);
 	let max_luminance = Color::srgb_to_linear(max_luminance as f32 / 100.);
@@ -493,14 +443,7 @@ fn threshold_node(color: Color, min_luminance: f64, max_luminance: f64, luminanc
 	}
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct BlendColorsNode<Under, BlendMode, Opacity> {
-	under: Under,
-	blend_mode: BlendMode,
-	opacity: Opacity,
-}
-
-#[node_macro::node_fn(BlendColorsNode)]
+#[node_macro::new_node_fn(category("Adjustments"))]
 fn blend_node(over: Color, under: Color, blend_mode: BlendMode, opacity: f64) -> Color {
 	blend_colors(over, under, blend_mode, opacity / 100.)
 }
@@ -524,13 +467,7 @@ fn blend_colors(over: GradientStops, under: GradientStops, blend_mode: BlendMode
 	GradientStops(stops)
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct BlendNode<BlendMode, Opacity> {
-	blend_mode: BlendMode,
-	opacity: Opacity,
-}
-
-#[node_macro::node_fn(BlendNode)]
+#[node_macro::new_node_fn(category("Adjustments"))]
 fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Color {
 	blend_colors(input.0, input.1, blend_mode, opacity / 100.)
 }
@@ -587,29 +524,16 @@ pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode,
 	background.alpha_blend(target_color.to_associated_alpha(opacity as f32))
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct GradientMapNode<Gradient, Reverse> {
-	gradient: Gradient,
-	reverse: Reverse,
-	// TODO: Add support for dithering to break up gradient color banding
-	// TODO: Add support for controlling the gradient interpolation method (instead of always `luminance_srgb()`)
-}
-
-#[node_macro::node_fn(GradientMapNode)]
+#[node_macro::new_node_fn(category("Adjustments"))]
 fn gradient_map_node(color: Color, gradient: GradientStops, reverse: bool) -> Color {
 	let intensity = color.luminance_srgb();
 	let intensity = if reverse { 1. - intensity } else { intensity };
 	gradient.evalute(intensity as f64)
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct VibranceNode<Vibrance> {
-	vibrance: Vibrance,
-}
-
-// Modified from https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters
+// Based on <https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters>
 // The results of this implementation are very close to correct, but not quite perfect
-#[node_macro::node_fn(VibranceNode)]
+#[node_macro::new_node_fn(category("Adjustments"))]
 fn vibrance_node(color: Color, vibrance: f64) -> Color {
 	let vibrance = vibrance as f32 / 100.;
 	// Slow the effect down by half when it's negative, since artifacts begin appearing past -50%.
@@ -884,28 +808,7 @@ impl DomainWarpType {
 	}
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct ChannelMixerNode<Monochrome, MonochromeR, MonochromeG, MonochromeB, MonochromeC, RedR, RedG, RedB, RedC, GreenR, GreenG, GreenB, GreenC, BlueR, BlueG, BlueB, BlueC> {
-	monochrome: Monochrome,
-	monochrome_r: MonochromeR,
-	monochrome_g: MonochromeG,
-	monochrome_b: MonochromeB,
-	monochrome_c: MonochromeC,
-	red_r: RedR,
-	red_g: RedG,
-	red_b: RedB,
-	red_c: RedC,
-	green_r: GreenR,
-	green_g: GreenG,
-	green_b: GreenB,
-	green_c: GreenC,
-	blue_r: BlueR,
-	blue_g: BlueG,
-	blue_b: BlueB,
-	blue_c: BlueC,
-}
-
-#[node_macro::node_fn(ChannelMixerNode)]
+#[node_macro::new_node_fn(category("Adjustments"))]
 fn channel_mixer_node(
 	color: Color,
 	monochrome: bool,
@@ -1002,50 +905,9 @@ impl core::fmt::Display for SelectiveColorChoice {
 	}
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct SelectiveColorNode<Absolute, RC, RM, RY, RK, YC, YM, YY, YK, GC, GM, GY, GK, CC, CM, CY, CK, BC, BM, BY, BK, MC, MM, MY, MK, WC, WM, WY, WK, NC, NM, NY, NK, KC, KM, KY, KK> {
-	mode: Absolute,
-	r_c: RC,
-	r_m: RM,
-	r_y: RY,
-	r_k: RK,
-	y_c: YC,
-	y_m: YM,
-	y_y: YY,
-	y_k: YK,
-	g_c: GC,
-	g_m: GM,
-	g_y: GY,
-	g_k: GK,
-	c_c: CC,
-	c_m: CM,
-	c_y: CY,
-	c_k: CK,
-	b_c: BC,
-	b_m: BM,
-	b_y: BY,
-	b_k: BK,
-	m_c: MC,
-	m_m: MM,
-	m_y: MY,
-	m_k: MK,
-	w_c: WC,
-	w_m: WM,
-	w_y: WY,
-	w_k: WK,
-	n_c: NC,
-	n_m: NM,
-	n_y: NY,
-	n_k: NK,
-	k_c: KC,
-	k_m: KM,
-	k_y: KY,
-	k_k: KK,
-}
-
 // Based on https://blog.pkh.me/p/22-understanding-selective-coloring-in-adobe-photoshop.html
-#[node_macro::node_fn(SelectiveColorNode)]
-fn selective_color_node(
+#[node_macro::new_node_fn(category("Adjustments"))]
+fn selective_color(
 	color: Color,
 	mode: RelativeAbsolute,
 	r_c: f64,
@@ -1159,62 +1021,47 @@ fn selective_color_node(
 	color.to_linear_srgb()
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct OpacityNode<O> {
-	opacity_multiplier: O,
-}
-
-#[node_macro::node_fn(OpacityNode)]
-fn opacity_node(color: Color, opacity_multiplier: f64) -> Color {
+#[node_macro::new_node_fn(category("Adjustments"))]
+fn opacity(color: Color, opacity_multiplier: f64) -> Color {
 	let opacity_multiplier = opacity_multiplier as f32 / 100.;
 	Color::from_rgbaf32_unchecked(color.r(), color.g(), color.b(), color.a() * opacity_multiplier)
 }
 
 #[node_macro::node_impl(OpacityNode)]
-fn opacity_node(mut vector_data: VectorData, opacity_multiplier: f64) -> VectorData {
+fn opacity(mut vector_data: VectorData, opacity_multiplier: f64) -> VectorData {
 	let opacity_multiplier = opacity_multiplier as f32 / 100.;
 	vector_data.alpha_blending.opacity *= opacity_multiplier;
 	vector_data
 }
 
 #[node_macro::node_impl(OpacityNode)]
-fn opacity_node(mut graphic_group: GraphicGroup, opacity_multiplier: f64) -> GraphicGroup {
+fn opacity(mut graphic_group: GraphicGroup, opacity_multiplier: f64) -> GraphicGroup {
 	let opacity_multiplier = opacity_multiplier as f32 / 100.;
 	graphic_group.alpha_blending.opacity *= opacity_multiplier;
 	graphic_group
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct BlendModeNode<BM> {
-	blend_mode: BM,
-}
-
-#[node_macro::node_fn(BlendModeNode)]
-fn blend_mode_node(mut vector_data: VectorData, blend_mode: BlendMode) -> VectorData {
+#[node_macro::new_node_fn(category("Adjustments"))]
+fn blend_mode(mut vector_data: VectorData, blend_mode: BlendMode) -> VectorData {
 	vector_data.alpha_blending.blend_mode = blend_mode;
 	vector_data
 }
 
 #[node_macro::node_impl(BlendModeNode)]
-fn blend_mode_node(mut graphic_group: GraphicGroup, blend_mode: BlendMode) -> GraphicGroup {
+fn blend_mode(mut graphic_group: GraphicGroup, blend_mode: BlendMode) -> GraphicGroup {
 	graphic_group.alpha_blending.blend_mode = blend_mode;
 	graphic_group
 }
 
 #[node_macro::node_impl(BlendModeNode)]
-fn blend_mode_node(mut image_frame: ImageFrame<Color>, blend_mode: BlendMode) -> ImageFrame<Color> {
+fn blend_mode(mut image_frame: ImageFrame<Color>, blend_mode: BlendMode) -> ImageFrame<Color> {
 	image_frame.alpha_blending.blend_mode = blend_mode;
 	image_frame
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct PosterizeNode<P> {
-	posterize_value: P,
-}
-
-// Based on http://www.axiomx.com/posterize.htm
+// Based on https://www.axiomx.com/posterize.htm
 // This algorithm produces fully accurate output in relation to the industry standard.
-#[node_macro::node_fn(PosterizeNode)]
+#[node_macro::new_node_fn(category("Adjustments"))]
 fn posterize(color: Color, posterize_value: f64) -> Color {
 	let color = color.to_gamma_srgb();
 
@@ -1226,15 +1073,8 @@ fn posterize(color: Color, posterize_value: f64) -> Color {
 	color.to_linear_srgb()
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct ExposureNode<Exposure, Offset, GammaCorrection> {
-	exposure: Exposure,
-	offset: Offset,
-	gamma_correction: GammaCorrection,
-}
-
 // Based on https://geraldbakker.nl/psnumbers/exposure.html
-#[node_macro::node_fn(ExposureNode)]
+#[node_macro::new_node_fn(category("Adjustments"))]
 fn exposure(color: Color, exposure: f64, offset: f64, gamma_correction: f64) -> Color {
 	let adjusted = color
 		// Exposure
@@ -1250,14 +1090,7 @@ fn exposure(color: Color, exposure: f64, offset: f64, gamma_correction: f64) -> 
 const WINDOW_SIZE: usize = 1024;
 
 #[cfg(feature = "alloc")]
-#[derive(Debug, Clone, Copy)]
-pub struct GenerateCurvesNode<OutputChannel, Curve> {
-	curve: Curve,
-	_channel: core::marker::PhantomData<OutputChannel>,
-}
-
-#[cfg(feature = "alloc")]
-#[node_macro::node_fn(GenerateCurvesNode<_Channel>)]
+#[node_macro::new_node_fn(category("Adjustments"))]
 fn generate_curves<_Channel: Channel + super::Linear>(_primary: (), curve: Curve) -> ValueMapperNode<_Channel> {
 	use bezier_rs::{Bezier, TValue};
 	let [mut pos, mut param]: [[f32; 2]; 2] = [[0.; 2], curve.first_handle];
@@ -1297,13 +1130,7 @@ fn generate_curves<_Channel: Channel + super::Linear>(_primary: (), curve: Curve
 }
 
 #[cfg(feature = "alloc")]
-#[derive(Debug, Clone)]
-pub struct ColorFillNode<C> {
-	color: C,
-}
-
-#[cfg(feature = "alloc")]
-#[node_macro::node_fn(ColorFillNode)]
+#[node_macro::new_node_fn(category("Adjustments"))]
 pub fn color_fill_node(mut image_frame: ImageFrame<Color>, color: Color) -> ImageFrame<Color> {
 	for pixel in &mut image_frame.image.data {
 		pixel.set_red(color.r());
@@ -1316,14 +1143,7 @@ pub fn color_fill_node(mut image_frame: ImageFrame<Color>, color: Color) -> Imag
 }
 
 #[cfg(feature = "alloc")]
-pub struct ColorOverlayNode<Color, BlendMode, Opacity> {
-	color: Color,
-	blend_mode: BlendMode,
-	opacity: Opacity,
-}
-
-#[cfg(feature = "alloc")]
-#[node_macro::node_fn(ColorOverlayNode)]
+#[node_macro::new_node_fn(category("Adjustments"))]
 pub fn color_overlay_node(mut image: ImageFrame<Color>, color: Color, blend_mode: BlendMode, opacity: f64) -> ImageFrame<Color> {
 	let opacity = (opacity as f32 / 100.).clamp(0., 1.);
 	for pixel in &mut image.image.data {
@@ -1375,12 +1195,7 @@ mod index_node {
 	use crate::raster::{Color, ImageFrame};
 	use crate::Node;
 
-	#[derive(Debug)]
-	pub struct IndexNode<Index> {
-		pub index: Index,
-	}
-
-	#[node_macro::node_fn(IndexNode)]
+	#[node_macro::new_node_fn(category("Adjustments"))]
 	pub fn index_node(input: Vec<ImageFrame<Color>>, index: u32) -> ImageFrame<Color> {
 		if (index as usize) < input.len() {
 			input[index as usize].clone()

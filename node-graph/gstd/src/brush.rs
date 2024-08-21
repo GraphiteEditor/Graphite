@@ -397,12 +397,9 @@ async fn brush(image: ImageFrame<Color>, bounds: ImageFrame<Color>, strokes: Vec
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::raster::*;
 
-	use graphene_core::raster::*;
-	use graphene_core::structural::Then;
 	use graphene_core::transform::{Transform, TransformMut};
-	use graphene_core::value::{ClonedNode, ValueNode};
+	use graphene_core::value::ClonedNode;
 
 	use glam::DAffine2;
 
@@ -424,27 +421,5 @@ mod test {
 		assert_eq!(image.transform(), DAffine2::from_scale_angle_translation(DVec2::splat(size.ceil()), 0., -DVec2::splat(size / 2.)));
 		// center pixel should be BLACK
 		assert_eq!(image.sample(DVec2::splat(0.), DVec2::ONE), Some(Color::BLACK));
-	}
-
-	#[test]
-	fn test_brush() {
-		let brush_texture_node = BrushStampGeneratorNode::new(ClonedNode::new(Color::BLACK), ClonedNode::new(1.), ClonedNode::new(1.));
-		let image = brush_texture_node.eval(20.);
-		let trace = vec![DVec2::new(0., 0.), DVec2::new(10., 0.)];
-		let trace = ClonedNode::new(trace.into_iter());
-		let translate_node = TranslateNode::new(ClonedNode::new(image));
-		let frames = MapNode::new(ValueNode::new(translate_node));
-		let frames = trace.then(frames).eval(()).collect::<Vec<_>>();
-		assert_eq!(frames.len(), 2);
-		let background_bounds = ReduceNode::new(ClonedNode::new(None), ValueNode::new(MergeBoundingBoxNode::new()));
-		let background_bounds = background_bounds.eval(frames.clone().into_iter());
-		let background_bounds = ClonedNode::new(background_bounds.unwrap().to_transform());
-		let background_image = background_bounds.then(EmptyImageNode::new(ClonedNode::new(Color::TRANSPARENT)));
-		let blend_node = graphene_core::raster::BlendNode::new(ClonedNode::new(BlendMode::Normal), ClonedNode::new(1.));
-		let final_image = ReduceNode::new(background_image, ValueNode::new(BlendImageTupleNode::new(ValueNode::new(blend_node))));
-		let final_image = final_image.eval(frames.into_iter());
-		assert_eq!(final_image.image.height, 20);
-		assert_eq!(final_image.image.width, 30);
-		drop(final_image);
 	}
 }
