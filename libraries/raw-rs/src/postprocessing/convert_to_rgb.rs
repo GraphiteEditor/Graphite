@@ -1,31 +1,36 @@
 use crate::Image;
 
 pub fn convert_to_rgb(mut image: Image<u16>) -> Image<u16> {
-	if let Some(rgb_to_camera) = image.rgb_to_camera {
-		let channels = image.channels as usize;
-		let mut data = Vec::with_capacity(3 * image.width * image.height);
-		let mut histogram = [[0usize; 0x2000]; 3];
+	let Some(rgb_to_camera) = image.rgb_to_camera else { return image };
 
-		for i in 0..(image.height * image.width) {
-			let input_pixel = &mut image.data[channels * i..channels * (i + 1)];
-			let mut output_pixel = [0.; 3];
-			for (channel, &value) in input_pixel.iter().enumerate() {
-				for i in 0..3 {
-					output_pixel[i] += rgb_to_camera[i][channel] * value as f64;
-				}
-			}
+	let channels = image.channels as usize;
+	let mut data = Vec::with_capacity(3 * image.width * image.height);
+	let mut histogram = [[0; 0x2000]; 3];
 
-			for i in 0..3 {
-				output_pixel[i] = output_pixel[i].min(u16::MAX as f64).max(0.);
-				histogram[i][output_pixel[i] as usize >> 3] += 1;
-				data.push(output_pixel[i] as u16);
-			}
+	for i in 0..(image.height * image.width) {
+		let start = i * channels;
+		let end = start + channels;
+		let input_pixel = &mut image.data[start..end];
+
+		let mut output_pixel = [0.; 3];
+		for (channel, &value) in input_pixel.iter().enumerate() {
+			output_pixel[0] += rgb_to_camera[0][channel] * value as f64;
+			output_pixel[1] += rgb_to_camera[1][channel] * value as f64;
+			output_pixel[2] += rgb_to_camera[2][channel] * value as f64;
 		}
 
-		image.data = data;
-		image.channels = 3;
-		image.histogram = Some(histogram);
+		for i in 0..3 {
+			let final_sum = output_pixel[i].min(u16::MAX as f64).max(0.);
+
+			histogram[i][final_sum as usize >> 3] += 1;
+
+			data.push(final_sum as u16);
+		}
 	}
+
+	image.data = data;
+	image.channels = 3;
+	image.histogram = Some(histogram);
 
 	image
 }
