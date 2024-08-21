@@ -1,4 +1,3 @@
-use crate::{ProtoNodeIdentifier, Type};
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::pin::Pin;
@@ -261,3 +260,6 @@ impl<I: WasmNotSend, O: WasmNotSend> Default for PanicNode<I, O> {
 		Self::new()
 	}
 }
+
+// TODO: Evaluate safety
+unsafe impl<I: WasmNotSend, O: WasmNotSend> Sync for PanicNode<I, O> {}

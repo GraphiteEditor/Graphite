@@ -31,14 +31,12 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 		Some(lit) => lit.value(),
 		_ => struct_name.to_string().to_case(Case::Title),
 	};
+	let struct_name = format_ident!("{}Node", struct_name);
 
 	let struct_generics: Vec<Ident> = fields.iter().enumerate().map(|(i, _)| format_ident!("Node{}", i)).collect();
 
-	let struct_fields = fields.iter().zip(struct_generics.iter()).map(|(field, gen)| {
-		let name = match field {
-			ParsedField::Regular { name, .. } | ParsedField::Node { name, .. } => name,
-		};
-		quote! { pub(super) #name: #gen }
+	let struct_fields = struct_generics.iter().map(|gen| {
+		quote! { pub(super) #gen }
 	});
 
 	let field_names: Vec<_> = fields
@@ -73,22 +71,22 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 		})
 		.collect();
 
-	let eval_args = fields.iter().map(|field| match field {
-		ParsedField::Regular { name, .. } => {
-			quote! { let #name = self.#name.eval(()); }
-		}
-		ParsedField::Node { name, .. } => {
-			quote! { let #name = &self.#name; }
+	let eval_args = fields.iter().enumerate().map(|(i, field)| {
+		let i = syn::Index::from(i);
+		match field {
+			ParsedField::Regular { name, .. } => {
+				quote! { let #name = self.#i.eval(()); }
+			}
+			ParsedField::Node { name, .. } => {
+				quote! { let #name = &self.#i; }
+			}
 		}
 	});
 
-	let all_implementation_types = fields
-		.iter()
-		.map(|field| match field {
-			ParsedField::Regular { implementations, .. } => implementations.into_iter().cloned().collect::<Vec<_>>(),
-			ParsedField::Node { implementations, .. } => implementations.into_iter().map(|tuple| syn::Type::Tuple(tuple.clone())).collect(),
-		})
-		.flatten();
+	let all_implementation_types = fields.iter().flat_map(|field| match field {
+		ParsedField::Regular { implementations, .. } => implementations.into_iter().cloned().collect::<Vec<_>>(),
+		ParsedField::Node { implementations, .. } => implementations.into_iter().map(|tuple| syn::Type::Tuple(tuple.clone())).collect(),
+	});
 
 	let mut clauses = Vec::new();
 	for (field, name) in fields.iter().zip(struct_generics.iter()) {
@@ -132,7 +130,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 	};
 	let identifier = quote!(concat![std::module_path!(), "::", stringify!(#struct_name)]);
 
-	let register_node_impl = generate_register_node_impl(parsed, &field_names, struct_name, &identifier);
+	let register_node_impl = generate_register_node_impl(parsed, &field_names, &struct_name, &identifier);
 
 	let graphene_core = match graphene_core_crate {
 		FoundCrate::Itself => quote!(crate),
@@ -143,10 +141,8 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 	};
 
 	quote! {
+		/// Underlying implementation for [#struct_name]
 		#async_keyword fn #fn_name <'n, #(#fn_generics,)*> (#input_name: #input_type #(, #field_names: #field_types)*) -> #output_type #body
-
-
-
 
 		#[automatically_derived]
 		impl<'n,  #(#fn_generics,)* #(#struct_generics,)*> #graphene_core::Node<'n, #input_type> for #mod_name::#struct_name<#(#struct_generics,)*>
@@ -154,11 +150,11 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 		{
 			#eval_impl
 		}
+		#[doc(inline)]
+		pub use #mod_name::#struct_name;
 
+		#[doc(hidden)]
 		mod #mod_name {
-			#[cfg(__never_compiled)]
-			static _IMPORTS: core::marker::PhantomData<#(#all_implementation_types,)*> = core::marker::PhantomData;
-
 			use super::*;
 			use #graphene_core as gcore;
 			use gcore::{Node, NodeIOTypes, concrete, fn_type, ProtoNodeIdentifier, WasmNotSync, NodeIO};
@@ -167,18 +163,22 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 			use gcore::registry::{NodeMetadata, FieldMetadata, NODE_REGISTRY, NODE_METADATA, DynAnyNode, DowncastBothNode, DynFuture, TypeErasedBox, PanicNode};
 			use ctor::ctor;
 
+			// Use the types specified in the implementation
+			#[cfg(__never_compiled)]
+			static _IMPORTS: core::marker::PhantomData<#(#all_implementation_types,)*> = core::marker::PhantomData;
+
 			#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-			pub struct #struct_name<#(#struct_generics,)*> {
+			pub struct #struct_name<#(#struct_generics,)*> (
 				#(#struct_fields,)*
-			}
+			);
 
 			#[automatically_derived]
 			impl<'n, #(#struct_generics,)*> #struct_name<#(#struct_generics,)*>
 			{
 				pub fn new(#(#new_args,)*) -> Self {
-					Self {
+					Self (
 						#(#field_names,)*
-					}
+					)
 				}
 			}
 

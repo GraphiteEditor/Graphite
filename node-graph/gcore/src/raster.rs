@@ -639,7 +639,7 @@ mod test {
 	#[test]
 	fn window_node() {
 		use alloc::vec;
-		let radius = ValueNode::new(1u32).then(CloneNode::new());
+		let radius = CloneNode::new(ValueNode::new(1u32));
 		let image = ValueNode::<_>::new(Image {
 			width: 5,
 			height: 5,

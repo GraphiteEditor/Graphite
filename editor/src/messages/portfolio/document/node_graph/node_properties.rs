@@ -25,7 +25,7 @@ use graphene_std::transform::Footprint;
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::VectorData;
 
-pub fn string_properties(text: impl Into<String>) -> Vec<LayoutGroup> {
+pub(crate) fn string_properties(text: impl Into<String>) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_holder();
 	vec![LayoutGroup::Row { widgets: vec![widget] }]
 }
@@ -87,7 +87,7 @@ fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	widgets
 }
 
-pub fn property_from_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, ty: &Type, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn property_from_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, ty: &Type, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let mut extra_widgets = vec![];
 	let widgets = match ty {
 		Type::Concrete(concrete_type) => {
@@ -1061,7 +1061,7 @@ fn centroid_widget(document_node: &DocumentNode, node_id: NodeId, index: usize) 
 	LayoutGroup::Row { widgets }
 }
 
-pub fn levels_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn levels_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let input_shadows = number_widget(document_node, node_id, 1, "Shadows", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
 	let input_midtones = number_widget(document_node, node_id, 2, "Midtones", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
 	let input_highlights = number_widget(document_node, node_id, 3, "Highlights", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
@@ -1077,7 +1077,7 @@ pub fn levels_properties(document_node: &DocumentNode, node_id: NodeId, _context
 	]
 }
 
-pub fn black_and_white_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn black_and_white_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	const MIN: f64 = -200.;
 	const MAX: f64 = 300.;
 	// TODO: Add tint color (blended above using the "Color" blend mode)
@@ -1100,7 +1100,7 @@ pub fn black_and_white_properties(document_node: &DocumentNode, node_id: NodeId,
 	]
 }
 
-pub fn blend_color_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn blend_color_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let under = color_widget(document_node, node_id, 1, "Under", ColorButton::default(), true);
 	let blend_mode = blend_mode(document_node, node_id, 2, "Blend Mode", true);
 	let opacity = number_widget(document_node, node_id, 3, "Opacity", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
@@ -1108,7 +1108,7 @@ pub fn blend_color_properties(document_node: &DocumentNode, node_id: NodeId, _co
 	vec![under, blend_mode, LayoutGroup::Row { widgets: opacity }]
 }
 
-pub fn blend_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn blend_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let backdrop = color_widget(document_node, node_id, 1, "Backdrop", ColorButton::default(), true);
 	let blend_mode = blend_mode(document_node, node_id, 2, "Blend Mode", true);
 	let opacity = number_widget(document_node, node_id, 3, "Opacity", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
@@ -1116,74 +1116,61 @@ pub fn blend_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 	vec![backdrop, blend_mode, LayoutGroup::Row { widgets: opacity }]
 }
 
-pub fn number_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn number_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let widgets = number_widget(document_node, node_id, 0, "Number", NumberInput::default(), true);
 
 	vec![LayoutGroup::Row { widgets }]
 }
 
-pub fn percentage_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn percentage_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let widgets = number_widget(document_node, node_id, 0, "Percentage", NumberInput::default().min(0.).max(100.).mode_range(), true);
 
 	vec![LayoutGroup::Row { widgets }]
 }
 
-pub fn vector2_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let x = number_widget(document_node, node_id, 1, "X", NumberInput::default(), true);
-	let y = number_widget(document_node, node_id, 2, "Y", NumberInput::default(), true);
-
-	vec![LayoutGroup::Row { widgets: x }, LayoutGroup::Row { widgets: y }]
-}
-
-pub fn boolean_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn boolean_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let widgets = bool_widget(document_node, node_id, 0, "Bool", CheckboxInput::default(), true);
 
 	vec![LayoutGroup::Row { widgets }]
 }
 
-pub fn color_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn color_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	vec![color_widget(document_node, node_id, 0, "Color", ColorButton::default(), true)]
 }
 
-pub fn gradient_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn gradient_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	vec![color_widget(document_node, node_id, 0, "Gradient", ColorButton::default().allow_none(false), true)]
 }
 
-pub fn load_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn load_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let url = text_widget(document_node, node_id, 1, "URL", true);
 
 	vec![LayoutGroup::Row { widgets: url }]
 }
 
-pub fn output_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let label = TextLabel::new("Graphics fed into the Output are drawn in the viewport").widget_holder();
-
-	vec![LayoutGroup::Row { widgets: vec![label] }]
-}
-
-pub fn mask_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn mask_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let mask = color_widget(document_node, node_id, 1, "Stencil", ColorButton::default(), true);
 
 	vec![mask]
 }
 
-pub fn color_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn color_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	vec![color_channel(document_node, node_id, 0, "Channel", true)]
 }
 
-pub fn luminance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn luminance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let luminance_calc = luminance_calculation(document_node, node_id, 1, "Luminance Calc", true);
 
 	vec![luminance_calc]
 }
 
-pub fn insert_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn insert_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let color_channel = color_channel(document_node, node_id, 2, "Into", true);
 
 	vec![color_channel]
 }
 
-pub fn extract_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn extract_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let color_channel = rgba_channel(document_node, node_id, 1, "From", true);
 
 	vec![color_channel]
@@ -1191,7 +1178,7 @@ pub fn extract_channel_properties(document_node: &DocumentNode, node_id: NodeId,
 
 // Noise Type is commented out for now as there is only one type of noise (White Noise).
 // As soon as there are more types of noise, this should be uncommented.
-pub fn noise_pattern_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn noise_pattern_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	// Get the current values of the inputs of interest so they can set whether certain inputs are disabled based on various conditions.
 	let current_noise_type = match &document_node.inputs[3].as_value() {
 		Some(&TaggedValue::NoiseType(noise_type)) => Some(noise_type),
@@ -1339,7 +1326,7 @@ pub fn noise_pattern_properties(document_node: &DocumentNode, node_id: NodeId, _
 	]
 }
 
-pub fn hue_saturation_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn hue_saturation_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let hue_shift = number_widget(document_node, node_id, 1, "Hue Shift", NumberInput::default().min(-180.).max(180.).unit("°"), true);
 	let saturation_shift = number_widget(document_node, node_id, 2, "Saturation Shift", NumberInput::default().mode_range().min(-100.).max(100.).unit("%"), true);
 	let lightness_shift = number_widget(document_node, node_id, 3, "Lightness Shift", NumberInput::default().mode_range().min(-100.).max(100.).unit("%"), true);
@@ -1351,7 +1338,7 @@ pub fn hue_saturation_properties(document_node: &DocumentNode, node_id: NodeId, 
 	]
 }
 
-pub fn brightness_contrast_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn brightness_contrast_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let brightness = number_widget(document_node, node_id, 1, "Brightness", NumberInput::default().min(-150.).max(150.), true);
 	let contrast = number_widget(document_node, node_id, 2, "Contrast", NumberInput::default().min(-100.).max(100.), true);
 	let use_legacy = bool_widget(document_node, node_id, 3, "Use Legacy", CheckboxInput::default(), true);
@@ -1363,20 +1350,20 @@ pub fn brightness_contrast_properties(document_node: &DocumentNode, node_id: Nod
 	]
 }
 
-pub fn curves_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn curves_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let curves = curves_widget(document_node, node_id, 1, "Curve", true);
 
 	vec![curves]
 }
 
-pub fn _blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn _blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let radius = number_widget(document_node, node_id, 1, "Radius", NumberInput::default().min(0.).max(20.).int(), true);
 	let sigma = number_widget(document_node, node_id, 2, "Sigma", NumberInput::default().min(0.).max(10000.), true);
 
 	vec![LayoutGroup::Row { widgets: radius }, LayoutGroup::Row { widgets: sigma }]
 }
 
-pub fn threshold_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn threshold_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let thereshold_min = number_widget(document_node, node_id, 1, "Min Luminance", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
 	let thereshold_max = number_widget(document_node, node_id, 2, "Max Luminance", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
 	let luminance_calc = luminance_calculation(document_node, node_id, 3, "Luminance Calc", true);
@@ -1384,7 +1371,7 @@ pub fn threshold_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 	vec![LayoutGroup::Row { widgets: thereshold_min }, LayoutGroup::Row { widgets: thereshold_max }, luminance_calc]
 }
 
-pub fn gradient_map_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn gradient_map_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let gradient_index = 1;
 	let reverse_index = 2;
 
@@ -1394,7 +1381,7 @@ pub fn gradient_map_properties(document_node: &DocumentNode, node_id: NodeId, _c
 	vec![gradient_row, LayoutGroup::Row { widgets: reverse_row }]
 }
 
-pub fn assign_colors_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn assign_colors_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let fill_index = 1;
 	let stroke_index = 2;
 	let gradient_index = 3;
@@ -1434,7 +1421,7 @@ pub fn assign_colors_properties(document_node: &DocumentNode, node_id: NodeId, _
 	]
 }
 
-pub fn vibrance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn vibrance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let vibrance_index = 1;
 
 	let vibrance = number_widget(
@@ -1449,7 +1436,7 @@ pub fn vibrance_properties(document_node: &DocumentNode, node_id: NodeId, _conte
 	vec![LayoutGroup::Row { widgets: vibrance }]
 }
 
-pub fn channel_mixer_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn channel_mixer_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	// Monochrome
 	let monochrome_index = 1;
 	let monochrome = bool_widget(document_node, node_id, monochrome_index, "Monochrome", CheckboxInput::default(), true);
@@ -1549,7 +1536,7 @@ pub fn channel_mixer_properties(document_node: &DocumentNode, node_id: NodeId, _
 	layout
 }
 
-pub fn selective_color_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn selective_color_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	// Colors choice
 	let colors_index = 38;
 	let mut colors = vec![TextLabel::new("Colors").widget_holder(), Separator::new(SeparatorType::Unrelated).widget_holder()];
@@ -1639,40 +1626,40 @@ pub fn selective_color_properties(document_node: &DocumentNode, node_id: NodeId,
 }
 
 #[cfg(feature = "gpu")]
-pub fn _gpu_map_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn _gpu_map_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let map = text_widget(document_node, node_id, 1, "Map", true);
 
 	vec![LayoutGroup::Row { widgets: map }]
 }
 
-pub fn opacity_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn opacity_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let gamma = number_widget(document_node, node_id, 1, "Factor", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
 
 	vec![LayoutGroup::Row { widgets: gamma }]
 }
 
-pub fn blend_mode_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn blend_mode_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	vec![blend_mode(document_node, node_id, 1, "Blend Mode", true)]
 }
 
-pub fn blend_mode_value_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn blend_mode_value_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	vec![blend_mode(document_node, node_id, 0, "Blend Mode", true)]
 }
 
-pub fn posterize_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn posterize_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let value = number_widget(document_node, node_id, 1, "Levels", NumberInput::default().min(2.).max(255.).int(), true);
 
 	vec![LayoutGroup::Row { widgets: value }]
 }
 
 #[cfg(feature = "quantization")]
-pub fn quantize_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn quantize_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let value = number_widget(document_node, node_id, 1, "Levels", NumberInput::default().min(1.).max(1000.).int(), true);
 	let index = number_widget(document_node, node_id, 1, "Fit Fn Index", NumberInput::default().min(0.).max(2.).int(), true);
 
 	vec![LayoutGroup::Row { widgets: value }, LayoutGroup::Row { widgets: index }]
 }
-pub fn exposure_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn exposure_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let exposure = number_widget(document_node, node_id, 1, "Exposure", NumberInput::default().min(-20.).max(20.), true);
 	let offset = number_widget(document_node, node_id, 2, "Offset", NumberInput::default().min(-0.5).max(0.5), true);
 	let gamma_input = NumberInput::default().min(0.01).max(9.99).increment_step(0.1);
@@ -1685,73 +1672,13 @@ pub fn exposure_properties(document_node: &DocumentNode, node_id: NodeId, _conte
 	]
 }
 
-pub fn add_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let widgets = number_widget(document_node, node_id, 1, "Addend", NumberInput::default(), true);
-
-	vec![LayoutGroup::Row { widgets }]
-}
-
-pub fn subtract_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let widgets = number_widget(document_node, node_id, 1, "Subtrahend", NumberInput::default(), true);
-
-	vec![LayoutGroup::Row { widgets }]
-}
-
-pub fn divide_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let widgets = number_widget(document_node, node_id, 1, "Divisor", NumberInput::new(Some(1.)), true);
-
-	vec![LayoutGroup::Row { widgets }]
-}
-
-pub fn multiply_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let widgets = number_widget(document_node, node_id, 1, "Multiplicand", NumberInput::new(Some(1.)), true);
-
-	vec![LayoutGroup::Row { widgets }]
-}
-
-pub fn exponent_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let widgets = number_widget(document_node, node_id, 1, "Power", NumberInput::new(Some(2.)), true);
-
-	vec![LayoutGroup::Row { widgets }]
-}
-
-pub fn log_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let widgets = number_widget(document_node, node_id, 1, "Base", NumberInput::default(), true);
-
-	vec![LayoutGroup::Row { widgets }]
-}
-
-pub fn max_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let widgets = number_widget(document_node, node_id, 1, "Maximum", NumberInput::default(), true);
-
-	vec![LayoutGroup::Row { widgets }]
-}
-
-pub fn min_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let widgets = number_widget(document_node, node_id, 1, "Minimum", NumberInput::default(), true);
-
-	vec![LayoutGroup::Row { widgets }]
-}
-
-pub fn eq_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let widgets = number_widget(document_node, node_id, 1, "Equals", NumberInput::default(), true);
-
-	vec![LayoutGroup::Row { widgets }]
-}
-
-pub fn modulo_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let widgets = number_widget(document_node, node_id, 1, "Modulo", NumberInput::default(), true);
-
-	vec![LayoutGroup::Row { widgets }]
-}
-
-pub fn circle_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn circle_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	vec![LayoutGroup::Row {
 		widgets: number_widget(document_node, node_id, 1, "Radius", NumberInput::default(), true),
 	}]
 }
 
-pub fn ellipse_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn ellipse_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let operand = |name: &str, index| {
 		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
 
@@ -1760,7 +1687,7 @@ pub fn ellipse_properties(document_node: &DocumentNode, node_id: NodeId, _contex
 	vec![operand("Radius X", 1), operand("Radius Y", 2)]
 }
 
-pub fn rectangle_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn rectangle_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let size_x_index = 1;
 	let size_y_index = 2;
 	let corner_rounding_type_index = 3;
@@ -1885,14 +1812,14 @@ pub fn rectangle_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 	]
 }
 
-pub fn regular_polygon_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn regular_polygon_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let points = number_widget(document_node, node_id, 1, "Points", NumberInput::default().min(3.), true);
 	let radius = number_widget(document_node, node_id, 2, "Radius", NumberInput::default(), true);
 
 	vec![LayoutGroup::Row { widgets: points }, LayoutGroup::Row { widgets: radius }]
 }
 
-pub fn star_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn star_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let points = number_widget(document_node, node_id, 1, "Points", NumberInput::default().min(2.), true);
 	let radius = number_widget(document_node, node_id, 2, "Radius", NumberInput::default(), true);
 	let inner_radius = number_widget(document_node, node_id, 3, "Inner Radius", NumberInput::default(), true);
@@ -1900,22 +1827,22 @@ pub fn star_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 	vec![LayoutGroup::Row { widgets: points }, LayoutGroup::Row { widgets: radius }, LayoutGroup::Row { widgets: inner_radius }]
 }
 
-pub fn line_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn line_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let operand = |name: &str, index| vec2_widget(document_node, node_id, index, name, "X", "Y", "px", None, add_blank_assist);
 	vec![operand("Start", 1), operand("End", 2)]
 }
-pub fn spline_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn spline_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	vec![LayoutGroup::Row {
 		widgets: vec_dvec2_input(document_node, node_id, 1, "Points", TextInput::default().centered(true), true),
 	}]
 }
 
-pub fn logic_operator_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn logic_operator_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let widgets = bool_widget(document_node, node_id, 0, "Operand B", CheckboxInput::default(), true);
 	vec![LayoutGroup::Row { widgets }]
 }
 
-pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let translation = vec2_widget(document_node, node_id, 1, "Translation", "X", "Y", " px", None, add_blank_assist);
 
 	let rotation = {
@@ -1948,11 +1875,11 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 
 	vec![translation, rotation, scale]
 }
-pub fn rasterize_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn rasterize_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	footprint_widget(document_node, node_id, 1)
 }
 
-pub fn text_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn text_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let text = text_area_widget(document_node, node_id, 1, "Text", true);
 	let (font, style) = font_inputs(document_node, node_id, 2, "Font", true);
 	let size = number_widget(document_node, node_id, 3, "Size", NumberInput::default().unit(" px").min(1.), true);
@@ -1965,7 +1892,7 @@ pub fn text_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 	result
 }
 
-pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let imaginate_node = [context.selection_network_path, &[node_id]].concat();
 
 	let resolve_input = |name: &str| {
@@ -2459,7 +2386,7 @@ fn unknown_node_properties(reference: &String) -> Vec<LayoutGroup> {
 	string_properties(format!("Node '{}' cannot be found in library", reference))
 }
 
-pub fn node_no_properties(_document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn node_no_properties(_document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	string_properties(if context.network_interface.is_layer(&node_id, context.selection_network_path) {
 		"Layer has no properties"
 	} else {
@@ -2467,13 +2394,13 @@ pub fn node_no_properties(_document_node: &DocumentNode, node_id: NodeId, contex
 	})
 }
 
-pub fn index_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn index_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let index = number_widget(document_node, node_id, 1, "Index", NumberInput::default().min(0.), true);
 
 	vec![LayoutGroup::Row { widgets: index }]
 }
 
-pub fn generate_node_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> LayoutGroup {
+pub(crate) fn generate_node_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> LayoutGroup {
 	let reference = context.network_interface.reference(&node_id, context.selection_network_path).clone();
 	let layout = if let Some(ref reference) = reference {
 		match super::document_node_definitions::resolve_document_node_type(reference) {
@@ -2492,7 +2419,7 @@ pub fn generate_node_properties(document_node: &DocumentNode, node_id: NodeId, c
 	}
 }
 
-pub fn stroke_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn stroke_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let color_index = 1;
 	let weight_index = 2;
 	let dash_lengths_index = 3;
@@ -2531,7 +2458,7 @@ pub fn stroke_properties(document_node: &DocumentNode, node_id: NodeId, _context
 	]
 }
 
-pub fn repeat_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn repeat_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let direction = vec2_widget(document_node, node_id, 1, "Direction", "X", "Y", " px", None, add_blank_assist);
 	let angle = number_widget(document_node, node_id, 2, "Angle", NumberInput::default().unit("°"), true);
 	let instances = number_widget(document_node, node_id, 3, "Instances", NumberInput::default().min(1.).is_integer(true), true);
@@ -2539,7 +2466,7 @@ pub fn repeat_properties(document_node: &DocumentNode, node_id: NodeId, _context
 	vec![direction, LayoutGroup::Row { widgets: angle }, LayoutGroup::Row { widgets: instances }]
 }
 
-pub fn circular_repeat_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn circular_repeat_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let angle_offset = number_widget(document_node, node_id, 1, "Angle Offset", NumberInput::default().unit("°"), true);
 	let radius = number_widget(document_node, node_id, 2, "Radius", NumberInput::default(), true); // TODO: What units?
 	let instances = number_widget(document_node, node_id, 3, "Instances", NumberInput::default().min(1.).is_integer(true), true);
@@ -2551,7 +2478,7 @@ pub fn circular_repeat_properties(document_node: &DocumentNode, node_id: NodeId,
 	]
 }
 
-pub fn boolean_operation_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn boolean_operation_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let group_of_paths_index = 0;
 	let operation_index = 1;
 
@@ -2565,7 +2492,7 @@ pub fn boolean_operation_properties(document_node: &DocumentNode, node_id: NodeI
 	vec![LayoutGroup::Row { widgets }, operation]
 }
 
-pub fn copy_to_points_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn copy_to_points_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let instance_index = 1;
 	let random_scale_min_index = 2;
 	let random_scale_max_index = 3;
@@ -2624,7 +2551,7 @@ pub fn copy_to_points_properties(document_node: &DocumentNode, node_id: NodeId, 
 	]
 }
 
-pub fn sample_points_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn sample_points_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let spacing = number_widget(document_node, node_id, 1, "Spacing", NumberInput::default().min(1.).unit(" px"), true);
 	let start_offset = number_widget(document_node, node_id, 2, "Start Offset", NumberInput::default().min(0.).unit(" px"), true);
 	let stop_offset = number_widget(document_node, node_id, 3, "Stop Offset", NumberInput::default().min(0.).unit(" px"), true);
@@ -2638,7 +2565,7 @@ pub fn sample_points_properties(document_node: &DocumentNode, node_id: NodeId, _
 	]
 }
 
-pub fn poisson_disk_points_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn poisson_disk_points_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let separation_disk_diameter_index = 1;
 	let seed_index = 2;
 
@@ -2656,7 +2583,7 @@ pub fn poisson_disk_points_properties(document_node: &DocumentNode, node_id: Nod
 	vec![LayoutGroup::Row { widgets: spacing }, LayoutGroup::Row { widgets: seed }]
 }
 
-pub fn morph_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn morph_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let start_index = number_widget(document_node, node_id, 2, "Start Index", NumberInput::default().min(0.), true);
 	let time = number_widget(document_node, node_id, 3, "Time", NumberInput::default().min(0.).max(1.).mode_range(), true);
 
@@ -2667,7 +2594,7 @@ pub fn morph_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 }
 
 /// Fill Node Widgets LayoutGroup
-pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let fill_index = 1;
 	let backup_color_index = 2;
 	let backup_gradient_index = 3;
@@ -2795,7 +2722,7 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 	widgets
 }
 
-pub fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let location = vec2_widget(document_node, node_id, 2, "Location", "X", "Y", " px", None, add_blank_assist);
 	let dimensions = vec2_widget(document_node, node_id, 3, "Dimensions", "W", "H", " px", None, add_blank_assist);
 	let background = color_widget(document_node, node_id, 4, "Background", ColorButton::default().allow_none(false), true);
@@ -2806,12 +2733,12 @@ pub fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _conte
 	vec![location, dimensions, background, clip_row]
 }
 
-pub fn color_fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn color_fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let color = color_widget(document_node, node_id, 1, "Color", ColorButton::default(), true);
 	vec![color]
 }
 
-pub fn color_overlay_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn color_overlay_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let color = color_widget(document_node, node_id, 1, "Color", ColorButton::default(), true);
 	let blend_mode = blend_mode(document_node, node_id, 2, "Blend Mode", true);
 	let opacity = number_widget(document_node, node_id, 3, "Opacity", NumberInput::default().percentage(), true);
@@ -2819,13 +2746,13 @@ pub fn color_overlay_properties(document_node: &DocumentNode, node_id: NodeId, _
 	vec![color, blend_mode, LayoutGroup::Row { widgets: opacity }]
 }
 
-pub fn image_color_palette(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn image_color_palette(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let size = number_widget(document_node, node_id, 1, "Max Size", NumberInput::default().int().min(1.).max(28.), true);
 
 	vec![LayoutGroup::Row { widgets: size }]
 }
 
-pub fn centroid_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn centroid_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let centroid_type = centroid_widget(document_node, node_id, 1);
 
 	vec![centroid_type]

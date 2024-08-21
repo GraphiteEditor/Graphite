@@ -6,33 +6,6 @@ use dyn_any::StaticType;
 #[cfg(feature = "std")]
 pub use std::borrow::Cow;
 
-#[derive(Clone, PartialEq, Eq, Hash)]
-pub struct NodeIOTypes {
-	pub input: Type,
-	pub output: Type,
-	pub parameters: Vec<Type>,
-}
-
-impl NodeIOTypes {
-	pub fn new(input: Type, output: Type, parameters: Vec<Type>) -> Self {
-		Self { input, output, parameters }
-	}
-
-	pub fn ty(&self) -> Type {
-		Type::Fn(Box::new(self.input.clone()), Box::new(self.output.clone()))
-	}
-}
-
-impl core::fmt::Debug for NodeIOTypes {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		f.write_fmt(format_args!(
-			"node({}) -> {}",
-			[&self.input].into_iter().chain(&self.parameters).map(|input| input.to_string()).collect::<Vec<_>>().join(", "),
-			self.output
-		))
-	}
-}
-
 #[macro_export]
 macro_rules! concrete {
 	($type:ty) => {
@@ -72,6 +45,53 @@ macro_rules! fn_type {
 	($in_type:ty, $type:ty) => {
 		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(concrete!($type)))
 	};
+}
+
+#[derive(Clone, PartialEq, Eq, Hash, Default)]
+pub struct NodeIOTypes {
+	pub input: Type,
+	pub output: Type,
+	pub parameters: Vec<Type>,
+}
+
+impl NodeIOTypes {
+	pub const fn new(input: Type, output: Type, parameters: Vec<Type>) -> Self {
+		Self { input, output, parameters }
+	}
+
+	pub const fn empty() -> Self {
+		let tds1 = TypeDescriptor {
+			id: None,
+			name: Cow::Borrowed("()"),
+			size: 0,
+			align: 0,
+		};
+		let tds2 = TypeDescriptor {
+			id: None,
+			name: Cow::Borrowed("()"),
+			size: 0,
+			align: 0,
+		};
+		Self {
+			input: Type::Concrete(tds1),
+			output: Type::Concrete(tds2),
+			parameters: Vec::new(),
+		}
+	}
+
+	pub fn ty(&self) -> Type {
+		Type::Fn(Box::new(self.input.clone()), Box::new(self.output.clone()))
+	}
+}
+
+impl core::fmt::Debug for NodeIOTypes {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		f.write_fmt(format_args!(
+			"node({}) -> {}",
+			[&self.input].into_iter().chain(&self.parameters).map(|input| input.to_string()).collect::<Vec<_>>().join(", "),
+			self.output
+		))
+	}
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, specta::Type)]
