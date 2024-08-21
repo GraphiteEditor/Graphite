@@ -17,38 +17,41 @@ impl CameraData {
 
 const CAMERA_DATA: [(&str, CameraData); 40] = build_camera_data!();
 
-const XYZ_TO_RGB: [[f64; 3]; 3] = [[0.412453, 0.357580, 0.180423], [0.212671, 0.715160, 0.072169], [0.019334, 0.119193, 0.950227]];
+const XYZ_TO_RGB: [[f64; 3]; 3] = [
+	// Matrix:
+	[0.412453, 0.357580, 0.180423],
+	[0.212671, 0.715160, 0.072169],
+	[0.019334, 0.119193, 0.950227],
+];
 
 pub fn calculate_conversion_matrices(mut raw_image: RawImage) -> RawImage {
-	if let Some(ref camera_model) = raw_image.camera_model {
-		let camera_name_needle = camera_model.make.to_owned() + " " + &camera_model.model;
+	let Some(ref camera_model) = raw_image.camera_model else { return raw_image };
+	let camera_name_needle = camera_model.make.to_owned() + " " + &camera_model.model;
 
-		let camera_to_xyz = CAMERA_DATA
-			.iter()
-			.find(|(camera_name_haystack, _)| camera_name_needle == *camera_name_haystack)
-			.map(|(_, data)| data.camera_to_xyz.map(|x| (x as f64) / 10_000.));
+	let camera_to_xyz = CAMERA_DATA
+		.iter()
+		.find(|(camera_name_haystack, _)| camera_name_needle == *camera_name_haystack)
+		.map(|(_, data)| data.camera_to_xyz.map(|x| (x as f64) / 10_000.));
+	let Some(camera_to_xyz) = camera_to_xyz else { return raw_image };
 
-		if let Some(camera_to_xyz) = camera_to_xyz {
-			let mut camera_to_rgb = [[0.; 3]; 3];
-			for i in 0..3 {
-				for j in 0..3 {
-					for k in 0..3 {
-						camera_to_rgb[i][j] += camera_to_xyz[i * 3 + k] * XYZ_TO_RGB[k][j];
-					}
-				}
+	let mut camera_to_rgb = [[0.; 3]; 3];
+	for i in 0..3 {
+		for j in 0..3 {
+			for k in 0..3 {
+				camera_to_rgb[i][j] += camera_to_xyz[i * 3 + k] * XYZ_TO_RGB[k][j];
 			}
-
-			let white_balance_multiplier = camera_to_rgb.map(|x| 1. / x.iter().sum::<f64>());
-			for (index, row) in camera_to_rgb.iter_mut().enumerate() {
-				*row = row.map(|x| x * white_balance_multiplier[index]);
-			}
-			let rgb_to_camera = transpose(pseudoinverse(camera_to_rgb));
-
-			raw_image.white_balance_multiplier = Some(white_balance_multiplier);
-			raw_image.camera_to_rgb = Some(camera_to_rgb);
-			raw_image.rgb_to_camera = Some(rgb_to_camera);
 		}
 	}
+
+	let white_balance_multiplier = camera_to_rgb.map(|x| 1. / x.iter().sum::<f64>());
+	for (index, row) in camera_to_rgb.iter_mut().enumerate() {
+		*row = row.map(|x| x * white_balance_multiplier[index]);
+	}
+	let rgb_to_camera = transpose(pseudoinverse(camera_to_rgb));
+
+	raw_image.white_balance_multiplier = Some(white_balance_multiplier);
+	raw_image.camera_to_rgb = Some(camera_to_rgb);
+	raw_image.rgb_to_camera = Some(rgb_to_camera);
 
 	raw_image
 }
@@ -60,7 +63,7 @@ fn pseudoinverse<const N: usize>(matrix: [[f64; 3]; N]) -> [[f64; 3]; N] {
 
 	for i in 0..3 {
 		for j in 0..6 {
-			work[i][j] = if j == i + 3 { 1.0 } else { 0.0 };
+			work[i][j] = if j == i + 3 { 1. } else { 0. };
 		}
 		for j in 0..3 {
 			for k in 0..N {
