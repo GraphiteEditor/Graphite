@@ -55,10 +55,6 @@ pub struct NodeGraphMessageHandler {
 	pub deselect_on_pointer_up: Option<usize>,
 	/// Adds the auto panning functionality to the node graph when dragging a node or selection box to the edge of the viewport.
 	auto_panning: AutoPanning,
-	/// The vertical offsets of all layer nodes, starting at the top of the stack, which are used to rubber band positions when dragging
-	layer_offsets: HashMap<NodeId, i32>,
-	/// Stores all upstream nodes directly below the layer node, which is used when dragging
-	upstream_nodes_below_layers: HashMap<NodeId, HashSet<NodeId>>,
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
@@ -158,11 +154,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					node_id,
 					node_template: node_template.clone(),
 				});
-				responses.add(NodeGraphMessage::MoveNodes {
-					node_id,
-					displacement_x: x,
-					displacement_y: y,
-				});
+				responses.add(NodeGraphMessage::ShiftNodePosition { node_id, x, y });
 				// Only auto connect to the dragged wire if the node is being added to the currently opened network
 				if let Some(output_connector_position) = self.wire_in_progress_from_connector {
 					let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
@@ -628,28 +620,44 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 
 					let mut graph_delta = IVec2::new(((point.x - drag_start.start_x) / 24.).round() as i32, ((point.y - drag_start.start_y) / 24.).round() as i32);
-					graph_delta.x -= drag_start.round_x;
-					graph_delta.y -= drag_start.round_y;
+					let previous_round_x = drag_start.round_x;
+					let previous_round_y = drag_start.round_y;
+
+					drag_start.round_x = graph_delta.x;
+					drag_start.round_y = graph_delta.y;
+
+					graph_delta.x -= previous_round_x;
+					graph_delta.y -= previous_round_y;
 
 					while graph_delta != IVec2::ZERO {
 						log::debug!("Graph delta: {graph_delta}");
 						if graph_delta.x > 0 {
-							responses.add(NodeGraphMessage::ShiftSelectedNodes { direction: Right, rubber_band: true });
+							responses.add(NodeGraphMessage::ShiftSelectedNodes {
+								direction: Direction::Right,
+								rubber_band: true,
+							});
 							graph_delta.x -= 1;
 						} else if graph_delta.x < 0 {
-							responses.add(NodeGraphMessage::ShiftSelectedNodes { direction: Left, rubber_band: true });
+							responses.add(NodeGraphMessage::ShiftSelectedNodes {
+								direction: Direction::Left,
+								rubber_band: true,
+							});
 							graph_delta.x += 1;
 						}
 						if graph_delta.y > 0 {
-							responses.add(NodeGraphMessage::ShiftSelectedNodes { direction: Down, rubber_band: true });
+							responses.add(NodeGraphMessage::ShiftSelectedNodes {
+								direction: Direction::Down,
+								rubber_band: true,
+							});
 							graph_delta.y -= 1;
 						} else if graph_delta.y < 0 {
-							responses.add(NodeGraphMessage::ShiftSelectedNodes { direction: Up, rubber_band: true });
+							responses.add(NodeGraphMessage::ShiftSelectedNodes {
+								direction: Direction::Up,
+								rubber_band: true,
+							});
 							graph_delta.y += 1;
 						}
 					}
-					drag_start.round_x = graph_delta.x;
-					drag_start.round_y = graph_delta.y;
 				} else if self.box_selection_start.is_some() {
 					responses.add(NodeGraphMessage::UpdateBoxSelection);
 				}
@@ -727,7 +735,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				else if let Some(drag_start) = &self.drag_start {
 					// Reset all offsets to end the rubber banding while dragging
 					network_interface.unload_stack_dependents_y_offset(selection_network_path);
-
+					let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else { return };
 					// Only select clicked node if multiple are selected and they were not dragged
 					if let Some(select_if_not_dragged) = self.select_if_not_dragged {
 						if drag_start.start_x == point.x
@@ -1034,8 +1042,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::ShiftSelectedNodes { direction, rubber_band } => {
 				let shift_upstream = ipp.keyboard.get(crate::messages::tool::tool_messages::tool_prelude::Key::Shift as usize);
-				let shifted_nodes = HashSet::new();
-				network_interface.shift_selected_nodes(direction, shift_upstream, &mut shifted_nodes, selection_network_path);
+				network_interface.shift_selected_nodes(direction, shift_upstream, selection_network_path);
 
 				if !rubber_band {
 					network_interface.unload_stack_dependents_y_offset(selection_network_path);
@@ -1063,6 +1070,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if selected_nodes.selected_nodes().any(|node_id| network_interface.connected_to_output(node_id, selection_network_path)) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
+			}
+			NodeGraphMessage::ShiftNodePosition { node_id, x, y } => {
+				network_interface.shift_absolute_node_position(&node_id, IVec2::new(x, y), selection_network_path);
 			}
 			NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer } => {
 				if is_layer && !network_interface.is_eligible_to_be_layer(&node_id, selection_network_path) {
@@ -1934,8 +1944,6 @@ impl Default for NodeGraphMessageHandler {
 			context_menu: None,
 			deselect_on_pointer_up: None,
 			auto_panning: Default::default(),
-			layer_offsets: HashMap::new(),
-			upstream_nodes_below_layers: HashMap::new(),
 		}
 	}
 }

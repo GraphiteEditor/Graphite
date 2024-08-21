@@ -113,6 +113,11 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		alias: String,
 	},
+	ShiftNodePosition {
+		node_id: NodeId,
+		x: i32,
+		y: i32,
+	},
 	SetToNodeOrLayer {
 		node_id: NodeId,
 		is_layer: bool,

@@ -1,8 +1,5 @@
 use super::tool_prelude::*;
-use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::resize::Resize;
-
-use graph_craft::document::{generate_uuid, NodeId};
 
 #[derive(Default)]
 pub struct ImaginateTool {

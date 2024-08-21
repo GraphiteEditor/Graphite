@@ -648,7 +648,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				resize_opposite_corner,
 			} => {
 				self.backup(responses);
-				
+
 				let opposite_corner = ipp.keyboard.key(resize_opposite_corner);
 				let delta = DVec2::new(delta_x, delta_y);
 
@@ -1122,7 +1122,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 		// Additional actions if there are any selected layers
 		if self.network_interface.selected_nodes(&[]).unwrap().selected_layers(self.metadata()).next().is_some() {
-			let select = actions!(DocumentMessageDiscriminant;
+			let mut select = actions!(DocumentMessageDiscriminant;
 				DeleteSelectedLayers,
 				DuplicateSelectedLayers,
 				GroupSelectedLayers,
@@ -1133,7 +1133,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				UngroupSelectedLayers,
 			);
 			if !self.graph_view_overlay_open {
-				common.push(actions!(DocumentMessageDiscriminant; NudgeSelectedLayers));
+				select.extend(actions!(DocumentMessageDiscriminant; NudgeSelectedLayers));
 			}
 			common.extend(select);
 		}
