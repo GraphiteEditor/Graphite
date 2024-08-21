@@ -301,12 +301,31 @@ mod tests {
 		assert_eq!(parsed.is_async, expected.is_async);
 		assert_eq!(format!("{:?}", parsed.input_type), format!("{:?}", expected.input_type));
 		assert_eq!(format!("{:?}", parsed.output_type), format!("{:?}", expected.output_type));
+		assert_eq!(parsed.attributes.category, expected.attributes.category);
+		assert_eq!(parsed.attributes.display_name, expected.attributes.display_name);
 		assert_eq!(parsed.fields.len(), expected.fields.len());
 
 		for (parsed_field, expected_field) in parsed.fields.iter().zip(expected.fields.iter()) {
 			match (parsed_field, expected_field) {
-				(ParsedField::Regular { name: p_name, ty: p_ty, .. }, ParsedField::Regular { name: e_name, ty: e_ty, .. }) => {
+				(
+					ParsedField::Regular {
+						name: p_name,
+						ty: p_ty,
+						exposed: p_exp,
+						default_value: p_default,
+						..
+					},
+					ParsedField::Regular {
+						name: e_name,
+						ty: e_ty,
+						exposed: e_exp,
+						default_value: e_default,
+						..
+					},
+				) => {
 					assert_eq!(p_name, e_name);
+					assert_eq!(p_exp, e_exp);
+					assert_eq!(p_default.to_token_stream().to_string(), e_default.to_token_stream().to_string());
 					assert_eq!(format!("{:?}", p_ty), format!("{:?}", e_ty));
 				}
 				(
@@ -334,7 +353,7 @@ mod tests {
 
 	#[test]
 	fn test_basic_node() {
-		let attr = quote!((category("Math")));
+		let attr = quote!(category("Math"));
 		let input = quote!(
 			fn add(a: f64, b: f64) -> f64 {
 				a + b
@@ -345,7 +364,7 @@ mod tests {
 		let expected = ParsedNodeFn {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Math")),
-				path: None,
+				display_name: None,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -358,6 +377,7 @@ mod tests {
 			fields: vec![ParsedField::Regular {
 				name: Ident::new("b", Span::call_site()),
 				ty: parse_quote!(f64),
+				exposed: false,
 				default_value: None,
 				implementations: Punctuated::new(),
 			}],
@@ -370,7 +390,7 @@ mod tests {
 
 	#[test]
 	fn test_node_with_impl_node() {
-		let attr = quote!((category("Transform")));
+		let attr = quote!(category("Transform"));
 		let input = quote!(
 			fn transform<T: 'static>(footprint: Footprint, transform_target: impl Node<Footprint, Output = T>, translate: DVec2) -> T {
 				// Implementation details...
@@ -381,7 +401,7 @@ mod tests {
 		let expected = ParsedNodeFn {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Transform")),
-				path: None,
+				display_name: None,
 			},
 			fn_name: Ident::new("transform", Span::call_site()),
 			struct_name: Ident::new("Transform", Span::call_site()),
@@ -402,6 +422,7 @@ mod tests {
 				ParsedField::Regular {
 					name: Ident::new("translate", Span::call_site()),
 					ty: parse_quote!(DVec2),
+					exposed: false,
 					default_value: None,
 					implementations: Punctuated::new(),
 				},
@@ -415,7 +436,7 @@ mod tests {
 
 	#[test]
 	fn test_node_with_default_values() {
-		let attr = quote!((category("Vector")));
+		let attr = quote!(category("Vector"));
 		let input = quote!(
 			fn circle(_: (), #[default(50.0)] radius: f64) -> VectorData {
 				// Implementation details...
@@ -426,7 +447,7 @@ mod tests {
 		let expected = ParsedNodeFn {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Vector")),
-				path: None,
+				display_name: None,
 			},
 			fn_name: Ident::new("circle", Span::call_site()),
 			struct_name: Ident::new("Circle", Span::call_site()),
@@ -439,6 +460,7 @@ mod tests {
 			fields: vec![ParsedField::Regular {
 				name: Ident::new("radius", Span::call_site()),
 				ty: parse_quote!(f64),
+				exposed: false,
 				default_value: Some(quote!(50.0)),
 				implementations: Punctuated::new(),
 			}],
@@ -451,7 +473,7 @@ mod tests {
 
 	#[test]
 	fn test_node_with_implementations() {
-		let attr = quote!((category("Raster")));
+		let attr = quote!(category("Raster"));
 		let input = quote!(
 			fn levels<P: Pixel>(image: ImageFrame<P>, #[implementations(f32, f64)] shadows: f64) -> ImageFrame<P> {
 				// Implementation details...
@@ -462,7 +484,7 @@ mod tests {
 		let expected = ParsedNodeFn {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Raster")),
-				path: None,
+				display_name: None,
 			},
 			fn_name: Ident::new("levels", Span::call_site()),
 			struct_name: Ident::new("Levels", Span::call_site()),
@@ -475,6 +497,7 @@ mod tests {
 			fields: vec![ParsedField::Regular {
 				name: Ident::new("shadows", Span::call_site()),
 				ty: parse_quote!(f64),
+				exposed: false,
 				default_value: None,
 				implementations: {
 					let mut p = Punctuated::new();
@@ -492,9 +515,9 @@ mod tests {
 
 	#[test]
 	fn test_async_node() {
-		let attr = quote!((category("IO")));
+		let attr = quote!(category("IO"));
 		let input = quote!(
-			async fn load_image(api: &WasmEditorApi, path: String) -> ImageFrame<Color> {
+			async fn load_image(api: &WasmEditorApi, #[expose] path: String) -> ImageFrame<Color> {
 				// Implementation details...
 			}
 		);
@@ -503,7 +526,7 @@ mod tests {
 		let expected = ParsedNodeFn {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("IO")),
-				path: None,
+				display_name: None,
 			},
 			fn_name: Ident::new("load_image", Span::call_site()),
 			struct_name: Ident::new("LoadImage", Span::call_site()),
@@ -516,6 +539,7 @@ mod tests {
 			fields: vec![ParsedField::Regular {
 				name: Ident::new("path", Span::call_site()),
 				ty: parse_quote!(String),
+				exposed: true,
 				default_value: None,
 				implementations: Punctuated::new(),
 			}],
@@ -527,8 +551,8 @@ mod tests {
 	}
 
 	#[test]
-	fn test_node_with_custom_path() {
-		let attr = quote!((category("Custom"), path(my_module::CustomNode)));
+	fn test_node_with_custom_name() {
+		let attr = quote!(category("Custom"), name("CustomNode2"));
 		let input = quote!(
 			fn custom_node(input: i32) -> i32 {
 				input * 2
@@ -539,7 +563,7 @@ mod tests {
 		let expected = ParsedNodeFn {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Custom")),
-				path: Some(parse_quote!(my_module::CustomNode)),
+				display_name: Some(parse_quote!("CustomNode2")),
 			},
 			fn_name: Ident::new("custom_node", Span::call_site()),
 			struct_name: Ident::new("CustomNode", Span::call_site()),
@@ -560,7 +584,7 @@ mod tests {
 	#[test]
 	#[should_panic(expected = "Multiple 'category' attributes are not allowed")]
 	fn test_multiple_categories() {
-		let attr = quote!((category("Math"), category("Arithmetic")));
+		let attr = quote!(category("Math"), category("Arithmetic"));
 		let input = quote!(
 			fn add(a: i32, b: i32) -> i32 {
 				a + b
@@ -572,7 +596,7 @@ mod tests {
 	#[test]
 	#[should_panic(expected = "No default values for first argument allowed")]
 	fn test_default_value_for_first_arg() {
-		let attr = quote!((category("Invalid")));
+		let attr = quote!(category("Invalid"));
 		let input = quote!(
 			fn invalid_node(#[default(())] node: impl Node<(), Output = i32>) -> i32 {
 				node.eval(())
@@ -584,7 +608,7 @@ mod tests {
 	#[test]
 	#[should_panic(expected = "No default values for `impl Node` allowed")]
 	fn test_default_value_for_impl_node() {
-		let attr = quote!((category("Invalid")));
+		let attr = quote!(category("Invalid"));
 		let input = quote!(
 			fn invalid_node(_: (), #[default(())] node: impl Node<(), Output = i32>) -> i32 {
 				node.eval(())
@@ -596,7 +620,7 @@ mod tests {
 	#[test]
 	#[should_panic(expected = "Unsupported attribute in `node_fn`")]
 	fn test_unsupported_attribute() {
-		let attr = quote!((unsupported("Value")));
+		let attr = quote!(unsupported("Value"));
 		let input = quote!(
 			fn test_node(input: i32) -> i32 {
 				input

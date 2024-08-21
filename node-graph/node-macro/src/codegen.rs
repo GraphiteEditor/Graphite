@@ -82,6 +82,14 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 		}
 	});
 
+	let all_implementation_types = fields
+		.iter()
+		.map(|field| match field {
+			ParsedField::Regular { implementations, .. } => implementations.into_iter().cloned().collect::<Vec<_>>(),
+			ParsedField::Node { implementations, .. } => implementations.into_iter().map(|tuple| syn::Type::Tuple(tuple.clone())).collect(),
+		})
+		.flatten();
+
 	let mut clauses = Vec::new();
 	for (field, name) in fields.iter().zip(struct_generics.iter()) {
 		clauses.push(match (field, *is_async) {
@@ -137,6 +145,9 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 	quote! {
 		#async_keyword fn #fn_name <'n, #(#fn_generics,)*> (#input_name: #input_type #(, #field_names: #field_types)*) -> #output_type #body
 
+
+
+
 		#[automatically_derived]
 		impl<'n,  #(#fn_generics,)* #(#struct_generics,)*> #graphene_core::Node<'n, #input_type> for #mod_name::#struct_name<#(#struct_generics,)*>
 		#where_clause
@@ -145,6 +156,9 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 		}
 
 		mod #mod_name {
+			#[cfg(__never_compiled)]
+			static _IMPORTS: core::marker::PhantomData<#(#all_implementation_types,)*> = core::marker::PhantomData;
+
 			use super::*;
 			use #graphene_core as gcore;
 			use gcore::{Node, NodeIOTypes, concrete, fn_type, ProtoNodeIdentifier, WasmNotSync, NodeIO};
@@ -153,6 +167,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 			use gcore::registry::{NodeMetadata, FieldMetadata, NODE_REGISTRY, NODE_METADATA, DynAnyNode, DowncastBothNode, DynFuture, TypeErasedBox, PanicNode};
 			use ctor::ctor;
 
+			#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 			pub struct #struct_name<#(#struct_generics,)*> {
 				#(#struct_fields,)*
 			}
@@ -192,7 +207,6 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 
 fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], struct_name: &Ident, identifer: &TokenStream2) -> TokenStream2 {
 	let input_type = &parsed.input_type;
-	let output_type = &parsed.output_type;
 	let mut constructors = Vec::new();
 	let unit = parse_quote!(());
 	let parameter_types: Vec<_> = parsed
