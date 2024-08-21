@@ -626,7 +626,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					graph_delta.y -= previous_round_y;
 
 					while graph_delta != IVec2::ZERO {
-						log::debug!("Graph delta: {graph_delta}");
 						if graph_delta.x > 0 {
 							responses.add(NodeGraphMessage::ShiftSelectedNodes {
 								direction: Direction::Right,
@@ -1330,6 +1329,7 @@ impl NodeGraphMessageHandler {
 				ToggleSelectedLocked,
 				ToggleSelectedVisibility,
 				PrintSelectedNodeCoordinates,
+				ShiftSelectedNodes,
 			));
 		}
 

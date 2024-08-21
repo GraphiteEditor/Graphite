@@ -434,10 +434,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(FrontendMessage::TriggerGraphViewOverlay { open });
 				// Update the tilt menu bar buttons to be disabled when the graph is open
 				responses.add(MenuBarMessage::SendLayout);
+				responses.add(DocumentMessage::RenderRulers);
+				responses.add(DocumentMessage::RenderScrollbars);
 				if open {
+					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
 					responses.add(NodeGraphMessage::SetGridAlignedEdges);
 					responses.add(NodeGraphMessage::SendGraph);
-					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
 				}
 			}
 			DocumentMessage::GraphViewOverlayToggle => {
@@ -1128,6 +1130,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			common.extend(select);
 		}
+
 		// Additional actions if the node graph is open
 		if self.graph_view_overlay_open {
 			common.extend(actions!(DocumentMessageDiscriminant;
