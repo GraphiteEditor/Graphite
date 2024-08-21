@@ -804,11 +804,6 @@ impl NodeNetworkInterface {
 
 	// All chain nodes and branches from the chain which are sole dependents of the layer
 	pub fn upstream_nodes_below_layer(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> HashSet<NodeId> {
-		let Some(layer_click_target) = self.node_click_targets(node_id, network_path) else {
-			log::error!("Could not load layer_click_target");
-			return HashSet::new();
-		};
-
 		// Every upstream node below layer must be a sole dependent
 		let mut upstream_nodes_below_layer = HashSet::new();
 
@@ -3897,18 +3892,12 @@ impl NodeNetworkInterface {
 		self.unload_upstream_node_click_targets(vec![*layer], network_path);
 	}
 
-	pub fn shift_selected_nodes(&mut self, direction: Direction, shift_upstream: bool, network_path: &[NodeId]) {
+	pub fn shift_selected_nodes(&mut self, direction: Direction, network_path: &[NodeId]) {
 		// TODO: Deselect layers that are owned by another layer
 		let Some(mut node_ids) = self.selected_nodes(network_path).map(|selected_nodes| selected_nodes.selected_nodes().cloned().collect::<HashSet<_>>()) else {
 			log::error!("Could not get selected nodes in shift_selected_nodes");
 			return;
 		};
-
-		// if shift_upstream {
-		// 	for node_id in self.upstream_flow_back_from_nodes(node_ids.clone(), network_path, self::FlowType::UpstreamFlow) {
-		// 		node_ids.insert(node_id);
-		// 	}
-		// }
 
 		let Some(stack_dependents) = self.stack_dependents(network_path) else {
 			log::error!("Could not load stack dependents in shift_selected_nodes");
@@ -5006,10 +4995,10 @@ pub struct NavigationMetadata {
 	/// Transform from node graph space to viewport space.
 	pub node_graph_to_viewport: DAffine2,
 	/// The viewport pixel distance distance between the left edge of the node graph and the exports. Rounded to nearest grid space when the panning ends.
-	#[serde(default)]
+	#[serde(skip)]
 	pub exports_to_edge_distance: DVec2,
 	/// The viewport pixel distance between the left edge of the node graph and the imports. Rounded to nearest grid space when the panning ends.
-	#[serde(default)]
+	#[serde(skip)]
 	pub imports_to_edge_distance: DVec2,
 }
 

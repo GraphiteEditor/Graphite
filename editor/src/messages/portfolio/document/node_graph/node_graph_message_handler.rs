@@ -610,10 +610,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: Some(wire_path) });
 					}
 				} else if let Some(drag_start) = &mut self.drag_start {
-					let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else {
-						log::error!("Could not get selected nodes in PointerMove");
-						return;
-					};
 					if self.begin_dragging {
 						responses.add(DocumentMessage::StartTransaction);
 						self.begin_dragging = false;
@@ -1041,8 +1037,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				network_interface.set_input(&input_connector, input, selection_network_path);
 			}
 			NodeGraphMessage::ShiftSelectedNodes { direction, rubber_band } => {
-				let shift_upstream = ipp.keyboard.get(crate::messages::tool::tool_messages::tool_prelude::Key::Shift as usize);
-				network_interface.shift_selected_nodes(direction, shift_upstream, selection_network_path);
+				//let shift_upstream = ipp.keyboard.get(crate::messages::tool::tool_messages::tool_prelude::Key::Shift as usize);
+				network_interface.shift_selected_nodes(direction, selection_network_path);
 
 				if !rubber_band {
 					network_interface.unload_stack_dependents_y_offset(selection_network_path);
