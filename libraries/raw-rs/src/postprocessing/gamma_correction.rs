@@ -41,12 +41,12 @@ fn generate_gamma_curve(power: f64, threshold: f64, max_intensity: f64) -> Vec<u
 			transition_point = (bound_start + bound_end) / 2.;
 
 			if power != 0. {
-				let portion_of_threshold = transition_point / threshold;
-				let exponential_power = portion_of_threshold.powf(-power);
-				let power_ratio = (exponential_power - 1.) / (power - 1.); // TODO: guarantee that `power` cannot be 1
-				let power_transition_ratio = power_ratio / transition_point;
+				let temp_transition_ratio = transition_point / threshold;
+				let exponential_power = temp_transition_ratio.powf(-power);
+				let normalized_exponential_power = (exponential_power - 1.) / power;
+				let comparison_result = normalized_exponential_power - (1. / transition_point);
 
-				let bound_to_update = if power_transition_ratio > -1. { &mut bound_end } else { &mut bound_start };
+				let bound_to_update = if comparison_result > -1. { &mut bound_end } else { &mut bound_start };
 				*bound_to_update = transition_point;
 			} else {
 				let adjusted_transition_point = E.powf(1. - 1. / transition_point);
@@ -60,7 +60,7 @@ fn generate_gamma_curve(power: f64, threshold: f64, max_intensity: f64) -> Vec<u
 		transition_ratio = transition_point / threshold;
 
 		if power != 0. {
-			curve_adjustment = transition_point / (power - 1.); // TODO: guarantee that `power` cannot be 1
+			curve_adjustment = transition_point * ((1. / power) - 1.);
 		}
 	}
 
@@ -68,7 +68,7 @@ fn generate_gamma_curve(power: f64, threshold: f64, max_intensity: f64) -> Vec<u
 	let length = curve.len() as f64;
 
 	for (i, entry) in curve.iter_mut().enumerate() {
-		let ratio = (i as f64) / max_intensity; // TODO: guarantee that `max_intensity` cannot be 0
+		let ratio = (i as f64) / max_intensity;
 		if ratio < 1. {
 			let altered_ratio = if ratio < transition_ratio {
 				ratio * threshold
