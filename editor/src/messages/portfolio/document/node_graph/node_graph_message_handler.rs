@@ -352,6 +352,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				// Create the add node popup on right click, then exit
 				if right_click {
+					if self.drag_start.is_some() {
+						responses.add(DocumentMessage::AbortTransaction);
+						self.drag_start = None;
+						return;
+					}
+
 					let context_menu_data = if let Some(node_id) = clicked_id {
 						ContextMenuData::ToggleLayer {
 							node_id,

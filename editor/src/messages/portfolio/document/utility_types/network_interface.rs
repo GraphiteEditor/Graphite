@@ -1574,26 +1574,30 @@ impl NodeNetworkInterface {
 
 		// Loop through all layers below the stack_tops, and set sole dependents upstream from that layer to be owned by that layer. Ensure LayerOwner is kept in sync
 		for stack_top in &stack_tops {
-			for upstream_layer in self
+			for upstream_stack_layer in self
 				.upstream_flow_back_from_nodes(vec![*stack_top], network_path, FlowType::PrimaryFlow)
 				.take_while(|upstream_node| self.is_layer(upstream_node, network_path))
 				.collect::<Vec<_>>()
 			{
-				let mut new_owned_nodes = HashSet::new();
-				for layer_sole_dependent in &self.upstream_nodes_below_layer(&upstream_layer, network_path) {
-					// TODO: Ensure that the owner is the most upstream layer
-					stack_dependents.insert(*layer_sole_dependent, LayerOwner::Layer(upstream_layer));
-					new_owned_nodes.insert(*layer_sole_dependent);
+				for upstream_layer in self.upstream_flow_back_from_nodes(vec![upstream_stack_layer], network_path, FlowType::UpstreamFlow).collect::<Vec<_>>() {
+					if !self.is_layer(&upstream_layer, network_path) {
+						continue;
+					}
+					let mut new_owned_nodes = HashSet::new();
+					for layer_sole_dependent in &self.upstream_nodes_below_layer(&upstream_layer, network_path) {
+						stack_dependents.insert(*layer_sole_dependent, LayerOwner::Layer(upstream_layer));
+						new_owned_nodes.insert(*layer_sole_dependent);
+					}
+					let Some(layer_node) = self.node_metadata_mut(&upstream_layer, network_path) else {
+						log::error!("Could not get layer node in load_stack_dependents");
+						continue;
+					};
+					let NodeTypePersistentMetadata::Layer(LayerPersistentMetadata { owned_nodes, .. }) = &mut layer_node.persistent_metadata.node_type_metadata else {
+						log::error!("upstream layer should be a layer");
+						return;
+					};
+					*owned_nodes = TransientMetadata::Loaded(new_owned_nodes);
 				}
-				let Some(layer_node) = self.node_metadata_mut(&upstream_layer, network_path) else {
-					log::error!("Could not get layer node in load_stack_dependents");
-					continue;
-				};
-				let NodeTypePersistentMetadata::Layer(LayerPersistentMetadata { owned_nodes, .. }) = &mut layer_node.persistent_metadata.node_type_metadata else {
-					log::error!("upstream layer should be a layer");
-					return;
-				};
-				*owned_nodes = TransientMetadata::Loaded(new_owned_nodes);
 			}
 		}
 
@@ -4005,7 +4009,7 @@ impl NodeNetworkInterface {
 				}
 				Direction::Up | Direction::Down => {
 					if self.is_layer(node_id, network_path) {
-						self.vertical_shift_with_push(node_id, shift_sign, &mut shifted_nodes, network_path);
+						self.shift_node_or_parent(node_id, shift_sign, &mut shifted_nodes, network_path);
 					} else if !shifted_nodes.contains(node_id) {
 						shifted_nodes.insert(*node_id);
 						self.shift_node(node_id, IVec2::new(0, shift_sign), network_path);
@@ -4202,8 +4206,6 @@ impl NodeNetworkInterface {
 					}
 				}
 			} else if let NodePosition::Chain = node_metadata.position {
-				// TODO: Don't break the chain when shifting a node left or right. Instead, shift the entire chain (?).
-				// TODO: Instead of outward wires to the export being based on the export (which changes when previewing), it should be based on the root node.
 				self.set_upstream_chain_to_absolute(node_id, network_path);
 				self.shift_node(node_id, shift, network_path);
 			}
