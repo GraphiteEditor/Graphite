@@ -2135,7 +2135,7 @@ impl NodeNetworkInterface {
 			.and_then(|transient_node_metadata| transient_node_metadata.node_click_target.bounding_box())
 	}
 
-	pub fn load_all_node_click_targets(&mut self, network_path: &[NodeId]) {
+	pub fn try_load_all_node_click_targets(&mut self, network_path: &[NodeId]) {
 		let Some(network) = self.network(network_path) else {
 			log::error!("Could not get network in load_all_node_click_targets");
 			return;
@@ -3895,20 +3895,6 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		let Some(stack_dependents) = self.stack_dependents(network_path) else {
-			log::error!("Could not load stack dependents in shift_selected_nodes");
-			return;
-		};
-
-		// Select layers with a shift offset with opposite sign of the current shift
-		for (layer, owner) in stack_dependents.iter() {
-			if let LayerOwner::None(offset) = owner {
-				if *offset != 0 && (offset.signum() == 1 && direction == Direction::Up) || offset.signum() == -1 && direction == Direction::Down {
-					node_ids.insert(*layer);
-				}
-			}
-		}
-
 		for node_id in node_ids.clone() {
 			if self.is_layer(&node_id, network_path) {
 				if let Some(owned_nodes) = self.owned_nodes(&node_id, network_path) {
@@ -4029,6 +4015,60 @@ impl NodeNetworkInterface {
 				}
 			}
 		}
+
+		let Some(stack_dependents) = self
+			.stack_dependents(network_path)
+			.map(|stack_dependents| stack_dependents.iter().map(|(node_id, owner)| (*node_id, owner.clone())).collect::<Vec<_>>())
+		else {
+			log::error!("Could not load stack dependents in shift_selected_nodes");
+			return;
+		};
+
+		let mut stack_dependents_with_position = stack_dependents
+			.iter()
+			.filter_map(|(node_id, owner)| {
+				let LayerOwner::None(offset) = owner else {
+					return None;
+				};
+				if *offset == 0 {
+					return None;
+				}
+				if self
+					.selected_nodes(network_path)
+					.is_some_and(|selected_nodes| selected_nodes.selected_nodes().any(|selected_node| selected_node == node_id))
+				{
+					return None;
+				};
+				let Some(position) = self.position(node_id, network_path) else {
+					log::error!("Could not get position for node {node_id} in shift_selected_nodes");
+					return None;
+				};
+				Some((*node_id, *offset, position.y))
+			})
+			.collect::<Vec<(NodeId, i32, i32)>>();
+
+		stack_dependents_with_position.sort_unstable_by(|a, b| {
+			a.1.signum().cmp(&b.1.signum()).then_with(|| {
+				// If the node has a positive offset, then it is shifted up, so shift the top nodes first
+				if a.1.signum() == 1 {
+					a.2.cmp(&b.2)
+				} else {
+					b.2.cmp(&a.2)
+				}
+			})
+		});
+
+		// Try shift every node that is offset from its original position
+		for (node_id, mut offset, _) in stack_dependents_with_position.iter() {
+			while offset != 0 {
+				if self.check_collision_with_stack_dependents(node_id, -offset.signum(), network_path).is_empty() {
+					self.vertical_shift_with_push(node_id, -offset.signum(), &mut HashSet::new(), network_path);
+					offset += -offset.signum();
+				} else {
+					break;
+				}
+			}
+		}
 	}
 
 	fn try_shift_node(&mut self, node_id: &NodeId, shift: IVec2, shifted_nodes: &mut HashSet<NodeId>, network_path: &[NodeId]) {
@@ -4045,53 +4085,7 @@ impl NodeNetworkInterface {
 		}
 		shifted_nodes.insert(*node_id);
 
-		self.try_load_stack_dependents(network_path);
-		self.load_all_node_click_targets(network_path);
-
-		let Some(stack_dependents) = self.try_get_stack_dependents(network_path) else {
-			log::error!("Could not load stack dependents in shift_selected_nodes");
-			return;
-		};
-
-		let default_hashset = HashSet::new();
-		let owned_nodes = self.owned_nodes(node_id, network_path).unwrap_or(&default_hashset);
-		// Check collisions and for all owned nodes and recursively shift them
-		let mut nodes_to_shift = Vec::new();
-		for node_to_check_collision in stack_dependents {
-			for current_node in owned_nodes.iter().chain(std::iter::once(node_id)) {
-				if node_to_check_collision.0 == current_node {
-					continue;
-				}
-
-				// Do not check collision between any of the owned nodes or the shifted node
-				// TODO: Use a recursive function to check if parent owns the node to check collisions, since both the layer and chain node can be owned by a parent node
-				if owned_nodes.contains(node_to_check_collision.0) || node_to_check_collision.0 == node_id {
-					continue;
-				}
-
-				let Some(mut current_node_bounding_box) = self.try_get_node_bounding_box(current_node, network_path) else {
-					log::error!("Could not get bounding box for node {node_id} in shift_selected_nodes");
-					continue;
-				};
-
-				let Some(node_bounding_box) = self.try_get_node_bounding_box(node_to_check_collision.0, network_path) else {
-					log::error!("Could not get bounding box for node {node_to_check_collision:?} in shift_selected_nodes");
-					continue;
-				};
-				// If the nodes do not intersect horizontally, then there is no collision
-				if current_node_bounding_box[1].x < node_bounding_box[0].x || current_node_bounding_box[0].x > node_bounding_box[1].x {
-					continue;
-				}
-
-				current_node_bounding_box[1].y += GRID_SIZE as f64 * shift_sign as f64;
-				current_node_bounding_box[0].y += GRID_SIZE as f64 * shift_sign as f64;
-
-				let collision = current_node_bounding_box[1].y >= node_bounding_box[0].y - 0.1 && current_node_bounding_box[0].y <= node_bounding_box[1].y + 0.1;
-				if collision {
-					nodes_to_shift.push((*node_to_check_collision.0, node_to_check_collision.1.clone()));
-				}
-			}
-		}
+		let nodes_to_shift = self.check_collision_with_stack_dependents(node_id, shift_sign, network_path);
 
 		for node_to_shift in nodes_to_shift {
 			self.shift_node_or_parent(&node_to_shift.0, shift_sign, shifted_nodes, network_path);
@@ -4143,6 +4137,55 @@ impl NodeNetworkInterface {
 				}
 			}
 		}
+	}
+
+	fn check_collision_with_stack_dependents(&mut self, node_id: &NodeId, shift_sign: i32, network_path: &[NodeId]) -> Vec<(NodeId, LayerOwner)> {
+		self.try_load_all_node_click_targets(network_path);
+
+		let Some(stack_dependents) = self.try_get_stack_dependents(network_path) else {
+			log::error!("Could not load stack dependents in shift_selected_nodes");
+			return Vec::new();
+		};
+		// Check collisions and for all owned nodes and recursively shift them
+		let mut nodes_to_shift = Vec::new();
+
+		let default_hashset = HashSet::new();
+		let owned_nodes = self.owned_nodes(node_id, network_path).unwrap_or(&default_hashset);
+
+		for current_node in owned_nodes.iter().chain(std::iter::once(node_id)) {
+			for node_to_check_collision in stack_dependents {
+				// Do not check collision between any of the owned nodes or the shifted node
+				if owned_nodes.contains(node_to_check_collision.0) || node_to_check_collision.0 == node_id {
+					continue;
+				}
+
+				if node_to_check_collision.0 == current_node {
+					continue;
+				}
+				let Some(mut current_node_bounding_box) = self.try_get_node_bounding_box(current_node, network_path) else {
+					log::error!("Could not get bounding box for node {node_id} in shift_selected_nodes");
+					continue;
+				};
+
+				let Some(node_bounding_box) = self.try_get_node_bounding_box(node_to_check_collision.0, network_path) else {
+					log::error!("Could not get bounding box for node {node_to_check_collision:?} in shift_selected_nodes");
+					continue;
+				};
+				// If the nodes do not intersect horizontally, then there is no collision
+				if current_node_bounding_box[1].x < node_bounding_box[0].x || current_node_bounding_box[0].x > node_bounding_box[1].x {
+					continue;
+				}
+
+				current_node_bounding_box[1].y += GRID_SIZE as f64 * shift_sign as f64;
+				current_node_bounding_box[0].y += GRID_SIZE as f64 * shift_sign as f64;
+
+				let collision = current_node_bounding_box[1].y >= node_bounding_box[0].y - 0.1 && current_node_bounding_box[0].y <= node_bounding_box[1].y + 0.1;
+				if collision {
+					nodes_to_shift.push((*node_to_check_collision.0, node_to_check_collision.1.clone()));
+				}
+			}
+		}
+		nodes_to_shift
 	}
 
 	fn shift_node_or_parent(&mut self, node_id: &NodeId, shift_sign: i32, shifted_nodes: &mut HashSet<NodeId>, network_path: &[NodeId]) {
