@@ -423,7 +423,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							.get(node_id)
 							.and_then(|node| node.persistent_metadata.reference.as_ref())
 						{
-							let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(reference).unwrap();
+							let node_definition = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type(reference).unwrap();
 							let default_definition_node = node_definition.default_node_template();
 							document.network_interface.set_implementation(node_id, &[], default_definition_node.document_node.implementation);
 						}
@@ -459,7 +459,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						continue;
 					};
 					if reference == "Fill" && node.inputs.len() == 8 {
-						let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(reference).unwrap();
+						let node_definition = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type(reference).unwrap();
 						let document_node = node_definition.default_node_template().document_node;
 						document.network_interface.set_implementation(node_id, &[], document_node.implementation.clone());
 

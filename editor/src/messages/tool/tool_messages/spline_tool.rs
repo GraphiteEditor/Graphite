@@ -1,6 +1,6 @@
 use super::tool_prelude::*;
 use crate::consts::DRAG_THRESHOLD;
-use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};

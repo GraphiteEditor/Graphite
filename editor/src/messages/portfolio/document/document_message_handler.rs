@@ -24,7 +24,7 @@ use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
+use graph_craft::document::{NodeId, NodeNetwork, OldNodeNetwork};
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::ImageFrame;
 use graphene_core::vector::style::ViewMode;
@@ -329,28 +329,19 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), self.network_interface.selected_nodes(&[]).unwrap(), parent);
 
 				let folder_id = NodeId(generate_uuid());
-				let new_group_node = super::node_graph::document_node_types::resolve_document_node_type("Boolean Operation")
-					.expect("Failed to create merge node")
-					.node_template_input_override([
-						Some(NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorData::empty()), true)),
-						Some(NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorData::empty()), true)),
-						Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
-					]);
-				responses.add(NodeGraphMessage::InsertNode {
-					node_id: folder_id,
-					node_template: new_group_node,
-				});
-				let new_group_folder = LayerNodeIdentifier::new_unchecked(folder_id);
-
-				// Move the boolean operation to the correct position
-				responses.add(NodeGraphMessage::MoveLayerToStack {
-					layer: new_group_folder,
+				let boolean_operation_layer = LayerNodeIdentifier::new_unchecked(folder_id);
+				responses.add(GraphOperationMessage::NewBooleanOperationLayer {
+					id: folder_id,
+					operation,
 					parent,
 					insert_index,
 				});
-
+				responses.add(NodeGraphMessage::SetDisplayNameImpl {
+					node_id: folder_id,
+					alias: "Boolean Operation".to_string(),
+				});
 				// Move all shallowest selected layers as children
-				responses.add(DocumentMessage::MoveSelectedLayersToGroup { parent: new_group_folder });
+				responses.add(DocumentMessage::MoveSelectedLayersToGroup { parent: boolean_operation_layer });
 			}
 			DocumentMessage::CreateEmptyFolder => {
 				let id = NodeId(generate_uuid());
@@ -478,7 +469,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), self.network_interface.selected_nodes(&[]).unwrap(), parent);
 
 				let node_id = NodeId(generate_uuid());
-				let new_group_node = super::node_graph::document_node_types::resolve_document_node_type("Merge")
+				let new_group_node = super::node_graph::document_node_definitions::resolve_document_node_type("Merge")
 					.expect("Failed to create merge node")
 					.default_node_template();
 				responses.add(NodeGraphMessage::InsertNode {

@@ -234,7 +234,7 @@ macro_rules! inline_blend_funcs {
 	};
 }
 
-pub fn blend_with_mode(background: ImageFrame<Color>, foreground: ImageFrame<Color>, blend_mode: BlendMode, opacity: f32) -> ImageFrame<Color> {
+pub fn blend_with_mode(background: ImageFrame<Color>, foreground: ImageFrame<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrame<Color> {
 	let opacity = opacity / 100.;
 	inline_blend_funcs!(
 		background,
@@ -349,7 +349,7 @@ async fn brush(image: ImageFrame<Color>, bounds: ImageFrame<Color>, strokes: Vec
 		}
 
 		// TODO: Is this the correct way to do opacity in blending?
-		actual_image = blend_with_mode(actual_image, stroke_texture, stroke.style.blend_mode, stroke.style.color.a() * 100.0);
+		actual_image = blend_with_mode(actual_image, stroke_texture, stroke.style.blend_mode, (stroke.style.color.a() * 100.) as f64);
 	}
 
 	let has_erase_strokes = strokes.iter().any(|s| s.style.blend_mode == BlendMode::Erase);

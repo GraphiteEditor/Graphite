@@ -2,58 +2,20 @@ use crate::Node;
 
 use bezier_rs::{ManipulatorGroup, Subpath};
 use graphene_core::transform::Transform;
+use graphene_core::vector::misc::BooleanOperation;
 pub use graphene_core::vector::*;
-use graphene_core::Color;
-use graphene_core::{transform::Footprint, GraphicGroup};
-use graphene_core::{vector::misc::BooleanOperation, GraphicElement};
+use graphene_core::{Color, GraphicElement, GraphicGroup};
 
 use glam::{DAffine2, DVec2};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-pub struct BinaryBooleanOperationNode<LowerVectorData, BooleanOp> {
-	lower_vector_data: LowerVectorData,
-	boolean_operation: BooleanOp,
-}
-
-#[node_macro::node_fn(BinaryBooleanOperationNode)]
-async fn binary_boolean_operation_node(upper_vector_data: VectorData, lower_vector_data: impl Node<Footprint, Output = VectorData>, boolean_operation: BooleanOperation) -> VectorData {
-	let lower_vector_data = self.lower_vector_data.eval(Footprint::default()).await;
-	let transform_of_lower_into_space_of_upper = upper_vector_data.transform.inverse() * lower_vector_data.transform;
-
-	let upper_path_string = to_svg_string(&upper_vector_data, DAffine2::IDENTITY);
-	let lower_path_string = to_svg_string(&lower_vector_data, transform_of_lower_into_space_of_upper);
-
-	let mut use_lower_style = false;
-
-	#[allow(unused_unsafe)]
-	let result = unsafe {
-		match boolean_operation {
-			BooleanOperation::Union => boolean_union(upper_path_string, lower_path_string),
-			BooleanOperation::SubtractFront => {
-				use_lower_style = true;
-				boolean_subtract(lower_path_string, upper_path_string)
-			}
-			BooleanOperation::SubtractBack => boolean_subtract(upper_path_string, lower_path_string),
-			BooleanOperation::Intersect => boolean_intersect(upper_path_string, lower_path_string),
-			BooleanOperation::Difference => boolean_difference(upper_path_string, lower_path_string),
-		}
-	};
-
-	let mut result = from_svg_string(&result);
-	result.transform = upper_vector_data.transform;
-	result.style = if use_lower_style { lower_vector_data.style } else { upper_vector_data.style };
-	result.alpha_blending = if use_lower_style { lower_vector_data.alpha_blending } else { upper_vector_data.alpha_blending };
-
-	result
-}
-
 pub struct BooleanOperationNode<BooleanOp> {
-	boolean_operation: BooleanOp,
+	operation: BooleanOp,
 }
 
 #[node_macro::node_fn(BooleanOperationNode)]
-fn boolean_operation_node(graphic_group: GraphicGroup, boolean_operation: BooleanOperation) -> VectorData {
+fn boolean_operation_node(group_of_paths: GraphicGroup, operation: BooleanOperation) -> VectorData {
 	fn vector_from_image<T: Transform>(image_frame: T) -> VectorData {
 		let corner1 = DVec2::ZERO;
 		let corner2 = DVec2::new(1., 1.);
@@ -212,7 +174,7 @@ fn boolean_operation_node(graphic_group: GraphicGroup, boolean_operation: Boolea
 	}
 
 	// The first index is the bottom of the stack
-	boolean_operation_on_vector_data(&collect_vector_data(&graphic_group), boolean_operation)
+	boolean_operation_on_vector_data(&collect_vector_data(&group_of_paths), operation)
 }
 
 fn to_svg_string(vector: &VectorData, transform: DAffine2) -> String {
@@ -288,8 +250,6 @@ extern "C" {
 	fn boolean_subtract(path1: String, path2: String) -> String;
 	#[wasm_bindgen(js_name = booleanIntersect)]
 	fn boolean_intersect(path1: String, path2: String) -> String;
-	#[wasm_bindgen(js_name = booleanDifference)]
-	fn boolean_difference(path1: String, path2: String) -> String;
 }
 #[cfg(not(target_arch = "wasm32"))]
 fn boolean_union(_path1: String, _path2: String) -> String {
@@ -301,9 +261,5 @@ fn boolean_subtract(_path1: String, _path2: String) -> String {
 }
 #[cfg(not(target_arch = "wasm32"))]
 fn boolean_intersect(_path1: String, _path2: String) -> String {
-	String::from("M0,0 L1,0 L1,1 L0,1 Z")
-}
-#[cfg(not(target_arch = "wasm32"))]
-fn boolean_difference(_path1: String, _path2: String) -> String {
 	String::from("M0,0 L1,0 L1,1 L0,1 Z")
 }

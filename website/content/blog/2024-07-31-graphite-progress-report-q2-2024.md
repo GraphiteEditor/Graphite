@@ -18,7 +18,7 @@ Overall, editor functionality has been shaping up and becoming an all around use
 
 This is the second of our quarterly progress report blog posts. If you missed the [first one](../graphite-progress-report-q1-2024), be sure to check it out as well. If you'd like to help speed up future progress, please consider [getting involved](/volunteer) with code, QA/bug testing, or art/marketing projects. [Donations](/donate) are also valued, as are [stars of GitHub](https://github.com/GraphiteEditor/Graphite). Follow along and partake in our [Discord community](https://discord.graphite.rs), too.
 
-All Q2 2024 commits may be [viewed in this list](https://github.com/GraphiteEditor/Graphite/commits/master/?since=2024-04-01&until=2024-06-30) and all noteworthy changes are detailed below. To showcase the much anticipated introduction of boolean path operations, the new *Painted Dreams* artwork shown here extensively utilizes non-destructive booleans.
+All Q2 2024 commits may be [viewed in this list](https://github.com/GraphiteEditor/Graphite/commits/master/?since=2024-04-01&until=2024-06-30) and all noteworthy changes are detailed below. To showcase the much anticipated introduction of boolean path operations, the new *Painted Dreams* artwork shown here extensively utilizes nondestructive booleans.
 
 <div class="demo-artwork">
 	<a href="https://editor.graphite.rs/#demo/isometric-fountain">
@@ -110,7 +110,7 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
   	</video>
   </div>
 
-- *Binary Boolean Operation* node for combining two shape paths with a *Union*, *Subtract Front*, *Subtract Back*, *Intersect*, or *Difference* mode of cutting and combining <small>([#1759](https://github.com/GraphiteEditor/Graphite/pull/1759))</small>
+- *Boolean Operation* node for combining two shape paths with a *Union*, *Subtract Front*, *Subtract Back*, *Intersect*, or *Difference* mode of cutting and combining <small>([#1759](https://github.com/GraphiteEditor/Graphite/pull/1759))</small>
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
   		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/boolean-ops-1.webm" type="video/webm" />

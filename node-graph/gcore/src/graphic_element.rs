@@ -55,6 +55,22 @@ impl core::hash::Hash for GraphicGroup {
 	}
 }
 
+impl GraphicGroup {
+	pub const EMPTY: Self = Self {
+		elements: Vec::new(),
+		transform: DAffine2::IDENTITY,
+		alpha_blending: AlphaBlending::new(),
+	};
+
+	pub fn new(elements: Vec<GraphicElement>) -> Self {
+		Self {
+			elements,
+			transform: DAffine2::IDENTITY,
+			alpha_blending: AlphaBlending::new(),
+		}
+	}
+}
+
 /// The possible forms of graphical content held in a Vec by the `elements` field of [`GraphicElement`].
 /// Can be another recursively nested [`GraphicGroup`], a [`VectorData`] shape, an [`ImageFrame`], or an [`Artboard`].
 #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
@@ -71,6 +87,50 @@ pub enum GraphicElement {
 impl Default for GraphicElement {
 	fn default() -> Self {
 		Self::VectorData(Box::new(VectorData::empty()))
+	}
+}
+
+impl GraphicElement {
+	pub fn as_group(&self) -> Option<&GraphicGroup> {
+		match self {
+			GraphicElement::GraphicGroup(group) => Some(group),
+			_ => None,
+		}
+	}
+
+	pub fn as_group_mut(&mut self) -> Option<&mut GraphicGroup> {
+		match self {
+			GraphicElement::GraphicGroup(group) => Some(group),
+			_ => None,
+		}
+	}
+
+	pub fn as_vector_data(&self) -> Option<&VectorData> {
+		match self {
+			GraphicElement::VectorData(data) => Some(data),
+			_ => None,
+		}
+	}
+
+	pub fn as_vector_data_mut(&mut self) -> Option<&mut VectorData> {
+		match self {
+			GraphicElement::VectorData(data) => Some(data),
+			_ => None,
+		}
+	}
+
+	pub fn as_raster(&self) -> Option<&Raster> {
+		match self {
+			GraphicElement::Raster(raster) => Some(raster),
+			_ => None,
+		}
+	}
+
+	pub fn as_raster_mut(&mut self) -> Option<&mut Raster> {
+		match self {
+			GraphicElement::Raster(raster) => Some(raster),
+			_ => None,
+		}
 	}
 }
 
@@ -300,12 +360,4 @@ where
 			alpha_blending: AlphaBlending::default(),
 		}
 	}
-}
-
-impl GraphicGroup {
-	pub const EMPTY: Self = Self {
-		elements: Vec::new(),
-		transform: DAffine2::IDENTITY,
-		alpha_blending: AlphaBlending::new(),
-	};
 }

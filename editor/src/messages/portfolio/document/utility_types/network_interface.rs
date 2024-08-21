@@ -3465,7 +3465,7 @@ impl NodeNetworkInterface {
 	// 	}
 	// }
 
-	pub fn set_display_name(&mut self, node_id: &NodeId, network_path: &[NodeId], display_name: String) {
+	pub fn set_display_name(&mut self, node_id: &NodeId, display_name: String, network_path: &[NodeId]) {
 		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
 			log::error!("Could not get node {node_id} in set_visibility");
 			return;

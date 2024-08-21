@@ -142,6 +142,23 @@ macro_rules! raster_node {
 					NodeIOTypes::new(concrete!(Color), concrete!(Color), params)
 				},
 			),
+			// TODO: Remove this one when we have automatic IntoNode insertion as part of the graph compilation process
+			(
+				ProtoNodeIdentifier::new(stringify!($path)),
+				|args| {
+					Box::pin(async move {
+						let node = construct_node!(args, $path, [$(() => $type),*]).await;
+						let map_node = graphene_core::ops::MapOptionNode::new(graphene_core::value::ValueNode::new(node));
+						let node = graphene_std::any::FutureWrapperNode::new(map_node);
+						let any: DynAnyNode<Option<Color>, _, _> = graphene_std::any::DynAnyNode::new(node);
+						any.into_type_erased()
+					})
+				},
+				{
+					let params = vec![$(fn_type!($type)),*];
+					NodeIOTypes::new(concrete!(Option<Color>), concrete!(Option<Color>), params)
+				},
+			),
 			(
 				ProtoNodeIdentifier::new(stringify!($path)),
 				|args| {
@@ -271,6 +288,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_core::ops::ModuloNode<_>, input: &f64, params: [&f64]),
 		register_node!(graphene_core::ops::ConstructVector2<_, _>, input: (), params: [f64, f64]),
 		register_node!(graphene_core::ops::SomeNode, input: &WasmEditorApi, params: []),
+		register_node!(graphene_core::ops::UnwrapNode, input: Option<Color>, params: []),
 		register_node!(graphene_core::logic::LogToConsoleNode, input: bool, params: []),
 		register_node!(graphene_core::logic::LogToConsoleNode, input: f64, params: []),
 		register_node!(graphene_core::logic::LogToConsoleNode, input: f64, params: []),
@@ -455,6 +473,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		raster_node!(graphene_core::raster::ExtractChannelNode<_>, params: [RedGreenBlueAlpha]),
 		raster_node!(graphene_core::raster::ExtractOpaqueNode<>, params: []),
 		raster_node!(graphene_core::raster::LevelsNode<_, _, _, _, _>, params: [f64, f64, f64, f64, f64]),
+		raster_node!(graphene_core::raster::BlendColorsNode<_, _, _>, params: [Color, BlendMode, f64]),
+		register_node!(graphene_core::raster::BlendColorsNode<_, _, _>, input: GradientStops, params: [GradientStops, BlendMode, f64]),
 		register_node!(graphene_std::image_segmentation::ImageSegmentationNode<_>, input: ImageFrame<Color>, params: [ImageFrame<Color>]),
 		register_node!(graphene_std::image_color_palette::ImageColorPaletteNode<_>, input: ImageFrame<Color>, params: [u32]),
 		register_node!(graphene_core::raster::IndexNode<_>, input: Vec<ImageFrame<Color>>, params: [u32]),
@@ -483,7 +503,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		)],*/
 		raster_node!(graphene_core::raster::BlackAndWhiteNode<_, _, _, _, _, _, _>, params: [Color, f64, f64, f64, f64, f64, f64]),
 		raster_node!(graphene_core::raster::HueSaturationNode<_, _, _>, params: [f64, f64, f64]),
-		raster_node!(graphene_core::raster::InvertRGBNode, params: []),
+		raster_node!(graphene_core::raster::InvertNode, params: []),
 		raster_node!(graphene_core::raster::ThresholdNode<_, _, _>, params: [f64, f64, LuminanceCalculation]),
 		raster_node!(graphene_core::raster::GradientMapNode<_, _>, params: [GradientStops, bool]),
 		raster_node!(graphene_core::raster::VibranceNode<_>, params: [f64]),
@@ -621,6 +641,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: graphene_std::SurfaceFrame, params: [graphene_std::SurfaceFrame]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: RenderOutput, params: [RenderOutput]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Footprint, output: Image<Color>, fn_params: [Footprint => Image<Color>]),
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: Footprint, output: VectorData, fn_params: [Footprint => VectorData]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Footprint, output: ImageFrame<Color>, fn_params: [Footprint => ImageFrame<Color>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Footprint, output: QuantizationChannels, fn_params: [Footprint => QuantizationChannels]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Footprint, output: Vec<DVec2>, fn_params: [Footprint => Vec<DVec2>]),
@@ -679,12 +700,13 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_core::vector::SetFillNode<_>, input: VectorData, params: [Color]),
 		register_node!(graphene_core::vector::SetFillNode<_>, input: VectorData, params: [Option<Color>]),
 		register_node!(graphene_core::vector::SetFillNode<_>, input: VectorData, params: [graphene_std::vector::style::Gradient]),
+		register_node!(graphene_core::vector::AssignColorsNode<_, _, _, _, _, _, _>, input: GraphicGroup, params: [bool, bool, graphene_std::vector::style::GradientStops, bool, bool, u32, u32]),
+		register_node!(graphene_core::vector::AssignColorsNode<_, _, _, _, _, _, _>, input: VectorData, params: [bool, bool, graphene_std::vector::style::GradientStops, bool, bool, u32, u32]),
 		register_node!(graphene_core::vector::SetStrokeNode<_, _, _, _, _, _, _>, input: VectorData, params: [Option<graphene_core::Color>, f64, Vec<f64>, f64, graphene_core::vector::style::LineCap, graphene_core::vector::style::LineJoin, f64]),
 		register_node!(graphene_core::vector::RepeatNode<_, _, _>, input: VectorData, params: [DVec2, f64, u32]),
 		register_node!(graphene_core::vector::BoundingBoxNode, input: VectorData, params: []),
 		register_node!(graphene_core::vector::SolidifyStrokeNode, input: VectorData, params: []),
 		register_node!(graphene_core::vector::CircularRepeatNode<_, _, _>, input: VectorData, params: [f64, f64, u32]),
-		async_node!(graphene_std::vector::BinaryBooleanOperationNode<_, _>, input: VectorData, output: VectorData, fn_params: [Footprint => VectorData, () => graphene_core::vector::misc::BooleanOperation]),
 		register_node!(graphene_std::vector::BooleanOperationNode<_>, input: GraphicGroup, fn_params: [() => graphene_core::vector::misc::BooleanOperation]),
 		vec![(
 			ProtoNodeIdentifier::new("graphene_core::transform::CullNode<_>"),
@@ -747,10 +769,10 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		)],
 		register_node!(graphene_std::raster::SampleNode<_>, input: Footprint, params: [ImageFrame<Color>]),
 		register_node!(graphene_std::raster::MandelbrotNode, input: Footprint, params: []),
-		async_node!(graphene_core::vector::CopyToPoints<_, _, _, _, _, _>, input: Footprint, output: VectorData, fn_params: [Footprint => VectorData, Footprint => VectorData, () => f64, () => f64, () => f64, () => f64]),
-		async_node!(graphene_core::vector::CopyToPoints<_, _, _, _, _, _>, input: Footprint, output: GraphicGroup, fn_params: [Footprint => VectorData, Footprint => GraphicGroup, () => f64, () => f64, () => f64, () => f64]),
+		async_node!(graphene_core::vector::CopyToPoints<_, _, _, _, _, _, _, _>, input: Footprint, output: VectorData, fn_params: [Footprint => VectorData, Footprint => VectorData, () => f64, () => f64, () => f64, () => u32, () => f64, () => u32]),
+		async_node!(graphene_core::vector::CopyToPoints<_, _, _, _, _, _, _, _>, input: Footprint, output: GraphicGroup, fn_params: [Footprint => VectorData, Footprint => GraphicGroup, () => f64, () => f64, () => f64, () => u32, () => f64, () => u32]),
 		async_node!(graphene_core::vector::SamplePoints<_, _, _, _, _, _>, input: Footprint, output: VectorData, fn_params: [Footprint => VectorData, () => f64, () => f64, () => f64, () => bool, Footprint => Vec<f64>]),
-		register_node!(graphene_core::vector::PoissonDiskPoints<_>, input: VectorData, params: [f64]),
+		register_node!(graphene_core::vector::PoissonDiskPoints<_, _>, input: VectorData, params: [f64, u32]),
 		register_node!(graphene_core::vector::LengthsOfSegmentsOfSubpaths, input: VectorData, params: []),
 		register_node!(graphene_core::vector::SplinesFromPointsNode, input: VectorData, params: []),
 		async_node!(graphene_core::vector::AreaNode<_>, input: (), output: f64, fn_params: [Footprint => VectorData]),

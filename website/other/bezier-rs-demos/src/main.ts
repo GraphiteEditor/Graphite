@@ -71,7 +71,7 @@ function renderExamples() {
 		window.document.body.innerHTML = `
 		<h1 class="website-header">Bezier-rs Interactive Documentation</h1>
 		<p class="website-description">
-			This is the interactive documentation for the <a href="https://crates.io/crates/bezier-rs"><b>Bezier-rs</b></a> library. View the
+			This is the interactive documentation for the <a href="https://crates.io/crates/bezier-rs">Bezier-rs</a> library. View the
 			<a href="https://docs.rs/bezier-rs/latest/bezier_rs">crate documentation</a>
 			for detailed function descriptions and API usage. Click and drag on the endpoints of the demo curves to visualize the various Bezier utilities and functions.
 		</p>

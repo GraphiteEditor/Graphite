@@ -11,6 +11,8 @@ dealloc_nodes = []
 wgpu = []
 tokio = ["dep:tokio"]
 wayland = []
+criterion = []
+iai = []
 
 [dependencies]
 # Local dependencies
@@ -39,24 +41,27 @@ wgpu-executor = { workspace = true }
 serde = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 
-[target.'cfg(target_arch = "wasm32")'.dependencies]
 # Workspace dependencies
+[target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { workspace = true }
 js-sys = { workspace = true }
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-# Workspace dependencies
 winit = { workspace = true }
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
-glob = "0.3"
-pprof = { version = "0.13", features = ["flamegraph"] }
+# Workspace dependencies
 serde_json = { workspace = true }
 graph-craft = { workspace = true, features = ["serde"] }
 
+# Required dependencies
+criterion = { version = "0.5", features = ["html_reports"]}
+glob = "0.3"
+iai-callgrind = { version = "0.12.3"}
+
+# Benchmarks
 [[bench]]
 name = "compile_demo_art"
 harness = false

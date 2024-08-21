@@ -1,9 +1,9 @@
 use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeWire, WirePath};
-use super::{document_node_types, node_properties};
+use super::{document_node_definitions, node_properties};
 use crate::application::generate_uuid;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::node_graph::document_node_types::NodePropertiesContext;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::NodePropertiesContext;
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, NodeTemplate, OutputConnector, Previewing};
@@ -138,7 +138,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			NodeGraphMessage::CreateNodeFromContextMenu { node_id, node_type, x, y } => {
 				let node_id = node_id.unwrap_or_else(|| NodeId(generate_uuid()));
 
-				let Some(document_node_type) = document_node_types::resolve_document_node_type(&node_type) else {
+				let Some(document_node_type) = document_node_definitions::resolve_document_node_type(&node_type) else {
 					responses.add(DialogMessage::DisplayDialogError {
 						title: "Cannot insert node".to_string(),
 						description: format!("The document node '{node_type}' does not exist in the document node list"),
@@ -1095,7 +1095,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::SetDisplayNameImpl { node_id, alias } => {
-				network_interface.set_display_name(&node_id, selection_network_path, alias);
+				network_interface.set_display_name(&node_id, alias, selection_network_path);
 			}
 			NodeGraphMessage::TogglePreview { node_id } => {
 				responses.add(DocumentMessage::StartTransaction);
@@ -1266,7 +1266,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				responses.add(NodeGraphMessage::SendGraph);
 
-				let node_types = document_node_types::collect_node_types();
+				let node_types = document_node_definitions::collect_node_types();
 				responses.add(FrontendMessage::UpdateNodeTypes { node_types });
 			}
 			NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors } => {
@@ -1877,7 +1877,7 @@ impl NodeGraphMessageHandler {
 	fn build_wire_path_locations(output_position: DVec2, input_position: DVec2, vertical_out: bool, vertical_in: bool) -> Vec<DVec2> {
 		let horizontal_gap = (output_position.x - input_position.x).abs();
 		let vertical_gap = (output_position.y - input_position.y).abs();
-		// TODO: Finish this commented out code replacement for the code below it based on this diagram: <https://files.keavon.com/-/InsubstantialElegantQueenant/capture.png>
+		// TODO: Finish this commented out code replacement for the code below it based on this diagram: <https://files.keavon.com/-/SuperbWideFoxterrier/capture.png>
 		// // Straight: stacking lines which are always straight, or a straight horizontal wire between two aligned nodes
 		// if ((verticalOut && vertical_in) || (!verticalOut && !vertical_in && vertical_gap === 0)) {
 		// 	return [

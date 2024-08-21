@@ -1,5 +1,5 @@
 use super::misc::CentroidType;
-use super::style::{Fill, Stroke};
+use super::style::{Fill, GradientStops, Stroke};
 use super::{PointId, SegmentId, StrokeId, VectorData};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
@@ -8,6 +8,111 @@ use crate::{Color, GraphicGroup, Node};
 use bezier_rs::{Cap, Join, Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
 use rand::{Rng, SeedableRng};
+
+#[derive(Debug, Clone, Copy)]
+pub struct AssignColorsNode<Fill, Stroke, Gradient, Reverse, Randomize, Seed, RepeatEvery> {
+	fill: Fill,
+	stroke: Stroke,
+	gradient: Gradient,
+	reverse: Reverse,
+	randomize: Randomize,
+	seed: Seed,
+	repeat_every: RepeatEvery,
+}
+
+#[node_macro::node_fn(AssignColorsNode)]
+fn assign_colors_node(group: GraphicGroup, fill: bool, stroke: bool, gradient: GradientStops, reverse: bool, randomize: bool, seed: u32, repeat_every: u32) -> GraphicGroup {
+	let mut group = group;
+	let vector_data_list: Vec<_> = group.iter_mut().filter_map(|element| element.as_vector_data_mut()).collect();
+	let list = (vector_data_list.len(), vector_data_list.into_iter());
+
+	assign_colors(
+		list,
+		AlignColorsOptions {
+			fill,
+			stroke,
+			gradient,
+			reverse,
+			randomize,
+			seed,
+			repeat_every,
+		},
+	);
+
+	group
+}
+
+#[node_macro::node_impl(AssignColorsNode)]
+fn assign_colors_node(vector_data: VectorData, fill: bool, stroke: bool, gradient: GradientStops, reverse: bool, randomize: bool, seed: u32, repeat_every: u32) -> GraphicGroup {
+	let mut vector_data_list: Vec<_> = vector_data
+		.region_bezier_paths()
+		.map(|(_, subpath)| {
+			let mut vector = VectorData::from_subpath(subpath);
+
+			vector.style = vector_data.style.clone();
+
+			crate::GraphicElement::VectorData(Box::new(vector))
+		})
+		.collect();
+	let list = (vector_data_list.len(), vector_data_list.iter_mut().map(|element| element.as_vector_data_mut().unwrap()));
+
+	assign_colors(
+		list,
+		AlignColorsOptions {
+			fill,
+			stroke,
+			gradient,
+			reverse,
+			randomize,
+			seed,
+			repeat_every,
+		},
+	);
+
+	let mut group = GraphicGroup::new(vector_data_list);
+	group.transform = vector_data.transform;
+	group.alpha_blending = vector_data.alpha_blending;
+
+	group
+}
+
+struct AlignColorsOptions {
+	fill: bool,
+	stroke: bool,
+	gradient: GradientStops,
+	reverse: bool,
+	randomize: bool,
+	seed: u32,
+	repeat_every: u32,
+}
+
+fn assign_colors<'a>((length, vector_data): (usize, impl Iterator<Item = &'a mut VectorData>), options: AlignColorsOptions) {
+	let gradient = if options.reverse { options.gradient.reversed() } else { options.gradient };
+
+	let mut rng = rand::rngs::StdRng::seed_from_u64(options.seed as u64);
+
+	for (i, vector_data) in vector_data.enumerate() {
+		let factor = match options.randomize {
+			true => rng.gen::<f64>(),
+			false => match options.repeat_every {
+				0 => i as f64 / (length - 1) as f64,
+				1 => 0.,
+				_ => i as f64 % options.repeat_every as f64 / (options.repeat_every - 1) as f64,
+			},
+		};
+
+		let color = gradient.evalute(factor);
+
+		if options.fill {
+			vector_data.style.set_fill(Fill::Solid(color));
+		}
+		if options.stroke {
+			if let Some(stroke) = vector_data.style.stroke().and_then(|stroke| stroke.with_color(&Some(color))) {
+				vector_data.style.set_stroke(stroke);
+			}
+		}
+	}
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct SetFillNode<Fill> {
@@ -201,15 +306,18 @@ impl ConcatElement for GraphicGroup {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct CopyToPoints<Points, Instance, RandomScaleMin, RandomScaleMax, RandomScaleBias, RandomRotation> {
+pub struct CopyToPoints<Points, Instance, RandomScaleMin, RandomScaleMax, RandomScaleBias, RandomScaleSeed, RandomRotation, RandomRotationSeed> {
 	points: Points,
 	instance: Instance,
 	random_scale_min: RandomScaleMin,
 	random_scale_max: RandomScaleMax,
 	random_scale_bias: RandomScaleBias,
+	random_scale_seed: RandomScaleSeed,
 	random_rotation: RandomRotation,
+	random_rotation_seed: RandomRotationSeed,
 }
 
+#[allow(clippy::too_many_arguments)]
 #[node_macro::node_fn(CopyToPoints)]
 async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + TransformMut + Send>(
 	footprint: Footprint,
@@ -218,7 +326,9 @@ async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + Tr
 	random_scale_min: f64,
 	random_scale_max: f64,
 	random_scale_bias: f64,
+	random_scale_seed: u32,
 	random_rotation: f64,
+	random_rotation_seed: u32,
 ) -> I {
 	let points = self.points.eval(footprint).await;
 	let instance = self.instance.eval(footprint).await;
@@ -229,8 +339,8 @@ async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + Tr
 	let instance_bounding_box = instance.bounding_box(DAffine2::IDENTITY).unwrap_or_default();
 	let instance_center = -0.5 * (instance_bounding_box[0] + instance_bounding_box[1]);
 
-	let mut scale_rng = rand::rngs::StdRng::seed_from_u64(0);
-	let mut rotation_rng = rand::rngs::StdRng::seed_from_u64(0);
+	let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed as u64);
+	let mut rotation_rng = rand::rngs::StdRng::seed_from_u64(random_rotation_seed as u64);
 
 	let do_scale = random_scale_difference.abs() > 1e-6;
 	let do_rotation = random_rotation.abs() > 1e-6;
@@ -353,13 +463,14 @@ async fn sample_points(
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct PoissonDiskPoints<SeparationDiskDiameter> {
+pub struct PoissonDiskPoints<SeparationDiskDiameter, Seed> {
 	separation_disk_diameter: SeparationDiskDiameter,
+	seed: Seed,
 }
 
 #[node_macro::node_fn(PoissonDiskPoints)]
-fn poisson_disk_points(vector_data: VectorData, separation_disk_diameter: f64) -> VectorData {
-	let mut rng = rand::rngs::StdRng::seed_from_u64(0);
+fn poisson_disk_points(vector_data: VectorData, separation_disk_diameter: f64, seed: u32) -> VectorData {
+	let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
 	let mut result = VectorData::empty();
 	for mut subpath in vector_data.stroke_bezier_paths() {
 		if subpath.manipulator_groups().len() < 3 {
@@ -673,7 +784,9 @@ mod test {
 			random_scale_min: FutureWrapperNode(ClonedNode(1.)),
 			random_scale_max: FutureWrapperNode(ClonedNode(1.)),
 			random_scale_bias: FutureWrapperNode(ClonedNode(0.)),
+			random_scale_seed: FutureWrapperNode(ClonedNode(0)),
 			random_rotation: FutureWrapperNode(ClonedNode(0.)),
+			random_rotation_seed: FutureWrapperNode(ClonedNode(0)),
 		}
 		.eval(Footprint::default())
 		.await;
@@ -726,6 +839,7 @@ mod test {
 	fn poisson() {
 		let sample_points = PoissonDiskPoints {
 			separation_disk_diameter: ClonedNode(10. * std::f64::consts::SQRT_2),
+			seed: ClonedNode(0),
 		}
 		.eval(VectorData::from_subpath(Subpath::new_ellipse(DVec2::NEG_ONE * 50., DVec2::ONE * 50.)));
 		assert!(

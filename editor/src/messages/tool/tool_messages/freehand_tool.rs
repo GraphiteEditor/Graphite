@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_endpoint_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
