@@ -205,11 +205,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			|_| Box::pin(async move { FutureWrapperNode::new(IdentityNode::new()).into_type_erased() }),
 			NodeIOTypes::new(generic!(I), generic!(I), vec![]),
 		)],
-		// TODO: create macro to impl for all types
-		register_node!(graphene_core::logic::LogicOrNode<_>, input: bool, params: [bool]),
-		register_node!(graphene_core::logic::LogicAndNode<_>, input: bool, params: [bool]),
-		register_node!(graphene_core::logic::LogicXorNode<_>, input: bool, params: [bool]),
-		register_node!(graphene_core::logic::LogicNotNode, input: bool, params: []),
 		async_node!(graphene_core::ops::IntoNode<_, ImageFrame<SRGBA8>>, input: ImageFrame<Color>, output: ImageFrame<SRGBA8>, params: []),
 		async_node!(graphene_core::ops::IntoNode<_, ImageFrame<Color>>, input: ImageFrame<SRGBA8>, output: ImageFrame<Color>, params: []),
 		async_node!(graphene_core::ops::IntoNode<_, GraphicGroup>, input: ImageFrame<Color>, output: GraphicGroup, params: []),
@@ -377,18 +372,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_std::brush::IntoIterNode<_>, input: &Vec<BrushStroke>, params: []),
 		async_node!(graphene_std::brush::BrushNode<_, _, _>, input: ImageFrame<Color>, output: ImageFrame<Color>, params: [ImageFrame<Color>, Vec<BrushStroke>, BrushCache]),
 		// Filters
-		raster_node!(graphene_core::raster::LuminanceNode<_>, params: [LuminanceCalculation]),
-		raster_node!(graphene_core::raster::ExtractChannelNode<_>, params: [RedGreenBlueAlpha]),
-		raster_node!(graphene_core::raster::ExtractOpaqueNode<>, params: []),
-		raster_node!(graphene_core::raster::LevelsNode<_, _, _, _, _>, params: [f64, f64, f64, f64, f64]),
-		raster_node!(graphene_core::raster::BlendColorsNode<_, _, _>, params: [Color, BlendMode, f64]),
-		register_node!(graphene_core::raster::BlendColorsNode<_, _, _>, input: GradientStops, params: [GradientStops, BlendMode, f64]),
 		register_node!(graphene_std::image_segmentation::ImageSegmentationNode<_>, input: ImageFrame<Color>, params: [ImageFrame<Color>]),
 		register_node!(graphene_std::image_color_palette::ImageColorPaletteNode<_>, input: ImageFrame<Color>, params: [u32]),
-		register_node!(graphene_core::raster::IndexNode<_>, input: Vec<ImageFrame<Color>>, params: [u32]),
-		register_node!(graphene_core::raster::adjustments::ColorFillNode<_>, input: ImageFrame<Color>, params: [Color]),
-		register_node!(graphene_core::raster::adjustments::ColorOverlayNode<_, _, _>, input: ImageFrame<Color>, params: [Color, BlendMode, f64]),
-		register_node!(graphene_core::raster::IndexNode<_>, input: Vec<Color>, params: [u32]),
 		/*
 		vec![(
 			ProtoNodeIdentifier::new("graphene_core::raster::BlendNode<_, _, _, _>"),
@@ -409,20 +394,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				vec![fn_type!(ImageFrame<Color>), fn_type!(BlendMode), fn_type!(f64)],
 			),
 		)],*/
-		raster_node!(graphene_core::raster::BlackAndWhiteNode<_, _, _, _, _, _, _>, params: [Color, f64, f64, f64, f64, f64, f64]),
-		raster_node!(graphene_core::raster::HueSaturationNode<_, _, _>, params: [f64, f64, f64]),
-		raster_node!(graphene_core::raster::InvertNode, params: []),
-		raster_node!(graphene_core::raster::ThresholdNode<_, _, _>, params: [f64, f64, LuminanceCalculation]),
-		raster_node!(graphene_core::raster::GradientMapNode<_, _>, params: [GradientStops, bool]),
-		raster_node!(graphene_core::raster::VibranceNode<_>, params: [f64]),
-		raster_node!(
-			graphene_core::raster::ChannelMixerNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>,
-			params: [bool, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64]
-		),
-		raster_node!(
-			graphene_core::raster::SelectiveColorNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>,
-			params: [RelativeAbsolute, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, f64]
-		),
 		vec![(
 			ProtoNodeIdentifier::new("graphene_core::raster::BrightnessContrastNode<_, _, _>"),
 			|args| {
@@ -461,7 +432,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					Box::pin(async move {
 						let curve = ClonedNode::new(curve.eval(()).await);
 
-						let generate_curves_node = GenerateCurvesNode::<f32, _>::new(curve);
+						let generate_curves_node = GenerateCurvesNode::new(curve, ClonedNode::new(0f32));
 						let map_image_frame_node = graphene_std::raster::MapImageNode::new(ValueNode::new(generate_curves_node.eval(())));
 						let map_image_frame_node = FutureWrapperNode::new(map_image_frame_node);
 						let any: DynAnyNode<ImageFrame<Luma>, _, _> = graphene_std::any::DynAnyNode::new(map_image_frame_node);
@@ -479,7 +450,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					Box::pin(async move {
 						let curve = ClonedNode::new(curve.eval(()).await);
 
-						let generate_curves_node = GenerateCurvesNode::<f32, _>::new(curve);
+						let generate_curves_node = GenerateCurvesNode::new(curve, ClonedNode::new(0f32));
 						let map_image_frame_node = graphene_std::raster::MapImageNode::new(ValueNode::new(generate_curves_node.eval(())));
 						let map_image_frame_node = FutureWrapperNode::new(map_image_frame_node);
 						let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(map_image_frame_node);
@@ -489,14 +460,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), vec![fn_type!(graphene_core::raster::curve::Curve)]),
 			),
 		],
-		raster_node!(graphene_core::raster::OpacityNode<_>, params: [f64]),
-		register_node!(graphene_core::raster::OpacityNode<_>, input: VectorData, params: [f64]),
-		register_node!(graphene_core::raster::OpacityNode<_>, input: GraphicGroup, params: [f64]),
-		register_node!(graphene_core::raster::BlendModeNode<_>, input: VectorData, params: [BlendMode]),
-		register_node!(graphene_core::raster::BlendModeNode<_>, input: GraphicGroup, params: [BlendMode]),
-		register_node!(graphene_core::raster::BlendModeNode<_>, input: ImageFrame<Color>, params: [BlendMode]),
-		raster_node!(graphene_core::raster::PosterizeNode<_>, params: [f64]),
-		raster_node!(graphene_core::raster::ExposureNode<_, _, _>, params: [f64, f64, f64]),
 		vec![(
 			ProtoNodeIdentifier::new("graphene_std::raster::ImaginateNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
 			|args: Vec<graph_craft::proto::SharedNodeContainer>| {

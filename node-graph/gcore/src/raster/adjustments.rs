@@ -268,180 +268,251 @@ impl From<BlendMode> for vello::peniko::Mix {
 }
 
 #[node_macro::new_node_fn(category("Adjustments"))]
-fn luminance_color_node(color: Color, luminance_calc: LuminanceCalculation) -> Color {
-	let luminance = match luminance_calc {
-		LuminanceCalculation::SRGB => color.luminance_srgb(),
-		LuminanceCalculation::Perceptual => color.luminance_perceptual(),
-		LuminanceCalculation::AverageChannels => color.average_rgb_channels(),
-		LuminanceCalculation::MinimumChannels => color.minimum_rgb_channels(),
-		LuminanceCalculation::MaximumChannels => color.maximum_rgb_channels(),
-	};
-	color.map_rgb(|_| luminance)
+fn luminance<T: Adjust<Color>>(
+	_: (),
+	#[expose]
+	#[implementations(Color, ImageFrame<Color>)]
+	mut input: T,
+	luminance_calc: LuminanceCalculation,
+) -> T {
+	input.adjust(|color| {
+		let luminance = match luminance_calc {
+			LuminanceCalculation::SRGB => color.luminance_srgb(),
+			LuminanceCalculation::Perceptual => color.luminance_perceptual(),
+			LuminanceCalculation::AverageChannels => color.average_rgb_channels(),
+			LuminanceCalculation::MinimumChannels => color.minimum_rgb_channels(),
+			LuminanceCalculation::MaximumChannels => color.maximum_rgb_channels(),
+		};
+		color.map_rgb(|_| luminance)
+	});
+	input
 }
 
 #[node_macro::new_node_fn(category("Adjustments"))]
-fn extract_channel_node(color: Color, channel: RedGreenBlueAlpha) -> Color {
-	let extracted_value = match channel {
-		RedGreenBlueAlpha::Red => color.r(),
-		RedGreenBlueAlpha::Green => color.g(),
-		RedGreenBlueAlpha::Blue => color.b(),
-		RedGreenBlueAlpha::Alpha => color.a(),
-	};
-	color.map_rgba(|_| extracted_value)
+fn extract_channel<T: Adjust<Color>>(
+	_: (),
+	#[expose]
+	#[implementations(Color, ImageFrame<Color>)]
+	mut input: T,
+	channel: RedGreenBlueAlpha,
+) -> T {
+	input.adjust(|color| {
+		let extracted_value = match channel {
+			RedGreenBlueAlpha::Red => color.r(),
+			RedGreenBlueAlpha::Green => color.g(),
+			RedGreenBlueAlpha::Blue => color.b(),
+			RedGreenBlueAlpha::Alpha => color.a(),
+		};
+		color.map_rgba(|_| extracted_value)
+	});
+	input
 }
 
 #[node_macro::new_node_fn(category("Adjustments"))]
-fn extract_opaque_node(color: Color) -> Color {
-	if color.a() == 0. {
-		return color.with_alpha(1.);
-	}
-	Color::from_rgbaf32(color.r() / color.a(), color.g() / color.a(), color.b() / color.a(), 1.).unwrap()
+fn extract_opaque<T: Adjust<Color>>(
+	_: (),
+	#[expose]
+	#[implementations(Color, ImageFrame<Color>)]
+	mut input: T,
+) -> T {
+	input.adjust(|color| {
+		if color.a() == 0. {
+			return color.with_alpha(1.);
+		}
+		Color::from_rgbaf32(color.r() / color.a(), color.g() / color.a(), color.b() / color.a(), 1.).unwrap()
+	});
+	input
 }
 
 // From https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
 #[node_macro::new_node_fn(category("Adjustments"))]
-fn levels_node(color: Color, input_start: f64, input_mid: f64, input_end: f64, output_start: f64, output_end: f64) -> Color {
-	let color = color.to_gamma_srgb();
+fn levels<T: Adjust<Color>>(
+	_: (),
+	#[expose]
+	#[implementations(Color, ImageFrame<Color>)]
+	mut input: T,
+	input_start: f64,
+	input_mid: f64,
+	input_end: f64,
+	output_start: f64,
+	output_end: f64,
+) -> T {
+	input.adjust(|color| {
+		let color = color.to_gamma_srgb();
 
-	// Input Range (Range: 0-1)
-	let input_shadows = (input_start / 100.) as f32;
-	let input_midtones = (input_mid / 100.) as f32;
-	let input_highlights = (input_end / 100.) as f32;
+		// Input Range (Range: 0-1)
+		let input_shadows = (input_start / 100.) as f32;
+		let input_midtones = (input_mid / 100.) as f32;
+		let input_highlights = (input_end / 100.) as f32;
 
-	// Output Range (Range: 0-1)
-	let output_minimums = (output_start / 100.) as f32;
-	let output_maximums = (output_end / 100.) as f32;
+		// Output Range (Range: 0-1)
+		let output_minimums = (output_start / 100.) as f32;
+		let output_maximums = (output_end / 100.) as f32;
 
-	// Midtones interpolation factor between minimums and maximums (Range: 0-1)
-	let midtones = output_minimums + (output_maximums - output_minimums) * input_midtones;
+		// Midtones interpolation factor between minimums and maximums (Range: 0-1)
+		let midtones = output_minimums + (output_maximums - output_minimums) * input_midtones;
 
-	// Gamma correction (Range: 0.01-10)
-	let gamma = if midtones < 0.5 {
-		// Range: 0-1
-		let x = 1. - midtones * 2.;
-		// Range: 1-10
-		1. + 9. * x
-	} else {
-		// Range: 0-0.5
-		let x = 1. - midtones;
-		// Range: 0-1
-		let x = x * 2.;
-		// Range: 0.01-1
-		x.max(0.01)
-	};
+		// Gamma correction (Range: 0.01-10)
+		let gamma = if midtones < 0.5 {
+			// Range: 0-1
+			let x = 1. - midtones * 2.;
+			// Range: 1-10
+			1. + 9. * x
+		} else {
+			// Range: 0-0.5
+			let x = 1. - midtones;
+			// Range: 0-1
+			let x = x * 2.;
+			// Range: 0.01-1
+			x.max(0.01)
+		};
 
-	// Input levels (Range: 0-1)
-	let highlights_minus_shadows = (input_highlights - input_shadows).clamp(f32::EPSILON, 1.);
-	let color = color.map_rgb(|c| ((c - input_shadows).max(0.) / highlights_minus_shadows).min(1.));
+		// Input levels (Range: 0-1)
+		let highlights_minus_shadows = (input_highlights - input_shadows).clamp(f32::EPSILON, 1.);
+		let color = color.map_rgb(|c| ((c - input_shadows).max(0.) / highlights_minus_shadows).min(1.));
 
-	// Midtones (Range: 0-1)
-	let color = color.gamma(gamma);
+		// Midtones (Range: 0-1)
+		let color = color.gamma(gamma);
 
-	// Output levels (Range: 0-1)
-	let color = color.map_rgb(|c| c * (output_maximums - output_minimums) + output_minimums);
+		// Output levels (Range: 0-1)
+		let color = color.map_rgb(|c| c * (output_maximums - output_minimums) + output_minimums);
 
-	color.to_linear_srgb()
+		color.to_linear_srgb()
+	});
+	input
 }
 
 // From <https://stackoverflow.com/a/55233732/775283>
 // Works the same for gamma and linear color
 #[node_macro::new_node_fn(category("Adjustments"))]
-fn black_and_white_color_node(color: Color, tint: Color, reds: f64, yellows: f64, greens: f64, cyans: f64, blues: f64, magentas: f64) -> Color {
-	let color = color.to_gamma_srgb();
+fn black_and_white_color<T: Adjust<Color>>(
+	_: (),
+	#[expose]
+	#[implementations(Color, ImageFrame<Color>)]
+	mut input: T,
+	tint: Color,
+	reds: f64,
+	yellows: f64,
+	greens: f64,
+	cyans: f64,
+	blues: f64,
+	magentas: f64,
+) -> T {
+	input.adjust(|color| {
+		let color = color.to_gamma_srgb();
 
-	let reds = reds as f32 / 100.;
-	let yellows = yellows as f32 / 100.;
-	let greens = greens as f32 / 100.;
-	let cyans = cyans as f32 / 100.;
-	let blues = blues as f32 / 100.;
-	let magentas = magentas as f32 / 100.;
+		let reds = reds as f32 / 100.;
+		let yellows = yellows as f32 / 100.;
+		let greens = greens as f32 / 100.;
+		let cyans = cyans as f32 / 100.;
+		let blues = blues as f32 / 100.;
+		let magentas = magentas as f32 / 100.;
 
-	let gray_base = color.r().min(color.g()).min(color.b());
+		let gray_base = color.r().min(color.g()).min(color.b());
 
-	let red_part = color.r() - gray_base;
-	let green_part = color.g() - gray_base;
-	let blue_part = color.b() - gray_base;
-	let alpha_part = color.a();
+		let red_part = color.r() - gray_base;
+		let green_part = color.g() - gray_base;
+		let blue_part = color.b() - gray_base;
+		let alpha_part = color.a();
 
-	let additional = if red_part == 0. {
-		let cyan_part = green_part.min(blue_part);
-		cyan_part * cyans + (green_part - cyan_part) * greens + (blue_part - cyan_part) * blues
-	} else if green_part == 0. {
-		let magenta_part = red_part.min(blue_part);
-		magenta_part * magentas + (red_part - magenta_part) * reds + (blue_part - magenta_part) * blues
-	} else {
-		let yellow_part = red_part.min(green_part);
-		yellow_part * yellows + (red_part - yellow_part) * reds + (green_part - yellow_part) * greens
-	};
+		let additional = if red_part == 0. {
+			let cyan_part = green_part.min(blue_part);
+			cyan_part * cyans + (green_part - cyan_part) * greens + (blue_part - cyan_part) * blues
+		} else if green_part == 0. {
+			let magenta_part = red_part.min(blue_part);
+			magenta_part * magentas + (red_part - magenta_part) * reds + (blue_part - magenta_part) * blues
+		} else {
+			let yellow_part = red_part.min(green_part);
+			yellow_part * yellows + (red_part - yellow_part) * reds + (green_part - yellow_part) * greens
+		};
 
-	let luminance = gray_base + additional;
+		let luminance = gray_base + additional;
 
-	// TODO: Fix "Color" blend mode implementation so it matches the expected behavior perfectly (it's currently close)
-	let color = tint.with_luminance(luminance);
+		// TODO: Fix "Color" blend mode implementation so it matches the expected behavior perfectly (it's currently close)
+		let color = tint.with_luminance(luminance);
 
-	let color = Color::from_rgbaf32(color.r(), color.g(), color.b(), alpha_part).unwrap();
+		let color = Color::from_rgbaf32(color.r(), color.g(), color.b(), alpha_part).unwrap();
 
-	color.to_linear_srgb()
+		color.to_linear_srgb()
+	});
+	input
 }
 
 #[node_macro::new_node_fn(category("Adjustments"))]
-fn hue_shift(color: Color, hue_shift: f64, saturation_shift: f64, lightness_shift: f64) -> Color {
-	let color = color.to_gamma_srgb();
+fn hue_shift<T: Adjust<Color>>(
+	_: (),
+	#[expose]
+	#[implementations(Color, ImageFrame<Color>)]
+	mut input: T,
+	hue_shift: f64,
+	saturation_shift: f64,
+	lightness_shift: f64,
+) -> T {
+	input.adjust(|color| {
+		let color = color.to_gamma_srgb();
 
-	let [hue, saturation, lightness, alpha] = color.to_hsla();
+		let [hue, saturation, lightness, alpha] = color.to_hsla();
 
-	let color = Color::from_hsla(
-		(hue + hue_shift as f32 / 360.) % 1.,
-		// TODO: Improve the way saturation works (it's slightly off)
-		(saturation + saturation_shift as f32 / 100.).clamp(0., 1.),
-		// TODO: Fix the way lightness works (it's very off)
-		(lightness + lightness_shift as f32 / 100.).clamp(0., 1.),
-		alpha,
-	);
+		let color = Color::from_hsla(
+			(hue + hue_shift as f32 / 360.) % 1.,
+			// TODO: Improve the way saturation works (it's slightly off)
+			(saturation + saturation_shift as f32 / 100.).clamp(0., 1.),
+			// TODO: Fix the way lightness works (it's very off)
+			(lightness + lightness_shift as f32 / 100.).clamp(0., 1.),
+			alpha,
+		);
 
-	color.to_linear_srgb()
+		color.to_linear_srgb()
+	});
+	input
 }
 
 #[node_macro::new_node_fn(category("Adjustments"))]
-fn invert(color: Color) -> Color {
-	let color = color.to_gamma_srgb();
-
-	let color = color.map_rgb(|c| color.a() - c);
-
-	color.to_linear_srgb()
-}
-
-// TODO replace with trait based implementation
-impl<'i> Node<'i, &'i Color> for InvertNode {
-	type Output = Color;
-
-	fn eval(&'i self, color: &'i Color) -> Self::Output {
+fn invert<T: Adjust<Color>>(
+	_: (),
+	#[expose]
+	#[implementations(Color, ImageFrame<Color>)]
+	mut input: T,
+) -> T {
+	input.adjust(|color| {
 		let color = color.to_gamma_srgb();
 
 		let color = color.map_rgb(|c| color.a() - c);
 
 		color.to_linear_srgb()
-	}
+	});
+	input
 }
 
 #[node_macro::new_node_fn(category("Adjustments"))]
-fn threshold_node(color: Color, min_luminance: f64, max_luminance: f64, luminance_calc: LuminanceCalculation) -> Color {
-	let min_luminance = Color::srgb_to_linear(min_luminance as f32 / 100.);
-	let max_luminance = Color::srgb_to_linear(max_luminance as f32 / 100.);
+fn threshold<T: Adjust<Color>>(
+	_: (),
+	#[expose]
+	#[implementations(Color, ImageFrame<Color>)]
+	mut input: T,
+	min_luminance: f64,
+	max_luminance: f64,
+	luminance_calc: LuminanceCalculation,
+) -> T {
+	input.adjust(|color| {
+		let min_luminance = Color::srgb_to_linear(min_luminance as f32 / 100.);
+		let max_luminance = Color::srgb_to_linear(max_luminance as f32 / 100.);
 
-	let luminance = match luminance_calc {
-		LuminanceCalculation::SRGB => color.luminance_srgb(),
-		LuminanceCalculation::Perceptual => color.luminance_perceptual(),
-		LuminanceCalculation::AverageChannels => color.average_rgb_channels(),
-		LuminanceCalculation::MinimumChannels => color.minimum_rgb_channels(),
-		LuminanceCalculation::MaximumChannels => color.maximum_rgb_channels(),
-	};
+		let luminance = match luminance_calc {
+			LuminanceCalculation::SRGB => color.luminance_srgb(),
+			LuminanceCalculation::Perceptual => color.luminance_perceptual(),
+			LuminanceCalculation::AverageChannels => color.average_rgb_channels(),
+			LuminanceCalculation::MinimumChannels => color.minimum_rgb_channels(),
+			LuminanceCalculation::MaximumChannels => color.maximum_rgb_channels(),
+		};
 
-	if luminance >= min_luminance && luminance <= max_luminance {
-		Color::WHITE
-	} else {
-		Color::BLACK
-	}
+		if luminance >= min_luminance && luminance <= max_luminance {
+			Color::WHITE
+		} else {
+			Color::BLACK
+		}
+	});
+	input
 }
 
 trait Blend<P: Pixel> {
