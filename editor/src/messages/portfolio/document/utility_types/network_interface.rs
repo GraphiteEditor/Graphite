@@ -3328,8 +3328,10 @@ impl NodeNetworkInterface {
 				continue;
 			};
 			network_metadata.persistent_metadata.node_metadata.remove(delete_node_id);
-			for previous_chain_node in upstream_chain_nodes {
-				self.set_chain_position(&previous_chain_node, network_path);
+			if reconnect {
+				for previous_chain_node in upstream_chain_nodes {
+					self.set_chain_position(&previous_chain_node, network_path);
+				}
 			}
 		}
 		self.unload_all_nodes_bounding_box(network_path);
