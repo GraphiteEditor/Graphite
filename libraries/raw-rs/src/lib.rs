@@ -38,6 +38,8 @@ pub struct Image<T> {
 	pub data: Vec<T>,
 	pub width: usize,
 	pub height: usize,
+	/// We can assume this will be 3 for all non-obscure, modern cameras.
+	/// See <https://github.com/GraphiteEditor/Graphite/pull/1923#discussion_r1725070342> for more information.
 	pub channels: u8,
 	pub rgb_to_camera: Option<[[f64; 3]; 3]>,
 	pub histogram: Option<[[usize; 0x2000]; 3]>,

@@ -29,7 +29,10 @@ pub fn gamma_correction(mut image: Image<u16>) -> Image<u16> {
 	image
 }
 
+/// `max_intensity` must be non-zero.
 fn generate_gamma_curve(power: f64, threshold: f64, max_intensity: f64) -> Vec<u16> {
+	debug_assert!(max_intensity != 0.);
+
 	let (mut bound_start, mut bound_end) = if threshold >= 1. { (0., 1.) } else { (1., 0.) };
 
 	let mut transition_point = 0.;
