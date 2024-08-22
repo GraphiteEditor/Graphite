@@ -125,7 +125,7 @@ impl NodeNetworkInterface {
 		Some(encapsulating_node_metadata)
 	}
 
-	/// Returns the first downstream layer(inclusive) from a node. If the node is a layer, it will return itself
+	/// Returns the first downstream layer(inclusive) from a node. If the node is a layer, it will return itself.
 	pub fn downstream_layer(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<LayerNodeIdentifier> {
 		let mut id = *node_id;
 		while !self.is_layer(&id, network_path) {
@@ -134,7 +134,7 @@ impl NodeNetworkInterface {
 		Some(LayerNodeIdentifier::new(id, self, network_path))
 	}
 
-	/// Returns all downstream layers (inclusive) from a node. If the node is a layer, it will return itself
+	/// Returns all downstream layers (inclusive) from a node. If the node is a layer, it will return itself.
 	pub fn downstream_layers(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Vec<NodeId> {
 		let mut stack = vec![*node_id];
 		let mut layers = Vec::new();
@@ -1572,7 +1572,7 @@ impl NodeNetworkInterface {
 
 		let mut stack_dependents = HashMap::new();
 
-		// Loop through all layers below the stack_tops, and set sole dependents upstream from that layer to be owned by that layer. Ensure LayerOwner is kept in sync
+		// Loop through all layers below the stack_tops, and set sole dependents upstream from that layer to be owned by that layer. Ensure LayerOwner is kept in sync.
 		for stack_top in &stack_tops {
 			for upstream_stack_layer in self
 				.upstream_flow_back_from_nodes(vec![*stack_top], network_path, FlowType::PrimaryFlow)
@@ -1601,7 +1601,7 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		// Set any sole dependents of the stack top that are not dependents of a layer in the stack to LayerOwner::None. These nodes will be pushed as blocks when a layer is shifted
+		// Set any sole dependents of the stack top that are not dependents of a layer in the stack to LayerOwner::None. These nodes will be pushed as blocks when a layer is shifted.
 		for stack_top in &stack_tops {
 			let mut sole_dependents = HashSet::new();
 			let mut not_sole_dependents = HashSet::new();
@@ -3900,8 +3900,8 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	// Used when moving layer by the layer panel, does not run any pushing logic. Moves all sole dependents of the layer as well
-	// Ensure that the layer is absolute position
+	/// Used when moving layer by the layer panel, does not run any pushing logic. Moves all sole dependents of the layer as well.
+	/// Ensure that the layer is absolute position.
 	pub fn shift_absolute_node_position(&mut self, layer: &NodeId, shift: IVec2, network_path: &[NodeId]) {
 		let mut nodes_to_shift = self.upstream_nodes_below_layer(layer, network_path);
 		nodes_to_shift.insert(*layer);

@@ -642,7 +642,7 @@
 						{node.displayName}
 					</span>
 				</div>
-				<div class="solo-drag-grip" title="Grip to drag only this layer up or down"></div>
+				<div class="solo-drag-grip" title="Drag only this layer without pushing others outside the stack"></div>
 				<IconButton
 					class={"visibility"}
 					data-visibility-button
@@ -1247,7 +1247,7 @@
 				border-radius: 2px;
 			}
 
-			&:hover .solo-drag-grip,
+			.solo-drag-grip:hover,
 			&.selected .solo-drag-grip {
 				background-image: var(--icon-drag-grip);
 

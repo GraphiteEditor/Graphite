@@ -226,7 +226,7 @@ impl LayerNodeIdentifier {
 		Self(unsafe { NonZeroU64::new_unchecked(node_id.0 + 1) })
 	}
 
-	/// Construct a [`LayerNodeIdentifier`], debug asserting that it is a layer node. This should only be used in the document network since the structure is not loaded in nested networks
+	/// Construct a [`LayerNodeIdentifier`], debug asserting that it is a layer node. This should only be used in the document network since the structure is not loaded in nested networks.
 	#[track_caller]
 	pub fn new(node_id: NodeId, network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> Self {
 		debug_assert!(

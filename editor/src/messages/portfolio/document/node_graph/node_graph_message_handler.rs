@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeWire, WirePath};
 use super::{document_node_definitions, node_properties};
 use crate::application::generate_uuid;
@@ -19,6 +17,7 @@ use graphene_core::*;
 use renderer::{ClickTarget, Quad};
 
 use glam::{DAffine2, DVec2, IVec2};
+use std::cmp::Ordering;
 
 #[derive(Debug)]
 pub struct NodeGraphHandlerData<'a> {
@@ -761,9 +760,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 
 					// Try expand the upstream chain for all layers if there is an eligible node
-					let Some(network) = network_interface.network(selection_network_path) else {
-						return;
-					};
+					let Some(network) = network_interface.network(selection_network_path) else { return };
 					for layer in network
 						.nodes
 						.keys()
@@ -1051,7 +1048,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				network_interface.set_input(&input_connector, input, selection_network_path);
 			}
 			NodeGraphMessage::ShiftSelectedNodes { direction, rubber_band } => {
-				//let shift_upstream = ipp.keyboard.get(crate::messages::tool::tool_messages::tool_prelude::Key::Shift as usize);
 				network_interface.shift_selected_nodes(direction, self.shift_without_push, selection_network_path);
 
 				if !rubber_band {
