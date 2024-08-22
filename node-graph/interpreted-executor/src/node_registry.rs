@@ -19,7 +19,6 @@ use graphene_core::{Node, NodeIO, NodeIOTypes};
 use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DynAnyNode, FutureWrapperNode, IntoTypeErasedNode};
 use graphene_std::application_io::{RenderConfig, TextureFrame};
 use graphene_std::raster::*;
-use graphene_std::vector::style::GradientStops;
 use graphene_std::wasm_application_io::*;
 use graphene_std::GraphicElement;
 #[cfg(feature = "gpu")]
@@ -114,87 +113,6 @@ macro_rules! async_node {
 		)
 		]
 	};
-}
-macro_rules! raster_node {
-	($path:ty, params: [$($type:ty),*]) => {{
-		// this function could also be inlined but serves as a workaround for
-		// [wasm-pack#981](https://github.com/rustwasm/wasm-pack/issues/981).
-		// The non-inlining function leads to fewer locals in the resulting
-		// wasm binary. This issue currently only applies to debug builds, so
-		// we guard inlining to only happen on production builds for
-		// optimization purposes.
-		#[cfg_attr(debug_assertions, inline(never))]
-		#[cfg_attr(not(debug_assertions), inline)]
-		fn generate_triples() -> Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> {
-			vec![
-			(
-				ProtoNodeIdentifier::new(stringify!($path)),
-				|args| {
-					Box::pin(async move {
-						let node = construct_node!(args, $path, [$(() => $type),*]).await;
-						let node = graphene_std::any::FutureWrapperNode::new(node);
-						let any: DynAnyNode<Color, _, _> = graphene_std::any::DynAnyNode::new(node);
-						any.into_type_erased()
-					})
-				},
-				{
-					let params = vec![$(fn_type!($type)),*];
-					NodeIOTypes::new(concrete!(Color), concrete!(Color), params)
-				},
-			),
-			// TODO: Remove this one when we have automatic IntoNode insertion as part of the graph compilation process
-			(
-				ProtoNodeIdentifier::new(stringify!($path)),
-				|args| {
-					Box::pin(async move {
-						let node = construct_node!(args, $path, [$(() => $type),*]).await;
-						let map_node = graphene_core::ops::MapOptionNode::new(graphene_core::value::ValueNode::new(node));
-						let node = graphene_std::any::FutureWrapperNode::new(map_node);
-						let any: DynAnyNode<Option<Color>, _, _> = graphene_std::any::DynAnyNode::new(node);
-						any.into_type_erased()
-					})
-				},
-				{
-					let params = vec![$(fn_type!($type)),*];
-					NodeIOTypes::new(concrete!(Option<Color>), concrete!(Option<Color>), params)
-				},
-			),
-			(
-				ProtoNodeIdentifier::new(stringify!($path)),
-				|args| {
-					Box::pin(async move {
-						let node = construct_node!(args, $path, [$(() => $type),*]).await;
-						let map_node = graphene_std::raster::MapImageNode::new(graphene_core::value::ValueNode::new(node));
-						let map_node = graphene_std::any::FutureWrapperNode::new(map_node);
-						let any: DynAnyNode<Image<Color>, _, _> = graphene_std::any::DynAnyNode::new(map_node);
-						any.into_type_erased()
-					})
-				},
-				{
-					let params = vec![$(fn_type!($type)),*];
-					NodeIOTypes::new(concrete!(Image<Color>), concrete!(Image<Color>), params)
-				},
-			),
-			(
-				ProtoNodeIdentifier::new(stringify!($path)),
-				|args| {
-					Box::pin(async move {
-						let node = construct_node!(args, $path, [$(() => $type),*]).await;
-						let map_node = graphene_std::raster::MapImageNode::new(graphene_core::value::ValueNode::new(node));
-						let map_node = graphene_std::any::FutureWrapperNode::new(map_node);
-						let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(map_node);
-						any.into_type_erased()
-					})
-				},
-				{
-					let params = vec![$(fn_type!($type)),*];
-					NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), params)
-				},
-			)
-			]
-		}
-		generate_triples()
-	}};
 }
 
 // TODO: turn into hashmap
@@ -676,16 +594,20 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::AddArtboardNode<_, _>, input: Footprint, output: ArtboardGroup, fn_params: [Footprint => ArtboardGroup, Footprint => Artboard]),
 	];
 	let mut map: HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> = HashMap::new();
-	for (&id, entry) in graphene_core::registry::NODE_REGISTRY.lock().unwrap().iter() {
+	for (id, entry) in graphene_core::registry::NODE_REGISTRY.lock().unwrap().iter() {
 		for (constructor, types) in entry.iter() {
-			map.entry(id.into()).or_default().insert(types.clone(), *constructor);
+			map.entry(id.clone().into()).or_default().insert(types.clone(), *constructor);
 		}
 	}
 	for (id, c, types) in node_types.into_iter().flatten() {
 		// TODO: this is a hack to remove the newline from the node new_name
 		// This occurs for the ChannelMixerNode presumably because of the long name.
 		// This might be caused by the stringify! macro
-		let new_name = id.name.replace('\n', " ");
+		let mut new_name = id.name.replace('\n', " ");
+		// Remove struct generics
+		if let Some((path, _generics)) = new_name.split_once("<") {
+			new_name = path.to_string();
+		}
 		let nid = ProtoNodeIdentifier { name: Cow::Owned(new_name) };
 		map.entry(nid).or_default().insert(types.clone(), c);
 	}

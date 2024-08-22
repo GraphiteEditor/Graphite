@@ -249,7 +249,7 @@ impl NodeRuntime {
 		self.monitor_nodes = proto_network
 			.nodes
 			.iter()
-			.filter(|(_, node)| node.identifier == "graphene_core::memo::MonitorNode<_, _, _>".into())
+			.filter(|(_, node)| node.identifier == "graphene_core::memo::MonitorNode".into())
 			.map(|(_, node)| node.original_location.path.clone().unwrap_or_default())
 			.collect::<Vec<_>>();
 
@@ -617,7 +617,7 @@ impl NodeGraphExecutor {
 							});
 							responses.add(NodeGraphMessage::SendGraph);
 
-							return Err("Node graph evaluation failed".to_string());
+							return Err(format!("Node graph evaluation failed:\n{e}"));
 						}
 						Ok(result) => result,
 					};

@@ -3,8 +3,8 @@ use crate::raster::{blend_image_closure, BlendImageTupleNode, EmptyImageNode, Ex
 use graphene_core::raster::adjustments::blend_colors;
 use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::raster::brush_cache::BrushCache;
+use graphene_core::raster::BlendMode;
 use graphene_core::raster::{Alpha, BlendPairNode, Color, Image, ImageFrame, Pixel, Sample};
-use graphene_core::raster::{BlendMode, BlendNode};
 use graphene_core::transform::{Transform, TransformMut};
 use graphene_core::value::{ClonedNode, CopiedNode, ValueNode};
 use graphene_core::vector::brush_stroke::{BrushStroke, BrushStyle};

@@ -30,9 +30,9 @@ pub struct FieldMetadata {
 	pub exposed: bool,
 	pub default_value: Option<&'static str>,
 }
-pub static NODE_REGISTRY: LazyLock<Mutex<HashMap<&str, Vec<(NodeConstructor, NodeIOTypes)>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+pub static NODE_REGISTRY: LazyLock<Mutex<HashMap<String, Vec<(NodeConstructor, NodeIOTypes)>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
-pub static NODE_METADATA: LazyLock<Mutex<HashMap<&str, NodeMetadata>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+pub static NODE_METADATA: LazyLock<Mutex<HashMap<String, NodeMetadata>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[cfg(not(target_arch = "wasm32"))]
 pub type DynFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n + Send>>;

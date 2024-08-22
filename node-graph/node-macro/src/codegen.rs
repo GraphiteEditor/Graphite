@@ -139,7 +139,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 			}
 		}
 	};
-	let identifier = quote!(concat![std::module_path!(), "::", stringify!(#struct_name)]);
+	let identifier = quote!(format!("{}::{}", std::module_path!().rsplit_once("::").unwrap().0, stringify!(#struct_name)));
 
 	let register_node_impl = generate_register_node_impl(parsed, &field_names, &struct_name, &identifier);
 
@@ -217,7 +217,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 	}
 }
 
-fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], struct_name: &Ident, identifer: &TokenStream2) -> TokenStream2 {
+fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], struct_name: &Ident, identifier: &TokenStream2) -> TokenStream2 {
 	let input_type = &parsed.input.ty;
 	let mut constructors = Vec::new();
 	let unit = parse_quote!(());
@@ -307,7 +307,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 		fn register_node() {
 			let mut registry = NODE_REGISTRY.lock().unwrap();
 			registry.insert(
-				#identifer,
+				#identifier,
 				vec![
 					#(#constructors,)*
 				]

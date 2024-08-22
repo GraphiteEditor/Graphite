@@ -400,3 +400,29 @@ fn dimensions_node<_P>(input: ImageSlice<'input, _P>) -> (u32, u32) {
 pub use self::image::{CollectNode, Image, ImageFrame, ImageRefNode, MapImageSliceNode};
 #[cfg(feature = "alloc")]
 pub(crate) mod image;
+
+trait SetBlendMode {
+	fn set_blend_mode(&mut self, blend_mode: BlendMode);
+}
+
+impl SetBlendMode for crate::vector::VectorData {
+	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
+		self.alpha_blending.blend_mode = blend_mode;
+	}
+}
+impl SetBlendMode for crate::GraphicGroup {
+	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
+		self.alpha_blending.blend_mode = blend_mode;
+	}
+}
+impl SetBlendMode for ImageFrame<Color> {
+	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
+		self.alpha_blending.blend_mode = blend_mode;
+	}
+}
+
+#[node_macro::new_node_fn(category("Adjustments"))]
+fn blend_mode<T: SetBlendMode>(_: (), #[implementations(crate::vector::VectorData, crate::GraphicGroup, ImageFrame<Color>)] mut value: T, blend_mode: BlendMode) -> T {
+	value.set_blend_mode(blend_mode);
+	value
+}

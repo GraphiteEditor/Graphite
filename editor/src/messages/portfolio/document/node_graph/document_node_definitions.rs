@@ -171,7 +171,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Debug",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"),
+					implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
 					inputs: vec![NodeInput::value(TaggedValue::None, true)],
 					manual_composition: Some(generic!(T)),
 					skip_deduplication: true,
@@ -225,7 +225,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							// The monitor node is used to display a thumbnail in the UI
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"),
+								implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
 								manual_composition: Some(generic!(T)),
 								skip_deduplication: true,
 								..Default::default()
@@ -328,7 +328,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							// TODO: Check if thumbnail is reversed
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"),
+								implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
 								manual_composition: Some(generic!(T)),
 								skip_deduplication: true,
 								..Default::default()
@@ -2917,7 +2917,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						nodes: vec![
 							DocumentNode {
 								inputs: vec![NodeInput::network(concrete!(VectorData), 0)],
-								implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"),
+								implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
 								manual_composition: Some(generic!(T)),
 								skip_deduplication: true,
 								..Default::default()
@@ -3073,7 +3073,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						nodes: [
 							DocumentNode {
 								inputs: vec![NodeInput::network(concrete!(VectorData), 0)],
-								implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"),
+								implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
 								manual_composition: Some(generic!(T)),
 								skip_deduplication: true,
 								..Default::default()
@@ -3767,6 +3767,18 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: &node_properties::image_color_palette,
 		},
 	];
+	// Remove struct generics
+	for DocumentNodeDefinition { node_template, .. } in custom.iter_mut() {
+		let NodeTemplate {
+			document_node: DocumentNode { implementation, .. },
+			..
+		} = node_template;
+		if let DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) = implementation {
+			if let Some((new_name, _suffix)) = name.rsplit_once("<") {
+				*name = Cow::Owned(new_name.to_string())
+			}
+		};
+	}
 	let node_registry = graphene_core::registry::NODE_REGISTRY.lock().unwrap();
 	'outer: for (id, metadata) in graphene_core::registry::NODE_METADATA.lock().unwrap().drain() {
 		for node in custom.iter() {
@@ -3778,7 +3790,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				..
 			} = node;
 			match implementation {
-				DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) if name == id => continue 'outer,
+				DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) if name == &id => continue 'outer,
 				_ => (),
 			}
 		}
@@ -3786,7 +3798,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		use graphene_core::registry::*;
 		let NodeMetadata { display_name, category, fields } = metadata;
 		let first_node_io = &node_registry
-			.get(id)
+			.get(&id)
 			.expect("Did not find node registry entry for auto generated node metadata")
 			.first()
 			.map(|(_, node_io)| node_io)
@@ -3831,7 +3843,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				document_node: DocumentNode {
 					inputs,
 					manual_composition: Some(input_type.clone()),
-					implementation: DocumentNodeImplementation::proto(id),
+					implementation: DocumentNodeImplementation::ProtoNode(id.into()),
 					visible: true,
 					skip_deduplication: false,
 					..Default::default()
@@ -3862,7 +3874,7 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 				nodes: [
 					DocumentNode {
 						inputs: vec![NodeInput::network(concrete!(ImageFrame<Color>), 0)],
-						implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"),
+						implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
 						manual_composition: Some(concrete!(())),
 						skip_deduplication: true,
 						..Default::default()

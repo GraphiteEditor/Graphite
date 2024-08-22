@@ -292,6 +292,13 @@ impl DocumentNode {
 		let DocumentNodeImplementation::ProtoNode(fqn) = self.implementation else {
 			unreachable!("tried to resolve not flattened node on resolved node {self:?}");
 		};
+
+		// TODO try removing
+		let identifier = match fqn.name.clone().split_once('<') {
+			Some((path, _generics)) => ProtoNodeIdentifier { name: Cow::Owned(path.to_string()) },
+			_ => ProtoNodeIdentifier { name: fqn.name },
+		};
+		// dbg!(&identifier);
 		let (input, mut args) = if let Some(ty) = self.manual_composition {
 			(ProtoNodeInput::ManualComposition(ty), ConstructionArgs::Nodes(vec![]))
 		} else {
@@ -331,7 +338,7 @@ impl DocumentNode {
 			}));
 		}
 		ProtoNode {
-			identifier: fqn,
+			identifier,
 			input,
 			construction_args: args,
 			original_location: self.original_location,

@@ -1230,32 +1230,6 @@ fn opacity<T: MultiplyAlpha>(
 	input
 }
 
-trait SetBlendMode {
-	fn set_blend_mode(&mut self, blend_mode: BlendMode);
-}
-
-impl SetBlendMode for VectorData {
-	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		self.alpha_blending.blend_mode = blend_mode;
-	}
-}
-impl SetBlendMode for GraphicGroup {
-	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		self.alpha_blending.blend_mode = blend_mode;
-	}
-}
-impl SetBlendMode for ImageFrame<Color> {
-	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		self.alpha_blending.blend_mode = blend_mode;
-	}
-}
-
-#[node_macro::new_node_fn(category("Adjustments"))]
-fn set_blend_mode<T: SetBlendMode>(_: (), #[implementations(VectorData, GraphicGroup, ImageFrame<Color>)] mut value: T, blend_mode: BlendMode) -> T {
-	value.set_blend_mode(blend_mode);
-	value
-}
-
 type PosterizeValue = f64;
 // Based on https://www.axiomx.com/posterize.htm
 // This algorithm produces fully accurate output in relation to the industry standard.

@@ -99,6 +99,11 @@ impl core::fmt::Debug for NodeIOTypes {
 pub struct ProtoNodeIdentifier {
 	pub name: Cow<'static, str>,
 }
+impl From<String> for ProtoNodeIdentifier {
+	fn from(value: String) -> Self {
+		Self { name: Cow::Owned(value) }
+	}
+}
 
 fn migrate_type_descriptor_names<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Cow<'static, str>, D::Error> {
 	use serde::Deserialize;

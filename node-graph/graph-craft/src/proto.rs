@@ -406,7 +406,7 @@ impl ProtoNetwork {
 				self.nodes.push((
 					compose_node_id,
 					ProtoNode {
-						identifier: ProtoNodeIdentifier::new("graphene_core::structural::ComposeNode<_, _, _>"),
+						identifier: ProtoNodeIdentifier::new("graphene_core::structural::ComposeNode"),
 						construction_args: ConstructionArgs::Nodes(vec![(input_node_id, false), (node_id, true)]),
 						input,
 						original_location: OriginalLocation { path, ..Default::default() },
@@ -896,9 +896,9 @@ mod test {
 				NodeId(12083027370457564588),
 				NodeId(10127202135369428481),
 				NodeId(3781642984881236270),
-				NodeId(9447822059040146367),
-				NodeId(15916837829094140504),
-				NodeId(1758919868423328454)
+				NodeId(12160249450476233602),
+				NodeId(17962581471057044127),
+				NodeId(7906594012485169109)
 			]
 		);
 	}
