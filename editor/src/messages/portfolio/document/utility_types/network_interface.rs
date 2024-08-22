@@ -4032,10 +4032,11 @@ impl NodeNetworkInterface {
 				if *offset == 0 {
 					return None;
 				}
-				if self
-					.selected_nodes(network_path)
-					.is_some_and(|selected_nodes| selected_nodes.selected_nodes().any(|selected_node| selected_node == node_id))
-				{
+				if self.selected_nodes(network_path).is_some_and(|selected_nodes| {
+					selected_nodes
+						.selected_nodes()
+						.any(|selected_node| selected_node == node_id || self.owned_nodes(node_id, network_path).is_some_and(|owned_nodes| owned_nodes.contains(selected_node)))
+				}) {
 					return None;
 				};
 				let Some(position) = self.position(node_id, network_path) else {
