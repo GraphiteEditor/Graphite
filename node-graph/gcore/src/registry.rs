@@ -9,7 +9,7 @@ use crate::NodeIO;
 use crate::NodeIOTypes;
 
 pub mod types {
-	type Percentage = f64;
+	pub type Percentage = f64;
 	type Angle = f64;
 	type PixelLength = f64;
 	type IntegerCount = u32;

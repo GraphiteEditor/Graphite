@@ -5,8 +5,8 @@ use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFil
 use graph_craft::proto::DynFuture;
 use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::raster::{
-	Alpha, Bitmap, BitmapMut, BlendMode, BlendNode, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, Image, ImageFrame, Linear, LinearChannel, Luminance, NoiseType, Pixel,
-	RGBMut, RedGreenBlue, Sample,
+	blend_colors, Alpha, Bitmap, BitmapMut, BlendMode, BlendNode, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, Image, ImageFrame, Linear, LinearChannel, Luminance,
+	NoiseType, Pixel, RGBMut, RedGreenBlue, Sample,
 };
 use graphene_core::transform::{Footprint, Transform};
 use graphene_core::value::CopiedNode;
@@ -384,7 +384,7 @@ fn extend_image_node(foreground: ImageFrame<Color>, background: ImageFrame<Color
 		return foreground;
 	}
 
-	blend_image(foreground, background, &BlendNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.)))
+	blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::Normal, 100.))
 }
 
 #[derive(Debug, Clone, Copy)]

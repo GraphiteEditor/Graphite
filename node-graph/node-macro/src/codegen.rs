@@ -76,10 +76,12 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 		.collect();
 
 	let eval_args = fields.iter().map(|field| match field {
-		ParsedField::Regular { pat_ident: name, .. } => {
+		ParsedField::Regular { pat_ident, .. } => {
+			let name = &pat_ident.ident;
 			quote! { let #name = self.#name.eval(()); }
 		}
-		ParsedField::Node { pat_ident: name, .. } => {
+		ParsedField::Node { pat_ident, .. } => {
+			let name = &pat_ident.ident;
 			quote! { let #name = &self.#name; }
 		}
 	});
@@ -121,17 +123,19 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 	let eval_impl = if *is_async {
 		quote! {
 			type Output = DynFuture<'n, #output_type>;
+			#[inline]
 			fn eval(&'n self, __input: #input_type) -> Self::Output {
 				#(#eval_args)*
-				Box::pin(#fn_name(__input #(, #field_names)*))
+				Box::pin(super::#fn_name(__input #(, #field_names)*))
 			}
 		}
 	} else {
 		quote! {
 			type Output = #output_type;
+			#[inline]
 			fn eval(&'n self, __input: #input_type) -> Self::Output {
 				#(#eval_args)*
-				#fn_name(__input #(, #field_names)*)
+				self::#fn_name(__input #(, #field_names)*)
 			}
 		}
 	};
@@ -149,6 +153,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 
 	quote! {
 		/// Underlying implementation for [#struct_name]
+		#[inline]
 		#async_keyword fn #fn_name <'n, #(#fn_generics,)*> (#input_ident: #input_type #(, #field_idents: #field_types)*) -> #output_type #where_clause #body
 
 		#[automatically_derived]
@@ -264,8 +269,8 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 			} else {
 				quote!(
 						#downcast_node
-						let value = #field_name.eval(()).await;
-						let #field_name = ClonedNode::new(value);
+						let #field_name = #field_name.eval(()).await;
+						let #field_name = ClonedNode::new(#field_name);
 						let #field_name: TypeNode<_, #input_type, #output_type> = TypeNode::new(#field_name);
 						// try polling futures
 				)

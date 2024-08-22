@@ -3,7 +3,7 @@ use crate::raster::{blend_image_closure, BlendImageTupleNode, EmptyImageNode, Ex
 use graphene_core::raster::adjustments::blend_colors;
 use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::raster::brush_cache::BrushCache;
-use graphene_core::raster::{Alpha, Color, Image, ImageFrame, Pixel, Sample};
+use graphene_core::raster::{Alpha, BlendPairNode, Color, Image, ImageFrame, Pixel, Sample};
 use graphene_core::raster::{BlendMode, BlendNode};
 use graphene_core::transform::{Transform, TransformMut};
 use graphene_core::value::{ClonedNode, CopiedNode, ValueNode};
@@ -217,7 +217,7 @@ pub fn create_brush_texture(brush_style: &BrushStyle) -> Image<Color> {
 	let stamp = stamp.eval(brush_style.diameter);
 	let transform = DAffine2::from_scale_angle_translation(DVec2::splat(brush_style.diameter), 0., -DVec2::splat(brush_style.diameter / 2.));
 	let blank_texture = EmptyImageNode::new(CopiedNode::new(Color::TRANSPARENT)).eval(transform);
-	let normal_blend = BlendNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
+	let normal_blend = BlendPairNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
 	let blend_executor = BlendImageTupleNode::new(ValueNode::new(normal_blend));
 	blend_executor.eval((blank_texture, stamp)).image
 }
@@ -332,7 +332,7 @@ async fn brush(image: ImageFrame<Color>, bounds: ImageFrame<Color>, strokes: Vec
 			let stroke_origin_in_layer = bbox.start - snap_offset - DVec2::splat(stroke.style.diameter / 2.0);
 			let stroke_to_layer = DAffine2::from_translation(stroke_origin_in_layer) * DAffine2::from_scale(stroke_size);
 
-			let normal_blend = BlendNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
+			let normal_blend = BlendPairNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
 			let blit_node = BlitNode::new(ClonedNode::new(brush_texture), ClonedNode::new(positions), ClonedNode::new(normal_blend));
 			let blit_target = if idx == 0 {
 				let target = core::mem::take(&mut brush_plan.first_stroke_texture);
@@ -371,14 +371,14 @@ async fn brush(image: ImageFrame<Color>, bounds: ImageFrame<Color>, strokes: Vec
 
 			match stroke.style.blend_mode {
 				BlendMode::Erase => {
-					let blend_params = BlendNode::new(CopiedNode::new(BlendMode::Erase), CopiedNode::new(100.));
+					let blend_params = BlendPairNode::new(CopiedNode::new(BlendMode::Erase), CopiedNode::new(100.));
 					let blit_node = BlitNode::new(ClonedNode::new(brush_texture), ClonedNode::new(positions), ClonedNode::new(blend_params));
 					erase_restore_mask = blit_node.eval(erase_restore_mask);
 				}
 
 				// Yes, this is essentially the same as the above, but we duplicate to inline the blend mode.
 				BlendMode::Restore => {
-					let blend_params = BlendNode::new(CopiedNode::new(BlendMode::Restore), CopiedNode::new(100.));
+					let blend_params = BlendPairNode::new(CopiedNode::new(BlendMode::Restore), CopiedNode::new(100.));
 					let blit_node = BlitNode::new(ClonedNode::new(brush_texture), ClonedNode::new(positions), ClonedNode::new(blend_params));
 					erase_restore_mask = blit_node.eval(erase_restore_mask);
 				}
@@ -387,7 +387,7 @@ async fn brush(image: ImageFrame<Color>, bounds: ImageFrame<Color>, strokes: Vec
 			}
 		}
 
-		let blend_params = BlendNode::new(CopiedNode::new(BlendMode::MultiplyAlpha), CopiedNode::new(100.0));
+		let blend_params = BlendPairNode::new(CopiedNode::new(BlendMode::MultiplyAlpha), CopiedNode::new(100.0));
 		let blend_executor = BlendImageTupleNode::new(ValueNode::new(blend_params));
 		actual_image = blend_executor.eval((actual_image, erase_restore_mask));
 	}

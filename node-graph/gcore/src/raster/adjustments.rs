@@ -4,7 +4,8 @@
 use super::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
 #[cfg(feature = "alloc")]
 use super::ImageFrame;
-use super::{Channel, Color, Node, RGBMut};
+use super::{Channel, Color, Node, Pixel, RGBMut};
+use crate::registry::types::Percentage;
 use crate::vector::style::GradientStops;
 use crate::vector::VectorData;
 use crate::GraphicGroup;
@@ -384,7 +385,7 @@ fn black_and_white_color_node(color: Color, tint: Color, reds: f64, yellows: f64
 }
 
 #[node_macro::new_node_fn(category("Adjustments"))]
-fn hue_shift_color_node(color: Color, hue_shift: f64, saturation_shift: f64, lightness_shift: f64) -> Color {
+fn hue_shift(color: Color, hue_shift: f64, saturation_shift: f64, lightness_shift: f64) -> Color {
 	let color = color.to_gamma_srgb();
 
 	let [hue, saturation, lightness, alpha] = color.to_hsla();
@@ -402,7 +403,7 @@ fn hue_shift_color_node(color: Color, hue_shift: f64, saturation_shift: f64, lig
 }
 
 #[node_macro::new_node_fn(category("Adjustments"))]
-fn invert_node(color: Color) -> Color {
+fn invert(color: Color) -> Color {
 	let color = color.to_gamma_srgb();
 
 	let color = color.map_rgb(|c| color.a() - c);
@@ -443,32 +444,79 @@ fn threshold_node(color: Color, min_luminance: f64, max_luminance: f64, luminanc
 	}
 }
 
-#[node_macro::new_node_fn(category("Adjustments"))]
-fn blend_node(over: Color, under: Color, blend_mode: BlendMode, opacity: f64) -> Color {
-	blend_colors(over, under, blend_mode, opacity / 100.)
+trait Blend<P: Pixel> {
+	fn blend(&self, under: &Self, blend_fn: impl Fn(P, P) -> P) -> Self;
 }
 
-#[node_macro::node_impl(BlendColorsNode)]
-fn blend_colors(over: GradientStops, under: GradientStops, blend_mode: BlendMode, opacity: f64) -> GradientStops {
-	let mut combined_stops = over.0.iter().map(|(position, _)| position).chain(under.0.iter().map(|(position, _)| position)).collect::<Vec<_>>();
-	combined_stops.dedup_by(|&mut a, &mut b| (a - b).abs() < 1e-6);
-	combined_stops.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
+impl Blend<Color> for Color {
+	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
+		blend_fn(*self, *under)
+	}
+}
+impl Blend<Color> for Option<Color> {
+	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
+		match (self, under) {
+			(Some(a), Some(b)) => Some(blend_fn(*a, *b)),
+			(a, None) => *a,
+			(None, b) => *b,
+		}
+	}
+}
 
-	let stops = combined_stops
-		.into_iter()
-		.map(|&position| {
-			let over_color = over.evalute(position);
-			let under_color = under.evalute(position);
-			let color = blend_colors(over_color, under_color, blend_mode, opacity / 100.);
-			(position, color)
-		})
-		.collect::<Vec<_>>();
+impl Blend<Color> for ImageFrame<Color> {
+	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
+		let data = self.image.data.iter().zip(under.image.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
 
-	GradientStops(stops)
+		ImageFrame {
+			image: super::Image {
+				data,
+				width: self.image.width,
+				height: self.image.height,
+				base64_string: None,
+			},
+			transform: self.transform,
+			alpha_blending: self.alpha_blending,
+		}
+	}
+}
+
+impl Blend<Color> for GradientStops {
+	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
+		let mut combined_stops = self.0.iter().map(|(position, _)| position).chain(under.0.iter().map(|(position, _)| position)).collect::<Vec<_>>();
+		combined_stops.dedup_by(|&mut a, &mut b| (a - b).abs() < 1e-6);
+		combined_stops.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
+
+		let stops = combined_stops
+			.into_iter()
+			.map(|&position| {
+				let over_color = self.evalute(position);
+				let under_color = under.evalute(position);
+				let color = blend_fn(over_color, under_color);
+				(position, color)
+			})
+			.collect::<Vec<_>>();
+
+		GradientStops(stops)
+	}
 }
 
 #[node_macro::new_node_fn(category("Adjustments"))]
-fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Color {
+fn blend<T: Blend<Color>>(
+	_: (),
+	#[expose]
+	#[implementations(Color, GradientStops, ImageFrame<Color>)]
+	over: T,
+	#[expose]
+	#[implementations(Color, GradientStops, ImageFrame<Color>)]
+	under: T,
+	blend_mode: BlendMode,
+	opacity: crate::registry::types::Percentage,
+) -> T {
+	Blend::blend(&over, &under, |a, b| blend_colors(a, b, blend_mode, opacity / 100.))
+}
+
+#[node_macro::new_node_fn(category("Adjustments"))]
+fn blend_pair(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Color {
 	blend_colors(input.0, input.1, blend_mode, opacity / 100.)
 }
 
@@ -511,6 +559,37 @@ pub fn apply_blend_mode(foreground: Color, background: Color, blend_mode: BlendM
 	}
 }
 
+trait Adjust<C> {
+	fn adjust(&mut self, map_fn: impl Fn(&C) -> C);
+}
+impl Adjust<Color> for Color {
+	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
+		*self = map_fn(self);
+	}
+}
+impl Adjust<Color> for Option<Color> {
+	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
+		match self {
+			Some(ref mut v) => *v = map_fn(v),
+			None => (),
+		}
+	}
+}
+impl Adjust<Color> for GradientStops {
+	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
+		for (_pos, c) in self.0.iter_mut() {
+			*c = map_fn(c);
+		}
+	}
+}
+impl<C: Pixel> Adjust<C> for ImageFrame<C> {
+	fn adjust(&mut self, map_fn: impl Fn(&C) -> C) {
+		for c in self.image.data.iter_mut() {
+			*c = map_fn(c);
+		}
+	}
+}
+
 #[inline(always)]
 pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode, opacity: f64) -> Color {
 	let target_color = match blend_mode {
@@ -525,7 +604,7 @@ pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode,
 }
 
 #[node_macro::new_node_fn(category("Adjustments"))]
-fn gradient_map_node(color: Color, gradient: GradientStops, reverse: bool) -> Color {
+fn gradient_map_node(_: (), color: Color, gradient: GradientStops, reverse: bool) -> Color {
 	let intensity = color.luminance_srgb();
 	let intensity = if reverse { 1. - intensity } else { intensity };
 	gradient.evalute(intensity as f64)
@@ -534,52 +613,61 @@ fn gradient_map_node(color: Color, gradient: GradientStops, reverse: bool) -> Co
 // Based on <https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters>
 // The results of this implementation are very close to correct, but not quite perfect
 #[node_macro::new_node_fn(category("Adjustments"))]
-fn vibrance_node(color: Color, vibrance: f64) -> Color {
-	let vibrance = vibrance as f32 / 100.;
-	// Slow the effect down by half when it's negative, since artifacts begin appearing past -50%.
-	// So this scales the 0% to -50% range to 0% to -100%.
-	let slowed_vibrance = if vibrance >= 0. { vibrance } else { vibrance * 0.5 };
+fn vibrance_node<T: Adjust<Color>>(
+	_: (),
+	#[expose]
+	#[implementations(Color, ImageFrame<Color>)]
+	mut input: T,
+	vibrance: f64,
+) -> T {
+	input.adjust(|color| {
+		let vibrance = vibrance as f32 / 100.;
+		// Slow the effect down by half when it's negative, since artifacts begin appearing past -50%.
+		// So this scales the 0% to -50% range to 0% to -100%.
+		let slowed_vibrance = if vibrance >= 0. { vibrance } else { vibrance * 0.5 };
 
-	let channel_max = color.r().max(color.g()).max(color.b());
-	let channel_min = color.r().min(color.g()).min(color.b());
-	let channel_difference = channel_max - channel_min;
+		let channel_max = color.r().max(color.g()).max(color.b());
+		let channel_min = color.r().min(color.g()).min(color.b());
+		let channel_difference = channel_max - channel_min;
 
-	let scale_multiplier = if channel_max == color.r() {
-		let green_blue_difference = (color.g() - color.b()).abs();
-		let t = (green_blue_difference / channel_difference).min(1.);
-		t * 0.5 + 0.5
-	} else {
-		1.
-	};
-	let scale = slowed_vibrance * scale_multiplier * (2. - channel_difference);
-	let channel_reduction = channel_min * scale;
-	let scale = 1. + scale * (1. - channel_difference);
+		let scale_multiplier = if channel_max == color.r() {
+			let green_blue_difference = (color.g() - color.b()).abs();
+			let t = (green_blue_difference / channel_difference).min(1.);
+			t * 0.5 + 0.5
+		} else {
+			1.
+		};
+		let scale = slowed_vibrance * scale_multiplier * (2. - channel_difference);
+		let channel_reduction = channel_min * scale;
+		let scale = 1. + scale * (1. - channel_difference);
 
-	let luminance_initial = color.to_linear_srgb().luminance_srgb();
-	let altered_color = color.map_rgb(|c| c * scale - channel_reduction).to_linear_srgb();
-	let luminance = altered_color.luminance_srgb();
-	let altered_color = altered_color.map_rgb(|c| c * luminance_initial / luminance);
+		let luminance_initial = color.to_linear_srgb().luminance_srgb();
+		let altered_color = color.map_rgb(|c| c * scale - channel_reduction).to_linear_srgb();
+		let luminance = altered_color.luminance_srgb();
+		let altered_color = altered_color.map_rgb(|c| c * luminance_initial / luminance);
 
-	let channel_max = altered_color.r().max(altered_color.g()).max(altered_color.b());
-	let altered_color = if Color::linear_to_srgb(channel_max) > 1. {
-		let scale = (1. - luminance) / (channel_max - luminance);
-		altered_color.map_rgb(|c| (c - luminance) * scale + luminance)
-	} else {
-		altered_color
-	};
-	let altered_color = altered_color.to_gamma_srgb();
+		let channel_max = altered_color.r().max(altered_color.g()).max(altered_color.b());
+		let altered_color = if Color::linear_to_srgb(channel_max) > 1. {
+			let scale = (1. - luminance) / (channel_max - luminance);
+			altered_color.map_rgb(|c| (c - luminance) * scale + luminance)
+		} else {
+			altered_color
+		};
+		let altered_color = altered_color.to_gamma_srgb();
 
-	if vibrance >= 0. {
-		altered_color
-	} else {
-		// TODO: The result ends up a bit darker than it should be, further investigation is needed
-		let luminance = color.luminance_rec_601();
+		if vibrance >= 0. {
+			altered_color
+		} else {
+			// TODO: The result ends up a bit darker than it should be, further investigation is needed
+			let luminance = color.luminance_rec_601();
 
-		// Near -0% vibrance we mostly use `altered_color`.
-		// Near -100% vibrance, we mostly use half the desaturated luminance color and half `altered_color`.
-		let factor = -slowed_vibrance;
-		altered_color.map_rgb(|c| c * (1. - factor) + luminance * factor)
-	}
+			// Near -0% vibrance we mostly use `altered_color`.
+			// Near -100% vibrance, we mostly use half the desaturated luminance color and half `altered_color`.
+			let factor = -slowed_vibrance;
+			altered_color.map_rgb(|c| c * (1. - factor) + luminance * factor)
+		}
+	});
+	input
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -809,8 +897,11 @@ impl DomainWarpType {
 }
 
 #[node_macro::new_node_fn(category("Adjustments"))]
-fn channel_mixer_node(
-	color: Color,
+fn channel_mixer_node<T: Adjust<Color>>(
+	_: (),
+	#[expose]
+	#[implementations(Color, ImageFrame<Color>)]
+	mut input: T,
 	monochrome: bool,
 	monochrome_r: f64,
 	monochrome_g: f64,
@@ -828,30 +919,33 @@ fn channel_mixer_node(
 	blue_g: f64,
 	blue_b: f64,
 	blue_c: f64,
-) -> Color {
-	let color = color.to_gamma_srgb();
+) -> T {
+	input.adjust(|color| {
+		let color = color.to_gamma_srgb();
 
-	let (r, g, b, a) = color.components();
+		let (r, g, b, a) = color.components();
 
-	let color = if monochrome {
-		let (monochrome_r, monochrome_g, monochrome_b, monochrome_c) = (monochrome_r as f32 / 100., monochrome_g as f32 / 100., monochrome_b as f32 / 100., monochrome_c as f32 / 100.);
+		let color = if monochrome {
+			let (monochrome_r, monochrome_g, monochrome_b, monochrome_c) = (monochrome_r as f32 / 100., monochrome_g as f32 / 100., monochrome_b as f32 / 100., monochrome_c as f32 / 100.);
 
-		let gray = (r * monochrome_r + g * monochrome_g + b * monochrome_b + monochrome_c).clamp(0., 1.);
+			let gray = (r * monochrome_r + g * monochrome_g + b * monochrome_b + monochrome_c).clamp(0., 1.);
 
-		Color::from_rgbaf32_unchecked(gray, gray, gray, a)
-	} else {
-		let (red_r, red_g, red_b, red_c) = (red_r as f32 / 100., red_g as f32 / 100., red_b as f32 / 100., red_c as f32 / 100.);
-		let (green_r, green_g, green_b, green_c) = (green_r as f32 / 100., green_g as f32 / 100., green_b as f32 / 100., green_c as f32 / 100.);
-		let (blue_r, blue_g, blue_b, blue_c) = (blue_r as f32 / 100., blue_g as f32 / 100., blue_b as f32 / 100., blue_c as f32 / 100.);
+			Color::from_rgbaf32_unchecked(gray, gray, gray, a)
+		} else {
+			let (red_r, red_g, red_b, red_c) = (red_r as f32 / 100., red_g as f32 / 100., red_b as f32 / 100., red_c as f32 / 100.);
+			let (green_r, green_g, green_b, green_c) = (green_r as f32 / 100., green_g as f32 / 100., green_b as f32 / 100., green_c as f32 / 100.);
+			let (blue_r, blue_g, blue_b, blue_c) = (blue_r as f32 / 100., blue_g as f32 / 100., blue_b as f32 / 100., blue_c as f32 / 100.);
 
-		let red = (r * red_r + g * red_g + b * red_b + red_c).clamp(0., 1.);
-		let green = (r * green_r + g * green_g + b * green_b + green_c).clamp(0., 1.);
-		let blue = (r * blue_r + g * blue_g + b * blue_b + blue_c).clamp(0., 1.);
+			let red = (r * red_r + g * red_g + b * red_b + red_c).clamp(0., 1.);
+			let green = (r * green_r + g * green_g + b * green_b + green_c).clamp(0., 1.);
+			let blue = (r * blue_r + g * blue_g + b * blue_b + blue_c).clamp(0., 1.);
 
-		Color::from_rgbaf32_unchecked(red, green, blue, a)
-	};
+			Color::from_rgbaf32_unchecked(red, green, blue, a)
+		};
 
-	color.to_linear_srgb()
+		color.to_linear_srgb()
+	});
+	input
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -907,8 +1001,11 @@ impl core::fmt::Display for SelectiveColorChoice {
 
 // Based on https://blog.pkh.me/p/22-understanding-selective-coloring-in-adobe-photoshop.html
 #[node_macro::new_node_fn(category("Adjustments"))]
-fn selective_color(
-	color: Color,
+fn selective_color<T: Adjust<Color>>(
+	_: (),
+	#[expose]
+	#[implementations(Color, ImageFrame<Color>)]
+	mut input: T,
 	mode: RelativeAbsolute,
 	r_c: f64,
 	r_m: f64,
@@ -946,138 +1043,185 @@ fn selective_color(
 	k_m: f64,
 	k_y: f64,
 	k_k: f64,
-) -> Color {
-	let color = color.to_gamma_srgb();
+) -> T {
+	input.adjust(|color| {
+		let color = color.to_gamma_srgb();
 
-	let (r, g, b, a) = color.components();
+		let (r, g, b, a) = color.components();
 
-	let min = |a: f32, b: f32, c: f32| a.min(b).min(c);
-	let max = |a: f32, b: f32, c: f32| a.max(b).max(c);
-	let med = |a: f32, b: f32, c: f32| a + b + c - min(a, b, c) - max(a, b, c);
+		let min = |a: f32, b: f32, c: f32| a.min(b).min(c);
+		let max = |a: f32, b: f32, c: f32| a.max(b).max(c);
+		let med = |a: f32, b: f32, c: f32| a + b + c - min(a, b, c) - max(a, b, c);
 
-	let max_channel = max(r, g, b);
-	let min_channel = min(r, g, b);
+		let max_channel = max(r, g, b);
+		let min_channel = min(r, g, b);
 
-	let pixel_color_range = |choice| match choice {
-		SelectiveColorChoice::Reds => max_channel == r,
-		SelectiveColorChoice::Yellows => min_channel == b,
-		SelectiveColorChoice::Greens => max_channel == g,
-		SelectiveColorChoice::Cyans => min_channel == r,
-		SelectiveColorChoice::Blues => max_channel == b,
-		SelectiveColorChoice::Magentas => min_channel == g,
-		SelectiveColorChoice::Whites => r > 0.5 && g > 0.5 && b > 0.5,
-		SelectiveColorChoice::Neutrals => r > 0. && g > 0. && b > 0. && r < 1. && g < 1. && b < 1.,
-		SelectiveColorChoice::Blacks => r < 0.5 && g < 0.5 && b < 0.5,
-	};
-
-	let color_parameter_group_scale_factor_rgb = max(r, g, b) - med(r, g, b);
-	let color_parameter_group_scale_factor_cmy = med(r, g, b) - min(r, g, b);
-
-	// Used to apply the r, g, or b channel slope (by multiplying it by 1) in relative mode, or no slope (by multiplying it by 0) in absolute mode
-	let (slope_r, slope_g, slope_b) = match mode {
-		RelativeAbsolute::Relative => (r - 1., g - 1., b - 1.),
-		RelativeAbsolute::Absolute => (-1., -1., -1.),
-	};
-
-	let (sum_r, sum_g, sum_b) = [
-		(SelectiveColorChoice::Reds, (r_c as f32, r_m as f32, r_y as f32, r_k as f32)),
-		(SelectiveColorChoice::Yellows, (y_c as f32, y_m as f32, y_y as f32, y_k as f32)),
-		(SelectiveColorChoice::Greens, (g_c as f32, g_m as f32, g_y as f32, g_k as f32)),
-		(SelectiveColorChoice::Cyans, (c_c as f32, c_m as f32, c_y as f32, c_k as f32)),
-		(SelectiveColorChoice::Blues, (b_c as f32, b_m as f32, b_y as f32, b_k as f32)),
-		(SelectiveColorChoice::Magentas, (m_c as f32, m_m as f32, m_y as f32, m_k as f32)),
-		(SelectiveColorChoice::Whites, (w_c as f32, w_m as f32, w_y as f32, w_k as f32)),
-		(SelectiveColorChoice::Neutrals, (n_c as f32, n_m as f32, n_y as f32, n_k as f32)),
-		(SelectiveColorChoice::Blacks, (k_c as f32, k_m as f32, k_y as f32, k_k as f32)),
-	]
-	.into_iter()
-	.fold((0., 0., 0.), |acc, (color_parameter_group, (c, m, y, k))| {
-		// Skip this color parameter group...
-		// ...if it's unchanged from the default of zero offset on all CMYK parameters, or...
-		// ...if this pixel's color isn't in the range affected by this color parameter group
-		if (c < f32::EPSILON && m < f32::EPSILON && y < f32::EPSILON && k < f32::EPSILON) || (!pixel_color_range(color_parameter_group)) {
-			return acc;
-		}
-
-		let (c, m, y, k) = (c / 100., m / 100., y / 100., k / 100.);
-
-		let color_parameter_group_scale_factor = match color_parameter_group {
-			SelectiveColorChoice::Reds | SelectiveColorChoice::Greens | SelectiveColorChoice::Blues => color_parameter_group_scale_factor_rgb,
-			SelectiveColorChoice::Cyans | SelectiveColorChoice::Magentas | SelectiveColorChoice::Yellows => color_parameter_group_scale_factor_cmy,
-			SelectiveColorChoice::Whites => min(r, g, b) * 2. - 1.,
-			SelectiveColorChoice::Neutrals => 1. - ((max(r, g, b) - 0.5).abs() + (min(r, g, b) - 0.5).abs()),
-			SelectiveColorChoice::Blacks => 1. - max(r, g, b) * 2.,
+		let pixel_color_range = |choice| match choice {
+			SelectiveColorChoice::Reds => max_channel == r,
+			SelectiveColorChoice::Yellows => min_channel == b,
+			SelectiveColorChoice::Greens => max_channel == g,
+			SelectiveColorChoice::Cyans => min_channel == r,
+			SelectiveColorChoice::Blues => max_channel == b,
+			SelectiveColorChoice::Magentas => min_channel == g,
+			SelectiveColorChoice::Whites => r > 0.5 && g > 0.5 && b > 0.5,
+			SelectiveColorChoice::Neutrals => r > 0. && g > 0. && b > 0. && r < 1. && g < 1. && b < 1.,
+			SelectiveColorChoice::Blacks => r < 0.5 && g < 0.5 && b < 0.5,
 		};
 
-		let offset_r = ((c + k * (c + 1.)) * slope_r).clamp(-r, -r + 1.) * color_parameter_group_scale_factor;
-		let offset_g = ((m + k * (m + 1.)) * slope_g).clamp(-g, -g + 1.) * color_parameter_group_scale_factor;
-		let offset_b = ((y + k * (y + 1.)) * slope_b).clamp(-b, -b + 1.) * color_parameter_group_scale_factor;
+		let color_parameter_group_scale_factor_rgb = max(r, g, b) - med(r, g, b);
+		let color_parameter_group_scale_factor_cmy = med(r, g, b) - min(r, g, b);
 
-		(acc.0 + offset_r, acc.1 + offset_g, acc.2 + offset_b)
+		// Used to apply the r, g, or b channel slope (by multiplying it by 1) in relative mode, or no slope (by multiplying it by 0) in absolute mode
+		let (slope_r, slope_g, slope_b) = match mode {
+			RelativeAbsolute::Relative => (r - 1., g - 1., b - 1.),
+			RelativeAbsolute::Absolute => (-1., -1., -1.),
+		};
+
+		let (sum_r, sum_g, sum_b) = [
+			(SelectiveColorChoice::Reds, (r_c as f32, r_m as f32, r_y as f32, r_k as f32)),
+			(SelectiveColorChoice::Yellows, (y_c as f32, y_m as f32, y_y as f32, y_k as f32)),
+			(SelectiveColorChoice::Greens, (g_c as f32, g_m as f32, g_y as f32, g_k as f32)),
+			(SelectiveColorChoice::Cyans, (c_c as f32, c_m as f32, c_y as f32, c_k as f32)),
+			(SelectiveColorChoice::Blues, (b_c as f32, b_m as f32, b_y as f32, b_k as f32)),
+			(SelectiveColorChoice::Magentas, (m_c as f32, m_m as f32, m_y as f32, m_k as f32)),
+			(SelectiveColorChoice::Whites, (w_c as f32, w_m as f32, w_y as f32, w_k as f32)),
+			(SelectiveColorChoice::Neutrals, (n_c as f32, n_m as f32, n_y as f32, n_k as f32)),
+			(SelectiveColorChoice::Blacks, (k_c as f32, k_m as f32, k_y as f32, k_k as f32)),
+		]
+		.into_iter()
+		.fold((0., 0., 0.), |acc, (color_parameter_group, (c, m, y, k))| {
+			// Skip this color parameter group...
+			// ...if it's unchanged from the default of zero offset on all CMYK parameters, or...
+			// ...if this pixel's color isn't in the range affected by this color parameter group
+			if (c < f32::EPSILON && m < f32::EPSILON && y < f32::EPSILON && k < f32::EPSILON) || (!pixel_color_range(color_parameter_group)) {
+				return acc;
+			}
+
+			let (c, m, y, k) = (c / 100., m / 100., y / 100., k / 100.);
+
+			let color_parameter_group_scale_factor = match color_parameter_group {
+				SelectiveColorChoice::Reds | SelectiveColorChoice::Greens | SelectiveColorChoice::Blues => color_parameter_group_scale_factor_rgb,
+				SelectiveColorChoice::Cyans | SelectiveColorChoice::Magentas | SelectiveColorChoice::Yellows => color_parameter_group_scale_factor_cmy,
+				SelectiveColorChoice::Whites => min(r, g, b) * 2. - 1.,
+				SelectiveColorChoice::Neutrals => 1. - ((max(r, g, b) - 0.5).abs() + (min(r, g, b) - 0.5).abs()),
+				SelectiveColorChoice::Blacks => 1. - max(r, g, b) * 2.,
+			};
+
+			let offset_r = ((c + k * (c + 1.)) * slope_r).clamp(-r, -r + 1.) * color_parameter_group_scale_factor;
+			let offset_g = ((m + k * (m + 1.)) * slope_g).clamp(-g, -g + 1.) * color_parameter_group_scale_factor;
+			let offset_b = ((y + k * (y + 1.)) * slope_b).clamp(-b, -b + 1.) * color_parameter_group_scale_factor;
+
+			(acc.0 + offset_r, acc.1 + offset_g, acc.2 + offset_b)
+		});
+
+		let color = Color::from_rgbaf32_unchecked((r + sum_r).clamp(0., 1.), (g + sum_g).clamp(0., 1.), (b + sum_b).clamp(0., 1.), a);
+
+		color.to_linear_srgb()
 	});
+	input
+}
 
-	let color = Color::from_rgbaf32_unchecked((r + sum_r).clamp(0., 1.), (g + sum_g).clamp(0., 1.), (b + sum_b).clamp(0., 1.), a);
+trait MultiplyAlpha {
+	fn multiply_alpha(&mut self, factor: f64);
+}
 
-	color.to_linear_srgb()
+impl MultiplyAlpha for Color {
+	fn multiply_alpha(&mut self, factor: f64) {
+		*self = Color::from_rgbaf32_unchecked(self.r(), self.g(), self.b(), (self.a() * factor as f32).clamp(0., 1.))
+	}
+}
+impl MultiplyAlpha for VectorData {
+	fn multiply_alpha(&mut self, factor: f64) {
+		self.alpha_blending.opacity *= factor as f32;
+	}
+}
+impl MultiplyAlpha for GraphicGroup {
+	fn multiply_alpha(&mut self, factor: f64) {
+		self.alpha_blending.opacity *= factor as f32;
+	}
+}
+impl<P: Pixel> MultiplyAlpha for ImageFrame<P> {
+	fn multiply_alpha(&mut self, factor: f64) {
+		self.alpha_blending.opacity *= factor as f32;
+	}
 }
 
 #[node_macro::new_node_fn(category("Adjustments"))]
-fn opacity(color: Color, opacity_multiplier: f64) -> Color {
-	let opacity_multiplier = opacity_multiplier as f32 / 100.;
-	Color::from_rgbaf32_unchecked(color.r(), color.g(), color.b(), color.a() * opacity_multiplier)
+fn opacity<T: MultiplyAlpha>(
+	_: (),
+	#[expose]
+	#[implementations(Color, VectorData, GraphicGroup, ImageFrame<Color>)]
+	mut input: T,
+	opacity_multiplier: Percentage,
+) -> T {
+	let opacity_multiplier = opacity_multiplier / 100.;
+	input.multiply_alpha(opacity_multiplier);
+	input
 }
 
-#[node_macro::node_impl(OpacityNode)]
-fn opacity(mut vector_data: VectorData, opacity_multiplier: f64) -> VectorData {
-	let opacity_multiplier = opacity_multiplier as f32 / 100.;
-	vector_data.alpha_blending.opacity *= opacity_multiplier;
-	vector_data
+trait SetBlendMode {
+	fn set_blend_mode(&mut self, blend_mode: BlendMode);
 }
 
-#[node_macro::node_impl(OpacityNode)]
-fn opacity(mut graphic_group: GraphicGroup, opacity_multiplier: f64) -> GraphicGroup {
-	let opacity_multiplier = opacity_multiplier as f32 / 100.;
-	graphic_group.alpha_blending.opacity *= opacity_multiplier;
-	graphic_group
+impl SetBlendMode for VectorData {
+	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
+		self.alpha_blending.blend_mode = blend_mode;
+	}
+}
+impl SetBlendMode for GraphicGroup {
+	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
+		self.alpha_blending.blend_mode = blend_mode;
+	}
+}
+impl SetBlendMode for ImageFrame<Color> {
+	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
+		self.alpha_blending.blend_mode = blend_mode;
+	}
 }
 
 #[node_macro::new_node_fn(category("Adjustments"))]
-// todo: support mut vars
-fn blend_mode(mut vector_data: VectorData, blend_mode: BlendMode) -> VectorData {
-	vector_data.alpha_blending.blend_mode = blend_mode;
-	vector_data
+fn set_blend_mode<T: SetBlendMode>(_: (), #[implementations(VectorData, GraphicGroup, ImageFrame<Color>)] mut value: T, blend_mode: BlendMode) -> T {
+	value.set_blend_mode(blend_mode);
+	value
 }
 
-#[node_macro::node_impl(BlendModeNode)]
-fn blend_mode(mut graphic_group: GraphicGroup, blend_mode: BlendMode) -> GraphicGroup {
-	graphic_group.alpha_blending.blend_mode = blend_mode;
-	graphic_group
-}
-
-#[node_macro::node_impl(BlendModeNode)]
-fn blend_mode(mut image_frame: ImageFrame<Color>, blend_mode: BlendMode) -> ImageFrame<Color> {
-	image_frame.alpha_blending.blend_mode = blend_mode;
-	image_frame
-}
-
+type PosterizeValue = f64;
 // Based on https://www.axiomx.com/posterize.htm
 // This algorithm produces fully accurate output in relation to the industry standard.
 #[node_macro::new_node_fn(category("Adjustments"))]
-fn posterize(color: Color, posterize_value: f64) -> Color {
-	let color = color.to_gamma_srgb();
+fn posterize<T: Adjust<Color>>(
+	_: (),
+	#[expose]
+	#[implementations(Color, ImageFrame<Color>)]
+	mut input: T,
+	levels: PosterizeValue,
+) -> T {
+	input.adjust(|color| {
+		let color = color.to_gamma_srgb();
 
-	let number_of_areas = posterize_value.recip() as f32;
-	let size_of_areas = (posterize_value - 1.).recip() as f32;
-	let channel = |channel: f32| (channel / number_of_areas).floor() * size_of_areas;
-	let color = color.map_rgb(channel);
+		let number_of_areas = levels.recip() as f32;
+		let size_of_areas = (levels - 1.).recip() as f32;
+		let channel = |channel: f32| (channel / number_of_areas).floor() * size_of_areas;
+		let color = color.map_rgb(channel);
 
-	color.to_linear_srgb()
+		color.to_linear_srgb()
+	});
+	input
 }
 
 // Based on https://geraldbakker.nl/psnumbers/exposure.html
 #[node_macro::new_node_fn(category("Adjustments"))]
-fn exposure(color: Color, exposure: f64, offset: f64, gamma_correction: f64) -> Color {
-	let adjusted = color
+fn exposure<T: Adjust<Color>>(
+	_: (),
+	#[expose]
+	#[implementations(Color, ImageFrame<Color>)]
+	mut input: T,
+	exposure: f64,
+	offset: f64,
+	gamma_correction: f64,
+) -> T {
+	input.adjust(|color| {
+		let adjusted = color
 		// Exposure
 		.map_rgb(|c: f32| c * 2_f32.powf(exposure as f32))
 		// Offset
@@ -1085,17 +1229,19 @@ fn exposure(color: Color, exposure: f64, offset: f64, gamma_correction: f64) -> 
 		// Gamma correction
 		.gamma(gamma_correction as f32);
 
-	adjusted.map_rgb(|c: f32| c.clamp(0., 1.))
+		adjusted.map_rgb(|c: f32| c.clamp(0., 1.))
+	});
+	input
 }
 
 const WINDOW_SIZE: usize = 1024;
 
 #[cfg(feature = "alloc")]
 #[node_macro::new_node_fn(category("Adjustments"))]
-fn generate_curves<_Channel: Channel + super::Linear>(_primary: (), curve: Curve) -> ValueMapperNode<_Channel> {
+fn generate_curves<C: Channel + super::Linear>(_: (), curve: Curve, #[implementations(f32)] _target_format: C) -> ValueMapperNode<C> {
 	use bezier_rs::{Bezier, TValue};
 	let [mut pos, mut param]: [[f32; 2]; 2] = [[0.; 2], curve.first_handle];
-	let mut lut = vec![_Channel::from_f64(0.); WINDOW_SIZE];
+	let mut lut = vec![C::from_f64(0.); WINDOW_SIZE];
 	let end = CurveManipulatorGroup {
 		anchor: [1.; 2],
 		handles: [curve.last_handle, [0.; 2]],
@@ -1121,7 +1267,7 @@ fn generate_curves<_Channel: Channel + super::Linear>(_primary: (), curve: Curve
 					// Fall back to a very bad approximation if Bezier-rs fails
 					.unwrap_or_else(|| (x - x0) / (x3 - x0) * (y3 - y0) + y0)
 			};
-			lut[index] = _Channel::from_f64(y);
+			lut[index] = C::from_f64(y);
 		}
 
 		pos = sample.anchor;
@@ -1163,7 +1309,6 @@ pub fn color_overlay_node(mut image: ImageFrame<Color>, color: Color, blend_mode
 #[test]
 fn color_overlay_multiply() {
 	use crate::raster::Image;
-	use crate::value::ClonedNode;
 
 	let image_color = Color::from_rgbaf32_unchecked(0.7, 0.6, 0.5, 0.4);
 	let image = ImageFrame {
@@ -1177,12 +1322,7 @@ fn color_overlay_multiply() {
 	// 100% of the output should come from the multiplied value
 	let opacity = 100_f64;
 
-	let result = ColorOverlayNode {
-		color: ClonedNode(overlay_color),
-		blend_mode: ClonedNode(BlendMode::Multiply),
-		opacity: ClonedNode(opacity),
-	}
-	.eval(image);
+	let result = color_overlay_node(image, overlay_color, BlendMode::Multiply, opacity);
 
 	// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
 	assert_eq!(result.image.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));
@@ -1197,20 +1337,12 @@ mod index_node {
 	use crate::Node;
 
 	#[node_macro::new_node_fn(category("Adjustments"))]
-	pub fn index_node(input: Vec<ImageFrame<Color>>, index: u32) -> ImageFrame<Color> {
+	pub fn index<T: Default + Clone>(_: (), #[implementations(Vec<ImageFrame<Color>>, Vec<Color>)] input: Vec<T>, index: u32) -> T {
 		if (index as usize) < input.len() {
 			input[index as usize].clone()
 		} else {
 			warn!("The number of segments is {} and the requested segment is {}!", input.len(), index);
-			ImageFrame::empty()
+			Default::default()
 		}
-	}
-
-	#[node_macro::node_impl(IndexNode)]
-	pub fn index_node(input: Vec<Color>, index: u32) -> Option<Color> {
-		if index as usize >= input.len() {
-			warn!("Index of colors is out of range: index is {index} and length is {}", input.len());
-		}
-		input.into_iter().nth(index as usize)
 	}
 }
