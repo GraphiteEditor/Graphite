@@ -202,7 +202,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				for artboard in network_interface.all_artboards() {
 					responses.add(NodeGraphMessage::DeleteNodes {
 						node_ids: vec![artboard.to_node()],
-						reconnect: false,
+						delete_children: false,
 					});
 				}
 				// TODO: Replace deleted artboards with merge nodes

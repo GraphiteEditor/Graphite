@@ -33,10 +33,10 @@ pub enum NodeGraphMessage {
 	Cut,
 	DeleteNodes {
 		node_ids: Vec<NodeId>,
-		reconnect: bool,
+		delete_children: bool,
 	},
 	DeleteSelectedNodes {
-		reconnect: bool,
+		delete_children: bool,
 	},
 	DisconnectInput {
 		input_connector: InputConnector,

@@ -622,7 +622,10 @@ impl EditorHandle {
 		self.dispatch(message);
 
 		let id = NodeId(id);
-		let message = NodeGraphMessage::DeleteNodes { node_ids: vec![id], reconnect: true };
+		let message = NodeGraphMessage::DeleteNodes {
+			node_ids: vec![id],
+			delete_children: true,
+		};
 		self.dispatch(message);
 	}
 

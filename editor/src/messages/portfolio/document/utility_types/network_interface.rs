@@ -3278,7 +3278,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Deletes all nodes in `node_ids` and any sole dependents in the horizontal chain if the node to delete is a layer node.
-	pub fn delete_nodes(&mut self, nodes_to_delete: Vec<NodeId>, reconnect: bool, network_path: &[NodeId]) {
+	pub fn delete_nodes(&mut self, nodes_to_delete: Vec<NodeId>, delete_children: bool, network_path: &[NodeId]) {
 		let Some(outward_wires) = self.outward_wires(network_path).cloned() else {
 			log::error!("Could not get outward wires in delete_nodes");
 			return;
@@ -3291,11 +3291,10 @@ impl NodeNetworkInterface {
 		for node_id in &nodes_to_delete {
 			delete_nodes.insert(*node_id);
 
-			if !reconnect {
+			if !delete_children {
 				continue;
 			};
 
-			let _root_node = self.root_node(network_path);
 			for upstream_id in self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::LayerChildrenUpstreamFlow) {
 				// This does a downstream traversal starting from the current node, and ending at either a node in the `delete_nodes` set or the output.
 				// If the traversal find as child node of a node in the `delete_nodes` set, then it is a sole dependent. If the output node is eventually reached, then it is not a sole dependent.
@@ -3343,10 +3342,11 @@ impl NodeNetworkInterface {
 				.take_while(|upstream_node| self.is_chain(upstream_node, network_path))
 				.collect::<Vec<_>>();
 
-			if !self.remove_references_from_network(delete_node_id, reconnect, network_path) {
+			if !self.remove_references_from_network(delete_node_id, network_path) {
 				log::error!("could not remove references from network");
 				continue;
 			}
+
 			// Disconnect all inputs of the node to be deleted
 			let Some(network) = self.network(network_path) else {
 				log::error!("Could not get nested network in delete_nodes");
@@ -3369,10 +3369,8 @@ impl NodeNetworkInterface {
 				continue;
 			};
 			network_metadata.persistent_metadata.node_metadata.remove(delete_node_id);
-			if reconnect {
-				for previous_chain_node in upstream_chain_nodes {
-					self.set_chain_position(&previous_chain_node, network_path);
-				}
+			for previous_chain_node in upstream_chain_nodes {
+				self.set_chain_position(&previous_chain_node, network_path);
 			}
 		}
 		self.unload_all_nodes_bounding_box(network_path);
@@ -3386,7 +3384,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Removes all references to the node with the given id from the network, and reconnects the input to the node below (or the next layer below if the node to be deleted is layer) if `reconnect` is true.
-	pub fn remove_references_from_network(&mut self, deleting_node_id: &NodeId, reconnect: bool, network_path: &[NodeId]) -> bool {
+	pub fn remove_references_from_network(&mut self, deleting_node_id: &NodeId, network_path: &[NodeId]) -> bool {
 		// TODO: Add more logic to support retaining preview when removing references. Since there are so many edge cases/possible crashes, for now the preview is ended.
 		self.stop_previewing(network_path);
 
@@ -3397,23 +3395,21 @@ impl NodeNetworkInterface {
 
 		let mut reconnect_to_input: Option<NodeInput> = None;
 
-		if reconnect {
-			// Check whether the being-deleted node's first (primary) input is a node
-			if let Some(node) = network.nodes.get(deleting_node_id) {
-				// Reconnect to the upstream node. If the layer or first upstream layer node if the deleting node is a layer
-				if self.is_layer(deleting_node_id, network_path) {
-					if let Some(upstream_layer_id) = self
-						.upstream_flow_back_from_nodes(vec![*deleting_node_id], network_path, FlowType::PrimaryFlow)
-						.skip(1) // Skip the node to delete
-						.find(|node_id| self.is_layer(node_id, network_path))
-					{
-						reconnect_to_input = Some(NodeInput::node(upstream_layer_id, 0));
-					}
+		// Check whether the being-deleted node's first (primary) input is a node
+		if let Some(node) = network.nodes.get(deleting_node_id) {
+			// Reconnect to the upstream node. If the layer or first upstream layer node if the deleting node is a layer
+			if self.is_layer(deleting_node_id, network_path) {
+				if let Some(upstream_layer_id) = self
+					.upstream_flow_back_from_nodes(vec![*deleting_node_id], network_path, FlowType::PrimaryFlow)
+					.skip(1) // Skip the node to delete
+					.find(|node_id| self.is_layer(node_id, network_path))
+				{
+					reconnect_to_input = Some(NodeInput::node(upstream_layer_id, 0));
 				}
-				// If the node is not a layer or an upstream layer is not found, reconnect to the first upstream node
-				if reconnect_to_input.is_none() && (matches!(node.inputs.first(), Some(NodeInput::Node { .. }) | Some(NodeInput::Network { .. }))) {
-					reconnect_to_input = Some(node.inputs[0].clone());
-				}
+			}
+			// If the node is not a layer or an upstream layer is not found, reconnect to the first upstream node
+			if reconnect_to_input.is_none() && (matches!(node.inputs.first(), Some(NodeInput::Node { .. }) | Some(NodeInput::Network { .. }))) {
+				reconnect_to_input = Some(node.inputs[0].clone());
 			}
 		}
 
@@ -4389,7 +4385,7 @@ impl NodeNetworkInterface {
 		}
 
 		// Disconnect layer to move
-		self.remove_references_from_network(&layer.to_node(), true, network_path);
+		self.remove_references_from_network(&layer.to_node(), network_path);
 		self.disconnect_input(&InputConnector::node(layer.to_node(), 0), network_path);
 
 		// TODO: Collapse space between parent and second child if top of stack is moved using the layout system

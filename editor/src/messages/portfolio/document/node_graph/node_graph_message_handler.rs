@@ -193,16 +193,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::Cut => {
 				responses.add(NodeGraphMessage::Copy);
-				responses.add(NodeGraphMessage::DeleteSelectedNodes { reconnect: true });
+				responses.add(NodeGraphMessage::DeleteSelectedNodes { delete_children: true });
 			}
-			NodeGraphMessage::DeleteNodes { node_ids, reconnect } => {
-				network_interface.delete_nodes(node_ids, reconnect, selection_network_path);
+			NodeGraphMessage::DeleteNodes { node_ids, delete_children } => {
+				network_interface.delete_nodes(node_ids, delete_children, selection_network_path);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			// Deletes selected_nodes. If `reconnect` is true, then all children nodes (secondary input) of the selected nodes are deleted and the siblings (primary input/output) are reconnected.
 			// If `reconnect` is false, then only the selected nodes are deleted and not reconnected.
-			NodeGraphMessage::DeleteSelectedNodes { reconnect } => {
+			NodeGraphMessage::DeleteSelectedNodes { delete_children } => {
 				let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else {
 					log::error!("Could not get selected nodes in DeleteSelectedNodes");
 					return;
@@ -210,7 +210,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(NodeGraphMessage::DeleteNodes {
 					node_ids: selected_nodes.selected_nodes().cloned().collect::<Vec<_>>(),
-					reconnect,
+					delete_children,
 				})
 			}
 			NodeGraphMessage::DisconnectInput { input_connector } => {

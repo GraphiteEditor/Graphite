@@ -366,7 +366,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				info!("{:#?}", self.network_interface);
 			}
 			DocumentMessage::DeleteSelectedLayers => {
-				responses.add(NodeGraphMessage::DeleteSelectedNodes { reconnect: true });
+				responses.add(NodeGraphMessage::DeleteSelectedNodes { delete_children: true });
 			}
 			DocumentMessage::DeselectAllLayers => {
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
@@ -1052,7 +1052,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				// Delete empty group folder
 				responses.add(NodeGraphMessage::DeleteNodes {
 					node_ids: vec![layer.to_node()],
-					reconnect: true,
+					delete_children: true,
 				});
 			}
 			DocumentMessage::PTZUpdate => {

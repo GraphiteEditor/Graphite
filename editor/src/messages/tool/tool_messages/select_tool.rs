@@ -367,7 +367,7 @@ impl SelectToolData {
 		for layer in document.network_interface.shallowest_unique_layers(&[]) {
 			responses.add(NodeGraphMessage::DeleteNodes {
 				node_ids: vec![layer.to_node()],
-				reconnect: true,
+				delete_children: true,
 			});
 		}
 
