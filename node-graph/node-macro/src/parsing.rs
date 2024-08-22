@@ -6,7 +6,7 @@ use quote::{format_ident, ToTokens};
 use syn::parse::{Parse, ParseStream, Parser};
 use syn::punctuated::Punctuated;
 use syn::token::Comma;
-use syn::{parse_quote, Attribute, Error, FnArg, GenericParam, Ident, ItemFn, LitStr, Meta, Pat, PatType, ReturnType, Type, TypeTuple, WhereClause};
+use syn::{parse_quote, Attribute, Error, FnArg, GenericParam, Ident, ItemFn, LitStr, Meta, Pat, PatIdent, PatType, ReturnType, Type, TypeTuple, WhereClause};
 
 use crate::codegen::generate_node_code;
 
@@ -18,8 +18,7 @@ pub(crate) struct ParsedNodeFn {
 	pub(crate) mod_name: Ident,
 	pub(crate) fn_generics: Vec<GenericParam>,
 	pub(crate) where_clause: Option<WhereClause>,
-	pub(crate) input_type: Type,
-	pub(crate) input_name: Ident,
+	pub(crate) input: Input,
 	pub(crate) output_type: Type,
 	pub(crate) is_async: bool,
 	pub(crate) fields: Vec<ParsedField>,
@@ -37,19 +36,25 @@ pub(crate) struct NodeFnAttributes {
 #[derive(Debug)]
 pub(crate) enum ParsedField {
 	Regular {
-		name: Ident,
+		pat_ident: PatIdent,
 		ty: Type,
 		exposed: bool,
 		default_value: Option<TokenStream2>,
 		implementations: Punctuated<Type, Comma>,
 	},
 	Node {
-		name: Ident,
+		pat_ident: PatIdent,
 		ty: Type,
 		input_type: Type,
 		output_type: Type,
 		implementations: Punctuated<TypeTuple, Comma>,
 	},
+}
+#[derive(Debug)]
+pub(crate) struct Input {
+	pub(crate) pat_ident: PatIdent,
+	pub(crate) ty: Type,
+	pub(crate) implementations: Punctuated<Type, Comma>,
 }
 
 impl Parse for NodeFnAttributes {
@@ -111,7 +116,7 @@ fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNo
 	let fn_generics = input_fn.sig.generics.params.into_iter().collect();
 	let is_async = input_fn.sig.asyncness.is_some();
 
-	let (input_name, input_type, fields) = parse_inputs(&input_fn.sig.inputs, is_async)?;
+	let (input, fields) = parse_inputs(&input_fn.sig.inputs, is_async)?;
 	let output_type = parse_output(&input_fn.sig.output)?;
 	let where_clause = input_fn.sig.generics.where_clause;
 	let body = input_fn.block.to_token_stream();
@@ -130,8 +135,7 @@ fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNo
 		struct_name,
 		mod_name,
 		fn_generics,
-		input_type,
-		input_name,
+		input,
 		output_type,
 		is_async,
 		fields,
@@ -141,10 +145,9 @@ fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNo
 	})
 }
 
-fn parse_inputs(inputs: &Punctuated<FnArg, Comma>, is_async: bool) -> syn::Result<(Ident, Type, Vec<ParsedField>)> {
+fn parse_inputs(inputs: &Punctuated<FnArg, Comma>, is_async: bool) -> syn::Result<(Input, Vec<ParsedField>)> {
 	let mut fields = Vec::new();
-	let mut input_type = None;
-	let mut input_name = None;
+	let mut input = None;
 
 	for (index, arg) in inputs.iter().enumerate() {
 		if let FnArg::Typed(PatType { pat, ty, attrs, .. }) = arg {
@@ -152,13 +155,33 @@ fn parse_inputs(inputs: &Punctuated<FnArg, Comma>, is_async: bool) -> syn::Resul
 				if extract_attribute(attrs, "default").is_some() {
 					return Err(Error::new_spanned(&attrs[0], "No default values for first argument allowed".to_string()));
 				}
-				input_type = Some((**ty).clone());
-				if let Pat::Ident(pat_ident) = &**pat {
-					input_name = Some(pat_ident.ident.clone());
+				if extract_attribute(attrs, "expose").is_some() {
+					return Err(Error::new_spanned(&attrs[0], "Call argument cannot be exposed".to_string()));
 				}
+				let pat_ident = match (**pat).clone() {
+					Pat::Ident(pat_ident) => pat_ident,
+					Pat::Wild(wild) => PatIdent {
+						attrs: wild.attrs,
+						by_ref: None,
+						mutability: None,
+						ident: wild.underscore_token.into(),
+						subpat: None,
+					},
+					_ => continue,
+				};
+
+				let implementations = extract_attribute(attrs, "implementations")
+					.map(|attr| parse_implementations(attr, &pat_ident.ident))
+					.transpose()?
+					.unwrap_or_default();
+				input = Some(Input {
+					pat_ident,
+					ty: (**ty).clone(),
+					implementations,
+				});
 			} else if let Pat::Ident(pat_ident) = &**pat {
 				let field =
-					parse_field(pat_ident.ident.clone(), (**ty).clone(), attrs, is_async).map_err(|e| Error::new_spanned(pat_ident, format!("Failed to parse field '{}': {}", pat_ident.ident, e)))?;
+					parse_field(pat_ident.clone(), (**ty).clone(), attrs, is_async).map_err(|e| Error::new_spanned(pat_ident, format!("Failed to parse argument '{}': {}", pat_ident.ident, e)))?;
 				fields.push(field);
 			} else {
 				return Err(Error::new_spanned(pat, "Expected a simple identifier for the field name"));
@@ -168,30 +191,30 @@ fn parse_inputs(inputs: &Punctuated<FnArg, Comma>, is_async: bool) -> syn::Resul
 		}
 	}
 
-	let input_type = input_type.ok_or_else(|| Error::new_spanned(inputs, "Expected at least one input argument. The first argument should be the node input type."))?;
-	let input_name = input_name.unwrap_or_else(|| format_ident!("_"));
-	Ok((input_name, input_type, fields))
+	let input = input.ok_or_else(|| Error::new_spanned(inputs, "Expected at least one input argument. The first argument should be the node input type."))?;
+	Ok((input, fields))
 }
 
-fn parse_field(name: Ident, ty: Type, attrs: &[Attribute], is_async: bool) -> syn::Result<ParsedField> {
+fn parse_implementations<T: Parse>(attr: &Attribute, name: &Ident) -> syn::Result<Punctuated<T, Comma>> {
+	let content: TokenStream2 = attr
+		.parse_args()
+		.map_err(|e| Error::new_spanned(attr, format!("Invalid implementations for argument '{}': {}", name, e)))?;
+	let parser = Punctuated::<T, Comma>::parse_terminated;
+	parser
+		.parse2(content)
+		.map_err(|e| Error::new_spanned(attr, format!("Failed to parse implementations for argument '{}': {}", name, e)))
+}
+fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute], is_async: bool) -> syn::Result<ParsedField> {
+	let name = &pat_ident.ident;
 	let default_value = extract_attribute(attrs, "default").and_then(|attr| {
 		attr.parse_args()
-			.map_err(|e| Error::new_spanned(attr, format!("Invalid default value for field '{}': {}", name, e)))
+			.map_err(|e| Error::new_spanned(attr, format!("Invalid default value for argument '{}': {}", name, e)))
 			.ok()
 	});
 	let exposed = extract_attribute(attrs, "expose").is_some();
 
-	fn parse_implementations<T: Parse>(attr: &Attribute, name: &Ident) -> syn::Result<Punctuated<T, Comma>> {
-		let content: TokenStream2 = attr
-			.parse_args()
-			.map_err(|e| Error::new_spanned(attr, format!("Invalid implementations for field '{}': {}", name, e)))?;
-		let parser = Punctuated::<T, Comma>::parse_terminated;
-		parser
-			.parse2(content)
-			.map_err(|e| Error::new_spanned(attr, format!("Failed to parse implementations for field '{}': {}", name, e)))
-	}
 	let implementations = extract_attribute(attrs, "implementations")
-		.map(|attr| parse_implementations(attr, &name))
+		.map(|attr| parse_implementations(attr, name))
 		.transpose()?
 		.unwrap_or_default();
 
@@ -205,7 +228,7 @@ fn parse_field(name: Ident, ty: Type, attrs: &[Attribute], is_async: bool) -> sy
 			return Err(Error::new_spanned(&ty, "No default values for `impl Node` allowed"));
 		}
 		let implementations = extract_attribute(attrs, "implementations")
-			.map(|attr| parse_implementations(attr, &name))
+			.map(|attr| parse_implementations(attr, name))
 			.transpose()?
 			.unwrap_or_default();
 		let ty = match is_async {
@@ -216,7 +239,7 @@ fn parse_field(name: Ident, ty: Type, attrs: &[Attribute], is_async: bool) -> sy
 		};
 
 		Ok(ParsedField::Node {
-			name,
+			pat_ident,
 			ty,
 			input_type,
 			output_type,
@@ -224,7 +247,7 @@ fn parse_field(name: Ident, ty: Type, attrs: &[Attribute], is_async: bool) -> sy
 		})
 	} else {
 		Ok(ParsedField::Regular {
-			name,
+			pat_ident,
 			exposed,
 			ty,
 			default_value,
@@ -296,13 +319,22 @@ mod tests {
 	use proc_macro_crate::FoundCrate;
 	use quote::quote;
 	use syn::parse_quote;
+	fn pat_ident(name: &str) -> PatIdent {
+		PatIdent {
+			attrs: Vec::new(),
+			by_ref: None,
+			mutability: None,
+			ident: Ident::new(name, Span::call_site()),
+			subpat: None,
+		}
+	}
 
 	fn assert_parsed_node_fn(parsed: &ParsedNodeFn, expected: &ParsedNodeFn) {
 		assert_eq!(parsed.fn_name, expected.fn_name);
 		assert_eq!(parsed.struct_name, expected.struct_name);
 		assert_eq!(parsed.mod_name, expected.mod_name);
 		assert_eq!(parsed.is_async, expected.is_async);
-		assert_eq!(format!("{:?}", parsed.input_type), format!("{:?}", expected.input_type));
+		assert_eq!(format!("{:?}", parsed.input), format!("{:?}", expected.input));
 		assert_eq!(format!("{:?}", parsed.output_type), format!("{:?}", expected.output_type));
 		assert_eq!(parsed.attributes.category, expected.attributes.category);
 		assert_eq!(parsed.attributes.display_name, expected.attributes.display_name);
@@ -312,14 +344,14 @@ mod tests {
 			match (parsed_field, expected_field) {
 				(
 					ParsedField::Regular {
-						name: p_name,
+						pat_ident: p_name,
 						ty: p_ty,
 						exposed: p_exp,
 						default_value: p_default,
 						..
 					},
 					ParsedField::Regular {
-						name: e_name,
+						pat_ident: e_name,
 						ty: e_ty,
 						exposed: e_exp,
 						default_value: e_default,
@@ -333,13 +365,13 @@ mod tests {
 				}
 				(
 					ParsedField::Node {
-						name: p_name,
+						pat_ident: p_name,
 						input_type: p_input,
 						output_type: p_output,
 						..
 					},
 					ParsedField::Node {
-						name: e_name,
+						pat_ident: e_name,
 						input_type: e_input,
 						output_type: e_output,
 						..
@@ -374,12 +406,15 @@ mod tests {
 			mod_name: Ident::new("add", Span::call_site()),
 			fn_generics: vec![],
 			where_clause: None,
-			input_type: parse_quote!(f64),
-			input_name: Ident::new("a", Span::call_site()),
+			input: Input {
+				pat_ident: pat_ident("a"),
+				ty: parse_quote!(f64),
+				implementations: Punctuated::new(),
+			},
 			output_type: parse_quote!(f64),
 			is_async: false,
 			fields: vec![ParsedField::Regular {
-				name: Ident::new("b", Span::call_site()),
+				pat_ident: pat_ident("b"),
 				ty: parse_quote!(f64),
 				exposed: false,
 				default_value: None,
@@ -412,20 +447,23 @@ mod tests {
 			mod_name: Ident::new("transform", Span::call_site()),
 			fn_generics: vec![parse_quote!(T: 'static)],
 			where_clause: None,
-			input_type: parse_quote!(Footprint),
-			input_name: Ident::new("footprint", Span::call_site()),
+			input: Input {
+				pat_ident: pat_ident("footprint"),
+				ty: parse_quote!(Footprint),
+				implementations: Punctuated::new(),
+			},
 			output_type: parse_quote!(T),
 			is_async: false,
 			fields: vec![
 				ParsedField::Node {
-					name: Ident::new("transform_target", Span::call_site()),
+					pat_ident: pat_ident("transform_target"),
 					ty: parse_quote!(impl Node<Footprint, Output = T>),
 					input_type: parse_quote!(Footprint),
 					output_type: parse_quote!(T),
 					implementations: Punctuated::new(),
 				},
 				ParsedField::Regular {
-					name: Ident::new("translate", Span::call_site()),
+					pat_ident: pat_ident("translte"),
 					ty: parse_quote!(DVec2),
 					exposed: false,
 					default_value: None,
@@ -459,12 +497,15 @@ mod tests {
 			mod_name: Ident::new("circle", Span::call_site()),
 			fn_generics: vec![],
 			where_clause: None,
-			input_type: parse_quote!(()),
+			input: Input {
+				pat_ident: pat_ident("_"),
+				ty: parse_quote!(()),
+				implementations: Punctuated::new(),
+			},
 			output_type: parse_quote!(VectorData),
 			is_async: false,
-			input_name: Ident::new("_", Span::call_site()),
 			fields: vec![ParsedField::Regular {
-				name: Ident::new("radius", Span::call_site()),
+				pat_ident: pat_ident("radius"),
 				ty: parse_quote!(f64),
 				exposed: false,
 				default_value: Some(quote!(50.0)),
@@ -497,12 +538,15 @@ mod tests {
 			mod_name: Ident::new("levels", Span::call_site()),
 			fn_generics: vec![parse_quote!(P: Pixel)],
 			where_clause: None,
-			input_type: parse_quote!(ImageFrame<P>),
-			input_name: Ident::new("image", Span::call_site()),
+			input: Input {
+				pat_ident: pat_ident("image"),
+				ty: parse_quote!(ImageFrame<P>),
+				implementations: Punctuated::new(),
+			},
 			output_type: parse_quote!(ImageFrame<P>),
 			is_async: false,
 			fields: vec![ParsedField::Regular {
-				name: Ident::new("shadows", Span::call_site()),
+				pat_ident: pat_ident("shadows"),
 				ty: parse_quote!(f64),
 				exposed: false,
 				default_value: None,
@@ -540,12 +584,15 @@ mod tests {
 			mod_name: Ident::new("load_image", Span::call_site()),
 			fn_generics: vec![],
 			where_clause: None,
-			input_type: parse_quote!(&WasmEditorApi),
-			input_name: Ident::new("api", Span::call_site()),
+			input: Input {
+				pat_ident: pat_ident("api"),
+				ty: parse_quote!(&WasmEditorApi),
+				implementations: Punctuated::new(),
+			},
 			output_type: parse_quote!(ImageFrame<Color>),
 			is_async: true,
 			fields: vec![ParsedField::Regular {
-				name: Ident::new("path", Span::call_site()),
+				pat_ident: pat_ident("path"),
 				ty: parse_quote!(String),
 				exposed: true,
 				default_value: None,
@@ -578,8 +625,11 @@ mod tests {
 			mod_name: Ident::new("custom_node", Span::call_site()),
 			fn_generics: vec![],
 			where_clause: None,
-			input_type: parse_quote!(i32),
-			input_name: Ident::new("input", Span::call_site()),
+			input: Input {
+				pat_ident: pat_ident("input"),
+				ty: parse_quote!(i32),
+				implementations: Punctuated::new(),
+			},
 			output_type: parse_quote!(i32),
 			is_async: false,
 			fields: vec![],

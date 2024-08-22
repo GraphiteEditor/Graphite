@@ -251,11 +251,7 @@ fn clone<'i, T: Clone + 'i>(
 // Identity
 /// Return the input argument unchanged
 #[node_macro::new_node_fn]
-fn identity<'i, T: 'i>(
-	#[expose]
-	#[implementations()]
-	value: T,
-) -> T {
+fn identity<'i, T: 'i>(#[implementations()] value: T) -> T {
 	value
 }
 

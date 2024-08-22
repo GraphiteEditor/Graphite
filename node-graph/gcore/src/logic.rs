@@ -15,20 +15,20 @@ fn log_to_console<T: core::fmt::Debug>(
 }
 
 #[node_macro::new_node_fn(category("Math"))]
-fn logic_or(#[expose] operand_a: bool, #[expose] operand_b: bool) -> bool {
+fn logic_or(_: (), #[expose] operand_a: bool, #[expose] operand_b: bool) -> bool {
 	operand_a || operand_b
 }
 
 #[node_macro::new_node_fn(category("Math"))]
-fn logic_and(#[expose] operand_a: bool, #[expose] operand_b: bool) -> bool {
+fn logic_and(_: (), #[expose] operand_a: bool, #[expose] operand_b: bool) -> bool {
 	operand_a && operand_b
 }
 #[node_macro::new_node_fn(category("Math"))]
-fn logic_xor(#[expose] operand_a: bool, #[expose] operand_b: bool) -> bool {
+fn logic_xor(_: (), #[expose] operand_a: bool, #[expose] operand_b: bool) -> bool {
 	operand_a ^ operand_b
 }
 
 #[node_macro::new_node_fn(category("Math"))]
-fn logic_not(#[expose] input: bool) -> bool {
+fn logic_not(_: (), #[expose] input: bool) -> bool {
 	!input
 }

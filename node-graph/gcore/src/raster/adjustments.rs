@@ -1042,6 +1042,7 @@ fn opacity(mut graphic_group: GraphicGroup, opacity_multiplier: f64) -> GraphicG
 }
 
 #[node_macro::new_node_fn(category("Adjustments"))]
+// todo: support mut vars
 fn blend_mode(mut vector_data: VectorData, blend_mode: BlendMode) -> VectorData {
 	vector_data.alpha_blending.blend_mode = blend_mode;
 	vector_data

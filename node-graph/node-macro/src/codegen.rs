@@ -16,8 +16,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 		mod_name,
 		fn_generics,
 		where_clause,
-		input_type,
-		input_name,
+		input,
 		output_type,
 		is_async,
 		fields,
@@ -35,20 +34,21 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 	let struct_name = format_ident!("{}Node", struct_name);
 
 	let struct_generics: Vec<Ident> = fields.iter().enumerate().map(|(i, _)| format_ident!("Node{}", i)).collect();
+	let input_ident = &input.pat_ident;
+	let input_type = &input.ty;
 
-	let struct_fields = fields.iter().zip(struct_generics.iter()).map(|(field, gen)| {
-		let name = match field {
-			ParsedField::Regular { name, .. } | ParsedField::Node { name, .. } => name,
-		};
-		quote! { pub(super) #name: #gen }
-	});
-
-	let field_names: Vec<_> = fields
+	let field_idents: Vec<_> = fields
 		.iter()
 		.map(|field| match field {
-			ParsedField::Regular { name, .. } | ParsedField::Node { name, .. } => name,
+			ParsedField::Regular { pat_ident, .. } | ParsedField::Node { pat_ident, .. } => pat_ident,
 		})
 		.collect();
+
+	let field_names: Vec<_> = field_idents.iter().map(|pat_ident| &pat_ident.ident).collect();
+
+	let struct_fields = field_names.iter().zip(struct_generics.iter()).map(|(name, gen)| {
+		quote! { pub(super) #name: #gen }
+	});
 
 	let field_types: Vec<_> = fields
 		.iter()
@@ -76,10 +76,10 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 		.collect();
 
 	let eval_args = fields.iter().map(|field| match field {
-		ParsedField::Regular { name, .. } => {
+		ParsedField::Regular { pat_ident: name, .. } => {
 			quote! { let #name = self.#name.eval(()); }
 		}
-		ParsedField::Node { name, .. } => {
+		ParsedField::Node { pat_ident: name, .. } => {
 			quote! { let #name = &self.#name; }
 		}
 	});
@@ -88,6 +88,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 		ParsedField::Regular { implementations, .. } => implementations.into_iter().cloned().collect::<Vec<_>>(),
 		ParsedField::Node { implementations, .. } => implementations.into_iter().map(|tuple| syn::Type::Tuple(tuple.clone())).collect(),
 	});
+	let all_implementation_types = all_implementation_types.chain(input.implementations.iter().cloned());
 
 	let mut clauses = Vec::new();
 	for (field, name) in fields.iter().zip(struct_generics.iter()) {
@@ -148,7 +149,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 
 	quote! {
 		/// Underlying implementation for [#struct_name]
-		#async_keyword fn #fn_name <'n, #(#fn_generics,)*> (#input_name: #input_type #(, #field_names: #field_types)*) -> #output_type #where_clause #body
+		#async_keyword fn #fn_name <'n, #(#fn_generics,)*> (#input_ident: #input_type #(, #field_idents: #field_types)*) -> #output_type #where_clause #body
 
 		#[automatically_derived]
 		impl<'n,  #(#fn_generics,)* #(#struct_generics,)*> #graphene_core::Node<'n, #input_type> for #mod_name::#struct_name<#(#struct_generics,)*>
@@ -212,7 +213,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 }
 
 fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], struct_name: &Ident, identifer: &TokenStream2) -> TokenStream2 {
-	let input_type = &parsed.input_type;
+	let input_type = &parsed.input.ty;
 	let mut constructors = Vec::new();
 	let unit = parse_quote!(());
 	let parameter_types: Vec<_> = parsed
