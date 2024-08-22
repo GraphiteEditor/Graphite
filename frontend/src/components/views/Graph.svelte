@@ -456,7 +456,7 @@
 				{#each $nodeGraph.clickTargets.portClickTargets as pathString}
 					<path class="port" d={pathString} />
 				{/each}
-				{#each $nodeGraph.clickTargets.visibilityClickTargets as pathString}
+				{#each $nodeGraph.clickTargets.iconClickTargets as pathString}
 					<path class="visibility" d={pathString} />
 				{/each}
 				<path class="all-nodes-bounding-box" d={$nodeGraph.clickTargets.allNodesBoundingBox} />

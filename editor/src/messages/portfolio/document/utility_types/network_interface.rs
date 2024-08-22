@@ -1955,11 +1955,12 @@ impl NodeNetworkInterface {
 			log::error!("Could not get text width for node {node_id}");
 			0.
 		});
+		let grip_width = 8.;
 		let icon_width = 24.;
 		let icon_overhang_width = icon_width / 2.;
 
 		let text_right = thumbnail_width + gap_width + text_width;
-		let layer_width_pixels = text_right + gap_width + icon_width + icon_overhang_width;
+		let layer_width_pixels = text_right + gap_width + grip_width + icon_width + icon_overhang_width;
 		let layer_width = ((layer_width_pixels / 24.) as u32).max(8);
 
 		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
@@ -2101,6 +2102,11 @@ impl NodeNetworkInterface {
 			let subpath = Subpath::new_rounded_rect(DVec2::new(-12., -12.) + visibility_offset, DVec2::new(12., 12.) + visibility_offset, [3.; 4]);
 			let visibility_click_target = ClickTarget::new(subpath, 0.);
 
+			// Update grip button click target, which is positioned to the left of the left most icon
+			let grip_offset_right_edge = node_top_left + DVec2::new(width as f64 - (GRID_SIZE as f64) / 2., 24.);
+			let subpath = Subpath::new_rounded_rect(DVec2::new(-8., -12.) + grip_offset_right_edge, DVec2::new(0., 12.) + grip_offset_right_edge, [0.; 4]);
+			let grip_click_target = ClickTarget::new(subpath, 0.);
+
 			// Create layer click target, which is contains the layer and the chain background
 			let chain_width_grid_spaces = self.chain_width(node_id, network_path);
 
@@ -2113,7 +2119,10 @@ impl NodeNetworkInterface {
 			DocumentNodeClickTargets {
 				node_click_target,
 				port_click_targets,
-				node_type_metadata: NodeTypeClickTargets::Layer(LayerClickTargets { visibility_click_target }),
+				node_type_metadata: NodeTypeClickTargets::Layer(LayerClickTargets {
+					visibility_click_target,
+					grip_click_target,
+				}),
 			}
 		};
 
@@ -2293,7 +2302,7 @@ impl NodeNetworkInterface {
 	pub fn collect_frontend_click_targets(&mut self, network_path: &[NodeId]) -> FrontendClickTargets {
 		let mut all_node_click_targets = Vec::new();
 		let mut port_click_targets = Vec::new();
-		let mut visibility_click_targets = Vec::new();
+		let mut icon_click_targets = Vec::new();
 		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in collect_frontend_click_targets");
 			return FrontendClickTargets::default();
@@ -2312,7 +2321,10 @@ impl NodeNetworkInterface {
 				if let NodeTypeClickTargets::Layer(layer_metadata) = &node_click_targets.node_type_metadata {
 					let mut port_path = String::new();
 					let _ = layer_metadata.visibility_click_target.subpath().subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
-					visibility_click_targets.push(port_path);
+					icon_click_targets.push(port_path);
+					let mut port_path = String::new();
+					let _ = layer_metadata.grip_click_target.subpath().subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
+					icon_click_targets.push(port_path);
 				}
 			}
 		});
@@ -2359,7 +2371,7 @@ impl NodeNetworkInterface {
 			node_click_targets,
 			layer_click_targets,
 			port_click_targets,
-			visibility_click_targets,
+			icon_click_targets,
 			all_nodes_bounding_box,
 			import_exports_bounding_box,
 		}
@@ -2469,6 +2481,34 @@ impl NodeNetworkInterface {
 				self.node_click_targets(node_id, network_path).and_then(|transient_node_metadata| {
 					if let NodeTypeClickTargets::Layer(layer) = &transient_node_metadata.node_type_metadata {
 						layer.visibility_click_target.intersect_point_no_stroke(point).then_some(*node_id)
+					} else {
+						None
+					}
+				})
+			})
+			.next()
+	}
+
+	// TODO: Combine grip_from_click and visibility_from_click into a single function
+	pub fn grip_from_click(&mut self, click: DVec2, network_path: &[NodeId]) -> Option<NodeId> {
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in visibility_from_click");
+			return None;
+		};
+		let Some(network) = self.network(network_path) else {
+			log::error!("Could not get nested network in visibility_from_click");
+			return None;
+		};
+
+		let point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
+		let node_ids: Vec<_> = network.nodes.keys().copied().collect();
+
+		node_ids
+			.iter()
+			.filter_map(|node_id| {
+				self.node_click_targets(node_id, network_path).and_then(|transient_node_metadata| {
+					if let NodeTypeClickTargets::Layer(layer) = &transient_node_metadata.node_type_metadata {
+						layer.grip_click_target.intersect_point_no_stroke(point).then_some(*node_id)
 					} else {
 						None
 					}
@@ -3890,7 +3930,7 @@ impl NodeNetworkInterface {
 		self.unload_upstream_node_click_targets(vec![*layer], network_path);
 	}
 
-	pub fn shift_selected_nodes(&mut self, direction: Direction, network_path: &[NodeId]) {
+	pub fn shift_selected_nodes(&mut self, direction: Direction, shift_without_push: bool, network_path: &[NodeId]) {
 		let Some(mut node_ids) = self.selected_nodes(network_path).map(|selected_nodes| selected_nodes.selected_nodes().cloned().collect::<HashSet<_>>()) else {
 			log::error!("Could not get selected nodes in shift_selected_nodes");
 			return;
@@ -3917,6 +3957,24 @@ impl NodeNetworkInterface {
 				continue;
 			}
 			filtered_node_ids.insert(*selected_node);
+		}
+
+		// If shifting up without a push, cancel the shift if there is a stack node that cannot move up
+		if direction == Direction::Up && shift_without_push {
+			for node_id in &filtered_node_ids {
+				let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
+					log::error!("Could not get node metadata for node {node_id} in shift_selected_nodes");
+					return;
+				};
+				if let NodeTypePersistentMetadata::Layer(layer_metadata) = &node_metadata.persistent_metadata.node_type_metadata {
+					if let LayerPosition::Stack(offset) = layer_metadata.position {
+						// Offset cannot be negative, so cancel the shift
+						if offset == 0 {
+							return;
+						}
+					}
+				}
+			}
 		}
 
 		let mut node_ids_with_position = filtered_node_ids
@@ -3980,14 +4038,16 @@ impl NodeNetworkInterface {
 
 							self.try_shift_node(&downstream_absolute_layer, IVec2::new(shift_sign, 0), &mut shifted_nodes, network_path);
 
-							for stack_nodes in self
-								.upstream_flow_back_from_nodes(vec![downstream_absolute_layer], network_path, FlowType::PrimaryFlow)
-								.take_while(|layer| self.is_layer(layer, network_path))
-								.collect::<Vec<_>>()
-							{
-								for sole_dependent in &self.upstream_nodes_below_layer(&stack_nodes, network_path) {
-									if self.is_absolute(sole_dependent, network_path) {
-										self.try_shift_node(sole_dependent, IVec2::new(shift_sign, 0), &mut shifted_nodes, network_path);
+							if !shift_without_push {
+								for stack_nodes in self
+									.upstream_flow_back_from_nodes(vec![downstream_absolute_layer], network_path, FlowType::PrimaryFlow)
+									.take_while(|layer| self.is_layer(layer, network_path))
+									.collect::<Vec<_>>()
+								{
+									for sole_dependent in &self.upstream_nodes_below_layer(&stack_nodes, network_path) {
+										if self.is_absolute(sole_dependent, network_path) {
+											self.try_shift_node(sole_dependent, IVec2::new(shift_sign, 0), &mut shifted_nodes, network_path);
+										}
 									}
 								}
 							}
@@ -3995,23 +4055,33 @@ impl NodeNetworkInterface {
 					}
 				}
 				Direction::Up | Direction::Down => {
-					if self.is_layer(node_id, network_path) {
+					if !shift_without_push && self.is_layer(node_id, network_path) {
 						self.shift_node_or_parent(node_id, shift_sign, &mut shifted_nodes, network_path);
 					} else if !shifted_nodes.contains(node_id) {
 						shifted_nodes.insert(*node_id);
 						self.shift_node(node_id, IVec2::new(0, shift_sign), network_path);
+
 						let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 							log::error!("Could not get nested network_metadata in export_ports");
 							continue;
 						};
-						let TransientMetadata::Loaded(stack_dependents) = &mut network_metadata.transient_metadata.stack_dependents else {
-							log::error!("Stack dependents should be loaded in vertical_shift_with_push");
-							continue;
+						if let TransientMetadata::Loaded(stack_dependents) = &mut network_metadata.transient_metadata.stack_dependents {
+							if let Some(LayerOwner::None(offset)) = stack_dependents.get_mut(node_id) {
+								*offset += shift_sign;
+							};
 						};
 
-						if let Some(LayerOwner::None(offset)) = stack_dependents.get_mut(node_id) {
-							*offset += shift_sign;
-						};
+						// Shift the upstream layer so that it stays in the same place
+						if self.is_layer(node_id, network_path) {
+							let upstream_layer = {
+								self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::PrimaryFlow)
+									.nth(1)
+									.filter(|upstream_node| self.is_stack(upstream_node, network_path))
+							};
+							if let Some(upstream_layer) = upstream_layer {
+								self.shift_node(&upstream_layer, IVec2::new(0, -shift_sign), network_path);
+							}
+						}
 					}
 				}
 			}
@@ -4998,6 +5068,8 @@ pub enum NodeTypeClickTargets {
 pub struct LayerClickTargets {
 	/// Cache for all visibility buttons. Should be automatically updated when update_click_target is called
 	pub visibility_click_target: ClickTarget,
+	/// Cache for the grip icon, which is next to the visibility button.
+	pub grip_click_target: ClickTarget,
 	// TODO: Store click target for the preview button, which will appear when the node is a selected/(hovered?) layer node
 	// preview_click_target: ClickTarget,
 }

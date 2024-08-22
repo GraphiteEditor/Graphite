@@ -400,6 +400,26 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::ZoomCanvasToFitAll);
 			}
+			DocumentMessage::Escape => {
+				if self.node_graph_handler.drag_start.is_some() {
+					responses.add(DocumentMessage::AbortTransaction);
+					self.node_graph_handler.drag_start = None;
+				} else if self
+					.node_graph_handler
+					.context_menu
+					.as_ref()
+					.is_some_and(|context_menu| matches!(context_menu.context_menu_data, super::node_graph::utility_types::ContextMenuData::CreateNode))
+				{
+					// Close the context menu
+					self.node_graph_handler.context_menu = None;
+					responses.add(FrontendMessage::UpdateContextMenuInformation { context_menu_information: None });
+					self.node_graph_handler.wire_in_progress_from_connector = None;
+					self.node_graph_handler.wire_in_progress_to_connector = None;
+					responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+				} else {
+					responses.add(DocumentMessage::GraphViewOverlay { open: false });
+				}
+			}
 			DocumentMessage::ExitNestedNetwork { steps_back } => {
 				for _ in 0..steps_back {
 					self.breadcrumb_network_path.pop();
@@ -1134,7 +1154,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 		// Additional actions if the node graph is open
 		if self.graph_view_overlay_open {
 			common.extend(actions!(DocumentMessageDiscriminant;
-				GraphViewOverlay,
+				Escape
 			));
 			common.extend(self.node_graph_handler.actions_additional_if_node_graph_is_open());
 		}

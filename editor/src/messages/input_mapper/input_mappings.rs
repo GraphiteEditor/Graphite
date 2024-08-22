@@ -62,7 +62,6 @@ pub fn input_mappings() -> Mapping {
 		entry!(DoubleClick(MouseButton::Left); action_dispatch=NodeGraphMessage::EnterNestedNetwork),
 		entry!(PointerMove; refresh_keys=[Shift], action_dispatch=NodeGraphMessage::PointerMove {shift: Shift}),
 		entry!(KeyUp(Lmb); action_dispatch=NodeGraphMessage::PointerUp),
-		entry!(KeyUp(Escape); action_dispatch=NodeGraphMessage::CloseCreateNodeMenu),
 		entry!(KeyDown(Delete); modifiers=[Accel], action_dispatch=NodeGraphMessage::DeleteSelectedNodes { reconnect: false }),
 		entry!(KeyDown(Backspace); modifiers=[Accel], action_dispatch=NodeGraphMessage::DeleteSelectedNodes { reconnect: false }),
 		entry!(KeyDown(Delete); action_dispatch=NodeGraphMessage::DeleteSelectedNodes { reconnect: true }),
@@ -306,7 +305,7 @@ pub fn input_mappings() -> Mapping {
 		//
 		// DocumentMessage
 		entry!(KeyDown(Space); modifiers=[Control], action_dispatch=DocumentMessage::GraphViewOverlayToggle),
-		entry!(KeyUp(Escape); action_dispatch=DocumentMessage::GraphViewOverlay { open: false }),
+		entry!(KeyUp(Escape); action_dispatch=DocumentMessage::Escape),
 		entry!(KeyDown(Delete); action_dispatch=DocumentMessage::DeleteSelectedLayers),
 		entry!(KeyDown(Backspace); action_dispatch=DocumentMessage::DeleteSelectedLayers),
 		entry!(KeyDown(KeyP); modifiers=[Alt], action_dispatch=DocumentMessage::DebugPrintDocument),

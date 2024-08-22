@@ -38,21 +38,23 @@ pub struct NodeGraphMessageHandler {
 	pub node_graph_errors: GraphErrors,
 	has_selection: bool,
 	widgets: [LayoutGroup; 2],
-	drag_start: Option<DragStart>,
+	pub drag_start: Option<DragStart>,
 	/// Used to add a transaction for the first node move when dragging.
 	begin_dragging: bool,
 	/// Stored in node graph coordinates
 	box_selection_start: Option<DVec2>,
+	/// If the grip icon is held during a drag, then shift without pushing other nodes
+	shift_without_push: bool,
 	disconnecting: Option<InputConnector>,
 	initial_disconnecting: bool,
 	/// Node to select on pointer up if multiple nodes are selected and they were not dragged.
 	select_if_not_dragged: Option<NodeId>,
 	/// The start of the dragged line that cannot be moved, stored in node graph coordinates
-	wire_in_progress_from_connector: Option<DVec2>,
+	pub wire_in_progress_from_connector: Option<DVec2>,
 	/// The end point of the dragged line that can be moved, stored in node graph coordinates
-	wire_in_progress_to_connector: Option<DVec2>,
+	pub wire_in_progress_to_connector: Option<DVec2>,
 	/// State for the context menu popups.
-	context_menu: Option<ContextMenuInformation>,
+	pub context_menu: Option<ContextMenuInformation>,
 	/// Index of selected node to be deselected on pointer up when shift clicking an already selected node
 	pub deselect_on_pointer_up: Option<usize>,
 	/// Adds the auto panning functionality to the node graph when dragging a node or selection box to the edge of the viewport.
@@ -127,15 +129,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				copy_text += &serde_json::to_string(&copied_nodes).expect("Could not serialize copy");
 
 				responses.add(FrontendMessage::TriggerTextCopy { copy_text });
-			}
-			NodeGraphMessage::CloseCreateNodeMenu => {
-				self.context_menu = None;
-				responses.add(FrontendMessage::UpdateContextMenuInformation {
-					context_menu_information: self.context_menu.clone(),
-				});
-				self.wire_in_progress_from_connector = None;
-				self.wire_in_progress_to_connector = None;
-				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 			}
 			NodeGraphMessage::CreateNodeFromContextMenu { node_id, node_type, x, y } => {
 				let node_id = node_id.unwrap_or_else(|| NodeId(generate_uuid()));
@@ -345,6 +338,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if let Some(clicked_visibility) = network_interface.visibility_from_click(click, selection_network_path) {
 					responses.add(NodeGraphMessage::ToggleVisibility { node_id: clicked_visibility });
 					return;
+				}
+
+				if network_interface.grip_from_click(click, selection_network_path).is_some() {
+					self.shift_without_push = true;
 				}
 
 				let clicked_id = network_interface.node_from_click(click, selection_network_path);
@@ -745,6 +742,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 				// End of dragging a node
 				else if let Some(drag_start) = &self.drag_start {
+					self.shift_without_push = false;
 					// Reset all offsets to end the rubber banding while dragging
 					network_interface.unload_stack_dependents_y_offset(selection_network_path);
 					let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else { return };
@@ -1054,7 +1052,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::ShiftSelectedNodes { direction, rubber_band } => {
 				//let shift_upstream = ipp.keyboard.get(crate::messages::tool::tool_messages::tool_prelude::Key::Shift as usize);
-				network_interface.shift_selected_nodes(direction, selection_network_path);
+				network_interface.shift_selected_nodes(direction, self.shift_without_push, selection_network_path);
 
 				if !rubber_band {
 					network_interface.unload_stack_dependents_y_offset(selection_network_path);
@@ -1317,16 +1315,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 	}
 
 	fn actions(&self) -> ActionList {
-		let mut common = vec![];
-
-		if self
-			.context_menu
-			.as_ref()
-			.is_some_and(|context_menu| matches!(context_menu.context_menu_data, ContextMenuData::CreateNode))
-		{
-			common.extend(actions!(NodeGraphMessageDiscriminant; CloseCreateNodeMenu));
-		}
-
+		let common = vec![];
 		common
 	}
 }
@@ -1948,6 +1937,7 @@ impl Default for NodeGraphMessageHandler {
 			widgets: [LayoutGroup::Row { widgets: Vec::new() }, LayoutGroup::Row { widgets: right_side_widgets }],
 			drag_start: None,
 			begin_dragging: false,
+			shift_without_push: false,
 			box_selection_start: None,
 			disconnecting: None,
 			initial_disconnecting: false,

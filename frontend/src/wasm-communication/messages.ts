@@ -173,7 +173,7 @@ export type FrontendClickTargets = {
 	readonly nodeClickTargets: string[];
 	readonly layerClickTargets: string[];
 	readonly portClickTargets: string[];
-	readonly visibilityClickTargets: string[];
+	readonly iconClickTargets: string[];
 	readonly allNodesBoundingBox: string;
 	readonly importExportsBoundingBox: string;
 };

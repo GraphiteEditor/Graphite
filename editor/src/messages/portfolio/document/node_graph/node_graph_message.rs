@@ -20,7 +20,6 @@ pub enum NodeGraphMessage {
 	Init,
 	SelectedNodesUpdated,
 	Copy,
-	CloseCreateNodeMenu,
 	CreateNodeFromContextMenu {
 		node_id: Option<NodeId>,
 		node_type: String,
