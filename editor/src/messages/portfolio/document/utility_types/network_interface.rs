@@ -1949,19 +1949,20 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn load_layer_width(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
-		let thumbnail_width = 3. * 24.;
+		let left_thumbnail_padding = GRID_SIZE as f64 / 2.;
+		let thumbnail_width = 3. * GRID_SIZE as f64;
 		let gap_width = 8.;
 		let text_width = self.text_width(node_id, network_path).unwrap_or_else(|| {
 			log::error!("Could not get text width for node {node_id}");
 			0.
 		});
-		let grip_width = 8.;
-		let icon_width = 24.;
-		let icon_overhang_width = icon_width / 2.;
 
-		let text_right = thumbnail_width + gap_width + text_width;
-		let layer_width_pixels = text_right + gap_width + grip_width + icon_width + icon_overhang_width;
-		let layer_width = ((layer_width_pixels / 24.) as u32).max(8);
+		let grip_padding = 4.;
+		let grip_width = 8.;
+		let icon_overhang_width = GRID_SIZE as f64 / 2.;
+
+		let layer_width_pixels = left_thumbnail_padding + thumbnail_width + gap_width + text_width + grip_padding + grip_width + icon_overhang_width;
+		let layer_width = ((layer_width_pixels / 24.).ceil() as u32).max(8);
 
 		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
 			log::error!("Could not get nested node_metadata in load_layer_width");
