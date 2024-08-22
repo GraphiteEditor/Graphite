@@ -124,7 +124,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				let primary_input = artboard.inputs.first().expect("Artboard should have a primary input").clone();
 				if let NodeInput::Node { node_id, .. } = &primary_input {
 					if network_interface.is_layer(node_id, &[]) && !network_interface.is_artboard(node_id, &[]) {
-						network_interface.move_layer_to_stack(LayerNodeIdentifier::new(*node_id, network_interface), artboard_layer, 0, &[]);
+						network_interface.move_layer_to_stack(LayerNodeIdentifier::new(*node_id, network_interface, &[]), artboard_layer, 0, &[]);
 					} else {
 						network_interface.disconnect_input(&InputConnector::node(artboard_layer.to_node(), 0), &[]);
 						network_interface.set_input(&InputConnector::node(id, 0), primary_input, &[]);
@@ -202,7 +202,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				for artboard in network_interface.all_artboards() {
 					responses.add(NodeGraphMessage::DeleteNodes {
 						node_ids: vec![artboard.to_node()],
-						reconnect: false,
+						delete_children: false,
 					});
 				}
 				// TODO: Replace deleted artboards with merge nodes

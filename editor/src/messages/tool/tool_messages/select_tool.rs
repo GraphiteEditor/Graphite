@@ -367,7 +367,7 @@ impl SelectToolData {
 		for layer in document.network_interface.shallowest_unique_layers(&[]) {
 			responses.add(NodeGraphMessage::DeleteNodes {
 				node_ids: vec![layer.to_node()],
-				reconnect: true,
+				delete_children: true,
 			});
 		}
 
@@ -1203,6 +1203,7 @@ fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<La
 	tool_data.layers_dragging.append(&mut vec![document.find_deepest(&selected).unwrap_or(LayerNodeIdentifier::new(
 		document.network_interface.root_node(&[]).expect("Root node should exist when dragging layers").node_id,
 		&document.network_interface,
+		&[],
 	))]);
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data

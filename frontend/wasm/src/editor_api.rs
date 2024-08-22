@@ -622,7 +622,10 @@ impl EditorHandle {
 		self.dispatch(message);
 
 		let id = NodeId(id);
-		let message = NodeGraphMessage::DeleteNodes { node_ids: vec![id], reconnect: true };
+		let message = NodeGraphMessage::DeleteNodes {
+			node_ids: vec![id],
+			delete_children: true,
+		};
 		self.dispatch(message);
 	}
 
@@ -779,7 +782,7 @@ impl EditorHandle {
 			.map(|(id, _)| *id)
 			.collect::<Vec<_>>()
 		{
-			let layer = LayerNodeIdentifier::new(node, &document.network_interface);
+			let layer = LayerNodeIdentifier::new(node, &document.network_interface, &[]);
 			if layer.has_children(document.metadata()) {
 				continue;
 			}

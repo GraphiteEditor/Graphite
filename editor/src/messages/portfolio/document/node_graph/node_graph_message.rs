@@ -1,3 +1,4 @@
+use super::utility_types::Direction;
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, OutputConnector};
@@ -18,7 +19,6 @@ pub enum NodeGraphMessage {
 	Init,
 	SelectedNodesUpdated,
 	Copy,
-	CloseCreateNodeMenu,
 	CreateNodeFromContextMenu {
 		node_id: Option<NodeId>,
 		node_type: String,
@@ -32,10 +32,10 @@ pub enum NodeGraphMessage {
 	Cut,
 	DeleteNodes {
 		node_ids: Vec<NodeId>,
-		reconnect: bool,
+		delete_children: bool,
 	},
 	DeleteSelectedNodes {
-		reconnect: bool,
+		delete_children: bool,
 	},
 	DisconnectInput {
 		input_connector: InputConnector,
@@ -111,15 +111,18 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		alias: String,
 	},
+	ShiftNodePosition {
+		node_id: NodeId,
+		x: i32,
+		y: i32,
+	},
 	SetToNodeOrLayer {
 		node_id: NodeId,
 		is_layer: bool,
 	},
-	ShiftNodes {
-		node_ids: Vec<NodeId>,
-		displacement_x: i32,
-		displacement_y: i32,
-		move_upstream: bool,
+	ShiftSelectedNodes {
+		direction: Direction,
+		rubber_band: bool,
 	},
 	TogglePreview {
 		node_id: NodeId,

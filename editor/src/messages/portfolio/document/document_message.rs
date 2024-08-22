@@ -57,6 +57,7 @@ pub enum DocumentMessage {
 	EnterNestedNetwork {
 		node_id: NodeId,
 	},
+	Escape,
 	ExitNestedNetwork {
 		steps_back: usize,
 	},

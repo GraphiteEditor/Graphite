@@ -174,10 +174,18 @@ pub struct FrontendClickTargets {
 	pub layer_click_targets: Vec<String>,
 	#[serde(rename = "portClickTargets")]
 	pub port_click_targets: Vec<String>,
-	#[serde(rename = "visibilityClickTargets")]
-	pub visibility_click_targets: Vec<String>,
+	#[serde(rename = "iconClickTargets")]
+	pub icon_click_targets: Vec<String>,
 	#[serde(rename = "allNodesBoundingBox")]
 	pub all_nodes_bounding_box: String,
 	#[serde(rename = "importExportsBoundingBox")]
 	pub import_exports_bounding_box: String,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum Direction {
+	Up,
+	Down,
+	Left,
+	Right,
 }

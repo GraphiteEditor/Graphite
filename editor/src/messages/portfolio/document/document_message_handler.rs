@@ -366,7 +366,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				info!("{:#?}", self.network_interface);
 			}
 			DocumentMessage::DeleteSelectedLayers => {
-				responses.add(NodeGraphMessage::DeleteSelectedNodes { reconnect: true });
+				responses.add(NodeGraphMessage::DeleteSelectedNodes { delete_children: true });
 			}
 			DocumentMessage::DeselectAllLayers => {
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
@@ -399,6 +399,26 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.selection_network_path.clone_from(&self.breadcrumb_network_path);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::ZoomCanvasToFitAll);
+			}
+			DocumentMessage::Escape => {
+				if self.node_graph_handler.drag_start.is_some() {
+					responses.add(DocumentMessage::AbortTransaction);
+					self.node_graph_handler.drag_start = None;
+				} else if self
+					.node_graph_handler
+					.context_menu
+					.as_ref()
+					.is_some_and(|context_menu| matches!(context_menu.context_menu_data, super::node_graph::utility_types::ContextMenuData::CreateNode))
+				{
+					// Close the context menu
+					self.node_graph_handler.context_menu = None;
+					responses.add(FrontendMessage::UpdateContextMenuInformation { context_menu_information: None });
+					self.node_graph_handler.wire_in_progress_from_connector = None;
+					self.node_graph_handler.wire_in_progress_to_connector = None;
+					responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+				} else {
+					responses.add(DocumentMessage::GraphViewOverlay { open: false });
+				}
 			}
 			DocumentMessage::ExitNestedNetwork { steps_back } => {
 				for _ in 0..steps_back {
@@ -434,10 +454,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(FrontendMessage::TriggerGraphViewOverlay { open });
 				// Update the tilt menu bar buttons to be disabled when the graph is open
 				responses.add(MenuBarMessage::SendLayout);
+				responses.add(DocumentMessage::RenderRulers);
+				responses.add(DocumentMessage::RenderScrollbars);
 				if open {
+					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
 					responses.add(NodeGraphMessage::SetGridAlignedEdges);
 					responses.add(NodeGraphMessage::SendGraph);
-					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
 				}
 			}
 			DocumentMessage::GraphViewOverlayToggle => {
@@ -639,16 +661,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				resize_opposite_corner,
 			} => {
 				self.backup(responses);
-				if self.graph_view_overlay_open {
-					responses.add(NodeGraphMessage::ShiftNodes {
-						node_ids: self.network_interface.selected_nodes(&[]).unwrap().selected_nodes().cloned().collect(),
-						displacement_x: if delta_x == 0.0 { 0 } else { delta_x.signum() as i32 },
-						displacement_y: if delta_y == 0.0 { 0 } else { delta_y.signum() as i32 },
-						move_upstream: ipp.keyboard.get(Key::Shift as usize),
-					});
-
-					return;
-				}
 
 				let opposite_corner = ipp.keyboard.key(resize_opposite_corner);
 				let delta = DVec2::new(delta_x, delta_y);
@@ -862,7 +874,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.selected_layers_reorder(relative_index_offset, responses);
 			}
 			DocumentMessage::SelectLayer { id, ctrl, shift } => {
-				let layer = LayerNodeIdentifier::new(id, &self.network_interface);
+				let layer = LayerNodeIdentifier::new(id, &self.network_interface, &[]);
 
 				let mut nodes = vec![];
 
@@ -965,7 +977,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::StartTransaction => self.backup(responses),
 			DocumentMessage::ToggleLayerExpansion { id } => {
-				let layer = LayerNodeIdentifier::new(id, &self.network_interface);
+				let layer = LayerNodeIdentifier::new(id, &self.network_interface, &[]);
 				if self.collapsed.0.contains(&layer) {
 					self.collapsed.0.retain(|&collapsed_layer| collapsed_layer != layer);
 				} else {
@@ -1040,7 +1052,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				// Delete empty group folder
 				responses.add(NodeGraphMessage::DeleteNodes {
 					node_ids: vec![layer.to_node()],
-					reconnect: true,
+					delete_children: true,
 				});
 			}
 			DocumentMessage::PTZUpdate => {
@@ -1123,23 +1135,26 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 		// Additional actions if there are any selected layers
 		if self.network_interface.selected_nodes(&[]).unwrap().selected_layers(self.metadata()).next().is_some() {
-			let select = actions!(DocumentMessageDiscriminant;
+			let mut select = actions!(DocumentMessageDiscriminant;
 				DeleteSelectedLayers,
 				DuplicateSelectedLayers,
 				GroupSelectedLayers,
-				NudgeSelectedLayers,
 				SelectedLayersLower,
 				SelectedLayersLowerToBack,
 				SelectedLayersRaise,
 				SelectedLayersRaiseToFront,
 				UngroupSelectedLayers,
 			);
+			if !self.graph_view_overlay_open {
+				select.extend(actions!(DocumentMessageDiscriminant; NudgeSelectedLayers));
+			}
 			common.extend(select);
 		}
+
 		// Additional actions if the node graph is open
 		if self.graph_view_overlay_open {
 			common.extend(actions!(DocumentMessageDiscriminant;
-				GraphViewOverlay,
+				Escape
 			));
 			common.extend(self.node_graph_handler.actions_additional_if_node_graph_is_open());
 		}
