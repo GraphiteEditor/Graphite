@@ -162,15 +162,40 @@
 			transparent calc(6px * sqrt(2) / 2)
 		);
 
-		// Arrow triangle (#eee fill)
+		// Array of 2x3 dots (fill: --color-e-nearwhite)
+		--icon-drag-grip: url('data:image/svg+xml;utf8,\
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 24" fill="%23eee">\
+				<circle cx="0.5" cy="1.5" r="0.5" /><circle cx="3.5" cy="1.5" r="0.5" />\
+				<circle cx="0.5" cy="4.5" r="0.5" /><circle cx="3.5" cy="4.5" r="0.5" />\
+				<circle cx="0.5" cy="7.5" r="0.5" /><circle cx="3.5" cy="7.5" r="0.5" />\
+			</svg>\
+			');
+		// Array of 2x3 dots (fill: --color-f-white)
+		--icon-drag-grip-hover: url('data:image/svg+xml;utf8,\
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 24" fill="%23fff">\
+				<circle cx="0.5" cy="1.5" r="0.5" /><circle cx="3.5" cy="1.5" r="0.5" />\
+				<circle cx="0.5" cy="4.5" r="0.5" /><circle cx="3.5" cy="4.5" r="0.5" />\
+				<circle cx="0.5" cy="7.5" r="0.5" /><circle cx="3.5" cy="7.5" r="0.5" />\
+			</svg>\
+			');
+		// Array of 2x3 dots (fill: --color-8-uppergray)
+		--icon-drag-grip-disabled: url('data:image/svg+xml;utf8,\
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 24" fill="%23888">\
+				<circle cx="0.5" cy="1.5" r="0.5" /><circle cx="3.5" cy="1.5" r="0.5" />\
+				<circle cx="0.5" cy="4.5" r="0.5" /><circle cx="3.5" cy="4.5" r="0.5" />\
+				<circle cx="0.5" cy="7.5" r="0.5" /><circle cx="3.5" cy="7.5" r="0.5" />\
+			</svg>\
+			');
+
+		// Arrow triangle (fill: --color-e-nearwhite)
 		--icon-expand-collapse-arrow: url('data:image/svg+xml;utf8,\
 			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><polygon fill="%23eee" points="3,0 1,0 5,4 1,8 3,8 7,4" /></svg>\
 			');
-		// Arrow triangle (#fff fill)
+		// Arrow triangle (fill: --color-f-white)
 		--icon-expand-collapse-arrow-hover: url('data:image/svg+xml;utf8,\
 			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><polygon fill="%23fff" points="3,0 1,0 5,4 1,8 3,8 7,4" /></svg>\
 			');
-		// Arrow triangle (#888 fill)
+		// Arrow triangle (fill: --color-8-uppergray)
 		--icon-expand-collapse-arrow-disabled: url('data:image/svg+xml;utf8,\
 			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><polygon fill="%23888" points="3,0 1,0 5,4 1,8 3,8 7,4" /></svg>\
 			');

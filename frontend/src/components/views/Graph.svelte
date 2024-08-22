@@ -642,6 +642,7 @@
 						{node.displayName}
 					</span>
 				</div>
+				<div class="solo-drag-grip" title="Grip to drag only this layer up or down"></div>
 				<IconButton
 					class={"visibility"}
 					data-visibility-button
@@ -1238,6 +1239,23 @@
 				}
 			}
 
+			.solo-drag-grip {
+				width: 8px;
+				height: 24px;
+				background-position: 2px 8px;
+				right: calc(-12px + 24px);
+				border-radius: 2px;
+			}
+
+			&:hover .solo-drag-grip,
+			&.selected .solo-drag-grip {
+				background-image: var(--icon-drag-grip);
+
+				&:hover {
+					background-image: var(--icon-drag-grip-hover);
+				}
+			}
+
 			.visibility {
 				position: absolute;
 				right: -12px;
@@ -1247,6 +1265,7 @@
 				left: calc(-3px + var(--node-chain-area-left-extension) * 24px - 36px);
 			}
 
+			.solo-drag-grip,
 			.visibility,
 			.input.ports,
 			.input.ports .port {
