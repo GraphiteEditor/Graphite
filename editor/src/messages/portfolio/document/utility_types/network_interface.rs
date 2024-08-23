@@ -323,7 +323,6 @@ impl NodeNetworkInterface {
 					}
 
 					// Ensure a chain node has a selected downstream layer, and set absolute nodes to a chain if there is a downstream layer
-
 					let downstream_layer = self.downstream_layer(node_id, network_path);
 					if downstream_layer.map_or(true, |downstream_layer| new_ids.keys().all(|key| *key != downstream_layer.to_node())) {
 						let Some(position) = self.position(node_id, network_path) else {
@@ -3413,16 +3412,51 @@ impl NodeNetworkInterface {
 				downstream_inputs_to_disconnect.extend(outward_wires.clone());
 			}
 		}
+
+		let mut reconnect_node = None;
+
 		for downstream_input in &downstream_inputs_to_disconnect {
 			self.disconnect_input(downstream_input, network_path);
 			// Prevent reconnecting export to import until https://github.com/GraphiteEditor/Graphite/issues/1762 is solved
 			if !(matches!(reconnect_to_input, Some(NodeInput::Network { .. })) && matches!(downstream_input, InputConnector::Export(_))) {
 				if let Some(reconnect_input) = reconnect_to_input.take() {
+					// Get the reconnect node position only if it is in a stack
+					reconnect_node = reconnect_input.as_node().and_then(|node_id| if self.is_stack(&node_id, network_path) { Some(node_id) } else { None });
 					self.disconnect_input(&InputConnector::node(*node_id, 0), network_path);
 					self.set_input(downstream_input, reconnect_input, network_path);
 				}
 			}
 		}
+
+		// Shift the reconnected node up to collapse space
+		if let Some(reconnect_node) = &reconnect_node {
+			let Some(reconnected_node_position) = self.position(reconnect_node, network_path) else {
+				log::error!("Could not get reconnected node position in remove_references_from_network");
+				return false;
+			};
+			let Some(disconnected_node_position) = self.position(node_id, network_path) else {
+				log::error!("Could not get disconnected node position in remove_references_from_network");
+				return false;
+			};
+			let max_shift_distance = reconnected_node_position.y - disconnected_node_position.y;
+
+			// Select the reconnect node to move to ensure the shifting works correctly
+			let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
+				log::error!("Could not get selected nodes in remove_references_from_network");
+				return false;
+			};
+			let old_selected_nodes = selected_nodes.replace_with(vec![*reconnect_node]);
+
+			// Shift up until there is either a collision or the disconnected node position is reached
+			let mut current_shift_distance = 0;
+			while self.check_collision_with_stack_dependents(reconnect_node, -1, network_path).is_empty() && max_shift_distance > current_shift_distance {
+				self.vertical_shift_with_push(reconnect_node, -1, &mut HashSet::new(), network_path);
+				current_shift_distance += 1;
+			}
+
+			let _ = self.selected_nodes_mut(network_path).unwrap().replace_with(old_selected_nodes);
+		}
+
 		true
 	}
 
@@ -4383,6 +4417,24 @@ impl NodeNetworkInterface {
 			return;
 		};
 
+		// Get the height of the downstream node
+		let mut downstream_height = 0;
+		if let Some(downstream_node) = post_node.node_id() {
+			let Some(downstream_node_position) = self.position(&downstream_node, network_path) else {
+				log::error!("Could not get downstream node position in move_layer_to_stack");
+				return;
+			};
+			let mut lowest_y_position = downstream_node_position.y + 3;
+
+			for bottom_position in self.upstream_nodes_below_layer(&downstream_node, network_path).iter().filter_map(|node_id| {
+				let is_layer = self.is_layer(node_id, network_path);
+				self.position(node_id, network_path).map(|position| position.y + if is_layer { 3 } else { 2 })
+			}) {
+				lowest_y_position = lowest_y_position.max(bottom_position);
+			}
+			downstream_height = lowest_y_position - (downstream_node_position.y + 3);
+		}
+
 		let mut highest_y_position = layer_to_move_position.y;
 		let mut lowest_y_position = layer_to_move_position.y;
 
@@ -4395,8 +4447,8 @@ impl NodeNetworkInterface {
 			highest_y_position = highest_y_position.min(top_position);
 			lowest_y_position = lowest_y_position.max(bottom_position);
 		}
-		let height_above_layer = layer_to_move_position.y - highest_y_position;
-		let height_below_layer = lowest_y_position - layer_to_move_position.y - 2;
+		let height_above_layer = layer_to_move_position.y - highest_y_position + downstream_height;
+		let height_below_layer = lowest_y_position - layer_to_move_position.y - 3;
 
 		// If there is an upstream node in the new location for the layer, create space for the moved layer by shifting the upstream node down
 		if let Some(upstream_node_id) = post_node_input.as_node() {
