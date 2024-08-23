@@ -24,7 +24,7 @@ export async function initWasm() {
 	for (const [name, f] of Object.entries(wasm)) {
 		if (name.startsWith("__node_registry")) f();
 	}
-	
+
 	wasmImport = await wasmMemory();
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	(window as any).imageCanvases = {};
