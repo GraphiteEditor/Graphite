@@ -2613,23 +2613,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: &node_properties::selective_color_properties,
 		},
 		DocumentNodeDefinition {
-			identifier: "Opacity",
-			category: "Style",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::raster::OpacityNode<_>"),
-					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true), NodeInput::value(TaggedValue::F64(100.), false)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Factor".to_string()],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::opacity_properties,
-		},
-		DocumentNodeDefinition {
 			identifier: "Posterize",
 			category: "Raster: Adjustment",
 			node_template: NodeTemplate {
@@ -3966,6 +3949,7 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 });
 
 pub fn resolve_document_node_type(identifier: &str) -> Option<&DocumentNodeDefinition> {
+	log::debug!("{identifier}");
 	DOCUMENT_NODE_TYPES.iter().find(|definition| definition.identifier == identifier)
 }
 

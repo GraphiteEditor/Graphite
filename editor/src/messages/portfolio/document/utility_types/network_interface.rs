@@ -8,7 +8,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 
 use bezier_rs::Subpath;
 use graph_craft::document::{value::TaggedValue, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
-use graph_craft::{concrete, Type};
+use graph_craft::{concrete, ProtoNodeIdentifier, Type};
 use graphene_std::renderer::{ClickTarget, Quad};
 use graphene_std::vector::{PointId, VectorData, VectorModificationType};
 use interpreted_executor::{dynamic_executor::ResolvedDocumentNodeTypes, node_registry::NODE_REGISTRY};
@@ -1408,7 +1408,11 @@ impl NodeNetworkInterface {
 }
 
 fn proto_node_type(protonode: &graph_craft::ProtoNodeIdentifier) -> Option<&graphene_std::NodeIOTypes> {
-	let Some(node_io_hashmap) = NODE_REGISTRY.get(protonode) else {
+	let mut protonode = protonode.clone();
+	if let Some((path, _generics)) = protonode.name.split_once('<') {
+		protonode = path.to_string().to_string().into();
+	}
+	let Some(node_io_hashmap) = NODE_REGISTRY.get(&protonode) else {
 		log::error!("Could not get hashmap for proto node: {protonode:?}");
 		return None;
 	};
@@ -3057,6 +3061,19 @@ impl NodeNetworkInterface {
 			return;
 		};
 		node.implementation = implementation;
+	}
+
+	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
+	pub fn set_manual_compostion(&mut self, node_id: &NodeId, network_path: &[NodeId], manual_composition: Option<Type>) {
+		let Some(network) = self.network_mut(network_path) else {
+			log::error!("Could not get nested network in set_implementation");
+			return;
+		};
+		let Some(node) = network.nodes.get_mut(node_id) else {
+			log::error!("Could not get node in set_implementation");
+			return;
+		};
+		node.manual_composition = manual_composition;
 	}
 
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts

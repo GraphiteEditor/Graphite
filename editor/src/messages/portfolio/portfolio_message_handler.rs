@@ -426,6 +426,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							let node_definition = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type(reference).unwrap();
 							let default_definition_node = node_definition.default_node_template();
 							document.network_interface.set_implementation(node_id, &[], default_definition_node.document_node.implementation);
+							document.network_interface.set_manual_compostion(node_id, &[], default_definition_node.document_node.manual_composition);
 						}
 					}
 				}

@@ -1,6 +1,6 @@
 use core::{fmt::Debug, marker::PhantomData};
 
-use crate::{transform::Footprint, Node};
+use crate::{registry::types::Percentage, transform::Footprint, Node};
 
 use bytemuck::{Pod, Zeroable};
 use glam::DVec2;
@@ -426,10 +426,24 @@ async fn blend_mode<T: SetBlendMode>(
 	footprint: Footprint,
 	#[expose]
 	#[implementations((Footprint, crate::vector::VectorData), (Footprint, crate::GraphicGroup), (Footprint, ImageFrame<Color>))]
-	value: impl Node<Footprint, Output = T> + 'n,
+	value: impl Node<Footprint, Output = T>,
 	blend_mode: BlendMode,
 ) -> T {
 	let mut value = value.eval(footprint).await;
 	value.set_blend_mode(blend_mode);
+	value
+}
+
+#[node_macro::new_node_fn(category("Style"))]
+async fn opacity<T: MultiplyAlpha>(
+	footprint: Footprint,
+	#[expose]
+	#[implementations((Footprint, crate::vector::VectorData), (Footprint, crate::GraphicGroup), (Footprint, ImageFrame<Color>))]
+	value: impl Node<Footprint, Output = T>,
+	#[default(100.)] factor: Percentage,
+) -> T {
+	let mut value = value.eval(footprint).await;
+	let opacity_multiplier = factor / 100.;
+	value.multiply_alpha(opacity_multiplier);
 	value
 }

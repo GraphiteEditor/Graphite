@@ -1192,7 +1192,7 @@ fn selective_color<T: Adjust<Color>>(
 	input
 }
 
-trait MultiplyAlpha {
+pub(super) trait MultiplyAlpha {
 	fn multiply_alpha(&mut self, factor: f64);
 }
 
@@ -1215,19 +1215,6 @@ impl<P: Pixel> MultiplyAlpha for ImageFrame<P> {
 	fn multiply_alpha(&mut self, factor: f64) {
 		self.alpha_blending.opacity *= factor as f32;
 	}
-}
-
-#[node_macro::new_node_fn(category("Adjustments"))]
-fn opacity<T: MultiplyAlpha>(
-	_: (),
-	#[expose]
-	#[implementations(Color, VectorData, GraphicGroup, ImageFrame<Color>)]
-	mut input: T,
-	opacity_multiplier: Percentage,
-) -> T {
-	let opacity_multiplier = opacity_multiplier / 100.;
-	input.multiply_alpha(opacity_multiplier);
-	input
 }
 
 type PosterizeValue = f64;
