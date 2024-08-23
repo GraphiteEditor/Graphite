@@ -140,6 +140,10 @@ impl SelectedNodes {
 	pub fn clear_selected_nodes(&mut self) {
 		self.0 = Vec::new();
 	}
+
+	pub fn replace_with(&mut self, new: Vec<NodeId>) -> Vec<NodeId> {
+		std::mem::replace(&mut self.0, new)
+	}
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]

@@ -3023,6 +3023,12 @@ impl NodeNetworkInterface {
 			}
 		};
 
+		// Ensure the network is not cyclic
+		if !network.is_acyclic() {
+			self.set_input(input_connector, old_input, network_path);
+			return;
+		}
+
 		// Ensure layer is toggled to non layer if it is no longer eligible to be a layer
 		if let InputConnector::Node { node_id, .. } = &input_connector {
 			if !self.is_eligible_to_be_layer(node_id, network_path) && self.is_layer(node_id, network_path) {
@@ -3348,22 +3354,15 @@ impl NodeNetworkInterface {
 				continue;
 			}
 
-			// Disconnect all inputs of the node to be deleted
-			let Some(network) = self.network(network_path) else {
-				log::error!("Could not get nested network in delete_nodes");
-				continue;
-			};
-			let Some(number_of_inputs) = network.nodes.get(delete_node_id).map(|node| node.inputs.len()) else {
-				log::error!("Could not get number of inputs for node {delete_node_id} when removing references");
-				continue;
-			};
-			for input_index in 0..number_of_inputs {
+			for input_index in 1..self.number_of_inputs(delete_node_id, network_path) {
 				self.disconnect_input(&InputConnector::node(*delete_node_id, input_index), network_path);
 			}
+
 			let Some(network) = self.network_mut(network_path) else {
 				log::error!("Could not get nested network in delete_nodes");
 				continue;
 			};
+			// TODO: Ensure node to delete is fully disconnected from the network
 			network.nodes.remove(delete_node_id);
 			let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 				log::error!("Could not get nested network_metadata in delete_nodes");
@@ -3384,8 +3383,8 @@ impl NodeNetworkInterface {
 		selected_nodes.retain_selected_nodes(|node_id| !nodes_to_delete.contains(node_id));
 	}
 
-	/// Removes all references to the node with the given id from the network, and reconnects the input to the node below (or the next layer below if the node to be deleted is layer) if `reconnect` is true.
-	pub fn remove_references_from_network(&mut self, deleting_node_id: &NodeId, network_path: &[NodeId]) -> bool {
+	/// Removes all references to the node with the given id from the network, and reconnects the input to the node below.
+	pub fn remove_references_from_network(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
 		// TODO: Add more logic to support retaining preview when removing references. Since there are so many edge cases/possible crashes, for now the preview is ended.
 		self.stop_previewing(network_path);
 
@@ -3394,60 +3393,34 @@ impl NodeNetworkInterface {
 			return false;
 		};
 
-		let mut reconnect_to_input: Option<NodeInput> = None;
-
 		// Check whether the being-deleted node's first (primary) input is a node
-		if let Some(node) = network.nodes.get(deleting_node_id) {
-			// Reconnect to the upstream node. If the layer or first upstream layer node if the deleting node is a layer
-			if self.is_layer(deleting_node_id, network_path) {
-				if let Some(upstream_layer_id) = self
-					.upstream_flow_back_from_nodes(vec![*deleting_node_id], network_path, FlowType::PrimaryFlow)
-					.skip(1) // Skip the node to delete
-					.find(|node_id| self.is_layer(node_id, network_path))
-				{
-					reconnect_to_input = Some(NodeInput::node(upstream_layer_id, 0));
-				}
-			}
-			// If the node is not a layer or an upstream layer is not found, reconnect to the first upstream node
-			if reconnect_to_input.is_none() && (matches!(node.inputs.first(), Some(NodeInput::Node { .. }) | Some(NodeInput::Network { .. }))) {
-				reconnect_to_input = Some(node.inputs[0].clone());
-			}
-		}
-
-		// Disconnect all upstream references
-		let number_of_outputs = self.number_of_outputs(deleting_node_id, network_path);
+		let mut reconnect_to_input = network.nodes.get(node_id).and_then(|node| {
+			node.inputs
+				.iter()
+				.find(|input| input.is_exposed_to_frontend(network_path.is_empty()))
+				.filter(|input| matches!(input, NodeInput::Node { .. } | NodeInput::Network { .. }))
+				.cloned()
+		});
+		// Get all upstream references
+		let number_of_outputs = self.number_of_outputs(node_id, network_path);
 		let Some(all_outward_wires) = self.outward_wires(network_path) else {
 			log::error!("Could not get outward wires in remove_references_from_network");
 			return false;
 		};
 		let mut downstream_inputs_to_disconnect = Vec::new();
 		for output_index in 0..number_of_outputs {
-			if let Some(outward_wires) = all_outward_wires.get(&OutputConnector::node(*deleting_node_id, output_index)) {
+			if let Some(outward_wires) = all_outward_wires.get(&OutputConnector::node(*node_id, output_index)) {
 				downstream_inputs_to_disconnect.extend(outward_wires.clone());
 			}
 		}
-
-		for input_to_disconnect in &downstream_inputs_to_disconnect {
+		for downstream_input in &downstream_inputs_to_disconnect {
+			self.disconnect_input(downstream_input, network_path);
 			// Prevent reconnecting export to import until https://github.com/GraphiteEditor/Graphite/issues/1762 is solved
-			if matches!(reconnect_to_input, Some(NodeInput::Network { .. })) && matches!(input_to_disconnect, InputConnector::Export(_)) {
-				self.disconnect_input(input_to_disconnect, network_path);
-			} else if let Some(reconnect_input) = reconnect_to_input.take() {
-				let original_position = reconnect_input.as_node().and_then(|downstream_node| self.position(&downstream_node, network_path));
-				let original_downstream_position = input_to_disconnect.node_id().and_then(|downstream_id| self.position(&downstream_id, network_path));
-
-				self.set_input(input_to_disconnect, reconnect_input.clone(), network_path);
-				if let (Some(original_position), Some(original_downstream_position)) = (original_position, original_downstream_position) {
-					// Recalculate stack position (to keep layer in same place) if the upstream node is a layer in a chain
-					if reconnect_input
-						.as_node()
-						.is_some_and(|upstream_node| self.is_stack(&upstream_node, network_path) && self.is_layer(&upstream_node, network_path))
-					{
-						let offset = (original_position.y - original_downstream_position.y - 3).max(0) as u32;
-						self.set_stack_position(&reconnect_input.as_node().unwrap(), offset, network_path);
-					}
+			if !(matches!(reconnect_to_input, Some(NodeInput::Network { .. })) && matches!(downstream_input, InputConnector::Export(_))) {
+				if let Some(reconnect_input) = reconnect_to_input.take() {
+					self.disconnect_input(&InputConnector::node(*node_id, 0), network_path);
+					self.set_input(downstream_input, reconnect_input, network_path);
 				}
-			} else {
-				self.disconnect_input(input_to_disconnect, network_path);
 			}
 		}
 		true
@@ -4211,7 +4184,7 @@ impl NodeNetworkInterface {
 
 	fn check_collision_with_stack_dependents(&mut self, node_id: &NodeId, shift_sign: i32, network_path: &[NodeId]) -> Vec<(NodeId, LayerOwner)> {
 		self.try_load_all_node_click_targets(network_path);
-
+		self.try_load_stack_dependents(network_path);
 		let Some(stack_dependents) = self.try_get_stack_dependents(network_path) else {
 			log::error!("Could not load stack dependents in shift_selected_nodes");
 			return Vec::new();
@@ -4374,9 +4347,6 @@ impl NodeNetworkInterface {
 			lowest_upstream_node_height = lowest_upstream_node_height.max((upstream_node_position.y - layer_to_move_position.y).max(0) as u32);
 		}
 
-		// Height under the layer to move, which should be retained after the move
-		let layer_to_move_height = height_below_layer.max(lowest_upstream_node_height);
-
 		// If the moved layer is a child of the new parent, then get its index after the disconnect
 		if let Some(moved_layer_previous_index) = parent.children(&self.document_metadata).position(|child| child == layer) {
 			// Adjust the insert index if the layer's previous index is less than the insert index
@@ -4387,8 +4357,6 @@ impl NodeNetworkInterface {
 
 		// Disconnect layer to move
 		self.remove_references_from_network(&layer.to_node(), network_path);
-		self.disconnect_input(&InputConnector::node(layer.to_node(), 0), network_path);
-
 		// TODO: Collapse space between parent and second child if top of stack is moved using the layout system
 
 		let post_node = ModifyInputsContext::get_post_node_with_index(self, parent, insert_index);
@@ -4415,6 +4383,49 @@ impl NodeNetworkInterface {
 			return;
 		};
 
+		let mut highest_y_position = layer_to_move_position.y;
+		let mut lowest_y_position = layer_to_move_position.y;
+
+		for (bottom_position, top_position) in self.upstream_nodes_below_layer(&layer.to_node(), network_path).iter().filter_map(|node_id| {
+			let is_layer = self.is_layer(node_id, network_path);
+			let bottom_position = self.position(node_id, network_path).map(|position| position.y + if is_layer { 3 } else { 2 });
+			let top_position = self.position(node_id, network_path).map(|position| if is_layer { position.y - 1 } else { position.y });
+			bottom_position.zip(top_position)
+		}) {
+			highest_y_position = highest_y_position.min(top_position);
+			lowest_y_position = lowest_y_position.max(bottom_position);
+		}
+		let height_above_layer = layer_to_move_position.y - highest_y_position;
+		let height_below_layer = lowest_y_position - layer_to_move_position.y - 2;
+
+		// If there is an upstream node in the new location for the layer, create space for the moved layer by shifting the upstream node down
+		if let Some(upstream_node_id) = post_node_input.as_node() {
+			let Some(stack_position) = self.position(&upstream_node_id, network_path) else {
+				log::error!("Could not get stack position in move_layer_to_stack");
+				return;
+			};
+
+			let current_gap = stack_position.y - (after_move_post_layer_position.y + 2);
+			let target_gap = 1 + height_above_layer + 2 + height_below_layer + 1;
+
+			// Select the layer to move to ensure the shifting works correctly
+			let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
+				log::error!("Could not get selected nodes in move_layer_to_stack");
+				return;
+			};
+			let old_selected_nodes = selected_nodes.replace_with(vec![upstream_node_id]);
+
+			for _ in 0..(target_gap - current_gap).max(0) {
+				self.vertical_shift_with_push(&upstream_node_id, 1, &mut HashSet::new(), network_path);
+			}
+
+			let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
+				log::error!("Could not get selected nodes in move_layer_to_stack");
+				return;
+			};
+			let _ = selected_nodes.replace_with(old_selected_nodes);
+		}
+
 		// Connect the layer to a parent layer/node at the top of the stack, or a non layer node midway down the stack
 		if post_node.input_index() == 1 || matches!(post_node, InputConnector::Export(_)) || !post_node.node_id().is_some_and(|post_node_id| self.is_layer(&post_node_id, network_path)) {
 			match post_node_input {
@@ -4426,17 +4437,17 @@ impl NodeNetworkInterface {
 					let shift = final_layer_position - previous_layer_position;
 					self.shift_absolute_node_position(&layer.to_node(), shift, network_path);
 				}
-				// Move to the top of a stack
+				// Move to the top of a stack.
 				NodeInput::Node { node_id, .. } => {
-					let Some(top_of_stack_position) = self.position(&node_id, network_path) else {
-						log::error!("Could not get top of stack position in move_layer_to_stack");
+					let Some(stack_top_position) = self.position(&node_id, network_path) else {
+						log::error!("Could not get stack x position in move_layer_to_stack");
 						return;
 					};
-					let shift = top_of_stack_position - previous_layer_position;
+
+					let final_layer_position = IVec2::new(stack_top_position.x, after_move_post_layer_position.y + 3 + height_above_layer);
+					let shift = final_layer_position - previous_layer_position;
 					self.shift_absolute_node_position(&layer.to_node(), shift, network_path);
-					self.shift_absolute_node_position(&node_id, IVec2::new(0, layer_to_move_height as i32 + 3), network_path);
 					self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
-					self.set_stack_position_calculated_offset(&node_id, &layer.to_node(), network_path);
 				}
 				NodeInput::Network { .. } => {
 					log::error!("Cannot move post node to parent which connects to the imports")
@@ -4447,42 +4458,16 @@ impl NodeNetworkInterface {
 				// Move to the bottom of the stack
 				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
 					// TODO: Calculate height of bottom layer by getting height of upstream nodes instead of setting to 3
-					let offset = after_move_post_layer_position - previous_layer_position + IVec2::new(0, 3);
+					let offset = after_move_post_layer_position - previous_layer_position + IVec2::new(0, 3 + height_above_layer);
 					self.shift_absolute_node_position(&layer.to_node(), offset, network_path);
 					self.create_wire(&OutputConnector::node(layer.to_node(), 0), &post_node, network_path);
-					self.set_stack_position_calculated_offset(&layer.to_node(), &post_node.node_id().unwrap(), network_path);
 				}
 				// Insert into the stack
-				NodeInput::Node { node_id: upstream_node_id, .. } => {
-					let Some(upstream_node_metadata) = self.node_metadata(&upstream_node_id, network_path) else {
-						log::error!("Could not get upstream node metadata in move_layer_to_stack");
-						return;
-					};
-					let NodeTypePersistentMetadata::Layer(LayerPersistentMetadata { position, .. }) = &upstream_node_metadata.persistent_metadata.node_type_metadata else {
-						log::error!("Could not get upstream node metadata in move_layer_to_stack");
-						return;
-					};
-					// TODO: Max with height of upstream chain
-					let LayerPosition::Stack(post_node_height) = position.clone() else {
-						log::error!("Could not get vertical offset 3 in move_layer_to_stack");
-						return;
-					};
-
-					let Some(upstream_node_position) = self.position(&upstream_node_id, network_path) else {
-						log::error!("Could not get upstream node position in move_layer_to_stack");
-						return;
-					};
-					self.set_absolute_position(&upstream_node_id, upstream_node_position, network_path);
-
-					let offset = after_move_post_layer_position - previous_layer_position + IVec2::new(0, 3 + post_node_height as i32);
-					self.shift_absolute_node_position(&layer.to_node(), offset, network_path);
-					let upstream_offset = layer_to_move_height as i32 + 3;
-					self.shift_absolute_node_position(&upstream_node_id, IVec2::new(0, upstream_offset), network_path);
-
+				NodeInput::Node { .. } => {
+					let final_layer_position = after_move_post_layer_position + IVec2::new(0, 3 + height_above_layer);
+					let shift = final_layer_position - previous_layer_position;
+					self.shift_absolute_node_position(&layer.to_node(), shift, network_path);
 					self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
-
-					self.set_stack_position_calculated_offset(&layer.to_node(), &post_node.node_id().unwrap(), network_path);
-					self.set_stack_position_calculated_offset(&upstream_node_id, &layer.to_node(), network_path);
 				}
 				NodeInput::Network { .. } => {
 					log::error!("Cannot move post node to parent which connects to the imports")
