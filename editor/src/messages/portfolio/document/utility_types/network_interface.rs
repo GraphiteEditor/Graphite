@@ -1409,6 +1409,7 @@ impl NodeNetworkInterface {
 
 fn proto_node_type(protonode: &graph_craft::ProtoNodeIdentifier) -> Option<&graphene_std::NodeIOTypes> {
 	let mut protonode = protonode.clone();
+	// TODO: Remove
 	if let Some((path, _generics)) = protonode.name.split_once('<') {
 		protonode = path.to_string().to_string().into();
 	}

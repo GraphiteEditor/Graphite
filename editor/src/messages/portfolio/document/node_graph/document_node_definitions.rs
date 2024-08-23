@@ -3949,7 +3949,6 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 });
 
 pub fn resolve_document_node_type(identifier: &str) -> Option<&DocumentNodeDefinition> {
-	log::debug!("{identifier}");
 	DOCUMENT_NODE_TYPES.iter().find(|definition| definition.identifier == identifier)
 }
 
