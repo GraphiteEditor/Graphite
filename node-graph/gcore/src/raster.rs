@@ -1,6 +1,6 @@
 use core::{fmt::Debug, marker::PhantomData};
 
-use crate::Node;
+use crate::{transform::Footprint, Node};
 
 use bytemuck::{Pod, Zeroable};
 use glam::DVec2;
@@ -422,14 +422,14 @@ impl SetBlendMode for ImageFrame<Color> {
 }
 
 #[node_macro::new_node_fn(category("Style"))]
-fn blend_mode<T: SetBlendMode>(
+async fn blend_mode<T: SetBlendMode>(
 	footprint: Footprint,
 	#[expose]
-	#[implementations((Footprint, crate::vector::VectorData),(Footprint, crate::GraphicGroup),(Footprint, ImageFrame<Color>))]
-	mut value: impl Node<Footprint, Output = T>,
+	#[implementations((Footprint, crate::vector::VectorData), (Footprint, crate::GraphicGroup), (Footprint, ImageFrame<Color>))]
+	value: impl Node<Footprint, Output = T> + 'n,
 	blend_mode: BlendMode,
 ) -> T {
-	let mut value = value.eval(footprint);
+	let mut value = value.eval(footprint).await;
 	value.set_blend_mode(blend_mode);
 	value
 }

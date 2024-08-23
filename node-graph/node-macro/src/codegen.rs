@@ -26,6 +26,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	} = parsed;
 
 	let category = &attributes.category.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
+	let mod_name = format_ident!("_{}_mod", mod_name);
 
 	let display_name = match &attributes.display_name.as_ref() {
 		Some(lit) => lit.value(),
@@ -50,10 +51,23 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		quote! { pub(super) #name: #gen }
 	});
 
+	let graphene_core = match graphene_core_crate {
+		FoundCrate::Itself => quote!(crate),
+		FoundCrate::Name(name) => {
+			let ident = Ident::new(name, proc_macro2::Span::call_site());
+			quote!( #ident )
+		}
+	};
+
 	let field_types: Vec<_> = fields
 		.iter()
 		.map(|field| match field {
-			ParsedField::Regular { ty, .. } | ParsedField::Node { ty, .. } => ty,
+			ParsedField::Regular { ty, .. } => ty.clone(),
+			ParsedField::Node { ty, output_type, .. } => match parsed.is_async {
+				true => parse_quote!(&'n impl Node<'n, #input_type, Output: core::future::Future<Output=#output_type> + #graphene_core::WasmNotSend>),
+
+				false => parse_quote!(&'n impl Node<'n, #input_type, Output = #output_type>),
+			},
 		})
 		.collect();
 
@@ -96,9 +110,9 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	for (field, name) in fields.iter().zip(struct_generics.iter()) {
 		clauses.push(match (field, *is_async) {
 			(ParsedField::Regular { ty, .. }, _) => quote!(#name: Node<'n, (), Output = #ty> ),
-			(ParsedField::Node { input_type, output_type, .. }, false) => quote!(#name: Node<'n, #input_type, Output = #output_type> + WasmNotSync + 'n),
+			(ParsedField::Node { input_type, output_type, .. }, false) => quote!(for<'all_input> #name: Node<'all_input, #input_type, Output = #output_type> + #graphene_core::WasmNotSync),
 			(ParsedField::Node { input_type, output_type, .. }, true) => {
-				quote!(#name: Node<'n, #input_type, Output: core::future::Future<Output = #output_type>> + WasmNotSync + 'n)
+				quote!(for<'all_input> #name: Node<'all_input, #input_type, Output: core::future::Future<Output = #output_type> + #graphene_core::WasmNotSend> + #graphene_core::WasmNotSync)
 			}
 		});
 	}
@@ -122,11 +136,11 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 	let eval_impl = if *is_async {
 		quote! {
-			type Output = DynFuture<'n, #output_type>;
+			type Output = #graphene_core::registry::DynFuture<'n, #output_type>;
 			#[inline]
 			fn eval(&'n self, __input: #input_type) -> Self::Output {
 				#(#eval_args)*
-				Box::pin(super::#fn_name(__input #(, #field_names)*))
+				Box::pin(self::#fn_name(__input #(, #field_names)*))
 			}
 		}
 	} else {
@@ -142,14 +156,6 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	let identifier = quote!(format!("{}::{}", std::module_path!().rsplit_once("::").unwrap().0, stringify!(#struct_name)));
 
 	let register_node_impl = generate_register_node_impl(parsed, &field_names, &struct_name, &identifier)?;
-
-	let graphene_core = match graphene_core_crate {
-		FoundCrate::Itself => quote!(crate),
-		FoundCrate::Name(name) => {
-			let ident = Ident::new(name, proc_macro2::Span::call_site());
-			quote!( #ident )
-		}
-	};
 
 	Ok(quote! {
 		/// Underlying implementation for [#struct_name]
@@ -227,9 +233,9 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 		.map(|field| match field {
 			ParsedField::Regular { implementations, ty, .. } => {
 				if !implementations.is_empty() {
-					implementations.into_iter().map(|ty| (&unit, ty)).collect()
+					implementations.into_iter().map(|ty| (&unit, ty, false)).collect()
 				} else {
-					vec![(&unit, ty)]
+					vec![(&unit, ty, false)]
 				}
 			}
 			ParsedField::Node {
@@ -239,9 +245,9 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 				..
 			} => {
 				if !implementations.is_empty() {
-					implementations.into_iter().map(|tup| (&tup.elems[0], &tup.elems[1])).collect()
+					implementations.into_iter().map(|tup| (&tup.elems[0], &tup.elems[1], true)).collect()
 				} else {
-					vec![(input_type, output_type)]
+					vec![(input_type, output_type, true)]
 				}
 			}
 		})
@@ -253,10 +259,11 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 	for i in 0..max_implementations.unwrap_or(0) {
 		let mut temp_constructors = Vec::new();
 		let mut temp_node_io = Vec::new();
+		let mut panic_node_types = Vec::new();
 
 		for (j, types) in parameter_types.iter().enumerate() {
 			let field_name = field_names[j];
-			let (input_type, output_type) = types[i.min(types.len() - 1)];
+			let (input_type, output_type, impl_node) = types[i.min(types.len() - 1)];
 
 			let node = matches!(parsed.fields[j], ParsedField::Node { .. });
 
@@ -277,7 +284,17 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 						// try polling futures
 				)
 			});
-			temp_node_io.push(quote!(#input_type, #output_type));
+			match parsed.is_async && impl_node {
+				true => temp_node_io.push(quote!(gcore::Type::Fn(
+					Box::new(concrete!(#input_type)),
+					Box::new(gcore::Type::Future(Box::new(concrete!(#output_type))))
+				))),
+				false => temp_node_io.push(quote!(fn_type!(#input_type, #output_type))),
+			};
+			match parsed.is_async && impl_node {
+				true => panic_node_types.push(quote!(#input_type, DynFuture<'static, #output_type>)),
+				false => panic_node_types.push(quote!(#input_type, #output_type)),
+			};
 		}
 		let node_io = if parsed.is_async { quote!(to_async_node_io) } else { quote!(to_node_io) };
 		constructors.push(quote!(
@@ -292,8 +309,8 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 						Box::new(any)  as TypeErasedBox<'_>
 					})
 				}, {
-					let node = #struct_name::new(#(PanicNode::<#temp_node_io>::new(),)*);
-					let params = vec![#(fn_type!(#temp_node_io),)*];
+					let node = #struct_name::new(#(PanicNode::<#panic_node_types>::new(),)*);
+					let params = vec![#(#temp_node_io,)*];
 					let mut node_io = NodeIO::<'_, #input_type>::#node_io(&node, params);
 					node_io
 
