@@ -63,7 +63,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		.iter()
 		.map(|field| match field {
 			ParsedField::Regular { ty, .. } => ty.clone(),
-			ParsedField::Node { ty, output_type, .. } => match parsed.is_async {
+			ParsedField::Node { output_type, .. } => match parsed.is_async {
 				true => parse_quote!(&'n impl Node<'n, #input_type, Output: core::future::Future<Output=#output_type> + #graphene_core::WasmNotSend>),
 
 				false => parse_quote!(&'n impl Node<'n, #input_type, Output = #output_type>),
@@ -175,7 +175,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		mod #mod_name {
 			use super::*;
 			use #graphene_core as gcore;
-			use gcore::{Node, NodeIOTypes, concrete, fn_type, ProtoNodeIdentifier, WasmNotSync, NodeIO};
+			use gcore::{Node, NodeIOTypes, concrete, fn_type, future, ProtoNodeIdentifier, WasmNotSync, NodeIO};
 			use gcore::value::ClonedNode;
 			use gcore::ops::TypeNode;
 			use gcore::registry::{NodeMetadata, FieldMetadata, NODE_REGISTRY, NODE_METADATA, DynAnyNode, DowncastBothNode, DynFuture, TypeErasedBox, PanicNode};
@@ -284,13 +284,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 						// try polling futures
 				)
 			});
-			match parsed.is_async && impl_node {
-				true => temp_node_io.push(quote!(gcore::Type::Fn(
-					Box::new(concrete!(#input_type)),
-					Box::new(gcore::Type::Future(Box::new(concrete!(#output_type))))
-				))),
-				false => temp_node_io.push(quote!(fn_type!(#input_type, #output_type))),
-			};
+			temp_node_io.push(quote!(fn_type!(#input_type, #output_type)));
 			match parsed.is_async && impl_node {
 				true => panic_node_types.push(quote!(#input_type, DynFuture<'static, #output_type>)),
 				false => panic_node_types.push(quote!(#input_type, #output_type)),

@@ -38,6 +38,13 @@ macro_rules! generic {
 }
 
 #[macro_export]
+macro_rules! future {
+	($type:ty) => {{
+		$crate::Type::Future(Box::new(concrete!($type)))
+	}};
+}
+
+#[macro_export]
 macro_rules! fn_type {
 	($type:ty) => {
 		$crate::Type::Fn(Box::new(concrete!(())), Box::new(concrete!($type)))

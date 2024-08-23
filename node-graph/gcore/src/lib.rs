@@ -137,7 +137,8 @@ where
 	{
 		NodeIOTypes {
 			input: concrete!(<Input as StaticTypeSized>::Static),
-			output: Type::Future(Box::new(concrete!(<<Self::Output as Future>::Output as StaticTypeSized>::Static))),
+			// TODO return actual future type
+			output: concrete!(<<Self::Output as Future>::Output as StaticTypeSized>::Static),
 			parameters,
 		}
 	}

@@ -1,7 +1,6 @@
 use convert_case::{Case, Casing};
 use indoc::indoc;
 use proc_macro2::TokenStream as TokenStream2;
-use quote::quote;
 use quote::{format_ident, ToTokens};
 use syn::parse::{Parse, ParseStream, Parser};
 use syn::punctuated::Punctuated;
@@ -233,7 +232,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute], is_async: boo
 			.unwrap_or_default();
 		let ty = match is_async {
 			true => {
-				parse_quote!(impl Node<'n, #input_type, Output: core::future::Future<Output=#output_type>>)
+				parse_quote!(impl Node<'n, #input_type, Output: core::future::Future<Output=#output_type> + >)
 			}
 			false => parse_quote!(impl Node<'n, #input_type, Output = #output_type>),
 		};
