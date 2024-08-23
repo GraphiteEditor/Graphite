@@ -421,7 +421,7 @@ impl SetBlendMode for ImageFrame<Color> {
 	}
 }
 
-#[node_macro::new_node_fn(category("Adjustments"))]
+#[node_macro::new_node_fn(category("Style"))]
 fn blend_mode<T: SetBlendMode>(_: (), #[implementations(crate::vector::VectorData, crate::GraphicGroup, ImageFrame<Color>)] mut value: T, blend_mode: BlendMode) -> T {
 	value.set_blend_mode(blend_mode);
 	value

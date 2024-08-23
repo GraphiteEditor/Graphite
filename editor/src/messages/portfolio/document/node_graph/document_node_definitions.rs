@@ -2630,26 +2630,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: &node_properties::opacity_properties,
 		},
 		DocumentNodeDefinition {
-			identifier: "Blend Mode",
-			category: "Style",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::raster::BlendModeNode<_>"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::BlendMode(BlendMode::Normal), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Blend Mode".to_string()],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::blend_mode_properties,
-		},
-		DocumentNodeDefinition {
 			identifier: "Posterize",
 			category: "Raster: Adjustment",
 			node_template: NodeTemplate {
