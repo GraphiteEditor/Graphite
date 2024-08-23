@@ -5,10 +5,10 @@ use convert_case::{Case, Casing};
 use proc_macro2::TokenStream as TokenStream2;
 use proc_macro_crate::FoundCrate;
 use quote::{format_ident, quote};
-use syn::{parse_quote, punctuated::Punctuated, spanned::Spanned, token::Comma, Ident, Token, WhereClause, WherePredicate};
+use syn::{parse_quote, punctuated::Punctuated, spanned::Spanned, token::Comma, Error, Ident, Token, WhereClause, WherePredicate};
 static NODE_ID: AtomicU64 = AtomicU64::new(0);
 
-pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
+pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStream2> {
 	let ParsedNodeFn {
 		attributes,
 		fn_name,
@@ -141,7 +141,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 	};
 	let identifier = quote!(format!("{}::{}", std::module_path!().rsplit_once("::").unwrap().0, stringify!(#struct_name)));
 
-	let register_node_impl = generate_register_node_impl(parsed, &field_names, &struct_name, &identifier);
+	let register_node_impl = generate_register_node_impl(parsed, &field_names, &struct_name, &identifier)?;
 
 	let graphene_core = match graphene_core_crate {
 		FoundCrate::Itself => quote!(crate),
@@ -151,7 +151,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 		}
 	};
 
-	quote! {
+	Ok(quote! {
 		/// Underlying implementation for [#struct_name]
 		#[inline]
 		#async_keyword fn #fn_name <'n, #(#fn_generics,)*> (#input_ident: #input_type #(, #field_idents: #field_types)*) -> #output_type #where_clause #body
@@ -214,10 +214,10 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> TokenStream2 {
 				NODE_METADATA.lock().unwrap().insert(#identifier, metadata);
 			}
 		}
-	}
+	})
 }
 
-fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], struct_name: &Ident, identifier: &TokenStream2) -> TokenStream2 {
+fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], struct_name: &Ident, identifier: &TokenStream2) -> Result<TokenStream2, syn::Error> {
 	let input_type = &parsed.input.ty;
 	let mut constructors = Vec::new();
 	let unit = parse_quote!(());
@@ -264,7 +264,9 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 			let #field_name: DowncastBothNode<#input_type, #output_type> = DowncastBothNode::new(args[#j].clone());
 			 );
 			temp_constructors.push(if node {
-				assert!(parsed.is_async, "Node needs to be async if you want to use lambda parameters");
+				if !parsed.is_async {
+					return Err(Error::new_spanned(&parsed.fn_name, "Node needs to be async if you want to use lambda parameters"));
+				}
 				downcast_node
 			} else {
 				quote!(
@@ -301,7 +303,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 	}
 	let registry_name = format_ident!("__node_registry_{}_{}", NODE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst), struct_name);
 
-	quote! {
+	Ok(quote! {
 
 		#[cfg_attr(not(target_arch = "wasm32"), ctor)]
 		fn register_node() {
@@ -319,5 +321,5 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 			register_node();
 			register_metadata();
 		}
-	}
+	})
 }

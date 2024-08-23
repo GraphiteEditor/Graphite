@@ -422,7 +422,14 @@ impl SetBlendMode for ImageFrame<Color> {
 }
 
 #[node_macro::new_node_fn(category("Style"))]
-fn blend_mode<T: SetBlendMode>(_: (), #[implementations(crate::vector::VectorData, crate::GraphicGroup, ImageFrame<Color>)] mut value: T, blend_mode: BlendMode) -> T {
+fn blend_mode<T: SetBlendMode>(
+	footprint: Footprint,
+	#[expose]
+	#[implementations((Footprint, crate::vector::VectorData),(Footprint, crate::GraphicGroup),(Footprint, ImageFrame<Color>))]
+	mut value: impl Node<Footprint, Output = T>,
+	blend_mode: BlendMode,
+) -> T {
+	let mut value = value.eval(footprint);
 	value.set_blend_mode(blend_mode);
 	value
 }

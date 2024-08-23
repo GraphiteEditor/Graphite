@@ -296,14 +296,15 @@ fn extract_attribute<'a>(attrs: &'a [Attribute], name: &str) -> Option<&'a Attri
 
 // Modify the new_node_fn function to use the code generation
 pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
-	match parse_node_fn(attr, item.clone()) {
+	match parse_node_fn(attr, item.clone()).and_then(|x| generate_node_code(&x)) {
 		Ok(parsed) => {
-			let generated_code = generate_node_code(&parsed);
+			/*let generated_code = generate_node_code(&parsed);
 			// panic!("{}", generated_code.to_string());
 			quote! {
 				// #item
 				#generated_code
-			}
+			}*/
+			parsed
 		}
 		Err(e) => {
 			// Return the error as a compile error
