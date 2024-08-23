@@ -43,7 +43,6 @@ pub(crate) enum ParsedField {
 	},
 	Node {
 		pat_ident: PatIdent,
-		ty: Type,
 		input_type: Type,
 		output_type: Type,
 		implementations: Punctuated<TypeTuple, Comma>,
@@ -115,7 +114,7 @@ fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNo
 	let fn_generics = input_fn.sig.generics.params.into_iter().collect();
 	let is_async = input_fn.sig.asyncness.is_some();
 
-	let (input, fields) = parse_inputs(&input_fn.sig.inputs, is_async)?;
+	let (input, fields) = parse_inputs(&input_fn.sig.inputs)?;
 	let output_type = parse_output(&input_fn.sig.output)?;
 	let where_clause = input_fn.sig.generics.where_clause;
 	let body = input_fn.block.to_token_stream();
@@ -144,7 +143,7 @@ fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNo
 	})
 }
 
-fn parse_inputs(inputs: &Punctuated<FnArg, Comma>, is_async: bool) -> syn::Result<(Input, Vec<ParsedField>)> {
+fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<ParsedField>)> {
 	let mut fields = Vec::new();
 	let mut input = None;
 
@@ -179,8 +178,7 @@ fn parse_inputs(inputs: &Punctuated<FnArg, Comma>, is_async: bool) -> syn::Resul
 					implementations,
 				});
 			} else if let Pat::Ident(pat_ident) = &**pat {
-				let field =
-					parse_field(pat_ident.clone(), (**ty).clone(), attrs, is_async).map_err(|e| Error::new_spanned(pat_ident, format!("Failed to parse argument '{}': {}", pat_ident.ident, e)))?;
+				let field = parse_field(pat_ident.clone(), (**ty).clone(), attrs).map_err(|e| Error::new_spanned(pat_ident, format!("Failed to parse argument '{}': {}", pat_ident.ident, e)))?;
 				fields.push(field);
 			} else {
 				return Err(Error::new_spanned(pat, "Expected a simple identifier for the field name"));
@@ -203,7 +201,7 @@ fn parse_implementations<T: Parse>(attr: &Attribute, name: &Ident) -> syn::Resul
 		.parse2(content)
 		.map_err(|e| Error::new_spanned(attr, format!("Failed to parse implementations for argument '{}': {}", name, e)))
 }
-fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute], is_async: bool) -> syn::Result<ParsedField> {
+fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Result<ParsedField> {
 	let name = &pat_ident.ident;
 	let default_value = extract_attribute(attrs, "default").and_then(|attr| {
 		attr.parse_args()
@@ -230,16 +228,9 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute], is_async: boo
 			.map(|attr| parse_implementations(attr, name))
 			.transpose()?
 			.unwrap_or_default();
-		let ty = match is_async {
-			true => {
-				parse_quote!(impl Node<'n, #input_type, Output: core::future::Future<Output=#output_type> + >)
-			}
-			false => parse_quote!(impl Node<'n, #input_type, Output = #output_type>),
-		};
 
 		Ok(ParsedField::Node {
 			pat_ident,
-			ty,
 			input_type,
 			output_type,
 			implementations,
@@ -457,13 +448,12 @@ mod tests {
 			fields: vec![
 				ParsedField::Node {
 					pat_ident: pat_ident("transform_target"),
-					ty: parse_quote!(impl Node<Footprint, Output = T>),
 					input_type: parse_quote!(Footprint),
 					output_type: parse_quote!(T),
 					implementations: Punctuated::new(),
 				},
 				ParsedField::Regular {
-					pat_ident: pat_ident("translte"),
+					pat_ident: pat_ident("translate"),
 					ty: parse_quote!(DVec2),
 					exposed: false,
 					default_value: None,
