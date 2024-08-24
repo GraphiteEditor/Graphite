@@ -866,8 +866,9 @@ impl NodeNetworkInterface {
 			{
 				let number_of_outputs = self.number_of_outputs(&upstream_node_from_input, network_path);
 
-				// A node is a sole dependent if all outputs are sole dependents
+				// A node is a sole dependent if all outputs are sole dependents, and there are no dead ends
 				let mut all_outputs_are_sole_dependents = true;
+				let mut dead_ends = 0;
 
 				for output_index in 0..number_of_outputs {
 					let downstream_connections = {
@@ -898,25 +899,31 @@ impl NodeNetworkInterface {
 										log::error!("Could not get outward wires in upstream_nodes_below_layer");
 										continue;
 									};
-
+									let mut has_downstream_connections = false;
 									for output_index in 0..number_of_outputs {
 										let Some(downstream_connections) = outward_wires.get(&OutputConnector::node(*downstream_node_id, output_index)) else {
 											log::error!("Could not get outward wires in upstream_nodes_below_layer");
 											continue;
 										};
+										if !downstream_connections.is_empty() {
+											has_downstream_connections = true;
+										}
 										stack.extend(downstream_connections.clone());
+									}
+									if !has_downstream_connections {
+										dead_ends += 1;
 									}
 								}
 							}
 							InputConnector::Export(_) => current_output_is_sole_dependent = false,
 						}
 					}
-					if !current_output_is_sole_dependent {
+					if !current_output_is_sole_dependent || dead_ends != 0 {
 						all_outputs_are_sole_dependents = false;
 						break;
 					}
 				}
-				if all_outputs_are_sole_dependents {
+				if all_outputs_are_sole_dependents && dead_ends == 0 {
 					sole_dependents.insert(upstream_node_from_input);
 				} else {
 					upstream_chain_can_be_added = false;
@@ -1615,6 +1622,7 @@ impl NodeNetworkInterface {
 						break;
 					}
 					if !sole_dependents.contains(&current_node) {
+						let mut has_outward_wire = false;
 						for output_index in 0..self.number_of_outputs(&current_node, network_path) {
 							let Some(outward_wires) = self.outward_wires(network_path) else {
 								log::error!("Cannot load outward wires in load_stack_dependents");
@@ -1625,11 +1633,15 @@ impl NodeNetworkInterface {
 								continue;
 							};
 							for downstream_input in outward_wires {
+								has_outward_wire = true;
 								match downstream_input {
 									InputConnector::Node { node_id, .. } => stack.push(*node_id),
 									InputConnector::Export(_) => is_sole_dependent = false,
 								}
 							}
+						}
+						if !has_outward_wire {
+							is_sole_dependent = false;
 						}
 					}
 					if !is_sole_dependent {
@@ -3440,17 +3452,20 @@ impl NodeNetworkInterface {
 			};
 			let max_shift_distance = reconnected_node_position.y - disconnected_node_position.y;
 
+			let upstream_nodes = self.upstream_flow_back_from_nodes(vec![*reconnect_node], network_path, FlowType::PrimaryFlow).collect::<Vec<_>>();
+
 			// Select the reconnect node to move to ensure the shifting works correctly
 			let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
 				log::error!("Could not get selected nodes in remove_references_from_network");
 				return false;
 			};
-			let old_selected_nodes = selected_nodes.replace_with(vec![*reconnect_node]);
+
+			let old_selected_nodes = selected_nodes.replace_with(upstream_nodes);
 
 			// Shift up until there is either a collision or the disconnected node position is reached
 			let mut current_shift_distance = 0;
 			while self.check_collision_with_stack_dependents(reconnect_node, -1, network_path).is_empty() && max_shift_distance > current_shift_distance {
-				self.vertical_shift_with_push(reconnect_node, -1, &mut HashSet::new(), network_path);
+				self.shift_selected_nodes(Direction::Up, false, network_path);
 				current_shift_distance += 1;
 			}
 
@@ -3940,39 +3955,48 @@ impl NodeNetworkInterface {
 			log::error!("Could not get selected nodes in shift_selected_nodes");
 			return;
 		};
-
-		for node_id in node_ids.clone() {
-			if self.is_layer(&node_id, network_path) {
-				if let Some(owned_nodes) = self.owned_nodes(&node_id, network_path) {
-					for owned_node in owned_nodes {
-						node_ids.remove(owned_node);
-					}
-				};
+		if !shift_without_push {
+			for node_id in node_ids.clone() {
+				if self.is_layer(&node_id, network_path) {
+					if let Some(owned_nodes) = self.owned_nodes(&node_id, network_path) {
+						for owned_node in owned_nodes {
+							node_ids.remove(owned_node);
+						}
+					};
+				}
 			}
 		}
 
-		let mut filtered_node_ids = HashSet::new();
-		for selected_node in &node_ids {
+		for selected_node in &node_ids.clone() {
 			// Deselect chain nodes upstream from a selected layer
 			if self.is_chain(selected_node, network_path)
 				&& self
 					.downstream_layer(selected_node, network_path)
 					.is_some_and(|downstream_layer| node_ids.contains(&downstream_layer.to_node()))
 			{
-				continue;
+				node_ids.remove(selected_node);
 			}
-			filtered_node_ids.insert(*selected_node);
 		}
 
 		// If shifting up without a push, cancel the shift if there is a stack node that cannot move up
 		if direction == Direction::Up && shift_without_push {
-			for node_id in &filtered_node_ids {
+			for node_id in &node_ids {
 				let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
 					log::error!("Could not get node metadata for node {node_id} in shift_selected_nodes");
 					return;
 				};
 				if let NodeTypePersistentMetadata::Layer(layer_metadata) = &node_metadata.persistent_metadata.node_type_metadata {
 					if let LayerPosition::Stack(offset) = layer_metadata.position {
+						// If the upstream layer is selected, then skip
+						let Some(outward_wires) = self.outward_wires(network_path).and_then(|outward_wires| outward_wires.get(&OutputConnector::node(*node_id, 0))) else {
+							log::error!("Could not get outward wires in shift_selected_nodes");
+							return;
+						};
+						if let Some(upstream_node) = outward_wires.first() {
+							if node_ids.contains(&upstream_node.node_id().expect("Stack layer should have downstream layer")) {
+								continue;
+							}
+						}
 						// Offset cannot be negative, so cancel the shift
 						if offset == 0 {
 							return;
@@ -3982,7 +4006,7 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		let mut node_ids_with_position = filtered_node_ids
+		let mut node_ids_with_position = node_ids
 			.iter()
 			.filter_map(|&node_id| {
 				let Some(position) = self.position(&node_id, network_path) else {
@@ -3993,7 +4017,7 @@ impl NodeNetworkInterface {
 			})
 			.collect::<Vec<(NodeId, i32)>>();
 
-		if node_ids_with_position.len() != filtered_node_ids.len() {
+		if node_ids_with_position.len() != node_ids.len() {
 			log::error!("Could not get position for all nodes in shift_selected_nodes");
 			return;
 		}
@@ -4342,6 +4366,12 @@ impl NodeNetworkInterface {
 	// TODO: Run the auto layout system to make space for the new nodes
 	/// Disconnect the layers primary output and the input to the last non layer node feeding into it through primary flow, reconnects, then moves the layer to the new layer and stack index
 	pub fn move_layer_to_stack(&mut self, layer: LayerNodeIdentifier, mut parent: LayerNodeIdentifier, mut insert_index: usize, network_path: &[NodeId]) {
+		// Prevent moving an artboard anywhere but to the ROOT_PARENT child stack
+		if self.is_artboard(&layer.to_node(), network_path) && parent != LayerNodeIdentifier::ROOT_PARENT {
+			log::error!("Artboard can only be moved to the root parent stack");
+			return;
+		}
+
 		// A layer is considered to be the height of that layer plus the height to the upstream layer sibling
 		// If a non artboard layer is attempted to be connected to the exports, and there is already an artboard connected, then connect the layer to the artboard.
 		if let Some(first_layer) = LayerNodeIdentifier::ROOT_PARENT.children(&self.document_metadata).next() {
@@ -4359,16 +4389,6 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		let previous_upstream_node = self.upstream_flow_back_from_nodes(vec![layer.to_node()], network_path, FlowType::PrimaryFlow).nth(1);
-		let mut height_below_layer = 0;
-
-		if let Some(previous_upstream_node) = previous_upstream_node {
-			let Some(previous_upstream_node_position) = self.position(&previous_upstream_node, network_path) else {
-				log::error!("Could not get previous upstream node position in move_layer_to_stack");
-				return;
-			};
-			height_below_layer = (previous_upstream_node_position.y - layer_to_move_position.y - 3).max(0) as u32;
-		}
 		let mut lowest_upstream_node_height = 0;
 		for upstream_node in self
 			.upstream_flow_back_from_nodes(vec![layer.to_node()], network_path, FlowType::LayerChildrenUpstreamFlow)
@@ -4391,7 +4411,6 @@ impl NodeNetworkInterface {
 
 		// Disconnect layer to move
 		self.remove_references_from_network(&layer.to_node(), network_path);
-		// TODO: Collapse space between parent and second child if top of stack is moved using the layout system
 
 		let post_node = ModifyInputsContext::get_post_node_with_index(self, parent, insert_index);
 
@@ -4417,22 +4436,26 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		// Get the height of the downstream node
+		// Get the height of the downstream node if inserting into a stack
 		let mut downstream_height = 0;
-		if let Some(downstream_node) = post_node.node_id() {
-			let Some(downstream_node_position) = self.position(&downstream_node, network_path) else {
-				log::error!("Could not get downstream node position in move_layer_to_stack");
-				return;
-			};
-			let mut lowest_y_position = downstream_node_position.y + 3;
+		let inserting_into_stack =
+			!(post_node.input_index() == 1 || matches!(post_node, InputConnector::Export(_)) || !post_node.node_id().is_some_and(|post_node_id| self.is_layer(&post_node_id, network_path)));
+		if inserting_into_stack {
+			if let Some(downstream_node) = post_node.node_id() {
+				let Some(downstream_node_position) = self.position(&downstream_node, network_path) else {
+					log::error!("Could not get downstream node position in move_layer_to_stack");
+					return;
+				};
+				let mut lowest_y_position = downstream_node_position.y + 3;
 
-			for bottom_position in self.upstream_nodes_below_layer(&downstream_node, network_path).iter().filter_map(|node_id| {
-				let is_layer = self.is_layer(node_id, network_path);
-				self.position(node_id, network_path).map(|position| position.y + if is_layer { 3 } else { 2 })
-			}) {
-				lowest_y_position = lowest_y_position.max(bottom_position);
+				for bottom_position in self.upstream_nodes_below_layer(&downstream_node, network_path).iter().filter_map(|node_id| {
+					let is_layer = self.is_layer(node_id, network_path);
+					self.position(node_id, network_path).map(|position| position.y + if is_layer { 3 } else { 2 })
+				}) {
+					lowest_y_position = lowest_y_position.max(bottom_position);
+				}
+				downstream_height = lowest_y_position - (downstream_node_position.y + 3);
 			}
-			downstream_height = lowest_y_position - (downstream_node_position.y + 3);
 		}
 
 		let mut highest_y_position = layer_to_move_position.y;
@@ -4452,6 +4475,18 @@ impl NodeNetworkInterface {
 
 		// If there is an upstream node in the new location for the layer, create space for the moved layer by shifting the upstream node down
 		if let Some(upstream_node_id) = post_node_input.as_node() {
+			// Select the layer to move to ensure the shifting works correctly
+			let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
+				log::error!("Could not get selected nodes in move_layer_to_stack");
+				return;
+			};
+			let old_selected_nodes = selected_nodes.replace_with(vec![upstream_node_id]);
+
+			// Create the minimum amount space for the moved layer
+			for _ in 0..3 {
+				self.vertical_shift_with_push(&upstream_node_id, 1, &mut HashSet::new(), network_path);
+			}
+
 			let Some(stack_position) = self.position(&upstream_node_id, network_path) else {
 				log::error!("Could not get stack position in move_layer_to_stack");
 				return;
@@ -4460,26 +4495,65 @@ impl NodeNetworkInterface {
 			let current_gap = stack_position.y - (after_move_post_layer_position.y + 2);
 			let target_gap = 1 + height_above_layer + 2 + height_below_layer + 1;
 
-			// Select the layer to move to ensure the shifting works correctly
-			let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
-				log::error!("Could not get selected nodes in move_layer_to_stack");
-				return;
-			};
-			let old_selected_nodes = selected_nodes.replace_with(vec![upstream_node_id]);
-
 			for _ in 0..(target_gap - current_gap).max(0) {
 				self.vertical_shift_with_push(&upstream_node_id, 1, &mut HashSet::new(), network_path);
 			}
 
-			let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
-				log::error!("Could not get selected nodes in move_layer_to_stack");
-				return;
-			};
-			let _ = selected_nodes.replace_with(old_selected_nodes);
+			let _ = self.selected_nodes_mut(network_path).unwrap().replace_with(old_selected_nodes);
+		}
+
+		// If inserting into a stack with a parent, ensure the parent stack has enough space for the child stack
+		if parent != LayerNodeIdentifier::ROOT_PARENT {
+			if let Some(upstream_sibling) = parent.next_sibling(&self.document_metadata) {
+				let Some(parent_position) = self.position(&parent.to_node(), network_path) else {
+					log::error!("Could not get parent position in move_layer_to_stack");
+					return;
+				};
+				let last_child = parent.last_child(&self.document_metadata).unwrap_or(parent);
+
+				let Some(mut last_child_position) = self.position(&last_child.to_node(), network_path) else {
+					log::error!("Could not get last child position in move_layer_to_stack");
+					return;
+				};
+
+				if self.is_layer(&last_child.to_node(), network_path) {
+					last_child_position.y += 3;
+				} else {
+					last_child_position.y += 2;
+				}
+
+				// If inserting below the current last child, then the last child is layer to move
+				if post_node.node_id() == Some(last_child.to_node()) {
+					last_child_position += height_above_layer + 3 + height_below_layer;
+				}
+
+				let Some(upstream_sibling_position) = self.position(&upstream_sibling.to_node(), network_path) else {
+					log::error!("Could not get upstream sibling position in move_layer_to_stack");
+					return;
+				};
+
+				let target_gap = last_child_position.y - parent_position.y + 3;
+				let current_gap = upstream_sibling_position.y - parent_position.y;
+
+				let upstream_nodes = self
+					.upstream_flow_back_from_nodes(vec![upstream_sibling.to_node()], network_path, FlowType::UpstreamFlow)
+					.collect::<Vec<_>>();
+				let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
+					log::error!("Could not get selected nodes in move_layer_to_stack");
+					return;
+				};
+				let old_selected_nodes = selected_nodes.replace_with(upstream_nodes);
+
+				for _ in 0..(target_gap - current_gap).max(0) {
+					self.shift_selected_nodes(Direction::Down, true, network_path);
+				}
+
+				let _ = self.selected_nodes_mut(network_path).unwrap().replace_with(old_selected_nodes);
+			}
 		}
 
 		// Connect the layer to a parent layer/node at the top of the stack, or a non layer node midway down the stack
-		if post_node.input_index() == 1 || matches!(post_node, InputConnector::Export(_)) || !post_node.node_id().is_some_and(|post_node_id| self.is_layer(&post_node_id, network_path)) {
+		if !inserting_into_stack {
 			match post_node_input {
 				// Create a new stack
 				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
