@@ -161,6 +161,8 @@ pub enum DocumentMessage {
 		layer: LayerNodeIdentifier,
 	},
 	PTZUpdate,
+	SelectionStepBack,
+	SelectionStepForward,
 	ZoomCanvasTo100Percent,
 	ZoomCanvasTo200Percent,
 	ZoomCanvasToFitAll,

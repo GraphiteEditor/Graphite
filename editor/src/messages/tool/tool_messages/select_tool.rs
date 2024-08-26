@@ -656,7 +656,7 @@ impl Fsm for SelectToolFsmState {
 							_ => drag_deepest_manipulation(responses, selected, tool_data, document),
 						}
 						tool_data.get_snap_candidates(document, input);
-						log::debug!("starting transaction");
+
 						responses.add(DocumentMessage::StartTransaction);
 						SelectToolFsmState::Dragging
 					} else {
@@ -1028,7 +1028,8 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::Ready { .. }, SelectToolMessage::Enter) => {
-				let mut selected_layers = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata());
+				let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+				let mut selected_layers = selected_nodes.selected_layers(document.metadata());
 
 				if let Some(layer) = selected_layers.next() {
 					// Check that only one layer is selected
@@ -1042,6 +1043,7 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::Abort) => {
+				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
 				responses.add(DocumentMessage::Undo);
 				responses.add(OverlaysMessage::Draw);

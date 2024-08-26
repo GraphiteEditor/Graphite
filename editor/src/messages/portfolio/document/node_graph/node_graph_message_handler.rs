@@ -484,7 +484,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 
 				if let Some(clicked_id) = clicked_id {
-					responses.add(DocumentMessage::StartTransaction);
 					let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else {
 						log::error!("Could not get selected nodes in PointerDown");
 						return;
@@ -533,6 +532,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: updated_selected })
 					}
 
+					responses.add(DocumentMessage::StartTransaction);
 					return;
 				}
 

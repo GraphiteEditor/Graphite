@@ -1131,6 +1131,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					})
 				}
 			}
+			DocumentMessage::SelectionStepBack => {
+				self.network_interface.selection_step_back(&self.selection_network_path);
+				responses.add(BroadcastEvent::SelectionChanged);
+			}
+			DocumentMessage::SelectionStepForward => {
+				self.network_interface.selection_step_forward(&self.selection_network_path);
+				responses.add(BroadcastEvent::SelectionChanged);
+			}
 			DocumentMessage::ZoomCanvasTo100Percent => {
 				responses.add_front(NavigationMessage::CanvasZoomSet { zoom_factor: 1. });
 			}
@@ -1167,6 +1175,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			ToggleOverlaysVisibility,
 			ToggleSnapping,
 			Undo,
+			SelectionStepForward,
+			SelectionStepBack,
 			ZoomCanvasTo100Percent,
 			ZoomCanvasTo200Percent,
 			ZoomCanvasToFitAll,
@@ -1496,7 +1506,7 @@ impl DocumentMessageHandler {
 			.unwrap_or_else(|| self.network_interface.all_artboards().iter().next().copied().unwrap_or(LayerNodeIdentifier::ROOT_PARENT))
 	}
 
-	pub fn get_calculated_insert_index(metadata: &DocumentMetadata, selected_nodes: &SelectedNodes, parent: LayerNodeIdentifier) -> usize {
+	pub fn get_calculated_insert_index(metadata: &DocumentMetadata, selected_nodes: SelectedNodes, parent: LayerNodeIdentifier) -> usize {
 		parent
 			.children(metadata)
 			.enumerate()
@@ -1791,7 +1801,8 @@ impl DocumentMessageHandler {
 
 	pub fn update_layers_panel_options_bar_widgets(&self, responses: &mut VecDeque<Message>) {
 		// Get an iterator over the selected layers (excluding artboards which don't have an opacity or blend mode).
-		let selected_layers_except_artboards = self.network_interface.selected_nodes(&[]).unwrap().selected_layers_except_artboards(&self.network_interface);
+		let selected_nodes = self.network_interface.selected_nodes(&[]).unwrap();
+		let selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&self.network_interface);
 
 		// Look up the current opacity and blend mode of the selected layers (if any), and split the iterator into the first tuple and the rest.
 		let mut opacity_and_blend_mode = selected_layers_except_artboards.map(|layer| {
@@ -1929,7 +1940,8 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn selected_layers_reorder(&mut self, relative_index_offset: isize, responses: &mut VecDeque<Message>) {
-		let mut selected_layers = self.network_interface.selected_nodes(&[]).unwrap().selected_layers(self.metadata());
+		let selected_nodes = self.network_interface.selected_nodes(&[]).unwrap();
+		let mut selected_layers = selected_nodes.selected_layers(self.metadata());
 
 		let first_or_last_selected_layer = match relative_index_offset.signum() {
 			-1 => selected_layers.next(),

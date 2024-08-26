@@ -320,7 +320,8 @@ impl TextToolData {
 }
 
 fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdentifier> {
-	let mut selected_layers = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata());
+	let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+	let mut selected_layers = selected_nodes.selected_layers(document.metadata());
 	let layer = selected_layers.next()?;
 
 	// Check that only one layer is selected

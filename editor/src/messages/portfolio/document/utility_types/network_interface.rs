@@ -13,7 +13,7 @@ use graphene_std::vector::{PointId, VectorModificationType};
 use interpreted_executor::{dynamic_executor::ResolvedDocumentNodeTypes, node_registry::NODE_REGISTRY};
 
 use glam::{DAffine2, DVec2, IVec2};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 /// All network modifications should be done through this API, so the fields cannot be public. However, all fields within this struct can be public since it it not possible to have a public mutable reference.
@@ -87,12 +87,20 @@ impl NodeNetworkInterface {
 	}
 
 	/// Get the selected nodes for the network at the network_path
-	pub fn selected_nodes(&self, network_path: &[NodeId]) -> Option<&SelectedNodes> {
+	pub fn selected_nodes(&self, network_path: &[NodeId]) -> Option<SelectedNodes> {
 		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in selected_nodes");
 			return None;
 		};
-		Some(&network_metadata.transient_metadata.selected_nodes)
+
+		Some(
+			network_metadata
+				.persistent_metadata
+				.selection_undo_history
+				.back()
+				.expect("Selection undo history should never be empty since the back is the current selection state")
+				.filtered_selected_nodes(network_metadata.persistent_metadata.node_metadata.keys().cloned().collect()),
+		)
 	}
 
 	/// Get the network which the encapsulating node of the currently viewed network is part of. Will always be None in the document network.
@@ -1502,6 +1510,7 @@ impl NodeNetworkInterface {
 	pub fn finish_transaction(&mut self) {
 		self.transaction_status = TransactionStatus::Finished;
 	}
+
 	/// Mutably get the selected nodes for the network at the network_path. Every time they are mutated, the transient metadata for the top of the stack gets unloaded.
 	pub fn selected_nodes_mut(&mut self, network_path: &[NodeId]) -> Option<&mut SelectedNodes> {
 		self.unload_stack_dependents(network_path);
@@ -1509,7 +1518,44 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network_metadata in selected_nodes");
 			return None;
 		};
-		Some(&mut network_metadata.transient_metadata.selected_nodes)
+
+		let last_selection_state = network_metadata.persistent_metadata.selection_undo_history.back().cloned().unwrap_or_default();
+
+		network_metadata.persistent_metadata.selection_undo_history.push_back(last_selection_state);
+		network_metadata.persistent_metadata.selection_redo_history.clear();
+
+		if network_metadata.persistent_metadata.selection_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
+			network_metadata.persistent_metadata.selection_undo_history.pop_front();
+		}
+
+		network_metadata.persistent_metadata.selection_undo_history.back_mut()
+	}
+
+	pub fn selection_step_back(&mut self, network_path: &[NodeId]) {
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+			log::error!("Could not get nested network_metadata in selection_step_back");
+			return;
+		};
+
+		// Do not pop the default selection state
+		if network_metadata.persistent_metadata.selection_undo_history.len() == 1 {
+			return;
+		}
+
+		if let Some(selection_state) = network_metadata.persistent_metadata.selection_undo_history.pop_back() {
+			network_metadata.persistent_metadata.selection_redo_history.push_front(selection_state);
+		}
+	}
+
+	pub fn selection_step_forward(&mut self, network_path: &[NodeId]) {
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+			log::error!("Could not get nested network_metadata in selection_step_forward");
+			return;
+		};
+
+		if let Some(selection_state) = network_metadata.persistent_metadata.selection_redo_history.pop_front() {
+			network_metadata.persistent_metadata.selection_undo_history.push_back(selection_state);
+		}
 	}
 
 	fn stack_dependents(&mut self, network_path: &[NodeId]) -> Option<&HashMap<NodeId, LayerOwner>> {
@@ -4992,14 +5038,14 @@ impl NodeNetworkMetadata {
 
 		for segment in nested_path {
 			network_metadata = network_metadata
-				.and_then(|network| network.persistent_metadata.node_metadata.get_mut(segment))
+				.and_then(|network: &mut NodeNetworkMetadata| network.persistent_metadata.node_metadata.get_mut(segment))
 				.and_then(|node| node.persistent_metadata.network_metadata.as_mut());
 		}
 		network_metadata
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NodeNetworkPersistentMetadata {
 	/// Node metadata must exist for every document node in the network
 	#[serde(serialize_with = "graphene_std::vector::serialize_hashmap", deserialize_with = "graphene_std::vector::deserialize_hashmap")]
@@ -5009,6 +5055,24 @@ pub struct NodeNetworkPersistentMetadata {
 	pub previewing: Previewing,
 	// Stores the transform and navigation state for the network
 	pub navigation_metadata: NavigationMetadata,
+	/// Stack of selection snapshots for previous history states. Should never be empty
+	pub selection_undo_history: VecDeque<SelectedNodes>,
+	/// Stack of selection snapshots for future history states.
+	pub selection_redo_history: VecDeque<SelectedNodes>,
+}
+
+impl Default for NodeNetworkPersistentMetadata {
+	fn default() -> Self {
+		let mut selection_undo_history = VecDeque::new();
+		selection_undo_history.push_back(SelectedNodes::default());
+		NodeNetworkPersistentMetadata {
+			node_metadata: HashMap::new(),
+			previewing: Previewing::default(),
+			navigation_metadata: NavigationMetadata::default(),
+			selection_undo_history,
+			selection_redo_history: VecDeque::new(),
+		}
+	}
 }
 
 /// This is the same as Option, but more clear in the context of having cached metadata either being loaded or unloaded
