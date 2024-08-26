@@ -259,7 +259,7 @@ impl TextToolData {
 		self.layer = layer;
 		self.load_layer_text_node(document);
 
-		responses.add(DocumentMessage::StartTransaction);
+		responses.add(DocumentMessage::AddTransaction);
 
 		self.set_editing(true, font_cache, document, responses);
 
@@ -282,7 +282,7 @@ impl TextToolData {
 		}
 		// Create new text
 		else if let Some(editing_text) = self.editing_text.as_ref().filter(|_| state == TextToolFsmState::Ready) {
-			responses.add(DocumentMessage::StartTransaction);
+			responses.add(DocumentMessage::AddTransaction);
 
 			self.layer = LayerNodeIdentifier::new_unchecked(NodeId(generate_uuid()));
 

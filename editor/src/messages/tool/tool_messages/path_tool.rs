@@ -289,20 +289,25 @@ impl PathToolData {
 	}
 
 	fn end_insertion(&mut self, shape_editor: &mut ShapeState, responses: &mut VecDeque<Message>, kind: InsertEndKind) -> PathToolFsmState {
+		let mut commit_transaction = false;
 		match self.segment.as_mut() {
 			None => {
 				warn!("Segment was `None` before `end_insertion`")
 			}
 			Some(closed_segment) => {
 				if let InsertEndKind::Add { shift } = kind {
-					responses.add(DocumentMessage::StartTransaction);
 					closed_segment.adjusted_insert_and_select(shape_editor, responses, shift);
-					responses.add(DocumentMessage::CommitTransaction);
+					commit_transaction = true;
 				}
 			}
 		}
 
 		self.segment = None;
+		if commit_transaction {
+			responses.add(DocumentMessage::EndTransaction);
+		} else {
+			responses.add(DocumentMessage::AbortTransaction);
+		}
 		responses.add(OverlaysMessage::Draw);
 		PathToolFsmState::Ready
 	}
@@ -323,6 +328,8 @@ impl PathToolData {
 
 		// Select the first point within the threshold (in pixels)
 		if let Some(selected_points) = shape_editor.change_point_selection(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD, add_to_selection) {
+			responses.add(DocumentMessage::StartTransaction);
+
 			if let Some(selected_points) = selected_points {
 				self.drag_start_pos = input.mouse.position;
 				self.start_dragging_point(selected_points, input, document, shape_editor, responses);
@@ -332,6 +339,7 @@ impl PathToolData {
 		}
 		// We didn't find a point nearby, so now we'll try to add a point into the closest path segment
 		else if let Some(closed_segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SELECTION_TOLERANCE) {
+			responses.add(DocumentMessage::StartTransaction);
 			if direct_insert_without_sliding {
 				self.start_insertion(responses, closed_segment);
 				self.end_insertion(shape_editor, responses, InsertEndKind::Add { shift: add_to_selection })
@@ -341,6 +349,7 @@ impl PathToolData {
 		}
 		// We didn't find a segment path, so consider selecting the nearest shape instead
 		else if let Some(layer) = document.click(input) {
+			responses.add(DocumentMessage::StartTransaction);
 			if add_to_selection {
 				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
 			} else {
@@ -369,8 +378,6 @@ impl PathToolData {
 		shape_editor: &mut ShapeState,
 		responses: &mut VecDeque<Message>,
 	) {
-		responses.add(DocumentMessage::StartTransaction);
-
 		let mut manipulators = HashMap::with_hasher(NoHashBuilder);
 		let mut unselected = Vec::new();
 		for (&layer, state) in &shape_editor.selected_shape_state {
@@ -587,7 +594,6 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(PathToolFsmState::DrawingBox, PathToolMessage::Escape | PathToolMessage::RightClick) => {
-				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
 				PathToolFsmState::Ready
 			}
@@ -620,7 +626,7 @@ impl Fsm for PathToolFsmState {
 						}
 					}
 				}
-
+				responses.add(DocumentMessage::EndTransaction);
 				responses.add(PathToolMessage::SelectedPointUpdated);
 				tool_data.snap_manager.cleanup(responses);
 				PathToolFsmState::Ready
@@ -629,7 +635,7 @@ impl Fsm for PathToolFsmState {
 			// Delete key
 			(_, PathToolMessage::Delete) => {
 				// Delete the selected points and clean up overlays
-				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::AddTransaction);
 				shape_editor.delete_selected_points(document, responses);
 				responses.add(PathToolMessage::SelectionChanged);
 
@@ -689,14 +695,14 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::ManipulatorMakeHandlesColinear) => {
 				responses.add(DocumentMessage::StartTransaction);
 				shape_editor.convert_selected_manipulators_to_colinear_handles(responses, document);
-				responses.add(DocumentMessage::CommitTransaction);
+				responses.add(DocumentMessage::EndTransaction);
 				responses.add(PathToolMessage::SelectionChanged);
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::ManipulatorMakeHandlesFree) => {
 				responses.add(DocumentMessage::StartTransaction);
 				shape_editor.disable_colinear_handles_state_on_selected(&document.network_interface, responses);
-				responses.add(DocumentMessage::CommitTransaction);
+				responses.add(DocumentMessage::EndTransaction);
 				PathToolFsmState::Ready
 			}
 			(_, _) => PathToolFsmState::Ready,

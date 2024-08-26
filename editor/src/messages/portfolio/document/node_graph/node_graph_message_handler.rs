@@ -48,9 +48,9 @@ pub struct NodeGraphMessageHandler {
 	initial_disconnecting: bool,
 	/// Node to select on pointer up if multiple nodes are selected and they were not dragged.
 	select_if_not_dragged: Option<NodeId>,
-	/// The start of the dragged line that cannot be moved, stored in node graph coordinates
+	/// The start of the dragged line (cannot be moved), stored in node graph coordinates
 	pub wire_in_progress_from_connector: Option<DVec2>,
-	/// The end point of the dragged line that can be moved, stored in node graph coordinates
+	/// The end point of the dragged line (cannot be moved), stored in node graph coordinates
 	pub wire_in_progress_to_connector: Option<DVec2>,
 	/// State for the context menu popups.
 	pub context_menu: Option<ContextMenuInformation>,
@@ -58,6 +58,8 @@ pub struct NodeGraphMessageHandler {
 	pub deselect_on_pointer_up: Option<usize>,
 	/// Adds the auto panning functionality to the node graph when dragging a node or selection box to the edge of the viewport.
 	auto_panning: AutoPanning,
+	/// The node to preview on mouse up if alt-clicked
+	preview_on_mouse_up: Option<NodeId>,
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
@@ -143,7 +145,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let node_template = document_node_type.default_node_template();
 				self.context_menu = None;
 
-				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::InsertNode {
 					node_id,
 					node_template: node_template.clone(),
@@ -206,7 +208,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					log::error!("Could not get selected nodes in DeleteSelectedNodes");
 					return;
 				};
-				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::DeleteNodes {
 					node_ids: selected_nodes.selected_nodes().cloned().collect::<Vec<_>>(),
 					delete_children,
@@ -227,7 +229,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let nodes = network_interface.copy_nodes(&copy_ids, selection_network_path).collect::<Vec<_>>();
 
 				let new_ids = nodes.iter().map(|(id, _)| (*id, NodeId(generate_uuid()))).collect::<HashMap<_, _>>();
-				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::AddNodes { nodes, new_ids: new_ids.clone() });
 				responses.add(NodeGraphMessage::SelectedNodesSet {
 					nodes: new_ids.values().cloned().collect(),
@@ -260,8 +262,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				};
 
-				responses.add(DocumentMessage::StartTransaction);
-
 				let Some(mut input) = node.inputs.get(input_index).cloned() else {
 					log::error!("Could not find input {input_index} in NodeGraphMessage::ExposeInput");
 					return;
@@ -273,6 +273,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					log::error!("Could not hide/show input: {:?} since it is not NodeInput::Value", input);
 					return;
 				}
+
+				responses.add(DocumentMessage::AddTransaction);
 
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, input_index),
@@ -306,7 +308,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				}
 
-				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::AddTransaction);
 
 				let new_ids: HashMap<_, _> = data.iter().map(|(id, _)| (*id, NodeId(generate_uuid()))).collect();
 				responses.add(NodeGraphMessage::AddNodes {
@@ -333,12 +335,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				let node_graph_point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
 
-				// Toggle visibility of clicked node and return
-				if let Some(clicked_visibility) = network_interface.visibility_from_click(click, selection_network_path) {
-					responses.add(NodeGraphMessage::ToggleVisibility { node_id: clicked_visibility });
-					return;
-				}
-
 				if network_interface.grip_from_click(click, selection_network_path).is_some() {
 					self.shift_without_push = true;
 				}
@@ -350,9 +346,24 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				// Create the add node popup on right click, then exit
 				if right_click {
+					// Abort dragging a node
 					if self.drag_start.is_some() {
 						responses.add(DocumentMessage::AbortTransaction);
 						self.drag_start = None;
+						return;
+					}
+					// Abort a box selection
+					if self.box_selection_start.is_some() {
+						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() });
+						self.box_selection_start = None;
+						return;
+					}
+					// Abort dragging a wire
+					if self.wire_in_progress_from_connector.is_some() {
+						responses.add(DocumentMessage::AbortTransaction);
+						self.wire_in_progress_from_connector = None;
+						self.wire_in_progress_to_connector = None;
+						responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 						return;
 					}
 
@@ -416,7 +427,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 
 				// Since the user is clicking elsewhere in the graph, ensure the add nodes list is closed
-				if !right_click && self.context_menu.is_some() {
+				if self.context_menu.is_some() {
 					self.context_menu = None;
 					self.wire_in_progress_from_connector = None;
 					self.wire_in_progress_to_connector = None;
@@ -426,16 +437,22 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 				}
 
+				// Toggle visibility of clicked node and return
+				if let Some(clicked_visibility) = network_interface.visibility_from_click(click, selection_network_path) {
+					responses.add(NodeGraphMessage::ToggleVisibility { node_id: clicked_visibility });
+					return;
+				}
+
 				// Alt-click sets the clicked node as previewed
 				if alt_click {
 					if let Some(clicked_node) = clicked_id {
-						responses.add(NodeGraphMessage::TogglePreview { node_id: clicked_node });
-						return;
+						self.preview_on_mouse_up = Some(clicked_node);
 					}
 				}
 
 				// Begin moving an existing wire
 				if let Some(clicked_input) = &clicked_input {
+					responses.add(DocumentMessage::StartTransaction);
 					self.initial_disconnecting = true;
 					self.disconnecting = Some(clicked_input.clone());
 
@@ -451,6 +468,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				// Begin creating a new wire
 				if let Some(clicked_output) = clicked_output {
+					responses.add(DocumentMessage::StartTransaction);
 					self.initial_disconnecting = false;
 					// Disconnect vertical output wire from an already-connected layer
 					if let OutputConnector::Node { node_id, .. } = clicked_output {
@@ -466,6 +484,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 
 				if let Some(clicked_id) = clicked_id {
+					responses.add(DocumentMessage::StartTransaction);
 					let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else {
 						log::error!("Could not get selected nodes in PointerDown");
 						return;
@@ -558,7 +577,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						self.wire_in_progress_to_connector = Some(point);
 						// Disconnect if the wire was previously connected to an input
 						if let Some(disconnecting) = &self.disconnecting {
-							responses.add(DocumentMessage::StartTransaction);
 							let mut disconnect_root_node = false;
 							if let Previewing::Yes { root_node_to_restore } = network_interface.previewing(selection_network_path) {
 								if root_node_to_restore.is_some() && *disconnecting == InputConnector::Export(0) {
@@ -615,8 +633,28 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 				} else if let Some(drag_start) = &mut self.drag_start {
 					if self.begin_dragging {
-						responses.add(DocumentMessage::StartTransaction);
 						self.begin_dragging = false;
+						if ipp.keyboard.get(crate::messages::tool::tool_messages::tool_prelude::Key::Alt as usize) {
+							responses.add(NodeGraphMessage::DuplicateSelectedNodes);
+							// Duplicating sets a 2x2 offset, so shift the nodes back to the original position
+							responses.add(NodeGraphMessage::ShiftSelectedNodes {
+								direction: Direction::Up,
+								rubber_band: false,
+							});
+							responses.add(NodeGraphMessage::ShiftSelectedNodes {
+								direction: Direction::Up,
+								rubber_band: false,
+							});
+							responses.add(NodeGraphMessage::ShiftSelectedNodes {
+								direction: Direction::Left,
+								rubber_band: false,
+							});
+							responses.add(NodeGraphMessage::ShiftSelectedNodes {
+								direction: Direction::Left,
+								rubber_band: false,
+							});
+							self.preview_on_mouse_up = None;
+						}
 					}
 
 					let mut graph_delta = IVec2::new(((point.x - drag_start.start_x) / 24.).round() as i32, ((point.y - drag_start.start_y) / 24.).round() as i32);
@@ -684,6 +722,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				};
 
+				responses.add(DocumentMessage::EndTransaction);
+
+				if let Some(preview_node) = self.preview_on_mouse_up {
+					responses.add(NodeGraphMessage::TogglePreview { node_id: preview_node });
+					self.preview_on_mouse_up = None;
+				}
 				if let Some(node_to_deselect) = self.deselect_on_pointer_up {
 					let mut new_selected_nodes = selected_nodes.selected_nodes_ref().clone();
 					new_selected_nodes.remove(node_to_deselect);
@@ -896,8 +940,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 										.enumerate()
 										.find(|(_, input)| input.is_exposed_to_frontend(selection_network_path.is_empty()))
 									{
-										responses.add(DocumentMessage::StartTransaction);
-
 										responses.add(NodeGraphMessage::InsertNodeBetween {
 											node_id: selected_node_id,
 											input_connector: overlapping_wire.wire_end.clone(),
@@ -1066,7 +1108,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					log::error!("Could not get selected nodes in NodeGraphMessage::ToggleSelectedAsLayersOrNodes");
 					return;
 				};
-				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::AddTransaction);
 				for node_id in selected_nodes.selected_nodes() {
 					responses.add(NodeGraphMessage::SetToNodeOrLayer {
 						node_id: *node_id,
@@ -1096,6 +1138,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			NodeGraphMessage::SetDisplayName { node_id, alias } => {
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(NodeGraphMessage::SetDisplayNameImpl { node_id, alias });
+				// Does not add a history step if the name was not changed
+				responses.add(DocumentMessage::EndTransaction);
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
 				responses.add(NodeGraphMessage::SendGraph);
@@ -1104,7 +1148,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				network_interface.set_display_name(&node_id, alias, selection_network_path);
 			}
 			NodeGraphMessage::TogglePreview { node_id } => {
-				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::TogglePreviewImpl { node_id });
 				responses.add(NodeGraphMessage::UpdateActionButtons);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -1122,7 +1166,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				// If any of the selected layers are locked, show them all. Otherwise, hide them all.
 				let locked = !node_ids.iter().all(|node_id| network_interface.is_locked(node_id, selection_network_path));
 
-				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::AddTransaction);
 
 				for node_id in &node_ids {
 					responses.add(NodeGraphMessage::SetLocked { node_id: *node_id, locked });
@@ -1138,7 +1182,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				let locked = !node_metadata.persistent_metadata.locked;
 
-				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::SetLocked { node_id, locked });
 				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids: vec![node_id] })
 			}
@@ -1159,7 +1203,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				// If any of the selected nodes are hidden, show them all. Otherwise, hide them all.
 				let visible = !node_ids.iter().all(|node_id| network.nodes.get(node_id).is_some_and(|node| node.visible));
 
-				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::AddTransaction);
 				for node_id in &node_ids {
 					responses.add(NodeGraphMessage::SetVisibility { node_id: *node_id, visible });
 				}
@@ -1177,7 +1221,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				let visible = !node.visible;
 
-				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::SetVisibility { node_id, visible });
 				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids: vec![node_id] });
 			}
@@ -1943,6 +1987,7 @@ impl Default for NodeGraphMessageHandler {
 			context_menu: None,
 			deselect_on_pointer_up: None,
 			auto_panning: Default::default(),
+			preview_on_mouse_up: None,
 		}
 	}
 }

@@ -217,7 +217,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				let tree = match usvg::Tree::from_str(&svg, &usvg::Options::default()) {
 					Ok(t) => t,
 					Err(e) => {
-						responses.add(DocumentMessage::DocumentHistoryBackward);
 						responses.add(DialogMessage::DisplayDialogError {
 							title: "SVG parsing failed".to_string(),
 							description: e.to_string(),

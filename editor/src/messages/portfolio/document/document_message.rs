@@ -32,23 +32,17 @@ pub enum DocumentMessage {
 	PropertiesPanel(PropertiesPanelMessage),
 
 	// Messages
-	AbortTransaction,
 	AlignSelectedLayers {
 		axis: AlignAxis,
 		aggregate: AlignAggregate,
 	},
-	BackupDocument {
-		network_interface: NodeNetworkInterface,
-	},
 	ClearArtboards,
 	ClearLayersPanel,
-	CommitTransaction,
 	InsertBooleanOperation {
 		operation: graphene_core::vector::misc::BooleanOperation,
 	},
 	CreateEmptyFolder,
 	DebugPrintDocument,
-	DeleteSelectedLayers,
 	DeselectAllLayers,
 	DocumentHistoryBackward,
 	DocumentHistoryForward,
@@ -151,6 +145,10 @@ pub enum DocumentMessage {
 		view_mode: ViewMode,
 	},
 	StartTransaction,
+	EndTransaction,
+	CommitTransaction,
+	AbortTransaction,
+	AddTransaction,
 	ToggleLayerExpansion {
 		id: NodeId,
 	},
@@ -158,7 +156,6 @@ pub enum DocumentMessage {
 	ToggleOverlaysVisibility,
 	ToggleSnapping,
 	Undo,
-	UndoFinished,
 	UngroupSelectedLayers,
 	UngroupLayer {
 		layer: LayerNodeIdentifier,

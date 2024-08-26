@@ -193,8 +193,8 @@ impl LayoutHolder for MenuBarMessageHandler {
 					vec![MenuBarEntry {
 						label: "Delete Selected".into(),
 						icon: Some("Trash".into()),
-						shortcut: action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers),
-						action: MenuBarEntry::create_action(|_| DocumentMessage::DeleteSelectedLayers.into()),
+						shortcut: action_keys!(NodeGraphMessageDiscriminant::DeleteSelectedNodes),
+						action: MenuBarEntry::create_action(|_| NodeGraphMessage::DeleteSelectedNodes { delete_children: true }.into()),
 						disabled: no_active_document,
 						..MenuBarEntry::default()
 					}],

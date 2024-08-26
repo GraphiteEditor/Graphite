@@ -228,6 +228,7 @@ impl Fsm for SplineToolFsmState {
 				SplineToolFsmState::Drawing
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::DragStop) => {
+				responses.add(DocumentMessage::EndTransaction);
 				let Some(layer) = tool_data.layer else {
 					return SplineToolFsmState::Ready;
 				};
@@ -279,7 +280,7 @@ impl Fsm for SplineToolFsmState {
 			(SplineToolFsmState::Drawing, SplineToolMessage::Confirm | SplineToolMessage::Abort) => {
 				if tool_data.points.len() >= 2 {
 					update_spline(document, tool_data, false, responses);
-					responses.add(DocumentMessage::CommitTransaction);
+					responses.add(DocumentMessage::EndTransaction);
 				} else {
 					responses.add(DocumentMessage::AbortTransaction);
 				}

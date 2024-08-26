@@ -2,7 +2,7 @@ use super::node_graph::utility_types::Transform;
 use super::utility_types::clipboards::Clipboard;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{SnappingOptions, SnappingState, GET_SNAP_BOX_FUNCTIONS, GET_SNAP_GEOMETRY_FUNCTIONS};
-use super::utility_types::network_interface::NodeNetworkInterface;
+use super::utility_types::network_interface::{NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
@@ -144,9 +144,6 @@ pub struct DocumentMessageHandler {
 	/// Hash of the document snapshot that was most recently auto-saved to the IndexedDB storage that will reopen when the editor is reloaded.
 	#[serde(skip)]
 	auto_saved_hash: Option<u64>,
-	/// Disallow aborting transactions whilst undoing to avoid #559.
-	#[serde(skip)]
-	undo_in_progress: bool,
 	/// The ID of the layer at the start of a range selection in the Layers panel.
 	/// If the user clicks or Ctrl-clicks one layer, it becomes the start of the range selection and then Shift-clicking another layer selects all layers between the start and end.
 	#[serde(skip)]
@@ -186,7 +183,6 @@ impl Default for DocumentMessageHandler {
 			document_redo_history: VecDeque::new(),
 			saved_hash: None,
 			auto_saved_hash: None,
-			undo_in_progress: false,
 			layer_range_selection_reference: None,
 		}
 	}
@@ -259,18 +255,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let mut graph_operation_message_handler = GraphOperationMessageHandler {};
 				graph_operation_message_handler.process_message(message, responses, data);
 			}
-
-			// Messages
-			DocumentMessage::AbortTransaction => {
-				if !self.undo_in_progress {
-					self.undo(ipp, responses);
-					responses.add(OverlaysMessage::Draw);
-				}
-			}
 			DocumentMessage::AlignSelectedLayers { axis, aggregate } => {
-				self.backup(responses);
-
-				let axis = match axis {
+				let axis: DVec2 = match axis {
 					AlignAxis::X => DVec2::X,
 					AlignAxis::Y => DVec2::Y,
 				};
@@ -283,6 +269,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					AlignAggregate::Max => combined_box[1],
 					AlignAggregate::Center => (combined_box[0] + combined_box[1]) / 2.,
 				};
+
+				let mut added_transaction = false;
 				for layer in self.network_interface.selected_nodes(&[]).unwrap().selected_unlocked_layers(&self.network_interface) {
 					let Some(bbox) = self.metadata().bounding_box_viewport(layer) else {
 						continue;
@@ -293,6 +281,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						_ => (bbox[0] + bbox[1]) / 2.,
 					};
 					let translation = (aggregated - center) * axis;
+					if !added_transaction {
+						responses.add(DocumentMessage::AddTransaction);
+						added_transaction = true;
+					}
 					responses.add(GraphOperationMessage::TransformChange {
 						layer,
 						transform: DAffine2::from_translation(translation),
@@ -301,9 +293,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					});
 				}
 			}
-			DocumentMessage::BackupDocument { network_interface } => self.backup_with_document(network_interface, responses),
 			DocumentMessage::ClearArtboards => {
-				self.backup(responses);
+				responses.add(DocumentMessage::AddTransaction);
 				responses.add(GraphOperationMessage::ClearArtboards);
 			}
 			DocumentMessage::ClearLayersPanel => {
@@ -317,9 +308,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					layout_target: LayoutTarget::LayersPanelOptions,
 				});
 			}
-			DocumentMessage::CommitTransaction => (),
 			DocumentMessage::InsertBooleanOperation { operation } => {
-				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::AddTransaction);
 
 				let Some(parent) = self.network_interface.deepest_common_ancestor(&[], false) else {
 					// Cancel grouping layers across different artboards
@@ -353,7 +343,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), self.network_interface.selected_nodes(&[]).unwrap(), parent);
 
-				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::AddTransaction);
 				responses.add(GraphOperationMessage::NewCustomLayer {
 					id,
 					nodes: Vec::new(),
@@ -364,9 +354,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::DebugPrintDocument => {
 				info!("{:#?}", self.network_interface);
-			}
-			DocumentMessage::DeleteSelectedLayers => {
-				responses.add(NodeGraphMessage::DeleteSelectedNodes { delete_children: true });
 			}
 			DocumentMessage::DeselectAllLayers => {
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
@@ -386,7 +373,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let calculated_insert_index =
 					DocumentMessageHandler::get_calculated_insert_index(self.network_interface.document_metadata(), self.network_interface.selected_nodes(&[]).unwrap(), parent);
 
-				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::AddTransaction);
 				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 				responses.add(PortfolioMessage::PasteIntoFolder {
 					clipboard: Clipboard::Internal,
@@ -430,7 +417,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::FlipSelectedLayers { flip_axis } => {
-				self.backup(responses);
 				let scale = match flip_axis {
 					FlipAxis::X => DVec2::new(-1., 1.),
 					FlipAxis::Y => DVec2::new(1., -1.),
@@ -438,7 +424,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				if let Some([min, max]) = self.selected_visible_and_unlock_layers_bounding_box_viewport() {
 					let center = (max + min) / 2.;
 					let bbox_trans = DAffine2::from_translation(-center);
+					let mut added_transaction = false;
 					for layer in self.network_interface.selected_nodes(&[]).unwrap().selected_unlocked_layers(&self.network_interface) {
+						if !added_transaction {
+							responses.add(DocumentMessage::AddTransaction);
+							added_transaction = true;
+						}
 						responses.add(GraphOperationMessage::TransformChange {
 							layer,
 							transform: DAffine2::from_scale(scale),
@@ -481,7 +472,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(OverlaysMessage::Draw);
 			}
 			DocumentMessage::GroupSelectedLayers => {
-				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::AddTransaction);
 
 				let Some(parent) = self.network_interface.deepest_common_ancestor(&self.selection_network_path, false) else {
 					// Cancel grouping layers across different artboards
@@ -525,7 +516,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let random_bits = generate_uuid();
 				let random_value = ((random_bits >> 11) as f64).copysign(f64::from_bits(random_bits & (1 << 63)));
 
-				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::AddTransaction);
 				// Set a random seed input
 				responses.add(NodeGraphMessage::SetInputValue {
 					node_id: *imaginate_node.last().unwrap(),
@@ -546,7 +537,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				parent,
 				insert_index,
 			} => {
-				self.backup(responses);
+				responses.add(DocumentMessage::StartTransaction);
 				responses.add(GraphOperationMessage::NewSvg {
 					id,
 					svg,
@@ -554,14 +545,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					parent,
 					insert_index,
 				});
+				responses.add(DocumentMessage::EndTransaction);
 			}
 			DocumentMessage::MoveSelectedLayersTo { parent, insert_index } => {
 				if !self.selection_network_path.is_empty() {
 					log::error!("Moving selected layers is only supported for the Document Network");
 					return;
 				}
-
-				responses.add(DocumentMessage::StartTransaction);
 
 				// Disallow trying to insert into self.
 				if self
@@ -625,6 +615,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					})
 					.collect::<Vec<_>>();
 
+				responses.add(DocumentMessage::AddTransaction);
 				for (layer_index, (layer_to_move, insert_offset)) in layers_to_move_with_insert_offset.into_iter().enumerate() {
 					let calculated_insert_index = insert_index + layer_index - insert_offset;
 					responses.add(NodeGraphMessage::MoveLayerToStack {
@@ -660,7 +651,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				resize,
 				resize_opposite_corner,
 			} => {
-				self.backup(responses);
+				responses.add(DocumentMessage::AddTransaction);
 
 				let opposite_corner = ipp.keyboard.key(resize_opposite_corner);
 				let delta = DVec2::new(delta_x, delta_y);
@@ -740,7 +731,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				let transform = center_in_viewport_layerspace * fit_image_size;
 
-				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::AddTransaction);
 
 				let image_frame = ImageFrame { image, ..Default::default() };
 
@@ -770,6 +761,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(ToolMessage::ActivateTool { tool_type: ToolType::Select });
 			}
 			DocumentMessage::Redo => {
+				if self.network_interface.transaction_status() != TransactionStatus::Finished {
+					return;
+				}
 				responses.add(SelectToolMessage::Abort);
 				responses.add(DocumentMessage::DocumentHistoryForward);
 				responses.add(ToolMessage::Redo);
@@ -951,10 +945,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				}
 			}
 			DocumentMessage::SetOpacityForSelectedLayers { opacity } => {
-				self.backup(responses);
 				let opacity = opacity.clamp(0., 1.);
-
+				let mut added_transaction = false;
 				for layer in self.network_interface.selected_nodes(&[]).unwrap().selected_layers_except_artboards(&self.network_interface) {
+					if !added_transaction {
+						responses.add(DocumentMessage::AddTransaction);
+						added_transaction = true;
+					}
 					responses.add(GraphOperationMessage::OpacitySet { layer, opacity });
 				}
 			}
@@ -975,7 +972,51 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.view_mode = view_mode;
 				responses.add_front(NodeGraphMessage::RunDocumentGraph);
 			}
-			DocumentMessage::StartTransaction => self.backup(responses),
+			// Note: A transaction should never be started in a scope that mutates the network interface, since it will only be run after that scope ends.
+			DocumentMessage::StartTransaction => {
+				self.network_interface.start_transaction();
+				let network_interface_clone = self.network_interface.clone();
+				self.document_undo_history.push_back(network_interface_clone);
+				if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
+					self.document_undo_history.pop_front();
+				}
+				// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
+				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+			}
+			// Commits the transaction if the network was mutated since the transaction started, otherwise it aborts the transaction
+			DocumentMessage::EndTransaction => match self.network_interface.transaction_status() {
+				TransactionStatus::Started => {
+					responses.add_front(DocumentMessage::AbortTransaction);
+				}
+				TransactionStatus::Modified => {
+					responses.add_front(DocumentMessage::CommitTransaction);
+				}
+				TransactionStatus::Finished => {
+					log::error!("EndTransaction called without a transaction in progress")
+				}
+			},
+			DocumentMessage::CommitTransaction => {
+				if self.network_interface.transaction_status() == TransactionStatus::Finished {
+					log::error!("CommitTransaction called without a transaction in progress");
+					return;
+				}
+				self.network_interface.finish_transaction();
+				self.document_redo_history.clear();
+			}
+			DocumentMessage::AbortTransaction => {
+				if self.network_interface.transaction_status() == TransactionStatus::Finished {
+					log::error!("AbortTransaction called without a transaction in progress");
+					return;
+				}
+				self.network_interface.finish_transaction();
+				self.undo(ipp, responses);
+				responses.add(OverlaysMessage::Draw);
+			}
+			DocumentMessage::AddTransaction => {
+				// Reverse order since they are added to the front
+				responses.add_front(DocumentMessage::CommitTransaction);
+				responses.add_front(DocumentMessage::StartTransaction);
+			}
 			DocumentMessage::ToggleLayerExpansion { id } => {
 				let layer = LayerNodeIdentifier::new(id, &self.network_interface, &[]);
 				if self.collapsed.0.contains(&layer) {
@@ -1000,22 +1041,20 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			DocumentMessage::Undo => {
-				self.undo_in_progress = true;
+				if self.network_interface.transaction_status() != TransactionStatus::Finished {
+					return;
+				}
 				responses.add(ToolMessage::PreUndo);
 				responses.add(DocumentMessage::DocumentHistoryBackward);
 				responses.add(OverlaysMessage::Draw);
-				responses.add(DocumentMessage::UndoFinished);
 				responses.add(ToolMessage::Undo);
-			}
-			DocumentMessage::UndoFinished => {
-				self.undo_in_progress = false;
 			}
 			DocumentMessage::UngroupSelectedLayers => {
 				if !self.selection_network_path.is_empty() {
 					log::error!("Ungrouping selected layers is only supported for the Document Network");
 					return;
 				}
-				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::AddTransaction);
 
 				let folder_paths = self.network_interface.folders_sorted_by_most_nested(&self.selection_network_path);
 				for folder in folder_paths {
@@ -1136,7 +1175,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 		// Additional actions if there are any selected layers
 		if self.network_interface.selected_nodes(&[]).unwrap().selected_layers(self.metadata()).next().is_some() {
 			let mut select = actions!(DocumentMessageDiscriminant;
-				DeleteSelectedLayers,
 				DuplicateSelectedLayers,
 				GroupSelectedLayers,
 				SelectedLayersLower,
@@ -1145,6 +1183,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				SelectedLayersRaiseToFront,
 				UngroupSelectedLayers,
 			);
+			select.extend(actions!(NodeGraphMessageDiscriminant::DeleteSelectedNodes));
+
 			if !self.graph_view_overlay_open {
 				select.extend(actions!(DocumentMessageDiscriminant; NudgeSelectedLayers));
 			}
@@ -1355,33 +1395,6 @@ impl DocumentMessageHandler {
 		structure_section.extend(data_section);
 
 		structure_section.as_slice().into()
-	}
-
-	/// Places a document into the history system
-	fn backup_with_document(&mut self, network_interface: NodeNetworkInterface, responses: &mut VecDeque<Message>) {
-		self.document_redo_history.clear();
-		self.document_undo_history.push_back(network_interface);
-		if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
-			self.document_undo_history.pop_front();
-		}
-
-		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
-		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-	}
-
-	/// Copies the entire document into the history system
-	pub fn backup(&mut self, responses: &mut VecDeque<Message>) {
-		let network_interface_clone = self.network_interface.clone();
-
-		self.backup_with_document(network_interface_clone, responses);
-	}
-
-	// TODO: Is this now redundant?
-	/// Push a message backing up the document in its current state
-	pub fn backup_nonmut(&self, responses: &mut VecDeque<Message>) {
-		responses.add(DocumentMessage::BackupDocument {
-			network_interface: self.network_interface.clone(),
-		});
 	}
 
 	pub fn undo_with_history(&mut self, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
@@ -1823,7 +1836,7 @@ impl DocumentMessageHandler {
 						MenuListEntry::new(format!("{blend_mode:?}"))
 							.label(blend_mode.to_string())
 							.on_update(move |_| DocumentMessage::SetBlendModeForSelectedLayers { blend_mode }.into())
-							.on_commit(|_| DocumentMessage::StartTransaction.into())
+							.on_commit(|_| DocumentMessage::AddTransaction.into())
 					})
 					.collect()
 			})
@@ -1885,8 +1898,8 @@ impl DocumentMessageHandler {
 					.widget_holder(),
 				IconButton::new("Trash", 24)
 					.tooltip("Delete Selected")
-					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers))
-					.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
+					.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::DeleteSelectedNodes))
+					.on_update(|_| NodeGraphMessage::DeleteSelectedNodes { delete_children: true }.into())
 					.disabled(!has_selection)
 					.widget_holder(),
 				//
@@ -1916,8 +1929,6 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn selected_layers_reorder(&mut self, relative_index_offset: isize, responses: &mut VecDeque<Message>) {
-		self.backup(responses);
-
 		let mut selected_layers = self.network_interface.selected_nodes(&[]).unwrap().selected_layers(self.metadata());
 
 		let first_or_last_selected_layer = match relative_index_offset.signum() {

@@ -543,7 +543,6 @@ impl Fsm for SelectToolFsmState {
 					.collect();
 				let intersection_list = document.click_list(input).collect::<Vec<_>>();
 				let intersection = document.find_deepest(&intersection_list);
-
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
 				// If the user is dragging the rotate trigger, go into RotatingBounds mode.
 				// If the user clicks on a layer that is in their current selection, go into the dragging mode.
@@ -632,7 +631,6 @@ impl Fsm for SelectToolFsmState {
 					} else {
 						tool_data.select_single_layer = intersection.and_then(|intersection| intersection.ancestors(document.metadata()).find(|ancestor| selected.contains(ancestor)));
 					}
-
 					tool_data.layers_dragging = selected;
 
 					tool_data.get_snap_candidates(document, input);
@@ -649,16 +647,17 @@ impl Fsm for SelectToolFsmState {
 					}
 
 					if let Some(intersection) = intersection {
-						responses.add(DocumentMessage::StartTransaction);
-
+						
 						tool_data.layer_selected_on_start = Some(intersection);
 						selected = intersection_list;
-
+						
 						match tool_data.nested_selection_behavior {
 							NestedSelectionBehavior::Shallowest if !input.keyboard.key(select_deepest) => drag_shallowest_manipulation(responses, selected, tool_data, document),
 							_ => drag_deepest_manipulation(responses, selected, tool_data, document),
 						}
 						tool_data.get_snap_candidates(document, input);
+						log::debug!("starting transaction");
+						responses.add(DocumentMessage::StartTransaction);
 						SelectToolFsmState::Dragging
 					} else {
 						// Deselect all layers if using shallowest selection behavior
@@ -894,8 +893,8 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::Enter) => {
 				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-					true => DocumentMessage::Undo,
-					false => DocumentMessage::CommitTransaction,
+					true => DocumentMessage::AbortTransaction,
+					false => DocumentMessage::EndTransaction,
 				};
 				tool_data.snap_manager.cleanup(responses);
 				responses.add_front(response);
@@ -905,6 +904,9 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::DragStop { remove_from_selection }) => {
 				// Deselect layer if not snap dragging
+				responses.add(DocumentMessage::EndTransaction);
+
+				log::debug!("self.select_single_layer: {:?}", tool_data.select_single_layer);
 				if !tool_data.has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
 					let quad = tool_data.selection_quad();
 					let intersection = document.intersect_quad(quad, input);
@@ -940,6 +942,7 @@ impl Fsm for SelectToolFsmState {
 						if selecting_layer == LayerNodeIdentifier::ROOT_PARENT {
 							log::error!("selecting_layer should not be ROOT_PARENT");
 						} else {
+							log::info!("Selecting layer {:?}", selecting_layer);
 							responses.add(NodeGraphMessage::SelectedNodesSet {
 								nodes: vec![selecting_layer.to_node()],
 							});
@@ -950,7 +953,6 @@ impl Fsm for SelectToolFsmState {
 				tool_data.has_dragged = false;
 				tool_data.layer_selected_on_start = None;
 
-				responses.add(DocumentMessage::CommitTransaction);
 				tool_data.snap_manager.cleanup(responses);
 				tool_data.select_single_layer = None;
 
@@ -959,8 +961,8 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::ResizingBounds, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
 				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-					true => DocumentMessage::Undo,
-					false => DocumentMessage::CommitTransaction,
+					true => DocumentMessage::AbortTransaction,
+					false => DocumentMessage::EndTransaction,
 				};
 				responses.add(response);
 
@@ -975,8 +977,8 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::RotatingBounds, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
 				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-					true => DocumentMessage::Undo,
-					false => DocumentMessage::CommitTransaction,
+					true => DocumentMessage::AbortTransaction,
+					false => DocumentMessage::EndTransaction,
 				};
 				responses.add(response);
 
@@ -989,8 +991,8 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
 				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-					true => DocumentMessage::Undo,
-					false => DocumentMessage::CommitTransaction,
+					true => DocumentMessage::AbortTransaction,
+					false => DocumentMessage::EndTransaction,
 				};
 				responses.add(response);
 
@@ -1005,7 +1007,6 @@ impl Fsm for SelectToolFsmState {
 				let current_selected: HashSet<_> = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
 				if new_selected != current_selected {
 					tool_data.layers_dragging = new_selected.into_iter().collect();
-					responses.add(DocumentMessage::StartTransaction);
 					responses.add(NodeGraphMessage::SelectedNodesSet {
 						nodes: tool_data
 							.layers_dragging

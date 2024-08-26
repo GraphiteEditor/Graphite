@@ -146,8 +146,6 @@ impl ArtboardToolData {
 	}
 
 	fn select_artboard(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> bool {
-		responses.add(DocumentMessage::StartTransaction);
-
 		if let Some(intersection) = Self::hovered_artboard(document, input) {
 			self.selected_artboard = Some(intersection);
 
@@ -238,9 +236,9 @@ impl Fsm for ArtboardToolFsmState {
 				tool_data.drag_start = to_document.transform_point2(input.mouse.position);
 				tool_data.drag_current = to_document.transform_point2(input.mouse.position);
 
-				if let Some(selected_edges) = tool_data.check_dragging_bounds(input.mouse.position) {
-					responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::StartTransaction);
 
+				if let Some(selected_edges) = tool_data.check_dragging_bounds(input.mouse.position) {
 					tool_data.start_resizing(selected_edges, document, input);
 					tool_data.get_snap_candidates(document, input);
 					ArtboardToolFsmState::ResizingBounds
@@ -427,32 +425,15 @@ impl Fsm for ArtboardToolFsmState {
 
 				state
 			}
-			(ArtboardToolFsmState::ResizingBounds, ArtboardToolMessage::PointerUp) => {
+			(ArtboardToolFsmState::Drawing | ArtboardToolFsmState::ResizingBounds | ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerUp) => {
+				responses.add(DocumentMessage::EndTransaction);
+
 				tool_data.snap_manager.cleanup(responses);
 
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					bounds.original_transforms.clear();
 				}
 
-				ArtboardToolFsmState::Ready { hovered }
-			}
-			(ArtboardToolFsmState::Drawing, ArtboardToolMessage::PointerUp) => {
-				tool_data.snap_manager.cleanup(responses);
-
-				if let Some(bounds) = &mut tool_data.bounding_box_manager {
-					bounds.original_transforms.clear();
-				}
-
-				responses.add(OverlaysMessage::Draw);
-
-				ArtboardToolFsmState::Ready { hovered }
-			}
-			(ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerUp) => {
-				tool_data.snap_manager.cleanup(responses);
-
-				if let Some(bounds) = &mut tool_data.bounding_box_manager {
-					bounds.original_transforms.clear();
-				}
 				responses.add(OverlaysMessage::Draw);
 
 				ArtboardToolFsmState::Ready { hovered }
@@ -468,7 +449,7 @@ impl Fsm for ArtboardToolFsmState {
 			}
 			(_, ArtboardToolMessage::DeleteSelected) => {
 				tool_data.selected_artboard.take();
-				responses.add(DocumentMessage::DeleteSelectedLayers);
+				responses.add(NodeGraphMessage::DeleteSelectedNodes { delete_children: true });
 
 				ArtboardToolFsmState::Ready { hovered }
 			}

@@ -306,8 +306,8 @@ pub fn input_mappings() -> Mapping {
 		// DocumentMessage
 		entry!(KeyDown(Space); modifiers=[Control], action_dispatch=DocumentMessage::GraphViewOverlayToggle),
 		entry!(KeyUp(Escape); action_dispatch=DocumentMessage::Escape),
-		entry!(KeyDown(Delete); action_dispatch=DocumentMessage::DeleteSelectedLayers),
-		entry!(KeyDown(Backspace); action_dispatch=DocumentMessage::DeleteSelectedLayers),
+		entry!(KeyDown(Delete); action_dispatch=NodeGraphMessage::DeleteSelectedNodes { delete_children: true }),
+		entry!(KeyDown(Backspace); action_dispatch=NodeGraphMessage::DeleteSelectedNodes { delete_children: true }),
 		entry!(KeyDown(KeyP); modifiers=[Alt], action_dispatch=DocumentMessage::DebugPrintDocument),
 		entry!(KeyDown(KeyO); modifiers=[Alt], action_dispatch=DocumentMessage::ToggleOverlaysVisibility),
 		entry!(KeyDown(KeyS); modifiers=[Alt], action_dispatch=DocumentMessage::ToggleSnapping),

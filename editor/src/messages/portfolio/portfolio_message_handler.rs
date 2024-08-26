@@ -234,7 +234,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			}
 			PortfolioMessage::Cut { clipboard } => {
 				responses.add(PortfolioMessage::Copy { clipboard });
-				responses.add(DocumentMessage::DeleteSelectedLayers);
+				responses.add(NodeGraphMessage::DeleteSelectedNodes { delete_children: true });
 			}
 			PortfolioMessage::DeleteDocument { document_id } => {
 				let document_index = self.document_index(document_id);
@@ -595,10 +595,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					if let Ok(data) = serde_json::from_str::<Vec<CopyBufferEntry>>(&data) {
 						let parent = document.new_layer_parent(false);
 
-						responses.add(DocumentMessage::DeselectAllLayers);
-						responses.add(DocumentMessage::StartTransaction);
+						let mut added_nodes = false;
 
 						for entry in data.into_iter().rev() {
+							if !added_nodes {
+								responses.add(DocumentMessage::DeselectAllLayers);
+								responses.add(DocumentMessage::AddTransaction);
+							}
 							document.load_layer_resources(responses);
 							let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(id, _)| (*id, NodeId(generate_uuid()))).collect();
 							let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);

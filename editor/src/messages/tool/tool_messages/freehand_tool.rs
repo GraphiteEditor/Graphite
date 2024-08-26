@@ -254,7 +254,7 @@ impl Fsm for FreehandToolFsmState {
 				if tool_data.dragged {
 					responses.add(DocumentMessage::CommitTransaction);
 				} else {
-					responses.add(DocumentMessage::DocumentHistoryBackward);
+					responses.add(DocumentMessage::EndTransaction);
 				}
 
 				tool_data.end_point = None;
