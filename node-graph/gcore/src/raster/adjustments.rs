@@ -5,7 +5,7 @@ use super::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
 #[cfg(feature = "alloc")]
 use super::ImageFrame;
 use super::{Channel, Color, Node, Pixel, RGBMut};
-use crate::registry::types::Percentage;
+use crate::registry::types::{Angle, Percentage, SignedPercentage};
 use crate::vector::style::GradientStops;
 use crate::vector::VectorData;
 use crate::GraphicGroup;
@@ -267,7 +267,7 @@ impl From<BlendMode> for vello::peniko::Mix {
 	}
 }
 
-#[node_macro::new_node_fn(category("Adjustments"))]
+#[node_macro::new_node_fn(category("Raster: Adjustments"))]
 fn luminance<T: Adjust<Color>>(
 	_: (),
 	#[expose]
@@ -288,7 +288,7 @@ fn luminance<T: Adjust<Color>>(
 	input
 }
 
-#[node_macro::new_node_fn(category("Adjustments"))]
+#[node_macro::new_node_fn(category("Raster: Adjustments"))]
 fn extract_channel<T: Adjust<Color>>(
 	_: (),
 	#[expose]
@@ -308,7 +308,7 @@ fn extract_channel<T: Adjust<Color>>(
 	input
 }
 
-#[node_macro::new_node_fn(category("Adjustments"))]
+#[node_macro::new_node_fn(category("Raster: Adjustments"))]
 fn extract_opaque<T: Adjust<Color>>(
 	_: (),
 	#[expose]
@@ -325,7 +325,7 @@ fn extract_opaque<T: Adjust<Color>>(
 }
 
 // From https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
-#[node_macro::new_node_fn(category("Adjustments"))]
+#[node_macro::new_node_fn(category("Raster: Adjustments"))]
 fn levels<T: Adjust<Color>>(
 	_: (),
 	#[expose]
@@ -384,7 +384,7 @@ fn levels<T: Adjust<Color>>(
 
 // From <https://stackoverflow.com/a/55233732/775283>
 // Works the same for gamma and linear color
-#[node_macro::new_node_fn(category("Adjustments"))]
+#[node_macro::new_node_fn(category("Raster: Adjustments"))]
 fn black_and_white_color<T: Adjust<Color>>(
 	_: (),
 	#[expose]
@@ -438,15 +438,15 @@ fn black_and_white_color<T: Adjust<Color>>(
 	input
 }
 
-#[node_macro::new_node_fn(category("Adjustments"))]
+#[node_macro::new_node_fn(category("Raster: Adjustments"), name("Hue/Saturation"))]
 fn hue_shift<T: Adjust<Color>>(
 	_: (),
 	#[expose]
 	#[implementations(Color, ImageFrame<Color>)]
 	mut input: T,
-	hue_shift: f64,
-	saturation_shift: f64,
-	lightness_shift: f64,
+	hue_shift: Angle,
+	saturation_shift: SignedPercentage,
+	lightness_shift: SignedPercentage,
 ) -> T {
 	input.adjust(|color| {
 		let color = color.to_gamma_srgb();
@@ -467,7 +467,7 @@ fn hue_shift<T: Adjust<Color>>(
 	input
 }
 
-#[node_macro::new_node_fn(category("Adjustments"))]
+#[node_macro::new_node_fn(category("Raster: Adjustments"))]
 fn invert<T: Adjust<Color>>(
 	_: (),
 	#[expose]
@@ -484,17 +484,17 @@ fn invert<T: Adjust<Color>>(
 	input
 }
 
-#[node_macro::new_node_fn(category("Adjustments"))]
+#[node_macro::new_node_fn(category("Raster: Adjustments"))]
 fn threshold<T: Adjust<Color>>(
 	_: (),
 	#[expose]
 	#[implementations(Color, ImageFrame<Color>)]
-	mut input: T,
-	min_luminance: f64,
-	max_luminance: f64,
+	mut image: T,
+	min_luminance: Percentage,
+	max_luminance: Percentage,
 	luminance_calc: LuminanceCalculation,
 ) -> T {
-	input.adjust(|color| {
+	image.adjust(|color| {
 		let min_luminance = Color::srgb_to_linear(min_luminance as f32 / 100.);
 		let max_luminance = Color::srgb_to_linear(max_luminance as f32 / 100.);
 
@@ -512,7 +512,7 @@ fn threshold<T: Adjust<Color>>(
 			Color::BLACK
 		}
 	});
-	input
+	image
 }
 
 trait Blend<P: Pixel> {
@@ -571,7 +571,7 @@ impl Blend<Color> for GradientStops {
 	}
 }
 
-#[node_macro::new_node_fn(category("Adjustments"))]
+#[node_macro::new_node_fn(category("Raster: Adjustments"))]
 fn blend<T: Blend<Color>>(
 	_: (),
 	#[expose]
@@ -581,13 +581,13 @@ fn blend<T: Blend<Color>>(
 	#[implementations(Color, GradientStops, ImageFrame<Color>)]
 	under: T,
 	blend_mode: BlendMode,
-	opacity: crate::registry::types::Percentage,
+	#[default(100.)] opacity: crate::registry::types::Percentage,
 ) -> T {
 	Blend::blend(&over, &under, |a, b| blend_colors(a, b, blend_mode, opacity / 100.))
 }
 
-#[node_macro::new_node_fn(category("Adjustments"))]
-fn blend_pair(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Color {
+#[node_macro::new_node_fn(category("Raster: Adjustments"))]
+fn blend_pair(input: (Color, Color), blend_mode: BlendMode, opacity: Percentage) -> Color {
 	blend_colors(input.0, input.1, blend_mode, opacity / 100.)
 }
 
@@ -674,8 +674,8 @@ pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode,
 	background.alpha_blend(target_color.to_associated_alpha(opacity as f32))
 }
 
-#[node_macro::new_node_fn(category("Adjustments"))]
-fn gradient_map_node(_: (), color: Color, gradient: GradientStops, reverse: bool) -> Color {
+#[node_macro::new_node_fn(category("Raster: Adjustments"))]
+fn gradient_map(_: (), #[expose] color: Color, gradient: GradientStops, reverse: bool) -> Color {
 	let intensity = color.luminance_srgb();
 	let intensity = if reverse { 1. - intensity } else { intensity };
 	gradient.evalute(intensity as f64)
@@ -683,15 +683,15 @@ fn gradient_map_node(_: (), color: Color, gradient: GradientStops, reverse: bool
 
 // Based on <https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters>
 // The results of this implementation are very close to correct, but not quite perfect
-#[node_macro::new_node_fn(category("Adjustments"))]
-fn vibrance_node<T: Adjust<Color>>(
+#[node_macro::new_node_fn(category("Raster: Adjustments"))]
+fn vibrance<T: Adjust<Color>>(
 	_: (),
 	#[expose]
 	#[implementations(Color, ImageFrame<Color>)]
-	mut input: T,
-	vibrance: f64,
+	mut image: T,
+	vibrance: SignedPercentage,
 ) -> T {
-	input.adjust(|color| {
+	image.adjust(|color| {
 		let vibrance = vibrance as f32 / 100.;
 		// Slow the effect down by half when it's negative, since artifacts begin appearing past -50%.
 		// So this scales the 0% to -50% range to 0% to -100%.
@@ -738,7 +738,7 @@ fn vibrance_node<T: Adjust<Color>>(
 			altered_color.map_rgb(|c| c * (1. - factor) + luminance * factor)
 		}
 	});
-	input
+	image
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -967,7 +967,7 @@ impl DomainWarpType {
 	}
 }
 
-#[node_macro::new_node_fn(category("Adjustments"))]
+#[node_macro::new_node_fn(category("Raster: Adjustments"))]
 fn channel_mixer_node<T: Adjust<Color>>(
 	_: (),
 	#[expose]
@@ -1071,7 +1071,7 @@ impl core::fmt::Display for SelectiveColorChoice {
 }
 
 // Based on https://blog.pkh.me/p/22-understanding-selective-coloring-in-adobe-photoshop.html
-#[node_macro::new_node_fn(category("Adjustments"))]
+#[node_macro::new_node_fn(category("Raster: Adjustments"))]
 fn selective_color<T: Adjust<Color>>(
 	_: (),
 	#[expose]
@@ -1220,13 +1220,13 @@ impl<P: Pixel> MultiplyAlpha for ImageFrame<P> {
 type PosterizeValue = f64;
 // Based on https://www.axiomx.com/posterize.htm
 // This algorithm produces fully accurate output in relation to the industry standard.
-#[node_macro::new_node_fn(category("Adjustments"))]
+#[node_macro::new_node_fn(category("Raster: Adjustments"))]
 fn posterize<T: Adjust<Color>>(
 	_: (),
 	#[expose]
 	#[implementations(Color, ImageFrame<Color>)]
 	mut input: T,
-	levels: PosterizeValue,
+	#[default(4)] levels: PosterizeValue,
 ) -> T {
 	input.adjust(|color| {
 		let color = color.to_gamma_srgb();
@@ -1242,7 +1242,7 @@ fn posterize<T: Adjust<Color>>(
 }
 
 // Based on https://geraldbakker.nl/psnumbers/exposure.html
-#[node_macro::new_node_fn(category("Adjustments"))]
+#[node_macro::new_node_fn(category("Raster: Adjustments"))]
 fn exposure<T: Adjust<Color>>(
 	_: (),
 	#[expose]
@@ -1250,7 +1250,7 @@ fn exposure<T: Adjust<Color>>(
 	mut input: T,
 	exposure: f64,
 	offset: f64,
-	gamma_correction: f64,
+	#[default(1.)] gamma_correction: f64,
 ) -> T {
 	input.adjust(|color| {
 		let adjusted = color
@@ -1269,7 +1269,7 @@ fn exposure<T: Adjust<Color>>(
 const WINDOW_SIZE: usize = 1024;
 
 #[cfg(feature = "alloc")]
-#[node_macro::new_node_fn(category("Adjustments"))]
+#[node_macro::new_node_fn(category("Raster: Adjustments"))]
 fn generate_curves<C: Channel + super::Linear>(_: (), curve: Curve, #[implementations(f32)] _target_format: C) -> ValueMapperNode<C> {
 	use bezier_rs::{Bezier, TValue};
 	let [mut pos, mut param]: [[f32; 2]; 2] = [[0.; 2], curve.first_handle];
@@ -1309,7 +1309,7 @@ fn generate_curves<C: Channel + super::Linear>(_: (), curve: Curve, #[implementa
 }
 
 #[cfg(feature = "alloc")]
-#[node_macro::new_node_fn(category("Adjustments"))]
+#[node_macro::new_node_fn(category("Raster: Adjustments"))]
 pub fn color_fill_node(mut image_frame: ImageFrame<Color>, color: Color) -> ImageFrame<Color> {
 	for pixel in &mut image_frame.image.data {
 		pixel.set_red(color.r());
@@ -1322,8 +1322,8 @@ pub fn color_fill_node(mut image_frame: ImageFrame<Color>, color: Color) -> Imag
 }
 
 #[cfg(feature = "alloc")]
-#[node_macro::new_node_fn(category("Adjustments"))]
-pub fn color_overlay_node(mut image: ImageFrame<Color>, color: Color, blend_mode: BlendMode, opacity: f64) -> ImageFrame<Color> {
+#[node_macro::new_node_fn(category("Raster: Adjustments"))]
+pub fn color_overlay_node(mut image: ImageFrame<Color>, color: Color, blend_mode: BlendMode, opacity: Percentage) -> ImageFrame<Color> {
 	let opacity = (opacity as f32 / 100.).clamp(0., 1.);
 	for pixel in &mut image.image.data {
 		let image = pixel.map_rgb(|channel| channel * (1. - opacity));
@@ -1368,7 +1368,7 @@ mod index_node {
 	use crate::raster::{Color, ImageFrame};
 	use crate::Node;
 
-	#[node_macro::new_node_fn(category("Adjustments"))]
+	#[node_macro::new_node_fn(category("Raster: Adjustments"))]
 	pub fn index<T: Default + Clone>(_: (), #[implementations(Vec<ImageFrame<Color>>, Vec<Color>)] input: Vec<T>, index: u32) -> T {
 		if (index as usize) < input.len() {
 			input[index as usize].clone()

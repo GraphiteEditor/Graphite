@@ -947,52 +947,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			properties: &node_properties::node_no_properties,
 		},
-		// TODO: Consolidate this into the regular Blend node once we can make its generic types all compatible, and not break the brush tool which uses that Blend node
-		DocumentNodeDefinition {
-			identifier: "Blend Colors",
-			category: "Raster",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::raster::BlendColorsNode<_, _, _>"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::Color(Color::TRANSPARENT), true),
-						NodeInput::value(TaggedValue::Color(Color::TRANSPARENT), true),
-						NodeInput::value(TaggedValue::BlendMode(BlendMode::Normal), false),
-						NodeInput::value(TaggedValue::F64(100.), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Over".to_string(), "Under".to_string(), "Blend Mode".to_string(), "Opacity".to_string()],
-					output_names: vec!["Combined".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::blend_color_properties,
-		},
-		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
-		DocumentNodeDefinition {
-			identifier: "Blend",
-			category: "Raster",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::raster::BlendNode<_, _, _, _>"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::BlendMode(BlendMode::Normal), false),
-						NodeInput::value(TaggedValue::F64(100.), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Second".to_string(), "Blend Mode".to_string(), "Opacity".to_string()],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::blend_properties,
-		},
 		DocumentNodeDefinition {
 			identifier: "Levels",
 			category: "Raster: Adjustment",
@@ -2194,29 +2148,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			properties: &node_properties::node_no_properties,
 		},
-		#[cfg(feature = "gpu")]
-		DocumentNodeDefinition {
-			identifier: "Blend (GPU)",
-			category: "Debug: GPU",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_std::executor::BlendGpuImageNode<_, _, _>"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::BlendMode(BlendMode::Normal), false),
-						NodeInput::value(TaggedValue::F64(100.), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Second".to_string(), "Blend Mode".to_string(), "Opacity".to_string()],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::blend_properties,
-		},
 		DocumentNodeDefinition {
 			identifier: "Extract",
 			category: "Debug",
@@ -2299,45 +2230,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: &node_properties::quantize_properties,
 		},
 		DocumentNodeDefinition {
-			identifier: "Invert",
-			category: "Raster: Adjustment",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::raster::InvertNode"),
-					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string()],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::node_no_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Hue/Saturation",
-			category: "Raster: Adjustment",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::raster::HueSaturationNode<_, _, _>"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::F64(0.), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Hue Shift".to_string(), "Saturation Shift".to_string(), "Lightness Shift".to_string()],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::hue_saturation_properties,
-		},
-		DocumentNodeDefinition {
 			identifier: "Brightness/Contrast",
 			category: "Raster: Adjustment",
 			node_template: NodeTemplate {
@@ -2378,66 +2270,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			properties: &node_properties::curves_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Threshold",
-			category: "Raster: Adjustment",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::raster::ThresholdNode<_, _, _>"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::F64(50.), false),
-						NodeInput::value(TaggedValue::F64(100.), false),
-						NodeInput::value(TaggedValue::LuminanceCalculation(LuminanceCalculation::SRGB), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Min Luminance".to_string(), "Max Luminance".to_string(), "Luminance Calc".to_string()],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::threshold_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Gradient Map",
-			category: "Raster: Adjustment",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::raster::GradientMapNode<_, _>"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::GradientStops(vector::style::GradientStops::default()), false),
-						NodeInput::value(TaggedValue::Bool(false), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Gradient".to_string()],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::gradient_map_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Vibrance",
-			category: "Raster: Adjustment",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::raster::VibranceNode<_>"),
-					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true), NodeInput::value(TaggedValue::F64(0.), false)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Vibrance".to_string()],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::vibrance_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Channel Mixer",
@@ -2611,23 +2443,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			properties: &node_properties::selective_color_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Posterize",
-			category: "Raster: Adjustment",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::raster::PosterizeNode<_>"),
-					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true), NodeInput::value(TaggedValue::F64(4.), false)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Levels".to_string()],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::posterize_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Exposure",

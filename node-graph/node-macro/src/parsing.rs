@@ -5,7 +5,7 @@ use quote::{format_ident, ToTokens};
 use syn::parse::{Parse, ParseStream, Parser};
 use syn::punctuated::Punctuated;
 use syn::token::Comma;
-use syn::{parse_quote, Attribute, Error, FnArg, GenericParam, Ident, ItemFn, LitStr, Meta, Pat, PatIdent, PatType, ReturnType, Type, TypeTuple, WhereClause};
+use syn::{Attribute, Error, FnArg, GenericParam, Ident, ItemFn, LitStr, Meta, Pat, PatIdent, PatType, ReturnType, Type, TypeTuple, WhereClause};
 
 use crate::codegen::generate_node_code;
 

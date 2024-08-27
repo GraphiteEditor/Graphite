@@ -10,11 +10,12 @@ use crate::NodeIOTypes;
 
 pub mod types {
 	pub type Percentage = f64;
-	type Angle = f64;
-	type PixelLength = f64;
-	type IntegerCount = u32;
-	type SeedValue = u64;
-	type Resolution = glam::UVec2;
+	pub type Angle = f64;
+	pub type SignedPercentage = f64;
+	pub type PixelLength = f64;
+	pub type IntegerCount = u32;
+	pub type SeedValue = u64;
+	pub type Resolution = glam::UVec2;
 }
 
 #[derive(Clone)]

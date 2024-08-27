@@ -292,26 +292,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		// Filters
 		register_node!(graphene_std::image_segmentation::ImageSegmentationNode<_>, input: ImageFrame<Color>, params: [ImageFrame<Color>]),
 		register_node!(graphene_std::image_color_palette::ImageColorPaletteNode<_>, input: ImageFrame<Color>, params: [u32]),
-		/*
-		vec![(
-			ProtoNodeIdentifier::new("graphene_core::raster::BlendNode<_, _, _, _>"),
-			|args| {
-				Box::pin(async move {
-					let image: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0].clone());
-					let blend_mode: DowncastBothNode<(), BlendMode> = DowncastBothNode::new(args[1].clone());
-					let opacity: DowncastBothNode<(), f64> = DowncastBothNode::new(args[2].clone());
-					let blend_node = graphene_core::raster::BlendNode::new(CopiedNode::new(blend_mode.eval(()).await), CopiedNode::new(opacity.eval(()).await));
-					let node = graphene_std::raster::BlendImageNode::new(image, FutureWrapperNode::new(ValueNode::new(blend_node)));
-					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(node);
-					any.into_type_erased()
-				})
-			},
-			NodeIOTypes::new(
-				concrete!(ImageFrame<Color>),
-				concrete!(ImageFrame<Color>),
-				vec![fn_type!(ImageFrame<Color>), fn_type!(BlendMode), fn_type!(f64)],
-			),
-		)],*/
 		vec![(
 			ProtoNodeIdentifier::new("graphene_core::raster::BrightnessContrastNode<_, _, _>"),
 			|args| {

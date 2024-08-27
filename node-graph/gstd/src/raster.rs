@@ -5,8 +5,8 @@ use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFil
 use graph_craft::proto::DynFuture;
 use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::raster::{
-	blend_colors, Alpha, Bitmap, BitmapMut, BlendMode, BlendNode, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, Image, ImageFrame, Linear, LinearChannel, Luminance,
-	NoiseType, Pixel, RGBMut, RedGreenBlue, Sample,
+	blend_colors, Alpha, Bitmap, BitmapMut, BlendMode, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, Image, ImageFrame, Linear, LinearChannel, Luminance, NoiseType,
+	Pixel, RGBMut, RedGreenBlue, Sample,
 };
 use graphene_core::transform::{Footprint, Transform};
 use graphene_core::value::CopiedNode;

@@ -93,12 +93,12 @@ pub(crate) fn property_from_type(document_node: &DocumentNode, node_id: NodeId, 
 		Type::Concrete(concrete_type) => {
 			match concrete_type.name.as_ref() {
 				// Aliased types (ambiguous values)
-				"Percentage" => number_widget(document_node, node_id, index, name, NumberInput::default().percentage().min(0.).max(100.), false).into(),
-				"Angle" => number_widget(document_node, node_id, index, name, NumberInput::default().mode_range().min(-180.).max(180.).unit("°"), false).into(),
-				"PixelLength" => number_widget(document_node, node_id, index, name, NumberInput::default().min(0.).unit("px"), false).into(),
-				"IntegerCount" => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(1.), false).into(),
-				"SeedValue" => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(0.), false).into(),
-				"Resolution" => vec2_widget(document_node, node_id, index, name, "W", "H", "px", Some(64.), add_blank_assist),
+				"graphene_core::registry::types::Percentage" => number_widget(document_node, node_id, index, name, NumberInput::default().percentage().min(0.).max(100.), false).into(),
+				"graphene_core::registry::types::Angle" => number_widget(document_node, node_id, index, name, NumberInput::default().mode_range().min(-180.).max(180.).unit("°"), false).into(),
+				"graphene_core::registry::types::PixelLength" => number_widget(document_node, node_id, index, name, NumberInput::default().min(0.).unit("px"), false).into(),
+				"graphene_core::registry::types::IntegerCount" => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(1.), false).into(),
+				"graphene_core::registry::types::SeedValue" => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(0.), false).into(),
+				"graphene_core::registry::types::Resolution" => vec2_widget(document_node, node_id, index, name, "W", "H", "px", Some(64.), add_blank_assist),
 
 				// For all other types, use TypeId-based matching
 				_ => {
@@ -1100,20 +1100,8 @@ pub(crate) fn black_and_white_properties(document_node: &DocumentNode, node_id: 
 	]
 }
 
-pub(crate) fn blend_color_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let under = color_widget(document_node, node_id, 1, "Under", ColorButton::default(), true);
-	let blend_mode = blend_mode(document_node, node_id, 2, "Blend Mode", true);
-	let opacity = number_widget(document_node, node_id, 3, "Opacity", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
-
-	vec![under, blend_mode, LayoutGroup::Row { widgets: opacity }]
-}
-
-pub(crate) fn blend_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let backdrop = color_widget(document_node, node_id, 1, "Backdrop", ColorButton::default(), true);
-	let blend_mode = blend_mode(document_node, node_id, 2, "Blend Mode", true);
-	let opacity = number_widget(document_node, node_id, 3, "Opacity", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
-
-	vec![backdrop, blend_mode, LayoutGroup::Row { widgets: opacity }]
+pub(crate) fn blend_mode_value_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	vec![blend_mode(document_node, node_id, 0, "Blend Mode", true)]
 }
 
 pub(crate) fn number_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -1326,18 +1314,6 @@ pub(crate) fn noise_pattern_properties(document_node: &DocumentNode, node_id: No
 	]
 }
 
-pub(crate) fn hue_saturation_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let hue_shift = number_widget(document_node, node_id, 1, "Hue Shift", NumberInput::default().min(-180.).max(180.).unit("°"), true);
-	let saturation_shift = number_widget(document_node, node_id, 2, "Saturation Shift", NumberInput::default().mode_range().min(-100.).max(100.).unit("%"), true);
-	let lightness_shift = number_widget(document_node, node_id, 3, "Lightness Shift", NumberInput::default().mode_range().min(-100.).max(100.).unit("%"), true);
-
-	vec![
-		LayoutGroup::Row { widgets: hue_shift },
-		LayoutGroup::Row { widgets: saturation_shift },
-		LayoutGroup::Row { widgets: lightness_shift },
-	]
-}
-
 pub(crate) fn brightness_contrast_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let brightness = number_widget(document_node, node_id, 1, "Brightness", NumberInput::default().min(-150.).max(150.), true);
 	let contrast = number_widget(document_node, node_id, 2, "Contrast", NumberInput::default().min(-100.).max(100.), true);
@@ -1361,24 +1337,6 @@ pub(crate) fn _blur_image_properties(document_node: &DocumentNode, node_id: Node
 	let sigma = number_widget(document_node, node_id, 2, "Sigma", NumberInput::default().min(0.).max(10000.), true);
 
 	vec![LayoutGroup::Row { widgets: radius }, LayoutGroup::Row { widgets: sigma }]
-}
-
-pub(crate) fn threshold_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let thereshold_min = number_widget(document_node, node_id, 1, "Min Luminance", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
-	let thereshold_max = number_widget(document_node, node_id, 2, "Max Luminance", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
-	let luminance_calc = luminance_calculation(document_node, node_id, 3, "Luminance Calc", true);
-
-	vec![LayoutGroup::Row { widgets: thereshold_min }, LayoutGroup::Row { widgets: thereshold_max }, luminance_calc]
-}
-
-pub(crate) fn gradient_map_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let gradient_index = 1;
-	let reverse_index = 2;
-
-	let gradient_row = color_widget(document_node, node_id, gradient_index, "Gradient", ColorButton::default().allow_none(false), true);
-	let reverse_row = bool_widget(document_node, node_id, reverse_index, "Reverse", CheckboxInput::default(), true);
-
-	vec![gradient_row, LayoutGroup::Row { widgets: reverse_row }]
 }
 
 pub(crate) fn assign_colors_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -1419,21 +1377,6 @@ pub(crate) fn assign_colors_properties(document_node: &DocumentNode, node_id: No
 		LayoutGroup::Row { widgets: seed_row },
 		LayoutGroup::Row { widgets: repeat_every_row },
 	]
-}
-
-pub(crate) fn vibrance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let vibrance_index = 1;
-
-	let vibrance = number_widget(
-		document_node,
-		node_id,
-		vibrance_index,
-		"Vibrance",
-		NumberInput::default().mode_range().min(-100.).max(100.).unit("%"),
-		true,
-	);
-
-	vec![LayoutGroup::Row { widgets: vibrance }]
 }
 
 pub(crate) fn channel_mixer_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -1630,26 +1573,6 @@ pub(crate) fn _gpu_map_properties(document_node: &DocumentNode, node_id: NodeId,
 	let map = text_widget(document_node, node_id, 1, "Map", true);
 
 	vec![LayoutGroup::Row { widgets: map }]
-}
-
-pub(crate) fn opacity_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let gamma = number_widget(document_node, node_id, 1, "Factor", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
-
-	vec![LayoutGroup::Row { widgets: gamma }]
-}
-
-pub(crate) fn blend_mode_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	vec![blend_mode(document_node, node_id, 1, "Blend Mode", true)]
-}
-
-pub(crate) fn blend_mode_value_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	vec![blend_mode(document_node, node_id, 0, "Blend Mode", true)]
-}
-
-pub(crate) fn posterize_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let value = number_widget(document_node, node_id, 1, "Levels", NumberInput::default().min(2.).max(255.).int(), true);
-
-	vec![LayoutGroup::Row { widgets: value }]
 }
 
 #[cfg(feature = "quantization")]

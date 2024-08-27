@@ -8,7 +8,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 
 use bezier_rs::Subpath;
 use graph_craft::document::{value::TaggedValue, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
-use graph_craft::{concrete, ProtoNodeIdentifier, Type};
+use graph_craft::{concrete, Type};
 use graphene_std::renderer::{ClickTarget, Quad};
 use graphene_std::vector::{PointId, VectorData, VectorModificationType};
 use interpreted_executor::{dynamic_executor::ResolvedDocumentNodeTypes, node_registry::NODE_REGISTRY};
