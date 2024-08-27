@@ -4,7 +4,7 @@
 use super::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
 #[cfg(feature = "alloc")]
 use super::ImageFrame;
-use super::{Channel, Color, Node, Pixel, RGBMut};
+use super::{Channel, Color, Pixel, RGBMut};
 use crate::registry::types::{Angle, Percentage, SignedPercentage};
 use crate::transform::Footprint;
 use crate::vector::style::GradientStops;
@@ -1380,7 +1380,6 @@ pub use index_node::IndexNode;
 #[cfg(feature = "alloc")]
 mod index_node {
 	use crate::raster::{Color, ImageFrame};
-	use crate::Node;
 
 	#[node_macro::new_node_fn(category("Raster: Adjustments"))]
 	pub fn index<T: Default + Clone>(_: (), #[implementations(Vec<ImageFrame<Color>>, Vec<Color>)] input: Vec<T>, index: u32) -> T {

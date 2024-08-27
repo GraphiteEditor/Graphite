@@ -7,6 +7,8 @@ extern crate log;
 
 pub mod raster;
 
+pub mod text;
+
 pub mod vector;
 
 pub mod http;

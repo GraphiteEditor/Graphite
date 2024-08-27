@@ -13,7 +13,7 @@ use crate::messages::prelude::*;
 use crate::node_graph_executor::NodeGraphExecutor;
 
 use graphene_core::raster::color::Color;
-use graphene_std::text::FontCache;
+use graphene_core::text::FontCache;
 
 use std::fmt::{self, Debug};
 

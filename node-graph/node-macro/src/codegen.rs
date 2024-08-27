@@ -64,9 +64,9 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		.map(|field| match field {
 			ParsedField::Regular { ty, .. } => ty.clone(),
 			ParsedField::Node { output_type, input_type, .. } => match parsed.is_async {
-				true => parse_quote!(&'n impl Node<'n, #input_type, Output: core::future::Future<Output=#output_type> + #graphene_core::WasmNotSend>),
+				true => parse_quote!(&'n impl #graphene_core::Node<'n, #input_type, Output: core::future::Future<Output=#output_type> + #graphene_core::WasmNotSend>),
 
-				false => parse_quote!(&'n impl Node<'n, #input_type, Output = #output_type>),
+				false => parse_quote!(&'n impl #graphene_core::Node<'n, #input_type, Output = #output_type>),
 			},
 		})
 		.collect();
@@ -109,10 +109,12 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	let mut clauses = Vec::new();
 	for (field, name) in fields.iter().zip(struct_generics.iter()) {
 		clauses.push(match (field, *is_async) {
-			(ParsedField::Regular { ty, .. }, _) => quote!(#name: Node<'n, (), Output = #ty> ),
-			(ParsedField::Node { input_type, output_type, .. }, false) => quote!(for<'all_input> #name: Node<'all_input, #input_type, Output = #output_type> + #graphene_core::WasmNotSync),
+			(ParsedField::Regular { ty, .. }, _) => quote!(#name: #graphene_core::Node<'n, (), Output = #ty> ),
+			(ParsedField::Node { input_type, output_type, .. }, false) => {
+				quote!(for<'all_input> #name: #graphene_core::Node<'all_input, #input_type, Output = #output_type> + #graphene_core::WasmNotSync)
+			}
 			(ParsedField::Node { input_type, output_type, .. }, true) => {
-				quote!(for<'all_input> #name: Node<'all_input, #input_type, Output: core::future::Future<Output = #output_type> + #graphene_core::WasmNotSend> + #graphene_core::WasmNotSync)
+				quote!(for<'all_input> #name: #graphene_core::Node<'all_input, #input_type, Output: core::future::Future<Output = #output_type> + #graphene_core::WasmNotSend> + #graphene_core::WasmNotSync)
 			}
 		});
 	}
@@ -184,7 +186,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 			use gcore::value::ClonedNode;
 			use gcore::ops::TypeNode;
 			use gcore::registry::{NodeMetadata, FieldMetadata, NODE_REGISTRY, NODE_METADATA, DynAnyNode, DowncastBothNode, DynFuture, TypeErasedBox, PanicNode};
-			use ctor::ctor;
+			use gcore::ctor::ctor;
 
 			// Use the types specified in the implementation
 			#[cfg(__never_compiled)]
@@ -236,26 +238,31 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 	let parameter_types: Vec<_> = parsed
 		.fields
 		.iter()
-		.map(|field| match field {
-			ParsedField::Regular { implementations, ty, .. } => {
-				if !implementations.is_empty() {
-					implementations.into_iter().map(|ty| (&unit, ty, false)).collect()
-				} else {
-					vec![(&unit, ty, false)]
+		.map(|field| {
+			match field {
+				ParsedField::Regular { implementations, ty, .. } => {
+					if !implementations.is_empty() {
+						implementations.into_iter().map(|ty| (&unit, ty, false)).collect()
+					} else {
+						vec![(&unit, ty, false)]
+					}
+				}
+				ParsedField::Node {
+					implementations,
+					output_type,
+					input_type,
+					..
+				} => {
+					if !implementations.is_empty() {
+						implementations.into_iter().map(|tup| (&tup.elems[0], &tup.elems[1], true)).collect()
+					} else {
+						vec![(input_type, output_type, true)]
+					}
 				}
 			}
-			ParsedField::Node {
-				implementations,
-				output_type,
-				input_type,
-				..
-			} => {
-				if !implementations.is_empty() {
-					implementations.into_iter().map(|tup| (&tup.elems[0], &tup.elems[1], true)).collect()
-				} else {
-					vec![(input_type, output_type, true)]
-				}
-			}
+			.into_iter()
+			.map(|(input, out, node)| (substitute_lifetimes(input.clone()), substitute_lifetimes(out.clone()), node))
+			.collect::<Vec<_>>()
 		})
 		.collect();
 
@@ -269,7 +276,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 
 		for (j, types) in parameter_types.iter().enumerate() {
 			let field_name = field_names[j];
-			let (input_type, output_type, impl_node) = types[i.min(types.len() - 1)];
+			let (input_type, output_type, impl_node) = &types[i.min(types.len() - 1)];
 
 			let node = matches!(parsed.fields[j], ParsedField::Node { .. });
 
@@ -291,7 +298,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 				)
 			});
 			temp_node_io.push(quote!(fn_type!(#input_type, #output_type, alias: #output_type)));
-			match parsed.is_async && impl_node {
+			match parsed.is_async && *impl_node {
 				true => panic_node_types.push(quote!(#input_type, DynFuture<'static, #output_type>)),
 				false => panic_node_types.push(quote!(#input_type, #output_type)),
 			};
@@ -339,4 +346,40 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 			register_metadata();
 		}
 	})
+}
+
+use syn::{visit_mut::VisitMut, GenericArgument, Lifetime, Type};
+
+struct LifetimeReplacer;
+
+impl VisitMut for LifetimeReplacer {
+	fn visit_lifetime_mut(&mut self, lifetime: &mut Lifetime) {
+		lifetime.ident = syn::Ident::new("_", lifetime.ident.span());
+	}
+
+	fn visit_type_mut(&mut self, ty: &mut Type) {
+		match ty {
+			Type::Reference(type_reference) => {
+				if let Some(lifetime) = &mut type_reference.lifetime {
+					self.visit_lifetime_mut(lifetime);
+				}
+				self.visit_type_mut(&mut type_reference.elem);
+			}
+			_ => syn::visit_mut::visit_type_mut(self, ty),
+		}
+	}
+
+	fn visit_generic_argument_mut(&mut self, arg: &mut GenericArgument) {
+		if let GenericArgument::Lifetime(lifetime) = arg {
+			self.visit_lifetime_mut(lifetime);
+		} else {
+			syn::visit_mut::visit_generic_argument_mut(self, arg);
+		}
+	}
+}
+
+#[must_use]
+fn substitute_lifetimes(mut ty: Type) -> Type {
+	LifetimeReplacer.visit_type_mut(&mut ty);
+	ty
 }

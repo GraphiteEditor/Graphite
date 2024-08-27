@@ -10,6 +10,9 @@ use core::future::Future;
 extern crate log;
 pub use crate as graphene_core;
 
+#[cfg(feature = "reflections")]
+pub use ctor;
+
 pub mod consts;
 pub mod generic;
 pub mod logic;

@@ -782,6 +782,7 @@ impl TypingContext {
 				self.constructor.insert(node_id, impls[org_nio]);
 				Ok(node_io)
 			}
+			// If two types are available and one of them accepts () an input, always choose that one
 			[first, second] => {
 				if first.0.input != second.0.input {
 					for (org_nio, output) in [first, second] {

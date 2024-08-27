@@ -4,7 +4,7 @@ use super::{PointId, SegmentId, StrokeId, VectorData};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
-use crate::{Color, GraphicGroup, Node};
+use crate::{Color, GraphicGroup};
 
 use bezier_rs::{Cap, Join, Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};

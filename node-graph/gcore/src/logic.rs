@@ -1,5 +1,3 @@
-use crate::Node;
-
 #[node_macro::new_node_fn(category("Debug"))]
 fn log_to_console<T: core::fmt::Debug>(
 	_: (),

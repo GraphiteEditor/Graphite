@@ -542,7 +542,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			params: [Vec<graphene_core::vector::PointId>]
 		),
 		register_node!(graphene_core::vector::PathModify<_>, input: VectorData, params: [graphene_core::vector::VectorModification]),
-		register_node!(graphene_core::text::TextGeneratorNode<_, _, _>, input: &WasmEditorApi, params: [String, graphene_core::text::Font, f64]),
 		register_node!(graphene_std::brush::VectorPointsNode, input: VectorData, params: []),
 		async_node!(graphene_core::ConstructLayerNode<_, _>, input: Footprint, output: GraphicGroup, fn_params: [Footprint => GraphicGroup, Footprint => graphene_core::GraphicElement]),
 		register_node!(graphene_core::ToGraphicElementNode, input: graphene_core::vector::VectorData, params: []),
@@ -557,6 +556,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	];
 	let mut map: HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> = HashMap::new();
 	for (id, entry) in graphene_core::registry::NODE_REGISTRY.lock().unwrap().iter() {
+		log::debug!("{}", &id);
 		for (constructor, types) in entry.iter() {
 			map.entry(id.clone().into()).or_default().insert(types.clone(), *constructor);
 		}

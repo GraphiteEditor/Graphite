@@ -129,14 +129,12 @@ fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNo
 	let output_type = parse_output(&input_fn.sig.output)?;
 	let where_clause = input_fn.sig.generics.where_clause;
 	let body = input_fn.block.to_token_stream();
-	let crate_name = proc_macro_crate::crate_name("graphene_core").unwrap_or(proc_macro_crate::FoundCrate::Itself);
-
-	//     .map_err(|e|
-	//     Error::new(
-	//         proc_macro2::Span::call_site(),
-	//         format!("Failed to find location of graphene_core. Make sure it is imported as a dependency: {}", e),
-	//     )
-	// )?;
+	let crate_name = proc_macro_crate::crate_name("graphene-core").map_err(|e| {
+		Error::new(
+			proc_macro2::Span::call_site(),
+			format!("Failed to find location of graphene_core. Make sure it is imported as a dependency: {}", e),
+		)
+	})?;
 
 	Ok(ParsedNodeFn {
 		attributes,
