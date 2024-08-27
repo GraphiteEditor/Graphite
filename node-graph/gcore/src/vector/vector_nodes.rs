@@ -26,11 +26,11 @@ impl VectorIterMut for VectorData {
 }
 
 #[node_macro::new_node_fn(path(graphene_core::vector))]
-fn assign_colors_node<T: VectorIterMut>(
-	_: (),
+async fn assign_colors<T: VectorIterMut>(
+	footprint: Footprint,
 	#[expose]
-	#[implementations(GraphicGroup, VectorData)]
-	mut input: T,
+	#[implementations((Footprint, GraphicGroup), (Footprint, VectorData))]
+	input: impl Node<Footprint, Output = T>,
 	fill: bool,
 	stroke: bool,
 	gradient: GradientStops,
@@ -39,11 +39,12 @@ fn assign_colors_node<T: VectorIterMut>(
 	seed: SeedValue,
 	repeat_every: u32,
 ) -> T {
+	let mut input = input.eval(footprint).await;
 	let vector_data = input.vector_iter_mut();
 	let length = vector_data.len();
 	let gradient = if reverse { gradient.reversed() } else { gradient };
 
-	let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 
 	for (i, vector_data) in vector_data.enumerate() {
 		let factor = match randomize {
@@ -269,8 +270,8 @@ async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + Tr
 	let instance_bounding_box = instance.bounding_box(DAffine2::IDENTITY).unwrap_or_default();
 	let instance_center = -0.5 * (instance_bounding_box[0] + instance_bounding_box[1]);
 
-	let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed);
-	let mut rotation_rng = rand::rngs::StdRng::seed_from_u64(random_rotation_seed);
+	let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed.into());
+	let mut rotation_rng = rand::rngs::StdRng::seed_from_u64(random_rotation_seed.into());
 
 	let do_scale = random_scale_difference.abs() > 1e-6;
 	let do_rotation = random_rotation.abs() > 1e-6;
@@ -308,7 +309,7 @@ async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + Tr
 	result
 }
 
-#[node_macro::new_node_fn(path(graphene_core::vector))]
+#[node_macro::new_node_fn]
 async fn sample_points(
 	footprint: Footprint,
 	vector_data: impl Node<Footprint, Output = VectorData>,
@@ -384,7 +385,7 @@ async fn sample_points(
 
 #[node_macro::new_node_fn(path(graphene_core::vector))]
 fn poisson_disk_points(_: (), #[expose] vector_data: VectorData, separation_disk_diameter: f64, seed: SeedValue) -> VectorData {
-	let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
+	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 	let mut result = VectorData::empty();
 	for mut subpath in vector_data.stroke_bezier_paths() {
 		if subpath.manipulator_groups().len() < 3 {
@@ -401,15 +402,17 @@ fn poisson_disk_points(_: (), #[expose] vector_data: VectorData, separation_disk
 	result
 }
 
-#[node_macro::new_node_fn(path(graphene_core::vector))]
-fn lengths_of_segments_of_subpaths(_: (), #[expose] vector_data: VectorData) -> Vec<f64> {
+#[node_macro::new_node_fn(name("Lengths of Segments of Subpaths"))]
+async fn lengths_of_segments_of_subpaths(footprint: Footprint, #[expose] vector_data: impl Node<Footprint, Output = VectorData>) -> Vec<f64> {
+	let vector_data = vector_data.eval(footprint).await;
+
 	vector_data
 		.segment_bezier_iter()
 		.map(|(_id, bezier, _, _)| bezier.apply_transformation(|point| vector_data.transform.transform_point2(point)).length(None))
 		.collect()
 }
 
-#[node_macro::new_node_fn(path(graphene_core::vector))]
+#[node_macro::new_node_fn(path(graphene_core::vector), name("Splines from Points"))]
 fn splines_from_points(_: (), #[expose] mut vector_data: VectorData) -> VectorData {
 	let points = &vector_data.point_domain;
 
@@ -609,12 +612,13 @@ mod test {
 	fn repeat() {
 		let direction = DVec2::X * 1.5;
 		let instances = 3;
-		let repeated = RepeatNode {
-			direction: ClonedNode::new(direction),
-			angle: ClonedNode::new(0.),
-			instances: ClonedNode::new(instances),
-		}
-		.eval(VectorData::from_subpath(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)));
+		let repeated = super::repeat(
+			Footprint::default(),
+			&CullNode::new(ClonedNode::new(async { VectorData::from_subpath(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)) })),
+			direction,
+			0.,
+			instances,
+		);
 		assert_eq!(repeated.region_bezier_paths().count(), 3);
 		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
 			assert!((subpath.manipulator_groups()[0].anchor - direction * index as f64 / (instances - 1) as f64).length() < 1e-5);

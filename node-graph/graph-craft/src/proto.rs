@@ -774,12 +774,31 @@ impl TypingContext {
 				Err(vec![GraphError::new(node, GraphErrorType::InvalidImplementations { parameters, error_inputs })])
 			}
 			[(org_nio, output)] => {
+				// TODO: Fix unsoundness caused by generic parameters not getting cleaned up
 				let node_io = NodeIOTypes::new(input, (*output).clone(), parameters);
 
 				// Save the inferred type
 				self.inferred.insert(node_id, node_io.clone());
 				self.constructor.insert(node_id, impls[org_nio]);
 				Ok(node_io)
+			}
+			[first, second] => {
+				if first.0.input != second.0.input {
+					for (org_nio, output) in [first, second] {
+						if org_nio.input != concrete!(()) {
+							continue;
+						}
+						let node_io = NodeIOTypes::new(input, (*output).clone(), parameters);
+
+						// Save the inferred type
+						self.inferred.insert(node_id, node_io.clone());
+						self.constructor.insert(node_id, impls[org_nio]);
+						return Ok(node_io);
+					}
+				}
+				let parameters = [&input].into_iter().chain(&parameters).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
+				let valid = valid_output_types.into_iter().cloned().collect();
+				Err(vec![GraphError::new(node, GraphErrorType::MultipleImplementations { parameters, valid })])
 			}
 
 			_ => {

@@ -2945,6 +2945,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Vector: Style",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
+					manual_composition: Some(concrete!(Footprint)),
 					implementation: DocumentNodeImplementation::proto("graphene_core::vector::AssignColorsNode<_, _, _, _, _, _, _>"),
 					inputs: vec![
 						NodeInput::value(TaggedValue::GraphicGroup(graphene_core::GraphicGroup::default()), true),
@@ -3060,16 +3061,16 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					// TODO: Wrap this implementation with a document node that has a cache node so the output is cached?
-					implementation: DocumentNodeImplementation::proto("graphene_core::vector::CopyToPoints<_, _, _, _, _, _, _, _>"),
+					implementation: DocumentNodeImplementation::proto("graphene_core::vector::CopyToPointsNode"),
 					inputs: vec![
 						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 						NodeInput::value(TaggedValue::F64(1.), false),
 						NodeInput::value(TaggedValue::F64(1.), false),
 						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::U64(0), false),
+						NodeInput::value(TaggedValue::U32(0), false),
 						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::U64(0), false),
+						NodeInput::value(TaggedValue::U32(0), false),
 					],
 					manual_composition: Some(concrete!(Footprint)),
 					..Default::default()
@@ -3101,7 +3102,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						nodes: [
 							DocumentNode {
 								inputs: vec![NodeInput::network(concrete!(graphene_core::vector::VectorData), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::LengthsOfSegmentsOfSubpaths")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::vector_nodes::LengthsOfSegmentsOfSubpathsNode")),
+								manual_composition: Some(concrete!(Footprint)),
 								..Default::default()
 							},
 							DocumentNode {
@@ -3113,7 +3115,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(concrete!(bool), 4), // From the document node's parameters
 									NodeInput::node(NodeId(0), 0),          // From output 0 of Lengths of Segments of Subpaths
 								],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::vector_nodes::SamplePoints<_, _, _, _, _, _>")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::vector_nodes::SamplePointsNode")),
 								manual_composition: Some(concrete!(Footprint)),
 								..Default::default()
 							},

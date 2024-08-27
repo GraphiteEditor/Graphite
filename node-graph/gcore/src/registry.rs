@@ -23,7 +23,7 @@ pub mod types {
 	pub type Fraction = f64;
 	pub type IntegerCount = u32;
 	/// Int input with randomization button
-	pub type SeedValue = u64;
+	pub type SeedValue = u32;
 	/// Non Negative integer vec with px unit
 	pub type Resolution = glam::UVec2;
 }
