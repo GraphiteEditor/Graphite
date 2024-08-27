@@ -77,16 +77,16 @@ fn set_fill<T: Into<Fill>>(_: (), #[expose] mut vector_data: VectorData, #[imple
 }
 
 #[node_macro::new_node_fn(path(graphene_core::vector))]
-fn set_vector_data_stroke(
+fn stroke(
 	_: (),
-	mut vector_data: VectorData,
+	#[expose] mut vector_data: VectorData,
 	color: Option<Color>,
 	weight: f64,
 	dash_lengths: Vec<f64>,
 	dash_offset: f64,
 	line_cap: crate::vector::style::LineCap,
 	line_join: crate::vector::style::LineJoin,
-	miter_limit: f64,
+	#[default(4)] miter_limit: f64,
 ) -> VectorData {
 	vector_data.style.set_stroke(Stroke {
 		color,

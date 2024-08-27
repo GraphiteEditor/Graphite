@@ -2347,45 +2347,6 @@ pub(crate) fn generate_node_properties(document_node: &DocumentNode, node_id: No
 	}
 }
 
-pub(crate) fn stroke_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let color_index = 1;
-	let weight_index = 2;
-	let dash_lengths_index = 3;
-	let dash_offset_index = 4;
-	let line_cap_index = 5;
-	let line_join_index = 6;
-	let miter_limit_index = 7;
-
-	let color = color_widget(document_node, node_id, color_index, "Color", ColorButton::default(), true);
-	let weight = number_widget(document_node, node_id, weight_index, "Weight", NumberInput::default().unit("px").min(0.), true);
-
-	let dash_lengths_val = match &document_node.inputs[dash_lengths_index].as_value() {
-		Some(TaggedValue::VecF64(x)) => x,
-		_ => &vec![],
-	};
-	let dash_lengths = vec_f64_input(document_node, node_id, dash_lengths_index, "Dash Lengths", TextInput::default().centered(true), true);
-	let number_input = NumberInput::default().unit("px").disabled(dash_lengths_val.is_empty());
-	let dash_offset = number_widget(document_node, node_id, dash_offset_index, "Dash Offset", number_input, true);
-	let line_cap = line_cap_widget(document_node, node_id, line_cap_index, "Line Cap", true);
-	let line_join = line_join_widget(document_node, node_id, line_join_index, "Line Join", true);
-	let line_join_val = match &document_node.inputs[line_join_index].as_value() {
-		Some(TaggedValue::LineJoin(x)) => x,
-		_ => &LineJoin::Miter,
-	};
-	let number_input = NumberInput::default().min(0.).disabled(line_join_val != &LineJoin::Miter);
-	let miter_limit = number_widget(document_node, node_id, miter_limit_index, "Miter Limit", number_input, true);
-
-	vec![
-		color,
-		LayoutGroup::Row { widgets: weight },
-		LayoutGroup::Row { widgets: dash_lengths },
-		LayoutGroup::Row { widgets: dash_offset },
-		line_cap,
-		line_join,
-		LayoutGroup::Row { widgets: miter_limit },
-	]
-}
-
 pub(crate) fn boolean_operation_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let group_of_paths_index = 0;
 	let operation_index = 1;

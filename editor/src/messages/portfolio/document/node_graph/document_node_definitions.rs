@@ -2981,10 +2981,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Vector: Style",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-					manual_composition: Some(concrete!(())),
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
 						exports: vec![NodeInput::node(NodeId(0), 0)],
 						nodes: vec![DocumentNode {
+							manual_composition: Some(concrete!(())),
 							inputs: vec![NodeInput::network(concrete!(VectorData), 0), NodeInput::network(concrete!(vector::style::Fill), 1)],
 							implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::SetFillNode<_>")),
 							..Default::default()
@@ -3033,41 +3033,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			properties: &node_properties::fill_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Stroke",
-			category: "Vector: Style",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::vector::SetStrokeNode<_, _, _, _, _, _, _>"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-						NodeInput::value(TaggedValue::OptionalColor(Some(Color::BLACK)), false),
-						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::VecF64(Vec::new()), false),
-						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::LineCap(graphene_core::vector::style::LineCap::default()), false),
-						NodeInput::value(TaggedValue::LineJoin(graphene_core::vector::style::LineJoin::default()), false),
-						NodeInput::value(TaggedValue::F64(4.), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec![
-						"Vector Data".to_string(),
-						"Color".to_string(),
-						"Weight".to_string(),
-						"Dash Lengths".to_string(),
-						"Dash Offset".to_string(),
-						"Line Cap".to_string(),
-						"Line Join".to_string(),
-						"Miter Limit".to_string(),
-					],
-					output_names: vec!["Vector".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::stroke_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Boolean Operation",
