@@ -12,6 +12,16 @@ macro_rules! concrete {
 		$crate::Type::Concrete($crate::TypeDescriptor {
 			id: Some(core::any::TypeId::of::<$type>()),
 			name: $crate::Cow::Borrowed(core::any::type_name::<$type>()),
+			alias: None,
+			size: core::mem::size_of::<$type>(),
+			align: core::mem::align_of::<$type>(),
+		})
+	};
+	($type:ty, $name:ty) => {
+		$crate::Type::Concrete($crate::TypeDescriptor {
+			id: Some(core::any::TypeId::of::<$type>()),
+			name: $crate::Cow::Borrowed(core::any::type_name::<$type>()),
+			alias: Some($crate::Cow::Borrowed(stringify!($name))),
 			size: core::mem::size_of::<$type>(),
 			align: core::mem::align_of::<$type>(),
 		})
@@ -24,6 +34,7 @@ macro_rules! concrete_with_name {
 		$crate::Type::Concrete($crate::TypeDescriptor {
 			id: Some(core::any::TypeId::of::<$type>()),
 			name: $crate::Cow::Borrowed($name),
+			alias: None,
 			size: core::mem::size_of::<$type>(),
 			align: core::mem::align_of::<$type>(),
 		})
@@ -49,6 +60,9 @@ macro_rules! fn_type {
 	($type:ty) => {
 		$crate::Type::Fn(Box::new(concrete!(())), Box::new(concrete!($type)))
 	};
+	($in_type:ty, $type:ty, alias: $outname:ty) => {
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(concrete!($type, $outname)))
+	};
 	($in_type:ty, $type:ty) => {
 		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(concrete!($type)))
 	};
@@ -70,12 +84,14 @@ impl NodeIOTypes {
 		let tds1 = TypeDescriptor {
 			id: None,
 			name: Cow::Borrowed("()"),
+			alias: None,
 			size: 0,
 			align: 0,
 		};
 		let tds2 = TypeDescriptor {
 			id: None,
 			name: Cow::Borrowed("()"),
+			alias: None,
 			size: 0,
 			align: 0,
 		};
@@ -132,6 +148,8 @@ pub struct TypeDescriptor {
 	pub id: Option<TypeId>,
 	#[serde(deserialize_with = "migrate_type_descriptor_names")]
 	pub name: Cow<'static, str>,
+	#[serde(default)]
+	pub alias: Option<Cow<'static, str>>,
 	#[serde(default)]
 	pub size: usize,
 	#[serde(default)]
@@ -231,6 +249,7 @@ impl Type {
 		Self::Concrete(TypeDescriptor {
 			id: Some(TypeId::of::<T::Static>()),
 			name: Cow::Borrowed(core::any::type_name::<T::Static>()),
+			alias: None,
 			size: core::mem::size_of::<T>(),
 			align: core::mem::align_of::<T>(),
 		})

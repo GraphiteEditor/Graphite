@@ -6,6 +6,7 @@ use super::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
 use super::ImageFrame;
 use super::{Channel, Color, Node, Pixel, RGBMut};
 use crate::registry::types::{Angle, Percentage, SignedPercentage};
+use crate::transform::Footprint;
 use crate::vector::style::GradientStops;
 use crate::vector::VectorData;
 use crate::GraphicGroup;
@@ -268,13 +269,14 @@ impl From<BlendMode> for vello::peniko::Mix {
 }
 
 #[node_macro::new_node_fn(category("Raster: Adjustments"))]
-fn luminance<T: Adjust<Color>>(
-	_: (),
+async fn luminance<T: Adjust<Color>>(
+	footprint: Footprint,
 	#[expose]
-	#[implementations(Color, ImageFrame<Color>)]
-	mut input: T,
+	#[implementations((Footprint, Color), (Footprint,ImageFrame<Color>))]
+	input: impl Node<Footprint, Output = T>,
 	luminance_calc: LuminanceCalculation,
 ) -> T {
+	let mut input = input.eval(footprint).await;
 	input.adjust(|color| {
 		let luminance = match luminance_calc {
 			LuminanceCalculation::SRGB => color.luminance_srgb(),
@@ -289,13 +291,14 @@ fn luminance<T: Adjust<Color>>(
 }
 
 #[node_macro::new_node_fn(category("Raster: Adjustments"))]
-fn extract_channel<T: Adjust<Color>>(
-	_: (),
+async fn extract_channel<T: Adjust<Color>>(
+	footprint: Footprint,
 	#[expose]
-	#[implementations(Color, ImageFrame<Color>)]
-	mut input: T,
+	#[implementations((Footprint, Color), (Footprint,ImageFrame<Color>))]
+	input: impl Node<Footprint, Output = T>,
 	channel: RedGreenBlueAlpha,
 ) -> T {
+	let mut input = input.eval(footprint).await;
 	input.adjust(|color| {
 		let extracted_value = match channel {
 			RedGreenBlueAlpha::Red => color.r(),
@@ -309,12 +312,13 @@ fn extract_channel<T: Adjust<Color>>(
 }
 
 #[node_macro::new_node_fn(category("Raster: Adjustments"))]
-fn extract_opaque<T: Adjust<Color>>(
-	_: (),
+async fn extract_opaque<T: Adjust<Color>>(
+	footprint: Footprint,
 	#[expose]
-	#[implementations(Color, ImageFrame<Color>)]
-	mut input: T,
+	#[implementations((Footprint, Color), (Footprint,ImageFrame<Color>))]
+	input: impl Node<Footprint, Output = T>,
 ) -> T {
+	let mut input = input.eval(footprint).await;
 	input.adjust(|color| {
 		if color.a() == 0. {
 			return color.with_alpha(1.);
@@ -326,17 +330,18 @@ fn extract_opaque<T: Adjust<Color>>(
 
 // From https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
 #[node_macro::new_node_fn(category("Raster: Adjustments"))]
-fn levels<T: Adjust<Color>>(
-	_: (),
+async fn levels<T: Adjust<Color>>(
+	footprint: Footprint,
 	#[expose]
-	#[implementations(Color, ImageFrame<Color>)]
-	mut input: T,
+	#[implementations((Footprint, Color), (Footprint,ImageFrame<Color>))]
+	input: impl Node<Footprint, Output = T>,
 	input_start: f64,
 	input_mid: f64,
 	input_end: f64,
 	output_start: f64,
 	output_end: f64,
 ) -> T {
+	let mut input = input.eval(footprint).await;
 	input.adjust(|color| {
 		let color = color.to_gamma_srgb();
 
@@ -385,11 +390,11 @@ fn levels<T: Adjust<Color>>(
 // From <https://stackoverflow.com/a/55233732/775283>
 // Works the same for gamma and linear color
 #[node_macro::new_node_fn(category("Raster: Adjustments"))]
-fn black_and_white_color<T: Adjust<Color>>(
-	_: (),
+async fn black_and_white_color<T: Adjust<Color>>(
+	footprint: Footprint,
 	#[expose]
-	#[implementations(Color, ImageFrame<Color>)]
-	mut input: T,
+	#[implementations((Footprint, Color), (Footprint,ImageFrame<Color>))]
+	input: impl Node<Footprint, Output = T>,
 	tint: Color,
 	reds: f64,
 	yellows: f64,
@@ -398,6 +403,7 @@ fn black_and_white_color<T: Adjust<Color>>(
 	blues: f64,
 	magentas: f64,
 ) -> T {
+	let mut input = input.eval(footprint).await;
 	input.adjust(|color| {
 		let color = color.to_gamma_srgb();
 
@@ -439,15 +445,16 @@ fn black_and_white_color<T: Adjust<Color>>(
 }
 
 #[node_macro::new_node_fn(category("Raster: Adjustments"), name("Hue/Saturation"))]
-fn hue_shift<T: Adjust<Color>>(
-	_: (),
+async fn hue_shift<T: Adjust<Color>>(
+	footprint: Footprint,
 	#[expose]
-	#[implementations(Color, ImageFrame<Color>)]
-	mut input: T,
+	#[implementations((Footprint, Color), (Footprint,ImageFrame<Color>))]
+	input: impl Node<Footprint, Output = T>,
 	hue_shift: Angle,
 	saturation_shift: SignedPercentage,
 	lightness_shift: SignedPercentage,
 ) -> T {
+	let mut input = input.eval(footprint).await;
 	input.adjust(|color| {
 		let color = color.to_gamma_srgb();
 
@@ -468,12 +475,13 @@ fn hue_shift<T: Adjust<Color>>(
 }
 
 #[node_macro::new_node_fn(category("Raster: Adjustments"))]
-fn invert<T: Adjust<Color>>(
-	_: (),
+async fn invert<T: Adjust<Color>>(
+	footprint: Footprint,
 	#[expose]
-	#[implementations(Color, ImageFrame<Color>)]
-	mut input: T,
+	#[implementations((Footprint, Color), (Footprint,ImageFrame<Color>))]
+	input: impl Node<Footprint, Output = T>,
 ) -> T {
+	let mut input = input.eval(footprint).await;
 	input.adjust(|color| {
 		let color = color.to_gamma_srgb();
 
@@ -485,16 +493,17 @@ fn invert<T: Adjust<Color>>(
 }
 
 #[node_macro::new_node_fn(category("Raster: Adjustments"))]
-fn threshold<T: Adjust<Color>>(
-	_: (),
+async fn threshold<T: Adjust<Color>>(
+	footprint: Footprint,
 	#[expose]
-	#[implementations(Color, ImageFrame<Color>)]
-	mut image: T,
+	#[implementations((Footprint, Color), (Footprint,ImageFrame<Color>))]
+	image: impl Node<Footprint, Output = T>,
 	min_luminance: Percentage,
 	max_luminance: Percentage,
 	luminance_calc: LuminanceCalculation,
 ) -> T {
-	image.adjust(|color| {
+	let mut input = image.eval(footprint).await;
+	input.adjust(|color| {
 		let min_luminance = Color::srgb_to_linear(min_luminance as f32 / 100.);
 		let max_luminance = Color::srgb_to_linear(max_luminance as f32 / 100.);
 
@@ -512,7 +521,7 @@ fn threshold<T: Adjust<Color>>(
 			Color::BLACK
 		}
 	});
-	image
+	input
 }
 
 trait Blend<P: Pixel> {
@@ -684,14 +693,15 @@ fn gradient_map(_: (), #[expose] color: Color, gradient: GradientStops, reverse:
 // Based on <https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters>
 // The results of this implementation are very close to correct, but not quite perfect
 #[node_macro::new_node_fn(category("Raster: Adjustments"))]
-fn vibrance<T: Adjust<Color>>(
-	_: (),
+async fn vibrance<T: Adjust<Color>>(
+	footprint: Footprint,
 	#[expose]
-	#[implementations(Color, ImageFrame<Color>)]
-	mut image: T,
+	#[implementations((Footprint, Color), (Footprint,ImageFrame<Color>))]
+	image: impl Node<Footprint, Output = T>,
 	vibrance: SignedPercentage,
 ) -> T {
-	image.adjust(|color| {
+	let mut input = image.eval(footprint).await;
+	input.adjust(|color| {
 		let vibrance = vibrance as f32 / 100.;
 		// Slow the effect down by half when it's negative, since artifacts begin appearing past -50%.
 		// So this scales the 0% to -50% range to 0% to -100%.
@@ -738,7 +748,7 @@ fn vibrance<T: Adjust<Color>>(
 			altered_color.map_rgb(|c| c * (1. - factor) + luminance * factor)
 		}
 	});
-	image
+	input
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -968,11 +978,11 @@ impl DomainWarpType {
 }
 
 #[node_macro::new_node_fn(category("Raster: Adjustments"))]
-fn channel_mixer_node<T: Adjust<Color>>(
-	_: (),
+async fn channel_mixer_node<T: Adjust<Color>>(
+	footprint: Footprint,
 	#[expose]
-	#[implementations(Color, ImageFrame<Color>)]
-	mut input: T,
+	#[implementations((Footprint, Color), (Footprint,ImageFrame<Color>))]
+	input: impl Node<Footprint, Output = T>,
 	monochrome: bool,
 	monochrome_r: f64,
 	monochrome_g: f64,
@@ -991,6 +1001,7 @@ fn channel_mixer_node<T: Adjust<Color>>(
 	blue_b: f64,
 	blue_c: f64,
 ) -> T {
+	let mut input = input.eval(footprint).await;
 	input.adjust(|color| {
 		let color = color.to_gamma_srgb();
 
@@ -1072,11 +1083,11 @@ impl core::fmt::Display for SelectiveColorChoice {
 
 // Based on https://blog.pkh.me/p/22-understanding-selective-coloring-in-adobe-photoshop.html
 #[node_macro::new_node_fn(category("Raster: Adjustments"))]
-fn selective_color<T: Adjust<Color>>(
-	_: (),
+async fn selective_color<T: Adjust<Color>>(
+	footprint: Footprint,
 	#[expose]
-	#[implementations(Color, ImageFrame<Color>)]
-	mut input: T,
+	#[implementations((Footprint, Color), (Footprint,ImageFrame<Color>))]
+	input: impl Node<Footprint, Output = T>,
 	mode: RelativeAbsolute,
 	r_c: f64,
 	r_m: f64,
@@ -1115,6 +1126,7 @@ fn selective_color<T: Adjust<Color>>(
 	k_y: f64,
 	k_k: f64,
 ) -> T {
+	let mut input = input.eval(footprint).await;
 	input.adjust(|color| {
 		let color = color.to_gamma_srgb();
 
@@ -1221,13 +1233,14 @@ type PosterizeValue = f64;
 // Based on https://www.axiomx.com/posterize.htm
 // This algorithm produces fully accurate output in relation to the industry standard.
 #[node_macro::new_node_fn(category("Raster: Adjustments"))]
-fn posterize<T: Adjust<Color>>(
-	_: (),
+async fn posterize<T: Adjust<Color>>(
+	footprint: Footprint,
 	#[expose]
-	#[implementations(Color, ImageFrame<Color>)]
-	mut input: T,
+	#[implementations((Footprint, Color), (Footprint,ImageFrame<Color>))]
+	input: impl Node<Footprint, Output = T>,
 	#[default(4)] levels: PosterizeValue,
 ) -> T {
+	let mut input = input.eval(footprint).await;
 	input.adjust(|color| {
 		let color = color.to_gamma_srgb();
 
@@ -1243,15 +1256,16 @@ fn posterize<T: Adjust<Color>>(
 
 // Based on https://geraldbakker.nl/psnumbers/exposure.html
 #[node_macro::new_node_fn(category("Raster: Adjustments"))]
-fn exposure<T: Adjust<Color>>(
-	_: (),
+async fn exposure<T: Adjust<Color>>(
+	footprint: Footprint,
 	#[expose]
-	#[implementations(Color, ImageFrame<Color>)]
-	mut input: T,
+	#[implementations((Footprint, Color), (Footprint,ImageFrame<Color>))]
+	input: impl Node<Footprint, Output = T>,
 	exposure: f64,
 	offset: f64,
 	#[default(1.)] gamma_correction: f64,
 ) -> T {
+	let mut input = input.eval(footprint).await;
 	input.adjust(|color| {
 		let adjusted = color
 		// Exposure

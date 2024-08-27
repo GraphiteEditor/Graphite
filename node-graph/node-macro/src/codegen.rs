@@ -284,7 +284,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 						// try polling futures
 				)
 			});
-			temp_node_io.push(quote!(fn_type!(#input_type, #output_type)));
+			temp_node_io.push(quote!(fn_type!(#input_type, #output_type, alias: #output_type)));
 			match parsed.is_async && impl_node {
 				true => panic_node_types.push(quote!(#input_type, DynFuture<'static, #output_type>)),
 				false => panic_node_types.push(quote!(#input_type, #output_type)),

@@ -91,14 +91,14 @@ pub(crate) fn property_from_type(document_node: &DocumentNode, node_id: NodeId, 
 	let mut extra_widgets = vec![];
 	let widgets = match ty {
 		Type::Concrete(concrete_type) => {
-			match concrete_type.name.as_ref() {
+			match concrete_type.alias.as_ref().map(|x| x.as_ref()) {
 				// Aliased types (ambiguous values)
-				"graphene_core::registry::types::Percentage" => number_widget(document_node, node_id, index, name, NumberInput::default().percentage().min(0.).max(100.), false).into(),
-				"graphene_core::registry::types::Angle" => number_widget(document_node, node_id, index, name, NumberInput::default().mode_range().min(-180.).max(180.).unit("°"), false).into(),
-				"graphene_core::registry::types::PixelLength" => number_widget(document_node, node_id, index, name, NumberInput::default().min(0.).unit("px"), false).into(),
-				"graphene_core::registry::types::IntegerCount" => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(1.), false).into(),
-				"graphene_core::registry::types::SeedValue" => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(0.), false).into(),
-				"graphene_core::registry::types::Resolution" => vec2_widget(document_node, node_id, index, name, "W", "H", "px", Some(64.), add_blank_assist),
+				Some("Percentage") => number_widget(document_node, node_id, index, name, NumberInput::default().percentage().min(0.).max(100.), false).into(),
+				Some("Angle") => number_widget(document_node, node_id, index, name, NumberInput::default().mode_range().min(-180.).max(180.).unit("°"), false).into(),
+				Some("PixelLength") => number_widget(document_node, node_id, index, name, NumberInput::default().min(0.).unit("px"), false).into(),
+				Some("IntegerCount") => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(1.), false).into(),
+				Some("SeedValue") => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(0.), false).into(),
+				Some("Resolution") => vec2_widget(document_node, node_id, index, name, "W", "H", "px", Some(64.), add_blank_assist),
 
 				// For all other types, use TypeId-based matching
 				_ => {
