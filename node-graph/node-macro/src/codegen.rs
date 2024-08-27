@@ -153,7 +153,11 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 			}
 		}
 	};
-	let identifier = quote!(format!("{}::{}", std::module_path!().rsplit_once("::").unwrap().0, stringify!(#struct_name)));
+	let path = match parsed.attributes.path {
+		Some(ref path) => quote!(stringify!(#path).replace(' ', "")),
+		None => quote!(std::module_path!().rsplit_once("::").unwrap().0),
+	};
+	let identifier = quote!(format!("{}::{}", #path, stringify!(#struct_name)));
 
 	let register_node_impl = generate_register_node_impl(parsed, &field_names, &struct_name, &identifier)?;
 

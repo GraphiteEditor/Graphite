@@ -2981,6 +2981,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Vector: Style",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
+					manual_composition: Some(concrete!(())),
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
 						exports: vec![NodeInput::node(NodeId(0), 0)],
 						nodes: vec![DocumentNode {

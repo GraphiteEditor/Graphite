@@ -5,7 +5,7 @@ use quote::{format_ident, ToTokens};
 use syn::parse::{Parse, ParseStream, Parser};
 use syn::punctuated::Punctuated;
 use syn::token::Comma;
-use syn::{Attribute, Error, FnArg, GenericParam, Ident, ItemFn, LitStr, Meta, Pat, PatIdent, PatType, ReturnType, Type, TypeTuple, WhereClause};
+use syn::{Attribute, Error, FnArg, GenericParam, Ident, ItemFn, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, Type, TypeTuple, WhereClause};
 
 use crate::codegen::generate_node_code;
 
@@ -29,6 +29,7 @@ pub(crate) struct ParsedNodeFn {
 pub(crate) struct NodeFnAttributes {
 	pub(crate) category: Option<LitStr>,
 	pub(crate) display_name: Option<LitStr>,
+	pub(crate) path: Option<Path>,
 	// Add more attributes as needed
 }
 
@@ -59,6 +60,7 @@ impl Parse for NodeFnAttributes {
 	fn parse(input: ParseStream) -> syn::Result<Self> {
 		let mut category = None;
 		let mut display_name = None;
+		let mut path = None;
 
 		let content = input;
 		// let content;
@@ -83,13 +85,22 @@ impl Parse for NodeFnAttributes {
 					let parsed_name: LitStr = meta.parse_args().map_err(|_| Error::new_spanned(meta, "Expected a string for 'name', e.g., name(\"Memoize\")"))?;
 					display_name = Some(parsed_name);
 				}
+				Meta::List(meta) if meta.path.is_ident("path") => {
+					if display_name.is_some() {
+						return Err(Error::new_spanned(meta, "Multiple 'path' attributes are not allowed"));
+					}
+					let parsed_path: Path = meta
+						.parse_args()
+						.map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'path', e.g., path(\"crate::MemoizeNode\")"))?;
+					path = Some(parsed_path);
+				}
 				_ => {
 					return Err(Error::new_spanned(
 						meta,
 						indoc!(
 							r#"
                             Unsupported attribute in `node_fn`.
-                            Supported attributes are 'category' and 'name'.
+                            Supported attributes are 'category', 'path' and 'name'.
                             
                             Example usage:
                             #[node_fn(category("Value"), name("TestNode"))]
@@ -100,7 +111,7 @@ impl Parse for NodeFnAttributes {
 			}
 		}
 
-		Ok(NodeFnAttributes { category, display_name })
+		Ok(NodeFnAttributes { category, display_name, path })
 	}
 }
 
