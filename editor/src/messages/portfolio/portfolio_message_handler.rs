@@ -234,7 +234,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			}
 			PortfolioMessage::Cut { clipboard } => {
 				responses.add(PortfolioMessage::Copy { clipboard });
-				responses.add(NodeGraphMessage::DeleteSelectedNodes { delete_children: true });
+				responses.add(DocumentMessage::DeleteSelectedLayers);
 			}
 			PortfolioMessage::DeleteDocument { document_id } => {
 				let document_index = self.document_index(document_id);
@@ -601,6 +601,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							if !added_nodes {
 								responses.add(DocumentMessage::DeselectAllLayers);
 								responses.add(DocumentMessage::AddTransaction);
+								added_nodes = true;
 							}
 							document.load_layer_resources(responses);
 							let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(id, _)| (*id, NodeId(generate_uuid()))).collect();

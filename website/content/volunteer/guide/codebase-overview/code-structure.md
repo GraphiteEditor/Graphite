@@ -29,7 +29,6 @@ Backend (Rust) -> frontend (TS) communication happens by sending a queue of mess
 
 The Graphite editor backend is organized into a hierarchy of systems, called *message handlers*, which talk to one another through message passing. Messages are pushed to the front or back of a queue and each one is processed sequentially by the backend's dispatcher. The dispatcher lives at the root of the application hierarchy and it owns its message handlers. Thus, Rust's restrictions on mutable borrowing are satisfied because only the dispatcher mutably borrows its message handlers, one at a time, while each message is processed.
 
-//TODO: Rewrite this since DeleteSelectedLayers was removed in favor of NodeGraphMessage::DeleteSelectedNodes { delete_children: true }
 ### Messages
 
 Messages are enum variants that are dispatched to perform some intended activity within their respective message handlers. Here are two `DocumentMessage` definitions:

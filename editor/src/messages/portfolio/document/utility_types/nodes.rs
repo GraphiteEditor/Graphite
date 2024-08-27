@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use super::network_interface::NodeNetworkInterface;
 
@@ -147,7 +145,7 @@ impl SelectedNodes {
 		std::mem::replace(&mut self.0, new)
 	}
 
-	pub fn filtered_selected_nodes(&self, node_ids: HashSet<NodeId>) -> SelectedNodes {
+	pub fn filtered_selected_nodes(&self, node_ids: std::collections::HashSet<NodeId>) -> SelectedNodes {
 		SelectedNodes(self.0.iter().filter(|node_id| node_ids.contains(node_id)).cloned().collect())
 	}
 }

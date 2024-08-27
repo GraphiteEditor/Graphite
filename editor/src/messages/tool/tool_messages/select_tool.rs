@@ -647,10 +647,10 @@ impl Fsm for SelectToolFsmState {
 					}
 
 					if let Some(intersection) = intersection {
-						
+
 						tool_data.layer_selected_on_start = Some(intersection);
 						selected = intersection_list;
-						
+
 						match tool_data.nested_selection_behavior {
 							NestedSelectionBehavior::Shallowest if !input.keyboard.key(select_deepest) => drag_shallowest_manipulation(responses, selected, tool_data, document),
 							_ => drag_deepest_manipulation(responses, selected, tool_data, document),
@@ -906,7 +906,6 @@ impl Fsm for SelectToolFsmState {
 				// Deselect layer if not snap dragging
 				responses.add(DocumentMessage::EndTransaction);
 
-				log::debug!("self.select_single_layer: {:?}", tool_data.select_single_layer);
 				if !tool_data.has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
 					let quad = tool_data.selection_quad();
 					let intersection = document.intersect_quad(quad, input);
@@ -1045,7 +1044,6 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::Dragging, SelectToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
-				responses.add(DocumentMessage::Undo);
 				responses.add(OverlaysMessage::Draw);
 
 				let selection = tool_data.nested_selection_behavior;

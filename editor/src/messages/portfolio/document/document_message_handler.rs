@@ -355,6 +355,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::DebugPrintDocument => {
 				info!("{:#?}", self.network_interface);
 			}
+			DocumentMessage::DeleteSelectedLayers => {
+				responses.add(NodeGraphMessage::DeleteSelectedNodes { delete_children: true });
+			}
 			DocumentMessage::DeselectAllLayers => {
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				self.layer_range_selection_reference = None;
@@ -991,13 +994,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				TransactionStatus::Modified => {
 					responses.add_front(DocumentMessage::CommitTransaction);
 				}
-				TransactionStatus::Finished => {
-					log::error!("EndTransaction called without a transaction in progress")
-				}
+				TransactionStatus::Finished => {}
 			},
 			DocumentMessage::CommitTransaction => {
 				if self.network_interface.transaction_status() == TransactionStatus::Finished {
-					log::error!("CommitTransaction called without a transaction in progress");
 					return;
 				}
 				self.network_interface.finish_transaction();
@@ -1005,7 +1005,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::AbortTransaction => {
 				if self.network_interface.transaction_status() == TransactionStatus::Finished {
-					log::error!("AbortTransaction called without a transaction in progress");
 					return;
 				}
 				self.network_interface.finish_transaction();
@@ -1185,6 +1184,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 		// Additional actions if there are any selected layers
 		if self.network_interface.selected_nodes(&[]).unwrap().selected_layers(self.metadata()).next().is_some() {
 			let mut select = actions!(DocumentMessageDiscriminant;
+				DeleteSelectedLayers,
 				DuplicateSelectedLayers,
 				GroupSelectedLayers,
 				SelectedLayersLower,
@@ -1193,8 +1193,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				SelectedLayersRaiseToFront,
 				UngroupSelectedLayers,
 			);
-			select.extend(actions!(NodeGraphMessageDiscriminant::DeleteSelectedNodes));
-
 			if !self.graph_view_overlay_open {
 				select.extend(actions!(DocumentMessageDiscriminant; NudgeSelectedLayers));
 			}
@@ -1909,8 +1907,8 @@ impl DocumentMessageHandler {
 					.widget_holder(),
 				IconButton::new("Trash", 24)
 					.tooltip("Delete Selected")
-					.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::DeleteSelectedNodes))
-					.on_update(|_| NodeGraphMessage::DeleteSelectedNodes { delete_children: true }.into())
+					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers))
+					.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
 					.disabled(!has_selection)
 					.widget_holder(),
 				//

@@ -449,7 +449,7 @@ impl Fsm for ArtboardToolFsmState {
 			}
 			(_, ArtboardToolMessage::DeleteSelected) => {
 				tool_data.selected_artboard.take();
-				responses.add(NodeGraphMessage::DeleteSelectedNodes { delete_children: true });
+				responses.add(DocumentMessage::DeleteSelectedLayers);
 
 				ArtboardToolFsmState::Ready { hovered }
 			}

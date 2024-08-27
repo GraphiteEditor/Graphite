@@ -332,7 +332,7 @@ impl PathToolData {
 
 			if let Some(selected_points) = selected_points {
 				self.drag_start_pos = input.mouse.position;
-				self.start_dragging_point(selected_points, input, document, shape_editor, responses);
+				self.start_dragging_point(selected_points, input, document, shape_editor);
 				responses.add(OverlaysMessage::Draw);
 			}
 			PathToolFsmState::Dragging
@@ -370,14 +370,7 @@ impl PathToolData {
 		}
 	}
 
-	fn start_dragging_point(
-		&mut self,
-		selected_points: SelectedPointsInfo,
-		input: &InputPreprocessorMessageHandler,
-		document: &DocumentMessageHandler,
-		shape_editor: &mut ShapeState,
-		responses: &mut VecDeque<Message>,
-	) {
+	fn start_dragging_point(&mut self, selected_points: SelectedPointsInfo, input: &InputPreprocessorMessageHandler, document: &DocumentMessageHandler, shape_editor: &mut ShapeState) {
 		let mut manipulators = HashMap::with_hasher(NoHashBuilder);
 		let mut unselected = Vec::new();
 		for (&layer, state) in &shape_editor.selected_shape_state {

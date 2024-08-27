@@ -354,8 +354,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 					// Abort a box selection
 					if self.box_selection_start.is_some() {
-						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() });
 						self.box_selection_start = None;
+						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() });
+						responses.add(FrontendMessage::UpdateBox { box_selection: None });
 						return;
 					}
 					// Abort dragging a wire

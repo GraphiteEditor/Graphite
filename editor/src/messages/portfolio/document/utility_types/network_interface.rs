@@ -3103,7 +3103,6 @@ impl NodeNetworkInterface {
 		};
 
 		if old_input == new_input {
-			log::debug!("old input: {old_input:?} is the same as new input: {new_input:?}");
 			return;
 		};
 
@@ -3444,7 +3443,7 @@ impl NodeNetworkInterface {
 				continue;
 			}
 
-			for input_index in 1..self.number_of_inputs(delete_node_id, network_path) {
+			for input_index in 0..self.number_of_inputs(delete_node_id, network_path) {
 				self.disconnect_input(&InputConnector::node(*delete_node_id, input_index), network_path);
 			}
 

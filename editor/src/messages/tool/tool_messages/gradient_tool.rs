@@ -111,9 +111,7 @@ enum GradientToolFsmState {
 fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> DAffine2 {
 	let bounds = document.metadata().nonzero_bounding_box(layer);
 	let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-
 	let multiplied = document.metadata().transform_to_viewport(layer);
-
 	multiplied * bound_transform
 }
 
@@ -326,12 +324,10 @@ impl Fsm for GradientToolFsmState {
 				self
 			}
 			(_, GradientToolMessage::InsertStop) => {
-				
-				let mut added_transaction = false;
 				for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_visible_layers(&document.network_interface) {
 					let Some(mut gradient) = get_gradient(layer, &document.network_interface) else { continue };
+					// TODO: This transform is incorrect. I think this is since it is based on the Footprint which has not been updated yet
 					let transform = gradient_space_transform(layer, document);
-
 					let mouse = input.mouse.position;
 					let (start, end) = (transform.transform_point2(gradient.start), transform.transform_point2(gradient.end));
 
@@ -342,12 +338,7 @@ impl Fsm for GradientToolFsmState {
 					if distance < (SELECTION_THRESHOLD * 2.) {
 						// Try and insert the new stop
 						if let Some(index) = gradient.insert_stop(mouse, transform) {
-
-							// Add a transaction if not already started
-							if !added_transaction {
-								responses.add(DocumentMessage::AddTransaction);
-								added_transaction = true;
-							}
+							responses.add(DocumentMessage::AddTransaction);
 
 							let mut selected_gradient = SelectedGradient::new(gradient, layer, document);
 
@@ -375,7 +366,6 @@ impl Fsm for GradientToolFsmState {
 				for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_visible_layers(&document.network_interface) {
 					let Some(gradient) = get_gradient(layer, &document.network_interface) else { continue };
 					let transform = gradient_space_transform(layer, document);
-
 					// Check for dragging step
 					for (index, (pos, _)) in gradient.stops.0.iter().enumerate() {
 						let pos = transform.transform_point2(gradient.start.lerp(gradient.end, *pos));
@@ -405,10 +395,7 @@ impl Fsm for GradientToolFsmState {
 					}
 				}
 
-
-				responses.add(DocumentMessage::StartTransaction);
-				
-				if dragging {
+				let gradient_state = if dragging {
 					GradientToolFsmState::Drawing
 				} else {
 					let selected_layer = document.click(input);
@@ -443,7 +430,9 @@ impl Fsm for GradientToolFsmState {
 					} else {
 						GradientToolFsmState::Ready
 					}
-				}
+				};
+				responses.add(DocumentMessage::StartTransaction);
+				gradient_state
 			}
 			(GradientToolFsmState::Drawing, GradientToolMessage::PointerMove { constrain_axis }) => {
 				if let Some(selected_gradient) = &mut tool_data.selected_gradient {
