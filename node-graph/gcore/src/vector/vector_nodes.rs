@@ -70,16 +70,21 @@ fn assign_colors_node<T: VectorIterMut>(
 }
 
 #[node_macro::new_node_fn(path(graphene_core::vector), name("Fill"))]
-fn set_fill<T: Into<Fill>>(_: (), #[expose] mut vector_data: VectorData, #[implementations(Fill, Color, Option<Color>, crate::vector::style::Gradient)] fill: T) -> VectorData {
+async fn set_fill<T: Into<Fill> + 'n + Send>(
+	footprint: Footprint,
+	#[expose] vector_data: impl Node<Footprint, Output = VectorData>,
+	#[implementations(Fill, Color, Option<Color>, crate::vector::style::Gradient)] fill: T,
+) -> VectorData {
+	let mut vector_data = vector_data.eval(footprint).await;
 	vector_data.style.set_fill(fill.into());
 
 	vector_data
 }
 
-#[node_macro::new_node_fn(path(graphene_core::vector))]
-fn stroke(
-	_: (),
-	#[expose] mut vector_data: VectorData,
+#[node_macro::new_node_fn(path(graphene_core::vector), category("Vector: Style"))]
+async fn stroke(
+	footprint: Footprint,
+	#[expose] vector_data: impl Node<Footprint, Output = VectorData>,
 	color: Option<Color>,
 	weight: f64,
 	dash_lengths: Vec<f64>,
@@ -88,6 +93,7 @@ fn stroke(
 	line_join: crate::vector::style::LineJoin,
 	#[default(4)] miter_limit: f64,
 ) -> VectorData {
+	let mut vector_data = vector_data.eval(footprint).await;
 	vector_data.style.set_stroke(Stroke {
 		color,
 		weight,
@@ -101,7 +107,14 @@ fn stroke(
 }
 
 #[node_macro::new_node_fn(path(graphene_core::vector))]
-fn repeat(_: (), #[expose] instance: VectorData, #[default(100., 100.)] direction: DVec2, angle: Angle, #[default(4)] instances: IntegerCount) -> VectorData {
+async fn repeat(
+	footprint: Footprint,
+	#[expose] instance: impl Node<Footprint, Output = VectorData>,
+	#[default(100., 100.)] direction: DVec2,
+	angle: Angle,
+	#[default(4)] instances: IntegerCount,
+) -> VectorData {
+	let instance = instance.eval(footprint).await;
 	let angle = angle.to_radians();
 	let instances = instances.max(1);
 	let total = (instances - 1) as f64;
@@ -131,7 +144,14 @@ fn repeat(_: (), #[expose] instance: VectorData, #[default(100., 100.)] directio
 }
 
 #[node_macro::new_node_fn(path(graphene_core::vector))]
-fn circular_repeat(_: (), #[expose] instance: VectorData, angle_offset: Angle, #[default(5)] radius: Length, #[default(5)] instances: IntegerCount) -> VectorData {
+async fn circular_repeat(
+	footprint: Footprint,
+	#[expose] instance: impl Node<Footprint, Output = VectorData>,
+	angle_offset: Angle,
+	#[default(5)] radius: Length,
+	#[default(5)] instances: IntegerCount,
+) -> VectorData {
+	let instance = instance.eval(footprint).await;
 	let instances = instances.max(1);
 
 	if instances == 1 {
@@ -164,8 +184,9 @@ fn bounding_box(_: (), #[expose] vector_data: VectorData) -> VectorData {
 }
 
 #[node_macro::new_node_fn(path(graphene_core::vector))]
-fn solidify_stroke(_: (), #[expose] vector_data: VectorData) -> VectorData {
+async fn solidify_stroke(footprint: Footprint, #[expose] vector_data: impl Node<Footprint, Output = VectorData>) -> VectorData {
 	// Grab what we need from original data.
+	let vector_data = vector_data.eval(footprint).await;
 	let VectorData { transform, style, .. } = &vector_data;
 	let subpaths = vector_data.stroke_bezier_paths();
 	let mut result = VectorData::empty();
