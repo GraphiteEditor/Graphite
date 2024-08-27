@@ -233,7 +233,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							DocumentNode {
 								manual_composition: Some(concrete!(Footprint)),
 								inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(2), 0)],
-								implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _>"),
+								implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode"),
 								..Default::default()
 							},
 						]
@@ -3202,13 +3202,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(concrete!(f64), 1),
 									NodeInput::network(concrete!(u32), 2),
 								],
-								implementation: DocumentNodeImplementation::proto("graphene_core::vector::PoissonDiskPoints<_, _>"),
+								manual_composition: Some(concrete!(())),
+								implementation: DocumentNodeImplementation::proto("graphene_core::vector::PoissonDiskPointsNode"),
 								..Default::default()
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode<_, _, _>")),
-								manual_composition: Some(concrete!(Footprint)),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode")),
+								manual_composition: Some(concrete!(())),
 								..Default::default()
 							},
 						]
