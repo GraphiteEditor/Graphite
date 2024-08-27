@@ -2939,6 +2939,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			properties: &node_properties::node_no_properties,
 		},
+		// We need to keep this until wi migrate the properties
 		DocumentNodeDefinition {
 			identifier: "Assign Colors",
 			category: "Vector: Style",
@@ -2974,6 +2975,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			properties: &node_properties::assign_colors_properties,
 		},
+		// TODO Remove
 		DocumentNodeDefinition {
 			identifier: "Fill",
 			category: "Vector: Style",
@@ -3067,84 +3069,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: &node_properties::stroke_properties,
 		},
 		DocumentNodeDefinition {
-			identifier: "Bounding Box",
-			category: "Vector",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::vector::BoundingBoxNode"),
-					inputs: vec![NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Vector Data".to_string()],
-					output_names: vec!["Vector".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::node_no_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Solidify Stroke",
-			category: "Vector",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::vector::SolidifyStrokeNode"),
-					inputs: vec![NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Vector Data".to_string()],
-					output_names: vec!["Vector".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::node_no_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Repeat",
-			category: "Vector",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::vector::RepeatNode<_, _, _>"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-						NodeInput::value(TaggedValue::DVec2((100., 100.).into()), false),
-						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::U32(5), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Instance".to_string(), "Direction".to_string(), "Angle".to_string(), "Instances".to_string()],
-					output_names: vec!["Vector".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::repeat_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Circular Repeat",
-			category: "Vector",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::vector::CircularRepeatNode<_, _, _>"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::F64(5.), false),
-						NodeInput::value(TaggedValue::U32(5), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Instance".to_string(), "Angle Offset".to_string(), "Radius".to_string(), "Instances".to_string()],
-					output_names: vec!["Vector".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::circular_repeat_properties,
-		},
-		DocumentNodeDefinition {
 			identifier: "Boolean Operation",
 			category: "Vector",
 			node_template: NodeTemplate {
@@ -3177,9 +3101,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::F64(1.), false),
 						NodeInput::value(TaggedValue::F64(1.), false),
 						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::U32(0), false),
+						NodeInput::value(TaggedValue::U64(0), false),
 						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::U32(0), false),
+						NodeInput::value(TaggedValue::U64(0), false),
 					],
 					manual_composition: Some(concrete!(Footprint)),
 					..Default::default()
@@ -3223,7 +3147,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(concrete!(bool), 4), // From the document node's parameters
 									NodeInput::node(NodeId(0), 0),          // From output 0 of Lengths of Segments of Subpaths
 								],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::SamplePoints<_, _, _, _, _, _>")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::vector_nodes::SamplePoints<_, _, _, _, _, _>")),
 								manual_composition: Some(concrete!(Footprint)),
 								..Default::default()
 							},
@@ -3366,85 +3290,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			properties: &node_properties::poisson_disk_points_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Splines from Points",
-			category: "Vector",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::vector::SplinesFromPointsNode"),
-					inputs: vec![NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Vector Data".to_string()],
-					output_names: vec!["Vector".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::node_no_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Area",
-			category: "Vector",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::vector::AreaNode<_>"),
-					inputs: vec![NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true)],
-					manual_composition: Some(concrete!(())),
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Vector Data".to_string()],
-					output_names: vec!["Output".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::node_no_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Centroid",
-			category: "Vector",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::vector::CentroidNode<_, _>"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-						NodeInput::value(TaggedValue::CentroidType(graphene_core::vector::misc::CentroidType::Area), false),
-					],
-					manual_composition: Some(concrete!(())),
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Vector Data".to_string(), "Centroid Type".to_string()],
-					output_names: vec!["Output".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::centroid_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Morph",
-			category: "Vector",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::vector::MorphNode<_, _, _, _>"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-						NodeInput::value(TaggedValue::U32(0), false),
-						NodeInput::value(TaggedValue::F64(0.5), false),
-					],
-					manual_composition: Some(concrete!(Footprint)),
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Source".to_string(), "Target".to_string(), "Start Index".to_string(), "Time".to_string()],
-					output_names: vec!["Vector".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::morph_properties,
 		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
 		DocumentNodeDefinition {

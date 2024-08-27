@@ -9,12 +9,22 @@ use crate::NodeIO;
 use crate::NodeIOTypes;
 
 pub mod types {
+	/// 0% - 100%
 	pub type Percentage = f64;
+	/// -180° - 180°
 	pub type Angle = f64;
+	/// -100% - 100%
 	pub type SignedPercentage = f64;
+	/// Non negative integer, px unit
 	pub type PixelLength = f64;
+	/// Non negative
+	pub type Length = f64;
+	///  0.- 1.
+	pub type Fraction = f64;
 	pub type IntegerCount = u32;
+	/// Int input with randomization button
 	pub type SeedValue = u64;
+	/// Non Negative integer vec with px unit
 	pub type Resolution = glam::UVec2;
 }
 

@@ -63,7 +63,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		.iter()
 		.map(|field| match field {
 			ParsedField::Regular { ty, .. } => ty.clone(),
-			ParsedField::Node { output_type, .. } => match parsed.is_async {
+			ParsedField::Node { output_type, input_type, .. } => match parsed.is_async {
 				true => parse_quote!(&'n impl Node<'n, #input_type, Output: core::future::Future<Output=#output_type> + #graphene_core::WasmNotSend>),
 
 				false => parse_quote!(&'n impl Node<'n, #input_type, Output = #output_type>),
@@ -160,6 +160,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	Ok(quote! {
 		/// Underlying implementation for [#struct_name]
 		#[inline]
+		#[allow(clippy::too_many_arguments)]
 		#async_keyword fn #fn_name <'n, #(#fn_generics,)*> (#input_ident: #input_type #(, #field_idents: #field_types)*) -> #output_type #where_clause #body
 
 		#[automatically_derived]
@@ -193,6 +194,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 			#[automatically_derived]
 			impl<'n, #(#struct_generics,)*> #struct_name<#(#struct_generics,)*>
 			{
+				#[allow(clippy::too_many_arguments)]
 				pub fn new(#(#new_args,)*) -> Self {
 					Self {
 						#(#field_names,)*

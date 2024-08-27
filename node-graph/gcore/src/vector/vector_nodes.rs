@@ -1,6 +1,7 @@
 use super::misc::CentroidType;
 use super::style::{Fill, GradientStops, Stroke};
 use super::{PointId, SegmentId, StrokeId, VectorData};
+use crate::registry::types::{Angle, Fraction, IntegerCount, Length, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
 use crate::{Color, GraphicGroup, Node};
@@ -9,143 +10,82 @@ use bezier_rs::{Cap, Join, Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
 use rand::{Rng, SeedableRng};
 
-#[derive(Debug, Clone, Copy)]
-pub struct AssignColorsNode<Fill, Stroke, Gradient, Reverse, Randomize, Seed, RepeatEvery> {
-	fill: Fill,
-	stroke: Stroke,
-	gradient: Gradient,
-	reverse: Reverse,
-	randomize: Randomize,
-	seed: Seed,
-	repeat_every: RepeatEvery,
+trait VectorIterMut {
+	fn vector_iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut VectorData>;
 }
 
-#[node_macro::node_fn(AssignColorsNode)]
-fn assign_colors_node(group: GraphicGroup, fill: bool, stroke: bool, gradient: GradientStops, reverse: bool, randomize: bool, seed: u32, repeat_every: u32) -> GraphicGroup {
-	let mut group = group;
-	let vector_data_list: Vec<_> = group.iter_mut().filter_map(|element| element.as_vector_data_mut()).collect();
-	let list = (vector_data_list.len(), vector_data_list.into_iter());
-
-	assign_colors(
-		list,
-		AlignColorsOptions {
-			fill,
-			stroke,
-			gradient,
-			reverse,
-			randomize,
-			seed,
-			repeat_every,
-		},
-	);
-
-	group
+impl VectorIterMut for GraphicGroup {
+	fn vector_iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut VectorData> {
+		self.iter_mut().filter_map(|element| element.as_vector_data_mut()).collect::<Vec<_>>().into_iter()
+	}
+}
+impl VectorIterMut for VectorData {
+	fn vector_iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut VectorData> {
+		std::iter::once(self)
+	}
 }
 
-#[node_macro::node_impl(AssignColorsNode)]
-fn assign_colors_node(vector_data: VectorData, fill: bool, stroke: bool, gradient: GradientStops, reverse: bool, randomize: bool, seed: u32, repeat_every: u32) -> GraphicGroup {
-	let mut vector_data_list: Vec<_> = vector_data
-		.region_bezier_paths()
-		.map(|(_, subpath)| {
-			let mut vector = VectorData::from_subpath(subpath);
-
-			vector.style = vector_data.style.clone();
-
-			crate::GraphicElement::VectorData(Box::new(vector))
-		})
-		.collect();
-	let list = (vector_data_list.len(), vector_data_list.iter_mut().map(|element| element.as_vector_data_mut().unwrap()));
-
-	assign_colors(
-		list,
-		AlignColorsOptions {
-			fill,
-			stroke,
-			gradient,
-			reverse,
-			randomize,
-			seed,
-			repeat_every,
-		},
-	);
-
-	let mut group = GraphicGroup::new(vector_data_list);
-	group.transform = vector_data.transform;
-	group.alpha_blending = vector_data.alpha_blending;
-
-	group
-}
-
-struct AlignColorsOptions {
+#[node_macro::new_node_fn]
+fn assign_colors_node<T: VectorIterMut>(
+	_: (),
+	#[expose]
+	#[implementations(GraphicGroup, VectorData)]
+	mut input: T,
 	fill: bool,
 	stroke: bool,
 	gradient: GradientStops,
 	reverse: bool,
 	randomize: bool,
-	seed: u32,
+	seed: SeedValue,
 	repeat_every: u32,
-}
+) -> T {
+	let vector_data = input.vector_iter_mut();
+	let length = vector_data.len();
+	let gradient = if reverse { gradient.reversed() } else { gradient };
 
-fn assign_colors<'a>((length, vector_data): (usize, impl Iterator<Item = &'a mut VectorData>), options: AlignColorsOptions) {
-	let gradient = if options.reverse { options.gradient.reversed() } else { options.gradient };
-
-	let mut rng = rand::rngs::StdRng::seed_from_u64(options.seed as u64);
+	let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 
 	for (i, vector_data) in vector_data.enumerate() {
-		let factor = match options.randomize {
+		let factor = match randomize {
 			true => rng.gen::<f64>(),
-			false => match options.repeat_every {
+			false => match repeat_every {
 				0 => i as f64 / (length - 1) as f64,
 				1 => 0.,
-				_ => i as f64 % options.repeat_every as f64 / (options.repeat_every - 1) as f64,
+				_ => i as f64 % repeat_every as f64 / (repeat_every - 1) as f64,
 			},
 		};
 
 		let color = gradient.evalute(factor);
 
-		if options.fill {
+		if fill {
 			vector_data.style.set_fill(Fill::Solid(color));
 		}
-		if options.stroke {
+		if stroke {
 			if let Some(stroke) = vector_data.style.stroke().and_then(|stroke| stroke.with_color(&Some(color))) {
 				vector_data.style.set_stroke(stroke);
 			}
 		}
 	}
+	input
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct SetFillNode<Fill> {
-	fill: Fill,
-}
-
-#[node_macro::node_fn(SetFillNode)]
-fn set_vector_data_fill<T: Into<Fill>>(mut vector_data: VectorData, fill: T) -> VectorData {
+#[node_macro::new_node_fn]
+fn fill<T: Into<Fill>>(_: (), #[expose] mut vector_data: VectorData, #[implementations(Fill, Color, Option<Color>, crate::vector::style::Gradient)] fill: T) -> VectorData {
 	vector_data.style.set_fill(fill.into());
 
 	vector_data
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct SetStrokeNode<Color, Weight, DashLengths, DashOffset, LineCap, LineJoin, MiterLimit> {
-	color: Color,
-	weight: Weight,
-	dash_lengths: DashLengths,
-	dash_offset: DashOffset,
-	line_cap: LineCap,
-	line_join: LineJoin,
-	miter_limit: MiterLimit,
-}
-
-#[node_macro::node_fn(SetStrokeNode)]
+#[node_macro::new_node_fn]
 fn set_vector_data_stroke(
+	_: (),
 	mut vector_data: VectorData,
 	color: Option<Color>,
 	weight: f64,
 	dash_lengths: Vec<f64>,
 	dash_offset: f64,
-	line_cap: super::style::LineCap,
-	line_join: super::style::LineJoin,
+	line_cap: crate::vector::style::LineCap,
+	line_join: crate::vector::style::LineJoin,
 	miter_limit: f64,
 ) -> VectorData {
 	vector_data.style.set_stroke(Stroke {
@@ -160,28 +100,21 @@ fn set_vector_data_stroke(
 	vector_data
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct RepeatNode<Direction, Angle, Instances> {
-	direction: Direction,
-	angle: Angle,
-	instances: Instances,
-}
-
-#[node_macro::node_fn(RepeatNode)]
-fn repeat_vector_data(vector_data: VectorData, direction: DVec2, angle: f64, instances: u32) -> VectorData {
+#[node_macro::new_node_fn]
+fn repeat(_: (), #[expose] instance: VectorData, #[default(100., 100.)] direction: DVec2, angle: Angle, #[default(4)] instances: IntegerCount) -> VectorData {
 	let angle = angle.to_radians();
 	let instances = instances.max(1);
 	let total = (instances - 1) as f64;
 
 	if instances == 1 {
-		return vector_data;
+		return instance;
 	}
 
 	// Repeat the vector data
 	let mut result = VectorData::empty();
 
-	let Some(bounding_box) = vector_data.bounding_box_with_transform(vector_data.transform) else {
-		return vector_data;
+	let Some(bounding_box) = instance.bounding_box_with_transform(instance.transform) else {
+		return instance;
 	};
 	let center = (bounding_box[0] + bounding_box[1]) / 2.;
 
@@ -191,31 +124,24 @@ fn repeat_vector_data(vector_data: VectorData, direction: DVec2, angle: f64, ins
 
 		let transform = DAffine2::from_translation(center) * DAffine2::from_angle(angle) * DAffine2::from_translation(translation) * DAffine2::from_translation(-center);
 
-		result.concat(&vector_data, transform);
+		result.concat(&instance, transform);
 	}
 
 	result
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct CircularRepeatNode<AngleOffset, Radius, Instances> {
-	angle_offset: AngleOffset,
-	radius: Radius,
-	instances: Instances,
-}
-
-#[node_macro::node_fn(CircularRepeatNode)]
-fn circular_repeat_vector_data(vector_data: VectorData, angle_offset: f64, radius: f64, instances: u32) -> VectorData {
+#[node_macro::new_node_fn]
+fn circular_repeat(_: (), #[expose] instance: VectorData, angle_offset: Angle, #[default(5)] radius: Length, #[default(5)] instances: IntegerCount) -> VectorData {
 	let instances = instances.max(1);
 
 	if instances == 1 {
-		return vector_data;
+		return instance;
 	}
 
 	let mut result = VectorData::empty();
 
-	let Some(bounding_box) = vector_data.bounding_box_with_transform(vector_data.transform) else {
-		return vector_data;
+	let Some(bounding_box) = instance.bounding_box_with_transform(instance.transform) else {
+		return instance;
 	};
 	let center = (bounding_box[0] + bounding_box[1]) / 2.;
 
@@ -225,26 +151,20 @@ fn circular_repeat_vector_data(vector_data: VectorData, angle_offset: f64, radiu
 		let angle = (std::f64::consts::TAU / instances as f64) * i as f64 + angle_offset.to_radians();
 		let rotation = DAffine2::from_angle(angle);
 		let transform = DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform);
-		result.concat(&vector_data, transform);
+		result.concat(&instance, transform);
 	}
 
 	result
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct BoundingBoxNode;
-
-#[node_macro::node_fn(BoundingBoxNode)]
-fn generate_bounding_box(vector_data: VectorData) -> VectorData {
+#[node_macro::new_node_fn]
+fn bounding_box(_: (), #[expose] vector_data: VectorData) -> VectorData {
 	let bounding_box = vector_data.bounding_box_with_transform(vector_data.transform).unwrap();
 	VectorData::from_subpath(Subpath::new_rect(bounding_box[0], bounding_box[1]))
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct SolidifyStrokeNode;
-
-#[node_macro::node_fn(SolidifyStrokeNode)]
-fn solidify_stroke(vector_data: VectorData) -> VectorData {
+#[node_macro::new_node_fn]
+fn solidify_stroke(_: (), #[expose] vector_data: VectorData) -> VectorData {
 	// Grab what we need from original data.
 	let VectorData { transform, style, .. } = &vector_data;
 	let subpaths = vector_data.stroke_bezier_paths();
@@ -305,33 +225,22 @@ impl ConcatElement for GraphicGroup {
 	}
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct CopyToPoints<Points, Instance, RandomScaleMin, RandomScaleMax, RandomScaleBias, RandomScaleSeed, RandomRotation, RandomRotationSeed> {
-	points: Points,
-	instance: Instance,
-	random_scale_min: RandomScaleMin,
-	random_scale_max: RandomScaleMax,
-	random_scale_bias: RandomScaleBias,
-	random_scale_seed: RandomScaleSeed,
-	random_rotation: RandomRotation,
-	random_rotation_seed: RandomRotationSeed,
-}
-
-#[allow(clippy::too_many_arguments)]
-#[node_macro::node_fn(CopyToPoints)]
+#[node_macro::new_node_fn]
 async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + TransformMut + Send>(
 	footprint: Footprint,
 	points: impl Node<Footprint, Output = VectorData>,
+	#[expose]
+	#[implementations((Footprint, VectorData), (Footprint, GraphicGroup))]
 	instance: impl Node<Footprint, Output = I>,
-	random_scale_min: f64,
-	random_scale_max: f64,
+	#[default(1)] random_scale_min: f64,
+	#[default(1)] random_scale_max: f64,
 	random_scale_bias: f64,
-	random_scale_seed: u32,
-	random_rotation: f64,
-	random_rotation_seed: u32,
+	random_scale_seed: SeedValue,
+	random_rotation: Angle,
+	random_rotation_seed: SeedValue,
 ) -> I {
-	let points = self.points.eval(footprint).await;
-	let instance = self.instance.eval(footprint).await;
+	let points = points.eval(footprint).await;
+	let instance = instance.eval(footprint).await;
 	let random_scale_difference = random_scale_max - random_scale_min;
 
 	let points_list = points.point_domain.positions();
@@ -339,8 +248,8 @@ async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + Tr
 	let instance_bounding_box = instance.bounding_box(DAffine2::IDENTITY).unwrap_or_default();
 	let instance_center = -0.5 * (instance_bounding_box[0] + instance_bounding_box[1]);
 
-	let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed as u64);
-	let mut rotation_rng = rand::rngs::StdRng::seed_from_u64(random_rotation_seed as u64);
+	let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed);
+	let mut rotation_rng = rand::rngs::StdRng::seed_from_u64(random_rotation_seed);
 
 	let do_scale = random_scale_difference.abs() > 1e-6;
 	let do_rotation = random_rotation.abs() > 1e-6;
@@ -378,28 +287,18 @@ async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + Tr
 	result
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct SamplePoints<VectorData, Spacing, StartOffset, StopOffset, AdaptiveSpacing, LengthsOfSegmentsOfSubpaths> {
-	vector_data: VectorData,
-	spacing: Spacing,
-	start_offset: StartOffset,
-	stop_offset: StopOffset,
-	adaptive_spacing: AdaptiveSpacing,
-	lengths_of_segments_of_subpaths: LengthsOfSegmentsOfSubpaths,
-}
-
-#[node_macro::node_fn(SamplePoints)]
+#[node_macro::new_node_fn]
 async fn sample_points(
 	footprint: Footprint,
-	mut vector_data: impl Node<Footprint, Output = VectorData>,
+	vector_data: impl Node<Footprint, Output = VectorData>,
 	spacing: f64,
 	start_offset: f64,
 	stop_offset: f64,
 	adaptive_spacing: bool,
 	lengths_of_segments_of_subpaths: impl Node<Footprint, Output = Vec<f64>>,
 ) -> VectorData {
-	let vector_data = self.vector_data.eval(footprint).await;
-	let lengths_of_segments_of_subpaths = self.lengths_of_segments_of_subpaths.eval(footprint).await;
+	let vector_data = vector_data.eval(footprint).await;
+	let lengths_of_segments_of_subpaths = lengths_of_segments_of_subpaths.eval(footprint).await;
 
 	let mut bezier = vector_data.segment_bezier_iter().enumerate().peekable();
 
@@ -462,14 +361,8 @@ async fn sample_points(
 	result
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct PoissonDiskPoints<SeparationDiskDiameter, Seed> {
-	separation_disk_diameter: SeparationDiskDiameter,
-	seed: Seed,
-}
-
-#[node_macro::node_fn(PoissonDiskPoints)]
-fn poisson_disk_points(vector_data: VectorData, separation_disk_diameter: f64, seed: u32) -> VectorData {
+#[node_macro::new_node_fn]
+fn poisson_disk_points(_: (), #[expose] vector_data: VectorData, separation_disk_diameter: f64, seed: SeedValue) -> VectorData {
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
 	let mut result = VectorData::empty();
 	for mut subpath in vector_data.stroke_bezier_paths() {
@@ -487,22 +380,16 @@ fn poisson_disk_points(vector_data: VectorData, separation_disk_diameter: f64, s
 	result
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct LengthsOfSegmentsOfSubpaths;
-
-#[node_macro::node_fn(LengthsOfSegmentsOfSubpaths)]
-fn lengths_of_segments_of_subpaths(vector_data: VectorData) -> Vec<f64> {
+#[node_macro::new_node_fn]
+fn lengths_of_segments_of_subpaths(_: (), #[expose] vector_data: VectorData) -> Vec<f64> {
 	vector_data
 		.segment_bezier_iter()
 		.map(|(_id, bezier, _, _)| bezier.apply_transformation(|point| vector_data.transform.transform_point2(point)).length(None))
 		.collect()
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct SplinesFromPointsNode;
-
-#[node_macro::node_fn(SplinesFromPointsNode)]
-fn splines_from_points(mut vector_data: VectorData) -> VectorData {
+#[node_macro::new_node_fn]
+fn splines_from_points(_: (), #[expose] mut vector_data: VectorData) -> VectorData {
 	let points = &vector_data.point_domain;
 
 	vector_data.segment_domain.clear();
@@ -526,17 +413,16 @@ fn splines_from_points(mut vector_data: VectorData) -> VectorData {
 	vector_data
 }
 
-pub struct MorphNode<Source, Target, StartIndex, Time> {
-	source: Source,
-	target: Target,
-	start_index: StartIndex,
-	time: Time,
-}
-
-#[node_macro::node_fn(MorphNode)]
-async fn morph(footprint: Footprint, source: impl Node<Footprint, Output = VectorData>, target: impl Node<Footprint, Output = VectorData>, start_index: u32, time: f64) -> VectorData {
-	let source = self.source.eval(footprint).await;
-	let target = self.target.eval(footprint).await;
+#[node_macro::new_node_fn]
+async fn morph(
+	footprint: Footprint,
+	#[expose] source: impl Node<Footprint, Output = VectorData>,
+	#[expose] target: impl Node<Footprint, Output = VectorData>,
+	start_index: IntegerCount,
+	#[default(0.5)] time: Fraction,
+) -> VectorData {
+	let source = source.eval(footprint).await;
+	let target = target.eval(footprint).await;
 	let mut result = VectorData::empty();
 
 	// Lerp styles
@@ -616,14 +502,9 @@ async fn morph(footprint: Footprint, source: impl Node<Footprint, Output = Vecto
 	result
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct AreaNode<VectorData> {
-	vector_data: VectorData,
-}
-
-#[node_macro::node_fn(AreaNode)]
-async fn area_node(empty: (), vector_data: impl Node<Footprint, Output = VectorData>) -> f64 {
-	let vector_data = self.vector_data.eval(Footprint::default()).await;
+#[node_macro::new_node_fn]
+async fn area(_: (), vector_data: impl Node<Footprint, Output = VectorData>) -> f64 {
+	let vector_data = vector_data.eval(Footprint::default()).await;
 
 	let mut area = 0.;
 	let scale = vector_data.transform.decompose_scale();
@@ -633,15 +514,9 @@ async fn area_node(empty: (), vector_data: impl Node<Footprint, Output = VectorD
 	area * scale[0] * scale[1]
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct CentroidNode<VectorData, CentroidType> {
-	vector_data: VectorData,
-	centroid_type: CentroidType,
-}
-
-#[node_macro::node_fn(CentroidNode)]
-async fn centroid_node(empty: (), vector_data: impl Node<Footprint, Output = VectorData>, centroid_type: CentroidType) -> DVec2 {
-	let vector_data = self.vector_data.eval(Footprint::default()).await;
+#[node_macro::new_node_fn]
+async fn centroid_node(_: (), vector_data: impl Node<Footprint, Output = VectorData>, centroid_type: CentroidType) -> DVec2 {
+	let vector_data = vector_data.eval(Footprint::default()).await;
 
 	if centroid_type == CentroidType::Area {
 		let mut area = 0.;

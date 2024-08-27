@@ -96,6 +96,8 @@ pub(crate) fn property_from_type(document_node: &DocumentNode, node_id: NodeId, 
 				Some("Percentage") => number_widget(document_node, node_id, index, name, NumberInput::default().percentage().min(0.).max(100.), false).into(),
 				Some("Angle") => number_widget(document_node, node_id, index, name, NumberInput::default().mode_range().min(-180.).max(180.).unit("°"), false).into(),
 				Some("PixelLength") => number_widget(document_node, node_id, index, name, NumberInput::default().min(0.).unit("px"), false).into(),
+				Some("Length") => number_widget(document_node, node_id, index, name, NumberInput::default().min(0.), false).into(),
+				Some("Fraction") => number_widget(document_node, node_id, index, name, NumberInput::default().min(0.).max(1.), false).into(),
 				Some("IntegerCount") => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(1.), false).into(),
 				Some("SeedValue") => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(0.), false).into(),
 				Some("Resolution") => vec2_widget(document_node, node_id, index, name, "W", "H", "px", Some(64.), add_blank_assist),
@@ -626,6 +628,14 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 			number_props
 				.value(Some(x as f64))
 				.on_update(update_value(move |x: &NumberInput| TaggedValue::U32((x.value.unwrap()) as u32), node_id, index))
+				.on_commit(commit_value)
+				.widget_holder(),
+		]),
+		Some(&TaggedValue::U64(x)) => widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			number_props
+				.value(Some(x as f64))
+				.on_update(update_value(move |x: &NumberInput| TaggedValue::U64((x.value.unwrap()) as u64), node_id, index))
 				.on_commit(commit_value)
 				.widget_holder(),
 		]),
@@ -2376,26 +2386,6 @@ pub(crate) fn stroke_properties(document_node: &DocumentNode, node_id: NodeId, _
 	]
 }
 
-pub(crate) fn repeat_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let direction = vec2_widget(document_node, node_id, 1, "Direction", "X", "Y", " px", None, add_blank_assist);
-	let angle = number_widget(document_node, node_id, 2, "Angle", NumberInput::default().unit("°"), true);
-	let instances = number_widget(document_node, node_id, 3, "Instances", NumberInput::default().min(1.).is_integer(true), true);
-
-	vec![direction, LayoutGroup::Row { widgets: angle }, LayoutGroup::Row { widgets: instances }]
-}
-
-pub(crate) fn circular_repeat_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let angle_offset = number_widget(document_node, node_id, 1, "Angle Offset", NumberInput::default().unit("°"), true);
-	let radius = number_widget(document_node, node_id, 2, "Radius", NumberInput::default(), true); // TODO: What units?
-	let instances = number_widget(document_node, node_id, 3, "Instances", NumberInput::default().min(1.).is_integer(true), true);
-
-	vec![
-		LayoutGroup::Row { widgets: angle_offset },
-		LayoutGroup::Row { widgets: radius },
-		LayoutGroup::Row { widgets: instances },
-	]
-}
-
 pub(crate) fn boolean_operation_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let group_of_paths_index = 0;
 	let operation_index = 1;
@@ -2499,16 +2489,6 @@ pub(crate) fn poisson_disk_points_properties(document_node: &DocumentNode, node_
 	let seed = number_widget(document_node, node_id, seed_index, "Seed", NumberInput::default().int().min(0.), true);
 
 	vec![LayoutGroup::Row { widgets: spacing }, LayoutGroup::Row { widgets: seed }]
-}
-
-pub(crate) fn morph_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let start_index = number_widget(document_node, node_id, 2, "Start Index", NumberInput::default().min(0.), true);
-	let time = number_widget(document_node, node_id, 3, "Time", NumberInput::default().min(0.).max(1.).mode_range(), true);
-
-	vec![
-		LayoutGroup::Row { widgets: start_index }.with_tooltip("The index of point on the target that morphs to the first point of the source"),
-		LayoutGroup::Row { widgets: time }.with_tooltip("Linear time of transition - 0. is source, 1. is target"),
-	]
 }
 
 /// Fill Node Widgets LayoutGroup
@@ -2668,10 +2648,4 @@ pub(crate) fn image_color_palette(document_node: &DocumentNode, node_id: NodeId,
 	let size = number_widget(document_node, node_id, 1, "Max Size", NumberInput::default().int().min(1.).max(28.), true);
 
 	vec![LayoutGroup::Row { widgets: size }]
-}
-
-pub(crate) fn centroid_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let centroid_type = centroid_widget(document_node, node_id, 1);
-
-	vec![centroid_type]
 }
