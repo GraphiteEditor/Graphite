@@ -12,7 +12,7 @@ jobs:
   build:
     runs-on: self-hosted
     permissions:
-      contents: read
+      contents: write
       deployments: write
     env:
       RUSTC_WRAPPER: /usr/bin/sccache
@@ -66,3 +66,14 @@ jobs:
           projectName: graphite-editor
           directory: frontend/dist
           branch: master
+
+      - name: 📦 Upload assets to GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DATE=$(git log -1 --format=%cd --date=format:%Y-%m-%d)
+          cd frontend
+          sed -i "s|$INDEX_HTML_HEAD_REPLACEMENT||" dist/index.html
+          mv dist "graphite-$DATE"
+          zip -r "graphite-self-hosted-build.zip" "graphite-$DATE"
+          gh release upload latest-stable "graphite-self-hosted-build.zip" --clobber
