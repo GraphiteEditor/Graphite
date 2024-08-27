@@ -98,7 +98,8 @@ impl NodeNetworkInterface {
 				.persistent_metadata
 				.selection_undo_history
 				.back()
-				.expect("Selection undo history should never be empty since the back is the current selection state")
+				.cloned()
+				.unwrap_or_default()
 				.filtered_selected_nodes(network_metadata.persistent_metadata.node_metadata.keys().cloned().collect()),
 		)
 	}
@@ -1527,7 +1528,6 @@ impl NodeNetworkInterface {
 		if network_metadata.persistent_metadata.selection_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			network_metadata.persistent_metadata.selection_undo_history.pop_front();
 		}
-
 		network_metadata.persistent_metadata.selection_undo_history.back_mut()
 	}
 
@@ -1536,11 +1536,6 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network_metadata in selection_step_back");
 			return;
 		};
-
-		// Do not pop the default selection state
-		if network_metadata.persistent_metadata.selection_undo_history.len() == 1 {
-			return;
-		}
 
 		if let Some(selection_state) = network_metadata.persistent_metadata.selection_undo_history.pop_back() {
 			network_metadata.persistent_metadata.selection_redo_history.push_front(selection_state);
@@ -5044,7 +5039,7 @@ impl NodeNetworkMetadata {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NodeNetworkPersistentMetadata {
 	/// Node metadata must exist for every document node in the network
 	#[serde(serialize_with = "graphene_std::vector::serialize_hashmap", deserialize_with = "graphene_std::vector::deserialize_hashmap")]
@@ -5054,24 +5049,12 @@ pub struct NodeNetworkPersistentMetadata {
 	pub previewing: Previewing,
 	// Stores the transform and navigation state for the network
 	pub navigation_metadata: NavigationMetadata,
-	/// Stack of selection snapshots for previous history states. Should never be empty
+	/// Stack of selection snapshots for previous history states.
+	#[serde(default)]
 	pub selection_undo_history: VecDeque<SelectedNodes>,
 	/// Stack of selection snapshots for future history states.
+	#[serde(default)]
 	pub selection_redo_history: VecDeque<SelectedNodes>,
-}
-
-impl Default for NodeNetworkPersistentMetadata {
-	fn default() -> Self {
-		let mut selection_undo_history = VecDeque::new();
-		selection_undo_history.push_back(SelectedNodes::default());
-		NodeNetworkPersistentMetadata {
-			node_metadata: HashMap::new(),
-			previewing: Previewing::default(),
-			navigation_metadata: NavigationMetadata::default(),
-			selection_undo_history,
-			selection_redo_history: VecDeque::new(),
-		}
-	}
 }
 
 /// This is the same as Option, but more clear in the context of having cached metadata either being loaded or unloaded

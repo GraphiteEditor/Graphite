@@ -42,6 +42,8 @@ pub struct NodeGraphMessageHandler {
 	begin_dragging: bool,
 	/// Stored in node graph coordinates
 	box_selection_start: Option<DVec2>,
+	/// Restore the selection before box selection if it is aborted
+	selection_before_pointer_down: Vec<NodeId>,
 	/// If the grip icon is held during a drag, then shift without pushing other nodes
 	shift_without_push: bool,
 	disconnecting: Option<InputConnector>,
@@ -350,12 +352,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					if self.drag_start.is_some() {
 						responses.add(DocumentMessage::AbortTransaction);
 						self.drag_start = None;
+						responses.add(NodeGraphMessage::SelectedNodesSet {
+							nodes: self.selection_before_pointer_down.clone(),
+						});
 						return;
 					}
 					// Abort a box selection
 					if self.box_selection_start.is_some() {
 						self.box_selection_start = None;
-						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() });
+						responses.add(NodeGraphMessage::SelectedNodesSet {
+							nodes: self.selection_before_pointer_down.clone(),
+						});
 						responses.add(FrontendMessage::UpdateBox { box_selection: None });
 						return;
 					}
@@ -401,6 +408,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 					return;
 				}
+
+				self.selection_before_pointer_down = network_interface
+					.selected_nodes(selection_network_path)
+					.map(|selected_nodes| selected_nodes.selected_nodes().cloned().collect())
+					.unwrap_or_default();
 
 				// If the user is clicking on the create nodes list or context menu, break here
 				if let Some(context_menu) = &self.context_menu {
@@ -532,8 +544,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					if modified_selected {
 						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: updated_selected })
 					}
-
+					// Start the transaction after setting the node, since when the transactions ends it aborts any changes after this
 					responses.add(DocumentMessage::StartTransaction);
+
 					return;
 				}
 
@@ -1980,6 +1993,7 @@ impl Default for NodeGraphMessageHandler {
 			begin_dragging: false,
 			shift_without_push: false,
 			box_selection_start: None,
+			selection_before_pointer_down: Vec::new(),
 			disconnecting: None,
 			initial_disconnecting: false,
 			select_if_not_dragged: None,
