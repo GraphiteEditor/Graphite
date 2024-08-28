@@ -23,3 +23,6 @@ convert_case = { workspace = true }
 indoc = "2.0.5"
 proc-macro-crate = "3.1.0"
 
+[dev-dependencies]
+graphene-core = { workspace = true }
+

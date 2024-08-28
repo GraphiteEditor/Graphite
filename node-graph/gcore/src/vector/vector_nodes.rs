@@ -587,7 +587,6 @@ async fn centroid_node(_: (), vector_data: impl Node<Footprint, Output = VectorD
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::transform::CullNode;
 	use crate::value::ClonedNode;
 
 	use crate::Node;
@@ -600,7 +599,7 @@ mod test {
 
 	impl<'i, T: 'i + Clone + Send> Node<'i, Footprint> for FutureWrapperNode<T> {
 		type Output = Pin<Box<dyn core::future::Future<Output = T> + 'i + Send>>;
-		fn eval(&'i self, input: Footprint) -> Self::Output {
+		fn eval(&'i self, _input: Footprint) -> Self::Output {
 			let value = self.0.clone();
 			Box::pin(async move { value })
 		}

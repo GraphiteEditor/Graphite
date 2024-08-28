@@ -3876,6 +3876,7 @@ name = "node-macro"
 version = "0.0.0"
 dependencies = [
  "convert_case 0.6.0",
+ "graphene-core",
  "indoc",
  "proc-macro-crate 3.1.0",
  "proc-macro2",
