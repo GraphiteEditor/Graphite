@@ -23,7 +23,7 @@ pub struct AssignColorsNode<Fill, Stroke, Gradient, Reverse, Randomize, Seed, Re
 #[node_macro::node_fn(AssignColorsNode)]
 fn assign_colors_node(group: GraphicGroup, fill: bool, stroke: bool, gradient: GradientStops, reverse: bool, randomize: bool, seed: u32, repeat_every: u32) -> GraphicGroup {
 	let mut group = group;
-	let vector_data_list: Vec<_> = group.iter_mut().filter_map(|element| element.as_vector_data_mut()).collect();
+	let vector_data_list: Vec<_> = group.iter_mut().filter_map(|(element, _)| element.as_vector_data_mut()).collect();
 	let list = (vector_data_list.len(), vector_data_list.into_iter());
 
 	assign_colors(
@@ -297,9 +297,9 @@ pub trait ConcatElement {
 impl ConcatElement for GraphicGroup {
 	fn concat(&mut self, other: &Self, transform: DAffine2) {
 		// TODO: Decide if we want to keep this behavior whereby the layers are flattened
-		for mut element in other.iter().cloned() {
+		for (mut element, footprint_mapping) in other.iter().cloned() {
 			*element.transform_mut() = transform * element.transform() * other.transform();
-			self.push(element);
+			self.push((element, footprint_mapping));
 		}
 		self.alpha_blending = other.alpha_blending;
 	}

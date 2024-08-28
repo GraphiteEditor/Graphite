@@ -178,6 +178,7 @@ tagged_value! {
 	CentroidType(graphene_core::vector::misc::CentroidType),
 	BooleanOperation(graphene_core::vector::misc::BooleanOperation),
 	FontCache(Arc<graphene_core::text::FontCache>),
+	OptionalNodeId(Option<u64>),
 }
 
 impl TaggedValue {

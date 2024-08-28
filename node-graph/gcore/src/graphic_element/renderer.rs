@@ -272,6 +272,7 @@ pub trait GraphicElementRendered {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]>;
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>);
+	fn add_footprints(&self, footprints: &mut HashMap<NodeId, Footprint>)
 	#[cfg(feature = "vello")]
 	fn to_vello_scene(&self, transform: DAffine2, context: &mut RenderContext) -> Scene {
 		let mut scene = vello::Scene::new();
@@ -305,7 +306,7 @@ impl GraphicElementRendered for GraphicGroup {
 				}
 			},
 			|render| {
-				for element in self.iter() {
+				for (element, _) in self.iter() {
 					element.render_svg(render, render_params);
 				}
 			},
@@ -313,11 +314,11 @@ impl GraphicElementRendered for GraphicGroup {
 	}
 
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.iter().filter_map(|element| element.bounding_box(transform * self.transform)).reduce(Quad::combine_bounds)
+		self.iter().filter_map(|(element, _)| element.bounding_box(transform * self.transform)).reduce(Quad::combine_bounds)
 	}
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		for element in self.elements.iter() {
+		for (element, _) in self.elements.iter() {
 			let mut new_click_targets = Vec::new();
 			element.add_click_targets(&mut new_click_targets);
 			for click_target in new_click_targets.iter_mut() {
@@ -344,7 +345,7 @@ impl GraphicElementRendered for GraphicGroup {
 				&vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y),
 			);
 		}
-		for element in self.iter() {
+		for (element, _) in self.iter() {
 			element.render_to_vello(scene, child_transform, context);
 		}
 		if layer {
@@ -353,7 +354,7 @@ impl GraphicElementRendered for GraphicGroup {
 	}
 
 	fn contains_artboard(&self) -> bool {
-		self.iter().any(|element| element.contains_artboard())
+		self.iter().any(|(element, _)| element.contains_artboard())
 	}
 }
 
@@ -574,7 +575,7 @@ impl GraphicElementRendered for Artboard {
 			},
 			// Artboard contents
 			|render| {
-				for element in self.graphic_group.iter() {
+				for (element, _) in self.graphic_group.iter() {
 					element.render_svg(render, render_params);
 				}
 			},

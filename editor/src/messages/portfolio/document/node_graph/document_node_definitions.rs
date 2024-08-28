@@ -253,8 +253,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								manual_composition: Some(concrete!(Footprint)),
-								inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(2), 0)],
-								implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _>"),
+								inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(2), 0), NodeInput::value(TaggedValue::OptionalNodeId(None), false)],
+								implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _, _>"),
 								..Default::default()
 							},
 						]

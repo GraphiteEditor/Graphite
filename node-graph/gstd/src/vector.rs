@@ -42,7 +42,7 @@ fn boolean_operation_node(group_of_paths: GraphicGroup, operation: BooleanOperat
 
 	fn collect_vector_data(graphic_group: &GraphicGroup) -> Vec<VectorData> {
 		// Ensure all non vector data in the graphic group is converted to vector data
-		let vector_data = graphic_group.iter().map(union_vector_data);
+		let vector_data = graphic_group.iter().map(|(element, _)| union_vector_data(element));
 		// Apply the transform from the parent graphic group
 		let transformed_vector_data = vector_data.map(|mut vector_data| {
 			vector_data.transform = graphic_group.transform * vector_data.transform;

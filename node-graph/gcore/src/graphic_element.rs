@@ -42,8 +42,11 @@ impl AlphaBlending {
 #[derive(Clone, Debug, PartialEq, DynAny, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GraphicGroup {
-	elements: Vec<GraphicElement>,
+	// TODO:  Separate into multiple Vecs in a spread sheet format.
+	elements: Vec<(GraphicElement, Option<(u64, Footprint)>)>,
+	// TODO: Convert to Vec<DAffine2>
 	pub transform: DAffine2,
+	// TODO: Convert to Vec<AlphaBlending>
 	pub alpha_blending: AlphaBlending,
 }
 
@@ -64,7 +67,7 @@ impl GraphicGroup {
 
 	pub fn new(elements: Vec<GraphicElement>) -> Self {
 		Self {
-			elements,
+			elements: elements.into_iter().map(|element| (element, None)).collect(),
 			transform: DAffine2::IDENTITY,
 			alpha_blending: AlphaBlending::new(),
 		}
@@ -231,9 +234,10 @@ impl ArtboardGroup {
 	}
 }
 
-pub struct ConstructLayerNode<Stack, GraphicElement> {
+pub struct ConstructLayerNode<Stack, GraphicElement, OptionalNodeId> {
 	stack: Stack,
 	graphic_element: GraphicElement,
+	node_id: OptionalNodeId,
 }
 
 #[node_fn(ConstructLayerNode)]
@@ -241,10 +245,15 @@ async fn construct_layer<Data: Into<GraphicElement> + Send>(
 	footprint: crate::transform::Footprint,
 	mut stack: impl Node<crate::transform::Footprint, Output = GraphicGroup>,
 	graphic_element: impl Node<crate::transform::Footprint, Output = Data>,
+	node_id: Option<u64>,
 ) -> GraphicGroup {
 	let graphic_element = self.graphic_element.eval(footprint).await;
 	let mut stack = self.stack.eval(footprint).await;
-	stack.push(graphic_element.into());
+	if let Some(node_id) = node_id {
+		stack.push((graphic_element.into(), Some((node_id, footprint))));
+	} else {
+		stack.push((graphic_element.into(), None));
+	}
 	stack
 }
 
@@ -330,7 +339,7 @@ impl From<GraphicGroup> for GraphicElement {
 }
 
 impl Deref for GraphicGroup {
-	type Target = Vec<GraphicElement>;
+	type Target = Vec<(GraphicElement, Option<(u64, Footprint)>)>;
 	fn deref(&self) -> &Self::Target {
 		&self.elements
 	}
@@ -355,7 +364,7 @@ where
 {
 	fn from(value: T) -> Self {
 		Self {
-			elements: (vec![value.into()]),
+			elements: (vec![(value.into(), None)]),
 			transform: DAffine2::IDENTITY,
 			alpha_blending: AlphaBlending::default(),
 		}
