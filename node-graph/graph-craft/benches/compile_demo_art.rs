@@ -1,5 +1,7 @@
 use graph_craft::document::NodeNetwork;
+#[cfg(any(feature = "criterion", feature = "iai"))]
 use graph_craft::graphene_compiler::Compiler;
+#[cfg(any(feature = "criterion", feature = "iai"))]
 use graph_craft::proto::ProtoNetwork;
 
 #[cfg(feature = "criterion")]
@@ -8,11 +10,13 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 #[cfg(all(not(feature = "criterion"), feature = "iai"))]
 use iai_callgrind::{black_box, library_benchmark, library_benchmark_group, main};
 
+#[cfg(any(feature = "criterion", feature = "iai"))]
 fn load_network(document_string: &str) -> NodeNetwork {
 	let document: serde_json::Value = serde_json::from_str(document_string).expect("Failed to parse document");
 	serde_json::from_value::<NodeNetwork>(document["network_interface"]["network"].clone()).expect("Failed to parse document")
 }
 
+#[cfg(any(feature = "criterion", feature = "iai"))]
 fn compile(network: NodeNetwork) -> ProtoNetwork {
 	let compiler = Compiler {};
 	compiler.compile_single(network).unwrap()

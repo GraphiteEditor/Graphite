@@ -41,7 +41,9 @@ pub struct FieldMetadata {
 	pub exposed: bool,
 	pub default_value: Option<&'static str>,
 }
-pub static NODE_REGISTRY: LazyLock<Mutex<HashMap<String, Vec<(NodeConstructor, NodeIOTypes)>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+type NodeRegistry = LazyLock<Mutex<HashMap<String, Vec<(NodeConstructor, NodeIOTypes)>>>>;
+
+pub static NODE_REGISTRY: NodeRegistry = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub static NODE_METADATA: LazyLock<Mutex<HashMap<String, NodeMetadata>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
