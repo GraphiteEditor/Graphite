@@ -388,7 +388,7 @@ mod tests {
 
 	#[test]
 	fn test_basic_node() {
-		let attr = quote!(category("Math"));
+		let attr = quote!(category("Math"), path(graphene_core::TestNode));
 		let input = quote!(
 			fn add(a: f64, b: f64) -> f64 {
 				a + b
@@ -400,6 +400,7 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Math")),
 				display_name: None,
+				path: Some(parse_quote!(graphene_core::TestNode)),
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -441,6 +442,7 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Transform")),
 				display_name: None,
+				path: None,
 			},
 			fn_name: Ident::new("transform", Span::call_site()),
 			struct_name: Ident::new("Transform", Span::call_site()),
@@ -490,6 +492,7 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Vector")),
 				display_name: None,
+				path: None,
 			},
 			fn_name: Ident::new("circle", Span::call_site()),
 			struct_name: Ident::new("Circle", Span::call_site()),
@@ -531,6 +534,7 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Raster")),
 				display_name: None,
+				path: None,
 			},
 			fn_name: Ident::new("levels", Span::call_site()),
 			struct_name: Ident::new("Levels", Span::call_site()),
@@ -577,6 +581,7 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("IO")),
 				display_name: None,
+				path: None,
 			},
 			fn_name: Ident::new("load_image", Span::call_site()),
 			struct_name: Ident::new("LoadImage", Span::call_site()),
@@ -618,6 +623,7 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Custom")),
 				display_name: Some(parse_quote!("CustomNode2")),
+				path: None,
 			},
 			fn_name: Ident::new("custom_node", Span::call_site()),
 			struct_name: Ident::new("CustomNode", Span::call_site()),

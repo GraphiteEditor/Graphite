@@ -590,63 +590,49 @@ mod test {
 	use crate::transform::CullNode;
 	use crate::value::ClonedNode;
 
+	use crate::Node;
 	use bezier_rs::Bezier;
 
 	use std::pin::Pin;
 
 	#[derive(Clone)]
-	pub struct FutureWrapperNode<Node: Clone>(Node);
+	pub struct FutureWrapperNode<T: Clone>(T);
 
-	impl<'i, T: 'i, N: Node<'i, T> + Clone> Node<'i, T> for FutureWrapperNode<N>
-	where
-		N: Node<'i, T, Output: Send>,
-	{
-		type Output = Pin<Box<dyn core::future::Future<Output = N::Output> + 'i + Send>>;
-		fn eval(&'i self, input: T) -> Self::Output {
-			let result = self.0.eval(input);
-			Box::pin(async move { result })
+	impl<'i, T: 'i + Clone + Send> Node<'i, Footprint> for FutureWrapperNode<T> {
+		type Output = Pin<Box<dyn core::future::Future<Output = T> + 'i + Send>>;
+		fn eval(&'i self, input: Footprint) -> Self::Output {
+			let value = self.0.clone();
+			Box::pin(async move { value })
 		}
 	}
 
-	#[test]
-	fn repeat() {
+	fn vector_node(data: Subpath<PointId>) -> FutureWrapperNode<VectorData> {
+		FutureWrapperNode(VectorData::from_subpath(data))
+	}
+
+	#[tokio::test]
+	async fn repeat() {
 		let direction = DVec2::X * 1.5;
 		let instances = 3;
-		let repeated = super::repeat(
-			Footprint::default(),
-			&CullNode::new(ClonedNode::new(async { VectorData::from_subpath(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)) })),
-			direction,
-			0.,
-			instances,
-		);
+		let repeated = super::repeat(Footprint::default(), &vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
 		assert_eq!(repeated.region_bezier_paths().count(), 3);
 		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
 			assert!((subpath.manipulator_groups()[0].anchor - direction * index as f64 / (instances - 1) as f64).length() < 1e-5);
 		}
 	}
-	#[test]
-	fn repeat_transform_position() {
+	#[tokio::test]
+	async fn repeat_transform_position() {
 		let direction = DVec2::new(12., 10.);
 		let instances = 8;
-		let repeated = RepeatNode {
-			direction: ClonedNode::new(direction),
-			angle: ClonedNode::new(0.),
-			instances: ClonedNode::new(instances),
-		}
-		.eval(VectorData::from_subpath(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)));
+		let repeated = super::repeat(Footprint::default(), &vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
 		assert_eq!(repeated.region_bezier_paths().count(), 8);
 		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
 			assert!((subpath.manipulator_groups()[0].anchor - direction * index as f64 / (instances - 1) as f64).length() < 1e-5);
 		}
 	}
-	#[test]
-	fn circle_repeat() {
-		let repeated = CircularRepeatNode {
-			angle_offset: ClonedNode::new(45.),
-			radius: ClonedNode::new(4.),
-			instances: ClonedNode::new(8),
-		}
-		.eval(VectorData::from_subpath(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE)));
+	#[tokio::test]
+	async fn circle_repeat() {
+		let repeated = super::circular_repeat(Footprint::default(), &vector_node(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE)), 45., 4., 8).await;
 		assert_eq!(repeated.region_bezier_paths().count(), 8);
 		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
 			let expected_angle = (index as f64 + 1.) * 45.;
@@ -655,9 +641,12 @@ mod test {
 			assert!((actual_angle - expected_angle).abs() % 360. < 1e-5);
 		}
 	}
-	#[test]
-	fn bounding_box() {
-		let bounding_box = BoundingBoxNode.eval(VectorData::from_subpath(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE)));
+	#[tokio::test]
+	async fn bounding_box() {
+		let bounding_box = BoundingBoxNode {
+			vector_data: ClonedNode::new(VectorData::from_subpath(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE))),
+		};
+		let bounding_box = bounding_box.eval(());
 		assert_eq!(bounding_box.region_bezier_paths().count(), 1);
 		let subpath = bounding_box.region_bezier_paths().next().unwrap().1;
 		assert_eq!(&subpath.anchors()[..4], &[DVec2::NEG_ONE, DVec2::new(1., -1.), DVec2::ONE, DVec2::new(-1., 1.),]);
@@ -665,7 +654,7 @@ mod test {
 		// test a VectorData with non-zero rotation
 		let mut square = VectorData::from_subpath(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE));
 		square.transform *= DAffine2::from_angle(core::f64::consts::FRAC_PI_4);
-		let bounding_box = BoundingBoxNode.eval(square);
+		let bounding_box = BoundingBoxNode { vector_data: ClonedNode(square) }.eval(());
 		assert_eq!(bounding_box.region_bezier_paths().count(), 1);
 		let subpath = bounding_box.region_bezier_paths().next().unwrap().1;
 		let sqrt2 = core::f64::consts::SQRT_2;
@@ -674,20 +663,10 @@ mod test {
 	}
 	#[tokio::test]
 	async fn copy_to_points() {
-		let points = VectorData::from_subpath(Subpath::new_rect(DVec2::NEG_ONE * 10., DVec2::ONE * 10.));
-		let expected_points = points.point_domain.positions().to_vec();
-		let bounding_box = CopyToPoints {
-			points: CullNode::new(FutureWrapperNode(ClonedNode(points))),
-			instance: CullNode::new(FutureWrapperNode(ClonedNode(VectorData::from_subpath(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE))))),
-			random_scale_min: FutureWrapperNode(ClonedNode(1.)),
-			random_scale_max: FutureWrapperNode(ClonedNode(1.)),
-			random_scale_bias: FutureWrapperNode(ClonedNode(0.)),
-			random_scale_seed: FutureWrapperNode(ClonedNode(0)),
-			random_rotation: FutureWrapperNode(ClonedNode(0.)),
-			random_rotation_seed: FutureWrapperNode(ClonedNode(0)),
-		}
-		.eval(Footprint::default())
-		.await;
+		let points = Subpath::new_rect(DVec2::NEG_ONE * 10., DVec2::ONE * 10.);
+		let instance = Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE);
+		let expected_points = VectorData::from_subpath(points.clone()).point_domain.positions().to_vec();
+		let bounding_box = super::copy_to_points(Footprint::default(), &vector_node(points), &vector_node(instance), 1., 1., 0., 0, 0., 0).await;
 		assert_eq!(bounding_box.region_bezier_paths().count(), expected_points.len());
 		for (index, (_, subpath)) in bounding_box.region_bezier_paths().enumerate() {
 			let offset = expected_points[index];
@@ -699,17 +678,8 @@ mod test {
 	}
 	#[tokio::test]
 	async fn sample_points() {
-		let path = VectorData::from_subpath(Subpath::from_bezier(&Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::X * 100., DVec2::X * 100.)));
-		let sample_points = SamplePoints {
-			vector_data: CullNode::new(FutureWrapperNode(ClonedNode(path))),
-			spacing: FutureWrapperNode(ClonedNode(30.)),
-			start_offset: FutureWrapperNode(ClonedNode(0.)),
-			stop_offset: FutureWrapperNode(ClonedNode(0.)),
-			adaptive_spacing: FutureWrapperNode(ClonedNode(false)),
-			lengths_of_segments_of_subpaths: CullNode::new(FutureWrapperNode(ClonedNode(vec![100.]))),
-		}
-		.eval(Footprint::default())
-		.await;
+		let path = Subpath::from_bezier(&Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::X * 100., DVec2::X * 100.));
+		let sample_points = super::sample_points(Footprint::default(), &vector_node(path), 30., 0., 0., false, &FutureWrapperNode(vec![100.])).await;
 		assert_eq!(sample_points.point_domain.positions().len(), 4);
 		for (pos, expected) in sample_points.point_domain.positions().iter().zip([DVec2::X * 0., DVec2::X * 30., DVec2::X * 60., DVec2::X * 90.]) {
 			assert!(pos.distance(expected) < 1e-3, "Expected {expected} found {pos}");
@@ -717,17 +687,8 @@ mod test {
 	}
 	#[tokio::test]
 	async fn adaptive_spacing() {
-		let path = VectorData::from_subpath(Subpath::from_bezier(&Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::X * 100., DVec2::X * 100.)));
-		let sample_points = SamplePoints {
-			vector_data: CullNode::new(FutureWrapperNode(ClonedNode(path))),
-			spacing: FutureWrapperNode(ClonedNode(18.)),
-			start_offset: FutureWrapperNode(ClonedNode(45.)),
-			stop_offset: FutureWrapperNode(ClonedNode(10.)),
-			adaptive_spacing: FutureWrapperNode(ClonedNode(true)),
-			lengths_of_segments_of_subpaths: CullNode::new(FutureWrapperNode(ClonedNode(vec![100.]))),
-		}
-		.eval(Footprint::default())
-		.await;
+		let path = Subpath::from_bezier(&Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::X * 100., DVec2::X * 100.));
+		let sample_points = super::sample_points(Footprint::default(), &vector_node(path), 18., 45., 10., true, &FutureWrapperNode(vec![100.])).await;
 		assert_eq!(sample_points.point_domain.positions().len(), 4);
 		for (pos, expected) in sample_points.point_domain.positions().iter().zip([DVec2::X * 45., DVec2::X * 60., DVec2::X * 75., DVec2::X * 90.]) {
 			assert!(pos.distance(expected) < 1e-3, "Expected {expected} found {pos}");
@@ -735,11 +696,12 @@ mod test {
 	}
 	#[test]
 	fn poisson() {
-		let sample_points = PoissonDiskPoints {
-			separation_disk_diameter: ClonedNode(10. * std::f64::consts::SQRT_2),
-			seed: ClonedNode(0),
-		}
-		.eval(VectorData::from_subpath(Subpath::new_ellipse(DVec2::NEG_ONE * 50., DVec2::ONE * 50.)));
+		let sample_points = super::poisson_disk_points(
+			(),
+			VectorData::from_subpath(Subpath::new_ellipse(DVec2::NEG_ONE * 50., DVec2::ONE * 50.)),
+			10. * std::f64::consts::SQRT_2,
+			0,
+		);
 		assert!(
 			(20..=40).contains(&sample_points.point_domain.positions().len()),
 			"actual len {}",
@@ -749,31 +711,24 @@ mod test {
 			assert!(point.length() < 50. + 1., "Expected point in circle {point}")
 		}
 	}
-	#[test]
-	fn lengths() {
-		let subpath = VectorData::from_subpath(Subpath::from_bezier(&Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::X * 100., DVec2::X * 100.)));
-		let lengths = LengthsOfSegmentsOfSubpaths.eval(subpath);
+	#[tokio::test]
+	async fn lengths() {
+		let subpath = Subpath::from_bezier(&Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::X * 100., DVec2::X * 100.));
+		let lengths = lengths_of_segments_of_subpaths(Footprint::default(), &vector_node(subpath)).await;
 		assert_eq!(lengths, vec![100.]);
 	}
 	#[test]
 	fn spline() {
 		let subpath = VectorData::from_subpath(Subpath::new_rect(DVec2::ZERO, DVec2::ONE * 100.));
-		let spline = SplinesFromPointsNode.eval(subpath);
+		let spline = splines_from_points((), subpath);
 		assert_eq!(spline.stroke_bezier_paths().count(), 1);
 		assert_eq!(spline.point_domain.positions(), &[DVec2::ZERO, DVec2::new(100., 0.), DVec2::new(100., 100.), DVec2::new(0., 100.)]);
 	}
 	#[tokio::test]
 	async fn morph() {
-		let source = VectorData::from_subpath(Subpath::new_rect(DVec2::ZERO, DVec2::ONE * 100.));
-		let target = VectorData::from_subpath(Subpath::new_ellipse(DVec2::NEG_ONE * 100., DVec2::ZERO));
-		let sample_points = MorphNode {
-			source: CullNode::new(FutureWrapperNode(ClonedNode(source))),
-			target: CullNode::new(FutureWrapperNode(ClonedNode(target))),
-			time: FutureWrapperNode(ClonedNode(0.5)),
-			start_index: FutureWrapperNode(ClonedNode(0)),
-		}
-		.eval(Footprint::default())
-		.await;
+		let source = Subpath::new_rect(DVec2::ZERO, DVec2::ONE * 100.);
+		let target = Subpath::new_ellipse(DVec2::NEG_ONE * 100., DVec2::ZERO);
+		let sample_points = super::morph(Footprint::default(), &vector_node(source), &vector_node(target), 0, 0.5).await;
 		assert_eq!(
 			&sample_points.point_domain.positions()[..4],
 			vec![DVec2::new(-25., -50.), DVec2::new(50., -25.), DVec2::new(25., 50.), DVec2::new(-50., 25.)]

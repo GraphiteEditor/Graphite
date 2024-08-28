@@ -556,7 +556,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	];
 	let mut map: HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> = HashMap::new();
 	for (id, entry) in graphene_core::registry::NODE_REGISTRY.lock().unwrap().iter() {
-		log::debug!("{}", &id);
 		for (constructor, types) in entry.iter() {
 			map.entry(id.clone().into()).or_default().insert(types.clone(), *constructor);
 		}
