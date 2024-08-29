@@ -20,7 +20,8 @@ pub fn linear_demosaic(raw_image: RawImage) -> Image<u16> {
 	}
 }
 
-fn linear_demosaic_rggb(mut raw_image: RawImage) -> Image<u16> {
+fn linear_demosaic_rggb(raw_image: RawImage) -> Image<u16> {
+	let mut image = vec![0u16; raw_image.width * raw_image.height * 3];
 	let width = raw_image.width as i64;
 	let height = raw_image.height as i64;
 
@@ -35,34 +36,27 @@ fn linear_demosaic_rggb(mut raw_image: RawImage) -> Image<u16> {
 			let cross_indexes = [pixel_index + width, pixel_index - width, pixel_index + 1, pixel_index - 1];
 			let diagonal_indexes = [pixel_index + width + 1, pixel_index - width + 1, pixel_index + width - 1, pixel_index - width - 1];
 
+			let pixel_index = pixel_index as usize;
 			match (row % 2 == 0, col % 2 == 0) {
 				(true, true) => {
-					let indexes = cross_indexes.iter().map(|x| 3 * x + 1);
-					raw_image.data[3 * (pixel_index as usize) + 1] = average(&raw_image.data, indexes);
-
-					let indexes = diagonal_indexes.iter().map(|x| 3 * x + 2);
-					raw_image.data[3 * (pixel_index as usize) + 2] = average(&raw_image.data, indexes);
+					image[3 * pixel_index] = raw_image.data[pixel_index];
+					image[3 * pixel_index + 1] = average(&raw_image.data, cross_indexes.into_iter());
+					image[3 * pixel_index + 2] = average(&raw_image.data, diagonal_indexes.into_iter());
 				}
 				(true, false) => {
-					let indexes = horizontal_indexes.iter().map(|x| 3 * x);
-					raw_image.data[3 * (pixel_index as usize)] = average(&raw_image.data, indexes);
-
-					let indexes = vertical_indexes.iter().map(|x| 3 * x + 2);
-					raw_image.data[3 * (pixel_index as usize) + 2] = average(&raw_image.data, indexes);
+					image[3 * pixel_index] = average(&raw_image.data, horizontal_indexes.into_iter());
+					image[3 * pixel_index + 1] = raw_image.data[pixel_index];
+					image[3 * pixel_index + 2] = average(&raw_image.data, vertical_indexes.into_iter());
 				}
 				(false, true) => {
-					let indexes = vertical_indexes.iter().map(|x| 3 * x);
-					raw_image.data[3 * (pixel_index as usize)] = average(&raw_image.data, indexes);
-
-					let indexes = horizontal_indexes.iter().map(|x| 3 * x + 2);
-					raw_image.data[3 * (pixel_index as usize) + 2] = average(&raw_image.data, indexes);
+					image[3 * pixel_index] = average(&raw_image.data, vertical_indexes.into_iter());
+					image[3 * pixel_index + 1] = raw_image.data[pixel_index];
+					image[3 * pixel_index + 2] = average(&raw_image.data, horizontal_indexes.into_iter());
 				}
 				(false, false) => {
-					let indexes = cross_indexes.iter().map(|x| 3 * x + 1);
-					raw_image.data[3 * (pixel_index as usize) + 1] = average(&raw_image.data, indexes);
-
-					let indexes = diagonal_indexes.iter().map(|x| 3 * x);
-					raw_image.data[3 * (pixel_index as usize)] = average(&raw_image.data, indexes);
+					image[3 * pixel_index] = average(&raw_image.data, diagonal_indexes.into_iter());
+					image[3 * pixel_index + 1] = average(&raw_image.data, cross_indexes.into_iter());
+					image[3 * pixel_index + 2] = raw_image.data[pixel_index];
 				}
 			}
 		}
@@ -70,7 +64,7 @@ fn linear_demosaic_rggb(mut raw_image: RawImage) -> Image<u16> {
 
 	Image {
 		channels: 3,
-		data: raw_image.data,
+		data: image,
 		width: raw_image.width,
 		height: raw_image.height,
 		rgb_to_camera: raw_image.rgb_to_camera,
