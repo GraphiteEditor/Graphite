@@ -479,7 +479,7 @@ impl Fsm for SelectToolFsmState {
 				}
 				// Only highlight layers if the viewport is not being panned (middle mouse button is pressed)
 				// TODO: Don't use `Key::Mmb` directly, instead take it as a variable from the input mappings list like in all other places
-				else if !input.keyboard.get(Key::Mmb as usize) {
+				else if !input.keyboard.get(Key::MouseMiddle as usize) {
 					// Get the layer the user is hovering over
 					let click = document.click(input);
 					let not_selected_click = click.filter(|&hovered_layer| !document.network_interface.selected_nodes(&[]).unwrap().selected_layers_contains(hovered_layer, document.metadata()));

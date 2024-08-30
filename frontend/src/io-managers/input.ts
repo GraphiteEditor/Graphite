@@ -182,6 +182,12 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	}
 
 	function onPointerUp(e: PointerEvent) {
+		// Don't let the browser navigate back or forward when using the buttons on some mice
+		// TODO: This works in Chrome but not in Firefox
+		// TODO: Possible workaround: use the browser's history API to block navigation:
+		// TODO: <https://stackoverflow.com/questions/57102502/preventing-mouse-fourth-and-fifth-buttons-from-navigating-back-forward-in-browse>
+		if (e.button === 3 || e.button === 4) e.preventDefault();
+
 		if (!e.buttons) viewportPointerInteractionOngoing = false;
 
 		if (textToolInteractiveInputElement) return;
@@ -198,9 +204,11 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 		// `e.buttons` is always 0 in the `mouseup` event, so we have to convert from `e.button` instead
 		let buttons = 1;
-		if (e.button === 0) buttons = 1; // LMB
-		if (e.button === 1) buttons = 4; // MMB
-		if (e.button === 2) buttons = 2; // RMB
+		if (e.button === 0) buttons = 1; // Left
+		if (e.button === 2) buttons = 2; // Right
+		if (e.button === 1) buttons = 4; // Middle
+		if (e.button === 3) buttons = 8; // Back
+		if (e.button === 4) buttons = 16; // Forward
 
 		const modifiers = makeKeyboardModifiersBitfield(e);
 		editor.handle.onDoubleClick(e.clientX, e.clientY, buttons, modifiers);

@@ -202,9 +202,11 @@ pub enum Key {
 	Command,
 	/// "Ctrl" on Windows/Linux, "Cmd" on Mac
 	Accel,
-	Lmb,
-	Rmb,
-	Mmb,
+	MouseLeft,
+	MouseRight,
+	MouseMiddle,
+	MouseBack,
+	MouseForward,
 
 	// This has to be the last element in the enum
 	NumKeys,

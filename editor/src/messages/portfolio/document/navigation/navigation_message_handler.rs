@@ -294,7 +294,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 			NavigationMessage::EndCanvasPTZWithClick { commit_key } => {
 				self.finish_operation_with_click = false;
 
-				let abort_transform = commit_key == Key::Rmb;
+				let abort_transform = commit_key == Key::MouseRight;
 				responses.add(NavigationMessage::EndCanvasPTZ { abort_transform });
 			}
 			NavigationMessage::FitViewportToBounds {

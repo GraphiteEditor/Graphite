@@ -4,7 +4,6 @@
 		// Rust
 		"rust-lang.rust-analyzer",
 		"tamasfe.even-better-toml",
-		"serayuzgur.crates",
 		// Web
 		"dbaeumer.vscode-eslint",
 		"svelte.svelte-vscode",
@@ -16,6 +15,6 @@
 		"mhutchie.git-graph",
 		"waderyan.gitblame",
 		"qezhu.gitlink",
-		"wmaurer.change-case",
+		"wmaurer.change-case"
 	]
 }

@@ -144,6 +144,8 @@ pub enum MouseButton {
 	Left,
 	Right,
 	Middle,
+	Back,
+	Forward,
 }
 
 pub const NUMBER_OF_MOUSE_BUTTONS: usize = 3;
