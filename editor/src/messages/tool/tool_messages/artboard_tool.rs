@@ -236,9 +236,7 @@ impl Fsm for ArtboardToolFsmState {
 				tool_data.drag_start = to_document.transform_point2(input.mouse.position);
 				tool_data.drag_current = to_document.transform_point2(input.mouse.position);
 
-				responses.add(DocumentMessage::StartTransaction);
-
-				if let Some(selected_edges) = tool_data.check_dragging_bounds(input.mouse.position) {
+				let state = if let Some(selected_edges) = tool_data.check_dragging_bounds(input.mouse.position) {
 					tool_data.start_resizing(selected_edges, document, input);
 					tool_data.get_snap_candidates(document, input);
 					ArtboardToolFsmState::ResizingBounds
@@ -256,7 +254,9 @@ impl Fsm for ArtboardToolFsmState {
 					tool_data.drag_current = snapped.snapped_point_document;
 
 					ArtboardToolFsmState::Drawing
-				}
+				};
+				responses.add(DocumentMessage::StartTransaction);
+				state
 			}
 			(ArtboardToolFsmState::ResizingBounds, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
 				let from_center = input.keyboard.get(center as usize);

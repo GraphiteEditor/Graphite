@@ -941,7 +941,6 @@ impl Fsm for SelectToolFsmState {
 						if selecting_layer == LayerNodeIdentifier::ROOT_PARENT {
 							log::error!("selecting_layer should not be ROOT_PARENT");
 						} else {
-							log::info!("Selecting layer {:?}", selecting_layer);
 							responses.add(NodeGraphMessage::SelectedNodesSet {
 								nodes: vec![selecting_layer.to_node()],
 							});
@@ -1201,11 +1200,9 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 }
 
 fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
-	tool_data.layers_dragging.append(&mut vec![document.find_deepest(&selected).unwrap_or(LayerNodeIdentifier::new(
-		document.network_interface.root_node(&[]).expect("Root node should exist when dragging layers").node_id,
-		&document.network_interface,
-		&[],
-	))]);
+	tool_data.layers_dragging.append(&mut vec![document
+		.find_deepest(&selected)
+		.unwrap_or(LayerNodeIdentifier::ROOT_PARENT.children(document.metadata()).next().expect("Child should exist when dragging deepest"))]);
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data
 			.layers_dragging
