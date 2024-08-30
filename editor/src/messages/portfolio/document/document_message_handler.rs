@@ -1054,6 +1054,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.snapping_state.snapping_enabled = !self.snapping_state.snapping_enabled;
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
+			DocumentMessage::UpdateUpstreamTransforms { upstream_transforms } => {
+				self.network_interface.document_metadata_mut().update_transforms(upstream_transforms);
+			}
 			DocumentMessage::Undo => {
 				if self.network_interface.transaction_status() != TransactionStatus::Finished {
 					return;

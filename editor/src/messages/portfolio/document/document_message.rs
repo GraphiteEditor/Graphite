@@ -13,6 +13,7 @@ use graphene_core::vector::style::ViewMode;
 use graphene_core::Color;
 
 use glam::DAffine2;
+use graphene_std::transform::Footprint;
 
 #[impl_message(Message, PortfolioMessage, Document)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -155,6 +156,9 @@ pub enum DocumentMessage {
 	ToggleGridVisibility,
 	ToggleOverlaysVisibility,
 	ToggleSnapping,
+	UpdateUpstreamTransforms {
+		upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
+	},
 	Undo,
 	UngroupSelectedLayers,
 	UngroupLayer {

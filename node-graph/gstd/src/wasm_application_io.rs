@@ -16,6 +16,7 @@ use graphene_core::{Color, WasmNotSend};
 use base64::Engine;
 #[cfg(target_arch = "wasm32")]
 use glam::DAffine2;
+use std::collections::HashMap;
 use std::sync::Arc;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::Clamped;
@@ -102,9 +103,11 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 	}
 
 	data.render_svg(&mut render, &render_params);
+	let mut footprints = HashMap::new();
+	data.add_footprints(&mut footprints, footprint, None);
 	render.wrap_with_transform(footprint.transform, Some(footprint.resolution.as_dvec2()));
 
-	RenderOutput::Svg(render.svg.to_svg_string())
+	RenderOutput::Svg((render.svg.to_svg_string(), footprints))
 }
 
 #[cfg(feature = "vello")]

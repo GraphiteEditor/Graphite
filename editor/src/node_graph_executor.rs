@@ -536,7 +536,7 @@ impl NodeGraphExecutor {
 	}
 
 	fn export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		let TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg(svg)) = node_graph_output else {
+		let TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg((svg, _))) = node_graph_output else {
 			return Err("Incorrect render type for exportign (expected RenderOutput::Svg)".to_string());
 		};
 
@@ -592,7 +592,7 @@ impl NodeGraphExecutor {
 					};
 
 					responses.extend(existing_responses.into_iter().map(Into::into));
-					document.network_interface.document_metadata_mut().update_transforms(new_upstream_transforms);
+					//document.network_interface.document_metadata_mut().update_transforms(new_upstream_transforms);
 					document.network_interface.document_metadata_mut().update_from_monitor(new_click_targets, new_vector_modify);
 
 					let execution_context = self.futures.remove(&execution_id).ok_or_else(|| "Invalid generation ID".to_string())?;
@@ -657,12 +657,16 @@ impl NodeGraphExecutor {
 			TaggedValue::SurfaceFrame(SurfaceFrame { .. }) => {
 				// TODO: Reimplement this now that document-legacy is gone
 			}
-			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg(svg)) => {
+			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg((svg, footprints))) => {
 				// Send to frontend
+				log::debug!("Render output footprints: {footprints:?}");
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 				responses.add(DocumentMessage::RenderScrollbars);
 				responses.add(DocumentMessage::RenderRulers);
+				responses.add(DocumentMessage::UpdateUpstreamTransforms { upstream_transforms: footprints });
+				responses.add(OverlaysMessage::Draw);
 			}
+
 			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::CanvasFrame(frame)) => {
 				let matrix = format_transform_matrix(frame.transform);
 				let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{}\"", matrix) };

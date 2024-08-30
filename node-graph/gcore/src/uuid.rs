@@ -66,4 +66,23 @@ mod uuid_generation {
 	}
 }
 
+use dyn_any::DynAny;
+use dyn_any::StaticType;
 pub use uuid_generation::*;
+
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize, specta::Type, DynAny)]
+pub struct NodeId(pub u64);
+
+// TODO: Find and replace all `NodeId(generate_uuid())` with `NodeId::new()`.
+impl NodeId {
+	pub fn new() -> Self {
+		Self(generate_uuid())
+	}
+}
+
+impl core::fmt::Display for NodeId {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		write!(f, "{}", self.0)
+	}
+}

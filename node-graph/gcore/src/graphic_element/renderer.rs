@@ -4,8 +4,8 @@ pub use quad::Quad;
 pub use rect::Rect;
 
 use crate::raster::{BlendMode, Image, ImageFrame};
-use crate::transform::Transform;
-use crate::uuid::generate_uuid;
+use crate::transform::{self, Footprint, Transform};
+use crate::uuid::{generate_uuid, NodeId};
 use crate::vector::style::{Fill, Stroke, ViewMode};
 use crate::vector::PointId;
 use crate::Raster;
@@ -16,6 +16,7 @@ use bezier_rs::Subpath;
 use base64::Engine;
 use glam::{DAffine2, DVec2};
 use num_traits::Zero;
+use std::collections::HashMap;
 use std::fmt::Write;
 #[cfg(feature = "vello")]
 use vello::*;
@@ -272,7 +273,7 @@ pub trait GraphicElementRendered {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]>;
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>);
-	fn add_footprints(&self, footprints: &mut HashMap<NodeId, Footprint>)
+	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, footprint: Footprint, element_id: Option<NodeId>);
 	#[cfg(feature = "vello")]
 	fn to_vello_scene(&self, transform: DAffine2, context: &mut RenderContext) -> Scene {
 		let mut scene = vello::Scene::new();
@@ -325,6 +326,19 @@ impl GraphicElementRendered for GraphicGroup {
 				click_target.apply_transform(element.transform())
 			}
 			click_targets.extend(new_click_targets);
+		}
+	}
+
+	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, mut footprint: Footprint, _: Option<NodeId>) {
+		log::debug!("Transform for graphic group: {:?}", self.transform);
+		footprint.transform *= self.transform;
+		for (element, optional_node_id) in self.elements.iter() {
+			log::debug!("Optional node id: {:?}", optional_node_id);
+			if let Some(element_id) = optional_node_id {
+				let mut new_footprints = HashMap::new();
+				element.add_footprints(&mut new_footprints, footprint, Some(*element_id));
+				footprints.extend(new_footprints);
+			}
 		}
 	}
 
@@ -407,6 +421,8 @@ impl GraphicElementRendered for VectorData {
 		};
 		click_targets.extend(self.stroke_bezier_paths().map(fill).map(|subpath| ClickTarget::new(subpath, stroke_width)));
 	}
+
+	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, footprint: Footprint, _: Option<NodeId>) {}
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext) {
@@ -619,6 +635,17 @@ impl GraphicElementRendered for Artboard {
 		click_targets.push(ClickTarget::new(subpath, 0.));
 	}
 
+	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, mut footprint: Footprint, node_id: Option<NodeId>) {
+		log::debug!("Adding footprints for artboard");
+		let mut graphic_group_footprint = footprint.clone();
+		graphic_group_footprint.transform *= self.transform();
+		self.graphic_group.add_footprints(footprints, graphic_group_footprint, None);
+		// footprint.transform *= self.transform();
+		if let Some(node_id) = node_id {
+			footprints.insert(node_id, (footprint, DAffine2::from_translation(self.location.as_dvec2())));
+		}
+	}
+
 	fn contains_artboard(&self) -> bool {
 		true
 	}
@@ -626,25 +653,31 @@ impl GraphicElementRendered for Artboard {
 
 impl GraphicElementRendered for crate::ArtboardGroup {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		for artboard in &self.artboards {
+		for (artboard, _) in &self.artboards {
 			artboard.render_svg(render, render_params);
 		}
 	}
 
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.artboards.iter().filter_map(|element| element.bounding_box(transform)).reduce(Quad::combine_bounds)
+		self.artboards.iter().filter_map(|(element, _)| element.bounding_box(transform)).reduce(Quad::combine_bounds)
 	}
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		for artboard in &self.artboards {
+		for (artboard, _) in &self.artboards {
 			artboard.add_click_targets(click_targets);
 		}
 	}
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
-		for artboard in &self.artboards {
+		for (artboard, _) in &self.artboards {
 			artboard.render_to_vello(scene, transform, context)
+		}
+	}
+
+	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, footprint: Footprint, _: Option<NodeId>) {
+		for (artboard, node_id) in &self.artboards {
+			artboard.add_footprints(footprints, footprint, *node_id)
 		}
 	}
 
@@ -697,6 +730,12 @@ impl GraphicElementRendered for ImageFrame<Color> {
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 		click_targets.push(ClickTarget::new(subpath, 0.));
+	}
+
+	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, footprint: Footprint, element_id: Option<NodeId>) {
+		if let Some(element_id) = element_id {
+			footprints.insert(element_id, (footprint, self.transform));
+		}
 	}
 
 	#[cfg(feature = "vello")]
@@ -769,6 +808,10 @@ impl GraphicElementRendered for Raster {
 		click_targets.push(ClickTarget::new(subpath, 0.));
 	}
 
+	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, footprint: Footprint, element_id: Option<NodeId>) {
+		//footprints.insert(element_id, (transform, self.transform));
+	}
+
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
 		use vello::peniko;
@@ -834,6 +877,17 @@ impl GraphicElementRendered for GraphicElement {
 		}
 	}
 
+	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, footprint: Footprint, element_id: Option<NodeId>) {
+		if let Some(element_id) = element_id {
+			footprints.insert(element_id, (footprint, self.transform()));
+		}
+		match self {
+			GraphicElement::VectorData(vector_data) => vector_data.add_footprints(footprints, footprint, None),
+			GraphicElement::Raster(raster) => raster.add_footprints(footprints, footprint, None),
+			GraphicElement::GraphicGroup(graphic_group) => graphic_group.add_footprints(footprints, footprint, None),
+		}
+	}
+
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
 		match self {
@@ -876,6 +930,7 @@ impl<T: Primitive> GraphicElementRendered for T {
 	}
 
 	fn add_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
+	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, footprint: Footprint, element_id: Option<NodeId>) {}
 }
 
 impl GraphicElementRendered for Option<Color> {
@@ -903,6 +958,8 @@ impl GraphicElementRendered for Option<Color> {
 	}
 
 	fn add_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
+
+	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, footprint: Footprint, element_id: Option<NodeId>) {}
 }
 
 impl GraphicElementRendered for Vec<Color> {
@@ -926,6 +983,8 @@ impl GraphicElementRendered for Vec<Color> {
 	}
 
 	fn add_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
+
+	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, footprint: Footprint, element_id: Option<NodeId>) {}
 }
 
 /// A segment of an svg string to allow for embedding blob urls

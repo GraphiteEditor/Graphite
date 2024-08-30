@@ -528,7 +528,6 @@ impl Fsm for SelectToolFsmState {
 
 					edges
 				});
-
 				let rotating_bounds = tool_data
 					.bounding_box_manager
 					.as_ref()
@@ -636,7 +635,6 @@ impl Fsm for SelectToolFsmState {
 					tool_data.layers_dragging = selected;
 
 					tool_data.get_snap_candidates(document, input);
-
 					SelectToolFsmState::Dragging
 				}
 				// Dragging a selection box
@@ -658,7 +656,6 @@ impl Fsm for SelectToolFsmState {
 							_ => drag_deepest_manipulation(responses, selected, tool_data, document),
 						}
 						tool_data.get_snap_candidates(document, input);
-
 						responses.add(DocumentMessage::StartTransaction);
 						SelectToolFsmState::Dragging
 					} else {
@@ -1195,9 +1192,12 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 }
 
 fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
-	tool_data.layers_dragging.append(&mut vec![document
-		.find_deepest(&selected)
-		.unwrap_or(LayerNodeIdentifier::ROOT_PARENT.children(document.metadata()).next().expect("Child should exist when dragging deepest"))]);
+	tool_data.layers_dragging.append(&mut vec![document.find_deepest(&selected).unwrap_or(
+		LayerNodeIdentifier::ROOT_PARENT
+			.children(document.metadata())
+			.next()
+			.expect("ROOT_PARENT should have a layer child when clicking"),
+	)]);
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data
 			.layers_dragging

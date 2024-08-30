@@ -359,8 +359,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								inputs: vec![
 									NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(concrete!(ArtboardGroup))), 0),
 									NodeInput::node(NodeId(1), 0),
+									NodeInput::value(TaggedValue::OptionalNodeId(None), false),
 								],
-								implementation: DocumentNodeImplementation::proto("graphene_core::AddArtboardNode<_, _>"),
+								implementation: DocumentNodeImplementation::proto("graphene_core::AddArtboardNode<_, _, _>"),
 								..Default::default()
 							},
 						]
