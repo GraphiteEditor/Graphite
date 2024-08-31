@@ -15,6 +15,7 @@
 
 <script lang="ts">
 	import { getContext, tick } from "svelte";
+	import { writable } from "svelte/store";
 
 	import { platformIsMac, isEventSupported } from "@graphite/utility-functions/platform";
 
@@ -34,10 +35,12 @@
 	export let tabLabels: { name: string; tooltip?: string }[];
 	export let tabActiveIndex: number;
 	export let panelType: PanelType | undefined = undefined;
+	export let renameAction: ((newName: string, index: number) => void) | undefined = undefined;
 	export let clickAction: ((index: number) => void) | undefined = undefined;
 	export let closeAction: ((index: number) => void) | undefined = undefined;
 
 	let tabElements: (LayoutRow | undefined)[] = [];
+	const tabsRenameState = writable<Record<number, boolean | undefined>>({});
 
 	function platformModifiers(reservedKey: boolean): LayoutKeysGroup {
 		// TODO: Remove this by properly feeding these keys from a layout provided by the backend
@@ -50,6 +53,18 @@
 		return reservedKey ? [CONTROL, ALT] : [CONTROL];
 	}
 
+	function handleRename(tabIndex: number, newName: string) {
+		$tabsRenameState[tabIndex] = false;
+		if (!renameAction) {
+			throw new Error("handleRename was called, but no renameAction was provided.");
+		}
+
+		const nameToSend = newName.trim();
+		if (!nameToSend) return;
+
+		renameAction(nameToSend, tabIndex);
+	}
+
 	export async function scrollTabIntoView(newIndex: number) {
 		await tick();
 		tabElements[newIndex]?.div?.()?.scrollIntoView();
@@ -60,6 +75,8 @@
 	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
 		<LayoutRow class="tab-group" scrollableX={true}>
 			{#each tabLabels as tabLabel, tabIndex}
+				{@const isRenaming = $tabsRenameState[tabIndex] ?? false}
+
 				<LayoutRow
 					class="tab"
 					classes={{ active: tabIndex === tabActiveIndex }}
@@ -87,7 +104,21 @@
 					}}
 					bind:this={tabElements[tabIndex]}
 				>
-					<TextLabel>{tabLabel.name}</TextLabel>
+					{#if isRenaming}
+						<input
+							type="text"
+							autofocus
+							on:blur={({ currentTarget: { value } }) => handleRename(tabIndex, value)}
+							on:keydown={(e) => {
+								if (e.key !== "Enter") return;
+								e.currentTarget.blur();
+							}}
+						/>
+					{:else}
+						<button class="" on:dblclick={renameAction && (() => ($tabsRenameState[tabIndex] = true))}>
+							<TextLabel>{tabLabel.name}</TextLabel>
+						</button>
+					{/if}
 					{#if tabCloseButtons}
 						<IconButton
 							action={(e) => {
@@ -181,6 +212,10 @@
 					padding: 0 8px;
 					align-items: center;
 					position: relative;
+
+					> button {
+						all: unset;
+					}
 
 					&.active {
 						background: var(--color-3-darkgray);
