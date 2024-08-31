@@ -517,6 +517,13 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Rename the active document
+	#[wasm_bindgen(js_name = renameDocument)]
+	pub fn rename_document(&self, new_name: String) {
+		let message = DocumentMessage::RenameDocument { new_name };
+		self.dispatch(message);
+	}
+
 	/// Deselect all layers
 	#[wasm_bindgen(js_name = deselectAllLayers)]
 	pub fn deselect_all_layers(&self) {
