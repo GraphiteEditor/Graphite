@@ -1,4 +1,5 @@
 use super::DocumentNode;
+use crate::document::NodeId;
 pub use crate::imaginate_input::{ImaginateCache, ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use crate::proto::{Any as DAny, FutureAny};
 use crate::wasm_application_io::WasmEditorApi;
@@ -138,6 +139,8 @@ tagged_value! {
 	F64Array4([f64; 4]),
 	#[serde(alias = "VecF32")] // TODO: Eventually remove this alias (probably starting late 2024)
 	VecF64(Vec<f64>),
+	VecU64(Vec<u64>),
+	NodePath(Vec<NodeId>),
 	VecDVec2(Vec<DVec2>),
 	RedGreenBlue(graphene_core::raster::RedGreenBlue),
 	RedGreenBlueAlpha(graphene_core::raster::RedGreenBlueAlpha),

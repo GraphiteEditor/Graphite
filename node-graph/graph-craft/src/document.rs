@@ -7,6 +7,7 @@ pub use graphene_core::uuid::generate_uuid;
 use graphene_core::{Cow, MemoHash, ProtoNodeIdentifier, Type};
 
 use glam::IVec2;
+use log::Metadata;
 use rustc_hash::FxHashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
@@ -15,7 +16,7 @@ use std::hash::{Hash, Hasher};
 pub mod value;
 
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize, specta::Type, DynAny)]
 pub struct NodeId(pub u64);
 
 // TODO: Find and replace all `NodeId(generate_uuid())` with `NodeId::new()`.
@@ -308,6 +309,7 @@ impl DocumentNode {
 				NodeInput::Network { import_type, .. } => (ProtoNodeInput::ManualComposition(import_type), ConstructionArgs::Nodes(vec![])),
 				NodeInput::Inline(inline) => (ProtoNodeInput::None, ConstructionArgs::Inline(inline)),
 				NodeInput::Scope(_) => unreachable!("Scope input was not resolved"),
+				NodeInput::Reflection(_) => unreachable!("Reflection input was not resolved"),
 			}
 		};
 		assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network { .. })), "received non resolved parameter");
@@ -355,6 +357,9 @@ pub enum NodeInput {
 	/// Input that is extracted from the parent scopes the node resides in. The string argument is the key.
 	Scope(Cow<'static, str>),
 
+	/// Input that is extracted from the parent scopes the node resides in. The string argument is the key.
+	Reflection(DocumentNodeMetadata),
+
 	/// A Rust source code string. Allows us to insert literal Rust code. Only used for GPU compilation.
 	/// We can use this whenever we spin up Rustc. Sort of like inline assembly, but because our language is Rust, it acts as inline Rust.
 	Inline(InlineRust),
@@ -371,6 +376,12 @@ impl InlineRust {
 	pub fn new(expr: String, ty: Type) -> Self {
 		Self { expr, ty }
 	}
+}
+
+#[derive(Debug, Clone, PartialEq, Hash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum DocumentNodeMetadata {
+	DocumentNodePath,
 }
 
 impl NodeInput {
@@ -412,6 +423,7 @@ impl NodeInput {
 			NodeInput::Network { .. } => true,
 			NodeInput::Inline(_) => false,
 			NodeInput::Scope(_) => false,
+			NodeInput::Reflection(_) => false,
 		}
 	}
 	/// Network node inputs in the document network are not displayed, but still exist in the compiled network
@@ -422,6 +434,7 @@ impl NodeInput {
 			NodeInput::Network { .. } => !is_document_network,
 			NodeInput::Inline(_) => false,
 			NodeInput::Scope(_) => false,
+			NodeInput::Reflection(_) => false,
 		}
 	}
 
@@ -432,6 +445,7 @@ impl NodeInput {
 			NodeInput::Network { import_type, .. } => import_type.clone(),
 			NodeInput::Inline(_) => panic!("ty() called on NodeInput::Inline"),
 			NodeInput::Scope(_) => unreachable!("ty() called on NodeInput::Scope"),
+			NodeInput::Reflection(_) => concrete!(Metadata),
 		}
 	}
 
@@ -1022,7 +1036,7 @@ impl NodeNetwork {
 			return;
 		};
 
-		// Replace value exports with value nodes, added inside nested network
+		// Replace value and reflection imports with value nodes, added inside nested network
 		Self::replace_value_inputs_with_nodes(
 			&mut inner_network.exports,
 			&mut inner_network.nodes,
@@ -1076,6 +1090,7 @@ impl NodeNetwork {
 							// TODO use correct output index
 							nested_node.inputs[nested_input_index] = NodeInput::node(*import_id, 0);
 						}
+						NodeInput::Reflection(_) => unreachable!("Reflection inputs should have been replaced with value nodes"),
 					}
 				}
 			}
@@ -1120,35 +1135,42 @@ impl NodeNetwork {
 		for export in inputs {
 			let export: &mut NodeInput = export;
 			let previous_export = std::mem::replace(export, NodeInput::network(concrete!(()), 0));
-			if let NodeInput::Value { tagged_value, exposed } = previous_export {
-				let value_node_id = gen_id();
-				let merged_node_id = map_ids(id, value_node_id);
-				let mut original_location = OriginalLocation {
-					path: Some(path.to_vec()),
-					dependants: vec![vec![id]],
-					..Default::default()
-				};
 
-				if let Some(path) = &mut original_location.path {
-					path.push(value_node_id);
-				}
-				collection.insert(
-					merged_node_id,
-					DocumentNode {
-						inputs: vec![NodeInput::Value { tagged_value, exposed }],
-						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::ClonedNode".into()),
-						original_location,
-						..Default::default()
-					},
-				);
-				*export = NodeInput::Node {
-					node_id: merged_node_id,
-					output_index: 0,
-					lambda: false,
-				};
-			} else {
-				*export = previous_export;
+			let Some((tagged_value, exposed)) = (match previous_export {
+				NodeInput::Value { tagged_value, exposed } => Some((tagged_value, exposed)),
+				NodeInput::Reflection(reflect) => match reflect {
+					DocumentNodeMetadata::DocumentNodePath => Some((TaggedValue::NodePath(path.to_vec()).into(), false)),
+				},
+				_ => None,
+			}) else {
+				return;
+			};
+
+			let value_node_id = gen_id();
+			let merged_node_id = map_ids(id, value_node_id);
+			let mut original_location = OriginalLocation {
+				path: Some(path.to_vec()),
+				dependants: vec![vec![id]],
+				..Default::default()
+			};
+
+			if let Some(path) = &mut original_location.path {
+				path.push(value_node_id);
 			}
+			collection.insert(
+				merged_node_id,
+				DocumentNode {
+					inputs: vec![NodeInput::Value { tagged_value, exposed }],
+					implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::ClonedNode".into()),
+					original_location,
+					..Default::default()
+				},
+			);
+			*export = NodeInput::Node {
+				node_id: merged_node_id,
+				output_index: 0,
+				lambda: false,
+			};
 		}
 	}
 
