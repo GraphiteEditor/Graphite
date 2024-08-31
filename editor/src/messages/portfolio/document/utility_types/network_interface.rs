@@ -618,6 +618,7 @@ impl NodeNetworkInterface {
 						}
 						NodeInput::Scope(_) => todo!(),
 						NodeInput::Inline(_) => todo!(),
+						NodeInput::Reflection(_) => todo!(),
 					}
 				}
 			}
@@ -4418,7 +4419,7 @@ impl NodeNetworkInterface {
 		if post_node.input_index() == 1 || matches!(post_node, InputConnector::Export(_)) || !post_node.node_id().is_some_and(|post_node_id| self.is_layer(&post_node_id, network_path)) {
 			match post_node_input {
 				// Create a new stack
-				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) => {
+				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
 					self.create_wire(&OutputConnector::node(layer.to_node(), 0), &post_node, network_path);
 
 					let final_layer_position = after_move_post_layer_position + IVec2::new(-8, 3);
@@ -4444,7 +4445,7 @@ impl NodeNetworkInterface {
 		} else {
 			match post_node_input {
 				// Move to the bottom of the stack
-				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) => {
+				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
 					// TODO: Calculate height of bottom layer by getting height of upstream nodes instead of setting to 3
 					let offset = after_move_post_layer_position - previous_layer_position + IVec2::new(0, 3);
 					self.shift_absolute_node_position(&layer.to_node(), offset, network_path);
