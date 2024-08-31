@@ -1136,16 +1136,17 @@ impl NodeNetwork {
 			let export: &mut NodeInput = export;
 			let previous_export = std::mem::replace(export, NodeInput::network(concrete!(()), 0));
 
-			let Some((tagged_value, exposed)) = (match previous_export {
-				NodeInput::Value { tagged_value, exposed } => Some((tagged_value, exposed)),
+			println!("export {:?}", previous_export);
+			let (tagged_value, exposed) = match previous_export {
+				NodeInput::Value { tagged_value, exposed } => (tagged_value, exposed),
 				NodeInput::Reflection(reflect) => match reflect {
-					DocumentNodeMetadata::DocumentNodePath => Some((TaggedValue::NodePath(path.to_vec()).into(), false)),
+					DocumentNodeMetadata::DocumentNodePath => (TaggedValue::NodePath(path.to_vec()).into(), false),
 				},
-				_ => None,
-			}) else {
-				return;
+				previous_export => {
+					*export = previous_export;
+					continue;
+				}
 			};
-
 			let value_node_id = gen_id();
 			let merged_node_id = map_ids(id, value_node_id);
 			let mut original_location = OriginalLocation {
