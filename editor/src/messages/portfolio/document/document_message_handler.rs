@@ -1022,8 +1022,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				if self.network_interface.transaction_status() == TransactionStatus::Finished {
 					return;
 				}
+
+				self.document_undo_history.pop_back();
 				self.network_interface.finish_transaction();
-				self.undo(ipp, responses);
 				responses.add(OverlaysMessage::Draw);
 			}
 			DocumentMessage::AddTransaction => {

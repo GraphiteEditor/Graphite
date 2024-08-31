@@ -330,10 +330,8 @@ impl GraphicElementRendered for GraphicGroup {
 	}
 
 	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, mut footprint: Footprint, _: Option<NodeId>) {
-		log::debug!("Transform for graphic group: {:?}", self.transform);
 		footprint.transform *= self.transform;
 		for (element, optional_node_id) in self.elements.iter() {
-			log::debug!("Optional node id: {:?}", optional_node_id);
 			if let Some(element_id) = optional_node_id {
 				let mut new_footprints = HashMap::new();
 				element.add_footprints(&mut new_footprints, footprint, Some(*element_id));
@@ -568,21 +566,13 @@ impl GraphicElementRendered for Artboard {
 			"g",
 			// Group tag attributes
 			|attributes| {
-				let matrix = format_transform_matrix(DAffine2::from_translation(self.location.as_dvec2()) * self.graphic_group.transform);
-				if !matrix.is_empty() {
-					attributes.push("transform", matrix);
-				}
-
 				if self.clip {
 					let id = format!("artboard-{}", generate_uuid());
 					let selector = format!("url(#{id})");
 
-					let matrix = format_transform_matrix(self.graphic_group.transform.inverse());
-					let transform = if matrix.is_empty() { String::new() } else { format!(r#" transform="{matrix}""#) };
-
 					write!(
 						&mut attributes.0.svg_defs,
-						r##"<clipPath id="{id}"><rect x="0" y="0" width="{}" height="{}"{transform} /></clipPath>"##,
+						r##"<clipPath id="{id}"><rect x="0" y="0" width="{}" height="{}"/></clipPath>"##,
 						self.dimensions.x, self.dimensions.y
 					)
 					.unwrap();
@@ -591,9 +581,7 @@ impl GraphicElementRendered for Artboard {
 			},
 			// Artboard contents
 			|render| {
-				for (element, _) in self.graphic_group.iter() {
-					element.render_svg(render, render_params);
-				}
+				self.graphic_group.render_svg(render, render_params);
 			},
 		);
 	}
@@ -630,16 +618,12 @@ impl GraphicElementRendered for Artboard {
 	}
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		let mut subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
-		subpath.apply_transform(self.graphic_group.transform.inverse());
+		let subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
 		click_targets.push(ClickTarget::new(subpath, 0.));
 	}
 
 	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, mut footprint: Footprint, node_id: Option<NodeId>) {
-		log::debug!("Adding footprints for artboard");
-		let mut graphic_group_footprint = footprint.clone();
-		graphic_group_footprint.transform *= self.transform();
-		self.graphic_group.add_footprints(footprints, graphic_group_footprint, None);
+		self.graphic_group.add_footprints(footprints, footprint, None);
 		// footprint.transform *= self.transform();
 		if let Some(node_id) = node_id {
 			footprints.insert(node_id, (footprint, DAffine2::from_translation(self.location.as_dvec2())));

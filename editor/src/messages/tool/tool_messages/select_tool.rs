@@ -413,12 +413,13 @@ impl Fsm for SelectToolFsmState {
 				tool_data.selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
 				tool_data.selected_layers_count = selected_layers_count;
 
-				// Outline selected layers
+				// Outline selected layers, but not artboards
 				for layer in document
 					.network_interface
 					.selected_nodes(&[])
 					.unwrap()
 					.selected_visible_and_unlocked_layers(&document.network_interface)
+					.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 				{
 					overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
 				}
@@ -429,7 +430,7 @@ impl Fsm for SelectToolFsmState {
 					.selected_nodes(&[])
 					.unwrap()
 					.selected_visible_and_unlocked_layers(&document.network_interface)
-					.next()
+					.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 					.map(|layer| document.metadata().transform_to_viewport(layer));
 				let transform = transform.unwrap_or(DAffine2::IDENTITY);
 				if transform.matrix2.determinant() == 0. {
@@ -440,6 +441,7 @@ impl Fsm for SelectToolFsmState {
 					.selected_nodes(&[])
 					.unwrap()
 					.selected_visible_and_unlocked_layers(&document.network_interface)
+					.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 					.filter_map(|layer| {
 						document
 							.metadata()
