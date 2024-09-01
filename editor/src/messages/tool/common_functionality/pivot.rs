@@ -45,11 +45,8 @@ impl Pivot {
 
 	/// Recomputes the pivot position and transform.
 	fn recalculate_pivot(&mut self, document: &DocumentMessageHandler) {
-		let mut layers = document
-			.network_interface
-			.selected_nodes(&[])
-			.unwrap()
-			.selected_visible_and_unlocked_layers(&document.network_interface);
+		let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+		let mut layers = selected_nodes.selected_visible_and_unlocked_layers(&document.network_interface);
 		let Some(first) = layers.next() else {
 			// If no layers are selected then we revert things back to default
 			self.normalized_pivot = DVec2::splat(0.5);

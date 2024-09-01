@@ -381,7 +381,9 @@ impl Fsm for BrushToolFsmState {
 
 			(BrushToolFsmState::Drawing, BrushToolMessage::DragStop) => {
 				if !tool_data.strokes.is_empty() {
-					responses.add(DocumentMessage::CommitTransaction);
+					responses.add(DocumentMessage::EndTransaction);
+				} else {
+					responses.add(DocumentMessage::AbortTransaction);
 				}
 				tool_data.strokes.clear();
 

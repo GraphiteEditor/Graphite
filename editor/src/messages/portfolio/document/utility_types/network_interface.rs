@@ -13,7 +13,7 @@ use graphene_std::vector::{PointId, VectorModificationType};
 use interpreted_executor::{dynamic_executor::ResolvedDocumentNodeTypes, node_registry::NODE_REGISTRY};
 
 use glam::{DAffine2, DVec2, IVec2};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 /// All network modifications should be done through this API, so the fields cannot be public. However, all fields within this struct can be public since it it not possible to have a public mutable reference.
@@ -31,6 +31,9 @@ pub struct NodeNetworkInterface {
 	/// All input/output types based on the compiled network.
 	#[serde(skip)]
 	pub resolved_types: ResolvedDocumentNodeTypes,
+	/// Disallow aborting transactions whilst undoing to avoid #559.
+	#[serde(skip)]
+	transaction_status: TransactionStatus,
 }
 
 impl Clone for NodeNetworkInterface {
@@ -40,6 +43,7 @@ impl Clone for NodeNetworkInterface {
 			network_metadata: self.network_metadata.clone(),
 			document_metadata: Default::default(),
 			resolved_types: Default::default(),
+			transaction_status: TransactionStatus::Finished,
 		}
 	}
 }
@@ -78,13 +82,26 @@ impl NodeNetworkInterface {
 		&self.document_metadata
 	}
 
+	pub fn transaction_status(&self) -> TransactionStatus {
+		self.transaction_status
+	}
+
 	/// Get the selected nodes for the network at the network_path
-	pub fn selected_nodes(&self, network_path: &[NodeId]) -> Option<&SelectedNodes> {
+	pub fn selected_nodes(&self, network_path: &[NodeId]) -> Option<SelectedNodes> {
 		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in selected_nodes");
 			return None;
 		};
-		Some(&network_metadata.transient_metadata.selected_nodes)
+
+		Some(
+			network_metadata
+				.persistent_metadata
+				.selection_undo_history
+				.back()
+				.cloned()
+				.unwrap_or_default()
+				.filtered_selected_nodes(network_metadata.persistent_metadata.node_metadata.keys().cloned().collect()),
+		)
 	}
 
 	/// Get the network which the encapsulating node of the currently viewed network is part of. Will always be None in the document network.
@@ -323,7 +340,6 @@ impl NodeNetworkInterface {
 					}
 
 					// Ensure a chain node has a selected downstream layer, and set absolute nodes to a chain if there is a downstream layer
-
 					let downstream_layer = self.downstream_layer(node_id, network_path);
 					if downstream_layer.map_or(true, |downstream_layer| new_ids.keys().all(|key| *key != downstream_layer.to_node())) {
 						let Some(position) = self.position(node_id, network_path) else {
@@ -373,7 +389,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Create a node template from an existing node.
-	pub fn create_node_template(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<NodeTemplate> {
+	pub fn create_node_template(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<NodeTemplate> {
 		let Some(network) = self.network(network_path) else {
 			log::error!("Could not get network in create_node_template");
 			return None;
@@ -421,13 +437,13 @@ impl NodeNetworkInterface {
 
 	pub fn input_from_connector(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<&NodeInput> {
 		let Some(network) = self.network(network_path) else {
-			log::error!("Could not get network in input");
+			log::error!("Could not get network in input_from_connector");
 			return None;
 		};
 		match input_connector {
 			InputConnector::Node { node_id, input_index } => {
 				let Some(node) = network.nodes.get(node_id) else {
-					log::error!("Could not get node {node_id} in input");
+					log::error!("Could not get node {node_id} in input_from_connector");
 					return None;
 				};
 				node.inputs.get(*input_index)
@@ -681,11 +697,7 @@ impl NodeNetworkInterface {
 						let input_type = self.input_type(&InputConnector::node(encapsulating_node_id, *import_index), &encapsulating_path);
 						let data_type = FrontendGraphDataType::with_type(&input_type);
 
-						let import_name = if import_name.is_empty() {
-							TaggedValue::from_type(&input_type).ty().to_string()
-						} else {
-							import_name
-						};
+						let import_name = if import_name.is_empty() { input_type.clone().nested_type().to_string() } else { import_name };
 
 						let connected_to = self
 							.outward_wires(network_path)
@@ -773,7 +785,7 @@ impl NodeNetworkInterface {
 					} else {
 						input_type
 							.clone()
-							.map(|input_type| TaggedValue::from_type(&input_type).ty().to_string())
+							.map(|input_type| input_type.nested_type().to_string())
 							.unwrap_or(format!("Export {}", export_index + 1))
 					};
 
@@ -867,8 +879,9 @@ impl NodeNetworkInterface {
 			{
 				let number_of_outputs = self.number_of_outputs(&upstream_node_from_input, network_path);
 
-				// A node is a sole dependent if all outputs are sole dependents
+				// A node is a sole dependent if all outputs are sole dependents, and there are no dead ends
 				let mut all_outputs_are_sole_dependents = true;
+				let mut dead_ends = 0;
 
 				for output_index in 0..number_of_outputs {
 					let downstream_connections = {
@@ -899,25 +912,31 @@ impl NodeNetworkInterface {
 										log::error!("Could not get outward wires in upstream_nodes_below_layer");
 										continue;
 									};
-
+									let mut has_downstream_connections = false;
 									for output_index in 0..number_of_outputs {
 										let Some(downstream_connections) = outward_wires.get(&OutputConnector::node(*downstream_node_id, output_index)) else {
 											log::error!("Could not get outward wires in upstream_nodes_below_layer");
 											continue;
 										};
+										if !downstream_connections.is_empty() {
+											has_downstream_connections = true;
+										}
 										stack.extend(downstream_connections.clone());
+									}
+									if !has_downstream_connections {
+										dead_ends += 1;
 									}
 								}
 							}
 							InputConnector::Export(_) => current_output_is_sole_dependent = false,
 						}
 					}
-					if !current_output_is_sole_dependent {
+					if !current_output_is_sole_dependent || dead_ends != 0 {
 						all_outputs_are_sole_dependents = false;
 						break;
 					}
 				}
-				if all_outputs_are_sole_dependents {
+				if all_outputs_are_sole_dependents && dead_ends == 0 {
 					sole_dependents.insert(upstream_node_from_input);
 				} else {
 					upstream_chain_can_be_added = false;
@@ -1391,6 +1410,7 @@ impl NodeNetworkInterface {
 			network_metadata,
 			document_metadata: DocumentMetadata::default(),
 			resolved_types: ResolvedDocumentNodeTypes::default(),
+			transaction_status: TransactionStatus::Finished,
 		}
 	}
 }
@@ -1480,6 +1500,20 @@ impl NodeNetworkInterface {
 // Public mutable getters for data that involves transient network metadata
 // Mutable methods never recalculate the transient metadata, they only unload it. Loading metadata should only be done by the getter.
 impl NodeNetworkInterface {
+	pub fn start_transaction(&mut self) {
+		self.transaction_status = TransactionStatus::Started;
+	}
+
+	pub fn transaction_modified(&mut self) {
+		if self.transaction_status == TransactionStatus::Started {
+			self.transaction_status = TransactionStatus::Modified;
+		}
+	}
+
+	pub fn finish_transaction(&mut self) {
+		self.transaction_status = TransactionStatus::Finished;
+	}
+
 	/// Mutably get the selected nodes for the network at the network_path. Every time they are mutated, the transient metadata for the top of the stack gets unloaded.
 	pub fn selected_nodes_mut(&mut self, network_path: &[NodeId]) -> Option<&mut SelectedNodes> {
 		self.unload_stack_dependents(network_path);
@@ -1487,7 +1521,38 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network_metadata in selected_nodes");
 			return None;
 		};
-		Some(&mut network_metadata.transient_metadata.selected_nodes)
+
+		let last_selection_state = network_metadata.persistent_metadata.selection_undo_history.back().cloned().unwrap_or_default();
+
+		network_metadata.persistent_metadata.selection_undo_history.push_back(last_selection_state);
+		network_metadata.persistent_metadata.selection_redo_history.clear();
+
+		if network_metadata.persistent_metadata.selection_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
+			network_metadata.persistent_metadata.selection_undo_history.pop_front();
+		}
+		network_metadata.persistent_metadata.selection_undo_history.back_mut()
+	}
+
+	pub fn selection_step_back(&mut self, network_path: &[NodeId]) {
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+			log::error!("Could not get nested network_metadata in selection_step_back");
+			return;
+		};
+
+		if let Some(selection_state) = network_metadata.persistent_metadata.selection_undo_history.pop_back() {
+			network_metadata.persistent_metadata.selection_redo_history.push_front(selection_state);
+		}
+	}
+
+	pub fn selection_step_forward(&mut self, network_path: &[NodeId]) {
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+			log::error!("Could not get nested network_metadata in selection_step_forward");
+			return;
+		};
+
+		if let Some(selection_state) = network_metadata.persistent_metadata.selection_redo_history.pop_front() {
+			network_metadata.persistent_metadata.selection_undo_history.push_back(selection_state);
+		}
 	}
 
 	fn stack_dependents(&mut self, network_path: &[NodeId]) -> Option<&HashMap<NodeId, LayerOwner>> {
@@ -1616,6 +1681,7 @@ impl NodeNetworkInterface {
 						break;
 					}
 					if !sole_dependents.contains(&current_node) {
+						let mut has_outward_wire = false;
 						for output_index in 0..self.number_of_outputs(&current_node, network_path) {
 							let Some(outward_wires) = self.outward_wires(network_path) else {
 								log::error!("Cannot load outward wires in load_stack_dependents");
@@ -1626,11 +1692,15 @@ impl NodeNetworkInterface {
 								continue;
 							};
 							for downstream_input in outward_wires {
+								has_outward_wire = true;
 								match downstream_input {
 									InputConnector::Node { node_id, .. } => stack.push(*node_id),
 									InputConnector::Export(_) => is_sole_dependent = false,
 								}
 							}
+						}
+						if !has_outward_wire {
+							is_sole_dependent = false;
 						}
 					}
 					if !is_sole_dependent {
@@ -2384,20 +2454,6 @@ impl NodeNetworkInterface {
 		document_metadata.document_to_viewport = transform;
 	}
 
-	pub fn vector_modify(&mut self, node_id: &NodeId, modification_type: VectorModificationType) {
-		let Some(node) = self.network_mut(&[]).unwrap().nodes.get_mut(node_id) else {
-			log::error!("Could not get node in vector_modification");
-			return;
-		};
-
-		let mut value = node.inputs.get_mut(1).and_then(|input| input.as_value_mut());
-		let Some(TaggedValue::VectorModification(ref mut modification)) = value.as_deref_mut() else {
-			panic!("Path node does not have modification input");
-		};
-
-		modification.modify(&modification_type);
-	}
-
 	pub fn is_eligible_to_be_layer(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
 		let input_count = self.number_of_inputs(node_id, network_path);
 		let output_count = self.number_of_outputs(node_id, network_path);
@@ -2830,6 +2886,22 @@ impl NodeNetworkInterface {
 		self.unload_import_export_ports(network_path);
 	}
 
+	pub fn vector_modify(&mut self, node_id: &NodeId, modification_type: VectorModificationType) {
+		let Some(node) = self.network_mut(&[]).unwrap().nodes.get_mut(node_id) else {
+			log::error!("Could not get node in vector_modification");
+			return;
+		};
+		{
+			let mut value = node.inputs.get_mut(1).and_then(|input| input.as_value_mut());
+			let Some(TaggedValue::VectorModification(ref mut modification)) = value.as_deref_mut() else {
+				panic!("Path node does not have modification input");
+			};
+
+			modification.modify(&modification_type);
+		}
+		self.transaction_modified();
+	}
+
 	/// Inserts a new export at insert index. If the insert index is -1 it is inserted at the end. The output_name is used by the encapsulating node.
 	pub fn add_export(&mut self, default_value: TaggedValue, insert_index: isize, output_name: String, network_path: &[NodeId]) {
 		// Set the parent node (if it exists) to be a non layer if it is no longer eligible to be a layer
@@ -2850,6 +2922,8 @@ impl NodeNetworkInterface {
 		} else {
 			network.exports.insert(insert_index as usize, input);
 		}
+
+		self.transaction_modified();
 
 		// There will not be an encapsulating node if the network is the document network
 		if let Some(encapsulating_node_metadata) = self.encapsulating_node_metadata_mut(network_path) {
@@ -2903,6 +2977,8 @@ impl NodeNetworkInterface {
 		} else {
 			node.inputs.insert(insert_index as usize, input);
 		}
+
+		self.transaction_modified();
 
 		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
 			log::error!("Could not get node_metadata in insert_input");
@@ -3022,6 +3098,18 @@ impl NodeNetworkInterface {
 				std::mem::replace(export, new_input.clone())
 			}
 		};
+
+		if old_input == new_input {
+			return;
+		};
+
+		// Ensure the network is not cyclic
+		if !network.is_acyclic() {
+			self.set_input(input_connector, old_input, network_path);
+			return;
+		}
+
+		self.transaction_modified();
 
 		// Ensure layer is toggled to non layer if it is no longer eligible to be a layer
 		if let InputConnector::Node { node_id, .. } = &input_connector {
@@ -3231,7 +3319,9 @@ impl NodeNetworkInterface {
 				log::error!("Network not found in insert_node");
 				return;
 			};
+
 			network.nodes.insert(node_id, node_template.document_node);
+			self.transaction_modified();
 
 			let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 				log::error!("Network not found in insert_node");
@@ -3262,7 +3352,9 @@ impl NodeNetworkInterface {
 			log::error!("Network not found in insert_node");
 			return;
 		};
+
 		network.nodes.insert(node_id, node_template.document_node);
+		self.transaction_modified();
 
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Network not found in insert_node");
@@ -3348,23 +3440,18 @@ impl NodeNetworkInterface {
 				continue;
 			}
 
-			// Disconnect all inputs of the node to be deleted
-			let Some(network) = self.network(network_path) else {
-				log::error!("Could not get nested network in delete_nodes");
-				continue;
-			};
-			let Some(number_of_inputs) = network.nodes.get(delete_node_id).map(|node| node.inputs.len()) else {
-				log::error!("Could not get number of inputs for node {delete_node_id} when removing references");
-				continue;
-			};
-			for input_index in 0..number_of_inputs {
+			for input_index in 0..self.number_of_inputs(delete_node_id, network_path) {
 				self.disconnect_input(&InputConnector::node(*delete_node_id, input_index), network_path);
 			}
+
 			let Some(network) = self.network_mut(network_path) else {
 				log::error!("Could not get nested network in delete_nodes");
 				continue;
 			};
+			// TODO: Ensure node to delete is fully disconnected from the network
 			network.nodes.remove(delete_node_id);
+			self.transaction_modified();
+
 			let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 				log::error!("Could not get nested network_metadata in delete_nodes");
 				continue;
@@ -3384,8 +3471,8 @@ impl NodeNetworkInterface {
 		selected_nodes.retain_selected_nodes(|node_id| !nodes_to_delete.contains(node_id));
 	}
 
-	/// Removes all references to the node with the given id from the network, and reconnects the input to the node below (or the next layer below if the node to be deleted is layer) if `reconnect` is true.
-	pub fn remove_references_from_network(&mut self, deleting_node_id: &NodeId, network_path: &[NodeId]) -> bool {
+	/// Removes all references to the node with the given id from the network, and reconnects the input to the node below.
+	pub fn remove_references_from_network(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
 		// TODO: Add more logic to support retaining preview when removing references. Since there are so many edge cases/possible crashes, for now the preview is ended.
 		self.stop_previewing(network_path);
 
@@ -3394,62 +3481,74 @@ impl NodeNetworkInterface {
 			return false;
 		};
 
-		let mut reconnect_to_input: Option<NodeInput> = None;
-
 		// Check whether the being-deleted node's first (primary) input is a node
-		if let Some(node) = network.nodes.get(deleting_node_id) {
-			// Reconnect to the upstream node. If the layer or first upstream layer node if the deleting node is a layer
-			if self.is_layer(deleting_node_id, network_path) {
-				if let Some(upstream_layer_id) = self
-					.upstream_flow_back_from_nodes(vec![*deleting_node_id], network_path, FlowType::PrimaryFlow)
-					.skip(1) // Skip the node to delete
-					.find(|node_id| self.is_layer(node_id, network_path))
-				{
-					reconnect_to_input = Some(NodeInput::node(upstream_layer_id, 0));
-				}
-			}
-			// If the node is not a layer or an upstream layer is not found, reconnect to the first upstream node
-			if reconnect_to_input.is_none() && (matches!(node.inputs.first(), Some(NodeInput::Node { .. }) | Some(NodeInput::Network { .. }))) {
-				reconnect_to_input = Some(node.inputs[0].clone());
-			}
-		}
-
-		// Disconnect all upstream references
-		let number_of_outputs = self.number_of_outputs(deleting_node_id, network_path);
+		let mut reconnect_to_input = network.nodes.get(node_id).and_then(|node| {
+			node.inputs
+				.iter()
+				.find(|input| input.is_exposed_to_frontend(network_path.is_empty()))
+				.filter(|input| matches!(input, NodeInput::Node { .. } | NodeInput::Network { .. }))
+				.cloned()
+		});
+		// Get all upstream references
+		let number_of_outputs = self.number_of_outputs(node_id, network_path);
 		let Some(all_outward_wires) = self.outward_wires(network_path) else {
 			log::error!("Could not get outward wires in remove_references_from_network");
 			return false;
 		};
 		let mut downstream_inputs_to_disconnect = Vec::new();
 		for output_index in 0..number_of_outputs {
-			if let Some(outward_wires) = all_outward_wires.get(&OutputConnector::node(*deleting_node_id, output_index)) {
+			if let Some(outward_wires) = all_outward_wires.get(&OutputConnector::node(*node_id, output_index)) {
 				downstream_inputs_to_disconnect.extend(outward_wires.clone());
 			}
 		}
 
-		for input_to_disconnect in &downstream_inputs_to_disconnect {
-			// Prevent reconnecting export to import until https://github.com/GraphiteEditor/Graphite/issues/1762 is solved
-			if matches!(reconnect_to_input, Some(NodeInput::Network { .. })) && matches!(input_to_disconnect, InputConnector::Export(_)) {
-				self.disconnect_input(input_to_disconnect, network_path);
-			} else if let Some(reconnect_input) = reconnect_to_input.take() {
-				let original_position = reconnect_input.as_node().and_then(|downstream_node| self.position(&downstream_node, network_path));
-				let original_downstream_position = input_to_disconnect.node_id().and_then(|downstream_id| self.position(&downstream_id, network_path));
+		let mut reconnect_node = None;
 
-				self.set_input(input_to_disconnect, reconnect_input.clone(), network_path);
-				if let (Some(original_position), Some(original_downstream_position)) = (original_position, original_downstream_position) {
-					// Recalculate stack position (to keep layer in same place) if the upstream node is a layer in a chain
-					if reconnect_input
-						.as_node()
-						.is_some_and(|upstream_node| self.is_stack(&upstream_node, network_path) && self.is_layer(&upstream_node, network_path))
-					{
-						let offset = (original_position.y - original_downstream_position.y - 3).max(0) as u32;
-						self.set_stack_position(&reconnect_input.as_node().unwrap(), offset, network_path);
-					}
+		for downstream_input in &downstream_inputs_to_disconnect {
+			self.disconnect_input(downstream_input, network_path);
+			// Prevent reconnecting export to import until https://github.com/GraphiteEditor/Graphite/issues/1762 is solved
+			if !(matches!(reconnect_to_input, Some(NodeInput::Network { .. })) && matches!(downstream_input, InputConnector::Export(_))) {
+				if let Some(reconnect_input) = reconnect_to_input.take() {
+					// Get the reconnect node position only if it is in a stack
+					reconnect_node = reconnect_input.as_node().and_then(|node_id| if self.is_stack(&node_id, network_path) { Some(node_id) } else { None });
+					self.disconnect_input(&InputConnector::node(*node_id, 0), network_path);
+					self.set_input(downstream_input, reconnect_input, network_path);
 				}
-			} else {
-				self.disconnect_input(input_to_disconnect, network_path);
 			}
 		}
+
+		// Shift the reconnected node up to collapse space
+		if let Some(reconnect_node) = &reconnect_node {
+			let Some(reconnected_node_position) = self.position(reconnect_node, network_path) else {
+				log::error!("Could not get reconnected node position in remove_references_from_network");
+				return false;
+			};
+			let Some(disconnected_node_position) = self.position(node_id, network_path) else {
+				log::error!("Could not get disconnected node position in remove_references_from_network");
+				return false;
+			};
+			let max_shift_distance = reconnected_node_position.y - disconnected_node_position.y;
+
+			let upstream_nodes = self.upstream_flow_back_from_nodes(vec![*reconnect_node], network_path, FlowType::PrimaryFlow).collect::<Vec<_>>();
+
+			// Select the reconnect node to move to ensure the shifting works correctly
+			let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
+				log::error!("Could not get selected nodes in remove_references_from_network");
+				return false;
+			};
+
+			let old_selected_nodes = selected_nodes.replace_with(upstream_nodes);
+
+			// Shift up until there is either a collision or the disconnected node position is reached
+			let mut current_shift_distance = 0;
+			while self.check_collision_with_stack_dependents(reconnect_node, -1, network_path).is_empty() && max_shift_distance > current_shift_distance {
+				self.shift_selected_nodes(Direction::Up, false, network_path);
+				current_shift_distance += 1;
+			}
+
+			let _ = self.selected_nodes_mut(network_path).unwrap().replace_with(old_selected_nodes);
+		}
+
 		true
 	}
 
@@ -3502,6 +3601,10 @@ impl NodeNetworkInterface {
 			return;
 		};
 
+		if node_metadata.persistent_metadata.display_name == display_name {
+			return;
+		}
+
 		node_metadata.persistent_metadata.display_name.clone_from(&display_name);
 
 		// Keep the alias in sync with the `ToArtboard` name input
@@ -3526,6 +3629,7 @@ impl NodeNetworkInterface {
 			to_artboard.inputs[label_index] = label_input;
 		}
 
+		self.transaction_modified();
 		self.try_unload_layer_width(node_id, network_path);
 		self.unload_node_click_targets(node_id, network_path);
 	}
@@ -3541,6 +3645,7 @@ impl NodeNetworkInterface {
 		};
 
 		node.visible = is_visible;
+		self.transaction_modified();
 	}
 
 	pub fn set_locked(&mut self, node_id: &NodeId, network_path: &[NodeId], locked: bool) {
@@ -3550,6 +3655,7 @@ impl NodeNetworkInterface {
 		};
 
 		node_metadata.persistent_metadata.locked = locked;
+		self.transaction_modified();
 	}
 
 	pub fn set_to_node_or_layer(&mut self, node_id: &NodeId, network_path: &[NodeId], is_layer: bool) {
@@ -3652,6 +3758,7 @@ impl NodeNetworkInterface {
 			self.try_set_upstream_to_chain(&InputConnector::node(*node_id, 0), network_path);
 		}
 
+		self.transaction_modified();
 		self.unload_upstream_node_click_targets(vec![*node_id], network_path);
 		self.unload_all_nodes_bounding_box(network_path);
 		self.unload_import_export_ports(network_path);
@@ -3751,10 +3858,19 @@ impl NodeNetworkInterface {
 			log::error!("Could not get node_metadata for node {node_id}");
 			return;
 		};
+
 		if let NodeTypePersistentMetadata::Node(node_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
+			if node_metadata.position == NodePosition::Absolute(position) {
+				return;
+			}
 			node_metadata.position = NodePosition::Absolute(position);
+			self.transaction_modified();
 		} else if let NodeTypePersistentMetadata::Layer(layer_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
+			if layer_metadata.position == LayerPosition::Absolute(position) {
+				return;
+			}
 			layer_metadata.position = LayerPosition::Absolute(position);
+			self.transaction_modified();
 		}
 	}
 
@@ -3765,7 +3881,11 @@ impl NodeNetworkInterface {
 			return;
 		};
 		if let NodeTypePersistentMetadata::Layer(layer_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
+			if layer_metadata.position == LayerPosition::Stack(y_offset) {
+				return;
+			}
 			layer_metadata.position = LayerPosition::Stack(y_offset);
+			self.transaction_modified();
 		} else {
 			log::error!("Could not set stack position for non layer node {node_id}");
 		}
@@ -3793,7 +3913,11 @@ impl NodeNetworkInterface {
 		};
 		// Set any absolute nodes to chain positioning
 		if let NodeTypePersistentMetadata::Node(NodePersistentMetadata { position }) = &mut node_metadata.persistent_metadata.node_type_metadata {
+			if *position == NodePosition::Chain {
+				return;
+			}
 			*position = NodePosition::Chain;
+			self.transaction_modified();
 		}
 		// If there is an upstream layer then stop breaking the chain
 		else {
@@ -3904,6 +4028,9 @@ impl NodeNetworkInterface {
 	/// Used when moving layer by the layer panel, does not run any pushing logic. Moves all sole dependents of the layer as well.
 	/// Ensure that the layer is absolute position.
 	pub fn shift_absolute_node_position(&mut self, layer: &NodeId, shift: IVec2, network_path: &[NodeId]) {
+		if shift == IVec2::ZERO {
+			return;
+		}
 		let mut nodes_to_shift = self.upstream_nodes_below_layer(layer, network_path);
 		nodes_to_shift.insert(*layer);
 
@@ -3925,6 +4052,7 @@ impl NodeNetworkInterface {
 				}
 			}
 		}
+		self.transaction_modified();
 		self.unload_upstream_node_click_targets(vec![*layer], network_path);
 	}
 
@@ -3933,39 +4061,48 @@ impl NodeNetworkInterface {
 			log::error!("Could not get selected nodes in shift_selected_nodes");
 			return;
 		};
-
-		for node_id in node_ids.clone() {
-			if self.is_layer(&node_id, network_path) {
-				if let Some(owned_nodes) = self.owned_nodes(&node_id, network_path) {
-					for owned_node in owned_nodes {
-						node_ids.remove(owned_node);
-					}
-				};
+		if !shift_without_push {
+			for node_id in node_ids.clone() {
+				if self.is_layer(&node_id, network_path) {
+					if let Some(owned_nodes) = self.owned_nodes(&node_id, network_path) {
+						for owned_node in owned_nodes {
+							node_ids.remove(owned_node);
+						}
+					};
+				}
 			}
 		}
 
-		let mut filtered_node_ids = HashSet::new();
-		for selected_node in &node_ids {
+		for selected_node in &node_ids.clone() {
 			// Deselect chain nodes upstream from a selected layer
 			if self.is_chain(selected_node, network_path)
 				&& self
 					.downstream_layer(selected_node, network_path)
 					.is_some_and(|downstream_layer| node_ids.contains(&downstream_layer.to_node()))
 			{
-				continue;
+				node_ids.remove(selected_node);
 			}
-			filtered_node_ids.insert(*selected_node);
 		}
 
 		// If shifting up without a push, cancel the shift if there is a stack node that cannot move up
 		if direction == Direction::Up && shift_without_push {
-			for node_id in &filtered_node_ids {
+			for node_id in &node_ids {
 				let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
 					log::error!("Could not get node metadata for node {node_id} in shift_selected_nodes");
 					return;
 				};
 				if let NodeTypePersistentMetadata::Layer(layer_metadata) = &node_metadata.persistent_metadata.node_type_metadata {
 					if let LayerPosition::Stack(offset) = layer_metadata.position {
+						// If the upstream layer is selected, then skip
+						let Some(outward_wires) = self.outward_wires(network_path).and_then(|outward_wires| outward_wires.get(&OutputConnector::node(*node_id, 0))) else {
+							log::error!("Could not get outward wires in shift_selected_nodes");
+							return;
+						};
+						if let Some(upstream_node) = outward_wires.first() {
+							if node_ids.contains(&upstream_node.node_id().expect("Stack layer should have downstream layer")) {
+								continue;
+							}
+						}
 						// Offset cannot be negative, so cancel the shift
 						if offset == 0 {
 							return;
@@ -3975,7 +4112,7 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		let mut node_ids_with_position = filtered_node_ids
+		let mut node_ids_with_position = node_ids
 			.iter()
 			.filter_map(|&node_id| {
 				let Some(position) = self.position(&node_id, network_path) else {
@@ -3986,7 +4123,7 @@ impl NodeNetworkInterface {
 			})
 			.collect::<Vec<(NodeId, i32)>>();
 
-		if node_ids_with_position.len() != filtered_node_ids.len() {
+		if node_ids_with_position.len() != node_ids.len() {
 			log::error!("Could not get position for all nodes in shift_selected_nodes");
 			return;
 		}
@@ -4066,6 +4203,7 @@ impl NodeNetworkInterface {
 						if let TransientMetadata::Loaded(stack_dependents) = &mut network_metadata.transient_metadata.stack_dependents {
 							if let Some(LayerOwner::None(offset)) = stack_dependents.get_mut(node_id) {
 								*offset += shift_sign;
+								self.transaction_modified();
 							};
 						};
 
@@ -4181,6 +4319,7 @@ impl NodeNetworkInterface {
 		match layer_owner {
 			LayerOwner::None(offset) => {
 				*offset += shift_sign;
+				self.transaction_modified();
 			}
 			LayerOwner::Layer(_) => {
 				log::error!("Node being shifted with a push should not be owned");
@@ -4211,7 +4350,7 @@ impl NodeNetworkInterface {
 
 	fn check_collision_with_stack_dependents(&mut self, node_id: &NodeId, shift_sign: i32, network_path: &[NodeId]) -> Vec<(NodeId, LayerOwner)> {
 		self.try_load_all_node_click_targets(network_path);
-
+		self.try_load_stack_dependents(network_path);
 		let Some(stack_dependents) = self.try_get_stack_dependents(network_path) else {
 			log::error!("Could not load stack dependents in shift_selected_nodes");
 			return Vec::new();
@@ -4290,6 +4429,7 @@ impl NodeNetworkInterface {
 		if let NodeTypePersistentMetadata::Layer(layer_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
 			if let LayerPosition::Absolute(layer_position) = &mut layer_metadata.position {
 				*layer_position += shift;
+				self.transaction_modified();
 			} else if let LayerPosition::Stack(y_offset) = &mut layer_metadata.position {
 				let shifted_y_offset = *y_offset as i32 + shift.y;
 				// A layer can only be shifted to a positive y_offset
@@ -4302,14 +4442,19 @@ impl NodeNetworkInterface {
 				if shift.x != 0 {
 					log::error!("Stack layer {node_id} cannot be shifted horizontally.");
 				}
-
-				*y_offset = shifted_y_offset.max(0) as u32;
+				let new_y_offset = shifted_y_offset.max(0) as u32;
+				if *y_offset == new_y_offset {
+					return;
+				}
+				*y_offset = new_y_offset;
+				self.transaction_modified();
 			}
 			// Unload click targets for all upstream nodes, since they may have been derived from the node that was shifted
 			self.unload_upstream_node_click_targets(vec![*node_id], network_path);
 		} else if let NodeTypePersistentMetadata::Node(node_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
 			if let NodePosition::Absolute(node_metadata) = &mut node_metadata.position {
 				*node_metadata += shift;
+				self.transaction_modified();
 				// Unload click targets for all upstream nodes, since they may have been derived from the node that was shifted
 				self.unload_upstream_node_click_targets(vec![*node_id], network_path);
 
@@ -4335,6 +4480,12 @@ impl NodeNetworkInterface {
 	// TODO: Run the auto layout system to make space for the new nodes
 	/// Disconnect the layers primary output and the input to the last non layer node feeding into it through primary flow, reconnects, then moves the layer to the new layer and stack index
 	pub fn move_layer_to_stack(&mut self, layer: LayerNodeIdentifier, mut parent: LayerNodeIdentifier, mut insert_index: usize, network_path: &[NodeId]) {
+		// Prevent moving an artboard anywhere but to the ROOT_PARENT child stack
+		if self.is_artboard(&layer.to_node(), network_path) && parent != LayerNodeIdentifier::ROOT_PARENT {
+			log::error!("Artboard can only be moved to the root parent stack");
+			return;
+		}
+
 		// A layer is considered to be the height of that layer plus the height to the upstream layer sibling
 		// If a non artboard layer is attempted to be connected to the exports, and there is already an artboard connected, then connect the layer to the artboard.
 		if let Some(first_layer) = LayerNodeIdentifier::ROOT_PARENT.children(&self.document_metadata).next() {
@@ -4352,16 +4503,6 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		let previous_upstream_node = self.upstream_flow_back_from_nodes(vec![layer.to_node()], network_path, FlowType::PrimaryFlow).nth(1);
-		let mut height_below_layer = 0;
-
-		if let Some(previous_upstream_node) = previous_upstream_node {
-			let Some(previous_upstream_node_position) = self.position(&previous_upstream_node, network_path) else {
-				log::error!("Could not get previous upstream node position in move_layer_to_stack");
-				return;
-			};
-			height_below_layer = (previous_upstream_node_position.y - layer_to_move_position.y - 3).max(0) as u32;
-		}
 		let mut lowest_upstream_node_height = 0;
 		for upstream_node in self
 			.upstream_flow_back_from_nodes(vec![layer.to_node()], network_path, FlowType::LayerChildrenUpstreamFlow)
@@ -4374,9 +4515,6 @@ impl NodeNetworkInterface {
 			lowest_upstream_node_height = lowest_upstream_node_height.max((upstream_node_position.y - layer_to_move_position.y).max(0) as u32);
 		}
 
-		// Height under the layer to move, which should be retained after the move
-		let layer_to_move_height = height_below_layer.max(lowest_upstream_node_height);
-
 		// If the moved layer is a child of the new parent, then get its index after the disconnect
 		if let Some(moved_layer_previous_index) = parent.children(&self.document_metadata).position(|child| child == layer) {
 			// Adjust the insert index if the layer's previous index is less than the insert index
@@ -4387,9 +4525,6 @@ impl NodeNetworkInterface {
 
 		// Disconnect layer to move
 		self.remove_references_from_network(&layer.to_node(), network_path);
-		self.disconnect_input(&InputConnector::node(layer.to_node(), 0), network_path);
-
-		// TODO: Collapse space between parent and second child if top of stack is moved using the layout system
 
 		let post_node = ModifyInputsContext::get_post_node_with_index(self, parent, insert_index);
 
@@ -4415,8 +4550,124 @@ impl NodeNetworkInterface {
 			return;
 		};
 
+		// Get the height of the downstream node if inserting into a stack
+		let mut downstream_height = 0;
+		let inserting_into_stack =
+			!(post_node.input_index() == 1 || matches!(post_node, InputConnector::Export(_)) || !post_node.node_id().is_some_and(|post_node_id| self.is_layer(&post_node_id, network_path)));
+		if inserting_into_stack {
+			if let Some(downstream_node) = post_node.node_id() {
+				let Some(downstream_node_position) = self.position(&downstream_node, network_path) else {
+					log::error!("Could not get downstream node position in move_layer_to_stack");
+					return;
+				};
+				let mut lowest_y_position = downstream_node_position.y + 3;
+
+				for bottom_position in self.upstream_nodes_below_layer(&downstream_node, network_path).iter().filter_map(|node_id| {
+					let is_layer = self.is_layer(node_id, network_path);
+					self.position(node_id, network_path).map(|position| position.y + if is_layer { 3 } else { 2 })
+				}) {
+					lowest_y_position = lowest_y_position.max(bottom_position);
+				}
+				downstream_height = lowest_y_position - (downstream_node_position.y + 3);
+			}
+		}
+
+		let mut highest_y_position = layer_to_move_position.y;
+		let mut lowest_y_position = layer_to_move_position.y;
+
+		for (bottom_position, top_position) in self.upstream_nodes_below_layer(&layer.to_node(), network_path).iter().filter_map(|node_id| {
+			let is_layer = self.is_layer(node_id, network_path);
+			let bottom_position = self.position(node_id, network_path).map(|position| position.y + if is_layer { 3 } else { 2 });
+			let top_position = self.position(node_id, network_path).map(|position| if is_layer { position.y - 1 } else { position.y });
+			bottom_position.zip(top_position)
+		}) {
+			highest_y_position = highest_y_position.min(top_position);
+			lowest_y_position = lowest_y_position.max(bottom_position);
+		}
+		let height_above_layer = layer_to_move_position.y - highest_y_position + downstream_height;
+		let height_below_layer = lowest_y_position - layer_to_move_position.y - 3;
+
+		// If there is an upstream node in the new location for the layer, create space for the moved layer by shifting the upstream node down
+		if let Some(upstream_node_id) = post_node_input.as_node() {
+			// Select the layer to move to ensure the shifting works correctly
+			let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
+				log::error!("Could not get selected nodes in move_layer_to_stack");
+				return;
+			};
+			let old_selected_nodes = selected_nodes.replace_with(vec![upstream_node_id]);
+
+			// Create the minimum amount space for the moved layer
+			for _ in 0..3 {
+				self.vertical_shift_with_push(&upstream_node_id, 1, &mut HashSet::new(), network_path);
+			}
+
+			let Some(stack_position) = self.position(&upstream_node_id, network_path) else {
+				log::error!("Could not get stack position in move_layer_to_stack");
+				return;
+			};
+
+			let current_gap = stack_position.y - (after_move_post_layer_position.y + 2);
+			let target_gap = 1 + height_above_layer + 2 + height_below_layer + 1;
+
+			for _ in 0..(target_gap - current_gap).max(0) {
+				self.vertical_shift_with_push(&upstream_node_id, 1, &mut HashSet::new(), network_path);
+			}
+
+			let _ = self.selected_nodes_mut(network_path).unwrap().replace_with(old_selected_nodes);
+		}
+
+		// If inserting into a stack with a parent, ensure the parent stack has enough space for the child stack
+		if parent != LayerNodeIdentifier::ROOT_PARENT {
+			if let Some(upstream_sibling) = parent.next_sibling(&self.document_metadata) {
+				let Some(parent_position) = self.position(&parent.to_node(), network_path) else {
+					log::error!("Could not get parent position in move_layer_to_stack");
+					return;
+				};
+				let last_child = parent.last_child(&self.document_metadata).unwrap_or(parent);
+
+				let Some(mut last_child_position) = self.position(&last_child.to_node(), network_path) else {
+					log::error!("Could not get last child position in move_layer_to_stack");
+					return;
+				};
+
+				if self.is_layer(&last_child.to_node(), network_path) {
+					last_child_position.y += 3;
+				} else {
+					last_child_position.y += 2;
+				}
+
+				// If inserting below the current last child, then the last child is layer to move
+				if post_node.node_id() == Some(last_child.to_node()) {
+					last_child_position += height_above_layer + 3 + height_below_layer;
+				}
+
+				let Some(upstream_sibling_position) = self.position(&upstream_sibling.to_node(), network_path) else {
+					log::error!("Could not get upstream sibling position in move_layer_to_stack");
+					return;
+				};
+
+				let target_gap = last_child_position.y - parent_position.y + 3;
+				let current_gap = upstream_sibling_position.y - parent_position.y;
+
+				let upstream_nodes = self
+					.upstream_flow_back_from_nodes(vec![upstream_sibling.to_node()], network_path, FlowType::UpstreamFlow)
+					.collect::<Vec<_>>();
+				let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
+					log::error!("Could not get selected nodes in move_layer_to_stack");
+					return;
+				};
+				let old_selected_nodes = selected_nodes.replace_with(upstream_nodes);
+
+				for _ in 0..(target_gap - current_gap).max(0) {
+					self.shift_selected_nodes(Direction::Down, true, network_path);
+				}
+
+				let _ = self.selected_nodes_mut(network_path).unwrap().replace_with(old_selected_nodes);
+			}
+		}
+
 		// Connect the layer to a parent layer/node at the top of the stack, or a non layer node midway down the stack
-		if post_node.input_index() == 1 || matches!(post_node, InputConnector::Export(_)) || !post_node.node_id().is_some_and(|post_node_id| self.is_layer(&post_node_id, network_path)) {
+		if !inserting_into_stack {
 			match post_node_input {
 				// Create a new stack
 				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
@@ -4426,17 +4677,17 @@ impl NodeNetworkInterface {
 					let shift = final_layer_position - previous_layer_position;
 					self.shift_absolute_node_position(&layer.to_node(), shift, network_path);
 				}
-				// Move to the top of a stack
+				// Move to the top of a stack.
 				NodeInput::Node { node_id, .. } => {
-					let Some(top_of_stack_position) = self.position(&node_id, network_path) else {
-						log::error!("Could not get top of stack position in move_layer_to_stack");
+					let Some(stack_top_position) = self.position(&node_id, network_path) else {
+						log::error!("Could not get stack x position in move_layer_to_stack");
 						return;
 					};
-					let shift = top_of_stack_position - previous_layer_position;
+
+					let final_layer_position = IVec2::new(stack_top_position.x, after_move_post_layer_position.y + 3 + height_above_layer);
+					let shift = final_layer_position - previous_layer_position;
 					self.shift_absolute_node_position(&layer.to_node(), shift, network_path);
-					self.shift_absolute_node_position(&node_id, IVec2::new(0, layer_to_move_height as i32 + 3), network_path);
 					self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
-					self.set_stack_position_calculated_offset(&node_id, &layer.to_node(), network_path);
 				}
 				NodeInput::Network { .. } => {
 					log::error!("Cannot move post node to parent which connects to the imports")
@@ -4447,42 +4698,16 @@ impl NodeNetworkInterface {
 				// Move to the bottom of the stack
 				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
 					// TODO: Calculate height of bottom layer by getting height of upstream nodes instead of setting to 3
-					let offset = after_move_post_layer_position - previous_layer_position + IVec2::new(0, 3);
+					let offset = after_move_post_layer_position - previous_layer_position + IVec2::new(0, 3 + height_above_layer);
 					self.shift_absolute_node_position(&layer.to_node(), offset, network_path);
 					self.create_wire(&OutputConnector::node(layer.to_node(), 0), &post_node, network_path);
-					self.set_stack_position_calculated_offset(&layer.to_node(), &post_node.node_id().unwrap(), network_path);
 				}
 				// Insert into the stack
-				NodeInput::Node { node_id: upstream_node_id, .. } => {
-					let Some(upstream_node_metadata) = self.node_metadata(&upstream_node_id, network_path) else {
-						log::error!("Could not get upstream node metadata in move_layer_to_stack");
-						return;
-					};
-					let NodeTypePersistentMetadata::Layer(LayerPersistentMetadata { position, .. }) = &upstream_node_metadata.persistent_metadata.node_type_metadata else {
-						log::error!("Could not get upstream node metadata in move_layer_to_stack");
-						return;
-					};
-					// TODO: Max with height of upstream chain
-					let LayerPosition::Stack(post_node_height) = position.clone() else {
-						log::error!("Could not get vertical offset 3 in move_layer_to_stack");
-						return;
-					};
-
-					let Some(upstream_node_position) = self.position(&upstream_node_id, network_path) else {
-						log::error!("Could not get upstream node position in move_layer_to_stack");
-						return;
-					};
-					self.set_absolute_position(&upstream_node_id, upstream_node_position, network_path);
-
-					let offset = after_move_post_layer_position - previous_layer_position + IVec2::new(0, 3 + post_node_height as i32);
-					self.shift_absolute_node_position(&layer.to_node(), offset, network_path);
-					let upstream_offset = layer_to_move_height as i32 + 3;
-					self.shift_absolute_node_position(&upstream_node_id, IVec2::new(0, upstream_offset), network_path);
-
+				NodeInput::Node { .. } => {
+					let final_layer_position = after_move_post_layer_position + IVec2::new(0, 3 + height_above_layer);
+					let shift = final_layer_position - previous_layer_position;
+					self.shift_absolute_node_position(&layer.to_node(), shift, network_path);
 					self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
-
-					self.set_stack_position_calculated_offset(&layer.to_node(), &post_node.node_id().unwrap(), network_path);
-					self.set_stack_position_calculated_offset(&upstream_node_id, &layer.to_node(), network_path);
 				}
 				NodeInput::Network { .. } => {
 					log::error!("Cannot move post node to parent which connects to the imports")
@@ -4809,14 +5034,14 @@ impl NodeNetworkMetadata {
 
 		for segment in nested_path {
 			network_metadata = network_metadata
-				.and_then(|network| network.persistent_metadata.node_metadata.get_mut(segment))
+				.and_then(|network: &mut NodeNetworkMetadata| network.persistent_metadata.node_metadata.get_mut(segment))
 				.and_then(|node| node.persistent_metadata.network_metadata.as_mut());
 		}
 		network_metadata
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NodeNetworkPersistentMetadata {
 	/// Node metadata must exist for every document node in the network
 	#[serde(serialize_with = "graphene_std::vector::serialize_hashmap", deserialize_with = "graphene_std::vector::deserialize_hashmap")]
@@ -4826,6 +5051,12 @@ pub struct NodeNetworkPersistentMetadata {
 	pub previewing: Previewing,
 	// Stores the transform and navigation state for the network
 	pub navigation_metadata: NavigationMetadata,
+	/// Stack of selection snapshots for previous history states.
+	#[serde(default)]
+	pub selection_undo_history: VecDeque<SelectedNodes>,
+	/// Stack of selection snapshots for future history states.
+	#[serde(default)]
+	pub selection_redo_history: VecDeque<SelectedNodes>,
 }
 
 /// This is the same as Option, but more clear in the context of having cached metadata either being loaded or unloaded
@@ -5106,4 +5337,12 @@ impl Default for NavigationMetadata {
 pub struct NodeTemplate {
 	pub document_node: DocumentNode,
 	pub persistent_node_metadata: DocumentNodePersistentMetadata,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum TransactionStatus {
+	Started,
+	Modified,
+	#[default]
+	Finished,
 }

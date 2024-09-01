@@ -630,6 +630,7 @@ impl Fsm for PenToolFsmState {
 				state
 			}
 			(PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor, PenToolMessage::Abort | PenToolMessage::Confirm) => {
+				responses.add(DocumentMessage::EndTransaction);
 				tool_data.layer = None;
 				tool_data.handle_end = None;
 				tool_data.latest_points.clear();
@@ -639,6 +640,8 @@ impl Fsm for PenToolFsmState {
 				PenToolFsmState::Ready
 			}
 			(_, PenToolMessage::Abort) => {
+				responses.add(DocumentMessage::AbortTransaction);
+
 				responses.add(OverlaysMessage::Draw);
 
 				self

@@ -190,6 +190,20 @@ impl LayoutHolder for MenuBarMessageHandler {
 							..MenuBarEntry::default()
 						},
 					],
+					vec![
+						MenuBarEntry {
+							label: "Previous Selection".into(),
+							shortcut: action_keys!(DocumentMessageDiscriminant::SelectionStepBack),
+							action: MenuBarEntry::create_action(|_| DocumentMessage::SelectionStepBack.into()),
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Next Selection".into(),
+							shortcut: action_keys!(DocumentMessageDiscriminant::SelectionStepForward),
+							action: MenuBarEntry::create_action(|_| DocumentMessage::SelectionStepForward.into()),
+							..MenuBarEntry::default()
+						},
+					],
 					vec![MenuBarEntry {
 						label: "Delete Selected".into(),
 						icon: Some("Trash".into()),

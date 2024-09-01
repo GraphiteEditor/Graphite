@@ -259,7 +259,7 @@ impl TextToolData {
 		self.layer = layer;
 		self.load_layer_text_node(document);
 
-		responses.add(DocumentMessage::StartTransaction);
+		responses.add(DocumentMessage::AddTransaction);
 
 		self.set_editing(true, font_cache, document, responses);
 
@@ -282,7 +282,7 @@ impl TextToolData {
 		}
 		// Create new text
 		else if let Some(editing_text) = self.editing_text.as_ref().filter(|_| state == TextToolFsmState::Ready) {
-			responses.add(DocumentMessage::StartTransaction);
+			responses.add(DocumentMessage::AddTransaction);
 
 			self.layer = LayerNodeIdentifier::new_unchecked(NodeId(generate_uuid()));
 
@@ -320,7 +320,8 @@ impl TextToolData {
 }
 
 fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdentifier> {
-	let mut selected_layers = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata());
+	let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+	let mut selected_layers = selected_nodes.selected_layers(document.metadata());
 	let layer = selected_layers.next()?;
 
 	// Check that only one layer is selected

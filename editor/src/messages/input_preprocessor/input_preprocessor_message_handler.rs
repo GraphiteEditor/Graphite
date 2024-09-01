@@ -45,6 +45,8 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageData> for 
 						MouseKeys::LEFT => MouseButton::Left,
 						MouseKeys::RIGHT => MouseButton::Right,
 						MouseKeys::MIDDLE => MouseButton::Middle,
+						MouseKeys::BACK => MouseButton::Back,
+						MouseKeys::FORWARD => MouseButton::Forward,
 						_ => unimplemented!(),
 					}));
 				}
@@ -115,7 +117,15 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageData> for 
 
 impl InputPreprocessorMessageHandler {
 	fn translate_mouse_event(&mut self, mut new_state: MouseState, allow_first_button_down: bool, responses: &mut VecDeque<Message>) {
-		for (bit_flag, key) in [(MouseKeys::LEFT, Key::Lmb), (MouseKeys::RIGHT, Key::Rmb), (MouseKeys::MIDDLE, Key::Mmb)] {
+		let click_mappings = [
+			(MouseKeys::LEFT, Key::MouseLeft),
+			(MouseKeys::RIGHT, Key::MouseRight),
+			(MouseKeys::MIDDLE, Key::MouseMiddle),
+			(MouseKeys::BACK, Key::MouseBack),
+			(MouseKeys::FORWARD, Key::MouseForward),
+		];
+
+		for (bit_flag, key) in click_mappings {
 			// Calculate the intersection between the two key states
 			let old_down = self.mouse.mouse_keys & bit_flag == bit_flag;
 			let new_down = new_state.mouse_keys & bit_flag == bit_flag;

@@ -90,7 +90,7 @@ impl MouseState {
 	pub fn finish_transaction(&self, drag_start: DVec2, responses: &mut VecDeque<Message>) {
 		match drag_start.distance(self.position) <= DRAG_THRESHOLD {
 			true => responses.add(DocumentMessage::AbortTransaction),
-			false => responses.add(DocumentMessage::CommitTransaction),
+			false => responses.add(DocumentMessage::EndTransaction),
 		}
 	}
 }
@@ -144,6 +144,8 @@ pub enum MouseButton {
 	Left,
 	Right,
 	Middle,
+	Back,
+	Forward,
 }
 
-pub const NUMBER_OF_MOUSE_BUTTONS: usize = 3;
+pub const NUMBER_OF_MOUSE_BUTTONS: usize = 5; // Should be the number of variants in MouseButton

@@ -1,5 +1,4 @@
 use super::utility_types::misc::SnappingState;
-use super::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -32,17 +31,12 @@ pub enum DocumentMessage {
 	PropertiesPanel(PropertiesPanelMessage),
 
 	// Messages
-	AbortTransaction,
 	AlignSelectedLayers {
 		axis: AlignAxis,
 		aggregate: AlignAggregate,
 	},
-	BackupDocument {
-		network_interface: NodeNetworkInterface,
-	},
 	ClearArtboards,
 	ClearLayersPanel,
-	CommitTransaction,
 	InsertBooleanOperation {
 		operation: graphene_core::vector::misc::BooleanOperation,
 	},
@@ -151,6 +145,10 @@ pub enum DocumentMessage {
 		view_mode: ViewMode,
 	},
 	StartTransaction,
+	EndTransaction,
+	CommitTransaction,
+	AbortTransaction,
+	AddTransaction,
 	ToggleLayerExpansion {
 		id: NodeId,
 	},
@@ -158,12 +156,13 @@ pub enum DocumentMessage {
 	ToggleOverlaysVisibility,
 	ToggleSnapping,
 	Undo,
-	UndoFinished,
 	UngroupSelectedLayers,
 	UngroupLayer {
 		layer: LayerNodeIdentifier,
 	},
 	PTZUpdate,
+	SelectionStepBack,
+	SelectionStepForward,
 	ZoomCanvasTo100Percent,
 	ZoomCanvasTo200Percent,
 	ZoomCanvasToFitAll,

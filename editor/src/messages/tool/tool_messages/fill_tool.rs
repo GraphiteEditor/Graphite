@@ -96,9 +96,8 @@ impl Fsm for FillToolFsmState {
 					_ => return self,
 				};
 
-				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::AddTransaction);
 				responses.add(GraphOperationMessage::FillSet { layer: layer_identifier, fill });
-				responses.add(DocumentMessage::CommitTransaction);
 
 				FillToolFsmState::Filling
 			}

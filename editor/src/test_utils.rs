@@ -23,7 +23,7 @@ pub trait EditorTestUtils {
 	fn move_mouse(&mut self, x: f64, y: f64);
 	fn mousedown(&mut self, state: EditorMouseState);
 	fn mouseup(&mut self, state: EditorMouseState);
-	fn lmb_mousedown(&mut self, x: f64, y: f64);
+	fn left_mousedown(&mut self, x: f64, y: f64);
 	fn input(&mut self, message: InputPreprocessorMessage);
 	fn select_tool(&mut self, typ: ToolType);
 	fn select_primary_color(&mut self, color: Color);
@@ -63,7 +63,7 @@ impl EditorTestUtils for Editor {
 	fn drag_tool(&mut self, typ: ToolType, x1: f64, y1: f64, x2: f64, y2: f64) {
 		self.select_tool(typ);
 		self.move_mouse(x1, y1);
-		self.lmb_mousedown(x1, y1);
+		self.left_mousedown(x1, y1);
 		self.move_mouse(x2, y2);
 		self.mouseup(EditorMouseState {
 			editor_position: (x2, y2).into(),
@@ -91,7 +91,7 @@ impl EditorTestUtils for Editor {
 		self.handle_message(InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys });
 	}
 
-	fn lmb_mousedown(&mut self, x: f64, y: f64) {
+	fn left_mousedown(&mut self, x: f64, y: f64) {
 		self.mousedown(EditorMouseState {
 			editor_position: (x, y).into(),
 			mouse_keys: MouseKeys::LEFT,

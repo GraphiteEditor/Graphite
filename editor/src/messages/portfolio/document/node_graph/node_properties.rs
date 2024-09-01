@@ -42,7 +42,7 @@ fn update_value<T>(value: impl Fn(&T) -> TaggedValue + 'static + Send + Sync, no
 }
 
 fn commit_value<T>(_: &T) -> Message {
-	DocumentMessage::StartTransaction.into()
+	DocumentMessage::AddTransaction.into()
 }
 
 fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphDataType, exposed: bool) -> WidgetHolder {

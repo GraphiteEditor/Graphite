@@ -479,7 +479,7 @@ impl Fsm for SelectToolFsmState {
 				}
 				// Only highlight layers if the viewport is not being panned (middle mouse button is pressed)
 				// TODO: Don't use `Key::Mmb` directly, instead take it as a variable from the input mappings list like in all other places
-				else if !input.keyboard.get(Key::Mmb as usize) {
+				else if !input.keyboard.get(Key::MouseMiddle as usize) {
 					// Get the layer the user is hovering over
 					let click = document.click(input);
 					let not_selected_click = click.filter(|&hovered_layer| !document.network_interface.selected_nodes(&[]).unwrap().selected_layers_contains(hovered_layer, document.metadata()));
@@ -649,7 +649,6 @@ impl Fsm for SelectToolFsmState {
 					}
 
 					if let Some(intersection) = intersection {
-						responses.add(DocumentMessage::StartTransaction);
 
 						tool_data.layer_selected_on_start = Some(intersection);
 						selected = intersection_list;
@@ -659,6 +658,8 @@ impl Fsm for SelectToolFsmState {
 							_ => drag_deepest_manipulation(responses, selected, tool_data, document),
 						}
 						tool_data.get_snap_candidates(document, input);
+
+						responses.add(DocumentMessage::StartTransaction);
 						SelectToolFsmState::Dragging
 					} else {
 						// Deselect all layers if using shallowest selection behavior
@@ -894,8 +895,8 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::Enter) => {
 				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-					true => DocumentMessage::Undo,
-					false => DocumentMessage::CommitTransaction,
+					true => DocumentMessage::AbortTransaction,
+					false => DocumentMessage::EndTransaction,
 				};
 				tool_data.snap_manager.cleanup(responses);
 				responses.add_front(response);
@@ -905,6 +906,8 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::DragStop { remove_from_selection }) => {
 				// Deselect layer if not snap dragging
+				responses.add(DocumentMessage::EndTransaction);
+
 				if !tool_data.has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
 					let quad = tool_data.selection_quad();
 					let intersection = document.intersect_quad(quad, input);
@@ -950,7 +953,6 @@ impl Fsm for SelectToolFsmState {
 				tool_data.has_dragged = false;
 				tool_data.layer_selected_on_start = None;
 
-				responses.add(DocumentMessage::CommitTransaction);
 				tool_data.snap_manager.cleanup(responses);
 				tool_data.select_single_layer = None;
 
@@ -959,8 +961,8 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::ResizingBounds, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
 				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-					true => DocumentMessage::Undo,
-					false => DocumentMessage::CommitTransaction,
+					true => DocumentMessage::AbortTransaction,
+					false => DocumentMessage::EndTransaction,
 				};
 				responses.add(response);
 
@@ -975,8 +977,8 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::RotatingBounds, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
 				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-					true => DocumentMessage::Undo,
-					false => DocumentMessage::CommitTransaction,
+					true => DocumentMessage::AbortTransaction,
+					false => DocumentMessage::EndTransaction,
 				};
 				responses.add(response);
 
@@ -989,8 +991,8 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
 				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-					true => DocumentMessage::Undo,
-					false => DocumentMessage::CommitTransaction,
+					true => DocumentMessage::AbortTransaction,
+					false => DocumentMessage::EndTransaction,
 				};
 				responses.add(response);
 
@@ -1005,7 +1007,6 @@ impl Fsm for SelectToolFsmState {
 				let current_selected: HashSet<_> = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
 				if new_selected != current_selected {
 					tool_data.layers_dragging = new_selected.into_iter().collect();
-					responses.add(DocumentMessage::StartTransaction);
 					responses.add(NodeGraphMessage::SelectedNodesSet {
 						nodes: tool_data
 							.layers_dragging
@@ -1027,7 +1028,8 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::Ready { .. }, SelectToolMessage::Enter) => {
-				let mut selected_layers = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata());
+				let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+				let mut selected_layers = selected_nodes.selected_layers(document.metadata());
 
 				if let Some(layer) = selected_layers.next() {
 					// Check that only one layer is selected
@@ -1041,8 +1043,8 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::Abort) => {
+				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
-				responses.add(DocumentMessage::Undo);
 				responses.add(OverlaysMessage::Draw);
 
 				let selection = tool_data.nested_selection_behavior;
@@ -1200,11 +1202,9 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 }
 
 fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
-	tool_data.layers_dragging.append(&mut vec![document.find_deepest(&selected).unwrap_or(LayerNodeIdentifier::new(
-		document.network_interface.root_node(&[]).expect("Root node should exist when dragging layers").node_id,
-		&document.network_interface,
-		&[],
-	))]);
+	tool_data.layers_dragging.append(&mut vec![document
+		.find_deepest(&selected)
+		.unwrap_or(LayerNodeIdentifier::ROOT_PARENT.children(document.metadata()).next().expect("Child should exist when dragging deepest"))]);
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data
 			.layers_dragging

@@ -595,10 +595,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					if let Ok(data) = serde_json::from_str::<Vec<CopyBufferEntry>>(&data) {
 						let parent = document.new_layer_parent(false);
 
-						responses.add(DocumentMessage::DeselectAllLayers);
-						responses.add(DocumentMessage::StartTransaction);
+						let mut added_nodes = false;
 
 						for entry in data.into_iter().rev() {
+							if !added_nodes {
+								responses.add(DocumentMessage::DeselectAllLayers);
+								responses.add(DocumentMessage::AddTransaction);
+								added_nodes = true;
+							}
 							document.load_layer_resources(responses);
 							let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(id, _)| (*id, NodeId(generate_uuid()))).collect();
 							let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
