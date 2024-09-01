@@ -29,7 +29,8 @@ pub struct RawImage {
 	pub maximum: u16,
 	pub black: SubtractBlack,
 	pub camera_model: Option<CameraModel>,
-	pub white_balance_multiplier: Option<[f64; 3]>,
+	pub camera_white_balance_multiplier: Option<[f64; 4]>,
+	pub white_balance_multiplier: Option<[f64; 4]>,
 	pub camera_to_rgb: Option<[[f64; 3]; 3]>,
 	pub rgb_to_camera: Option<[[f64; 3]; 3]>,
 }

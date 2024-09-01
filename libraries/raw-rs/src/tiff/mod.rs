@@ -30,7 +30,7 @@ pub enum TagId {
 	JpegLength = 0x202,
 	SonyToneCurve = 0x7010,
 	BlackLevel = 0x7310,
-	WhiteBalanceRggbLevels = 0x7013,
+	WhiteBalanceRggbLevels = 0x7313,
 	CfaPatternDim = 0x828d,
 	CfaPattern = 0x828e,
 	ColorMatrix1 = 0xc621,

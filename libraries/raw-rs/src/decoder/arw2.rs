@@ -19,7 +19,7 @@ struct Arw2Ifd {
 	strip_offsets: StripOffsets,
 	strip_byte_counts: StripByteCounts,
 	sony_tone_curve: SonyToneCurve,
-	white_balance_levels: WhiteBalanceRggbLevels,
+	white_balance_levels: Option<WhiteBalanceRggbLevels>,
 }
 
 pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
@@ -51,6 +51,7 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 		maximum: (1 << 14) - 1,
 		black: SubtractBlack::CfaGrid([512, 512, 512, 512]), // TODO: Find the correct way to do this
 		camera_model: None,
+		camera_white_balance_multiplier: ifd.white_balance_levels.map(|arr| arr.map(|x| x as f64)),
 		white_balance_multiplier: None,
 		camera_to_rgb: None,
 		rgb_to_camera: None,
