@@ -1,5 +1,4 @@
 use super::DocumentNode;
-use crate::document::NodeId;
 pub use crate::imaginate_input::{ImaginateCache, ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use crate::proto::{Any as DAny, FutureAny};
 use crate::wasm_application_io::WasmEditorApi;
@@ -180,7 +179,6 @@ tagged_value! {
 	CentroidType(graphene_core::vector::misc::CentroidType),
 	BooleanOperation(graphene_core::vector::misc::BooleanOperation),
 	FontCache(Arc<graphene_core::text::FontCache>),
-	OptionalNodeId(Option<NodeId>),
 }
 
 impl TaggedValue {

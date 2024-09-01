@@ -795,7 +795,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_core::vector::PathModify<_>, input: VectorData, params: [graphene_core::vector::VectorModification]),
 		register_node!(graphene_core::text::TextGeneratorNode<_, _, _>, input: &WasmEditorApi, params: [String, graphene_core::text::Font, f64]),
 		register_node!(graphene_std::brush::VectorPointsNode, input: VectorData, params: []),
-		async_node!(graphene_core::ConstructLayerNode<_, _, _>, input: Footprint, output: GraphicGroup, fn_params: [Footprint => GraphicGroup, Footprint => graphene_core::GraphicElement, () => Option<NodeId>]),
+		async_node!(graphene_core::ConstructLayerNode<_, _, _>, input: Footprint, output: GraphicGroup, fn_params: [Footprint => GraphicGroup, Footprint => graphene_core::GraphicElement, () => Vec<NodeId>]),
 		register_node!(graphene_core::ToGraphicElementNode, input: graphene_core::vector::VectorData, params: []),
 		register_node!(graphene_core::ToGraphicElementNode, input: ImageFrame<Color>, params: []),
 		register_node!(graphene_core::ToGraphicElementNode, input: GraphicGroup, params: []),
@@ -804,7 +804,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_core::ToGraphicGroupNode, input: ImageFrame<Color>, params: []),
 		register_node!(graphene_core::ToGraphicGroupNode, input: GraphicGroup, params: []),
 		async_node!(graphene_core::ConstructArtboardNode<_, _, _, _, _, _>, input: Footprint, output: Artboard, fn_params: [Footprint => GraphicGroup, () => String, () => glam::IVec2, () => glam::IVec2, () => Color, () => bool]),
-		async_node!(graphene_core::AddArtboardNode<_, _, _>, input: Footprint, output: ArtboardGroup, fn_params: [Footprint => ArtboardGroup, Footprint => Artboard, () => Option<NodeId>]),
+		async_node!(graphene_core::AddArtboardNode<_, _, _>, input: Footprint, output: ArtboardGroup, fn_params: [Footprint => ArtboardGroup, Footprint => Artboard, () => Vec<NodeId>]),
 	];
 	let mut map: HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> = HashMap::new();
 	for (id, c, types) in node_types.into_iter().flatten() {

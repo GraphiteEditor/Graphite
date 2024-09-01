@@ -235,10 +235,10 @@ impl ArtboardGroup {
 	}
 }
 
-pub struct ConstructLayerNode<Stack, GraphicElement, OptionalNodeId> {
+pub struct ConstructLayerNode<Stack, GraphicElement, NodePath> {
 	stack: Stack,
 	graphic_element: GraphicElement,
-	node_id: OptionalNodeId,
+	node_path: NodePath,
 }
 
 #[node_fn(ConstructLayerNode)]
@@ -246,11 +246,12 @@ async fn construct_layer<Data: Into<GraphicElement> + Send>(
 	footprint: crate::transform::Footprint,
 	mut stack: impl Node<crate::transform::Footprint, Output = GraphicGroup>,
 	graphic_element: impl Node<crate::transform::Footprint, Output = Data>,
-	node_id: Option<NodeId>,
+	node_path: Vec<NodeId>,
 ) -> GraphicGroup {
 	let graphic_element = self.graphic_element.eval(footprint).await;
 	let mut stack = self.stack.eval(footprint).await;
-	stack.push((graphic_element.into(), node_id));
+	let encapsulating_node_id = node_path.get(node_path.len() - 2).cloned();
+	stack.push((graphic_element.into(), encapsulating_node_id));
 	stack
 }
 
@@ -299,10 +300,10 @@ async fn construct_artboard(
 		clip,
 	}
 }
-pub struct AddArtboardNode<ArtboardGroup, Artboard, OptionalNodeId> {
+pub struct AddArtboardNode<ArtboardGroup, Artboard, NodePath> {
 	artboards: ArtboardGroup,
 	artboard: Artboard,
-	node_id: OptionalNodeId,
+	node_path: NodePath,
 }
 
 #[node_fn(AddArtboardNode)]
@@ -310,12 +311,13 @@ async fn add_artboard<Data: Into<Artboard> + Send>(
 	footprint: Footprint,
 	artboards: impl Node<Footprint, Output = ArtboardGroup>,
 	artboard: impl Node<Footprint, Output = Data>,
-	node_id: Option<NodeId>,
+	node_path: Vec<NodeId>,
 ) -> ArtboardGroup {
 	let artboard = self.artboard.eval(footprint).await;
 	let mut artboards = self.artboards.eval(footprint).await;
 
-	artboards.add_artboard(artboard.into(), node_id);
+	let encapsulating_node_id = node_path.get(node_path.len() - 2).cloned();
+	artboards.add_artboard(artboard.into(), encapsulating_node_id);
 
 	artboards
 }
