@@ -110,7 +110,12 @@
 							autofocus
 							on:blur={({ currentTarget: { value } }) => handleRename(tabIndex, value)}
 							on:keydown={(e) => {
-								if (e.key !== "Enter") return;
+								if (e.key !== "Escape" && e.key !== "Enter") return;
+
+								if (e.key === "Escape") {
+									e.currentTarget.value = "";
+								}
+
 								e.currentTarget.blur();
 							}}
 						/>
