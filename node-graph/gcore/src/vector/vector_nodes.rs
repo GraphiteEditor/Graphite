@@ -520,9 +520,7 @@ fn splines_from_points(mut vector_data: VectorData) -> VectorData {
 		let handle_end = points.positions()[end_index] * 2. - first_handles[end_index];
 		let handles = bezier_rs::BezierHandles::Cubic { handle_start, handle_end };
 
-		vector_data
-			.segment_domain
-			.push(SegmentId::generate(), points.ids()[start_index], points.ids()[end_index], handles, stroke_id)
+		vector_data.segment_domain.push(SegmentId::generate(), start_index, end_index, handles, stroke_id)
 	}
 
 	vector_data

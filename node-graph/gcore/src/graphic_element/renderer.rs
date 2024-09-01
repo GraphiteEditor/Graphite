@@ -364,9 +364,6 @@ impl GraphicElementRendered for VectorData {
 		let transformed_bounds = self.bounding_box_with_transform(multiplied_transform).unwrap_or_default();
 
 		let mut path = String::new();
-		for (_, subpath) in self.region_bezier_paths() {
-			let _ = subpath.subpath_to_svg(&mut path, multiplied_transform);
-		}
 		for subpath in self.stroke_bezier_paths() {
 			let _ = subpath.subpath_to_svg(&mut path, multiplied_transform);
 		}

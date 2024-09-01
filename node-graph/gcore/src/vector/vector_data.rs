@@ -83,7 +83,7 @@ impl VectorData {
 					point_id.next_id()
 				};
 				self.point_domain.push(id, pair[0].anchor);
-				id
+				self.point_domain.ids().len() - 1
 			});
 			first_point = Some(first_point.unwrap_or(start));
 			let end = if preserve_id && !self.point_domain.ids().contains(&pair[1].id) {
@@ -91,14 +91,15 @@ impl VectorData {
 			} else {
 				point_id.next_id()
 			};
+			let end_index = self.point_domain.ids().len();
 			self.point_domain.push(end, pair[1].anchor);
 
 			let id = segment_id.next_id();
 			first_seg = Some(first_seg.unwrap_or(id));
 			last_seg = Some(id);
-			self.segment_domain.push(id, start, end, handles(&pair[0], &pair[1]), stroke_id);
+			self.segment_domain.push(id, start, end_index, handles(&pair[0], &pair[1]), stroke_id);
 
-			last_point = Some(end);
+			last_point = Some(end_index);
 		}
 
 		let fill_id = FillId::ZERO;
@@ -169,9 +170,83 @@ impl VectorData {
 		self.transform.transform_point2(self.layerspace_pivot(normalized_pivot))
 	}
 
+	pub fn start_point(&self) -> impl Iterator<Item = PointId> + '_ {
+		self.segment_domain.start_point().iter().map(|&index| self.point_domain.ids()[index])
+	}
+
+	pub fn end_point(&self) -> impl Iterator<Item = PointId> + '_ {
+		self.segment_domain.end_point().iter().map(|&index| self.point_domain.ids()[index])
+	}
+
+	pub fn push(&mut self, id: SegmentId, start: PointId, end: PointId, handles: bezier_rs::BezierHandles, stroke: StrokeId) {
+		let [Some(start), Some(end)] = [start, end].map(|id| self.point_domain.resolve_id(id)) else {
+			return;
+		};
+		self.segment_domain.push(id, start, end, handles, stroke)
+	}
+
+	pub fn handles_mut(&mut self) -> impl Iterator<Item = (SegmentId, &mut bezier_rs::BezierHandles, PointId, PointId)> {
+		self.segment_domain
+			.handles_mut()
+			.map(|(id, handles, start, end)| (id, handles, self.point_domain.ids()[start], self.point_domain.ids()[end]))
+	}
+
+	pub fn segment_start_from_id(&self, segment: SegmentId) -> Option<PointId> {
+		self.segment_domain.segment_start_from_id(segment).map(|index| self.point_domain.ids()[index])
+	}
+
+	pub fn segment_end_from_id(&self, segment: SegmentId) -> Option<PointId> {
+		self.segment_domain.segment_end_from_id(segment).map(|index| self.point_domain.ids()[index])
+	}
+
+	/// Returns an array for the start and end points of a segment.
+	pub fn points_from_id(&self, segment: SegmentId) -> Option<[PointId; 2]> {
+		self.segment_domain.points_from_id(segment).map(|val| val.map(|index| self.point_domain.ids()[index]))
+	}
+
+	/// Attempts to find another point in the segment that is not the one passed in.
+	pub fn other_point(&self, segment: SegmentId, current: PointId) -> Option<PointId> {
+		let index = self.point_domain.resolve_id(current);
+		index.and_then(|index| self.segment_domain.other_point(segment, index)).map(|index| self.point_domain.ids()[index])
+	}
+
+	/// Gets all points connected to the current one but not including the current one.
+	pub fn connected_points(&self, current: PointId) -> impl Iterator<Item = PointId> + '_ {
+		let index = [self.point_domain.resolve_id(current)].into_iter().flatten();
+		index.flat_map(|index| self.segment_domain.connected_points(index).map(|index| self.point_domain.ids()[index]))
+	}
+
+	/// Enumerate all segments that start at the point.
+	pub fn start_connected(&self, point: PointId) -> impl Iterator<Item = SegmentId> + '_ {
+		let index = [self.point_domain.resolve_id(point)].into_iter().flatten();
+		index.flat_map(|index| self.segment_domain.start_connected(index))
+	}
+
+	/// Enumerate all segments that end at the point.
+	pub fn end_connected(&self, point: PointId) -> impl Iterator<Item = SegmentId> + '_ {
+		let index = [self.point_domain.resolve_id(point)].into_iter().flatten();
+		index.flat_map(|index| self.segment_domain.end_connected(index))
+	}
+
+	/// Enumerate all segments that start or end at a point, converting them to [`HandleId`s]. Note that the handles may not exist e.g. for a linear segment.
+	pub fn all_connected(&self, point: PointId) -> impl Iterator<Item = HandleId> + '_ {
+		let index = [self.point_domain.resolve_id(point)].into_iter().flatten();
+		index.flat_map(|index| self.segment_domain.all_connected(index))
+	}
+
+	/// Enumerate the number of segments connected to a point. If a segment starts and ends at a point then it is counted twice.
+	pub fn connected_count(&self, point: PointId) -> usize {
+		self.point_domain.resolve_id(point).map_or(0, |point| self.segment_domain.connected_count(point))
+	}
+
 	/// Points connected to a single segment
 	pub fn single_connected_points(&self) -> impl Iterator<Item = PointId> + '_ {
-		self.point_domain.ids().iter().copied().filter(|&point| self.segment_domain.connected_count(point) == 1)
+		self.point_domain
+			.ids()
+			.iter()
+			.enumerate()
+			.filter(|(index, _)| self.segment_domain.connected_count(*index) == 1)
+			.map(|(_, &id)| id)
 	}
 
 	/// Computes if all the connected handles are colinear for an anchor, or if that handle is colinear for a handle.
@@ -179,7 +254,7 @@ impl VectorData {
 		let has_handle = |target| self.colinear_manipulators.iter().flatten().any(|&handle| handle == target);
 		match point {
 			ManipulatorPointId::Anchor(id) => {
-				self.segment_domain.start_connected(id).all(|segment| has_handle(HandleId::primary(segment))) && self.segment_domain.end_connected(id).all(|segment| has_handle(HandleId::end(segment)))
+				self.start_connected(id).all(|segment| has_handle(HandleId::primary(segment))) && self.end_connected(id).all(|segment| has_handle(HandleId::end(segment)))
 			}
 			ManipulatorPointId::PrimaryHandle(segment) => has_handle(HandleId::primary(segment)),
 			ManipulatorPointId::EndHandle(segment) => has_handle(HandleId::end(segment)),
@@ -218,6 +293,7 @@ pub enum ManipulatorPointId {
 impl ManipulatorPointId {
 	/// Attempt to retrieve the manipulator position in layer space (no transformation applied).
 	#[must_use]
+	#[track_caller]
 	pub fn get_position(&self, vector_data: &VectorData) -> Option<DVec2> {
 		match self {
 			ManipulatorPointId::Anchor(id) => vector_data.point_domain.position_from_id(*id),
@@ -230,7 +306,7 @@ impl ManipulatorPointId {
 	#[must_use]
 	pub fn get_handle_pair(self, vector_data: &VectorData) -> Option<[HandleId; 2]> {
 		match self {
-			ManipulatorPointId::Anchor(point) => vector_data.segment_domain.all_connected(point).take(2).collect::<Vec<_>>().try_into().ok(),
+			ManipulatorPointId::Anchor(point) => vector_data.all_connected(point).take(2).collect::<Vec<_>>().try_into().ok(),
 			ManipulatorPointId::PrimaryHandle(segment) => {
 				let point = vector_data.segment_domain.segment_start_from_id(segment)?;
 				let current = HandleId::primary(segment);
@@ -251,8 +327,8 @@ impl ManipulatorPointId {
 	pub fn get_anchor(self, vector_data: &VectorData) -> Option<PointId> {
 		match self {
 			ManipulatorPointId::Anchor(point) => Some(point),
-			ManipulatorPointId::PrimaryHandle(segment) => vector_data.segment_domain.segment_start_from_id(segment),
-			ManipulatorPointId::EndHandle(segment) => vector_data.segment_domain.segment_end_from_id(segment),
+			ManipulatorPointId::PrimaryHandle(segment) => vector_data.segment_start_from_id(segment),
+			ManipulatorPointId::EndHandle(segment) => vector_data.segment_end_from_id(segment),
 		}
 	}
 

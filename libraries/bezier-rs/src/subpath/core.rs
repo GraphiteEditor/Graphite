@@ -10,7 +10,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	/// A `Subpath` with less than 2 [ManipulatorGroup]s may not be closed.
 	#[track_caller]
 	pub fn new(manipulator_groups: Vec<ManipulatorGroup<PointId>>, closed: bool) -> Self {
-		assert!(!closed || manipulator_groups.len() > 1, "A closed Subpath must contain more than 1 ManipulatorGroup.");
+		assert!(!closed || !manipulator_groups.is_empty(), "A closed Subpath must contain more than 0 ManipulatorGroups.");
 		Self { manipulator_groups, closed }
 	}
 
