@@ -163,8 +163,12 @@ impl Gradient {
 			stop.push_str(" />")
 		}
 
-		let mod_gradient = transformed_bound_transform.inverse();
-		let mod_points = mod_gradient.inverse() * transformed_bound_transform.inverse() * updated_transform;
+		let mod_gradient = if transformed_bound_transform.matrix2.determinant() != 0. {
+			transformed_bound_transform.inverse()
+		} else {
+			DAffine2::IDENTITY // Ignore if the transform cannot be inverted (the bounds are zero). See issue #1944.
+		};
+		let mod_points = updated_transform;
 
 		let start = mod_points.transform_point2(self.start);
 		let end = mod_points.transform_point2(self.end);
