@@ -55,14 +55,9 @@
 
 	function handleRename(tabIndex: number, newName: string) {
 		$tabsRenameState[tabIndex] = false;
-		if (!renameAction) {
-			throw new Error("handleRename was called, but no renameAction was provided.");
-		}
 
 		const nameToSend = newName.trim();
-		if (!nameToSend) return;
-
-		renameAction(nameToSend, tabIndex);
+		if (nameToSend) renameAction?.(nameToSend, tabIndex);
 	}
 
 	export async function scrollTabIntoView(newIndex: number) {
@@ -75,8 +70,6 @@
 	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
 		<LayoutRow class="tab-group" scrollableX={true}>
 			{#each tabLabels as tabLabel, tabIndex}
-				{@const isRenaming = $tabsRenameState[tabIndex] ?? false}
-
 				<LayoutRow
 					class="tab"
 					classes={{ active: tabIndex === tabActiveIndex }}
@@ -104,23 +97,20 @@
 					}}
 					bind:this={tabElements[tabIndex]}
 				>
-					{#if isRenaming}
+					{#if $tabsRenameState[tabIndex] || false}
 						<input
 							type="text"
 							autofocus
 							on:blur={({ currentTarget: { value } }) => handleRename(tabIndex, value)}
 							on:keydown={(e) => {
-								if (e.key !== "Escape" && e.key !== "Enter") return;
-
-								if (e.key === "Escape") {
-									e.currentTarget.value = "";
+								if (e.key === "Escape" || e.key === "Enter") {
+									if (e.key === "Escape") e.currentTarget.value = "";
+									e.currentTarget.blur();
 								}
-
-								e.currentTarget.blur();
 							}}
 						/>
 					{:else}
-						<button class="" on:dblclick={renameAction && (() => ($tabsRenameState[tabIndex] = true))}>
+						<button on:dblclick={renameAction && (() => ($tabsRenameState[tabIndex] = true))}>
 							<TextLabel>{tabLabel.name}</TextLabel>
 						</button>
 					{/if}
