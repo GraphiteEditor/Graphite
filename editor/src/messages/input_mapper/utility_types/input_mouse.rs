@@ -148,4 +148,4 @@ pub enum MouseButton {
 	Forward,
 }
 
-pub const NUMBER_OF_MOUSE_BUTTONS: usize = 3;
+pub const NUMBER_OF_MOUSE_BUTTONS: usize = 5; // Should be the number of variants in MouseButton

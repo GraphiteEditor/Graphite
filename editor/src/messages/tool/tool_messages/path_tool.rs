@@ -619,6 +619,7 @@ impl Fsm for PathToolFsmState {
 						}
 					}
 				}
+
 				responses.add(DocumentMessage::EndTransaction);
 				responses.add(PathToolMessage::SelectedPointUpdated);
 				tool_data.snap_manager.cleanup(responses);

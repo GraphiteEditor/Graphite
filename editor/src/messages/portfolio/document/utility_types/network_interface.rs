@@ -1503,11 +1503,13 @@ impl NodeNetworkInterface {
 	pub fn start_transaction(&mut self) {
 		self.transaction_status = TransactionStatus::Started;
 	}
+
 	pub fn transaction_modified(&mut self) {
 		if self.transaction_status == TransactionStatus::Started {
 			self.transaction_status = TransactionStatus::Modified;
 		}
 	}
+
 	pub fn finish_transaction(&mut self) {
 		self.transaction_status = TransactionStatus::Finished;
 	}

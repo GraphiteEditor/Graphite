@@ -111,7 +111,9 @@ enum GradientToolFsmState {
 fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> DAffine2 {
 	let bounds = document.metadata().nonzero_bounding_box(layer);
 	let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
+
 	let multiplied = document.metadata().transform_to_viewport(layer);
+
 	multiplied * bound_transform
 }
 

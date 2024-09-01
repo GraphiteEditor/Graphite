@@ -256,7 +256,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				graph_operation_message_handler.process_message(message, responses, data);
 			}
 			DocumentMessage::AlignSelectedLayers { axis, aggregate } => {
-				let axis: DVec2 = match axis {
+				let axis = match axis {
 					AlignAxis::X => DVec2::X,
 					AlignAxis::Y => DVec2::Y,
 				};

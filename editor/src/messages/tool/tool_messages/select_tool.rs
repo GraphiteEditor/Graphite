@@ -543,6 +543,7 @@ impl Fsm for SelectToolFsmState {
 					.collect();
 				let intersection_list = document.click_list(input).collect::<Vec<_>>();
 				let intersection = document.find_deepest(&intersection_list);
+
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
 				// If the user is dragging the rotate trigger, go into RotatingBounds mode.
 				// If the user clicks on a layer that is in their current selection, go into the dragging mode.
@@ -631,6 +632,7 @@ impl Fsm for SelectToolFsmState {
 					} else {
 						tool_data.select_single_layer = intersection.and_then(|intersection| intersection.ancestors(document.metadata()).find(|ancestor| selected.contains(ancestor)));
 					}
+
 					tool_data.layers_dragging = selected;
 
 					tool_data.get_snap_candidates(document, input);

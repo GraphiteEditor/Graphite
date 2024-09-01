@@ -229,6 +229,7 @@ impl Fsm for SplineToolFsmState {
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::DragStop) => {
 				responses.add(DocumentMessage::EndTransaction);
+
 				let Some(layer) = tool_data.layer else {
 					return SplineToolFsmState::Ready;
 				};

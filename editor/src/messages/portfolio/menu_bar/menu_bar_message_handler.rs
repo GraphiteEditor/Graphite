@@ -189,6 +189,8 @@ impl LayoutHolder for MenuBarMessageHandler {
 							disabled: no_active_document,
 							..MenuBarEntry::default()
 						},
+					],
+					vec![
 						MenuBarEntry {
 							label: "Previous Selection".into(),
 							shortcut: action_keys!(DocumentMessageDiscriminant::SelectionStepBack),
