@@ -1129,6 +1129,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					node_ids: vec![layer.to_node()],
 					delete_children: true,
 				});
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SelectedNodesUpdated);
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::PTZUpdate => {
 				if !self.graph_view_overlay_open {

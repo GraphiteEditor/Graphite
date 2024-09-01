@@ -206,6 +206,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					});
 				}
 				// TODO: Replace deleted artboards with merge nodes
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SelectedNodesUpdated);
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			GraphOperationMessage::NewSvg {
 				id,

@@ -202,8 +202,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::DeleteNodes { node_ids, delete_children } => {
 				network_interface.delete_nodes(node_ids, delete_children, selection_network_path);
-				responses.add(NodeGraphMessage::SelectedNodesUpdated);
-				responses.add(NodeGraphMessage::SendGraph);
 			}
 			// Deletes selected_nodes. If `reconnect` is true, then all children nodes (secondary input) of the selected nodes are deleted and the siblings (primary input/output) are reconnected.
 			// If `reconnect` is false, then only the selected nodes are deleted and not reconnected.
@@ -216,7 +214,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::DeleteNodes {
 					node_ids: selected_nodes.selected_nodes().cloned().collect::<Vec<_>>(),
 					delete_children,
-				})
+				});
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SelectedNodesUpdated);
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::DisconnectInput { input_connector } => {
 				network_interface.disconnect_input(&input_connector, selection_network_path);

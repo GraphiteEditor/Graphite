@@ -622,11 +622,13 @@ impl EditorHandle {
 		self.dispatch(message);
 
 		let id = NodeId(id);
-		let message = NodeGraphMessage::DeleteNodes {
+		self.dispatch(NodeGraphMessage::DeleteNodes {
 			node_ids: vec![id],
 			delete_children: true,
-		};
-		self.dispatch(message);
+		});
+		self.dispatch(NodeGraphMessage::RunDocumentGraph);
+		self.dispatch(NodeGraphMessage::SelectedNodesUpdated);
+		self.dispatch(NodeGraphMessage::SendGraph);
 	}
 
 	/// Toggle lock state of a layer from the layer list
