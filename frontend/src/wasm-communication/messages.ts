@@ -1410,6 +1410,11 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 	updates.diff.forEach((update) => {
 		// Find the object where the diff applies to
 		const diffObject = update.widgetPath.reduce((targetLayout, index) => {
+			if (targetLayout === undefined) {
+				// eslint-disable-next-line no-console
+				console.warn("Failed to patch widget", "\njs layout", layout.layout, "\npath", update.widgetPath, "\ndiff", update.newValue);
+				throw `Failed to patch widget. The target was undefined.`;
+			}
 			if ("columnWidgets" in targetLayout) return targetLayout.columnWidgets[index];
 			if ("rowWidgets" in targetLayout) return targetLayout.rowWidgets[index];
 			if ("layout" in targetLayout) return targetLayout.layout[index];

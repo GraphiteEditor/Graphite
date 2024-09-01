@@ -1343,7 +1343,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				self.node_graph_errors = node_graph_errors;
 			}
 			NodeGraphMessage::UpdateActionButtons => {
-				if selection_network_path == breadcrumb_network_path {
+				if selection_network_path == breadcrumb_network_path && graph_view_overlay_open {
 					self.update_selection_action_buttons(network_interface, breadcrumb_network_path, responses);
 				}
 			}

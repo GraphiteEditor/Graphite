@@ -7,6 +7,7 @@ use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::prelude::*;
 
+use derivative::*;
 use std::sync::Arc;
 
 #[repr(transparent)]
@@ -435,9 +436,12 @@ impl LayoutGroup {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(Debug, Clone, Derivative, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derivative(PartialEq)]
 pub struct WidgetHolder {
 	#[serde(rename = "widgetId")]
+	// Required to prevent spurious updates from the popover (the id changes even if the content doesn't).
+	#[derivative(PartialEq = "ignore")]
 	pub widget_id: WidgetId,
 	pub widget: Widget,
 }
