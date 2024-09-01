@@ -9,6 +9,7 @@ use graphene_core::raster::Image;
 use graphene_core::raster::ImageFrame;
 use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
 use graphene_core::transform::Footprint;
+use graphene_core::vector;
 use graphene_core::Node;
 use graphene_core::{Color, WasmNotSend};
 
@@ -102,9 +103,14 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 		});
 	}
 
-	data.render_svg(&mut render, &render_params);
 	let mut footprints = HashMap::new();
+	// let mut click_targets = HashMap::new();
+	// let mut vector_modify = HashMap::new();
+	data.render_svg(&mut render, &render_params);
 	data.add_footprints(&mut footprints, footprint, None);
+	//data.add_click_targets(&mut click_targets, None);
+	//data.add_vector_modify(&mut vector_modify, None);
+
 	render.wrap_with_transform(footprint.transform, Some(footprint.resolution.as_dvec2()));
 
 	RenderOutput::Svg((render.svg.to_svg_string(), footprints))

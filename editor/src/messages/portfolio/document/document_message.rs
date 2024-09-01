@@ -159,6 +159,12 @@ pub enum DocumentMessage {
 	UpdateUpstreamTransforms {
 		upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
 	},
+	// UpdateClickTargets {
+	// 	click_targets: HashMap<NodeId, Vec<ClickTarget>>,
+	// },
+	// UpdateVectorModify {
+	// 	vector_modify: HashMap<NodeId, VectorData>,
+	// },
 	Undo,
 	UngroupSelectedLayers,
 	UngroupLayer {

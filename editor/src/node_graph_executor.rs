@@ -24,9 +24,11 @@ use graphene_std::renderer::format_transform_matrix;
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
 
+use core::hash;
 use glam::{DAffine2, DVec2, UVec2};
 use once_cell::sync::Lazy;
 use spin::Mutex;
+use std::hash::Hash;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
 
@@ -52,8 +54,6 @@ pub struct NodeRuntime {
 	click_targets: HashMap<NodeId, Vec<ClickTarget>>,
 	/// Vector data in Path nodes.
 	vector_modify: HashMap<NodeId, VectorData>,
-	/// The current upstream transforms for nodes.
-	upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
 }
 
 /// Messages passed from the editor thread to the node runtime thread.
@@ -85,7 +85,6 @@ pub struct ExecutionResponse {
 	responses: VecDeque<FrontendMessage>,
 	new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	new_vector_modify: HashMap<NodeId, VectorData>,
-	new_upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
 	transform: DAffine2,
 }
 
@@ -146,7 +145,6 @@ impl NodeRuntime {
 			thumbnail_renders: Default::default(),
 			click_targets: HashMap::new(),
 			vector_modify: HashMap::new(),
-			upstream_transforms: HashMap::new(),
 		}
 	}
 
@@ -228,7 +226,6 @@ impl NodeRuntime {
 						responses,
 						new_click_targets: self.click_targets.clone().into_iter().map(|(id, targets)| (LayerNodeIdentifier::new_unchecked(id), targets)).collect(),
 						new_vector_modify: self.vector_modify.clone(),
-						new_upstream_transforms: self.upstream_transforms.clone(),
 						transform,
 					});
 				}
@@ -310,19 +307,19 @@ impl NodeRuntime {
 
 			// If this is `VectorData`, `ImageFrame`, or `GraphicElement` data:
 			// Update the stored upstream transforms for this layer/node.
-			if let Some(transform) = {
-				fn try_downcast<T: Transform + 'static>(value: &dyn std::any::Any) -> Option<(Footprint, DAffine2)> {
-					let io_data = value.downcast_ref::<IORecord<Footprint, T>>()?;
-					let transform = io_data.output.transform();
-					Some((io_data.input, transform))
-				}
-				None.or_else(|| try_downcast::<VectorData>(introspected_data.as_ref()))
-					.or_else(|| try_downcast::<ImageFrame<Color>>(introspected_data.as_ref()))
-					.or_else(|| try_downcast::<GraphicElement>(introspected_data.as_ref()))
-					.or_else(|| try_downcast::<graphene_core::Artboard>(introspected_data.as_ref()))
-			} {
-				self.upstream_transforms.insert(parent_network_node_id, transform);
-			}
+			// if let Some(transform) = {
+			// 	fn try_downcast<T: Transform + 'static>(value: &dyn std::any::Any) -> Option<(Footprint, DAffine2)> {
+			// 		let io_data = value.downcast_ref::<IORecord<Footprint, T>>()?;
+			// 		let transform = io_data.output.transform();
+			// 		Some((io_data.input, transform))
+			// 	}
+			// 	None.or_else(|| try_downcast::<VectorData>(introspected_data.as_ref()))
+			// 		.or_else(|| try_downcast::<ImageFrame<Color>>(introspected_data.as_ref()))
+			// 		.or_else(|| try_downcast::<GraphicElement>(introspected_data.as_ref()))
+			// 		.or_else(|| try_downcast::<graphene_core::Artboard>(introspected_data.as_ref()))
+			// } {
+			// 	self.upstream_transforms.insert(parent_network_node_id, transform);
+			// }
 		}
 	}
 
@@ -537,7 +534,7 @@ impl NodeGraphExecutor {
 
 	fn export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		let TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg((svg, _))) = node_graph_output else {
-			return Err("Incorrect render type for exportign (expected RenderOutput::Svg)".to_string());
+			return Err("Incorrect render type for exporting (expected RenderOutput::Svg)".to_string());
 		};
 
 		let ExportConfig {
@@ -575,7 +572,6 @@ impl NodeGraphExecutor {
 						new_click_targets,
 						responses: existing_responses,
 						new_vector_modify,
-						new_upstream_transforms,
 						transform,
 					} = execution_response;
 
@@ -585,15 +581,17 @@ impl NodeGraphExecutor {
 						Ok(output) => output,
 						Err(e) => {
 							// Clear the click targets while the graph is in an un-renderable state
-							document.network_interface.document_metadata_mut().update_from_monitor(HashMap::new(), HashMap::new());
-
+							// responses.add(DocumentMessage::UpdateUpstreamTransforms { upstream_transforms: HashMap::new() });
+							// responses.add(DocumentMessage::UpdateClickTargets { click_targets: HashMap::new() });
+							document.network_interface.update_click_targets(HashMap::new());
+							document.network_interface.update_vector_modify(HashMap::new());
 							return Err(format!("Node graph evaluation failed:\n{e}"));
 						}
 					};
 
 					responses.extend(existing_responses.into_iter().map(Into::into));
-					//document.network_interface.document_metadata_mut().update_transforms(new_upstream_transforms);
-					document.network_interface.document_metadata_mut().update_from_monitor(new_click_targets, new_vector_modify);
+					document.network_interface.update_click_targets(new_click_targets);
+					document.network_interface.update_vector_modify(new_vector_modify);
 
 					let execution_context = self.futures.remove(&execution_id).ok_or_else(|| "Invalid generation ID".to_string())?;
 					if let Some(export_config) = execution_context.export_config {
@@ -608,7 +606,13 @@ impl NodeGraphExecutor {
 					let type_delta = match result {
 						Err(e) => {
 							// Clear the click targets while the graph is in an un-renderable state
-							document.network_interface.document_metadata_mut().update_from_monitor(HashMap::new(), HashMap::new());
+							
+							document.network_interface.update_click_targets(HashMap::new());
+							document.network_interface.update_vector_modify(HashMap::new());
+
+							// responses.add(DocumentMessage::UpdateUpstreamTransforms { upstream_transforms: HashMap::new() });
+							// .add(DocumentMessage::UpdateClickTargets { click_targets: HashMap::new() });
+
 							log::trace!("{e}");
 
 							responses.add(NodeGraphMessage::UpdateTypes {
@@ -664,6 +668,8 @@ impl NodeGraphExecutor {
 				responses.add(DocumentMessage::RenderScrollbars);
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::UpdateUpstreamTransforms { upstream_transforms: footprints });
+				// responses.add(DocumentMessage::UpdateClickTargets { click_targets });
+				// responses.add(DocumentMessage::UpdateVectorModify { vector_modify });
 				responses.add(OverlaysMessage::Draw);
 			}
 

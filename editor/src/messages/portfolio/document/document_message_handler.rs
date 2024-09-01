@@ -1056,8 +1056,26 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			DocumentMessage::UpdateUpstreamTransforms { upstream_transforms } => {
-				self.network_interface.document_metadata_mut().update_transforms(upstream_transforms);
+				self.network_interface.update_transforms(upstream_transforms);
 			}
+			// DocumentMessage::UpdateClickTargets { click_targets } => {
+			// 	// TODO: Allow non layer nodes to have click targets
+			// 	let layer_click_targets = click_targets
+			// 		.into_iter()
+			// 		.filter_map(|(node_id, click_targets)| {
+			// 			if self.network_interface.is_layer(&node_id, &[]) {
+			// 				let layer = LayerNodeIdentifier::new(node_id, &self.network_interface, &[]);
+			// 				Some((layer, click_targets))
+			// 			} else {
+			// 				None
+			// 			}
+			// 		})
+			// 		.collect();
+			// 	self.network_interface.document_metadata_mut().update_click_targets(layer_click_targets);
+			// }
+			// DocumentMessage::UpdateVectorModify { vector_modify } => {
+			// 	self.network_interface.document_metadata_mut().update_vector_modify(vector_modify);
+			// }
 			DocumentMessage::Undo => {
 				if self.network_interface.transaction_status() != TransactionStatus::Finished {
 					return;

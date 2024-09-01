@@ -43,7 +43,7 @@ impl AlphaBlending {
 #[derive(Clone, Debug, PartialEq, DynAny, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GraphicGroup {
-	// TODO:  Separate into multiple Vecs in a spread sheet format.
+	// TODO: Convert to spread sheet format
 	elements: Vec<(GraphicElement, Option<NodeId>)>,
 	// TODO: Convert to Vec<DAffine2>
 	pub transform: DAffine2,

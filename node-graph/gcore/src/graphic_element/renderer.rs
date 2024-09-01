@@ -22,7 +22,7 @@ use std::fmt::Write;
 use vello::*;
 
 /// Represents a clickable target for the layer
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClickTarget {
 	subpath: bezier_rs::Subpath<PointId>,
 	stroke_width: f64,
@@ -272,8 +272,13 @@ pub fn to_transform(transform: DAffine2) -> usvg::Transform {
 pub trait GraphicElementRendered {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]>;
-	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>);
-	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, footprint: Footprint, element_id: Option<NodeId>);
+	// TODO: Implement a way to traverse over graphic elements upstream from vector data. For example, when a boolean operation converts a group to a vector data.
+	// fn add_click_targets(&self, click_targets: &mut HashMap<NodeId, Vec<ClickTarget>>, element_id: Option<NodeId>) {
+	// TODO: Store all click targets in a vec which contains the AABB, click target, and path
+	// fn add_click_targets(&self, click_targets: &mut Vec<([DVec2; 2], ClickTarget, Vec<NodeId>)>, current_path: Option<NodeId>) {}
+	// fn add_vector_modify(&self, vector_modify: &mut HashMap<NodeId, VectorData>, element_id: Option<NodeId>) {}
+	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {}
+	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, footprint: Footprint, element_id: Option<NodeId>) {}
 	#[cfg(feature = "vello")]
 	fn to_vello_scene(&self, transform: DAffine2, context: &mut RenderContext) -> Scene {
 		let mut scene = vello::Scene::new();
@@ -317,6 +322,22 @@ impl GraphicElementRendered for GraphicGroup {
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		self.iter().filter_map(|(element, _)| element.bounding_box(transform * self.transform)).reduce(Quad::combine_bounds)
 	}
+
+	// fn add_click_targets(&self, click_targets: &mut HashMap<NodeId, Vec<ClickTarget>>, element_id: Option<NodeId>) {
+	// 	for (element, element_id) in self.elements.iter() {
+	// 		if let Some(element_id) = element_id {
+	// 			let mut new_click_targets = HashMap::new();
+	// 			element.add_click_targets(&mut new_click_targets, Some(*element_id));
+	// 			click_targets.extend(new_click_targets);
+	// 		}
+	// 	}
+	// }
+
+	// fn add_vector_modify(&self, vector_modify: &mut HashMap<NodeId, VectorData>, element_id: Option<NodeId>) {
+	// 	for (element, element_id) in self.elements.iter() {
+	// 		element.add_vector_modify(vector_modify, *element_id);
+	// 	}
+	// }
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		for (element, _) in self.elements.iter() {
@@ -408,6 +429,26 @@ impl GraphicElementRendered for VectorData {
 		self.bounding_box_with_transform(transform * self.transform).map(|[a, b]| [a - offset, b + offset])
 	}
 
+	// fn add_click_targets(&self, click_targets: &mut HashMap<NodeId, Vec<ClickTarget>>, element_id: Option<NodeId>) {
+	// 	if let Some(element_id) = element_id {
+	// 		let stroke_width = self.style.stroke().as_ref().map_or(0., Stroke::weight);
+	// 		let filled = self.style.fill() != &Fill::None;
+	// 		let fill = |mut subpath: bezier_rs::Subpath<_>| {
+	// 			if filled {
+	// 				subpath.set_closed(true);
+	// 			}
+	// 			subpath
+	// 		};
+	// 		click_targets.insert(element_id, self.stroke_bezier_paths().map(fill).map(|subpath| ClickTarget::new(subpath, stroke_width)).collect());
+	// 	}
+	// }
+
+	// fn add_vector_modify(&self, vector_modify: &mut HashMap<NodeId, VectorData>, element_id: Option<NodeId>) {
+	// 	if let Some(element_id) = element_id {
+	// 		vector_modify.insert(element_id, self.clone());
+	// 	}
+	// }
+
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let stroke_width = self.style.stroke().as_ref().map_or(0., Stroke::weight);
 		let filled = self.style.fill() != &Fill::None;
@@ -419,8 +460,6 @@ impl GraphicElementRendered for VectorData {
 		};
 		click_targets.extend(self.stroke_bezier_paths().map(fill).map(|subpath| ClickTarget::new(subpath, stroke_width)));
 	}
-
-	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, footprint: Footprint, _: Option<NodeId>) {}
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext) {
@@ -595,6 +634,30 @@ impl GraphicElementRendered for Artboard {
 		}
 	}
 
+	// fn add_click_targets(&self, click_targets: &mut HashMap<NodeId, Vec<ClickTarget>>, element_id: Option<NodeId>) {
+	// 	if let Some(element_id) = element_id {
+	// 		let subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
+	// 		click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
+	// 	}
+	// 	self.graphic_group.add_click_targets(click_targets, None);
+	// }
+
+	// fn add_vector_modify(&self, vector_modify: &mut HashMap<NodeId, VectorData>, element_id: Option<NodeId>) {
+	// 	self.graphic_group.add_vector_modify(vector_modify, None);
+	// }
+
+	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+		let subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
+		click_targets.push(ClickTarget::new(subpath, 0.));
+	}
+
+	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, mut footprint: Footprint, element_id: Option<NodeId>) {
+		if let Some(element_id) = element_id {
+			footprints.insert(element_id, (footprint, DAffine2::from_translation(self.location.as_dvec2())));
+		}
+		self.graphic_group.add_footprints(footprints, footprint, None);
+	}
+
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
 		use vello::peniko;
@@ -617,19 +680,6 @@ impl GraphicElementRendered for Artboard {
 		}
 	}
 
-	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		let subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
-		click_targets.push(ClickTarget::new(subpath, 0.));
-	}
-
-	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, mut footprint: Footprint, node_id: Option<NodeId>) {
-		self.graphic_group.add_footprints(footprints, footprint, None);
-		// footprint.transform *= self.transform();
-		if let Some(node_id) = node_id {
-			footprints.insert(node_id, (footprint, DAffine2::from_translation(self.location.as_dvec2())));
-		}
-	}
-
 	fn contains_artboard(&self) -> bool {
 		true
 	}
@@ -641,10 +691,21 @@ impl GraphicElementRendered for crate::ArtboardGroup {
 			artboard.render_svg(render, render_params);
 		}
 	}
-
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		self.artboards.iter().filter_map(|(element, _)| element.bounding_box(transform)).reduce(Quad::combine_bounds)
 	}
+
+	// fn add_click_targets(&self, click_targets: &mut HashMap<NodeId, Vec<ClickTarget>>, element_id: Option<NodeId>) {
+	// 	for (artboard, element_id) in &self.artboards {
+	// 		artboard.add_click_targets(click_targets, *element_id);
+	// 	}
+	// }
+
+	// fn add_vector_modify(&self, vector_modify: &mut HashMap<NodeId, VectorData>, element_id: Option<NodeId>) {
+	// 	for (artboard, _) in &self.artboards {
+	// 		artboard.add_vector_modify(vector_modify, None);
+	// 	}
+	// }
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		for (artboard, _) in &self.artboards {
@@ -652,16 +713,16 @@ impl GraphicElementRendered for crate::ArtboardGroup {
 		}
 	}
 
+	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, footprint: Footprint, element_id: Option<NodeId>) {
+		for (artboard, element_id) in &self.artboards {
+			artboard.add_footprints(footprints, footprint, *element_id);
+		}
+	}
+
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
 		for (artboard, _) in &self.artboards {
 			artboard.render_to_vello(scene, transform, context)
-		}
-	}
-
-	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, footprint: Footprint, _: Option<NodeId>) {
-		for (artboard, node_id) in &self.artboards {
-			artboard.add_footprints(footprints, footprint, *node_id)
 		}
 	}
 
@@ -710,6 +771,13 @@ impl GraphicElementRendered for ImageFrame<Color> {
 		let transform = self.transform * transform;
 		(transform.matrix2 != glam::DMat2::ZERO).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
 	}
+
+	// fn add_click_targets(&self, click_targets: &mut HashMap<NodeId, Vec<ClickTarget>>, element_id: Option<NodeId>) {
+	// 	if let Some(element_id) = element_id {
+	// 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+	// 		click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
+	// 	}
+	// }
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
@@ -787,13 +855,22 @@ impl GraphicElementRendered for Raster {
 		(transform.matrix2 != glam::DMat2::ZERO).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
 	}
 
+	// fn add_click_targets(&self, click_targets: &mut HashMap<NodeId, Vec<ClickTarget>>, element_id: Option<NodeId>) {
+	// 	if let Some(element_id) = element_id {
+	// 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+	// 		click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
+	// 	}
+	// }
+
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 		click_targets.push(ClickTarget::new(subpath, 0.));
 	}
 
 	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, footprint: Footprint, element_id: Option<NodeId>) {
-		//footprints.insert(element_id, (transform, self.transform));
+		if let Some(element_id) = element_id {
+			footprints.insert(element_id, (footprint, self.transform()));
+		}
 	}
 
 	#[cfg(feature = "vello")]
@@ -852,6 +929,20 @@ impl GraphicElementRendered for GraphicElement {
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.bounding_box(transform),
 		}
 	}
+
+	// fn add_click_targets(&self, click_targets: &mut HashMap<NodeId, Vec<ClickTarget>>, element_id: Option<NodeId>) {
+	// 	match self {
+	// 		GraphicElement::VectorData(vector_data) => vector_data.add_click_targets(click_targets, element_id),
+	// 		GraphicElement::Raster(raster) => raster.add_click_targets(click_targets, element_id),
+	// 		GraphicElement::GraphicGroup(graphic_group) => graphic_group.add_click_targets(click_targets, element_id),
+	// 	}
+	// }
+
+	// fn add_vector_modify(&self, vector_modify: &mut HashMap<NodeId, VectorData>, element_id: Option<NodeId>) {
+	// 	if let GraphicElement::VectorData(vector_data) = self {
+	// 		vector_data.add_vector_modify(vector_modify, element_id);
+	// 	}
+	// }
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		match self {
@@ -912,9 +1003,6 @@ impl<T: Primitive> GraphicElementRendered for T {
 	fn bounding_box(&self, _transform: DAffine2) -> Option<[DVec2; 2]> {
 		None
 	}
-
-	fn add_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
-	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, footprint: Footprint, element_id: Option<NodeId>) {}
 }
 
 impl GraphicElementRendered for Option<Color> {
@@ -940,10 +1028,6 @@ impl GraphicElementRendered for Option<Color> {
 	fn bounding_box(&self, _transform: DAffine2) -> Option<[DVec2; 2]> {
 		None
 	}
-
-	fn add_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
-
-	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, footprint: Footprint, element_id: Option<NodeId>) {}
 }
 
 impl GraphicElementRendered for Vec<Color> {
@@ -965,10 +1049,6 @@ impl GraphicElementRendered for Vec<Color> {
 	fn bounding_box(&self, _transform: DAffine2) -> Option<[DVec2; 2]> {
 		None
 	}
-
-	fn add_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
-
-	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, footprint: Footprint, element_id: Option<NodeId>) {}
 }
 
 /// A segment of an svg string to allow for embedding blob urls

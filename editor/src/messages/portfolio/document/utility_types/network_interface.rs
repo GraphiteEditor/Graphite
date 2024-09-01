@@ -11,6 +11,7 @@ use bezier_rs::Subpath;
 use graph_craft::document::{value::TaggedValue, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graph_craft::{concrete, Type};
 use graphene_std::renderer::{ClickTarget, Quad};
+use graphene_std::transform::Footprint;
 use graphene_std::vector::{PointId, VectorData, VectorModificationType};
 use interpreted_executor::{dynamic_executor::ResolvedDocumentNodeTypes, node_registry::NODE_REGISTRY};
 
@@ -2549,8 +2550,7 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn set_document_to_viewport_transform(&mut self, transform: DAffine2) {
-		let document_metadata = self.document_metadata_mut();
-		document_metadata.document_to_viewport = transform;
+		self.document_metadata.document_to_viewport = transform;
 	}
 
 	pub fn is_eligible_to_be_layer(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
@@ -2881,7 +2881,7 @@ impl NodeNetworkInterface {
 			}
 
 			for (parent, child) in children {
-				parent.push_child(self.document_metadata_mut(), child);
+				parent.push_child(&mut self.document_metadata, child);
 			}
 
 			while let Some((primary_root_node_id, parent_layer_node)) = awaiting_primary_flow.pop() {
@@ -2901,7 +2901,7 @@ impl NodeNetworkInterface {
 					}
 				}
 				for child in children {
-					parent_layer_node.push_child(self.document_metadata_mut(), child);
+					parent_layer_node.push_child(&mut self.document_metadata, child);
 				}
 			}
 		}
@@ -2913,8 +2913,19 @@ impl NodeNetworkInterface {
 		self.document_metadata.click_targets.retain(|layer, _| self.document_metadata.structure.contains_key(layer));
 	}
 
-	pub fn document_metadata_mut(&mut self) -> &mut DocumentMetadata {
-		&mut self.document_metadata
+	/// Update the cached transforms of the layers
+	pub fn update_transforms(&mut self, new_upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>) {
+		self.document_metadata.upstream_transforms = new_upstream_transforms;
+	}
+
+	/// Update the cached click targets of the layers
+	pub fn update_click_targets(&mut self, new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>) {
+		self.document_metadata.click_targets = new_click_targets;
+	}
+
+	/// Update the vector modify of the layers
+	pub fn update_vector_modify(&mut self, new_vector_modify: HashMap<NodeId, VectorData>) {
+		self.document_metadata.vector_modify = new_vector_modify;
 	}
 }
 

@@ -255,7 +255,14 @@ impl<T: AsRef<U> + Sync + Send, U: Sync + Send> UpcastAsRefNode<T, U> {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum RenderOutput {
 	CanvasFrame(graphene_core::SurfaceFrame),
-	Svg((String, HashMap<NodeId, (graphene_core::transform::Footprint, DAffine2)>)),
+	Svg(
+		(
+			String,
+			HashMap<NodeId, (graphene_core::transform::Footprint, DAffine2)>,
+			// HashMap<NodeId, Vec<ClickTarget>>,
+			// HashMap<NodeId, VectorData>,
+		),
+	),
 	Image(Vec<u8>),
 }
 
