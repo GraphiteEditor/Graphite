@@ -1,0 +1,37 @@
+// Copyright 2024 Adam Platkevič <rflashster@gmail.com>
+//
+// SPDX-License-Identifier: MIT
+
+// TODO(@TrueDoctor) check math
+
+use crate::vector::Vector;
+pub use std::f64::consts::{PI, TAU};
+
+pub fn lin_map(value: f64, in_min: f64, in_max: f64, out_min: f64, out_max: f64) -> f64 {
+    ((value - in_min) / (in_max - in_min)) * (out_max - out_min) + out_min
+}
+
+pub fn lerp(a: f64, b: f64, t: f64) -> f64 {
+    a + (b - a) * t
+}
+
+pub fn rad2deg(rad: f64) -> f64 {
+    (rad / PI) * 180.0
+}
+
+pub fn deg2rad(deg: f64) -> f64 {
+    (deg / 180.0) * PI
+}
+
+pub fn vector_angle(u: Vector, v: Vector) -> f64 {
+    const EPS: f64 = 1e-12;
+
+    let sign = u.x * v.y - u.y * v.x;
+
+    if sign.abs() < EPS && (u + v).length_squared() < EPS * EPS {
+        // TODO: u can be scaled
+        return PI;
+    }
+
+    sign.signum() * (u.dot(v) / (u.length() * v.length())).acos()
+}

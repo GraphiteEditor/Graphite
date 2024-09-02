@@ -16,6 +16,7 @@ members = [
 	"node-graph/gpu-executor",
 	"node-graph/gpu-compiler/gpu-compiler-bin-wrapper",
 	"libraries/dyn-any",
+	"libraries/path-bool",
 	"libraries/bezier-rs",
 	"libraries/raw-rs",
 	"libraries/raw-rs/tag-derive",
