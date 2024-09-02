@@ -5,15 +5,18 @@ mod line_segment;
 mod line_segment_aabb;
 mod math;
 mod path;
-pub mod path_boolean;
+mod path_boolean;
 mod path_command;
 mod path_cubic_segment_self_intersection;
-pub mod path_data;
+mod path_data;
 mod path_segment;
 mod quad_tree;
 mod vector;
 #[cfg(test)]
 mod visual_tests;
+
+pub use path_boolean::{path_boolean, FillRule, PathBooleanOperation};
+pub use path_data::{path_from_path_data, path_to_path_data};
 
 #[cfg(test)]
 mod test {

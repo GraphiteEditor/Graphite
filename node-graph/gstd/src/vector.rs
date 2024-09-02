@@ -7,6 +7,7 @@ pub use graphene_core::vector::*;
 use graphene_core::{Color, GraphicElement, GraphicGroup};
 
 use glam::{DAffine2, DVec2};
+use path_bool::PathBooleanOperation;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
@@ -260,14 +261,23 @@ extern "C" {
 	fn boolean_intersect(path1: String, path2: String) -> String;
 }
 #[cfg(not(target_arch = "wasm32"))]
-fn boolean_union(_path1: String, _path2: String) -> String {
-	String::from("M0,0 L1,0 L1,1 L0,1 Z")
+fn boolean_union(a: String, b: String) -> String {
+	path_bool(a, b, PathBooleanOperation::Union)
+}
+
+fn path_bool(a: String, b: String, op: PathBooleanOperation) -> String {
+	use path_bool::FillRule;
+	let a = path_bool::path_from_path_data(&a);
+	let b = path_bool::path_from_path_data(&b);
+	let results = path_bool::path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, op);
+
+	results.iter().map(|result| path_bool::path_to_path_data(&result, 0.00001)).fold(String::new(), |o, n| o + &n)
 }
 #[cfg(not(target_arch = "wasm32"))]
-fn boolean_subtract(_path1: String, _path2: String) -> String {
-	String::from("M0,0 L1,0 L1,1 L0,1 Z")
+fn boolean_subtract(a: String, b: String) -> String {
+	path_bool(a, b, PathBooleanOperation::Difference)
 }
 #[cfg(not(target_arch = "wasm32"))]
-fn boolean_intersect(_path1: String, _path2: String) -> String {
-	String::from("M0,0 L1,0 L1,1 L0,1 Z")
+fn boolean_intersect(a: String, b: String) -> String {
+	path_bool(a, b, PathBooleanOperation::Intersection)
 }
