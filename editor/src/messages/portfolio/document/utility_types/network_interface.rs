@@ -1091,15 +1091,6 @@ impl NodeNetworkInterface {
 			.is_some_and(|reference| reference == "Artboard" && self.connected_to_output(node_id, &[]))
 	}
 
-	pub fn parent_artboard(&self, layer: LayerNodeIdentifier) -> Option<LayerNodeIdentifier> {
-		let ancestors: Vec<_> = layer.ancestors(self.document_metadata()).collect();
-		match ancestors.as_slice() {
-			[_, second_last, _last] if self.is_artboard(&second_last.to_node(), &[]) => Some(*second_last),
-			[_, last] if self.is_artboard(&last.to_node(), &[]) => Some(*last),
-			_ => None,
-		}
-	}
-
 	pub fn all_artboards(&self) -> HashSet<LayerNodeIdentifier> {
 		self.network_metadata(&[])
 			.unwrap()
@@ -1146,7 +1137,10 @@ impl NodeNetworkInterface {
 			.filter(|layer| include_artboards || !self.is_artboard(&layer.to_node(), &[]))
 			.filter_map(|layer| {
 				if !self.is_artboard(&layer.to_node(), &[]) {
-					if let Some(artboard_node_identifier) = self.parent_artboard(layer) {
+					if let Some(artboard_node_identifier) = layer
+						.ancestors(self.document_metadata())
+						.find(|ancestor| *ancestor != LayerNodeIdentifier::ROOT_PARENT && self.is_artboard(&ancestor.to_node(), &[]))
+					{
 						let artboard = self.network(&[]).unwrap().nodes.get(&artboard_node_identifier.to_node());
 						let clip_input = artboard.unwrap().inputs.get(5).unwrap();
 						if let NodeInput::Value { tagged_value, .. } = clip_input {

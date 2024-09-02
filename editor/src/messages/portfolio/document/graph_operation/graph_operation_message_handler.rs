@@ -246,6 +246,7 @@ fn usvg_transform(c: usvg::Transform) -> DAffine2 {
 
 fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, transform: DAffine2, id: NodeId, parent: LayerNodeIdentifier, insert_index: usize) {
 	let layer = modify_inputs.create_layer(id);
+	modify_inputs.network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 	modify_inputs.layer_node = Some(layer);
 	match node {
 		usvg::Node::Group(group) => {
@@ -258,8 +259,6 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 			let subpaths = convert_usvg_path(path);
 			let bounds = subpaths.iter().filter_map(|subpath| subpath.bounding_box()).reduce(Quad::combine_bounds).unwrap_or_default();
 			modify_inputs.insert_vector_data(subpaths, layer);
-
-			modify_inputs.network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 
 			if let Some(transform_node_id) = modify_inputs.existing_node_id("Transform") {
 				transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, transform * usvg_transform(node.abs_transform()));
