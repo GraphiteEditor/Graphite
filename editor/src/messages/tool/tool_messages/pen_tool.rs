@@ -269,7 +269,7 @@ impl PenToolData {
 		// Get close path
 		let mut end = None;
 		let layer = self.layer?;
-		let vector_data = document.metadata().compute_modified_vector(layer, &document.network_interface)?;
+		let vector_data = document.network_interface.compute_modified_vector(layer)?;
 		let start = self.latest_point()?.id;
 		let transform = document.metadata().document_to_viewport * transform;
 		for id in vector_data.single_connected_points().filter(|&point| point != start) {

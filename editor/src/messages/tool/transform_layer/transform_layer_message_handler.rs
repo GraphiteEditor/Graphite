@@ -70,10 +70,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 			}
 
 			if using_path_tool {
-				if let Some(vector_data) = selected_layers
-					.first()
-					.and_then(|&layer| document.metadata().compute_modified_vector(layer, &document.network_interface))
-				{
+				if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
 					*selected.original_transforms = OriginalTransforms::default();
 					let viewspace = document.metadata().transform_to_viewport(selected_layers[0]);
 

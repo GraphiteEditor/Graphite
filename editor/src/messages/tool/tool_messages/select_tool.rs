@@ -1163,7 +1163,7 @@ impl Fsm for SelectToolFsmState {
 }
 
 fn not_artboard(document: &DocumentMessageHandler) -> impl Fn(&LayerNodeIdentifier) -> bool + '_ {
-	|&layer| !document.network_interface.is_artboard(&layer.to_node(), &[])
+	|&layer| layer != LayerNodeIdentifier::ROOT_PARENT && !document.network_interface.is_artboard(&layer.to_node(), &[])
 }
 
 fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
@@ -1173,14 +1173,7 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 			.filter(not_artboard(document))
 			.find(|&ancestor| document.network_interface.selected_nodes(&[]).unwrap().selected_layers_contains(ancestor, document.metadata()));
 
-		let new_selected = ancestor.unwrap_or_else(|| {
-			layer
-				.ancestors(document.metadata())
-				.filter(not_artboard(document))
-				.filter(|ancestor| *ancestor != LayerNodeIdentifier::ROOT_PARENT)
-				.last()
-				.unwrap_or(layer)
-		});
+		let new_selected = ancestor.unwrap_or_else(|| layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(layer));
 		tool_data.layers_dragging.retain(|layer| !layer.ancestors(document.metadata()).any(|ancestor| ancestor == new_selected));
 		tool_data.layers_dragging.push(new_selected);
 	}
