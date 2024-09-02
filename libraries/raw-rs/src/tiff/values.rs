@@ -50,3 +50,14 @@ impl CurveLookupTable {
 		self.table[x]
 	}
 }
+
+pub enum Transform {
+	Horizontal,
+	MirrorHorizontal,
+	Rotate180,
+	MirrorVertical,
+	MirrorHorizontalRotate270,
+	Rotate90,
+	MirrorHorizontalRotate90,
+	Rotate270,
+}

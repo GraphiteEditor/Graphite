@@ -1,4 +1,4 @@
-use super::types::{Array, ConstArray, TagType, TypeByte, TypeIfd, TypeLong, TypeNumber, TypeSRational, TypeSShort, TypeShort, TypeSonyToneCurve, TypeString};
+use super::types::{Array, ConstArray, TagType, TypeByte, TypeIfd, TypeLong, TypeNumber, TypeSRational, TypeSShort, TypeShort, TypeSonyToneCurve, TypeString, TypeOrientation};
 use super::{Ifd, TagId, TiffError, TiffRead};
 
 use std::io::{Read, Seek};
@@ -18,6 +18,7 @@ pub struct PhotometricInterpretation;
 pub struct Make;
 pub struct Model;
 pub struct StripOffsets;
+pub struct Orientation;
 pub struct SamplesPerPixel;
 pub struct RowsPerStrip;
 pub struct StripByteCounts;
@@ -87,6 +88,13 @@ impl SimpleTag for StripOffsets {
 
 	const ID: TagId = TagId::StripOffsets;
 	const NAME: &'static str = "Strip Offsets";
+}
+
+impl SimpleTag for Orientation {
+	type Type = TypeOrientation;
+
+	const ID: TagId = TagId::Orientation;
+	const NAME: &'static str = "Orientation";
 }
 
 impl SimpleTag for SamplesPerPixel {

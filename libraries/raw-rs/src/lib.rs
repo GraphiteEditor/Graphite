@@ -9,7 +9,8 @@ use crate::metadata::identify::CameraModel;
 
 use tag_derive::Tag;
 use tiff::file::TiffRead;
-use tiff::tags::{Compression, ImageLength, ImageWidth, StripByteCounts, SubIfd, Tag};
+use tiff::tags::{Compression, ImageLength, ImageWidth, StripByteCounts, SubIfd, Tag, Orientation};
+use tiff::values::Transform;
 use tiff::{Ifd, TiffError};
 
 use std::io::{Read, Seek};
@@ -26,6 +27,7 @@ pub struct RawImage {
 	pub width: usize,
 	pub height: usize,
 	pub cfa_pattern: [u8; 4],
+	pub transform: Transform,
 	pub maximum: u16,
 	pub black: SubtractBlack,
 	pub camera_model: Option<CameraModel>,
@@ -42,6 +44,7 @@ pub struct Image<T> {
 	/// We can assume this will be 3 for all non-obscure, modern cameras.
 	/// See <https://github.com/GraphiteEditor/Graphite/pull/1923#discussion_r1725070342> for more information.
 	pub channels: u8,
+	pub transform: Transform,
 	pub rgb_to_camera: Option<[[f64; 3]; 3]>,
 	pub(crate) histogram: Option<[[usize; 0x2000]; 3]>,
 }
@@ -60,6 +63,7 @@ pub fn decode<R: Read + Seek>(reader: &mut R) -> Result<RawImage, DecoderError> 
 	let ifd = Ifd::new_first_ifd(&mut file)?;
 
 	let camera_model = metadata::identify::identify_camera_model(&ifd, &mut file).unwrap();
+	let transform = ifd.get_value::<Orientation, _>(&mut file)?;
 
 	let mut raw_image = if camera_model.model == "DSLR-A100" {
 		decoder::arw1::decode_a100(ifd, &mut file)
@@ -78,6 +82,7 @@ pub fn decode<R: Read + Seek>(reader: &mut R) -> Result<RawImage, DecoderError> 
 	};
 
 	raw_image.camera_model = Some(camera_model);
+	raw_image.transform = transform;
 
 	Ok(raw_image)
 }
