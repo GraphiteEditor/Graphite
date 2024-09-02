@@ -21,7 +21,7 @@ pub fn linear_demosaic(raw_image: RawImage) -> Image<u16> {
 }
 
 fn linear_demosaic_rggb(raw_image: RawImage) -> Image<u16> {
-	let mut image = vec![0u16; raw_image.width * raw_image.height * 3];
+	let mut image = vec![0; raw_image.width * raw_image.height * 3];
 	let width = raw_image.width as i64;
 	let height = raw_image.height as i64;
 
