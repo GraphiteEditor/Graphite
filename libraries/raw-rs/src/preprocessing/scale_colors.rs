@@ -22,12 +22,14 @@ pub fn scale_colors(mut raw_image: RawImage) -> RawImage {
 		let scale_to_16bit_multiplier = u16::MAX as f64 / raw_image.maximum as f64;
 		white_balance_multiplier.map(|x| x / normalize_white_balance * scale_to_16bit_multiplier)
 	} else {
-		[1., 1., 1.]
+		[1., 1., 1., 1.]
 	};
 
-	for i in 0..(raw_image.height * raw_image.width) {
-		for (c, multiplier) in final_multiplier.iter().enumerate() {
-			raw_image.data[3 * i + c] = ((raw_image.data[3 * i + c] as f64) * multiplier).min(u16::MAX as f64).max(0.) as u16;
+	for row in 0..raw_image.height {
+		for column in 0..raw_image.width {
+			let index = row * raw_image.width + column;
+			let cfa_index = 2 * (row % 2) + (column % 2);
+			raw_image.data[index] = ((raw_image.data[index] as f64) * final_multiplier[cfa_index]).min(u16::MAX as f64).max(0.) as u16;
 		}
 	}
 

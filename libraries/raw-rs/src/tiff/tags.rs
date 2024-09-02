@@ -1,4 +1,4 @@
-use super::types::{Array, ConstArray, TagType, TypeByte, TypeIfd, TypeLong, TypeNumber, TypeSRational, TypeShort, TypeSonyToneCurve, TypeString};
+use super::types::{Array, ConstArray, TagType, TypeByte, TypeIfd, TypeLong, TypeNumber, TypeSRational, TypeSShort, TypeShort, TypeSonyToneCurve, TypeString};
 use super::{Ifd, TagId, TiffError, TiffRead};
 
 use std::io::{Read, Seek};
@@ -27,6 +27,7 @@ pub struct JpegLength;
 pub struct SonyDataOffset;
 pub struct SonyToneCurve;
 pub struct BlackLevel;
+pub struct WhiteBalanceRggbLevels;
 pub struct CfaPatternDim;
 pub struct CfaPattern;
 pub struct ColorMatrix1;
@@ -173,9 +174,17 @@ impl SimpleTag for SonyToneCurve {
 }
 
 impl SimpleTag for BlackLevel {
-	const ID: TagId = TagId::BlackLevel;
 	type Type = ConstArray<TypeShort, 4>;
+
+	const ID: TagId = TagId::BlackLevel;
 	const NAME: &'static str = "Black Level";
+}
+
+impl SimpleTag for WhiteBalanceRggbLevels {
+	type Type = ConstArray<TypeSShort, 4>;
+
+	const ID: TagId = TagId::WhiteBalanceRggbLevels;
+	const NAME: &'static str = "White Balance Levels (RGGB)";
 }
 
 pub trait Tag {

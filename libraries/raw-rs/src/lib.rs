@@ -29,7 +29,8 @@ pub struct RawImage {
 	pub maximum: u16,
 	pub black: SubtractBlack,
 	pub camera_model: Option<CameraModel>,
-	pub white_balance_multiplier: Option<[f64; 3]>,
+	pub camera_white_balance_multiplier: Option<[f64; 4]>,
+	pub white_balance_multiplier: Option<[f64; 4]>,
 	pub camera_to_rgb: Option<[[f64; 3]; 3]>,
 	pub rgb_to_camera: Option<[[f64; 3]; 3]>,
 }
@@ -42,7 +43,7 @@ pub struct Image<T> {
 	/// See <https://github.com/GraphiteEditor/Graphite/pull/1923#discussion_r1725070342> for more information.
 	pub channels: u8,
 	pub rgb_to_camera: Option<[[f64; 3]; 3]>,
-	pub histogram: Option<[[usize; 0x2000]; 3]>,
+	pub(crate) histogram: Option<[[usize; 0x2000]; 3]>,
 }
 
 #[allow(dead_code)]
@@ -97,7 +98,6 @@ pub fn process_8bit(raw_image: RawImage) -> Image<u8> {
 pub fn process_16bit(raw_image: RawImage) -> Image<u16> {
 	let raw_image = crate::preprocessing::camera_data::calculate_conversion_matrices(raw_image);
 	let raw_image = crate::preprocessing::subtract_black::subtract_black(raw_image);
-	let raw_image = crate::preprocessing::raw_to_image::raw_to_image(raw_image);
 	let raw_image = crate::preprocessing::scale_colors::scale_colors(raw_image);
 	let image = crate::demosaicing::linear_demosaicing::linear_demosaic(raw_image);
 	let image = crate::postprocessing::convert_to_rgb::convert_to_rgb(image);

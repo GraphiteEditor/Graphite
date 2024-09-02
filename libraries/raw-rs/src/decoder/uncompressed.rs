@@ -1,5 +1,5 @@
 use crate::tiff::file::TiffRead;
-use crate::tiff::tags::{BitsPerSample, BlackLevel, CfaPattern, CfaPatternDim, Compression, ImageLength, ImageWidth, RowsPerStrip, StripByteCounts, StripOffsets, Tag};
+use crate::tiff::tags::{BitsPerSample, BlackLevel, CfaPattern, CfaPatternDim, Compression, ImageLength, ImageWidth, RowsPerStrip, StripByteCounts, StripOffsets, Tag, WhiteBalanceRggbLevels};
 use crate::tiff::{Ifd, TiffError};
 use crate::{RawImage, SubtractBlack};
 
@@ -19,6 +19,7 @@ struct ArwUncompressedIfd {
 	cfa_pattern_dim: CfaPatternDim,
 	strip_offsets: StripOffsets,
 	strip_byte_counts: StripByteCounts,
+	white_balance_levels: Option<WhiteBalanceRggbLevels>,
 }
 
 pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
@@ -58,6 +59,7 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 		maximum: if bits_per_sample == 16 { u16::MAX } else { (1 << bits_per_sample) - 1 },
 		black: SubtractBlack::CfaGrid(ifd.black_level),
 		camera_model: None,
+		camera_white_balance_multiplier: ifd.white_balance_levels.map(|arr| arr.map(|x| x as f64)),
 		white_balance_multiplier: None,
 		camera_to_rgb: None,
 		rgb_to_camera: None,
