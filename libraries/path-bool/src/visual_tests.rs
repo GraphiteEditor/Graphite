@@ -104,7 +104,7 @@ fn visual_tests() {
 		let a_fill_rule = get_fill_rule(&a_node.1);
 		let b_fill_rule = get_fill_rule(&b_node.1);
 
-		let result = path_boolean::path_boolean(&a, a_fill_rule, &b, b_fill_rule, op);
+		let result = path_boolean::path_boolean(&a, a_fill_rule, &b, b_fill_rule, op).unwrap();
 
 		// Create the result SVG with correct dimensions
 		let mut result_svg = format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"{}\">", width, height, view_box);

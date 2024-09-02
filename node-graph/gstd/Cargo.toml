@@ -37,7 +37,7 @@ graphene-core = { path = "../gcore", default-features = false, features = [
 fastnoise-lite = { workspace = true }
 log = { workspace = true }
 bezier-rs = { workspace = true, features = ["serde"] }
-path-bool = { workspace = true, features = ["parsing"] }
+path-bool = { workspace = true, features = ["parsing", "logging"] }
 glam = { workspace = true, features = ["serde"] }
 node-macro = { workspace = true }
 rustc-hash = { workspace = true }

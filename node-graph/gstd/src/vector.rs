@@ -250,34 +250,40 @@ pub fn convert_usvg_path(path: &usvg::Path) -> Vec<Subpath<PointId>> {
 	subpaths
 }
 
-#[cfg(target_arch = "wasm32")]
-#[wasm_bindgen(module = "/../../frontend/src/utility-functions/computational-geometry.ts")]
-extern "C" {
-	#[wasm_bindgen(js_name = booleanUnion)]
-	fn boolean_union(path1: String, path2: String) -> String;
-	#[wasm_bindgen(js_name = booleanSubtract)]
-	fn boolean_subtract(path1: String, path2: String) -> String;
-	#[wasm_bindgen(js_name = booleanIntersect)]
-	fn boolean_intersect(path1: String, path2: String) -> String;
-}
-#[cfg(not(target_arch = "wasm32"))]
+// #[cfg(target_arch = "wasm32")]
+// #[wasm_bindgen(module = "/../../frontend/src/utility-functions/computational-geometry.ts")]
+// extern "C" {
+// 	#[wasm_bindgen(js_name = booleanUnion)]
+// 	fn boolean_union(path1: String, path2: String) -> String;
+// 	#[wasm_bindgen(js_name = booleanSubtract)]
+// 	fn boolean_subtract(path1: String, path2: String) -> String;
+// 	#[wasm_bindgen(js_name = booleanIntersect)]
+// 	fn boolean_intersect(path1: String, path2: String) -> String;
+// }
+// #[cfg(not(target_arch = "wasm32"))]
 fn boolean_union(a: String, b: String) -> String {
 	path_bool(a, b, PathBooleanOperation::Union)
 }
 
 fn path_bool(a: String, b: String, op: PathBooleanOperation) -> String {
 	use path_bool::FillRule;
-	let a = path_bool::path_from_path_data(&a);
-	let b = path_bool::path_from_path_data(&b);
-	let results = path_bool::path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, op);
+	let a_path = path_bool::path_from_path_data(&a);
+	let b_path = path_bool::path_from_path_data(&b);
+	let results = match path_bool::path_boolean(&a_path, FillRule::NonZero, &b_path, FillRule::NonZero, op) {
+		Ok(results) => results,
+		Err(e) => {
+			log::error!("Boolean error {e:?} encontered while processing {a} {op:?} {b}");
+			Vec::new()
+		}
+	};
 
-	results.iter().map(|result| path_bool::path_to_path_data(&result, 0.00001)).fold(String::new(), |o, n| o + &n)
+	results.iter().map(|result| path_bool::path_to_path_data(result, 0.00001)).fold(String::new(), |o, n| o + &n)
 }
-#[cfg(not(target_arch = "wasm32"))]
+// #[cfg(not(target_arch = "wasm32"))]
 fn boolean_subtract(a: String, b: String) -> String {
 	path_bool(a, b, PathBooleanOperation::Difference)
 }
-#[cfg(not(target_arch = "wasm32"))]
+// #[cfg(not(target_arch = "wasm32"))]
 fn boolean_intersect(a: String, b: String) -> String {
 	path_bool(a, b, PathBooleanOperation::Intersection)
 }

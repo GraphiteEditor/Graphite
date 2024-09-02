@@ -671,7 +671,7 @@ fn compute_winding(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, DualGrap
 	panic!("No ear in polygon found.");
 }
 
-fn compute_dual(minor_graph: &MinorGraph) -> DualGraph {
+fn compute_dual(minor_graph: &MinorGraph) -> Option<DualGraph> {
 	let mut new_vertices: Vec<DualVertexKey> = Vec::new();
 	let mut minor_to_dual_edge: HashMap<MinorEdgeKey, DualEdgeKey> = HashMap::new();
 	let mut dual_edges = SlotMap::with_key();
@@ -782,6 +782,9 @@ fn compute_dual(minor_graph: &MinorGraph) -> DualGraph {
 			.find(|&&face_key| compute_winding(&dual_vertices[face_key], &dual_edges).0 < 0)
 			.expect("No outer face of a component found.");
 
+		if component_vertices.iter().filter(|&&face_key| compute_winding(&dual_vertices[face_key], &dual_edges).0 < 0).count() > 1 {
+			return None;
+		}
 		assert_eq!(
 			component_vertices.iter().filter(|&&face_key| compute_winding(&dual_vertices[face_key], &dual_edges).0 < 0).count(),
 			1,
@@ -795,11 +798,11 @@ fn compute_dual(minor_graph: &MinorGraph) -> DualGraph {
 		});
 	}
 
-	DualGraph {
+	Some(DualGraph {
 		vertices: dual_vertices,
 		edges: dual_edges,
 		components,
-	}
+	})
 }
 
 fn get_next_edge(edge_key: MinorEdgeKey, graph: &MinorGraph) -> MinorEdgeKey {
@@ -1121,7 +1124,13 @@ const OPERATION_PREDICATES: [fn(u8) -> bool; 6] = [
 	|flag: u8| flag > 0,               // Fracture
 ];
 
-pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: FillRule, op: PathBooleanOperation) -> Vec<Path> {
+// TODO: Impl error trait
+#[derive(Debug)]
+pub enum BooleanError {
+	MultipleOuterFaces,
+}
+
+pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: FillRule, op: PathBooleanOperation) -> Result<Vec<Path>, BooleanError> {
 	let mut unsplit_edges: Vec<MajorGraphEdgeStage1> = a.iter().map(segment_to_edge(1)).chain(b.iter().map(segment_to_edge(2))).collect();
 
 	split_at_self_intersections(&mut unsplit_edges);
@@ -1130,7 +1139,7 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 
 	let total_bounding_box = match total_bounding_box {
 		Some(bb) => bb,
-		None => return Vec::new(), // input geometry is empty
+		None => return Ok(Vec::new()), // input geometry is empty
 	};
 
 	let major_graph = find_vertices(&split_edges, total_bounding_box);
@@ -1168,7 +1177,7 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 		assert_eq!(twin.twin.unwrap(), edge_key, "Twin relationship should be symmetrical for edge {:?}", edge_key);
 	}
 
-	let dual_graph = compute_dual(&minor_graph);
+	let dual_graph = compute_dual(&minor_graph).ok_or(BooleanError::MultipleOuterFaces)?;
 
 	let nesting_trees = compute_nesting_tree(&dual_graph);
 
@@ -1185,10 +1194,10 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 	let predicate = OPERATION_PREDICATES[op as usize];
 
 	match op {
-		PathBooleanOperation::Division | PathBooleanOperation::Fracture => dump_faces(&nesting_trees, predicate, edges, vertices, &flags),
+		PathBooleanOperation::Division | PathBooleanOperation::Fracture => Ok(dump_faces(&nesting_trees, predicate, edges, vertices, &flags)),
 		_ => {
 			let selected_faces: HashSet<DualVertexKey> = get_selected_faces(&predicate, &flags).collect();
-			vec![walk_faces(&selected_faces, edges, vertices).collect()]
+			Ok(vec![walk_faces(&selected_faces, edges, vertices).collect()])
 		}
 	}
 }

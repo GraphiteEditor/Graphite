@@ -17,7 +17,7 @@ pub fn commands_from_path_data(d: &str) -> Vec<PathCommand> {
 	let mut commands = Vec::new();
 
 	let get_cmd = |i: &mut usize, last_cmd: char| -> Option<char> {
-		if *i >= d.len() - 1 {
+		if *i >= d.len() - 1.min(d.len()) {
 			return None;
 		}
 
@@ -38,7 +38,7 @@ pub fn commands_from_path_data(d: &str) -> Vec<PathCommand> {
 			*i += cap[0].len();
 			cap[1].parse().unwrap()
 		} else {
-			panic!("Invalid path data. Expected a number at index {}", i);
+			panic!("Invalid path data. Expected a number at index {}, got {}", i, &d[*i..]);
 		}
 	};
 
