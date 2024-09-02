@@ -1,7 +1,7 @@
 use crate::tiff::file::TiffRead;
 use crate::tiff::tags::{BitsPerSample, BlackLevel, CfaPattern, CfaPatternDim, Compression, ImageLength, ImageWidth, RowsPerStrip, StripByteCounts, StripOffsets, Tag, WhiteBalanceRggbLevels};
 use crate::tiff::{Ifd, TiffError};
-use crate::{RawImage, SubtractBlack};
+use crate::{RawImage, SubtractBlack, Transform};
 
 use std::io::{Read, Seek};
 use tag_derive::Tag;
@@ -58,6 +58,7 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 		cfa_pattern: ifd.cfa_pattern.try_into().unwrap(),
 		maximum: if bits_per_sample == 16 { u16::MAX } else { (1 << bits_per_sample) - 1 },
 		black: SubtractBlack::CfaGrid(ifd.black_level),
+		transform: Transform::Horizontal,
 		camera_model: None,
 		camera_white_balance_multiplier: ifd.white_balance_levels.map(|arr| arr.map(|x| x as f64)),
 		white_balance_multiplier: None,

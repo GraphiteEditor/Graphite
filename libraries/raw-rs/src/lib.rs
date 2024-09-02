@@ -9,7 +9,7 @@ use crate::metadata::identify::CameraModel;
 
 use tag_derive::Tag;
 use tiff::file::TiffRead;
-use tiff::tags::{Compression, ImageLength, ImageWidth, StripByteCounts, SubIfd, Tag, Orientation};
+use tiff::tags::{Compression, ImageLength, ImageWidth, Orientation, StripByteCounts, SubIfd, Tag};
 use tiff::values::Transform;
 use tiff::{Ifd, TiffError};
 
@@ -95,6 +95,7 @@ pub fn process_8bit(raw_image: RawImage) -> Image<u8> {
 		data: image.data.iter().map(|x| (x >> 8) as u8).collect(),
 		width: image.width,
 		height: image.height,
+		transform: image.transform,
 		rgb_to_camera: image.rgb_to_camera,
 		histogram: image.histogram,
 	}

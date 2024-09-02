@@ -1,7 +1,7 @@
 use crate::tiff::file::TiffRead;
 use crate::tiff::tags::SonyDataOffset;
 use crate::tiff::Ifd;
-use crate::{RawImage, SubtractBlack};
+use crate::{RawImage, SubtractBlack, Transform};
 
 use bitstream_io::{BitRead, BitReader, Endianness, BE};
 use std::io::{Read, Seek};
@@ -26,6 +26,7 @@ pub fn decode_a100<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage
 		#[allow(unreachable_code)]
 		maximum: (1 << 12) - 1,
 		black: SubtractBlack::None,
+		transform: Transform::Horizontal,
 		camera_model: None,
 		camera_white_balance_multiplier: None,
 		white_balance_multiplier: None,

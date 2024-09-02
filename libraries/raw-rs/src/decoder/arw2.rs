@@ -2,7 +2,7 @@ use crate::tiff::file::{Endian, TiffRead};
 use crate::tiff::tags::{BitsPerSample, CfaPattern, CfaPatternDim, Compression, ImageLength, ImageWidth, SonyToneCurve, StripByteCounts, StripOffsets, Tag, WhiteBalanceRggbLevels};
 use crate::tiff::values::CurveLookupTable;
 use crate::tiff::{Ifd, TiffError};
-use crate::{RawImage, SubtractBlack};
+use crate::{RawImage, SubtractBlack, Transform};
 
 use std::io::{Read, Seek};
 use tag_derive::Tag;
@@ -50,6 +50,7 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 		cfa_pattern: ifd.cfa_pattern.try_into().unwrap(),
 		maximum: (1 << 14) - 1,
 		black: SubtractBlack::CfaGrid([512, 512, 512, 512]), // TODO: Find the correct way to do this
+		transform: Transform::Horizontal,
 		camera_model: None,
 		camera_white_balance_multiplier: ifd.white_balance_levels.map(|arr| arr.map(|x| x as f64)),
 		white_balance_multiplier: None,
