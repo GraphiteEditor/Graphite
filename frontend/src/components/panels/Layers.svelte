@@ -1,25 +1,17 @@
 <script lang="ts">
-	import { getContext, onMount, tick } from "svelte";
+	import { getContext, tick } from "svelte";
 
 	import { beginDraggingElement } from "@graphite/io-managers/drag";
+	import type { LayerListingInfo, LayersState } from "@graphite/state-providers/layers";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import { defaultWidgetLayout, patchWidgetLayout, UpdateDocumentLayerDetails, UpdateDocumentLayerStructureJs, UpdateLayersPanelOptionsLayout } from "@graphite/wasm-communication/messages";
-	import type { DataBuffer, LayerPanelEntry } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
-
-	type LayerListingInfo = {
-		folderIndex: number;
-		bottomLayer: boolean;
-		editingName: boolean;
-		entry: LayerPanelEntry;
-	};
 
 	type DraggingData = {
 		select?: () => void;
@@ -32,99 +24,16 @@
 
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
+	const layersState = getContext<LayersState>("layers");
 
 	let list: LayoutCol | undefined;
-
-	// Layer data
-	let layerCache = new Map<string, LayerPanelEntry>(); // TODO: replace with BigUint64Array as index
-	let layers: LayerListingInfo[] = [];
 
 	// Interactive dragging
 	let draggable = true;
 	let draggingData: undefined | DraggingData = undefined;
 	let fakeHighlight: undefined | bigint = undefined;
 	let dragInPanel = false;
-
-	// Layouts
-	let layersPanelOptionsLayout = defaultWidgetLayout();
-
-	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelOptionsLayout, (updateLayersPanelOptionsLayout) => {
-			patchWidgetLayout(layersPanelOptionsLayout, updateLayersPanelOptionsLayout);
-			layersPanelOptionsLayout = layersPanelOptionsLayout;
-		});
-
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructureJs, (updateDocumentLayerStructure) => {
-			const structure = newUpdateDocumentLayerStructure(updateDocumentLayerStructure.dataBuffer);
-			rebuildLayerHierarchy(structure);
-		});
-
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerDetails, (updateDocumentLayerDetails) => {
-			const targetLayer = updateDocumentLayerDetails.data;
-			const targetId = targetLayer.id;
-
-			updateLayerInTree(targetId, targetLayer);
-		});
-	});
-
-	type DocumentLayerStructure = {
-		layerId: bigint;
-		children: DocumentLayerStructure[];
-	};
-
-	function newUpdateDocumentLayerStructure(dataBuffer: DataBuffer): DocumentLayerStructure {
-		const pointerNum = Number(dataBuffer.pointer);
-		const lengthNum = Number(dataBuffer.length);
-
-		const wasmMemoryBuffer = editor.raw.buffer;
-
-		// Decode the folder structure encoding
-		const encoding = new DataView(wasmMemoryBuffer, pointerNum, lengthNum);
-
-		// The structure section indicates how to read through the upcoming layer list and assign depths to each layer
-		const structureSectionLength = Number(encoding.getBigUint64(0, true));
-		const structureSectionMsbSigned = new DataView(wasmMemoryBuffer, pointerNum + 8, structureSectionLength * 8);
-
-		// The layer IDs section lists each layer ID sequentially in the tree, as it will show up in the panel
-		const layerIdsSection = new DataView(wasmMemoryBuffer, pointerNum + 8 + structureSectionLength * 8);
-
-		let layersEncountered = 0;
-		let currentFolder: DocumentLayerStructure = { layerId: BigInt(-1), children: [] };
-		const currentFolderStack = [currentFolder];
-
-		for (let i = 0; i < structureSectionLength; i += 1) {
-			const msbSigned = structureSectionMsbSigned.getBigUint64(i * 8, true);
-			const msbMask = BigInt(1) << BigInt(64 - 1);
-
-			// Set the MSB to 0 to clear the sign and then read the number as usual
-			const numberOfLayersAtThisDepth = msbSigned & ~msbMask;
-
-			// Store child folders in the current folder (until we are interrupted by an indent)
-			for (let j = 0; j < numberOfLayersAtThisDepth; j += 1) {
-				const layerId = layerIdsSection.getBigUint64(layersEncountered * 8, true);
-				layersEncountered += 1;
-
-				const childLayer: DocumentLayerStructure = { layerId, children: [] };
-				currentFolder.children.push(childLayer);
-			}
-
-			// Check the sign of the MSB, where a 1 is a negative (outward) indent
-			const subsequentDirectionOfDepthChange = (msbSigned & msbMask) === BigInt(0);
-			// Inward
-			if (subsequentDirectionOfDepthChange) {
-				currentFolderStack.push(currentFolder);
-				currentFolder = currentFolder.children[currentFolder.children.length - 1];
-			}
-			// Outward
-			else {
-				const popped = currentFolderStack.pop();
-				if (!popped) throw Error("Too many negative indents in the folder structure");
-				if (popped) currentFolder = popped;
-			}
-		}
-
-		return currentFolder;
-	}
+	let isDraggingLayer = false;
 
 	function toggleNodeVisibilityLayerPanel(id: bigint) {
 		editor.handle.toggleNodeVisibilityLayerPanel(id);
@@ -143,7 +52,6 @@
 
 		draggable = false;
 		listing.editingName = true;
-		layers = layers;
 
 		await tick();
 
@@ -158,7 +66,6 @@
 
 		draggable = true;
 		listing.editingName = false;
-		layers = layers;
 
 		const name = (e.target instanceof HTMLInputElement && e.target.value) || "";
 		editor.handle.setLayerName(listing.entry.id, name);
@@ -168,7 +75,6 @@
 	async function onEditLayerNameDeselect(listing: LayerListingInfo) {
 		draggable = true;
 		listing.editingName = false;
-		layers = layers;
 
 		// Set it back to the original name if the user didn't enter a new name
 		if (document.activeElement instanceof HTMLInputElement) document.activeElement.value = listing.entry.alias;
@@ -221,7 +127,7 @@
 			Array.from(treeChildren).forEach((treeChild) => {
 				const indexAttribute = treeChild.getAttribute("data-index");
 				if (!indexAttribute) return;
-				const { folderIndex, entry: layer } = layers[parseInt(indexAttribute, 10)];
+				const { folderIndex, entry: layer } = $layersState.layers[parseInt(indexAttribute, 10)];
 
 				const rect = treeChild.getBoundingClientRect();
 				if (rect.top > clientY || rect.bottom < clientY) {
@@ -262,7 +168,7 @@
 			// Dragging to the empty space below all layers
 			let lastLayer = treeChildren[treeChildren.length - 1];
 			if (lastLayer.getBoundingClientRect().bottom < clientY) {
-				const numberRootLayers = layers.filter((layer) => layer.entry.depth === 1).length;
+				const numberRootLayers = $layersState.layers.filter((layer) => layer.entry.depth === 1).length;
 				insertParentId = undefined;
 				insertDepth = 0;
 				insertIndex = numberRootLayers;
@@ -302,9 +208,13 @@
 		}
 
 		if (list) draggingData = calculateDragIndex(list, event.clientY, select);
+
+		isDraggingLayer = true;
 	}
 
 	function updateInsertLine(event: DragEvent) {
+		if (!isDraggingLayer) return;
+
 		// Stop the drag from being shown as cancelled
 		event.preventDefault();
 		dragInPanel = true;
@@ -313,6 +223,8 @@
 	}
 
 	async function drop() {
+		if (!isDraggingLayer) return;
+
 		if (draggingData && dragInPanel) {
 			const { select, insertParentId, insertIndex } = draggingData;
 
@@ -322,55 +234,17 @@
 		draggingData = undefined;
 		fakeHighlight = undefined;
 		dragInPanel = false;
-	}
-
-	function rebuildLayerHierarchy(updateDocumentLayerStructure: DocumentLayerStructure) {
-		const layerWithNameBeingEdited = layers.find((layer: LayerListingInfo) => layer.editingName);
-		const layerIdWithNameBeingEdited = layerWithNameBeingEdited?.entry.id;
-
-		// Clear the layer hierarchy before rebuilding it
-		layers = [];
-
-		// Build the new layer hierarchy
-		const recurse = (folder: DocumentLayerStructure) => {
-			folder.children.forEach((item, index) => {
-				const mapping = layerCache.get(String(item.layerId));
-				if (mapping) {
-					mapping.id = item.layerId;
-					layers.push({
-						folderIndex: index,
-						bottomLayer: index === folder.children.length - 1,
-						entry: mapping,
-						editingName: layerIdWithNameBeingEdited === item.layerId,
-					});
-				}
-
-				// Call self recursively if there are any children
-				if (item.children.length >= 1) recurse(item);
-			});
-		};
-		recurse(updateDocumentLayerStructure);
-		layers = layers;
-	}
-
-	function updateLayerInTree(targetId: bigint, targetLayer: LayerPanelEntry) {
-		layerCache.set(String(targetId), targetLayer);
-
-		const layer = layers.find((layer: LayerListingInfo) => layer.entry.id === targetId);
-		if (layer) {
-			layer.entry = targetLayer;
-			layers = layers;
-		}
+		isDraggingLayer = false;
 	}
 </script>
 
-<LayoutCol class="layers" on:dragleave={() => (dragInPanel = false)}>
+<LayoutCol class="layers" on:dragleave={() => (dragInPanel = false) && (isDraggingLayer = false)}>
 	<LayoutRow class="options-bar" scrollableX={true}>
-		<WidgetLayout layout={layersPanelOptionsLayout} />
+		<WidgetLayout layout={$layersState.layersPanelOptionsLayout} />
 	</LayoutRow>
 	<LayoutRow class="list-area" scrollableY={true}>
 		<LayoutCol class="list" data-layer-panel bind:this={list} on:click={() => deselectAllLayers()} on:dragover={(e) => draggable && updateInsertLine(e)} on:dragend={() => draggable && drop()}>
-			{#each layers as listing, index}
+			{#each $layersState.layers as listing, index}
 				<LayoutRow
 					class="layer"
 					classes={{

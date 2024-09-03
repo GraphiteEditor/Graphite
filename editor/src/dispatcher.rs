@@ -23,7 +23,7 @@ pub struct DispatcherMessageHandlers {
 	pub portfolio_message_handler: PortfolioMessageHandler,
 	preferences_message_handler: PreferencesMessageHandler,
 	tool_message_handler: ToolMessageHandler,
-	workspace_message_handler: WorkspaceMessageHandler,
+	pub workspace_message_handler: WorkspaceMessageHandler,
 }
 
 /// For optimization, these are messages guaranteed to be redundant when repeated.
@@ -98,6 +98,9 @@ impl Dispatcher {
 
 					// Display the menu bar at the top of the window
 					queue.add(MenuBarMessage::SendLayout);
+
+					// Init the dockspace
+					queue.add(WorkspaceMessage::SendLayout);
 
 					// Load the default font
 					let font = Font::new(graphene_core::consts::DEFAULT_FONT_FAMILY.into(), graphene_core::consts::DEFAULT_FONT_STYLE.into());

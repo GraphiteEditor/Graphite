@@ -3,6 +3,8 @@
 
 import { Transform, Type, plainToClass } from "class-transformer";
 
+import type { PanelIdentifier, PanelType } from "@graphite/state-providers/dockspace";
+
 import { type PopoverButtonStyle, type IconName, type IconSize } from "@graphite/utility-functions/icons";
 import { type EditorHandle } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
 
@@ -741,6 +743,19 @@ export class UpdateEyedropperSamplingState extends JsMessage {
 	readonly secondaryColor!: string;
 
 	readonly setColorChoice!: "Primary" | "Secondary" | undefined;
+}
+
+export type Panel = {
+	tabs: PanelType[];
+	activeIndex: number;
+	identifier: PanelIdentifier;
+};
+export type Direction = "Horizontal" | "Vertical";
+export type Division = { direction: Direction; start: DivisionOrPanel; end: DivisionOrPanel; startSize: number; endSize: number; identifier: PanelIdentifier };
+export type DivisionOrPanel = { Division: Division } | { Panel: Panel };
+
+export class UpdateDockspace extends JsMessage {
+	readonly root!: DivisionOrPanel;
 }
 
 const mouseCursorIconCSSNames = {
@@ -1604,6 +1619,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDialogButtons,
 	UpdateDialogColumn1,
 	UpdateDialogColumn2,
+	UpdateDockspace,
 	UpdateDocumentArtwork,
 	UpdateDocumentBarLayout,
 	UpdateDocumentLayerDetails,

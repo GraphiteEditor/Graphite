@@ -1,20 +1,7 @@
-<script lang="ts" context="module">
-	import Document from "@graphite/components/panels/Document.svelte";
-	import Layers from "@graphite/components/panels/Layers.svelte";
-	import Properties from "@graphite/components/panels/Properties.svelte";
-	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
-
-	const PANEL_COMPONENTS = {
-		Document,
-		Layers,
-		Properties,
-	};
-	type PanelType = keyof typeof PANEL_COMPONENTS;
-</script>
-
 <script lang="ts">
 	import { getContext, tick } from "svelte";
+
+	import { type DockspaceState, type PanelIdentifier, type PanelType } from "@graphite/state-providers/dockspace";
 
 	import { platformIsMac, isEventSupported } from "@graphite/utility-functions/platform";
 
@@ -23,21 +10,25 @@
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
+	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
 
 	const editor = getContext<Editor>("editor");
+	const dockspace = getContext<DockspaceState>("dockspace");
 
-	export let tabMinWidths = false;
-	export let tabCloseButtons = false;
+	export let tabMinWidths = true;
+	export let tabCloseButtons = true;
 	export let tabLabels: { name: string; tooltip?: string }[];
 	export let tabActiveIndex: number;
 	export let panelType: PanelType | undefined = undefined;
-	export let clickAction: ((index: number) => void) | undefined = undefined;
-	export let closeAction: ((index: number) => void) | undefined = undefined;
+	export let panelIdentifier: PanelIdentifier;
 
 	let tabElements: (LayoutRow | undefined)[] = [];
+
+	$: scrollTabIntoView(tabActiveIndex);
 
 	function platformModifiers(reservedKey: boolean): LayoutKeysGroup {
 		// TODO: Remove this by properly feeding these keys from a layout provided by the backend
@@ -58,7 +49,7 @@
 
 <LayoutCol class="panel" on:pointerdown={() => panelType && editor.handle.setActivePanel(panelType)}>
 	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
-		<LayoutRow class="tab-group" scrollableX={true}>
+		<LayoutRow data-panel-tabs={panelIdentifier} class="tab-group" scrollableX={true}>
 			{#each tabLabels as tabLabel, tabIndex}
 				<LayoutRow
 					class="tab"
@@ -66,13 +57,13 @@
 					tooltip={tabLabel.tooltip || undefined}
 					on:click={(e) => {
 						e.stopPropagation();
-						clickAction?.(tabIndex);
+						editor.handle.selectTab(panelIdentifier, tabIndex);
 					}}
 					on:auxclick={(e) => {
 						// Middle mouse button click
 						if (e.button === 1) {
 							e.stopPropagation();
-							closeAction?.(tabIndex);
+							editor.handle.deleteTab(panelIdentifier, tabIndex);
 						}
 					}}
 					on:mouseup={(e) => {
@@ -82,17 +73,21 @@
 						// A possible future improvement could save the target element during mousedown and check if it's the same here.
 						if (!isEventSupported("auxclick") && e.button === 1) {
 							e.stopPropagation();
-							closeAction?.(tabIndex);
+							editor.handle.deleteTab(panelIdentifier, tabIndex);
 						}
 					}}
 					bind:this={tabElements[tabIndex]}
+					draggable
+					on:dragstart={() => dockspace.startDragging(panelIdentifier, tabIndex)}
+					on:dragend={dockspace.endDragging}
+					data-tab-index={tabIndex}
 				>
 					<TextLabel>{tabLabel.name}</TextLabel>
 					{#if tabCloseButtons}
 						<IconButton
 							action={(e) => {
 								e?.stopPropagation();
-								closeAction?.(tabIndex);
+								editor.handle.deleteTab(panelIdentifier, tabIndex);
 							}}
 							icon="CloseX"
 							size={16}
@@ -106,9 +101,9 @@
 			<TextLabel multiline={true}>Coming soon</TextLabel>
 		</PopoverButton> -->
 	</LayoutRow>
-	<LayoutCol class="panel-body">
+	<LayoutCol class="panel-body" data-panel-body={panelIdentifier}>
 		{#if panelType}
-			<svelte:component this={PANEL_COMPONENTS[panelType]} />
+			<svelte:component this={$dockspace.panelComponents[panelType]} />
 		{:else}
 			<LayoutCol class="empty-panel">
 				<LayoutCol class="content">

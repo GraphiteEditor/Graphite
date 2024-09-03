@@ -17,6 +17,7 @@ use editor::messages::portfolio::document::utility_types::network_interface::Nod
 use editor::messages::portfolio::utility_types::Platform;
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
+use editor::messages::workspace::*;
 use graph_craft::document::NodeId;
 use graphene_core::raster::color::Color;
 
@@ -659,6 +660,52 @@ impl EditorHandle {
 		self.dispatch(message);
 		let message = NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer };
 		self.dispatch(message);
+	}
+
+	/// Delete a tab
+	#[wasm_bindgen(js_name = deleteTab)]
+	pub fn delete_tab(&self, panel_path: u64, tab_index: usize) {
+		let tab = TabPath::new(PanelPath::new(panel_path), tab_index);
+		self.dispatch(WorkspaceMessage::DeleteTab { tab });
+	}
+
+	/// Move a tab
+	#[wasm_bindgen(js_name = moveTab)]
+	pub fn move_tab(&self, source_panel_path: u64, source_tab_index: usize, target_panel_path: u64, insert_index: Option<usize>, horizontal: Option<bool>, start: Option<bool>) {
+		let source = TabPath::new(PanelPath::new(source_panel_path), source_tab_index);
+		let edge = horizontal.and_then(|horizontal| {
+			start.map(|start| InsertEdge {
+				direction: if horizontal { Direction::Horizontal } else { Direction::Vertical },
+				start,
+			})
+		});
+		let panel = PanelPath::new(target_panel_path);
+		let destination = TabDestination { panel, insert_index, edge };
+		self.dispatch(WorkspaceMessage::MoveTab { source, destination });
+	}
+
+	/// Select a tab
+	#[wasm_bindgen(js_name = selectTab)]
+	pub fn select_tab(&self, panel_path: u64, tab_index: usize) {
+		let tab = TabPath::new(PanelPath::new(panel_path), tab_index);
+		self.dispatch(WorkspaceMessage::SelectTab { tab });
+	}
+
+	/// Resize a division
+	#[wasm_bindgen(js_name = resizeDivision)]
+	pub fn resize_division(&self, divison_path: u64, start_size: f64, end_size: f64) {
+		let division = PanelPath::new(divison_path);
+		self.dispatch(WorkspaceMessage::ResizeDivision { division, start_size, end_size });
+	}
+
+	/// Is single tab
+	#[wasm_bindgen(js_name = isSingleTab)]
+	pub fn is_single_tab(&self, panel_path: u64) -> bool {
+		if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
+			return true;
+		}
+		let panel = PanelPath::new(panel_path);
+		editor(|editor| editor.dispatcher.message_handlers.workspace_message_handler.is_single_tab(panel))
 	}
 
 	#[wasm_bindgen(js_name = injectImaginatePollServerStatus)]

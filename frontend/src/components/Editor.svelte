@@ -9,11 +9,14 @@
 	import { createPanicManager } from "@graphite/io-managers/panic";
 	import { createPersistenceManager } from "@graphite/io-managers/persistence";
 	import { createDialogState } from "@graphite/state-providers/dialog";
+	import { createDockspaceState } from "@graphite/state-providers/dockspace";
 	import { createDocumentState } from "@graphite/state-providers/document";
 	import { createFontsState } from "@graphite/state-providers/fonts";
 	import { createFullscreenState } from "@graphite/state-providers/fullscreen";
+	import { createLayerState } from "@graphite/state-providers/layers";
 	import { createNodeGraphState } from "@graphite/state-providers/node-graph";
 	import { createPortfolioState } from "@graphite/state-providers/portfolio";
+	import { createPropertiesState } from "@graphite/state-providers/properties";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
 	import { type Editor } from "@graphite/wasm-communication/editor";
 
@@ -26,16 +29,22 @@
 	// State provider systems
 	let dialog = createDialogState(editor);
 	setContext("dialog", dialog);
+	let dockspace = createDockspaceState(editor);
+	setContext("dockspace", dockspace);
 	let document = createDocumentState(editor);
 	setContext("document", document);
 	let fonts = createFontsState(editor);
 	setContext("fonts", fonts);
 	let fullscreen = createFullscreenState(editor);
 	setContext("fullscreen", fullscreen);
+	let layers = createLayerState(editor);
+	setContext("layers", layers);
 	let nodeGraph = createNodeGraphState(editor);
 	setContext("nodeGraph", nodeGraph);
 	let portfolio = createPortfolioState(editor);
 	setContext("portfolio", portfolio);
+	let properties = createPropertiesState(editor);
+	setContext("properties", properties);
 
 	// Initialize managers, which are isolated systems that subscribe to backend messages to link them to browser API functionality (like JS events, IndexedDB, etc.)
 	createClipboardManager(editor);

@@ -6,6 +6,7 @@ use crate::messages::portfolio::document::node_graph::utility_types::{
 use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer};
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
+use crate::messages::workspace::FrontendDivisionOrPanel;
 
 use graph_craft::document::NodeId;
 use graphene_core::raster::color::Color;
@@ -163,6 +164,9 @@ pub enum FrontendMessage {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
+	},
+	UpdateDockspace {
+		root: FrontendDivisionOrPanel,
 	},
 	UpdateDocumentArtwork {
 		svg: String,

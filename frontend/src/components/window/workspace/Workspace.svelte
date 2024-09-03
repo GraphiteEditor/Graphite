@@ -1,156 +1,158 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
+	import { fade } from "svelte/transition";
+
 	import type { DialogState } from "@graphite/state-providers/dialog";
-	import type { PortfolioState } from "@graphite/state-providers/portfolio";
+	import { type DockspaceState, type PanelIdentifier, type PanelDragging } from "@graphite/state-providers/dockspace";
+
 	import type { Editor } from "@graphite/wasm-communication/editor";
 
-	import type { FrontendDocumentDetails } from "@graphite/wasm-communication/messages";
+	import type { Direction } from "@graphite/wasm-communication/messages";
 
 	import Dialog from "@graphite/components/floating-menus/Dialog.svelte";
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import Panel from "@graphite/components/window/workspace/Panel.svelte";
+	import SubdivisionOrPanel from "@graphite/components/window/workspace/SubdivisionOrPanel.svelte";
 
-	const MIN_PANEL_SIZE = 100;
-	const PANEL_SIZES = {
-		/**/ root: 100,
-		/*   ├── */ content: 80,
-		/*   │      ├── */ document: 100,
-		/*   └── */ details: 20,
-		/*          ├── */ properties: 45,
-		/*          └── */ layers: 55,
-	};
-
-	let panelSizes = PANEL_SIZES;
-	let documentPanel: Panel | undefined;
-
-	$: documentPanel?.scrollTabIntoView($portfolio.activeDocumentIndex);
-
-	$: documentTabLabels = $portfolio.documents.map((doc: FrontendDocumentDetails) => {
-		const name = doc.displayName;
-
-		if (!editor.handle.inDevelopmentMode()) return { name };
-
-		const tooltip = `Document ID: ${doc.id}`;
-		return { name, tooltip };
-	});
-
-	const editor = getContext<Editor>("editor");
-	const portfolio = getContext<PortfolioState>("portfolio");
 	const dialog = getContext<DialogState>("dialog");
+	const editor = getContext<Editor>("editor");
+	const dockspace = getContext<DockspaceState>("dockspace");
 
-	function resizePanel(e: PointerEvent) {
-		const gutter = (e.target || undefined) as HTMLDivElement | undefined;
-		const nextSibling = (gutter?.nextElementSibling || undefined) as HTMLDivElement | undefined;
-		const prevSibling = (gutter?.previousElementSibling || undefined) as HTMLDivElement | undefined;
-		const parentElement = (gutter?.parentElement || undefined) as HTMLDivElement | undefined;
+	let dragTarget = undefined as undefined | DOMRect;
+	let dragState = undefined as undefined | { edge: Edge; dragging: PanelDragging; insert: InsertIndex | undefined; bodyId: PanelIdentifier | undefined; tabsId: PanelIdentifier | undefined };
 
-		const nextSiblingName = (nextSibling?.getAttribute("data-subdivision-name") || undefined) as keyof typeof PANEL_SIZES;
-		const prevSiblingName = (prevSibling?.getAttribute("data-subdivision-name") || undefined) as keyof typeof PANEL_SIZES;
+	function panelBody(e: DragEvent): undefined | { id: PanelIdentifier; element: HTMLElement } {
+		if (!(e.target instanceof Element)) return;
+		const element = e.target.closest("[data-panel-body]");
+		if (element === null || !(element instanceof HTMLElement)) return;
+		if (element.dataset.panelBody === undefined) return;
+		return { id: BigInt(element.dataset.panelBody), element: element };
+	}
+	function panelTabs(e: DragEvent): undefined | { id: PanelIdentifier; element: HTMLElement } {
+		if (!(e.target instanceof Element)) return;
+		const element = e.target.closest("[data-panel-tabs]");
+		if (element === null || !(element instanceof HTMLElement)) return;
+		if (element.dataset.panelTabs === undefined) return;
+		return { id: BigInt(element.dataset.panelTabs), element };
+	}
 
-		if (!gutter || !nextSibling || !prevSibling || !parentElement || !nextSiblingName || !prevSiblingName) return;
+	type Edge = { direction: Direction; position: bigint } | undefined;
+	function onEdge(e: DragEvent, element: HTMLElement): Edge {
+		const bounds = element.getBoundingClientRect();
+		const fractionX = (e.clientX - bounds.x) / bounds.width;
+		const fractionY = (e.clientY - bounds.y) / bounds.height;
+		const TARGET_FRACTION = 0.2;
 
-		// Are we resizing horizontally?
-		const isHorizontal = gutter.getAttribute("data-gutter-horizontal") !== null;
+		if (fractionX < Math.min(TARGET_FRACTION, fractionY, 1 - fractionY)) return { direction: "Horizontal", position: 0n };
+		if (1 - fractionX < Math.min(TARGET_FRACTION, fractionY, 1 - fractionY)) return { direction: "Horizontal", position: 1n };
+		if (fractionY < Math.min(TARGET_FRACTION)) return { direction: "Vertical", position: 0n };
+		if (1 - fractionY < Math.min(TARGET_FRACTION)) return { direction: "Vertical", position: 1n };
+	}
 
-		// Get the current size in px of the panels being resized and the gutter
-		const gutterSize = isHorizontal ? gutter.getBoundingClientRect().width : gutter.getBoundingClientRect().height;
-		const nextSiblingSize = isHorizontal ? nextSibling.getBoundingClientRect().width : nextSibling.getBoundingClientRect().height;
-		const prevSiblingSize = isHorizontal ? prevSibling.getBoundingClientRect().width : prevSibling.getBoundingClientRect().height;
-		const parentElementSize = isHorizontal ? parentElement.getBoundingClientRect().width : parentElement.getBoundingClientRect().height;
+	function canDockEdge(id: PanelIdentifier) {
+		return !(id === $dockspace.panelDragging?.panel && editor.handle.isSingleTab(id));
+	}
 
-		// Measure the resizing panels as a percentage of all sibling panels
-		const totalResizingSpaceOccupied = gutterSize + nextSiblingSize + prevSiblingSize;
-		const proportionBeingResized = totalResizingSpaceOccupied / parentElementSize;
+	type InsertIndex = { x: number; y: number; insertAtIndex: number; passedActive: boolean };
+	function insertIndex(e: DragEvent, element: HTMLElement): InsertIndex {
+		let { x, y } = element.getBoundingClientRect();
 
-		// Prevent cursor flicker as mouse temporarily leaves the gutter
-		gutter.setPointerCapture(e.pointerId);
+		let insertAtIndex = 0;
+		let passedActive = false;
+		element.childNodes.forEach((tab) => {
+			if (!(tab instanceof HTMLElement)) return;
+			const bounds = tab.getBoundingClientRect();
+			if (bounds.x + bounds.width / 2 > e.clientX) return;
+			const index = Number(tab.dataset.tabIndex);
+			insertAtIndex = index + 1;
+			x = bounds.right;
+			y = bounds.y;
+		});
+		return { insertAtIndex, passedActive, x, y };
+	}
 
-		const mouseStart = isHorizontal ? e.clientX : e.clientY;
+	function dragover(e: DragEvent) {
+		if (!$dockspace.panelDragging) return;
+		const tabs = panelTabs(e);
+		const body = panelBody(e);
+		dragState = { edge: undefined, dragging: $dockspace.panelDragging, bodyId: body?.id, tabsId: tabs?.id, insert: undefined };
+		if (tabs !== undefined) {
+			dragTarget = undefined;
 
-		const updatePosition = (e: PointerEvent) => {
-			const mouseCurrent = isHorizontal ? e.clientX : e.clientY;
-			let mouseDelta = mouseStart - mouseCurrent;
+			const insert = insertIndex(e, tabs.element);
+			dragState.insert = insert;
+		} else if (body !== undefined) {
+			dragTarget = body.element.getBoundingClientRect();
 
-			mouseDelta = Math.max(nextSiblingSize + mouseDelta, MIN_PANEL_SIZE) - nextSiblingSize;
-			mouseDelta = prevSiblingSize - Math.max(prevSiblingSize - mouseDelta, MIN_PANEL_SIZE);
+			const edge = onEdge(e, body.element);
+			if (canDockEdge(body.id) && edge !== undefined) {
+				dragState.edge = edge;
+				if (edge.direction === "Horizontal") dragTarget.width /= 2;
+				else if (edge.direction === "Vertical") dragTarget.height /= 2;
 
-			panelSizes[nextSiblingName] = ((nextSiblingSize + mouseDelta) / totalResizingSpaceOccupied) * proportionBeingResized * 100;
-			panelSizes[prevSiblingName] = ((prevSiblingSize - mouseDelta) / totalResizingSpaceOccupied) * proportionBeingResized * 100;
-		};
+				if (edge.direction === "Horizontal" && edge.position === 1n) dragTarget.x += dragTarget.width;
+				else if (edge.direction === "Vertical" && edge.position === 1n) dragTarget.y += dragTarget.height;
+			}
+		}
+	}
 
-		const cleanup = (e: PointerEvent) => {
-			gutter.releasePointerCapture(e.pointerId);
+	function dragend() {
+		if (dragState === undefined) return;
+		const previousDragState = dragState;
+		dragState = undefined;
 
-			document.removeEventListener("pointermove", updatePosition);
-			document.removeEventListener("pointerleave", cleanup);
-			document.removeEventListener("pointerup", cleanup);
-		};
+		const target = previousDragState.tabsId === undefined ? previousDragState.bodyId : previousDragState.tabsId;
+		if (target === undefined) return;
 
-		document.addEventListener("pointermove", updatePosition);
-		document.addEventListener("pointerleave", cleanup);
-		document.addEventListener("pointerup", cleanup);
+		let insertIndex = undefined;
+		if (previousDragState.insert !== undefined && previousDragState.tabsId !== undefined) {
+			const indexOffset = target === previousDragState.dragging.panel && previousDragState.dragging.tabIndex < previousDragState.insert.insertAtIndex ? 1 : 0;
+			insertIndex = previousDragState.insert.insertAtIndex - indexOffset;
+		}
+
+		let horizontal = undefined;
+		let start = undefined;
+		if (previousDragState.edge) {
+			horizontal = previousDragState.edge.direction === "Horizontal";
+			start = previousDragState.edge.position === 0n;
+		}
+
+		editor.handle.moveTab(previousDragState.dragging.panel, previousDragState.dragging.tabIndex, target, insertIndex, horizontal, start);
 	}
 </script>
 
-<LayoutRow class="workspace" data-workspace>
-	<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["root"] }} data-subdivision-name="root">
-		<LayoutCol class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["content"] }} data-subdivision-name="content">
-			<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["document"] }} data-subdivision-name="document">
-				<Panel
-					panelType={$portfolio.documents.length > 0 ? "Document" : undefined}
-					tabCloseButtons={true}
-					tabMinWidths={true}
-					tabLabels={documentTabLabels}
-					clickAction={(tabIndex) => editor.handle.selectDocument($portfolio.documents[tabIndex].id)}
-					closeAction={(tabIndex) => editor.handle.closeDocumentWithConfirmation($portfolio.documents[tabIndex].id)}
-					tabActiveIndex={$portfolio.activeDocumentIndex}
-					bind:this={documentPanel}
-				/>
-			</LayoutRow>
-		</LayoutCol>
-		<LayoutCol class="workspace-grid-resize-gutter" data-gutter-horizontal on:pointerdown={(e) => resizePanel(e)} />
-		<LayoutCol class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["details"] }} data-subdivision-name="details">
-			<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["properties"] }} data-subdivision-name="properties">
-				<Panel panelType="Properties" tabLabels={[{ name: "Properties" }]} tabActiveIndex={0} />
-			</LayoutRow>
-			<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical on:pointerdown={(e) => resizePanel(e)} />
-			<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["layers"] }} data-subdivision-name="layers">
-				<Panel panelType="Layers" tabLabels={[{ name: "Layers" }]} tabActiveIndex={0} />
-			</LayoutRow>
-		</LayoutCol>
-	</LayoutRow>
+<LayoutRow class="workspace" data-workspace on:dragover={dragover} on:dragend={dragend} ve={() => (dragTarget = undefined)}>
+	{#if $dockspace.divisionData !== undefined}
+		<SubdivisionOrPanel value={$dockspace.divisionData} />
+	{/if}
 	{#if $dialog.visible}
 		<Dialog />
 	{/if}
 </LayoutRow>
+{#if $dockspace.panelDragging !== undefined && dragTarget !== undefined}
+	<div class="drag-target" transition:fade={{ duration: 150 }} style={`left:${dragTarget.x}px;top:${dragTarget.y}px;width:${dragTarget.width}px;height:${dragTarget.height}px;`} />
+{/if}
+{#if $dockspace.panelDragging !== undefined && dragState?.insert !== undefined}
+	<div class="insert-target" style={`left:${dragState.insert.x}px;top:${dragState.insert.y}px;`} />
+{/if}
 
 <style lang="scss" global>
 	.workspace {
 		position: relative;
 		flex: 1 1 100%;
-
-		.workspace-grid-subdivision {
-			min-height: 28px;
-			flex: 1 1 0;
-
-			&.folded {
-				flex-grow: 0;
-				height: 0;
-			}
-		}
-
-		.workspace-grid-resize-gutter {
-			flex: 0 0 4px;
-
-			&.layout-row {
-				cursor: ns-resize;
-			}
-
-			&.layout-col {
-				cursor: ew-resize;
-			}
-		}
+	}
+	.drag-target {
+		pointer-events: none;
+		position: absolute;
+		background-color: rgba(170, 170, 170, 0.2);
+		transition: all 0.15s ease-out;
+	}
+	.insert-target {
+		pointer-events: none;
+		position: absolute;
+		background-color: white;
+		width: 2px;
+		height: 30px;
+		border-radius: 1px;
 	}
 </style>
