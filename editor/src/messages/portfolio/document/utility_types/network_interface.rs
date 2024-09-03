@@ -1772,6 +1772,10 @@ impl NodeNetworkInterface {
 			log::error!("Could not get all nodes bounding box in load_export_ports");
 			return;
 		};
+		let Some(rounded_network_edge_distance) = self.rounded_network_edge_distance(network_path).cloned() else {
+			log::error!("Could not get rounded_network_edge_distance in load_export_ports");
+			return;
+		};
 		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in load_export_ports");
 			return;
@@ -1780,6 +1784,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get current network in load_export_ports");
 			return;
 		};
+
 		let mut import_export_ports = Ports::new();
 
 		let viewport_top_right = network_metadata
@@ -1787,7 +1792,7 @@ impl NodeNetworkInterface {
 			.navigation_metadata
 			.node_graph_to_viewport
 			.inverse()
-			.transform_point2(network_metadata.persistent_metadata.navigation_metadata.exports_to_edge_distance);
+			.transform_point2(rounded_network_edge_distance.exports_to_edge_distance);
 		let offset_from_top_right = if network
 			.exports
 			.first()
@@ -1809,7 +1814,7 @@ impl NodeNetworkInterface {
 			.navigation_metadata
 			.node_graph_to_viewport
 			.inverse()
-			.transform_point2(network_metadata.persistent_metadata.navigation_metadata.imports_to_edge_distance);
+			.transform_point2(rounded_network_edge_distance.imports_to_edge_distance);
 
 		let offset_from_top_left = if network
 			.exports
@@ -1840,6 +1845,69 @@ impl NodeNetworkInterface {
 			return;
 		};
 		network_metadata.transient_metadata.import_export_ports.unload();
+	}
+
+	pub fn rounded_network_edge_distance(&mut self, network_path: &[NodeId]) -> Option<&NetworkEdgeDistance> {
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in rounded_network_edge_distance");
+			return None;
+		};
+		if !network_metadata.transient_metadata.rounded_network_edge_distance.is_loaded() {
+			self.load_rounded_network_edge_distance(network_path);
+		}
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in rounded_network_edge_distance");
+			return None;
+		};
+		let TransientMetadata::Loaded(rounded_network_edge_distance) = &network_metadata.transient_metadata.rounded_network_edge_distance else {
+			log::error!("could not load import rounded_network_edge_distance");
+			return None;
+		};
+		Some(rounded_network_edge_distance)
+	}
+
+	fn load_rounded_network_edge_distance(&mut self, network_path: &[NodeId]) {
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+			log::error!("Could not get nested network in set_grid_aligned_edges");
+			return;
+		};
+		// When setting the edges to be grid aligned, update the pixel offset to ensure the next pan starts from the snapped import/export position
+		let node_graph_to_viewport = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport;
+		// TODO: Eventually replace node graph top right with the footprint when trying to get the network edge distance
+		let node_graph_top_right = network_metadata.persistent_metadata.navigation_metadata.node_graph_top_right;
+
+		let target_exports_distance = node_graph_to_viewport.inverse().transform_point2(DVec2::new(
+			node_graph_top_right.x - EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP as f64,
+			node_graph_top_right.y + EXPORTS_TO_TOP_EDGE_PIXEL_GAP as f64,
+		));
+
+		let target_imports_distance = node_graph_to_viewport
+			.inverse()
+			.transform_point2(DVec2::new(IMPORTS_TO_LEFT_EDGE_PIXEL_GAP as f64, IMPORTS_TO_TOP_EDGE_PIXEL_GAP as f64));
+
+		let rounded_exports_distance = DVec2::new((target_exports_distance.x / 24. + 0.5).floor() * 24., (target_exports_distance.y / 24. + 0.5).floor() * 24.);
+		let rounded_imports_distance = DVec2::new((target_imports_distance.x / 24. + 0.5).floor() * 24., (target_imports_distance.y / 24. + 0.5).floor() * 24.);
+
+		let rounded_viewport_exports_distance = node_graph_to_viewport.transform_point2(rounded_exports_distance);
+		let rounded_viewport_imports_distance = node_graph_to_viewport.transform_point2(rounded_imports_distance);
+
+		let network_edge_distance = NetworkEdgeDistance {
+			exports_to_edge_distance: rounded_viewport_exports_distance,
+			imports_to_edge_distance: rounded_viewport_imports_distance,
+		};
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+			log::error!("Could not get current network in load_export_ports");
+			return;
+		};
+		network_metadata.transient_metadata.rounded_network_edge_distance = TransientMetadata::Loaded(network_edge_distance);
+	}
+
+	fn unload_rounded_network_edge_distance(&mut self, network_path: &[NodeId]) {
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+			log::error!("Could not get nested network_metadata in unload_export_ports");
+			return;
+		};
+		network_metadata.transient_metadata.rounded_network_edge_distance.unload();
 	}
 
 	fn owned_nodes(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&HashSet<NodeId>> {
@@ -2407,12 +2475,16 @@ impl NodeNetworkInterface {
 		let mut all_nodes_bounding_box = String::new();
 		let _ = rect.subpath_to_svg(&mut all_nodes_bounding_box, DAffine2::IDENTITY);
 
+		let Some(rounded_network_edge_distance) = self.rounded_network_edge_distance(network_path).cloned() else {
+			log::error!("Could not get rounded_network_edge_distance in collect_front_end_click_targets");
+			return FrontendClickTargets::default();
+		};
 		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in collect_front_end_click_targets");
 			return FrontendClickTargets::default();
 		};
-		let import_exports_viewport_top_left = network_metadata.persistent_metadata.navigation_metadata.imports_to_edge_distance;
-		let import_exports_viewport_bottom_right = network_metadata.persistent_metadata.navigation_metadata.exports_to_edge_distance;
+		let import_exports_viewport_top_left = rounded_network_edge_distance.imports_to_edge_distance;
+		let import_exports_viewport_bottom_right = rounded_network_edge_distance.exports_to_edge_distance;
 
 		let node_graph_top_left = network_metadata
 			.persistent_metadata
@@ -2843,30 +2915,11 @@ impl NodeNetworkInterface {
 	// This should be run whenever the pan ends, a zoom occurs, or the network is opened
 	pub fn set_grid_aligned_edges(&mut self, node_graph_top_right: DVec2, network_path: &[NodeId]) {
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Could not get nested network in set_grid_aligned_edges");
+			log::error!("Could not get nested network_metadata in set_grid_aligned_edges");
 			return;
 		};
-		// When setting the edges to be grid aligned, update the pixel offset to ensure the next pan starts from the snapped import/export position
-		let node_graph_to_viewport = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport;
-
-		let target_exports_distance = node_graph_to_viewport.inverse().transform_point2(DVec2::new(
-			node_graph_top_right.x - EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP as f64,
-			node_graph_top_right.y + EXPORTS_TO_TOP_EDGE_PIXEL_GAP as f64,
-		));
-
-		let target_imports_distance = node_graph_to_viewport
-			.inverse()
-			.transform_point2(DVec2::new(IMPORTS_TO_LEFT_EDGE_PIXEL_GAP as f64, IMPORTS_TO_TOP_EDGE_PIXEL_GAP as f64));
-
-		let rounded_exports_distance = DVec2::new((target_exports_distance.x / 24. + 0.5).floor() * 24., (target_exports_distance.y / 24. + 0.5).floor() * 24.);
-		let rounded_imports_distance = DVec2::new((target_imports_distance.x / 24. + 0.5).floor() * 24., (target_imports_distance.y / 24. + 0.5).floor() * 24.);
-
-		let rounded_viewport_exports_distance = node_graph_to_viewport.transform_point2(rounded_exports_distance);
-		let rounded_viewport_imports_distance = node_graph_to_viewport.transform_point2(rounded_imports_distance);
-
-		network_metadata.persistent_metadata.navigation_metadata.exports_to_edge_distance = rounded_viewport_exports_distance;
-		network_metadata.persistent_metadata.navigation_metadata.imports_to_edge_distance = rounded_viewport_imports_distance;
-
+		network_metadata.persistent_metadata.navigation_metadata.node_graph_top_right = node_graph_top_right;
+		self.unload_rounded_network_edge_distance(network_path);
 		self.unload_import_export_ports(network_path);
 	}
 
@@ -5076,6 +5129,16 @@ pub struct NodeNetworkTransientMetadata {
 	// pub wire_paths: Vec<WirePath>
 	/// All export connector click targets
 	pub import_export_ports: TransientMetadata<Ports>,
+	// Distance to the edges of the network, where the import/export ports are displayed. Rounded to nearest grid space when the panning ends.
+	pub rounded_network_edge_distance: TransientMetadata<NetworkEdgeDistance>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NetworkEdgeDistance {
+	/// The viewport pixel distance distance between the left edge of the node graph and the exports.
+	pub exports_to_edge_distance: DVec2,
+	/// The viewport pixel distance between the left edge of the node graph and the imports.
+	pub imports_to_edge_distance: DVec2,
 }
 
 #[derive(Debug, Clone)]
@@ -5297,12 +5360,8 @@ pub struct NavigationMetadata {
 	// TODO: Remove and replace with calculate_offset_transform from the node_graph_ptz. This will be difficult since it requires both the navigation message handler and the IPP
 	/// Transform from node graph space to viewport space.
 	pub node_graph_to_viewport: DAffine2,
-	/// The viewport pixel distance distance between the left edge of the node graph and the exports. Rounded to nearest grid space when the panning ends.
-	#[serde(skip)]
-	pub exports_to_edge_distance: DVec2,
-	/// The viewport pixel distance between the left edge of the node graph and the imports. Rounded to nearest grid space when the panning ends.
-	#[serde(skip)]
-	pub imports_to_edge_distance: DVec2,
+	/// Top right of the node graph in viewport space
+	pub node_graph_top_right: DVec2,
 }
 
 impl Default for NavigationMetadata {
@@ -5311,8 +5370,8 @@ impl Default for NavigationMetadata {
 		NavigationMetadata {
 			node_graph_ptz: PTZ::default(),
 			node_graph_to_viewport: DAffine2::IDENTITY,
-			exports_to_edge_distance: DVec2::ZERO,
-			imports_to_edge_distance: DVec2::ZERO,
+			// TODO: Eventually replace with footprint
+			node_graph_top_right: DVec2::ZERO,
 		}
 	}
 }
