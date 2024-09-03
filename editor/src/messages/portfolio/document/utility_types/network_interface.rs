@@ -23,6 +23,7 @@ pub struct NodeNetworkInterface {
 	/// The node graph that generates this document's artwork. It recursively stores its sub-graphs, so this root graph is the whole snapshot of the document content.
 	/// A public mutable reference should never be created. It should only be mutated through custom setters which perform the necessary side effects to keep network_metadata in sync
 	network: NodeNetwork,
+	// TODO: Remove and store in node network with IDs based on Self::metadata_node_id
 	/// Stores all editor information for a NodeNetwork. Should automatically kept in sync by the setter methods when changes to the document network are made.
 	network_metadata: NodeNetworkMetadata,
 	// TODO: Wrap in TransientMetadata Option
@@ -35,6 +36,36 @@ pub struct NodeNetworkInterface {
 	/// Disallow aborting transactions whilst undoing to avoid #559.
 	#[serde(skip)]
 	transaction_status: TransactionStatus,
+}
+
+#[derive(Hash)]
+pub enum Metadata {
+	// Network persistent metadata
+	NodeMetadata,
+	Previewing,
+	NavigationMetadata,
+	SelectionUndoHistory,
+	SelectionRedoHistory,
+	// Network transient metadata
+	SelectedNodes,
+	StackDependents,
+	AllNodesBoundingBox,
+	OutwardWires,
+	ImportExportPorts,
+	// Node persistent metadata
+	Reference,
+	DisplayName,
+	InputNames,
+	OutputNames,
+	HasPrimaryOutput,
+	Locked,
+	NodeTypeMetadata,
+	// Node transient metadata
+	ClickTargets,
+	NodeTypeClickTargets,
+	// Derived metadata
+	Position,
+	IsLayer,
 }
 
 impl Clone for NodeNetworkInterface {
@@ -451,6 +482,24 @@ impl NodeNetworkInterface {
 			}
 			InputConnector::Export(export_index) => network.exports.get(*export_index),
 		}
+	}
+
+	fn metadata_node_id(path: &[NodeId], metadata: Metadata) -> NodeId {
+		let mut hasher = DefaultHasher::new();
+		path.hash(&mut hasher);
+		metadata.hash(&mut hasher);
+		NodeId(hasher.finish())
+	}
+
+	fn metadata_value(&self, path: &[NodeId], metadata: Metadata) -> Option<&TaggedValue> {
+		let node_id = Self::metadata_node_id(path, metadata);
+
+		let network = self.network(&[]).unwrap();
+		let Some(node) = network.nodes.get(&node_id) else {
+			log::error!("Could not get node {node_id} in value_from_node_id");
+			return None;
+		};
+		node.inputs.first().expect("Metadata node should always have primary input to store data").as_value()
 	}
 
 	/// Get the [`Type`] for any InputConnector
@@ -988,11 +1037,17 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn display_name(&self, node_id: &NodeId, network_path: &[NodeId]) -> String {
-		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
-			log::error!("Could not get node_metadata in display_name");
+		let mut node_id_path = network_path.to_vec();
+		node_id_path.push(*node_id);
+		let Some(tagged_value, ..) = self.metadata_value(&node_id_path, Metadata::DisplayName) else {
+			log::error!("Could not get tagged value in display_name");
 			return "".to_string();
 		};
-		node_metadata.persistent_metadata.display_name.clone()
+		let TaggedValue::String(display_name) = tagged_value else {
+			log::error!("Tagged value should be String in display_name");
+			return "".to_string();
+		};
+		display_name.clone()
 	}
 
 	pub fn frontend_display_name(&self, node_id: &NodeId, network_path: &[NodeId]) -> String {
@@ -2212,7 +2267,7 @@ impl NodeNetworkInterface {
 			DocumentNodeClickTargets {
 				node_click_target,
 				port_click_targets,
-				node_type_metadata: NodeTypeClickTargets::Node,
+				node_type_click_targets: NodeTypeClickTargets::Node,
 			}
 		} else {
 			// Layer inputs
@@ -2251,7 +2306,7 @@ impl NodeNetworkInterface {
 			DocumentNodeClickTargets {
 				node_click_target,
 				port_click_targets,
-				node_type_metadata: NodeTypeClickTargets::Layer(LayerClickTargets {
+				node_type_click_targets: NodeTypeClickTargets::Layer(LayerClickTargets {
 					visibility_click_target,
 					grip_click_target,
 				}),
@@ -2450,7 +2505,7 @@ impl NodeNetworkInterface {
 					let _ = port.subpath().subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
 					port_click_targets.push(port_path);
 				}
-				if let NodeTypeClickTargets::Layer(layer_metadata) = &node_click_targets.node_type_metadata {
+				if let NodeTypeClickTargets::Layer(layer_metadata) = &node_click_targets.node_type_click_targets {
 					let mut port_path = String::new();
 					let _ = layer_metadata.visibility_click_target.subpath().subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
 					icon_click_targets.push(port_path);
@@ -2601,7 +2656,7 @@ impl NodeNetworkInterface {
 			.iter()
 			.filter_map(|node_id| {
 				self.node_click_targets(node_id, network_path).and_then(|transient_node_metadata| {
-					if let NodeTypeClickTargets::Layer(layer) = &transient_node_metadata.node_type_metadata {
+					if let NodeTypeClickTargets::Layer(layer) = &transient_node_metadata.node_type_click_targets {
 						match click_target_type {
 							LayerClickTargetTypes::Visibility => layer.visibility_click_target.intersect_point_no_stroke(point).then_some(*node_id),
 							LayerClickTargetTypes::Grip => layer.grip_click_target.intersect_point_no_stroke(point).then_some(*node_id),
@@ -3390,6 +3445,8 @@ impl NodeNetworkInterface {
 		};
 
 		network.nodes.insert(node_id, node_template.document_node);
+		// TODO: Remove this clone once the later usage is removed
+		self.insert_all_node_metadata(node_id, network_path, node_template.persistent_node_metadata.clone());
 		self.transaction_modified();
 
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
@@ -3404,6 +3461,26 @@ impl NodeNetworkInterface {
 
 		self.unload_all_nodes_bounding_box(network_path);
 		self.unload_node_click_targets(&node_id, network_path)
+	}
+
+	fn insert_all_node_metadata(&mut self, node_id: NodeId, network_path: &[NodeId], persistent_metadata: DocumentNodePersistentMetadata) {
+		let mut node_path = network_path.to_vec();
+		node_path.push(node_id);
+		let display_name_node_id = Self::metadata_node_id(&node_path, Metadata::DisplayName);
+		self.insert_node_metadata(display_name_node_id, TaggedValue::String(persistent_metadata.display_name));
+	}
+
+	fn insert_node_metadata(&mut self, metadata_node_id: NodeId, tagged_value: TaggedValue) {
+		let network = self.network_mut(&[]).unwrap();
+		log::debug!("Inserting metadata node with id {metadata_node_id}");
+		network.nodes.insert(
+			metadata_node_id,
+			DocumentNode {
+				implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::ClonedNode".into()),
+				inputs: vec![NodeInput::value(tagged_value, true)],
+				..Default::default()
+			},
+		);
 	}
 
 	/// Deletes all nodes in `node_ids` and any sole dependents in the horizontal chain if the node to delete is a layer node.
@@ -3632,38 +3709,55 @@ impl NodeNetworkInterface {
 	// }
 
 	pub fn set_display_name(&mut self, node_id: &NodeId, display_name: String, network_path: &[NodeId]) {
-		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
-			log::error!("Could not get node {node_id} in set_visibility");
+		let network = self.network_mut(network_path).unwrap();
+
+		let mut node_path = network_path.to_vec();
+		node_path.push(*node_id);
+		let display_name_node_id = Self::metadata_node_id(&node_path, Metadata::DisplayName);
+
+		let Some(display_name_node) = network.nodes.get_mut(&display_name_node_id) else {
+			log::error!("Could not get display name node with id {display_name_node_id} in set_display_name");
 			return;
 		};
 
-		if node_metadata.persistent_metadata.display_name == display_name {
+		let Some(display_name_input) = display_name_node.inputs.get_mut(0) else {
+			log::error!("Could not get display name input in set_display_name");
+			return;
+		};
+
+		let Some(TaggedValue::String(current_display_name)) = display_name_input.as_value() else {
+			log::error!("Could not get current display name in set_display_name");
+			return;
+		};
+
+		if *current_display_name == display_name {
 			return;
 		}
 
-		node_metadata.persistent_metadata.display_name.clone_from(&display_name);
+		*display_name_input = NodeInput::value(TaggedValue::String(display_name), false);
 
-		// Keep the alias in sync with the `ToArtboard` name input
-		if node_metadata.persistent_metadata.reference.as_ref().is_some_and(|reference| reference == "Artboard") {
-			let Some(nested_network) = self.network_mut(network_path) else {
-				return;
-			};
-			let Some(artboard_node) = nested_network.nodes.get_mut(node_id) else {
-				return;
-			};
-			let DocumentNodeImplementation::Network(network) = &mut artboard_node.implementation else {
-				return;
-			};
-			// Keep this in sync with the definition
-			let Some(to_artboard) = network.nodes.get_mut(&NodeId(0)) else {
-				return;
-			};
+		// TODO: Connect to the display name node. Commenting this out breaks https://github.com/GraphiteEditor/Graphite/issues/1706
+		// Keep the display in sync with the `ToArtboard` name input
+		// if node_metadata.persistent_metadata.reference.as_ref().is_some_and(|reference| reference == "Artboard") {
+		// 	let Some(nested_network) = self.network_mut(network_path) else {
+		// 		return;
+		// 	};
+		// 	let Some(artboard_node) = nested_network.nodes.get_mut(node_id) else {
+		// 		return;
+		// 	};
+		// 	let DocumentNodeImplementation::Network(network) = &mut artboard_node.implementation else {
+		// 		return;
+		// 	};
+		// 	// Keep this in sync with the definition
+		// 	let Some(to_artboard) = network.nodes.get_mut(&NodeId(0)) else {
+		// 		return;
+		// 	};
 
-			let label_index = 1;
-			let label = if !display_name.is_empty() { display_name } else { "Artboard".to_string() };
-			let label_input = NodeInput::value(TaggedValue::String(label), false);
-			to_artboard.inputs[label_index] = label_input;
-		}
+		// 	let label_index = 1;
+		// 	let label = if !display_name.is_empty() { display_name } else { "Artboard".to_string() };
+		// 	let label_input = NodeInput::value(TaggedValue::String(label), false);
+		// 	to_artboard.inputs[label_index] = label_input;
+		// }
 
 		self.transaction_modified();
 		self.try_unload_layer_width(node_id, network_path);
@@ -5309,7 +5403,7 @@ pub struct DocumentNodeClickTargets {
 	/// Stores all port click targets in node graph space.
 	pub port_click_targets: Ports,
 	// Click targets that are specific to either nodes or layers, which are chosen states for displaying as a left-to-right node or bottom-to-top layer.
-	pub node_type_metadata: NodeTypeClickTargets,
+	pub node_type_click_targets: NodeTypeClickTargets,
 }
 
 #[derive(Debug, Default, Clone)]
