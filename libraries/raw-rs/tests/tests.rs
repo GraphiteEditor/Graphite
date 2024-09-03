@@ -8,7 +8,7 @@ use image::{ColorType, ImageEncoder};
 use libraw::Processor;
 use std::collections::HashMap;
 use std::fmt::Write;
-use std::fs::{read_dir, File};
+use std::fs::{create_dir, metadata, read_dir, File};
 use std::io::{BufWriter, Cursor, Read};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -73,6 +73,11 @@ fn store_image(path: &Path, suffix: &str, data: &mut [u8], width: usize, height:
 		output_path.push(parent);
 	}
 	output_path.push("output");
+
+	if metadata(&output_path).is_err() {
+		create_dir(&output_path).unwrap();
+	}
+
 	if let Some(filename) = path.file_stem() {
 		let new_filename = format!("{}_{}.{}", filename.to_string_lossy(), suffix, "png");
 		output_path.push(new_filename);
