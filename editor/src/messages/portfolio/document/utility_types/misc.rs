@@ -1,5 +1,6 @@
 use crate::consts::COLOR_OVERLAY_GRAY;
 
+use graph_craft::document::PTZ;
 use graphene_core::raster::Color;
 
 use glam::DVec2;
@@ -438,29 +439,5 @@ impl fmt::Display for SnappingOptions {
 			SnappingOptions::BoundingBoxes => write!(f, "Bounding Boxes"),
 			SnappingOptions::Geometry => write!(f, "Geometry"),
 		}
-	}
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(default)]
-pub struct PTZ {
-	pub pan: DVec2,
-	pub tilt: f64,
-	zoom: f64,
-}
-
-impl Default for PTZ {
-	fn default() -> Self {
-		Self { pan: DVec2::ZERO, tilt: 0., zoom: 1. }
-	}
-}
-
-impl PTZ {
-	pub fn zoom(&self) -> f64 {
-		self.zoom
-	}
-
-	pub fn set_zoom(&mut self, zoom: f64) {
-		self.zoom = zoom.clamp(crate::consts::VIEWPORT_ZOOM_SCALE_MIN, crate::consts::VIEWPORT_ZOOM_SCALE_MAX)
 	}
 }

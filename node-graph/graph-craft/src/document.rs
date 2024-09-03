@@ -6,7 +6,7 @@ use graphene_core::memo::MemoHashGuard;
 pub use graphene_core::uuid::generate_uuid;
 use graphene_core::{Cow, MemoHash, ProtoNodeIdentifier, Type};
 
-use glam::IVec2;
+use glam::{DAffine2, DVec2, IVec2};
 use log::Metadata;
 use rustc_hash::FxHashMap;
 use std::collections::hash_map::DefaultHasher;
@@ -1353,6 +1353,162 @@ impl<'a> Iterator for RecursiveNodeIter<'a> {
 			self.nodes.extend(network.nodes.iter());
 		}
 		Some(node)
+	}
+}
+
+#[derive(PartialEq, Debug, Clone, Copy, Hash, Default, serde::Serialize, serde::Deserialize, DynAny)]
+pub enum Previewing {
+	/// If there is a node to restore the connection to the export for, then it is stored in the option.
+	/// Otherwise, nothing gets restored and the primary export is disconnected.
+	Yes { root_node_to_restore: Option<RootNode> },
+	#[default]
+	No,
+}
+
+#[derive(PartialEq, Debug, Clone, Copy, Hash, Default, serde::Serialize, serde::Deserialize, DynAny)]
+pub struct RootNode {
+	pub node_id: NodeId,
+	pub output_index: usize,
+}
+
+impl RootNode {
+	pub fn to_connector(&self) -> OutputConnector {
+		OutputConnector::Node {
+			node_id: self.node_id,
+			output_index: self.output_index,
+		}
+	}
+}
+
+/// Represents an input connector with index based on the [`DocumentNode::inputs`] index, not the visible input index
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum InputConnector {
+	#[serde(rename = "node")]
+	Node {
+		#[serde(rename = "nodeId")]
+		node_id: NodeId,
+		#[serde(rename = "inputIndex")]
+		input_index: usize,
+	},
+	#[serde(rename = "export")]
+	Export(usize),
+}
+
+impl Default for InputConnector {
+	fn default() -> Self {
+		InputConnector::Export(0)
+	}
+}
+
+impl InputConnector {
+	pub fn node(node_id: NodeId, input_index: usize) -> Self {
+		InputConnector::Node { node_id, input_index }
+	}
+
+	pub fn input_index(&self) -> usize {
+		match self {
+			InputConnector::Node { input_index, .. } => *input_index,
+			InputConnector::Export(input_index) => *input_index,
+		}
+	}
+
+	pub fn node_id(&self) -> Option<NodeId> {
+		match self {
+			InputConnector::Node { node_id, .. } => Some(*node_id),
+			_ => None,
+		}
+	}
+}
+
+/// Represents an output connector
+#[derive(Debug, Clone, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum OutputConnector {
+	#[serde(rename = "node")]
+	Node {
+		#[serde(rename = "nodeId")]
+		node_id: NodeId,
+		#[serde(rename = "outputIndex")]
+		output_index: usize,
+	},
+	#[serde(rename = "import")]
+	Import(usize),
+}
+
+impl Default for OutputConnector {
+	fn default() -> Self {
+		OutputConnector::Import(0)
+	}
+}
+
+impl OutputConnector {
+	pub fn node(node_id: NodeId, output_index: usize) -> Self {
+		OutputConnector::Node { node_id, output_index }
+	}
+
+	pub fn index(&self) -> usize {
+		match self {
+			OutputConnector::Node { output_index, .. } => *output_index,
+			OutputConnector::Import(output_index) => *output_index,
+		}
+	}
+
+	pub fn node_id(&self) -> Option<NodeId> {
+		match self {
+			OutputConnector::Node { node_id, .. } => Some(*node_id),
+			_ => None,
+		}
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny)]
+pub struct NavigationMetadata {
+	/// The current pan, and zoom state of the viewport's view of the node graph.
+	/// Ensure `DocumentMessage::UpdateDocumentTransform` is called when the pan, zoom, or transform changes.
+	pub node_graph_ptz: PTZ,
+	// TODO: Remove and replace with calculate_offset_transform from the node_graph_ptz. This will be difficult since it requires both the navigation message handler and the IPP
+	/// Transform from node graph space to viewport space.
+	pub node_graph_to_viewport: DAffine2,
+	/// The viewport pixel distance distance between the left edge of the node graph and the exports. Rounded to nearest grid space when the panning ends.
+	#[serde(skip)]
+	pub exports_to_edge_distance: DVec2,
+	/// The viewport pixel distance between the left edge of the node graph and the imports. Rounded to nearest grid space when the panning ends.
+	#[serde(skip)]
+	pub imports_to_edge_distance: DVec2,
+}
+
+impl Default for NavigationMetadata {
+	fn default() -> NavigationMetadata {
+		//Default PTZ and transform
+		NavigationMetadata {
+			node_graph_ptz: PTZ::default(),
+			node_graph_to_viewport: DAffine2::IDENTITY,
+			exports_to_edge_distance: DVec2::ZERO,
+			imports_to_edge_distance: DVec2::ZERO,
+		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize, DynAny)]
+#[serde(default)]
+pub struct PTZ {
+	pub pan: DVec2,
+	pub tilt: f64,
+	zoom: f64,
+}
+
+impl Default for PTZ {
+	fn default() -> Self {
+		Self { pan: DVec2::ZERO, tilt: 0., zoom: 1. }
+	}
+}
+
+impl PTZ {
+	pub fn zoom(&self) -> f64 {
+		self.zoom
+	}
+
+	pub fn set_zoom(&mut self, zoom: f64) {
+		self.zoom = zoom.clamp(graphene_core::consts::VIEWPORT_ZOOM_SCALE_MIN, graphene_core::consts::VIEWPORT_ZOOM_SCALE_MAX)
 	}
 }
 

@@ -1,5 +1,5 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
-use super::document::utility_types::network_interface::{self, InputConnector, OutputConnector};
+use super::document::utility_types::network_interface;
 use super::utility_types::{PanelType, PersistentData};
 use crate::application::generate_uuid;
 use crate::consts::DEFAULT_DOCUMENT_NAME;
@@ -13,7 +13,7 @@ use crate::messages::tool::utility_types::{HintData, HintGroup};
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeInput};
+use graph_craft::document::{InputConnector, NodeId, NodeInput, OutputConnector};
 use graphene_core::text::Font;
 use graphene_std::vector::style::{Fill, FillType, Gradient};
 use interpreted_executor::dynamic_executor::IntrospectError;

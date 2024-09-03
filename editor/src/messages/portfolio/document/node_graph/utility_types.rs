@@ -1,8 +1,6 @@
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::NodeId;
+use graph_craft::document::{NodeId, InputConnector, OutputConnector};
 use graphene_core::Type;
-
-use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FrontendGraphDataType {

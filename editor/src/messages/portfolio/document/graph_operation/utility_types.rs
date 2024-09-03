@@ -1,12 +1,12 @@
 use super::transform_utils;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{self, NodeNetworkInterface};
 use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{generate_uuid, NodeId, NodeInput};
+use graph_craft::document::{generate_uuid, InputConnector, NodeId, NodeInput, OutputConnector};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
 use graphene_core::vector::brush_stroke::BrushStroke;

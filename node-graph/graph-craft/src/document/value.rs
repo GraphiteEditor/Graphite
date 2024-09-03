@@ -178,6 +178,8 @@ tagged_value! {
 	CentroidType(graphene_core::vector::misc::CentroidType),
 	BooleanOperation(graphene_core::vector::misc::BooleanOperation),
 	FontCache(Arc<graphene_core::text::FontCache>),
+	Previewing(crate::document::Previewing),
+	NavigationMetadata(crate::document::NavigationMetadata)
 }
 
 impl TaggedValue {
@@ -295,6 +297,21 @@ mod fake_hash {
 		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 			self.0.to_bits().hash(state);
 			self.1.hash(state)
+		}
+	}
+	impl FakeHash for crate::document::PTZ {
+		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+			self.pan.hash(state);
+			self.tilt.hash(state);
+			self.zoom.hash(state);
+		}
+	}
+	impl FakeHash for crate::document::NavigationMetadata {
+		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+			self.node_graph_ptz.hash(state);
+			self.node_graph_to_viewport.hash(state);
+			self.exports_to_edge_distance.hash(state);
+			self.imports_to_edge_distance.hash(state);
 		}
 	}
 }

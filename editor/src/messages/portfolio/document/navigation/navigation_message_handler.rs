@@ -1,17 +1,16 @@
 use crate::consts::{
-	VIEWPORT_ROTATE_SNAP_INTERVAL, VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_LEVELS, VIEWPORT_ZOOM_MIN_FRACTION_COVER, VIEWPORT_ZOOM_MOUSE_RATE, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN,
-	VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR, VIEWPORT_ZOOM_WHEEL_RATE,
+	VIEWPORT_ROTATE_SNAP_INTERVAL, VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_LEVELS, VIEWPORT_ZOOM_MIN_FRACTION_COVER, VIEWPORT_ZOOM_MOUSE_RATE, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR,
+	VIEWPORT_ZOOM_WHEEL_RATE,
 };
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::navigation::utility_types::NavigationOperation;
-use crate::messages::portfolio::document::utility_types::misc::PTZ;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use graph_craft::document::NodeId;
+use graph_craft::document::{NodeId, PTZ};
 
 use glam::{DAffine2, DVec2};
 
@@ -46,8 +45,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 			if !graph_view_overlay_open {
 				Some(document_ptz)
 			} else {
-				let network_metadata = network_interface.network_metadata(breadcrumb_network_path)?;
-				Some(&network_metadata.persistent_metadata.navigation_metadata.node_graph_ptz)
+				Some(network_interface.navigation_metadata(breadcrumb_network_path).node_graph_ptz)
 			}
 		}
 
@@ -249,7 +247,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 					log::error!("Could not get mutable PTZ in CanvasZoomSet");
 					return;
 				};
-				let zoom = zoom_factor.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
+				let zoom = zoom_factor.clamp(graphene_std::consts::VIEWPORT_ZOOM_SCALE_MIN, graphene_std::consts::VIEWPORT_ZOOM_SCALE_MAX);
 				let zoom = zoom * Self::clamp_zoom(zoom, document_bounds, old_zoom, ipp);
 				ptz.set_zoom(zoom);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);

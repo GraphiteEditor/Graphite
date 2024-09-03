@@ -6,12 +6,12 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::NodePropertiesContext;
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, NodeTemplate, OutputConnector, Previewing};
+use crate::messages::portfolio::document::utility_types::network_interface::{self, NodeNetworkInterface, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 
-use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
+use graph_craft::document::{DocumentNodeImplementation, InputConnector, NodeId, NodeInput, OutputConnector, Previewing};
 use graph_craft::proto::GraphErrors;
 use graphene_core::*;
 use renderer::{ClickTarget, Quad};
@@ -158,13 +158,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::ShiftNodePosition { node_id, x, y });
 				// Only auto connect to the dragged wire if the node is being added to the currently opened network
 				if let Some(output_connector_position) = self.wire_in_progress_from_connector {
-					let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
-						log::error!("Could not get network metadata in CreateNodeFromContextMenu");
-						return;
-					};
-					let output_connector_position_viewport = network_metadata
-						.persistent_metadata
-						.navigation_metadata
+					let output_connector_position_viewport = network_interface
+						.navigation_metadata(selection_network_path)
 						.node_graph_to_viewport
 						.transform_point2(output_connector_position);
 					let Some(output_connector) = &network_interface.output_connector_from_click(output_connector_position_viewport, breadcrumb_network_path) else {
@@ -339,14 +334,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					log::error!("Selection network path does not match breadcrumb network path in PointerDown");
 					return;
 				}
-				let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
-					log::error!("Could not get network metadata in PointerDown");
-					return;
-				};
 
 				let click = ipp.mouse.position;
 
-				let node_graph_point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
+				let node_graph_point = network_interface.navigation_metadata(selection_network_path).node_graph_to_viewport.inverse().transform_point2(click);
 
 				if network_interface
 					.layer_click_target_from_click(click, network_interface::LayerClickTargetTypes::Grip, selection_network_path)
@@ -358,7 +349,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let clicked_id = network_interface.node_from_click(click, selection_network_path);
 				let clicked_input = network_interface.input_connector_from_click(click, selection_network_path);
 				let clicked_output = network_interface.output_connector_from_click(click, selection_network_path);
-				let network_metadata = network_interface.network_metadata(selection_network_path).unwrap();
 
 				// Create the add node popup on right click, then exit
 				if right_click {
@@ -402,11 +392,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					let node_graph_shift = if matches!(context_menu_data, ContextMenuData::CreateNode) {
 						let appear_right_of_mouse = if click.x > ipp.viewport_bounds.size().x - 180. { -180. } else { 0. };
 						let appear_above_mouse = if click.y > ipp.viewport_bounds.size().y - 200. { -200. } else { 0. };
-						DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.matrix2.x_axis.x
+						DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_interface.navigation_metadata(selection_network_path).node_graph_to_viewport.matrix2.x_axis.x
 					} else {
 						let appear_right_of_mouse = if click.x > ipp.viewport_bounds.size().x - 173. { -173. } else { 0. };
 						let appear_above_mouse = if click.y > ipp.viewport_bounds.size().y - 34. { -34. } else { 0. };
-						DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.matrix2.x_axis.x
+						DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_interface.navigation_metadata(selection_network_path).node_graph_to_viewport.matrix2.x_axis.x
 					};
 
 					let context_menu_coordinates = ((node_graph_point.x + node_graph_shift.x) as i32, (node_graph_point.y + node_graph_shift.y) as i32);
@@ -430,9 +420,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				// If the user is clicking on the create nodes list or context menu, break here
 				if let Some(context_menu) = &self.context_menu {
-					let context_menu_viewport = network_metadata
-						.persistent_metadata
-						.navigation_metadata
+					let context_menu_viewport = network_interface
+						.navigation_metadata(selection_network_path)
 						.node_graph_to_viewport
 						.transform_point2(DVec2::new(context_menu.context_menu_coordinates.0 as f64, context_menu.context_menu_coordinates.1 as f64));
 					let (width, height) = if matches!(context_menu.context_menu_data, ContextMenuData::ToggleLayer { .. }) {
@@ -576,18 +565,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					log::error!("Selection network path does not match breadcrumb network path in PointerMove");
 					return;
 				}
-				let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
-					return;
-				};
 
 				// Auto-panning
 				let messages = [NodeGraphMessage::PointerOutsideViewport { shift }.into(), NodeGraphMessage::PointerMove { shift }.into()];
 				self.auto_panning.setup_by_mouse_position(ipp, &messages, responses);
 
 				let viewport_location = ipp.mouse.position;
-				let point = network_metadata
-					.persistent_metadata
-					.navigation_metadata
+				let point = network_interface
+					.navigation_metadata(selection_network_path)
 					.node_graph_to_viewport
 					.inverse()
 					.transform_point2(viewport_location);
@@ -628,12 +613,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 					if let (Some(wire_in_progress_from_connector), Some(wire_in_progress_to_connector)) = (self.wire_in_progress_from_connector, self.wire_in_progress_to_connector) {
 						// If performance is a concern this can be stored as a field in the wire_in_progress_from/to_connector struct, and updated when snapping to an output
-						let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
-							return;
-						};
-						let from_connector_viewport = network_metadata
-							.persistent_metadata
-							.navigation_metadata
+						let from_connector_viewport = network_interface
+							.navigation_metadata(selection_network_path)
 							.node_graph_to_viewport
 							.transform_point2(wire_in_progress_from_connector);
 						let from_connector_is_layer = network_interface
@@ -747,10 +728,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					log::error!("Could not get selected nodes in PointerUp");
 					return;
 				};
-				let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
-					warn!("No network_metadata");
-					return;
-				};
 
 				responses.add(DocumentMessage::EndTransaction);
 
@@ -764,16 +741,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_selected_nodes });
 					self.deselect_on_pointer_up = None;
 				}
-				let point = network_metadata
-					.persistent_metadata
-					.navigation_metadata
+				let point = network_interface
+					.navigation_metadata(selection_network_path)
 					.node_graph_to_viewport
 					.inverse()
 					.transform_point2(ipp.mouse.position);
 				// Disconnect if the wire was previously connected to an input
 				if let (Some(wire_in_progress_from_connector), Some(wire_in_progress_to_connector)) = (self.wire_in_progress_from_connector, self.wire_in_progress_to_connector) {
 					// Check if dragged connector is reconnected to another input
-					let node_graph_to_viewport = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport;
+					let node_graph_to_viewport = network_interface.navigation_metadata(selection_network_path).node_graph_to_viewport;
 					let from_connector_viewport = node_graph_to_viewport.transform_point2(wire_in_progress_from_connector);
 					let to_connector_viewport = node_graph_to_viewport.transform_point2(wire_in_progress_to_connector);
 					let output_connector = network_interface.output_connector_from_click(from_connector_viewport, selection_network_path);
@@ -800,7 +776,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 						let appear_right_of_mouse = if ipp.mouse.position.x > ipp.viewport_bounds.size().x - 173. { -173. } else { 0. };
 						let appear_above_mouse = if ipp.mouse.position.y > ipp.viewport_bounds.size().y - 34. { -34. } else { 0. };
-						let node_graph_shift = DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.matrix2.x_axis.x;
+						let node_graph_shift =
+							DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_interface.navigation_metadata(selection_network_path).node_graph_to_viewport.matrix2.x_axis.x;
 
 						self.context_menu = Some(ContextMenuInformation {
 							context_menu_coordinates: ((point.x + node_graph_shift.x) as i32, (point.y + node_graph_shift.y) as i32),
@@ -1283,7 +1260,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						return;
 					};
 
-					let box_selection_start_viewport = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.transform_point2(box_selection_start);
+					let box_selection_start_viewport = network_interface
+						.navigation_metadata(selection_network_path)
+						.node_graph_to_viewport
+						.transform_point2(box_selection_start);
 
 					let box_selection = Some(BoxSelection {
 						start_x: box_selection_start_viewport.x.max(0.) as u32,
@@ -1291,9 +1271,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						end_x: ipp.mouse.position.x.max(0.) as u32,
 						end_y: ipp.mouse.position.y.max(0.) as u32,
 					});
-					let box_selection_end_graph = network_metadata
-						.persistent_metadata
-						.navigation_metadata
+					let box_selection_end_graph = network_interface
+						.navigation_metadata(selection_network_path)
 						.node_graph_to_viewport
 						.inverse()
 						.transform_point2(ipp.mouse.position);
