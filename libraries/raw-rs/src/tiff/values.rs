@@ -69,15 +69,11 @@ impl Transform {
 	}
 
 	pub fn will_swap_coordinates(&self) -> bool {
+		use Transform as Tr;
+
 		match *self {
-			Transform::Horizontal => false,
-			Transform::MirrorHorizontal => false,
-			Transform::Rotate180 => false,
-			Transform::MirrorVertical => false,
-			Transform::MirrorHorizontalRotate270 => true,
-			Transform::Rotate90 => true,
-			Transform::MirrorHorizontalRotate90 => true,
-			Transform::Rotate270 => true,
+			Tr::Horizontal | Tr::MirrorHorizontal | Tr::Rotate180 | Tr::MirrorVertical => false,
+			Tr::MirrorHorizontalRotate270 | Tr::Rotate90 | Tr::MirrorHorizontalRotate90 | Tr::Rotate270 => true,
 		}
 	}
 }
