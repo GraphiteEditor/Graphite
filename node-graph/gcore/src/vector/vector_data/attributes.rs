@@ -646,7 +646,6 @@ impl<'a> Iterator for StrokePathIter<'a> {
 
 				break;
 			};
-			println!("At {point_index} start {current_start} value {val:#?}");
 
 			let mut handles = self.vector_data.segment_domain.handles()[val.segment_index];
 			if val.start_from_end {
