@@ -331,7 +331,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					Box::pin(async move {
 						let curve = ClonedNode::new(curve.eval(()).await);
 
-						let generate_curves_node = GenerateCurvesNode::new(curve, ClonedNode::new(0f32));
+						let generate_curves_node = GenerateCurvesNode::new(curve, ClonedNode::new(0_f32));
 						let map_image_frame_node = graphene_std::raster::MapImageNode::new(ValueNode::new(generate_curves_node.eval(())));
 						let map_image_frame_node = FutureWrapperNode::new(map_image_frame_node);
 						let any: DynAnyNode<ImageFrame<Luma>, _, _> = graphene_std::any::DynAnyNode::new(map_image_frame_node);
@@ -349,7 +349,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					Box::pin(async move {
 						let curve = ClonedNode::new(curve.eval(()).await);
 
-						let generate_curves_node = GenerateCurvesNode::new(curve, ClonedNode::new(0f32));
+						let generate_curves_node = GenerateCurvesNode::new(curve, ClonedNode::new(0_f32));
 						let map_image_frame_node = graphene_std::raster::MapImageNode::new(ValueNode::new(generate_curves_node.eval(())));
 						let map_image_frame_node = FutureWrapperNode::new(map_image_frame_node);
 						let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(map_image_frame_node);

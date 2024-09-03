@@ -203,8 +203,9 @@ fn modulo<U: Rem<T>, T>(
 	primary % modulus
 }
 
-#[node_macro::new_node_fn(category("Value"))]
-fn construct_vector2(_: (), #[expose] x: f64, #[expose] y: f64) -> glam::DVec2 {
+// Vector2 Value
+#[node_macro::new_node_fn(category("Value"), name("Vector2 Value"))]
+fn vector2_value(_: (), x: f64, y: f64) -> glam::DVec2 {
 	glam::DVec2::new(x, y)
 }
 
