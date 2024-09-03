@@ -107,6 +107,7 @@ pub fn process_16bit(raw_image: RawImage) -> Image<u16> {
 	let raw_image = crate::preprocessing::scale_colors::scale_colors(raw_image);
 	let image = crate::demosaicing::linear_demosaicing::linear_demosaic(raw_image);
 	let image = crate::postprocessing::convert_to_rgb::convert_to_rgb(image);
+	let image = crate::postprocessing::transform::transform(image);
 	crate::postprocessing::gamma_correction::gamma_correction(image)
 }
 
