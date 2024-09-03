@@ -682,6 +682,13 @@ hr,
 	}
 }
 
+// Using this requires adding this line to the page's frontmatter:
+// css_external = ["https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"]
+.emoji {
+	font-family: "Noto Color Emoji", sans-serif;
+	font-style: normal;
+}
+
 // =======
 // LAYOUTS
 // =======

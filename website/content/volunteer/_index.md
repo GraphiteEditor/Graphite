@@ -3,6 +3,7 @@ title = "Volunteer"
 
 [extra]
 css = ["volunteer.css"]
+css_external = ["https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"]
 +++
 
 <section>
@@ -25,7 +26,7 @@ css = ["volunteer.css"]
 	<img src="https://static.graphite.rs/content/volunteer/code-contributions.avif" class="feature-box-full-image" style="aspect-ratio: 3/1 auto; background: var(--color-seaside)" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Flavor graphic depicting a library of knowledge in a digital realm" />
 </a>
 
-**Get started by reading the contributor guide:**
+Get started by reading the contributor guide:
 
 <a href="/volunteer/guide" class="button arrow">Contributor guide</a>
 
@@ -61,9 +62,9 @@ The Graphite editor is built much like a game engine, split across user interfac
 <img src="https://static.graphite.rs/content/volunteer/creative-contributions.avif" class="feature-box-full-image" style="aspect-ratio: 3/1 auto; background: var(--color-lemon)" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Flavor graphic depicting a fountain pen, ink pots, and a book" />
 </a>
 
-**Ask how to get started by reaching out to a [core team](/about#core-team) member on Discord:**
+Assign yourself the *"<span class="emoji">🙌</span> Interested in helping with art or marketing"* role in the *#welcome* Discord channel. Then mention your experience and how you'd like to help in the *#introductions* channel.
 
-<a href="https://discord.graphite.rs" class="button arrow">Reach out on Discord</a>
+<a href="https://discord.graphite.rs" class="button arrow">Volunteer on Discord</a>
 
 </div>
 
@@ -96,9 +97,9 @@ Help write, edit, and design content for this website, social media, newsletters
 
 <img src="https://static.graphite.rs/content/volunteer/user-contributions.avif" class="feature-box-full-image" style="aspect-ratio: 3/1 auto; background: var(--color-lilac)" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Flavor graphic depicting a magnifying glass on the search for a software bug" />
 
-**Ask how to get started by reaching out to a [core team](/about#core-team) member on Discord:**
+Assign yourself the *"<span class="emoji">🐒</span> Volunteer to get pinged regularly for QA testing"* or *"<span class="emoji">🤖</span> Interested in contributing code"* roles in the *#welcome* Discord channel. In the latter case, drop by the *#development* channel to get advice writing your first node.
 
-<a href="https://discord.graphite.rs" class="button arrow">Reach out on Discord</a>
+<a href="https://discord.graphite.rs" class="button arrow">Volunteer on Discord</a>
 
 </div>
 

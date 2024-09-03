@@ -9,37 +9,44 @@ Graphite offers a number of opportunities for students to contribute by building
 
 Student projects require adherence to a set schedule with regular check-ins, milestones, and evaluations. The structured setting is designed to provide a supportive environment for students to learn and grow as developers while gaining real-world industry experience from collaborating on a sizable software product and remaining accountable to stakeholders. It's our goal to make sure you succeed!
 
-To date, three student project experiences have been completed successfully. [See below](#successful-past-projects) for summaries to get a feel for what has worked before.
-
 Use this [contributor guide](../..) to start out with the code. Then when you're ready, reach out through [Discord](https://discord.graphite.rs) and use the `#🎓student-projects` channel to discuss and work towards proposing a project with the Graphite core team.
 
 ## Google Summer of Code
 
 GSoC is a program offering students a [stipend](https://developers.google.com/open-source/gsoc/help/student-stipends) for successful completion of an internship-style experience with an open source organization. Read about [how it works](https://summerofcode.withgoogle.com/how-it-works/).
 
-Graphite is [participating](https://summerofcode.withgoogle.com/programs/2024/organizations/graphite) in GSoC 2024 this summer and the proposal formulation period is open now until the April 2 deadline (see the full [timeline](https://developers.google.com/open-source/gsoc/timeline)).
+Graphite [participated](https://summerofcode.withgoogle.com/programs/2024/organizations/graphite) in GSoC 2024 and we anticipate doing so again in 2025. Getting involved early is a great way to have a head start and stand out next summer.
+<!-- The proposal formulation period is open now until the April 2 deadline (see the full [timeline](https://developers.google.com/open-source/gsoc/timeline)). -->
 
-### GSoC Proposals
+### Writing a proposal
 
 Writing a good proposal is an important first step that demonstrates your understanding of the project and your ability to plan and execute it. A well-defined proposal will set you up for success throughout the rest of the program.
 
-You are encouraged to reference the project idea list below to find several potential projects suited to your experience, interest, and choice of scope. Then, you must reach out to a [core team member](/about#core-team) through Discord to discuss your plan in detail before writing a proposal. This will help you understand the project's scope and requirements. It will also help us understand your background and capabilities to offer you feedback and suggestions for the best outcome in the competitive applicant selection process.
+You are encouraged to reference the project idea list below to find several potential projects suited to your experience, interest, and choice of scope. Then, you must reach out to a [core team member](/about#core-team) through Discord to discuss your plan in detail before writing a proposal. This will help you understand the project's scope and requirements and develop a detailed timeline for your expected summer-long work schedule. Importantly, it will also help us understand your background and capabilities to offer you feedback and suggestions for the best outcome in the competitive applicant selection process.
 
 When it comes to writing the proposal, which you will submit to the GSoC application website, we offer some guidelines below:
 
-- **Proposal structure:** Please consult the [Blender GSoC application template](https://developer.blender.org/docs/programs/gsoc/application_template/) as reference for our desired format. Remember: don't waste your—and our—time restating information that we already know, like background information about Graphite or the underlying technologies; we want to hear your thoughts and plans about what you uniquely bring to the table and how you will execute the project. It's not formal. And it will not be to your advantage to use an LLM to write your proposal.
-- **Your background:** We're especially interested in your background and experience, so attaching a résumé or CV is optional but highly recommended and will help us understand your capabilities. If able, please also include links to evidence of past open source contributions or personal projects in the bio section of your proposal. Our goal is to help you learn and grow as a productive open source software engineer, not to help you learn to program from scratch, so any such evidence will help us understand your potential as a self-motivated contributor to the open source community.
-- **Prior PRs:** If you have made any contributions to Graphite and/or similar open source projects, please include links to your pull requests in your proposal. We put significant extra weight towards applicants who have already made successful contributions to Graphite because this shows your ability to work in a professional capacity with our team and demonstrates your interest in Graphite in particular (as opposed to a shotgun approach to GSoC applications). You can also state that you'll submit your first PRs (we encourage at least two) after the application deadline on [April 2](https://developers.google.com/open-source/gsoc/timeline#april_2_-_1800_utc), but before we make our final selections a couple days prior to [April 24](https://developers.google.com/open-source/gsoc/timeline#april_24_-_1800_utc). We are very likely to reject applicants who have not made meaningful contributions to Graphite by that time.
-
-<!-- TODO: Explain how we want a proposal structured -->
+- **Proposal structure:** Please consult the [Blender GSoC application template](https://developer.blender.org/docs/programs/gsoc/application_template/) as reference for our desired format. For project ideas already listed below, omit the "Benefits" section. Remember: don't waste your—and our—time restating information that we already know, like background info about Graphite or our tech stack; we just want to hear your thoughts and plans about what you uniquely bring to the table and how you'll execute the project. Proposals should be utilitarian, not formal, while also demonstrating your professional communication skills. Using an LLM to write your proposal won't be to your advantage.
+- **Experience:** We're especially interested in your background and work experience, so attaching a résumé or CV is an optional but recommended way to help us understand your capabilities. If able, please also include links to past open source contributions or personal projects in the bio section. Our goal is to provide an environment for you to learn and grow as a productive software engineer and team collaborator, not to help you learn the basics of coding, so any included work examples will help us understand your potential as a self-motivated contributor to the open source community.
+- **Work timeline:** Your goal is to write a proposal that inspires confidence in your ability to successfully complete the project, which means understanding in detail what's involved at a technical level and how you plan to tackle it. A detailed work timeline is the most important written part of your proposal. It should be broken into weekly or bi-weekly milestones with a couple sentences of technical detail. The summary in the project idea list below doesn't give enough information to develop a timeline, so you'll need to discuss this with the core team on Discord.
+- **Prior PRs:** The largest factor in our selection decision will be the quality and extent of your prior contributions to Graphite made during the proposal formulation period (or before, if applicable). Include a link to `https://github.com/GraphiteEditor/Graphite/commits?author=YOUR_GITHUB_USERNAME` in your proposal and feel free to write up a summary of what you've contributed and learned from the process. You may also keep contributing during the month after applications close, before we've finalized our selections, for those additional PRs to be considered.
 
 ## Project idea list
+
+In addition to the detailed projects below, here are some loose ideas that may be developed into full project options before the next GSoC application period:
+- Color management for HDR/WCG
+- Sophisticated text layout system
+- Traditional brush engine
+- [Procedural brush engine](https://github.com/Keavon/Brush-Nodes)
+- Image processing algorithms for photography
+
+<!--
+TODO: Add to the completed projects list after successful completion.
 
 ### Port LibRaw to Rust
 
 *For Graphite to support editing photos from professional digital cameras, it needs a raw decoding/processing library.*
 
-<!-- - **Possible Mentors:** [Keavon](/about#keavon), [Dennis](/about#dennis), [Hypercube](/about#hypercube) -->
 - **Needed Skills:** Rust, C++, binary format parsing
 - **Project Size:** Large *(GSoC: 350 hours)*
 - **Difficulty:** Hard
@@ -50,38 +57,7 @@ For Graphite to work as a photo editing app, it needs to import raw photos. Thes
 Graphite needs a library written in pure Rust with a suitable (non-GPL) license, which does not currently exist in the ecosystem, so we need to create one ourselves. LibRaw is a common C++ library that supports most camera brands and formats and has a compatible license. Since raw formats are rarely documented by camera manufacturers, porting LibRaw to Rust is the most practical approach.
 
 This project involves diving into the LibRaw source code (~44,000 lines), understanding its architecture, and translating its pieces to idiomatic Rust. Because of Rust's differences from C++, this is not likely to be as simple as a 1:1 source code translation. The student should have strong familiarity with the two languages, experience exploring moderately large code bases, working with binary format parsing, and ideally some knowledge of color science.
-
-### Node graph auto layout
-
-*Graphite's graph UI needs a system to automatically arrange layers and nodes given incremental changes to the graph contents.*
-
-<!-- - **Possible Mentors:** [Keavon](/about#keavon) -->
-- **Needed Skills:** Rust, algorithm design ([constraint solving](https://en.wikipedia.org/wiki/Constraint_satisfaction_problem), [packing](https://en.wikipedia.org/wiki/Packing_problems), [graph drawing](https://en.wikipedia.org/wiki/Graph_drawing))
-- **Project Size:** Medium *(GSoC: 175 hours)* or Large *(GSoC: 350 hours)*
-- **Difficulty:** Medium
-- **Expected Outcomes:** A system that manages the placement of nodes based on a set of layout constraint rules and incremental updates to the graph topology. It should run efficiently, even with large graphs. It should be robust enough to handle a variety of graph topologies and user interactions, producing organized, useful, and stable layouts.
-
-The Graphite concept is built around a node graph representation of layer stacks, while tools automatically generate and manipulate nodes. When a layer or node is inserted, deleted, moved, or referenced, the graph needs to be reorganized to maintain a clear and useful layout. Users can also interactively expand and collapse groups of nodes which occupies or frees up graph real estate.
-
-Unlike other node editors that are centered around manual graph editing, where users are fully in charge of node placements within one large node network, Graphite's node UI is more oriented towards automatic layout management and viewing just parts of the graph at one time. This means the shown graph topology is constantly changing and the layout system needs to cooperatively organize the graph in concert with user actions.
-
-While general graph layout algorithms are complex and struggle to produce good results in other node editors, Graphite's graph topology is more constrained and predictable, which makes it possible to design a layout system that can produce good results. Nodes tend to be organized into rows, and layers into columns (see the image in the project below). This turns the problem into more of a constraint-based, axis-aligned packing problem.
-
-### Shader-driven graph UI rewrite
-
-*Graphite's node graph UI needs to be rewritten using a shader-based rendering system.*
-
-<!-- - **Possible Mentors:** [Keavon](/about#keavon), [Dennis](/about#dennis) -->
-- **Needed Skills:** Rust, WGPU, computer graphics, shader programming
-- **Project Size:** Large *(GSoC: 350 hours)*
-- **Difficulty:** Hard
-- **Expected Outcomes:** A reimplemented graph UI that draws nodes, layers, connections, thumbnails, text, etc. with a custom shader UI rendering system written with WGPU.
-
-The current graph UI is implemented using HTML/CSS and SVG, which is too slow for large graphs and lacks the flexibility to create the desired visual effects like frosted glass. The new system should be able to handle thousands of nodes with ease, and it should be able to render all the visual effects that are envisioned in the design mockup:
-
-<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Node graph UI mockup" data-carousel-image />
-
-The proposed system is a custom immediate mode renderer built with shader programming. At a minimum, it should replicate present graph interaction functionality, but stretch goals would go beyond that to include various graph quality-of-life features.
+-->
 
 ### Marquee selection masking
 
@@ -89,7 +65,7 @@ The proposed system is a custom immediate mode renderer built with shader progra
 
 <!-- - **Possible Mentors:** [Keavon](/about#keavon), [Hypercube](/about#hypercube) -->
 - **Needed Skills:** Rust, computer graphics
-- **Project Size:** Medium *(GSoC: 175 hours)*
+- **Project Size:** Large *(GSoC: 350 hours)*
 - **Difficulty:** Medium
 - **Expected Outcomes:** Complete implementation of Mask mode and its marquee selection. Marching ants visualization shader effect. Integration of selection mask with the node graph and raster editing tools. Useful raster editing workflow.
 
@@ -127,7 +103,7 @@ Based on the experience and insight brought to the table by the student, the nat
 
 <!-- - **Possible Mentors:** [Keavon](/about#keavon) -->
 - **Needed Skills:** Rust, web (Svelte, CSS, TypeScript)
-- **Project Size:** Small *(GSoC: 90 hours)* or Medium *(GSoC: 175 hours)*
+- **Project Size:** Medium *(GSoC: 175 hours)* or Large *(GSoC: 350 hours)*
 - **Difficulty:** Medium
 - **Expected Outcomes:** An improved system for defining widget layouts with better control and flexibility over arrangement and dynamic data binding. Reduction in boilerplate and plumbing required to define each new layout. Better control of styling between rows.
 
@@ -137,13 +113,13 @@ The present system is very row-centric, which makes it challenging to create mul
 
 Students should have a good level of familiarity with Rust design patterns to envision, prototype, propose, and robustly implement a new system that can handle the complexity of Graphite's use cases. The size of this project can vary depending on the proposal's scope and extent of refactoring to these and adjacent systems.
 
-<!-- ### Node data table editor
+### Node data table editor
 
 *The node graph data model for procedural content generation can be thought of as a spreadsheet, which needs a dedicated viewer/editor panel.*
 
 <!-- - **Possible Mentors:** [Keavon](/about#keavon) -->
 - **Needed Skills:** Rust, web (Svelte, TypeScript)
-- **Project Size:** Small *(GSoC: 90 hours)*
+- **Project Size:** Medium *(GSoC: 175 hours)* or Large *(GSoC: 350 hours)*
 - **Difficulty:** Easy-to-medium
 - **Expected Outcomes:** A functional panel in the editor that displays the selected node output data as a spreadsheet across multiple domains. Connection to the graph engine to read and edit the data. Virtual scrolling and efficient transfer of data to the frontend.
 
@@ -159,7 +135,7 @@ A larger-scoped version of the project can expand this to focus also on displayi
 
 <!-- - **Possible Mentors:** [Keavon](/about#keavon) -->
 - **Needed Skills:** Rust, web (Svelte, CSS, SVG, TypeScript)
-- **Project Size:** Medium *(GSoC: 175 hours)* or Large *(GSoC: 350 hours)*
+- **Project Size:** Small *(GSoC: 90 hours)* or larger if proposed
 - **Difficulty:** Easy-to-medium
 - **Expected Outcomes:** A timeline panel in the editor that can create and edit keyframes and timing curves for animating data channels used by nodes. Ergonomic experience for keyframing properties. Efficient curve interpolation. Rendering optimizations for relatively smooth animation playback.
 
@@ -187,7 +163,7 @@ Graphite could benefit from better testing coverage in a number of areas, especi
 
 <!-- - **Possible Mentors:** [Keavon](/about#keavon), [Dennis](/about#dennis) -->
 - **Needed Skills:** Rust (especially proc macros)
-- **Project Size:** Medium *(GSoC: 175 hours)* or Large *(GSoC: 350 hours)*
+- **Project Size:** Small *(GSoC: 90 hours)* or larger if proposed
 - **Difficulty:** Medium
 - **Expected Outcomes:** A system built from proc macros which can generate useful visualizations of Graphite's system architecture. Depending on proposal scope, this can include static visualizations added to the documentation, dynamic message flow visualizations for debugging, and tools to help identify redundant message traffic.
 
@@ -215,6 +191,24 @@ As is the case with all projects, please discuss this with us on Discord to fles
 <!-- ### ONNX model embedding to run in WebGPU and native (Tauri) and server -->
 
 ## Successful past projects
+
+### 2024: Node graph auto layout
+
+Affiliation: GSoC 2024  
+Duration: 3 months  
+Student: Adam Gerhant
+
+<https://summerofcode.withgoogle.com/programs/2024/projects/gvbBoCpT>
+
+*Graphite's graph UI needs a system to automatically arrange layers and nodes given incremental changes to the graph contents.*
+
+**Outcomes:** A system that manages the placement of nodes based on a set of layout constraint rules and incremental updates to the graph topology. It should run efficiently, even with large graphs. It should be robust enough to handle a variety of graph topologies and user interactions, producing organized, useful, and stable layouts.
+
+The Graphite concept is built around a node graph representation of layer stacks, while tools automatically generate and manipulate nodes. When a layer or node is inserted, deleted, moved, or referenced, the graph needs to be reorganized to maintain a clear and useful layout. Users can also interactively expand and collapse groups of nodes which occupies or frees up graph real estate.
+
+Unlike other node editors that are centered around manual graph editing, where users are fully in charge of node placements within one large node network, Graphite's node UI is more oriented towards automatic layout management and viewing just parts of the graph at one time. This means the shown graph topology is constantly changing and the layout system needs to cooperatively organize the graph in concert with user actions.
+
+While general graph layout algorithms are complex and struggle to produce good results in other node editors, Graphite's graph topology is more constrained and predictable, which makes it possible to design a layout system that can produce good results. Nodes tend to be organized into rows, and layers into columns. This turns the problem into more of a constraint-based, axis-aligned packing problem.
 
 ### 2023: Bezier-rs library
 

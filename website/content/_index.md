@@ -366,6 +366,22 @@ Graphite's representation of artwork as a node graph lets you customize, compose
 </section>
 <!-- ▙ PROCEDURALISM ▟ -->
 <!--                 -->
+<!-- ▛ DONATE ▜ -->
+<section id="donate" class="block">
+
+<div class="block">
+
+## Support the mission
+
+If you aren't paying for your free software, someone else is covering your share. Chip in so Graphite remains sustainable and independent.
+
+<a href="https://github.com/sponsors/GraphiteEditor" class="button arrow">Donate</a>
+
+</div>
+
+</section>
+<!-- ▙ DONATE ▟ -->
+<!--                -->
 <!-- ▛ NEWSLETTER ▜ -->
 <section id="newsletter" class="feature-box-narrow">
 <div id="newsletter-success"><!-- Used only as a URL hash fragment anchor --></div>
@@ -431,25 +447,6 @@ You'll receive your first newsletter email with the next major Graphite news.
 </section>
 <!-- ▙ NEWSLETTER ▟ -->
 <!--                -->
-<!-- ▛ DONATE ▜ -->
-<section id="donate" class="feature-box-narrow">
-
-<div class="block">
-
-<h1 class="feature-box-header">Support the mission</h1>
-
-<p class="balance-text">
-You can help realize Graphite's ambitious vision of building the ultimate 2D creative tool.
-Graphite is built by a small, dedicated crew of volunteers in need of the resources to grow.
-</p>
-
-<a href="https://github.com/sponsors/GraphiteEditor" class="button arrow">Donate</a>
-
-</div>
-
-</section>
-<!-- ▙ DONATE ▟ -->
-<!--              -->
 <!-- ▛ DIVE IN ▜ -->
 <section id="dive-in" class="block">
 

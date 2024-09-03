@@ -28,9 +28,13 @@
 	{%- endblock %}
 	<link rel="preconnect" href="https://fonts.googleapis.com" />
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-	<link href="https://fonts.googleapis.com/css2?family=Bona+Nova:wght@700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet" />
+	<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bona+Nova:wght@700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" />
 	<link rel="stylesheet" href="/base.css" />
 	<link rel="stylesheet" href="/syntax-highlighting.css" />
+	{%- set extra_css_external = page.extra.css_external | default(value = []) | concat(with = css_external | default(value = [])) -%}
+	{% for css_path_external in extra_css_external %}
+	<link rel="stylesheet" href="{{ css_path_external | safe }}" />
+	{%- endfor %}
 	{%- set extra_css = page.extra.css | default(value = []) | concat(with = css | default(value = [])) -%}
 	{% for css_path in extra_css %}
 	<link rel="stylesheet" href="/{{ css_path | safe }}" />

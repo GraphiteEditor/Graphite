@@ -226,6 +226,9 @@
 }
 // ▙ PROCEDURALISM ▟
 
+// ▛ DONATE ▜
+// ▙ DONATE ▟
+
 // ▛ NEWSLETTER ▜
 #newsletter {
 	background-color: var(--color-peach);
@@ -384,12 +387,6 @@
 }
 // ▙ NEWSLETTER ▟
 
-// ▛ DONATE ▜
-#donate {
-	background-color: var(--color-peach);
-}
-// ▙ DONATE ▟
-
 // ▛ DIVE IN ▜
 #dive-in {
 	.video-container {
@@ -421,13 +418,8 @@
 
 // ▛ RECENT NEWS ▜
 #recent-news {
-	background-color: var(--color-navy);
-	color: var(--color-white);
+	background-color: var(--color-parchment);
 	
-	a {
-		color: var(--color-mustard);
-	}
-
 	.banner img {
 		width: 100%;
 		height: auto;

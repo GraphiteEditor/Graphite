@@ -6,9 +6,12 @@ aliases = ["/contribute"]
 
 [extra]
 book = true
+css_external = ["https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"]
 +++
 
-Welcome, potential contributor! We're excited to have you join the Graphite project and it's our goal to make the process as smooth as possible. This guide will serve as your library of knowledge to help you get started contributing to the project. If you find any information missing or unclear, please let us know [through Discord](https://discord.graphite.rs) or submit a pull request to help document the process for future contributors.
+Welcome, potential contributor! We're excited to have you join the Graphite project and it's our goal to make the process as smooth as possible. This guide will serve as your library of knowledge to help you get started contributing to the project. If you find any information missing or unclear, please let us know through Discord or submit a pull request to help document the process for future contributors.
+
+The next page will cover how to compile the Graphite source code. But first, make sure you've joined our [Discord server](https://discord.graphite.rs) and assigned yourself the *"<span class="emoji">🤖</span> Interested in contributing code"* role from the *#welcome* channel. Done that? Alright, proceed!
 
 <p>
 <img src="https://static.graphite.rs/content/volunteer/code-contributions.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Flavor graphic depicting a library of knowledge in a digital realm" />

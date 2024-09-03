@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap');
-
 .loading-data:empty::after {
 	content: "(loading...)";
 	font-style: italic;
@@ -32,8 +30,7 @@
 		text-align: center;
 	}
 
-	.flag {
-		font-family: "Noto Color Emoji", sans-serif;
+	.emoji {
 		vertical-align: middle;
 		font-size: 1.5em;
 		margin-left: 0.25em;

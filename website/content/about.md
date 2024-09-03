@@ -3,6 +3,7 @@ title = "About Graphite"
 
 [extra]
 css = ["about.css"]
+css_external = ["https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"]
 +++
 
 <section>
@@ -118,7 +119,7 @@ It's easy to learn and teach, yet Graphite's accessible design does not sacrific
 
 ## Keavon Chambers
 
-*@Keavon* <span class="flag" title="American">🇺🇸</span>
+*@Keavon* <span class="emoji" title="American">🇺🇸</span>
 
 *Founder, UI & product design, frontend engineering*
 
@@ -131,7 +132,7 @@ Keavon is a creative generalist with a love for the fusion of arts and technolog
 
 ## Dennis Kobert
 
-*@TrueDoctor* <span class="flag" title="German">🇩🇪</span>
+*@TrueDoctor* <span class="emoji" title="German">🇩🇪</span>
 
 *Graphene node engine, research, architecture*
 
@@ -144,7 +145,7 @@ Dennis is a mix between a mathematician and a mad scientist. While still enjoyin
 
 ## "Hypercube"
 
-*@0Hypercube* <span class="flag" title="British">🇬🇧</span>
+*@0Hypercube* <span class="emoji" title="British">🇬🇧</span>
 
 *Editor systems, nodes, tools, architecture*
 

@@ -21,19 +21,16 @@ Next, install the dependencies required for development builds:
 ```sh
 cargo install cargo-watch
 cargo install wasm-pack
-```
-
-You'll likely get faster build times if you manually install this specific version of `wasm-bindgen-cli`. It is supposed to be installed automatically but a version mismatch causes it to reinstall every single recompilation. It may need to be manually updated periodically to match the version of the `wasm-bindgen` dependency in [`Cargo.toml`](https://github.com/GraphiteEditor/Graphite/blob/master/Cargo.toml):
-
-```sh
 cargo install -f wasm-bindgen-cli@0.2.92
 ```
 
-On Linux, you may need to install this set of additional packages, for the Tauri parts of our tech stack to work, if you run into issues:
+Regarding the last one: you'll likely get faster build times if you manually install that specific version of `wasm-bindgen-cli`. It is supposed to be installed automatically but a version mismatch causes it to reinstall every single recompilation. It may need to be manually updated periodically to match the version of the `wasm-bindgen` dependency in [`Cargo.toml`](https://github.com/GraphiteEditor/Graphite/blob/master/Cargo.toml).
 
 <br />
 <details>
-<summary>Click to view</summary>
+<summary>Linux users: click here</summary>
+
+On Linux, you likely need to install this set of additional packages which are required by Tauri, even if you're just building the web app:
 
 ```sh
 # On Debian-based (Ubuntu, Mint, etc.) distributions:
