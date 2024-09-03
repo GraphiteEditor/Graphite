@@ -349,7 +349,6 @@ impl PathToolData {
 		}
 		// We didn't find a segment path, so consider selecting the nearest shape instead
 		else if let Some(layer) = document.click(input) {
-			responses.add(DocumentMessage::StartTransaction);
 			if add_to_selection {
 				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
 			} else {
@@ -359,6 +358,7 @@ impl PathToolData {
 			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
 			shape_editor.select_connected_anchors(document, layer, input.mouse.position);
 
+			responses.add(DocumentMessage::StartTransaction);
 			PathToolFsmState::Dragging
 		}
 		// Start drawing a box
