@@ -1,7 +1,4 @@
 use super::network_interface::NodeNetworkInterface;
-use crate::messages::tool::common_functionality::graph_modification_utils;
-
-use graph_craft::document::value::TaggedValue;
 use graph_craft::document::NodeId;
 use graphene_core::renderer::ClickTarget;
 use graphene_core::renderer::Quad;
@@ -57,24 +54,6 @@ impl DocumentMetadata {
 
 	pub fn click_target(&self, layer: LayerNodeIdentifier) -> Option<&Vec<ClickTarget>> {
 		self.click_targets.get(&layer)
-	}
-
-	// TODO: Move into network interface so that it does not have to be passed as an argument
-	/// Get vector data after the modification is applied
-	pub fn compute_modified_vector(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<VectorData> {
-		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network_interface);
-
-		if let Some(vector_data) = graph_layer.upstream_node_id_from_name("Path").and_then(|node| self.vector_modify.get(&node)) {
-			let mut modified = vector_data.clone();
-			if let Some(TaggedValue::VectorModification(modification)) = graph_layer.find_input("Path", 1) {
-				modification.apply(&mut modified);
-			}
-			return Some(modified);
-		}
-		self.click_targets
-			.get(&layer)
-			.map(|click| click.iter().map(ClickTarget::subpath))
-			.map(|subpaths| VectorData::from_subpaths(subpaths, true))
 	}
 
 	/// Access the [`NodeRelations`] of a layer.

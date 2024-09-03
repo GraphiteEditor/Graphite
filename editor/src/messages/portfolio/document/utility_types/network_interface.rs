@@ -4,12 +4,13 @@ use super::nodes::SelectedNodes;
 use crate::consts::{EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP};
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
+use crate::messages::tool::common_functionality::graph_modification_utils;
 
 use bezier_rs::Subpath;
 use graph_craft::document::{value::TaggedValue, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graph_craft::{concrete, Type};
 use graphene_std::renderer::{ClickTarget, Quad};
-use graphene_std::vector::{PointId, VectorModificationType};
+use graphene_std::vector::{PointId, VectorData, VectorModificationType};
 use interpreted_executor::{dynamic_executor::ResolvedDocumentNodeTypes, node_registry::NODE_REGISTRY};
 
 use glam::{DAffine2, DVec2, IVec2};
@@ -455,7 +456,6 @@ impl NodeNetworkInterface {
 	/// Get the [`Type`] for any InputConnector
 	pub fn input_type(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Type {
 		// TODO: If the input_connector is a NodeInput::Value, return the type of the tagged value
-		// TODO: Store types for all document nodes, not just the compiled proto nodes, which currently skips isolated nodes
 		let node_type_from_compiled_network = if let Some(node_id) = input_connector.node_id() {
 			let Some(current_network) = self.network(network_path) else {
 				log::error!("Could not get current network in input_type");
@@ -689,8 +689,6 @@ impl NodeNetworkInterface {
 					let mut import_metadata = None;
 
 					if !network_path.is_empty() {
-						// TODO: https://github.com/GraphiteEditor/Graphite/issues/1767
-						// TODO: Non exposed inputs are not added to the inputs_source_map, fix `pub fn document_node_types(&self) -> ResolvedDocumentNodeTypes`
 						let mut encapsulating_path = network_path.to_vec();
 						let encapsulating_node_id = encapsulating_path.pop().unwrap();
 
@@ -1091,15 +1089,6 @@ impl NodeNetworkInterface {
 			.is_some_and(|reference| reference == "Artboard" && self.connected_to_output(node_id, &[]))
 	}
 
-	pub fn parent_artboard(&self, layer: LayerNodeIdentifier) -> Option<LayerNodeIdentifier> {
-		let ancestors: Vec<_> = layer.ancestors(self.document_metadata()).collect();
-		match ancestors.as_slice() {
-			[_, second_last, _last] if self.is_artboard(&second_last.to_node(), &[]) => Some(*second_last),
-			[_, last] if self.is_artboard(&last.to_node(), &[]) => Some(*last),
-			_ => None,
-		}
-	}
-
 	pub fn all_artboards(&self) -> HashSet<LayerNodeIdentifier> {
 		self.network_metadata(&[])
 			.unwrap()
@@ -1146,7 +1135,10 @@ impl NodeNetworkInterface {
 			.filter(|layer| include_artboards || !self.is_artboard(&layer.to_node(), &[]))
 			.filter_map(|layer| {
 				if !self.is_artboard(&layer.to_node(), &[]) {
-					if let Some(artboard_node_identifier) = self.parent_artboard(layer) {
+					if let Some(artboard_node_identifier) = layer
+						.ancestors(self.document_metadata())
+						.find(|ancestor| *ancestor != LayerNodeIdentifier::ROOT_PARENT && self.is_artboard(&ancestor.to_node(), &[]))
+					{
 						let artboard = self.network(&[]).unwrap().nodes.get(&artboard_node_identifier.to_node());
 						let clip_input = artboard.unwrap().inputs.get(5).unwrap();
 						if let NodeInput::Value { tagged_value, .. } = clip_input {
@@ -1637,7 +1629,7 @@ impl NodeNetworkInterface {
 		}
 
 		let mut stack_dependents = HashMap::new();
-
+		let mut owned_sole_dependents = HashSet::new();
 		// Loop through all layers below the stack_tops, and set sole dependents upstream from that layer to be owned by that layer. Ensure LayerOwner is kept in sync.
 		for stack_top in &stack_tops {
 			for upstream_stack_layer in self
@@ -1652,6 +1644,7 @@ impl NodeNetworkInterface {
 					let mut new_owned_nodes = HashSet::new();
 					for layer_sole_dependent in &self.upstream_nodes_below_layer(&upstream_layer, network_path) {
 						stack_dependents.insert(*layer_sole_dependent, LayerOwner::Layer(upstream_layer));
+						owned_sole_dependents.insert(*layer_sole_dependent);
 						new_owned_nodes.insert(*layer_sole_dependent);
 					}
 					let Some(layer_node) = self.node_metadata_mut(&upstream_layer, network_path) else {
@@ -1716,8 +1709,7 @@ impl NodeNetworkInterface {
 			}
 
 			for sole_dependent in sole_dependents {
-				// TODO: Use a temporary hashmap to store added nodes rather than looping though
-				if stack_dependents.iter().all(|owned_sole_dependent| *owned_sole_dependent.0 != sole_dependent) {
+				if !owned_sole_dependents.contains(&sole_dependent) {
 					stack_dependents.insert(sole_dependent, LayerOwner::None(0));
 				}
 			}
@@ -2520,7 +2512,7 @@ impl NodeNetworkInterface {
 			.or_else(|| clicked_nodes.into_iter().next())
 	}
 
-	pub fn visibility_from_click(&mut self, click: DVec2, network_path: &[NodeId]) -> Option<NodeId> {
+	pub fn layer_click_target_from_click(&mut self, click: DVec2, click_target_type: LayerClickTargetTypes, network_path: &[NodeId]) -> Option<NodeId> {
 		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in visibility_from_click");
 			return None;
@@ -2538,35 +2530,10 @@ impl NodeNetworkInterface {
 			.filter_map(|node_id| {
 				self.node_click_targets(node_id, network_path).and_then(|transient_node_metadata| {
 					if let NodeTypeClickTargets::Layer(layer) = &transient_node_metadata.node_type_metadata {
-						layer.visibility_click_target.intersect_point_no_stroke(point).then_some(*node_id)
-					} else {
-						None
-					}
-				})
-			})
-			.next()
-	}
-
-	// TODO: Combine grip_from_click and visibility_from_click into a single function
-	pub fn grip_from_click(&mut self, click: DVec2, network_path: &[NodeId]) -> Option<NodeId> {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in visibility_from_click");
-			return None;
-		};
-		let Some(network) = self.network(network_path) else {
-			log::error!("Could not get nested network in visibility_from_click");
-			return None;
-		};
-
-		let point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
-		let node_ids: Vec<_> = network.nodes.keys().copied().collect();
-
-		node_ids
-			.iter()
-			.filter_map(|node_id| {
-				self.node_click_targets(node_id, network_path).and_then(|transient_node_metadata| {
-					if let NodeTypeClickTargets::Layer(layer) = &transient_node_metadata.node_type_metadata {
-						layer.grip_click_target.intersect_point_no_stroke(point).then_some(*node_id)
+						match click_target_type {
+							LayerClickTargetTypes::Visibility => layer.visibility_click_target.intersect_point_no_stroke(point).then_some(*node_id),
+							LayerClickTargetTypes::Grip => layer.grip_click_target.intersect_point_no_stroke(point).then_some(*node_id),
+						}
 					} else {
 						None
 					}
@@ -2730,6 +2697,23 @@ impl NodeNetworkInterface {
 				.collect::<HashMap<NodeId, u32>>(),
 			nodes.iter().map(|node_id| (*node_id, self.chain_width(node_id, network_path))).collect::<HashMap<NodeId, u32>>(),
 		)
+	}
+
+	pub fn compute_modified_vector(&self, layer: LayerNodeIdentifier) -> Option<VectorData> {
+		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, self);
+
+		if let Some(vector_data) = graph_layer.upstream_node_id_from_name("Path").and_then(|node| self.document_metadata.vector_modify.get(&node)) {
+			let mut modified = vector_data.clone();
+			if let Some(TaggedValue::VectorModification(modification)) = graph_layer.find_input("Path", 1) {
+				modification.apply(&mut modified);
+			}
+			return Some(modified);
+		}
+		self.document_metadata
+			.click_targets
+			.get(&layer)
+			.map(|click| click.iter().map(ClickTarget::subpath))
+			.map(|subpaths| VectorData::from_subpaths(subpaths, true))
 	}
 
 	/// Loads the structure of layer nodes from a node graph.
@@ -3168,7 +3152,6 @@ impl NodeNetworkInterface {
 									return;
 								};
 								match &downstream_node_metadata.persistent_metadata.node_type_metadata {
-									// TODO: Layout system
 									NodeTypePersistentMetadata::Layer(_) => {
 										// If the layer feeds into the bottom input of layer, set its position to stack at its previous y position
 										if *input_index == 0 {
@@ -3365,7 +3348,7 @@ impl NodeNetworkInterface {
 			transient_metadata: DocumentNodeTransientMetadata::default(),
 		};
 		network_metadata.persistent_metadata.node_metadata.insert(node_id, node_metadata);
-		// TODO: Update the bounding box around all nodes instead of unloading all data
+
 		self.unload_all_nodes_bounding_box(network_path);
 		self.unload_node_click_targets(&node_id, network_path)
 	}
@@ -3448,7 +3431,7 @@ impl NodeNetworkInterface {
 				log::error!("Could not get nested network in delete_nodes");
 				continue;
 			};
-			// TODO: Ensure node to delete is fully disconnected from the network
+
 			network.nodes.remove(delete_node_id);
 			self.transaction_modified();
 
@@ -4697,7 +4680,6 @@ impl NodeNetworkInterface {
 			match post_node_input {
 				// Move to the bottom of the stack
 				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
-					// TODO: Calculate height of bottom layer by getting height of upstream nodes instead of setting to 3
 					let offset = after_move_post_layer_position - previous_layer_position + IVec2::new(0, 3 + height_above_layer);
 					self.shift_absolute_node_position(&layer.to_node(), offset, network_path);
 					self.create_wire(&OutputConnector::node(layer.to_node(), 0), &post_node, network_path);
@@ -4844,7 +4826,6 @@ impl InputConnector {
 }
 
 /// Represents an output connector
-/// TODO: Layer could also be a variant, since the output index is always one. Layer(NodeId)
 #[derive(Debug, Clone, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum OutputConnector {
 	#[serde(rename = "node")]
@@ -5246,7 +5227,6 @@ pub enum NodePosition {
 	Absolute(IVec2),
 	// In a chain the position is based on the number of nodes to the first layer node
 	Chain,
-	// TODO: Add position for relative to a layer
 }
 
 /// Cached metadata that should be calculated when creating a node, and should be recalculated when modifying a node property that affects one of the cached fields.
@@ -5301,6 +5281,12 @@ pub struct LayerClickTargets {
 	pub grip_click_target: ClickTarget,
 	// TODO: Store click target for the preview button, which will appear when the node is a selected/(hovered?) layer node
 	// preview_click_target: ClickTarget,
+}
+
+pub enum LayerClickTargetTypes {
+	Visibility,
+	Grip,
+	// Preview,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

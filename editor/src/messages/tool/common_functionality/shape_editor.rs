@@ -182,7 +182,7 @@ impl ShapeState {
 		let mut offset = mouse_delta;
 		let mut best_snapped = SnappedPoint::infinite_snap(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 		for (layer, state) in &self.selected_shape_state {
-			let Some(vector_data) = document.metadata().compute_modified_vector(*layer, &document.network_interface) else {
+			let Some(vector_data) = document.network_interface.compute_modified_vector(*layer) else {
 				continue;
 			};
 
@@ -227,7 +227,7 @@ impl ShapeState {
 		}
 
 		if let Some((layer, manipulator_point_id)) = self.find_nearest_point_indices(network_interface, mouse_position, select_threshold) {
-			let vector_data = network_interface.document_metadata().compute_modified_vector(layer, network_interface)?;
+			let vector_data = network_interface.compute_modified_vector(layer)?;
 			let point_position = manipulator_point_id.get_position(&vector_data)?;
 
 			let selected_shape_state = self.selected_shape_state.get(&layer)?;
@@ -278,7 +278,7 @@ impl ShapeState {
 
 	/// Selects all anchors connected to the selected subpath, and deselects all handles, for the given layer.
 	pub fn select_connected_anchors(&mut self, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, mouse: DVec2) {
-		let Some(vector_data) = document.metadata().compute_modified_vector(layer, &document.network_interface) else {
+		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
 			return;
 		};
 		let to_viewport = document.metadata().transform_to_viewport(layer);
@@ -326,7 +326,7 @@ impl ShapeState {
 
 	/// Internal helper function that selects all anchors, and deselects all handles, for a layer given its [`LayerNodeIdentifier`] and [`SelectedLayerState`].
 	fn select_all_anchors_in_layer_with_state(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, state: &mut SelectedLayerState) {
-		let Some(vector_data) = document.metadata().compute_modified_vector(layer, &document.network_interface) else {
+		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
 			return;
 		};
 
@@ -425,7 +425,7 @@ impl ShapeState {
 		layer: LayerNodeIdentifier,
 		responses: &mut VecDeque<Message>,
 	) -> Option<()> {
-		let vector_data = network_interface.document_metadata().compute_modified_vector(layer, network_interface)?;
+		let vector_data = network_interface.compute_modified_vector(layer)?;
 		let transform = network_interface.document_metadata().transform_to_document(layer).inverse();
 		let position = transform.transform_point2(new_position);
 		let current_position = point.get_position(&vector_data)?;
@@ -459,7 +459,7 @@ impl ShapeState {
 		let mut points_colinear_status = self
 			.selected_shape_state
 			.iter()
-			.map(|(&layer, selection_state)| (network_interface.document_metadata().compute_modified_vector(layer, network_interface), selection_state))
+			.map(|(&layer, selection_state)| (network_interface.compute_modified_vector(layer), selection_state))
 			.flat_map(|(data, selection_state)| selection_state.selected_points.iter().map(move |&point| data.as_ref().map_or(false, |data| data.colinear(point))));
 
 		let Some(first_is_colinear) = points_colinear_status.next() else { return ManipulatorAngle::Mixed };
@@ -537,7 +537,7 @@ impl ShapeState {
 		let mut skip_set = HashSet::new();
 
 		for (&layer, layer_state) in self.selected_shape_state.iter() {
-			let Some(vector_data) = document.metadata().compute_modified_vector(layer, &document.network_interface) else {
+			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
 				continue;
 			};
 			let transform = document.metadata().transform_to_document(layer);
@@ -612,7 +612,7 @@ impl ShapeState {
 	/// Move the selected points by dragging the mouse.
 	pub fn move_selected_points(&self, handle_lengths: Option<OpposingHandleLengths>, document: &DocumentMessageHandler, delta: DVec2, equidistant: bool, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
-			let Some(vector_data) = document.metadata().compute_modified_vector(layer, &document.network_interface) else {
+			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
 				continue;
 			};
 			let opposing_handles = handle_lengths.as_ref().and_then(|handle_lengths| handle_lengths.get(&layer));
@@ -673,7 +673,7 @@ impl ShapeState {
 		self.selected_shape_state
 			.iter()
 			.filter_map(|(&layer, state)| {
-				let vector_data = document.metadata().compute_modified_vector(layer, &document.network_interface)?;
+				let vector_data = document.network_interface.compute_modified_vector(layer)?;
 				let transform = document.metadata().transform_to_document(layer);
 				let opposing_handle_lengths = vector_data
 					.colinear_manipulators
@@ -739,7 +739,7 @@ impl ShapeState {
 	pub fn delete_selected_points(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
 			let mut missing_anchors = HashMap::new();
-			let Some(vector_data) = document.metadata().compute_modified_vector(layer, &document.network_interface) else {
+			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
 				continue;
 			};
 
@@ -830,7 +830,7 @@ impl ShapeState {
 
 	pub fn break_path_at_selected_point(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
-			let Some(vector_data) = document.metadata().compute_modified_vector(layer, &document.network_interface) else {
+			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
 				continue;
 			};
 
@@ -876,7 +876,7 @@ impl ShapeState {
 	/// Delete point(s) and adjacent segments.
 	pub fn delete_point_and_break_path(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
-			let Some(vector_data) = document.metadata().compute_modified_vector(layer, &document.network_interface) else {
+			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
 				continue;
 			};
 
@@ -899,7 +899,7 @@ impl ShapeState {
 	/// Disable colinear handles colinear.
 	pub fn disable_colinear_handles_state_on_selected(&self, network_interface: &NodeNetworkInterface, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
-			let Some(vector_data) = network_interface.document_metadata().compute_modified_vector(layer, network_interface) else {
+			let Some(vector_data) = network_interface.compute_modified_vector(layer) else {
 				continue;
 			};
 
@@ -949,7 +949,7 @@ impl ShapeState {
 		let mut closest_distance_squared: f64 = f64::MAX;
 		let mut manipulator_point = None;
 
-		let vector_data = network_interface.document_metadata().compute_modified_vector(layer, network_interface)?;
+		let vector_data = network_interface.compute_modified_vector(layer)?;
 		let viewspace = network_interface.document_metadata().transform_to_viewport(layer);
 
 		// Handles
@@ -994,7 +994,7 @@ impl ShapeState {
 		let mut closest = None;
 		let mut closest_distance_squared: f64 = tolerance * tolerance;
 
-		let vector_data = network_interface.document_metadata().compute_modified_vector(layer, network_interface)?;
+		let vector_data = network_interface.compute_modified_vector(layer)?;
 
 		for (segment, mut bezier, start, end) in vector_data.segment_bezier_iter() {
 			let t = bezier.project(layer_pos);
@@ -1054,7 +1054,7 @@ impl ShapeState {
 	/// This can can be activated by double clicking on an anchor with the Path tool.
 	pub fn flip_smooth_sharp(&self, network_interface: &NodeNetworkInterface, target: glam::DVec2, tolerance: f64, responses: &mut VecDeque<Message>) -> bool {
 		let mut process_layer = |layer| {
-			let vector_data = network_interface.document_metadata().compute_modified_vector(layer, network_interface)?;
+			let vector_data = network_interface.compute_modified_vector(layer)?;
 			let transform_to_screenspace = network_interface.document_metadata().transform_to_viewport(layer);
 
 			let mut result = None;
@@ -1137,7 +1137,7 @@ impl ShapeState {
 				state.clear_points()
 			}
 
-			let vector_data = network_interface.document_metadata().compute_modified_vector(layer, network_interface);
+			let vector_data = network_interface.compute_modified_vector(layer);
 			let Some(vector_data) = vector_data else { continue };
 			let transform = network_interface.document_metadata().transform_to_viewport(layer);
 

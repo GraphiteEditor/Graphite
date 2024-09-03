@@ -75,7 +75,7 @@ impl OriginalTransforms {
 					if path_map.contains_key(&layer) {
 						continue;
 					}
-					let Some(vector_data) = network_interface.document_metadata().compute_modified_vector(layer, network_interface) else {
+					let Some(vector_data) = network_interface.compute_modified_vector(layer) else {
 						continue;
 					};
 					let Some(selected_points) = shape_editor.selected_points_in_layer(layer) else {

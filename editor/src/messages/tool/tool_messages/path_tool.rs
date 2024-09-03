@@ -374,7 +374,7 @@ impl PathToolData {
 		let mut manipulators = HashMap::with_hasher(NoHashBuilder);
 		let mut unselected = Vec::new();
 		for (&layer, state) in &shape_editor.selected_shape_state {
-			let Some(vector_data) = document.metadata().compute_modified_vector(layer, &document.network_interface) else {
+			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
 				continue;
 			};
 			let transform = document.metadata().transform_to_document(layer);
@@ -807,7 +807,7 @@ fn get_selection_status(network_interface: &NodeNetworkInterface, shape_state: &
 		let Some(layer) = selection_layers.find(|(_, v)| *v > 0).map(|(k, _)| k) else {
 			return SelectionStatus::None;
 		};
-		let Some(vector_data) = network_interface.document_metadata().compute_modified_vector(layer, network_interface) else {
+		let Some(vector_data) = network_interface.compute_modified_vector(layer) else {
 			return SelectionStatus::None;
 		};
 		let Some(&point) = shape_state.selected_points().next() else {

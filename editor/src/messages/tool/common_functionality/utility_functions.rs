@@ -13,7 +13,7 @@ pub fn should_extend(document: &DocumentMessageHandler, goal: DVec2, tolerance: 
 	for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
 		let viewspace = document.metadata().transform_to_viewport(layer);
 
-		let vector_data = document.metadata().compute_modified_vector(layer, &document.network_interface)?;
+		let vector_data = document.network_interface.compute_modified_vector(layer)?;
 		for id in vector_data.single_connected_points() {
 			let Some(point) = vector_data.point_domain.position_from_id(id) else { continue };
 

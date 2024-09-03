@@ -37,9 +37,12 @@ pub struct NodeGraphMessageHandler {
 	pub node_graph_errors: GraphErrors,
 	has_selection: bool,
 	widgets: [LayoutGroup; 2],
+	/// The start position when dragging nodes
 	pub drag_start: Option<DragStart>,
 	/// Used to add a transaction for the first node move when dragging.
 	begin_dragging: bool,
+	/// Used to prevent entering a nested network if the node is dragged after double clicking
+	drag_occurred: bool,
 	/// Stored in node graph coordinates
 	box_selection_start: Option<DVec2>,
 	/// Restore the selection before box selection if it is aborted
@@ -238,10 +241,18 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				});
 			}
 			NodeGraphMessage::EnterNestedNetwork => {
+				// Do not enter the nested network if the node was dragged
+				if self.drag_occurred {
+					return;
+				}
+
 				let Some(node_id) = network_interface.node_from_click(ipp.mouse.position, selection_network_path) else {
 					return;
 				};
-				if network_interface.visibility_from_click(ipp.mouse.position, selection_network_path).is_some() {
+				if network_interface
+					.layer_click_target_from_click(ipp.mouse.position, network_interface::LayerClickTargetTypes::Visibility, selection_network_path)
+					.is_some()
+				{
 					return;
 				};
 				let Some(network) = network_interface.network(selection_network_path) else {
@@ -337,7 +348,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				let node_graph_point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
 
-				if network_interface.grip_from_click(click, selection_network_path).is_some() {
+				if network_interface
+					.layer_click_target_from_click(click, network_interface::LayerClickTargetTypes::Grip, selection_network_path)
+					.is_some()
+				{
 					self.shift_without_push = true;
 				}
 
@@ -451,7 +465,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 
 				// Toggle visibility of clicked node and return
-				if let Some(clicked_visibility) = network_interface.visibility_from_click(click, selection_network_path) {
+				if let Some(clicked_visibility) = network_interface.layer_click_target_from_click(click, network_interface::LayerClickTargetTypes::Visibility, selection_network_path) {
 					responses.add(NodeGraphMessage::ToggleVisibility { node_id: clicked_visibility });
 					return;
 				}
@@ -538,6 +552,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 						self.drag_start = Some(drag_start);
 						self.begin_dragging = true;
+						self.drag_occurred = false;
 					}
 
 					// Update the selection if it was modified
@@ -646,6 +661,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: Some(wire_path) });
 					}
 				} else if let Some(drag_start) = &mut self.drag_start {
+					self.drag_occurred = true;
 					if self.begin_dragging {
 						self.begin_dragging = false;
 						if ipp.keyboard.get(crate::messages::tool::tool_messages::tool_prelude::Key::Alt as usize) {
@@ -1991,6 +2007,7 @@ impl Default for NodeGraphMessageHandler {
 			widgets: [LayoutGroup::Row { widgets: Vec::new() }, LayoutGroup::Row { widgets: right_side_widgets }],
 			drag_start: None,
 			begin_dragging: false,
+			drag_occurred: false,
 			shift_without_push: false,
 			box_selection_start: None,
 			selection_before_pointer_down: Vec::new(),
@@ -2015,6 +2032,7 @@ impl PartialEq for NodeGraphMessageHandler {
 			&& self.widgets == other.widgets
 			&& self.drag_start == other.drag_start
 			&& self.begin_dragging == other.begin_dragging
+			&& self.drag_occurred == other.drag_occurred
 			&& self.box_selection_start == other.box_selection_start
 			&& self.initial_disconnecting == other.initial_disconnecting
 			&& self.select_if_not_dragged == other.select_if_not_dragged
