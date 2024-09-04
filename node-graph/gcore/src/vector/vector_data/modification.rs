@@ -206,8 +206,16 @@ impl SegmentModification {
 			segment_domain.push(add_id, start_index, end_index, handles, stroke);
 		}
 
-		assert!(segment_domain.start_point().iter().all(|&index| index < point_domain.ids().len()), "index should be in range");
-		assert!(segment_domain.end_point().iter().all(|&index| index < point_domain.ids().len()), "index should be in range");
+		assert!(
+			segment_domain.start_point().iter().all(|&index| index < point_domain.ids().len()),
+			"index should be in range {:#?}",
+			segment_domain
+		);
+		assert!(
+			segment_domain.end_point().iter().all(|&index| index < point_domain.ids().len()),
+			"index should be in range {:#?}",
+			segment_domain
+		);
 	}
 
 	/// Create a new modification that will convert an empty [`VectorData`] into the target [`VectorData`].
