@@ -101,7 +101,7 @@ pub struct SegmentModification {
 impl SegmentModification {
 	/// Apply this modification to the specified [`SegmentDomain`].
 	pub fn apply(&self, segment_domain: &mut SegmentDomain, point_domain: &PointDomain) {
-		segment_domain.retain(|id| !self.remove.contains(id));
+		segment_domain.retain(|id| !self.remove.contains(id), point_domain.ids().len());
 
 		for (id, point) in segment_domain.start_point_mut() {
 			let Some(&new) = self.start_point.get(&id) else { continue };
