@@ -158,10 +158,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::ShiftNodePosition { node_id, x, y });
 				// Only auto connect to the dragged wire if the node is being added to the currently opened network
 				if let Some(output_connector_position) = self.wire_in_progress_from_connector {
-					let output_connector_position_viewport = network_interface
-						.navigation_metadata(selection_network_path)
-						.node_graph_to_viewport
-						.transform_point2(output_connector_position);
+					let Some(node_graph_to_viewport) = network_interface.node_graph_to_viewport(selection_network_path) else {
+						log::error!("Could not get node_graph_to_viewport in CreateNodeFromContextMenu");
+						return;
+					};
+					let output_connector_position_viewport = node_graph_to_viewport.transform_point2(output_connector_position);
 					let Some(output_connector) = &network_interface.output_connector_from_click(output_connector_position_viewport, breadcrumb_network_path) else {
 						log::error!("Could not get output from connector start");
 						return;
@@ -334,10 +335,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					log::error!("Selection network path does not match breadcrumb network path in PointerDown");
 					return;
 				}
-
+				let Some(node_graph_to_viewport) = network_interface.node_graph_to_viewport(selection_network_path) else {
+					log::error!("Could not get node_graph_to_viewport in PointerDown");
+					return;
+				};
 				let click = ipp.mouse.position;
 
-				let node_graph_point = network_interface.navigation_metadata(selection_network_path).node_graph_to_viewport.inverse().transform_point2(click);
+				let node_graph_point = node_graph_to_viewport.inverse().transform_point2(click);
 
 				if network_interface
 					.layer_click_target_from_click(click, network_interface::LayerClickTargetTypes::Grip, selection_network_path)
@@ -387,16 +391,19 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					} else {
 						ContextMenuData::CreateNode
 					};
-
+					let Some(node_graph_to_viewport) = network_interface.node_graph_to_viewport(selection_network_path) else {
+						log::error!("Could not get node_graph_to_viewport in PointerDown");
+						return;
+					};
 					// TODO: Create function
 					let node_graph_shift = if matches!(context_menu_data, ContextMenuData::CreateNode) {
 						let appear_right_of_mouse = if click.x > ipp.viewport_bounds.size().x - 180. { -180. } else { 0. };
 						let appear_above_mouse = if click.y > ipp.viewport_bounds.size().y - 200. { -200. } else { 0. };
-						DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_interface.navigation_metadata(selection_network_path).node_graph_to_viewport.matrix2.x_axis.x
+						DVec2::new(appear_right_of_mouse, appear_above_mouse) / node_graph_to_viewport.matrix2.x_axis.x
 					} else {
 						let appear_right_of_mouse = if click.x > ipp.viewport_bounds.size().x - 173. { -173. } else { 0. };
 						let appear_above_mouse = if click.y > ipp.viewport_bounds.size().y - 34. { -34. } else { 0. };
-						DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_interface.navigation_metadata(selection_network_path).node_graph_to_viewport.matrix2.x_axis.x
+						DVec2::new(appear_right_of_mouse, appear_above_mouse) / node_graph_to_viewport.matrix2.x_axis.x
 					};
 
 					let context_menu_coordinates = ((node_graph_point.x + node_graph_shift.x) as i32, (node_graph_point.y + node_graph_shift.y) as i32);
@@ -420,10 +427,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				// If the user is clicking on the create nodes list or context menu, break here
 				if let Some(context_menu) = &self.context_menu {
-					let context_menu_viewport = network_interface
-						.navigation_metadata(selection_network_path)
-						.node_graph_to_viewport
-						.transform_point2(DVec2::new(context_menu.context_menu_coordinates.0 as f64, context_menu.context_menu_coordinates.1 as f64));
+					let Some(node_graph_to_viewport) = network_interface.node_graph_to_viewport(selection_network_path) else {
+						log::error!("Could not get node_graph_to_viewport in PointerDown");
+						return;
+					};
+					let context_menu_viewport = node_graph_to_viewport.transform_point2(DVec2::new(context_menu.context_menu_coordinates.0 as f64, context_menu.context_menu_coordinates.1 as f64));
 					let (width, height) = if matches!(context_menu.context_menu_data, ContextMenuData::ToggleLayer { .. }) {
 						// Height and width for toggle layer menu
 						(173., 34.)
@@ -570,12 +578,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let messages = [NodeGraphMessage::PointerOutsideViewport { shift }.into(), NodeGraphMessage::PointerMove { shift }.into()];
 				self.auto_panning.setup_by_mouse_position(ipp, &messages, responses);
 
+				let Some(node_graph_to_viewport) = network_interface.node_graph_to_viewport(selection_network_path) else {
+					log::error!("Could not get node_graph_to_viewport in PointerDown");
+					return;
+				};
+
 				let viewport_location = ipp.mouse.position;
-				let point = network_interface
-					.navigation_metadata(selection_network_path)
-					.node_graph_to_viewport
-					.inverse()
-					.transform_point2(viewport_location);
+				let point = node_graph_to_viewport.inverse().transform_point2(viewport_location);
 
 				if self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none() {
 					let to_connector = network_interface.input_connector_from_click(ipp.mouse.position, selection_network_path);
@@ -592,7 +601,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						// Disconnect if the wire was previously connected to an input
 						if let Some(disconnecting) = &self.disconnecting {
 							let mut disconnect_root_node = false;
-							if let Previewing::Yes { root_node_to_restore } = network_interface.previewing(selection_network_path) {
+							if let Some(Previewing::Yes { root_node_to_restore }) = network_interface.previewing(selection_network_path) {
 								if root_node_to_restore.is_some() && *disconnecting == InputConnector::Export(0) {
 									disconnect_root_node = true;
 								}
@@ -612,11 +621,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 
 					if let (Some(wire_in_progress_from_connector), Some(wire_in_progress_to_connector)) = (self.wire_in_progress_from_connector, self.wire_in_progress_to_connector) {
+						let Some(node_graph_to_viewport) = network_interface.node_graph_to_viewport(selection_network_path) else {
+							log::error!("Could not get node_graph_to_viewport in PointerDown");
+							return;
+						};
 						// If performance is a concern this can be stored as a field in the wire_in_progress_from/to_connector struct, and updated when snapping to an output
-						let from_connector_viewport = network_interface
-							.navigation_metadata(selection_network_path)
-							.node_graph_to_viewport
-							.transform_point2(wire_in_progress_from_connector);
+						let from_connector_viewport = node_graph_to_viewport.transform_point2(wire_in_progress_from_connector);
 						let from_connector_is_layer = network_interface
 							.output_connector_from_click(from_connector_viewport, selection_network_path)
 							.is_some_and(|output_connector| {
@@ -734,22 +744,25 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if let Some(preview_node) = self.preview_on_mouse_up {
 					responses.add(NodeGraphMessage::TogglePreview { node_id: preview_node });
 					self.preview_on_mouse_up = None;
-				}
+				};
 				if let Some(node_to_deselect) = self.deselect_on_pointer_up {
 					let mut new_selected_nodes = selected_nodes.selected_nodes_ref().clone();
 					new_selected_nodes.remove(node_to_deselect);
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_selected_nodes });
 					self.deselect_on_pointer_up = None;
-				}
-				let point = network_interface
-					.navigation_metadata(selection_network_path)
-					.node_graph_to_viewport
-					.inverse()
-					.transform_point2(ipp.mouse.position);
+				};
+				let Some(node_graph_to_viewport) = network_interface.node_graph_to_viewport(selection_network_path) else {
+					log::error!("Could not get node_graph_to_viewport in PointerUp");
+					return;
+				};
+				let point = node_graph_to_viewport.inverse().transform_point2(ipp.mouse.position);
 				// Disconnect if the wire was previously connected to an input
 				if let (Some(wire_in_progress_from_connector), Some(wire_in_progress_to_connector)) = (self.wire_in_progress_from_connector, self.wire_in_progress_to_connector) {
 					// Check if dragged connector is reconnected to another input
-					let node_graph_to_viewport = network_interface.navigation_metadata(selection_network_path).node_graph_to_viewport;
+					let Some(node_graph_to_viewport) = network_interface.node_graph_to_viewport(selection_network_path) else {
+						log::error!("Could not get node_graph_to_viewport in PointerUp");
+						return;
+					};
 					let from_connector_viewport = node_graph_to_viewport.transform_point2(wire_in_progress_from_connector);
 					let to_connector_viewport = node_graph_to_viewport.transform_point2(wire_in_progress_to_connector);
 					let output_connector = network_interface.output_connector_from_click(from_connector_viewport, selection_network_path);
@@ -769,15 +782,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						if self.context_menu.is_some() {
 							return;
 						}
-						let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
-							warn!("No network_metadata");
+						let Some(node_graph_to_viewport) = network_interface.node_graph_to_viewport(selection_network_path) else {
+							log::error!("Could not get node_graph_to_viewport in PointerUp");
 							return;
 						};
-
 						let appear_right_of_mouse = if ipp.mouse.position.x > ipp.viewport_bounds.size().x - 173. { -173. } else { 0. };
 						let appear_above_mouse = if ipp.mouse.position.y > ipp.viewport_bounds.size().y - 34. { -34. } else { 0. };
-						let node_graph_shift =
-							DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_interface.navigation_metadata(selection_network_path).node_graph_to_viewport.matrix2.x_axis.x;
+						let node_graph_shift = DVec2::new(appear_right_of_mouse, appear_above_mouse) / node_graph_to_viewport.matrix2.x_axis.x;
 
 						self.context_menu = Some(ContextMenuInformation {
 							context_menu_coordinates: ((point.x + node_graph_shift.x) as i32, (point.y + node_graph_shift.y) as i32),
@@ -1259,11 +1270,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						log::error!("Could not get network metadata in PointerMove");
 						return;
 					};
-
-					let box_selection_start_viewport = network_interface
-						.navigation_metadata(selection_network_path)
-						.node_graph_to_viewport
-						.transform_point2(box_selection_start);
+					let Some(node_graph_to_viewport) = network_interface.node_graph_to_viewport(selection_network_path) else {
+						log::error!("Could not get node_graph_to_viewport in PointerUp");
+						return;
+					};
+					let box_selection_start_viewport = node_graph_to_viewport.transform_point2(box_selection_start);
 
 					let box_selection = Some(BoxSelection {
 						start_x: box_selection_start_viewport.x.max(0.) as u32,
@@ -1271,11 +1282,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						end_x: ipp.mouse.position.x.max(0.) as u32,
 						end_y: ipp.mouse.position.y.max(0.) as u32,
 					});
-					let box_selection_end_graph = network_interface
-						.navigation_metadata(selection_network_path)
-						.node_graph_to_viewport
-						.inverse()
-						.transform_point2(ipp.mouse.position);
+
+					let box_selection_end_graph = node_graph_to_viewport.inverse().transform_point2(ipp.mouse.position);
 
 					let shift = ipp.keyboard.get(crate::messages::tool::tool_messages::tool_prelude::Key::Shift as usize);
 					let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else {
@@ -1472,7 +1480,7 @@ impl NodeGraphMessageHandler {
 		if let (Some(&node_id), None) = (selection.next(), selection.next()) {
 			// Is this node the current output
 			let is_output = network.outputs_contain(node_id);
-			let is_previewing = matches!(network_interface.previewing(breadcrumb_network_path), Previewing::Yes { .. });
+			let is_previewing = matches!(network_interface.previewing(breadcrumb_network_path), Some(Previewing::Yes { .. }));
 
 			let output_button = TextButton::new(if is_output && is_previewing { "End Preview" } else { "Preview" })
 				.icon(Some("Rescale".to_string()))
@@ -1596,7 +1604,7 @@ impl NodeGraphMessageHandler {
 
 		// Connect rest of exports to their actual export field since they are not affected by previewing. Only connect the primary export if it is dashed
 		for (i, export) in network.exports.iter().enumerate() {
-			let dashed = matches!(network_interface.previewing(breadcrumb_network_path), Previewing::Yes { .. }) && i == 0;
+			let dashed = matches!(network_interface.previewing(breadcrumb_network_path), Some(Previewing::Yes { .. })) && i == 0;
 			if dashed || i != 0 {
 				if let NodeInput::Node { node_id, output_index, .. } = export {
 					wires.push(FrontendNodeWire {

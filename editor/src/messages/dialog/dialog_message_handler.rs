@@ -74,7 +74,10 @@ impl MessageHandler<DialogMessage, DialogMessageData<'_>> for DialogMessageHandl
 						.all_layers()
 						.filter(|&layer| document.network_interface.is_artboard(&layer.to_node(), &[]))
 						.map(|layer| {
-							let display_name = document.network_interface.display_name(&layer.to_node(), &[]);
+							let display_name = document.network_interface.display_name(&layer.to_node(), &[]).cloned().unwrap_or_else(|| {
+								log::error!("Artboard has no display name: {:?}", layer);
+								"".to_string()
+							});
 							let name = if display_name.is_empty() { "Artboard".to_string() } else { display_name };
 							(layer, name)
 						})

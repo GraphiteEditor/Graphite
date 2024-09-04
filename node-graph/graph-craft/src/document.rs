@@ -6,7 +6,7 @@ use graphene_core::memo::MemoHashGuard;
 pub use graphene_core::uuid::generate_uuid;
 use graphene_core::{Cow, MemoHash, ProtoNodeIdentifier, Type};
 
-use glam::{DAffine2, DVec2, IVec2};
+use glam::{DVec2, IVec2};
 use log::Metadata;
 use rustc_hash::FxHashMap;
 use std::collections::hash_map::DefaultHasher;
@@ -1456,34 +1456,6 @@ impl OutputConnector {
 		match self {
 			OutputConnector::Node { node_id, .. } => Some(*node_id),
 			_ => None,
-		}
-	}
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny)]
-pub struct NavigationMetadata {
-	/// The current pan, and zoom state of the viewport's view of the node graph.
-	/// Ensure `DocumentMessage::UpdateDocumentTransform` is called when the pan, zoom, or transform changes.
-	pub node_graph_ptz: PTZ,
-	// TODO: Remove and replace with calculate_offset_transform from the node_graph_ptz. This will be difficult since it requires both the navigation message handler and the IPP
-	/// Transform from node graph space to viewport space.
-	pub node_graph_to_viewport: DAffine2,
-	/// The viewport pixel distance distance between the left edge of the node graph and the exports. Rounded to nearest grid space when the panning ends.
-	#[serde(skip)]
-	pub exports_to_edge_distance: DVec2,
-	/// The viewport pixel distance between the left edge of the node graph and the imports. Rounded to nearest grid space when the panning ends.
-	#[serde(skip)]
-	pub imports_to_edge_distance: DVec2,
-}
-
-impl Default for NavigationMetadata {
-	fn default() -> NavigationMetadata {
-		//Default PTZ and transform
-		NavigationMetadata {
-			node_graph_ptz: PTZ::default(),
-			node_graph_to_viewport: DAffine2::IDENTITY,
-			exports_to_edge_distance: DVec2::ZERO,
-			imports_to_edge_distance: DVec2::ZERO,
 		}
 	}
 }

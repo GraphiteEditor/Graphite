@@ -7,7 +7,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 
 use bezier_rs::Subpath;
 use graph_craft::document::{value::TaggedValue, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
-use graph_craft::document::{InputConnector, NavigationMetadata, OutputConnector, Previewing, RootNode, PTZ};
+use graph_craft::document::{InputConnector, OutputConnector, Previewing, RootNode, PTZ};
 use graph_craft::{concrete, Type};
 use graphene_std::renderer::{ClickTarget, Quad};
 use graphene_std::vector::{PointId, VectorData, VectorModificationType};
@@ -16,6 +16,7 @@ use interpreted_executor::{dynamic_executor::ResolvedDocumentNodeTypes, node_reg
 use glam::{DAffine2, DVec2, IVec2};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::ops::DerefMut;
 
 /// All network modifications should be done through this API, so the fields cannot be public. However, all fields within this struct can be public since it it not possible to have a public mutable reference.
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -38,12 +39,12 @@ pub struct NodeNetworkInterface {
 	transaction_status: TransactionStatus,
 }
 
+// Enum to represent all metadata in the network, which can be used uniquely identify any stored value
 #[derive(Hash)]
-pub enum Metadata {
+pub enum MetadataType {
 	// Network persistent metadata
-	NodeMetadata,
 	Previewing,
-	NavigationMetadata,
+	NavigationMetadata(NavigationMetadataType),
 	SelectionUndoHistory,
 	SelectionRedoHistory,
 	// Network transient metadata
@@ -66,6 +67,13 @@ pub enum Metadata {
 	// Derived metadata
 	Position,
 	IsLayer,
+}
+
+#[derive(Hash)]
+pub enum NavigationMetadataType {
+	PTZ,
+	NodeGraphToViewport,
+	NodeGraphTopRight,
 }
 
 impl Clone for NodeNetworkInterface {
@@ -484,15 +492,15 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	fn metadata_node_id(path: &[NodeId], metadata: Metadata) -> NodeId {
+	fn metadata_node_id(metadata: MetadataType, node_path: &[NodeId]) -> NodeId {
 		let mut hasher = DefaultHasher::new();
-		path.hash(&mut hasher);
+		node_path.hash(&mut hasher);
 		metadata.hash(&mut hasher);
 		NodeId(hasher.finish())
 	}
 
-	fn metadata_value(&self, path: &[NodeId], metadata: Metadata) -> Option<&TaggedValue> {
-		let node_id = Self::metadata_node_id(path, metadata);
+	fn metadata_value(&self, metadata: MetadataType, node_path: &[NodeId]) -> Option<&TaggedValue> {
+		let node_id = Self::metadata_node_id(metadata, node_path);
 
 		let network = self.network(&[]).unwrap();
 		let Some(node) = network.nodes.get(&node_id) else {
@@ -998,26 +1006,17 @@ impl NodeNetworkInterface {
 		upstream_nodes_below_layer
 	}
 
-	pub fn previewing(&self, network_path: &[NodeId]) -> Option<&Previewing> {
-		let Some(tagged_value) = self.metadata_value(&network_path, Metadata::Previewing) else {
-			log::error!("Could not get tagged value in previewing");
-			return None;
-		};
-		let TaggedValue::Previewing(previewing) = tagged_value else {
-			log::error!("Tagged value should be Previewing in previewing");
-			return None;
-		};
-		Some(previewing)
-	}
-
 	/// Returns the root node (the node that the solid line is connect to), or None if no nodes are connected to the output
 	pub fn root_node(&self, network_path: &[NodeId]) -> Option<RootNode> {
 		let Some(network) = self.network(network_path) else {
 			log::error!("Could not get network in root_node");
 			return None;
 		};
-		let previewing = self.previewing(network_path);
-		match &previewing {
+		let Some(previewing) = self.previewing(network_path) else {
+			log::error!("Could not get previewing in root_node");
+			return None;
+		};
+		match previewing {
 			Previewing::Yes { root_node_to_restore } => *root_node_to_restore,
 			Previewing::No => network.exports.first().and_then(|export| {
 				if let NodeInput::Node { node_id, output_index, .. } = export {
@@ -1032,16 +1031,52 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub fn navigation_metadata(&self, network_path: &[NodeId]) -> Option<&NavigationMetadata> {
-		let Some(tagged_value) = self.metadata_value(&network_path, Metadata::NavigationMetadata) else {
-			log::error!("Could not get tagged value in navigation_metadata");
+	pub fn previewing(&self, network_path: &[NodeId]) -> Option<&Previewing> {
+		let Some(tagged_value) = self.metadata_value(MetadataType::Previewing, &network_path) else {
+			log::error!("Could not get tagged value in previewing");
 			return None;
 		};
-		let TaggedValue::NavigationMetadata(navigation_metadata) = tagged_value else {
+		let TaggedValue::Previewing(previewing) = tagged_value else {
 			log::error!("Tagged value should be Previewing in previewing");
 			return None;
 		};
-		Some(navigation_metadata)
+		Some(previewing)
+	}
+
+	pub fn ptz(&self, network_path: &[NodeId]) -> Option<&PTZ> {
+		let Some(tagged_value) = self.metadata_value(MetadataType::NavigationMetadata(NavigationMetadataType::PTZ), &network_path) else {
+			log::error!("Could not get tagged value in ptz");
+			return None;
+		};
+		let TaggedValue::PTZ(ptz) = tagged_value else {
+			log::error!("Tagged value should be PTZ in ptz");
+			return None;
+		};
+		Some(ptz)
+	}
+
+	pub fn node_graph_to_viewport(&self, network_path: &[NodeId]) -> Option<&DAffine2> {
+		let Some(tagged_value) = self.metadata_value(MetadataType::NavigationMetadata(NavigationMetadataType::NodeGraphToViewport), network_path) else {
+			log::error!("Could not get tagged value in node_graph_to_viewport");
+			return None;
+		};
+		let TaggedValue::DAffine2(daffine) = tagged_value else {
+			log::error!("Tagged value should be DAffine2 in node_graph_to_viewport");
+			return None;
+		};
+		Some(daffine)
+	}
+
+	pub fn node_graph_top_right(&self, network_path: &[NodeId]) -> Option<&DVec2> {
+		let Some(tagged_value) = self.metadata_value(MetadataType::NavigationMetadata(NavigationMetadataType::NodeGraphTopRight), network_path) else {
+			log::error!("Could not get tagged value in viewport_top_right");
+			return None;
+		};
+		let TaggedValue::DVec2(top_right) = tagged_value else {
+			log::error!("Tagged value should be DVec2 in viewport_top_right");
+			return None;
+		};
+		Some(top_right)
 	}
 
 	pub fn reference(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<String> {
@@ -1052,7 +1087,7 @@ impl NodeNetworkInterface {
 	pub fn display_name(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&String> {
 		let mut node_id_path = network_path.to_vec();
 		node_id_path.push(*node_id);
-		let Some(tagged_value) = self.metadata_value(&node_id_path, Metadata::DisplayName) else {
+		let Some(tagged_value) = self.metadata_value(MetadataType::DisplayName, &node_id_path) else {
 			log::error!("Could not get tagged value in display_name");
 			return None;
 		};
@@ -1064,6 +1099,10 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn frontend_display_name(&self, node_id: &NodeId, network_path: &[NodeId]) -> String {
+		let Some(display_name) = self.display_name(node_id, network_path) else {
+			log::error!("Could not get display name in frontend_display_name");
+			return "".to_string();
+		};
 		let is_layer = self
 			.node_metadata(node_id, network_path)
 			.expect("Could not get persistent node metadata in untitled_layer_label")
@@ -1071,14 +1110,14 @@ impl NodeNetworkInterface {
 			.is_layer();
 		let reference = self.reference(node_id, network_path);
 		let is_merge_node = reference.as_ref().is_some_and(|reference| reference == "Merge");
-		if self.display_name(node_id, network_path).is_empty() {
+		if display_name.is_empty() {
 			if is_layer && is_merge_node {
 				"Untitled Layer".to_string()
 			} else {
 				reference.unwrap_or("Untitled node".to_string())
 			}
 		} else {
-			self.display_name(node_id, network_path)
+			display_name.to_string()
 		}
 	}
 
@@ -1844,8 +1883,8 @@ impl NodeNetworkInterface {
 			log::error!("Could not get rounded_network_edge_distance in load_export_ports");
 			return;
 		};
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in load_export_ports");
+		let Some(node_graph_to_viewport) = self.node_graph_to_viewport(network_path).cloned() else {
+			log::error!("Could not get node_graph_to_viewport in load_export_ports");
 			return;
 		};
 		let Some(network) = self.network(network_path) else {
@@ -1855,11 +1894,7 @@ impl NodeNetworkInterface {
 
 		let mut import_export_ports = Ports::new();
 
-		let viewport_top_right = self
-			.navigation_metadata(network_path)
-			.node_graph_to_viewport
-			.inverse()
-			.transform_point2(rounded_network_edge_distance.exports_to_edge_distance);
+		let viewport_top_right = node_graph_to_viewport.inverse().transform_point2(rounded_network_edge_distance.exports_to_edge_distance);
 		let offset_from_top_right = if network
 			.exports
 			.first()
@@ -1876,11 +1911,7 @@ impl NodeNetworkInterface {
 			import_export_ports.insert_input_port_at_center(input_index, export_top_right + DVec2::new(0., input_index as f64 * 24.));
 		}
 
-		let viewport_top_left = self
-			.navigation_metadata(network_path)
-			.node_graph_to_viewport
-			.inverse()
-			.transform_point2(rounded_network_edge_distance.imports_to_edge_distance);
+		let viewport_top_left = node_graph_to_viewport.inverse().transform_point2(rounded_network_edge_distance.imports_to_edge_distance);
 
 		let offset_from_top_left = if network
 			.exports
@@ -1933,14 +1964,17 @@ impl NodeNetworkInterface {
 	}
 
 	fn load_rounded_network_edge_distance(&mut self, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Could not get nested network in set_grid_aligned_edges");
+		// When setting the edges to be grid aligned, update the pixel offset to ensure the next pan starts from the snapped import/export position
+		let Some(node_graph_to_viewport) = self.node_graph_to_viewport(network_path) else {
+			log::error!("Could not get node_graph_to_viewport in load_export_ports");
 			return;
 		};
-		// When setting the edges to be grid aligned, update the pixel offset to ensure the next pan starts from the snapped import/export position
-		let node_graph_to_viewport = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport;
+
 		// TODO: Eventually replace node graph top right with the footprint when trying to get the network edge distance
-		let node_graph_top_right = network_metadata.persistent_metadata.navigation_metadata.node_graph_top_right;
+		let Some(node_graph_top_right) = self.node_graph_top_right(network_path) else {
+			log::error!("Could not get node_graph_top_right in load_export_ports");
+			return;
+		};
 
 		let target_exports_distance = node_graph_to_viewport.inverse().transform_point2(DVec2::new(
 			node_graph_top_right.x - EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP as f64,
@@ -2545,23 +2579,16 @@ impl NodeNetworkInterface {
 			log::error!("Could not get rounded_network_edge_distance in collect_front_end_click_targets");
 			return FrontendClickTargets::default();
 		};
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in collect_front_end_click_targets");
+		let Some(node_graph_to_viewport) = self.node_graph_to_viewport(network_path) else {
+			log::error!("Could not get node_graph_to_viewport in collect_front_end_click_targets");
 			return FrontendClickTargets::default();
 		};
+
 		let import_exports_viewport_top_left = rounded_network_edge_distance.imports_to_edge_distance;
 		let import_exports_viewport_bottom_right = rounded_network_edge_distance.exports_to_edge_distance;
 
-		let node_graph_top_left = self
-			.navigation_metadata(network_path)
-			.node_graph_to_viewport
-			.inverse()
-			.transform_point2(import_exports_viewport_top_left);
-		let node_graph_bottom_right = self
-			.navigation_metadata(network_path)
-			.node_graph_to_viewport
-			.inverse()
-			.transform_point2(import_exports_viewport_bottom_right);
+		let node_graph_top_left = node_graph_to_viewport.inverse().transform_point2(import_exports_viewport_top_left);
+		let node_graph_bottom_right = node_graph_to_viewport.inverse().transform_point2(import_exports_viewport_bottom_right);
 
 		let import_exports_target = bezier_rs::Subpath::<PointId>::new_rect(node_graph_top_left, node_graph_bottom_right);
 		let mut import_exports_bounding_box = String::new();
@@ -2601,14 +2628,6 @@ impl NodeNetworkInterface {
 			&& has_single_output_wire
 	}
 
-	pub fn node_graph_ptz_mut(&mut self, network_path: &[NodeId]) -> Option<&mut PTZ> {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Could not get nested network_metadata in node_graph_ptz_mut");
-			return None;
-		};
-		Some(&mut self.navigation_metadata(network_path).node_graph_ptz)
-	}
-
 	// TODO: Optimize getting click target intersections from click by using a spacial data structure like a quadtree instead of linear search
 	/// Click target getter methods
 	pub fn node_from_click(&mut self, click: DVec2, network_path: &[NodeId]) -> Option<NodeId> {
@@ -2616,8 +2635,12 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network in node_from_click");
 			return None;
 		};
+		let Some(node_graph_to_viewport) = self.node_graph_to_viewport(network_path) else {
+			log::error!("Could not get node_graph_to_viewport in collect_front_end_click_targets");
+			return None;
+		};
 
-		let point = self.navigation_metadata(network_path).node_graph_to_viewport.inverse().transform_point2(click);
+		let point = node_graph_to_viewport.inverse().transform_point2(click);
 		let nodes = network.nodes.keys().copied().collect::<Vec<_>>();
 		let clicked_nodes = nodes
 			.iter()
@@ -2645,16 +2668,15 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn layer_click_target_from_click(&mut self, click: DVec2, click_target_type: LayerClickTargetTypes, network_path: &[NodeId]) -> Option<NodeId> {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in visibility_from_click");
-			return None;
-		};
 		let Some(network) = self.network(network_path) else {
 			log::error!("Could not get nested network in visibility_from_click");
 			return None;
 		};
-
-		let point = self.navigation_metadata(network_path).node_graph_to_viewport.inverse().transform_point2(click);
+		let Some(node_graph_to_viewport) = self.node_graph_to_viewport(network_path) else {
+			log::error!("Could not get node_graph_to_viewport in collect_front_end_click_targets");
+			return None;
+		};
+		let point = node_graph_to_viewport.inverse().transform_point2(click);
 		let node_ids: Vec<_> = network.nodes.keys().copied().collect();
 
 		node_ids
@@ -2679,8 +2701,12 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network in input_connector_from_click");
 			return None;
 		};
+		let Some(node_graph_to_viewport) = self.node_graph_to_viewport(network_path) else {
+			log::error!("Could not get node_graph_to_viewport in collect_front_end_click_targets");
+			return None;
+		};
+		let point = node_graph_to_viewport.inverse().transform_point2(click);
 
-		let point = self.navigation_metadata(network_path).node_graph_to_viewport.inverse().transform_point2(click);
 		network
 			.nodes
 			.keys()
@@ -2708,8 +2734,11 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network in output_connector_from_click");
 			return None;
 		};
-
-		let point = self.navigation_metadata(network_path).node_graph_to_viewport.inverse().transform_point2(click);
+		let Some(node_graph_to_viewport) = self.node_graph_to_viewport(network_path) else {
+			log::error!("Could not get node_graph_to_viewport in collect_front_end_click_targets");
+			return None;
+		};
+		let point = node_graph_to_viewport.inverse().transform_point2(click);
 		let nodes = network.nodes.keys().copied().collect::<Vec<_>>();
 		nodes
 			.iter()
@@ -2774,7 +2803,11 @@ impl NodeNetworkInterface {
 			log::error!("Could not get selected nodes in selected_nodes_bounding_box_viewport");
 			return None;
 		};
-		let node_graph_to_viewport = self.navigation_metadata(network_path).node_graph_to_viewport;
+		let Some(node_graph_to_viewport) = self.node_graph_to_viewport(network_path).cloned() else {
+			log::error!("Could not get node_graph_to_viewport in collect_front_end_click_targets");
+			return None;
+		};
+
 		selected_nodes
 			.selected_nodes()
 			.cloned()
@@ -2782,7 +2815,7 @@ impl NodeNetworkInterface {
 			.iter()
 			.filter_map(|node_id| {
 				self.node_click_targets(node_id, network_path)
-					.and_then(|transient_node_metadata| transient_node_metadata.node_click_target.bounding_box_with_transform(node_graph_to_viewport))
+					.and_then(|transient_node_metadata| transient_node_metadata.node_click_target.bounding_box_with_transform(&node_graph_to_viewport))
 			})
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
 	}
@@ -2790,8 +2823,12 @@ impl NodeNetworkInterface {
 	/// Gets the bounding box in viewport coordinates for each node in the node graph
 	pub fn graph_bounds_viewport_space(&mut self, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
 		let bounds = *self.all_nodes_bounding_box(network_path)?;
+		let Some(node_graph_to_viewport) = self.node_graph_to_viewport(network_path) else {
+			log::error!("Could not get node_graph_to_viewport in graph_bounds_viewport_space");
+			return None;
+		};
 		let bounding_box_subpath = bezier_rs::Subpath::<PointId>::new_rect(bounds[0], bounds[1]);
-		bounding_box_subpath.bounding_box_with_transform(self.navigation_metadata(network_path).node_graph_to_viewport)
+		bounding_box_subpath.bounding_box_with_transform(node_graph_to_viewport)
 	}
 
 	pub fn collect_layer_widths(&mut self, network_path: &[NodeId]) -> (HashMap<NodeId, u32>, HashMap<NodeId, u32>) {
@@ -2939,28 +2976,31 @@ impl NodeNetworkInterface {
 				current_path.push(*node_id);
 				current_path
 			}));
-			if let Some(other_network_metadata) = other_interface.network_metadata(&path) {
-				let Some(navigation_metadata) = self.navigation_metadata_mut(&path) else {
-					log::error!("Could not get nested navigation_metadata in copy_all_navigation_metadata");
-					continue;
-				};
-				*navigation_metadata = other_network_metadata.persistent_metadata.navigation_metadata.clone();
+			if let (Some(ptz), Some(node_graph_to_viewport), Some(node_graph_top_right)) =
+				(other_interface.ptz(&path), other_interface.node_graph_to_viewport(&path), other_interface.node_graph_top_right(&path))
+			{
+				self.set_metadata(MetadataType::NavigationMetadata(NavigationMetadataType::PTZ), TaggedValue::PTZ(*ptz), &path);
+				self.set_metadata(
+					MetadataType::NavigationMetadata(NavigationMetadataType::NodeGraphToViewport),
+					TaggedValue::DAffine2(*node_graph_to_viewport),
+					&path,
+				);
+				self.set_metadata(
+					MetadataType::NavigationMetadata(NavigationMetadataType::NodeGraphTopRight),
+					TaggedValue::DVec2(*node_graph_top_right),
+					&path,
+				);
 			};
 		}
 	}
 
-	pub fn set_transform(&mut self, transform: DAffine2, network_path: &[NodeId]) {
-		self.navigation_metadata(network_path).node_graph_to_viewport = transform;
-		self.unload_import_export_ports(network_path);
-	}
-
 	// This should be run whenever the pan ends, a zoom occurs, or the network is opened
 	pub fn set_grid_aligned_edges(&mut self, node_graph_top_right: DVec2, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Could not get nested network_metadata in set_grid_aligned_edges");
-			return;
-		};
-		network_metadata.persistent_metadata.navigation_metadata.node_graph_top_right = node_graph_top_right;
+		self.set_metadata(
+			MetadataType::NavigationMetadata(NavigationMetadataType::NodeGraphTopRight),
+			TaggedValue::DVec2(node_graph_top_right),
+			network_path,
+		);
 		self.unload_rounded_network_edge_distance(network_path);
 		self.unload_import_export_ports(network_path);
 	}
@@ -3433,7 +3473,7 @@ impl NodeNetworkInterface {
 
 		network.nodes.insert(node_id, node_template.document_node);
 		// TODO: Remove this clone once the later usage is removed
-		self.insert_all_node_metadata(node_id, network_path, node_template.persistent_node_metadata.clone());
+		self.insert_all_node_metadata(node_id, node_template.persistent_node_metadata.clone(), network_path);
 		self.transaction_modified();
 
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
@@ -3450,33 +3490,45 @@ impl NodeNetworkInterface {
 		self.unload_node_click_targets(&node_id, network_path)
 	}
 
-	fn insert_all_node_metadata(&mut self, node_id: NodeId, network_path: &[NodeId], persistent_metadata: DocumentNodePersistentMetadata) {
+	fn insert_all_node_metadata(&mut self, node_id: NodeId, persistent_metadata: DocumentNodePersistentMetadata, network_path: &[NodeId]) {
 		let mut node_path = network_path.to_vec();
 		node_path.push(node_id);
-		let display_name_node_id = Self::metadata_node_id(&node_path, Metadata::DisplayName);
-		self.insert_node_metadata(display_name_node_id, TaggedValue::String(persistent_metadata.display_name));
+		self.insert_node_metadata(MetadataType::DisplayName, TaggedValue::String(persistent_metadata.display_name), &node_path);
 		// TODO: Add the rest of the node metadata nodes
 
 		if let Some(nested_network) = persistent_metadata.network_metadata {
-			self.insert_network_metadata(&node_path, nested_network.persistent_metadata);
+			self.insert_network_metadata(nested_network.persistent_metadata, &node_path);
 		}
 	}
 
 	/// Adds nodes for the network metadata. Should always be called when creating a new NodeNetwork
-	pub fn insert_network_metadata(&mut self, network_path: &[NodeId], persistent_metadata: NodeNetworkPersistentMetadata) {
-		let previewing_node_id = Self::metadata_node_id(network_path, Metadata::Previewing);
-		let navigation_metadata_id = Self::metadata_node_id(network_path, Metadata::NavigationMetadata);
-		self.insert_node_metadata(previewing_node_id, TaggedValue::Previewing(persistent_metadata.previewing));
-		self.insert_node_metadata(navigation_metadata_id, TaggedValue::NavigationMetadata(persistent_metadata.navigation_metadata));
+	pub fn insert_network_metadata(&mut self, persistent_metadata: NodeNetworkPersistentMetadata, network_path: &[NodeId]) {
+		self.insert_node_metadata(MetadataType::Previewing, TaggedValue::Previewing(persistent_metadata.previewing), network_path);
+		self.insert_node_metadata(
+			MetadataType::NavigationMetadata(NavigationMetadataType::PTZ),
+			TaggedValue::PTZ(persistent_metadata.navigation_metadata.node_graph_ptz),
+			network_path,
+		);
+		self.insert_node_metadata(
+			MetadataType::NavigationMetadata(NavigationMetadataType::NodeGraphToViewport),
+			TaggedValue::DAffine2(persistent_metadata.navigation_metadata.node_graph_to_viewport),
+			network_path,
+		);
+		self.insert_node_metadata(
+			MetadataType::NavigationMetadata(NavigationMetadataType::NodeGraphTopRight),
+			TaggedValue::DVec2(persistent_metadata.navigation_metadata.node_graph_top_right),
+			network_path,
+		);
 		// TODO: Add the rest of the network metadata nodes
 
 		for (node_id, node_metadata) in persistent_metadata.node_metadata {
-			self.insert_all_node_metadata(node_id, network_path, node_metadata.persistent_metadata);
+			self.insert_all_node_metadata(node_id, node_metadata.persistent_metadata, network_path);
 		}
 	}
 
-	/// Adds a node for the metadata. TODO: Consider calling this if a metadata node cannot be found.
-	fn insert_node_metadata(&mut self, metadata_node_id: NodeId, tagged_value: TaggedValue) {
+	/// Adds a node for the metadata. TODO: Consider calling this in set_metadata if a metadata node cannot be found.
+	fn insert_node_metadata(&mut self, metadata: MetadataType, tagged_value: TaggedValue, node_path: &[NodeId]) {
+		let metadata_node_id = Self::metadata_node_id(metadata, node_path);
 		let network = self.network_mut(&[]).unwrap();
 		log::debug!("Inserting metadata node with id {metadata_node_id}");
 		network.nodes.insert(
@@ -3673,13 +3725,13 @@ impl NodeNetworkInterface {
 
 	pub fn start_previewing_without_restore(&mut self, network_path: &[NodeId]) {
 		// Some logic will have to be performed to prevent the graph positions from being completely changed when the export changes to some previewed node
-		self.set_previewing(network_path, Previewing::Yes { root_node_to_restore: None });
+		self.set_metadata(MetadataType::Previewing, TaggedValue::Previewing(Previewing::Yes { root_node_to_restore: None }), network_path);
 	}
 
 	fn stop_previewing(&mut self, network_path: &[NodeId]) {
-		if let Some(Previewing::Yes) {
+		if let Some(Previewing::Yes {
 			root_node_to_restore: Some(root_node_to_restore),
-		} = self.previewing(network_path)
+		}) = self.previewing(network_path)
 		{
 			self.set_input(
 				&InputConnector::Export(0),
@@ -3687,57 +3739,7 @@ impl NodeNetworkInterface {
 				network_path,
 			);
 		}
-		self.set_previewing(network_path, Previewing::No);
-	}
-
-	fn set_previewing(&mut self, network_path: &[NodeId], previewing: Previewing) {
-		let network = self.network_mut(&[]).unwrap();
-
-		let previewing_node_id = Self::metadata_node_id(&network_path, Metadata::Previewing);
-
-		let Some(previewing_node) = network.nodes.get_mut(&previewing_node_id) else {
-			log::error!("Could not get display name node with id {previewing_node_id} in set_previewing");
-			return;
-		};
-
-		let Some(previewing_input) = previewing_node.inputs.get_mut(0) else {
-			log::error!("Could not get display name input in set_previewing");
-			return;
-		};
-
-		let Some(TaggedValue::Previewing(current_previewing)) = previewing_input.as_value() else {
-			log::error!("Could not get current display name in set_previewing");
-			return;
-		};
-
-		if *current_previewing == previewing {
-			return;
-		}
-
-		*previewing_input = NodeInput::value(TaggedValue::Previewing(previewing), false);
-	}
-
-	fn navigation_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NavigationMetadata> {
-		let network = self.network_mut(&[]).unwrap();
-
-		let navigation_metadata_id = Self::metadata_node_id(&network_path, Metadata::NavigationMetadata);
-
-		let Some(navigation_metadata_node) = network.nodes.get_mut(&navigation_metadata_id) else {
-			log::error!("Could not get navigation metadata node with id {navigation_metadata_id} in set_navigation_metadata");
-			return None;
-		};
-
-		let Some(navigation_metadata_input) = navigation_metadata_node.inputs.get_mut(0) else {
-			log::error!("Could not get navigation metadata input in set_navigation_metadata");
-			return None;
-		};
-
-		let Some(TaggedValue::NavigationMetadata(current_navigation_metadata)) = navigation_metadata_input.as_value_mut().as_deref_mut() else {
-			log::error!("Could not get current navigation metadata in set_navigation_metadata");
-			return None;
-		};
-
-		Some(current_navigation_metadata)
+		self.set_metadata(MetadataType::Previewing, TaggedValue::Previewing(Previewing::No), network_path)
 	}
 
 	/// Sets the root node only if a node is being previewed
@@ -3756,33 +3758,40 @@ impl NodeNetworkInterface {
 	// 	}
 	// }
 
-	pub fn set_display_name(&mut self, node_id: &NodeId, display_name: String, network_path: &[NodeId]) {
+	pub fn set_metadata(&mut self, metadata: MetadataType, tagged_value: TaggedValue, node_path: &[NodeId]) {
 		let network = self.network_mut(&[]).unwrap();
 
+		let metadata_node_id = Self::metadata_node_id(metadata, node_path);
+
+		let Some(metadata_node) = network.nodes.get_mut(&metadata_node_id) else {
+			log::error!("Could not get metadata node with id {metadata_node_id} in set_metadata");
+			return;
+		};
+		let Some(metadata_input) = metadata_node.inputs.get_mut(0) else {
+			log::error!("Could not get metadata input in set_metadata");
+			return;
+		};
+		let Some(mut value) = metadata_input.as_value_mut() else {
+			log::error!("Could not get tagged value in set_metadata");
+			return;
+		};
+		*value.deref_mut() = tagged_value;
+	}
+
+	pub fn set_node_graph_to_viewport(&mut self, transform: DAffine2, network_path: &[NodeId]) {
+		self.set_metadata(
+			MetadataType::NavigationMetadata(NavigationMetadataType::NodeGraphToViewport),
+			TaggedValue::DAffine2(transform),
+			network_path,
+		);
+		self.unload_import_export_ports(network_path);
+	}
+
+	pub fn set_display_name(&mut self, node_id: &NodeId, display_name: String, network_path: &[NodeId]) {
 		let mut node_path = network_path.to_vec();
 		node_path.push(*node_id);
-		let display_name_node_id = Self::metadata_node_id(&node_path, Metadata::DisplayName);
 
-		let Some(display_name_node) = network.nodes.get_mut(&display_name_node_id) else {
-			log::error!("Could not get display name node with id {display_name_node_id} in set_display_name");
-			return;
-		};
-
-		let Some(display_name_input) = display_name_node.inputs.get_mut(0) else {
-			log::error!("Could not get display name input in set_display_name");
-			return;
-		};
-
-		let Some(TaggedValue::String(current_display_name)) = display_name_input.as_value() else {
-			log::error!("Could not get current display name in set_display_name");
-			return;
-		};
-
-		if *current_display_name == display_name {
-			return;
-		}
-
-		*display_name_input = NodeInput::value(TaggedValue::String(display_name), false);
+		self.set_metadata(MetadataType::DisplayName, TaggedValue::String(display_name), &node_path);
 
 		// TODO: Connect to the display name node. Commenting this out breaks https://github.com/GraphiteEditor/Graphite/issues/1706
 		// Keep the display in sync with the `ToArtboard` name input
@@ -4024,7 +4033,7 @@ impl NodeNetworkInterface {
 				self.disconnect_input(&InputConnector::Export(0), network_path);
 			}
 		}
-		self.set_previewing(network_path, new_previewing_state);
+		self.set_metadata(MetadataType::Previewing, TaggedValue::Previewing(new_previewing_state), network_path)
 	}
 
 	/// Sets the position of a node to an absolute position
@@ -5393,8 +5402,10 @@ pub struct NavigationMetadata {
 	/// Ensure `DocumentMessage::UpdateDocumentTransform` is called when the pan, zoom, or transform changes.
 	pub node_graph_ptz: PTZ,
 	// TODO: Remove and replace with calculate_offset_transform from the node_graph_ptz. This will be difficult since it requires both the navigation message handler and the IPP
+	// It might be possible to calculate this with the footprint when the graph is getting rendered
 	/// Transform from node graph space to viewport space.
 	pub node_graph_to_viewport: DAffine2,
+	// TODO: Replace with footprint
 	/// Top right of the node graph in viewport space
 	pub node_graph_top_right: DVec2,
 }

@@ -42,7 +42,7 @@ impl ClickTarget {
 		self.bounding_box
 	}
 
-	pub fn bounding_box_with_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
+	pub fn bounding_box_with_transform(&self, transform: &DAffine2) -> Option<[DVec2; 2]> {
 		self.bounding_box.map(|[a, b]| [transform.transform_point2(a), transform.transform_point2(b)])
 	}
 

@@ -779,7 +779,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::RenderRulers => {
 				let current_ptz = if self.graph_view_overlay_open {
-					self.network_interface.navigation_metadata(&self.breadcrumb_network_path)
+					let Some(ptz) = self.network_interface.ptz(&self.breadcrumb_network_path) else { return };
+					ptz
 				} else {
 					&self.document_ptz
 				};
@@ -1103,14 +1104,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					}));
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				} else {
-					let Some(network_metadata) = self.network_interface.network_metadata(&self.breadcrumb_network_path) else {
+					let Some(ptz) = self.network_interface.ptz(&self.breadcrumb_network_path) else {
 						return;
 					};
 
-					let transform = self
-						.navigation_handler
-						.calculate_offset_transform(ipp.viewport_bounds.center(), &self.network_interface.navigation_metadata(&self.breadcrumb_network_path).node_graph_ptz);
-					self.network_interface.set_transform(transform, &self.breadcrumb_network_path);
+					let transform = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), ptz);
+
+					self.network_interface.set_node_graph_to_viewport(transform, &self.breadcrumb_network_path);
+
 					let imports = self.network_interface.frontend_imports(&self.breadcrumb_network_path).unwrap_or_default();
 					let exports = self.network_interface.frontend_exports(&self.breadcrumb_network_path).unwrap_or_default();
 					responses.add(DocumentMessage::RenderRulers);
@@ -1462,7 +1463,8 @@ impl DocumentMessageHandler {
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
-
+		// TODO: Remove once the footprint is used to load the imports/export distances from the edge
+		responses.add(NodeGraphMessage::SetGridAlignedEdges);
 		Some(previous_network)
 	}
 
@@ -1978,6 +1980,6 @@ impl DocumentMessageHandler {
 fn default_document_network_interface() -> NodeNetworkInterface {
 	let mut network_interface = NodeNetworkInterface::default();
 	network_interface.add_export(TaggedValue::ArtboardGroup(graphene_core::ArtboardGroup::EMPTY), -1, "".to_string(), &[]);
-	network_interface.insert_network_metadata(&[], NodeNetworkPersistentMetadata::default());
+	network_interface.insert_network_metadata(NodeNetworkPersistentMetadata::default(), &[]);
 	network_interface
 }
