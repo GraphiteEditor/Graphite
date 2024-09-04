@@ -15,8 +15,7 @@ use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::ProtoNodeIdentifier;
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{
-	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, Image, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
-	SelectiveColorChoice,
+	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, Image, ImageFrame, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute, SelectiveColorChoice,
 };
 use graphene_core::text::Font;
 use graphene_core::transform::Footprint;
@@ -1063,26 +1062,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			properties: &node_properties::blend_mode_value_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Luminance",
-			category: "Raster",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::raster::LuminanceNode"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::LuminanceCalculation(LuminanceCalculation::default()), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Luminance Calc".to_string()],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::luminance_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Extract Channel",
@@ -3372,6 +3351,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 	}
 	let node_registry = graphene_core::registry::NODE_REGISTRY.lock().unwrap();
 	'outer: for (id, metadata) in graphene_core::registry::NODE_METADATA.lock().unwrap().drain() {
+		use convert_case::Casing;
+		use graphene_core::registry::*;
+
 		for node in custom.iter() {
 			let DocumentNodeDefinition {
 				node_template: NodeTemplate {
@@ -3386,7 +3368,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			}
 		}
 
-		use graphene_core::registry::*;
 		let NodeMetadata { display_name, category, fields } = metadata;
 		let first_node_io = &node_registry
 			.get(&id)
@@ -3400,13 +3381,16 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		let inputs = fields
 			.iter()
 			.zip(first_node_io.parameters.iter())
-			.map(|(field, ty)| {
+			.enumerate()
+			.map(|(index, (field, ty))| {
 				let default = field.default_value.and_then(|x| TaggedValue::from_primitive_string(x, ty));
+				let exposed = if index == 0 { *ty != fn_type!(()) } else { field.exposed };
+
 				if let Some(default) = default {
-					return NodeInput::value(default, field.exposed);
+					return NodeInput::value(default, exposed);
 				}
 				if let Some(type_default) = TaggedValue::from_type(ty) {
-					return NodeInput::value(type_default, field.exposed);
+					return NodeInput::value(type_default, exposed);
 				}
 				NodeInput::value(TaggedValue::None, true)
 			})
@@ -3417,8 +3401,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			let rows: Vec<_> = field_types
 				.iter()
 				.enumerate()
+				.skip(1)
 				.flat_map(|(index, (name, ty))| {
-					use convert_case::Casing;
 					let name = name.to_case(convert_case::Case::Title);
 
 					node_properties::property_from_type(document_node, node_id, index, &name, ty, context)
@@ -3440,7 +3424,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: fields.iter().map(|f| f.name.clone()).collect(),
+					input_names: fields.iter().map(|f| f.name.to_case(convert_case::Case::Title).clone()).collect(),
 					output_names: vec![output_type.to_string()],
 					has_primary_output: true,
 					locked: false,

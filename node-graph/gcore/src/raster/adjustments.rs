@@ -583,9 +583,7 @@ impl Blend<Color> for GradientStops {
 #[node_macro::new_node_fn(category("Raster: Adjustments"))]
 fn blend<T: Blend<Color>>(
 	_: (),
-	#[expose]
-	#[implementations(Color, GradientStops, ImageFrame<Color>)]
-	over: T,
+	#[implementations(Color, GradientStops, ImageFrame<Color>)] over: T,
 	#[expose]
 	#[implementations(Color, GradientStops, ImageFrame<Color>)]
 	under: T,

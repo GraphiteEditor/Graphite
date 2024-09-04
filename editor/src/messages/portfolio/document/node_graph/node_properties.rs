@@ -1156,12 +1156,6 @@ pub(crate) fn color_channel_properties(document_node: &DocumentNode, node_id: No
 	vec![color_channel(document_node, node_id, 0, "Channel", true)]
 }
 
-pub(crate) fn luminance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let luminance_calc = luminance_calculation(document_node, node_id, 1, "Luminance Calc", true);
-
-	vec![luminance_calc]
-}
-
 pub(crate) fn insert_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let color_channel = color_channel(document_node, node_id, 2, "Into", true);
 

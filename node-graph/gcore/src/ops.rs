@@ -10,9 +10,7 @@ use spirv_std::num_traits::float::Float;
 #[node_macro::new_node_fn(category("Math"))]
 fn add<U: Add<T>, T>(
 	_: (),
-	#[expose]
-	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64, glam::DVec2)]
-	primary: U,
+	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64, glam::DVec2)] primary: U,
 	#[implementations(u32, u32, &u32, &u32, f32, f32, &f32, &f32, f64, f64, &f64, &f64, glam::DVec2)] addend: T,
 ) -> <U as Add<T>>::Output {
 	primary + addend
@@ -22,9 +20,7 @@ fn add<U: Add<T>, T>(
 #[node_macro::new_node_fn(category("Math"))]
 fn subtract<U: Sub<T>, T>(
 	_: (),
-	#[expose]
-	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64, glam::DVec2)]
-	primary: U,
+	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64, glam::DVec2)] primary: U,
 	#[implementations(u32, u32, &u32, &u32, f32, f32, &f32, &f32, f64, f64, &f64, &f64, glam::DVec2)] subtrahend: T,
 ) -> <U as Sub<T>>::Output {
 	primary - subtrahend
@@ -34,9 +30,7 @@ fn subtract<U: Sub<T>, T>(
 #[node_macro::new_node_fn(category("Math"))]
 fn divide<U: Div<T>, T>(
 	_: (),
-	#[expose]
-	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64, glam::DVec2, glam::DVec2)]
-	primary: U,
+	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64, glam::DVec2, glam::DVec2)] primary: U,
 	#[default(1.)]
 	#[implementations(u32, u32, &u32, &u32, f32, f32, &f32, &f32, f64, f64, &f64, &f64, glam::DVec2, f64)]
 	divisor: T,
@@ -48,23 +42,19 @@ fn divide<U: Div<T>, T>(
 #[node_macro::new_node_fn(category("Math"))]
 fn multiply<U: Mul<T>, T>(
 	_: (),
-	#[expose]
-	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64, glam::DVec2, f64)]
-	primary: U,
+	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64, glam::DVec2, f64)] primary: U,
 	#[default(1.)]
 	#[implementations(u32, u32, &u32, &u32, f32, f32, &f32, &f32, f64, f64, &f64, &f64, glam::DVec2, glam::DVec2)]
-	multiplicant: T,
+	multiplicand: T,
 ) -> <U as Mul<T>>::Output {
-	primary * multiplicant
+	primary * multiplicand
 }
 
 // Exponent
 #[node_macro::new_node_fn(category("Math"))]
 fn exponent<U: Pow<T>, T>(
 	_: (),
-	#[expose]
-	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64)]
-	primary: U,
+	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64)] primary: U,
 	#[default(2.)]
 	#[implementations(u32, u32, &u32, &u32, f32, f32, &f32, &f32, f64, f64, &f64, &f64)]
 	power: T,
@@ -74,25 +64,25 @@ fn exponent<U: Pow<T>, T>(
 
 // Floor
 #[node_macro::new_node_fn(category("Math"))]
-fn floor(_: (), #[expose] primary: f64) -> f64 {
+fn floor(_: (), primary: f64) -> f64 {
 	primary.floor()
 }
 
 // Ceil
 #[node_macro::new_node_fn(category("Math"))]
-fn ceiling(_: (), #[expose] primary: f64) -> f64 {
+fn ceiling(_: (), primary: f64) -> f64 {
 	primary.ceil()
 }
 
 // Round
 #[node_macro::new_node_fn(category("Math"))]
-fn round(_: (), #[expose] primary: f64) -> f64 {
+fn round(_: (), primary: f64) -> f64 {
 	primary.round()
 }
 
 // Absolute Value
 #[node_macro::new_node_fn(category("Math"))]
-fn absolute_value(_: (), #[expose] primary: f64) -> f64 {
+fn absolute_value(_: (), primary: f64) -> f64 {
 	primary.abs()
 }
 
@@ -100,43 +90,40 @@ fn absolute_value(_: (), #[expose] primary: f64) -> f64 {
 #[node_macro::new_node_fn(category("Math"))]
 fn logarithm<U: num_traits::float::Float>(
 	_: (),
-	#[expose]
-	#[implementations(f32, f64)]
-	first: U,
+	#[implementations(f32, f64)] primary: U,
 	#[default(2.)]
 	#[implementations(f32, f64)]
 	base: U,
 ) -> U {
-	first.log(base)
+	primary.log(base)
 }
 
 // Natural Log
 #[node_macro::new_node_fn(category("Math"))]
 fn natural_logarithm<U: num_traits::float::Float>(
 	_: (),
-	#[expose]
 	#[default(1.)]
 	#[implementations(f32, f64)]
-	first: U,
+	primary: U,
 ) -> U {
-	first.ln()
+	primary.ln()
 }
 
 // Sine
 #[node_macro::new_node_fn(category("Math"))]
-fn sine(_: (), #[expose] primary: f64) -> f64 {
+fn sine(_: (), primary: f64) -> f64 {
 	primary.sin()
 }
 
 // Cosine
 #[node_macro::new_node_fn(category("Math"))]
-fn cosine(_: (), #[expose] primary: f64) -> f64 {
+fn cosine(_: (), primary: f64) -> f64 {
 	primary.cos()
 }
 
 // Tangent
 #[node_macro::new_node_fn(category("Math"))]
-fn tangent(_: (), #[expose] primary: f64) -> f64 {
+fn tangent(_: (), primary: f64) -> f64 {
 	primary.tan()
 }
 
@@ -144,9 +131,7 @@ fn tangent(_: (), #[expose] primary: f64) -> f64 {
 #[node_macro::new_node_fn(category("Math"))]
 fn min<T: core::cmp::PartialOrd>(
 	_: (),
-	#[expose]
-	#[implementations(u32, &u32, f32, &f32, f64, &f64, &str)]
-	operand_a: T,
+	#[implementations(u32, &u32, f32, &f32, f64, &f64, &str)] operand_a: T,
 	#[expose]
 	#[implementations(u32, &u32, f32, &f32, f64, &f64, &str)]
 	operand_b: T,
@@ -161,9 +146,7 @@ fn min<T: core::cmp::PartialOrd>(
 #[node_macro::new_node_fn(category("Math"))]
 fn max<T: core::cmp::PartialOrd>(
 	_: (),
-	#[expose]
-	#[implementations(u32, &u32, f32, &f32, f64, &f64, &str)]
-	operand_a: T,
+	#[implementations(u32, &u32, f32, &f32, f64, &f64, &str)] operand_a: T,
 	#[expose]
 	#[implementations(u32, &u32, f32, &f32, f64, &f64, &str)]
 	operand_b: T,
@@ -178,9 +161,7 @@ fn max<T: core::cmp::PartialOrd>(
 #[node_macro::new_node_fn(category("Math"))]
 fn equals<U: core::cmp::PartialEq<T>, T>(
 	_: (),
-	#[expose]
-	#[implementations(u32, &u32, f32, &f32, f64, &f64, &str)]
-	operand_a: T,
+	#[implementations(u32, &u32, f32, &f32, f64, &f64, &str)] operand_a: T,
 	#[expose]
 	#[implementations(u32, &u32, f32, &f32, f64, &f64, &str)]
 	operand_b: U,
@@ -192,9 +173,7 @@ fn equals<U: core::cmp::PartialEq<T>, T>(
 #[node_macro::new_node_fn(category("Math"))]
 fn modulo<U: Rem<T>, T>(
 	_: (),
-	#[expose]
-	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64)]
-	primary: U,
+	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64)] primary: U,
 	#[expose]
 	#[default(1.)]
 	#[implementations(u32, u32, &u32, &u32, f32, f32, &f32, &f32, f64, f64, &f64, &f64)]
@@ -205,7 +184,7 @@ fn modulo<U: Rem<T>, T>(
 
 // Vector2 Value
 #[node_macro::new_node_fn(category("Value"), name("Vector2 Value"))]
-fn vector2_value(_: (), x: f64, y: f64) -> glam::DVec2 {
+fn vector2_value(_: (), _primary: (), x: f64, y: f64) -> glam::DVec2 {
 	glam::DVec2::new(x, y)
 }
 
@@ -218,34 +197,19 @@ fn size_of(_: (), ty: crate::Type) -> Option<usize> {
 
 // Some
 #[node_macro::new_node_fn]
-fn some<T>(
-	_: (),
-	#[expose]
-	#[implementations(f64, f32, u32, u64, String, crate::Color)]
-	input: T,
-) -> Option<T> {
+fn some<T>(_: (), #[implementations(f64, f32, u32, u64, String, crate::Color)] input: T) -> Option<T> {
 	Some(input)
 }
 
 // Unwrap
 #[node_macro::new_node_fn]
-fn unwrap<T: Default>(
-	_: (),
-	#[expose]
-	#[implementations(Option<f64>, Option<f32>, Option<u32>, Option<u64>, Option<String>, Option<crate::Color>)]
-	input: Option<T>,
-) -> T {
+fn unwrap<T: Default>(_: (), #[implementations(Option<f64>, Option<f32>, Option<u32>, Option<u64>, Option<String>, Option<crate::Color>)] input: Option<T>) -> T {
 	input.unwrap_or_default()
 }
 
 // Clone
 #[node_macro::new_node_fn]
-fn clone<'i, T: Clone + 'i>(
-	_: (),
-	#[expose]
-	#[implementations(&crate::raster::ImageFrame<crate::Color>)]
-	value: &'i T,
-) -> T {
+fn clone<'i, T: Clone + 'i>(_: (), #[implementations(&crate::raster::ImageFrame<crate::Color>)] value: &'i T) -> T {
 	value.clone()
 }
 
