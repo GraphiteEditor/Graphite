@@ -99,6 +99,7 @@ impl PointDomain {
 		let mut keep = self.id.iter().map(&f);
 		self.positions.retain(|_| keep.next().unwrap_or_default());
 
+		// TODO(TrueDoctor): Consider using a prefix sum to avoid this Vec allocation (https://github.com/GraphiteEditor/Graphite/pull/1949#discussion_r1741711562)
 		let mut id_map = Vec::with_capacity(self.ids().len());
 		let mut new_index = 0;
 		for id in self.ids() {
