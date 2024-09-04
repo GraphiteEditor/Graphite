@@ -18,6 +18,7 @@ use crate::intersection_path_segment::{path_segment_intersection, segments_equal
 use crate::path::Path;
 use crate::path_cubic_segment_self_intersection::path_cubic_segment_self_intersection;
 use crate::path_segment::{get_end_point, get_start_point, path_segment_bounding_box, reverse_path_segment, sample_path_segment_at, split_segment_at, PathSegment};
+use crate::path_to_path_data;
 use crate::quad_tree::QuadTree;
 use crate::vector::{vectors_equal, Vector};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -88,7 +89,7 @@ impl MinorGraphEdge {
 		let segments = self.segments.clone();
 		for segment in segments.into_iter() {
 			let _ = match segment {
-				PathSegment::Line(mut start, mut end) => {
+				PathSegment::Line(mut start, mut end) | PathSegment::Cubic(mut start, _, _, mut end) => {
 					if self.direction_flag.backwards() {
 						(end, start) = (start, end);
 					}
@@ -193,7 +194,11 @@ fn dual_graph_to_dot(components: &[DualGraphComponent], edges: &SlotMap<DualEdge
 	for component in components {
 		for &edge_key in &component.edges {
 			let edge = &edges[edge_key];
-			dot.push_str(&format!("  {:?} -- {:?}\n", (edge.incident_vertex.0.as_ffi() & 0xFF) - 1, (edge.twin.unwrap().0.as_ffi() & 0xFF) - 1));
+			dot.push_str(&format!(
+				"  {:?} -- {:?}\n",
+				(edge.incident_vertex.0.as_ffi() & 0xFF) - 1,
+				(edges[edge.twin.unwrap()].incident_vertex.0.as_ffi() & 0xFF) - 1
+			));
 		}
 	}
 	dot.push_str("}\n");
@@ -589,31 +594,55 @@ fn remove_dangling_edges(graph: &mut MinorGraph) {
 
 fn get_incidence_angle(edge: &MinorGraphEdge) -> f64 {
 	let seg = &edge.segments[0]; // TODO: explain in comment why this is always the incident one in both fwd and bwd
+
+	// println!("{edge:?}"); //, edge.direction_flag.forward());
 	let (p0, p1) = if edge.direction_flag.forward() {
 		(sample_path_segment_at(seg, 0.0), sample_path_segment_at(seg, EPS.param))
 	} else {
 		(sample_path_segment_at(seg, 1.0), sample_path_segment_at(seg, 1.0 - EPS.param))
 	};
-	(p1.y - p0.y).atan2(p1.x - p0.x)
+
+	// println!("{p0:?} {p1:?}");
+	let angle = (p1.y - p0.y).atan2(p1.x - p0.x);
+	// println!("angle: {}", angle);
+	(angle * 10000.).round() / 1000.
 }
 
 fn sort_outgoing_edges_by_angle(graph: &mut MinorGraph) {
 	for vertex in graph.vertices.values_mut() {
 		if vertex.outgoing_edges.len() > 2 {
-			vertex
+			let edges: Vec<_> = vertex
 				.outgoing_edges
-				.sort_by(|&a, &b| get_incidence_angle(&graph.edges[a]).partial_cmp(&get_incidence_angle(&graph.edges[b])).unwrap());
+				.iter()
+				.map(|key| (*key, &graph.edges[*key]))
+				.map(|(key, edge)| ((key.0.as_ffi() & 0xFF), get_incidence_angle(edge)))
+				.collect();
+			vertex.outgoing_edges.sort_by(|&a, &b| {
+				// TODO(@TrueDoctor): Make more robust. The js version seems to sort the data slightly differently when the angles are reallly close. In that case put the edge wich was discovered later first.
+				(get_incidence_angle(&graph.edges[a]) - (a.0.as_ffi() & 0xFFFFFF) as f64 / 1000000.)
+					.partial_cmp(&(get_incidence_angle(&graph.edges[b]) - (b.0.as_ffi() & 0xFFFFFF) as f64 / 1000000.))
+					.unwrap_or(b.cmp(&a))
+			});
+			let edges: Vec<_> = vertex
+				.outgoing_edges
+				.iter()
+				.map(|key| (*key, &graph.edges[*key]))
+				.map(|(key, edge)| ((key.0.as_ffi() & 0xFF), get_incidence_angle(edge)))
+				.collect();
 		}
 	}
 }
 
 fn face_to_polygon(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>) -> Vec<Vector> {
 	const CNT: usize = 3;
+	#[cfg(feature = "logging")]
+	println!("incident node counts {}", face.incident_edges.len());
 
 	face.incident_edges
 		.iter()
 		.flat_map(|&edge_key| {
 			let edge = &edges[edge_key];
+			// println!("{}", path_to_path_data(&edge.segments, 0.001));
 			edge.segments.iter().flat_map(move |seg| {
 				(0..CNT).map(move |i| {
 					let t0 = i as f64 / CNT as f64;
@@ -656,6 +685,10 @@ fn compute_point_winding(polygon: &[Vector], tested_point: Vector) -> i32 {
 
 fn compute_winding(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>) -> (i32, Vector) {
 	let polygon = face_to_polygon(face, edges);
+	#[cfg(feature = "logging")]
+	for point in &polygon {
+		println!("[{}, {}]", point.x, point.y);
+	}
 
 	for i in 0..polygon.len() {
 		let a = polygon[i];
@@ -678,6 +711,8 @@ fn compute_dual(minor_graph: &MinorGraph) -> Option<DualGraph> {
 	let mut dual_vertices = SlotMap::with_key();
 
 	for (start_edge_key, start_edge) in &minor_graph.edges {
+		#[cfg(feature = "logging")]
+		println!("Processing start edge: {}", (start_edge_key.0.as_ffi() & 0xFF) - 1);
 		if minor_to_dual_edge.contains_key(&start_edge_key) {
 			continue;
 		}
@@ -688,6 +723,8 @@ fn compute_dual(minor_graph: &MinorGraph) -> Option<DualGraph> {
 		let mut edge = start_edge;
 
 		loop {
+			#[cfg(feature = "logging")]
+			println!("Processing edge: {}", (start_edge_key.0.as_ffi() & 0xFF) - 1);
 			let twin = edge.twin.expect("Edge doesn't have a twin");
 			let twin_dual_key = minor_to_dual_edge.get(&twin).copied();
 
@@ -708,6 +745,8 @@ fn compute_dual(minor_graph: &MinorGraph) -> Option<DualGraph> {
 			dual_vertices[face_key].incident_edges.push(new_edge_key);
 
 			edge_key = get_next_edge(edge_key, minor_graph);
+			#[cfg(feature = "logging")]
+			println!("Next edge: {}", (start_edge_key.0.as_ffi() & 0xFF) - 1);
 			edge = &minor_graph.edges[edge_key];
 
 			if edge.incident_vertices[0] == start_edge.incident_vertices[0] {
@@ -749,6 +788,10 @@ fn compute_dual(minor_graph: &MinorGraph) -> Option<DualGraph> {
 	let mut visited_vertices = HashSet::new();
 	let mut visited_edges = HashSet::new();
 
+	if cfg!(feature = "logging") {
+		println!("faces: {}, dual-edges: {}, cycles: {}", new_vertices.len(), dual_edges.len(), minor_graph.cycles.len())
+	}
+
 	for &start_vertex_key in &new_vertices {
 		if visited_vertices.contains(&start_vertex_key) {
 			continue;
@@ -776,15 +819,36 @@ fn compute_dual(minor_graph: &MinorGraph) -> Option<DualGraph> {
 				stack.push(dual_edges[twin_key].incident_vertex);
 			}
 		}
+		#[cfg(feature = "logging")]
+		println!("component_vertices: {}", component_vertices.len());
+		for edge in &dual_edges {
+			// println!("{:?}", edge.incident_vertex);
+		}
 
 		let outer_face_key = *component_vertices
 			.iter()
 			.find(|&&face_key| compute_winding(&dual_vertices[face_key], &dual_edges).0 < 0)
 			.expect("No outer face of a component found.");
 
+		#[cfg(feature = "logging")]
+		if cfg!(feature = "logging") {
+			println!(
+				"{}",
+				dual_graph_to_dot(
+					&[DualGraphComponent {
+						vertices: component_vertices.clone(),
+						edges: component_edges.clone(),
+						outer_face: None,
+					}],
+					&dual_edges,
+				)
+			);
+		}
+
 		if component_vertices.iter().filter(|&&face_key| compute_winding(&dual_vertices[face_key], &dual_edges).0 < 0).count() > 1 {
 			return None;
 		}
+		// TODO: merge with previous iter
 		assert_eq!(
 			component_vertices.iter().filter(|&&face_key| compute_winding(&dual_vertices[face_key], &dual_edges).0 < 0).count(),
 			1,
@@ -1152,11 +1216,6 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 	let mut minor_graph = compute_minor(&major_graph);
 
 	#[cfg(feature = "logging")]
-	for edge in minor_graph.edges.values() {
-		println!("{}", edge.format_path());
-	}
-
-	#[cfg(feature = "logging")]
 	println!("Minor graph:");
 	#[cfg(feature = "logging")]
 	println!("{}", minor_graph_to_dot(&minor_graph.edges));
@@ -1167,7 +1226,20 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 	#[cfg(feature = "logging")]
 	println!("{}", minor_graph_to_dot(&minor_graph.edges));
 
+	#[cfg(feature = "logging")]
+	for (key, edge) in minor_graph.edges.iter() {
+		// println!("{}", edge.format_path());
+		println!("{key:?}:\n{}", path_to_path_data(&edge.segments, 0.001));
+	}
+	#[cfg(feature = "logging")]
+	for vertex in minor_graph.vertices.values() {
+		println!("{:?}", vertex);
+	}
 	sort_outgoing_edges_by_angle(&mut minor_graph);
+	#[cfg(feature = "logging")]
+	for vertex in minor_graph.vertices.values() {
+		println!("{:?}", vertex);
+	}
 
 	for (edge_key, edge) in &minor_graph.edges {
 		assert!(minor_graph.vertices.contains_key(edge.incident_vertices[0]), "Edge {:?} has invalid start vertex", edge_key);
