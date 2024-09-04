@@ -5,6 +5,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_gradient;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
+use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 
 use graphene_core::vector::style::{Fill, Gradient, GradientType};
 

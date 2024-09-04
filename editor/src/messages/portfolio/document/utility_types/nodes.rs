@@ -58,10 +58,47 @@ pub struct LayerPanelEntry {
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
-pub struct SelectedNodes(pub Vec<NodeId>);
+pub struct OldSelectedNodes(pub Vec<NodeId>);
 
-impl SelectedNodes {
-	pub fn layer_visible(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
+pub trait SelectedNodes {
+	fn layer_visible(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool;
+
+	fn selected_visible_layers<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_;
+
+	fn layer_locked(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool;
+
+	fn selected_unlocked_layers<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_;
+
+	fn selected_visible_and_unlocked_layers<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_;
+
+	fn selected_layers<'a>(&'a self, metadata: &'a DocumentMetadata) -> impl Iterator<Item = LayerNodeIdentifier> + '_;
+
+	fn selected_layers_except_artboards<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_;
+
+	fn selected_layers_contains(&self, layer: LayerNodeIdentifier, metadata: &DocumentMetadata) -> bool;
+
+	fn selected_nodes(&self) -> impl Iterator<Item = &NodeId> + '_;
+
+	fn selected_nodes_ref(&self) -> &Vec<NodeId>;
+
+	fn network_has_selected_nodes(&self, network: &NodeNetwork) -> bool;
+
+	fn has_selected_nodes(&self) -> bool;
+
+	fn retain_selected_nodes(&mut self, f: impl FnMut(&NodeId) -> bool);
+
+	fn set_selected_nodes(&mut self, new: Vec<NodeId>);
+
+	fn add_selected_nodes(&mut self, new: Vec<NodeId>);
+
+	fn clear_selected_nodes(&mut self);
+
+	fn replace_with(&mut self, new: Vec<NodeId>) -> Vec<NodeId>;
+
+	fn filtered_selected_nodes(&self, node_ids: std::collections::HashSet<NodeId>) -> Vec<NodeId>;
+}
+impl SelectedNodes for Vec<NodeId> {
+	fn layer_visible(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
 		layer.ancestors(network_interface.document_metadata()).all(|layer| {
 			if layer != LayerNodeIdentifier::ROOT_PARENT {
 				network_interface.is_visible(&layer.to_node(), &[])
@@ -71,12 +108,12 @@ impl SelectedNodes {
 		})
 	}
 
-	pub fn selected_visible_layers<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
+	fn selected_visible_layers<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
 		self.selected_layers(network_interface.document_metadata())
 			.filter(move |&layer| self.layer_visible(layer, network_interface))
 	}
 
-	pub fn layer_locked(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
+	fn layer_locked(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
 		layer.ancestors(network_interface.document_metadata()).any(|layer| {
 			if layer != LayerNodeIdentifier::ROOT_PARENT {
 				network_interface.is_locked(&layer.to_node(), &[])
@@ -86,67 +123,67 @@ impl SelectedNodes {
 		})
 	}
 
-	pub fn selected_unlocked_layers<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
+	fn selected_unlocked_layers<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
 		self.selected_layers(network_interface.document_metadata())
 			.filter(move |&layer| !self.layer_locked(layer, network_interface))
 	}
 
-	pub fn selected_visible_and_unlocked_layers<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
+	fn selected_visible_and_unlocked_layers<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
 		self.selected_layers(network_interface.document_metadata())
 			.filter(move |&layer| self.layer_visible(layer, network_interface) && !self.layer_locked(layer, network_interface))
 	}
 
-	pub fn selected_layers<'a>(&'a self, metadata: &'a DocumentMetadata) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
-		metadata.all_layers().filter(|layer| self.0.contains(&layer.to_node()))
+	fn selected_layers<'a>(&'a self, metadata: &'a DocumentMetadata) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
+		metadata.all_layers().filter(|layer| self.contains(&layer.to_node()))
 	}
 
-	pub fn selected_layers_except_artboards<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
+	fn selected_layers_except_artboards<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
 		self.selected_layers(network_interface.document_metadata())
 			.filter(move |&layer| !network_interface.is_artboard(&layer.to_node(), &[]))
 	}
 
-	pub fn selected_layers_contains(&self, layer: LayerNodeIdentifier, metadata: &DocumentMetadata) -> bool {
+	fn selected_layers_contains(&self, layer: LayerNodeIdentifier, metadata: &DocumentMetadata) -> bool {
 		self.selected_layers(metadata).any(|selected| selected == layer)
 	}
 
-	pub fn selected_nodes(&self) -> impl Iterator<Item = &NodeId> + '_ {
-		self.0.iter()
+	fn selected_nodes(&self) -> impl Iterator<Item = &NodeId> + '_ {
+		self.iter()
 	}
 
-	pub fn selected_nodes_ref(&self) -> &Vec<NodeId> {
-		&self.0
+	fn selected_nodes_ref(&self) -> &Vec<NodeId> {
+		&self
 	}
 
-	pub fn network_has_selected_nodes(&self, network: &NodeNetwork) -> bool {
-		self.0.iter().any(|node_id| network.nodes.contains_key(node_id))
+	fn network_has_selected_nodes(&self, network: &NodeNetwork) -> bool {
+		self.iter().any(|node_id| network.nodes.contains_key(node_id))
 	}
 
-	pub fn has_selected_nodes(&self) -> bool {
-		!self.0.is_empty()
+	fn has_selected_nodes(&self) -> bool {
+		!self.is_empty()
 	}
 
-	pub fn retain_selected_nodes(&mut self, f: impl FnMut(&NodeId) -> bool) {
-		self.0.retain(f);
+	fn retain_selected_nodes(&mut self, f: impl FnMut(&NodeId) -> bool) {
+		self.retain(f);
 	}
 
-	pub fn set_selected_nodes(&mut self, new: Vec<NodeId>) {
-		self.0 = new;
+	fn set_selected_nodes(&mut self, new: Vec<NodeId>) {
+		*self = new;
 	}
 
-	pub fn add_selected_nodes(&mut self, new: Vec<NodeId>) {
-		self.0.extend(new);
+	fn add_selected_nodes(&mut self, new: Vec<NodeId>) {
+		self.extend(new);
 	}
 
-	pub fn clear_selected_nodes(&mut self) {
-		self.0 = Vec::new();
+	fn clear_selected_nodes(&mut self) {
+		*self = Vec::new();
 	}
 
-	pub fn replace_with(&mut self, new: Vec<NodeId>) -> Vec<NodeId> {
-		std::mem::replace(&mut self.0, new)
+	fn replace_with(&mut self, new: Vec<NodeId>) -> Vec<NodeId> {
+		std::mem::replace(self, new)
 	}
 
-	pub fn filtered_selected_nodes(&self, node_ids: std::collections::HashSet<NodeId>) -> SelectedNodes {
-		SelectedNodes(self.0.iter().filter(|node_id| node_ids.contains(node_id)).cloned().collect())
+	fn filtered_selected_nodes(&self, node_ids: std::collections::HashSet<NodeId>) -> Vec<NodeId> {
+		self.iter().filter(|node_id| node_ids.contains(node_id)).cloned().collect()
 	}
 }
 

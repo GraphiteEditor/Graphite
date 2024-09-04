@@ -11,6 +11,7 @@ use graphene_core::{Color, MemoHash, Node, Type};
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
+use std::collections::VecDeque;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -180,6 +181,7 @@ tagged_value! {
 	FontCache(Arc<graphene_core::text::FontCache>),
 	Previewing(crate::document::Previewing),
 	PTZ(crate::document::PTZ),
+	SelectionHistory(VecDeque<Vec<NodeId>>),
 }
 
 impl TaggedValue {

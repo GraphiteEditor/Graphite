@@ -1,5 +1,6 @@
 use super::simple_dialogs::{self, AboutGraphiteDialog, ComingSoonDialog, DemoArtworkDialog, LicensesDialog};
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::prelude::*;
 
 pub struct DialogMessageData<'a> {

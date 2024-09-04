@@ -7,6 +7,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{self, NodeNetworkInterface, NodeTemplate};
+use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -1037,27 +1038,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: true });
 			}
 			NodeGraphMessage::SelectedNodesAdd { nodes } => {
-				let Some(selected_nodes) = network_interface.selected_nodes_mut(selection_network_path) else {
-					log::error!("Could not get selected nodes in NodeGraphMessage::SelectedNodesAdd");
-					return;
-				};
-				selected_nodes.add_selected_nodes(nodes);
+				network_interface.add_selected_nodes(nodes, selection_network_path);
 				responses.add(BroadcastEvent::SelectionChanged);
 			}
 			NodeGraphMessage::SelectedNodesRemove { nodes } => {
-				let Some(selected_nodes) = network_interface.selected_nodes_mut(selection_network_path) else {
-					log::error!("Could not get selected nodes in NodeGraphMessage::SelectedNodesRemove");
-					return;
-				};
-				selected_nodes.retain_selected_nodes(|node| !nodes.contains(node));
+				network_interface.remove_selected_nodes(nodes, selection_network_path);
 				responses.add(BroadcastEvent::SelectionChanged);
 			}
 			NodeGraphMessage::SelectedNodesSet { nodes } => {
-				let Some(selected_nodes) = network_interface.selected_nodes_mut(selection_network_path) else {
-					log::error!("Could not get selected nodes in NodeGraphMessage::SelectedNodesSet");
-					return;
-				};
-				selected_nodes.set_selected_nodes(nodes);
+				network_interface.set_selected_nodes(nodes, selection_network_path);
 				responses.add(BroadcastEvent::SelectionChanged);
 				responses.add(PropertiesPanelMessage::Refresh);
 			}
@@ -1324,11 +1313,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				// Update the import/export UI edges whenever the PTZ changes or the bounding box of all nodes changes
 			}
 			NodeGraphMessage::UpdateNewNodeGraph => {
-				let Some(selected_nodes) = network_interface.selected_nodes_mut(selection_network_path) else {
-					log::error!("Could not get selected nodes in NodeGraphMessage::UpdateNewNodeGraph");
-					return;
-				};
-				selected_nodes.clear_selected_nodes();
+				network_interface.set_selected_nodes(Vec::new(), selection_network_path);
 				responses.add(BroadcastEvent::SelectionChanged);
 
 				responses.add(NodeGraphMessage::SendGraph);
@@ -1343,6 +1328,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				for path in resolved_types.remove {
 					network_interface.resolved_types.types.remove(&path.to_vec());
 				}
+
 				self.node_graph_errors = node_graph_errors;
 			}
 			NodeGraphMessage::UpdateActionButtons => {

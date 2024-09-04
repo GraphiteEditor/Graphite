@@ -3,7 +3,7 @@ use super::utility_types::clipboards::Clipboard;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{SnappingOptions, SnappingState, GET_SNAP_BOX_FUNCTIONS, GET_SNAP_GEOMETRY_FUNCTIONS};
 use super::utility_types::network_interface::{NodeNetworkInterface, NodeNetworkPersistentMetadata, TransactionStatus};
-use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
+use super::utility_types::nodes::{CollapsedLayers, OldSelectedNodes, SelectedNodes};
 use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
@@ -48,7 +48,7 @@ pub struct OldDocumentMessageHandler {
 	/// It recursively stores its sub-graphs, so this root graph is the whole snapshot of the document content.
 	pub network: OldNodeNetwork,
 	/// List of the [`NodeId`]s that are currently selected by the user.
-	pub selected_nodes: SelectedNodes,
+	pub selected_nodes: OldSelectedNodes,
 	/// List of the [`LayerNodeIdentifier`]s that are currently collapsed by the user in the Layers panel.
 	/// Collapsed means that the expansion arrow isn't set to show the children of these layers.
 	pub collapsed: CollapsedLayers,
@@ -1507,7 +1507,7 @@ impl DocumentMessageHandler {
 			.unwrap_or_else(|| self.network_interface.all_artboards().iter().next().copied().unwrap_or(LayerNodeIdentifier::ROOT_PARENT))
 	}
 
-	pub fn get_calculated_insert_index(metadata: &DocumentMetadata, selected_nodes: SelectedNodes, parent: LayerNodeIdentifier) -> usize {
+	pub fn get_calculated_insert_index(metadata: &DocumentMetadata, selected_nodes: impl SelectedNodes, parent: LayerNodeIdentifier) -> usize {
 		parent
 			.children(metadata)
 			.enumerate()

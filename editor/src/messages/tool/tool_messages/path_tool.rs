@@ -7,6 +7,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Node
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::shape_editor::{ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedPointsInfo, ShapeState};
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapData, SnapManager};
+use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 
 use graphene_core::renderer::Quad;
 use graphene_core::vector::ManipulatorPointId;

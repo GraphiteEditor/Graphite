@@ -127,20 +127,22 @@ impl NodeNetworkInterface {
 	}
 
 	/// Get the selected nodes for the network at the network_path
-	pub fn selected_nodes(&self, network_path: &[NodeId]) -> Option<SelectedNodes> {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in selected_nodes");
+	pub fn selected_nodes(&self, network_path: &[NodeId]) -> Option<impl SelectedNodes> {
+		let Some(network) = self.network(network_path) else {
+			log::error!("Could not get network in selected_nodes");
+			return None;
+		};
+		let Some(selection_undo_history) = self.selection_undo_history(network_path) else {
+			log::error!("Could not get nested selection_undo_history for path {network_path:?}");
 			return None;
 		};
 
 		Some(
-			network_metadata
-				.persistent_metadata
-				.selection_undo_history
+			selection_undo_history
 				.back()
 				.cloned()
 				.unwrap_or_default()
-				.filtered_selected_nodes(network_metadata.persistent_metadata.node_metadata.keys().cloned().collect()),
+				.filtered_selected_nodes(network.nodes.keys().cloned().collect()),
 		)
 	}
 
@@ -1079,6 +1081,18 @@ impl NodeNetworkInterface {
 		Some(top_right)
 	}
 
+	pub fn selection_undo_history(&self, network_path: &[NodeId]) -> Option<&VecDeque<Vec<NodeId>>> {
+		let Some(tagged_value) = self.metadata_value(MetadataType::SelectionUndoHistory, network_path) else {
+			log::error!("Could not get tagged value in selection_undo_history");
+			return None;
+		};
+		let TaggedValue::SelectionHistory(selection_undo_history) = tagged_value else {
+			log::error!("Tagged value should be SelectionUndoHistory in selection_undo_history");
+			return None;
+		};
+		Some(selection_undo_history)
+	}
+
 	pub fn reference(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<String> {
 		self.node_metadata(node_id, network_path)
 			.and_then(|node_metadata| node_metadata.persistent_metadata.reference.as_ref().map(|reference| reference.to_string()))
@@ -1459,7 +1473,6 @@ impl NodeNetworkInterface {
 				log::error!("Could not get nested network in from_old_network");
 				continue;
 			};
-			nested_network_metadata.persistent_metadata.previewing = Previewing::No;
 			for (node_id, old_node) in old_network.nodes {
 				let mut node = DocumentNode::default();
 				let mut node_metadata = DocumentNodeMetadata::default();
@@ -1613,44 +1626,137 @@ impl NodeNetworkInterface {
 		self.transaction_status = TransactionStatus::Finished;
 	}
 
-	/// Mutably get the selected nodes for the network at the network_path. Every time they are mutated, the transient metadata for the top of the stack gets unloaded.
-	pub fn selected_nodes_mut(&mut self, network_path: &[NodeId]) -> Option<&mut SelectedNodes> {
-		self.unload_stack_dependents(network_path);
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+	/// Change the selected nodes for the network at the network_path. Every time they are mutated, the transient metadata for the top of the stack gets unloaded.
+	fn mutate_selected_nodes(&mut self, nodes: Vec<NodeId>, selection_operation: SelectionOperation, network_path: &[NodeId]) {
+		let Some(selection_undo_history) = self.selection_undo_history(network_path) else {
 			log::error!("Could not get nested network_metadata in selected_nodes");
-			return None;
+			return;
 		};
 
-		let last_selection_state = network_metadata.persistent_metadata.selection_undo_history.back().cloned().unwrap_or_default();
-
-		network_metadata.persistent_metadata.selection_undo_history.push_back(last_selection_state);
-		network_metadata.persistent_metadata.selection_redo_history.clear();
-
-		if network_metadata.persistent_metadata.selection_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
-			network_metadata.persistent_metadata.selection_undo_history.pop_front();
+		let mut last_selection_state = selection_undo_history.back().cloned().unwrap_or_default();
+		match selection_operation {
+			SelectionOperation::Add => {
+				last_selection_state.extend(nodes);
+			}
+			SelectionOperation::Remove => {
+				last_selection_state.retain(|node| !nodes.contains(node));
+			}
+			SelectionOperation::Set => {
+				last_selection_state = nodes;
+			}
 		}
-		network_metadata.persistent_metadata.selection_undo_history.back_mut()
+
+		let network = self.network_mut(&[]).unwrap();
+		let metadata_node_id = Self::metadata_node_id(MetadataType::SelectionUndoHistory, network_path);
+		let Some(metadata_node) = network.nodes.get_mut(&metadata_node_id) else {
+			log::error!("Could not get metadata node with id {metadata_node_id} in set_metadata");
+			return;
+		};
+		let Some(metadata_input) = metadata_node.inputs.get_mut(0) else {
+			log::error!("Could not get metadata input in set_metadata");
+			return;
+		};
+		let Some(mut value) = metadata_input.as_value_mut() else {
+			log::error!("Could not get tagged value in set_metadata");
+			return;
+		};
+		let TaggedValue::SelectionHistory(selection_undo_history) = value.deref_mut() else {
+			log::error!("Tagged value should be SelectionUndoHistory in set_metadata");
+			return;
+		};
+		selection_undo_history.push_back(last_selection_state);
+		if selection_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
+			selection_undo_history.pop_front();
+		}
+		drop(value);
+		self.unload_stack_dependents(network_path);
+		self.set_metadata(MetadataType::SelectionRedoHistory, TaggedValue::SelectionHistory(VecDeque::new()), network_path);
+	}
+
+	pub fn add_selected_nodes(&mut self, nodes: Vec<NodeId>, network_path: &[NodeId]) {
+		self.mutate_selected_nodes(nodes, SelectionOperation::Add, network_path);
+	}
+	pub fn remove_selected_nodes(&mut self, nodes: Vec<NodeId>, network_path: &[NodeId]) {
+		self.mutate_selected_nodes(nodes, SelectionOperation::Remove, network_path);
+	}
+	pub fn set_selected_nodes(&mut self, nodes: Vec<NodeId>, network_path: &[NodeId]) {
+		self.mutate_selected_nodes(nodes, SelectionOperation::Set, network_path);
+	}
+	pub fn remove_selection_history_step(&mut self, network_path: &[NodeId]) {
+		let network = self.network_mut(&[]).unwrap();
+		let metadata_node_id = Self::metadata_node_id(MetadataType::SelectionUndoHistory, network_path);
+		let Some(metadata_node) = network.nodes.get_mut(&metadata_node_id) else {
+			log::error!("Could not get metadata node with id {metadata_node_id} in set_metadata");
+			return;
+		};
+		let Some(metadata_input) = metadata_node.inputs.get_mut(0) else {
+			log::error!("Could not get metadata input in set_metadata");
+			return;
+		};
+		let Some(mut value) = metadata_input.as_value_mut() else {
+			log::error!("Could not get tagged value in set_metadata");
+			return;
+		};
+		let TaggedValue::SelectionHistory(selection_undo_history) = value.deref_mut() else {
+			log::error!("Tagged value should be SelectionUndoHistory in set_metadata");
+			return;
+		};
+		selection_undo_history.pop_back();
 	}
 
 	pub fn selection_step_back(&mut self, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Could not get nested network_metadata in selection_step_back");
-			return;
-		};
-
-		if let Some(selection_state) = network_metadata.persistent_metadata.selection_undo_history.pop_back() {
-			network_metadata.persistent_metadata.selection_redo_history.push_front(selection_state);
-		}
+		self.selection_step(SelectionDirection::Back, network_path);
 	}
 
 	pub fn selection_step_forward(&mut self, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Could not get nested network_metadata in selection_step_forward");
-			return;
+		self.selection_step(SelectionDirection::Forward, network_path);
+	}
+
+	fn selection_step(&mut self, direction: SelectionDirection, network_path: &[NodeId]) {
+		let (adding_to, removing_from) = match direction {
+			SelectionDirection::Back => (MetadataType::SelectionUndoHistory, MetadataType::SelectionRedoHistory),
+			SelectionDirection::Forward => (MetadataType::SelectionRedoHistory, MetadataType::SelectionUndoHistory),
 		};
 
-		if let Some(selection_state) = network_metadata.persistent_metadata.selection_redo_history.pop_front() {
-			network_metadata.persistent_metadata.selection_undo_history.push_back(selection_state);
+		let network = self.network_mut(&[]).unwrap();
+		let metadata_node_id = Self::metadata_node_id(adding_to, network_path);
+		let Some(metadata_node) = network.nodes.get_mut(&metadata_node_id) else {
+			log::error!("Could not get metadata node with id {metadata_node_id} in selection_step");
+			return;
+		};
+		let Some(metadata_input) = metadata_node.inputs.get_mut(0) else {
+			log::error!("Could not get metadata input in selection_step");
+			return;
+		};
+		let Some(mut value) = metadata_input.as_value_mut() else {
+			log::error!("Could not get tagged value in selection_step");
+			return;
+		};
+		let TaggedValue::SelectionHistory(selection_history) = value.deref_mut() else {
+			log::error!("Tagged value should be SelectionHistory in selection_step");
+			return;
+		};
+		if let Some(selection_state) = selection_history.pop_back() {
+			drop(value);
+			let network = self.network_mut(&[]).unwrap();
+			let metadata_node_id = Self::metadata_node_id(removing_from, network_path);
+			let Some(metadata_node) = network.nodes.get_mut(&metadata_node_id) else {
+				log::error!("Could not get metadata node with id {metadata_node_id} in selection_step");
+				return;
+			};
+			let Some(metadata_input) = metadata_node.inputs.get_mut(0) else {
+				log::error!("Could not get metadata input in selection_step");
+				return;
+			};
+			let Some(mut value) = metadata_input.as_value_mut() else {
+				log::error!("Could not get tagged value in selection_step");
+				return;
+			};
+			let TaggedValue::SelectionHistory(selection_history) = value.deref_mut() else {
+				log::error!("Tagged value should be SelectionHistory in selection_step");
+				return;
+			};
+			selection_history.push_back(selection_state);
 		}
 	}
 
@@ -3519,6 +3625,16 @@ impl NodeNetworkInterface {
 			TaggedValue::DVec2(persistent_metadata.navigation_metadata.node_graph_top_right),
 			network_path,
 		);
+		self.insert_node_metadata(
+			MetadataType::SelectionUndoHistory,
+			TaggedValue::SelectionHistory(persistent_metadata.selection_undo_history),
+			network_path,
+		);
+		self.insert_node_metadata(
+			MetadataType::SelectionRedoHistory,
+			TaggedValue::SelectionHistory(persistent_metadata.selection_redo_history),
+			network_path,
+		);
 		// TODO: Add the rest of the network metadata nodes
 
 		for (node_id, node_metadata) in persistent_metadata.node_metadata {
@@ -3635,11 +3751,7 @@ impl NodeNetworkInterface {
 		self.unload_all_nodes_bounding_box(network_path);
 		// Instead of unloaded all node click targets, just unload the nodes upstream from the deleted nodes. unload_upstream_node_click_targets will not work since the nodes have been deleted.
 		self.unload_all_nodes_click_targets(network_path);
-		let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
-			log::error!("Could not get selected nodes in NodeGraphMessage::DeleteNodes");
-			return;
-		};
-		selected_nodes.retain_selected_nodes(|node_id| !nodes_to_delete.contains(node_id));
+		self.remove_selected_nodes(nodes_to_delete, network_path);
 	}
 
 	/// Removes all references to the node with the given id from the network, and reconnects the input to the node below.
@@ -3703,12 +3815,7 @@ impl NodeNetworkInterface {
 			let upstream_nodes = self.upstream_flow_back_from_nodes(vec![*reconnect_node], network_path, FlowType::PrimaryFlow).collect::<Vec<_>>();
 
 			// Select the reconnect node to move to ensure the shifting works correctly
-			let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
-				log::error!("Could not get selected nodes in remove_references_from_network");
-				return false;
-			};
-
-			let old_selected_nodes = selected_nodes.replace_with(upstream_nodes);
+			self.set_selected_nodes(upstream_nodes, network_path);
 
 			// Shift up until there is either a collision or the disconnected node position is reached
 			let mut current_shift_distance = 0;
@@ -3717,7 +3824,7 @@ impl NodeNetworkInterface {
 				current_shift_distance += 1;
 			}
 
-			let _ = self.selected_nodes_mut(network_path).unwrap().replace_with(old_selected_nodes);
+			self.remove_selection_history_step(network_path);
 		}
 
 		true
@@ -4774,11 +4881,7 @@ impl NodeNetworkInterface {
 		// If there is an upstream node in the new location for the layer, create space for the moved layer by shifting the upstream node down
 		if let Some(upstream_node_id) = post_node_input.as_node() {
 			// Select the layer to move to ensure the shifting works correctly
-			let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
-				log::error!("Could not get selected nodes in move_layer_to_stack");
-				return;
-			};
-			let old_selected_nodes = selected_nodes.replace_with(vec![upstream_node_id]);
+			self.set_selected_nodes(vec![upstream_node_id], network_path);
 
 			// Create the minimum amount space for the moved layer
 			for _ in 0..3 {
@@ -4797,7 +4900,7 @@ impl NodeNetworkInterface {
 				self.vertical_shift_with_push(&upstream_node_id, 1, &mut HashSet::new(), network_path);
 			}
 
-			let _ = self.selected_nodes_mut(network_path).unwrap().replace_with(old_selected_nodes);
+			self.remove_selection_history_step(network_path);
 		}
 
 		// If inserting into a stack with a parent, ensure the parent stack has enough space for the child stack
@@ -4836,17 +4939,13 @@ impl NodeNetworkInterface {
 				let upstream_nodes = self
 					.upstream_flow_back_from_nodes(vec![upstream_sibling.to_node()], network_path, FlowType::UpstreamFlow)
 					.collect::<Vec<_>>();
-				let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
-					log::error!("Could not get selected nodes in move_layer_to_stack");
-					return;
-				};
-				let old_selected_nodes = selected_nodes.replace_with(upstream_nodes);
+
+				self.set_selected_nodes(upstream_nodes, network_path);
 
 				for _ in 0..(target_gap - current_gap).max(0) {
 					self.shift_selected_nodes(Direction::Down, true, network_path);
 				}
-
-				let _ = self.selected_nodes_mut(network_path).unwrap().replace_with(old_selected_nodes);
+				self.remove_selection_history_step(network_path);
 			}
 		}
 
@@ -5131,10 +5230,10 @@ pub struct NodeNetworkPersistentMetadata {
 	pub navigation_metadata: NavigationMetadata,
 	/// Stack of selection snapshots for previous history states.
 	#[serde(default)]
-	pub selection_undo_history: VecDeque<SelectedNodes>,
+	pub selection_undo_history: VecDeque<Vec<NodeId>>,
 	/// Stack of selection snapshots for future history states.
 	#[serde(default)]
-	pub selection_redo_history: VecDeque<SelectedNodes>,
+	pub selection_redo_history: VecDeque<Vec<NodeId>>,
 }
 
 /// This is the same as Option, but more clear in the context of having cached metadata either being loaded or unloaded
@@ -5159,7 +5258,6 @@ impl<T> TransientMetadata<T> {
 /// If some network calculation is too slow to compute for every usage, cache the data here
 #[derive(Debug, Default, Clone)]
 pub struct NodeNetworkTransientMetadata {
-	pub selected_nodes: SelectedNodes,
 	/// Sole dependents of the top of the stacks of all selected nodes. Used to determine which nodes are checked for collision when shifting.
 	/// The LayerOwner is used to determine whether the collided node should be shifted, or the layer that owns it.
 	pub stack_dependents: TransientMetadata<HashMap<NodeId, LayerOwner>>,
@@ -5420,6 +5518,17 @@ impl Default for NavigationMetadata {
 			node_graph_top_right: DVec2::ZERO,
 		}
 	}
+}
+
+enum SelectionDirection {
+	Back,
+	Forward,
+}
+
+enum SelectionOperation {
+	Add,
+	Remove,
+	Set,
 }
 
 // PartialEq required by message handlers

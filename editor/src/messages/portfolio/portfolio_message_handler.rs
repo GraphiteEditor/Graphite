@@ -7,6 +7,7 @@ use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::FrontendDocumentDetails;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
+use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document::DocumentMessageData;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup};
