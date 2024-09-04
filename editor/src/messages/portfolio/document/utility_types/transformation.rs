@@ -89,7 +89,7 @@ impl OriginalTransforms {
 
 					let selected_handles = selected_points.iter().filter_map(|point| point.as_handle());
 					let anchor_ids = selected_points.iter().filter_map(|point| point.as_anchor());
-					let connected_handles = anchor_ids.flat_map(|point| vector_data.segment_domain.all_connected(point));
+					let connected_handles = anchor_ids.flat_map(|point| vector_data.all_connected(point));
 					let all_handles = selected_handles.chain(connected_handles);
 
 					let handles = all_handles

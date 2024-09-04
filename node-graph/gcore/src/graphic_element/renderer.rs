@@ -364,9 +364,6 @@ impl GraphicElementRendered for VectorData {
 		let transformed_bounds = self.bounding_box_with_transform(multiplied_transform).unwrap_or_default();
 
 		let mut path = String::new();
-		for (_, subpath) in self.region_bezier_paths() {
-			let _ = subpath.subpath_to_svg(&mut path, multiplied_transform);
-		}
 		for subpath in self.stroke_bezier_paths() {
 			let _ = subpath.subpath_to_svg(&mut path, multiplied_transform);
 		}
@@ -431,10 +428,6 @@ impl GraphicElementRendered for VectorData {
 		let kurbo_transform = kurbo::Affine::new(transform.to_cols_array());
 		let to_point = |p: DVec2| kurbo::Point::new(p.x, p.y);
 		let mut path = kurbo::BezPath::new();
-		// TODO: Is this correct and efficient? Deesn't this lead to us potentially rendering a path twice?
-		for (_, subpath) in self.region_bezier_paths() {
-			subpath.to_vello_path(self.transform, &mut path);
-		}
 		for subpath in self.stroke_bezier_paths() {
 			subpath.to_vello_path(self.transform, &mut path);
 		}

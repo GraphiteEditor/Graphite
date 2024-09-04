@@ -27,9 +27,9 @@ impl Hash for PointModification {
 impl PointModification {
 	/// Apply this modification to the specified [`PointDomain`].
 	pub fn apply(&self, point_domain: &mut PointDomain, segment_domain: &mut SegmentDomain) {
-		point_domain.retain(|id| !self.remove.contains(id));
+		point_domain.retain(segment_domain, |id| !self.remove.contains(id));
 
-		for (id, position) in point_domain.positions_mut() {
+		for (index, (id, position)) in point_domain.positions_mut().enumerate() {
 			let Some(&delta) = self.delta.get(&id) else { continue };
 			if !delta.is_finite() {
 				warn!("Invalid delta when applying a point modification");
@@ -39,10 +39,10 @@ impl PointModification {
 			*position += delta;
 
 			for (_, handles, start, end) in segment_domain.handles_mut() {
-				if start == id {
+				if start == index {
 					handles.move_start(delta);
 				}
-				if end == id {
+				if end == index {
 					handles.move_end(delta);
 				}
 			}
@@ -105,27 +105,27 @@ impl SegmentModification {
 
 		for (id, point) in segment_domain.start_point_mut() {
 			let Some(&new) = self.start_point.get(&id) else { continue };
-			if !point_domain.ids().contains(&new) {
+			let Some(index) = point_domain.resolve_id(new) else {
 				warn!("Invalid start ID when applying a segment modification");
 				continue;
-			}
+			};
 
-			*point = new;
+			*point = index;
 		}
 
 		for (id, point) in segment_domain.end_point_mut() {
 			let Some(&new) = self.end_point.get(&id) else { continue };
-			if !point_domain.ids().contains(&new) {
+			let Some(index) = point_domain.resolve_id(new) else {
 				warn!("Invalid end ID when applying a segment modification");
 				continue;
-			}
+			};
 
-			*point = new;
+			*point = index;
 		}
 
 		for (id, handles, start, end) in segment_domain.handles_mut() {
-			let Some(start) = point_domain.position_from_id(start) else { continue };
-			let Some(end) = point_domain.position_from_id(end) else { continue };
+			let Some(&start) = point_domain.positions().get(start) else { continue };
+			let Some(&end) = point_domain.positions().get(end) else { continue };
 
 			// Compute the actual start and end position based on the offset from the anchor
 			let start = self.handle_primary.get(&id).copied().map(|handle| handle.map(|handle| handle + start));
@@ -178,17 +178,17 @@ impl SegmentModification {
 			let Some(&handle_end) = self.handle_end.get(&add_id) else { continue };
 			let Some(&stroke) = self.stroke.get(&add_id) else { continue };
 
-			if !point_domain.ids().contains(&start) {
+			let Some(start_index) = point_domain.resolve_id(start) else {
 				warn!("invalid start id");
 				continue;
-			}
-			if !point_domain.ids().contains(&end) {
+			};
+			let Some(end_index) = point_domain.resolve_id(end) else {
 				warn!("invalid end id");
 				continue;
-			}
+			};
 
-			let Some(start_position) = point_domain.position_from_id(start) else { continue };
-			let Some(end_position) = point_domain.position_from_id(end) else { continue };
+			let start_position = point_domain.positions()[start_index];
+			let end_position = point_domain.positions()[end_index];
 			let handles = match (handle_start, handle_end) {
 				(Some(handle_start), Some(handle_end)) => BezierHandles::Cubic {
 					handle_start: handle_start + start_position,
@@ -203,17 +203,21 @@ impl SegmentModification {
 				continue;
 			}
 
-			segment_domain.push(add_id, start, end, handles, stroke);
+			segment_domain.push(add_id, start_index, end_index, handles, stroke);
 		}
+
+		assert!(segment_domain.start_point().iter().all(|&index| index < point_domain.ids().len()), "index should be in range");
+		assert!(segment_domain.end_point().iter().all(|&index| index < point_domain.ids().len()), "index should be in range");
 	}
 
 	/// Create a new modification that will convert an empty [`VectorData`] into the target [`VectorData`].
 	pub fn create_from_vector(vector_data: &VectorData) -> Self {
+		let point_id = |(&segment, &index)| (segment, vector_data.point_domain.ids()[index]);
 		Self {
 			add: vector_data.segment_domain.ids().to_vec(),
 			remove: HashSet::new(),
-			start_point: vector_data.segment_domain.ids().iter().copied().zip(vector_data.segment_domain.start_point().iter().cloned()).collect(),
-			end_point: vector_data.segment_domain.ids().iter().copied().zip(vector_data.segment_domain.end_point().iter().cloned()).collect(),
+			start_point: vector_data.segment_domain.ids().iter().zip(vector_data.segment_domain.start_point()).map(point_id).collect(),
+			end_point: vector_data.segment_domain.ids().iter().zip(vector_data.segment_domain.end_point()).map(point_id).collect(),
 			handle_primary: vector_data.segment_bezier_iter().map(|(id, b, _, _)| (id, b.handle_start().map(|handle| handle - b.start))).collect(),
 			handle_end: vector_data.segment_bezier_iter().map(|(id, b, _, _)| (id, b.handle_end().map(|handle| handle - b.end))).collect(),
 			stroke: vector_data.segment_domain.ids().iter().copied().zip(vector_data.segment_domain.stroke().iter().cloned()).collect(),
