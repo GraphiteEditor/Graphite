@@ -8,6 +8,7 @@ use crate::messages::tool::common_functionality::snapping::SnapCandidatePoint;
 use crate::messages::tool::common_functionality::snapping::SnapData;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::*;
+use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 
 use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;

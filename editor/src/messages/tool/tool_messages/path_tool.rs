@@ -7,6 +7,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Node
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::shape_editor::{ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedPointsInfo, ShapeState};
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapData, SnapManager};
+use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 
 use graphene_core::renderer::Quad;
 use graphene_core::vector::ManipulatorPointId;
@@ -349,7 +350,6 @@ impl PathToolData {
 		}
 		// We didn't find a segment path, so consider selecting the nearest shape instead
 		else if let Some(layer) = document.click(input) {
-			responses.add(DocumentMessage::StartTransaction);
 			if add_to_selection {
 				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
 			} else {
@@ -359,6 +359,7 @@ impl PathToolData {
 			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
 			shape_editor.select_connected_anchors(document, layer, input.mouse.position);
 
+			responses.add(DocumentMessage::StartTransaction);
 			PathToolFsmState::Dragging
 		}
 		// Start drawing a box

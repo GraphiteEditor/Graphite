@@ -4,6 +4,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::FlowType;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
+use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::NodeId;

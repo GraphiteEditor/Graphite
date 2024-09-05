@@ -130,7 +130,7 @@ impl DocumentMetadata {
 		self.click_targets
 			.get(&layer)?
 			.iter()
-			.filter_map(|click_target| click_target.subpath().bounding_box_with_transform(transform))
+			.filter_map(|click_target| click_target.subpath().bounding_box_with_transform(&transform))
 			.reduce(Quad::combine_bounds)
 	}
 

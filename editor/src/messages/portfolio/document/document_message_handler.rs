@@ -2,8 +2,8 @@ use super::node_graph::utility_types::Transform;
 use super::utility_types::clipboards::Clipboard;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{SnappingOptions, SnappingState, GET_SNAP_BOX_FUNCTIONS, GET_SNAP_GEOMETRY_FUNCTIONS};
-use super::utility_types::network_interface::{NodeNetworkInterface, TransactionStatus};
-use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
+use super::utility_types::network_interface::{NodeNetworkInterface, NodeNetworkPersistentMetadata, TransactionStatus};
+use super::utility_types::nodes::{CollapsedLayers, OldSelectedNodes, SelectedNodes};
 use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
@@ -13,7 +13,7 @@ use crate::messages::portfolio::document::node_graph::NodeGraphHandlerData;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
+use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis};
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
@@ -24,7 +24,7 @@ use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeNetwork, OldNodeNetwork};
+use graph_craft::document::{NodeId, NodeNetwork, OldNodeNetwork, PTZ};
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::ImageFrame;
 use graphene_core::vector::style::ViewMode;
@@ -48,7 +48,7 @@ pub struct OldDocumentMessageHandler {
 	/// It recursively stores its sub-graphs, so this root graph is the whole snapshot of the document content.
 	pub network: OldNodeNetwork,
 	/// List of the [`NodeId`]s that are currently selected by the user.
-	pub selected_nodes: SelectedNodes,
+	pub selected_nodes: OldSelectedNodes,
 	/// List of the [`LayerNodeIdentifier`]s that are currently collapsed by the user in the Layers panel.
 	/// Collapsed means that the expansion arrow isn't set to show the children of these layers.
 	pub collapsed: CollapsedLayers,
@@ -779,10 +779,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::RenderRulers => {
 				let current_ptz = if self.graph_view_overlay_open {
-					let Some(network_metadata) = self.network_interface.network_metadata(&self.breadcrumb_network_path) else {
-						return;
-					};
-					&network_metadata.persistent_metadata.navigation_metadata.node_graph_ptz
+					let Some(ptz) = self.network_interface.ptz(&self.breadcrumb_network_path) else { return };
+					ptz
 				} else {
 					&self.document_ptz
 				};
@@ -1106,14 +1104,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					}));
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				} else {
-					let Some(network_metadata) = self.network_interface.network_metadata(&self.breadcrumb_network_path) else {
+					let Some(ptz) = self.network_interface.ptz(&self.breadcrumb_network_path) else {
 						return;
 					};
 
-					let transform = self
-						.navigation_handler
-						.calculate_offset_transform(ipp.viewport_bounds.center(), &network_metadata.persistent_metadata.navigation_metadata.node_graph_ptz);
-					self.network_interface.set_transform(transform, &self.breadcrumb_network_path);
+					let transform = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), ptz);
+
+					self.network_interface.set_node_graph_to_viewport(transform, &self.breadcrumb_network_path);
+
 					let imports = self.network_interface.frontend_imports(&self.breadcrumb_network_path).unwrap_or_default();
 					let exports = self.network_interface.frontend_exports(&self.breadcrumb_network_path).unwrap_or_default();
 					responses.add(DocumentMessage::RenderRulers);
@@ -1435,7 +1433,8 @@ impl DocumentMessageHandler {
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
-
+		// TODO: Remove once the footprint is used to load the imports/export distances from the edge
+		responses.add(NodeGraphMessage::SetGridAlignedEdges);
 		Some(previous_network)
 	}
 	pub fn redo_with_history(&mut self, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
@@ -1464,7 +1463,8 @@ impl DocumentMessageHandler {
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
-
+		// TODO: Remove once the footprint is used to load the imports/export distances from the edge
+		responses.add(NodeGraphMessage::SetGridAlignedEdges);
 		Some(previous_network)
 	}
 
@@ -1507,7 +1507,7 @@ impl DocumentMessageHandler {
 			.unwrap_or_else(|| self.network_interface.all_artboards().iter().next().copied().unwrap_or(LayerNodeIdentifier::ROOT_PARENT))
 	}
 
-	pub fn get_calculated_insert_index(metadata: &DocumentMetadata, selected_nodes: SelectedNodes, parent: LayerNodeIdentifier) -> usize {
+	pub fn get_calculated_insert_index(metadata: &DocumentMetadata, selected_nodes: impl SelectedNodes, parent: LayerNodeIdentifier) -> usize {
 		parent
 			.children(metadata)
 			.enumerate()
@@ -1980,5 +1980,6 @@ impl DocumentMessageHandler {
 fn default_document_network_interface() -> NodeNetworkInterface {
 	let mut network_interface = NodeNetworkInterface::default();
 	network_interface.add_export(TaggedValue::ArtboardGroup(graphene_core::ArtboardGroup::EMPTY), -1, "".to_string(), &[]);
+	network_interface.insert_network_metadata(NodeNetworkPersistentMetadata::default(), &[]);
 	network_interface
 }

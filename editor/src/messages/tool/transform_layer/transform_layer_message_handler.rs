@@ -4,6 +4,7 @@ use crate::messages::portfolio::document::utility_types::transformation::{Axis, 
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
+use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 
 use graphene_core::vector::ManipulatorPointId;
 

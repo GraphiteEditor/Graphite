@@ -11,6 +11,7 @@ use graphene_core::{Color, MemoHash, Node, Type};
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
+use std::collections::VecDeque;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -178,6 +179,9 @@ tagged_value! {
 	CentroidType(graphene_core::vector::misc::CentroidType),
 	BooleanOperation(graphene_core::vector::misc::BooleanOperation),
 	FontCache(Arc<graphene_core::text::FontCache>),
+	Previewing(crate::document::Previewing),
+	PTZ(crate::document::PTZ),
+	SelectionHistory(VecDeque<Vec<NodeId>>),
 }
 
 impl TaggedValue {
@@ -295,6 +299,13 @@ mod fake_hash {
 		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 			self.0.to_bits().hash(state);
 			self.1.hash(state)
+		}
+	}
+	impl FakeHash for crate::document::PTZ {
+		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+			self.pan.hash(state);
+			self.tilt.hash(state);
+			self.zoom.hash(state);
 		}
 	}
 }

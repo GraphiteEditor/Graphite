@@ -1,7 +1,7 @@
-use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
+use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 
 use bezier_rs::Subpath;
-use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
+use graph_craft::document::{value::TaggedValue, InputConnector, NodeId, NodeInput};
 use graphene_core::vector::PointId;
 
 use glam::{DAffine2, DVec2};
