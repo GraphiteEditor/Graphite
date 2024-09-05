@@ -12,6 +12,7 @@ use editor::application::Editor;
 use editor::consts::FILE_SAVE_SUFFIX;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
+use editor::messages::input_preprocessor::PenMoveState;
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use editor::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
 use editor::messages::portfolio::utility_types::Platform;
@@ -355,14 +356,38 @@ impl EditorHandle {
 	/// Mouse movement within the screenspace bounds of the viewport
 	#[wasm_bindgen(js_name = onMouseMove)]
 	pub fn on_mouse_move(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
+		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into()); //todo add pointerType, pressure, tiltX, tiltY, twist
+
+		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
+
+		let message = InputPreprocessorMessage::PointerMove {
+			editor_mouse_state,
+			modifier_keys,
+			pen_data: None,
+		};
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = onPenMove)]
+	pub fn on_pen_move(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8, pressure: f32, tangential_pressure: f32, tilt_x: i8, tilt_y: i8, twist: u16, pointer_id: u32) {
 		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
 
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
-		let message = InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys };
+		let message = InputPreprocessorMessage::PointerMove {
+			editor_mouse_state,
+			modifier_keys,
+			pen_data: Some(PenMoveState {
+				pressure,
+				tangential_pressure,
+				tilt_x,
+				tilt_y,
+				twist,
+				pointer_id,
+			}),
+		};
 		self.dispatch(message);
 	}
-
 	/// Mouse scrolling within the screenspace bounds of the viewport
 	#[wasm_bindgen(js_name = onWheelScroll)]
 	pub fn on_wheel_scroll(&self, x: f64, y: f64, mouse_keys: u8, wheel_delta_x: f64, wheel_delta_y: f64, wheel_delta_z: f64, modifiers: u8) {

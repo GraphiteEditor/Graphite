@@ -150,7 +150,14 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		}
 
 		const modifiers = makeKeyboardModifiersBitfield(e);
-		editor.handle.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers);
+
+		if (e.pointerType === "pen") {
+			editor.handle.onPenMove(e.clientX, e.clientY, e.buttons, modifiers, e.pressure, e.tangentialPressure, e.tiltX, e.tiltY, e.twist, e.pointerId);
+		} else if (e.pointerType === "touch") {
+			editor.handle.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers);
+		} else {
+			editor.handle.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers);
+		}
 	}
 
 	function onMouseDown(e: MouseEvent) {
