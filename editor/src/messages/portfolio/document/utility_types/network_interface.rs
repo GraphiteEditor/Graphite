@@ -5361,6 +5361,7 @@ pub struct NavigationMetadata {
 	/// Transform from node graph space to viewport space.
 	pub node_graph_to_viewport: DAffine2,
 	/// Top right of the node graph in viewport space
+	#[serde(default)]
 	pub node_graph_top_right: DVec2,
 }
 
