@@ -2476,11 +2476,11 @@ impl NodeNetworkInterface {
 		let _ = rect.subpath_to_svg(&mut all_nodes_bounding_box, DAffine2::IDENTITY);
 
 		let Some(rounded_network_edge_distance) = self.rounded_network_edge_distance(network_path).cloned() else {
-			log::error!("Could not get rounded_network_edge_distance in collect_front_end_click_targets");
+			log::error!("Could not get rounded_network_edge_distance in collect_frontend_click_targets");
 			return FrontendClickTargets::default();
 		};
 		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in collect_front_end_click_targets");
+			log::error!("Could not get nested network_metadata in collect_frontend_click_targets");
 			return FrontendClickTargets::default();
 		};
 		let import_exports_viewport_top_left = rounded_network_edge_distance.imports_to_edge_distance;
@@ -5135,7 +5135,7 @@ pub struct NodeNetworkTransientMetadata {
 
 #[derive(Debug, Clone)]
 pub struct NetworkEdgeDistance {
-	/// The viewport pixel distance distance between the left edge of the node graph and the exports.
+	/// The viewport pixel distance between the left edge of the node graph and the exports.
 	pub exports_to_edge_distance: DVec2,
 	/// The viewport pixel distance between the left edge of the node graph and the imports.
 	pub imports_to_edge_distance: DVec2,
@@ -5367,7 +5367,7 @@ pub struct NavigationMetadata {
 
 impl Default for NavigationMetadata {
 	fn default() -> NavigationMetadata {
-		//Default PTZ and transform
+		// Default PTZ and transform
 		NavigationMetadata {
 			node_graph_ptz: PTZ::default(),
 			node_graph_to_viewport: DAffine2::IDENTITY,
