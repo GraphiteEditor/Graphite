@@ -1,7 +1,7 @@
 use std::io::{Read, Seek};
 
 use super::file::TiffRead;
-use super::values::{CurveLookupTable, Rational};
+use super::values::{CurveLookupTable, Rational, Transform};
 use super::{Ifd, IfdTagType, TiffError};
 
 pub struct TypeAscii;
@@ -357,6 +357,7 @@ impl<T: PrimitiveType, const N: usize> TagType for ConstArray<T, N> {
 
 pub struct TypeString;
 pub struct TypeSonyToneCurve;
+pub struct TypeOrientation;
 
 impl TagType for TypeString {
 	type Output = String;
@@ -376,5 +377,23 @@ impl TagType for TypeSonyToneCurve {
 	fn read<R: Read + Seek>(file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
 		let values = ConstArray::<TypeShort, 4>::read(file)?;
 		Ok(CurveLookupTable::from_sony_tone_table(values))
+	}
+}
+
+impl TagType for TypeOrientation {
+	type Output = Transform;
+
+	fn read<R: Read + Seek>(file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
+		Ok(match TypeShort::read(file)? {
+			1 => Transform::Horizontal,
+			2 => Transform::MirrorHorizontal,
+			3 => Transform::Rotate180,
+			4 => Transform::MirrorVertical,
+			5 => Transform::MirrorHorizontalRotate270,
+			6 => Transform::Rotate90,
+			7 => Transform::MirrorHorizontalRotate90,
+			8 => Transform::Rotate270,
+			_ => return Err(TiffError::InvalidValue),
+		})
 	}
 }

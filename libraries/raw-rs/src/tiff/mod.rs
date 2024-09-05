@@ -22,6 +22,7 @@ pub enum TagId {
 	Make = 0x10f,
 	Model = 0x110,
 	StripOffsets = 0x111,
+	Orientation = 0x112,
 	SamplesPerPixel = 0x115,
 	RowsPerStrip = 0x116,
 	StripByteCounts = 0x117,

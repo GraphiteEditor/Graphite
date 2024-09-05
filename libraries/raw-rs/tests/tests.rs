@@ -8,14 +8,14 @@ use image::{ColorType, ImageEncoder};
 use libraw::Processor;
 use std::collections::HashMap;
 use std::fmt::Write;
-use std::fs::{read_dir, File};
+use std::fs::{create_dir, metadata, read_dir, File};
 use std::io::{BufWriter, Cursor, Read};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 const TEST_FILES: [&str; 3] = ["ILCE-7M3-ARW2.3.5-blossoms.arw", "ILCE-7RM4-ARW2.3.5-kestrel.arw", "ILCE-6000-ARW2.3.1-windsock.arw"];
 const BASE_URL: &str = "https://static.graphite.rs/test-data/libraries/raw-rs/";
-const BASE_PATH: &str = "./tests/images";
+const BASE_PATH: &str = "./tests/images/";
 
 #[test]
 fn test_images_match_with_libraw() {
@@ -73,6 +73,11 @@ fn store_image(path: &Path, suffix: &str, data: &mut [u8], width: usize, height:
 		output_path.push(parent);
 	}
 	output_path.push("output");
+
+	if metadata(&output_path).is_err() {
+		create_dir(&output_path).unwrap();
+	}
+
 	if let Some(filename) = path.file_stem() {
 		let new_filename = format!("{}_{}.{}", filename.to_string_lossy(), suffix, "png");
 		output_path.push(new_filename);

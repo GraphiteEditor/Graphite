@@ -67,6 +67,7 @@ fn linear_demosaic_rggb(raw_image: RawImage) -> Image<u16> {
 		data: image,
 		width: raw_image.width,
 		height: raw_image.height,
+		transform: raw_image.transform,
 		rgb_to_camera: raw_image.rgb_to_camera,
 		histogram: None,
 	}

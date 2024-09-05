@@ -50,3 +50,30 @@ impl CurveLookupTable {
 		self.table[x]
 	}
 }
+
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub enum Transform {
+	Horizontal,
+	MirrorHorizontal,
+	Rotate180,
+	MirrorVertical,
+	MirrorHorizontalRotate270,
+	Rotate90,
+	MirrorHorizontalRotate90,
+	Rotate270,
+}
+
+impl Transform {
+	pub fn is_identity(&self) -> bool {
+		*self == Transform::Horizontal
+	}
+
+	pub fn will_swap_coordinates(&self) -> bool {
+		use Transform as Tr;
+
+		match *self {
+			Tr::Horizontal | Tr::MirrorHorizontal | Tr::Rotate180 | Tr::MirrorVertical => false,
+			Tr::MirrorHorizontalRotate270 | Tr::Rotate90 | Tr::MirrorHorizontalRotate90 | Tr::Rotate270 => true,
+		}
+	}
+}
