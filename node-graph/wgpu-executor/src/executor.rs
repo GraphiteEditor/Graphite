@@ -164,14 +164,12 @@ async fn execute_shader<I: Pod + Send + Sync, O: Pod + Send + Sync>(device: Arc<
 		// Since contents are got in bytes, this converts these bytes back to u32
 		let result = bytemuck::cast_slice(&data).to_vec();
 
-		// With the current interface, we have to make sure all mapped views are
-		// dropped before we unmap the buffer.
+		// With the current interface, we have to make sure all mapped views are dropped before we unmap the buffer
 		drop(data);
-		staging_buffer.unmap(); // Unmaps buffer from memory
-						// If you are familiar with C++ these 2 lines can be thought of similarly to:
-						//   delete myPointer;
-						//   myPointer = NULL;
-						// It effectively frees the memory
+		// Unmaps buffer from memory
+		staging_buffer.unmap();
+		// If you are familiar with C++ these 2 lines can be thought of similarly to `delete myPointer; myPointer = NULL;`.
+		// It effectively frees the memory.
 
 		// Returns data from buffer
 		Some(result)

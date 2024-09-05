@@ -368,7 +368,12 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 			return self.clone();
 		}
 
-		let mut subpaths = self.iter().filter(|bezier| !bezier.is_point()).map(|bezier| bezier.offset(distance)).collect::<Vec<Subpath<PointId>>>();
+		let mut subpaths = self
+			.iter()
+			.filter(|bezier| !bezier.is_point())
+			.map(|bezier| bezier.offset(distance))
+			.filter(|subpath| subpath.len() >= 2) // In some cases the reduced and scaled bézier is marked by is_point (so the subpath is empty).
+			.collect::<Vec<Subpath<PointId>>>();
 		let mut drop_common_point = vec![true; self.len()];
 
 		// Clip or join consecutive Subpaths
@@ -632,6 +637,37 @@ mod tests {
 		);
 
 		let outline = subpath.outline(10., crate::Join::Round, crate::Cap::Round).0;
+		assert!(outline.manipulator_groups.windows(2).all(|pair| !pair[0].anchor.abs_diff_eq(pair[1].anchor, MAX_ABSOLUTE_DIFFERENCE)));
+		assert!(outline.closed());
+	}
+
+	#[test]
+	/// Even though the bézier here is not marked as a point, the offset and scaled version is.
+	fn outline_with_point_offset() {
+		let subpath = Subpath::new(
+			vec![
+				ManipulatorGroup {
+					anchor: DVec2::new(1122.6253015182049, 610.9441551227939),
+					out_handle: Some(DVec2::new(1122.6253015182049, 610.9445412168651)),
+					in_handle: None,
+					id: EmptyId,
+				},
+				ManipulatorGroup {
+					anchor: DVec2::new(1122.6258671405062, 610.9453107605276),
+					out_handle: None,
+					in_handle: Some(DVec2::new(1122.6254904904154, 610.9449255479497)),
+					id: EmptyId,
+				},
+				ManipulatorGroup {
+					anchor: DVec2::new(0., 0.),
+					out_handle: None,
+					in_handle: None,
+					id: EmptyId,
+				},
+			],
+			false,
+		);
+		let outline = subpath.outline(4.4, crate::Join::Round, crate::Cap::Round).0;
 		assert!(outline.manipulator_groups.windows(2).all(|pair| !pair[0].anchor.abs_diff_eq(pair[1].anchor, MAX_ABSOLUTE_DIFFERENCE)));
 		assert!(outline.closed());
 	}
