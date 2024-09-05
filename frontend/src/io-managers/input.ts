@@ -35,6 +35,8 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		{ target: window, eventName: "keyup", action: (e: KeyboardEvent) => onKeyUp(e) },
 		{ target: window, eventName: "keydown", action: (e: KeyboardEvent) => onKeyDown(e) },
 		{ target: window, eventName: "pointermove", action: (e: PointerEvent) => onPointerMove(e) },
+		{ target: window, eventName: "touchmove", action: (e: TouchEvent) => onTouchMove(e) },
+		{ target: window, eventName: "touchstart", action: (e: TouchEvent) => onTouchStart(e) },
 		{ target: window, eventName: "pointerdown", action: (e: PointerEvent) => onPointerDown(e) },
 		{ target: window, eventName: "pointerup", action: (e: PointerEvent) => onPointerUp(e) },
 		{ target: window, eventName: "mousedown", action: (e: MouseEvent) => onMouseDown(e) },
@@ -154,9 +156,66 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		if (e.pointerType === "pen") {
 			editor.handle.onPenMove(e.clientX, e.clientY, e.buttons, modifiers, e.pressure, e.tangentialPressure, e.tiltX, e.tiltY, e.twist, e.pointerId);
 		} else if (e.pointerType === "touch") {
-			editor.handle.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers);
+			//Touch event handling was moved to onTouchMove
+			//editor.handle.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers);
 		} else {
 			editor.handle.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers);
+		}
+	}
+
+	function distance(touches: TouchList) {
+		const [touch1, touch2] = touches;
+		const dx = touch2.pageX - touch1.pageX;
+		const dy = touch2.pageY - touch1.pageY;
+		return Math.sqrt(dx * dy + dy * dy);
+	}
+
+	function calculateCenterPoint(touch1: Touch, touch2: Touch) {
+		return {
+			x: (touch1.clientX + touch2.clientX) / 2,
+			y: (touch1.clientY + touch2.clientY) / 2,
+		};
+	}
+
+	function calculateScale(touchBefore: TouchList, touchAfter: TouchList) {
+		const dBefore = distance(touchBefore);
+		const dAfter = distance(touchAfter);
+		return dAfter / dBefore;
+	}
+
+	function calculateTranslation(touchBefore: TouchList, touchAfter: TouchList) {
+		const centerBefore = calculateCenterPoint(touchBefore[0], touchBefore[1]);
+		const centerAfter = calculateCenterPoint(touchAfter[0], touchAfter[1]);
+		return {
+			x: centerAfter.x - centerBefore.x,
+			y: centerAfter.y - centerBefore.y,
+		};
+	}
+
+	let lastTouches: TouchList;
+
+	function onTouchStart(e: TouchEvent) {
+		console.log("touch start");
+	}
+
+	function onTouchMove(e: TouchEvent) {
+		if (e.touches.length > 1) {
+			console.log("move event");
+
+			if (e.touches.length == 2 && lastTouches != null && lastTouches.length == 2) {
+				if (lastTouches != null && lastTouches.length == 2) {
+					const scale = calculateScale(lastTouches, e.touches);
+					const translation = calculateTranslation(lastTouches, e.touches);
+					const center = calculateCenterPoint(e.touches[0], e.touches[1]);
+
+					editor.handle.onPinchMove(center.x, center.y, scale, translation.x, translation.y);
+				}
+			}
+			lastTouches = e.touches;
+			return;
+		} else {
+			editor.handle.onMouseMove(e.touches[0].clientX, e.touches[0].clientY, 1, 0);
+			return;
 		}
 	}
 

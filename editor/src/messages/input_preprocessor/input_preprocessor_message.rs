@@ -45,6 +45,11 @@ pub enum InputPreprocessorMessage {
 		editor_mouse_state: EditorMouseState,
 		modifier_keys: ModifierKeys,
 	},
+	PinchMove {
+		center: (f64, f64),
+		scale: f64,
+		translation: (f64, f64),
+	},
 }
 
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]

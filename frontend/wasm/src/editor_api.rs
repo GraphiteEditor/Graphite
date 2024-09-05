@@ -400,6 +400,16 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	#[wasm_bindgen(js_name = onPinchMove)]
+	pub fn on_pinch_move(&self, x: f64, y: f64, scale: f64, delta_x: f64, delta_y: f64) {
+		let message = InputPreprocessorMessage::PinchMove {
+			center: (x, y),
+			scale: scale,
+			translation: (delta_x, delta_y),
+		};
+		self.dispatch(message);
+	}
+
 	/// A mouse button depressed within screenspace the bounds of the viewport
 	#[wasm_bindgen(js_name = onMouseDown)]
 	pub fn on_mouse_down(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {

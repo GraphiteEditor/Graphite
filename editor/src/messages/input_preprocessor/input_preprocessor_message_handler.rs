@@ -114,6 +114,12 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageData> for 
 
 				responses.add(InputMapperMessage::WheelScroll);
 			}
+			InputPreprocessorMessage::PinchMove { center, scale, translation } => {
+				//TODO
+				//responses.add(NavigationMessage::CanvasZoomSet { zoom_factor: scale });
+				log::debug!("PinchMove: {:?}", (center, scale, translation));
+				responses.add(NavigationMessage::CanvasPan { delta: translation.into() });
+			}
 		};
 	}
 
