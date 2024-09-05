@@ -198,16 +198,47 @@ impl SegmentDomain {
 		self.stroke.clear();
 	}
 
-	pub fn retain(&mut self, f: impl Fn(&SegmentId) -> bool) {
-		let mut keep = self.ids.iter().map(&f);
+	pub fn retain(&mut self, f: impl Fn(&SegmentId) -> bool, points_length: usize) {
+		let additional_delete_ids = self
+			.ids
+			.iter()
+			.zip(&self.start_point)
+			.zip(&self.end_point)
+			.filter(|((_, start), end)| **start >= points_length || **end >= points_length)
+			.map(|x| *x.0 .0)
+			.collect::<Vec<_>>();
+
+		let can_delete = || {
+			let f = &f;
+			let mut delete_iter = additional_delete_ids.iter().peekable();
+			move |id| {
+				if delete_iter.peek() == Some(&id) {
+					delete_iter.next();
+					false
+				} else {
+					f(id)
+				}
+			}
+		};
+
+		let mut keep = self.ids.iter().map(can_delete());
 		self.start_point.retain(|_| keep.next().unwrap_or_default());
-		let mut keep = self.ids.iter().map(&f);
+		let mut keep = self.ids.iter().map(can_delete());
 		self.end_point.retain(|_| keep.next().unwrap_or_default());
-		let mut keep = self.ids.iter().map(&f);
+		let mut keep = self.ids.iter().map(can_delete());
 		self.handles.retain(|_| keep.next().unwrap_or_default());
-		let mut keep = self.ids.iter().map(&f);
+		let mut keep = self.ids.iter().map(can_delete());
 		self.stroke.retain(|_| keep.next().unwrap_or_default());
-		self.ids.retain(f);
+
+		let mut delete_iter = additional_delete_ids.iter().peekable();
+		self.ids.retain(move |id| {
+			if delete_iter.peek() == Some(&id) {
+				delete_iter.next();
+				false
+			} else {
+				f(id)
+			}
+		});
 	}
 
 	pub fn ids(&self) -> &[SegmentId] {

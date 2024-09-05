@@ -101,7 +101,7 @@ pub struct SegmentModification {
 impl SegmentModification {
 	/// Apply this modification to the specified [`SegmentDomain`].
 	pub fn apply(&self, segment_domain: &mut SegmentDomain, point_domain: &PointDomain) {
-		segment_domain.retain(|id| !self.remove.contains(id));
+		segment_domain.retain(|id| !self.remove.contains(id), point_domain.ids().len());
 
 		for (id, point) in segment_domain.start_point_mut() {
 			let Some(&new) = self.start_point.get(&id) else { continue };
@@ -206,8 +206,16 @@ impl SegmentModification {
 			segment_domain.push(add_id, start_index, end_index, handles, stroke);
 		}
 
-		assert!(segment_domain.start_point().iter().all(|&index| index < point_domain.ids().len()), "index should be in range");
-		assert!(segment_domain.end_point().iter().all(|&index| index < point_domain.ids().len()), "index should be in range");
+		assert!(
+			segment_domain.start_point().iter().all(|&index| index < point_domain.ids().len()),
+			"index should be in range {:#?}",
+			segment_domain
+		);
+		assert!(
+			segment_domain.end_point().iter().all(|&index| index < point_domain.ids().len()),
+			"index should be in range {:#?}",
+			segment_domain
+		);
 	}
 
 	/// Create a new modification that will convert an empty [`VectorData`] into the target [`VectorData`].

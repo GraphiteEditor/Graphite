@@ -306,7 +306,9 @@ impl PenToolData {
 				},
 			});
 		}
-		if !close_subpath {
+		if close_subpath {
+			responses.add(DocumentMessage::EndTransaction);
+		} else {
 			self.add_point(LastPoint {
 				id: end,
 				pos: next_point,

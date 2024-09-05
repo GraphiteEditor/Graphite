@@ -739,6 +739,7 @@ impl ShapeState {
 	pub fn delete_selected_points(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &mut self.selected_shape_state {
 			let mut missing_anchors = HashMap::new();
+			let mut deleted_anchors = HashSet::new();
 			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
 				continue;
 			};
@@ -749,6 +750,7 @@ impl ShapeState {
 						if let Some(handles) = Self::dissolve_anchor(anchor, responses, layer, &vector_data) {
 							missing_anchors.insert(anchor, handles);
 						}
+						deleted_anchors.insert(anchor);
 					}
 					ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) => {
 						let Some(handle) = point.as_handle() else { continue };
@@ -772,7 +774,10 @@ impl ShapeState {
 			while let Some((anchor, handles)) = missing_anchors.keys().next().copied().and_then(|id| missing_anchors.remove_entry(&id)) {
 				visited.push(anchor);
 
-				let mut handles = handles.map(Some);
+				// If the adgacent point is just this point then skip
+				let mut handles = handles.map(|handle| (handle.1 != anchor).then_some(handle));
+
+				// If the adjacent points are themselves being deleted, then repeatedly visit the newest agacent points.
 				for handle in &mut handles {
 					while let Some((point, connected)) = (*handle).and_then(|(_, point)| missing_anchors.remove_entry(&point)) {
 						visited.push(point);
@@ -782,6 +787,13 @@ impl ShapeState {
 				}
 
 				let [Some(start), Some(end)] = handles else { continue };
+
+				// Avoid reconnecting to points that are being deleted (this can happen if a whole loop is deleted)
+				if deleted_anchors.contains(&start.1) || deleted_anchors.contains(&end.1) {
+					continue;
+				}
+
+				// Grab the handles from the opposite side of the segment(s) being deleted and make it relative to the anchor
 				let [handle_start, handle_end] = [start, end].map(|(handle, _)| {
 					let handle = handle.opposite();
 					let handle_position = handle.to_manipulator_point().get_position(&vector_data);
