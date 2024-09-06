@@ -1,4 +1,4 @@
-use super::DocumentNode;
+use super::{DocumentNode, TransientMetadata};
 use crate::document::NodeId;
 pub use crate::imaginate_input::{ImaginateCache, ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use crate::proto::{Any as DAny, FutureAny};
@@ -11,7 +11,7 @@ use graphene_core::{Color, MemoHash, Node, Type};
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -179,9 +179,16 @@ tagged_value! {
 	CentroidType(graphene_core::vector::misc::CentroidType),
 	BooleanOperation(graphene_core::vector::misc::BooleanOperation),
 	FontCache(Arc<graphene_core::text::FontCache>),
+	// Persistent Network Metadata
 	Previewing(crate::document::Previewing),
 	PTZ(crate::document::PTZ),
 	SelectionHistory(VecDeque<Vec<NodeId>>),
+	// Transient Network Metadata
+	StackDependents(TransientMetadata<HashMap<NodeId, crate::document::LayerOwner>>),
+	AllNodesBoundingBox(TransientMetadata<[DVec2; 2]>),
+	OutwardWires(TransientMetadata<HashMap<crate::document::OutputConnector, Vec<crate::document::InputConnector>>>),
+	ImportExportPorts(TransientMetadata<crate::document::Ports>),
+	RoundedNetworkEdgeDistance(TransientMetadata<crate::document::NetworkEdgeDistance>),
 }
 
 impl TaggedValue {
@@ -258,6 +265,10 @@ trait FakeHash {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H);
 }
 mod fake_hash {
+	use std::collections::HashMap;
+
+	use crate::document::{InputConnector, OutputConnector, Ports, TransientMetadata};
+
 	use super::*;
 	impl FakeHash for f64 {
 		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
@@ -274,9 +285,35 @@ mod fake_hash {
 			self.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
 		}
 	}
+	// impl<K: FakeHash, V: FakeHash> FakeHash for HashMap<K, V> {
+	// 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+	// 		self.iter().for_each(|(k, v)| {
+	// 			k.hash(state);
+	// 			v.hash(state);
+	// 		})
+	// 	}
+	// }
+	impl<K: Hash, V: Hash> FakeHash for HashMap<K, V> {
+		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+			self.iter().for_each(|(k, v)| {
+				k.hash(state);
+				v.hash(state);
+			})
+		}
+	}
 	impl<X: FakeHash> FakeHash for Option<X> {
 		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 			if let Some(x) = self {
+				1.hash(state);
+				x.hash(state);
+			} else {
+				0.hash(state);
+			}
+		}
+	}
+	impl<X: FakeHash> FakeHash for TransientMetadata<X> {
+		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+			if let TransientMetadata::Loaded(x) = self {
 				1.hash(state);
 				x.hash(state);
 			} else {
@@ -306,6 +343,73 @@ mod fake_hash {
 			self.pan.hash(state);
 			self.tilt.hash(state);
 			self.zoom.hash(state);
+		}
+	}
+	// impl FakeHash for Option<HashMap<NodeId, crate::document::LayerOwner>> {
+	// 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+	// 		if let Some(x) = self {
+	// 			1.hash(state);
+	// 			x.iter().for_each(|(k, v)| {
+	// 				k.hash(state);
+	// 				v.hash(state);
+	// 			});
+	// 		} else {
+	// 			0.hash(state);
+	// 		}
+	// 	}
+	// }
+	// impl FakeHash for HashMap<crate::document::OutputConnector, Vec<crate::document::InputConnector>> {
+	// 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+	// 		self.iter().for_each(|(k, v)| {
+	// 			k.hash(state);
+	// 			v.hash(state);
+	// 		});
+	// 	}
+	// }
+	impl FakeHash for OutputConnector {
+		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+			match self {
+				OutputConnector::Node { node_id, output_index } => {
+					0.hash(state);
+					node_id.hash(state);
+					output_index.hash(state);
+				}
+				OutputConnector::Import(import_index) => {
+					1.hash(state);
+					import_index.hash(state);
+				}
+			}
+		}
+	}
+	impl FakeHash for InputConnector {
+		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+			match self {
+				InputConnector::Node { node_id, input_index } => {
+					0.hash(state);
+					node_id.hash(state);
+					input_index.hash(state);
+				}
+				InputConnector::Export(export_index) => {
+					1.hash(state);
+					export_index.hash(state);
+				}
+			}
+		}
+	}
+	impl FakeHash for crate::document::NetworkEdgeDistance {
+		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+			self.exports_to_edge_distance.hash(state);
+			self.imports_to_edge_distance.hash(state);
+		}
+	}
+	impl FakeHash for Ports {
+		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+			self.input_ports.iter().chain(self.output_ports.iter()).for_each(|(index, click_target)| {
+				index.hash(state);
+				click_target.subpath().hash(state);
+				click_target.stroke_width().hash(state);
+				click_target.bounding_box().hash(state)
+			});
 		}
 	}
 }

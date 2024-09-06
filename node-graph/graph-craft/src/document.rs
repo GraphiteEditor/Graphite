@@ -1,8 +1,10 @@
 use crate::document::value::TaggedValue;
 use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 
+use bezier_rs::Subpath;
 use dyn_any::{DynAny, StaticType};
 use graphene_core::memo::MemoHashGuard;
+use graphene_core::renderer::ClickTarget;
 pub use graphene_core::uuid::generate_uuid;
 use graphene_core::{Cow, MemoHash, ProtoNodeIdentifier, Type};
 
@@ -73,7 +75,7 @@ pub enum OldNodeInput {
 }
 
 // TODO: Eventually remove this (probably starting late 2024)
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 fn deserialize_inputs<'de, D>(deserializer: D) -> Result<Vec<NodeInput>, D::Error>
 where
 	D: serde::Deserializer<'de>,
@@ -1381,7 +1383,7 @@ impl RootNode {
 }
 
 /// Represents an input connector with index based on the [`DocumentNode::inputs`] index, not the visible input index
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type, Hash, DynAny)]
 pub enum InputConnector {
 	#[serde(rename = "node")]
 	Node {
@@ -1421,7 +1423,7 @@ impl InputConnector {
 }
 
 /// Represents an output connector
-#[derive(Debug, Clone, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type, DynAny)]
 pub enum OutputConnector {
 	#[serde(rename = "node")]
 	Node {
@@ -1484,6 +1486,150 @@ impl PTZ {
 	}
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Hash, DynAny)]
+pub enum LayerOwner {
+	// Used to get the layer that should be shifted when there is a collision.
+	Layer(NodeId),
+	// The vertical offset of a node from the start of its shift. Should be reset when the drag ends.
+	None(i32),
+}
+
+#[derive(Debug, Clone, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+pub struct Ports {
+	#[serde(skip)]
+	input_ports: Vec<(usize, ClickTarget)>,
+	#[serde(skip)]
+	output_ports: Vec<(usize, ClickTarget)>,
+}
+
+impl Default for Ports {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+impl Ports {
+	pub fn new() -> Ports {
+		Ports {
+			input_ports: Vec::new(),
+			output_ports: Vec::new(),
+		}
+	}
+
+	pub fn input_ports(&self) -> impl Iterator<Item = (usize, &ClickTarget)> {
+		self.input_ports.iter().map(|(index, click_target)| (*index, click_target))
+	}
+
+	pub fn output_ports(&self) -> impl Iterator<Item = (usize, &ClickTarget)> {
+		self.output_ports.iter().map(|(index, click_target)| (*index, click_target))
+	}
+
+	pub fn click_targets(&self) -> impl Iterator<Item = &ClickTarget> {
+		self.input_ports
+			.iter()
+			.map(|(_, click_target)| click_target)
+			.chain(self.output_ports.iter().map(|(_, click_target)| click_target))
+	}
+
+	pub fn insert_input_port_at_center(&mut self, input_index: usize, center: DVec2) {
+		let subpath = Subpath::new_ellipse(center - DVec2::new(8., 8.), center + DVec2::new(8., 8.));
+		self.input_ports.push((input_index, ClickTarget::new(subpath, 0.)));
+	}
+
+	pub fn insert_output_port_at_center(&mut self, output_index: usize, center: DVec2) {
+		let subpath = Subpath::new_ellipse(center - DVec2::new(8., 8.), center + DVec2::new(8., 8.));
+		self.output_ports.push((output_index, ClickTarget::new(subpath, 0.)));
+	}
+
+	pub fn insert_node_input(&mut self, input_index: usize, row_index: usize, node_top_left: DVec2) {
+		// The center of the click target is always 24 px down from the top left corner of the node
+		let center = node_top_left + DVec2::new(0., 24. + 24. * row_index as f64);
+		self.insert_input_port_at_center(input_index, center);
+	}
+
+	pub fn insert_node_output(&mut self, output_index: usize, row_index: usize, node_top_left: DVec2) {
+		// The center of the click target is always 24 px down from the top left corner of the node
+		let center = node_top_left + DVec2::new(5. * 24., 24. + 24. * row_index as f64);
+		self.insert_output_port_at_center(output_index, center);
+	}
+
+	pub fn insert_layer_input(&mut self, input_index: usize, node_top_left: DVec2) {
+		let center = if input_index == 0 {
+			node_top_left + DVec2::new(2. * 24., 24. * 2. + 8.)
+		} else {
+			node_top_left + DVec2::new(0., 24. * 1.)
+		};
+		self.insert_input_port_at_center(input_index, center);
+	}
+
+	pub fn insert_layer_output(&mut self, node_top_left: DVec2) {
+		// The center of the click target is always 24 px down from the top left corner of the node
+		let center = node_top_left + DVec2::new(2. * 24., -8.0);
+		self.insert_output_port_at_center(0, center);
+	}
+
+	pub fn clicked_input_port_from_point(&self, point: DVec2) -> Option<usize> {
+		self.input_ports.iter().find_map(|(port, click_target)| click_target.intersect_point_no_stroke(point).then_some(*port))
+	}
+
+	pub fn clicked_output_port_from_point(&self, point: DVec2) -> Option<usize> {
+		self.output_ports.iter().find_map(|(port, click_target)| click_target.intersect_point_no_stroke(point).then_some(*port))
+	}
+
+	pub fn input_port_position(&self, index: usize) -> Option<DVec2> {
+		self.input_ports
+			.get(index)
+			.and_then(|(_, click_target)| click_target.bounding_box().map(|bounds| bounds[0] + DVec2::new(8., 8.)))
+	}
+
+	pub fn output_port_position(&self, index: usize) -> Option<DVec2> {
+		self.output_ports
+			.get(index)
+			.and_then(|(_, click_target)| click_target.bounding_box().map(|bounds| bounds[0] + DVec2::new(8., 8.)))
+	}
+}
+
+/// This is the same as Option, but more clear in the context of having cached metadata either being loaded or unloaded
+#[derive(Debug, Default, Clone, PartialEq, serde::Deserialize, Hash)]
+pub enum TransientMetadata<T> {
+	Loaded(T),
+	#[default]
+	Unloaded,
+}
+
+unsafe impl<T: 'static> StaticType for TransientMetadata<T> {
+	type Static = TransientMetadata<T>;
+}
+
+// Ensure transient metadata is always serialized as Unloaded
+impl<T> Serialize for TransientMetadata<T> {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		// Always serialize as Unloaded
+		serializer.serialize_unit_variant("TransientMetadata", 1, "Unloaded")
+	}
+}
+
+impl<T> TransientMetadata<T> {
+	/// Set the current transient metadata to unloaded
+	pub fn unload(&mut self) {
+		*self = TransientMetadata::Unloaded;
+	}
+
+	pub fn is_loaded(&self) -> bool {
+		matches!(self, TransientMetadata::Loaded(_))
+	}
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, DynAny)]
+pub struct NetworkEdgeDistance {
+	/// The viewport pixel distance distance between the left edge of the node graph and the exports.
+	pub exports_to_edge_distance: DVec2,
+	/// The viewport pixel distance between the left edge of the node graph and the imports.
+	pub imports_to_edge_distance: DVec2,
+}
 #[cfg(test)]
 mod test {
 	use super::*;

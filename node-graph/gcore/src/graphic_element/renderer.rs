@@ -21,7 +21,7 @@ use std::fmt::Write;
 use vello::*;
 
 /// Represents a clickable target for the layer
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ClickTarget {
 	subpath: bezier_rs::Subpath<PointId>,
 	stroke_width: f64,
@@ -36,6 +36,10 @@ impl ClickTarget {
 
 	pub fn subpath(&self) -> &bezier_rs::Subpath<PointId> {
 		&self.subpath
+	}
+
+	pub fn stroke_width(&self) -> f64 {
+		self.stroke_width
 	}
 
 	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {

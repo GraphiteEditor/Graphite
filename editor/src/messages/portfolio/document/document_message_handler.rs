@@ -70,7 +70,7 @@ pub struct OldDocumentMessageHandler {
 	/// Sets whether or not the rulers should be drawn along the top and left edges of the viewport area.
 	pub rulers_visible: bool,
 	/// Sets whether or not the node graph is drawn (as an overlay) on top of the viewport area, or otherwise if it's hidden.
-	pub graph_view_overlay_open: bool,
+	pub graph_ui_open: bool,
 	/// The current user choices for snapping behavior, including whether snapping is enabled at all.
 	pub snapping_state: SnappingState,
 }
@@ -299,6 +299,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::ClearLayersPanel => {
 				// Send an empty layer list
+				// TODO: Dont create a new document message handler just to get the default data buffer for an empty layer structure
 				let data_buffer: RawBuffer = Self::default().serialize_root();
 				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
 
@@ -1326,7 +1327,7 @@ impl DocumentMessageHandler {
 						view_mode: old_message_handler.view_mode,
 						overlays_visible: old_message_handler.overlays_visible,
 						rulers_visible: old_message_handler.rulers_visible,
-						graph_view_overlay_open: old_message_handler.graph_view_overlay_open,
+						graph_view_overlay_open: old_message_handler.graph_ui_open,
 						snapping_state: old_message_handler.snapping_state,
 						..Default::default()
 					};
@@ -1979,7 +1980,7 @@ impl DocumentMessageHandler {
 /// Create a network interface with a single export
 fn default_document_network_interface() -> NodeNetworkInterface {
 	let mut network_interface = NodeNetworkInterface::default();
-	network_interface.add_export(TaggedValue::ArtboardGroup(graphene_core::ArtboardGroup::EMPTY), -1, "".to_string(), &[]);
 	network_interface.insert_network_metadata(NodeNetworkPersistentMetadata::default(), &[]);
+	network_interface.add_export(TaggedValue::ArtboardGroup(graphene_core::ArtboardGroup::EMPTY), -1, "".to_string(), &[]);
 	network_interface
 }
