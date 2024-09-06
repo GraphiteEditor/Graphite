@@ -1,11 +1,10 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
-	import type Editor from "../../Editor.svelte";
-
 	import { MIN_PANEL_SIZE } from "@graphite/state-providers/dockspace";
 	import type { Division } from "@graphite/wasm-communication/messages";
 
+	import type Editor from "@graphite/components/Editor.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import SubdivisionOrPanel from "@graphite/components/window/workspace/SubdivisionOrPanel.svelte";
@@ -15,17 +14,10 @@
 	$: isHorizontal = divisionData.direction === "Horizontal";
 	$: directionComponent = isHorizontal ? LayoutRow : LayoutCol;
 
-	// $: documentTabLabels = $portfolio.documents.map((doc: FrontendDocumentDetails) => {
-	// 	const name = doc.displayName;
-
-	// 	if (!editor.handle.inDevelopmentMode()) return { name };
-
-	// 	const tooltip = `Document ID: ${doc.id}`;
-	// 	return { name, tooltip };
-	// });
+	$: startFlexBasis = divisionData.startSize;
+	$: endFlexBasis = divisionData.endSize;
 
 	const editor = getContext<Editor>("editor");
-	// const portfolio = getContext<PortfolioState>("portfolio");
 
 	function resizePanel(e: PointerEvent) {
 		const gutter = e.target;
@@ -50,17 +42,16 @@
 			mouseDelta = endSize - Math.max(endSize - mouseDelta, MIN_PANEL_SIZE);
 			mouseDelta = Math.max(startSize + mouseDelta, MIN_PANEL_SIZE) - startSize;
 
-			divisionData.startSize = startSize + mouseDelta;
-			divisionData.endSize = endSize - mouseDelta;
+			startFlexBasis = startSize + mouseDelta;
+			endFlexBasis = endSize - mouseDelta;
 		};
 
 		const cleanup = (e: PointerEvent) => {
+			editor.handle.resizeDivision(divisionData.identifier, startFlexBasis, endFlexBasis);
 			gutter.releasePointerCapture(e.pointerId);
 
 			document.removeEventListener("pointermove", updatePosition);
 			document.removeEventListener("pointerup", cleanup);
-
-			editor.handle.resizeDivision(divisionData.identifier, divisionData.startSize, divisionData.endSize);
 		};
 
 		document.addEventListener("pointermove", updatePosition);
@@ -69,11 +60,11 @@
 </script>
 
 <svelte:component this={directionComponent}>
-	<LayoutCol class="workspace-grid-subdivision" styles={{ "flex-grow": divisionData.startSize }}>
+	<LayoutCol class="workspace-grid-subdivision" styles={{ "flex-grow": startFlexBasis }}>
 		<SubdivisionOrPanel value={divisionData.start} />
 	</LayoutCol>
 	<LayoutCol class={`workspace-grid-resize-gutter ${divisionData.direction.toLowerCase()}`} on:pointerdown={resizePanel} />
-	<LayoutCol class="workspace-grid-subdivision" styles={{ "flex-grow": divisionData.endSize }}>
+	<LayoutCol class="workspace-grid-subdivision" styles={{ "flex-grow": endFlexBasis }}>
 		<SubdivisionOrPanel value={divisionData.end} />
 	</LayoutCol>
 </svelte:component>

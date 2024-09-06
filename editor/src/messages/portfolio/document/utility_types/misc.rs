@@ -13,6 +13,12 @@ pub struct DocumentId(pub u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct DocumentViewId(pub u64);
 
+impl From<u64> for DocumentViewId {
+	fn from(value: u64) -> Self {
+		Self(value)
+	}
+}
+
 #[derive(PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize, Hash)]
 pub enum FlipAxis {
 	X,

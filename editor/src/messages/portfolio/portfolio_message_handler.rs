@@ -1,4 +1,5 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
+use super::document::utility_types::misc::DocumentViewId;
 use super::document::utility_types::network_interface::{self, InputConnector, OutputConnector};
 use super::utility_types::{PanelType, PersistentData};
 use crate::application::generate_uuid;
@@ -10,6 +11,7 @@ use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard,
 use crate::messages::portfolio::document::DocumentMessageData;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup};
+use crate::messages::workspace::TabType;
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 
 use graph_craft::document::value::TaggedValue;
@@ -26,10 +28,16 @@ pub struct PortfolioMessageData<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 }
 
+#[derive(Debug)]
+pub struct DocumentView {
+	pub document_id: DocumentId,
+}
+
 #[derive(Debug, Default)]
 pub struct PortfolioMessageHandler {
 	menu_bar_message_handler: MenuBarMessageHandler,
 	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
+	pub document_views: HashMap<DocumentViewId, DocumentView>,
 	document_ids: Vec<DocumentId>,
 	active_panel: PanelType,
 	pub(crate) active_document_id: Option<DocumentId>,
@@ -816,6 +824,16 @@ impl PortfolioMessageHandler {
 
 		self.documents.insert(document_id, new_document);
 
+		// TODO: remove this and allow users to add views in UI.
+		for _ in 0..3 {
+			let document_view_id = DocumentViewId(generate_uuid());
+			self.document_views.insert(document_view_id, DocumentView { document_id });
+			responses.add(WorkspaceMessage::AddTab {
+				tab: TabType::document(document_view_id, document_id),
+				destination: None,
+			});
+		}
+
 		if self.active_document().is_some() {
 			responses.add(BroadcastEvent::ToolAbort);
 			responses.add(ToolMessage::DeactivateTools);
@@ -862,5 +880,16 @@ impl PortfolioMessageHandler {
 			responses.add(FrontendMessage::UpdateDocumentArtwork { svg: error });
 		}
 		result
+	}
+
+	pub fn frontend_document(&self, view_id: DocumentViewId) -> Option<FrontendDocumentDetails> {
+		let document_id = self.document_views.get(&view_id)?.document_id;
+		let document = self.documents.get(&document_id)?;
+		Some(FrontendDocumentDetails {
+			is_auto_saved: document.is_auto_saved(),
+			is_saved: document.is_saved(),
+			id: document_id,
+			name: document.name.clone(),
+		})
 	}
 }

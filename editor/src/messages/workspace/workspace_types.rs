@@ -1,12 +1,28 @@
+use crate::messages::frontend::utility_types::FrontendDocumentDetails;
 use crate::messages::portfolio::document::utility_types::misc::DocumentViewId;
+use crate::messages::workspace::workspace_message::PortfolioMessageHandler;
+
+use super::workspace_message::DocumentId;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[serde(tag = "tabType", content = "tabData")]
 pub enum TabType {
 	Layers,
 	Properties,
-	Document(DocumentViewId),
+	Document {
+		#[serde(rename = "viewId")]
+		view_id: DocumentViewId,
+		#[serde(rename = "documentId")]
+		document_id: DocumentId,
+	},
+}
+impl TabType {
+	pub const fn document(view_id: DocumentViewId, document_id: DocumentId) -> Self {
+		Self::Document { view_id, document_id }
+	}
 }
 
+/// Represents a path to a panel or division
 #[derive(PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct PanelPath {
 	value: u32,
@@ -14,17 +30,21 @@ pub struct PanelPath {
 }
 
 impl PanelPath {
+	/// Construct from a u64 (which is passed to the frontend)
 	pub const fn new(value: u64) -> Self {
 		let (value, depth) = ((value >> 32) as u32, value as u32);
 		Self { value, depth }
 	}
+	/// Build this panel path to a u64 for passing to the frontend
 	pub const fn build(&self) -> u64 {
 		((self.value as u64) << 32) + self.depth as u64
 	}
+	/// A builder for a path - can use `.start()` and `.end()` to append in order (starting from the root division)
 	pub const fn builder() -> Self {
 		Self { value: 0, depth: 0 }
 	}
-	pub fn get_parent_mut<'a>(&self, mut root: &'a mut DivisionOrPanel) -> Option<(&'a mut DivisionOrPanel, bool)> {
+	/// Get the parent of this path wrapped up as a [`DivisionOrPanel`] and the start (it should be a division but this isn't checked)
+	pub fn get_parent_wrapped_mut<'a>(&self, mut root: &'a mut DivisionOrPanel) -> Option<(&'a mut DivisionOrPanel, bool)> {
 		let last_shift = self.depth.checked_sub(1)?;
 		for shift in 0..last_shift {
 			let start = ((self.value >> shift) & 1) == 0;
@@ -32,6 +52,7 @@ impl PanelPath {
 		}
 		Some((root, ((self.value >> last_shift) & 1) == 0))
 	}
+	/// Resolve this path to a [`DivisionOrPanel`] (None for invalid paths)
 	pub fn get_wrapped_mut<'a>(&self, mut root: &'a mut DivisionOrPanel) -> Option<&'a mut DivisionOrPanel> {
 		for shift in 0..self.depth {
 			let start = ((self.value >> shift) & 1) == 0;
@@ -39,9 +60,11 @@ impl PanelPath {
 		}
 		Some(root)
 	}
+	/// Resolve this path to a mutable [`Panel`] (None for divisions or invalid path)
 	pub fn get_panel_mut<'a>(&self, root: &'a mut DivisionOrPanel) -> Option<&'a mut Panel> {
 		self.get_wrapped_mut(root).and_then(|wrapped| wrapped.as_panel_mut())
 	}
+	/// Resolve this path to a [`Panel`] (None for divisions or invalid path)
 	pub fn get_panel<'a>(&self, mut root: &'a DivisionOrPanel) -> Option<&'a Panel> {
 		for shift in 0..self.depth {
 			let start = ((self.value >> shift) & 1) == 0;
@@ -49,10 +72,12 @@ impl PanelPath {
 		}
 		root.as_panel()
 	}
+	/// Append a start to the end of this path
 	pub fn start(mut self) -> Self {
 		self.depth += 1;
 		self
 	}
+	/// Append an end to the end of this path
 	pub fn end(mut self) -> Self {
 		self.value |= 1 << self.depth;
 		self.depth += 1;
@@ -60,6 +85,13 @@ impl PanelPath {
 	}
 }
 
+#[test]
+fn build_panel_path() {
+	let original = PanelPath::builder().end().start().end().end();
+	assert_eq!(PanelPath::new(original.build()), original);
+}
+
+/// Represents the path to a tab (including its panel and tab index)
 #[derive(PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct TabPath {
 	pub panel: PanelPath,
@@ -72,16 +104,21 @@ impl TabPath {
 	}
 }
 
+/// The orientation and start bool for inserting at the edge to create a new panel - used in the [`TabDestination`]
 #[derive(PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct InsertEdge {
 	pub direction: Direction,
 	pub start: bool,
 }
 
+/// Represents the destination for adding or moving a tab
 #[derive(PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct TabDestination {
+	/// The panel for moving to or dividing (if `edge` is set)
 	pub panel: PanelPath,
+	/// The insert index if inserting into an existing panel (None adds at the end)
 	pub insert_index: Option<usize>,
+	/// If set, the panel is split and the tab is inserted into the new panel
 	pub edge: Option<InsertEdge>,
 }
 
@@ -91,6 +128,7 @@ pub enum Direction {
 	Vertical,
 }
 
+/// A panel consisting of zero or more tabs, one of which is active.
 #[derive(Clone, Debug)]
 pub struct Panel {
 	tabs: Vec<TabType>,
@@ -164,11 +202,22 @@ impl DivisionOrPanel {
 		let DivisionOrPanel::Panel(panel) = self else { return None };
 		Some(panel)
 	}
+	/// If this is a division, then replace itself with either its start or end child (as specified)
 	pub fn replace_with_child(&mut self, start: bool) {
 		let Self::Division(division) = self else { return };
 		let child = if start { &mut division.start } else { &mut division.end };
 		let child = std::mem::replace(child, Panel::new([]).into());
 		*self = child;
+	}
+	/// Get the first panel by repeatedly getting the start panel of a division; useful for adding tabs with no destination
+	pub fn first_panel_mut(&mut self) -> &mut Panel {
+		let mut item = self;
+		loop {
+			match item {
+				DivisionOrPanel::Division(division) => item = &mut division.start,
+				DivisionOrPanel::Panel(panel) => return panel,
+			}
+		}
 	}
 }
 
@@ -204,12 +253,12 @@ impl Division {
 		self.start_size = start_size;
 		self.end_size = end_size;
 	}
-	pub fn size(&self) -> (f64, f64) {
-		(self.start_size, self.end_size)
+	pub fn size(&self) -> [f64; 2] {
+		[self.start_size, self.end_size]
 	}
 }
 
-// Frontend
+// ------ Frontend ------ //
 
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendDivision {
@@ -236,9 +285,10 @@ pub enum FrontendDivisionOrPanel {
 }
 
 impl FrontendPanel {
-	pub fn new(source: &Panel, identifier: PanelPath) -> Self {
+	pub fn new(source: &Panel, portfolio: &PortfolioMessageHandler, identifier: PanelPath) -> Self {
 		Self {
 			tabs: source.tabs.clone(),
+			//tabs: source.tabs.iter().map(|source| FrontendTabType::new(source, portfolio)).collect(),
 			active_index: source.active_index,
 			identifier: identifier.build(),
 		}
@@ -246,19 +296,19 @@ impl FrontendPanel {
 }
 
 impl FrontendDivisionOrPanel {
-	pub fn new(source: &DivisionOrPanel, identifier: PanelPath) -> Self {
+	pub fn new(source: &DivisionOrPanel, portfolio: &PortfolioMessageHandler, identifier: PanelPath) -> Self {
 		match source {
-			DivisionOrPanel::Division(source) => Self::Division(Box::new(FrontendDivision::new(&source, identifier))),
-			DivisionOrPanel::Panel(source) => Self::Panel(FrontendPanel::new(&source, identifier)),
+			DivisionOrPanel::Division(source) => Self::Division(Box::new(FrontendDivision::new(source, portfolio, identifier))),
+			DivisionOrPanel::Panel(source) => Self::Panel(FrontendPanel::new(source, portfolio, identifier)),
 		}
 	}
 }
 
 impl FrontendDivision {
-	pub fn new(source: &Division, identifier: PanelPath) -> Self {
+	pub fn new(source: &Division, portfolio: &PortfolioMessageHandler, identifier: PanelPath) -> Self {
 		Self {
-			start: FrontendDivisionOrPanel::new(&source.start, identifier.start()),
-			end: FrontendDivisionOrPanel::new(&source.end, identifier.end()),
+			start: FrontendDivisionOrPanel::new(&source.start, portfolio, identifier.start()),
+			end: FrontendDivisionOrPanel::new(&source.end, portfolio, identifier.end()),
 			direction: source.direction,
 			start_size: source.start_size,
 			end_size: source.end_size,
@@ -266,9 +316,19 @@ impl FrontendDivision {
 		}
 	}
 }
-
-#[test]
-fn build_panel_path() {
-	let original = PanelPath::builder().end().start().end().end();
-	assert_eq!(PanelPath::new(original.build()), original);
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[serde(tag = "tabType", content = "tabData")]
+pub enum FrontendTabType {
+	Layers,
+	Properties,
+	Document(Option<FrontendDocumentDetails>),
+}
+impl FrontendTabType {
+	pub fn new(source: &TabType, portfolio: &PortfolioMessageHandler) -> Self {
+		match source {
+			TabType::Layers => Self::Layers,
+			TabType::Properties => Self::Properties,
+			TabType::Document { view_id, .. } => Self::Document(portfolio.frontend_document(*view_id)),
+		}
+	}
 }

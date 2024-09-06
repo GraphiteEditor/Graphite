@@ -33,7 +33,7 @@
 	},
 	// Rust Analyzer config
 	"rust-analyzer.cargo.allTargets": false,
-	"rust-analyzer.check.command": "clippy",
+	"rust-analyzer.check.command": "",
 	// ESLint config
 	"eslint.format.enable": true,
 	"eslint.workingDirectories": ["./frontend", "./website/other/bezier-rs-demos", "./website"],

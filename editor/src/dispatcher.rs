@@ -184,7 +184,9 @@ impl Dispatcher {
 					}
 				}
 				Message::Workspace(message) => {
-					self.message_handlers.workspace_message_handler.process_message(message, &mut queue, ());
+					self.message_handlers
+						.workspace_message_handler
+						.process_message(message, &mut queue, &self.message_handlers.portfolio_message_handler);
 				}
 			}
 

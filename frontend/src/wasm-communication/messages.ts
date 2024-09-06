@@ -745,13 +745,30 @@ export class UpdateEyedropperSamplingState extends JsMessage {
 	readonly setColorChoice!: "Primary" | "Secondary" | undefined;
 }
 
-export type Panel = {
-	tabs: PanelType[];
-	activeIndex: number;
-	identifier: PanelIdentifier;
-};
+export type DocumentViewId = bigint;
+export type DocumentId = bigint;
+export class DocumentTabData {
+	readonly viewId!: DocumentViewId;
+	readonly documentId!: DocumentId;
+}
+export class Tab {
+	readonly tabType!: PanelType;
+	readonly tabData?: DocumentTabData | undefined;
+}
+export class Panel {
+	readonly tabs!: Tab[];
+	readonly activeIndex!: number;
+	readonly identifier!: PanelIdentifier;
+}
 export type Direction = "Horizontal" | "Vertical";
-export type Division = { direction: Direction; start: DivisionOrPanel; end: DivisionOrPanel; startSize: number; endSize: number; identifier: PanelIdentifier };
+export class Division {
+	readonly direction!: Direction;
+	readonly start!: DivisionOrPanel;
+	readonly end!: DivisionOrPanel;
+	readonly startSize!: number;
+	readonly endSize!: number;
+	readonly identifier!: PanelIdentifier;
+}
 export type DivisionOrPanel = { Division: Division } | { Panel: Panel };
 
 export class UpdateDockspace extends JsMessage {

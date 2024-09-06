@@ -6,10 +6,10 @@
 	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
 	import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
 	import type { Editor } from "@graphite/wasm-communication/editor";
+	import type { DisplayEditableTextbox } from "@graphite/wasm-communication/messages";
 	import {
 		type MouseCursorIcon,
 		type XY,
-		DisplayEditableTextbox,
 		DisplayEditableTextboxTransform,
 		DisplayRemoveEditableTextbox,
 		TriggerTextCommit,
@@ -194,6 +194,8 @@
 		});
 	}
 
+	updateDocumentArtwork(data.svg);
+
 	export async function updateEyedropperSamplingState(mousePosition: XY | undefined, colorPrimary: string, colorSecondary: string): Promise<[number, number, number] | undefined> {
 		if (mousePosition === undefined) {
 			cursorEyedropper = false;
@@ -345,66 +347,6 @@
 	}
 
 	onMount(() => {
-		// Update rendered SVGs
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentArtwork, async (data) => {
-			await tick();
-
-			updateDocumentArtwork(data.svg);
-		});
-		editor.subscriptions.subscribeJsMessage(UpdateEyedropperSamplingState, async (data) => {
-			await tick();
-
-			const { mousePosition, primaryColor, secondaryColor, setColorChoice } = data;
-			const rgb = await updateEyedropperSamplingState(mousePosition, primaryColor, secondaryColor);
-
-			if (setColorChoice && rgb) {
-				if (setColorChoice === "Primary") editor.handle.updatePrimaryColor(...rgb, 1);
-				if (setColorChoice === "Secondary") editor.handle.updateSecondaryColor(...rgb, 1);
-			}
-		});
-
-		// Update scrollbars and rulers
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentScrollbars, async (data) => {
-			await tick();
-
-			const { position, size, multiplier } = data;
-			updateDocumentScrollbars(position, size, multiplier);
-		});
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentRulers, async (data) => {
-			await tick();
-
-			const { origin, spacing, interval, visible } = data;
-			updateDocumentRulers(origin, spacing, interval, visible);
-		});
-
-		// Update mouse cursor icon
-		editor.subscriptions.subscribeJsMessage(UpdateMouseCursor, async (data) => {
-			await tick();
-
-			const { cursor } = data;
-			updateMouseCursor(cursor);
-		});
-
-		// Text entry
-		editor.subscriptions.subscribeJsMessage(TriggerTextCommit, async () => {
-			await tick();
-
-			triggerTextCommit();
-		});
-		editor.subscriptions.subscribeJsMessage(DisplayEditableTextbox, async (data) => {
-			await tick();
-
-			displayEditableTextbox(data);
-		});
-		editor.subscriptions.subscribeJsMessage(DisplayEditableTextboxTransform, async (data) => {
-			textInputMatrix = data.transform;
-		});
-		editor.subscriptions.subscribeJsMessage(DisplayRemoveEditableTextbox, async () => {
-			await tick();
-
-			displayRemoveEditableTextbox();
-		});
-
 		// Once this component is mounted, we want to resend the document bounds to the backend via the resize event handler which does that
 		window.dispatchEvent(new Event("resize"));
 
