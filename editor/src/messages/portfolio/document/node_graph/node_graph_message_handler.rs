@@ -1087,9 +1087,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					input,
 				});
 				responses.add(PropertiesPanelMessage::Refresh);
-				if (!network_interface.reference(&node_id, selection_network_path).is_some_and(|reference| reference == "Imaginate") || input_index == 0)
-					&& network_interface.connected_to_output(&node_id, selection_network_path)
-				{
+				let Some(reference) = network_interface.reference(&node_id, selection_network_path) else {
+					log::error!("Could not get reference for node: {node_id:?} in NodeGraphMessage::SetInputValue");
+					return;
+				};
+				if (!reference.as_ref().is_some_and(|reference| reference == "Imaginate") || input_index == 0) && network_interface.connected_to_output(&node_id, selection_network_path) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 			}
@@ -1182,12 +1184,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids })
 			}
 			NodeGraphMessage::ToggleLocked { node_id } => {
-				let Some(node_metadata) = network_interface.network_metadata(&[]).unwrap().persistent_metadata.node_metadata.get(&node_id) else {
-					log::error!("Cannot get node {:?} in NodeGraphMessage::ToggleLocked", node_id);
-					return;
-				};
-
-				let locked = !node_metadata.persistent_metadata.locked;
+				let locked = !network_interface.is_locked(&node_id, &[]);
 
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::SetLocked { node_id, locked });
@@ -1637,17 +1634,19 @@ impl NodeGraphMessageHandler {
 			log::error!("Could not get nested network when collecting nodes");
 			return Vec::new();
 		};
-		let Some(network_metadata) = network_interface.network_metadata(breadcrumb_network_path) else {
-			log::error!("Could not get network_metadata when collecting nodes");
-			return Vec::new();
-		};
 
 		let mut nodes = Vec::new();
 		for (&node_id, node) in &network.nodes {
 			let node_id_path = &[breadcrumb_network_path, (&[node_id])].concat();
-			let Some(node_metadata) = network_metadata.persistent_metadata.node_metadata.get(&node_id) else {
-				log::error!("Could not get node_metadata for {node_id_path:?}");
-				continue;
+
+			let Some(input_names) = network_interface.input_names(&node_id, breadcrumb_network_path) else {
+				log::error!("Could not get input names for node: {node_id}");
+				return Vec::new();
+			};
+
+			let Some(output_names) = network_interface.output_names(&node_id, breadcrumb_network_path) else {
+				log::error!("Could not get output names for node: {node_id}");
+				return Vec::new();
 			};
 
 			let frontend_graph_inputs = node.inputs.iter().enumerate().map(|(index, _)| {
@@ -1657,9 +1656,7 @@ impl NodeGraphMessageHandler {
 				// TODO: Should display the color of the "most commonly relevant" (we'd need some sort of precedence) data type it allows given the current generic form that's constrained by the other present connections.
 				let data_type = FrontendGraphDataType::with_type(&node_type);
 
-				let input_name = node_metadata
-					.persistent_metadata
-					.input_names
+				let input_name = input_names
 					.get(index)
 					.cloned()
 					.unwrap_or(network_interface.input_type(&InputConnector::node(node_id, index), breadcrumb_network_path).nested_type().to_string());
@@ -1727,16 +1724,8 @@ impl NodeGraphMessageHandler {
 				} else {
 					FrontendGraphDataType::General
 				};
-				let Some(node_metadata) = network_metadata.persistent_metadata.node_metadata.get(&node_id) else {
-					log::error!("Could not get node_metadata when getting output for {node_id}");
-					continue;
-				};
-				let output_name = node_metadata
-					.persistent_metadata
-					.output_names
-					.get(index)
-					.map(|output_name| output_name.to_string())
-					.unwrap_or(format!("Output {}", index + 1));
+
+				let output_name = output_names.get(index).map(|output_name| output_name.to_string()).unwrap_or(format!("Output {}", index + 1));
 
 				let connected_to = outward_wires.get(&OutputConnector::node(node_id, index)).cloned().unwrap_or_default();
 				exposed_outputs.push(FrontendGraphOutput {
@@ -1776,9 +1765,7 @@ impl NodeGraphMessageHandler {
 
 			nodes.push(FrontendNode {
 				id: node_id,
-				is_layer: network_interface
-					.node_metadata(&node_id, breadcrumb_network_path)
-					.is_some_and(|node_metadata| node_metadata.persistent_metadata.is_layer()),
+				is_layer: network_interface.is_layer(&node_id, breadcrumb_network_path),
 				can_be_layer: can_be_layer_lookup.contains(&node_id),
 				reference: None,
 				display_name: network_interface.frontend_display_name(&node_id, breadcrumb_network_path),
@@ -1836,8 +1823,8 @@ impl NodeGraphMessageHandler {
 			}
 		}
 
-		for (&node_id, node_metadata) in &network_interface.network_metadata(&[]).unwrap().persistent_metadata.node_metadata {
-			if node_metadata.persistent_metadata.is_layer() {
+		for &node_id in network_interface.network(&[]).unwrap().nodes.keys() {
+			if network_interface.is_layer(&node_id, &[]) {
 				let layer = LayerNodeIdentifier::new(node_id, network_interface, &[]);
 
 				let children_allowed =

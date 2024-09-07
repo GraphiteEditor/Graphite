@@ -242,7 +242,12 @@ impl<'a> ModifyInputsContext<'a> {
 		// Take until another layer node is found (but not the first layer node)
 		let existing_node_id = upstream
 			.take_while(|node_id| is_traversal_start(*node_id) || !self.network_interface.is_layer(node_id, &[]))
-			.find(|node_id| self.network_interface.reference(node_id, &[]).is_some_and(|node_reference| node_reference == reference));
+			.find(|node_id| { 
+				let Some(node_reference) = self.network_interface.reference(node_id, &[]) else {
+					log::error!("Node reference does not exist in ModifyInputsContext::existing_node_id");
+					return false;
+				};
+				node_reference.as_ref().is_some_and(|node_reference| node_reference == reference)});
 
 		// Create a new node if the node does not exist and update its inputs
 		existing_node_id.or_else(|| {

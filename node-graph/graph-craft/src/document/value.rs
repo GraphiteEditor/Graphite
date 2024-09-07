@@ -189,6 +189,10 @@ tagged_value! {
 	OutwardWires(TransientMetadata<HashMap<crate::document::OutputConnector, Vec<crate::document::InputConnector>>>),
 	ImportExportPorts(TransientMetadata<crate::document::Ports>),
 	RoundedNetworkEdgeDistance(TransientMetadata<crate::document::NetworkEdgeDistance>),
+	// Persistent Node Metadata
+	OptionalString(Option<String>),
+	VecString(Vec<String>),
+	NodeTypeMetadata(crate::document::NodeTypePersistentMetadata),
 }
 
 impl TaggedValue {

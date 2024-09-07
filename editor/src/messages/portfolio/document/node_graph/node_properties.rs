@@ -2343,7 +2343,15 @@ pub fn index_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 }
 
 pub fn generate_node_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> LayoutGroup {
-	let reference = context.network_interface.reference(&node_id, context.selection_network_path).clone();
+	let Some(reference) = context.network_interface.reference(&node_id, context.selection_network_path).cloned() else {
+		log::error!("Node {node_id} has no reference in generate_node_properties");
+		return LayoutGroup::Section {
+			name: "Unknown".to_string(),
+			visible: true,
+			id: node_id.0,
+			layout: unknown_node_properties(&"Unknown".to_string()),
+		};
+	};
 	let layout = if let Some(ref reference) = reference {
 		match super::document_node_definitions::resolve_document_node_type(reference) {
 			Some(document_node_type) => (document_node_type.properties)(document_node, node_id, context),

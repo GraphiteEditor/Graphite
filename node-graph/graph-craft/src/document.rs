@@ -12,7 +12,7 @@ use glam::{DVec2, IVec2};
 use log::Metadata;
 use rustc_hash::FxHashMap;
 use std::collections::hash_map::DefaultHasher;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
 pub mod value;
@@ -1630,6 +1630,106 @@ pub struct NetworkEdgeDistance {
 	/// The viewport pixel distance between the left edge of the node graph and the imports.
 	pub imports_to_edge_distance: DVec2,
 }
+
+/// A layer can either be position as Absolute or in a Stack
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Hash, DynAny)]
+pub enum LayerPosition {
+	// Position of the layer in grid spaces. Measured from the top left corner of the layer, not including the left chain. This means it is always half a grid space to the left of the thumbnail.
+	Absolute(IVec2),
+	// A layer is in a Stack when it feeds into the bottom input of a layer. The Y position stores the vertical distance between the layer and its upstream sibling/parent.
+	Stack(u32),
+}
+
+/// A node can either be position as Absolute or in a Chain
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Hash, DynAny)]
+pub enum NodePosition {
+	// Position of the node in grid spaces
+	Absolute(IVec2),
+	// In a chain the position is based on the number of nodes to the first layer node
+	Chain,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Hash, DynAny)]
+pub enum NodeTypePersistentMetadata {
+	Layer(LayerMetadata),
+	Node(NodePersistentMetadata),
+}
+
+impl Default for NodeTypePersistentMetadata {
+	fn default() -> Self {
+		NodeTypePersistentMetadata::node(IVec2::ZERO)
+	}
+}
+
+impl NodeTypePersistentMetadata {
+	pub fn node(position: IVec2) -> NodeTypePersistentMetadata {
+		NodeTypePersistentMetadata::Node(NodePersistentMetadata {
+			position: NodePosition::Absolute(position),
+		})
+	}
+	pub fn layer(position: IVec2) -> NodeTypePersistentMetadata {
+		NodeTypePersistentMetadata::Layer(LayerMetadata {
+			persistent_metadata: LayerPersistentMetadata {
+				position: LayerPosition::Absolute(position),
+			},
+			transient_metadata: Default::default(),
+		})
+	}
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, DynAny)]
+pub struct LayerMetadata {
+	pub persistent_metadata: LayerPersistentMetadata,
+	#[serde(skip)]
+	pub transient_metadata: LayerTransientMetadata,
+}
+
+impl Hash for LayerMetadata {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.persistent_metadata.hash(state);
+	}
+}
+
+impl Clone for LayerMetadata {
+	fn clone(&self) -> Self {
+		LayerMetadata {
+			persistent_metadata: self.persistent_metadata.clone(),
+			transient_metadata: Default::default(),
+		}
+	}
+}
+
+impl PartialEq for LayerMetadata {
+	fn eq(&self, other: &Self) -> bool {
+		self.persistent_metadata == other.persistent_metadata
+	}
+}
+
+/// All fields in LayerMetadata should automatically be updated by using the network interface API
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Hash, DynAny)]
+pub struct LayerPersistentMetadata {
+	/// Stores the position of a layer node, which can either be Absolute or Stack
+	pub position: LayerPosition,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, DynAny)]
+pub struct LayerTransientMetadata {
+	/// All nodes that should be moved when the layer is moved.
+	pub owned_nodes: TransientMetadata<HashSet<NodeId>>,
+	// Stores the width in grid cell units for layer nodes from the left edge of the thumbnail (+12px padding since thumbnail ends between grid spaces) to the left end of the node
+	/// This is necessary since calculating the layer width through web_sys is very slow
+	pub layer_width: TransientMetadata<u32>,
+	// Should not be a performance concern to calculate when needed with chain_width.
+	// Stores the width in grid cell units for layer nodes from the left edge of the thumbnail to the end of the chain
+	// chain_width: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Hash, DynAny)]
+pub struct NodePersistentMetadata {
+	/// Stores the position of a non layer node, which can either be Absolute or Chain
+	pub position: NodePosition,
+}
+
 #[cfg(test)]
 mod test {
 	use super::*;

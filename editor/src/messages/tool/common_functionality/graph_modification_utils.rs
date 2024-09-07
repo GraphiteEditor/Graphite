@@ -174,8 +174,14 @@ impl<'a> NodeGraphLayer<'a> {
 
 	/// Node id of a node if it exists in the layer's primary flow
 	pub fn upstream_node_id_from_name(&self, node_name: &str) -> Option<NodeId> {
+		
 		self.horizontal_layer_flow()
-			.find(|node_id| self.network_interface.reference(node_id, &[]).is_some_and(|reference| reference == node_name))
+			.find(|node_id| {
+				let Some(reference) = self.network_interface.reference(node_id, &[]) else {
+					log::error!("Reference could not be found for node {node_id} in upstream_node_id_from_name");
+					 return false };
+					reference.as_ref().is_some_and(|reference| reference == node_name)
+			})
 	}
 
 	/// Find all of the inputs of a specific node within the layer's primary flow, up until the next layer is reached.
@@ -183,7 +189,13 @@ impl<'a> NodeGraphLayer<'a> {
 		self.horizontal_layer_flow()
 			.skip(1)// Skip self
 			.take_while(|node_id| !self.network_interface.is_layer(node_id,&[]))
-			.find(|node_id| self.network_interface.reference(node_id,&[]).is_some_and(|reference| reference == node_name))
+			.find(|node_id| 
+				{
+				let Some(reference) = self.network_interface.reference(node_id, &[]) else {
+					log::error!("Reference could not be found for node {node_id} in upstream_node_id_from_name");
+					 return false };
+				reference.as_ref().is_some_and(|reference| reference == node_name)
+			})
 			.and_then(|node_id| self.network_interface.network(&[]).unwrap().nodes.get(&node_id).map(|node| &node.inputs))
 	}
 

@@ -3,8 +3,8 @@ use crate::messages::portfolio::document::graph_operation::transform_utils::{get
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::FlowType;
-use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
+use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::NodeId;
@@ -272,6 +272,10 @@ impl BrushToolData {
 				continue;
 			};
 			let Some(reference) = document.network_interface.reference(&node_id, &[]) else {
+				log::error!("Could not get reference for node {node_id} in load_existing_strokes");
+				continue;
+			};
+			let Some(reference) = reference else {
 				continue;
 			};
 			if reference == "Brush" && node_id != layer.to_node() {

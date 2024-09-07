@@ -702,13 +702,12 @@ impl EditorHandle {
 		let document = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap();
 		for node in document
 			.network_interface
-			.network_metadata(&[])
+			.network(&[])
 			.unwrap()
-			.persistent_metadata
-			.node_metadata
-			.iter()
-			.filter(|(_, d)| d.persistent_metadata.reference.as_ref().is_some_and(|reference| reference == "Artboard"))
-			.map(|(id, _)| *id)
+			.nodes
+			.keys()
+			.filter(|node_id| document.network_interface.reference(node_id, &[]).cloned().flatten().is_some_and(|reference| reference == "Artboard"))
+			.cloned()
 			.collect::<Vec<_>>()
 		{
 			let Some(document_node) = document.network_interface.network(&[]).unwrap().nodes.get(&node) else {
@@ -718,7 +717,12 @@ impl EditorHandle {
 			if let Some(network) = document_node.implementation.get_network() {
 				let mut nodes_to_upgrade = Vec::new();
 				for (node_id, _) in network.nodes.iter().collect::<Vec<_>>() {
-					if document.network_interface.reference(node_id, &[]).is_some_and(|reference| reference == "To Artboard")
+					if document
+						.network_interface
+						.reference(node_id, &[])
+						.cloned()
+						.flatten()
+						.is_some_and(|reference| reference == "To Artboard")
 						&& document
 							.network_interface
 							.network(&[])
@@ -773,13 +777,12 @@ impl EditorHandle {
 		document.network_interface.load_structure();
 		for node in document
 			.network_interface
-			.network_metadata(&[])
+			.network(&[])
 			.unwrap()
-			.persistent_metadata
-			.node_metadata
-			.iter()
-			.filter(|(_, d)| d.persistent_metadata.reference.as_ref().is_some_and(|reference| reference == "Merge"))
-			.map(|(id, _)| *id)
+			.nodes
+			.keys()
+			.filter(|node_id| document.network_interface.reference(node_id, &[]).cloned().flatten().is_some_and(|reference| reference == "Merge"))
+			.cloned()
 			.collect::<Vec<_>>()
 		{
 			let layer = LayerNodeIdentifier::new(node, &document.network_interface, &[]);
