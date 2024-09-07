@@ -1616,13 +1616,13 @@ pub fn modulo_properties(document_node: &DocumentNode, node_id: NodeId, _context
 
 pub fn circle_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	vec![LayoutGroup::Row {
-		widgets: number_widget(document_node, node_id, 1, "Radius", NumberInput::default(), true),
+		widgets: number_widget(document_node, node_id, 1, "Radius", NumberInput::default().min(1e-10), true),
 	}]
 }
 
 pub fn ellipse_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let operand = |name: &str, index| {
-		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default().min(1e-10), true);
 
 		LayoutGroup::Row { widgets }
 	};
@@ -1756,8 +1756,11 @@ pub fn rectangle_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 
 pub fn regular_polygon_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let points = number_widget(document_node, node_id, 1, "Points", NumberInput::default().min(3.), true);
-	let radius = number_widget(document_node, node_id, 2, "Radius", NumberInput::default(), true);
-
+	let radius = if get_input_value(&points.last().unwrap().widget).unwrap_or(0.0) as i32 % 2 == 0 {
+		number_widget(document_node, node_id, 2, "Radius", NumberInput::default().min(1e-10), true)
+	} else {
+		number_widget(document_node, node_id, 2, "Radius", NumberInput::default(), true)
+	};
 	vec![LayoutGroup::Row { widgets: points }, LayoutGroup::Row { widgets: radius }]
 }
 

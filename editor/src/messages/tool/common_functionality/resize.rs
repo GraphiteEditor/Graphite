@@ -86,9 +86,9 @@ impl Resize {
 			self.snap_manager.update_indicator(snapped);
 		}
 		if points_viewport[1][0] < points_viewport[0][0] {
-			let (start, end) = points_viewport.split_at_mut(1);
-			let temp = std::mem::replace(&mut start[0][0], end[0][0]);
-			end[0][0] = temp;
+			let temp = points_viewport[0][0];
+			points_viewport[0][0] = points_viewport[1][0];
+			points_viewport[1][0] = temp;
 		}
 
 		Some(points_viewport)

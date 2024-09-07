@@ -512,6 +512,13 @@ pub enum Widget {
 	WorkingColorsInput(WorkingColorsInput),
 }
 
+pub fn get_input_value(widget: &Widget) -> Option<f64> {
+	match widget {
+		Widget::NumberInput(number_input) => number_input.value,
+		_ => None,
+	}
+}
+
 /// A single change to part of the UI, containing the location of the change and the new value.
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct WidgetDiff {
