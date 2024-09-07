@@ -796,7 +796,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				let ruler_origin = document_to_viewport.transform_point2(DVec2::ZERO);
 				let log = ruler_scale.log2();
-				let ruler_interval: f64 = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
+				let mut ruler_interval: f64 = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
+				// when the interval becomes too small, force it to be a whole number.
+				// progression of intervals is: ...200,100,50,25,12.5,7(6.25),4(3.125),2(1.5625),1
+				if ruler_interval < 12.5 {
+					ruler_interval = ruler_interval.ceil();
+				}
 				let ruler_spacing = ruler_interval * ruler_scale;
 
 				responses.add(FrontendMessage::UpdateDocumentRulers {
