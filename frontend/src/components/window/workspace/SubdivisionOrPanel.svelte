@@ -35,7 +35,8 @@
 	<Division divisionData={value.Division} />
 {:else}
 	<Panel
-		panelType={value.Panel.tabs[value.Panel.activeIndex]?.tabType}
+		tabType={value.Panel.tabs[value.Panel.activeIndex]?.tabType}
+		tabData={value.Panel.tabs[value.Panel.activeIndex]?.tabData}
 		panelIdentifier={value.Panel.identifier}
 		tabLabels={value.Panel.tabs.map((tab) => tabLabel(tab, $portfolio.documents))}
 		tabActiveIndex={Number(value.Panel.activeIndex)}

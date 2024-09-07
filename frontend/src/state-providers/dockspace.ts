@@ -4,29 +4,19 @@ import type { Editor } from "@graphite/wasm-communication/editor";
 
 import { UpdateDockspace, type DivisionOrPanel } from "@graphite/wasm-communication/messages";
 
-import Document from "@graphite/components/panels/Document.svelte";
-import Layers from "@graphite/components/panels/Layers.svelte";
-import Properties from "@graphite/components/panels/Properties.svelte";
-
-const PANEL_COMPONENTS = {
-	Document,
-	Layers,
-	Properties,
-};
-export type PanelType = keyof typeof PANEL_COMPONENTS;
+export type TabType = string;
 
 export const MIN_PANEL_SIZE = 100;
 
 export type PanelIdentifier = bigint;
 
-export type PanelDragging = { panel: PanelIdentifier; tabIndex: number };
+export type TabDragging = { panel: PanelIdentifier; tabIndex: number };
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createDockspaceState(editor: Editor) {
 	const state = writable({
-		panelComponents: PANEL_COMPONENTS,
 		divisionData: undefined as undefined | DivisionOrPanel,
-		panelDragging: undefined as undefined | PanelDragging,
+		tabDragging: undefined as undefined | TabDragging,
 	});
 	const { subscribe, update } = state;
 
@@ -39,14 +29,14 @@ export function createDockspaceState(editor: Editor) {
 
 	const startDragging = (panel: PanelIdentifier, tabIndex: number) => {
 		update((state) => {
-			state.panelDragging = { panel, tabIndex };
+			state.tabDragging = { panel, tabIndex };
 			return state;
 		});
 	};
 
 	const endDragging = () => {
 		update((state) => {
-			state.panelDragging = undefined;
+			state.tabDragging = undefined;
 			return state;
 		});
 	};

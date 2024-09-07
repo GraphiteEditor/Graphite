@@ -1,25 +1,13 @@
 <script lang="ts">
 	import { getContext, onMount, tick } from "svelte";
 
-	import type { DocumentState } from "@graphite/state-providers/document";
+	import type { DocumentState, EyedropperState } from "@graphite/state-providers/document";
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
 	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
 	import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import type { DisplayEditableTextbox } from "@graphite/wasm-communication/messages";
-	import {
-		type MouseCursorIcon,
-		type XY,
-		DisplayEditableTextboxTransform,
-		DisplayRemoveEditableTextbox,
-		TriggerTextCommit,
-		UpdateDocumentArtwork,
-		UpdateDocumentRulers,
-		UpdateDocumentScrollbars,
-		UpdateEyedropperSamplingState,
-		UpdateMouseCursor,
-		isWidgetSpanRow,
-	} from "@graphite/wasm-communication/messages";
+	import type { DocumentTabData } from "@graphite/wasm-communication/messages";
+	import { type MouseCursorIcon, type XY, isWidgetSpanRow } from "@graphite/wasm-communication/messages";
 
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -36,21 +24,13 @@
 	const editor = getContext<Editor>("editor");
 	const document = getContext<DocumentState>("document");
 
+	export let documentTabData: DocumentTabData;
+	$: documentView = document.getView(documentTabData.viewId);
+
 	// Interactive text editing
 	let textInput: undefined | HTMLDivElement = undefined;
 	let showTextInput: boolean;
 	let textInputMatrix: number[];
-
-	// Scrollbars
-	let scrollbarPos: XY = { x: 0.5, y: 0.5 };
-	let scrollbarSize: XY = { x: 0.5, y: 0.5 };
-	let scrollbarMultiplier: XY = { x: 0, y: 0 };
-
-	// Rulers
-	let rulerOrigin: XY = { x: 0, y: 0 };
-	let rulerSpacing = 100;
-	let rulerInterval = 100;
-	let rulersVisible = true;
 
 	// Rendered SVG viewport data
 	let artworkSvg = "";
@@ -85,6 +65,7 @@
 	$: canvasHeightCSS = canvasHeightRoundedToEven ? `${canvasHeightRoundedToEven}px` : "100%";
 
 	$: toolShelfTotalToolsAndSeparators = ((layoutGroup) => {
+		if (layoutGroup === undefined) return undefined;
 		if (!isWidgetSpanRow(layoutGroup)) return undefined;
 
 		let totalSeparators = 0;
@@ -116,7 +97,7 @@
 			totalToolRowsFor2Columns,
 			totalToolRowsFor3Columns,
 		};
-	})($document.toolShelfLayout.layout[0]);
+	})($documentView?.toolShelfLayout.layout[0]);
 
 	function pasteFile(e: DragEvent) {
 		const { dataTransfer } = e;
@@ -140,15 +121,15 @@
 	}
 
 	function panCanvasX(newValue: number) {
-		const delta = newValue - scrollbarPos.x;
-		scrollbarPos.x = newValue;
-		editor.handle.panCanvas(-delta * scrollbarMultiplier.x, 0);
+		const delta = newValue - $documentView.scrollbar.position.x;
+		$documentView.scrollbar.position.x = newValue;
+		editor.handle.panCanvas(-delta * $documentView.scrollbar.multiplier.x, 0);
 	}
 
 	function panCanvasY(newValue: number) {
-		const delta = newValue - scrollbarPos.y;
-		scrollbarPos.y = newValue;
-		editor.handle.panCanvas(0, -delta * scrollbarMultiplier.y);
+		const delta = newValue - $documentView.scrollbar.position.y;
+		$documentView.scrollbar.position.y = newValue;
+		editor.handle.panCanvas(0, -delta * $documentView.scrollbar.multiplier.y);
 	}
 
 	function pageX(delta: number) {
@@ -194,7 +175,7 @@
 		});
 	}
 
-	updateDocumentArtwork(data.svg);
+	$: updateDocumentArtwork($documentView.artwork);
 
 	export async function updateEyedropperSamplingState(mousePosition: XY | undefined, colorPrimary: string, colorSecondary: string): Promise<[number, number, number] | undefined> {
 		if (mousePosition === undefined) {
@@ -246,19 +227,18 @@
 		return rgb;
 	}
 
-	// Update scrollbars and rulers
-	export function updateDocumentScrollbars(position: XY, size: XY, multiplier: XY) {
-		scrollbarPos = position;
-		scrollbarSize = size;
-		scrollbarMultiplier = multiplier;
-	}
+	async function changeEyedropper(data: EyedropperState) {
+		await tick();
 
-	export function updateDocumentRulers(origin: XY, spacing: number, interval: number, visible: boolean) {
-		rulerOrigin = origin;
-		rulerSpacing = spacing;
-		rulerInterval = interval;
-		rulersVisible = visible;
+		const { mousePosition, primaryColor, secondaryColor, setColorChoice } = data;
+		const rgb = await updateEyedropperSamplingState(mousePosition, primaryColor, secondaryColor);
+
+		if (setColorChoice && rgb) {
+			if (setColorChoice === "Primary") editor.handle.updatePrimaryColor(...rgb, 1);
+			if (setColorChoice === "Secondary") editor.handle.updateSecondaryColor(...rgb, 1);
+		}
 	}
+	$: if ($documentView?.eyedropperSamplingState !== undefined) changeEyedropper($documentView?.eyedropperSamplingState);
 
 	// Update mouse cursor icon
 	export function updateMouseCursor(cursor: MouseCursorIcon) {
@@ -288,22 +268,21 @@
 		canvasCursor = cursorString;
 	}
 
+	$: updateMouseCursor($documentView.cursor);
+
 	// Text entry
-	export function triggerTextCommit() {
+	function triggerTextCommit(e: CustomEvent) {
+		if (e.detail !== documentTabData.viewId) return;
 		if (!textInput) return;
 		const textCleaned = textInputCleanup(textInput.innerText);
 		editor.handle.onChangeText(textCleaned);
 	}
 
-	export async function displayEditableTextbox(displayEditableTextbox: DisplayEditableTextbox) {
-		showTextInput = true;
+	window.addEventListener("triggerTextCommit", triggerTextCommit as EventListener);
 
-		await tick();
-
-		if (!textInput) {
-			return;
-		}
-
+	function formatTextInput(textInput: HTMLDivElement) {
+		const displayEditableTextbox = $documentView.textInput;
+		if (displayEditableTextbox === undefined) return;
 		if (displayEditableTextbox.text === "") textInput.textContent = "";
 		else textInput.textContent = `${displayEditableTextbox.text}\n`;
 
@@ -341,9 +320,9 @@
 		window.dispatchEvent(new CustomEvent("modifyinputfield", { detail: textInput }));
 	}
 
-	export function displayRemoveEditableTextbox() {
-		window.dispatchEvent(new CustomEvent("modifyinputfield", { detail: undefined }));
-		showTextInput = false;
+	$: {
+		if (textInput !== undefined) formatTextInput(textInput);
+		else window.dispatchEvent(new CustomEvent("modifyinputfield", { detail: undefined }));
 	}
 
 	onMount(() => {
@@ -365,18 +344,22 @@
 			if (viewport.parentElement) updateBoundsOfViewports(editor, viewport.parentElement);
 		});
 		if (viewport) viewportResizeObserver.observe(viewport);
+
+		return () => {
+			window.removeEventListener("triggerTextCommit", triggerTextCommit as EventListener);
+		};
 	});
 </script>
 
 <LayoutCol class="document">
-	<LayoutRow class="options-bar" classes={{ "for-graph": $document.graphViewOverlayOpen }} scrollableX={true}>
-		{#if !$document.graphViewOverlayOpen}
-			<WidgetLayout layout={$document.documentModeLayout} />
-			<WidgetLayout layout={$document.toolOptionsLayout} />
+	<LayoutRow class="options-bar" classes={{ "for-graph": $documentView.graphViewOverlayOpen }} scrollableX={true}>
+		{#if !$documentView.graphViewOverlayOpen}
+			<WidgetLayout layout={$documentView.documentModeLayout} />
+			<WidgetLayout layout={$documentView.toolOptionsLayout} />
 			<LayoutRow class="spacer" />
-			<WidgetLayout layout={$document.documentBarLayout} />
+			<WidgetLayout layout={$documentView.documentBarLayout} />
 		{:else}
-			<WidgetLayout layout={$document.nodeGraphBarLayout} />
+			<WidgetLayout layout={$documentView.nodeGraphBarLayout} />
 		{/if}
 	</LayoutRow>
 	<LayoutRow
@@ -389,27 +372,39 @@
 		}}
 	>
 		<LayoutCol class="shelf">
-			{#if !$document.graphViewOverlayOpen}
+			{#if !$documentView.graphViewOverlayOpen}
 				<LayoutCol class="tools" scrollableY={true}>
-					<WidgetLayout layout={$document.toolShelfLayout} />
+					<WidgetLayout layout={$documentView.toolShelfLayout} />
 				</LayoutCol>
 			{:else}
 				<LayoutRow class="spacer" />
 			{/if}
 			<LayoutCol class="shelf-bottom-widgets">
-				<WidgetLayout class={"working-colors-input-area"} layout={$document.workingColorsLayout} />
+				<WidgetLayout class={"working-colors-input-area"} layout={$documentView.workingColorsLayout} />
 			</LayoutCol>
 		</LayoutCol>
 		<LayoutCol class="table">
-			{#if rulersVisible}
+			{#if $documentView.rulers.visible}
 				<LayoutRow class="ruler-or-scrollbar top-ruler">
-					<RulerInput origin={rulerOrigin.x} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Horizontal" bind:this={rulerHorizontal} />
+					<RulerInput
+						origin={$documentView.rulers.origin.x}
+						majorMarkSpacing={$documentView.rulers.spacing}
+						numberInterval={$documentView.rulers.interval}
+						direction="Horizontal"
+						bind:this={rulerHorizontal}
+					/>
 				</LayoutRow>
 			{/if}
 			<LayoutRow class="viewport-container">
-				{#if rulersVisible}
+				{#if $documentView.rulers.visible}
 					<LayoutCol class="ruler-or-scrollbar">
-						<RulerInput origin={rulerOrigin.y} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Vertical" bind:this={rulerVertical} />
+						<RulerInput
+							origin={$documentView.rulers.origin.y}
+							majorMarkSpacing={$documentView.rulers.spacing}
+							numberInterval={$documentView.rulers.interval}
+							direction="Vertical"
+							bind:this={rulerVertical}
+						/>
 					</LayoutCol>
 				{/if}
 				<LayoutCol class="viewport-container" styles={{ cursor: canvasCursor }}>
@@ -435,15 +430,15 @@
 						<canvas class="overlays" width={canvasWidthRoundedToEven} height={canvasHeightRoundedToEven} style:width={canvasWidthCSS} style:height={canvasHeightCSS} data-overlays-canvas>
 						</canvas>
 					</div>
-					<div class="graph-view" class:open={$document.graphViewOverlayOpen} style:--fade-artwork="80%" data-graph>
+					<div class="graph-view" class:open={$documentView.graphViewOverlayOpen} style:--fade-artwork="80%" data-graph>
 						<Graph />
 					</div>
 				</LayoutCol>
 				<LayoutCol class="ruler-or-scrollbar right-scrollbar">
 					<ScrollbarInput
 						direction="Vertical"
-						handleLength={scrollbarSize.y}
-						handlePosition={scrollbarPos.y}
+						handleLength={$documentView.scrollbar.size.y}
+						handlePosition={$documentView.scrollbar.position.y}
 						on:handlePosition={({ detail }) => panCanvasY(detail)}
 						on:pressTrack={({ detail }) => pageY(detail)}
 					/>
@@ -452,8 +447,8 @@
 			<LayoutRow class="ruler-or-scrollbar bottom-scrollbar">
 				<ScrollbarInput
 					direction="Horizontal"
-					handleLength={scrollbarSize.x}
-					handlePosition={scrollbarPos.x}
+					handleLength={$documentView.scrollbar.size.x}
+					handlePosition={$documentView.scrollbar.position.x}
 					on:handlePosition={({ detail }) => panCanvasX(detail)}
 					on:pressTrack={({ detail }) => pageX(detail)}
 					on:pointerup={() => editor.handle.setGridAlignedEdges()}

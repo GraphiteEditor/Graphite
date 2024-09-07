@@ -1,15 +1,18 @@
 <script lang="ts">
 	import { getContext, tick } from "svelte";
 
-	import { type DockspaceState, type PanelIdentifier, type PanelType } from "@graphite/state-providers/dockspace";
+	import { type DockspaceState, type PanelIdentifier, type TabType } from "@graphite/state-providers/dockspace";
 
 	import { platformIsMac, isEventSupported } from "@graphite/utility-functions/platform";
 
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import { type LayoutKeysGroup, type Key } from "@graphite/wasm-communication/messages";
+	import { type LayoutKeysGroup, type Key, type TabData, DocumentTabData } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import Document from "@graphite/components/panels/Document.svelte";
+	import Layers from "@graphite/components/panels/Layers.svelte";
+	import Properties from "@graphite/components/panels/Properties.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
@@ -23,8 +26,14 @@
 	export let tabCloseButtons = true;
 	export let tabLabels: { name: string; tooltip?: string }[];
 	export let tabActiveIndex: number;
-	export let panelType: PanelType | undefined = undefined;
+	export let tabType: TabType | undefined = undefined;
+	export let tabData: TabData;
 	export let panelIdentifier: PanelIdentifier;
+
+	const SIMPLE_TABS = new Map([
+		["Layers", Layers],
+		["Properties", Properties],
+	]);
 
 	let tabElements: (LayoutRow | undefined)[] = [];
 
@@ -47,7 +56,7 @@
 	}
 </script>
 
-<LayoutCol class="panel" on:pointerdown={() => panelType && editor.handle.setActivePanel(panelType)}>
+<LayoutCol class="panel" on:pointerdown={() => tabType && editor.handle.setActivePanel(tabType)}>
 	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
 		<LayoutRow data-panel-tabs={panelIdentifier} class="tab-group" scrollableX={true}>
 			{#each tabLabels as tabLabel, tabIndex}
@@ -102,9 +111,11 @@
 		</PopoverButton> -->
 	</LayoutRow>
 	<LayoutCol class="panel-body" data-panel-body={panelIdentifier}>
-		{#if panelType}
-			<svelte:component this={$dockspace.panelComponents[panelType]} />
-		{:else}
+		{#if tabData !== undefined}
+			<Document documentTabData={tabData} />
+		{:else if tabType !== undefined && SIMPLE_TABS.get(tabType) !== undefined}
+			<svelte:component this={SIMPLE_TABS.get(tabType)} />
+		{:else if tabType === undefined}
 			<LayoutCol class="empty-panel">
 				<LayoutCol class="content">
 					<LayoutRow class="logotype">
@@ -137,6 +148,8 @@
 					</LayoutRow>
 				</LayoutCol>
 			</LayoutCol>
+		{:else}
+			<span>Invalid tab {tabType}</span>
 		{/if}
 	</LayoutCol>
 </LayoutCol>

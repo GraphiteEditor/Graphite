@@ -3,7 +3,7 @@
 
 import { Transform, Type, plainToClass } from "class-transformer";
 
-import type { PanelIdentifier, PanelType } from "@graphite/state-providers/dockspace";
+import type { PanelIdentifier, TabType } from "@graphite/state-providers/dockspace";
 
 import { type PopoverButtonStyle, type IconName, type IconSize } from "@graphite/utility-functions/icons";
 import { type EditorHandle } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
@@ -751,9 +751,10 @@ export class DocumentTabData {
 	readonly viewId!: DocumentViewId;
 	readonly documentId!: DocumentId;
 }
+export type TabData = DocumentTabData | undefined;
 export class Tab {
-	readonly tabType!: PanelType;
-	readonly tabData?: DocumentTabData | undefined;
+	readonly tabType!: TabType;
+	readonly tabData?: TabData;
 }
 export class Panel {
 	readonly tabs!: Tab[];

@@ -24,7 +24,7 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageData> for 
 
 		match message {
 			InputPreprocessorMessage::BoundsOfViewports { bounds_of_viewports } => {
-				assert_eq!(bounds_of_viewports.len(), 1, "Only one viewport is currently supported");
+				// assert_eq!(bounds_of_viewports.len(), 1, "Only one viewport is currently supported");
 
 				for bounds in bounds_of_viewports {
 					// TODO: Extend this to multiple viewports instead of setting it to the value of this last loop iteration

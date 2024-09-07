@@ -826,7 +826,7 @@ impl PortfolioMessageHandler {
 
 		// TODO: remove this and allow users to add views in UI.
 		for _ in 0..3 {
-			let document_view_id = DocumentViewId(generate_uuid());
+			let document_view_id = DocumentViewId(41);
 			self.document_views.insert(document_view_id, DocumentView { document_id });
 			responses.add(WorkspaceMessage::AddTab {
 				tab: TabType::document(document_view_id, document_id),

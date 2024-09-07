@@ -4,7 +4,7 @@
 	import { fade } from "svelte/transition";
 
 	import type { DialogState } from "@graphite/state-providers/dialog";
-	import { type DockspaceState, type PanelIdentifier, type PanelDragging } from "@graphite/state-providers/dockspace";
+	import { type DockspaceState, type PanelIdentifier, type TabDragging } from "@graphite/state-providers/dockspace";
 
 	import type { Editor } from "@graphite/wasm-communication/editor";
 
@@ -19,7 +19,7 @@
 	const dockspace = getContext<DockspaceState>("dockspace");
 
 	let dragTarget = undefined as undefined | DOMRect;
-	let dragState = undefined as undefined | { edge: Edge; dragging: PanelDragging; insert: InsertIndex | undefined; bodyId: PanelIdentifier | undefined; tabsId: PanelIdentifier | undefined };
+	let dragState = undefined as undefined | { edge: Edge; dragging: TabDragging; insert: InsertIndex | undefined; bodyId: PanelIdentifier | undefined; tabsId: PanelIdentifier | undefined };
 
 	function panelBody(e: DragEvent): undefined | { id: PanelIdentifier; element: HTMLElement } {
 		if (!(e.target instanceof Element)) return;
@@ -50,7 +50,7 @@
 	}
 
 	function canDockEdge(id: PanelIdentifier) {
-		return !(id === $dockspace.panelDragging?.panel && editor.handle.isSingleTab(id));
+		return !(id === $dockspace.tabDragging?.panel && editor.handle.isSingleTab(id));
 	}
 
 	type InsertIndex = { x: number; y: number; insertAtIndex: number; passedActive: boolean };
@@ -72,10 +72,10 @@
 	}
 
 	function dragover(e: DragEvent) {
-		if (!$dockspace.panelDragging) return;
+		if (!$dockspace.tabDragging) return;
 		const tabs = panelTabs(e);
 		const body = panelBody(e);
-		dragState = { edge: undefined, dragging: $dockspace.panelDragging, bodyId: body?.id, tabsId: tabs?.id, insert: undefined };
+		dragState = { edge: undefined, dragging: $dockspace.tabDragging, bodyId: body?.id, tabsId: tabs?.id, insert: undefined };
 		if (tabs !== undefined) {
 			dragTarget = undefined;
 
@@ -129,10 +129,10 @@
 		<Dialog />
 	{/if}
 </LayoutRow>
-{#if $dockspace.panelDragging !== undefined && dragTarget !== undefined}
+{#if $dockspace.tabDragging !== undefined && dragTarget !== undefined}
 	<div class="drag-target" transition:fade={{ duration: 150 }} style={`left:${dragTarget.x}px;top:${dragTarget.y}px;width:${dragTarget.width}px;height:${dragTarget.height}px;`} />
 {/if}
-{#if $dockspace.panelDragging !== undefined && dragState?.insert !== undefined}
+{#if $dockspace.tabDragging !== undefined && dragState?.insert !== undefined}
 	<div class="insert-target" style={`left:${dragState.insert.x}px;top:${dragState.insert.y}px;`} />
 {/if}
 
