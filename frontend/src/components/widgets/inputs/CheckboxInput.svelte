@@ -62,6 +62,8 @@
 			height: 0;
 			margin: 0;
 			opacity: 0;
+			// Firefox weirdly applies a 2px border which causes this element to take up a 4x4 square of space, so this removes it from the flow to prevent it from offsetting the label
+			position: absolute;
 		}
 
 		// Unchecked

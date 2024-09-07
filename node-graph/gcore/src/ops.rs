@@ -1,185 +1,218 @@
 use crate::Node;
+
 use core::marker::PhantomData;
 use core::ops::{Add, Div, Mul, Rem, Sub};
 use num_traits::Pow;
+use rand::{Rng, SeedableRng};
 
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
 
 // Add
-#[node_macro::new_node_fn(category("Math"))]
+#[node_macro::new_node_fn(category("Math: Arithmetic"))]
 fn add<U: Add<T>, T>(
 	_: (),
-	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64, glam::DVec2)] primary: U,
+	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64, glam::DVec2)] augend: U,
 	#[implementations(u32, u32, &u32, &u32, f32, f32, &f32, &f32, f64, f64, &f64, &f64, glam::DVec2)] addend: T,
 ) -> <U as Add<T>>::Output {
-	primary + addend
+	augend + addend
 }
 
 // Subtract
-#[node_macro::new_node_fn(category("Math"))]
+#[node_macro::new_node_fn(category("Math: Arithmetic"))]
 fn subtract<U: Sub<T>, T>(
 	_: (),
-	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64, glam::DVec2)] primary: U,
+	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64, glam::DVec2)] minuend: U,
 	#[implementations(u32, u32, &u32, &u32, f32, f32, &f32, &f32, f64, f64, &f64, &f64, glam::DVec2)] subtrahend: T,
 ) -> <U as Sub<T>>::Output {
-	primary - subtrahend
-}
-
-// Divide
-#[node_macro::new_node_fn(category("Math"))]
-fn divide<U: Div<T>, T>(
-	_: (),
-	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64, glam::DVec2, glam::DVec2)] primary: U,
-	#[default(1.)]
-	#[implementations(u32, u32, &u32, &u32, f32, f32, &f32, &f32, f64, f64, &f64, &f64, glam::DVec2, f64)]
-	divisor: T,
-) -> <U as Div<T>>::Output {
-	primary / divisor
+	minuend - subtrahend
 }
 
 // Multiply
-#[node_macro::new_node_fn(category("Math"))]
+#[node_macro::new_node_fn(category("Math: Arithmetic"))]
 fn multiply<U: Mul<T>, T>(
 	_: (),
-	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64, glam::DVec2, f64)] primary: U,
+	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64, glam::DVec2, f64)] multiplier: U,
 	#[default(1.)]
 	#[implementations(u32, u32, &u32, &u32, f32, f32, &f32, &f32, f64, f64, &f64, &f64, glam::DVec2, glam::DVec2)]
 	multiplicand: T,
 ) -> <U as Mul<T>>::Output {
-	primary * multiplicand
+	multiplier * multiplicand
 }
 
-// Exponent
-#[node_macro::new_node_fn(category("Math"))]
-fn exponent<U: Pow<T>, T>(
+// Divide
+#[node_macro::new_node_fn(category("Math: Arithmetic"))]
+fn divide<U: Div<T>, T>(
 	_: (),
-	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64)] primary: U,
-	#[default(2.)]
-	#[implementations(u32, u32, &u32, &u32, f32, f32, &f32, &f32, f64, f64, &f64, &f64)]
-	power: T,
-) -> <U as num_traits::Pow<T>>::Output {
-	primary.pow(power)
-}
-
-// Floor
-#[node_macro::new_node_fn(category("Math"))]
-fn floor(_: (), primary: f64) -> f64 {
-	primary.floor()
-}
-
-// Ceil
-#[node_macro::new_node_fn(category("Math"))]
-fn ceiling(_: (), primary: f64) -> f64 {
-	primary.ceil()
-}
-
-// Round
-#[node_macro::new_node_fn(category("Math"))]
-fn round(_: (), primary: f64) -> f64 {
-	primary.round()
-}
-
-// Absolute Value
-#[node_macro::new_node_fn(category("Math"))]
-fn absolute_value(_: (), primary: f64) -> f64 {
-	primary.abs()
-}
-
-// Log
-#[node_macro::new_node_fn(category("Math"))]
-fn logarithm<U: num_traits::float::Float>(
-	_: (),
-	#[implementations(f32, f64)] primary: U,
-	#[default(2.)]
-	#[implementations(f32, f64)]
-	base: U,
-) -> U {
-	primary.log(base)
-}
-
-// Natural Log
-#[node_macro::new_node_fn(category("Math"))]
-fn natural_logarithm<U: num_traits::float::Float>(
-	_: (),
+	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64, glam::DVec2, glam::DVec2)] numerator: U,
 	#[default(1.)]
-	#[implementations(f32, f64)]
-	primary: U,
-) -> U {
-	primary.ln()
-}
-
-// Sine
-#[node_macro::new_node_fn(category("Math"))]
-fn sine(_: (), primary: f64) -> f64 {
-	primary.sin()
-}
-
-// Cosine
-#[node_macro::new_node_fn(category("Math"))]
-fn cosine(_: (), primary: f64) -> f64 {
-	primary.cos()
-}
-
-// Tangent
-#[node_macro::new_node_fn(category("Math"))]
-fn tangent(_: (), primary: f64) -> f64 {
-	primary.tan()
-}
-
-// Min
-#[node_macro::new_node_fn(category("Math"))]
-fn min<T: core::cmp::PartialOrd>(
-	_: (),
-	#[implementations(u32, &u32, f32, &f32, f64, &f64, &str)] operand_a: T,
-	#[expose]
-	#[implementations(u32, &u32, f32, &f32, f64, &f64, &str)]
-	operand_b: T,
-) -> T {
-	match operand_a < operand_b {
-		true => operand_a,
-		false => operand_b,
-	}
-}
-
-// Maxi
-#[node_macro::new_node_fn(category("Math"))]
-fn max<T: core::cmp::PartialOrd>(
-	_: (),
-	#[implementations(u32, &u32, f32, &f32, f64, &f64, &str)] operand_a: T,
-	#[expose]
-	#[implementations(u32, &u32, f32, &f32, f64, &f64, &str)]
-	operand_b: T,
-) -> T {
-	match operand_a > operand_b {
-		true => operand_a,
-		false => operand_b,
-	}
-}
-
-// Equals
-#[node_macro::new_node_fn(category("Math"))]
-fn equals<U: core::cmp::PartialEq<T>, T>(
-	_: (),
-	#[implementations(u32, &u32, f32, &f32, f64, &f64, &str)] operand_a: T,
-	#[expose]
-	#[implementations(u32, &u32, f32, &f32, f64, &f64, &str)]
-	operand_b: U,
-) -> bool {
-	operand_b == operand_a
+	#[implementations(u32, u32, &u32, &u32, f32, f32, &f32, &f32, f64, f64, &f64, &f64, glam::DVec2, f64)]
+	denominator: T,
+) -> <U as Div<T>>::Output {
+	numerator / denominator
 }
 
 // Modulo
-#[node_macro::new_node_fn(category("Math"))]
+#[node_macro::new_node_fn(category("Math: Arithmetic"))]
 fn modulo<U: Rem<T>, T>(
 	_: (),
-	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64)] primary: U,
-	#[expose]
+	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64)] numerator: U,
 	#[default(1.)]
 	#[implementations(u32, u32, &u32, &u32, f32, f32, &f32, &f32, f64, f64, &f64, &f64)]
 	modulus: T,
 ) -> <U as Rem<T>>::Output {
-	primary % modulus
+	numerator % modulus
+}
+
+// Exponent
+#[node_macro::new_node_fn(category("Math: Arithmetic"))]
+fn exponent<U: Pow<T>, T>(
+	_: (),
+	#[implementations(u32, &u32, u32, &u32, f32, &f32, f32, &f32, f64, &f64, f64, &f64)] base: U,
+	#[default(2.)]
+	#[implementations(u32, u32, &u32, &u32, f32, f32, &f32, &f32, f64, f64, &f64, &f64)]
+	power: T,
+) -> <U as num_traits::Pow<T>>::Output {
+	base.pow(power)
+}
+
+// Root
+#[node_macro::new_node_fn(category("Math: Arithmetic"))]
+fn root<U: num_traits::float::Float>(
+	_: (),
+	#[default(2.)]
+	#[implementations(f32, f64)]
+	radicand: U,
+	#[default(2.)]
+	#[implementations(f32, f64)]
+	degree: U,
+) -> U {
+	if degree == U::from(2.).unwrap() {
+		radicand.sqrt()
+	} else if degree == U::from(3.).unwrap() {
+		radicand.cbrt()
+	} else {
+		radicand.powf(U::from(1.).unwrap() / degree)
+	}
+}
+
+// Log
+#[node_macro::new_node_fn(category("Math: Arithmetic"))]
+fn logarithm<U: num_traits::float::Float>(
+	_: (),
+	#[implementations(f64, f32)] value: U,
+	#[default(2.)]
+	#[implementations(f64, f32)]
+	base: U,
+) -> U {
+	if base == U::from(2.).unwrap() {
+		value.log2()
+	} else if base == U::from(10.).unwrap() {
+		value.log10()
+	} else if base - U::from(std::f64::consts::E).unwrap() < U::epsilon() * U::from(1e6).unwrap() {
+		value.ln()
+	} else {
+		value.log(base)
+	}
+}
+
+// Sine
+#[node_macro::new_node_fn(category("Math: Trig"))]
+fn sine(_: (), theta: f64) -> f64 {
+	theta.sin()
+}
+
+// Cosine
+#[node_macro::new_node_fn(category("Math: Trig"))]
+fn cosine(_: (), theta: f64) -> f64 {
+	theta.cos()
+}
+
+// Tangent
+#[node_macro::new_node_fn(category("Math: Trig"))]
+fn tangent(_: (), theta: f64) -> f64 {
+	theta.tan()
+}
+
+// Random
+#[node_macro::new_node_fn(category("Math: Numeric"))]
+fn random(_: (), _primary: (), seed: u64, #[default(0.)] min: f64, #[default(1.)] max: f64) -> f64 {
+	let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+	let result = rng.gen::<f64>();
+	let (min, max) = if min < max { (min, max) } else { (max, min) };
+	result * (max - min) + min
+}
+
+// Round
+#[node_macro::new_node_fn(category("Math: Numeric"))]
+fn round(_: (), value: f64) -> f64 {
+	value.round()
+}
+
+// Floor
+#[node_macro::new_node_fn(category("Math: Numeric"))]
+fn floor(_: (), value: f64) -> f64 {
+	value.floor()
+}
+
+// Ceiling
+#[node_macro::new_node_fn(category("Math: Numeric"))]
+fn ceiling(_: (), value: f64) -> f64 {
+	value.ceil()
+}
+
+// Absolute Value
+#[node_macro::new_node_fn(category("Math: Numeric"))]
+fn absolute_value(_: (), value: f64) -> f64 {
+	value.abs()
+}
+
+// Min
+#[node_macro::new_node_fn(category("Math: Numeric"))]
+fn min<T: core::cmp::PartialOrd>(_: (), #[implementations(u32, &u32, f32, &f32, f64, &f64, &str)] value: T, #[implementations(u32, &u32, f32, &f32, f64, &f64, &str)] other_value: T) -> T {
+	match value < other_value {
+		true => value,
+		false => other_value,
+	}
+}
+
+// Max
+#[node_macro::new_node_fn(category("Math: Numeric"))]
+fn max<T: core::cmp::PartialOrd>(_: (), #[implementations(u32, &u32, f32, &f32, f64, &f64, &str)] value: T, #[implementations(u32, &u32, f32, &f32, f64, &f64, &str)] other_value: T) -> T {
+	match value > other_value {
+		true => value,
+		false => other_value,
+	}
+}
+
+// Equals
+#[node_macro::new_node_fn(category("Math: Logic"))]
+fn equals<U: core::cmp::PartialEq<T>, T>(_: (), #[implementations(u32, &u32, f32, &f32, f64, &f64, &str)] value: T, #[implementations(u32, &u32, f32, &f32, f64, &f64, &str)] other_value: U) -> bool {
+	other_value == value
+}
+
+// Logical Or
+#[node_macro::new_node_fn(category("Math: Logic"))]
+fn logical_or(_: (), value: bool, other_value: bool) -> bool {
+	value || other_value
+}
+
+// Logical And
+#[node_macro::new_node_fn(category("Math: Logic"))]
+fn logical_and(_: (), value: bool, other_value: bool) -> bool {
+	value && other_value
+}
+
+// Logical Xor
+#[node_macro::new_node_fn(category("Math: Logic"))]
+fn logical_xor(_: (), value: bool, other_value: bool) -> bool {
+	value ^ other_value
+}
+
+// Logical Not
+#[node_macro::new_node_fn(category("Math: Logic"))]
+fn logical_not(_: (), input: bool) -> bool {
+	!input
 }
 
 // Vector2 Value
@@ -214,7 +247,7 @@ fn clone<'i, T: Clone + 'i>(_: (), #[implementations(&crate::raster::ImageFrame<
 }
 
 // Identity
-/// Return the input argument unchanged
+/// The identity function returns the input argument unchanged.
 #[node_macro::new_node_fn]
 fn identity<'i, T: 'i>(#[implementations()] value: T) -> T {
 	value

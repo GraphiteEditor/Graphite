@@ -10,22 +10,3 @@ fn log_to_console<T: core::fmt::Debug>(
 	debug!("{value:#?}");
 	value
 }
-
-#[node_macro::new_node_fn(category("Math"))]
-fn logic_or(_: (), #[expose] operand_a: bool, #[expose] operand_b: bool) -> bool {
-	operand_a || operand_b
-}
-
-#[node_macro::new_node_fn(category("Math"))]
-fn logic_and(_: (), #[expose] operand_a: bool, #[expose] operand_b: bool) -> bool {
-	operand_a && operand_b
-}
-#[node_macro::new_node_fn(category("Math"))]
-fn logic_xor(_: (), #[expose] operand_a: bool, #[expose] operand_b: bool) -> bool {
-	operand_a ^ operand_b
-}
-
-#[node_macro::new_node_fn(category("Math"))]
-fn logic_not(_: (), #[expose] input: bool) -> bool {
-	!input
-}

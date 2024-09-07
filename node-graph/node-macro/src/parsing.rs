@@ -99,12 +99,12 @@ impl Parse for NodeFnAttributes {
 						meta,
 						indoc!(
 							r#"
-                            Unsupported attribute in `node_fn`.
-                            Supported attributes are 'category', 'path' and 'name'.
-                            
-                            Example usage:
-                            #[node_fn(category("Value"), name("TestNode"))]
-                            "#
+							Unsupported attribute in `node_fn`.
+							Supported attributes are 'category', 'path' and 'name'.
+							
+							Example usage:
+							#[node_fn(category("Value"), name("TestNode"))]
+							"#
 						),
 					));
 				}
@@ -388,7 +388,7 @@ mod tests {
 
 	#[test]
 	fn test_basic_node() {
-		let attr = quote!(category("Math"), path(graphene_core::TestNode));
+		let attr = quote!(category("Math: Arithmetic"), path(graphene_core::TestNode));
 		let input = quote!(
 			fn add(a: f64, b: f64) -> f64 {
 				a + b
@@ -398,7 +398,7 @@ mod tests {
 		let parsed = parse_node_fn(attr, input).unwrap();
 		let expected = ParsedNodeFn {
 			attributes: NodeFnAttributes {
-				category: Some(parse_quote!("Math")),
+				category: Some(parse_quote!("Math: Arithmetic")),
 				display_name: None,
 				path: Some(parse_quote!(graphene_core::TestNode)),
 			},
@@ -430,7 +430,7 @@ mod tests {
 
 	#[test]
 	fn test_node_with_impl_node() {
-		let attr = quote!(category("Transform"));
+		let attr = quote!(category("General"));
 		let input = quote!(
 			fn transform<T: 'static>(footprint: Footprint, transform_target: impl Node<Footprint, Output = T>, translate: DVec2) -> T {
 				// Implementation details...
@@ -440,7 +440,7 @@ mod tests {
 		let parsed = parse_node_fn(attr, input).unwrap();
 		let expected = ParsedNodeFn {
 			attributes: NodeFnAttributes {
-				category: Some(parse_quote!("Transform")),
+				category: Some(parse_quote!("General")),
 				display_name: None,
 				path: None,
 			},
@@ -490,7 +490,7 @@ mod tests {
 		let parsed = parse_node_fn(attr, input).unwrap();
 		let expected = ParsedNodeFn {
 			attributes: NodeFnAttributes {
-				category: Some(parse_quote!("Vector")),
+				category: Some(parse_quote!("Vector: Generator")),
 				display_name: None,
 				path: None,
 			},
@@ -522,7 +522,7 @@ mod tests {
 
 	#[test]
 	fn test_node_with_implementations() {
-		let attr = quote!(category("Raster"));
+		let attr = quote!(category("Raster: Adjustment"));
 		let input = quote!(
 			fn levels<P: Pixel>(image: ImageFrame<P>, #[implementations(f32, f64)] shadows: f64) -> ImageFrame<P> {
 				// Implementation details...
@@ -532,7 +532,7 @@ mod tests {
 		let parsed = parse_node_fn(attr, input).unwrap();
 		let expected = ParsedNodeFn {
 			attributes: NodeFnAttributes {
-				category: Some(parse_quote!("Raster")),
+				category: Some(parse_quote!("Raster: Adjustment")),
 				display_name: None,
 				path: None,
 			},
@@ -648,7 +648,7 @@ mod tests {
 	#[test]
 	#[should_panic(expected = "Multiple 'category' attributes are not allowed")]
 	fn test_multiple_categories() {
-		let attr = quote!(category("Math"), category("Arithmetic"));
+		let attr = quote!(category("Math: Arithmetic"), category("General"));
 		let input = quote!(
 			fn add(a: i32, b: i32) -> i32 {
 				a + b

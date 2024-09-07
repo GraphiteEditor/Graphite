@@ -1013,25 +1013,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: &node_properties::black_and_white_properties,
 		},
 		DocumentNodeDefinition {
-			identifier: "Color Channel",
-			category: "Raster: Adjustment",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
-					inputs: vec![NodeInput::value(TaggedValue::RedGreenBlue(RedGreenBlue::Red), false)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Channel".to_string()],
-					output_names: vec!["Out".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::color_channel_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Color Channel",
-			category: "Raster: Adjustment",
+			identifier: "Color Channel Value",
+			category: "Value",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
