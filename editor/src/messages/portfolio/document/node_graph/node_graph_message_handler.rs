@@ -1680,7 +1680,7 @@ impl NodeGraphMessageHandler {
 			let frontend_graph_inputs = node.inputs.iter().enumerate().map(|(index, _)| {
 				// Convert the index in all inputs to the index in only the exposed inputs
 				// TODO: Only display input type if potential inputs in node_registry are all the same type
-				let node_type = network_interface.input_type(&InputConnector::node(node_id, index), breadcrumb_network_path);
+				let (node_type, type_source) = network_interface.input_type(&InputConnector::node(node_id, index), breadcrumb_network_path);
 				// TODO: Should display the color of the "most commonly relevant" (we'd need some sort of precedence) data type it allows given the current generic form that's constrained by the other present connections.
 				let data_type = FrontendGraphDataType::with_type(&node_type);
 
@@ -1689,12 +1689,12 @@ impl NodeGraphMessageHandler {
 					.input_names
 					.get(index)
 					.cloned()
-					.unwrap_or(network_interface.input_type(&InputConnector::node(node_id, index), breadcrumb_network_path).nested_type().to_string());
+					.unwrap_or(network_interface.input_type(&InputConnector::node(node_id, index), breadcrumb_network_path).0.nested_type().to_string());
 
 				FrontendGraphInput {
 					data_type,
 					name: input_name,
-					resolved_type: Some(format!("{:?}", node_type)),
+					resolved_type: Some(format!("{:?} from {:?}", node_type, type_source)),
 					connected_to: None,
 				}
 			});
@@ -1727,7 +1727,7 @@ impl NodeGraphMessageHandler {
 
 			let output_types = network_interface.output_types(&node_id, breadcrumb_network_path);
 			let primary_output_type = output_types.first().expect("Primary output should always exist");
-			let frontend_data_type = if let Some(output_type) = primary_output_type {
+			let frontend_data_type = if let Some((output_type, _)) = primary_output_type {
 				FrontendGraphDataType::with_type(output_type)
 			} else {
 				FrontendGraphDataType::General
@@ -1737,7 +1737,7 @@ impl NodeGraphMessageHandler {
 				Some(FrontendGraphOutput {
 					data_type: frontend_data_type,
 					name: "Output 1".to_string(),
-					resolved_type: primary_output_type.clone().map(|input| format!("{input:?}")),
+					resolved_type: primary_output_type.clone().map(|(input, type_source)| format!("{input:?} from {type_source:?}")),
 					connected_to,
 				})
 			} else {
@@ -1749,7 +1749,7 @@ impl NodeGraphMessageHandler {
 				if index == 0 && network_interface.has_primary_output(&node_id, breadcrumb_network_path) {
 					continue;
 				}
-				let frontend_data_type = if let Some(output_type) = &exposed_output {
+				let frontend_data_type = if let Some((output_type, _)) = &exposed_output {
 					FrontendGraphDataType::with_type(output_type)
 				} else {
 					FrontendGraphDataType::General
@@ -1769,7 +1769,7 @@ impl NodeGraphMessageHandler {
 				exposed_outputs.push(FrontendGraphOutput {
 					data_type: frontend_data_type,
 					name: output_name,
-					resolved_type: exposed_output.clone().map(|input| format!("{input:?}")),
+					resolved_type: exposed_output.clone().map(|(input, type_source)| format!("{input:?} from {type_source:?}")),
 					connected_to,
 				});
 			}
