@@ -51,7 +51,7 @@
 		return dPathAttribute;
 	}
 
-	function computeSvgTexts(direction: RulerDirection, origin: number, majorMarkSpacing: number, numberInterval: number, rulerLength: number): { transform: string; text: number }[] {
+	function computeSvgTexts(direction: RulerDirection, origin: number, majorMarkSpacing: number, numberInterval: number, rulerLength: number): { transform: string; text: string }[] {
 		const isVertical = direction === "Vertical";
 
 		const offsetStart = mod(origin, majorMarkSpacing);
@@ -69,7 +69,14 @@
 			let transform = `translate(${x} ${y})`;
 			if (isVertical) transform += " rotate(270)";
 
-			svgTextCoordinates.push({ transform, text });
+			let addText: string;
+			if (numberInterval < 1.0) {
+				addText = text.toFixed(Math.abs(Math.log10(numberInterval)));
+			} else {
+				addText = text.toString();
+			}
+
+			svgTextCoordinates.push({ transform, text: addText });
 
 			text += numberInterval;
 		}
