@@ -2429,97 +2429,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		(*IMAGINATE_NODE).clone(),
 		DocumentNodeDefinition {
-			identifier: "Circle",
-			category: "Vector: Generator",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(1), 0)],
-						nodes: vec![
-							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(()), 0), NodeInput::network(concrete!(f64), 1)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::generator_nodes::CircleGenerator")),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::CullNode")),
-								manual_composition: Some(concrete!(Footprint)),
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::F64(50.), false)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["None".to_string(), "Radius".to_string()],
-					output_names: vec!["Vector".to_string()],
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Circle Generator".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Cull".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
-							..Default::default()
-						},
-						..Default::default()
-					}),
-					..Default::default()
-				},
-			},
-			properties: &node_properties::circle_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Ellipse",
-			category: "Vector: Generator",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::EllipseGenerator"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::None, false),
-						NodeInput::value(TaggedValue::F64(50.), false),
-						NodeInput::value(TaggedValue::F64(25.), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["None".to_string(), "Radius X".to_string(), "Radius Y".to_string()],
-					output_names: vec!["Vector".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::ellipse_properties,
-		},
-		DocumentNodeDefinition {
 			identifier: "Rectangle",
 			category: "Vector: Generator",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::RectangleGenerator"),
+					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::RectangleNode"),
+					manual_composition: Some(concrete!(())),
 					inputs: vec![
 						NodeInput::value(TaggedValue::None, false),
 						NodeInput::value(TaggedValue::F64(100.), false),
@@ -2550,7 +2465,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Vector: Generator",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::RegularPolygonGenerator"),
+					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::RegularPolygonNode"),
+					manual_composition: Some(concrete!(())),
 					inputs: vec![
 						NodeInput::value(TaggedValue::None, false),
 						NodeInput::value(TaggedValue::U32(6), false),
@@ -2571,7 +2487,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Vector: Generator",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::StarGenerator"),
+					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::StarNode"),
+					manual_composition: Some(concrete!(())),
 					inputs: vec![
 						NodeInput::value(TaggedValue::None, false),
 						NodeInput::value(TaggedValue::U32(5), false),
@@ -2593,7 +2510,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Vector: Generator",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::LineGenerator"),
+					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::LineNode"),
+					manual_composition: Some(concrete!(())),
 					inputs: vec![
 						NodeInput::value(TaggedValue::None, false),
 						NodeInput::value(TaggedValue::DVec2(DVec2::new(0., -50.)), false),
@@ -2614,7 +2532,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Vector: Generator",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::SplineGenerator"),
+					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::SplineNode"),
+					manual_composition: Some(concrete!(())),
 					inputs: vec![
 						NodeInput::value(TaggedValue::None, false),
 						NodeInput::value(TaggedValue::VecDVec2(vec![DVec2::new(0., -50.), DVec2::new(25., 0.), DVec2::new(0., 50.)]), false),
@@ -2628,23 +2547,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			properties: &node_properties::spline_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Shape", // TODO: What is this and is it used? What is the difference between this and "Path"?
-			category: "Ignore",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::PathGenerator"),
-					inputs: vec![NodeInput::value(TaggedValue::PointIds(vec![]), false), NodeInput::value(TaggedValue::PointIds(vec![]), false)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Path Data".to_string(), "Colinear Manipulators".to_string()],
-					output_names: vec!["Vector".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Path",

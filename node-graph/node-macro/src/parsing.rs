@@ -480,7 +480,7 @@ mod tests {
 
 	#[test]
 	fn test_node_with_default_values() {
-		let attr = quote!(category("Vector"));
+		let attr = quote!(category("Vector: Generator"));
 		let input = quote!(
 			fn circle(_: (), #[default(50.0)] radius: f64) -> VectorData {
 				// Implementation details...

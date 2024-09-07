@@ -1599,21 +1599,6 @@ pub(crate) fn exposure_properties(document_node: &DocumentNode, node_id: NodeId,
 	]
 }
 
-pub(crate) fn circle_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	vec![LayoutGroup::Row {
-		widgets: number_widget(document_node, node_id, 1, "Radius", NumberInput::default(), true),
-	}]
-}
-
-pub(crate) fn ellipse_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| {
-		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
-
-		LayoutGroup::Row { widgets }
-	};
-	vec![operand("Radius X", 1), operand("Radius Y", 2)]
-}
-
 pub(crate) fn rectangle_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let size_x_index = 1;
 	let size_y_index = 2;
