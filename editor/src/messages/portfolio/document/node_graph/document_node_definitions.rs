@@ -1,6 +1,7 @@
 use super::node_properties;
 use super::utility_types::FrontendNodeType;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::node_graph::node_properties::node_no_properties;
 use crate::messages::portfolio::document::utility_types::network_interface::{
 	DocumentNodeMetadata, DocumentNodePersistentMetadata, NodeNetworkInterface, NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodeTemplate, NodeTypePersistentMetadata,
 };
@@ -3391,8 +3392,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					node_properties::property_from_type(document_node, node_id, index, &name, ty, context)
 				})
 				.collect();
-			rows
+			if rows.is_empty() {
+				node_no_properties(document_node, node_id, context)
+			} else {
+				rows
+			}
 		};
+
 		let properties = Box::leak(Box::new(properties));
 
 		let node = DocumentNodeDefinition {
