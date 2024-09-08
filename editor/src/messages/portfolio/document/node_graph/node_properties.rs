@@ -87,19 +87,31 @@ fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	widgets
 }
 
-pub(crate) fn property_from_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, ty: &Type, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn property_from_type(
+	document_node: &DocumentNode,
+	node_id: NodeId,
+	index: usize,
+	name: &str,
+	ty: &Type,
+	_context: &mut NodePropertiesContext,
+	number_options: (Option<f64>, Option<f64>, Option<(f64, f64)>),
+) -> Vec<LayoutGroup> {
+	let (number_min, number_max, mode_range) = number_options;
+	let min = |x: f64| number_min.unwrap_or(x);
+	let max = |x: f64| number_max.unwrap_or(x);
+
 	let mut extra_widgets = vec![];
 	let widgets = match ty {
 		Type::Concrete(concrete_type) => {
 			match concrete_type.alias.as_ref().map(|x| x.as_ref()) {
 				// Aliased types (ambiguous values)
-				Some("Percentage") => number_widget(document_node, node_id, index, name, NumberInput::default().percentage().min(0.).max(100.), false).into(),
-				Some("Angle") => number_widget(document_node, node_id, index, name, NumberInput::default().mode_range().min(-180.).max(180.).unit("°"), false).into(),
-				Some("PixelLength") => number_widget(document_node, node_id, index, name, NumberInput::default().min(0.).unit("px"), false).into(),
-				Some("Length") => number_widget(document_node, node_id, index, name, NumberInput::default().min(0.), false).into(),
-				Some("Fraction") => number_widget(document_node, node_id, index, name, NumberInput::default().min(0.).max(1.), false).into(),
-				Some("IntegerCount") => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(1.), false).into(),
-				Some("SeedValue") => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(0.), false).into(),
+				Some("Percentage") => number_widget(document_node, node_id, index, name, NumberInput::default().percentage().min(min(0.)).max(max(100.)), false).into(),
+				Some("Angle") => number_widget(document_node, node_id, index, name, NumberInput::default().mode_range().min(min(-180.)).max(max(180.)).unit("°"), false).into(),
+				Some("PixelLength") => number_widget(document_node, node_id, index, name, NumberInput::default().min(min(0.)).unit("px"), false).into(),
+				Some("Length") => number_widget(document_node, node_id, index, name, NumberInput::default().min(min(0.)), false).into(),
+				Some("Fraction") => number_widget(document_node, node_id, index, name, NumberInput::default().min(min(0.)).max(max(1.)), false).into(),
+				Some("IntegerCount") => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(min(1.)), false).into(),
+				Some("SeedValue") => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(min(0.)), false).into(),
 				Some("Resolution") => vec2_widget(document_node, node_id, index, name, "W", "H", "px", Some(64.), add_blank_assist),
 
 				// For all other types, use TypeId-based matching
@@ -109,8 +121,8 @@ pub(crate) fn property_from_type(document_node: &DocumentNode, node_id: NodeId, 
 						match internal_id {
 							x if x == TypeId::of::<bool>() => bool_widget(document_node, node_id, index, name, CheckboxInput::default(), false).into(),
 							x if x == TypeId::of::<f64>() => number_widget(document_node, node_id, index, name, NumberInput::default(), false).into(),
-							x if x == TypeId::of::<u32>() => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(0.), false).into(),
-							x if x == TypeId::of::<u64>() => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(0.), false).into(),
+							x if x == TypeId::of::<u32>() => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(min(0.)), false).into(),
+							x if x == TypeId::of::<u64>() => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(min(0.)), false).into(),
 							x if x == TypeId::of::<String>() => text_widget(document_node, node_id, index, name, false).into(),
 							x if x == TypeId::of::<Color>() => color_widget(document_node, node_id, index, name, ColorButton::default(), false),
 							x if x == TypeId::of::<Option<Color>>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(true), false),
@@ -133,6 +145,8 @@ pub(crate) fn property_from_type(document_node: &DocumentNode, node_id: NodeId, 
 								last.clone()
 							}
 							x if x == TypeId::of::<BlendMode>() => blend_mode(document_node, node_id, index, name, false),
+							x if x == TypeId::of::<RedGreenBlue>() => color_channel(document_node, node_id, index, name, false),
+							x if x == TypeId::of::<RedGreenBlueAlpha>() => rgba_channel(document_node, node_id, index, name, false),
 							x if x == TypeId::of::<NoiseType>() => noise_type(document_node, node_id, index, name, false),
 							x if x == TypeId::of::<FractalType>() => fractal_type(document_node, node_id, index, name, false, false),
 							x if x == TypeId::of::<CellularDistanceFunction>() => cellular_distance_function(document_node, node_id, index, name, false, false),
@@ -210,7 +224,7 @@ pub(crate) fn property_from_type(document_node: &DocumentNode, node_id: NodeId, 
 			}
 		}
 		Type::Generic(_) => vec![TextLabel::new("Generic type (not supported)").widget_holder()].into(),
-		Type::Fn(_, out) => return property_from_type(document_node, node_id, index, name, out, _context),
+		Type::Fn(_, out) => return property_from_type(document_node, node_id, index, name, out, _context, number_options),
 		Type::Future(_) => vec![TextLabel::new("Future type (not supported)").widget_holder()].into(),
 	};
 	extra_widgets.push(widgets);
@@ -1110,30 +1124,10 @@ pub(crate) fn black_and_white_properties(document_node: &DocumentNode, node_id: 
 	]
 }
 
-pub(crate) fn blend_mode_value_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	vec![blend_mode(document_node, node_id, 0, "Blend Mode", true)]
-}
-
-pub(crate) fn number_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let widgets = number_widget(document_node, node_id, 0, "Number", NumberInput::default(), true);
-
-	vec![LayoutGroup::Row { widgets }]
-}
-
 pub(crate) fn percentage_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let widgets = number_widget(document_node, node_id, 0, "Percentage", NumberInput::default().min(0.).max(100.).mode_range(), true);
 
 	vec![LayoutGroup::Row { widgets }]
-}
-
-pub(crate) fn boolean_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let widgets = bool_widget(document_node, node_id, 0, "Bool", CheckboxInput::default(), true);
-
-	vec![LayoutGroup::Row { widgets }]
-}
-
-pub(crate) fn color_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	vec![color_widget(document_node, node_id, 0, "Color", ColorButton::default(), true)]
 }
 
 pub(crate) fn gradient_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -1152,18 +1146,8 @@ pub(crate) fn mask_properties(document_node: &DocumentNode, node_id: NodeId, _co
 	vec![mask]
 }
 
-pub(crate) fn color_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	vec![color_channel(document_node, node_id, 0, "Channel", true)]
-}
-
 pub(crate) fn insert_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let color_channel = color_channel(document_node, node_id, 2, "Into", true);
-
-	vec![color_channel]
-}
-
-pub(crate) fn extract_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let color_channel = rgba_channel(document_node, node_id, 1, "From", true);
 
 	vec![color_channel]
 }

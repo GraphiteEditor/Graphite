@@ -65,40 +65,6 @@ static DOCUMENT_NODE_TYPES: once_cell::sync::Lazy<Vec<DocumentNodeDefinition>> =
 fn static_nodes() -> Vec<DocumentNodeDefinition> {
 	let mut custom = vec![
 		DocumentNodeDefinition {
-			identifier: "Bool Value",
-			category: "Value",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
-					inputs: vec![NodeInput::value(TaggedValue::Bool(true), false)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Bool".to_string()],
-					output_names: vec!["Out".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::boolean_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Number Value",
-			category: "Value",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
-					inputs: vec![NodeInput::value(TaggedValue::F64(0.), false)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Number".to_string()],
-					output_names: vec!["Out".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::number_properties,
-		},
-		DocumentNodeDefinition {
 			identifier: "Percentage Value",
 			category: "Value",
 			node_template: NodeTemplate {
@@ -114,23 +80,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			properties: &node_properties::percentage_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Color Value",
-			category: "Value",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
-					inputs: vec![NodeInput::value(TaggedValue::OptionalColor(None), false)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Color".to_string()],
-					output_names: vec!["Out".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::color_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Gradient Value",
@@ -1014,80 +963,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: &node_properties::black_and_white_properties,
 		},
 		DocumentNodeDefinition {
-			identifier: "Color Channel Value",
-			category: "Value",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
-					inputs: vec![NodeInput::value(TaggedValue::RedGreenBlue(RedGreenBlue::Red), false)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Channel".to_string()],
-					output_names: vec!["Out".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::color_channel_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Blend Mode Value",
-			category: "Value",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
-					inputs: vec![NodeInput::value(TaggedValue::BlendMode(BlendMode::default()), false)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Blend Mode".to_string()],
-					output_names: vec!["Out".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::blend_mode_value_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Extract Channel",
-			category: "Raster",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::raster::ExtractChannelNode"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::default()), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "From".to_string()],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::extract_channel_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Extract Opaque",
-			category: "Raster",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::raster::ExtractOpaqueNode"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Red), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string()],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::node_no_properties,
-		},
-		DocumentNodeDefinition {
 			identifier: "Split Channels",
 			category: "Raster",
 			node_template: NodeTemplate {
@@ -1105,7 +980,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(concrete!(ImageFrame<Color>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Red), false),
 								],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::ExtractChannelNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::adjustments::ExtractChannelNode")),
+								manual_composition: Some(concrete!(Footprint)),
 								..Default::default()
 							},
 							DocumentNode {
@@ -1113,7 +989,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(concrete!(ImageFrame<Color>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Green), false),
 								],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::ExtractChannelNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::adjustments::ExtractChannelNode")),
+								manual_composition: Some(concrete!(Footprint)),
 								..Default::default()
 							},
 							DocumentNode {
@@ -1121,7 +998,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(concrete!(ImageFrame<Color>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Blue), false),
 								],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::ExtractChannelNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::adjustments::ExtractChannelNode")),
+								manual_composition: Some(concrete!(Footprint)),
 								..Default::default()
 							},
 							DocumentNode {
@@ -1129,7 +1007,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(concrete!(ImageFrame<Color>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Alpha), false),
 								],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::ExtractChannelNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::adjustments::ExtractChannelNode")),
+								manual_composition: Some(concrete!(Footprint)),
 								..Default::default()
 							},
 						]
@@ -1152,7 +1031,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "RedNode".to_string(),
+										display_name: "Extract Channel".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
@@ -1160,24 +1039,24 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "GreenNode".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										display_name: "Extract Channel".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 2)),
 										..Default::default()
 									},
 									..Default::default()
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "BlueNode".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										display_name: "Extract Channel".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 4)),
 										..Default::default()
 									},
 									..Default::default()
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "AlphaNode".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										display_name: "Extract Channel".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 6)),
 										..Default::default()
 									},
 									..Default::default()
@@ -2302,7 +2181,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Raster: Adjustment",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::raster::SelectiveColorNode"),
+					implementation: DocumentNodeImplementation::proto("graphene_core::raster::adjustments::SelectiveColorNode"),
 					inputs: vec![
 						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
 						// Mode
@@ -3282,16 +3161,19 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			})
 			.collect();
 
-		let field_types: Vec<_> = fields.iter().zip(first_node_io.parameters.iter()).map(|(field, ty)| (field.name.clone(), ty.clone())).collect();
+		let field_types: Vec<_> = fields.iter().zip(first_node_io.parameters.iter()).map(|(field, ty)| (field.clone(), ty.clone())).collect();
 		let properties = move |document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext| {
 			let rows: Vec<_> = field_types
 				.iter()
 				.enumerate()
 				.skip(1)
-				.flat_map(|(index, (name, ty))| {
-					let name = name.to_case(convert_case::Case::Title);
+				.flat_map(|(index, (field, ty))| {
+					let name = field.name.to_case(convert_case::Case::Title);
+					let min = field.number_min;
+					let max = field.number_max;
+					let mode_range = field.number_mode_range;
 
-					node_properties::property_from_type(document_node, node_id, index, &name, ty, context)
+					node_properties::property_from_type(document_node, node_id, index, &name, ty, context, (min, max, mode_range))
 				})
 				.collect();
 			if rows.is_empty() {

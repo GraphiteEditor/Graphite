@@ -209,6 +209,7 @@ impl TaggedValue {
 					x if x == TypeId::of::<u64>() => FromStr::from_str(string).map(TaggedValue::U64).ok()?,
 					x if x == TypeId::of::<u32>() => FromStr::from_str(string).map(TaggedValue::U32).ok()?,
 					x if x == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
+					x if x == TypeId::of::<Color>() => Color::from_rgba_str(string).map(TaggedValue::Color)?,
 					_ => return None,
 				};
 				Some(ty)

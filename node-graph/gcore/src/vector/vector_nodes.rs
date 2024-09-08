@@ -28,9 +28,7 @@ impl VectorIterMut for VectorData {
 #[node_macro::new_node_fn(path(graphene_core::vector))]
 async fn assign_colors<T: VectorIterMut>(
 	footprint: Footprint,
-	#[expose]
-	#[implementations((Footprint, GraphicGroup), (Footprint, VectorData))]
-	input: impl Node<Footprint, Output = T>,
+	#[implementations((Footprint, GraphicGroup), (Footprint, VectorData))] input: impl Node<Footprint, Output = T>,
 	fill: bool,
 	stroke: bool,
 	gradient: GradientStops,
@@ -73,7 +71,7 @@ async fn assign_colors<T: VectorIterMut>(
 #[node_macro::new_node_fn(path(graphene_core::vector), name("Fill"))]
 async fn set_fill<T: Into<Fill> + 'n + Send>(
 	footprint: Footprint,
-	#[expose] vector_data: impl Node<Footprint, Output = VectorData>,
+	vector_data: impl Node<Footprint, Output = VectorData>,
 	#[implementations(Fill, Color, Option<Color>, crate::vector::style::Gradient)] fill: T,
 ) -> VectorData {
 	let mut vector_data = vector_data.eval(footprint).await;
@@ -85,7 +83,7 @@ async fn set_fill<T: Into<Fill> + 'n + Send>(
 #[node_macro::new_node_fn(path(graphene_core::vector), category("Vector: Style"))]
 async fn stroke(
 	footprint: Footprint,
-	#[expose] vector_data: impl Node<Footprint, Output = VectorData>,
+	vector_data: impl Node<Footprint, Output = VectorData>,
 	color: Option<Color>,
 	weight: f64,
 	dash_lengths: Vec<f64>,
@@ -108,13 +106,7 @@ async fn stroke(
 }
 
 #[node_macro::new_node_fn(path(graphene_core::vector))]
-async fn repeat(
-	footprint: Footprint,
-	#[expose] instance: impl Node<Footprint, Output = VectorData>,
-	#[default(100., 100.)] direction: DVec2,
-	angle: Angle,
-	#[default(4)] instances: IntegerCount,
-) -> VectorData {
+async fn repeat(footprint: Footprint, instance: impl Node<Footprint, Output = VectorData>, #[default(100., 100.)] direction: DVec2, angle: Angle, #[default(4)] instances: IntegerCount) -> VectorData {
 	let instance = instance.eval(footprint).await;
 	let angle = angle.to_radians();
 	let instances = instances.max(1);
@@ -147,7 +139,7 @@ async fn repeat(
 #[node_macro::new_node_fn(path(graphene_core::vector))]
 async fn circular_repeat(
 	footprint: Footprint,
-	#[expose] instance: impl Node<Footprint, Output = VectorData>,
+	instance: impl Node<Footprint, Output = VectorData>,
 	angle_offset: Angle,
 	#[default(5)] radius: Length,
 	#[default(5)] instances: IntegerCount,
@@ -179,13 +171,13 @@ async fn circular_repeat(
 }
 
 #[node_macro::new_node_fn(path(graphene_core::vector))]
-fn bounding_box(_: (), #[expose] vector_data: VectorData) -> VectorData {
+fn bounding_box(_: (), vector_data: VectorData) -> VectorData {
 	let bounding_box = vector_data.bounding_box_with_transform(vector_data.transform).unwrap();
 	VectorData::from_subpath(Subpath::new_rect(bounding_box[0], bounding_box[1]))
 }
 
 #[node_macro::new_node_fn(path(graphene_core::vector))]
-async fn solidify_stroke(footprint: Footprint, #[expose] vector_data: impl Node<Footprint, Output = VectorData>) -> VectorData {
+async fn solidify_stroke(footprint: Footprint, vector_data: impl Node<Footprint, Output = VectorData>) -> VectorData {
 	// Grab what we need from original data.
 	let vector_data = vector_data.eval(footprint).await;
 	let VectorData { transform, style, .. } = &vector_data;
@@ -384,7 +376,7 @@ async fn sample_points(
 }
 
 #[node_macro::new_node_fn(path(graphene_core::vector))]
-fn poisson_disk_points(_: (), #[expose] vector_data: VectorData, separation_disk_diameter: f64, seed: SeedValue) -> VectorData {
+fn poisson_disk_points(_: (), vector_data: VectorData, separation_disk_diameter: f64, seed: SeedValue) -> VectorData {
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 	let mut result = VectorData::empty();
 	for mut subpath in vector_data.stroke_bezier_paths() {
@@ -403,7 +395,7 @@ fn poisson_disk_points(_: (), #[expose] vector_data: VectorData, separation_disk
 }
 
 #[node_macro::new_node_fn(name("Lengths of Segments of Subpaths"))]
-async fn lengths_of_segments_of_subpaths(footprint: Footprint, #[expose] vector_data: impl Node<Footprint, Output = VectorData>) -> Vec<f64> {
+async fn lengths_of_segments_of_subpaths(footprint: Footprint, vector_data: impl Node<Footprint, Output = VectorData>) -> Vec<f64> {
 	let vector_data = vector_data.eval(footprint).await;
 
 	vector_data
@@ -413,7 +405,7 @@ async fn lengths_of_segments_of_subpaths(footprint: Footprint, #[expose] vector_
 }
 
 #[node_macro::new_node_fn(path(graphene_core::vector), name("Splines from Points"))]
-fn splines_from_points(_: (), #[expose] mut vector_data: VectorData) -> VectorData {
+fn splines_from_points(_: (), mut vector_data: VectorData) -> VectorData {
 	let points = &vector_data.point_domain;
 
 	vector_data.segment_domain.clear();
@@ -440,7 +432,7 @@ fn splines_from_points(_: (), #[expose] mut vector_data: VectorData) -> VectorDa
 #[node_macro::new_node_fn(path(graphene_core::vector))]
 async fn morph(
 	footprint: Footprint,
-	#[expose] source: impl Node<Footprint, Output = VectorData>,
+	source: impl Node<Footprint, Output = VectorData>,
 	#[expose] target: impl Node<Footprint, Output = VectorData>,
 	start_index: IntegerCount,
 	#[default(0.5)] time: Fraction,

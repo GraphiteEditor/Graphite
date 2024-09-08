@@ -5,7 +5,7 @@ use quote::{format_ident, ToTokens};
 use syn::parse::{Parse, ParseStream, Parser};
 use syn::punctuated::Punctuated;
 use syn::token::Comma;
-use syn::{Attribute, Error, FnArg, GenericParam, Ident, ItemFn, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, Type, TypeTuple, WhereClause};
+use syn::{Attribute, Error, ExprTuple, FnArg, GenericParam, Ident, ItemFn, LitFloat, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, Type, TypeTuple, WhereClause};
 
 use crate::codegen::generate_node_code;
 
@@ -40,6 +40,9 @@ pub(crate) enum ParsedField {
 		ty: Type,
 		exposed: bool,
 		default_value: Option<TokenStream2>,
+		number_min: Option<LitFloat>,
+		number_max: Option<LitFloat>,
+		number_mode_range: Option<ExprTuple>,
 		implementations: Punctuated<Type, Comma>,
 	},
 	Node {
@@ -210,14 +213,35 @@ fn parse_implementations<T: Parse>(attr: &Attribute, name: &Ident) -> syn::Resul
 		.parse2(content)
 		.map_err(|e| Error::new_spanned(attr, format!("Failed to parse implementations for argument '{}': {}", name, e)))
 }
+
 fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Result<ParsedField> {
 	let name = &pat_ident.ident;
 	let default_value = extract_attribute(attrs, "default").and_then(|attr| {
 		attr.parse_args()
-			.map_err(|e| Error::new_spanned(attr, format!("Invalid default value for argument '{}': {}", name, e)))
+			.map_err(|e| Error::new_spanned(attr, format!("Invalid `default` value for argument '{}': {}", name, e)))
+			.ok()
+	});
+	let number_min = extract_attribute(attrs, "min").and_then(|attr| {
+		attr.parse_args()
+			.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `min` value for argument '{}': {}", name, e)))
+			.ok()
+	});
+	let number_max = extract_attribute(attrs, "max").and_then(|attr| {
+		attr.parse_args()
+			.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `max` value for argument '{}': {}", name, e)))
 			.ok()
 	});
 	let exposed = extract_attribute(attrs, "expose").is_some();
+	let number_mode_range: Option<ExprTuple> = extract_attribute(attrs, "mode_range").and_then(|attr| {
+		attr.parse_args()
+			.map_err(|e| Error::new_spanned(attr, format!("Invalid `mode_range` tuple of min and max range slider values for argument '{}': {}", name, e)))
+			.ok()
+	});
+	if let Some(range) = &number_mode_range {
+		if range.elems.len() != 2 {
+			return Err(Error::new_spanned(range, "Expected a tuple of two values for `mode_range` for the min and max, respectively"));
+		}
+	}
 
 	let implementations = extract_attribute(attrs, "implementations")
 		.map(|attr| parse_implementations(attr, name))
@@ -248,6 +272,9 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		Ok(ParsedField::Regular {
 			pat_ident,
 			exposed,
+			number_min,
+			number_max,
+			number_mode_range,
 			ty,
 			default_value,
 			implementations,
@@ -419,6 +446,9 @@ mod tests {
 				ty: parse_quote!(f64),
 				exposed: false,
 				default_value: None,
+				number_min: None,
+				number_max: None,
+				number_mode_range: None,
 				implementations: Punctuated::new(),
 			}],
 			body: TokenStream2::new(),
@@ -468,6 +498,9 @@ mod tests {
 					ty: parse_quote!(DVec2),
 					exposed: false,
 					default_value: None,
+					number_min: None,
+					number_max: None,
+					number_mode_range: None,
 					implementations: Punctuated::new(),
 				},
 			],
@@ -511,6 +544,9 @@ mod tests {
 				ty: parse_quote!(f64),
 				exposed: false,
 				default_value: Some(quote!(50.0)),
+				number_min: None,
+				number_max: None,
+				number_mode_range: None,
 				implementations: Punctuated::new(),
 			}],
 			body: TokenStream2::new(),
@@ -553,12 +589,66 @@ mod tests {
 				ty: parse_quote!(f64),
 				exposed: false,
 				default_value: None,
+				number_min: None,
+				number_max: None,
+				number_mode_range: None,
 				implementations: {
 					let mut p = Punctuated::new();
 					p.push(parse_quote!(f32));
 					p.push(parse_quote!(f64));
 					p
 				},
+			}],
+			body: TokenStream2::new(),
+			crate_name: FoundCrate::Itself,
+		};
+
+		assert_parsed_node_fn(&parsed, &expected);
+	}
+
+	#[test]
+	fn test_number_min_max_range_mode() {
+		let attr = quote!(category("Math: Arithmetic"), path(graphene_core::TestNode));
+		let input = quote!(
+			fn add(
+				a: f64,
+				#[mode_range(0., 100.)]
+				#[min(-500.)]
+				#[max(500.)]
+				b: f64,
+			) -> f64 {
+				a + b
+			}
+		);
+
+		let parsed = parse_node_fn(attr, input).unwrap();
+		let expected = ParsedNodeFn {
+			attributes: NodeFnAttributes {
+				category: Some(parse_quote!("Math: Arithmetic")),
+				display_name: None,
+				path: Some(parse_quote!(graphene_core::TestNode)),
+			},
+			fn_name: Ident::new("add", Span::call_site()),
+			struct_name: Ident::new("Add", Span::call_site()),
+			mod_name: Ident::new("add", Span::call_site()),
+			fn_generics: vec![],
+			where_clause: None,
+			input: Input {
+				pat_ident: pat_ident("a"),
+				ty: parse_quote!(f64),
+				implementations: Punctuated::new(),
+			},
+			output_type: parse_quote!(f64),
+			is_async: false,
+			fields: vec![ParsedField::Regular {
+				pat_ident: pat_ident("b"),
+				ty: parse_quote!(f64),
+				exposed: false,
+				default_value: None,
+				number_min: Some(parse_quote!(-500.)),
+				number_max: Some(parse_quote!(500.)),
+				number_mode_range: Some(parse_quote!((0., 100.))),
+				implementations: Punctuated::new(),
 			}],
 			body: TokenStream2::new(),
 			crate_name: FoundCrate::Itself,
@@ -600,6 +690,9 @@ mod tests {
 				ty: parse_quote!(String),
 				exposed: true,
 				default_value: None,
+				number_min: None,
+				number_max: None,
+				number_mode_range: None,
 				implementations: Punctuated::new(),
 			}],
 			body: TokenStream2::new(),

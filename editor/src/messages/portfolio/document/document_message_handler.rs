@@ -25,11 +25,11 @@ use crate::node_graph_executor::NodeGraphExecutor;
 
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeNetwork, OldNodeNetwork};
-use graphene_core::raster::BlendMode;
-use graphene_core::raster::ImageFrame;
+use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::vector::style::ViewMode;
 
 use glam::{DAffine2, DVec2};
+
 pub struct DocumentMessageData<'a> {
 	pub document_id: DocumentId,
 	pub ipp: &'a InputPreprocessorMessageHandler,

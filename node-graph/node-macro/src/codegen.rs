@@ -81,6 +81,31 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		})
 		.collect();
 
+	let number_min_values: Vec<_> = fields
+		.iter()
+		.map(|field| match field {
+			ParsedField::Regular { number_min: Some(number_min), .. } => quote!(Some(#number_min)),
+			_ => quote!(None),
+		})
+		.collect();
+	let number_max_values: Vec<_> = fields
+		.iter()
+		.map(|field| match field {
+			ParsedField::Regular { number_max: Some(number_max), .. } => quote!(Some(#number_max)),
+			_ => quote!(None),
+		})
+		.collect();
+	let number_mode_range_values: Vec<_> = fields
+		.iter()
+		.map(|field| match field {
+			ParsedField::Regular {
+				number_mode_range: Some(number_mode_range),
+				..
+			} => quote!(Some(#number_mode_range)),
+			_ => quote!(None),
+		})
+		.collect();
+
 	let exposed: Vec<_> = fields
 		.iter()
 		.map(|field| match field {
@@ -221,6 +246,9 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 								name: stringify!(#field_names).to_string(),
 								exposed: #exposed,
 								default_value: #default_values,
+								number_min: #number_min_values,
+								number_max: #number_max_values,
+								number_mode_range: #number_mode_range_values,
 							},
 						)*
 					],

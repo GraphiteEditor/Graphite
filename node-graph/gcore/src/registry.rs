@@ -40,6 +40,9 @@ pub struct FieldMetadata {
 	pub name: String,
 	pub exposed: bool,
 	pub default_value: Option<&'static str>,
+	pub number_min: Option<f64>,
+	pub number_max: Option<f64>,
+	pub number_mode_range: Option<(f64, f64)>,
 }
 type NodeRegistry = LazyLock<Mutex<HashMap<String, Vec<(NodeConstructor, NodeIOTypes)>>>>;
 
@@ -94,8 +97,8 @@ impl Deref for NodeContainer {
 	}
 }
 
-/// #Safety
-/// Marks NodeContainer as Sync. This dissallows the use of threadlocal stroage for nodes as this would invalidate references to them.
+/// # Safety
+/// Marks NodeContainer as Sync. This dissallows the use of threadlocal storage for nodes as this would invalidate references to them.
 // TODO: implement this on a higher level wrapper to avoid missuse
 #[cfg(feature = "dealloc_nodes")]
 unsafe impl Send for NodeContainer {}

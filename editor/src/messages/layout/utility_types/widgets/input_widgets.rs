@@ -198,6 +198,7 @@ pub struct NumberInput {
 	#[derivative(Default(value = "1."))]
 	pub step: f64,
 
+	// TODO: Make this (and range_max) apply to both Range and Increment modes when dragging with the mouse
 	#[serde(rename = "rangeMin")]
 	pub range_min: Option<f64>,
 

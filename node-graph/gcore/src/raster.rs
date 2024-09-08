@@ -424,9 +424,7 @@ impl SetBlendMode for ImageFrame<Color> {
 #[node_macro::new_node_fn(category("Style"))]
 async fn blend_mode<T: SetBlendMode>(
 	footprint: Footprint,
-	#[expose]
-	#[implementations((Footprint, crate::vector::VectorData), (Footprint, crate::GraphicGroup), (Footprint, ImageFrame<Color>))]
-	value: impl Node<Footprint, Output = T>,
+	#[implementations((Footprint, crate::vector::VectorData), (Footprint, crate::GraphicGroup), (Footprint, ImageFrame<Color>))] value: impl Node<Footprint, Output = T>,
 	blend_mode: BlendMode,
 ) -> T {
 	let mut value = value.eval(footprint).await;
@@ -437,9 +435,7 @@ async fn blend_mode<T: SetBlendMode>(
 #[node_macro::new_node_fn(category("Style"))]
 async fn opacity<T: MultiplyAlpha>(
 	footprint: Footprint,
-	#[expose]
-	#[implementations((Footprint, crate::vector::VectorData), (Footprint, crate::GraphicGroup), (Footprint, ImageFrame<Color>))]
-	value: impl Node<Footprint, Output = T>,
+	#[implementations((Footprint, crate::vector::VectorData), (Footprint, crate::GraphicGroup), (Footprint, ImageFrame<Color>))] value: impl Node<Footprint, Output = T>,
 	#[default(100.)] factor: Percentage,
 ) -> T {
 	let mut value = value.eval(footprint).await;
