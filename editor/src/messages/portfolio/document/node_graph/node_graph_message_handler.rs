@@ -6,7 +6,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::NodePropertiesContext;
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, NodeNetworkMetadata, NodeTemplate, OutputConnector, Previewing, TypeSource};
+use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, NodeTemplate, OutputConnector, Previewing, TypeSource};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -181,7 +181,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						.find(|(_, input)| input.is_exposed_to_frontend(selection_network_path.is_empty()))
 					{
 						responses.add(NodeGraphMessage::CreateWire {
-							output_connector: output_connector.clone(),
+							output_connector: *output_connector,
 							input_connector: InputConnector::node(node_id, input_index),
 						});
 
@@ -481,7 +481,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if let Some(clicked_input) = &clicked_input {
 					responses.add(DocumentMessage::StartTransaction);
 					self.initial_disconnecting = true;
-					self.disconnecting = Some(clicked_input.clone());
+					self.disconnecting = Some(*clicked_input);
 
 					let output_connector = if *clicked_input == InputConnector::Export(0) {
 						network_interface.root_node(selection_network_path).map(|root_node| root_node.to_connector())
@@ -615,9 +615,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							if disconnect_root_node {
 								responses.add(NodeGraphMessage::DisconnectRootNode);
 							} else {
-								responses.add(NodeGraphMessage::DisconnectInput {
-									input_connector: disconnecting.clone(),
-								});
+								responses.add(NodeGraphMessage::DisconnectInput { input_connector: *disconnecting });
 							}
 							// Update the frontend that the node is disconnected
 							responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -781,8 +779,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 					if let (Some(output_connector), Some(input_connector)) = (&output_connector, &input_connector) {
 						responses.add(NodeGraphMessage::CreateWire {
-							input_connector: input_connector.clone(),
-							output_connector: output_connector.clone(),
+							input_connector: *input_connector,
+							output_connector: *output_connector,
 						});
 
 						responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -972,7 +970,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 									{
 										responses.add(NodeGraphMessage::InsertNodeBetween {
 											node_id: selected_node_id,
-											input_connector: overlapping_wire.wire_end.clone(),
+											input_connector: overlapping_wire.wire_end,
 											insert_node_input_index: selected_node_input_index,
 										});
 
