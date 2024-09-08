@@ -6,7 +6,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::NodePropertiesContext;
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, NodeTemplate, OutputConnector, Previewing};
+use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, NodeNetworkMetadata, NodeTemplate, OutputConnector, Previewing, TypeSource};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -1650,6 +1650,7 @@ impl NodeGraphMessageHandler {
 			log::error!("Could not get nested network when collecting nodes");
 			return Vec::new();
 		};
+
 		for node_id in network.nodes.keys().cloned().collect::<Vec<_>>() {
 			if network_interface.is_eligible_to_be_layer(&node_id, breadcrumb_network_path) {
 				can_be_layer_lookup.insert(node_id);
@@ -1660,6 +1661,7 @@ impl NodeGraphMessageHandler {
 				log::error!("Could not get position for node {node_id}");
 			}
 		}
+		let mut frontend_inputs_lookup = frontend_inputs_lookup(breadcrumb_network_path, network_interface);
 		let Some(network) = network_interface.network(breadcrumb_network_path) else {
 			log::error!("Could not get nested network when collecting nodes");
 			return Vec::new();
@@ -1671,59 +1673,20 @@ impl NodeGraphMessageHandler {
 
 		let mut nodes = Vec::new();
 		for (&node_id, node) in &network.nodes {
-			let node_id_path = &[breadcrumb_network_path, (&[node_id])].concat();
-			let Some(node_metadata) = network_metadata.persistent_metadata.node_metadata.get(&node_id) else {
-				log::error!("Could not get node_metadata for {node_id_path:?}");
-				continue;
-			};
+			let node_id_path = [breadcrumb_network_path, (&[node_id])].concat();
 
-			let frontend_graph_inputs = node.inputs.iter().enumerate().map(|(index, _)| {
-				// Convert the index in all inputs to the index in only the exposed inputs
-				// TODO: Only display input type if potential inputs in node_registry are all the same type
-				let (node_type, type_source) = network_interface.input_type(&InputConnector::node(node_id, index), breadcrumb_network_path);
-				// TODO: Should display the color of the "most commonly relevant" (we'd need some sort of precedence) data type it allows given the current generic form that's constrained by the other present connections.
-				let data_type = FrontendGraphDataType::with_type(&node_type);
-
-				let input_name = node_metadata
-					.persistent_metadata
-					.input_names
-					.get(index)
-					.cloned()
-					.unwrap_or(network_interface.input_type(&InputConnector::node(node_id, index), breadcrumb_network_path).0.nested_type().to_string());
-
-				FrontendGraphInput {
-					data_type,
-					name: input_name,
-					resolved_type: Some(format!("{:?} from {:?}", node_type, type_source)),
-					connected_to: None,
-				}
-			});
-
-			let mut inputs = node.inputs.iter().zip(frontend_graph_inputs).map(|(node_input, mut frontend_graph_input)| {
-				if let NodeInput::Node {
-					node_id: connected_node_id,
-					output_index,
-					..
-				} = node_input
-				{
-					frontend_graph_input.connected_to = Some(OutputConnector::node(*connected_node_id, *output_index));
-				} else if let NodeInput::Network { import_index, .. } = node_input {
-					frontend_graph_input.connected_to = Some(OutputConnector::Import(*import_index));
-				}
-				(node_input, frontend_graph_input)
-			});
-
-			let primary_input = inputs
-				.next()
-				.filter(|(input, _)| {
-					// Don't show EditorApi input to nodes like "Text" in the document network
-					input.is_exposed_to_frontend(breadcrumb_network_path.is_empty())
+			let inputs = frontend_inputs_lookup.remove(&node_id).unwrap_or_default();
+			let mut inputs = inputs.into_iter().map(|input| {
+				input.map(|input| FrontendGraphInput {
+					data_type: FrontendGraphDataType::with_type(&input.ty),
+					resolved_type: Some(format!("{:?} from {:?}", &input.ty, input.type_source)),
+					name: input.name.unwrap_or_else(|| input.ty.nested_type().to_string()),
+					connected_to: input.output_connector,
 				})
-				.map(|(_, input_type)| input_type);
-			let exposed_inputs = inputs
-				.filter(|(input, _)| input.is_exposed_to_frontend(breadcrumb_network_path.is_empty()))
-				.map(|(_, input_type)| input_type)
-				.collect();
+			});
+
+			let primary_input = inputs.next().flatten();
+			let exposed_inputs = inputs.flatten().collect();
 
 			let output_types = network_interface.output_types(&node_id, breadcrumb_network_path);
 			let primary_output_type = output_types.first().expect("Primary output should always exist");
@@ -1791,10 +1754,10 @@ impl NodeGraphMessageHandler {
 			let errors = self
 				.node_graph_errors
 				.iter()
-				.find(|error| error.node_path == *node_id_path)
+				.find(|error| error.node_path == node_id_path)
 				.map(|error| format!("{:?}", error.error.clone()))
 				.or_else(|| {
-					if self.node_graph_errors.iter().any(|error| error.node_path.starts_with(node_id_path)) {
+					if self.node_graph_errors.iter().any(|error| error.node_path.starts_with(&node_id_path)) {
 						Some("Node graph type error within this node".to_string())
 					} else {
 						None
@@ -1983,6 +1946,63 @@ impl NodeGraphMessageHandler {
 			DVec2::new(input_position.x, input_position.y),
 		]
 	}
+}
+
+#[derive(Default)]
+struct InputLookup {
+	name: Option<String>,
+	ty: Type,
+	type_source: TypeSource,
+	output_connector: Option<OutputConnector>,
+}
+
+type FrontendInputsLookup = HashMap<NodeId, Vec<Option<InputLookup>>>;
+
+/// Create a lookup hashmap that can be used to create the frontend inputs. This is needed because `input_type` requires a mutable `network_interface`.
+fn frontend_inputs_lookup(breadcrumb_network_path: &[NodeId], network_interface: &mut NodeNetworkInterface) -> FrontendInputsLookup {
+	let Some(network) = network_interface.network(breadcrumb_network_path) else {
+		return Default::default();
+	};
+	let network_metadata = network_interface.network_metadata(breadcrumb_network_path);
+	let mut frontend_inputs_lookup = HashMap::new();
+	for (&node_id, node) in network.nodes.iter() {
+		let node_metadata = network_metadata.and_then(|network_metadata| network_metadata.persistent_metadata.node_metadata.get(&node_id));
+		let mut inputs = Vec::with_capacity(node.inputs.len());
+		for (index, input) in node.inputs.iter().enumerate() {
+			let is_exposed = input.is_exposed_to_frontend(breadcrumb_network_path.is_empty());
+
+			// Skip not exposed inputs (they still get an entry to help with finding the primary input)
+			if !is_exposed {
+				inputs.push(None);
+			}
+
+			// Get the name from the metadata here (since it also requires a reference to the `network_interface`)
+			let name = node_metadata.and_then(|node_metadata| node_metadata.persistent_metadata.input_names.get(index)).cloned();
+
+			// Get the output connector that feeds into this input (done here as well for simplicity)
+			let connector = OutputConnector::from_input(input);
+
+			inputs.push(Some(InputLookup {
+				name,
+				output_connector: connector,
+				..Default::default()
+			}));
+		}
+		frontend_inputs_lookup.insert(node_id, inputs);
+	}
+
+	for (&node_id, value) in frontend_inputs_lookup.iter_mut() {
+		for (index, value) in value.iter_mut().enumerate() {
+			// Skip not exposed inputs for efficiency
+			let Some(value) = value else { continue };
+
+			// Resolve the type (done in a seperate loop because it requires a mutable reference to the `network_interface`)
+			let (ty, type_source) = network_interface.input_type(&InputConnector::node(node_id, index), breadcrumb_network_path);
+			value.ty = ty;
+			value.type_source = type_source;
+		}
+	}
+	frontend_inputs_lookup
 }
 
 impl Default for NodeGraphMessageHandler {

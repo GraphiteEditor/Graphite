@@ -171,7 +171,7 @@ impl NodeNetworkInterface {
 		layers
 	}
 
-	pub fn chain_width(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> u32 {
+	pub fn chain_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> u32 {
 		if self.number_of_inputs(node_id, network_path) > 1 {
 			let mut last_chain_node_distance = 0u32;
 			// Iterate upstream from the layer, and get the number of nodes distance to the last node with Position::Chain
@@ -414,7 +414,7 @@ impl NodeNetworkInterface {
 	/// Converts all node id inputs to a new id based on a HashMap.
 	///
 	/// If the node is not in the hashmap then a default input is found based on the compiled network, using the node_id passed as a parameter
-	pub fn map_ids(&self, mut node_template: NodeTemplate, node_id: &NodeId, new_ids: &HashMap<NodeId, NodeId>, network_path: &[NodeId]) -> NodeTemplate {
+	pub fn map_ids(&mut self, mut node_template: NodeTemplate, node_id: &NodeId, new_ids: &HashMap<NodeId, NodeId>, network_path: &[NodeId]) -> NodeTemplate {
 		for (input_index, input) in node_template.document_node.inputs.iter_mut().enumerate() {
 			if let &mut NodeInput::Node { node_id: id, output_index, lambda } = input {
 				if let Some(&new_id) = new_ids.get(&id) {
@@ -461,7 +461,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Try and get the [`Type`] for any [`InputConnector`] based on the `self.resolved_types`.
-	fn node_type_from_compiled(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<(Type, TypeSource)> {
+	fn node_type_from_compiled(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<(Type, TypeSource)> {
 		let (node_id, input_index) = match *input_connector {
 			InputConnector::Node { node_id, input_index } => (node_id, input_index),
 			InputConnector::Export(export_index) => {
@@ -491,21 +491,17 @@ impl NodeNetworkInterface {
 		}
 		let node_id_path = [network_path, &[node_id]].concat().clone();
 		match &node.implementation {
-			DocumentNodeImplementation::Network(nested_network) => {
+			DocumentNodeImplementation::Network(_nested_network) => {
 				// Attempt to resolve where this import is within the nested network (it may be connected to the node or directly to an export)
-				let node_input_connection = nested_network
-					.nodes
-					.iter()
-					.flat_map(|(node_id, node)| node.inputs.iter().enumerate().map(|(input_index, input)| (InputConnector::node(*node_id, input_index), input)));
-				let export_connections = nested_network.exports.iter().enumerate().map(|(export_index, export)| (InputConnector::Export(export_index), export));
-				let downstream_connection = node_input_connection.chain(export_connections).find(|(_, input)| {
-					if let NodeInput::Network { import_index, .. } = input {
-						*import_index == input_index
-					} else {
-						false
-					}
-				});
-				if let Some((input_connector, _)) = downstream_connection {
+				let outwards_wires = self.outward_wires(network_path);
+				let inputs_using_import = outwards_wires.and_then(|outwards_wires| outwards_wires.get(&OutputConnector::Import(input_index)));
+				let first_input = inputs_using_import.and_then(|input| input.first()).copied();
+
+				if inputs_using_import.is_some_and(|inputs| inputs.len() > 1) {
+					warn!("Found multiple inputs using an import. Using the type of the first one.");
+				}
+
+				if let Some(input_connector) = first_input {
 					self.node_type_from_compiled(&input_connector, &node_id_path)
 				}
 				// Nothing is connected to the import
@@ -519,14 +515,15 @@ impl NodeNetworkInterface {
 				self.resolved_types
 					.types
 					.get(node_id_path.as_slice())
-					.map(|node_types| (node_types.inputs[input_index + manual_composition_offset].clone(), TypeSource::Compiled))
+					.and_then(|node_types| node_types.inputs.get(input_index + manual_composition_offset).cloned())
+					.map(|node_types| (node_types, TypeSource::Compiled))
 			}
 			DocumentNodeImplementation::Extract => None,
 		}
 	}
 
 	/// Guess the type from the node based on a document node default or a random protonode definition.
-	fn guess_type_from_node(&self, network_path: &mut Vec<NodeId>, node_id: NodeId, node: &DocumentNode, input_index: usize) -> (Type, TypeSource) {
+	fn guess_type_from_node(&mut self, network_path: &mut Vec<NodeId>, node_id: NodeId, input_index: usize) -> (Type, TypeSource) {
 		// Try and get the default value from the document node definition
 		if let Some(value) = self
 			.get_node_definition(network_path, node_id)
@@ -535,6 +532,15 @@ impl NodeNetworkInterface {
 		{
 			return (value.ty(), TypeSource::DocumentNodeDefault);
 		}
+
+		let Some(network) = self.network(network_path) else {
+			log::error!("Could not get network in input_type");
+			return (concrete!(()), TypeSource::Error("could not get network"));
+		};
+
+		let Some(node) = network.nodes.get(&node_id) else {
+			return (concrete!(()), TypeSource::Error("node id not in network"));
+		};
 
 		match &node.implementation {
 			DocumentNodeImplementation::ProtoNode(protonode) => {
@@ -551,18 +557,23 @@ impl NodeNetworkInterface {
 
 				(input_type, TypeSource::RandomProtonodeImplementation)
 			}
-			DocumentNodeImplementation::Network(network) => {
-				for (child_id, child_node) in &network.nodes {
-					for (network_node_input_index, input) in child_node.inputs.iter().enumerate() {
-						let NodeInput::Network { import_index, .. } = input else { continue };
-						if *import_index == input_index {
-							network_path.push(node_id);
-							let result = self.guess_type_from_node(network_path, *child_id, child_node, network_node_input_index);
-							network_path.pop();
-							return result;
-						}
-					}
+			DocumentNodeImplementation::Network(_network) => {
+				// Attempt to resolve where this import is within the nested network
+				let outwards_wires = self.outward_wires(network_path);
+				let inputs_using_import = outwards_wires.and_then(|outwards_wires| outwards_wires.get(&OutputConnector::Import(input_index)));
+				let first_input = inputs_using_import.and_then(|input| input.first()).copied();
+
+				if let Some(InputConnector::Node {
+					node_id: child_id,
+					input_index: child_input_index,
+				}) = first_input
+				{
+					network_path.push(node_id);
+					let result = self.guess_type_from_node(network_path, child_id, child_input_index);
+					network_path.pop();
+					return result;
 				}
+
 				// Input is disconnected
 				(concrete!(()), TypeSource::Error("disconnected network input"))
 			}
@@ -571,26 +582,19 @@ impl NodeNetworkInterface {
 	}
 
 	/// Get the [`Type`] for any InputConnector
-	pub fn input_type(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> (Type, TypeSource) {
+	pub fn input_type(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> (Type, TypeSource) {
 		if let Some(result) = self.node_type_from_compiled(input_connector, network_path) {
 			return result;
 		}
 
-		let Some(network) = self.network(network_path) else {
-			log::error!("Could not get network in input_type");
-			return (concrete!(()), TypeSource::Error("could not get network"));
-		};
 		// Resolve types from proto nodes in node_registry
 		let Some(node_id) = input_connector.node_id() else {
 			return (concrete!(()), TypeSource::Error("input connector is not a node"));
 		};
-		let Some(node) = network.nodes.get(&node_id) else {
-			return (concrete!(()), TypeSource::Error("node id not in network"));
-		};
 
 		// TODO: Once there is type inference (#1621), replace this workaround approach when disconnecting node inputs with NodeInput::Node(ToDefaultNode),
 		// TODO: which would be a new node that implements the Default trait (i.e. `Default::default()`)
-		self.guess_type_from_node(&mut network_path.to_vec(), node_id, node, input_connector.input_index())
+		self.guess_type_from_node(&mut network_path.to_vec(), node_id, input_connector.input_index())
 	}
 
 	/// Retrieves the output types for a given document node and its exports.
@@ -4881,6 +4885,12 @@ pub enum TypeSource {
 	Error(&'static str),
 }
 
+impl Default for TypeSource {
+	fn default() -> Self {
+		Self::Error("no source")
+	}
+}
+
 /// Represents an input connector with index based on the [`DocumentNode::inputs`] index, not the visible input index
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum InputConnector {
@@ -4922,7 +4932,7 @@ impl InputConnector {
 }
 
 /// Represents an output connector
-#[derive(Debug, Clone, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum OutputConnector {
 	#[serde(rename = "node")]
 	Node {
@@ -4956,6 +4966,14 @@ impl OutputConnector {
 	pub fn node_id(&self) -> Option<NodeId> {
 		match self {
 			OutputConnector::Node { node_id, .. } => Some(*node_id),
+			_ => None,
+		}
+	}
+
+	pub fn from_input(input: &NodeInput) -> Option<Self> {
+		match input {
+			NodeInput::Network { import_index, .. } => Some(Self::Import(*import_index)),
+			NodeInput::Node { node_id, output_index, .. } => Some(Self::node(*node_id, *output_index)),
 			_ => None,
 		}
 	}
