@@ -120,8 +120,10 @@ pub(crate) fn property_from_type(
 						use std::any::TypeId;
 						match internal_id {
 							x if x == TypeId::of::<bool>() => bool_widget(document_node, node_id, index, name, CheckboxInput::default(), false).into(),
-							x if x == TypeId::of::<f64>() => number_widget(document_node, node_id, index, name, NumberInput::default(), false).into(),
-							x if x == TypeId::of::<u32>() => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(min(0.)), false).into(),
+							x if x == TypeId::of::<f64>() => {
+								number_widget(document_node, node_id, index, name, NumberInput::default().min(min(f64::NEG_INFINITY)).max(max(f64::INFINITY)), false).into()
+							}
+							x if x == TypeId::of::<u32>() => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(min(0.)).max(max(f64::from(u32::MAX))), false).into(),
 							x if x == TypeId::of::<u64>() => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(min(0.)), false).into(),
 							x if x == TypeId::of::<String>() => text_widget(document_node, node_id, index, name, false).into(),
 							x if x == TypeId::of::<Color>() => color_widget(document_node, node_id, index, name, ColorButton::default(), false),
