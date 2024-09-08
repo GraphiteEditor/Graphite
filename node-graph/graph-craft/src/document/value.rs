@@ -193,6 +193,8 @@ tagged_value! {
 	OptionalString(Option<String>),
 	VecString(Vec<String>),
 	NodeTypeMetadata(crate::document::NodeTypePersistentMetadata),
+	// Transient Node Metadata
+	ClickTargets(TransientMetadata<crate::document::DocumentNodeClickTargets>),
 }
 
 impl TaggedValue {
@@ -271,7 +273,7 @@ trait FakeHash {
 mod fake_hash {
 	use std::collections::HashMap;
 
-	use crate::document::{InputConnector, OutputConnector, Ports, TransientMetadata};
+	use crate::document::{DocumentNodeClickTargets, InputConnector, OutputConnector, Ports, TransientMetadata};
 
 	use super::*;
 	impl FakeHash for f64 {
@@ -414,6 +416,26 @@ mod fake_hash {
 				click_target.stroke_width().hash(state);
 				click_target.bounding_box().hash(state)
 			});
+		}
+	}
+	impl FakeHash for DocumentNodeClickTargets {
+		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+			self.node_click_target.subpath().hash(state);
+			self.node_click_target.stroke_width().hash(state);
+			self.node_click_target.bounding_box().hash(state);
+			self.port_click_targets.hash(state);
+			match &self.node_type_click_targets {
+				crate::document::NodeTypeClickTargets::Layer(layer_click_target) => {
+					1.hash(state);
+					layer_click_target.visibility_click_target.subpath().hash(state);
+					layer_click_target.visibility_click_target.stroke_width().hash(state);
+					layer_click_target.visibility_click_target.bounding_box().hash(state);
+					layer_click_target.grip_click_target.subpath().hash(state);
+					layer_click_target.grip_click_target.stroke_width().hash(state);
+					layer_click_target.grip_click_target.bounding_box().hash(state);
+				}
+				crate::document::NodeTypeClickTargets::Node => 0.hash(state),
+			}
 		}
 	}
 }

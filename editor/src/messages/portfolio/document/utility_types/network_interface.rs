@@ -8,8 +8,8 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use bezier_rs::Subpath;
 use graph_craft::document::{value::TaggedValue, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graph_craft::document::{
-	InputConnector, LayerMetadata, LayerOwner, LayerPersistentMetadata, LayerPosition, LayerTransientMetadata, NetworkEdgeDistance, NodePersistentMetadata, NodePosition, NodeTypePersistentMetadata,
-	OutputConnector, Ports, Previewing, RootNode, TransientMetadata, PTZ,
+	DocumentNodeClickTargets, InputConnector, LayerClickTargetTypes, LayerClickTargets, LayerMetadata, LayerOwner, LayerPersistentMetadata, LayerPosition, LayerTransientMetadata, NetworkEdgeDistance,
+	NodePersistentMetadata, NodePosition, NodeTypeClickTargets, NodeTypePersistentMetadata, OutputConnector, Ports, Previewing, RootNode, TransientMetadata, PTZ,
 };
 use graph_craft::{concrete, Type};
 use graphene_std::memo::MemoHashGuard;
@@ -30,9 +30,6 @@ pub struct NodeNetworkInterface {
 	network: NodeNetwork,
 	/// Stores all editor information for the document network as inputs to nodes. The node graph overlay nodes are added to this network.
 	metadata_network: NodeNetwork,
-	// TODO: Remove and store in node network with IDs based on Self::metadata_node_id
-	/// Stores all editor information for a NodeNetwork. Should automatically kept in sync by the setter methods when changes to the document network are made.
-	network_metadata: NodeNetworkMetadata,
 	// TODO: Wrap in TransientMetadata Option
 	/// Stores the document network's structural topology. Should automatically kept in sync by the setter methods when changes to the document network are made.
 	#[serde(skip)]
@@ -70,8 +67,7 @@ pub enum MetadataType {
 	NodeTypeMetadata,
 	// Node transient metadata
 	ClickTargets,
-	NodeTypeClickTargets,
-	// Derived metadata
+	// Derived metadata (might not be necessary)
 	Position,
 	IsLayer,
 }
@@ -102,7 +98,6 @@ impl Clone for NodeNetworkInterface {
 		Self {
 			network: self.network.clone(),
 			metadata_network: self.metadata_network.clone(),
-			network_metadata: self.network_metadata.clone(),
 			document_metadata: Default::default(),
 			resolved_types: Default::default(),
 			transaction_status: TransactionStatus::Finished,
@@ -121,27 +116,6 @@ impl NodeNetworkInterface {
 	/// Gets the nested network based on network_path
 	pub fn network(&self, network_path: &[NodeId]) -> Option<&NodeNetwork> {
 		self.network.nested_network(network_path)
-	}
-
-	pub fn metadata_network(&self, network_path: &[NodeId]) -> Option<&NodeNetwork> {
-		self.metadata_network.nested_network(network_path)
-	}
-
-	/// The network metadata should always exist for the current network
-	pub fn network_metadata(&self, network_path: &[NodeId]) -> Option<&NodeNetworkMetadata> {
-		self.network_metadata.nested_metadata(network_path)
-	}
-
-	pub fn node_metadata(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&DocumentNodeMetadata> {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata");
-			return None;
-		};
-		let Some(node_metadata) = network_metadata.persistent_metadata.node_metadata.get(node_id) else {
-			log::error!("Could not get nested node_metadata for node {node_id} in network {network_path:?}");
-			return None;
-		};
-		Some(node_metadata)
 	}
 
 	pub fn document_metadata(&self) -> &DocumentMetadata {
@@ -172,17 +146,6 @@ impl NodeNetworkInterface {
 		)
 	}
 
-	/// Get the network which the encapsulating node of the currently viewed network is part of. Will always be None in the document network.
-	pub fn encapsulating_network_metadata(&self, network_path: &[NodeId]) -> Option<&NodeNetworkMetadata> {
-		let mut encapsulating_path = network_path.to_vec();
-		encapsulating_path.pop()?;
-		let Some(parent_metadata) = self.network_metadata(&encapsulating_path) else {
-			log::error!("Could not get parent network in encapsulating_node_metadata");
-			return None;
-		};
-		Some(parent_metadata)
-	}
-
 	/// Get the node which encapsulates the currently viewed network. Will always be None in the document network.
 	pub fn encapsulating_node(&self, network_path: &[NodeId]) -> Option<&DocumentNode> {
 		let mut encapsulating_path = network_path.to_vec();
@@ -193,21 +156,6 @@ impl NodeNetworkInterface {
 			return None;
 		};
 		Some(encapsulating_node)
-	}
-
-	/// Get the node metadata for the node which encapsulates the currently viewed network. Will always be None in the document network.
-	pub fn encapsulating_node_metadata(&self, network_path: &[NodeId]) -> Option<&DocumentNodeMetadata> {
-		let mut encapsulating_path = network_path.to_vec();
-		let encapsulating_node_id = encapsulating_path.pop()?;
-		let Some(parent_metadata) = self.network_metadata(&encapsulating_path) else {
-			log::error!("Could not get parent network in encapsulating_node_metadata");
-			return None;
-		};
-		let Some(encapsulating_node_metadata) = parent_metadata.persistent_metadata.node_metadata.get(&encapsulating_node_id) else {
-			log::error!("Could not get encapsulating node metadata in encapsulating_node_metadata");
-			return None;
-		};
-		Some(encapsulating_node_metadata)
 	}
 
 	/// Returns the first downstream layer(inclusive) from a node. If the node is a layer, it will return itself.
@@ -457,14 +405,123 @@ impl NodeNetworkInterface {
 			log::error!("Could not get node {node_id} in create_node_template");
 			return None;
 		};
-		let Some(node_metadata) = self.node_metadata(node_id, network_path).cloned() else {
-			log::error!("Could not get node_metadata in create_node_template");
-			return None;
-		};
-
+		let node_metadata = self.get_all_node_metadata(node_id, network_path)?;
 		Some(NodeTemplate {
 			persistent_node_metadata: node_metadata.persistent_metadata,
 			document_node: node.clone(),
+		})
+	}
+
+	pub fn get_all_node_metadata(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<DocumentNodeMetadata> {
+		let mut node_path = network_path.to_vec();
+		node_path.push(*node_id);
+
+		let TaggedValue::OptionalString(reference) = self.metadata_value(MetadataType::Reference, &node_path).cloned()? else {
+			log::error!("Reference should be OptionalString in get_all_node_metadata");
+			return None;
+		};
+		let TaggedValue::String(display_name) = self.metadata_value(MetadataType::DisplayName, &node_path).cloned()? else {
+			log::error!("display_name should be String in get_all_node_metadata");
+			return None;
+		};
+		let TaggedValue::VecString(input_names) = self.metadata_value(MetadataType::InputNames, &node_path).cloned()? else {
+			log::error!("input_names should be VecString in get_all_node_metadata");
+			return None;
+		};
+		let TaggedValue::VecString(output_names) = self.metadata_value(MetadataType::OutputNames, &node_path).cloned()? else {
+			log::error!("output_names should be VecString in get_all_node_metadata");
+			return None;
+		};
+		let TaggedValue::Bool(has_primary_output) = self.metadata_value(MetadataType::HasPrimaryOutput, &node_path).cloned()? else {
+			log::error!("has_primary_output should be Bool in get_all_node_metadata");
+			return None;
+		};
+		let TaggedValue::Bool(locked) = self.metadata_value(MetadataType::Locked, &node_path).cloned()? else {
+			log::error!("locked should be Bool in get_all_node_metadata");
+			return None;
+		};
+		let TaggedValue::NodeTypeMetadata(node_type_metadata) = self.metadata_value(MetadataType::NodeTypeMetadata, &node_path).cloned()? else {
+			log::error!("node_type_metadata should be NodeTypeMetadata in get_all_node_metadata");
+			return None;
+		};
+
+		let Some(network) = self.network(network_path) else {
+			log::error!("Could not get network in get_all_node_metadata");
+			return None;
+		};
+		let Some(node) = network.nodes.get(&node_id) else {
+			log::error!("Could not get node {node_id} in get_all_node_metadata");
+			return None;
+		};
+		let mut network_metadata = None;
+		if matches!(node.implementation, DocumentNodeImplementation::Network(_)) {
+			network_metadata = Some(self.get_network_metadata(&node_path)?);
+		}
+		Some(DocumentNodeMetadata {
+			persistent_metadata: DocumentNodePersistentMetadata {
+				reference,
+				display_name,
+				input_names,
+				output_names,
+				has_primary_output,
+				locked,
+				node_type_metadata,
+				network_metadata,
+			},
+			transient_metadata: DocumentNodeTransientMetadata::default(),
+		})
+	}
+
+	/// Adds nodes for the network metadata. Should always be called when creating a new NodeNetwork
+	pub fn get_network_metadata(&self, network_path: &[NodeId]) -> Option<NodeNetworkMetadata> {
+		let TaggedValue::Previewing(previewing) = self.metadata_value(MetadataType::Previewing, network_path).cloned()? else {
+			log::error!("Previewing should be TaggedValue::Previewing in get_network_metadata");
+			return None;
+		};
+		let TaggedValue::PTZ(node_graph_ptz) = self.metadata_value(MetadataType::NavigationMetadata(NavigationMetadataType::PTZ), network_path).cloned()? else {
+			log::error!("PTZ should be TaggedValue::PTZ in get_network_metadata");
+			return None;
+		};
+		let TaggedValue::DAffine2(node_graph_to_viewport) = self
+			.metadata_value(MetadataType::NavigationMetadata(NavigationMetadataType::NodeGraphToViewport), network_path)
+			.cloned()?
+		else {
+			log::error!("node_graph_to_viewport should be TaggedValue::DAffine2 in get_network_metadata");
+			return None;
+		};
+		let TaggedValue::DVec2(node_graph_top_right) = self
+			.metadata_value(MetadataType::NavigationMetadata(NavigationMetadataType::NodeGraphTopRight), network_path)
+			.cloned()?
+		else {
+			log::error!("node_graph_top_right should be TaggedValue::DVec2 in get_network_metadata");
+			return None;
+		};
+
+		let mut all_node_metadata = HashMap::new();
+		let Some(network) = self.network(network_path) else {
+			log::error!("Could not get network in get_network_metadata");
+			return None;
+		};
+		for node_id in network.nodes.keys() {
+			let Some(node_metadata) = self.get_all_node_metadata(node_id, network_path) else {
+				log::error!("Could not get node metadata for node {node_id} in get_network_metadata");
+				return None;
+			};
+			all_node_metadata.insert(*node_id, node_metadata);
+		}
+
+		Some(NodeNetworkMetadata {
+			persistent_metadata: NodeNetworkPersistentMetadata {
+				previewing,
+				navigation_metadata: NavigationMetadata {
+					node_graph_ptz,
+					node_graph_to_viewport,
+					node_graph_top_right,
+				},
+				node_metadata: all_node_metadata,
+				..Default::default()
+			},
+			transient_metadata: NodeNetworkTransientMetadata::default(),
 		})
 	}
 
@@ -521,8 +578,7 @@ impl NodeNetworkInterface {
 	fn metadata_value(&self, metadata: MetadataType, node_path: &[NodeId]) -> Option<&TaggedValue> {
 		let node_id = Self::metadata_node_id(metadata, node_path);
 
-		let network = self.metadata_network(&[]).unwrap();
-		let Some(node) = network.nodes.get(&node_id) else {
+		let Some(node) = self.metadata_network.nodes.get(&node_id) else {
 			log::error!("Could not get node {node_id} in value_from_node_id");
 			return None;
 		};
@@ -1619,7 +1675,6 @@ impl NodeNetworkInterface {
 		Self {
 			network: node_network,
 			metadata_network,
-			network_metadata,
 			document_metadata: DocumentMetadata::default(),
 			resolved_types: ResolvedDocumentNodeTypes::default(),
 			transaction_status: TransactionStatus::Finished,
@@ -1653,64 +1708,6 @@ impl NodeNetworkInterface {
 
 	fn metadata_network_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetwork> {
 		self.metadata_network.nested_network_mut(network_path)
-	}
-
-	// TODO: Remove
-	fn network_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetworkMetadata> {
-		self.network_metadata.nested_metadata_mut(network_path)
-	}
-
-	fn node_metadata_mut(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&mut DocumentNodeMetadata> {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Could not get nested network_metadata");
-			return None;
-		};
-		let Some(node_metadata) = network_metadata.persistent_metadata.node_metadata.get_mut(node_id) else {
-			log::error!("Could not get nested node_metadata for node {node_id} in network {network_path:?}");
-			return None;
-		};
-		Some(node_metadata)
-	}
-
-	/// Mutably get the network which the encapsulating node of the currently viewed network is part of. Will always be None in the document network.
-	// fn encapsulating_network_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetworkMetadata> {
-	// 	let mut encapsulating_path = network_path.to_vec();
-	// 	encapsulating_path.pop()?;
-	// 	let Some(parent_metadata) = self.network_metadata_mut(&encapsulating_path) else {
-	// 		log::error!("Could not get parent network in encapsulating_node_metadata");
-	// 		return None;
-	// 	};
-	// 	Some(parent_metadata)
-	// }
-
-	/// Mutably get the node which encapsulates the currently viewed network. Will always be None in the document network.
-	// fn encapsulating_node_mut(&mut self, network_path: &[NodeId]) -> Option<&mut DocumentNode> {
-	// 	let mut encapsulating_path = network_path.to_vec();
-	// 	let encapsulating_node_id = encapsulating_path.pop()?;
-	// 	let Some(parent_network) = self.network_mut(&encapsulating_path) else {
-	// 		log::error!("Could not get parent network in encapsulating_node_mut");
-	// 		return None;
-	// 	};
-	// 	let Some(encapsulating_node) = parent_network.nodes.mut(&encapsulating_node_id) else {
-	// 		log::error!("Could not get encapsulating node in encapsulating_node_mut");
-	// 		return None;
-	// 	};
-	// 	Some(encapsulating_node)
-	// }
-
-	/// Get the node metadata for the node which encapsulates the currently viewed network. Will always be None in the document network.
-	fn encapsulating_node_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut DocumentNodeMetadata> {
-		let mut encapsulating_path = network_path.to_vec();
-		let encapsulating_node_id = encapsulating_path.pop()?;
-		let Some(parent_metadata) = self.network_metadata_mut(&encapsulating_path) else {
-			log::error!("Could not get parent network in encapsulating_node_metadata");
-			return None;
-		};
-		let Some(encapsulating_node_metadata) = parent_metadata.persistent_metadata.node_metadata.get_mut(&encapsulating_node_id) else {
-			log::error!("Could not get encapsulating node metadata in encapsulating_node_metadata");
-			return None;
-		};
-		Some(encapsulating_node_metadata)
 	}
 }
 
@@ -2360,22 +2357,33 @@ impl NodeNetworkInterface {
 	}
 
 	fn try_load_node_click_targets(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
-		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
+		let Some(click_targets) = self.metadata_value(MetadataType::ClickTargets, &[network_path, &[*node_id]].concat()) else {
 			log::error!("Could not get nested node_metadata in node_click_targets");
 			return;
 		};
-		if !node_metadata.transient_metadata.click_targets.is_loaded() {
+		let TaggedValue::ClickTargets(click_targets) = click_targets else {
+			log::error!("Could not get click targets in node_click_targets");
+			return;
+		};
+		if !click_targets.is_loaded() {
 			self.load_node_click_targets(node_id, network_path)
 		};
 	}
 
 	fn try_get_node_click_targets(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&DocumentNodeClickTargets> {
-		let node_metadata = self.node_metadata(node_id, network_path)?;
-		let TransientMetadata::Loaded(click_target) = &node_metadata.transient_metadata.click_targets else {
+		let Some(click_targets) = self.metadata_value(MetadataType::ClickTargets, &[network_path, &[*node_id]].concat()) else {
+			log::error!("Could not get nested node_metadata in node_click_targets");
+			return None;
+		};
+		let TaggedValue::ClickTargets(click_targets) = click_targets else {
+			log::error!("Could not get click targets in node_click_targets");
+			return None;
+		};
+		let TransientMetadata::Loaded(click_targets) = click_targets else {
 			log::error!("Could not load node type metadata when getting click targets");
 			return None;
 		};
-		Some(click_target)
+		Some(click_targets)
 	}
 
 	pub fn load_node_click_targets(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
@@ -2477,11 +2485,47 @@ impl NodeNetworkInterface {
 			}
 		};
 
-		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+		let Some(mut click_targets_metadata) = self.metadata_value_mut(MetadataType::ClickTargets, &[network_path, &[*node_id]].concat()) else {
 			log::error!("Could not get nested node_metadata in load_node_click_targets");
 			return;
 		};
-		node_metadata.transient_metadata.click_targets = TransientMetadata::Loaded(document_node_click_targets);
+		let TaggedValue::ClickTargets(click_targets) = click_targets_metadata.deref_mut() else {
+			log::error!("Could not get click targets in load_node_click_targets");
+			return;
+		};
+		*click_targets = TransientMetadata::Loaded(document_node_click_targets);
+	}
+
+	pub fn unload_node_click_targets(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
+		let Some(mut click_targets_metadata) = self.metadata_value_mut(MetadataType::ClickTargets, &[network_path, &[*node_id]].concat()) else {
+			log::error!("Could not get nested node_metadata in load_node_click_targets");
+			return;
+		};
+		let TaggedValue::ClickTargets(click_targets) = click_targets_metadata.deref_mut() else {
+			log::error!("Could not get click targets in load_node_click_targets");
+			return;
+		};
+		*click_targets = TransientMetadata::Unloaded;
+	}
+
+	pub fn unload_upstream_node_click_targets(&mut self, node_ids: Vec<NodeId>, network_path: &[NodeId]) {
+		let upstream_nodes = self.upstream_flow_back_from_nodes(node_ids, network_path, FlowType::UpstreamFlow).collect::<Vec<_>>();
+
+		for upstream_id in &upstream_nodes {
+			self.unload_node_click_targets(upstream_id, network_path)
+		}
+	}
+
+	pub fn unload_all_nodes_click_targets(&mut self, network_path: &[NodeId]) {
+		let Some(network) = self.network(network_path) else {
+			log::error!("Could not get nested network in unload_all_nodes_click_targets");
+			return;
+		};
+		let upstream_nodes = network.nodes.keys().cloned().collect::<Vec<_>>();
+
+		for upstream_id in &upstream_nodes {
+			self.unload_node_click_targets(upstream_id, network_path)
+		}
 	}
 
 	pub fn node_bounding_box(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
@@ -2586,42 +2630,6 @@ impl NodeNetworkInterface {
 			}
 		}
 	}
-
-	pub fn unload_node_click_targets(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
-		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
-			log::error!("Could not get nested node_metadata in unload_node_click_target");
-			return;
-		};
-		node_metadata.transient_metadata.click_targets.unload();
-	}
-
-	pub fn unload_upstream_node_click_targets(&mut self, node_ids: Vec<NodeId>, network_path: &[NodeId]) {
-		let upstream_nodes = self.upstream_flow_back_from_nodes(node_ids, network_path, FlowType::UpstreamFlow).collect::<Vec<_>>();
-
-		for upstream_id in &upstream_nodes {
-			let Some(node_metadata) = self.node_metadata_mut(upstream_id, network_path) else {
-				log::error!("Could not get node_metadata for node {upstream_id}");
-				return;
-			};
-			node_metadata.transient_metadata.click_targets.unload();
-		}
-	}
-
-	pub fn unload_all_nodes_click_targets(&mut self, network_path: &[NodeId]) {
-		let Some(network) = self.network(network_path) else {
-			log::error!("Could not get nested network in unload_all_nodes_click_targets");
-			return;
-		};
-		let upstream_nodes = network.nodes.keys().cloned().collect::<Vec<_>>();
-
-		for upstream_id in &upstream_nodes {
-			let Some(node_metadata) = self.node_metadata_mut(upstream_id, network_path) else {
-				log::error!("Could not get node_metadata for node {upstream_id}");
-				return;
-			};
-			node_metadata.transient_metadata.click_targets.unload();
-		}
-	}
 }
 
 // Helper functions for mutable getters
@@ -2650,11 +2658,11 @@ impl NodeNetworkInterface {
 		let mut all_node_click_targets = Vec::new();
 		let mut port_click_targets = Vec::new();
 		let mut icon_click_targets = Vec::new();
-		let Some(network_metadata) = self.network_metadata(network_path) else {
+		let Some(network) = self.network(network_path) else {
 			log::error!("Could not get nested network_metadata in collect_frontend_click_targets");
 			return FrontendClickTargets::default();
 		};
-		network_metadata.persistent_metadata.node_metadata.keys().copied().collect::<Vec<_>>().into_iter().for_each(|node_id| {
+		network.nodes.keys().copied().collect::<Vec<_>>().into_iter().for_each(|node_id| {
 			if let (Some(import_export_click_targets), Some(node_click_targets)) = (self.import_export_ports(network_path).cloned(), self.node_click_targets(&node_id, network_path)) {
 				let mut node_path = String::new();
 
@@ -2933,15 +2941,14 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn collect_layer_widths(&mut self, network_path: &[NodeId]) -> (HashMap<NodeId, u32>, HashMap<NodeId, u32>) {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
+		let Some(network) = self.network(network_path) else {
 			log::error!("Could not get nested network_metadata in collect_layer_widths");
 			return (HashMap::new(), HashMap::new());
 		};
-		let nodes = network_metadata
-			.persistent_metadata
-			.node_metadata
-			.iter()
-			.filter_map(|(node_id, _)| if self.is_layer(node_id, network_path) { Some(*node_id) } else { None })
+		let nodes = network
+			.nodes
+			.keys()
+			.filter_map(|node_id| if self.is_layer(node_id, network_path) { Some(*node_id) } else { None })
 			.collect::<Vec<_>>();
 		(
 			nodes
@@ -3069,10 +3076,10 @@ impl NodeNetworkInterface {
 	pub fn copy_all_navigation_metadata(&mut self, other_interface: &NodeNetworkInterface) {
 		let mut stack = vec![vec![]];
 		while let Some(path) = stack.pop() {
-			let Some(self_network_metadata) = self.network_metadata(&path) else {
+			let Some(self_network_metadata) = self.network(&path) else {
 				continue;
 			};
-			stack.extend(self_network_metadata.persistent_metadata.node_metadata.keys().map(|node_id| {
+			stack.extend(self_network_metadata.nodes.keys().map(|node_id| {
 				let mut current_path = path.clone();
 				current_path.push(*node_id);
 				current_path
@@ -3171,9 +3178,10 @@ impl NodeNetworkInterface {
 		}
 
 		// Update the click targets for the encapsulating node, if it exists. There is no encapsulating node if the network is the document network
-		if let Some(encapsulating_node_metadata_mut) = self.encapsulating_node_metadata_mut(network_path) {
-			encapsulating_node_metadata_mut.transient_metadata.click_targets.unload();
-		};
+		let mut encapsulating_network_path = network_path.to_vec();
+		if let Some(encapsulating_node_id) = encapsulating_network_path.pop() {
+			self.unload_node_click_targets(&encapsulating_node_id, &encapsulating_network_path);
+		}
 
 		// If the export is inserted as the first input or second input, and the parent network is the document_network, then it may have affected the document metadata structure
 		if network_path.len() == 1 && (insert_index == 0 || insert_index == 1) {
@@ -3559,19 +3567,8 @@ impl NodeNetworkInterface {
 			};
 
 			network.nodes.insert(node_id, node_template.document_node);
-			// TODO: Remove this clone once the later usage is removed
-			self.insert_all_node_metadata(node_id, node_template.persistent_node_metadata.clone(), network_path);
+			self.insert_all_node_metadata(node_id, node_template.persistent_node_metadata, network_path);
 			self.transaction_modified();
-
-			let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-				log::error!("Network not found in insert_node");
-				return;
-			};
-			let node_metadata = DocumentNodeMetadata {
-				persistent_metadata: node_template.persistent_node_metadata,
-				transient_metadata: DocumentNodeTransientMetadata::default(),
-			};
-			network_metadata.persistent_metadata.node_metadata.insert(node_id, node_metadata);
 		}
 		for new_node_id in new_ids.values() {
 			self.unload_node_click_targets(new_node_id, network_path);
@@ -3594,19 +3591,8 @@ impl NodeNetworkInterface {
 		};
 
 		network.nodes.insert(node_id, node_template.document_node);
-		// TODO: Remove this clone once the later usage is removed
-		self.insert_all_node_metadata(node_id, node_template.persistent_node_metadata.clone(), network_path);
+		self.insert_all_node_metadata(node_id, node_template.persistent_node_metadata, network_path);
 		self.transaction_modified();
-
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Network not found in insert_node");
-			return;
-		};
-		let node_metadata = DocumentNodeMetadata {
-			persistent_metadata: node_template.persistent_node_metadata,
-			transient_metadata: DocumentNodeTransientMetadata::default(),
-		};
-		network_metadata.persistent_metadata.node_metadata.insert(node_id, node_metadata);
 
 		self.unload_all_nodes_bounding_box(network_path);
 		self.unload_node_click_targets(&node_id, network_path)
@@ -3623,30 +3609,7 @@ impl NodeNetworkInterface {
 		self.insert_node_metadata(MetadataType::HasPrimaryOutput, TaggedValue::Bool(persistent_metadata.has_primary_output), &node_path);
 		self.insert_node_metadata(MetadataType::Locked, TaggedValue::Bool(persistent_metadata.locked), &node_path);
 		self.insert_node_metadata(MetadataType::NodeTypeMetadata, TaggedValue::NodeTypeMetadata(persistent_metadata.node_type_metadata), &node_path);
-		// match persistent_metadata.node_type_metadata {
-		// 	NodeTypePersistentMetadata::Layer(layer_metadata) => {
-		// 		self.insert_node_metadata(
-		// 			MetadataType::NodeTypeMetadata(NodeTypeMetadata::Layer(LayerMetadataType::Position)),
-		// 			TaggedValue::LayerPosition(layer_metadata.persistent_metadata.position),
-		// 			&node_path,
-		// 		);
-		// 		self.insert_node_metadata(
-		// 			MetadataType::NodeTypeMetadata(NodeTypeMetadata::Layer(LayerMetadataType::OwnedNodes)),
-		// 			TaggedValue::OwnedNodes(TransientMetadata::Unloaded),
-		// 			&node_path,
-		// 		);
-		// 	}
-		// 	NodeTypePersistentMetadata::Node(node_metadata) => {
-		// 		self.insert_node_metadata(
-		// 			MetadataType::NodeTypeMetadata(NodeTypeMetadata::Node(NodeMetadataType::Position)),
-		// 			TaggedValue::NodePosition(node_metadata.position),
-		// 			&node_path,
-		// 		);
-		// 	}
-		// }
-
-		// TODO: Add the rest of the node metadata nodes
-
+		self.insert_node_metadata(MetadataType::ClickTargets, TaggedValue::ClickTargets(TransientMetadata::Unloaded), &node_path);
 		if let Some(nested_network) = persistent_metadata.network_metadata {
 			self.insert_network_metadata(nested_network.persistent_metadata, &node_path);
 		}
@@ -3792,11 +3755,6 @@ impl NodeNetworkInterface {
 			network.nodes.remove(delete_node_id);
 			self.transaction_modified();
 
-			let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-				log::error!("Could not get nested network_metadata in delete_nodes");
-				continue;
-			};
-			network_metadata.persistent_metadata.node_metadata.remove(delete_node_id);
 			for previous_chain_node in upstream_chain_nodes {
 				self.set_chain_position(&previous_chain_node, network_path);
 			}
@@ -5343,40 +5301,6 @@ impl Default for DocumentNodePersistentMetadata {
 pub struct DocumentNodeTransientMetadata {
 	// The click targets are stored as a single struct since it is very rare for only one to be updated, and recomputing all click targets in one function is more efficient than storing them separately.
 	pub click_targets: TransientMetadata<DocumentNodeClickTargets>,
-}
-
-#[derive(Debug, Clone)]
-pub struct DocumentNodeClickTargets {
-	/// In order to keep the displayed position of the node in sync with the click target, the displayed position of a node is derived from the top left of the click target
-	/// Ensure node_click_target is kept in sync when modifying a node property that changes its size. Currently this is alias, inputs, is_layer, and metadata
-	pub node_click_target: ClickTarget,
-	/// Stores all port click targets in node graph space.
-	pub port_click_targets: Ports,
-	// Click targets that are specific to either nodes or layers, which are chosen states for displaying as a left-to-right node or bottom-to-top layer.
-	pub node_type_click_targets: NodeTypeClickTargets,
-}
-
-#[derive(Debug, Clone)]
-pub enum NodeTypeClickTargets {
-	Layer(LayerClickTargets),
-	Node, // No transient click targets are stored exclusively for nodes
-}
-
-/// All fields in TransientLayerMetadata should automatically be updated by using the network interface API
-#[derive(Debug, Clone)]
-pub struct LayerClickTargets {
-	/// Cache for all visibility buttons. Should be automatically updated when update_click_target is called
-	pub visibility_click_target: ClickTarget,
-	/// Cache for the grip icon, which is next to the visibility button.
-	pub grip_click_target: ClickTarget,
-	// TODO: Store click target for the preview button, which will appear when the node is a selected/(hovered?) layer node
-	// preview_click_target: ClickTarget,
-}
-
-pub enum LayerClickTargetTypes {
-	Visibility,
-	Grip,
-	// Preview,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

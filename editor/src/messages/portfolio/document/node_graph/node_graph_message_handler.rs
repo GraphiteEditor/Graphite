@@ -12,7 +12,7 @@ use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 
-use graph_craft::document::{DocumentNodeImplementation, InputConnector, NodeId, NodeInput, OutputConnector, Previewing};
+use graph_craft::document::{DocumentNodeImplementation, InputConnector, LayerClickTargetTypes, NodeId, NodeInput, OutputConnector, Previewing};
 use graph_craft::proto::GraphErrors;
 use graphene_core::*;
 use renderer::{ClickTarget, Quad};
@@ -247,7 +247,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				};
 				if network_interface
-					.layer_click_target_from_click(ipp.mouse.position, network_interface::LayerClickTargetTypes::Visibility, selection_network_path)
+					.layer_click_target_from_click(ipp.mouse.position, LayerClickTargetTypes::Visibility, selection_network_path)
 					.is_some()
 				{
 					return;
@@ -344,10 +344,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				let node_graph_point = node_graph_to_viewport.inverse().transform_point2(click);
 
-				if network_interface
-					.layer_click_target_from_click(click, network_interface::LayerClickTargetTypes::Grip, selection_network_path)
-					.is_some()
-				{
+				if network_interface.layer_click_target_from_click(click, LayerClickTargetTypes::Grip, selection_network_path).is_some() {
 					self.shift_without_push = true;
 				}
 
@@ -463,7 +460,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 
 				// Toggle visibility of clicked node and return
-				if let Some(clicked_visibility) = network_interface.layer_click_target_from_click(click, network_interface::LayerClickTargetTypes::Visibility, selection_network_path) {
+				if let Some(clicked_visibility) = network_interface.layer_click_target_from_click(click, LayerClickTargetTypes::Visibility, selection_network_path) {
 					responses.add(NodeGraphMessage::ToggleVisibility { node_id: clicked_visibility });
 					return;
 				}
@@ -1252,10 +1249,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					// 	boxSelection = undefined;
 					// }
 
-					let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
-						log::error!("Could not get network metadata in PointerMove");
-						return;
-					};
 					let Some(node_graph_to_viewport) = network_interface.node_graph_to_viewport(selection_network_path) else {
 						log::error!("Could not get node_graph_to_viewport in PointerUp");
 						return;
@@ -1282,7 +1275,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					} else {
 						HashSet::new()
 					};
-					let all_nodes = network_metadata.persistent_metadata.node_metadata.keys().cloned().collect::<Vec<_>>();
+					let Some(network) = network_interface.network(selection_network_path) else {
+						log::error!("Could not get network in PointerMove");
+						return;
+					};
+					let all_nodes = network.nodes.keys().cloned().collect::<Vec<_>>();
 					for node_id in all_nodes {
 						let Some(click_targets) = network_interface.node_click_targets(&node_id, selection_network_path) else {
 							log::error!("Could not get transient metadata for node {node_id}");

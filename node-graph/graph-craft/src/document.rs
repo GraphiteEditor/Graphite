@@ -1590,7 +1590,7 @@ impl Ports {
 }
 
 /// This is the same as Option, but more clear in the context of having cached metadata either being loaded or unloaded
-#[derive(Debug, Default, Clone, PartialEq, serde::Deserialize, Hash)]
+#[derive(Debug, Default, Clone, PartialEq, Hash)]
 pub enum TransientMetadata<T> {
 	Loaded(T),
 	#[default]
@@ -1609,6 +1609,16 @@ impl<T> Serialize for TransientMetadata<T> {
 	{
 		// Always serialize as Unloaded
 		serializer.serialize_unit_variant("TransientMetadata", 1, "Unloaded")
+	}
+}
+
+impl<'de, T> Deserialize<'de> for TransientMetadata<T> {
+	fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		// Always deserialize to Unloaded
+		Ok(TransientMetadata::Unloaded)
 	}
 }
 
@@ -1728,6 +1738,40 @@ pub struct LayerTransientMetadata {
 pub struct NodePersistentMetadata {
 	/// Stores the position of a non layer node, which can either be Absolute or Chain
 	pub position: NodePosition,
+}
+
+#[derive(Debug, Clone, PartialEq, DynAny)]
+pub struct DocumentNodeClickTargets {
+	/// In order to keep the displayed position of the node in sync with the click target, the displayed position of a node is derived from the top left of the click target
+	/// Ensure node_click_target is kept in sync when modifying a node property that changes its size. Currently this is alias, inputs, is_layer, and metadata
+	pub node_click_target: ClickTarget,
+	/// Stores all port click targets in node graph space.
+	pub port_click_targets: Ports,
+	// Click targets that are specific to either nodes or layers, which are chosen states for displaying as a left-to-right node or bottom-to-top layer.
+	pub node_type_click_targets: NodeTypeClickTargets,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum NodeTypeClickTargets {
+	Layer(LayerClickTargets),
+	Node, // No transient click targets are stored exclusively for nodes
+}
+
+/// All fields in TransientLayerMetadata should automatically be updated by using the network interface API
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayerClickTargets {
+	/// Cache for all visibility buttons. Should be automatically updated when update_click_target is called
+	pub visibility_click_target: ClickTarget,
+	/// Cache for the grip icon, which is next to the visibility button.
+	pub grip_click_target: ClickTarget,
+	// TODO: Store click target for the preview button, which will appear when the node is a selected/(hovered?) layer node
+	// preview_click_target: ClickTarget,
+}
+
+pub enum LayerClickTargetTypes {
+	Visibility,
+	Grip,
+	// Preview,
 }
 
 #[cfg(test)]

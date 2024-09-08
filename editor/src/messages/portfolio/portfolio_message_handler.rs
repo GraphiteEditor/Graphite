@@ -405,16 +405,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				if upgrade_from_before_editable_subgraphs {
 					// This can be used, if uncommented, to upgrade demo artwork with outdated document node internals from their definitions. Delete when it's no longer needed.
 					// Used for upgrading old internal networks for demo artwork nodes. Will reset all node internals for any opened file
-					for node_id in &document
-						.network_interface
-						.network_metadata(&[])
-						.unwrap()
-						.persistent_metadata
-						.node_metadata
-						.keys()
-						.cloned()
-						.collect::<Vec<NodeId>>()
-					{
+					for node_id in &document.network_interface.network(&[]).unwrap().nodes.keys().cloned().collect::<Vec<NodeId>>() {
 						let Some(reference) = document.network_interface.reference(&node_id, &[]) else {
 							log::error!("could not get reference in deserialize_document");
 							continue;
@@ -433,7 +424,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					.unwrap()
 					.nodes
 					.keys()
-					.any(|node_id|*node_id == NodeId(0) && document.network_interface.reference(node_id, &[]).cloned().flatten().is_some_and(|reference| reference == "Output"))
+					.any(|node_id| *node_id == NodeId(0) && document.network_interface.reference(node_id, &[]).cloned().flatten().is_some_and(|reference| reference == "Output"))
 				{
 					document.network_interface.delete_nodes(vec![NodeId(0)], false, &[]);
 				}

@@ -848,7 +848,7 @@ impl EditorHandle {
 					.node_template_input_override([None, Some(NodeInput::value(TaggedValue::VectorModification(modification), false))])
 					.document_node;
 
-				let node_metadata = document.network_interface.node_metadata(&node_id, &[]).cloned().unwrap_or_default();
+				let node_metadata = document.network_interface.get_all_node_metadata(&node_id, &[]).unwrap_or_default();
 
 				document.network_interface.insert_node(
 					node_id,
