@@ -13,7 +13,7 @@ repository = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/r
 documentation = "https://docs.rs/raw-rs"
 
 [features]
-raw-rs-tests = ["dep:image", "dep:libraw-rs", "dep:reqwest"]
+raw-rs-tests = ["dep:image", "dep:libraw-rs", "dep:reqwest", "dep:rayon"]
 
 [dependencies]
 # Local dependencies
@@ -33,3 +33,4 @@ reqwest = { workspace = true, optional = true }
 
 # Optional dependencies (should be dev dependencies, but Cargo currently doesn't allow optional dev dependencies)
 libraw-rs = { version = "0.0.4", optional = true }
+rayon = { version = "1.10.0", optional = true }

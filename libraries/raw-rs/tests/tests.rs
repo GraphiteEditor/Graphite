@@ -6,12 +6,14 @@ use raw_rs::RawImage;
 use image::codecs::png::{CompressionType, FilterType, PngEncoder};
 use image::{ColorType, ImageEncoder};
 use libraw::Processor;
+use rayon::prelude::*;
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::fs::{create_dir, metadata, read_dir, File};
 use std::io::{BufWriter, Cursor, Read};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 const TEST_FILES: [&str; 3] = ["ILCE-7M3-ARW2.3.5-blossoms.arw", "ILCE-7RM4-ARW2.3.5-kestrel.arw", "ILCE-6000-ARW2.3.1-windsock.arw"];
 const BASE_URL: &str = "https://static.graphite.rs/test-data/libraries/raw-rs/";
@@ -21,50 +23,75 @@ const BASE_PATH: &str = "./tests/images/";
 fn test_images_match_with_libraw() {
 	download_images();
 
-	let mut failed_tests = 0;
-
-	read_dir(BASE_PATH)
+	let paths: Vec<_> = read_dir(BASE_PATH)
 		.unwrap()
 		.map(|dir_entry| dir_entry.unwrap().path())
 		.filter(|path| path.is_file() && path.file_name().map(|file_name| file_name != ".gitkeep").unwrap_or(false))
-		.for_each(|path| {
-			let mut f = File::open(&path).unwrap();
-			let mut content = vec![];
-			f.read_to_end(&mut content).unwrap();
+		.collect();
 
-			print!("{} => ", path.display());
 
-			let raw_image = match test_raw_data(&content) {
-				Err(err_msg) => {
+	let failed_tests = if std::env::var("RAW_RS_TEST_RUN_SEQUENTIALLY").is_ok() {
+		let mut failed_tests = 0;
+
+		paths.iter()
+			.for_each(|path| {
+				if !test_image(path) {
 					failed_tests += 1;
-					return println!("{}", err_msg);
 				}
-				Ok(raw_image) => raw_image,
-			};
+			});
 
-			// TODO: The code below is kept commented because raw data to final image processing is
-			// incomplete. Remove this once it is done.
+		failed_tests
+	} else {
+		let failed_tests = AtomicUsize::new(0);
 
-			// if let Err(err_msg) = test_final_image(&content, raw_image) {
-			// 	failed_tests += 1;
-			// 	return println!("{}", err_msg);
-			// };
+		paths.par_iter()
+			.for_each(|path| {
+				if !test_image(path) {
+					failed_tests.fetch_add(1, Ordering::SeqCst);
+				}
+			});
 
-			println!("Passed");
-
-			// TODO: Remove this later
-			let mut image = raw_rs::process_8bit(raw_image);
-			store_image(&path, "raw_rs", &mut image.data, image.width, image.height);
-
-			let processor = Processor::new();
-			let libraw_image = processor.process_8bit(&content).unwrap();
-			let mut data = Vec::from_iter(libraw_image.iter().copied());
-			store_image(&path, "libraw_rs", &mut data[..], libraw_image.width() as usize, libraw_image.height() as usize);
-		});
+		failed_tests.load(Ordering::SeqCst)
+	};
 
 	if failed_tests != 0 {
 		panic!("{} images have failed the tests", failed_tests);
 	}
+}
+
+fn test_image(path: &Path) -> bool {
+	let mut f = File::open(&path).unwrap();
+	let mut content = vec![];
+	f.read_to_end(&mut content).unwrap();
+
+	let raw_image = match test_raw_data(&content) {
+		Err(err_msg) => {
+			println!("{} => {}", path.display(), err_msg);
+			return false;
+		}
+		Ok(raw_image) => raw_image,
+	};
+
+	// TODO: The code below is kept commented because raw data to final image processing is
+	// incomplete. Remove this once it is done.
+
+	// if let Err(err_msg) = test_final_image(&content, raw_image) {
+	// 	failed_tests += 1;
+	// 	return println!("{}", err_msg);
+	// };
+
+	println!("{} => Passed", path.display());
+
+	// TODO: Remove this later
+	let mut image = raw_rs::process_8bit(raw_image);
+	store_image(&path, "raw_rs", &mut image.data, image.width, image.height);
+
+	let processor = Processor::new();
+	let libraw_image = processor.process_8bit(&content).unwrap();
+	let mut data = Vec::from_iter(libraw_image.iter().copied());
+	store_image(&path, "libraw_rs", &mut data[..], libraw_image.width() as usize, libraw_image.height() as usize);
+
+	true
 }
 
 fn store_image(path: &Path, suffix: &str, data: &mut [u8], width: usize, height: usize) {
