@@ -12,8 +12,8 @@ use std::fmt::Write;
 use std::fs::{create_dir, metadata, read_dir, File};
 use std::io::{BufWriter, Cursor, Read};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 
 const TEST_FILES: [&str; 3] = ["ILCE-7M3-ARW2.3.5-blossoms.arw", "ILCE-7RM4-ARW2.3.5-kestrel.arw", "ILCE-6000-ARW2.3.1-windsock.arw"];
 const BASE_URL: &str = "https://static.graphite.rs/test-data/libraries/raw-rs/";
@@ -29,27 +29,24 @@ fn test_images_match_with_libraw() {
 		.filter(|path| path.is_file() && path.file_name().map(|file_name| file_name != ".gitkeep").unwrap_or(false))
 		.collect();
 
-
 	let failed_tests = if std::env::var("RAW_RS_TEST_RUN_SEQUENTIALLY").is_ok() {
 		let mut failed_tests = 0;
 
-		paths.iter()
-			.for_each(|path| {
-				if !test_image(path) {
-					failed_tests += 1;
-				}
-			});
+		paths.iter().for_each(|path| {
+			if !test_image(path) {
+				failed_tests += 1;
+			}
+		});
 
 		failed_tests
 	} else {
 		let failed_tests = AtomicUsize::new(0);
 
-		paths.par_iter()
-			.for_each(|path| {
-				if !test_image(path) {
-					failed_tests.fetch_add(1, Ordering::SeqCst);
-				}
-			});
+		paths.par_iter().for_each(|path| {
+			if !test_image(path) {
+				failed_tests.fetch_add(1, Ordering::SeqCst);
+			}
+		});
 
 		failed_tests.load(Ordering::SeqCst)
 	};
