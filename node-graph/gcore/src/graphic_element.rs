@@ -316,7 +316,10 @@ async fn add_artboard<Data: Into<Artboard> + Send>(
 	let artboard = self.artboard.eval(footprint).await;
 	let mut artboards = self.artboards.eval(footprint).await;
 
-	let encapsulating_node_id = node_path.get(node_path.len() - 2).cloned();
+	let encapsulating_node_id = match node_path.len() {
+		len if len >= 2 => node_path.get(len - 2).cloned(),
+		_ => None,
+	};
 	artboards.add_artboard(artboard.into(), encapsulating_node_id);
 
 	artboards

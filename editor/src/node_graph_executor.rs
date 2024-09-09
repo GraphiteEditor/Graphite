@@ -333,9 +333,9 @@ impl NodeRuntime {
 		responses: &mut VecDeque<FrontendMessage>,
 		update_thumbnails: bool,
 	) {
-		let click_targets = click_targets.entry(parent_network_node_id).or_default();
-		click_targets.clear();
-		graphic_element.add_click_targets(click_targets);
+		// let click_targets = click_targets.entry(parent_network_node_id).or_default();
+		// click_targets.clear();
+		// graphic_element.add_click_targets(click_targets);
 
 		// RENDER THUMBNAIL
 
@@ -533,7 +533,7 @@ impl NodeGraphExecutor {
 	}
 
 	fn export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		let TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg((svg, _))) = node_graph_output else {
+		let TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg((svg, _, _, _))) = node_graph_output else {
 			return Err("Incorrect render type for exporting (expected RenderOutput::Svg)".to_string());
 		};
 
@@ -590,8 +590,8 @@ impl NodeGraphExecutor {
 					};
 
 					responses.extend(existing_responses.into_iter().map(Into::into));
-					document.network_interface.update_click_targets(new_click_targets);
-					document.network_interface.update_vector_modify(new_vector_modify);
+					// document.network_interface.update_click_targets(new_click_targets);
+					// document.network_interface.update_vector_modify(new_vector_modify);
 
 					let execution_context = self.futures.remove(&execution_id).ok_or_else(|| "Invalid generation ID".to_string())?;
 					if let Some(export_config) = execution_context.export_config {
@@ -606,7 +606,7 @@ impl NodeGraphExecutor {
 					let type_delta = match result {
 						Err(e) => {
 							// Clear the click targets while the graph is in an un-renderable state
-							
+
 							document.network_interface.update_click_targets(HashMap::new());
 							document.network_interface.update_vector_modify(HashMap::new());
 
@@ -661,15 +661,15 @@ impl NodeGraphExecutor {
 			TaggedValue::SurfaceFrame(SurfaceFrame { .. }) => {
 				// TODO: Reimplement this now that document-legacy is gone
 			}
-			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg((svg, footprints))) => {
+			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg((svg, footprints, click_targets, vector_modify))) => {
 				// Send to frontend
 				//log::debug!("Render output footprints: {footprints:?}");
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 				responses.add(DocumentMessage::RenderScrollbars);
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::UpdateUpstreamTransforms { upstream_transforms: footprints });
-				// responses.add(DocumentMessage::UpdateClickTargets { click_targets });
-				// responses.add(DocumentMessage::UpdateVectorModify { vector_modify });
+				responses.add(DocumentMessage::UpdateClickTargets { click_targets });
+				responses.add(DocumentMessage::UpdateVectorModify { vector_modify });
 				responses.add(OverlaysMessage::Draw);
 			}
 

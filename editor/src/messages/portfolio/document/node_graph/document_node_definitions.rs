@@ -253,7 +253,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								manual_composition: Some(concrete!(Footprint)),
-								inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(2), 0), NodeInput::value(TaggedValue::NodePath(Vec::new()), false)],
+								inputs: vec![
+									NodeInput::node(NodeId(1), 0),
+									NodeInput::node(NodeId(2), 0),
+									NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath),
+								],
 								implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _, _>"),
 								..Default::default()
 							},
@@ -359,7 +363,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								inputs: vec![
 									NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(concrete!(ArtboardGroup))), 0),
 									NodeInput::node(NodeId(1), 0),
-									NodeInput::value(TaggedValue::NodePath(Vec::new()), false),
+									NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath),
 								],
 								implementation: DocumentNodeImplementation::proto("graphene_core::AddArtboardNode<_, _, _>"),
 								..Default::default()

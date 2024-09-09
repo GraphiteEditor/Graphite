@@ -13,7 +13,9 @@ use graphene_core::vector::style::ViewMode;
 use graphene_core::Color;
 
 use glam::DAffine2;
+use graphene_std::renderer::ClickTarget;
 use graphene_std::transform::Footprint;
+use graphene_std::vector::VectorData;
 
 #[impl_message(Message, PortfolioMessage, Document)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -159,12 +161,12 @@ pub enum DocumentMessage {
 	UpdateUpstreamTransforms {
 		upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
 	},
-	// UpdateClickTargets {
-	// 	click_targets: HashMap<NodeId, Vec<ClickTarget>>,
-	// },
-	// UpdateVectorModify {
-	// 	vector_modify: HashMap<NodeId, VectorData>,
-	// },
+	UpdateClickTargets {
+		click_targets: HashMap<NodeId, Vec<ClickTarget>>,
+	},
+	UpdateVectorModify {
+		vector_modify: HashMap<NodeId, VectorData>,
+	},
 	Undo,
 	UngroupSelectedLayers,
 	UngroupLayer {

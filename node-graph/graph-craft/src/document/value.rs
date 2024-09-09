@@ -5,7 +5,9 @@ use crate::wasm_application_io::WasmEditorApi;
 
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
+use graphene_core::renderer::ClickTarget;
 use graphene_core::uuid::NodeId;
+use graphene_core::vector::VectorData;
 use graphene_core::{Color, MemoHash, Node, Type};
 
 use dyn_any::DynAny;
@@ -257,8 +259,8 @@ pub enum RenderOutput {
 		(
 			String,
 			HashMap<NodeId, (graphene_core::transform::Footprint, DAffine2)>,
-			// HashMap<NodeId, Vec<ClickTarget>>,
-			// HashMap<NodeId, VectorData>,
+			HashMap<NodeId, Vec<ClickTarget>>,
+			HashMap<NodeId, VectorData>,
 		),
 	),
 	Image(Vec<u8>),
@@ -269,7 +271,7 @@ impl Hash for RenderOutput {
 		core::mem::discriminant(self).hash(state);
 		match self {
 			Self::CanvasFrame(x) => x.hash(state),
-			Self::Svg((x, _)) => {
+			Self::Svg((x, _, _, _)) => {
 				x.hash(state);
 			}
 			Self::Image(x) => x.hash(state),

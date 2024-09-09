@@ -15,7 +15,7 @@ pub struct BooleanOperationNode<BooleanOp> {
 }
 
 #[node_macro::node_fn(BooleanOperationNode)]
-fn boolean_operation_node(group_of_paths: GraphicGroup, operation: BooleanOperation) -> VectorData {
+fn boolean_operation_node(mut group_of_paths: GraphicGroup, operation: BooleanOperation) -> VectorData {
 	fn vector_from_image<T: Transform>(image_frame: T) -> VectorData {
 		let corner1 = DVec2::ZERO;
 		let corner2 = DVec2::new(1., 1.);
@@ -174,7 +174,9 @@ fn boolean_operation_node(group_of_paths: GraphicGroup, operation: BooleanOperat
 	}
 
 	// The first index is the bottom of the stack
-	boolean_operation_on_vector_data(&collect_vector_data(&group_of_paths), operation)
+	let mut boolean_operation_result = boolean_operation_on_vector_data(&collect_vector_data(&group_of_paths), operation);
+	boolean_operation_result.upstream_graphic_group = Some(group_of_paths);
+	boolean_operation_result
 }
 
 fn to_svg_string(vector: &VectorData, transform: DAffine2) -> String {
