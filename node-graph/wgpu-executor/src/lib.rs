@@ -858,18 +858,18 @@ async fn create_compute_pass<'a: 'n>(_: (), layout: PipelineLayout, executor: &'
 	executor.create_compute_pass(&layout, Some(output.into()), instances).unwrap()
 }
 
-pub struct CreatePipelineLayoutNode<EntryPoint, Bindgroup, OutputBuffer> {
-	entry_point: EntryPoint,
-	bind_group: Bindgroup,
-	output_buffer: OutputBuffer,
-}
-
-#[node_macro::node_fn(CreatePipelineLayoutNode)]
-async fn create_pipeline_layout(shader: ShaderHandle, entry_point: String, bind_group: Bindgroup, output_buffer: Arc<WgpuShaderInput>) -> PipelineLayout {
+#[node_macro::new_node_fn]
+async fn create_pipeline_layout(
+	_: (),
+	shader: impl Node<(), Output = ShaderHandle>,
+	entry_point: String,
+	bind_group: impl Node<(), Output = Bindgroup>,
+	output_buffer: Arc<WgpuShaderInput>,
+) -> PipelineLayout {
 	PipelineLayout {
-		shader: shader.into(),
+		shader: shader.eval(()).await.into(),
 		entry_point,
-		bind_group: bind_group.into(),
+		bind_group: bind_group.eval(()).await.into(),
 		output_buffer,
 	}
 }

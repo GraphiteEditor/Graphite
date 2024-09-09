@@ -10,7 +10,6 @@ use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus};
 use graph_craft::Type;
 use graphene_core::memo::IORecord;
-use graphene_core::raster::brightness_contrast::BrightnessContrastLegacyMapperNode;
 use graphene_core::raster::curve::Curve;
 use graphene_core::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,

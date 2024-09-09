@@ -205,19 +205,14 @@ impl TransformMut for Footprint {
 	}
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct TransformNode<TransformTarget, Translation, Rotation, Scale, Shear, Pivot> {
-	pub(crate) transform_target: TransformTarget,
-	pub(crate) translate: Translation,
-	pub(crate) rotate: Rotation,
-	pub(crate) scale: Scale,
-	pub(crate) shear: Shear,
-	pub(crate) _pivot: Pivot,
-}
-
-#[node_macro::node_fn(TransformNode)]
-pub(crate) async fn transform_vector_data<T: TransformMut>(
+#[node_macro::new_node_fn]
+pub(crate) async fn transform<T: TransformMut + 'n>(
 	mut footprint: Footprint,
+	#[implementations(
+		(Footprint, VectorData),
+		(Footprint, GraphicGroup),
+		(Footprint, ImageFrame<crate::Color>),
+	)]
 	transform_target: impl Node<Footprint, Output = T>,
 	translate: DVec2,
 	rotate: f64,
@@ -230,7 +225,7 @@ pub(crate) async fn transform_vector_data<T: TransformMut>(
 		*footprint.transform_mut() = footprint.transform() * modification;
 	}
 
-	let mut data = self.transform_target.eval(footprint).await;
+	let mut data = transform_target.eval(footprint).await;
 
 	let data_transform = data.transform_mut();
 	*data_transform = modification * (*data_transform);

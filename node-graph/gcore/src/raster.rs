@@ -282,29 +282,6 @@ impl<'i, T: BitmapMut + Bitmap> BitmapMut for &'i mut T {
 	}
 }
 
-#[derive(Debug)]
-pub struct BrightenColorNode<Brightness> {
-	brightness: Brightness,
-}
-#[node_macro::node_fn(BrightenColorNode)]
-fn brighten_color_node(color: Color, brightness: f32) -> Color {
-	let per_channel = |col: f32| (col + brightness / 255.).clamp(0., 1.);
-	Color::from_rgbaf32_unchecked(per_channel(color.r()), per_channel(color.g()), per_channel(color.b()), color.a())
-}
-
-#[derive(Debug)]
-pub struct ForEachNode<MapNode> {
-	map_node: MapNode,
-}
-
-#[node_macro::node_fn(ForEachNode)]
-fn map_node<_Iter: Iterator, MapNode>(input: _Iter, map_node: &'input MapNode) -> ()
-where
-	MapNode: for<'any_input> Node<'any_input, _Iter::Item, Output = ()> + 'input,
-{
-	input.for_each(|x| map_node.eval(x));
-}
-
 #[cfg(target_arch = "spirv")]
 const NOTHING: () = ();
 

@@ -255,7 +255,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_std::brush::IntoIterNode<_>, input: &Vec<BrushStroke>, params: []),
 		async_node!(graphene_std::brush::BrushNode<_, _, _>, input: ImageFrame<Color>, output: ImageFrame<Color>, params: [ImageFrame<Color>, Vec<BrushStroke>, BrushCache]),
 		// Filters
-		register_node!(graphene_std::image_segmentation::ImageSegmentationNode<_>, input: ImageFrame<Color>, params: [ImageFrame<Color>]),
 		register_node!(graphene_std::image_color_palette::ImageColorPaletteNode<_>, input: ImageFrame<Color>, params: [u32]),
 		vec![(
 			ProtoNodeIdentifier::new("graphene_core::raster::BrightnessContrastNode<_, _, _>"),
@@ -415,12 +414,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_std::wasm_application_io::RasterizeNode<_, _>, input: VectorData, output: ImageFrame<Color>, params: [Footprint, Arc<WasmSurfaceHandle>]),
 		#[cfg(target_arch = "wasm32")]
 		async_node!(graphene_std::wasm_application_io::RasterizeNode<_, _>, input: GraphicGroup, output: ImageFrame<Color>, params: [Footprint, Arc<WasmSurfaceHandle>]),
-		async_node!(graphene_core::transform::TransformNode<_, _, _, _, _, _>, input: Footprint, output: VectorData, fn_params: [Footprint => VectorData, () => DVec2, () => f64, () => DVec2, () => DVec2, () => DVec2]),
 		async_node!(graphene_core::transform::TransformNode<_, _, _, _, _, _>, input: (), output: VectorData, fn_params: [() => VectorData, () => DVec2, () => f64, () => DVec2, () => DVec2, () => DVec2]),
-		async_node!(graphene_core::transform::TransformNode<_, _, _, _, _, _>, input: Footprint, output: ImageFrame<Color>, fn_params: [Footprint => ImageFrame<Color>, () => DVec2, () => f64, () => DVec2, () => DVec2, () => DVec2]),
 		async_node!(graphene_core::transform::TransformNode<_, _, _, _, _, _>, input: (), output: ImageFrame<Color>, fn_params: [() => ImageFrame<Color>, () => DVec2, () => f64, () => DVec2, () => DVec2, () => DVec2]),
 		async_node!(graphene_core::transform::TransformNode<_, _, _, _, _, _>, input: (), output: TextureFrame, fn_params: [() => TextureFrame, () => DVec2, () => f64, () => DVec2, () => DVec2, () => DVec2]),
-		async_node!(graphene_core::transform::TransformNode<_, _, _, _, _, _>, input: Footprint, output: GraphicGroup, fn_params: [Footprint => GraphicGroup, () => DVec2, () => f64, () => DVec2, () => DVec2, () => DVec2]),
 		register_node!(graphene_core::transform::SetTransformNode<_>, input: VectorData, params: [VectorData]),
 		register_node!(graphene_core::transform::SetTransformNode<_>, input: ImageFrame<Color>, params: [ImageFrame<Color>]),
 		register_node!(graphene_core::transform::SetTransformNode<_>, input: VectorData, params: [DAffine2]),

@@ -27,7 +27,6 @@ use graphene_std::wasm_application_io::WasmEditorApi;
 
 use glam::DVec2;
 
-use interpreted_executor::node_registry;
 #[cfg(feature = "gpu")]
 use wgpu_executor::{Bindgroup, CommandBuffer, PipelineLayout, ShaderHandle, ShaderInputFrame, WgpuShaderInput};
 
@@ -2942,26 +2941,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: &node_properties::poisson_disk_points_properties,
 		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
-		DocumentNodeDefinition {
-			identifier: "Image Segmentation",
-			category: "Ignore",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_std::image_segmentation::ImageSegmentationNode"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Mask".to_string()],
-					output_names: vec!["Segments".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::node_no_properties,
-		},
 		DocumentNodeDefinition {
 			identifier: "Index",
 			category: "Debug",
