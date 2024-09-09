@@ -5,7 +5,7 @@ use crate::vector::VectorData;
 use crate::{Color, Node};
 
 use dyn_any::{DynAny, StaticType};
-use node_macro::node_fn;
+use node_macro::{new_node_fn, node_fn};
 
 use core::ops::{Deref, DerefMut};
 use glam::{DAffine2, IVec2};
@@ -231,20 +231,15 @@ impl ArtboardGroup {
 	}
 }
 
-pub struct ConstructLayerNode<Stack, GraphicElement> {
-	stack: Stack,
-	graphic_element: GraphicElement,
-}
-
-#[node_fn(ConstructLayerNode)]
-async fn construct_layer<Data: Into<GraphicElement> + Send>(
-	footprint: crate::transform::Footprint,
-	mut stack: impl Node<crate::transform::Footprint, Output = GraphicGroup>,
-	graphic_element: impl Node<crate::transform::Footprint, Output = Data>,
+#[new_node_fn]
+async fn construct_layer(
+	footprint: Footprint,
+	stack: impl Node<Footprint, Output = GraphicGroup>,
+	#[implementations()] graphic_element: impl Node<Footprint, Output = GraphicElement>,
 ) -> GraphicGroup {
-	let graphic_element = self.graphic_element.eval(footprint).await;
-	let mut stack = self.stack.eval(footprint).await;
-	stack.push(graphic_element.into());
+	let graphic_element = graphic_element.eval(footprint).await;
+	let mut stack = stack.eval(footprint).await;
+	stack.push(graphic_element);
 	stack
 }
 

@@ -234,6 +234,7 @@ where
 				Box::pin(output(unsafe { std::mem::transmute_copy(&()) }))
 			}
 			// If the Node expects a footprint but we provide (). In this case construct the default Footprint and pass that
+			// This is pretty hacky pls fix
 			Err(_) if core::any::TypeId::of::<_I::Static>() == core::any::TypeId::of::<Footprint>() => {
 				assert_eq!(std::mem::size_of::<_I>(), std::mem::size_of::<Footprint>());
 				assert_eq!(std::mem::align_of::<_I>(), std::mem::align_of::<Footprint>());
