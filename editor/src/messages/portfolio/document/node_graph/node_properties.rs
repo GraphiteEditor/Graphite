@@ -10,6 +10,7 @@ use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus};
 use graph_craft::Type;
 use graphene_core::memo::IORecord;
+use graphene_core::raster::brightness_contrast::BrightnessContrastLegacyMapperNode;
 use graphene_core::raster::curve::Curve;
 use graphene_core::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
@@ -99,19 +100,23 @@ pub(crate) fn property_from_type(
 	let (number_min, number_max, mode_range) = number_options;
 	let min = |x: f64| number_min.unwrap_or(x);
 	let max = |x: f64| number_max.unwrap_or(x);
+	let mut number_input = NumberInput::default();
+	if let Some((range_start, range_end)) = mode_range {
+		number_input = number_input.mode(NumberInputMode::Range).range_min(Some(range_start)).range_max(Some(range_end));
+	}
 
 	let mut extra_widgets = vec![];
 	let widgets = match ty {
 		Type::Concrete(concrete_type) => {
 			match concrete_type.alias.as_ref().map(|x| x.as_ref()) {
 				// Aliased types (ambiguous values)
-				Some("Percentage") => number_widget(document_node, node_id, index, name, NumberInput::default().percentage().min(min(0.)).max(max(100.)), false).into(),
-				Some("Angle") => number_widget(document_node, node_id, index, name, NumberInput::default().mode_range().min(min(-180.)).max(max(180.)).unit("°"), false).into(),
-				Some("PixelLength") => number_widget(document_node, node_id, index, name, NumberInput::default().min(min(0.)).unit("px"), false).into(),
-				Some("Length") => number_widget(document_node, node_id, index, name, NumberInput::default().min(min(0.)), false).into(),
-				Some("Fraction") => number_widget(document_node, node_id, index, name, NumberInput::default().min(min(0.)).max(max(1.)), false).into(),
-				Some("IntegerCount") => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(min(1.)), false).into(),
-				Some("SeedValue") => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(min(0.)), false).into(),
+				Some("Percentage") => number_widget(document_node, node_id, index, name, number_input.percentage().min(min(0.)).max(max(100.)), false).into(),
+				Some("Angle") => number_widget(document_node, node_id, index, name, number_input.mode_range().min(min(-180.)).max(max(180.)).unit("°"), false).into(),
+				Some("PixelLength") => number_widget(document_node, node_id, index, name, number_input.min(min(0.)).unit("px"), false).into(),
+				Some("Length") => number_widget(document_node, node_id, index, name, number_input.min(min(0.)), false).into(),
+				Some("Fraction") => number_widget(document_node, node_id, index, name, number_input.min(min(0.)).max(max(1.)), false).into(),
+				Some("IntegerCount") => number_widget(document_node, node_id, index, name, number_input.int().min(min(1.)), false).into(),
+				Some("SeedValue") => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)), false).into(),
 				Some("Resolution") => vec2_widget(document_node, node_id, index, name, "W", "H", "px", Some(64.), add_blank_assist),
 
 				// For all other types, use TypeId-based matching
@@ -120,11 +125,9 @@ pub(crate) fn property_from_type(
 						use std::any::TypeId;
 						match internal_id {
 							x if x == TypeId::of::<bool>() => bool_widget(document_node, node_id, index, name, CheckboxInput::default(), false).into(),
-							x if x == TypeId::of::<f64>() => {
-								number_widget(document_node, node_id, index, name, NumberInput::default().min(min(f64::NEG_INFINITY)).max(max(f64::INFINITY)), false).into()
-							}
-							x if x == TypeId::of::<u32>() => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(min(0.)).max(max(f64::from(u32::MAX))), false).into(),
-							x if x == TypeId::of::<u64>() => number_widget(document_node, node_id, index, name, NumberInput::default().int().min(min(0.)), false).into(),
+							x if x == TypeId::of::<f64>() => number_widget(document_node, node_id, index, name, number_input.min(min(f64::NEG_INFINITY)).max(max(f64::INFINITY)), false).into(),
+							x if x == TypeId::of::<u32>() => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)).max(max(f64::from(u32::MAX))), false).into(),
+							x if x == TypeId::of::<u64>() => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)), false).into(),
 							x if x == TypeId::of::<String>() => text_widget(document_node, node_id, index, name, false).into(),
 							x if x == TypeId::of::<Color>() => color_widget(document_node, node_id, index, name, ColorButton::default(), false),
 							x if x == TypeId::of::<Option<Color>>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(true), false),
@@ -1565,13 +1568,6 @@ pub(crate) fn _gpu_map_properties(document_node: &DocumentNode, node_id: NodeId,
 	vec![LayoutGroup::Row { widgets: map }]
 }
 
-#[cfg(feature = "quantization")]
-pub(crate) fn quantize_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let value = number_widget(document_node, node_id, 1, "Levels", NumberInput::default().min(1.).max(1000.).int(), true);
-	let index = number_widget(document_node, node_id, 1, "Fit Fn Index", NumberInput::default().min(0.).max(2.).int(), true);
-
-	vec![LayoutGroup::Row { widgets: value }, LayoutGroup::Row { widgets: index }]
-}
 pub(crate) fn exposure_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let exposure = number_widget(document_node, node_id, 1, "Exposure", NumberInput::default().min(-20.).max(20.), true);
 	let offset = number_widget(document_node, node_id, 2, "Offset", NumberInput::default().min(-0.5).max(0.5), true);

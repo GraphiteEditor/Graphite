@@ -159,7 +159,6 @@ tagged_value! {
 	GradientType(graphene_core::vector::style::GradientType),
 	#[serde(alias = "GradientPositions")] // TODO: Eventually remove this alias (probably starting late 2024)
 	GradientStops(graphene_core::vector::style::GradientStops),
-	Quantization(graphene_core::quantization::QuantizationChannels),
 	OptionalColor(Option<graphene_core::raster::color::Color>),
 	#[serde(alias = "ManipulatorGroupIds")] // TODO: Eventually remove this alias (probably starting late 2024)
 	PointIds(Vec<graphene_core::vector::PointId>),

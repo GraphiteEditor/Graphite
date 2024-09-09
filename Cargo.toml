@@ -27,7 +27,7 @@ resolver = "2"
 
 [workspace.dependencies]
 # Local dependencies
-dyn-any = { path = "libraries/dyn-any", features = ["derive", "glam"] }
+dyn-any = { path = "libraries/dyn-any", features = ["derive", "glam", "reqwest"] }
 graphene-core = { path = "node-graph/gcore" }
 graph-craft = { path = "node-graph/graph-craft", features = ["serde"] }
 wgpu-executor = { path = "node-graph/wgpu-executor" }

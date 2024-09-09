@@ -828,21 +828,13 @@ impl<T> ShaderInputNode<T> {
 	}
 }
 
-pub struct UniformNode<Executor> {
-	executor: Executor,
-}
-
-#[node_macro::node_fn(UniformNode)]
-async fn uniform_node<'a: 'input, T: ToUniformBuffer + Send>(data: T, executor: &'a WgpuExecutor) -> WgpuShaderInput {
+#[node_macro::new_node_fn]
+async fn uniform_node<'a: 'n, T: ToUniformBuffer + Send + 'n>(_: (), #[implementations(f32, DAffine2)] data: T, executor: &'a WgpuExecutor) -> WgpuShaderInput {
 	executor.create_uniform_buffer(data).unwrap()
 }
 
-pub struct StorageNode<Executor> {
-	executor: Executor,
-}
-
-#[node_macro::node_fn(StorageNode)]
-async fn storage_node<'a: 'input, T: ToStorageBuffer + Send>(data: T, executor: &'a WgpuExecutor) -> WgpuShaderInput {
+#[node_macro::new_node_fn]
+async fn storage_node<'a: 'n, T: ToStorageBuffer + Send + 'n>(_: (), #[implementations(Vec<u8>)] data: T, executor: &'a WgpuExecutor) -> WgpuShaderInput {
 	executor
 		.create_storage_buffer(
 			data,
@@ -856,33 +848,13 @@ async fn storage_node<'a: 'input, T: ToStorageBuffer + Send>(data: T, executor: 
 		.unwrap()
 }
 
-pub struct PushNode<Value> {
-	value: Value,
-}
-
-#[node_macro::node_fn(PushNode)]
-async fn push_node<T: Send>(mut vec: Vec<T>, value: T) {
-	vec.push(value);
-}
-
-pub struct CreateOutputBufferNode<Executor, Ty> {
-	executor: Executor,
-	ty: Ty,
-}
-
-#[node_macro::node_fn(CreateOutputBufferNode)]
-async fn create_output_buffer_node<'a: 'input>(size: usize, executor: &'a WgpuExecutor, ty: Type) -> Arc<WgpuShaderInput> {
+#[node_macro::new_node_fn]
+async fn create_output_buffer<'a: 'n>(_: (), size: usize, executor: &'a WgpuExecutor, ty: Type) -> Arc<WgpuShaderInput> {
 	Arc::new(executor.create_output_buffer(size, ty, true).unwrap())
 }
 
-pub struct CreateComputePassNode<Executor, Output, Instances> {
-	executor: Executor,
-	output: Output,
-	instances: Instances,
-}
-
-#[node_macro::node_fn(CreateComputePassNode)]
-async fn create_compute_pass_node<'a: 'input>(layout: PipelineLayout, executor: &'a WgpuExecutor, output: WgpuShaderInput, instances: ComputePassDimensions) -> CommandBuffer {
+#[node_macro::new_node_fn(skip_impl)]
+async fn create_compute_pass<'a: 'n>(_: (), layout: PipelineLayout, executor: &'a WgpuExecutor, output: WgpuShaderInput, instances: ComputePassDimensions) -> CommandBuffer {
 	executor.create_compute_pass(&layout, Some(output.into()), instances).unwrap()
 }
 
@@ -893,7 +865,7 @@ pub struct CreatePipelineLayoutNode<EntryPoint, Bindgroup, OutputBuffer> {
 }
 
 #[node_macro::node_fn(CreatePipelineLayoutNode)]
-async fn create_pipeline_layout_node(shader: ShaderHandle, entry_point: String, bind_group: Bindgroup, output_buffer: Arc<WgpuShaderInput>) -> PipelineLayout {
+async fn create_pipeline_layout(shader: ShaderHandle, entry_point: String, bind_group: Bindgroup, output_buffer: Arc<WgpuShaderInput>) -> PipelineLayout {
 	PipelineLayout {
 		shader: shader.into(),
 		entry_point,
@@ -902,39 +874,18 @@ async fn create_pipeline_layout_node(shader: ShaderHandle, entry_point: String, 
 	}
 }
 
-pub struct ExecuteComputePipelineNode<Executor> {
-	executor: Executor,
-}
-
-#[node_macro::node_fn(ExecuteComputePipelineNode)]
-async fn execute_compute_pipeline_node<'a: 'input>(encoder: CommandBuffer, executor: &'a WgpuExecutor) {
-	executor.execute_compute_pipeline(encoder).unwrap();
-}
-
-pub struct ReadOutputBufferNode<Executor, ComputePass> {
-	executor: Executor,
-	_compute_pass: ComputePass,
-}
-#[node_macro::node_fn(ReadOutputBufferNode)]
-async fn read_output_buffer_node<'a: 'input>(buffer: Arc<WgpuShaderInput>, executor: &'a WgpuExecutor, _compute_pass: ()) -> Vec<u8> {
+#[node_macro::new_node_fn]
+async fn read_output_buffer<'a: 'n>(_: (), buffer: Arc<WgpuShaderInput>, executor: &'a WgpuExecutor, _compute_pass: ()) -> Vec<u8> {
 	executor.read_output_buffer(buffer).await.unwrap()
 }
 
 pub type WindowHandle = Arc<SurfaceHandle<Window>>;
 
-pub struct CreateGpuSurfaceNode;
-
-#[node_macro::node_fn(CreateGpuSurfaceNode)]
-async fn create_gpu_surface<'a: 'input, Io: ApplicationIo<Executor = WgpuExecutor, Surface = Window> + 'a + Send + Sync>(editor_api: &'a EditorApi<Io>) -> Option<WgpuSurface> {
+#[node_macro::new_node_fn(skip_impl)]
+fn create_gpu_surface<'a: 'n, Io: ApplicationIo<Executor = WgpuExecutor, Surface = Window> + 'a + Send + Sync>(_: (), editor_api: &'a EditorApi<Io>) -> Option<WgpuSurface> {
 	let canvas = editor_api.application_io.as_ref()?.window()?;
 	let executor = editor_api.application_io.as_ref()?.gpu_executor()?;
 	Some(Arc::new(executor.create_surface(canvas).ok()?))
-}
-
-pub struct RenderTextureNode<Image, Surface, EditorApi> {
-	image: Image,
-	surface: Surface,
-	executor: EditorApi,
 }
 
 #[derive(DynAny, Clone, Debug)]
@@ -943,11 +894,11 @@ pub struct ShaderInputFrame {
 	transform: DAffine2,
 }
 
-#[node_macro::node_fn(RenderTextureNode)]
-async fn render_texture_node<'a: 'input>(footprint: Footprint, image: impl Node<Footprint, Output = ShaderInputFrame>, surface: Option<WgpuSurface>, executor: &'a WgpuExecutor) -> SurfaceFrame {
+#[node_macro::new_node_fn]
+async fn render_texture<'a: 'n>(_: (), footprint: Footprint, image: impl Node<Footprint, Output = ShaderInputFrame>, surface: Option<WgpuSurface>, executor: &'a WgpuExecutor) -> SurfaceFrame {
 	let surface = surface.unwrap();
 	let surface_id = surface.window_id;
-	let image = self.image.eval(footprint).await;
+	let image = image.eval(footprint).await;
 	let transform = image.transform;
 
 	executor.create_render_pass(footprint, image, surface).unwrap();
@@ -959,12 +910,8 @@ async fn render_texture_node<'a: 'input>(footprint: Footprint, image: impl Node<
 	}
 }
 
-pub struct UploadTextureNode<Executor> {
-	executor: Executor,
-}
-
-#[node_macro::node_fn(UploadTextureNode)]
-async fn upload_texture<'a: 'input>(input: ImageFrame<Color>, executor: &'a WgpuExecutor) -> TextureFrame {
+#[node_macro::new_node_fn]
+async fn upload_texture<'a: 'n>(_: (), input: ImageFrame<Color>, executor: &'a WgpuExecutor) -> TextureFrame {
 	// let new_data: Vec<RGBA16F> = input.image.data.into_iter().map(|c| c.into()).collect();
 	let new_data = input.image.data.into_iter().map(SRGBA8::from).collect();
 	let new_image = Image {

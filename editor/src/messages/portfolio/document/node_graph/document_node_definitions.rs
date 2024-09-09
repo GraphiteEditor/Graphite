@@ -27,6 +27,7 @@ use graphene_std::wasm_application_io::WasmEditorApi;
 
 use glam::DVec2;
 
+use interpreted_executor::node_registry;
 #[cfg(feature = "gpu")]
 use wgpu_executor::{Bindgroup, CommandBuffer, PipelineLayout, ShaderHandle, ShaderInputFrame, WgpuShaderInput};
 
@@ -1267,6 +1268,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::network(generic!(T), 0), NodeInput::node(NodeId(0), 0)],
+								manual_composition: Some(concrete!(())),
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::UniformNode")),
 								..Default::default()
 							},
@@ -1765,7 +1767,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
-								manual_composition: Some(concrete!(Footprint)),
+								manual_composition: Some(concrete!(())),
 								inputs: vec![NodeInput::scope("editor-api")],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::CreateGpuSurfaceNode")),
 								..Default::default()
@@ -2006,70 +2008,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			properties: &node_properties::node_no_properties,
-		},
-		#[cfg(feature = "quantization")]
-		DocumentNodeDefinition {
-			identifier: "Generate Quantization",
-			category: "Debug: Quantization",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_std::quantization::GenerateQuantizationNode"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::U32(100), false),
-						NodeInput::value(TaggedValue::U32(0), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Samples".to_string(), "Fn index".to_string()],
-					output_names: vec!["Quantization".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::quantize_properties,
-		},
-		#[cfg(feature = "quantization")]
-		DocumentNodeDefinition {
-			identifier: "Quantize Image",
-			category: "Debug: Quantization",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::quantization::QuantizeNode"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::Quantization(core::array::from_fn(|_| Default::default())), true),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Quantization".to_string()],
-					output_names: vec!["Encoded".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::quantize_properties,
-		},
-		#[cfg(feature = "quantization")]
-		DocumentNodeDefinition {
-			identifier: "DeQuantize Image",
-			category: "Debug: Quantization",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::quantization::DeQuantizeNode"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::Quantization(core::array::from_fn(|_| Default::default())), true),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Encoded".to_string(), "Quantization".to_string()],
-					output_names: vec!["Decoded".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::quantize_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Brightness/Contrast",
@@ -3134,12 +3072,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		}
 
 		let NodeMetadata { display_name, category, fields } = metadata;
-		let first_node_io = &node_registry
-			.get(&id)
-			.expect("Did not find node registry entry for auto generated node metadata")
-			.first()
-			.map(|(_, node_io)| node_io)
-			.unwrap_or(const { &NodeIOTypes::empty() });
+		let Some(implementations) = &node_registry.get(&id) else { continue };
+		let first_node_io = implementations.first().map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
 		let input_type = &first_node_io.input;
 		let output_type = &first_node_io.output;
 
@@ -3391,6 +3325,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 			nodes: [
 				DocumentNode {
 					inputs: vec![NodeInput::scope("editor-api")],
+					manual_composition: Some(concrete!(())),
 					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::CreateGpuSurfaceNode")),
 					skip_deduplication: true,
 					..Default::default()

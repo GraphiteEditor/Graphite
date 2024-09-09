@@ -35,7 +35,7 @@ pub struct NodeMetadata {
 	pub fields: Vec<FieldMetadata>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FieldMetadata {
 	pub name: String,
 	pub exposed: bool,

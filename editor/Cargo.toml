@@ -22,10 +22,6 @@ gpu = [
 ]
 resvg = ["graphene-std/resvg"]
 vello = ["graphene-std/vello", "resvg", "graphene-core/vello"]
-quantization = [
-	"graphene-std/quantization",
-	"interpreted-executor/quantization",
-]
 
 [dependencies]
 # Local dependencies

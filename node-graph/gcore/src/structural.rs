@@ -141,38 +141,6 @@ impl<'i, Root: Node<'i, I>, I: 'i + From<()>> ConsNode<I, Root> {
 	}
 }
 
-pub struct ApplyNode<O, N> {
-	pub node: N,
-	_o: PhantomData<O>,
-}
-/*
-#[node_macro::node_fn(ApplyNode)]
-fn apply<In, N>(input: In, node: &'any_input N) -> ()
-where
-	// TODO: try to allows this to return output other than ()
-	N: for<'any_input> Node<'any_input, In, Output = ()>,
-{
-	node.eval(input)
-}
-*/
-impl<'input, In: 'input, N: 'input, S0: 'input, O: 'input> Node<'input, In> for ApplyNode<O, S0>
-where
-	N: Node<'input, In, Output = O>,
-	S0: Node<'input, (), Output = &'input N>,
-{
-	type Output = <N as Node<'input, In>>::Output;
-	#[inline]
-	fn eval(&'input self, input: In) -> Self::Output {
-		let node = self.node.eval(());
-		node.eval(input)
-	}
-}
-impl<'input, S0: 'input, O: 'static> ApplyNode<O, S0> {
-	pub const fn new(node: S0) -> Self {
-		Self { node, _o: PhantomData }
-	}
-}
-
 #[cfg(test)]
 mod test {
 	use super::*;
@@ -197,17 +165,5 @@ mod test {
 		let compose = ComposeNode::new(&value, &id);
 
 		assert_eq!(compose.eval(()), &5);
-	}
-
-	#[test]
-	#[allow(clippy::unit_cmp)]
-	fn test_apply() {
-		let mut array = [1, 2, 3];
-		let slice = &mut array;
-		let set_node = crate::storage::SetOwnedNode::new(slice);
-
-		let apply = ApplyNode::new(ValueNode::new(set_node));
-
-		assert_eq!(apply.eval((1, 2)), ());
 	}
 }

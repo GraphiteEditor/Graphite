@@ -260,6 +260,10 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 }
 
 fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], struct_name: &Ident, identifier: &TokenStream2) -> Result<TokenStream2, syn::Error> {
+	if parsed.attributes.skip_impl {
+		return Ok(quote!());
+	}
+
 	let input_type = &parsed.input.ty;
 	let mut constructors = Vec::new();
 	let unit = parse_quote!(());

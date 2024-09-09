@@ -30,6 +30,7 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) category: Option<LitStr>,
 	pub(crate) display_name: Option<LitStr>,
 	pub(crate) path: Option<Path>,
+	pub(crate) skip_impl: bool,
 	// Add more attributes as needed
 }
 
@@ -64,6 +65,7 @@ impl Parse for NodeFnAttributes {
 		let mut category = None;
 		let mut display_name = None;
 		let mut path = None;
+		let mut skip_impl = false;
 
 		let content = input;
 		// let content;
@@ -89,13 +91,19 @@ impl Parse for NodeFnAttributes {
 					display_name = Some(parsed_name);
 				}
 				Meta::List(meta) if meta.path.is_ident("path") => {
-					if display_name.is_some() {
+					if path.is_some() {
 						return Err(Error::new_spanned(meta, "Multiple 'path' attributes are not allowed"));
 					}
 					let parsed_path: Path = meta
 						.parse_args()
 						.map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'path', e.g., path(\"crate::MemoizeNode\")"))?;
 					path = Some(parsed_path);
+				}
+				Meta::Path(path) if path.is_ident("skip_impl") => {
+					if skip_impl {
+						return Err(Error::new_spanned(path, "Multiple 'skip_impl' attributes are not allowed"));
+					}
+					skip_impl = true;
 				}
 				_ => {
 					return Err(Error::new_spanned(
@@ -114,7 +122,12 @@ impl Parse for NodeFnAttributes {
 			}
 		}
 
-		Ok(NodeFnAttributes { category, display_name, path })
+		Ok(NodeFnAttributes {
+			category,
+			display_name,
+			path,
+			skip_impl,
+		})
 	}
 }
 
@@ -365,6 +378,8 @@ mod tests {
 		assert_eq!(format!("{:?}", parsed.output_type), format!("{:?}", expected.output_type));
 		assert_eq!(parsed.attributes.category, expected.attributes.category);
 		assert_eq!(parsed.attributes.display_name, expected.attributes.display_name);
+		assert_eq!(parsed.attributes.path, expected.attributes.path);
+		assert_eq!(parsed.attributes.skip_impl, expected.attributes.skip_impl);
 		assert_eq!(parsed.fields.len(), expected.fields.len());
 
 		for (parsed_field, expected_field) in parsed.fields.iter().zip(expected.fields.iter()) {
@@ -415,7 +430,7 @@ mod tests {
 
 	#[test]
 	fn test_basic_node() {
-		let attr = quote!(category("Math: Arithmetic"), path(graphene_core::TestNode));
+		let attr = quote!(category("Math: Arithmetic"), path(graphene_core::TestNode), skip_impl);
 		let input = quote!(
 			fn add(a: f64, b: f64) -> f64 {
 				a + b
@@ -428,6 +443,7 @@ mod tests {
 				category: Some(parse_quote!("Math: Arithmetic")),
 				display_name: None,
 				path: Some(parse_quote!(graphene_core::TestNode)),
+				skip_impl: true,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -473,6 +489,7 @@ mod tests {
 				category: Some(parse_quote!("General")),
 				display_name: None,
 				path: None,
+				skip_impl: false,
 			},
 			fn_name: Ident::new("transform", Span::call_site()),
 			struct_name: Ident::new("Transform", Span::call_site()),
@@ -526,6 +543,7 @@ mod tests {
 				category: Some(parse_quote!("Vector: Generator")),
 				display_name: None,
 				path: None,
+				skip_impl: false,
 			},
 			fn_name: Ident::new("circle", Span::call_site()),
 			struct_name: Ident::new("Circle", Span::call_site()),
@@ -571,6 +589,7 @@ mod tests {
 				category: Some(parse_quote!("Raster: Adjustment")),
 				display_name: None,
 				path: None,
+				skip_impl: false,
 			},
 			fn_name: Ident::new("levels", Span::call_site()),
 			struct_name: Ident::new("Levels", Span::call_site()),
@@ -627,6 +646,7 @@ mod tests {
 				category: Some(parse_quote!("Math: Arithmetic")),
 				display_name: None,
 				path: Some(parse_quote!(graphene_core::TestNode)),
+				skip_impl: false,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -672,6 +692,7 @@ mod tests {
 				category: Some(parse_quote!("IO")),
 				display_name: None,
 				path: None,
+				skip_impl: false,
 			},
 			fn_name: Ident::new("load_image", Span::call_site()),
 			struct_name: Ident::new("LoadImage", Span::call_site()),
@@ -717,6 +738,7 @@ mod tests {
 				category: Some(parse_quote!("Custom")),
 				display_name: Some(parse_quote!("CustomNode2")),
 				path: None,
+				skip_impl: false,
 			},
 			fn_name: Ident::new("custom_node", Span::call_site()),
 			struct_name: Ident::new("CustomNode", Span::call_site()),

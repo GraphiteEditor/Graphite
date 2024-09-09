@@ -18,9 +18,6 @@ pub mod any;
 #[cfg(feature = "gpu")]
 pub mod gpu_nodes;
 
-#[cfg(feature = "quantization")]
-pub mod quantization;
-
 pub use graphene_core::*;
 
 pub mod image_segmentation;
