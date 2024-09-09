@@ -264,7 +264,6 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 		return Ok(quote!());
 	}
 
-	let input_type = &parsed.input.ty;
 	let mut constructors = Vec::new();
 	let unit = parse_quote!(());
 	let parameter_types: Vec<_> = parsed
@@ -298,7 +297,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 		})
 		.collect();
 
-	let max_implementations = parameter_types.iter().map(|x| x.len()).max();
+	let max_implementations = parameter_types.iter().map(|x| x.len()).chain([parsed.input.implementations.len()]).max();
 	let future_node = (!parsed.is_async).then(|| quote!(let node = gcore::registry::FutureWrapperNode::new(node);));
 
 	for i in 0..max_implementations.unwrap_or(0) {
@@ -335,6 +334,10 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 				false => panic_node_types.push(quote!(#input_type, #output_type)),
 			};
 		}
+		let input_type = match parsed.input.implementations.is_empty() {
+			true => parsed.input.ty.clone(),
+			false => parsed.input.implementations[i.min(parsed.input.implementations.len() - 1)].clone(),
+		};
 		let node_io = if parsed.is_async { quote!(to_async_node_io) } else { quote!(to_node_io) };
 		constructors.push(quote!(
 			(

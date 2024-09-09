@@ -2599,26 +2599,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			properties: &node_properties::transform_properties,
 		},
-		DocumentNodeDefinition {
-			identifier: "Set Transform",
-			category: "General",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::transform::SetTransformNode"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-						NodeInput::value(TaggedValue::DAffine2(DAffine2::IDENTITY), true),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Data".to_string(), "Transform".to_string()],
-					output_names: vec!["Data".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::node_no_properties,
-		},
 		// We need to keep this until wi migrate the properties
 		DocumentNodeDefinition {
 			identifier: "Assign Colors",

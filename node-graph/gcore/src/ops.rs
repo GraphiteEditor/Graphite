@@ -323,52 +323,6 @@ impl<'i, N: for<'a> Node<'a, I> + Clone, I: 'i> Clone for TypeNode<N, I, <N as N
 }
 impl<'i, N: for<'a> Node<'a, I> + Copy, I: 'i> Copy for TypeNode<N, I, <N as Node<'i, I>>::Output> {}
 
-// Map Option
-pub struct MapOptionNode<I, Mn> {
-	node: Mn,
-	_i: PhantomData<I>,
-}
-#[node_macro::node_fn(MapOptionNode<_I>)]
-fn map_option_node<_I, N>(input: Option<_I>, node: &'input N) -> Option<<N as Node<'input, _I>>::Output>
-where
-	N: for<'a> Node<'a, _I>,
-{
-	input.map(|x| node.eval(x))
-}
-
-// Map Result
-pub struct MapResultNode<I, E, Mn> {
-	node: Mn,
-	_i: PhantomData<I>,
-	_e: PhantomData<E>,
-}
-#[node_macro::node_fn(MapResultNode<_I, _E>)]
-fn map_result_node<_I, _E, N>(input: Result<_I, _E>, node: &'input N) -> Result<<N as Node<'input, _I>>::Output, _E>
-where
-	N: for<'a> Node<'a, _I>,
-{
-	input.map(|x| node.eval(x))
-}
-
-// Flat Map Result
-pub struct FlatMapResultNode<I, O, E, Mn> {
-	node: Mn,
-	_i: PhantomData<I>,
-	_o: PhantomData<O>,
-	_e: PhantomData<E>,
-}
-#[node_macro::node_fn(FlatMapResultNode<_I, _O, _E>)]
-fn flat_map_node<_I, _O, _E, N>(input: Result<_I, _E>, node: &'input N) -> Result<_O, _E>
-where
-	N: for<'a> Node<'a, _I, Output = Result<_O, _E>>,
-{
-	match input.map(|x| node.eval(x)) {
-		Ok(Ok(x)) => Ok(x),
-		Ok(Err(e)) => Err(e),
-		Err(e) => Err(e),
-	}
-}
-
 // Into
 pub struct IntoNode<I, O> {
 	_i: PhantomData<I>,
@@ -394,38 +348,8 @@ mod test {
 		assert_eq!(value.eval(()), &4);
 	}
 	#[test]
-	pub fn map_result() {
-		let value: ClonedNode<Result<&u32, ()>> = ClonedNode(Ok(&4u32));
-		assert_eq!(value.eval(()), Ok(&4u32));
-		// let type_erased_clone = clone as &dyn for<'a> Node<'a, &'a u32, Output = u32>;
-		let map_result = MapResultNode::new(ValueNode::new(FnNode::new(|x: &u32| *x)));
-		// let type_erased = &map_result as &dyn for<'a> Node<'a, Result<&'a u32, ()>, Output = Result<u32, ()>>;
-		assert_eq!(map_result.eval(Ok(&4u32)), Ok(4u32));
-		let fst = value.then(map_result);
-		// let type_erased = &fst as &dyn for<'a> Node<'a, (), Output = Result<u32, ()>>;
-		assert_eq!(fst.eval(()), Ok(4u32));
-	}
-	#[test]
-	pub fn flat_map_result() {
-		let fst = CloneNode::new(ValueNode(Ok(&4u32)));
-		let fn_node: FnNode<_, &u32, Result<&u32, _>> = FnNode::new(|_| Err(8u32));
-		assert_eq!(fn_node.eval(&4u32), Err(8u32));
-		let flat_map = FlatMapResultNode::new(ValueNode::new(fn_node));
-		let fst = fst.then(flat_map);
-		assert_eq!(fst.eval(()), Err(8u32));
-	}
-	#[test]
 	pub fn foo() {
-		fn int(_: (), state: &u32) -> u32 {
-			*state
-		}
-		fn swap(input: (u32, u32)) -> (u32, u32) {
-			(input.1, input.0)
-		}
-		let fnn = FnNode::new(&swap);
-		let fns = FnNodeWithState::new(int, 42u32);
+		let fnn = FnNode::new(|(a, b)| (b, a));
 		assert_eq!(fnn.eval((1u32, 2u32)), (2, 1));
-		let result: u32 = fns.eval(());
-		assert_eq!(result, 42);
 	}
 }

@@ -1,6 +1,6 @@
 use core::marker::PhantomData;
 
-use crate::{Node, NodeMut};
+use crate::Node;
 
 /// This is how we can generically define composition of two nodes.
 /// This is done generically as shown: <https://files.keavon.com/-/SurprisedGaseousAnhinga/capture.png>
@@ -40,18 +40,6 @@ where
 		let arg = self.first.eval(input);
 		let second = &self.second;
 		second.eval(arg)
-	}
-}
-impl<'i, 'f: 'i, 's: 'i, Input: 'i, First, Second> NodeMut<'i, Input> for ComposeNode<First, Second, Input>
-where
-	First: Node<'i, Input>,
-	Second: NodeMut<'i, <First as Node<'i, Input>>::Output> + 'i,
-{
-	type MutOutput = <Second as NodeMut<'i, <First as Node<'i, Input>>::Output>>::MutOutput;
-	fn eval_mut(&'i mut self, input: Input) -> Self::MutOutput {
-		let arg = self.first.eval(input);
-		let second = &mut self.second;
-		second.eval_mut(arg)
 	}
 }
 

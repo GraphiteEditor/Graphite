@@ -29,7 +29,6 @@ pub mod gpu;
 
 #[cfg(feature = "alloc")]
 pub mod memo;
-pub mod storage;
 
 pub mod raster;
 #[cfg(feature = "alloc")]
@@ -71,32 +70,6 @@ pub trait Node<'i, Input: 'i>: 'i {
 	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
 		log::warn!("Node::serialize not implemented for {}", core::any::type_name::<Self>());
 		None
-	}
-}
-
-pub trait NodeMut<'i, Input: 'i>: 'i {
-	type MutOutput: 'i;
-	fn eval_mut(&'i mut self, input: Input) -> Self::MutOutput;
-}
-
-pub trait NodeOnce<'i, Input>
-where
-	Input: 'i,
-{
-	type OnceOutput: 'i;
-	fn eval_once(self, input: Input) -> Self::OnceOutput;
-}
-
-impl<'i, T: Node<'i, I>, I: 'i> NodeOnce<'i, I> for &'i T {
-	type OnceOutput = T::Output;
-	fn eval_once(self, input: I) -> Self::OnceOutput {
-		(self).eval(input)
-	}
-}
-impl<'i, T: Node<'i, I> + ?Sized, I: 'i> NodeMut<'i, I> for &'i T {
-	type MutOutput = T::Output;
-	fn eval_mut(&'i mut self, input: I) -> Self::MutOutput {
-		(*self).eval(input)
 	}
 }
 

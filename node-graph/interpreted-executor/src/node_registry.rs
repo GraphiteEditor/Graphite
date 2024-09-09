@@ -414,73 +414,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_std::wasm_application_io::RasterizeNode<_, _>, input: VectorData, output: ImageFrame<Color>, params: [Footprint, Arc<WasmSurfaceHandle>]),
 		#[cfg(target_arch = "wasm32")]
 		async_node!(graphene_std::wasm_application_io::RasterizeNode<_, _>, input: GraphicGroup, output: ImageFrame<Color>, params: [Footprint, Arc<WasmSurfaceHandle>]),
-		async_node!(graphene_core::transform::TransformNode<_, _, _, _, _, _>, input: (), output: VectorData, fn_params: [() => VectorData, () => DVec2, () => f64, () => DVec2, () => DVec2, () => DVec2]),
-		async_node!(graphene_core::transform::TransformNode<_, _, _, _, _, _>, input: (), output: ImageFrame<Color>, fn_params: [() => ImageFrame<Color>, () => DVec2, () => f64, () => DVec2, () => DVec2, () => DVec2]),
-		async_node!(graphene_core::transform::TransformNode<_, _, _, _, _, _>, input: (), output: TextureFrame, fn_params: [() => TextureFrame, () => DVec2, () => f64, () => DVec2, () => DVec2, () => DVec2]),
-		register_node!(graphene_core::transform::SetTransformNode<_>, input: VectorData, params: [VectorData]),
-		register_node!(graphene_core::transform::SetTransformNode<_>, input: ImageFrame<Color>, params: [ImageFrame<Color>]),
-		register_node!(graphene_core::transform::SetTransformNode<_>, input: VectorData, params: [DAffine2]),
-		register_node!(graphene_core::transform::SetTransformNode<_>, input: ImageFrame<Color>, params: [DAffine2]),
 		register_node!(graphene_std::vector::BooleanOperationNode<_>, input: GraphicGroup, fn_params: [() => graphene_core::vector::misc::BooleanOperation]),
-		vec![(
-			ProtoNodeIdentifier::new("graphene_core::transform::CullNode<_>"),
-			|args| {
-				Box::pin(async move {
-					let mut args = args.clone();
-					args.reverse();
-					let node = <graphene_core::transform::CullNode<_>>::new(graphene_std::any::input_node::<VectorData>(args.pop().expect("Not enough arguments provided to construct node")));
-					let any: DynAnyNode<Footprint, _, _> = graphene_std::any::DynAnyNode::new(node);
-					any.into_type_erased()
-				})
-			},
-			{
-				let node = <graphene_core::transform::CullNode<_>>::new(graphene_std::any::PanicNode::<(), VectorData>::new());
-				let params = vec![fn_type!((), VectorData)];
-				let mut node_io = <graphene_core::transform::CullNode<_> as NodeIO<'_, Footprint>>::to_node_io(&node, params);
-				node_io.input = concrete!(<Footprint as StaticType>::Static);
-				node_io
-			},
-		)],
-		register_node!(graphene_core::transform::CullNode<_>, input: Footprint, params: [Artboard]),
-		register_node!(graphene_core::transform::CullNode<_>, input: Footprint, params: [ImageFrame<Color>]),
-		vec![(
-			ProtoNodeIdentifier::new("graphene_core::transform::CullNode<_>"),
-			|args| {
-				Box::pin(async move {
-					let mut args = args.clone();
-					args.reverse();
-					let node = <graphene_core::transform::CullNode<_>>::new(graphene_std::any::input_node::<ArtboardGroup>(args.pop().expect("Not enough arguments provided to construct node")));
-					let any: DynAnyNode<Footprint, _, _> = graphene_std::any::DynAnyNode::new(node);
-					any.into_type_erased()
-				})
-			},
-			{
-				let node = <graphene_core::transform::CullNode<_>>::new(graphene_std::any::PanicNode::<(), ArtboardGroup>::new());
-				let params = vec![fn_type!((), ArtboardGroup)];
-				let mut node_io = <graphene_core::transform::CullNode<_> as NodeIO<'_, Footprint>>::to_node_io(&node, params);
-				node_io.input = concrete!(<Footprint as StaticType>::Static);
-				node_io
-			},
-		)],
-		vec![(
-			ProtoNodeIdentifier::new("graphene_core::transform::CullNode<_>"),
-			|args| {
-				Box::pin(async move {
-					let mut args = args.clone();
-					args.reverse();
-					let node = <graphene_core::transform::CullNode<_>>::new(graphene_std::any::input_node::<GraphicGroup>(args.pop().expect("Not enough arguments provided to construct node")));
-					let any: DynAnyNode<Footprint, _, _> = graphene_std::any::DynAnyNode::new(node);
-					any.into_type_erased()
-				})
-			},
-			{
-				let node = <graphene_core::transform::CullNode<_>>::new(graphene_std::any::PanicNode::<(), GraphicGroup>::new());
-				let params = vec![fn_type!((), GraphicGroup)];
-				let mut node_io = <graphene_core::transform::CullNode<_> as NodeIO<'_, Footprint>>::to_node_io(&node, params);
-				node_io.input = concrete!(<Footprint as StaticType>::Static);
-				node_io
-			},
-		)],
 		register_node!(graphene_std::raster::SampleNode<_>, input: Footprint, params: [ImageFrame<Color>]),
 		register_node!(graphene_std::raster::MandelbrotNode, input: Footprint, params: []),
 		register_node!(graphene_core::vector::PathModify<_>, input: VectorData, params: [graphene_core::vector::VectorModification]),
