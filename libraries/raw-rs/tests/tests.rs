@@ -57,7 +57,7 @@ fn test_images_match_with_libraw() {
 }
 
 fn test_image(path: &Path) -> bool {
-	let mut f = File::open(&path).unwrap();
+	let mut f = File::open(path).unwrap();
 	let mut content = vec![];
 	f.read_to_end(&mut content).unwrap();
 
@@ -81,12 +81,12 @@ fn test_image(path: &Path) -> bool {
 
 	// TODO: Remove this later
 	let mut image = raw_rs::process_8bit(raw_image);
-	store_image(&path, "raw_rs", &mut image.data, image.width, image.height);
+	store_image(path, "raw_rs", &mut image.data, image.width, image.height);
 
 	let processor = Processor::new();
 	let libraw_image = processor.process_8bit(&content).unwrap();
 	let mut data = Vec::from_iter(libraw_image.iter().copied());
-	store_image(&path, "libraw_rs", &mut data[..], libraw_image.width() as usize, libraw_image.height() as usize);
+	store_image(path, "libraw_rs", &mut data[..], libraw_image.width() as usize, libraw_image.height() as usize);
 
 	true
 }
