@@ -10,7 +10,6 @@ use crate::vector::VectorData;
 use crate::Artboard;
 use crate::GraphicElement;
 use crate::GraphicGroup;
-use crate::Node;
 
 pub trait Transform {
 	fn transform(&self) -> DAffine2;
@@ -215,7 +214,7 @@ impl<T: TransformMut> ApplyTransform for T {
 	}
 }
 impl ApplyTransform for () {
-	fn apply_transform(&mut self, &modification: &DAffine2) {}
+	fn apply_transform(&mut self, &_modification: &DAffine2) {}
 }
 
 #[node_macro::new_node_fn]

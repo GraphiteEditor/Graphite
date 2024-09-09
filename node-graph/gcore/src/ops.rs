@@ -324,15 +324,14 @@ impl<'i, N: for<'a> Node<'a, I> + Clone, I: 'i> Clone for TypeNode<N, I, <N as N
 impl<'i, N: for<'a> Node<'a, I> + Copy, I: 'i> Copy for TypeNode<N, I, <N as Node<'i, I>>::Output> {}
 
 // Into
-pub struct IntoNode<I, O> {
-	_i: PhantomData<I>,
+pub struct IntoNode<O> {
 	_o: PhantomData<O>,
 }
 #[cfg(feature = "alloc")]
-#[node_macro::node_fn(IntoNode<_I, _O>)]
-async fn into<_I, _O>(input: _I) -> _O
+#[node_macro::node_fn(IntoNode<_O>)]
+async fn into<I, _O>(input: I) -> _O
 where
-	_I: Into<_O> + Sync + Send,
+	I: Into<_O> + Sync + Send,
 {
 	input.into()
 }

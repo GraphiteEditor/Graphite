@@ -5,6 +5,7 @@ use std::sync::{LazyLock, Mutex};
 
 use dyn_any::DynAny;
 
+use crate::transform::Footprint;
 use crate::NodeIO;
 use crate::NodeIOTypes;
 
@@ -231,6 +232,13 @@ where
 				assert_eq!(std::mem::size_of::<_I>(), 0);
 				// Rust can't know, that `_I` and `()` are the same size, so we have to use a `transmute_copy()` here
 				Box::pin(output(unsafe { std::mem::transmute_copy(&()) }))
+			}
+			// If the Node expects a footprint but we provide (). In this case construct the default Footprint and pass that
+			Err(_) if core::any::TypeId::of::<_I::Static>() == core::any::TypeId::of::<Footprint>() => {
+				assert_eq!(std::mem::size_of::<_I>(), std::mem::size_of::<Footprint>());
+				assert_eq!(std::mem::align_of::<_I>(), std::mem::align_of::<Footprint>());
+				// Rust can't know, that `_I` and `Footprint` are the same size, so we have to use a `transmute_copy()` here
+				Box::pin(output(unsafe { std::mem::transmute_copy(&Footprint::default()) }))
 			}
 			Err(e) => panic!("DynAnyNode Input, {0} in:\n{1}", e, node_name),
 		}

@@ -1,6 +1,6 @@
-use core::{fmt::Debug, marker::PhantomData};
+use core::fmt::Debug;
 
-use crate::{registry::types::Percentage, transform::Footprint, Node};
+use crate::{registry::types::Percentage, transform::Footprint};
 
 use bytemuck::{Pod, Zeroable};
 use glam::DVec2;

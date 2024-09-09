@@ -2277,51 +2277,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: &node_properties::rectangle_properties,
 		},
 		DocumentNodeDefinition {
-			identifier: "Regular Polygon",
-			category: "Vector: Generator",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::RegularPolygonNode"),
-					manual_composition: Some(concrete!(())),
-					inputs: vec![
-						NodeInput::value(TaggedValue::None, false),
-						NodeInput::value(TaggedValue::U32(6), false),
-						NodeInput::value(TaggedValue::F64(50.), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["None".to_string(), "Sides".to_string(), "Radius".to_string()],
-					output_names: vec!["Vector".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::regular_polygon_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Star",
-			category: "Vector: Generator",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::StarNode"),
-					manual_composition: Some(concrete!(())),
-					inputs: vec![
-						NodeInput::value(TaggedValue::None, false),
-						NodeInput::value(TaggedValue::U32(5), false),
-						NodeInput::value(TaggedValue::F64(50.), false),
-						NodeInput::value(TaggedValue::F64(25.), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["None".to_string(), "Sides".to_string(), "Radius".to_string(), "Inner Radius".to_string()],
-					output_names: vec!["Vector".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::star_properties,
-		},
-		DocumentNodeDefinition {
 			identifier: "Line",
 			category: "Vector: Generator",
 			node_template: NodeTemplate {
@@ -2381,7 +2336,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::network(concrete!(graphene_core::vector::VectorModification), 1)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::PathModify")),
+								manual_composition: Some(generic!(T)),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::vector_data::modification::PathModifyNode")),
 								..Default::default()
 							},
 						]

@@ -70,14 +70,29 @@ fn rectangle<T: CornerRadius>(
 }
 
 #[node_macro::new_node_fn(category("Vector: Generator"))]
-fn regular_polygon(_: (), _input: (), #[default(6)] sides: u32, #[default(50)] radius: f64) -> VectorData {
+fn regular_polygon(
+	_: (),
+	_input: (),
+	#[default(6)]
+	#[min(3)]
+	sides: u32,
+	#[default(50)] radius: f64,
+) -> VectorData {
 	let points = sides.into();
 	let radius: f64 = radius * 2.;
 	super::VectorData::from_subpath(Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius))
 }
 
 #[node_macro::new_node_fn(category("Vector: Generator"))]
-fn star(_: (), _input: (), #[default(5)] sides: u32, #[default(50)] radius: f64, #[default(25)] inner_radius: f64) -> VectorData {
+fn star(
+	_: (),
+	_input: (),
+	#[default(5)]
+	#[min(2)]
+	sides: u32,
+	#[default(50)] radius: f64,
+	#[default(25)] inner_radius: f64,
+) -> VectorData {
 	let points = sides.into();
 	let diameter: f64 = radius * 2.;
 	let inner_diameter = inner_radius * 2.;

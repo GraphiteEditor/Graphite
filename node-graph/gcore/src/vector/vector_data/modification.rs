@@ -1,6 +1,5 @@
 use super::*;
 use crate::uuid::generate_uuid;
-use crate::Node;
 
 use bezier_rs::BezierHandles;
 use dyn_any::{DynAny, StaticType};
@@ -422,14 +421,15 @@ impl core::hash::Hash for VectorModification {
 	}
 }
 
+use crate::transform::Footprint;
 /// A node that applies a procedural modification to some [`VectorData`].
-#[derive(Debug, Clone, Copy)]
-pub struct PathModify<VectorModificationNode> {
-	modification: VectorModificationNode,
-}
-
-#[node_macro::node_fn(PathModify)]
-fn path_modify(mut vector_data: VectorData, modification: VectorModification) -> VectorData {
+#[node_macro::new_node_fn]
+async fn path_modify<F: 'n + Send + Sync + Clone>(
+	#[implementations((), Footprint)] input: F,
+	#[implementations(((),VectorData), (Footprint, VectorData))] vector_data: impl Node<F, Output = VectorData>,
+	modification: VectorModification,
+) -> VectorData {
+	let mut vector_data = vector_data.eval(input).await;
 	modification.apply(&mut vector_data);
 	vector_data
 }

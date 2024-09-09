@@ -1705,21 +1705,6 @@ pub(crate) fn rectangle_properties(document_node: &DocumentNode, node_id: NodeId
 	]
 }
 
-pub(crate) fn regular_polygon_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let points = number_widget(document_node, node_id, 1, "Points", NumberInput::default().min(3.), true);
-	let radius = number_widget(document_node, node_id, 2, "Radius", NumberInput::default(), true);
-
-	vec![LayoutGroup::Row { widgets: points }, LayoutGroup::Row { widgets: radius }]
-}
-
-pub(crate) fn star_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let points = number_widget(document_node, node_id, 1, "Points", NumberInput::default().min(2.), true);
-	let radius = number_widget(document_node, node_id, 2, "Radius", NumberInput::default(), true);
-	let inner_radius = number_widget(document_node, node_id, 3, "Inner Radius", NumberInput::default(), true);
-
-	vec![LayoutGroup::Row { widgets: points }, LayoutGroup::Row { widgets: radius }, LayoutGroup::Row { widgets: inner_radius }]
-}
-
 pub(crate) fn line_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let operand = |name: &str, index| vec2_widget(document_node, node_id, index, name, "X", "Y", "px", None, add_blank_assist);
 	vec![operand("Start", 1), operand("End", 2)]
