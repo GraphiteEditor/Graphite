@@ -3,11 +3,13 @@ name: Clippy Check
 on:
   pull_request:
     branches: [master]
+    types: [opened, reopened, synchronize, ready_for_review]
 
 jobs:
   clippy:
     name: Run Clippy
     runs-on: ubuntu-latest
+    if: ${{ !github.event.pull_request.draft }}
     permissions:
       contents: read
       pull-requests: write
