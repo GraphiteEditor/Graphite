@@ -807,6 +807,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					// Round to nearest even number
 					ruler_interval = 2. * (ruler_interval / 2.).round();
 				}
+
+				if self.graph_view_overlay_open {
+					ruler_interval = ruler_interval.max(1.);
+				}
+
 				let ruler_spacing = ruler_interval * ruler_scale;
 
 				responses.add(FrontendMessage::UpdateDocumentRulers {
