@@ -139,7 +139,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "General",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicGroupNode"),
+					implementation: DocumentNodeImplementation::proto("graphene_core::graphic_element::ToGraphicGroupNode"),
+					manual_composition: Some(generic!(T)),
 					inputs: vec![NodeInput::value(TaggedValue::VectorData(VectorData::empty()), true)],
 					..Default::default()
 				},
@@ -162,13 +163,15 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							// Secondary (left) input type coercion
 							DocumentNode {
 								inputs: vec![NodeInput::network(generic!(T), 1)],
-								implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicElementNode"),
+								implementation: DocumentNodeImplementation::proto("graphene_core::graphic_element::ToGraphicElementNode"),
+								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
 							// Primary (bottom) input type coercion
 							DocumentNode {
 								inputs: vec![NodeInput::network(generic!(T), 0)],
-								implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicGroupNode"),
+								implementation: DocumentNodeImplementation::proto("graphene_core::graphic_element::ToGraphicGroupNode"),
+								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
 							// The monitor node is used to display a thumbnail in the UI
@@ -182,7 +185,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							DocumentNode {
 								manual_composition: Some(concrete!(Footprint)),
 								inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(2), 0)],
-								implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode"),
+								implementation: DocumentNodeImplementation::proto("graphene_core::graphic_element::ConstructLayerNode"),
 								..Default::default()
 							},
 						]
@@ -270,7 +273,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(concrete!(TaggedValue), 4),
 									NodeInput::network(concrete!(TaggedValue), 5),
 								],
-								implementation: DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode"),
+								implementation: DocumentNodeImplementation::proto("graphene_core::graphic_element::ConstructArtboardNode"),
 								..Default::default()
 							},
 							// The monitor node is used to display a thumbnail in the UI.

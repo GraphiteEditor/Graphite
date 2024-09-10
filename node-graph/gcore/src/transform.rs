@@ -205,7 +205,7 @@ impl TransformMut for Footprint {
 	}
 }
 
-trait ApplyTransform {
+pub trait ApplyTransform {
 	fn apply_transform(&mut self, modification: &DAffine2);
 }
 impl<T: TransformMut> ApplyTransform for T {
