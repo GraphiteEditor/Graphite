@@ -29,7 +29,8 @@ pub struct VectorData {
 	pub region_domain: RegionDomain,
 
 	// Used to store the upstream graphic group during destructive Boolean Operations so that click targets can be preserved.
-	pub upstream_graphic_group: Option<crate::GraphicGroup>,
+	// Also stores the transform of the vector data after the boolean operation
+	pub upstream_graphic_group: Option<(crate::GraphicGroup, DAffine2)>,
 }
 
 impl core::hash::Hash for VectorData {
@@ -41,7 +42,6 @@ impl core::hash::Hash for VectorData {
 		self.style.hash(state);
 		self.alpha_blending.hash(state);
 		self.colinear_manipulators.hash(state);
-		self.upstream_graphic_group.hash(state);
 	}
 }
 

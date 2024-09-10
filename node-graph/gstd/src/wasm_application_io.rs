@@ -111,8 +111,6 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 	data.add_click_targets(&mut click_targets, None);
 	data.add_vector_modify(&mut vector_modify, None);
 
-	log::debug!("vector_modify: {:?}", vector_modify);
-
 	render.wrap_with_transform(footprint.transform, Some(footprint.resolution.as_dvec2()));
 
 	RenderOutput::Svg((render.svg.to_svg_string(), footprints, click_targets, vector_modify))

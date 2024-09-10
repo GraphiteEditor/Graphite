@@ -428,7 +428,7 @@ impl GraphicElementRendered for VectorData {
 			};
 			click_targets.insert(element_id, self.stroke_bezier_paths().map(fill).map(|subpath| ClickTarget::new(subpath, stroke_width)).collect());
 		}
-		if let Some(upstream_graphic_group) = &self.upstream_graphic_group {
+		if let Some((upstream_graphic_group, _)) = &self.upstream_graphic_group {
 			upstream_graphic_group.add_click_targets(click_targets, None);
 		}
 	}
@@ -437,14 +437,15 @@ impl GraphicElementRendered for VectorData {
 		if let Some(element_id) = element_id {
 			vector_modify.insert(element_id, self.clone());
 		}
-		if let Some(upstream_graphic_group) = &self.upstream_graphic_group {
+		if let Some((upstream_graphic_group, _)) = &self.upstream_graphic_group {
 			upstream_graphic_group.add_vector_modify(vector_modify, None);
 		}
 	}
 
 	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, mut footprint: Footprint, element_id: Option<NodeId>) {
-		// footprint.transform *= self.transform;
-		if let Some(upstream_graphic_group) = &self.upstream_graphic_group {
+		if let Some((upstream_graphic_group, boolean_result_transform)) = &self.upstream_graphic_group {
+			let transform_after_boolean = self.transform * boolean_result_transform.inverse();
+			footprint.transform *= transform_after_boolean;
 			upstream_graphic_group.add_footprints(footprints, footprint, None);
 		}
 	}

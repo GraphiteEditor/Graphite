@@ -661,13 +661,13 @@ impl NodeGraphExecutor {
 			TaggedValue::SurfaceFrame(SurfaceFrame { .. }) => {
 				// TODO: Reimplement this now that document-legacy is gone
 			}
-			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg((svg, footprints, click_targets, vector_modify))) => {
+			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg((svg, upstream_transforms, click_targets, vector_modify))) => {
 				// Send to frontend
 				//log::debug!("Render output footprints: {footprints:?}");
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 				responses.add(DocumentMessage::RenderScrollbars);
 				responses.add(DocumentMessage::RenderRulers);
-				responses.add(DocumentMessage::UpdateUpstreamTransforms { upstream_transforms: footprints });
+				responses.add(DocumentMessage::UpdateUpstreamTransforms { upstream_transforms });
 				responses.add(DocumentMessage::UpdateClickTargets { click_targets });
 				responses.add(DocumentMessage::UpdateVectorModify { vector_modify });
 				responses.add(OverlaysMessage::Draw);

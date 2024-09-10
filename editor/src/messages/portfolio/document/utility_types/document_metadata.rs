@@ -77,18 +77,9 @@ impl DocumentMetadata {
 	}
 
 	pub fn transform_to_viewport(&self, layer: LayerNodeIdentifier) -> DAffine2 {
-		layer
-			.ancestors(self)
-			.filter_map(|ancestor_layer| {
-				if ancestor_layer != LayerNodeIdentifier::ROOT_PARENT {
-					self.upstream_transforms.get(&ancestor_layer.to_node())
-				} else {
-					None
-				}
-			})
-			.copied()
-			.map(|(footprint, transform)| footprint.transform * transform)
-			.next()
+		self.upstream_transforms
+			.get(&layer.to_node())
+			.map(|(footprint, transform)| footprint.transform * *transform)
 			.unwrap_or(self.document_to_viewport)
 	}
 
