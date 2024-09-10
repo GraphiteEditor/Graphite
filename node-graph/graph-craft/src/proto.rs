@@ -61,8 +61,8 @@ impl Deref for NodeContainer {
 }
 
 /// #Safety
-/// Marks NodeContainer as Sync. This dissallows the use of threadlocal stroage for nodes as this would invalidate references to them.
-// TODO: implement this on a higher level wrapper to avoid missuse
+/// Marks NodeContainer as Sync. This disallows the use of threadlocal storage for nodes as this would invalidate references to them.
+// TODO: implement this on a higher level wrapper to avoid misuse
 #[cfg(feature = "dealloc_nodes")]
 unsafe impl Send for NodeContainer {}
 #[cfg(feature = "dealloc_nodes")]
