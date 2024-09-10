@@ -256,10 +256,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				vec![Type::Fn(Box::new(generic!(T)), Box::new(generic!(V))), Type::Fn(Box::new(generic!(V)), Box::new(generic!(U)))],
 			),
 		)],
-		register_node!(graphene_std::brush::IntoIterNode<_>, input: &Vec<BrushStroke>, params: []),
-		async_node!(graphene_std::brush::BrushNode<_, _, _>, input: ImageFrame<Color>,  params: [ImageFrame<Color>, Vec<BrushStroke>, BrushCache]),
 		// Filters
-		register_node!(graphene_std::image_color_palette::ImageColorPaletteNode<_>, input: ImageFrame<Color>, params: [u32]),
 		vec![(
 			ProtoNodeIdentifier::new("graphene_core::raster::BrightnessContrastNode<_, _, _>"),
 			|args| {
@@ -421,7 +418,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_std::vector::BooleanOperationNode<_>, input: GraphicGroup, fn_params: [() => graphene_core::vector::misc::BooleanOperation]),
 		register_node!(graphene_std::raster::SampleNode<_>, input: Footprint, params: [ImageFrame<Color>]),
 		register_node!(graphene_std::raster::MandelbrotNode, input: Footprint, params: []),
-		register_node!(graphene_std::brush::VectorPointsNode, input: VectorData, params: []),
 		async_node!(graphene_core::AddArtboardNode<_, _>, input: Footprint,  fn_params: [Footprint => ArtboardGroup, Footprint => Artboard]),
 	];
 	let mut map: HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> = HashMap::new();

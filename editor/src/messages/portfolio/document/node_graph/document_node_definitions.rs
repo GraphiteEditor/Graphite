@@ -135,24 +135,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: &|_document_node, _node_id, _context| node_properties::string_properties("The Monitor node stores the value of its last evaluation"),
 		},
 		DocumentNodeDefinition {
-			identifier: "Group",
-			category: "General",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::graphic_element::ToGraphicGroupNode"),
-					manual_composition: Some(generic!(T)),
-					inputs: vec![NodeInput::value(TaggedValue::VectorData(VectorData::empty()), true)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Element".to_string()],
-					output_names: vec!["Graphic Group".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::node_no_properties,
-		},
-		DocumentNodeDefinition {
 			identifier: "Merge",
 			category: "General",
 			node_template: NodeTemplate {
@@ -1084,25 +1066,18 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(1), 0)],
-						nodes: vec![
-							DocumentNode {
-								inputs: vec![
-									NodeInput::network(concrete!(graphene_core::raster::ImageFrame<Color>), 0),
-									NodeInput::network(concrete!(graphene_core::raster::ImageFrame<Color>), 1),
-									NodeInput::network(concrete!(Vec<graphene_core::vector::brush_stroke::BrushStroke>), 2),
-									NodeInput::network(concrete!(BrushCache), 3),
-								],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::brush::BrushNode")),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::CullNode")),
-								manual_composition: Some(concrete!(Footprint)),
-								..Default::default()
-							},
-						]
+						exports: vec![NodeInput::node(NodeId(0), 0)],
+						nodes: vec![DocumentNode {
+							inputs: vec![
+								NodeInput::network(concrete!(graphene_core::raster::ImageFrame<Color>), 0),
+								NodeInput::network(concrete!(graphene_core::raster::ImageFrame<Color>), 1),
+								NodeInput::network(concrete!(Vec<graphene_core::vector::brush_stroke::BrushStroke>), 2),
+								NodeInput::network(concrete!(BrushCache), 3),
+							],
+							manual_composition: Some(concrete!(Footprint)),
+							implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::brush::BrushNode")),
+							..Default::default()
+						}]
 						.into_iter()
 						.enumerate()
 						.map(|(id, node)| (NodeId(id as u64), node))
@@ -2939,23 +2914,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			properties: &node_properties::color_overlay_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Image Color Palette",
-			category: "Raster",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_std::image_color_palette::ImageColorPaletteNode"),
-					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true), NodeInput::value(TaggedValue::U32(8), true)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Max Size".to_string()],
-					output_names: vec!["Colors".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::image_color_palette,
 		},
 	];
 	// Remove struct generics

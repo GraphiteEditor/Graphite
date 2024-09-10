@@ -261,7 +261,7 @@ async fn to_graphic_element<F: 'n + Send, Data: Into<GraphicElement> + 'n>(
 	data.eval(footprint).await.into()
 }
 
-#[new_node_fn]
+#[new_node_fn(name("Group"))]
 async fn to_graphic_group<F: 'n + Send, Data: Into<GraphicGroup> + 'n>(
 	#[implementations((), (), (), (), Footprint)] footprint: F,
 	#[implementations(

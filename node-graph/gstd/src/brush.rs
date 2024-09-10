@@ -5,62 +5,16 @@ use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::{Alpha, BlendPairNode, Color, Image, ImageFrame, Pixel, Sample};
-use graphene_core::transform::{Transform, TransformMut};
+use graphene_core::transform::{Footprint, Transform, TransformMut};
 use graphene_core::value::{ClonedNode, CopiedNode, ValueNode};
 use graphene_core::vector::brush_stroke::{BrushStroke, BrushStyle};
 use graphene_core::vector::VectorData;
-use graphene_core::{Node, WasmNotSend};
-use node_macro::node_fn;
+use graphene_core::Node;
 
 use glam::{DAffine2, DVec2};
-use std::marker::PhantomData;
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct ReduceNode<Initial, Lambda> {
-	pub initial: Initial,
-	pub lambda: Lambda,
-}
-
-#[node_fn(ReduceNode)]
-fn reduce<I: Iterator, Lambda, T>(iter: I, initial: T, lambda: &'input Lambda) -> T
-where
-	Lambda: for<'a> Node<'a, (T, I::Item), Output = T>,
-{
-	iter.fold(initial, |a, x| lambda.eval((a, x)))
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct ChainApplyNode<Value> {
-	pub value: Value,
-}
-
-#[node_fn(ChainApplyNode)]
-async fn chain_apply<I: Iterator + WasmNotSend, T: WasmNotSend>(iter: I, value: T) -> T
-where
-	I::Item: for<'a> Node<'a, T, Output = T>,
-{
-	let mut value = value;
-	for lambda in iter {
-		value = lambda.eval(value);
-	}
-	value
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct IntoIterNode<T> {
-	_t: PhantomData<T>,
-}
-
-#[node_fn(IntoIterNode<_T>)]
-fn into_iter<'i: 'input, _T: Send + Sync>(vec: &'i Vec<_T>) -> Box<dyn Iterator<Item = &'i _T> + Send + Sync + 'i> {
-	Box::new(vec.iter())
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct VectorPointsNode;
-
-#[node_fn(VectorPointsNode)]
-fn vector_points(vector: VectorData) -> Vec<DVec2> {
+#[node_macro::new_node_fn]
+fn vector_points(_: (), vector: VectorData) -> Vec<DVec2> {
 	vector.point_domain.positions().to_vec()
 }
 
@@ -110,27 +64,8 @@ impl<P: Pixel + Alpha> Sample for BrushStampGenerator<P> {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct BrushStampGeneratorNode<ColorNode, Hardness, Flow> {
-	pub color: ColorNode,
-	pub hardness: Hardness,
-	pub flow: Flow,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct EraseNode<Flow> {
-	flow: Flow,
-}
-
-#[node_fn(EraseNode)]
-fn erase(input: (Color, Color), flow: f64) -> Color {
-	let (input, brush) = input;
-	let alpha = input.a() * (1. - flow as f32 * brush.a());
-	Color::from_unassociated_alpha(input.r(), input.g(), input.b(), alpha)
-}
-
-#[node_fn(BrushStampGeneratorNode)]
-fn brush_stamp_generator_node(diameter: f64, color: Color, hardness: f64, flow: f64) -> BrushStampGenerator<Color> {
+#[node_macro::new_node_fn(skip_impl)]
+fn brush_stamp_generator(diameter: f64, color: Color, hardness: f64, flow: f64) -> BrushStampGenerator<Color> {
 	// Diameter
 	let radius = diameter / 2.;
 
@@ -148,29 +83,10 @@ fn brush_stamp_generator_node(diameter: f64, color: Color, hardness: f64, flow: 
 	BrushStampGenerator { color, feather_exponent, transform }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct TranslateNode<Translatable> {
-	translatable: Translatable,
-}
-
-#[node_fn(TranslateNode)]
-fn translate_node<Data: TransformMut>(offset: DVec2, mut translatable: Data) -> Data {
-	translatable.translate(offset);
-	translatable
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct BlitNode<P, Texture, Positions, BlendFn> {
-	texture: Texture,
-	positions: Positions,
-	blend_mode: BlendFn,
-	_p: PhantomData<P>,
-}
-
-#[node_fn(BlitNode<_P>)]
-fn blit_node<_P: Alpha + Pixel + std::fmt::Debug, BlendFn>(mut target: ImageFrame<_P>, texture: Image<_P>, positions: Vec<DVec2>, blend_mode: BlendFn) -> ImageFrame<_P>
+#[node_macro::new_node_fn(skip_impl)]
+fn blit<P: Alpha + Pixel + std::fmt::Debug, BlendFn>(mut target: ImageFrame<P>, texture: Image<P>, positions: Vec<DVec2>, blend_mode: BlendFn) -> ImageFrame<P>
 where
-	BlendFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P>,
+	BlendFn: for<'any_input> Node<'any_input, (P, P), Output = P>,
 {
 	if positions.is_empty() {
 		return target;
@@ -282,14 +198,8 @@ pub fn blend_with_mode(background: ImageFrame<Color>, foreground: ImageFrame<Col
 	)
 }
 
-pub struct BrushNode<Bounds, Strokes, Cache> {
-	bounds: Bounds,
-	strokes: Strokes,
-	cache: Cache,
-}
-
-#[node_macro::node_fn(BrushNode)]
-async fn brush(image: ImageFrame<Color>, bounds: ImageFrame<Color>, strokes: Vec<BrushStroke>, cache: BrushCache) -> ImageFrame<Color> {
+#[node_macro::new_node_fn]
+fn brush(_footprint: Footprint, image: ImageFrame<Color>, bounds: ImageFrame<Color>, strokes: Vec<BrushStroke>, cache: BrushCache) -> ImageFrame<Color> {
 	let stroke_bbox = strokes.iter().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
 	let image_bbox = Bbox::from_transform(image.transform).to_axis_aligned_bbox();
 	let bbox = if image_bbox.size().length() < 0.1 { stroke_bbox } else { stroke_bbox.union(&image_bbox) };
@@ -398,20 +308,10 @@ async fn brush(image: ImageFrame<Color>, bounds: ImageFrame<Color>, strokes: Vec
 mod test {
 	use super::*;
 
-	use graphene_core::transform::{Transform, TransformMut};
+	use graphene_core::transform::Transform;
 	use graphene_core::value::ClonedNode;
 
 	use glam::DAffine2;
-
-	#[test]
-	fn test_translate_node() {
-		let image = Image::new(10, 10, Color::TRANSPARENT);
-		let mut image = ImageFrame { image, ..Default::default() };
-		image.translate(DVec2::new(1., 2.));
-		let translate_node = TranslateNode::new(ClonedNode::new(image));
-		let image = translate_node.eval(DVec2::new(1., 2.));
-		assert_eq!(image.transform(), DAffine2::from_translation(DVec2::new(2., 4.)));
-	}
 
 	#[test]
 	fn test_brush_texture() {

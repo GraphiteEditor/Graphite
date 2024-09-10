@@ -100,10 +100,16 @@ pub struct BrushPlan {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, DynAny, Default)]
+#[derive(Debug, DynAny)]
 pub struct BrushCache {
 	inner: Arc<Mutex<BrushCacheImpl>>,
 	proto: bool,
+}
+
+impl Default for BrushCache {
+	fn default() -> Self {
+		Self::new_proto()
+	}
 }
 
 // A bit of a cursed implementation to work around the current node system.

@@ -1,15 +1,15 @@
 use graphene_core::raster::ImageFrame;
+use graphene_core::transform::Footprint;
 use graphene_core::Color;
-use graphene_core::Node;
 
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ImageColorPaletteNode<MaxSize> {
-	max_size: MaxSize,
-}
-
-#[node_macro::node_fn(ImageColorPaletteNode)]
-fn image_color_palette(frame: ImageFrame<Color>, max_size: u32) -> Vec<Color> {
+#[node_macro::new_node_fn]
+async fn image_color_palette<F: 'n + Send>(
+	#[implementations((), Footprint)] footprint: F,
+	#[implementations(((), ImageFrame<Color>), (Footprint, ImageFrame<Color>))] image: impl Node<F, Output = ImageFrame<Color>>,
+	#[min(1)]
+	#[max(28)]
+	max_size: u32,
+) -> Vec<Color> {
 	const GRID: f32 = 3.0;
 
 	let bins = GRID * GRID * GRID;
@@ -17,7 +17,8 @@ fn image_color_palette(frame: ImageFrame<Color>, max_size: u32) -> Vec<Color> {
 	let mut histogram: Vec<usize> = vec![0; (bins + 1.0) as usize];
 	let mut colors: Vec<Vec<Color>> = vec![vec![]; (bins + 1.0) as usize];
 
-	for pixel in frame.image.data.iter() {
+	let image = image.eval(footprint).await;
+	for pixel in image.image.data.iter() {
 		let r = pixel.r() * GRID;
 		let g = pixel.g() * GRID;
 		let b = pixel.b() * GRID;
@@ -57,28 +58,34 @@ fn image_color_palette(frame: ImageFrame<Color>, max_size: u32) -> Vec<Color> {
 		palette.push(color);
 	}
 
-	return palette;
+	palette
 }
 
 #[cfg(test)]
 mod test {
 	use super::*;
 
-	use graphene_core::{raster::Image, value::CopiedNode};
+	use graph_craft::generic::FnNode;
+	use graphene_core::{raster::Image, value::CopiedNode, Node};
 
 	#[test]
 	fn test_image_color_palette() {
-		assert_eq!(
-			ImageColorPaletteNode { max_size: CopiedNode(1u32) }.eval(ImageFrame {
-				image: Image {
-					width: 100,
-					height: 100,
-					data: vec![Color::from_rgbaf32(0.0, 0.0, 0.0, 1.0).unwrap(); 10000],
-					base64_string: None,
-				},
-				..Default::default()
+		let node = ImageColorPaletteNode {
+			max_size: CopiedNode(1u32),
+			image: FnNode::new(|_| {
+				Box::pin(async move {
+					ImageFrame {
+						image: Image {
+							width: 100,
+							height: 100,
+							data: vec![Color::from_rgbaf32(0.0, 0.0, 0.0, 1.0).unwrap(); 10000],
+							base64_string: None,
+						},
+						..Default::default()
+					}
+				})
 			}),
-			[Color::from_rgbaf32(0.0, 0.0, 0.0, 1.0).unwrap()]
-		);
+		};
+		assert_eq!(futures::executor::block_on(node.eval(())), [Color::from_rgbaf32(0.0, 0.0, 0.0, 1.0).unwrap()]);
 	}
 }
