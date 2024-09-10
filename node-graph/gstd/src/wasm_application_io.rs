@@ -185,7 +185,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	render_config: RenderConfig,
 	editor_api: &'a WasmEditorApi,
 	#[implementations(
-		(Footprint, VectorData), 
+		(Footprint, VectorData),
 		(Footprint, ImageFrame<Color>),
 		(Footprint, GraphicGroup),
 		(Footprint, graphene_core::Artboard),
@@ -196,7 +196,8 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 		(Footprint, f32),
 		(Footprint, f64),
 		(Footprint, String),
-	)] data: impl Node<Footprint, Output = T>,
+	)]
+	data: impl Node<Footprint, Output = T>,
 	_surface_handle: impl Node<(), Output = Option<wgpu_executor::WgpuSurface>>,
 ) -> RenderOutput {
 	let footprint = render_config.viewport;
