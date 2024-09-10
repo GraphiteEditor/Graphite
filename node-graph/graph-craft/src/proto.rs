@@ -608,7 +608,7 @@ impl core::fmt::Debug for GraphError {
 pub type GraphErrors = Vec<GraphError>;
 
 /// The `TypingContext` is used to store the types of the nodes indexed by their stable node id.
-#[derive(Default, Clone)]
+#[derive(Default, Clone, dyn_any::DynAny)]
 pub struct TypingContext {
 	lookup: Cow<'static, HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>>,
 	inferred: HashMap<NodeId, NodeIOTypes>,

@@ -1,7 +1,7 @@
 use super::discrete_srgb::{float_to_srgb_u8, srgb_u8_to_float};
 use super::{Alpha, AssociatedAlpha, Luminance, LuminanceMut, Pixel, RGBMut, Rec709Primaries, RGB, SRGB};
 
-use dyn_any::{DynAny, StaticType};
+use dyn_any::DynAny;
 #[cfg(feature = "serde")]
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;

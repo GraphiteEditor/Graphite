@@ -2,7 +2,7 @@ use super::*;
 use crate::uuid::generate_uuid;
 
 use bezier_rs::BezierHandles;
-use dyn_any::{DynAny, StaticType};
+use dyn_any::DynAny;
 
 use core::hash::BuildHasher;
 use std::collections::{HashMap, HashSet};

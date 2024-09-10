@@ -132,7 +132,7 @@ pub fn create_brush_texture(brush_style: &BrushStyle) -> Image<Color> {
 	let stamp = BrushStampGeneratorNode::new(CopiedNode::new(brush_style.color), CopiedNode::new(brush_style.hardness), CopiedNode::new(brush_style.flow));
 	let stamp = stamp.eval(brush_style.diameter);
 	let transform = DAffine2::from_scale_angle_translation(DVec2::splat(brush_style.diameter), 0., -DVec2::splat(brush_style.diameter / 2.));
-	let blank_texture = EmptyImageNode::new(CopiedNode::new(Color::TRANSPARENT)).eval(transform);
+	let blank_texture = EmptyImageNode::new(CopiedNode::new(transform), CopiedNode::new(Color::TRANSPARENT)).eval(());
 	let normal_blend = BlendPairNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
 	let blend_executor = BlendImageTupleNode::new(ValueNode::new(normal_blend));
 	blend_executor.eval((blank_texture, stamp)).image
@@ -248,7 +248,7 @@ fn brush(_footprint: Footprint, image: ImageFrame<Color>, bounds: ImageFrame<Col
 				let target = core::mem::take(&mut brush_plan.first_stroke_texture);
 				ExtendImageToBoundsNode::new(CopiedNode::new(stroke_to_layer)).eval(target)
 			} else {
-				EmptyImageNode::new(CopiedNode::new(Color::TRANSPARENT)).eval(stroke_to_layer)
+				EmptyImageNode::new(CopiedNode::new(stroke_to_layer), CopiedNode::new(Color::TRANSPARENT)).eval(())
 			};
 			blit_node.eval(blit_target)
 		};

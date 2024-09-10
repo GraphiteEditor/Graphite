@@ -4,7 +4,7 @@ use crate::transform::{ApplyTransform, Footprint, Transform, TransformMut};
 use crate::vector::VectorData;
 use crate::Color;
 
-use dyn_any::{DynAny, StaticType};
+use dyn_any::DynAny;
 use node_macro::new_node_fn;
 
 use core::ops::{Deref, DerefMut};

@@ -16,14 +16,9 @@ use std::sync::Mutex;
 
 use crate::wasm_application_io::WasmApplicationIo;
 
-pub struct GpuCompiler<TypingContext, ShaderIO> {
-	typing_context: TypingContext,
-	io: ShaderIO,
-}
-
 // TODO: Move to graph-craft
-#[node_macro::node_fn(GpuCompiler)]
-async fn compile_gpu(node: &'input DocumentNode, typing_context: TypingContext, io: ShaderIO) -> Result<compilation_client::Shader, String> {
+#[node_macro::new_node_fn]
+async fn compile_gpu<'a: 'n>(_: (), node: &'a DocumentNode, typing_context: TypingContext, io: ShaderIO) -> Result<compilation_client::Shader, String> {
 	let mut typing_context = typing_context;
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let DocumentNodeImplementation::Network(ref network) = node.implementation else { panic!() };
@@ -329,15 +324,8 @@ fn map_gpu_single_image(input: Image<Color>, node: String) -> Image<Color> {
 }
 */
 
-#[derive(Debug, Clone, Copy)]
-pub struct BlendGpuImageNode<Background, B, O> {
-	background: Background,
-	blend_mode: B,
-	opacity: O,
-}
-
-#[node_macro::node_fn(BlendGpuImageNode)]
-async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrame<Color> {
+#[node_macro::new_node_fn]
+async fn blend_gpu_image(_: (), foreground: ImageFrame<Color>, background: ImageFrame<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrame<Color> {
 	let foreground_size = DVec2::new(foreground.image.width as f64, foreground.image.height as f64);
 	let background_size = DVec2::new(background.image.width as f64, background.image.height as f64);
 	// Transforms a point from the background image to the foreground image

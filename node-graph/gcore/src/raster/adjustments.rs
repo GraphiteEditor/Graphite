@@ -11,7 +11,7 @@ use crate::vector::style::GradientStops;
 use crate::vector::VectorData;
 use crate::GraphicGroup;
 
-use dyn_any::{DynAny, StaticType};
+use dyn_any::DynAny;
 
 use core::cmp::Ordering;
 use core::fmt::Debug;

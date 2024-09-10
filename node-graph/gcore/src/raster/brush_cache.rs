@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use dyn_any::{DynAny, StaticType};
+use dyn_any::DynAny;
 
 use crate::raster::Image;
 use crate::raster::ImageFrame;

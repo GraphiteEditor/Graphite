@@ -237,6 +237,24 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
+			identifier: "Group",
+			category: "General",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::proto("graphene_core::graphic_element::ToGraphicGroupNode"),
+					manual_composition: Some(generic!(T)),
+					inputs: vec![NodeInput::value(TaggedValue::VectorData(VectorData::empty()), true)],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_names: vec!["Element".to_string()],
+					output_names: vec!["Graphic Group".to_string()],
+					..Default::default()
+				},
+			},
+			properties: &node_properties::node_no_properties,
+		},
+		DocumentNodeDefinition {
 			identifier: "Artboard",
 			category: "General",
 			node_template: NodeTemplate {
@@ -273,7 +291,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(concrete!(ArtboardGroup))), 0),
 									NodeInput::node(NodeId(1), 0),
 								],
-								implementation: DocumentNodeImplementation::proto("graphene_core::AddArtboardNode"),
+								implementation: DocumentNodeImplementation::proto("graphene_core::graphic_element::AddArtboardNode"),
 								..Default::default()
 							},
 						]
@@ -2362,60 +2380,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 						..Default::default()
 					}),
-					..Default::default()
-				},
-			},
-			properties: &node_properties::node_no_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Sample",
-			category: "Debug",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_std::raster::SampleNode"),
-					inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true)],
-					manual_composition: Some(concrete!(Footprint)),
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["None".to_string(), "Raster Data".to_string()],
-					output_names: vec!["Raster".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::node_no_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Mandelbrot",
-			category: "Raster: Generator",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_std::raster::MandelbrotNode"),
-					inputs: vec![],
-					manual_composition: Some(concrete!(Footprint)),
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec![],
-					output_names: vec!["Raster".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::node_no_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Cull",
-			category: "Debug",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::transform::CullNode"),
-					inputs: vec![NodeInput::value(TaggedValue::VectorData(VectorData::empty()), true)],
-					manual_composition: Some(concrete!(Footprint)),
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Vector Data".to_string()],
-					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
 			},

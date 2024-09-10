@@ -1037,6 +1037,7 @@ name = "compilation-client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "dyn-any",
  "gpu-compiler-bin-wrapper",
  "gpu-executor",
  "graph-craft",

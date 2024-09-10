@@ -18,6 +18,7 @@ pub async fn compile(networks: Vec<ProtoNetwork>, inputs: Vec<Type>, outputs: Ve
 
 // TODO: should we add the entry point as a field?
 /// A compiled shader with type annotations.
+#[derive(dyn_any::DynAny)]
 pub struct Shader {
 	pub spirv_binary: Vec<u32>,
 	pub input_types: Vec<Type>,

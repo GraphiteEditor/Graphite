@@ -1,4 +1,4 @@
-use dyn_any::{DynAny, StaticType};
+use dyn_any::DynAny;
 
 /// Represents different ways of calculating the centroid.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]

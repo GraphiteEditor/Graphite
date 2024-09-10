@@ -788,7 +788,7 @@ pub struct Shader<'a> {
 	pub io: ShaderIO,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, dyn_any::DynAny)]
 pub struct ShaderIO {
 	pub inputs: Vec<AbstractShaderInput>,
 	pub output: AbstractShaderInput,
