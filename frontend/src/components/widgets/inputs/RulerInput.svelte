@@ -7,40 +7,40 @@
 
 	const RULER_THICKNESS = 16;
 	const MAJOR_MARK_THICKNESS = 16;
-	const MEDIUM_MARK_THICKNESS = 6;
-	const MINOR_MARK_THICKNESS = 3;
+	const MINOR_MARK_THICKNESS = 6;
+	const MICRO_MARK_THICKNESS = 3;
 
 	export let direction: RulerDirection = "Vertical";
 	export let origin: number;
 	export let numberInterval: number;
 	export let majorMarkSpacing: number;
-	export let mediumDivisions = 5;
-	export let minorDivisions = 2;
+	export let minorDivisions = 5;
+	export let microDivisions = 2;
 
 	let rulerInput: HTMLDivElement | undefined;
 	let rulerLength = 0;
 	let svgBounds = { width: "0px", height: "0px" };
 
-	$: svgPath = computeSvgPath(direction, origin, majorMarkSpacing, mediumDivisions, minorDivisions, rulerLength);
+	$: svgPath = computeSvgPath(direction, origin, majorMarkSpacing, minorDivisions, microDivisions, rulerLength);
 	$: svgTexts = computeSvgTexts(direction, origin, majorMarkSpacing, numberInterval, rulerLength);
 
-	function computeSvgPath(direction: RulerDirection, origin: number, majorMarkSpacing: number, mediumDivisions: number, minorDivisions: number, rulerLength: number): string {
+	function computeSvgPath(direction: RulerDirection, origin: number, majorMarkSpacing: number, minorDivisions: number, microDivisions: number, rulerLength: number): string {
 		const isVertical = direction === "Vertical";
 		const lineDirection = isVertical ? "H" : "V";
 
 		const offsetStart = mod(origin, majorMarkSpacing);
 		const shiftedOffsetStart = offsetStart - majorMarkSpacing;
 
-		const divisions = majorMarkSpacing / mediumDivisions / minorDivisions;
-		const majorMarksFrequency = mediumDivisions * minorDivisions;
+		const divisions = majorMarkSpacing / minorDivisions / microDivisions;
+		const majorMarksFrequency = minorDivisions * microDivisions;
 
 		let dPathAttribute = "";
 		let i = 0;
 		for (let location = shiftedOffsetStart; location < rulerLength; location += divisions) {
 			let length;
 			if (i % majorMarksFrequency === 0) length = MAJOR_MARK_THICKNESS;
-			else if (i % minorDivisions === 0) length = MEDIUM_MARK_THICKNESS;
-			else length = MINOR_MARK_THICKNESS;
+			else if (i % microDivisions === 0) length = MINOR_MARK_THICKNESS;
+			else length = MICRO_MARK_THICKNESS;
 			i += 1;
 
 			const destination = Math.round(location) + 0.5;
@@ -51,7 +51,7 @@
 		return dPathAttribute;
 	}
 
-	function computeSvgTexts(direction: RulerDirection, origin: number, majorMarkSpacing: number, numberInterval: number, rulerLength: number): { transform: string; text: number }[] {
+	function computeSvgTexts(direction: RulerDirection, origin: number, majorMarkSpacing: number, numberInterval: number, rulerLength: number): { transform: string; text: string }[] {
 		const isVertical = direction === "Vertical";
 
 		const offsetStart = mod(origin, majorMarkSpacing);
@@ -59,7 +59,7 @@
 
 		const svgTextCoordinates = [];
 
-		let text = (Math.ceil(-origin / majorMarkSpacing) - 1) * numberInterval;
+		let labelNumber = (Math.ceil(-origin / majorMarkSpacing) - 1) * numberInterval;
 
 		for (let location = shiftedOffsetStart; location < rulerLength; location += majorMarkSpacing) {
 			const destination = Math.round(location);
@@ -69,9 +69,11 @@
 			let transform = `translate(${x} ${y})`;
 			if (isVertical) transform += " rotate(270)";
 
+			const text = numberInterval >= 1 ? `${labelNumber}` : labelNumber.toFixed(Math.abs(Math.log10(numberInterval))).replace(/\.0+$/, "");
+
 			svgTextCoordinates.push({ transform, text });
 
-			text += numberInterval;
+			labelNumber += numberInterval;
 		}
 
 		return svgTextCoordinates;

@@ -796,7 +796,22 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				let ruler_origin = document_to_viewport.transform_point2(DVec2::ZERO);
 				let log = ruler_scale.log2();
-				let ruler_interval: f64 = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
+				let mut ruler_interval: f64 = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
+
+				// When the interval becomes too small, force it to be a whole number, then to powers of 10.
+				// The progression of intervals is:
+				// ..., 100, 50, 25, 12.5, 6 (6.25), 4 (3.125), 2 (1.5625), 1, 0.1, 0.01, ...
+				if ruler_interval < 1. {
+					ruler_interval = 10_f64.powf(ruler_interval.log10().ceil());
+				} else if ruler_interval < 12.5 {
+					// Round to nearest even number
+					ruler_interval = 2. * (ruler_interval / 2.).round();
+				}
+
+				if self.graph_view_overlay_open {
+					ruler_interval = ruler_interval.max(1.);
+				}
+
 				let ruler_spacing = ruler_interval * ruler_scale;
 
 				responses.add(FrontendMessage::UpdateDocumentRulers {
