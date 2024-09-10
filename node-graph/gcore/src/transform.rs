@@ -181,7 +181,7 @@ impl From<()> for Footprint {
 }
 
 use crate::ArtboardGroup;
-#[node_macro::new_node_fn]
+#[node_macro::node]
 fn cull<T>(_footprint: Footprint, #[implementations(VectorData, GraphicGroup, Artboard, ImageFrame<crate::Color>, ArtboardGroup)] data: T) -> T {
 	data
 }
@@ -216,7 +216,7 @@ impl ApplyTransform for () {
 	fn apply_transform(&mut self, &_modification: &DAffine2) {}
 }
 
-#[node_macro::new_node_fn]
+#[node_macro::node]
 pub(crate) async fn transform<I: Into<Footprint> + ApplyTransform + 'n + Clone + Send + Sync, T: TransformMut + 'n>(
 	#[implementations(Footprint, Footprint, Footprint, (), (), ())] mut input: I,
 	#[implementations(
@@ -260,7 +260,7 @@ pub(crate) async fn transform_vector_data<T: TransformMut>(_empty: (), transform
 	data
 }*/
 
-#[node_macro::new_node_fn]
+#[node_macro::node]
 pub(crate) fn set_transform<Data: TransformMut, TransformInput: Transform>(
 	_: (),
 	#[implementations(VectorData, ImageFrame<crate::Color>, GraphicGroup)] mut data: Data,

@@ -17,7 +17,7 @@ use std::sync::Mutex;
 use crate::wasm_application_io::WasmApplicationIo;
 
 // TODO: Move to graph-craft
-#[node_macro::new_node_fn]
+#[node_macro::node]
 async fn compile_gpu<'a: 'n>(_: (), node: &'a DocumentNode, typing_context: TypingContext, io: ShaderIO) -> Result<compilation_client::Shader, String> {
 	let mut typing_context = typing_context;
 	let compiler = graph_craft::graphene_compiler::Compiler {};
@@ -60,7 +60,7 @@ impl Clone for ComputePass {
 	}
 }
 
-#[node_macro::node_impl(MapGpuNode)]
+#[node_macro::old_node_impl(MapGpuNode)]
 async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, editor_api: &'a graphene_core::application_io::EditorApi<WasmApplicationIo>) -> ImageFrame<Color> {
 	log::debug!("Executing gpu node");
 	let executor = &editor_api.application_io.as_ref().and_then(|io| io.gpu_executor()).unwrap();
@@ -267,64 +267,8 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(node
 		readback_buffer: Some(readback_buffer),
 	})
 }
-/*
-#[node_macro::node_fn(MapGpuNode)]
-async fn map_gpu(inputs: Vec<ShaderInput<<NewExecutor as GpuExecutor>::BufferHandle>>, shader: &'any_input compilation_client::Shader) {
-	use graph_craft::executor::Executor;
-	let executor = NewExecutor::new().unwrap();
-	for input in shader.io.inputs.iter() {
-		let buffer = executor.create_storage_buffer(&self, data, options)
-		let buffer = executor.create_buffer(input.size).unwrap();
-		executor.write_buffer(buffer, input.data).unwrap();
-	}
-	todo!();
-	/*
-	let executor: GpuExecutor = GpuExecutor::new(Context::new().await.unwrap(), shader.into(), "gpu::eval".into()).unwrap();
-	let data: Vec<_> = input.into_iter().collect();
-	let result = executor.execute(Box::new(data)).unwrap();
-	let result = dyn_any::downcast::<Vec<_O>>(result).unwrap();
-	*result
-	*/
-}
 
-pub struct MapGpuSingleImageNode<N> {
-	node: N,
-}
-
-#[node_macro::node_fn(MapGpuSingleImageNode)]
-fn map_gpu_single_image(input: Image<Color>, node: String) -> Image<Color> {
-	use graph_craft::document::*;
-	use graph_craft::ProtoNodeIdentifier;
-
-	let identifier = ProtoNodeIdentifier { name: std::borrow::Cow::Owned(node) };
-
-	let network = NodeNetwork {
-		inputs: vec![NodeId(0)],
-		disabled: vec![],
-		previous_outputs: None,
-		outputs: vec![NodeInput::node(NodeId(0), 0)],
-		nodes: [(
-			NodeId(0),
-			DocumentNode {
-				name: "Image Filter".into(),
-				inputs: vec![NodeInput::Network(concrete!(Color))],
-				implementation: DocumentNodeImplementation::ProtoNode(identifier),
-				metadata: DocumentNodeMetadata::default(),
-				..Default::default()
-			},
-		)]
-		.into_iter()
-		.collect(),
-	};
-
-	let value_network = ValueNode::new(network);
-	let map_node = MapGpuNode::new(value_network);
-	let data = map_node.eval(input.data.clone());
-	Image { data, ..input }
-}
-*/
-
-#[node_macro::new_node_fn]
+#[node_macro::node]
 async fn blend_gpu_image(_: (), foreground: ImageFrame<Color>, background: ImageFrame<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrame<Color> {
 	let foreground_size = DVec2::new(foreground.image.width as f64, foreground.image.height as f64);
 	let background_size = DVec2::new(background.image.width as f64, background.image.height as f64);

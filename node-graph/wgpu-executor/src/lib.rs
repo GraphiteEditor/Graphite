@@ -828,12 +828,12 @@ impl<T> ShaderInputNode<T> {
 	}
 }
 
-#[node_macro::new_node_fn]
+#[node_macro::node]
 async fn uniform_node<'a: 'n, T: ToUniformBuffer + Send + 'n>(_: (), #[implementations(f32, DAffine2)] data: T, executor: &'a WgpuExecutor) -> WgpuShaderInput {
 	executor.create_uniform_buffer(data).unwrap()
 }
 
-#[node_macro::new_node_fn]
+#[node_macro::node]
 async fn storage_node<'a: 'n, T: ToStorageBuffer + Send + 'n>(_: (), #[implementations(Vec<u8>)] data: T, executor: &'a WgpuExecutor) -> WgpuShaderInput {
 	executor
 		.create_storage_buffer(
@@ -848,17 +848,17 @@ async fn storage_node<'a: 'n, T: ToStorageBuffer + Send + 'n>(_: (), #[implement
 		.unwrap()
 }
 
-#[node_macro::new_node_fn]
+#[node_macro::node]
 async fn create_output_buffer<'a: 'n>(_: (), size: usize, executor: &'a WgpuExecutor, ty: Type) -> Arc<WgpuShaderInput> {
 	Arc::new(executor.create_output_buffer(size, ty, true).unwrap())
 }
 
-#[node_macro::new_node_fn(skip_impl)]
+#[node_macro::node(skip_impl)]
 async fn create_compute_pass<'a: 'n>(_: (), layout: PipelineLayout, executor: &'a WgpuExecutor, output: WgpuShaderInput, instances: ComputePassDimensions) -> CommandBuffer {
 	executor.create_compute_pass(&layout, Some(output.into()), instances).unwrap()
 }
 
-#[node_macro::new_node_fn]
+#[node_macro::node]
 async fn create_pipeline_layout(
 	_: (),
 	shader: impl Node<(), Output = ShaderHandle>,
@@ -874,14 +874,14 @@ async fn create_pipeline_layout(
 	}
 }
 
-#[node_macro::new_node_fn]
+#[node_macro::node]
 async fn read_output_buffer<'a: 'n>(_: (), buffer: Arc<WgpuShaderInput>, executor: &'a WgpuExecutor, _compute_pass: ()) -> Vec<u8> {
 	executor.read_output_buffer(buffer).await.unwrap()
 }
 
 pub type WindowHandle = Arc<SurfaceHandle<Window>>;
 
-#[node_macro::new_node_fn(skip_impl)]
+#[node_macro::node(skip_impl)]
 fn create_gpu_surface<'a: 'n, Io: ApplicationIo<Executor = WgpuExecutor, Surface = Window> + 'a + Send + Sync>(_: (), editor_api: &'a EditorApi<Io>) -> Option<WgpuSurface> {
 	let canvas = editor_api.application_io.as_ref()?.window()?;
 	let executor = editor_api.application_io.as_ref()?.gpu_executor()?;
@@ -894,7 +894,7 @@ pub struct ShaderInputFrame {
 	transform: DAffine2,
 }
 
-#[node_macro::new_node_fn]
+#[node_macro::node]
 async fn render_texture<'a: 'n>(_: (), footprint: Footprint, image: impl Node<Footprint, Output = ShaderInputFrame>, surface: Option<WgpuSurface>, executor: &'a WgpuExecutor) -> SurfaceFrame {
 	let surface = surface.unwrap();
 	let surface_id = surface.window_id;
@@ -910,7 +910,7 @@ async fn render_texture<'a: 'n>(_: (), footprint: Footprint, image: impl Node<Fo
 	}
 }
 
-#[node_macro::new_node_fn]
+#[node_macro::node]
 async fn upload_texture<'a: 'n>(_: (), input: ImageFrame<Color>, executor: &'a WgpuExecutor) -> TextureFrame {
 	// let new_data: Vec<RGBA16F> = input.image.data.into_iter().map(|c| c.into()).collect();
 	let new_data = input.image.data.into_iter().map(SRGBA8::from).collect();

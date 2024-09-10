@@ -9,7 +9,7 @@ use rand::{Rng, SeedableRng};
 use spirv_std::num_traits::float::Float;
 
 // Add
-#[node_macro::new_node_fn(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"))]
 fn add<U: Add<T>, T>(
 	_: (),
 	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, glam::DVec2)] augend: U,
@@ -19,7 +19,7 @@ fn add<U: Add<T>, T>(
 }
 
 // Subtract
-#[node_macro::new_node_fn(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"))]
 fn subtract<U: Sub<T>, T>(
 	_: (),
 	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, glam::DVec2)] minuend: U,
@@ -29,7 +29,7 @@ fn subtract<U: Sub<T>, T>(
 }
 
 // Multiply
-#[node_macro::new_node_fn(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"))]
 fn multiply<U: Mul<T>, T>(
 	_: (),
 	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, glam::DVec2, f64)] multiplier: U,
@@ -41,7 +41,7 @@ fn multiply<U: Mul<T>, T>(
 }
 
 // Divide
-#[node_macro::new_node_fn(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"))]
 fn divide<U: Div<T>, T>(
 	_: (),
 	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, glam::DVec2, glam::DVec2)] numerator: U,
@@ -53,7 +53,7 @@ fn divide<U: Div<T>, T>(
 }
 
 // Modulo
-#[node_macro::new_node_fn(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"))]
 fn modulo<U: Rem<T>, T>(
 	_: (),
 	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32)] numerator: U,
@@ -65,7 +65,7 @@ fn modulo<U: Rem<T>, T>(
 }
 
 // Exponent
-#[node_macro::new_node_fn(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"))]
 fn exponent<U: Pow<T>, T>(
 	_: (),
 	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, )] base: U,
@@ -77,7 +77,7 @@ fn exponent<U: Pow<T>, T>(
 }
 
 // Root
-#[node_macro::new_node_fn(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"))]
 fn root<U: num_traits::float::Float>(
 	_: (),
 	#[default(2.)]
@@ -97,7 +97,7 @@ fn root<U: num_traits::float::Float>(
 }
 
 // Logarithm
-#[node_macro::new_node_fn(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"))]
 fn logarithm<U: num_traits::float::Float>(
 	_: (),
 	#[implementations(f64, f32)] value: U,
@@ -117,25 +117,25 @@ fn logarithm<U: num_traits::float::Float>(
 }
 
 // Sine
-#[node_macro::new_node_fn(category("Math: Trig"))]
+#[node_macro::node(category("Math: Trig"))]
 fn sine(_: (), theta: f64) -> f64 {
 	theta.sin()
 }
 
 // Cosine
-#[node_macro::new_node_fn(category("Math: Trig"))]
+#[node_macro::node(category("Math: Trig"))]
 fn cosine(_: (), theta: f64) -> f64 {
 	theta.cos()
 }
 
 // Tangent
-#[node_macro::new_node_fn(category("Math: Trig"))]
+#[node_macro::node(category("Math: Trig"))]
 fn tangent(_: (), theta: f64) -> f64 {
 	theta.tan()
 }
 
 // Random
-#[node_macro::new_node_fn(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"))]
 fn random(_: (), _primary: (), seed: u64, min: f64, #[default(1.)] max: f64) -> f64 {
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 	let result = rng.gen::<f64>();
@@ -144,31 +144,31 @@ fn random(_: (), _primary: (), seed: u64, min: f64, #[default(1.)] max: f64) -> 
 }
 
 // Round
-#[node_macro::new_node_fn(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"))]
 fn round(_: (), value: f64) -> f64 {
 	value.round()
 }
 
 // Floor
-#[node_macro::new_node_fn(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"))]
 fn floor(_: (), value: f64) -> f64 {
 	value.floor()
 }
 
 // Ceiling
-#[node_macro::new_node_fn(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"))]
 fn ceiling(_: (), value: f64) -> f64 {
 	value.ceil()
 }
 
 // Absolute Value
-#[node_macro::new_node_fn(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"))]
 fn absolute_value(_: (), value: f64) -> f64 {
 	value.abs()
 }
 
 // Min
-#[node_macro::new_node_fn(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"))]
 fn min<T: core::cmp::PartialOrd>(_: (), #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] other_value: T) -> T {
 	match value < other_value {
 		true => value,
@@ -177,7 +177,7 @@ fn min<T: core::cmp::PartialOrd>(_: (), #[implementations(f64, &f64, f32, &f32, 
 }
 
 // Max
-#[node_macro::new_node_fn(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"))]
 fn max<T: core::cmp::PartialOrd>(_: (), #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] other_value: T) -> T {
 	match value > other_value {
 		true => value,
@@ -186,7 +186,7 @@ fn max<T: core::cmp::PartialOrd>(_: (), #[implementations(f64, &f64, f32, &f32, 
 }
 
 // Equals
-#[node_macro::new_node_fn(category("Math: Logic"))]
+#[node_macro::node(category("Math: Logic"))]
 fn equals<U: core::cmp::PartialEq<T>, T>(
 	_: (),
 	#[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T,
@@ -199,94 +199,94 @@ fn equals<U: core::cmp::PartialEq<T>, T>(
 }
 
 // Logical Or
-#[node_macro::new_node_fn(category("Math: Logic"))]
+#[node_macro::node(category("Math: Logic"))]
 fn logical_or(_: (), value: bool, other_value: bool) -> bool {
 	value || other_value
 }
 
 // Logical And
-#[node_macro::new_node_fn(category("Math: Logic"))]
+#[node_macro::node(category("Math: Logic"))]
 fn logical_and(_: (), value: bool, other_value: bool) -> bool {
 	value && other_value
 }
 
 // Logical Xor
-#[node_macro::new_node_fn(category("Math: Logic"))]
+#[node_macro::node(category("Math: Logic"))]
 fn logical_xor(_: (), value: bool, other_value: bool) -> bool {
 	value ^ other_value
 }
 
 // Logical Not
-#[node_macro::new_node_fn(category("Math: Logic"))]
+#[node_macro::node(category("Math: Logic"))]
 fn logical_not(_: (), input: bool) -> bool {
 	!input
 }
 
 // Bool Value
-#[node_macro::new_node_fn(category("Value"), name("Bool Value"))]
+#[node_macro::node(category("Value"), name("Bool Value"))]
 fn bool_value(_: (), _primary: (), #[name("Bool")] bool_value: bool) -> bool {
 	bool_value
 }
 
 // Number Value
-#[node_macro::new_node_fn(category("Value"), name("Number Value"))]
+#[node_macro::node(category("Value"), name("Number Value"))]
 fn number_value(_: (), _primary: (), number: f64) -> f64 {
 	number
 }
 
 // Vector2 Value
-#[node_macro::new_node_fn(category("Value"), name("Vector2 Value"))]
+#[node_macro::node(category("Value"), name("Vector2 Value"))]
 fn vector2_value(_: (), _primary: (), x: f64, y: f64) -> glam::DVec2 {
 	glam::DVec2::new(x, y)
 }
 
 // TODO: Fix how Color::BLACK isn't working
 // Color Value
-#[node_macro::new_node_fn(category("Value"), name("Color Value"))]
+#[node_macro::node(category("Value"), name("Color Value"))]
 fn color_value(_: (), _primary: (), #[default(000000ff)] color: crate::Color) -> crate::Color {
 	color
 }
 
 // Color Channel Value
-#[node_macro::new_node_fn(category("Value"), name("Color Channel Value"))]
+#[node_macro::node(category("Value"), name("Color Channel Value"))]
 fn color_channel_value(_: (), _primary: (), color_channel: crate::raster::adjustments::RedGreenBlue) -> crate::raster::adjustments::RedGreenBlue {
 	color_channel
 }
 
 // Blend Mode Value
-#[node_macro::new_node_fn(category("Value"), name("Blend Mode Value"))]
+#[node_macro::node(category("Value"), name("Blend Mode Value"))]
 fn blend_mode_value(_: (), _primary: (), blend_mode: crate::raster::BlendMode) -> crate::raster::BlendMode {
 	blend_mode
 }
 
 // Size Of
 #[cfg(feature = "std")]
-#[node_macro::new_node_fn]
+#[node_macro::node]
 fn size_of(_: (), ty: crate::Type) -> Option<usize> {
 	ty.size()
 }
 
 // Some
-#[node_macro::new_node_fn]
+#[node_macro::node]
 fn some<T>(_: (), #[implementations(f64, f32, u32, u64, String, crate::Color)] input: T) -> Option<T> {
 	Some(input)
 }
 
 // Unwrap
-#[node_macro::new_node_fn]
+#[node_macro::node]
 fn unwrap<T: Default>(_: (), #[implementations(Option<f64>, Option<f32>, Option<u32>, Option<u64>, Option<String>, Option<crate::Color>)] input: Option<T>) -> T {
 	input.unwrap_or_default()
 }
 
 // Clone
-#[node_macro::new_node_fn]
+#[node_macro::node]
 fn clone<'i, T: Clone + 'i>(_: (), #[implementations(&crate::raster::ImageFrame<crate::Color>)] value: &'i T) -> T {
 	value.clone()
 }
 
 // Identity
 /// The identity function returns the input argument unchanged.
-#[node_macro::new_node_fn]
+#[node_macro::node]
 fn identity<'i, T: 'i>(#[implementations()] value: T) -> T {
 	value
 }
@@ -328,7 +328,7 @@ pub struct IntoNode<O> {
 	_o: PhantomData<O>,
 }
 #[cfg(feature = "alloc")]
-#[node_macro::node_fn(IntoNode<_O>)]
+#[node_macro::old_node_fn(IntoNode<_O>)]
 async fn into<I, _O>(input: I) -> _O
 where
 	I: Into<_O> + Sync + Send,

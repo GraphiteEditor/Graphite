@@ -26,7 +26,7 @@ pub struct GenerateBrightnessContrastLegacyMapperNode<Brightness, Contrast> {
 	contrast: Contrast,
 }
 
-#[node_macro::node_fn(GenerateBrightnessContrastLegacyMapperNode)]
+#[node_macro::old_node_fn(GenerateBrightnessContrastLegacyMapperNode)]
 fn brightness_contrast_legacy_node(_primary: (), brightness: f64, contrast: f64) -> BrightnessContrastLegacyMapperNode {
 	let brightness = brightness as f32 / 255.;
 
@@ -67,7 +67,7 @@ pub struct GenerateBrightnessContrastMapperNode<Brightness, Contrast> {
 
 // TODO: Replace this node implementation with one that reuses the more generalized Curves adjustment node.
 // TODO: It will be necessary to ensure the tests below are faithfully translated in a way that ensures identical results.
-#[node_macro::node_fn(GenerateBrightnessContrastMapperNode)]
+#[node_macro::old_node_fn(GenerateBrightnessContrastMapperNode)]
 fn brightness_contrast_node(_primary: (), brightness: f64, contrast: f64) -> BrightnessContrastMapperNode {
 	// Brightness LUT
 	let brightness_is_negative = brightness < 0.;

@@ -1,4 +1,4 @@
-#[node_macro::new_node_fn(category("Debug"))]
+#[node_macro::node(category("Debug"))]
 fn log_to_console<T: core::fmt::Debug>(
 	_: (),
 	#[default("Not connected to value yet")]

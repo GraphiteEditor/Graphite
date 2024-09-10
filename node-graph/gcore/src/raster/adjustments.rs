@@ -268,7 +268,7 @@ impl From<BlendMode> for vello::peniko::Mix {
 	}
 }
 
-#[node_macro::new_node_fn(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"))]
 async fn luminance<T: Adjust<Color>>(
 	footprint: Footprint,
 	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>,
@@ -288,7 +288,7 @@ async fn luminance<T: Adjust<Color>>(
 	input
 }
 
-#[node_macro::new_node_fn(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"))]
 async fn extract_channel<T: Adjust<Color>>(
 	footprint: Footprint,
 	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>,
@@ -307,7 +307,7 @@ async fn extract_channel<T: Adjust<Color>>(
 	input
 }
 
-#[node_macro::new_node_fn(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"))]
 async fn make_opaque<T: Adjust<Color>>(footprint: Footprint, #[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>) -> T {
 	let mut input = input.eval(footprint).await;
 	input.adjust(|color| {
@@ -320,7 +320,7 @@ async fn make_opaque<T: Adjust<Color>>(footprint: Footprint, #[implementations((
 }
 
 // From https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
-#[node_macro::new_node_fn(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"))]
 async fn levels<T: Adjust<Color>>(
 	footprint: Footprint,
 	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>,
@@ -378,7 +378,7 @@ async fn levels<T: Adjust<Color>>(
 
 // From <https://stackoverflow.com/a/55233732/775283>
 // Works the same for gamma and linear color
-#[node_macro::new_node_fn(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"))]
 async fn black_and_white_color<T: Adjust<Color>>(
 	footprint: Footprint,
 	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>,
@@ -431,7 +431,7 @@ async fn black_and_white_color<T: Adjust<Color>>(
 	input
 }
 
-#[node_macro::new_node_fn(category("Raster: Adjustment"), name("Hue/Saturation"))]
+#[node_macro::node(category("Raster: Adjustment"), name("Hue/Saturation"))]
 async fn hue_shift<T: Adjust<Color>>(
 	footprint: Footprint,
 	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>,
@@ -459,7 +459,7 @@ async fn hue_shift<T: Adjust<Color>>(
 	input
 }
 
-#[node_macro::new_node_fn(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"))]
 async fn invert<T: Adjust<Color>>(footprint: Footprint, #[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>) -> T {
 	let mut input = input.eval(footprint).await;
 	input.adjust(|color| {
@@ -472,7 +472,7 @@ async fn invert<T: Adjust<Color>>(footprint: Footprint, #[implementations((Footp
 	input
 }
 
-#[node_macro::new_node_fn(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"))]
 async fn threshold<T: Adjust<Color>>(
 	footprint: Footprint,
 	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] image: impl Node<Footprint, Output = T>,
@@ -558,7 +558,7 @@ impl Blend<Color> for GradientStops {
 	}
 }
 
-#[node_macro::new_node_fn(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"))]
 fn blend<T: Blend<Color>>(
 	_: (),
 	#[implementations(Color, GradientStops, ImageFrame<Color>)] over: T,
@@ -571,7 +571,7 @@ fn blend<T: Blend<Color>>(
 	Blend::blend(&over, &under, |a, b| blend_colors(a, b, blend_mode, opacity / 100.))
 }
 
-#[node_macro::new_node_fn(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"))]
 fn blend_pair(input: (Color, Color), blend_mode: BlendMode, opacity: Percentage) -> Color {
 	blend_colors(input.0, input.1, blend_mode, opacity / 100.)
 }
@@ -659,7 +659,7 @@ pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode,
 	background.alpha_blend(target_color.to_associated_alpha(opacity as f32))
 }
 
-#[node_macro::new_node_fn(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"))]
 fn gradient_map(_: (), color: Color, gradient: GradientStops, reverse: bool) -> Color {
 	let intensity = color.luminance_srgb();
 	let intensity = if reverse { 1. - intensity } else { intensity };
@@ -668,7 +668,7 @@ fn gradient_map(_: (), color: Color, gradient: GradientStops, reverse: bool) -> 
 
 // Based on <https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters>
 // The results of this implementation are very close to correct, but not quite perfect
-#[node_macro::new_node_fn(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"))]
 async fn vibrance<T: Adjust<Color>>(
 	footprint: Footprint,
 	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] image: impl Node<Footprint, Output = T>,
@@ -951,7 +951,7 @@ impl DomainWarpType {
 	}
 }
 
-#[node_macro::new_node_fn(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"))]
 async fn channel_mixer_node<T: Adjust<Color>>(
 	footprint: Footprint,
 	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>,
@@ -1054,7 +1054,7 @@ impl core::fmt::Display for SelectiveColorChoice {
 }
 
 // Based on https://blog.pkh.me/p/22-understanding-selective-coloring-in-adobe-photoshop.html
-#[node_macro::new_node_fn]
+#[node_macro::node]
 async fn selective_color<T: Adjust<Color>>(
 	footprint: Footprint,
 	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>,
@@ -1202,7 +1202,7 @@ impl<P: Pixel> MultiplyAlpha for ImageFrame<P> {
 type PosterizeValue = f64;
 // Based on https://www.axiomx.com/posterize.htm
 // This algorithm produces fully accurate output in relation to the industry standard.
-#[node_macro::new_node_fn(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"))]
 async fn posterize<T: Adjust<Color>>(
 	footprint: Footprint,
 	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>,
@@ -1223,7 +1223,7 @@ async fn posterize<T: Adjust<Color>>(
 }
 
 // Based on https://geraldbakker.nl/psnumbers/exposure.html
-#[node_macro::new_node_fn(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"))]
 async fn exposure<T: Adjust<Color>>(
 	footprint: Footprint,
 	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>,
@@ -1249,7 +1249,7 @@ async fn exposure<T: Adjust<Color>>(
 const WINDOW_SIZE: usize = 1024;
 
 #[cfg(feature = "alloc")]
-#[node_macro::new_node_fn(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"))]
 fn generate_curves<C: Channel + super::Linear>(_: (), curve: Curve, #[implementations(f32)] _target_format: C) -> ValueMapperNode<C> {
 	use bezier_rs::{Bezier, TValue};
 	let [mut pos, mut param]: [[f32; 2]; 2] = [[0.; 2], curve.first_handle];
@@ -1289,7 +1289,7 @@ fn generate_curves<C: Channel + super::Linear>(_: (), curve: Curve, #[implementa
 }
 
 #[cfg(feature = "alloc")]
-#[node_macro::new_node_fn(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"))]
 pub fn color_fill_node(mut image_frame: ImageFrame<Color>, color: Color) -> ImageFrame<Color> {
 	for pixel in &mut image_frame.image.data {
 		pixel.set_red(color.r());
@@ -1302,7 +1302,7 @@ pub fn color_fill_node(mut image_frame: ImageFrame<Color>, color: Color) -> Imag
 }
 
 #[cfg(feature = "alloc")]
-#[node_macro::new_node_fn(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"))]
 pub fn color_overlay_node(mut image: ImageFrame<Color>, color: Color, blend_mode: BlendMode, opacity: Percentage) -> ImageFrame<Color> {
 	let opacity = (opacity as f32 / 100.).clamp(0., 1.);
 	for pixel in &mut image.image.data {
@@ -1347,7 +1347,7 @@ pub use index_node::IndexNode;
 mod index_node {
 	use crate::raster::{Color, ImageFrame};
 
-	#[node_macro::new_node_fn(category("Raster: Adjustment"))]
+	#[node_macro::node(category("Raster: Adjustment"))]
 	pub fn index<T: Default + Clone>(_: (), #[implementations(Vec<ImageFrame<Color>>, Vec<Color>)] input: Vec<T>, index: u32) -> T {
 		if (index as usize) < input.len() {
 			input[index as usize].clone()

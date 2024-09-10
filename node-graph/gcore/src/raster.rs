@@ -307,7 +307,7 @@ impl SetBlendMode for ImageFrame<Color> {
 	}
 }
 
-#[node_macro::new_node_fn(category("Style"))]
+#[node_macro::node(category("Style"))]
 async fn blend_mode<T: SetBlendMode>(
 	footprint: Footprint,
 	#[implementations((Footprint, crate::vector::VectorData), (Footprint, crate::GraphicGroup), (Footprint, ImageFrame<Color>))] value: impl Node<Footprint, Output = T>,
@@ -318,7 +318,7 @@ async fn blend_mode<T: SetBlendMode>(
 	value
 }
 
-#[node_macro::new_node_fn(category("Style"))]
+#[node_macro::node(category("Style"))]
 async fn opacity<T: MultiplyAlpha>(
 	footprint: Footprint,
 	#[implementations((Footprint, crate::vector::VectorData), (Footprint, crate::GraphicGroup), (Footprint, ImageFrame<Color>))] value: impl Node<Footprint, Output = T>,

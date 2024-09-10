@@ -5,7 +5,7 @@ use crate::vector::VectorData;
 use crate::Color;
 
 use dyn_any::DynAny;
-use node_macro::new_node_fn;
+use node_macro::node;
 
 use core::ops::{Deref, DerefMut};
 use glam::{DAffine2, IVec2};
@@ -231,7 +231,7 @@ impl ArtboardGroup {
 	}
 }
 
-#[new_node_fn]
+#[node]
 async fn construct_layer<F: 'n + Copy + Send>(
 	#[implementations((), Footprint)] footprint: F,
 	#[implementations(((), GraphicGroup), (Footprint, GraphicGroup))] stack: impl Node<F, Output = GraphicGroup>,
@@ -243,7 +243,7 @@ async fn construct_layer<F: 'n + Copy + Send>(
 	stack
 }
 
-#[new_node_fn]
+#[node]
 async fn to_graphic_element<F: 'n + Send, Data: Into<GraphicElement> + 'n>(
 	#[implementations((), (), (), (), Footprint)] footprint: F,
 	#[implementations(
@@ -261,7 +261,7 @@ async fn to_graphic_element<F: 'n + Send, Data: Into<GraphicElement> + 'n>(
 	data.eval(footprint).await.into()
 }
 
-#[new_node_fn(name("Group"))]
+#[node(name("Group"))]
 async fn to_graphic_group<F: 'n + Send, Data: Into<GraphicGroup> + 'n>(
 	#[implementations((), (), (), (), Footprint)] footprint: F,
 	#[implementations(
@@ -279,7 +279,7 @@ async fn to_graphic_group<F: 'n + Send, Data: Into<GraphicGroup> + 'n>(
 	data.eval(footprint).await.into()
 }
 
-#[new_node_fn]
+#[node]
 async fn construct_artboard<F: 'n + Copy + Send + ApplyTransform>(
 	#[implementations((), Footprint)] mut footprint: F,
 	#[implementations(((), GraphicGroup), (Footprint, GraphicGroup))] contents: impl Node<F, Output = GraphicGroup>,
@@ -301,7 +301,7 @@ async fn construct_artboard<F: 'n + Copy + Send + ApplyTransform>(
 		clip,
 	}
 }
-#[new_node_fn]
+#[node]
 async fn add_artboard<F: 'n + Copy + Send>(
 	#[implementations((), Footprint)] footprint: F,
 	#[implementations(((), ArtboardGroup), (Footprint, ArtboardGroup))] artboards: impl Node<F, Output = ArtboardGroup>,

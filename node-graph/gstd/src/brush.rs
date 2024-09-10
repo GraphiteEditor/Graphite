@@ -13,7 +13,7 @@ use graphene_core::Node;
 
 use glam::{DAffine2, DVec2};
 
-#[node_macro::new_node_fn]
+#[node_macro::node]
 fn vector_points(_: (), vector: VectorData) -> Vec<DVec2> {
 	vector.point_domain.positions().to_vec()
 }
@@ -64,7 +64,7 @@ impl<P: Pixel + Alpha> Sample for BrushStampGenerator<P> {
 	}
 }
 
-#[node_macro::new_node_fn(skip_impl)]
+#[node_macro::node(skip_impl)]
 fn brush_stamp_generator(diameter: f64, color: Color, hardness: f64, flow: f64) -> BrushStampGenerator<Color> {
 	// Diameter
 	let radius = diameter / 2.;
@@ -83,7 +83,7 @@ fn brush_stamp_generator(diameter: f64, color: Color, hardness: f64, flow: f64) 
 	BrushStampGenerator { color, feather_exponent, transform }
 }
 
-#[node_macro::new_node_fn(skip_impl)]
+#[node_macro::node(skip_impl)]
 fn blit<P: Alpha + Pixel + std::fmt::Debug, BlendFn>(mut target: ImageFrame<P>, texture: Image<P>, positions: Vec<DVec2>, blend_mode: BlendFn) -> ImageFrame<P>
 where
 	BlendFn: for<'any_input> Node<'any_input, (P, P), Output = P>,
@@ -198,7 +198,7 @@ pub fn blend_with_mode(background: ImageFrame<Color>, foreground: ImageFrame<Col
 	)
 }
 
-#[node_macro::new_node_fn]
+#[node_macro::node]
 fn brush(_footprint: Footprint, image: ImageFrame<Color>, bounds: ImageFrame<Color>, strokes: Vec<BrushStroke>, cache: BrushCache) -> ImageFrame<Color> {
 	let stroke_bbox = strokes.iter().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
 	let image_bbox = Bbox::from_transform(image.transform).to_axis_aligned_bbox();

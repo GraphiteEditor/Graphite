@@ -14,7 +14,7 @@ pub struct BooleanOperationNode<BooleanOp> {
 	operation: BooleanOp,
 }
 
-#[node_macro::node_fn(BooleanOperationNode)]
+#[node_macro::old_node_fn(BooleanOperationNode)]
 fn boolean_operation_node(group_of_paths: GraphicGroup, operation: BooleanOperation) -> VectorData {
 	fn vector_from_image<T: Transform>(image_frame: T) -> VectorData {
 		let corner1 = DVec2::ZERO;

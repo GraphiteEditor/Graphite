@@ -110,11 +110,11 @@ impl Parse for NodeFnAttributes {
 						meta,
 						indoc!(
 							r#"
-							Unsupported attribute in `node_fn`.
+							Unsupported attribute in `node`.
 							Supported attributes are 'category', 'path' and 'name'.
 							
 							Example usage:
-							#[node_fn(category("Value"), name("TestNode"))]
+							#[node(category("Value"), name("TestNode"))]
 							"#
 						),
 					));
@@ -797,7 +797,7 @@ mod tests {
 	}
 
 	#[test]
-	#[should_panic(expected = "Unsupported attribute in `node_fn`")]
+	#[should_panic(expected = "Unsupported attribute in `node`")]
 	fn test_unsupported_attribute() {
 		let attr = quote!(unsupported("Value"));
 		let input = quote!(

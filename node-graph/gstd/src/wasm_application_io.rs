@@ -25,12 +25,12 @@ use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
-#[node_macro::new_node_fn]
+#[node_macro::node]
 async fn create_surface_node<'a: 'n>(_: (), editor: &'a WasmEditorApi) -> Arc<WasmSurfaceHandle> {
 	Arc::new(editor.application_io.as_ref().unwrap().create_window())
 }
 
-#[node_macro::new_node_fn]
+#[node_macro::node]
 #[cfg(target_arch = "wasm32")]
 async fn draw_image_frame(_: (), image: ImageFrame<graphene_core::raster::SRGBA8>, surface_handle: Arc<WasmSurfaceHandle>) -> graphene_core::application_io::SurfaceHandleFrame<HtmlCanvasElement> {
 	let image_data = image.image.data;
@@ -50,12 +50,12 @@ async fn draw_image_frame(_: (), image: ImageFrame<graphene_core::raster::SRGBA8
 	}
 }
 
-#[node_macro::new_node_fn]
+#[node_macro::node]
 async fn load_resource<'a: 'n>(_: (), editor: &'a WasmEditorApi, url: String) -> Arc<[u8]> {
 	editor.application_io.as_ref().unwrap().load_resource(url).unwrap().await.unwrap()
 }
 
-#[node_macro::new_node_fn]
+#[node_macro::node]
 fn decode_image(_: (), data: Arc<[u8]>) -> ImageFrame<Color> {
 	let image = image::load_from_memory(data.as_ref()).expect("Failed to decode image");
 	let image = image.to_rgba32f();
@@ -125,7 +125,7 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 	RenderOutput::CanvasFrame(frame)
 }
 
-#[node_macro::new_node_fn]
+#[node_macro::node]
 #[cfg(target_arch = "wasm32")]
 async fn rasterize<_T: GraphicElementRendered + graphene_core::transform::TransformMut + WasmNotSend + 'n>(
 	_: (),
@@ -180,7 +180,7 @@ async fn rasterize<_T: GraphicElementRendered + graphene_core::transform::Transf
 	}
 }
 
-#[node_macro::new_node_fn]
+#[node_macro::node]
 async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	render_config: RenderConfig,
 	editor_api: &'a WasmEditorApi,

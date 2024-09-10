@@ -2,7 +2,7 @@ use graphene_core::raster::ImageFrame;
 use graphene_core::transform::Footprint;
 use graphene_core::Color;
 
-#[node_macro::new_node_fn]
+#[node_macro::node]
 async fn image_color_palette<F: 'n + Send>(
 	#[implementations((), Footprint)] footprint: F,
 	#[implementations(((), ImageFrame<Color>), (Footprint, ImageFrame<Color>))] image: impl Node<F, Output = ImageFrame<Color>>,

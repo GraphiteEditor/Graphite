@@ -5,13 +5,13 @@ use bezier_rs::Subpath;
 
 use glam::DVec2;
 
-#[node_macro::new_node_fn(category("Vector: Generator"))]
+#[node_macro::node(category("Vector: Generator"))]
 fn circle(_: (), _input: (), #[default(50.)] radius: f64) -> VectorData {
 	let radius: f64 = radius;
 	super::VectorData::from_subpath(Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius)))
 }
 
-#[node_macro::new_node_fn(category("Vector: Generator"))]
+#[node_macro::node(category("Vector: Generator"))]
 fn ellipse(_: (), _input: (), #[default(50)] radius_x: f64, #[default(25)] radius_y: f64) -> VectorData {
 	let radius = DVec2::new(radius_x, radius_y);
 	let corner1 = -radius;
@@ -56,7 +56,7 @@ impl CornerRadius for [f64; 4] {
 	}
 }
 
-#[node_macro::new_node_fn(category("Vector: Generator"))]
+#[node_macro::node(category("Vector: Generator"))]
 fn rectangle<T: CornerRadius>(
 	_: (),
 	_input: (),
@@ -69,7 +69,7 @@ fn rectangle<T: CornerRadius>(
 	corner_radius.generate(DVec2::new(size_x, size_y), clamped)
 }
 
-#[node_macro::new_node_fn(category("Vector: Generator"))]
+#[node_macro::node(category("Vector: Generator"))]
 fn regular_polygon(
 	_: (),
 	_input: (),
@@ -83,7 +83,7 @@ fn regular_polygon(
 	super::VectorData::from_subpath(Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius))
 }
 
-#[node_macro::new_node_fn(category("Vector: Generator"))]
+#[node_macro::node(category("Vector: Generator"))]
 fn star(
 	_: (),
 	_input: (),
@@ -100,12 +100,12 @@ fn star(
 	super::VectorData::from_subpath(Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter))
 }
 
-#[node_macro::new_node_fn(category("Vector: Generator"))]
+#[node_macro::node(category("Vector: Generator"))]
 fn line(_: (), _input: (), #[default((0., -50.))] start: DVec2, #[default((0., 50.))] end: DVec2) -> VectorData {
 	super::VectorData::from_subpath(Subpath::new_line(start, end))
 }
 
-#[node_macro::new_node_fn(category("Vector: Generator"))]
+#[node_macro::node(category("Vector: Generator"))]
 fn spline(_: (), _input: (), positions: Vec<DVec2>) -> VectorData {
 	let mut spline = super::VectorData::from_subpath(Subpath::new_cubic_spline(positions));
 	for pair in spline.segment_domain.ids().windows(2) {
@@ -116,7 +116,7 @@ fn spline(_: (), _input: (), positions: Vec<DVec2>) -> VectorData {
 
 // TODO(TrueDoctor): I removed the Arc requirement we should think about when it makes sense to use it vs making a generic value node
 
-#[node_macro::new_node_fn(category("Vector: Generator"))]
+#[node_macro::node(category("Vector: Generator"))]
 fn path(_: (), path_data: Vec<Subpath<PointId>>, colinear_manipulators: Vec<PointId>) -> super::VectorData {
 	let mut vector_data = super::VectorData::from_subpaths(path_data, false);
 	vector_data.colinear_manipulators = colinear_manipulators

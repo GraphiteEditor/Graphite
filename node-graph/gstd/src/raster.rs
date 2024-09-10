@@ -32,7 +32,7 @@ impl From<std::io::Error> for Error {
 	}
 }
 
-#[node_macro::new_node_fn]
+#[node_macro::node]
 fn sample(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<Color> {
 	// resize the image using the image crate
 	let image = image_frame.image;
@@ -96,7 +96,7 @@ pub struct MapImageNode<P, MapFn> {
 	_p: PhantomData<P>,
 }
 
-#[node_macro::node_fn(MapImageNode<_P>)]
+#[node_macro::old_node_fn(MapImageNode<_P>)]
 fn map_image<MapFn, _P, Img: BitmapMut<Pixel = _P>>(image: Img, map_fn: &'input MapFn) -> Img
 where
 	MapFn: for<'any_input> Node<'any_input, _P, Output = _P> + 'input,
@@ -115,7 +115,7 @@ pub struct InsertChannelNode<P, S, Insertion, TargetChannel> {
 	_s: PhantomData<S>,
 }
 
-#[node_macro::node_fn(InsertChannelNode<_P, _S>)]
+#[node_macro::old_node_fn(InsertChannelNode<_P, _S>)]
 fn insert_channel_node<
 	// _P is the color of the input image.
 	_P: RGBMut,
@@ -162,7 +162,7 @@ pub struct MaskImageNode<P, S, Stencil> {
 	_s: PhantomData<S>,
 }
 
-#[node_macro::node_fn(MaskImageNode<_P, _S>)]
+#[node_macro::old_node_fn(MaskImageNode<_P, _S>)]
 fn mask_image<
 	// _P is the color of the input image. It must have an alpha channel because that is going to
 	// be modified by the mask
@@ -214,7 +214,7 @@ pub struct BlendImageTupleNode<P, Fg, MapFn> {
 	_fg: PhantomData<Fg>,
 }
 
-#[node_macro::node_fn(BlendImageTupleNode<_P, _Fg>)]
+#[node_macro::old_node_fn(BlendImageTupleNode<_P, _Fg>)]
 fn blend_image_tuple<_P: Alpha + Pixel + Debug, MapFn, _Fg: Sample<Pixel = _P> + Transform>(images: (ImageFrame<_P>, _Fg), map_fn: &'input MapFn) -> ImageFrame<_P>
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input + Clone,
@@ -276,7 +276,7 @@ pub struct ExtendImageToBoundsNode<Bounds> {
 	bounds: Bounds,
 }
 
-#[node_macro::node_fn(ExtendImageToBoundsNode)]
+#[node_macro::old_node_fn(ExtendImageToBoundsNode)]
 fn extend_image_to_bounds_node(image: ImageFrame<Color>, bounds: DAffine2) -> ImageFrame<Color> {
 	let image_aabb = Bbox::unit().affine_transform(image.transform()).to_axis_aligned_bbox();
 	let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();
@@ -317,7 +317,7 @@ fn extend_image_to_bounds_node(image: ImageFrame<Color>, bounds: DAffine2) -> Im
 	}
 }
 
-#[node_macro::new_node_fn]
+#[node_macro::node]
 fn empty_image<P: Pixel>(_: (), transform: DAffine2, #[implementations(Color)] color: P) -> ImageFrame<P> {
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
@@ -435,7 +435,7 @@ pub struct ImageFrameNode<P, Transform> {
 	transform: Transform,
 	_p: PhantomData<P>,
 }
-#[node_macro::node_fn(ImageFrameNode<_P>)]
+#[node_macro::old_node_fn(ImageFrameNode<_P>)]
 fn image_frame<_P: Pixel>(image: Image<_P>, transform: DAffine2) -> graphene_core::raster::ImageFrame<_P> {
 	graphene_core::raster::ImageFrame {
 		image,
@@ -444,7 +444,7 @@ fn image_frame<_P: Pixel>(image: Image<_P>, transform: DAffine2) -> graphene_cor
 	}
 }
 
-#[node_macro::new_node_fn]
+#[node_macro::node]
 #[allow(clippy::too_many_arguments)]
 fn noise_pattern(
 	footprint: Footprint,
@@ -594,7 +594,7 @@ fn noise_pattern(
 	}
 }
 
-#[node_macro::new_node_fn]
+#[node_macro::node]
 fn mandelbrot(footprint: Footprint) -> ImageFrame<Color> {
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
