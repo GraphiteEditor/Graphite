@@ -547,8 +547,6 @@ impl NodeGraphExecutor {
 						Ok(output) => output,
 						Err(e) => {
 							// Clear the click targets while the graph is in an un-renderable state
-							// responses.add(DocumentMessage::UpdateUpstreamTransforms { upstream_transforms: HashMap::new() });
-							// responses.add(DocumentMessage::UpdateClickTargets { click_targets: HashMap::new() });
 							document.network_interface.update_click_targets(HashMap::new());
 							document.network_interface.update_vector_modify(HashMap::new());
 							return Err(format!("Node graph evaluation failed:\n{e}"));
@@ -575,9 +573,6 @@ impl NodeGraphExecutor {
 
 							document.network_interface.update_click_targets(HashMap::new());
 							document.network_interface.update_vector_modify(HashMap::new());
-
-							// responses.add(DocumentMessage::UpdateUpstreamTransforms { upstream_transforms: HashMap::new() });
-							// .add(DocumentMessage::UpdateClickTargets { click_targets: HashMap::new() });
 
 							log::trace!("{e}");
 
@@ -655,6 +650,7 @@ impl NodeGraphExecutor {
 				responses.add(DocumentMessage::UpdateUpstreamTransforms { upstream_transforms: footprints });
 				responses.add(DocumentMessage::UpdateClickTargets { click_targets });
 				responses.add(DocumentMessage::UpdateVectorModify { vector_modify: vector_data });
+				responses.add(OverlaysMessage::Draw);
 			}
 			TaggedValue::Bool(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::String(render_object) => Self::debug_render(render_object, transform, responses),

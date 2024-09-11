@@ -1059,6 +1059,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.network_interface.update_transforms(upstream_transforms);
 			}
 			DocumentMessage::UpdateClickTargets { click_targets } => {
+				// TODO: Allow non layer nodes to have click targets
 				let layer_click_targets = click_targets
 					.into_iter()
 					.filter_map(|(node_id, click_targets)| {
@@ -1071,40 +1072,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					})
 					.collect();
 				self.network_interface.update_click_targets(layer_click_targets);
-
-				// TODO: Allow non layer nodes to have click targets
-				// let layer_click_targets = click_targets
-				// 	.into_iter()
-				// 	.filter_map(|(node_id, click_targets)| {
-				// 		if self.network_interface.is_layer(&node_id, &[]) {
-				// 			let layer = LayerNodeIdentifier::new(node_id, &self.network_interface, &[]);
-				// 			Some((layer, click_targets))
-				// 		} else {
-				// 			None
-				// 		}
-				// 	})
-				// 	.collect::<HashMap<_, _>>();
-				// log::debug!("layer_click_targets: {:?}", layer_click_targets);
-				// self.network_interface.load_structure();
-				// // Store all click targets upstream for each layer
-				// let mut upstream_click_targets = HashMap::new();
-				// for layer in self.metadata().all_layers() {
-				// 	log::debug!("layer: {:?}", layer);
-				// 	let mut layer_upstream_click_targets = layer_click_targets.get(&layer).cloned().unwrap_or_default();
-				// 	if !self.network_interface.is_artboard(&layer.to_node(), &[]) {
-				// 		for upstream_layer in layer.descendants(self.metadata()) {
-				// 			if let Some(upstream_layer_click_targets) = layer_click_targets.get(&upstream_layer).cloned() {
-				// 				layer_upstream_click_targets.extend(upstream_layer_click_targets);
-				// 			}
-				// 		}
-				// 	}
-				// 	log::debug!("layer_upstream_click_targets: {:?}", layer_upstream_click_targets);
-				// 	if !layer_upstream_click_targets.is_empty() {
-				// 		upstream_click_targets.insert(layer, layer_upstream_click_targets);
-				// 	}
-				// }
-				// log::debug!("upstream_click_targets: {:?}", upstream_click_targets);
-				// self.network_interface.update_click_targets(upstream_click_targets);
 			}
 			DocumentMessage::UpdateVectorModify { vector_modify } => {
 				self.network_interface.update_vector_modify(vector_modify);

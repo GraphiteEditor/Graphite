@@ -735,7 +735,7 @@ impl EditorHandle {
 				for node_id in nodes_to_upgrade {
 					document
 						.network_interface
-						.set_implementation(&node_id, &[], DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _, _>"));
+						.replace_implementation(&node_id, &[], DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _, _>"));
 					document
 						.network_interface
 						.add_input(&node_id, &[], TaggedValue::IVec2(glam::IVec2::default()), false, 2, "".to_string());
