@@ -28,3 +28,14 @@ pub fn subtract_black_cfa_grid(mut raw_image: RawImage) -> RawImage {
 
 	raw_image
 }
+
+impl RawImage {
+	pub fn subtract_black_fn(&self) -> impl Fn(u16, usize, usize) -> u16 {
+		match self.black {
+			SubtractBlack::CfaGrid(black_levels) => move |value: u16, row, column| {
+				value.saturating_sub(black_levels[2 * (row % 2) + (column % 2)])
+			},
+			_ => todo!(),
+		}
+	}
+}
