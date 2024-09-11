@@ -445,6 +445,9 @@ impl Fsm for SelectToolFsmState {
 					.unwrap()
 					.selected_visible_and_unlocked_layers(&document.network_interface)
 					.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
+					// .flat_map(|layer| layer.descendants(document.metadata()).chain(std::iter::once(layer)))
+					// .collect::<HashSet<_>>()
+					// .iter()
 					.filter_map(|layer| {
 						document
 							.metadata()
@@ -696,7 +699,7 @@ impl Fsm for SelectToolFsmState {
 				let axis_align = input.keyboard.key(modifier_keys.axis_align);
 
 				// Ignore the non duplicated layers if the current layers have not spawned yet.
-				let layers_exist = tool_data.layers_dragging.iter().all(|&layer| document.metadata().click_target(layer).is_some());
+				let layers_exist = tool_data.layers_dragging.iter().all(|&layer| document.metadata().click_targets(layer).is_some());
 				let ignore = tool_data.non_duplicated_layers.as_ref().filter(|_| !layers_exist).unwrap_or(&tool_data.layers_dragging);
 
 				let snap_data = SnapData::ignore(document, input, ignore);

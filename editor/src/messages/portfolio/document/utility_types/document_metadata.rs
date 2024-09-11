@@ -22,7 +22,6 @@ pub struct DocumentMetadata {
 	pub structure: HashMap<LayerNodeIdentifier, NodeRelations>,
 	pub click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	pub vector_modify: HashMap<NodeId, VectorData>,
-	// TODO: Remove and derive from document_ptz in document message handler
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
 }
@@ -52,7 +51,7 @@ impl DocumentMetadata {
 		self.structure.contains_key(&layer)
 	}
 
-	pub fn click_target(&self, layer: LayerNodeIdentifier) -> Option<&Vec<ClickTarget>> {
+	pub fn click_targets(&self, layer: LayerNodeIdentifier) -> Option<&Vec<ClickTarget>> {
 		self.click_targets.get(&layer)
 	}
 
@@ -107,8 +106,7 @@ impl DocumentMetadata {
 impl DocumentMetadata {
 	/// Get the bounding box of the click target of the specified layer in the specified transform space
 	pub fn bounding_box_with_transform(&self, layer: LayerNodeIdentifier, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.click_targets
-			.get(&layer)?
+		self.click_targets(layer)?
 			.iter()
 			.filter_map(|click_target| click_target.subpath().bounding_box_with_transform(transform))
 			.reduce(Quad::combine_bounds)

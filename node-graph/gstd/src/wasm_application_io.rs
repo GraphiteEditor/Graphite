@@ -9,7 +9,6 @@ use graphene_core::raster::Image;
 use graphene_core::raster::ImageFrame;
 use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
 use graphene_core::transform::Footprint;
-use graphene_core::vector;
 use graphene_core::Node;
 use graphene_core::{Color, WasmNotSend};
 

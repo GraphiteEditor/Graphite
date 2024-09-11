@@ -2327,7 +2327,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested node_metadata in position_from_downstream_node");
 			return None;
 		};
-		match &node_metadata.persistent_metadata.node_type_metadata.clone() {
+		match &node_metadata.persistent_metadata.node_type_metadata {
 			NodeTypePersistentMetadata::Layer(layer_metadata) => {
 				match layer_metadata.position {
 					LayerPosition::Absolute(position) => Some(position),
