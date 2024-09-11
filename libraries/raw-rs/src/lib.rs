@@ -102,9 +102,18 @@ pub fn process_8bit(raw_image: RawImage) -> Image<u8> {
 }
 
 pub fn process_16bit(raw_image: RawImage) -> Image<u16> {
-	let raw_image = crate::preprocessing::camera_data::calculate_conversion_matrices(raw_image);
-	let raw_image = crate::preprocessing::subtract_black::subtract_black(raw_image);
-	let raw_image = crate::preprocessing::scale_colors::scale_colors(raw_image);
+	let mut raw_image = crate::preprocessing::camera_data::calculate_conversion_matrices(raw_image);
+	// let raw_image = crate::preprocessing::subtract_black::subtract_black(raw_image);
+	// let raw_image = crate::preprocessing::scale_colors::scale_colors(raw_image);
+	let subtract_black = raw_image.subtract_black_fn();
+	let scale_colors = raw_image.scale_colors_fn();
+
+	for (index, value) in raw_image.data.iter_mut().enumerate() {
+		let row = index / raw_image.width;
+		let column = index % raw_image.width;
+		*value = scale_colors(subtract_black(*value, row, column), row, column);
+	}
+
 	let image = crate::demosaicing::linear_demosaicing::linear_demosaic(raw_image);
 	let image = crate::postprocessing::convert_to_rgb::convert_to_rgb(image);
 	let image = crate::postprocessing::transform::transform(image);
