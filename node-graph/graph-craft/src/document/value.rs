@@ -253,29 +253,30 @@ impl<T: AsRef<U> + Sync + Send, U: Sync + Send> UpcastAsRefNode<T, U> {
 
 #[derive(Debug, Clone, PartialEq, dyn_any::DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum RenderOutput {
+pub struct RenderOutput {
+	pub data: RenderOutputType,
+	pub metadata: RenderMetadata,
+}
+
+#[derive(Debug, Clone, PartialEq, dyn_any::DynAny, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum RenderOutputType {
 	CanvasFrame(graphene_core::SurfaceFrame),
-	Svg(
-		(
-			String,
-			HashMap<NodeId, (graphene_core::transform::Footprint, DAffine2)>,
-			HashMap<NodeId, Vec<ClickTarget>>,
-			HashMap<NodeId, VectorData>,
-		),
-	),
+	Svg(String),
 	Image(Vec<u8>),
+}
+
+#[derive(Debug, Clone, PartialEq, dyn_any::DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct RenderMetadata {
+	pub footprints: HashMap<NodeId, (graphene_core::transform::Footprint, DAffine2)>,
+	pub click_targets: HashMap<NodeId, Vec<ClickTarget>>,
+	pub vector_data: HashMap<NodeId, VectorData>,
 }
 
 impl Hash for RenderOutput {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		core::mem::discriminant(self).hash(state);
-		match self {
-			Self::CanvasFrame(x) => x.hash(state),
-			Self::Svg((x, _, _, _)) => {
-				x.hash(state);
-			}
-			Self::Image(x) => x.hash(state),
-		}
+		self.data.hash(state)
 	}
 }
 

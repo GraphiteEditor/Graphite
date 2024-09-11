@@ -4,7 +4,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::prelude::*;
 
 use graph_craft::concrete;
-use graph_craft::document::value::TaggedValue;
+use graph_craft::document::value::{RenderMetadata, RenderOutput, TaggedValue};
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
@@ -16,7 +16,6 @@ use graphene_core::renderer::{RenderSvgSegmentList, SvgSegment};
 use graphene_core::text::FontCache;
 use graphene_core::transform::Footprint;
 use graphene_core::vector::style::ViewMode;
-use graphene_core::SurfaceFrame;
 use graphene_std::renderer::format_transform_matrix;
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
@@ -498,7 +497,11 @@ impl NodeGraphExecutor {
 	}
 
 	fn export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		let TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg((svg, _, _, _))) = node_graph_output else {
+		let TaggedValue::RenderOutput(RenderOutput {
+			data: graphene_std::wasm_application_io::RenderOutputType::Svg(svg),
+			..
+		}) = node_graph_output
+		else {
 			return Err("Incorrect render type for exporting (expected RenderOutput::Svg)".to_string());
 		};
 
@@ -621,31 +624,37 @@ impl NodeGraphExecutor {
 
 	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, transform: DAffine2, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		match node_graph_output {
-			TaggedValue::SurfaceFrame(SurfaceFrame { .. }) => {
-				// TODO: Reimplement this now that document-legacy is gone
-			}
-			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg((svg, upstream_transforms, click_targets, vector_modify))) => {
-				// Send to frontend
-				//log::debug!("Render output footprints: {footprints:?}");
-				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
-				responses.add(DocumentMessage::RenderScrollbars);
-				responses.add(DocumentMessage::RenderRulers);
-				responses.add(DocumentMessage::UpdateUpstreamTransforms { upstream_transforms });
-				responses.add(DocumentMessage::UpdateClickTargets { click_targets });
-				responses.add(DocumentMessage::UpdateVectorModify { vector_modify });
-				responses.add(OverlaysMessage::Draw);
-			}
+			TaggedValue::RenderOutput(render_output) => {
+				let RenderMetadata {
+					footprints,
+					click_targets,
+					vector_data,
+				} = render_output.metadata;
 
-			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::CanvasFrame(frame)) => {
-				let matrix = format_transform_matrix(frame.transform);
-				let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{}\"", matrix) };
-				let svg = format!(
-					r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="canvas{}"></div></foreignObject></svg>"#,
-					frame.resolution.x, frame.resolution.y, frame.surface_id.0
-				);
-				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
+				match render_output.data {
+					graphene_std::wasm_application_io::RenderOutputType::Svg(svg) => {
+						// Send to frontend
+						//log::debug!("Render output footprints: {footprints:?}");
+						responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
+					}
+					graphene_std::wasm_application_io::RenderOutputType::CanvasFrame(frame) => {
+						let matrix = format_transform_matrix(frame.transform);
+						let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{}\"", matrix) };
+						let svg = format!(
+							r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="canvas{}"></div></foreignObject></svg>"#,
+							frame.resolution.x, frame.resolution.y, frame.surface_id.0
+						);
+						responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
+					}
+					_ => {
+						return Err(format!("Invalid node graph output type: {:#?}", render_output.data));
+					}
+				}
 				responses.add(DocumentMessage::RenderScrollbars);
 				responses.add(DocumentMessage::RenderRulers);
+				responses.add(DocumentMessage::UpdateUpstreamTransforms { upstream_transforms: footprints });
+				responses.add(DocumentMessage::UpdateClickTargets { click_targets });
+				responses.add(DocumentMessage::UpdateVectorModify { vector_modify: vector_data });
 			}
 			TaggedValue::Bool(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::String(render_object) => Self::debug_render(render_object, transform, responses),
