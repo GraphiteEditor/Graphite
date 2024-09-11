@@ -109,7 +109,7 @@ fn store_image(path: &Path, suffix: &str, data: &mut [u8], width: usize, height:
 	output_path.set_extension("png");
 
 	let file = BufWriter::new(File::create(output_path).unwrap());
-	let png_encoder = PngEncoder::new_with_quality(file, CompressionType::Best, FilterType::Adaptive);
+	let png_encoder = PngEncoder::new_with_quality(file, CompressionType::Fast, FilterType::Adaptive);
 	png_encoder.write_image(data, width as u32, height as u32, ColorType::Rgb8.into()).unwrap();
 }
 
