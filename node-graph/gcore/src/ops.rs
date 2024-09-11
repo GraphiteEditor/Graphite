@@ -286,8 +286,8 @@ fn clone<'i, T: Clone + 'i>(_: (), #[implementations(&crate::raster::ImageFrame<
 
 // Identity
 /// The identity function returns the input argument unchanged.
-#[node_macro::node]
-fn identity<'i, T: 'i>(#[implementations()] value: T) -> T {
+#[node_macro::node(skip_impl)]
+fn identity<'i, T: 'i>(value: T) -> T {
 	value
 }
 

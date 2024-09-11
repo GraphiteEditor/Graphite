@@ -96,7 +96,7 @@ impl Parse for NodeFnAttributes {
 					}
 					let parsed_path: Path = meta
 						.parse_args()
-						.map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'path', e.g., path(\"crate::MemoizeNode\")"))?;
+						.map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'path', e.g., path(crate::MemoizeNode)"))?;
 					path = Some(parsed_path);
 				}
 				Meta::Path(path) if path.is_ident("skip_impl") => {

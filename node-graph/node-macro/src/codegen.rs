@@ -297,7 +297,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 		})
 		.collect();
 
-	let max_implementations = parameter_types.iter().map(|x| x.len()).chain([parsed.input.implementations.len()]).max();
+	let max_implementations = parameter_types.iter().map(|x| x.len()).chain([parsed.input.implementations.len().max(1)]).max();
 	let future_node = (!parsed.is_async).then(|| quote!(let node = gcore::registry::FutureWrapperNode::new(node);));
 
 	for i in 0..max_implementations.unwrap_or(0) {
