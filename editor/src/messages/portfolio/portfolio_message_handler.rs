@@ -518,6 +518,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						}
 					}
 
+					// Upgrade construct layer implementation from https://github.com/GraphiteEditor/Graphite/pull/1946
+					if reference == "Merge" || reference == "Artboard" {
+						let node_definition = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type(reference).unwrap();
+						let new_merge_node = node_definition.default_node_template();
+						document.network_interface.replace_implementation(node_id, &[], new_merge_node.document_node.implementation)
+					}
+
 					// Upgrade artboard name being passed as hidden value input to "To Artboard"
 					if reference == "Artboard" {
 						let label = document.network_interface.display_name(node_id, &[]);
