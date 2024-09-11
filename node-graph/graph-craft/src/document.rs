@@ -32,8 +32,8 @@ impl core::fmt::Display for NodeId {
 	}
 }
 
-/// Hash two IDs together, returning a new ID that is always consistant for two input IDs in a specific order.
-/// This is used during [`NodeNetwork::flatten`] in order to ensure consistant yet non-conflicting IDs for inner networks.
+/// Hash two IDs together, returning a new ID that is always consistent for two input IDs in a specific order.
+/// This is used during [`NodeNetwork::flatten`] in order to ensure consistent yet non-conflicting IDs for inner networks.
 fn merge_ids(a: NodeId, b: NodeId) -> NodeId {
 	let mut hasher = DefaultHasher::new();
 	a.hash(&mut hasher);
