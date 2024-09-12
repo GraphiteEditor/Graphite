@@ -445,9 +445,6 @@ impl Fsm for SelectToolFsmState {
 					.unwrap()
 					.selected_visible_and_unlocked_layers(&document.network_interface)
 					.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
-					// .flat_map(|layer| layer.descendants(document.metadata()).chain(std::iter::once(layer)))
-					// .collect::<HashSet<_>>()
-					// .iter()
 					.filter_map(|layer| {
 						document
 							.metadata()

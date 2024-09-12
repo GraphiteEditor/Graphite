@@ -1063,12 +1063,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let layer_click_targets = click_targets
 					.into_iter()
 					.filter_map(|(node_id, click_targets)| {
-						if self.network_interface.is_layer(&node_id, &[]) {
+						self.network_interface.is_layer(&node_id, &[]).then(|| {
 							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface, &[]);
-							Some((layer, click_targets))
-						} else {
-							None
-						}
+							(layer, click_targets)
+						})
 					})
 					.collect();
 				self.network_interface.update_click_targets(layer_click_targets);

@@ -5,15 +5,13 @@ use crate::wasm_application_io::WasmEditorApi;
 
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
-use graphene_core::renderer::ClickTarget;
+use graphene_core::renderer::RenderMetadata;
 use graphene_core::uuid::NodeId;
-use graphene_core::vector::VectorData;
 use graphene_core::{Color, MemoHash, Node, Type};
 
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
-use std::collections::HashMap;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -264,14 +262,6 @@ pub enum RenderOutputType {
 	CanvasFrame(graphene_core::SurfaceFrame),
 	Svg(String),
 	Image(Vec<u8>),
-}
-
-#[derive(Debug, Clone, PartialEq, dyn_any::DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct RenderMetadata {
-	pub footprints: HashMap<NodeId, (graphene_core::transform::Footprint, DAffine2)>,
-	pub click_targets: HashMap<NodeId, Vec<ClickTarget>>,
-	pub vector_data: HashMap<NodeId, VectorData>,
 }
 
 impl Hash for RenderOutput {

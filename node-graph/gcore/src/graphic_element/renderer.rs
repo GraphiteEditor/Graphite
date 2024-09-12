@@ -1,5 +1,6 @@
 mod quad;
 mod rect;
+use dyn_any::DynAny;
 pub use quad::Quad;
 pub use rect::Rect;
 
@@ -269,15 +270,24 @@ pub fn to_transform(transform: DAffine2) -> usvg::Transform {
 	usvg::Transform::from_row(cols[0] as f32, cols[1] as f32, cols[2] as f32, cols[3] as f32, cols[4] as f32, cols[5] as f32)
 }
 
+use dyn_any::StaticType;
+#[derive(Debug, Clone, PartialEq, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct RenderMetadata {
+	pub footprints: HashMap<NodeId, (Footprint, DAffine2)>,
+	pub click_targets: HashMap<NodeId, Vec<ClickTarget>>,
+	pub vector_data: HashMap<NodeId, VectorData>,
+}
+
 pub trait GraphicElementRendered {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]>;
-	fn add_click_targets(&self, _click_targets: &mut HashMap<NodeId, Vec<ClickTarget>>, _element_id: Option<NodeId>) {}
+	// The upstream click targets for each layer are collected during the render so that they do not have to be calculated for each click detection
 	fn add_upstream_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
 	// TODO: Store all click targets in a vec which contains the AABB, click target, and path
 	// fn add_click_targets(&self, click_targets: &mut Vec<([DVec2; 2], ClickTarget, Vec<NodeId>)>, current_path: Option<NodeId>) {}
-	fn add_vector_modify(&self, _vector_modify: &mut HashMap<NodeId, VectorData>, _element_id: Option<NodeId>) {}
-	fn add_footprints(&self, _footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, _footprint: Footprint, _element_id: Option<NodeId>) {}
+	// Recursively iterate over data in the render (including groups upstream from vector data in the case of a boolean operation) to collect the footprints, click targets, and vector modify
+	fn collect_metadata(&self, _metadata: &mut RenderMetadata, _footprint: Footprint, _element_id: Option<NodeId>) {}
 	#[cfg(feature = "vello")]
 	fn to_vello_scene(&self, transform: DAffine2, context: &mut RenderContext) -> Scene {
 		let mut scene = vello::Scene::new();
@@ -322,18 +332,17 @@ impl GraphicElementRendered for GraphicGroup {
 		self.iter().filter_map(|(element, _)| element.bounding_box(transform * self.transform)).reduce(Quad::combine_bounds)
 	}
 
-	fn add_click_targets(&self, click_targets: &mut HashMap<NodeId, Vec<ClickTarget>>, element_id: Option<NodeId>) {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
+		footprint.transform *= self.transform;
 		for (element, element_id) in self.elements.iter() {
 			if let Some(element_id) = element_id {
-				let mut new_click_targets = HashMap::new();
-				element.add_click_targets(&mut new_click_targets, Some(*element_id));
-				click_targets.extend(new_click_targets);
+				element.collect_metadata(metadata, footprint, Some(*element_id));
 			}
 		}
 		if let Some(graphic_group_id) = element_id {
 			let mut all_upstream_click_targets = Vec::new();
 			self.add_upstream_click_targets(&mut all_upstream_click_targets);
-			click_targets.insert(graphic_group_id, all_upstream_click_targets);
+			metadata.click_targets.insert(graphic_group_id, all_upstream_click_targets);
 		}
 	}
 
@@ -345,23 +354,6 @@ impl GraphicElementRendered for GraphicGroup {
 				click_target.apply_transform(element.transform())
 			}
 			click_targets.extend(new_click_targets);
-		}
-	}
-
-	fn add_vector_modify(&self, vector_modify: &mut HashMap<NodeId, VectorData>, _element_id: Option<NodeId>) {
-		for (element, element_id) in self.elements.iter() {
-			element.add_vector_modify(vector_modify, *element_id);
-		}
-	}
-
-	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, mut footprint: Footprint, _: Option<NodeId>) {
-		footprint.transform *= self.transform;
-		for (element, optional_node_id) in self.elements.iter() {
-			if let Some(element_id) = optional_node_id {
-				let mut new_footprints = HashMap::new();
-				element.add_footprints(&mut new_footprints, footprint, Some(*element_id));
-				footprints.extend(new_footprints);
-			}
 		}
 	}
 
@@ -433,7 +425,7 @@ impl GraphicElementRendered for VectorData {
 		self.bounding_box_with_transform(transform * self.transform).map(|[a, b]| [a - offset, b + offset])
 	}
 
-	fn add_click_targets(&self, click_targets: &mut HashMap<NodeId, Vec<ClickTarget>>, element_id: Option<NodeId>) {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
 			let stroke_width = self.style.stroke().as_ref().map_or(0., Stroke::weight);
 			let filled = self.style.fill() != &Fill::None;
@@ -443,10 +435,14 @@ impl GraphicElementRendered for VectorData {
 				}
 				subpath
 			};
-			click_targets.insert(element_id, self.stroke_bezier_paths().map(fill).map(|subpath| ClickTarget::new(subpath, stroke_width)).collect());
+			metadata
+				.click_targets
+				.insert(element_id, self.stroke_bezier_paths().map(fill).map(|subpath| ClickTarget::new(subpath, stroke_width)).collect());
+			metadata.vector_data.insert(element_id, self.clone());
 		}
 		if let Some(upstream_graphic_group) = &self.upstream_graphic_group {
-			upstream_graphic_group.add_click_targets(click_targets, None);
+			footprint.transform *= self.transform;
+			upstream_graphic_group.collect_metadata(metadata, footprint, None);
 		}
 	}
 
@@ -460,22 +456,6 @@ impl GraphicElementRendered for VectorData {
 			subpath
 		};
 		click_targets.extend(self.stroke_bezier_paths().map(fill).map(|subpath| ClickTarget::new(subpath, stroke_width)));
-	}
-
-	fn add_vector_modify(&self, vector_modify: &mut HashMap<NodeId, VectorData>, element_id: Option<NodeId>) {
-		if let Some(element_id) = element_id {
-			vector_modify.insert(element_id, self.clone());
-		}
-		if let Some(upstream_graphic_group) = &self.upstream_graphic_group {
-			upstream_graphic_group.add_vector_modify(vector_modify, None);
-		}
-	}
-
-	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, mut footprint: Footprint, _element_id: Option<NodeId>) {
-		if let Some(upstream_graphic_group) = &self.upstream_graphic_group {
-			footprint.transform *= self.transform;
-			upstream_graphic_group.add_footprints(footprints, footprint, None);
-		}
 	}
 
 	#[cfg(feature = "vello")]
@@ -651,29 +631,19 @@ impl GraphicElementRendered for Artboard {
 		}
 	}
 
-	fn add_click_targets(&self, click_targets: &mut HashMap<NodeId, Vec<ClickTarget>>, element_id: Option<NodeId>) {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
 			let subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
-			click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
+			metadata.click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
+			metadata.footprints.insert(element_id, (footprint, DAffine2::from_translation(self.location.as_dvec2())));
 		}
-		self.graphic_group.add_click_targets(click_targets, None);
+		self.graphic_group.collect_metadata(metadata, footprint, None);
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let mut subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
 		subpath.apply_transform(self.graphic_group.transform.inverse());
 		click_targets.push(ClickTarget::new(subpath, 0.));
-	}
-
-	fn add_vector_modify(&self, vector_modify: &mut HashMap<NodeId, VectorData>, _element_id: Option<NodeId>) {
-		self.graphic_group.add_vector_modify(vector_modify, None);
-	}
-
-	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, footprint: Footprint, element_id: Option<NodeId>) {
-		if let Some(element_id) = element_id {
-			footprints.insert(element_id, (footprint, DAffine2::from_translation(self.location.as_dvec2())));
-		}
-		self.graphic_group.add_footprints(footprints, footprint, None);
 	}
 
 	#[cfg(feature = "vello")]
@@ -713,27 +683,15 @@ impl GraphicElementRendered for crate::ArtboardGroup {
 		self.artboards.iter().filter_map(|(element, _)| element.bounding_box(transform)).reduce(Quad::combine_bounds)
 	}
 
-	fn add_click_targets(&self, click_targets: &mut HashMap<NodeId, Vec<ClickTarget>>, _element_id: Option<NodeId>) {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>) {
 		for (artboard, element_id) in &self.artboards {
-			artboard.add_click_targets(click_targets, *element_id);
+			artboard.collect_metadata(metadata, footprint, *element_id);
 		}
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		for (artboard, _) in &self.artboards {
 			artboard.add_upstream_click_targets(click_targets);
-		}
-	}
-
-	fn add_vector_modify(&self, vector_modify: &mut HashMap<NodeId, VectorData>, _element_id: Option<NodeId>) {
-		for (artboard, _) in &self.artboards {
-			artboard.add_vector_modify(vector_modify, None);
-		}
-	}
-
-	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, footprint: Footprint, _element_id: Option<NodeId>) {
-		for (artboard, element_id) in &self.artboards {
-			artboard.add_footprints(footprints, footprint, *element_id);
 		}
 	}
 
@@ -790,22 +748,17 @@ impl GraphicElementRendered for ImageFrame<Color> {
 		(transform.matrix2 != glam::DMat2::ZERO).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
 	}
 
-	fn add_click_targets(&self, click_targets: &mut HashMap<NodeId, Vec<ClickTarget>>, element_id: Option<NodeId>) {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
 			let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
-			click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
+			metadata.click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
+			metadata.footprints.insert(element_id, (footprint, self.transform));
 		}
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 		click_targets.push(ClickTarget::new(subpath, 0.));
-	}
-
-	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, footprint: Footprint, element_id: Option<NodeId>) {
-		if let Some(element_id) = element_id {
-			footprints.insert(element_id, (footprint, self.transform));
-		}
 	}
 
 	#[cfg(feature = "vello")]
@@ -873,22 +826,17 @@ impl GraphicElementRendered for Raster {
 		(transform.matrix2 != glam::DMat2::ZERO).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
 	}
 
-	fn add_click_targets(&self, click_targets: &mut HashMap<NodeId, Vec<ClickTarget>>, element_id: Option<NodeId>) {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
 			let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
-			click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
+			metadata.click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
+			metadata.footprints.insert(element_id, (footprint, self.transform()));
 		}
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 		click_targets.push(ClickTarget::new(subpath, 0.));
-	}
-
-	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, footprint: Footprint, element_id: Option<NodeId>) {
-		if let Some(element_id) = element_id {
-			footprints.insert(element_id, (footprint, self.transform()));
-		}
 	}
 
 	#[cfg(feature = "vello")]
@@ -948,11 +896,14 @@ impl GraphicElementRendered for GraphicElement {
 		}
 	}
 
-	fn add_click_targets(&self, click_targets: &mut HashMap<NodeId, Vec<ClickTarget>>, element_id: Option<NodeId>) {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
+		if let Some(element_id) = element_id {
+			metadata.footprints.insert(element_id, (footprint, self.transform()));
+		}
 		match self {
-			GraphicElement::VectorData(vector_data) => vector_data.add_click_targets(click_targets, element_id),
-			GraphicElement::Raster(raster) => raster.add_click_targets(click_targets, element_id),
-			GraphicElement::GraphicGroup(graphic_group) => graphic_group.add_click_targets(click_targets, element_id),
+			GraphicElement::VectorData(vector_data) => vector_data.collect_metadata(metadata, footprint, element_id),
+			GraphicElement::Raster(raster) => raster.collect_metadata(metadata, footprint, element_id),
+			GraphicElement::GraphicGroup(graphic_group) => graphic_group.collect_metadata(metadata, footprint, element_id),
 		}
 	}
 
@@ -961,23 +912,6 @@ impl GraphicElementRendered for GraphicElement {
 			GraphicElement::VectorData(vector_data) => vector_data.add_upstream_click_targets(click_targets),
 			GraphicElement::Raster(raster) => raster.add_upstream_click_targets(click_targets),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.add_upstream_click_targets(click_targets),
-		}
-	}
-
-	fn add_vector_modify(&self, vector_modify: &mut HashMap<NodeId, VectorData>, element_id: Option<NodeId>) {
-		if let GraphicElement::VectorData(vector_data) = self {
-			vector_data.add_vector_modify(vector_modify, element_id);
-		}
-	}
-
-	fn add_footprints(&self, footprints: &mut HashMap<NodeId, (Footprint, DAffine2)>, footprint: Footprint, element_id: Option<NodeId>) {
-		if let Some(element_id) = element_id {
-			footprints.insert(element_id, (footprint, self.transform()));
-		}
-		match self {
-			GraphicElement::VectorData(vector_data) => vector_data.add_footprints(footprints, footprint, None),
-			GraphicElement::Raster(raster) => raster.add_footprints(footprints, footprint, None),
-			GraphicElement::GraphicGroup(graphic_group) => graphic_group.add_footprints(footprints, footprint, None),
 		}
 	}
 

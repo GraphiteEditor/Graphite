@@ -4,7 +4,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::prelude::*;
 
 use graph_craft::concrete;
-use graph_craft::document::value::{RenderMetadata, RenderOutput, TaggedValue};
+use graph_craft::document::value::{RenderOutput, TaggedValue};
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
@@ -16,7 +16,7 @@ use graphene_core::renderer::{RenderSvgSegmentList, SvgSegment};
 use graphene_core::text::FontCache;
 use graphene_core::transform::Footprint;
 use graphene_core::vector::style::ViewMode;
-use graphene_std::renderer::format_transform_matrix;
+use graphene_std::renderer::{format_transform_matrix, RenderMetadata};
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
 
@@ -297,10 +297,6 @@ impl NodeRuntime {
 		responses: &mut VecDeque<FrontendMessage>,
 		update_thumbnails: bool,
 	) {
-		// let click_targets = click_targets.entry(parent_network_node_id).or_default();
-		// click_targets.clear();
-		// graphic_element.add_click_targets(click_targets);
-
 		// RENDER THUMBNAIL
 
 		if !update_thumbnails {
@@ -554,8 +550,6 @@ impl NodeGraphExecutor {
 					};
 
 					responses.extend(existing_responses.into_iter().map(Into::into));
-					// document.network_interface.update_click_targets(new_click_targets);
-					// document.network_interface.update_vector_modify(new_vector_modify);
 
 					let execution_context = self.futures.remove(&execution_id).ok_or_else(|| "Invalid generation ID".to_string())?;
 					if let Some(export_config) = execution_context.export_config {
@@ -629,7 +623,6 @@ impl NodeGraphExecutor {
 				match render_output.data {
 					graphene_std::wasm_application_io::RenderOutputType::Svg(svg) => {
 						// Send to frontend
-						//log::debug!("Render output footprints: {footprints:?}");
 						responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 					}
 					graphene_std::wasm_application_io::RenderOutputType::CanvasFrame(frame) => {
@@ -645,11 +638,11 @@ impl NodeGraphExecutor {
 						return Err(format!("Invalid node graph output type: {:#?}", render_output.data));
 					}
 				}
-				responses.add(DocumentMessage::RenderScrollbars);
-				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::UpdateUpstreamTransforms { upstream_transforms: footprints });
 				responses.add(DocumentMessage::UpdateClickTargets { click_targets });
 				responses.add(DocumentMessage::UpdateVectorModify { vector_modify: vector_data });
+				responses.add(DocumentMessage::RenderScrollbars);
+				responses.add(DocumentMessage::RenderRulers);
 				responses.add(OverlaysMessage::Draw);
 			}
 			TaggedValue::Bool(render_object) => Self::debug_render(render_object, transform, responses),

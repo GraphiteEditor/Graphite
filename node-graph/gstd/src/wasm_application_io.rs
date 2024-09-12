@@ -1,4 +1,3 @@
-use graph_craft::document::value::RenderMetadata;
 use graph_craft::document::value::RenderOutput;
 pub use graph_craft::document::value::RenderOutputType;
 pub use graph_craft::wasm_application_io::*;
@@ -9,6 +8,7 @@ use graphene_core::application_io::{ApplicationIo, ExportFormat, RenderConfig};
 use graphene_core::raster::bbox::Bbox;
 use graphene_core::raster::Image;
 use graphene_core::raster::ImageFrame;
+use graphene_core::renderer::RenderMetadata;
 use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
 use graphene_core::transform::Footprint;
 use graphene_core::Node;
@@ -228,17 +228,12 @@ async fn render_node<'a: 'input, T: 'input + GraphicElementRendered + WasmNotSen
 	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
 	let use_vello = use_vello && surface_handle.is_some();
 
-	let mut footprints = HashMap::new();
-	let mut click_targets = HashMap::new();
-	let mut vector_modify = HashMap::new();
-	data.add_footprints(&mut footprints, footprint, None);
-	data.add_click_targets(&mut click_targets, None);
-	data.add_vector_modify(&mut vector_modify, None);
-	let metadata = RenderMetadata {
-		footprints,
-		click_targets,
-		vector_data: vector_modify,
+	let mut metadata = RenderMetadata {
+		footprints: HashMap::new(),
+		click_targets: HashMap::new(),
+		vector_data: HashMap::new(),
 	};
+	data.collect_metadata(&mut metadata, footprint, None);
 
 	let output_format = render_config.export_format;
 	let data = match output_format {
