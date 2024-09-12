@@ -1972,6 +1972,7 @@ fn frontend_inputs_lookup(breadcrumb_network_path: &[NodeId], network_interface:
 			// Skip not exposed inputs (they still get an entry to help with finding the primary input)
 			if !is_exposed {
 				inputs.push(None);
+				continue;
 			}
 
 			// Get the name from the metadata here (since it also requires a reference to the `network_interface`)
