@@ -1,3 +1,4 @@
+use glam::DVec2;
 use slotmap::{new_key_type, SlotMap};
 
 new_key_type! {
@@ -246,7 +247,18 @@ fn dual_graph_to_dot(components: &[DualGraphComponent], edges: &SlotMap<DualEdge
 }
 
 fn segment_to_edge(parent: u8) -> impl Fn(&PathSegment) -> MajorGraphEdgeStage1 {
-	move |seg| (*seg, parent)
+	move |seg| match seg {
+		// Convert Line Segments expressed as cubic beziers to proper line segments
+		PathSegment::Cubic(start, _, _, end) => {
+			let direction = sample_path_segment_at(seg, 0.1);
+			if (end - start).angle_to(direction - start).abs().to_degrees() < EPS.param {
+				(PathSegment::Line(*start, *end), parent)
+			} else {
+				(*seg, parent)
+			}
+		}
+		seg => (*seg, parent),
+	}
 }
 
 fn split_at_self_intersections(edges: &mut Vec<MajorGraphEdgeStage1>) {
@@ -730,7 +742,7 @@ fn compute_point_winding(polygon: &[Vector], tested_point: Vector) -> i32 {
 	winding
 }
 
-fn compute_winding(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>) -> (i32, Vector) {
+fn compute_winding(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>) -> Option<i32> {
 	let polygon = face_to_polygon(face, edges);
 	#[cfg(feature = "logging")]
 	for point in &polygon {
@@ -744,14 +756,47 @@ fn compute_winding(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, DualGrap
 		let center = (a + b + c) / 3.;
 		let winding = compute_point_winding(&polygon, center);
 		if winding != 0 {
-			return (winding, center);
+			return Some(winding);
 		}
 	}
 
-	panic!("No ear in polygon found.");
+	None
 }
 
-fn compute_dual(minor_graph: &MinorGraph) -> Option<DualGraph> {
+fn compute_signed_area(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>) -> f64 {
+	let polygon = face_to_polygon(face, edges);
+	if polygon.len() <= 4 {
+		return -1.;
+	}
+
+	#[cfg(feature = "logging")]
+	eprintln!("vertex: {:?}", face);
+	#[cfg(feature = "logging")]
+	for point in &polygon {
+		eprintln!("{}, {}", point.x, point.y);
+	}
+	let mut area = 0.;
+
+	for i in 0..polygon.len() {
+		let a = polygon[i];
+		let b = polygon[(i + 1) % polygon.len()];
+		area += a.x * b.y;
+		area -= b.x * a.y;
+		// let center = (a + b + c) / 3.;
+		// let winding = compute_point_winding(&polygon, center);
+		// if winding != 0 {
+		//         return (winding, center);
+		// }
+	}
+
+	#[cfg(feature = "logging")]
+	eprintln!("winding: {}", area);
+	area
+
+	// panic!("No ear in polygon found.");
+}
+
+fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 	let mut new_vertices: Vec<DualVertexKey> = Vec::new();
 	let mut minor_to_dual_edge: HashMap<MinorEdgeKey, DualEdgeKey> = HashMap::new();
 	let mut dual_edges = SlotMap::with_key();
@@ -883,10 +928,13 @@ fn compute_dual(minor_graph: &MinorGraph) -> Option<DualGraph> {
 			// eprintln!("{:?}", edge.incident_vertex);
 		}
 
-		let outer_face_key = *component_vertices
+		let windings: Option<Vec<_>> = component_vertices
 			.iter()
-			.find(|&&face_key| compute_winding(&dual_vertices[face_key], &dual_edges).0 < 0)
-			.expect("No outer face of a component found.");
+			.map(|face_key| compute_winding(&dual_vertices[*face_key], &dual_edges).map(|w| (face_key, w)))
+			.collect();
+		let Some(windings) = windings else {
+			return Err(BooleanError::NoEarInPolygon);
+		};
 
 		#[cfg(feature = "logging")]
 		if cfg!(feature = "logging") {
@@ -903,15 +951,11 @@ fn compute_dual(minor_graph: &MinorGraph) -> Option<DualGraph> {
 			);
 		}
 
-		if component_vertices.iter().filter(|&&face_key| compute_winding(&dual_vertices[face_key], &dual_edges).0 < 0).count() > 1 {
-			return None;
+		if windings.iter().filter(|(_, winding)| winding < &0).count() != 1 {
+			return Err(BooleanError::MultipleOuterFaces);
 		}
+		let outer_face_key = *windings.iter().find(|(&face_key, winding)| winding < &0).expect("No outer face of a component found.").0;
 		// TODO: merge with previous iter
-		assert_eq!(
-			component_vertices.iter().filter(|&&face_key| compute_winding(&dual_vertices[face_key], &dual_edges).0 < 0).count(),
-			1,
-			"Multiple outer faces found."
-		);
 
 		components.push(DualGraphComponent {
 			vertices: component_vertices,
@@ -920,7 +964,7 @@ fn compute_dual(minor_graph: &MinorGraph) -> Option<DualGraph> {
 		});
 	}
 
-	Some(DualGraph {
+	Ok(DualGraph {
 		vertices: dual_vertices,
 		edges: dual_edges,
 		components,
@@ -1250,6 +1294,7 @@ const OPERATION_PREDICATES: [fn(u8) -> bool; 6] = [
 #[derive(Debug)]
 pub enum BooleanError {
 	MultipleOuterFaces,
+	NoEarInPolygon,
 }
 
 pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: FillRule, op: PathBooleanOperation) -> Result<Vec<Path>, BooleanError> {
@@ -1307,7 +1352,7 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 		assert_eq!(twin.twin.unwrap(), edge_key, "Twin relationship should be symmetrical for edge {:?}", edge_key);
 	}
 
-	let dual_graph = compute_dual(&minor_graph).ok_or(BooleanError::MultipleOuterFaces)?;
+	let dual_graph = compute_dual(&minor_graph)?;
 
 	let nesting_trees = compute_nesting_tree(&dual_graph);
 
@@ -1334,6 +1379,8 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 
 #[cfg(test)]
 mod tests {
+	use std::f64::consts::TAU;
+
 	use super::*;
 	use glam::DVec2; // Assuming DVec2 is defined in your crate
 
@@ -1491,7 +1538,7 @@ mod tests {
 		} else {
 			(sample_path_segment_at(seg, 1.0), sample_path_segment_at(seg, 1.0 - 0.1))
 		};
-		(p1.y - p0.y).atan2(p1.x - p0.x)
+		((p1.y - p0.y).atan2(p1.x - p0.x) + TAU) % TAU
 	}
 
 	#[test]
