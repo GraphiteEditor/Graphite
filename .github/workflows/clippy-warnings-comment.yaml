@@ -24,8 +24,10 @@ jobs:
           override: true
           components: clippy
 
-      - name: Install Deps
-        run: sudo apt-get install libgtk-3-dev libsoup2.4-dev libjavascriptcoregtk-4.0-dev libwebkit2gtk-4.0-dev
+      - name: Install deps
+        run: |
+          sudo apt update
+          sudo apt install libgtk-3-dev libsoup2.4-dev libjavascriptcoregtk-4.0-dev libwebkit2gtk-4.0-dev
 
       - name: Run Clippy
         id: clippy
