@@ -246,18 +246,24 @@ fn dual_graph_to_dot(components: &[DualGraphComponent], edges: &SlotMap<DualEdge
 	dot
 }
 
-fn segment_to_edge(parent: u8) -> impl Fn(&PathSegment) -> MajorGraphEdgeStage1 {
-	move |seg| match seg {
-		// Convert Line Segments expressed as cubic beziers to proper line segments
-		PathSegment::Cubic(start, _, _, end) => {
-			let direction = sample_path_segment_at(seg, 0.1);
-			if (end - start).angle_to(direction - start).abs().to_degrees() < EPS.param {
-				(PathSegment::Line(*start, *end), parent)
-			} else {
-				(*seg, parent)
-			}
+fn segment_to_edge(parent: u8) -> impl Fn(&PathSegment) -> Option<MajorGraphEdgeStage1> {
+	move |seg| {
+		if bounding_box_max_extent(&path_segment_bounding_box(seg)) < EPS.linear {
+			return None;
 		}
-		seg => (*seg, parent),
+
+		match seg {
+			// Convert Line Segments expressed as cubic beziers to proper line segments
+			PathSegment::Cubic(start, _, _, end) => {
+				let direction = sample_path_segment_at(seg, 0.1);
+				if dbg!((end - start).angle_to(direction - start).abs()) < EPS.param {
+					Some((dbg!(PathSegment::Line(*start, *end)), parent))
+				} else {
+					Some((*seg, parent))
+				}
+			}
+			seg => Some((*seg, parent)),
+		}
 	}
 }
 
@@ -442,7 +448,10 @@ fn find_vertices(edges: &[MajorGraphEdgeStage2], bounding_box: AaBb) -> MajorGra
 
 		let vertex_pair_id = (start_vertex.min(end_vertex), start_vertex.max(end_vertex));
 		if let Some(existing_edges) = vertex_pair_id_to_edges.get(&vertex_pair_id) {
-			if let Some(existing_edge) = existing_edges.iter().find(|(other_seg, ..)| segments_equal(seg, &other_seg.0, EPS.point)) {
+			if let Some(existing_edge) = existing_edges
+				.iter()
+				.find(|(other_seg, ..)| segments_equal(seg, &other_seg.0, EPS.point) || segments_equal(&reverse_path_segment(seg), &other_seg.0, EPS.point))
+			{
 				*parents.entry(existing_edge.1).or_default() |= parent;
 				*parents.entry(existing_edge.2).or_default() |= parent;
 				continue;
@@ -1298,7 +1307,7 @@ pub enum BooleanError {
 }
 
 pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: FillRule, op: PathBooleanOperation) -> Result<Vec<Path>, BooleanError> {
-	let mut unsplit_edges: Vec<MajorGraphEdgeStage1> = a.iter().map(segment_to_edge(1)).chain(b.iter().map(segment_to_edge(2))).collect();
+	let mut unsplit_edges: Vec<MajorGraphEdgeStage1> = a.iter().map(segment_to_edge(1)).chain(b.iter().map(segment_to_edge(2))).flatten().collect();
 
 	split_at_self_intersections(&mut unsplit_edges);
 

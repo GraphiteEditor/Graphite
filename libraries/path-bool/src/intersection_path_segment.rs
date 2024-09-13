@@ -7,7 +7,7 @@ use crate::epsilons::Epsilons;
 use crate::line_segment::{line_segment_intersection, line_segments_intersect};
 use crate::line_segment_aabb::line_segment_aabb_intersect;
 use crate::math::lerp;
-use crate::path_segment::{path_segment_bounding_box, split_segment_at, PathSegment};
+use crate::path_segment::{path_segment_bounding_box, sample_path_segment_at, split_segment_at, PathSegment};
 use crate::vector::{vectors_equal, Vector};
 
 #[derive(Clone)]
@@ -58,7 +58,7 @@ fn intersection_segments_overlap(seg0: &IntersectionSegment, seg1: &Intersection
 }
 
 pub fn segments_equal(seg0: &PathSegment, seg1: &PathSegment, point_epsilon: f64) -> bool {
-	match (*seg0, *seg1) {
+	let equal = match (*seg0, *seg1) {
 		(PathSegment::Line(start0, end0), PathSegment::Line(start1, end1)) => vectors_equal(start0, start1, point_epsilon) && vectors_equal(end0, end1, point_epsilon),
 		(PathSegment::Cubic(p00, p01, p02, p03), PathSegment::Cubic(p10, p11, p12, p13)) => {
 			vectors_equal(p00, p10, point_epsilon) && vectors_equal(p01, p11, point_epsilon) && vectors_equal(p02, p12, point_epsilon) && vectors_equal(p03, p13, point_epsilon)
@@ -76,7 +76,13 @@ pub fn segments_equal(seg0: &PathSegment, seg1: &PathSegment, point_epsilon: f64
             vectors_equal(p01, p11, point_epsilon)
 		}
 		_ => false,
+	};
+	let start = sample_path_segment_at(seg0, 0.);
+	let end = sample_path_segment_at(seg0, 1.);
+	if (start.abs_diff_eq((1418., 0.).into(), 0.01) || end.abs_diff_eq((1418., 0.).into(), 0.01)) && (start.abs_diff_eq((969., 0.).into(), 0.01) || end.abs_diff_eq((969., 0.).into(), 0.01)) {
+		eprintln!("equal: {}, {:?}, {:?}", equal, seg0, seg1);
 	}
+	equal
 }
 
 pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoints: bool, eps: &Epsilons) -> Vec<[f64; 2]> {

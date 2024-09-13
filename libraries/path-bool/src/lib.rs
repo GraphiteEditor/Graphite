@@ -129,4 +129,19 @@ mod test {
 		// Add more specific assertions about the resulting path if needed
 		assert!(!result[0].is_empty());
 	}
+	#[test]
+	fn painted_dreams_1() {
+		let a = path_from_path_data("M969.000000,0.000000C969.000000,0.000000 1110.066898,76.934393 1085.000000,181.000000 C1052.000000,318.000000 1199.180581,334.301571 1277.000000,319.000000 C1455.000000,284.000000 1586.999985,81.000000 1418.000000,0.000000 C1418.000000,0.000000 969.000000,0.000000 969.000000,0.000000 Z");
+		let b = path_from_path_data(
+			"M763.000000,0.000000C763.000000,0.000000 1536.000000,0.000000 1536.000000,0.000000 C1536.000000,0.000000 1536.000000,254.000000 1536.000000,254.000000 C1536.000000,254.000000 1462.000000,93.000000 1271.000000,199.000000 C1149.163056,266.616314 976.413656,188.510842 908.000000,134.000000 C839.586344,79.489158 763.000000,0.000000 763.000000,0.000000 Z",
+		);
+
+		let result = path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, PathBooleanOperation::Intersection).unwrap();
+
+		// Add assertions here based on expected results
+		assert_eq!(result.len(), 1, "Expected 1 resulting path for Union operation");
+		dbg!(path_to_path_data(&result[0], 0.001));
+		// Add more specific assertions about the resulting path if needed
+		assert!(!result[0].is_empty());
+	}
 }
