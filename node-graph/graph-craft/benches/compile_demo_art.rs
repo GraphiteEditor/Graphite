@@ -40,16 +40,13 @@ fn compile_to_proto(c: &mut Criterion) {
 	}
 }
 
-// Note that this can not be disabled with a `#[cfg(...)]` because this causes a compile error.
 #[cfg_attr(all(feature = "iai", not(feature = "criterion")), library_benchmark)]
 #[cfg_attr(all(feature = "iai", not(feature="criterion")), benches::with_setup(args = ["isometric-fountain", "painted-dreams", "procedural-string-lights", "red-dress", "valley-of-spires"], setup = load_from_name))]
+// Note that this can not be disabled with a `#[cfg(...)]` because this causes a compile error.
+// Therefore negated condition is used in `#[cfg_attr(...)]` with the attribute `cfg(any())` that is always false.
+#[cfg_attr(any(feature = "criterion", not(feature = "iai")), cfg(any()))]
 pub fn iai_compile_to_proto(input: graph_craft::document::NodeNetwork) {
-	#[cfg(all(not(feature = "criterion"), feature = "iai"))]
 	black_box(compile(input));
-
-	// To avoid a warning it is necessary to use the input
-	#[cfg(any(feature = "criterion", not(feature = "iai")))]
-	drop(input);
 }
 
 #[cfg(feature = "criterion")]
