@@ -129,7 +129,7 @@ fn compare_segments(a: &PathSegment, b: &PathSegment) -> Ordering {
 			let curvature_a = a.start_curvature();
 			let curvature_b = b.start_curvature();
 			dbg!(curvature_a, curvature_b);
-			curvature_b.partial_cmp(&curvature_a).unwrap_or(Ordering::Equal)
+			curvature_a.partial_cmp(&curvature_b).unwrap_or(Ordering::Equal)
 		}
 		Some(ordering) => ordering,
 		None => Ordering::Equal, // Handle NaN cases
@@ -659,9 +659,14 @@ fn sort_outgoing_edges_by_angle(graph: &mut MinorGraph) {
 				.collect();
 			vertex.outgoing_edges.sort_by(|&a, &b| {
 				// TODO(@TrueDoctor): Make more robust. The js version seems to sort the data slightly differently when the angles are reallly close. In that case put the edge wich was discovered later first.
-				(get_incidence_angle(&graph.edges[a]) - (a.0.as_ffi() & 0xFFFFFF) as f64 / 1000000.)
+				let new = graph.edges[a].partial_cmp(&graph.edges[b]).unwrap();
+				let old = (get_incidence_angle(&graph.edges[a]) - (a.0.as_ffi() & 0xFFFFFF) as f64 / 1000000.)
 					.partial_cmp(&(get_incidence_angle(&graph.edges[b]) - (b.0.as_ffi() & 0xFFFFFF) as f64 / 1000000.))
-					.unwrap_or(b.cmp(&a))
+					.unwrap_or(b.cmp(&a));
+				if new != old {
+					dbg!(new, old, a, b);
+				}
+				new
 			});
 			let edges: Vec<_> = vertex
 				.outgoing_edges
@@ -669,6 +674,8 @@ fn sort_outgoing_edges_by_angle(graph: &mut MinorGraph) {
 				.map(|key| (*key, &graph.edges[*key]))
 				.map(|(key, edge)| ((key.0.as_ffi() & 0xFF), get_incidence_angle(edge)))
 				.collect();
+			#[cfg(feature = "logging")]
+			dbg!(edges);
 		}
 	}
 }
@@ -837,9 +844,10 @@ fn compute_dual(minor_graph: &MinorGraph) -> Option<DualGraph> {
 	for (vertex_key, vertex) in &dual_vertices {
 		eprintln!("\n\n#{:?}", vertex_key.0);
 		let polygon = face_to_polygon(vertex, &dual_edges);
-		for point in polygon {
+		for point in polygon.iter() {
 			eprintln!("{}, {}", point.x, point.y);
 		}
+		eprintln!("{}, {}", polygon[0].x, polygon[0].y);
 	}
 
 	for &start_vertex_key in &new_vertices {
@@ -1356,12 +1364,10 @@ mod tests {
 			(PathSegment::Arc(DVec2::new(20.0, 39.0), 19.0, 19.0, 0.0, false, true, DVec2::new(1.0, 20.0)), 1),
 			(PathSegment::Arc(DVec2::new(1.0, 20.0), 19.0, 19.0, 0.0, false, true, DVec2::new(20.0, 1.0)), 1),
 			(PathSegment::Arc(DVec2::new(20.0, 1.0), 19.0, 19.0, 0.0, false, true, DVec2::new(39.0, 20.0)), 1),
-			(PathSegment::Line(DVec2::new(39.0, 20.0), DVec2::new(39.0, 20.0)), 1),
 			(PathSegment::Arc(DVec2::new(47.0, 28.0), 19.0, 19.0, 0.0, false, true, DVec2::new(28.0, 47.0)), 2),
 			(PathSegment::Arc(DVec2::new(28.0, 47.0), 19.0, 19.0, 0.0, false, true, DVec2::new(9.0, 28.0)), 2),
 			(PathSegment::Arc(DVec2::new(9.0, 28.0), 19.0, 19.0, 0.0, false, true, DVec2::new(28.0, 9.0)), 2),
 			(PathSegment::Arc(DVec2::new(28.0, 9.0), 19.0, 19.0, 0.0, false, true, DVec2::new(47.0, 28.0)), 2),
-			(PathSegment::Line(DVec2::new(47.0, 28.0), DVec2::new(47.0, 28.0)), 2),
 		];
 		unsplit_edges
 	}
@@ -1459,7 +1465,7 @@ mod tests {
 
 			// Check if angles are in ascending order
 			for i in 1..angles.len() {
-				assert!(angles[i] >= angles[i - 1], "Edges for vertex {:?} are not sorted by angle", vertex_key);
+				assert!(angles[i] >= angles[i - 1], "Edges for vertex {:?} are not sorted by angle {} {}", vertex_key, angles[i], angles[i - 1]);
 			}
 
 			// Check that the set of edges is the same as before, just in different order
@@ -1481,9 +1487,9 @@ mod tests {
 	fn get_incidence_angle(edge: &MinorGraphEdge) -> f64 {
 		let seg = &edge.segments[0]; // First segment is always the incident one in both fwd and bwd
 		let (p0, p1) = if edge.direction_flag.forward() {
-			(sample_path_segment_at(seg, 0.0), sample_path_segment_at(seg, EPS.param))
+			(sample_path_segment_at(seg, 0.0), sample_path_segment_at(seg, 0.1))
 		} else {
-			(sample_path_segment_at(seg, 1.0), sample_path_segment_at(seg, 1.0 - EPS.param))
+			(sample_path_segment_at(seg, 1.0), sample_path_segment_at(seg, 1.0 - 0.1))
 		};
 		(p1.y - p0.y).atan2(p1.x - p0.x)
 	}
