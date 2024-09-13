@@ -17,6 +17,53 @@ pub enum PathSegment {
 	Arc(Vector, f64, f64, f64, bool, bool, Vector),
 }
 
+impl PathSegment {
+	pub fn start_angle(&self) -> f64 {
+		let angle = match *self {
+			PathSegment::Line(start, end) => (end - start).angle_to(DVec2::X),
+			PathSegment::Cubic(start, control1, _, _) => (control1 - start).angle_to(DVec2::X),
+			PathSegment::Quadratic(start, control, _) => (control - start).angle_to(DVec2::X),
+			PathSegment::Arc(..) => arc_segment_to_cubics(self, 0.001)[0].start_angle(),
+		};
+		use std::f64::consts::TAU;
+		(angle + TAU) % TAU
+	}
+
+	pub fn start_curvature(&self) -> f64 {
+		match *self {
+			PathSegment::Line(_, _) => 0.0,
+			PathSegment::Cubic(start, control1, control2, _) => {
+				let a = control1 - start;
+				let a = 3. * a;
+				let b = start - 2.0 * control1 + control2;
+				let b = 6. * b;
+				let numerator = a.x * b.y - a.y * b.x;
+				let denominator = a.length_squared() * a.length();
+				// dbg!(a, b, numerator, denominator);
+				if denominator == 0.0 {
+					0.0
+				} else {
+					numerator / denominator
+				}
+			}
+			PathSegment::Quadratic(start, control, end) => {
+				// first derivatiave
+				let a = 2. * (control - start);
+				// second derivatiave
+				let b = 2. * (start - 2.0 * control + end);
+				let numerator = a.x * b.y - a.y * b.x;
+				let denominator = a.length_squared() * a.length();
+				if denominator == 0.0 {
+					0.0
+				} else {
+					numerator / denominator
+				}
+			}
+			PathSegment::Arc(..) => arc_segment_to_cubics(self, 0.001)[0].start_curvature(),
+		}
+	}
+}
+
 pub struct PathArcSegmentCenterParametrization {
 	center: Vector,
 	theta1: f64,

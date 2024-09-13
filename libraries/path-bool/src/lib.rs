@@ -47,6 +47,7 @@ mod test {
 		)
 		.unwrap();
 		dbg!(path_to_path_data(&union[0], 0.001));
+		assert!(!union[0].is_empty());
 		// panic!();
 	}
 
@@ -58,6 +59,7 @@ mod test {
 		);
 		let union = path_boolean(&a, path_boolean::FillRule::NonZero, &b, path_boolean::FillRule::NonZero, path_boolean::PathBooleanOperation::Union).unwrap();
 		dbg!(path_to_path_data(&union[0], 0.001));
+		assert!(!union[0].is_empty());
 	}
 	#[test]
 	fn nesting_02() {
@@ -69,6 +71,21 @@ mod test {
 		// Add assertions here based on expected results
 		assert_eq!(result.len(), 1, "Expected 1 resulting path for Union operation");
 		// Add more specific assertions about the resulting path if needed
+		assert!(!result[0].is_empty());
+	}
+	#[test]
+	fn nesting_03() {
+		let a = path_from_path_data("m 21.829117,3.5444345 h 4.341766 V 16.502158 H 21.829117 Z M 47,24 A 23,23 0 0 1 24,47 23,23 0 0 1 1,24 23,23 0 0 1 24,1 23,23 0 0 1 47,24 Z");
+		let b = path_from_path_data("M 24 6.4960938 A 17.504802 17.504802 0 0 0 6.4960938 24 A 17.504802 17.504802 0 0 0 24 41.503906 A 17.504802 17.504802 0 0 0 41.503906 24 A 17.504802 17.504802 0 0 0 24 6.4960938 z M 24 12.193359 A 11.805881 11.805881 0 0 1 35.806641 24 A 11.805881 11.805881 0 0 1 24 35.806641 A 11.805881 11.805881 0 0 1 12.193359 24 A 11.805881 11.805881 0 0 1 24 12.193359 z ");
+
+		let result = path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, PathBooleanOperation::Union).unwrap();
+
+		// Add assertions here based on expected results
+		assert_eq!(result.len(), 1, "Expected 1 resulting path for Union operation");
+		// Add more specific assertions about the resulting path if needed
+		let path_string = dbg!(path_to_path_data(&result[0], 0.001));
+		assert_eq!(path_string.chars().filter(|c| c == &'M').count(), 1, "More than one path returned");
+		assert!(!result[0].is_empty());
 	}
 	#[test]
 	fn simple_07() {
@@ -81,18 +98,20 @@ mod test {
 		// Add assertions here based on expected results
 		assert_eq!(result.len(), 1, "Expected 1 resulting path for Union operation");
 		// Add more specific assertions about the resulting path if needed
+		dbg!(path_to_path_data(&result[0], 0.001));
+		assert!(!result[0].is_empty());
 	}
 	#[test]
 	fn rect_ellipse() {
-		let a = path_from_path_data("M 0,-10 C5.517848,-10 10,-5.517848 10,0 C10,5.517848 5.517848,10.000000 0.000000,10.000000 C-5.517848,10 -10,5.517848 -10,0 C-10,-5.517848 -5.517848,-10 0,-10");
-		let b = path_from_path_data(
-			"M-10,-10.438833C-10,-10.438833 10,-10.438833 10,-10.438833 C10,-10.438833 10,5.770318 10,5.770318 C10,5.770318 -10,5.770318 -10,5.770318 C-10,5.770318 -10,-10.438833 -10,-10.438833 Z",
-		);
+		let a = path_from_path_data("M0,0C0,0 100,0 100,0 C100,0 100,100 100,100 C100,100 0,100 0,100 C0,100 0,0 0,0 Z");
+		let b = path_from_path_data("M50,0C77.589239,0 100,22.410761 100,50 C100,77.589239 77.589239,100 50,100 C22.410761,100 0,77.589239 0,50 C0,22.410761 22.410761,0 50,0 Z");
 
 		let result = path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, PathBooleanOperation::Union).unwrap();
 
 		// Add assertions here based on expected results
 		assert_eq!(result.len(), 1, "Expected 1 resulting path for Union operation");
+		dbg!(path_to_path_data(&result[0], 0.001));
+		assert!(!result[0].is_empty());
 		// Add more specific assertions about the resulting path if needed
 	}
 	#[test]
@@ -106,6 +125,8 @@ mod test {
 
 		// Add assertions here based on expected results
 		assert_eq!(result.len(), 1, "Expected 1 resulting path for Union operation");
+		dbg!(path_to_path_data(&result[0], 0.001));
 		// Add more specific assertions about the resulting path if needed
+		assert!(!result[0].is_empty());
 	}
 }

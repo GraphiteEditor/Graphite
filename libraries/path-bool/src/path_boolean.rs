@@ -21,6 +21,7 @@ use crate::path_segment::{get_end_point, get_start_point, path_segment_bounding_
 use crate::path_to_path_data;
 use crate::quad_tree::QuadTree;
 use crate::vector::{vectors_equal, Vector};
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Debug, Clone, Copy)]
@@ -81,8 +82,8 @@ struct MinorGraphEdge {
 	twin: Option<MinorEdgeKey>,
 }
 
-#[cfg(feature = "logging")]
 impl MinorGraphEdge {
+	#[cfg(feature = "logging")]
 	fn format_path(&self) -> String {
 		use std::fmt::Write;
 		let mut output = String::new();
@@ -99,6 +100,45 @@ impl MinorGraphEdge {
 			};
 		}
 		output
+	}
+
+	fn start_segment(&self) -> PathSegment {
+		let segment = self.segments[0];
+		match self.direction_flag {
+			Direction::Forward => segment,
+			Direction::Backwards => reverse_path_segment(&segment),
+		}
+	}
+}
+fn compare_segments(a: &PathSegment, b: &PathSegment) -> Ordering {
+	let angle_a = a.start_angle();
+	let angle_b = b.start_angle();
+	use std::f64::consts::PI;
+
+	// Normalize angles to [0, 2π)
+	let angle_a = (angle_a + 2.0 * PI) % (2.0 * PI);
+	let angle_b = (angle_b + 2.0 * PI) % (2.0 * PI);
+	let angle_a = (angle_a * 1000.).round() / 1000.;
+	let angle_b = (angle_b * 1000.).round() / 1000.;
+	// dbg!(a, angle_a.to_degrees(), b, angle_b.to_degrees());
+
+	// Compare angles first
+	match angle_b.partial_cmp(&angle_a) {
+		Some(Ordering::Equal) => {
+			// If angles are equal (or very close), compare curvatures
+			let curvature_a = a.start_curvature();
+			let curvature_b = b.start_curvature();
+			dbg!(curvature_a, curvature_b);
+			curvature_b.partial_cmp(&curvature_a).unwrap_or(Ordering::Equal)
+		}
+		Some(ordering) => ordering,
+		None => Ordering::Equal, // Handle NaN cases
+	}
+}
+
+impl PartialOrd for MinorGraphEdge {
+	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+		Some(compare_segments(&self.start_segment(), &other.start_segment()))
 	}
 }
 
@@ -595,16 +635,16 @@ fn remove_dangling_edges(graph: &mut MinorGraph) {
 fn get_incidence_angle(edge: &MinorGraphEdge) -> f64 {
 	let seg = &edge.segments[0]; // TODO: explain in comment why this is always the incident one in both fwd and bwd
 
-	// println!("{edge:?}"); //, edge.direction_flag.forward());
+	// eprintln!("{edge:?}"); //, edge.direction_flag.forward());
 	let (p0, p1) = if edge.direction_flag.forward() {
 		(sample_path_segment_at(seg, 0.0), sample_path_segment_at(seg, EPS.param))
 	} else {
 		(sample_path_segment_at(seg, 1.0), sample_path_segment_at(seg, 1.0 - EPS.param))
 	};
 
-	// println!("{p0:?} {p1:?}");
+	// eprintln!("{p0:?} {p1:?}");
 	let angle = (p1.y - p0.y).atan2(p1.x - p0.x);
-	// println!("angle: {}", angle);
+	// eprintln!("angle: {}", angle);
 	(angle * 10000.).round() / 1000.
 }
 
@@ -635,14 +675,14 @@ fn sort_outgoing_edges_by_angle(graph: &mut MinorGraph) {
 
 fn face_to_polygon(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>) -> Vec<Vector> {
 	const CNT: usize = 3;
-	#[cfg(feature = "logging")]
-	println!("incident node counts {}", face.incident_edges.len());
+	// #[cfg(feature = "logging")]
+	// eprintln!("incident node counts {}", face.incident_edges.len());
 
 	face.incident_edges
 		.iter()
 		.flat_map(|&edge_key| {
 			let edge = &edges[edge_key];
-			// println!("{}", path_to_path_data(&edge.segments, 0.001));
+			// eprintln!("{}", path_to_path_data(&edge.segments, 0.001));
 			edge.segments.iter().flat_map(move |seg| {
 				(0..CNT).map(move |i| {
 					let t0 = i as f64 / CNT as f64;
@@ -687,7 +727,7 @@ fn compute_winding(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, DualGrap
 	let polygon = face_to_polygon(face, edges);
 	#[cfg(feature = "logging")]
 	for point in &polygon {
-		println!("[{}, {}]", point.x, point.y);
+		eprintln!("[{}, {}]", point.x, point.y);
 	}
 
 	for i in 0..polygon.len() {
@@ -712,7 +752,7 @@ fn compute_dual(minor_graph: &MinorGraph) -> Option<DualGraph> {
 
 	for (start_edge_key, start_edge) in &minor_graph.edges {
 		#[cfg(feature = "logging")]
-		println!("Processing start edge: {}", (start_edge_key.0.as_ffi() & 0xFF) - 1);
+		eprintln!("Processing start edge: {}", (start_edge_key.0.as_ffi() & 0xFF) - 1);
 		if minor_to_dual_edge.contains_key(&start_edge_key) {
 			continue;
 		}
@@ -724,7 +764,7 @@ fn compute_dual(minor_graph: &MinorGraph) -> Option<DualGraph> {
 
 		loop {
 			#[cfg(feature = "logging")]
-			println!("Processing edge: {}", (start_edge_key.0.as_ffi() & 0xFF) - 1);
+			eprintln!("Processing edge: {}", (start_edge_key.0.as_ffi() & 0xFF) - 1);
 			let twin = edge.twin.expect("Edge doesn't have a twin");
 			let twin_dual_key = minor_to_dual_edge.get(&twin).copied();
 
@@ -746,7 +786,7 @@ fn compute_dual(minor_graph: &MinorGraph) -> Option<DualGraph> {
 
 			edge_key = get_next_edge(edge_key, minor_graph);
 			#[cfg(feature = "logging")]
-			println!("Next edge: {}", (start_edge_key.0.as_ffi() & 0xFF) - 1);
+			eprintln!("Next edge: {}", (start_edge_key.0.as_ffi() & 0xFF) - 1);
 			edge = &minor_graph.edges[edge_key];
 
 			if edge.incident_vertices[0] == start_edge.incident_vertices[0] {
@@ -789,7 +829,17 @@ fn compute_dual(minor_graph: &MinorGraph) -> Option<DualGraph> {
 	let mut visited_edges = HashSet::new();
 
 	if cfg!(feature = "logging") {
-		println!("faces: {}, dual-edges: {}, cycles: {}", new_vertices.len(), dual_edges.len(), minor_graph.cycles.len())
+		// eeprintln!("minor_to_dual: {:#?}", minor_to_dual_edge);
+		eprintln!("faces: {}, dual-edges: {}, cycles: {}", new_vertices.len(), dual_edges.len(), minor_graph.cycles.len())
+	}
+
+	#[cfg(feature = "logging")]
+	for (vertex_key, vertex) in &dual_vertices {
+		eprintln!("\n\n#{:?}", vertex_key.0);
+		let polygon = face_to_polygon(vertex, &dual_edges);
+		for point in polygon {
+			eprintln!("{}, {}", point.x, point.y);
+		}
 	}
 
 	for &start_vertex_key in &new_vertices {
@@ -820,9 +870,9 @@ fn compute_dual(minor_graph: &MinorGraph) -> Option<DualGraph> {
 			}
 		}
 		#[cfg(feature = "logging")]
-		println!("component_vertices: {}", component_vertices.len());
+		eprintln!("component_vertices: {}", component_vertices.len());
 		for edge in &dual_edges {
-			// println!("{:?}", edge.incident_vertex);
+			// eprintln!("{:?}", edge.incident_vertex);
 		}
 
 		let outer_face_key = *component_vertices
@@ -832,7 +882,7 @@ fn compute_dual(minor_graph: &MinorGraph) -> Option<DualGraph> {
 
 		#[cfg(feature = "logging")]
 		if cfg!(feature = "logging") {
-			println!(
+			eprintln!(
 				"{}",
 				dual_graph_to_dot(
 					&[DualGraphComponent {
@@ -1209,36 +1259,36 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 	let major_graph = find_vertices(&split_edges, total_bounding_box);
 
 	#[cfg(feature = "logging")]
-	println!("Major graph:");
+	eprintln!("Major graph:");
 	#[cfg(feature = "logging")]
-	println!("{}", major_graph_to_dot(&major_graph));
+	eprintln!("{}", major_graph_to_dot(&major_graph));
 
 	let mut minor_graph = compute_minor(&major_graph);
 
 	#[cfg(feature = "logging")]
-	println!("Minor graph:");
+	eprintln!("Minor graph:");
 	#[cfg(feature = "logging")]
-	println!("{}", minor_graph_to_dot(&minor_graph.edges));
+	eprintln!("{}", minor_graph_to_dot(&minor_graph.edges));
 
 	remove_dangling_edges(&mut minor_graph);
 	#[cfg(feature = "logging")]
-	println!("After removing dangling edges:");
+	eprintln!("After removing dangling edges:");
 	#[cfg(feature = "logging")]
-	println!("{}", minor_graph_to_dot(&minor_graph.edges));
+	eprintln!("{}", minor_graph_to_dot(&minor_graph.edges));
 
 	#[cfg(feature = "logging")]
 	for (key, edge) in minor_graph.edges.iter() {
-		// println!("{}", edge.format_path());
-		println!("{key:?}:\n{}", path_to_path_data(&edge.segments, 0.001));
+		// eprintln!("{}", edge.format_path());
+		eprintln!("{key:?}:\n{}", path_to_path_data(&edge.segments, 0.001));
 	}
 	#[cfg(feature = "logging")]
 	for vertex in minor_graph.vertices.values() {
-		println!("{:?}", vertex);
+		eprintln!("{:?}", vertex);
 	}
 	sort_outgoing_edges_by_angle(&mut minor_graph);
 	#[cfg(feature = "logging")]
 	for vertex in minor_graph.vertices.values() {
-		println!("{:?}", vertex);
+		eprintln!("{:?}", vertex);
 	}
 
 	for (edge_key, edge) in &minor_graph.edges {
@@ -1256,9 +1306,9 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 	let DualGraph { edges, vertices, .. } = &dual_graph;
 
 	#[cfg(feature = "logging")]
-	println!("Dual Graph:");
+	eprintln!("Dual Graph:");
 	#[cfg(feature = "logging")]
-	println!("{}", dual_graph_to_dot(&dual_graph.components, edges));
+	eprintln!("{}", dual_graph_to_dot(&dual_graph.components, edges));
 
 	let mut flags = HashMap::new();
 	flag_faces(&nesting_trees, a_fill_rule, b_fill_rule, edges, vertices, &mut flags);
@@ -1327,7 +1377,7 @@ mod tests {
 		let minor_graph = compute_minor(&major_graph);
 
 		// Print minor graph state
-		//     println!("Minor Graph:");
+		//     eprintln!("Minor Graph:");
 		print_minor_graph_state(&minor_graph);
 
 		// Assertions
@@ -1355,19 +1405,19 @@ mod tests {
 	}
 
 	fn print_minor_graph_state(graph: &MinorGraph) {
-		println!("  Vertices: {}", graph.vertices.len());
-		println!("  Edges: {}", graph.edges.len());
-		println!("  Cycles: {}", graph.cycles.len());
+		eprintln!("  Vertices: {}", graph.vertices.len());
+		eprintln!("  Edges: {}", graph.edges.len());
+		eprintln!("  Cycles: {}", graph.cycles.len());
 
 		for (vertex_key, vertex) in &graph.vertices {
-			println!("    Vertex {:?}: {} outgoing edges", vertex_key, vertex.outgoing_edges.len());
+			eprintln!("    Vertex {:?}: {} outgoing edges", vertex_key, vertex.outgoing_edges.len());
 		}
 
 		for (edge_key, edge) in &graph.edges {
-			println!("    Edge {:?}:", edge_key);
-			println!("      Parent: {}", edge.parent);
-			println!("      Twin: {:?}", edge.twin);
-			println!("      Incident vertices: {:?}", edge.incident_vertices);
+			eprintln!("    Edge {:?}:", edge_key);
+			eprintln!("      Parent: {}", edge.parent);
+			eprintln!("      Twin: {:?}", edge.twin);
+			eprintln!("      Incident vertices: {:?}", edge.incident_vertices);
 		}
 	}
 
@@ -1380,7 +1430,7 @@ mod tests {
 		let mut minor_graph = compute_minor(&major_graph);
 
 		// Print initial state
-		println!("Initial Minor Graph:");
+		eprintln!("Initial Minor Graph:");
 		print_minor_graph_state(&minor_graph);
 
 		// Store initial edge order
@@ -1390,7 +1440,7 @@ mod tests {
 		sort_outgoing_edges_by_angle(&mut minor_graph);
 
 		// Print final state
-		println!("\nAfter sort_outgoing_edges_by_angle:");
+		eprintln!("\nAfter sort_outgoing_edges_by_angle:");
 		print_minor_graph_state(&minor_graph);
 
 		// Assertions
@@ -1444,12 +1494,12 @@ mod tests {
 
 		let point = DVec2::new(37.99, 24.0);
 
-		println!("Starting test with segment: {:?}", orig_seg);
-		println!("Test point: {:?}", point);
+		eprintln!("Starting test with segment: {:?}", orig_seg);
+		eprintln!("Test point: {:?}", point);
 
 		let count = path_segment_horizontal_ray_intersection_count(&orig_seg, point);
 
-		println!("Final intersection count: {}", count);
+		eprintln!("Final intersection count: {}", count);
 
 		let expected_count = 1;
 		assert_eq!(count, expected_count, "Intersection count mismatch");

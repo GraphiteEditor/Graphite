@@ -80,6 +80,7 @@ pub fn segments_equal(seg0: &PathSegment, seg1: &PathSegment, point_epsilon: f64
 }
 
 pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoints: bool, eps: &Epsilons) -> Vec<[f64; 2]> {
+	// dbg!(&seg0, &seg1, endpoints);
 	if let (PathSegment::Line(start0, end0), PathSegment::Line(start1, end1)) = (seg0, seg1) {
 		if let Some(st) = line_segment_intersection([*start0, *end0], [*start1, *end1], eps.param) {
 			if !endpoints && (st.0 < eps.param || st.0 > 1.0 - eps.param) && (st.1 < eps.param || st.1 > 1.0 - eps.param) {
@@ -117,8 +118,8 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 				continue; // TODO: what to do?
 			}
 
-			let is_linear0 = bounding_box_max_extent(&seg0.bounding_box) <= eps.linear;
-			let is_linear1 = bounding_box_max_extent(&seg1.bounding_box) <= eps.linear;
+			let is_linear0 = bounding_box_max_extent(&seg0.bounding_box).min((seg0.end_param - seg0.start_param).abs()) <= eps.linear;
+			let is_linear1 = bounding_box_max_extent(&seg1.bounding_box).min((seg1.end_param - seg1.start_param).abs()) <= eps.linear;
 
 			if is_linear0 && is_linear1 {
 				let line_segment0 = path_segment_to_line_segment(&seg0.seg);

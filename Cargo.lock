@@ -519,7 +519,7 @@ name = "bezier-rs"
 version = "0.4.0"
 dependencies = [
  "dyn-any",
- "glam 0.28.0",
+ "glam",
  "kurbo",
  "log",
  "serde",
@@ -530,7 +530,7 @@ name = "bezier-rs-wasm"
 version = "0.0.0"
 dependencies = [
  "bezier-rs",
- "glam 0.28.0",
+ "glam",
  "js-sys",
  "log",
  "serde",
@@ -1493,7 +1493,7 @@ name = "dyn-any"
 version = "0.3.1"
 dependencies = [
  "dyn-any-derive",
- "glam 0.28.0",
+ "glam",
  "log",
  "reqwest 0.12.7",
 ]
@@ -2194,12 +2194,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "glam"
-version = "0.29.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c28091a37a5d09b555cb6628fd954da299b536433834f5b8e59eba78e0cbbf8a"
-
-[[package]]
 name = "glib"
 version = "0.15.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2369,7 +2363,7 @@ dependencies = [
  "bytemuck",
  "dyn-any",
  "futures",
- "glam 0.28.0",
+ "glam",
  "graphene-core",
  "log",
  "node-macro",
@@ -2388,7 +2382,7 @@ dependencies = [
  "criterion",
  "dyn-any",
  "futures",
- "glam 0.28.0",
+ "glam",
  "glob",
  "graph-craft",
  "graphene-core",
@@ -2420,7 +2414,7 @@ dependencies = [
  "dyn-any",
  "fern",
  "futures",
- "glam 0.28.0",
+ "glam",
  "gpu-executor",
  "graph-craft",
  "graphene-core",
@@ -2445,7 +2439,7 @@ dependencies = [
  "bytemuck",
  "ctor",
  "dyn-any",
- "glam 0.28.0",
+ "glam",
  "half",
  "image 0.25.2",
  "js-sys",
@@ -2480,7 +2474,7 @@ dependencies = [
  "dyn-any",
  "fastnoise-lite",
  "futures",
- "glam 0.28.0",
+ "glam",
  "gpu-compiler-bin-wrapper",
  "gpu-executor",
  "graph-craft",
@@ -2541,7 +2535,7 @@ dependencies = [
  "dyn-any",
  "env_logger",
  "futures",
- "glam 0.28.0",
+ "glam",
  "gpu-executor",
  "graph-craft",
  "graphene-core",
@@ -2582,7 +2576,7 @@ name = "graphite-wasm"
 version = "0.0.0"
 dependencies = [
  "bezier-rs",
- "glam 0.28.0",
+ "glam",
  "graph-craft",
  "graphene-core",
  "graphite-editor",
@@ -3217,7 +3211,7 @@ version = "0.1.0"
 dependencies = [
  "dyn-any",
  "futures",
- "glam 0.28.0",
+ "glam",
  "gpu-executor",
  "graph-craft",
  "graphene-core",
@@ -4326,7 +4320,7 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 name = "path-bool"
 version = "0.1.0"
 dependencies = [
- "glam 0.29.0",
+ "glam",
  "glob",
  "image 0.24.9",
  "regex",
@@ -5789,7 +5783,7 @@ name = "specta"
 version = "2.0.0-rc.20"
 source = "git+https://github.com/oscartbeaumont/specta.git#8509af0162b26bb2c08e84a41cdfc4eaf67a6ab3"
 dependencies = [
- "glam 0.28.0",
+ "glam",
  "specta-macros",
  "thiserror",
 ]
@@ -5829,7 +5823,7 @@ version = "0.9.0"
 source = "git+https://github.com/GraphiteEditor/rust-gpu.git#7f60fbbdddc0d6effa1c3c86e3e11f9896c970e8"
 dependencies = [
  "bitflags 1.3.2",
- "glam 0.28.0",
+ "glam",
  "num-traits",
  "spirv-std-macros",
  "spirv-std-types",
@@ -7439,7 +7433,7 @@ dependencies = [
  "dyn-any",
  "futures",
  "futures-intrusive",
- "glam 0.28.0",
+ "glam",
  "gpu-executor",
  "graphene-core",
  "half",

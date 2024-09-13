@@ -15,7 +15,7 @@ parsing = []
 default = ["parsing"]
 
 [dependencies]
-glam = "0.29.0"
+glam = "0.28.0"
 regex = "1.10.6"
 slotmap = "1.0.7"
 
@@ -24,3 +24,4 @@ glob = "0.3"
 svg = "0.13"
 resvg = "0.42"
 image = "0.24"
+

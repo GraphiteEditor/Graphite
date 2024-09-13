@@ -135,7 +135,10 @@ fn visual_tests() {
 		// Check the number of paths
 		let result_path_count = result.len();
 		let ground_truth_path_count = ground_truth_svg.matches("<path").count();
-		assert_eq!(result_path_count, ground_truth_path_count, "Number of paths doesn't match for test: {}", test_name);
+		if result_path_count != ground_truth_path_count {
+			failure = true;
+			eprintln!("Number of paths doesn't match for test: {}", test_name);
+		}
 	}
 	if failure {
 		panic!("Some tests have failed");
@@ -145,10 +148,11 @@ fn visual_tests() {
 fn render_svg(svg_code: &str) -> DynamicImage {
 	let opts = Options::default();
 	let tree = Tree::from_str(svg_code, &opts).unwrap();
-	let pixmap_size = tree.size.to_screen_size();
-	let (width, height) = (pixmap_size.width(), pixmap_size.height());
+	let pixmap_size = tree.size();
+	let (width, height) = (pixmap_size.width() as u32, pixmap_size.height() as u32);
 	let mut pixmap = resvg::tiny_skia::Pixmap::new(width, height).unwrap();
-	render(&tree, resvg::usvg::FitTo::Original, Transform::default(), pixmap.as_mut());
+	let mut pixmap_mut = pixmap.as_mut();
+	render(&tree, Transform::default(), &mut pixmap_mut);
 	DynamicImage::ImageRgba8(RgbaImage::from_raw(width, height, pixmap.data().to_vec()).unwrap())
 }
 
