@@ -40,11 +40,16 @@ fn compile_to_proto(c: &mut Criterion) {
 	}
 }
 
+// Note that this can not be disabled with a `#[cfg(...)]` because this causes a compile error.
 #[cfg_attr(all(feature = "iai", not(feature = "criterion")), library_benchmark)]
 #[cfg_attr(all(feature = "iai", not(feature="criterion")), benches::with_setup(args = ["isometric-fountain", "painted-dreams", "procedural-string-lights", "red-dress", "valley-of-spires"], setup = load_from_name))]
-#[cfg(all(not(feature = "criterion"), feature = "iai"))]
-pub fn iai_compile_to_proto(input: NodeNetwork) {
+pub fn iai_compile_to_proto(input: graph_craft::document::NodeNetwork) {
+	#[cfg(all(not(feature = "criterion"), feature = "iai"))]
 	black_box(compile(input));
+
+	// To avoid a warning it is necessary to use the input
+	#[cfg(any(feature = "criterion", not(feature = "iai")))]
+	drop(input);
 }
 
 #[cfg(feature = "criterion")]
@@ -59,5 +64,6 @@ library_benchmark_group!(name = compile_group; benchmarks = iai_compile_to_proto
 #[cfg(all(not(feature = "criterion"), feature = "iai"))]
 main!(library_benchmark_groups = compile_group);
 
+// An empty main function so the crate compiles with no features enabled.
 #[cfg(all(not(feature = "criterion"), not(feature = "iai")))]
 fn main() {}
