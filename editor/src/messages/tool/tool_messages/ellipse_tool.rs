@@ -224,7 +224,7 @@ impl Fsm for EllipseToolFsmState {
 					if let Some(layer) = shape_data.layer {
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
-							transform: DAffine2::from_scale_angle_translation(end - start, 0., (start + end) / 2.),
+							transform: DAffine2::from_scale_angle_translation((end - start).abs(), 0., (start + end) / 2.),
 							transform_in: TransformIn::Viewport,
 							skip_rerender: false,
 						});
