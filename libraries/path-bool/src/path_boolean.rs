@@ -129,7 +129,6 @@ fn compare_segments(a: &PathSegment, b: &PathSegment) -> Ordering {
 			// If angles are equal (or very close), compare curvatures
 			let curvature_a = a.start_curvature();
 			let curvature_b = b.start_curvature();
-			dbg!(curvature_a, curvature_b);
 			curvature_a.partial_cmp(&curvature_b).unwrap_or(Ordering::Equal)
 		}
 		Some(ordering) => ordering,
@@ -257,7 +256,7 @@ fn segment_to_edge(parent: u8) -> impl Fn(&PathSegment) -> Option<MajorGraphEdge
 			PathSegment::Cubic(start, _, _, end) => {
 				let direction = sample_path_segment_at(seg, 0.1);
 				if (end - start).angle_to(direction - start).abs() < EPS.param {
-					Some((dbg!(PathSegment::Line(*start, *end)), parent))
+					Some((PathSegment::Line(*start, *end), parent))
 				} else {
 					Some((*seg, parent))
 				}
@@ -323,7 +322,6 @@ fn split_at_intersections(edges: &[MajorGraphEdgeStage1]) -> (Vec<MajorGraphEdge
 			let include_endpoints = edge.1 != candidate.1
 				|| !(vectors_equal(get_end_point(&candidate.0), get_start_point(&edge.0), EPS.point) || vectors_equal(get_start_point(&candidate.0), get_end_point(&edge.0), EPS.point));
 			let intersection = path_segment_intersection(&edge.0, &candidate.0, include_endpoints, &EPS);
-			dbg!(intersection.len());
 			for [t0, t1] in intersection {
 				add_split(&mut splits_per_edge, i, t0);
 				add_split(&mut splits_per_edge, j, t1);
@@ -942,7 +940,7 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 			.iter()
 			.map(|face_key| compute_winding(&dual_vertices[*face_key], &dual_edges).map(|w| (face_key, w)))
 			.collect();
-		let Some(windings) = windings else {
+		let Some(mut windings) = windings else {
 			return Err(BooleanError::NoEarInPolygon);
 		};
 
@@ -961,10 +959,17 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 			);
 		}
 
-		if windings.iter().filter(|(_, winding)| winding < &0).count() != 1 {
+		let mut count = windings.iter().filter(|(_, winding)| winding < &0).count();
+		let mut reverse_winding = false;
+		// If the paths are reversed use positive winding as outer face
+		if windings.len() > 2 && count == windings.len() - 1 {
+			count = 1;
+			reverse_winding = true;
+		}
+		if count != 1 {
 			return Err(BooleanError::MultipleOuterFaces);
 		}
-		let outer_face_key = *windings.iter().find(|(&face_key, winding)| winding < &0).expect("No outer face of a component found.").0;
+		let outer_face_key = *windings.iter().find(|(&_, winding)| (winding < &0) ^ reverse_winding).expect("No outer face of a component found.").0;
 		// TODO: merge with previous iter
 
 		components.push(DualGraphComponent {
@@ -1310,20 +1315,16 @@ pub enum BooleanError {
 pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: FillRule, op: PathBooleanOperation) -> Result<Vec<Path>, BooleanError> {
 	eprintln!("converting to edges");
 	let mut unsplit_edges: Vec<MajorGraphEdgeStage1> = a.iter().map(segment_to_edge(1)).chain(b.iter().map(segment_to_edge(2))).flatten().collect();
-	dbg!(unsplit_edges.len());
 
 	split_at_self_intersections(&mut unsplit_edges);
 
-	eprintln!("splitting");
 	let (split_edges, total_bounding_box) = split_at_intersections(&unsplit_edges);
-	dbg!(split_edges.len());
 
 	let total_bounding_box = match total_bounding_box {
 		Some(bb) => bb,
 		None => return Ok(Vec::new()), // input geometry is empty
 	};
 
-	eprintln!("findig vertices");
 	let major_graph = find_vertices(&split_edges, total_bounding_box);
 
 	#[cfg(feature = "logging")]
