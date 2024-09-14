@@ -18,6 +18,7 @@ struct IntersectionSegment {
 	bounding_box: AaBb,
 }
 
+#[inline(never)]
 fn subdivide_intersection_segment(int_seg: &IntersectionSegment) -> [IntersectionSegment; 2] {
 	let (seg0, seg1) = split_segment_at(&int_seg.seg, 0.5);
 	let mid_param = (int_seg.start_param + int_seg.end_param) / 2.0;
@@ -37,6 +38,7 @@ fn subdivide_intersection_segment(int_seg: &IntersectionSegment) -> [Intersectio
 	]
 }
 
+#[inline(never)]
 fn path_segment_to_line_segment(seg: &PathSegment) -> [Vector; 2] {
 	match seg {
 		PathSegment::Line(start, end) => [*start, *end],
@@ -46,6 +48,7 @@ fn path_segment_to_line_segment(seg: &PathSegment) -> [Vector; 2] {
 	}
 }
 
+#[inline(never)]
 fn intersection_segments_overlap(seg0: &IntersectionSegment, seg1: &IntersectionSegment) -> bool {
 	match (&seg0.seg, &seg1.seg) {
 		(PathSegment::Line(start0, end0), PathSegment::Line(start1, end1)) => {
@@ -57,6 +60,7 @@ fn intersection_segments_overlap(seg0: &IntersectionSegment, seg1: &Intersection
 	}
 }
 
+#[inline(never)]
 pub fn segments_equal(seg0: &PathSegment, seg1: &PathSegment, point_epsilon: f64) -> bool {
 	match (*seg0, *seg1) {
 		(PathSegment::Line(start0, end0), PathSegment::Line(start1, end1)) => vectors_equal(start0, start1, point_epsilon) && vectors_equal(end0, end1, point_epsilon),
@@ -80,8 +84,6 @@ pub fn segments_equal(seg0: &PathSegment, seg1: &PathSegment, point_epsilon: f64
 }
 
 pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoints: bool, eps: &Epsilons) -> Vec<[f64; 2]> {
-	eprintln!("intersecting:");
-	dbg!(seg0, seg1);
 	// dbg!(&seg0, &seg1, endpoints);
 	if let (PathSegment::Line(start0, end0), PathSegment::Line(start1, end1)) = (seg0, seg1) {
 		if let Some(st) = line_segment_intersection([*start0, *end0], [*start1, *end1], eps.param) {
@@ -116,6 +118,7 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 
 	while !pairs.is_empty() {
 		next_pairs.clear();
+		dbg!("checking pairs");
 
 		for (seg0, seg1) in pairs.iter() {
 			if segments_equal(&seg0.seg, &seg1.seg, eps.point) {
@@ -130,6 +133,7 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 				let line_segment0 = path_segment_to_line_segment(&seg0.seg);
 				let line_segment1 = path_segment_to_line_segment(&seg1.seg);
 				if let Some(st) = line_segment_intersection(line_segment0, line_segment1, eps.param) {
+					dbg!("pushing param");
 					params.push([lerp(seg0.start_param, seg0.end_param, st.0), lerp(seg1.start_param, seg1.end_param, st.1)]);
 				}
 			} else {
@@ -164,4 +168,37 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 	}
 
 	params
+}
+
+#[cfg(test)]
+mod test {
+	use super::*;
+	use glam::DVec2;
+
+	#[test]
+	fn intersect_cubic_slow_first() {
+		path_segment_intersection(&a(), &b(), true, &crate::EPS);
+	}
+	#[test]
+	fn intersect_cubic_slow_second() {
+		path_segment_intersection(&c(), &d(), true, &crate::EPS);
+	}
+
+	fn a() -> PathSegment {
+		PathSegment::Cubic(
+			DVec2::new(458.37027, 572.165771),
+			DVec2::new(428.525848, 486.720093),
+			DVec2::new(368.618805, 467.485992),
+			DVec2::new(273.0, 476.0),
+		)
+	}
+	fn b() -> PathSegment {
+		PathSegment::Cubic(DVec2::new(273.0, 476.0), DVec2::new(419.0, 463.0), DVec2::new(481.741198, 514.692273), DVec2::new(481.333333, 768.0))
+	}
+	fn c() -> PathSegment {
+		PathSegment::Cubic(DVec2::new(273.0, 476.0), DVec2::new(107.564178, 490.730591), DVec2::new(161.737915, 383.575775), DVec2::new(0.0, 340.0))
+	}
+	fn d() -> PathSegment {
+		PathSegment::Cubic(DVec2::new(0.0, 340.0), DVec2::new(161.737914, 383.575765), DVec2::new(107.564182, 490.730587), DVec2::new(273.0, 476.0))
+	}
 }

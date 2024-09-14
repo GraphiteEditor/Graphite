@@ -8,6 +8,7 @@ pub type LineSegment = [Vector; 2];
 
 const COLLINEAR_EPS: f64 = f64::EPSILON * 64.0;
 
+#[inline(never)]
 pub fn line_segment_intersection([p1, p2]: LineSegment, [p3, p4]: LineSegment, eps: f64) -> Option<(f64, f64)> {
 	// https://en.wikipedia.org/wiki/Intersection_(geometry)#Two_line_segments
 

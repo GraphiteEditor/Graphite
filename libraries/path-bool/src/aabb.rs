@@ -45,6 +45,7 @@ pub fn extend_bounding_box(bounding_box: Option<AaBb>, point: Vector) -> AaBb {
 	}
 }
 
+#[inline(never)]
 pub fn bounding_box_max_extent(bounding_box: &AaBb) -> f64 {
 	(bounding_box.right - bounding_box.left).max(bounding_box.bottom - bounding_box.top)
 }

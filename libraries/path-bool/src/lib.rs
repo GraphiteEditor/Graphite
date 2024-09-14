@@ -15,8 +15,10 @@ mod vector;
 #[cfg(test)]
 mod visual_tests;
 
-pub use path_boolean::{path_boolean, FillRule, PathBooleanOperation};
+pub use intersection_path_segment::path_segment_intersection;
+pub use path_boolean::{path_boolean, FillRule, PathBooleanOperation, EPS};
 pub use path_data::{path_from_path_data, path_to_path_data};
+pub use path_segment::PathSegment;
 
 #[cfg(test)]
 mod test {
