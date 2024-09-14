@@ -244,7 +244,9 @@ async fn construct_layer<Data: Into<GraphicElement> + Send>(
 ) -> GraphicGroup {
 	let graphic_element = self.graphic_element.eval(footprint).await;
 	let mut stack = self.stack.eval(footprint).await;
-	stack.push(graphic_element.into());
+	let mut element: GraphicElement = graphic_element.into();
+	*element.transform_mut() = stack.transform.inverse() * element.transform();
+	stack.push(element);
 	stack
 }
 
