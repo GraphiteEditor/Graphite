@@ -116,9 +116,15 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 	let mut subdivided0 = Vec::new();
 	let mut subdivided1 = Vec::new();
 
+	// check if start and end points are on the other bezier curves. If so, add as intersection.
+
 	while !pairs.is_empty() {
 		next_pairs.clear();
-		dbg!("checking pairs");
+		// dbg!("checking pairs");
+
+		if pairs.len() > 1000 {
+			return vec![];
+		}
 
 		for (seg0, seg1) in pairs.iter() {
 			if segments_equal(&seg0.seg, &seg1.seg, eps.point) {
@@ -126,14 +132,17 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 				continue; // TODO: what to do?
 			}
 
-			let is_linear0 = bounding_box_max_extent(&seg0.bounding_box) <= eps.linear || (seg1.end_param - seg1.start_param).abs() < eps.param;
+			let diff1 = (seg0.start_param - seg0.end_param).abs();
+			let diff2 = (seg1.start_param - seg1.end_param).abs();
+			// dbg!(diff1.min(diff2));
+			let is_linear0 = bounding_box_max_extent(&seg0.bounding_box) <= eps.linear || (seg0.end_param - seg0.start_param).abs() < eps.param;
 			let is_linear1 = bounding_box_max_extent(&seg1.bounding_box) <= eps.linear || (seg1.end_param - seg1.start_param).abs() < eps.param;
 
 			if is_linear0 && is_linear1 {
 				let line_segment0 = path_segment_to_line_segment(&seg0.seg);
 				let line_segment1 = path_segment_to_line_segment(&seg1.seg);
 				if let Some(st) = line_segment_intersection(line_segment0, line_segment1, eps.param) {
-					dbg!("pushing param");
+					// dbg!("pushing param");
 					params.push([lerp(seg0.start_param, seg0.end_param, st.0), lerp(seg1.start_param, seg1.end_param, st.1)]);
 				}
 			} else {

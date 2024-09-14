@@ -1313,7 +1313,6 @@ pub enum BooleanError {
 }
 
 pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: FillRule, op: PathBooleanOperation) -> Result<Vec<Path>, BooleanError> {
-	eprintln!("converting to edges");
 	let mut unsplit_edges: Vec<MajorGraphEdgeStage1> = a.iter().map(segment_to_edge(1)).chain(b.iter().map(segment_to_edge(2))).flatten().collect();
 
 	split_at_self_intersections(&mut unsplit_edges);
