@@ -200,13 +200,13 @@ struct NestingTree {
 fn major_graph_to_dot(graph: &MajorGraph) -> String {
 	let mut dot = String::from("digraph {\n");
 	for (vertex_key, vertex) in &graph.vertices {
-		dot.push_str(&format!("  {:?} [label=\"{:.1},{:.1}\"]\n", (vertex_key.0.as_ffi() & 0xFF) - 1, vertex.point.x, vertex.point.y));
+		dot.push_str(&format!("  {:?} [label=\"{:.1},{:.1}\"]\n", (vertex_key.0.as_ffi() & 0xFF), vertex.point.x, vertex.point.y));
 	}
 	for (edge_key, edge) in &graph.edges {
 		dot.push_str(&format!(
 			"  {:?} -> {:?}: {:0b}\n",
-			(edge.incident_vertices[0].0.as_ffi() & 0xFF) - 1,
-			(edge.incident_vertices[1].0.as_ffi() & 0xFF) - 1,
+			(edge.incident_vertices[0].0.as_ffi() & 0xFF),
+			(edge.incident_vertices[1].0.as_ffi() & 0xFF),
 			edge.parent
 		));
 	}
@@ -220,8 +220,8 @@ fn minor_graph_to_dot(edges: &SlotMap<MinorEdgeKey, MinorGraphEdge>) -> String {
 	for edge in edges.values() {
 		dot.push_str(&format!(
 			"  {:?} -> {:?}: {:0b}\n",
-			(edge.incident_vertices[0].0.as_ffi() & 0xFF) - 1,
-			(edge.incident_vertices[1].0.as_ffi() & 0xFF) - 1,
+			(edge.incident_vertices[0].0.as_ffi() & 0xFF),
+			(edge.incident_vertices[1].0.as_ffi() & 0xFF),
 			edge.parent
 		));
 	}
@@ -237,8 +237,8 @@ fn dual_graph_to_dot(components: &[DualGraphComponent], edges: &SlotMap<DualEdge
 			let edge = &edges[edge_key];
 			dot.push_str(&format!(
 				"  {:?} -- {:?}\n",
-				(edge.incident_vertex.0.as_ffi() & 0xFF) - 1,
-				(edges[edge.twin.unwrap()].incident_vertex.0.as_ffi() & 0xFF) - 1
+				(edge.incident_vertex.0.as_ffi() & 0xFF),
+				(edges[edge.twin.unwrap()].incident_vertex.0.as_ffi() & 0xFF)
 			));
 		}
 	}
@@ -323,6 +323,7 @@ fn split_at_intersections(edges: &[MajorGraphEdgeStage1]) -> (Vec<MajorGraphEdge
 			let include_endpoints = edge.1 != candidate.1
 				|| !(vectors_equal(get_end_point(&candidate.0), get_start_point(&edge.0), EPS.point) || vectors_equal(get_start_point(&candidate.0), get_end_point(&edge.0), EPS.point));
 			let intersection = path_segment_intersection(&edge.0, &candidate.0, include_endpoints, &EPS);
+			dbg!(intersection.len());
 			for [t0, t1] in intersection {
 				add_split(&mut splits_per_edge, i, t0);
 				add_split(&mut splits_per_edge, j, t1);
@@ -1307,17 +1308,22 @@ pub enum BooleanError {
 }
 
 pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: FillRule, op: PathBooleanOperation) -> Result<Vec<Path>, BooleanError> {
+	eprintln!("converting to edges");
 	let mut unsplit_edges: Vec<MajorGraphEdgeStage1> = a.iter().map(segment_to_edge(1)).chain(b.iter().map(segment_to_edge(2))).flatten().collect();
+	dbg!(unsplit_edges.len());
 
 	split_at_self_intersections(&mut unsplit_edges);
 
+	eprintln!("splitting");
 	let (split_edges, total_bounding_box) = split_at_intersections(&unsplit_edges);
+	dbg!(split_edges.len());
 
 	let total_bounding_box = match total_bounding_box {
 		Some(bb) => bb,
 		None => return Ok(Vec::new()), // input geometry is empty
 	};
 
+	eprintln!("findig vertices");
 	let major_graph = find_vertices(&split_edges, total_bounding_box);
 
 	#[cfg(feature = "logging")]

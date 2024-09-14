@@ -144,4 +144,36 @@ mod test {
 		// Add more specific assertions about the resulting path if needed
 		assert!(!result[0].is_empty());
 	}
+	#[test]
+	fn painted_dreams_2() {
+		let a = path_from_path_data("M0,340C161.737914,383.575765 107.564182,490.730587 273,476 C419,463 481.741198,514.692273 481.333333,768 C481.333333,768 -0,768 -0,768 C-0,768 0,340 0,340 Z ");
+		dbg!(&a);
+		let b = path_from_path_data(
+			"M458.370270,572.165771C428.525848,486.720093 368.618805,467.485992 273,476 C107.564178,490.730591 161.737915,383.575775 0,340 C0,340 0,689 0,689 C56,700 106.513901,779.342590 188,694.666687 C306.607422,571.416260 372.033966,552.205139 458.370270,572.165771 Z",
+		);
+		dbg!(&b);
+
+		let result = path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, PathBooleanOperation::Difference).unwrap();
+
+		// Add assertions here based on expected results
+		assert_eq!(result.len(), 1, "Expected 1 resulting path for Union operation");
+		dbg!(path_to_path_data(&result[0], 0.001));
+		// Add more specific assertions about the resulting path if needed
+		assert!(!result[0].is_empty());
+	}
+	#[test]
+	fn painted_dreams_3() {
+		let a = path_from_path_data("M889,0C889,0 889,21 898,46 C909.595887,78.210796 872.365858,104.085306 869,147 C865,198 915,237 933,273 C951,309 951.703704,335.407407 923,349 C898.996281,360.366922 881,367 902,394 C923,421 928.592593,431.407407 898,468 C912.888889,472.888889 929.333333,513.333333 896,523 C896,523 876,533.333333 886,572 C896.458810,612.440732 873.333333,657.777778 802.666667,656.444444 C738.670245,655.236965 689,643 655,636 C621,629 604,623 585,666 C566,709 564,768 564,768 C564,768 0,768 0,768 C0,768 0,0 0,0 C0,0 889,0 889,0 Z ");
+		let b = path_from_path_data(
+			"M552,768C552,768 993,768 993,768 C993,768 1068.918039,682.462471 1093,600 C1126,487 1007.352460,357.386071 957,324 C906.647540,290.613929 842,253 740,298 C638,343 491.342038,421.999263 491.342038,506.753005 C491.342038,641.999411 552,768 552,768 Z ",
+		);
+
+		let result = path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, PathBooleanOperation::Difference).unwrap();
+
+		// Add assertions here based on expected results
+		assert_eq!(result.len(), 1, "Expected 1 resulting path for Union operation");
+		dbg!(path_to_path_data(&result[0], 0.001));
+		// Add more specific assertions about the resulting path if needed
+		assert!(!result[0].is_empty());
+	}
 }

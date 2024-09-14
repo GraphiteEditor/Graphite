@@ -124,8 +124,8 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 				continue; // TODO: what to do?
 			}
 
-			let is_linear0 = bounding_box_max_extent(&seg0.bounding_box).min((seg0.end_param - seg0.start_param).abs()) <= eps.linear;
-			let is_linear1 = bounding_box_max_extent(&seg1.bounding_box).min((seg1.end_param - seg1.start_param).abs()) <= eps.linear;
+			let is_linear0 = bounding_box_max_extent(&seg0.bounding_box) <= eps.linear;
+			let is_linear1 = bounding_box_max_extent(&seg1.bounding_box) <= eps.linear;
 
 			if is_linear0 && is_linear1 {
 				let line_segment0 = path_segment_to_line_segment(&seg0.seg);
