@@ -248,7 +248,7 @@ fn dual_graph_to_dot(components: &[DualGraphComponent], edges: &SlotMap<DualEdge
 
 fn segment_to_edge(parent: u8) -> impl Fn(&PathSegment) -> Option<MajorGraphEdgeStage1> {
 	move |seg| {
-		if bounding_box_max_extent(&path_segment_bounding_box(seg)) < EPS.linear {
+		if bounding_box_max_extent(&path_segment_bounding_box(seg)) < f64::EPSILON {
 			return None;
 		}
 
@@ -256,7 +256,7 @@ fn segment_to_edge(parent: u8) -> impl Fn(&PathSegment) -> Option<MajorGraphEdge
 			// Convert Line Segments expressed as cubic beziers to proper line segments
 			PathSegment::Cubic(start, _, _, end) => {
 				let direction = sample_path_segment_at(seg, 0.1);
-				if dbg!((end - start).angle_to(direction - start).abs()) < EPS.param {
+				if (end - start).angle_to(direction - start).abs() < EPS.param {
 					Some((dbg!(PathSegment::Line(*start, *end)), parent))
 				} else {
 					Some((*seg, parent))
@@ -685,7 +685,7 @@ fn sort_outgoing_edges_by_angle(graph: &mut MinorGraph) {
 					.partial_cmp(&(get_incidence_angle(&graph.edges[b]) - (b.0.as_ffi() & 0xFFFFFF) as f64 / 1000000.))
 					.unwrap_or(b.cmp(&a));
 				if new != old {
-					dbg!(new, old, a, b);
+					// dbg!(new, old, a, b);
 				}
 				new
 			});
