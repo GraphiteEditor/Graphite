@@ -6,7 +6,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
-use crate::messages::tool::common_functionality::graph_modification_utils;
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::SnapData;
 
@@ -371,33 +371,28 @@ impl Fsm for PolygonToolFsmState {
 /// In the case where the polygon/star is upside down and the number of sides is odd, we negate the radius instead of using a negative scale.
 fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, document: &mut DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	let sign_num = if end[1] > start[1] { 1. } else { -1. };
-	if graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface)
-		.find_input("Regular Polygon", 1)
-		.unwrap_or(&TaggedValue::U32(0))
-		.to_u32()
-		% 2 == 1
-	{
-		if let Some(polygon_node_id) = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface).upstream_node_id_from_name("Regular Polygon") {
-			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(polygon_node_id, 2),
-				input: NodeInput::value(TaggedValue::F64(sign_num * 0.5), false),
-			});
-		}
-	} else if graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface)
-		.find_input("Star", 1)
-		.unwrap_or(&TaggedValue::U32(0))
-		.to_u32()
-		% 2 == 1
-	{
-		if let Some(star_node_id) = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface).upstream_node_id_from_name("Star") {
-			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(star_node_id, 2),
-				input: NodeInput::value(TaggedValue::F64(sign_num * 0.5), false),
-			});
-			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(star_node_id, 3),
-				input: NodeInput::value(TaggedValue::F64(sign_num * 0.25), false),
-			});
-		}
+	let new_layer = NodeGraphLayer::new(layer, &document.network_interface);
+
+	if new_layer.find_input("Regular Polygon", 1).unwrap_or(&TaggedValue::U32(0)).to_u32() % 2 == 1 {
+		let Some(polygon_node_id) = new_layer.upstream_node_id_from_name("Regular Polygon") else { return };
+
+		responses.add(NodeGraphMessage::SetInput {
+			input_connector: InputConnector::node(polygon_node_id, 2),
+			input: NodeInput::value(TaggedValue::F64(sign_num * 0.5), false),
+		});
+		return;
+	}
+
+	if new_layer.find_input("Star", 1).unwrap_or(&TaggedValue::U32(0)).to_u32() % 2 == 1 {
+		let Some(star_node_id) = new_layer.upstream_node_id_from_name("Star") else { return };
+
+		responses.add(NodeGraphMessage::SetInput {
+			input_connector: InputConnector::node(star_node_id, 2),
+			input: NodeInput::value(TaggedValue::F64(sign_num * 0.5), false),
+		});
+		responses.add(NodeGraphMessage::SetInput {
+			input_connector: InputConnector::node(star_node_id, 3),
+			input: NodeInput::value(TaggedValue::F64(sign_num * 0.25), false),
+		});
 	}
 }

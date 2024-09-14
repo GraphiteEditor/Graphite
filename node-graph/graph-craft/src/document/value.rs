@@ -194,6 +194,7 @@ impl TaggedValue {
 			_ => panic!("Cannot convert to primitive string"),
 		}
 	}
+
 	pub fn to_u32(&self) -> u32 {
 		match self {
 			TaggedValue::U32(x) => *x,
