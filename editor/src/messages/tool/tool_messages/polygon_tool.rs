@@ -2,6 +2,7 @@ use super::tool_prelude::*;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
@@ -281,34 +282,8 @@ impl Fsm for PolygonToolFsmState {
 				if let Some([start, end]) = tool_data.data.calculate_points(document, input, center, lock_ratio) {
 					if let Some(layer) = tool_data.data.layer {
 						// TODO: make the scale impact the polygon/star node - we need to determine how to allow the polygon node to make irregular shapes
-						let direction = if end[1] > start[1] { 1. } else { -1. };
-						if graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface)
-							.find_input("Regular Polygon", 1)
-							.unwrap_or(&TaggedValue::U32(0))
-							.to_u32() % 2 == 1
-						{
-							if let Some(polygon_node_id) = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface).upstream_node_id_from_name("Regular Polygon") {
-								responses.add(NodeGraphMessage::SetInput {
-									input_connector: InputConnector::node(polygon_node_id, 2),
-									input: NodeInput::value(TaggedValue::F64(direction * 0.5), false),
-								});
-							}
-						} else if graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface)
-							.find_input("Star", 1)
-							.unwrap_or(&TaggedValue::U32(0))
-							.to_u32() % 2 == 1
-						{
-							if let Some(star_node_id) = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface).upstream_node_id_from_name("Star") {
-								responses.add(NodeGraphMessage::SetInput {
-									input_connector: InputConnector::node(star_node_id, 2),
-									input: NodeInput::value(TaggedValue::F64(direction * 0.5), false),
-								});
-								responses.add(NodeGraphMessage::SetInput {
-									input_connector: InputConnector::node(star_node_id, 3),
-									input: NodeInput::value(TaggedValue::F64(direction * 0.25), false),
-								});
-							}
-						}
+
+						update_radius_sign(end, start, layer, document, responses);
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_scale_angle_translation((end - start).abs(), 0., (start + end) / 2.),
@@ -390,5 +365,39 @@ impl Fsm for PolygonToolFsmState {
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
+	}
+}
+
+/// In the case where the polygon/star is upside down and the number of sides is odd, we negate the radius instead of using a negative scale.
+fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, document: &mut DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	let sign_num = if end[1] > start[1] { 1. } else { -1. };
+	if graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface)
+		.find_input("Regular Polygon", 1)
+		.unwrap_or(&TaggedValue::U32(0))
+		.to_u32()
+		% 2 == 1
+	{
+		if let Some(polygon_node_id) = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface).upstream_node_id_from_name("Regular Polygon") {
+			responses.add(NodeGraphMessage::SetInput {
+				input_connector: InputConnector::node(polygon_node_id, 2),
+				input: NodeInput::value(TaggedValue::F64(sign_num * 0.5), false),
+			});
+		}
+	} else if graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface)
+		.find_input("Star", 1)
+		.unwrap_or(&TaggedValue::U32(0))
+		.to_u32()
+		% 2 == 1
+	{
+		if let Some(star_node_id) = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface).upstream_node_id_from_name("Star") {
+			responses.add(NodeGraphMessage::SetInput {
+				input_connector: InputConnector::node(star_node_id, 2),
+				input: NodeInput::value(TaggedValue::F64(sign_num * 0.5), false),
+			});
+			responses.add(NodeGraphMessage::SetInput {
+				input_connector: InputConnector::node(star_node_id, 3),
+				input: NodeInput::value(TaggedValue::F64(sign_num * 0.25), false),
+			});
+		}
 	}
 }
