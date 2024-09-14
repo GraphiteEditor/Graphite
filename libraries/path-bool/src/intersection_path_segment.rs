@@ -58,7 +58,7 @@ fn intersection_segments_overlap(seg0: &IntersectionSegment, seg1: &Intersection
 }
 
 pub fn segments_equal(seg0: &PathSegment, seg1: &PathSegment, point_epsilon: f64) -> bool {
-	let equal = match (*seg0, *seg1) {
+	match (*seg0, *seg1) {
 		(PathSegment::Line(start0, end0), PathSegment::Line(start1, end1)) => vectors_equal(start0, start1, point_epsilon) && vectors_equal(end0, end1, point_epsilon),
 		(PathSegment::Cubic(p00, p01, p02, p03), PathSegment::Cubic(p10, p11, p12, p13)) => {
 			vectors_equal(p00, p10, point_epsilon) && vectors_equal(p01, p11, point_epsilon) && vectors_equal(p02, p12, point_epsilon) && vectors_equal(p03, p13, point_epsilon)
@@ -76,16 +76,12 @@ pub fn segments_equal(seg0: &PathSegment, seg1: &PathSegment, point_epsilon: f64
             vectors_equal(p01, p11, point_epsilon)
 		}
 		_ => false,
-	};
-	let start = sample_path_segment_at(seg0, 0.);
-	let end = sample_path_segment_at(seg0, 1.);
-	if (start.abs_diff_eq((1418., 0.).into(), 0.01) || end.abs_diff_eq((1418., 0.).into(), 0.01)) && (start.abs_diff_eq((969., 0.).into(), 0.01) || end.abs_diff_eq((969., 0.).into(), 0.01)) {
-		eprintln!("equal: {}, {:?}, {:?}", equal, seg0, seg1);
 	}
-	equal
 }
 
 pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoints: bool, eps: &Epsilons) -> Vec<[f64; 2]> {
+	eprintln!("intersecting:");
+	dbg!(seg0, seg1);
 	// dbg!(&seg0, &seg1, endpoints);
 	if let (PathSegment::Line(start0, end0), PathSegment::Line(start1, end1)) = (seg0, seg1) {
 		if let Some(st) = line_segment_intersection([*start0, *end0], [*start1, *end1], eps.param) {
@@ -112,20 +108,23 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 			bounding_box: path_segment_bounding_box(seg1),
 		},
 	)];
+	let mut next_pairs = Vec::new();
 
 	let mut params = Vec::new();
+	let mut subdivided0 = Vec::new();
+	let mut subdivided1 = Vec::new();
 
 	while !pairs.is_empty() {
-		let mut next_pairs = Vec::new();
+		next_pairs.clear();
 
-		for (seg0, seg1) in pairs {
+		for (seg0, seg1) in pairs.iter() {
 			if segments_equal(&seg0.seg, &seg1.seg, eps.point) {
 				// TODO: move this outside of this loop?
 				continue; // TODO: what to do?
 			}
 
-			let is_linear0 = bounding_box_max_extent(&seg0.bounding_box) <= eps.linear;
-			let is_linear1 = bounding_box_max_extent(&seg1.bounding_box) <= eps.linear;
+			let is_linear0 = bounding_box_max_extent(&seg0.bounding_box) <= eps.linear || (seg1.end_param - seg1.start_param).abs() < eps.param;
+			let is_linear1 = bounding_box_max_extent(&seg1.bounding_box) <= eps.linear || (seg1.end_param - seg1.start_param).abs() < eps.param;
 
 			if is_linear0 && is_linear1 {
 				let line_segment0 = path_segment_to_line_segment(&seg0.seg);
@@ -134,8 +133,18 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 					params.push([lerp(seg0.start_param, seg0.end_param, st.0), lerp(seg1.start_param, seg1.end_param, st.1)]);
 				}
 			} else {
-				let subdivided0 = if is_linear0 { vec![seg0] } else { subdivide_intersection_segment(&seg0).to_vec() };
-				let subdivided1 = if is_linear1 { vec![seg1] } else { subdivide_intersection_segment(&seg1).to_vec() };
+				subdivided0.clear();
+				subdivided1.clear();
+				if is_linear0 {
+					subdivided0.push(seg0.clone())
+				} else {
+					subdivided0.extend_from_slice(&subdivide_intersection_segment(seg0))
+				};
+				if is_linear1 {
+					subdivided1.push(seg1.clone())
+				} else {
+					subdivided1.extend_from_slice(&subdivide_intersection_segment(seg1))
+				};
 
 				for seg0 in &subdivided0 {
 					for seg1 in &subdivided1 {
@@ -147,7 +156,7 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 			}
 		}
 
-		pairs = next_pairs;
+		std::mem::swap(&mut pairs, &mut next_pairs);
 	}
 
 	if !endpoints {

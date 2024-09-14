@@ -25,3 +25,14 @@ svg = "0.13"
 resvg = "0.42"
 image = "0.24"
 
+# Required dependencies
+criterion = { version = "0.5", features = ["html_reports"]}
+
+# Benchmarks
+[[bench]]
+name = "painted_dreams"
+harness = false
+
+[[bench]]
+name = "path_segment_intersection"
+harness = false
