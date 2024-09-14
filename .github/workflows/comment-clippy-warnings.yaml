@@ -54,7 +54,7 @@ jobs:
               repo: context.repo.repo,
             });
 
-            const botComments = comments.filter(comment => 
+            const botComments = comments.filter((comment) =>
               comment.user.type === 'Bot' && comment.body.includes('Clippy Warnings/Errors')
             );
 

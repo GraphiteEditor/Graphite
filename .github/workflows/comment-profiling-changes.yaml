@@ -1,4 +1,4 @@
-name: Profiling
+name: Profiling Changes
 
 on:
   pull_request:
@@ -23,8 +23,8 @@ jobs:
 
       - name: Install Valgrind
         run: |
-          sudo apt-get update
-          sudo apt-get install -y valgrind
+          sudo apt update
+          sudo apt install -y valgrind
 
       - name: Cache dependencies
         uses: actions/cache@v3
@@ -60,6 +60,31 @@ jobs:
           echo "$BENCH_OUTPUT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+      - name: Make old comments collapsed by default
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const { data: comments } = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+
+            const botComments = comments.filter((comment) =>
+              comment.user.type === 'Bot' && comment.body.includes('Performance Benchmark Results') && comment.body.includes('<details open>')
+            );
+
+            for (const comment of botComments) {
+              // Edit the comment to remove the "open" attribute from the <details> tag
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: comment.id,
+                body: comment.body.replace('<details open>', '<details>')
+              });
+            }
+
       - name: Comment PR
         uses: actions/github-script@v6
         with:
@@ -67,25 +92,25 @@ jobs:
           script: |
             const benchmarkOutput = JSON.parse(`${{ steps.benchmark.outputs.BENCHMARK_OUTPUT }}`);
             let significantChanges = false;
-            let commentBody = "#### Performance Benchmark Results\n\n";
-            
+            let commentBody = "";
+
             function formatNumber(num) {
               return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
             }
-            
+
             function formatPercentage(pct) {
               const sign = pct >= 0 ? '+' : '';
               return `${sign}${pct.toFixed(2)}%`;
             }
-            
+
             function padRight(str, len) {
               return str.padEnd(len);
             }
-            
+
             function padLeft(str, len) {
               return str.padStart(len);
             }
-            
+
             for (const benchmark of benchmarkOutput) {
               if (benchmark.callgrind_summary && benchmark.callgrind_summary.summaries) {
                 const summary = benchmark.callgrind_summary.summaries[0];
@@ -119,15 +144,25 @@ jobs:
                 }
               }
             }
-            
+
+            const output = `
+            <details open>
+
+            <summary>Performance Benchmark Results</summary>
+
+            ${commentBody}
+
+            </details>
+            `;
+
             if (significantChanges) {
               github.rest.issues.createComment({
                 issue_number: context.issue.number,
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                body: commentBody
+                body: output
               });
             } else {
               console.log("No significant performance changes detected. Skipping comment.");
-              console.log(commentBody);
+              console.log(output);
             }
