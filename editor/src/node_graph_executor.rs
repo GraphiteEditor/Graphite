@@ -265,7 +265,7 @@ impl NodeRuntime {
 
 		for monitor_node_path in &self.monitor_nodes {
 			// The monitor nodes are located within a document node, and are thus children in that network, so this gets the parent document node's ID
-			let Some(parent_network_node_id) = monitor_node_path.get(monitor_node_path.len() - 2).copied() else {
+			let Some(parent_network_node_id) = monitor_node_path.len().checked_sub(2).and_then(|index| monitor_node_path.get(index)).copied() else {
 				warn!("Monitor node has invalid node id");
 
 				continue;

@@ -156,6 +156,7 @@ fn set_vector_data_stroke(
 		line_cap,
 		line_join,
 		line_join_miter_limit: miter_limit,
+		transform: vector_data.transform,
 	});
 	vector_data
 }

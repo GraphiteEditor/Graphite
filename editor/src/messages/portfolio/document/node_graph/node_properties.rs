@@ -2597,7 +2597,28 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 
 	let fill_type_switch = {
 		let mut row = vec![TextLabel::new("").widget_holder()];
-		add_blank_assist(&mut row);
+		match fill {
+			Fill::Solid(_) | Fill::None => add_blank_assist(&mut row),
+			Fill::Gradient(gradient) => {
+				let reverse_button = IconButton::new("Reverse", 24)
+					.tooltip("Reverse the gradient color stops")
+					.on_update(update_value(
+						{
+							let gradient = gradient.clone();
+							move |_| {
+								let mut gradient = gradient.clone();
+								gradient.stops = gradient.stops.reversed();
+								TaggedValue::Fill(Fill::Gradient(gradient))
+							}
+						},
+						node_id,
+						fill_index,
+					))
+					.widget_holder();
+				row.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+				row.push(reverse_button);
+			}
+		}
 
 		let entries = vec![
 			RadioEntryData::new("solid")
@@ -2619,9 +2640,35 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 	};
 	widgets.push(fill_type_switch);
 
-	if let Fill::Gradient(gradient) = fill {
+	if let Fill::Gradient(gradient) = fill.clone() {
 		let mut row = vec![TextLabel::new("").widget_holder()];
-		add_blank_assist(&mut row);
+		match gradient.gradient_type {
+			GradientType::Linear => add_blank_assist(&mut row),
+			GradientType::Radial => {
+				let orientation = if (gradient.end.x - gradient.start.x).abs() > f64::EPSILON * 1e6 {
+					gradient.end.x > gradient.start.x
+				} else {
+					(gradient.start.x + gradient.start.y) < (gradient.end.x + gradient.end.y)
+				};
+				let reverse_radial_gradient_button = IconButton::new(if orientation { "ReverseRadialGradientToRight" } else { "ReverseRadialGradientToLeft" }, 24)
+					.tooltip("Reverse which end the gradient radiates from")
+					.on_update(update_value(
+						{
+							let gradient = gradient.clone();
+							move |_| {
+								let mut gradient = gradient.clone();
+								std::mem::swap(&mut gradient.start, &mut gradient.end);
+								TaggedValue::Fill(Fill::Gradient(gradient))
+							}
+						},
+						node_id,
+						fill_index,
+					))
+					.widget_holder();
+				row.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+				row.push(reverse_radial_gradient_button);
+			}
+		}
 
 		let new_gradient1 = gradient.clone();
 		let new_gradient2 = gradient.clone();

@@ -390,20 +390,27 @@ impl GraphicElementRendered for GraphicGroup {
 impl GraphicElementRendered for VectorData {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let multiplied_transform = render.transform * self.transform;
+		let set_stroke_transform = self.style.stroke().map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
+		let applied_stroke_transform = set_stroke_transform.unwrap_or(self.transform);
+		let element_transform = set_stroke_transform.map(|stroke_transform| multiplied_transform * stroke_transform.inverse());
+		let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
 		let layer_bounds = self.bounding_box().unwrap_or_default();
-		let transformed_bounds = self.bounding_box_with_transform(multiplied_transform).unwrap_or_default();
+		let transformed_bounds = self.bounding_box_with_transform(applied_stroke_transform).unwrap_or_default();
 
 		let mut path = String::new();
 		for subpath in self.stroke_bezier_paths() {
-			let _ = subpath.subpath_to_svg(&mut path, multiplied_transform);
+			let _ = subpath.subpath_to_svg(&mut path, applied_stroke_transform);
 		}
 
 		render.leaf_tag("path", |attributes| {
 			attributes.push("d", path);
+			let matrix = format_transform_matrix(element_transform);
+			attributes.push("transform", matrix);
 
+			let defs = &mut attributes.0.svg_defs;
 			let fill_and_stroke = self
 				.style
-				.render(render_params.view_mode, &mut attributes.0.svg_defs, multiplied_transform, layer_bounds, transformed_bounds);
+				.render(render_params.view_mode, defs, element_transform, applied_stroke_transform, layer_bounds, transformed_bounds);
 			attributes.push_val(fill_and_stroke);
 
 			if self.alpha_blending.opacity < 1. {
@@ -462,31 +469,31 @@ impl GraphicElementRendered for VectorData {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext) {
 		use crate::vector::style::GradientType;
 		use vello::peniko;
-
-		let transformed_bounds = GraphicElementRendered::bounding_box(self, transform).unwrap_or_default();
 		let mut layer = false;
+		let stroke_transform = self.style.stroke().map_or(DAffine2::IDENTITY, |stroke| stroke.transform);
+		let path_transform = (transform * self.transform) * stroke_transform.inverse();
+		let transformed_bounds = GraphicElementRendered::bounding_box(self, path_transform).unwrap_or_default();
 
 		if self.alpha_blending.opacity < 1. || self.alpha_blending.blend_mode != BlendMode::default() {
 			layer = true;
 			scene.push_layer(
 				peniko::BlendMode::new(self.alpha_blending.blend_mode.into(), peniko::Compose::SrcOver),
 				self.alpha_blending.opacity,
-				kurbo::Affine::IDENTITY,
+				kurbo::Affine::new((path_transform).to_cols_array()),
 				&kurbo::Rect::new(transformed_bounds[0].x, transformed_bounds[0].y, transformed_bounds[1].x, transformed_bounds[1].y),
 			);
 		}
 
-		let kurbo_transform = kurbo::Affine::new(transform.to_cols_array());
 		let to_point = |p: DVec2| kurbo::Point::new(p.x, p.y);
 		let mut path = kurbo::BezPath::new();
 		for subpath in self.stroke_bezier_paths() {
-			subpath.to_vello_path(self.transform, &mut path);
+			subpath.to_vello_path(stroke_transform, &mut path);
 		}
 
 		match self.style.fill() {
 			Fill::Solid(color) => {
 				let fill = peniko::Brush::Solid(peniko::Color::rgba(color.r() as f64, color.g() as f64, color.b() as f64, color.a() as f64));
-				scene.fill(peniko::Fill::NonZero, kurbo_transform, &fill, None, &path);
+				scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(path_transform.to_cols_array()), &fill, None, &path);
 			}
 			Fill::Gradient(gradient) => {
 				let mut stops = peniko::ColorStops::new();
@@ -523,7 +530,7 @@ impl GraphicElementRendered for VectorData {
 					stops,
 					..Default::default()
 				});
-				scene.fill(peniko::Fill::NonZero, kurbo_transform, &fill, None, &path);
+				scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(path_transform.to_cols_array()), &fill, None, &path);
 			}
 			Fill::None => (),
 		};
@@ -555,7 +562,7 @@ impl GraphicElementRendered for VectorData {
 				dash_offset: stroke.dash_offset,
 			};
 			if stroke.width > 0. {
-				scene.stroke(&stroke, kurbo_transform, color, None, &path);
+				scene.stroke(&stroke, kurbo::Affine::new(path_transform.to_cols_array()), color, None, &path);
 			}
 		}
 		if layer {
@@ -642,8 +649,10 @@ impl GraphicElementRendered for Artboard {
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let mut subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
-		subpath.apply_transform(self.graphic_group.transform.inverse());
-		click_targets.push(ClickTarget::new(subpath, 0.));
+		if self.graphic_group.transform.matrix2.determinant() != 0. {
+			subpath.apply_transform(self.graphic_group.transform.inverse());
+			click_targets.push(ClickTarget::new(subpath, 0.));
+		}
 	}
 
 	#[cfg(feature = "vello")]
@@ -652,7 +661,8 @@ impl GraphicElementRendered for Artboard {
 
 		// Render background
 		let color = peniko::Color::rgba(self.background.r() as f64, self.background.g() as f64, self.background.b() as f64, self.background.a() as f64);
-		let rect = kurbo::Rect::new(self.location.x as f64, self.location.y as f64, self.dimensions.x as f64, self.dimensions.y as f64);
+		let [a, b] = [self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()];
+		let rect = kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
 		let blend_mode = peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcOver);
 
 		scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
@@ -662,7 +672,8 @@ impl GraphicElementRendered for Artboard {
 		if self.clip {
 			scene.push_layer(blend_mode, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
 		}
-		self.graphic_group.render_to_vello(scene, transform, context);
+		let child_transform = transform * DAffine2::from_translation(self.location.as_dvec2()) * self.graphic_group.transform;
+		self.graphic_group.render_to_vello(scene, child_transform, context);
 		if self.clip {
 			scene.pop_layer();
 		}
