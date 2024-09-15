@@ -462,6 +462,7 @@ pub struct Stroke {
 	pub line_cap: LineCap,
 	pub line_join: LineJoin,
 	pub line_join_miter_limit: f64,
+	pub transform: DAffine2,
 }
 
 impl core::hash::Hash for Stroke {
@@ -487,6 +488,7 @@ impl Stroke {
 			line_cap: LineCap::Butt,
 			line_join: LineJoin::Miter,
 			line_join_miter_limit: 4.,
+			transform: DAffine2::IDENTITY,
 		}
 	}
 
@@ -499,6 +501,10 @@ impl Stroke {
 			line_cap: if time < 0.5 { self.line_cap } else { other.line_cap },
 			line_join: if time < 0.5 { self.line_join } else { other.line_join },
 			line_join_miter_limit: self.line_join_miter_limit + (other.line_join_miter_limit - self.line_join_miter_limit) * time,
+			transform: DAffine2::from_mat2_translation(
+				time * self.transform.matrix2 + (1. - time) * other.transform.matrix2,
+				self.transform.translation * time + other.transform.translation * (1. - time),
+			),
 		}
 	}
 
@@ -635,6 +641,7 @@ impl Default for Stroke {
 			line_cap: LineCap::Butt,
 			line_join: LineJoin::Miter,
 			line_join_miter_limit: 4.,
+			transform: DAffine2::IDENTITY,
 		}
 	}
 }

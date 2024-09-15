@@ -266,7 +266,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 
 			let bounds_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 			apply_usvg_fill(path.fill(), modify_inputs, transform * usvg_transform(node.abs_transform()), bounds_transform);
-			apply_usvg_stroke(path.stroke(), modify_inputs);
+			apply_usvg_stroke(path.stroke(), modify_inputs, transform * usvg_transform(node.abs_transform()));
 		}
 		usvg::Node::Image(_image) => {
 			warn!("Skip image")
@@ -279,7 +279,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 	}
 }
 
-fn apply_usvg_stroke(stroke: Option<&usvg::Stroke>, modify_inputs: &mut ModifyInputsContext) {
+fn apply_usvg_stroke(stroke: Option<&usvg::Stroke>, modify_inputs: &mut ModifyInputsContext, transform: DAffine2) {
 	if let Some(stroke) = stroke {
 		if let usvg::Paint::Color(color) = &stroke.paint() {
 			modify_inputs.stroke_set(Stroke {
@@ -299,6 +299,7 @@ fn apply_usvg_stroke(stroke: Option<&usvg::Stroke>, modify_inputs: &mut ModifyIn
 					usvg::LineJoin::Bevel => LineJoin::Bevel,
 				},
 				line_join_miter_limit: stroke.miterlimit().get() as f64,
+				transform,
 			})
 		} else {
 			warn!("Skip non-solid stroke")
