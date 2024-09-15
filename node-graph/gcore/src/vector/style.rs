@@ -450,6 +450,10 @@ impl Display for LineJoin {
 	}
 }
 
+fn daffine2_identity() -> DAffine2 {
+	DAffine2::IDENTITY
+}
+
 #[repr(C)]
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
 pub struct Stroke {
@@ -462,6 +466,7 @@ pub struct Stroke {
 	pub line_cap: LineCap,
 	pub line_join: LineJoin,
 	pub line_join_miter_limit: f64,
+	#[serde(default = "daffine2_identity")]
 	pub transform: DAffine2,
 }
 
