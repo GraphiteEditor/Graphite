@@ -148,6 +148,9 @@ import Regenerate from "@graphite-frontend/assets/icon-16px-solid/regenerate.svg
 import Reload from "@graphite-frontend/assets/icon-16px-solid/reload.svg";
 import Rescale from "@graphite-frontend/assets/icon-16px-solid/rescale.svg";
 import Reset from "@graphite-frontend/assets/icon-16px-solid/reset.svg";
+import ReverseRadialGradientToLeft from "@graphite-frontend/assets/icon-16px-solid/reverse-radial-gradient-to-left.svg";
+import ReverseRadialGradientToRight from "@graphite-frontend/assets/icon-16px-solid/reverse-radial-gradient-to-right.svg";
+import Reverse from "@graphite-frontend/assets/icon-16px-solid/reverse.svg";
 import Settings from "@graphite-frontend/assets/icon-16px-solid/settings.svg";
 import Stack from "@graphite-frontend/assets/icon-16px-solid/stack.svg";
 import Trash from "@graphite-frontend/assets/icon-16px-solid/trash.svg";
@@ -223,6 +226,9 @@ const SOLID_16PX = {
 	Reload: { svg: Reload, size: 16 },
 	Rescale: { svg: Rescale, size: 16 },
 	Reset: { svg: Reset, size: 16 },
+	ReverseRadialGradientToLeft: { svg: ReverseRadialGradientToLeft, size: 16 },
+	ReverseRadialGradientToRight: { svg: ReverseRadialGradientToRight, size: 16 },
+	Reverse: { svg: Reverse, size: 16 },
 	Settings: { svg: Settings, size: 16 },
 	Stack: { svg: Stack, size: 16 },
 	Trash: { svg: Trash, size: 16 },
