@@ -489,11 +489,11 @@ impl NodeNetworkInterface {
 		if let Some(value) = node.inputs.get(input_index).and_then(|input| input.as_value()) {
 			return Some((value.ty(), TypeSource::TaggedValue));
 		}
-		let node_id_path = [network_path, &[node_id]].concat().clone();
+		let node_id_path = [network_path, &[node_id]].concat();
 		match &node.implementation {
 			DocumentNodeImplementation::Network(_nested_network) => {
 				// Attempt to resolve where this import is within the nested network (it may be connected to the node or directly to an export)
-				let outwards_wires = self.outward_wires(network_path);
+				let outwards_wires = self.outward_wires(&node_id_path);
 				let inputs_using_import = outwards_wires.and_then(|outwards_wires| outwards_wires.get(&OutputConnector::Import(input_index)));
 				let first_input = inputs_using_import.and_then(|input| input.first()).copied();
 
@@ -542,6 +542,7 @@ impl NodeNetworkInterface {
 			return (concrete!(()), TypeSource::Error("node id not in network"));
 		};
 
+		let node_id_path = [network_path.as_slice(), &[node_id]].concat();
 		match &node.implementation {
 			DocumentNodeImplementation::ProtoNode(protonode) => {
 				let Some(node_types) = random_protonode_implementation(protonode) else {
@@ -559,7 +560,7 @@ impl NodeNetworkInterface {
 			}
 			DocumentNodeImplementation::Network(_network) => {
 				// Attempt to resolve where this import is within the nested network
-				let outwards_wires = self.outward_wires(network_path);
+				let outwards_wires = self.outward_wires(&node_id_path);
 				let inputs_using_import = outwards_wires.and_then(|outwards_wires| outwards_wires.get(&OutputConnector::Import(input_index)));
 				let first_input = inputs_using_import.and_then(|input| input.first()).copied();
 
