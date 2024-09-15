@@ -360,9 +360,10 @@ impl GraphicElementRendered for GraphicGroup {
 impl GraphicElementRendered for VectorData {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let multiplied_transform = render.transform * self.transform;
-		let layer_bounds = self.bounding_box().unwrap_or_default();
-		let transformed_bounds = self.bounding_box_with_transform(multiplied_transform).unwrap_or_default();
 		let stroke_transform = self.style.stroke().map_or(DAffine2::IDENTITY, |stroke| stroke.transform);
+		let element_transform = multiplied_transform * stroke_transform.inverse();
+		let layer_bounds = self.bounding_box().unwrap_or_default();
+		let transformed_bounds = self.bounding_box_with_transform(stroke_transform).unwrap_or_default();
 
 		let mut path = String::new();
 		for subpath in self.stroke_bezier_paths() {
@@ -371,12 +372,12 @@ impl GraphicElementRendered for VectorData {
 
 		render.leaf_tag("path", |attributes| {
 			attributes.push("d", path);
-			let matrix = format_transform_matrix(multiplied_transform * stroke_transform.inverse());
+			let matrix = format_transform_matrix(element_transform);
 			attributes.push("transform", matrix);
 
 			let fill_and_stroke = self
 				.style
-				.render(render_params.view_mode, &mut attributes.0.svg_defs, multiplied_transform, layer_bounds, transformed_bounds);
+				.render(render_params.view_mode, &mut attributes.0.svg_defs, stroke_transform, layer_bounds, transformed_bounds);
 			attributes.push_val(fill_and_stroke);
 
 			if self.alpha_blending.opacity < 1. {
