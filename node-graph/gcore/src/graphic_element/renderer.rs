@@ -360,14 +360,16 @@ impl GraphicElementRendered for GraphicGroup {
 impl GraphicElementRendered for VectorData {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let multiplied_transform = render.transform * self.transform;
-		let stroke_transform = self.style.stroke().map_or(DAffine2::IDENTITY, |stroke| stroke.transform);
-		let element_transform = multiplied_transform * stroke_transform.inverse();
+		let set_stroke_transform = self.style.stroke().map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
+		let applied_stroke_transform = set_stroke_transform.unwrap_or(self.transform);
+		let element_transform = set_stroke_transform.map(|stroke_transform| multiplied_transform * stroke_transform.inverse());
+		let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
 		let layer_bounds = self.bounding_box().unwrap_or_default();
-		let transformed_bounds = self.bounding_box_with_transform(stroke_transform).unwrap_or_default();
+		let transformed_bounds = self.bounding_box_with_transform(applied_stroke_transform).unwrap_or_default();
 
 		let mut path = String::new();
 		for subpath in self.stroke_bezier_paths() {
-			let _ = subpath.subpath_to_svg(&mut path, stroke_transform);
+			let _ = subpath.subpath_to_svg(&mut path, applied_stroke_transform);
 		}
 
 		render.leaf_tag("path", |attributes| {
@@ -375,9 +377,10 @@ impl GraphicElementRendered for VectorData {
 			let matrix = format_transform_matrix(element_transform);
 			attributes.push("transform", matrix);
 
+			let defs = &mut attributes.0.svg_defs;
 			let fill_and_stroke = self
 				.style
-				.render(render_params.view_mode, &mut attributes.0.svg_defs, stroke_transform, layer_bounds, transformed_bounds);
+				.render(render_params.view_mode, defs, element_transform, applied_stroke_transform, layer_bounds, transformed_bounds);
 			attributes.push_val(fill_and_stroke);
 
 			if self.alpha_blending.opacity < 1. {
@@ -620,8 +623,10 @@ impl GraphicElementRendered for Artboard {
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let mut subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
-		subpath.apply_transform(self.graphic_group.transform.inverse());
-		click_targets.push(ClickTarget::new(subpath, 0.));
+		if self.graphic_group.transform.matrix2.determinant() != 0. {
+			subpath.apply_transform(self.graphic_group.transform.inverse());
+			click_targets.push(ClickTarget::new(subpath, 0.));
+		}
 	}
 
 	fn contains_artboard(&self) -> bool {
