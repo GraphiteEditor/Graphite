@@ -72,7 +72,7 @@ pub fn segments_equal(seg0: &PathSegment, seg1: &PathSegment, point_epsilon: f64
 			let direction2 = sample_path_segment_at(seg1, 0.1);
 			let angles_equal = (direction1 - p00).angle_to(direction2 - p00).abs() < point_epsilon * 4.;
 			if angles_equal {
-				eprintln!("deduplicating {:?} {:?} because the angles are equal", seg0, seg1);
+				// eprintln!("deduplicating {:?} {:?} because the angles are equal", seg0, seg1);
 			}
 
 			start_and_end_equal && (parameter_equal || angles_equal)
@@ -134,8 +134,7 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 
 		if pairs.len() > 1000 {
 			// TODO: check for intersections of the start/end points. If the two lines overlap, return split points for the start/end points. Use a binary search  to check where the points are on the line.
-			return dbg!(calculate_overlap_intersections(seg0, seg1, eps));
-			return vec![];
+			return calculate_overlap_intersections(seg0, seg1, eps);
 		}
 
 		for (seg0, seg1) in pairs.iter() {

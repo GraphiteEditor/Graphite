@@ -25,6 +25,7 @@ impl PathSegment {
 			PathSegment::Cubic(start, control1, control2, _) => {
 				let diff = control1 - start;
 				if vectors_equal(diff, DVec2::ZERO, EPS.point) {
+					// if this diff were empty too, the segments would have been convertet to a line
 					(control2 - start).angle_to(DVec2::X)
 				} else {
 					diff.angle_to(DVec2::X)

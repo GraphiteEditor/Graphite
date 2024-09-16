@@ -684,7 +684,7 @@ fn sort_outgoing_edges_by_angle(graph: &mut MinorGraph) {
 				.outgoing_edges
 				.iter()
 				.map(|key| (*key, &graph.edges[*key]))
-				.map(|(key, edge)| ((key.0.as_ffi() & 0xFF), (dbg!(edge.start_segment()).start_angle())))
+				.map(|(key, edge)| ((key.0.as_ffi() & 0xFF), (edge.start_segment()).start_angle()))
 				.collect();
 			#[cfg(feature = "logging")]
 			dbg!(edges);
@@ -936,6 +936,7 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 			.iter()
 			.map(|face_key| (face_key, compute_signed_area(&dual_vertices[*face_key], &dual_edges)))
 			.collect();
+		#[cfg(feature = "logging")]
 		dbg!(&areas);
 
 		#[cfg(feature = "logging")]
@@ -962,11 +963,13 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 		}
 		let outer_face_key = if count != 1 {
 			// return Err(BooleanError::MultipleOuterFaces);
+			#[cfg(feature = "logging")]
 			eprintln!("Found multiple outer faces: {areas:?}, falling back to area calculation");
 			*areas.iter().max_by_key(|(_, area)| ((area.abs() * 1000.) as u64)).unwrap().0
 		} else {
 			*windings.iter().find(|(&_, winding)| (winding < &0) ^ reverse_winding).expect("No outer face of a component found.").0
 		};
+		#[cfg(feature = "logging")]
 		dbg!(outer_face_key);
 
 		components.push(DualGraphComponent {
@@ -1385,6 +1388,11 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 
 	let mut flags = HashMap::new();
 	flag_faces(&nesting_trees, a_fill_rule, b_fill_rule, edges, vertices, &mut flags);
+
+	#[cfg(feature = "logging")]
+	for (face, flag) in &flags {
+		eprintln!("{:?}: {:b}", face.0, flag);
+	}
 
 	let predicate = OPERATION_PREDICATES[op as usize];
 
