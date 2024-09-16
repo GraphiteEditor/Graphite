@@ -1126,7 +1126,6 @@ impl NodeNetwork {
 			let export: &mut NodeInput = export;
 			let previous_export = std::mem::replace(export, NodeInput::network(concrete!(()), 0));
 
-			println!("export {:?}", previous_export);
 			let (tagged_value, exposed) = match previous_export {
 				NodeInput::Value { tagged_value, exposed } => (tagged_value, exposed),
 				NodeInput::Reflection(reflect) => match reflect {
