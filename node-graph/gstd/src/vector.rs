@@ -175,10 +175,13 @@ fn boolean_operation_node(group_of_paths: GraphicGroup, operation: BooleanOperat
 
 	// The first index is the bottom of the stack
 	let mut boolean_operation_result = boolean_operation_on_vector_data(&collect_vector_data(&group_of_paths), operation);
+
 	let transform = boolean_operation_result.transform;
 	VectorData::transform(&mut boolean_operation_result, transform);
+	boolean_operation_result.style.set_stroke_transform(DAffine2::IDENTITY);
 	boolean_operation_result.transform = DAffine2::IDENTITY;
 	boolean_operation_result.upstream_graphic_group = Some(group_of_paths);
+
 	boolean_operation_result
 }
 

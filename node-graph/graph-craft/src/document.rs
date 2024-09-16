@@ -4,8 +4,9 @@ use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 use dyn_any::{DynAny, StaticType};
 use graphene_core::memo::MemoHashGuard;
 pub use graphene_core::uuid::generate_uuid;
-
+pub use graphene_core::uuid::NodeId;
 use graphene_core::{Cow, MemoHash, ProtoNodeIdentifier, Type};
+pub mod value;
 
 use glam::IVec2;
 use log::Metadata;
@@ -13,9 +14,6 @@ use rustc_hash::FxHashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-
-pub mod value;
-pub use graphene_core::uuid::NodeId;
 
 /// Hash two IDs together, returning a new ID that is always consistent for two input IDs in a specific order.
 /// This is used during [`NodeNetwork::flatten`] in order to ensure consistent yet non-conflicting IDs for inner networks.

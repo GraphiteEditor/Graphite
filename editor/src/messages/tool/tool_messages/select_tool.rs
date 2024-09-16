@@ -533,6 +533,7 @@ impl Fsm for SelectToolFsmState {
 
 					edges
 				});
+
 				let rotating_bounds = tool_data
 					.bounding_box_manager
 					.as_ref()
@@ -640,6 +641,7 @@ impl Fsm for SelectToolFsmState {
 					tool_data.layers_dragging = selected;
 
 					tool_data.get_snap_candidates(document, input);
+
 					SelectToolFsmState::Dragging
 				}
 				// Dragging a selection box
@@ -652,7 +654,6 @@ impl Fsm for SelectToolFsmState {
 					}
 
 					if let Some(intersection) = intersection {
-
 						tool_data.layer_selected_on_start = Some(intersection);
 						selected = intersection_list;
 
@@ -661,6 +662,7 @@ impl Fsm for SelectToolFsmState {
 							_ => drag_deepest_manipulation(responses, selected, tool_data, document),
 						}
 						tool_data.get_snap_candidates(document, input);
+
 						responses.add(DocumentMessage::StartTransaction);
 						SelectToolFsmState::Dragging
 					} else {

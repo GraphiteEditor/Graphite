@@ -11,11 +11,11 @@ use graphene_core::raster::BlendMode;
 use graphene_core::raster::Image;
 use graphene_core::vector::style::ViewMode;
 use graphene_core::Color;
-
-use glam::DAffine2;
 use graphene_std::renderer::ClickTarget;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::VectorData;
+
+use glam::DAffine2;
 
 #[impl_message(Message, PortfolioMessage, Document)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]

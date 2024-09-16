@@ -103,6 +103,7 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 			attributes.push("fill", "white");
 		});
 	}
+
 	data.render_svg(&mut render, &render_params);
 
 	render.wrap_with_transform(footprint.transform, Some(footprint.resolution.as_dvec2()));

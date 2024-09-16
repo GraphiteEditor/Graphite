@@ -28,7 +28,7 @@ pub struct VectorData {
 	pub segment_domain: SegmentDomain,
 	pub region_domain: RegionDomain,
 
-	// Used to store the upstream graphic group during destructive Boolean Operations so that click targets can be preserved.
+	// Used to store the upstream graphic group during destructive Boolean Operations (and other nodes with a similar effect) so that click targets can be preserved.
 	pub upstream_graphic_group: Option<crate::GraphicGroup>,
 }
 

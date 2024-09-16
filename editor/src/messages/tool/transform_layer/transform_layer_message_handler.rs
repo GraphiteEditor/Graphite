@@ -87,6 +87,8 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 			*mouse_position = input.mouse.position;
 			*start_mouse = input.mouse.position;
 			selected.original_transforms.clear();
+
+			selected.responses.add(DocumentMessage::StartTransaction);
 		};
 
 		match message {
@@ -97,6 +99,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 				self.transform_operation = TransformOperation::None;
 
+				responses.add(DocumentMessage::EndTransaction);
 				responses.add(ToolMessage::UpdateHints);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
@@ -156,6 +159,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 				self.transform_operation = TransformOperation::None;
 
+				responses.add(DocumentMessage::AbortTransaction);
 				responses.add(ToolMessage::UpdateHints);
 			}
 			TransformLayerMessage::ConstrainX => self.transform_operation.constrain_axis(Axis::X, &mut selected, self.snap),

@@ -1,3 +1,8 @@
+pub use uuid_generation::*;
+
+use dyn_any::DynAny;
+use dyn_any::StaticType;
+
 #[derive(Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct Uuid(
 	#[serde(with = "u64_string")]
@@ -65,10 +70,6 @@ mod uuid_generation {
 		lock.as_mut().map(ChaCha20Rng::next_u64).expect("UUID mutex poisoned")
 	}
 }
-
-use dyn_any::DynAny;
-use dyn_any::StaticType;
-pub use uuid_generation::*;
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize, specta::Type, DynAny)]

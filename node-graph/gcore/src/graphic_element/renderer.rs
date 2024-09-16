@@ -1,6 +1,5 @@
 mod quad;
 mod rect;
-use dyn_any::DynAny;
 pub use quad::Quad;
 pub use rect::Rect;
 
@@ -13,6 +12,7 @@ use crate::Raster;
 use crate::{vector::VectorData, Artboard, Color, GraphicElement, GraphicGroup};
 
 use bezier_rs::Subpath;
+use dyn_any::{DynAny, StaticType};
 
 use base64::Engine;
 use glam::{DAffine2, DVec2};
@@ -270,7 +270,6 @@ pub fn to_transform(transform: DAffine2) -> usvg::Transform {
 	usvg::Transform::from_row(cols[0] as f32, cols[1] as f32, cols[2] as f32, cols[3] as f32, cols[4] as f32, cols[5] as f32)
 }
 
-use dyn_any::StaticType;
 #[derive(Debug, Clone, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RenderMetadata {
@@ -281,19 +280,25 @@ pub struct RenderMetadata {
 
 pub trait GraphicElementRendered {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
+
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]>;
+
 	// The upstream click targets for each layer are collected during the render so that they do not have to be calculated for each click detection
 	fn add_upstream_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
+
 	// TODO: Store all click targets in a vec which contains the AABB, click target, and path
 	// fn add_click_targets(&self, click_targets: &mut Vec<([DVec2; 2], ClickTarget, Vec<NodeId>)>, current_path: Option<NodeId>) {}
+
 	// Recursively iterate over data in the render (including groups upstream from vector data in the case of a boolean operation) to collect the footprints, click targets, and vector modify
 	fn collect_metadata(&self, _metadata: &mut RenderMetadata, _footprint: Footprint, _element_id: Option<NodeId>) {}
+
 	#[cfg(feature = "vello")]
 	fn to_vello_scene(&self, transform: DAffine2, context: &mut RenderContext) -> Scene {
 		let mut scene = vello::Scene::new();
 		self.render_to_vello(&mut scene, transform, context);
 		scene
 	}
+
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2, _render_condext: &mut RenderContext) {}
 
@@ -334,11 +339,13 @@ impl GraphicElementRendered for GraphicGroup {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
 		footprint.transform *= self.transform;
+
 		for (element, element_id) in self.elements.iter() {
 			if let Some(element_id) = element_id {
 				element.collect_metadata(metadata, footprint, Some(*element_id));
 			}
 		}
+
 		if let Some(graphic_group_id) = element_id {
 			let mut all_upstream_click_targets = Vec::new();
 			self.add_upstream_click_targets(&mut all_upstream_click_targets);
@@ -349,10 +356,13 @@ impl GraphicElementRendered for GraphicGroup {
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		for (element, _) in self.elements.iter() {
 			let mut new_click_targets = Vec::new();
+
 			element.add_upstream_click_targets(&mut new_click_targets);
+
 			for click_target in new_click_targets.iter_mut() {
 				click_target.apply_transform(element.transform())
 			}
+
 			click_targets.extend(new_click_targets);
 		}
 	}
@@ -374,9 +384,11 @@ impl GraphicElementRendered for GraphicGroup {
 				&vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y),
 			);
 		}
+
 		for (element, _) in self.iter() {
 			element.render_to_vello(scene, child_transform, context);
 		}
+
 		if layer {
 			scene.pop_layer();
 		}
@@ -447,6 +459,7 @@ impl GraphicElementRendered for VectorData {
 				.insert(element_id, self.stroke_bezier_paths().map(fill).map(|subpath| ClickTarget::new(subpath, stroke_width)).collect());
 			metadata.vector_data.insert(element_id, self.clone());
 		}
+
 		if let Some(upstream_graphic_group) = &self.upstream_graphic_group {
 			footprint.transform *= self.transform;
 			upstream_graphic_group.collect_metadata(metadata, footprint, None);
@@ -615,7 +628,7 @@ impl GraphicElementRendered for Artboard {
 
 					write!(
 						&mut attributes.0.svg_defs,
-						r##"<clipPath id="{id}"><rect x="0" y="0" width="{}" height="{}"/></clipPath>"##,
+						r##"<clipPath id="{id}"><rect x="0" y="0" width="{}" height="{}" /></clipPath>"##,
 						self.dimensions.x, self.dimensions.y
 					)
 					.unwrap();
@@ -644,11 +657,13 @@ impl GraphicElementRendered for Artboard {
 			metadata.click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
 			metadata.footprints.insert(element_id, (footprint, DAffine2::from_translation(self.location.as_dvec2())));
 		}
+
 		self.graphic_group.collect_metadata(metadata, footprint, None);
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let mut subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
+
 		if self.graphic_group.transform.matrix2.determinant() != 0. {
 			subpath.apply_transform(self.graphic_group.transform.inverse());
 			click_targets.push(ClickTarget::new(subpath, 0.));
@@ -690,6 +705,7 @@ impl GraphicElementRendered for crate::ArtboardGroup {
 			artboard.render_svg(render, render_params);
 		}
 	}
+
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		self.artboards.iter().filter_map(|(element, _)| element.bounding_box(transform)).reduce(Quad::combine_bounds)
 	}
@@ -760,11 +776,11 @@ impl GraphicElementRendered for ImageFrame<Color> {
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
-		if let Some(element_id) = element_id {
-			let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
-			metadata.click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
-			metadata.footprints.insert(element_id, (footprint, self.transform));
-		}
+		let Some(element_id) = element_id else { return };
+		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+
+		metadata.click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
+		metadata.footprints.insert(element_id, (footprint, self.transform));
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
@@ -838,11 +854,11 @@ impl GraphicElementRendered for Raster {
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
-		if let Some(element_id) = element_id {
-			let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
-			metadata.click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
-			metadata.footprints.insert(element_id, (footprint, self.transform()));
-		}
+		let Some(element_id) = element_id else { return };
+
+		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+		metadata.click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
+		metadata.footprints.insert(element_id, (footprint, self.transform()));
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
@@ -911,6 +927,7 @@ impl GraphicElementRendered for GraphicElement {
 		if let Some(element_id) = element_id {
 			metadata.footprints.insert(element_id, (footprint, self.transform()));
 		}
+
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.collect_metadata(metadata, footprint, element_id),
 			GraphicElement::Raster(raster) => raster.collect_metadata(metadata, footprint, element_id),

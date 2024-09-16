@@ -43,11 +43,8 @@ impl AlphaBlending {
 #[derive(Clone, Debug, PartialEq, DynAny, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GraphicGroup {
-	// TODO: Convert to spread sheet format
 	elements: Vec<(GraphicElement, Option<NodeId>)>,
-	// TODO: Convert to Vec<DAffine2>
 	pub transform: DAffine2,
-	// TODO: Convert to Vec<AlphaBlending>
 	pub alpha_blending: AlphaBlending,
 }
 
@@ -258,7 +255,8 @@ async fn construct_layer<Data: Into<GraphicElement> + Send>(
 		stack.transform = DAffine2::IDENTITY;
 	}
 
-	let encapsulating_node_id = node_path.get(node_path.len() - 2).cloned();
+	// Get the penultimate element of the node path, or None if the path is too short
+	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
 	stack.push((element, encapsulating_node_id));
 	stack
 }
@@ -324,10 +322,8 @@ async fn add_artboard<Data: Into<Artboard> + Send>(
 	let artboard = self.artboard.eval(footprint).await;
 	let mut artboards = self.artboards.eval(footprint).await;
 
-	let encapsulating_node_id = match node_path.len() {
-		len if len >= 2 => node_path.get(len - 2).cloned(),
-		_ => None,
-	};
+	// Get the penultimate element of the node path, or None if the path is too short
+	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
 	artboards.add_artboard(artboard.into(), encapsulating_node_id);
 
 	artboards
