@@ -1,4 +1,5 @@
 use super::node_graph::utility_types::Transform;
+use super::overlays::utility_types::Pivot;
 use super::utility_types::clipboards::Clipboard;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{SnappingOptions, SnappingState, GET_SNAP_BOX_FUNCTIONS, GET_SNAP_GEOMETRY_FUNCTIONS};
@@ -712,6 +713,23 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 							});
 						}
 					}
+				}
+			}
+			DocumentMessage::DrawArtboardOverlays(mut overlay_context) => {
+				for layer in self.metadata().all_layers() {
+					if !self.network_interface.is_artboard(&layer.to_node(), &[]) {
+						continue;
+					}
+					let Some(bounds) = self.metadata().bounding_box_document(layer) else { continue };
+
+					let name = self.network_interface.frontend_display_name(&layer.to_node(), &[]);
+					overlay_context.angle_text(
+						&name,
+						DVec2::ZERO,
+						self.metadata().document_to_viewport * DAffine2::from_translation(bounds[0].min(bounds[1])),
+						5.,
+						Pivot::BottomLeft,
+					);
 				}
 			}
 			DocumentMessage::PasteImage { image, mouse } => {

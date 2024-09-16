@@ -23,7 +23,8 @@ pub fn overlay(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2,
 		overlay_context.line(min_viewport, max_viewport, None);
 		let length = format!("{:.2}", transform_to_document.transform_vector2(DVec2::X * (turn_x - selected_x)).length());
 		let direction = -(min_viewport - max_viewport).normalize_or_zero();
-		overlay_context.angle_text(&length, (min_viewport + max_viewport) / 2., direction, 5., utility_types::Pivot::TopCentreX);
+		let transform = DAffine2::from_angle(-direction.angle_to(DVec2::X));
+		overlay_context.angle_text(&length, (min_viewport + max_viewport) / 2., transform, 5., utility_types::Pivot::TopCentreX);
 	}
 	if turn_y != hovered_y {
 		let min_viewport = transform.transform_point2(DVec2::new(turn_x, turn_y.min(hovered_y)));
@@ -31,6 +32,7 @@ pub fn overlay(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2,
 		overlay_context.line(min_viewport, max_viewport, None);
 		let length = format!("{:.2}", transform_to_document.transform_vector2(DVec2::Y * (turn_y - hovered_y)).length());
 		let direction = (min_viewport - max_viewport).normalize_or_zero().perp();
-		overlay_context.angle_text(&length, (min_viewport + max_viewport) / 2., direction, 5., utility_types::Pivot::LeftCentreY);
+		let transform = DAffine2::from_angle(-direction.angle_to(DVec2::X));
+		overlay_context.angle_text(&length, (min_viewport + max_viewport) / 2., transform, 5., utility_types::Pivot::LeftCentreY);
 	}
 }

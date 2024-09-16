@@ -263,11 +263,11 @@ impl OverlayContext {
 			.expect("Failed to draw the text on the canvas");
 	}
 
-	pub fn angle_text(&self, text: &str, pos: DVec2, direction: DVec2, padding: f64, pivot: Pivot) {
-		self.render_context.translate(pos.x, pos.y).expect("Failed to translate the render context to the specified position");
+	pub fn angle_text(&self, text: &str, pos: DVec2, transform: DAffine2, padding: f64, pivot: Pivot) {
+		let transform = DAffine2::from_translation(pos) * transform;
 
-		let angle = -direction.angle_to(DVec2::X);
-		self.render_context.rotate(angle).expect("Failed to rotate the render context to the specified angle");
+		let [a, b, c, d, e, f] = transform.to_cols_array();
+		self.render_context.set_transform(a, b, c, d, e, f).expect("Failed to rotate the render context to the specified angle");
 
 		let metrics = self.render_context.measure_text(text).expect("Failed to measure the text dimensions");
 
@@ -279,6 +279,7 @@ impl OverlayContext {
 				-(metrics.actual_bounding_box_right() + metrics.actual_bounding_box_left()) / 2.,
 				padding + metrics.font_bounding_box_ascent(),
 			),
+			Pivot::BottomLeft => DVec2::new(padding, -padding),
 		};
 		self.render_context
 			.fill_text(text, local_position.x, local_position.y)
@@ -290,4 +291,5 @@ impl OverlayContext {
 pub enum Pivot {
 	LeftCentreY,
 	TopCentreX,
+	BottomLeft,
 }
