@@ -24,6 +24,7 @@ use crate::quad_tree::QuadTree;
 use crate::vector::{vectors_equal, Vector};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::f64::consts::TAU;
 
 #[derive(Debug, Clone, Copy)]
 pub enum PathBooleanOperation {
@@ -114,11 +115,8 @@ impl MinorGraphEdge {
 fn compare_segments(a: &PathSegment, b: &PathSegment) -> Ordering {
 	let angle_a = a.start_angle();
 	let angle_b = b.start_angle();
-	use std::f64::consts::PI;
 
 	// Normalize angles to [0, 2π)
-	let angle_a = (angle_a + 2.0 * PI) % (2.0 * PI);
-	let angle_b = (angle_b + 2.0 * PI) % (2.0 * PI);
 	let angle_a = (angle_a * 1000.).round() / 1000.;
 	let angle_b = (angle_b * 1000.).round() / 1000.;
 	// dbg!(a, angle_a.to_degrees(), b, angle_b.to_degrees());
@@ -671,12 +669,6 @@ fn get_incidence_angle(edge: &MinorGraphEdge) -> f64 {
 fn sort_outgoing_edges_by_angle(graph: &mut MinorGraph) {
 	for vertex in graph.vertices.values_mut() {
 		if vertex.outgoing_edges.len() > 2 {
-			let edges: Vec<_> = vertex
-				.outgoing_edges
-				.iter()
-				.map(|key| (*key, &graph.edges[*key]))
-				.map(|(key, edge)| ((key.0.as_ffi() & 0xFF), get_incidence_angle(edge)))
-				.collect();
 			vertex.outgoing_edges.sort_by(|&a, &b| {
 				// TODO(@TrueDoctor): Make more robust. The js version seems to sort the data slightly differently when the angles are reallly close. In that case put the edge wich was discovered later first.
 				let new = graph.edges[a].partial_cmp(&graph.edges[b]).unwrap();
@@ -692,7 +684,7 @@ fn sort_outgoing_edges_by_angle(graph: &mut MinorGraph) {
 				.outgoing_edges
 				.iter()
 				.map(|key| (*key, &graph.edges[*key]))
-				.map(|(key, edge)| ((key.0.as_ffi() & 0xFF), get_incidence_angle(edge)))
+				.map(|(key, edge)| ((key.0.as_ffi() & 0xFF), (dbg!(edge.start_segment()).start_angle())))
 				.collect();
 			#[cfg(feature = "logging")]
 			dbg!(edges);
@@ -808,7 +800,7 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 
 	for (start_edge_key, start_edge) in &minor_graph.edges {
 		#[cfg(feature = "logging")]
-		eprintln!("Processing start edge: {}", (start_edge_key.0.as_ffi() & 0xFF) - 1);
+		eprintln!("Processing start edge: {}", (start_edge_key.0.as_ffi() & 0xFF));
 		if minor_to_dual_edge.contains_key(&start_edge_key) {
 			continue;
 		}
@@ -970,6 +962,7 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 		}
 		let outer_face_key = if count != 1 {
 			// return Err(BooleanError::MultipleOuterFaces);
+			eprintln!("Found multiple outer faces: {areas:?}, falling back to area calculation");
 			*areas.iter().max_by_key(|(_, area)| ((area.abs() * 1000.) as u64)).unwrap().0
 		} else {
 			*windings.iter().find(|(&_, winding)| (winding < &0) ^ reverse_winding).expect("No outer face of a component found.").0

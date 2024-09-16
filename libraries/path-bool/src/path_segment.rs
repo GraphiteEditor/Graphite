@@ -7,7 +7,8 @@ use std::f64::consts::{PI, TAU};
 
 use crate::aabb::{bounding_box_around_point, expand_bounding_box, extend_bounding_box, merge_bounding_boxes, AaBb};
 use crate::math::{deg2rad, lerp, vector_angle};
-use crate::vector::Vector;
+use crate::vector::{vectors_equal, Vector};
+use crate::EPS;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PathSegment {
@@ -21,8 +22,16 @@ impl PathSegment {
 	pub fn start_angle(&self) -> f64 {
 		let angle = match *self {
 			PathSegment::Line(start, end) => (end - start).angle_to(DVec2::X),
-			PathSegment::Cubic(start, control1, _, _) => (control1 - start).angle_to(DVec2::X),
-			PathSegment::Quadratic(start, control, _) => (control - start).angle_to(DVec2::X),
+			PathSegment::Cubic(start, control1, control2, _) => {
+				let diff = control1 - start;
+				if vectors_equal(diff, DVec2::ZERO, EPS.point) {
+					(control2 - start).angle_to(DVec2::X)
+				} else {
+					diff.angle_to(DVec2::X)
+				}
+			}
+			// Apply same logic as for cubic bezier
+			PathSegment::Quadratic(start, control, _) => (control - start).to_angle(),
 			PathSegment::Arc(..) => arc_segment_to_cubics(self, 0.001)[0].start_angle(),
 		};
 		use std::f64::consts::TAU;
