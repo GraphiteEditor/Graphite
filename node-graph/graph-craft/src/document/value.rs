@@ -1,15 +1,16 @@
 use super::DocumentNode;
-use crate::document::NodeId;
 pub use crate::imaginate_input::{ImaginateCache, ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use crate::proto::{Any as DAny, FutureAny};
 use crate::wasm_application_io::WasmEditorApi;
 
-use graphene_core::raster::brush_cache::BrushCache;
-use graphene_core::raster::{BlendMode, LuminanceCalculation};
-use graphene_core::{Color, MemoHash, Node, Type};
-
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
+use graphene_core::raster::brush_cache::BrushCache;
+use graphene_core::raster::{BlendMode, LuminanceCalculation};
+use graphene_core::renderer::RenderMetadata;
+use graphene_core::uuid::NodeId;
+use graphene_core::{Color, MemoHash, Node, Type};
+
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use std::fmt::Display;
 use std::hash::Hash;
@@ -193,6 +194,7 @@ impl TaggedValue {
 			_ => panic!("Cannot convert to primitive string"),
 		}
 	}
+
 	pub fn from_primitive_string(string: &str, ty: &Type) -> Option<Self> {
 		match ty {
 			Type::Generic(_) => None,
@@ -215,6 +217,13 @@ impl TaggedValue {
 			}
 			Type::Fn(_, output) => TaggedValue::from_primitive_string(string, output),
 			Type::Future(_) => None,
+		}
+	}
+
+	pub fn to_u32(&self) -> u32 {
+		match self {
+			TaggedValue::U32(x) => *x,
+			_ => panic!("Passed value is not of type u32"),
 		}
 	}
 }
@@ -264,12 +273,25 @@ impl<T: AsRef<U> + Sync + Send, U: Sync + Send> UpcastAsRefNode<T, U> {
 	}
 }
 
+#[derive(Debug, Clone, PartialEq, dyn_any::DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct RenderOutput {
+	pub data: RenderOutputType,
+	pub metadata: RenderMetadata,
+}
+
 #[derive(Debug, Clone, PartialEq, dyn_any::DynAny, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum RenderOutput {
+pub enum RenderOutputType {
 	CanvasFrame(graphene_core::SurfaceFrame),
 	Svg(String),
 	Image(Vec<u8>),
+}
+
+impl Hash for RenderOutput {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.data.hash(state)
+	}
 }
 
 /// We hash the floats and so-forth despite it not being reproducible because all inputs to the node graph must be hashed otherwise the graph execution breaks (so sorry about this hack)

@@ -212,16 +212,15 @@ impl Fsm for RectangleToolFsmState {
 				let nodes = vec![(NodeId(0), node)];
 
 				let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, document.new_layer_parent(true), responses);
-				tool_options.fill.apply_fill(layer, responses);
-				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
-				shape_data.layer = Some(layer);
-
 				responses.add(GraphOperationMessage::TransformSet {
 					layer,
 					transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
 					transform_in: TransformIn::Viewport,
 					skip_rerender: false,
 				});
+				tool_options.fill.apply_fill(layer, responses);
+				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
+				shape_data.layer = Some(layer);
 
 				RectangleToolFsmState::Drawing
 			}
@@ -231,7 +230,7 @@ impl Fsm for RectangleToolFsmState {
 						// TODO: make the scale impact the rect node
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
-							transform: DAffine2::from_scale_angle_translation(end - start, 0., (start + end) / 2.),
+							transform: DAffine2::from_scale_angle_translation((end - start).abs(), 0., (start + end) / 2.),
 							transform_in: TransformIn::Viewport,
 							skip_rerender: false,
 						});

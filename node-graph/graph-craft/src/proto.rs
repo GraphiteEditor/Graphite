@@ -1,6 +1,7 @@
 use crate::document::{value, InlineRust};
 use crate::document::{NodeId, OriginalLocation};
 
+pub use graphene_core::registry::*;
 use graphene_core::*;
 
 use rustc_hash::FxHashMap;
@@ -9,8 +10,6 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
-
-pub use graphene_core::registry::*;
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Default, PartialEq, Clone, Hash, Eq)]

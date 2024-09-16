@@ -1,4 +1,4 @@
-name: "Editor: CI & Dev"
+name: "Editor: Dev & CI"
 
 on:
   push:

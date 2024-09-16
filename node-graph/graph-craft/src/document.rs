@@ -4,7 +4,9 @@ use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 use dyn_any::DynAny;
 use graphene_core::memo::MemoHashGuard;
 pub use graphene_core::uuid::generate_uuid;
+pub use graphene_core::uuid::NodeId;
 use graphene_core::{Cow, MemoHash, ProtoNodeIdentifier, Type};
+pub mod value;
 
 use glam::IVec2;
 use log::Metadata;
@@ -13,27 +15,8 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
-pub mod value;
-
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize, specta::Type, DynAny)]
-pub struct NodeId(pub u64);
-
-// TODO: Find and replace all `NodeId(generate_uuid())` with `NodeId::new()`.
-impl NodeId {
-	pub fn new() -> Self {
-		Self(generate_uuid())
-	}
-}
-
-impl core::fmt::Display for NodeId {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		write!(f, "{}", self.0)
-	}
-}
-
-/// Hash two IDs together, returning a new ID that is always consistant for two input IDs in a specific order.
-/// This is used during [`NodeNetwork::flatten`] in order to ensure consistant yet non-conflicting IDs for inner networks.
+/// Hash two IDs together, returning a new ID that is always consistent for two input IDs in a specific order.
+/// This is used during [`NodeNetwork::flatten`] in order to ensure consistent yet non-conflicting IDs for inner networks.
 fn merge_ids(a: NodeId, b: NodeId) -> NodeId {
 	let mut hasher = DefaultHasher::new();
 	a.hash(&mut hasher);

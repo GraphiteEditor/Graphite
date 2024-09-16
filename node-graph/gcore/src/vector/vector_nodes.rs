@@ -16,9 +16,10 @@ trait VectorIterMut {
 
 impl VectorIterMut for GraphicGroup {
 	fn vector_iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut VectorData> {
-		self.iter_mut().filter_map(|element| element.as_vector_data_mut()).collect::<Vec<_>>().into_iter()
+		self.iter_mut().filter_map(|(element, _)| element.as_vector_data_mut()).collect::<Vec<_>>().into_iter()
 	}
 }
+
 impl VectorIterMut for VectorData {
 	fn vector_iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut VectorData> {
 		std::iter::once(self)
@@ -101,6 +102,7 @@ async fn stroke(
 		line_cap,
 		line_join,
 		line_join_miter_limit: miter_limit,
+		transform: vector_data.transform,
 	});
 	vector_data
 }
@@ -231,9 +233,9 @@ pub trait ConcatElement {
 impl ConcatElement for GraphicGroup {
 	fn concat(&mut self, other: &Self, transform: DAffine2) {
 		// TODO: Decide if we want to keep this behavior whereby the layers are flattened
-		for mut element in other.iter().cloned() {
+		for (mut element, footprint_mapping) in other.iter().cloned() {
 			*element.transform_mut() = transform * element.transform() * other.transform();
-			self.push(element);
+			self.push((element, footprint_mapping));
 		}
 		self.alpha_blending = other.alpha_blending;
 	}

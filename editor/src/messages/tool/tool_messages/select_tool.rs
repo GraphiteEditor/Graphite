@@ -391,6 +391,9 @@ impl SelectToolData {
 			})
 			.collect();
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
+		responses.add(NodeGraphMessage::RunDocumentGraph);
+		responses.add(NodeGraphMessage::SelectedNodesUpdated);
+		responses.add(NodeGraphMessage::SendGraph);
 		self.layers_dragging = original;
 	}
 }
@@ -413,12 +416,13 @@ impl Fsm for SelectToolFsmState {
 				tool_data.selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
 				tool_data.selected_layers_count = selected_layers_count;
 
-				// Outline selected layers
+				// Outline selected layers, but not artboards
 				for layer in document
 					.network_interface
 					.selected_nodes(&[])
 					.unwrap()
 					.selected_visible_and_unlocked_layers(&document.network_interface)
+					.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 				{
 					overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
 				}
@@ -429,7 +433,7 @@ impl Fsm for SelectToolFsmState {
 					.selected_nodes(&[])
 					.unwrap()
 					.selected_visible_and_unlocked_layers(&document.network_interface)
-					.next()
+					.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 					.map(|layer| document.metadata().transform_to_viewport(layer));
 				let transform = transform.unwrap_or(DAffine2::IDENTITY);
 				if transform.matrix2.determinant() == 0. {
@@ -440,6 +444,7 @@ impl Fsm for SelectToolFsmState {
 					.selected_nodes(&[])
 					.unwrap()
 					.selected_visible_and_unlocked_layers(&document.network_interface)
+					.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 					.filter_map(|layer| {
 						document
 							.metadata()
@@ -649,7 +654,6 @@ impl Fsm for SelectToolFsmState {
 					}
 
 					if let Some(intersection) = intersection {
-
 						tool_data.layer_selected_on_start = Some(intersection);
 						selected = intersection_list;
 
@@ -694,7 +698,7 @@ impl Fsm for SelectToolFsmState {
 				let axis_align = input.keyboard.key(modifier_keys.axis_align);
 
 				// Ignore the non duplicated layers if the current layers have not spawned yet.
-				let layers_exist = tool_data.layers_dragging.iter().all(|&layer| document.metadata().click_target(layer).is_some());
+				let layers_exist = tool_data.layers_dragging.iter().all(|&layer| document.metadata().click_targets(layer).is_some());
 				let ignore = tool_data.non_duplicated_layers.as_ref().filter(|_| !layers_exist).unwrap_or(&tool_data.layers_dragging);
 
 				let snap_data = SnapData::ignore(document, input, ignore);
@@ -1195,9 +1199,12 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 }
 
 fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
-	tool_data.layers_dragging.append(&mut vec![document
-		.find_deepest(&selected)
-		.unwrap_or(LayerNodeIdentifier::ROOT_PARENT.children(document.metadata()).next().expect("Child should exist when dragging deepest"))]);
+	tool_data.layers_dragging.append(&mut vec![document.find_deepest(&selected).unwrap_or(
+		LayerNodeIdentifier::ROOT_PARENT
+			.children(document.metadata())
+			.next()
+			.expect("ROOT_PARENT should have a layer child when clicking"),
+	)]);
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data
 			.layers_dragging

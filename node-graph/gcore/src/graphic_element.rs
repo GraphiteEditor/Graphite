@@ -1,6 +1,7 @@
 use crate::application_io::TextureFrame;
 use crate::raster::{BlendMode, ImageFrame};
 use crate::transform::{ApplyTransform, Footprint, Transform, TransformMut};
+use crate::uuid::NodeId;
 use crate::vector::VectorData;
 use crate::Color;
 
@@ -42,7 +43,7 @@ impl AlphaBlending {
 #[derive(Clone, Debug, PartialEq, DynAny, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GraphicGroup {
-	elements: Vec<GraphicElement>,
+	elements: Vec<(GraphicElement, Option<NodeId>)>,
 	pub transform: DAffine2,
 	pub alpha_blending: AlphaBlending,
 }
@@ -64,7 +65,7 @@ impl GraphicGroup {
 
 	pub fn new(elements: Vec<GraphicElement>) -> Self {
 		Self {
-			elements,
+			elements: elements.into_iter().map(|element| (element, None)).collect(),
 			transform: DAffine2::IDENTITY,
 			alpha_blending: AlphaBlending::new(),
 		}
@@ -216,7 +217,7 @@ impl Artboard {
 #[derive(Clone, Default, Debug, Hash, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ArtboardGroup {
-	pub artboards: Vec<Artboard>,
+	pub artboards: Vec<(Artboard, Option<NodeId>)>,
 }
 
 impl ArtboardGroup {
@@ -226,8 +227,8 @@ impl ArtboardGroup {
 		Default::default()
 	}
 
-	fn add_artboard(&mut self, artboard: Artboard) {
-		self.artboards.push(artboard);
+	fn add_artboard(&mut self, artboard: Artboard, node_id: Option<NodeId>) {
+		self.artboards.push((artboard, node_id));
 	}
 }
 
@@ -236,10 +237,20 @@ async fn construct_layer<F: 'n + Copy + Send>(
 	#[implementations((), Footprint)] footprint: F,
 	#[implementations(((), GraphicGroup), (Footprint, GraphicGroup))] stack: impl Node<F, Output = GraphicGroup>,
 	#[implementations(((), GraphicElement), (Footprint, GraphicElement))] graphic_element: impl Node<F, Output = GraphicElement>,
+	node_path: Vec<NodeId>,
 ) -> GraphicGroup {
-	let graphic_element = graphic_element.eval(footprint).await;
+	let mut element = graphic_element.eval(footprint).await;
 	let mut stack = stack.eval(footprint).await;
-	stack.push(graphic_element);
+	if stack.transform.matrix2.determinant() != 0. {
+		*element.transform_mut() = stack.transform.inverse() * element.transform();
+	} else {
+		stack.clear();
+		stack.transform = DAffine2::IDENTITY;
+	}
+
+	// Get the penultimate element of the node path, or None if the path is too short
+	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
+	stack.push((element, encapsulating_node_id));
 	stack
 }
 
@@ -306,11 +317,14 @@ async fn add_artboard<F: 'n + Copy + Send>(
 	#[implementations((), Footprint)] footprint: F,
 	#[implementations(((), ArtboardGroup), (Footprint, ArtboardGroup))] artboards: impl Node<F, Output = ArtboardGroup>,
 	#[implementations(((), Artboard), (Footprint, Artboard))] artboard: impl Node<F, Output = Artboard>,
+	node_path: Vec<NodeId>,
 ) -> ArtboardGroup {
 	let artboard = artboard.eval(footprint).await;
 	let mut artboards = artboards.eval(footprint).await;
 
-	artboards.add_artboard(artboard);
+	// Get the penultimate element of the node path, or None if the path is too short
+	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
+	artboards.add_artboard(artboard, encapsulating_node_id);
 
 	artboards
 }
@@ -337,7 +351,7 @@ impl From<GraphicGroup> for GraphicElement {
 }
 
 impl Deref for GraphicGroup {
-	type Target = Vec<GraphicElement>;
+	type Target = Vec<(GraphicElement, Option<NodeId>)>;
 	fn deref(&self) -> &Self::Target {
 		&self.elements
 	}
@@ -363,7 +377,7 @@ where
 {
 	fn from(value: T) -> Self {
 		Self {
-			elements: (vec![value.into()]),
+			elements: (vec![(value.into(), None)]),
 			transform: DAffine2::IDENTITY,
 			alpha_blending: AlphaBlending::default(),
 		}

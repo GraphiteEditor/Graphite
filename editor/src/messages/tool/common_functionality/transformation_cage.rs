@@ -295,25 +295,37 @@ impl BoundingBoxManager {
 		}
 	}
 
+	/// Compute the threshold in viewport space. This only works with affine transforms as it assumes lines remain parallel.
+	fn compute_viewport_threshold(&self, scalar: f64) -> [f64; 2] {
+		let inverse = self.transform.inverse();
+
+		let viewport_x = self.transform.transform_vector2(DVec2::X).normalize_or_zero() * scalar;
+		let viewport_y = self.transform.transform_vector2(DVec2::Y).normalize_or_zero() * scalar;
+		let threshold_x = inverse.transform_vector2(viewport_x).length();
+		let threshold_y = inverse.transform_vector2(viewport_y).length();
+		[threshold_x, threshold_y]
+	}
+
 	/// Check if the user has selected the edge for dragging (returns which edge in order top, bottom, left, right)
 	pub fn check_selected_edges(&self, cursor: DVec2) -> Option<(bool, bool, bool, bool)> {
 		let cursor = self.transform.inverse().transform_point2(cursor);
-		let select_threshold = self.transform.inverse().transform_vector2(DVec2::new(0., BOUNDS_SELECT_THRESHOLD)).length();
 
 		let min = self.bounds[0].min(self.bounds[1]);
 		let max = self.bounds[0].max(self.bounds[1]);
-		if min.x - cursor.x < select_threshold && min.y - cursor.y < select_threshold && cursor.x - max.x < select_threshold && cursor.y - max.y < select_threshold {
-			let mut top = (cursor.y - min.y).abs() < select_threshold;
-			let mut bottom = (max.y - cursor.y).abs() < select_threshold;
-			let mut left = (cursor.x - min.x).abs() < select_threshold;
-			let mut right = (max.x - cursor.x).abs() < select_threshold;
+		let [threshold_x, threshold_y] = self.compute_viewport_threshold(BOUNDS_SELECT_THRESHOLD);
+
+		if min.x - cursor.x < threshold_x && min.y - cursor.y < threshold_y && cursor.x - max.x < threshold_x && cursor.y - max.y < threshold_y {
+			let mut top = (cursor.y - min.y).abs() < threshold_y;
+			let mut bottom = (max.y - cursor.y).abs() < threshold_y;
+			let mut left = (cursor.x - min.x).abs() < threshold_x;
+			let mut right = (max.x - cursor.x).abs() < threshold_x;
 
 			// Prioritise single axis transformations on very small bounds
-			if cursor.y - min.y + max.y - cursor.y < select_threshold * 2. && (left || right) {
+			if cursor.y - min.y + max.y - cursor.y < threshold_y * 2. && (left || right) {
 				top = false;
 				bottom = false;
 			}
-			if cursor.x - min.x + max.x - cursor.x < select_threshold * 2. && (top || bottom) {
+			if cursor.x - min.x + max.x - cursor.x < threshold_x * 2. && (top || bottom) {
 				left = false;
 				right = false;
 			}
@@ -339,13 +351,13 @@ impl BoundingBoxManager {
 	/// Check if the user is rotating with the bounds
 	pub fn check_rotate(&self, cursor: DVec2) -> bool {
 		let cursor = self.transform.inverse().transform_point2(cursor);
-		let rotate_threshold = self.transform.inverse().transform_vector2(DVec2::new(0., BOUNDS_ROTATE_THRESHOLD)).length();
+		let [threshold_x, threshold_y] = self.compute_viewport_threshold(BOUNDS_ROTATE_THRESHOLD);
 
 		let min = self.bounds[0].min(self.bounds[1]);
 		let max = self.bounds[0].max(self.bounds[1]);
 
 		let outside_bounds = (min.x > cursor.x || cursor.x > max.x) || (min.y > cursor.y || cursor.y > max.y);
-		let inside_extended_bounds = min.x - cursor.x < rotate_threshold && min.y - cursor.y < rotate_threshold && cursor.x - max.x < rotate_threshold && cursor.y - max.y < rotate_threshold;
+		let inside_extended_bounds = min.x - cursor.x < threshold_x && min.y - cursor.y < threshold_y && cursor.x - max.x < threshold_x && cursor.y - max.y < threshold_y;
 
 		outside_bounds & inside_extended_bounds
 	}

@@ -22,7 +22,6 @@ pub struct DocumentMetadata {
 	pub structure: HashMap<LayerNodeIdentifier, NodeRelations>,
 	pub click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	pub vector_modify: HashMap<NodeId, VectorData>,
-	// TODO: Remove and derive from document_ptz in document message handler
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
 }
@@ -52,7 +51,7 @@ impl DocumentMetadata {
 		self.structure.contains_key(&layer)
 	}
 
-	pub fn click_target(&self, layer: LayerNodeIdentifier) -> Option<&Vec<ClickTarget>> {
+	pub fn click_targets(&self, layer: LayerNodeIdentifier) -> Option<&Vec<ClickTarget>> {
 		self.click_targets.get(&layer)
 	}
 
@@ -71,29 +70,15 @@ impl DocumentMetadata {
 // ============================
 
 impl DocumentMetadata {
-	/// Update the cached transforms of the layers
-	pub fn update_transforms(&mut self, new_upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>) {
-		self.upstream_transforms = new_upstream_transforms;
-	}
-
 	/// Access the cached transformation to document space from layer space
 	pub fn transform_to_document(&self, layer: LayerNodeIdentifier) -> DAffine2 {
 		self.document_to_viewport.inverse() * self.transform_to_viewport(layer)
 	}
 
 	pub fn transform_to_viewport(&self, layer: LayerNodeIdentifier) -> DAffine2 {
-		layer
-			.ancestors(self)
-			.filter_map(|ancestor_layer| {
-				if ancestor_layer != LayerNodeIdentifier::ROOT_PARENT {
-					self.upstream_transforms.get(&ancestor_layer.to_node())
-				} else {
-					None
-				}
-			})
-			.copied()
-			.map(|(footprint, transform)| footprint.transform * transform)
-			.next()
+		self.upstream_transforms
+			.get(&layer.to_node())
+			.map(|(footprint, transform)| footprint.transform * *transform)
 			.unwrap_or(self.document_to_viewport)
 	}
 
@@ -119,16 +104,9 @@ impl DocumentMetadata {
 // ===============================
 
 impl DocumentMetadata {
-	/// Update the cached click targets and vector modify values of the layers
-	pub fn update_from_monitor(&mut self, new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>, new_vector_modify: HashMap<NodeId, VectorData>) {
-		self.click_targets = new_click_targets;
-		self.vector_modify = new_vector_modify;
-	}
-
 	/// Get the bounding box of the click target of the specified layer in the specified transform space
 	pub fn bounding_box_with_transform(&self, layer: LayerNodeIdentifier, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.click_targets
-			.get(&layer)?
+		self.click_targets(layer)?
 			.iter()
 			.filter_map(|click_target| click_target.subpath().bounding_box_with_transform(transform))
 			.reduce(Quad::combine_bounds)

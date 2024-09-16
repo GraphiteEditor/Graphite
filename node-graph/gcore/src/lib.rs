@@ -57,7 +57,7 @@ pub use types::Cow;
 /// See `node-graph/README.md` for information on how to define a new node.
 pub trait Node<'i, Input: 'i>: 'i {
 	type Output: 'i;
-	/// Evalutes the node with the single specified input.
+	/// Evaluates the node with the single specified input.
 	fn eval(&'i self, input: Input) -> Self::Output;
 	/// Resets the node, e.g. the LetNode's cache is set to None.
 	fn reset(&self) {}

@@ -132,7 +132,7 @@ The definition for the constructor of a node that applies the opacity transforma
 		Box::pin(async move {
 			// Creates an instance of the struct that defines the node.
 			let node = construct_node!(args, graphene_core::raster::OpacityNode<_>, [f64]).await;
-			// Create a new map image node, that calles the `node` for each pixel.
+			// Create a new map image node, that calls the `node` for each pixel.
 			let map_node = graphene_std::raster::MapImageNode::new(graphene_core::value::ValueNode::new(node));
 			// Wraps this in a type erased future `Box<Pin<dyn core::future::Future<Output = T> + 'n>>` - this allows it to work with async.
 			let map_node = graphene_std::any::FutureWrapperNode::new(map_node);

@@ -428,7 +428,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						{
 							let node_definition = resolve_document_node_type(reference).unwrap();
 							let default_definition_node = node_definition.default_node_template();
-							document.network_interface.set_implementation(node_id, &[], default_definition_node.document_node.implementation);
+							document.network_interface.replace_implementation(node_id, &[], default_definition_node.document_node.implementation);
+							document
+								.network_interface
+								.replace_implementation_metadata(node_id, &[], default_definition_node.persistent_node_metadata);
 						}
 					}
 				}
@@ -463,7 +466,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						// if ["Fill", "Stroke", "Splines from Points", "Sample Subpaths", "Sample Points", "Copy to Points", "Path", "Scatter Points"].contains(&reference.as_str()) {
 						// 	document.network_interface.set_implementation(node_id, &[], document_node.implementation);
 						// }
-						document.network_interface.set_implementation(node_id, &[], document_node.implementation);
+						document.network_interface.replace_implementation(node_id, &[], document_node.implementation);
 					}
 					let Some(node) = document.network_interface.network(&[]).unwrap().nodes.get(node_id) else {
 						log::error!("could not get node in deserialize_document");
@@ -473,7 +476,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					if reference == "Fill" && node.inputs.len() == 8 {
 						let node_definition = resolve_document_node_type(reference).unwrap();
 						let document_node = node_definition.default_node_template().document_node;
-						document.network_interface.set_implementation(node_id, &[], document_node.implementation.clone());
+						document.network_interface.replace_implementation(node_id, &[], document_node.implementation.clone());
 
 						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), &[]);
 
@@ -525,6 +528,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 									.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Gradient(gradient), false), &[]);
 							}
 						}
+					}
+
+					// Upgrade construct layer implementation from https://github.com/GraphiteEditor/Graphite/pull/1946
+					if reference == "Merge" || reference == "Artboard" {
+						let node_definition = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type(reference).unwrap();
+						let new_merge_node = node_definition.default_node_template();
+						document.network_interface.replace_implementation(node_id, &[], new_merge_node.document_node.implementation)
 					}
 
 					// Upgrade artboard name being passed as hidden value input to "To Artboard"

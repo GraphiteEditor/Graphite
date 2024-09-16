@@ -1,3 +1,5 @@
+use dyn_any::StaticType;
+use graph_craft::document::value::RenderOutput;
 use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_core::fn_type;
@@ -20,7 +22,6 @@ use graphene_std::GraphicElement;
 use wgpu_executor::{ShaderInputFrame, WgpuExecutor};
 use wgpu_executor::{WgpuSurface, WindowHandle};
 
-use dyn_any::StaticType;
 use glam::{DAffine2, DVec2, UVec2};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;

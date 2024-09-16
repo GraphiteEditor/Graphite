@@ -1,4 +1,5 @@
-pub use graph_craft::document::value::RenderOutput;
+use graph_craft::document::value::RenderOutput;
+pub use graph_craft::document::value::RenderOutputType;
 pub use graph_craft::wasm_application_io::*;
 #[cfg(target_arch = "wasm32")]
 use graphene_core::application_io::SurfaceHandle;
@@ -7,6 +8,7 @@ use graphene_core::application_io::{ApplicationIo, ExportFormat, RenderConfig};
 use graphene_core::raster::bbox::Bbox;
 use graphene_core::raster::Image;
 use graphene_core::raster::ImageFrame;
+use graphene_core::renderer::RenderMetadata;
 use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
 use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorData;
@@ -17,6 +19,7 @@ use graphene_core::{Color, WasmNotSend};
 use base64::Engine;
 #[cfg(target_arch = "wasm32")]
 use glam::DAffine2;
+use std::collections::HashMap;
 use std::sync::Arc;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::Clamped;
@@ -71,7 +74,7 @@ fn decode_image(_: (), data: Arc<[u8]>) -> ImageFrame<Color> {
 	image
 }
 
-fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_params: RenderParams, footprint: Footprint) -> RenderOutput {
+fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_params: RenderParams, footprint: Footprint) -> RenderOutputType {
 	if !data.contains_artboard() && !render_params.hide_artboards {
 		render.leaf_tag("rect", |attributes| {
 			attributes.push("x", "0");
@@ -87,42 +90,43 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 	}
 
 	data.render_svg(&mut render, &render_params);
+
 	render.wrap_with_transform(footprint.transform, Some(footprint.resolution.as_dvec2()));
 
-	RenderOutput::Svg(render.svg.to_svg_string())
+	RenderOutputType::Svg(render.svg.to_svg_string())
 }
 
 #[cfg(feature = "vello")]
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
-async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRendered, editor: &WasmEditorApi, surface_handle: wgpu_executor::WgpuSurface) -> RenderOutput {
+async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRendered, editor: &WasmEditorApi, surface_handle: wgpu_executor::WgpuSurface) -> RenderOutputType {
 	use graphene_core::SurfaceFrame;
 
-	if let Some(exec) = editor.application_io.as_ref().unwrap().gpu_executor() {
-		use vello::*;
-
-		let footprint = render_config.viewport;
-
-		let mut scene = Scene::new();
-		let mut child = Scene::new();
-
-		let mut context = wgpu_executor::RenderContext::default();
-		data.render_to_vello(&mut child, glam::DAffine2::IDENTITY, &mut context);
-
-		// TODO: Instead of applying the transform here, pass the transform during the translation to avoid the O(Nr cost
-		scene.append(&child, Some(kurbo::Affine::new(footprint.transform.to_cols_array())));
-
-		exec.render_vello_scene(&scene, &surface_handle, footprint.resolution.x, footprint.resolution.y, &context)
-			.await
-			.expect("Failed to render Vello scene");
-	} else {
+	let footprint = render_config.viewport;
+	let Some(exec) = editor.application_io.as_ref().unwrap().gpu_executor() else {
 		unreachable!("Attempted to render with Vello when no GPU executor is available");
-	}
+	};
+	use vello::*;
+
+	let mut scene = Scene::new();
+	let mut child = Scene::new();
+
+	let mut context = wgpu_executor::RenderContext::default();
+	data.render_to_vello(&mut child, glam::DAffine2::IDENTITY, &mut context);
+
+	// TODO: Instead of applying the transform here, pass the transform during the translation to avoid the O(Nr cost
+	scene.append(&child, Some(kurbo::Affine::new(footprint.transform.to_cols_array())));
+
+	exec.render_vello_scene(&scene, &surface_handle, footprint.resolution.x, footprint.resolution.y, &context)
+		.await
+		.expect("Failed to render Vello scene");
+
 	let frame = SurfaceFrame {
 		surface_id: surface_handle.window_id,
 		resolution: render_config.viewport.resolution,
 		transform: glam::DAffine2::IDENTITY,
 	};
-	RenderOutput::CanvasFrame(frame)
+
+	RenderOutputType::CanvasFrame(frame)
 }
 
 #[node_macro::node]
@@ -212,13 +216,23 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
 	let use_vello = use_vello && surface_handle.is_some();
 
+	let mut metadata = RenderMetadata {
+		footprints: HashMap::new(),
+		click_targets: HashMap::new(),
+		vector_data: HashMap::new(),
+	};
+	data.collect_metadata(&mut metadata, footprint, None);
+
 	let output_format = render_config.export_format;
-	match output_format {
+	let data = match output_format {
 		ExportFormat::Svg => render_svg(data, SvgRender::new(), render_params, footprint),
 		ExportFormat::Canvas => {
 			if use_vello && editor_api.application_io.as_ref().unwrap().gpu_executor().is_some() {
 				#[cfg(all(feature = "vello", target_arch = "wasm32"))]
-				return render_canvas(render_config, data, editor_api, surface_handle.unwrap()).await;
+				return RenderOutput {
+					data: render_canvas(render_config, data, editor_api, surface_handle.unwrap()).await,
+					metadata,
+				};
 				#[cfg(not(all(feature = "vello", target_arch = "wasm32")))]
 				render_svg(data, SvgRender::new(), render_params, footprint)
 			} else {
@@ -226,5 +240,6 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 			}
 		}
 		_ => todo!("Non-SVG render output for {output_format:?}"),
-	}
+	};
+	RenderOutput { data, metadata }
 }

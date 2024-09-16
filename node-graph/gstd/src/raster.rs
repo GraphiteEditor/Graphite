@@ -185,7 +185,7 @@ fn mask_image<
 		return image;
 	}
 
-	// Transforms a point from the background image to the forground image
+	// Transforms a point from the background image to the foreground image
 	let bg_to_fg = image.transform() * DAffine2::from_scale(1. / image_size);
 	let stencil_transform_inverse = stencil.transform().inverse();
 
@@ -244,7 +244,7 @@ where
 	MapFn: Fn(_P, _P) -> _P,
 {
 	let background_size = DVec2::new(background.width() as f64, background.height() as f64);
-	// Transforms a point from the background image to the forground image
+	// Transforms a point from the background image to the foreground image
 	let bg_to_fg = background.transform() * DAffine2::from_scale(1. / background_size);
 
 	// Footprint of the foreground image (0,0) (1, 1) in the background image space
