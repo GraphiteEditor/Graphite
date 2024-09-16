@@ -72,6 +72,22 @@ impl PathSegment {
 			PathSegment::Arc(..) => arc_segment_to_cubics(self, 0.001)[0].start_curvature(),
 		}
 	}
+	pub fn to_cubic(&self) -> [DVec2; 4] {
+		match *self {
+			PathSegment::Line(start, end) => [start, start, end, end],
+			PathSegment::Cubic(s, c1, c2, e) => [s, c1, c2, e],
+			PathSegment::Quadratic(start, control, end) => {
+				// C0 = Q0
+				// C1 = Q0 + (2/3) (Q1 - Q0)
+				// C2 = Q2 + (2/3) (Q1 - Q2)
+				// C3 = Q2
+				let d1 = control - start;
+				let d2 = control - end;
+				[start, start + (2. / 3.) * d1, end + (2. / 3.) * d2, end]
+			}
+			PathSegment::Arc(..) => unimplemented!(),
+		}
+	}
 }
 
 pub struct PathArcSegmentCenterParametrization {

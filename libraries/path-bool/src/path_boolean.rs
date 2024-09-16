@@ -46,7 +46,7 @@ const INTERSECTION_TREE_DEPTH: usize = 8;
 const POINT_TREE_DEPTH: usize = 8;
 
 pub const EPS: Epsilons = Epsilons {
-	point: 1e-6,
+	point: 1e-5,
 	linear: 1e-4,
 	param: 1e-8,
 };
@@ -253,7 +253,7 @@ fn segment_to_edge(parent: u8) -> impl Fn(&PathSegment) -> Option<MajorGraphEdge
 			// Convert Line Segments expressed as cubic beziers to proper line segments
 			PathSegment::Cubic(start, _, _, end) => {
 				let direction = sample_path_segment_at(seg, 0.1);
-				if (*end - *start).angle_to(direction - *start).abs() < EPS.param * 4. {
+				if (*end - *start).angle_to(direction - *start).abs() < EPS.point * 4. {
 					Some((PathSegment::Line(*start, *end), parent))
 				} else {
 					Some((*seg, parent))

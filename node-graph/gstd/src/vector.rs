@@ -8,6 +8,7 @@ use graphene_core::{Color, GraphicElement, GraphicGroup};
 
 use glam::{DAffine2, DVec2};
 use path_bool::PathBooleanOperation;
+use resvg::tiny_skia::PathSegment;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
@@ -60,8 +61,8 @@ fn boolean_operation(group_of_paths: GraphicGroup, operation: BooleanOperation) 
 		while let Some(lower_vector_data) = next_vector_data {
 			let transform_of_lower_into_space_of_upper = result.transform.inverse() * lower_vector_data.transform;
 
-			let upper_path_string = to_svg_string(&result, DAffine2::IDENTITY);
-			let lower_path_string = to_svg_string(lower_vector_data, transform_of_lower_into_space_of_upper);
+			let upper_path_string = to_path(&result, DAffine2::IDENTITY);
+			let lower_path_string = to_path(lower_vector_data, transform_of_lower_into_space_of_upper);
 
 			#[allow(unused_unsafe)]
 			let boolean_operation_string = unsafe { boolean_subtract(upper_path_string, lower_path_string) };
@@ -89,8 +90,8 @@ fn boolean_operation(group_of_paths: GraphicGroup, operation: BooleanOperation) 
 				while let Some(lower_vector_data) = second_vector_data {
 					let transform_of_lower_into_space_of_upper = result.transform.inverse() * lower_vector_data.transform;
 
-					let upper_path_string = to_svg_string(&result, DAffine2::IDENTITY);
-					let lower_path_string = to_svg_string(lower_vector_data, transform_of_lower_into_space_of_upper);
+					let upper_path_string = to_path(&result, DAffine2::IDENTITY);
+					let lower_path_string = to_path(lower_vector_data, transform_of_lower_into_space_of_upper);
 
 					#[allow(unused_unsafe)]
 					let boolean_operation_string = unsafe { boolean_union(upper_path_string, lower_path_string) };
@@ -115,8 +116,8 @@ fn boolean_operation(group_of_paths: GraphicGroup, operation: BooleanOperation) 
 				while let Some(lower_vector_data) = second_vector_data {
 					let transform_of_lower_into_space_of_upper = result.transform.inverse() * lower_vector_data.transform;
 
-					let upper_path_string = to_svg_string(&result, DAffine2::IDENTITY);
-					let lower_path_string = to_svg_string(lower_vector_data, transform_of_lower_into_space_of_upper);
+					let upper_path_string = to_path(&result, DAffine2::IDENTITY);
+					let lower_path_string = to_path(lower_vector_data, transform_of_lower_into_space_of_upper);
 
 					#[allow(unused_unsafe)]
 					let boolean_operation_string = unsafe { boolean_intersect(upper_path_string, lower_path_string) };
@@ -141,8 +142,8 @@ fn boolean_operation(group_of_paths: GraphicGroup, operation: BooleanOperation) 
 
 					let transform_of_lower_into_space_of_upper = all_other_vector_data.transform.inverse() * lower_vector_data.transform;
 
-					let upper_path_string = to_svg_string(&all_other_vector_data, DAffine2::IDENTITY);
-					let lower_path_string = to_svg_string(lower_vector_data, transform_of_lower_into_space_of_upper);
+					let upper_path_string = to_path(&all_other_vector_data, DAffine2::IDENTITY);
+					let lower_path_string = to_path(lower_vector_data, transform_of_lower_into_space_of_upper);
 
 					#[allow(unused_unsafe)]
 					let boolean_intersection_string = unsafe { boolean_intersect(upper_path_string, lower_path_string) };
@@ -154,8 +155,8 @@ fn boolean_operation(group_of_paths: GraphicGroup, operation: BooleanOperation) 
 
 					let transform_of_lower_into_space_of_upper = boolean_intersection_result.transform.inverse() * any_intersection.transform;
 
-					let upper_path_string = to_svg_string(&boolean_intersection_result, DAffine2::IDENTITY);
-					let lower_path_string = to_svg_string(&any_intersection, transform_of_lower_into_space_of_upper);
+					let upper_path_string = to_path(&boolean_intersection_result, DAffine2::IDENTITY);
+					let lower_path_string = to_path(&any_intersection, transform_of_lower_into_space_of_upper);
 
 					#[allow(unused_unsafe)]
 					let union_result = from_svg_string(&unsafe { boolean_union(upper_path_string, lower_path_string) });
@@ -192,6 +193,52 @@ fn to_svg_string(vector: &VectorData, transform: DAffine2) -> String {
 		let _ = subpath.subpath_to_svg(&mut path, transform);
 	}
 	path
+}
+
+fn to_path(vector: &VectorData, transform: DAffine2) -> Vec<path_bool::PathSegment> {
+	let mut path = Vec::new();
+	for subpath in vector.stroke_bezier_paths() {
+		to_path_segments(&mut path, &subpath, transform);
+	}
+	path
+}
+
+fn to_path_segments(path: &mut Vec<path_bool::PathSegment>, subpath: &bezier_rs::Subpath<PointId>, transform: DAffine2) {
+	use path_bool::PathSegment;
+	for bezier in subpath.iter() {
+		let transformed = bezier.apply_transformation(|pos| transform.transform_point2(pos));
+		let start = transformed.start;
+		let end = transformed.end;
+		let segment = match transformed.handles {
+			bezier_rs::BezierHandles::Linear => PathSegment::Line(start, end),
+			bezier_rs::BezierHandles::Quadratic { handle } => PathSegment::Quadratic(start, handle, end),
+			bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => PathSegment::Cubic(start, handle_start, handle_end, end),
+		};
+		path.push(segment);
+	}
+}
+fn from_path(path_data: &[Path]) -> VectorData {
+	let subpaths = path_data.iter().filter(|path| !path.is_empty()).map(|path| {
+		let mut cubics: Vec<_> = path.iter().map(|segment| segment.to_cubic()).collect();
+		if cubics.len() > 1 {
+			cubics.push(cubics[0]);
+		}
+
+		let groups: Vec<ManipulatorGroup<PointId>> = cubics
+			.windows(2)
+			.map(|window| {
+				let end = window[1][0];
+				let in_handle = window[0][2];
+				let out_handle = window[1][1];
+
+				ManipulatorGroup::new(end, Some(in_handle), Some(out_handle))
+			})
+			.collect();
+
+		// Create a Subpath from the groups
+		Subpath::new(groups, true)
+	});
+	VectorData::from_subpaths(subpaths, false)
 }
 
 fn from_svg_string(svg_string: &str) -> VectorData {
@@ -261,29 +308,33 @@ pub fn convert_usvg_path(path: &usvg::Path) -> Vec<Subpath<PointId>> {
 // 	fn boolean_intersect(path1: String, path2: String) -> String;
 // }
 // #[cfg(not(target_arch = "wasm32"))]
-fn boolean_union(a: String, b: String) -> String {
+
+type Path = Vec<path_bool::PathSegment>;
+fn boolean_union(a: Path, b: Path) -> String {
 	path_bool(a, b, PathBooleanOperation::Union)
 }
 
-fn path_bool(a: String, b: String, op: PathBooleanOperation) -> String {
+fn path_bool(a: Path, b: Path, op: PathBooleanOperation) -> String {
 	use path_bool::FillRule;
-	let a_path = path_bool::path_from_path_data(&a);
-	let b_path = path_bool::path_from_path_data(&b);
-	let results = match path_bool::path_boolean(&a_path, FillRule::NonZero, &b_path, FillRule::NonZero, op) {
+	// let a_path = path_bool::path_from_path_data(&a);
+	// let b_path = path_bool::path_from_path_data(&b);
+	// log::error!("Boolean error  encontered while processing {a}\n {op:?}\n {b}");
+	let results = match path_bool::path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, op) {
 		Ok(results) => results,
 		Err(e) => {
-			log::error!("Boolean error {e:?} encontered while processing {a} {op:?} {b}");
+			// log::error!("Boolean error {e:?} encontered while processing {a}\n {op:?}\n {b}");
 			Vec::new()
 		}
 	};
-
+	//results
 	results.iter().map(|result| path_bool::path_to_path_data(result, 0.00001)).fold(String::new(), |o, n| o + &n)
 }
+
 // #[cfg(not(target_arch = "wasm32"))]
-fn boolean_subtract(a: String, b: String) -> String {
+fn boolean_subtract(a: Path, b: Path) -> String {
 	path_bool(a, b, PathBooleanOperation::Difference)
 }
 // #[cfg(not(target_arch = "wasm32"))]
-fn boolean_intersect(a: String, b: String) -> String {
+fn boolean_intersect(a: Path, b: Path) -> String {
 	path_bool(a, b, PathBooleanOperation::Intersection)
 }

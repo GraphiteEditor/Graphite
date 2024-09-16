@@ -113,16 +113,9 @@ impl Bezier {
 
 	/// Return the string argument used to create a curve in an SVG `path`, excluding the start point.
 	pub fn svg_curve_argument(&self) -> String {
-		let handle_args = match self.handles {
-			BezierHandles::Linear => SVG_ARG_LINEAR.to_string(),
-			BezierHandles::Quadratic { handle } => {
-				format!("{SVG_ARG_QUADRATIC}{} {}", handle.x, handle.y)
-			}
-			BezierHandles::Cubic { handle_start, handle_end } => {
-				format!("{SVG_ARG_CUBIC}{} {} {} {}", handle_start.x, handle_start.y, handle_end.x, handle_end.y)
-			}
-		};
-		format!("{handle_args} {} {}", self.end.x, self.end.y)
+		let mut out = String::new();
+		self.write_curve_argument(&mut out).unwrap();
+		out
 	}
 
 	/// Write the curve argument to the string
