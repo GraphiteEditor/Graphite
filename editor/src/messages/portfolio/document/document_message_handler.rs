@@ -1022,8 +1022,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				if self.network_interface.transaction_status() == TransactionStatus::Finished {
 					return;
 				}
+
+				self.document_undo_history.pop_back();
 				self.network_interface.finish_transaction();
-				self.undo(ipp, responses);
 				responses.add(OverlaysMessage::Draw);
 			}
 			DocumentMessage::AddTransaction => {
@@ -1053,6 +1054,25 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::ToggleSnapping => {
 				self.snapping_state.snapping_enabled = !self.snapping_state.snapping_enabled;
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+			}
+			DocumentMessage::UpdateUpstreamTransforms { upstream_transforms } => {
+				self.network_interface.update_transforms(upstream_transforms);
+			}
+			DocumentMessage::UpdateClickTargets { click_targets } => {
+				// TODO: Allow non layer nodes to have click targets
+				let layer_click_targets = click_targets
+					.into_iter()
+					.filter_map(|(node_id, click_targets)| {
+						self.network_interface.is_layer(&node_id, &[]).then(|| {
+							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface, &[]);
+							(layer, click_targets)
+						})
+					})
+					.collect();
+				self.network_interface.update_click_targets(layer_click_targets);
+			}
+			DocumentMessage::UpdateVectorModify { vector_modify } => {
+				self.network_interface.update_vector_modify(vector_modify);
 			}
 			DocumentMessage::Undo => {
 				if self.network_interface.transaction_status() != TransactionStatus::Finished {
@@ -1107,6 +1127,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					node_ids: vec![layer.to_node()],
 					delete_children: true,
 				});
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SelectedNodesUpdated);
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::PTZUpdate => {
 				if !self.graph_view_overlay_open {
@@ -1239,7 +1262,7 @@ impl DocumentMessageHandler {
 			.filter(|&layer| self.network_interface.selected_nodes(&[]).unwrap().layer_visible(layer, &self.network_interface))
 			.filter(|&layer| !self.network_interface.selected_nodes(&[]).unwrap().layer_locked(layer, &self.network_interface))
 			.filter(|&layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
-			.filter_map(|layer| self.metadata().click_target(layer).map(|targets| (layer, targets)))
+			.filter_map(|layer| self.metadata().click_targets(layer).map(|targets| (layer, targets)))
 			.filter(move |(layer, target)| {
 				target
 					.iter()
@@ -1256,7 +1279,7 @@ impl DocumentMessageHandler {
 			.all_layers()
 			.filter(|&layer| self.network_interface.selected_nodes(&[]).unwrap().layer_visible(layer, &self.network_interface))
 			.filter(|&layer| !self.network_interface.selected_nodes(&[]).unwrap().layer_locked(layer, &self.network_interface))
-			.filter_map(|layer| self.metadata().click_target(layer).map(|targets| (layer, targets)))
+			.filter_map(|layer| self.metadata().click_targets(layer).map(|targets| (layer, targets)))
 			.filter(move |(layer, target)| target.iter().any(|target| target.intersect_point(point, self.metadata().transform_to_document(*layer))))
 			.map(|(layer, _)| layer)
 	}

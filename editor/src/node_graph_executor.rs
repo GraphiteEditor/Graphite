@@ -1,26 +1,22 @@
 use crate::consts::FILE_SAVE_SUFFIX;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::wrap_network_in_scope;
-use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 
 use graph_craft::concrete;
-use graph_craft::document::value::TaggedValue;
+use graph_craft::document::value::{RenderOutput, TaggedValue};
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
 use graphene_core::application_io::{NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_core::memo::IORecord;
-use graphene_core::raster::ImageFrame;
-use graphene_core::renderer::{ClickTarget, GraphicElementRendered, ImageRenderMode, RenderParams, SvgRender};
+use graphene_core::renderer::{GraphicElementRendered, ImageRenderMode, RenderParams, SvgRender};
 use graphene_core::renderer::{RenderSvgSegmentList, SvgSegment};
 use graphene_core::text::FontCache;
-use graphene_core::transform::{Footprint, Transform};
+use graphene_core::transform::Footprint;
 use graphene_core::vector::style::ViewMode;
-use graphene_core::vector::VectorData;
-use graphene_core::{Color, GraphicElement, SurfaceFrame};
-use graphene_std::renderer::format_transform_matrix;
+use graphene_std::renderer::{format_transform_matrix, RenderMetadata};
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
 
@@ -48,12 +44,6 @@ pub struct NodeRuntime {
 	// TODO: Remove, it doesn't need to be persisted anymore
 	/// The current renders of the thumbnails for layer nodes.
 	thumbnail_renders: HashMap<NodeId, Vec<SvgSegment>>,
-	/// The current click targets for layer nodes.
-	click_targets: HashMap<NodeId, Vec<ClickTarget>>,
-	/// Vector data in Path nodes.
-	vector_modify: HashMap<NodeId, VectorData>,
-	/// The current upstream transforms for nodes.
-	upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
 }
 
 /// Messages passed from the editor thread to the node runtime thread.
@@ -83,9 +73,6 @@ pub struct ExecutionResponse {
 	execution_id: u64,
 	result: Result<TaggedValue, String>,
 	responses: VecDeque<FrontendMessage>,
-	new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
-	new_vector_modify: HashMap<NodeId, VectorData>,
-	new_upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
 	transform: DAffine2,
 }
 
@@ -144,9 +131,6 @@ impl NodeRuntime {
 			monitor_nodes: Vec::new(),
 
 			thumbnail_renders: Default::default(),
-			click_targets: HashMap::new(),
-			vector_modify: HashMap::new(),
-			upstream_transforms: HashMap::new(),
 		}
 	}
 
@@ -226,9 +210,6 @@ impl NodeRuntime {
 						execution_id,
 						result,
 						responses,
-						new_click_targets: self.click_targets.clone().into_iter().map(|(id, targets)| (LayerNodeIdentifier::new_unchecked(id), targets)).collect(),
-						new_vector_modify: self.vector_modify.clone(),
-						new_upstream_transforms: self.upstream_transforms.clone(),
 						transform,
 					});
 				}
@@ -300,28 +281,9 @@ impl NodeRuntime {
 			};
 
 			if let Some(io) = introspected_data.downcast_ref::<IORecord<Footprint, graphene_core::GraphicElement>>() {
-				Self::process_graphic_element(&mut self.thumbnail_renders, &mut self.click_targets, parent_network_node_id, &io.output, responses, update_thumbnails)
+				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
 			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Footprint, graphene_core::Artboard>>() {
-				Self::process_graphic_element(&mut self.thumbnail_renders, &mut self.click_targets, parent_network_node_id, &io.output, responses, update_thumbnails)
-			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<Footprint, VectorData>>() {
-				// Insert the vector modify if we are dealing with vector data
-				self.vector_modify.insert(parent_network_node_id, record.output.clone());
-			}
-
-			// If this is `VectorData`, `ImageFrame`, or `GraphicElement` data:
-			// Update the stored upstream transforms for this layer/node.
-			if let Some(transform) = {
-				fn try_downcast<T: Transform + 'static>(value: &dyn std::any::Any) -> Option<(Footprint, DAffine2)> {
-					let io_data = value.downcast_ref::<IORecord<Footprint, T>>()?;
-					let transform = io_data.output.transform();
-					Some((io_data.input, transform))
-				}
-				None.or_else(|| try_downcast::<VectorData>(introspected_data.as_ref()))
-					.or_else(|| try_downcast::<ImageFrame<Color>>(introspected_data.as_ref()))
-					.or_else(|| try_downcast::<GraphicElement>(introspected_data.as_ref()))
-					.or_else(|| try_downcast::<graphene_core::Artboard>(introspected_data.as_ref()))
-			} {
-				self.upstream_transforms.insert(parent_network_node_id, transform);
+				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
 			}
 		}
 	}
@@ -330,16 +292,11 @@ impl NodeRuntime {
 	// Regenerate click targets and thumbnails for the layers in the graph, modifying the state and updating the UI.
 	fn process_graphic_element(
 		thumbnail_renders: &mut HashMap<NodeId, Vec<SvgSegment>>,
-		click_targets: &mut HashMap<NodeId, Vec<ClickTarget>>,
 		parent_network_node_id: NodeId,
 		graphic_element: &impl GraphicElementRendered,
 		responses: &mut VecDeque<FrontendMessage>,
 		update_thumbnails: bool,
 	) {
-		let click_targets = click_targets.entry(parent_network_node_id).or_default();
-		click_targets.clear();
-		graphic_element.add_click_targets(click_targets);
-
 		// RENDER THUMBNAIL
 
 		if !update_thumbnails {
@@ -536,8 +493,12 @@ impl NodeGraphExecutor {
 	}
 
 	fn export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		let TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg(svg)) = node_graph_output else {
-			return Err("Incorrect render type for exportign (expected RenderOutput::Svg)".to_string());
+		let TaggedValue::RenderOutput(RenderOutput {
+			data: graphene_std::wasm_application_io::RenderOutputType::Svg(svg),
+			..
+		}) = node_graph_output
+		else {
+			return Err("Incorrect render type for exporting (expected RenderOutput::Svg)".to_string());
 		};
 
 		let ExportConfig {
@@ -572,10 +533,7 @@ impl NodeGraphExecutor {
 					let ExecutionResponse {
 						execution_id,
 						result,
-						new_click_targets,
 						responses: existing_responses,
-						new_vector_modify,
-						new_upstream_transforms,
 						transform,
 					} = execution_response;
 
@@ -585,15 +543,13 @@ impl NodeGraphExecutor {
 						Ok(output) => output,
 						Err(e) => {
 							// Clear the click targets while the graph is in an un-renderable state
-							document.network_interface.document_metadata_mut().update_from_monitor(HashMap::new(), HashMap::new());
-
+							document.network_interface.update_click_targets(HashMap::new());
+							document.network_interface.update_vector_modify(HashMap::new());
 							return Err(format!("Node graph evaluation failed:\n{e}"));
 						}
 					};
 
 					responses.extend(existing_responses.into_iter().map(Into::into));
-					document.network_interface.document_metadata_mut().update_transforms(new_upstream_transforms);
-					document.network_interface.document_metadata_mut().update_from_monitor(new_click_targets, new_vector_modify);
 
 					let execution_context = self.futures.remove(&execution_id).ok_or_else(|| "Invalid generation ID".to_string())?;
 					if let Some(export_config) = execution_context.export_config {
@@ -608,7 +564,10 @@ impl NodeGraphExecutor {
 					let type_delta = match result {
 						Err(e) => {
 							// Clear the click targets while the graph is in an un-renderable state
-							document.network_interface.document_metadata_mut().update_from_monitor(HashMap::new(), HashMap::new());
+
+							document.network_interface.update_click_targets(HashMap::new());
+							document.network_interface.update_vector_modify(HashMap::new());
+
 							log::trace!("{e}");
 
 							responses.add(NodeGraphMessage::UpdateTypes {
@@ -654,25 +613,37 @@ impl NodeGraphExecutor {
 
 	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, transform: DAffine2, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		match node_graph_output {
-			TaggedValue::SurfaceFrame(SurfaceFrame { .. }) => {
-				// TODO: Reimplement this now that document-legacy is gone
-			}
-			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg(svg)) => {
-				// Send to frontend
-				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
+			TaggedValue::RenderOutput(render_output) => {
+				let RenderMetadata {
+					footprints,
+					click_targets,
+					vector_data,
+				} = render_output.metadata;
+
+				match render_output.data {
+					graphene_std::wasm_application_io::RenderOutputType::Svg(svg) => {
+						// Send to frontend
+						responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
+					}
+					graphene_std::wasm_application_io::RenderOutputType::CanvasFrame(frame) => {
+						let matrix = format_transform_matrix(frame.transform);
+						let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{}\"", matrix) };
+						let svg = format!(
+							r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="canvas{}"></div></foreignObject></svg>"#,
+							frame.resolution.x, frame.resolution.y, frame.surface_id.0
+						);
+						responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
+					}
+					_ => {
+						return Err(format!("Invalid node graph output type: {:#?}", render_output.data));
+					}
+				}
+				responses.add(DocumentMessage::UpdateUpstreamTransforms { upstream_transforms: footprints });
+				responses.add(DocumentMessage::UpdateClickTargets { click_targets });
+				responses.add(DocumentMessage::UpdateVectorModify { vector_modify: vector_data });
 				responses.add(DocumentMessage::RenderScrollbars);
 				responses.add(DocumentMessage::RenderRulers);
-			}
-			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::CanvasFrame(frame)) => {
-				let matrix = format_transform_matrix(frame.transform);
-				let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{}\"", matrix) };
-				let svg = format!(
-					r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="canvas{}"></div></foreignObject></svg>"#,
-					frame.resolution.x, frame.resolution.y, frame.surface_id.0
-				);
-				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
-				responses.add(DocumentMessage::RenderScrollbars);
-				responses.add(DocumentMessage::RenderRulers);
+				responses.add(OverlaysMessage::Draw);
 			}
 			TaggedValue::Bool(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::String(render_object) => Self::debug_render(render_object, transform, responses),

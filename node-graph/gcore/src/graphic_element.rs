@@ -1,6 +1,7 @@
 use crate::application_io::TextureFrame;
 use crate::raster::{BlendMode, ImageFrame};
 use crate::transform::{Footprint, Transform, TransformMut};
+use crate::uuid::NodeId;
 use crate::vector::VectorData;
 use crate::{Color, Node};
 
@@ -42,7 +43,7 @@ impl AlphaBlending {
 #[derive(Clone, Debug, PartialEq, DynAny, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GraphicGroup {
-	elements: Vec<GraphicElement>,
+	elements: Vec<(GraphicElement, Option<NodeId>)>,
 	pub transform: DAffine2,
 	pub alpha_blending: AlphaBlending,
 }
@@ -64,7 +65,7 @@ impl GraphicGroup {
 
 	pub fn new(elements: Vec<GraphicElement>) -> Self {
 		Self {
-			elements,
+			elements: elements.into_iter().map(|element| (element, None)).collect(),
 			transform: DAffine2::IDENTITY,
 			alpha_blending: AlphaBlending::new(),
 		}
@@ -216,7 +217,7 @@ impl Artboard {
 #[derive(Clone, Default, Debug, Hash, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ArtboardGroup {
-	pub artboards: Vec<Artboard>,
+	pub artboards: Vec<(Artboard, Option<NodeId>)>,
 }
 
 impl ArtboardGroup {
@@ -226,14 +227,15 @@ impl ArtboardGroup {
 		Default::default()
 	}
 
-	fn add_artboard(&mut self, artboard: Artboard) {
-		self.artboards.push(artboard);
+	fn add_artboard(&mut self, artboard: Artboard, node_id: Option<NodeId>) {
+		self.artboards.push((artboard, node_id));
 	}
 }
 
-pub struct ConstructLayerNode<Stack, GraphicElement> {
+pub struct ConstructLayerNode<Stack, GraphicElement, NodePath> {
 	stack: Stack,
 	graphic_element: GraphicElement,
+	node_path: NodePath,
 }
 
 #[node_fn(ConstructLayerNode)]
@@ -241,6 +243,7 @@ async fn construct_layer<Data: Into<GraphicElement> + Send>(
 	footprint: crate::transform::Footprint,
 	mut stack: impl Node<crate::transform::Footprint, Output = GraphicGroup>,
 	graphic_element: impl Node<crate::transform::Footprint, Output = Data>,
+	node_path: Vec<NodeId>,
 ) -> GraphicGroup {
 	let graphic_element = self.graphic_element.eval(footprint).await;
 	let mut stack = self.stack.eval(footprint).await;
@@ -252,7 +255,9 @@ async fn construct_layer<Data: Into<GraphicElement> + Send>(
 		stack.transform = DAffine2::IDENTITY;
 	}
 
-	stack.push(element);
+	// Get the penultimate element of the node path, or None if the path is too short
+	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
+	stack.push((element, encapsulating_node_id));
 	stack
 }
 
@@ -301,17 +306,25 @@ async fn construct_artboard(
 		clip,
 	}
 }
-pub struct AddArtboardNode<ArtboardGroup, Artboard> {
+pub struct AddArtboardNode<ArtboardGroup, Artboard, NodePath> {
 	artboards: ArtboardGroup,
 	artboard: Artboard,
+	node_path: NodePath,
 }
 
 #[node_fn(AddArtboardNode)]
-async fn add_artboard<Data: Into<Artboard> + Send>(footprint: Footprint, artboards: impl Node<Footprint, Output = ArtboardGroup>, artboard: impl Node<Footprint, Output = Data>) -> ArtboardGroup {
+async fn add_artboard<Data: Into<Artboard> + Send>(
+	footprint: Footprint,
+	artboards: impl Node<Footprint, Output = ArtboardGroup>,
+	artboard: impl Node<Footprint, Output = Data>,
+	node_path: Vec<NodeId>,
+) -> ArtboardGroup {
 	let artboard = self.artboard.eval(footprint).await;
 	let mut artboards = self.artboards.eval(footprint).await;
 
-	artboards.add_artboard(artboard.into());
+	// Get the penultimate element of the node path, or None if the path is too short
+	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
+	artboards.add_artboard(artboard.into(), encapsulating_node_id);
 
 	artboards
 }
@@ -338,7 +351,7 @@ impl From<GraphicGroup> for GraphicElement {
 }
 
 impl Deref for GraphicGroup {
-	type Target = Vec<GraphicElement>;
+	type Target = Vec<(GraphicElement, Option<NodeId>)>;
 	fn deref(&self) -> &Self::Target {
 		&self.elements
 	}
@@ -363,7 +376,7 @@ where
 {
 	fn from(value: T) -> Self {
 		Self {
-			elements: (vec![value.into()]),
+			elements: (vec![(value.into(), None)]),
 			transform: DAffine2::IDENTITY,
 			alpha_blending: AlphaBlending::default(),
 		}

@@ -742,6 +742,12 @@ impl PathStyle {
 		self.fill = fill;
 	}
 
+	pub fn set_stroke_transform(&mut self, transform: DAffine2) {
+		if let Some(stroke) = &mut self.stroke {
+			stroke.transform = transform;
+		}
+	}
+
 	/// Replace the path's [Stroke] with a provided one.
 	///
 	/// # Example

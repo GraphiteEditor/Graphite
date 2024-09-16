@@ -253,8 +253,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								manual_composition: Some(concrete!(Footprint)),
-								inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(2), 0)],
-								implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _>"),
+								inputs: vec![
+									NodeInput::node(NodeId(1), 0),
+									NodeInput::node(NodeId(2), 0),
+									NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath),
+								],
+								implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _, _>"),
 								..Default::default()
 							},
 						]
@@ -359,8 +363,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								inputs: vec![
 									NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(concrete!(ArtboardGroup))), 0),
 									NodeInput::node(NodeId(1), 0),
+									NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath),
 								],
-								implementation: DocumentNodeImplementation::proto("graphene_core::AddArtboardNode<_, _>"),
+								implementation: DocumentNodeImplementation::proto("graphene_core::AddArtboardNode<_, _, _>"),
 								..Default::default()
 							},
 						]
@@ -3800,14 +3805,62 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Vector",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::Network(NodeNetwork {
+						exports: vec![NodeInput::node(NodeId(1), 0)],
+						nodes: vec![
+							DocumentNode {
+								inputs: vec![NodeInput::network(concrete!(VectorData), 0), NodeInput::network(concrete!(vector::style::Fill), 1)],
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::vector::BooleanOperationNode<_>")),
+								..Default::default()
+							},
+							DocumentNode {
+								inputs: vec![NodeInput::node(NodeId(0), 0)],
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode<_, _, _>")),
+								manual_composition: Some(concrete!(Footprint)),
+								..Default::default()
+							},
+						]
+						.into_iter()
+						.enumerate()
+						.map(|(id, node)| (NodeId(id as u64), node))
+						.collect(),
+						..Default::default()
+					}),
 					inputs: vec![
 						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
 						NodeInput::value(TaggedValue::BooleanOperation(vector::misc::BooleanOperation::Union), false),
 					],
-					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::vector::BooleanOperationNode<_>")),
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
+					network_metadata: Some(NodeNetworkMetadata {
+						persistent_metadata: NodeNetworkPersistentMetadata {
+							node_metadata: [
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Boolean Operation".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Cache".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+							]
+							.into_iter()
+							.enumerate()
+							.map(|(id, node)| (NodeId(id as u64), node))
+							.collect(),
+							..Default::default()
+						},
+						..Default::default()
+					}),
 					input_names: vec!["Group of Paths".to_string(), "Operation".to_string()],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()

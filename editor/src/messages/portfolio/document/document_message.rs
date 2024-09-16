@@ -11,6 +11,9 @@ use graphene_core::raster::BlendMode;
 use graphene_core::raster::Image;
 use graphene_core::vector::style::ViewMode;
 use graphene_core::Color;
+use graphene_std::renderer::ClickTarget;
+use graphene_std::transform::Footprint;
+use graphene_std::vector::VectorData;
 
 use glam::DAffine2;
 
@@ -155,6 +158,15 @@ pub enum DocumentMessage {
 	ToggleGridVisibility,
 	ToggleOverlaysVisibility,
 	ToggleSnapping,
+	UpdateUpstreamTransforms {
+		upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
+	},
+	UpdateClickTargets {
+		click_targets: HashMap<NodeId, Vec<ClickTarget>>,
+	},
+	UpdateVectorModify {
+		vector_modify: HashMap<NodeId, VectorData>,
+	},
 	Undo,
 	UngroupSelectedLayers,
 	UngroupLayer {
