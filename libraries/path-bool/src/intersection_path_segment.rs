@@ -7,7 +7,7 @@ use crate::epsilons::Epsilons;
 use crate::line_segment::{line_segment_intersection, line_segments_intersect};
 use crate::line_segment_aabb::line_segment_aabb_intersect;
 use crate::math::lerp;
-use crate::path_segment::{path_segment_bounding_box, sample_path_segment_at, split_segment_at, PathSegment};
+use crate::path_segment::{get_end_point, get_start_point, path_segment_bounding_box, sample_path_segment_at, split_segment_at, PathSegment};
 use crate::vector::{vectors_equal, Vector};
 
 #[derive(Clone)]
@@ -65,7 +65,17 @@ pub fn segments_equal(seg0: &PathSegment, seg1: &PathSegment, point_epsilon: f64
 	match (*seg0, *seg1) {
 		(PathSegment::Line(start0, end0), PathSegment::Line(start1, end1)) => vectors_equal(start0, start1, point_epsilon) && vectors_equal(end0, end1, point_epsilon),
 		(PathSegment::Cubic(p00, p01, p02, p03), PathSegment::Cubic(p10, p11, p12, p13)) => {
-			vectors_equal(p00, p10, point_epsilon) && vectors_equal(p01, p11, point_epsilon) && vectors_equal(p02, p12, point_epsilon) && vectors_equal(p03, p13, point_epsilon)
+			let start_and_end_equal = vectors_equal(p00, p10, point_epsilon) && vectors_equal(p03, p13, point_epsilon);
+
+			let parameter_equal = vectors_equal(p01, p11, point_epsilon) && vectors_equal(p02, p12, point_epsilon);
+			let direction1 = sample_path_segment_at(seg0, 0.1);
+			let direction2 = sample_path_segment_at(seg1, 0.1);
+			let angles_equal = (direction1 - p00).angle_to(direction2 - p00).abs() < point_epsilon * 4.;
+			if angles_equal {
+				eprintln!("deduplicating {:?} {:?} because the angles are equal", seg0, seg1);
+			}
+
+			start_and_end_equal && (parameter_equal || angles_equal)
 		}
 		(PathSegment::Quadratic(p00, p01, p02), PathSegment::Quadratic(p10, p11, p12)) => {
 			vectors_equal(p00, p10, point_epsilon) && vectors_equal(p01, p11, point_epsilon) && vectors_equal(p02, p12, point_epsilon)
@@ -123,6 +133,8 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 		// dbg!("checking pairs");
 
 		if pairs.len() > 1000 {
+			// TODO: check for intersections of the start/end points. If the two lines overlap, return split points for the start/end points. Use a binary search  to check where the points are on the line.
+			return dbg!(calculate_overlap_intersections(seg0, seg1, eps));
 			return vec![];
 		}
 
@@ -177,6 +189,90 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 	}
 
 	params
+}
+
+fn calculate_overlap_intersections(seg0: &PathSegment, seg1: &PathSegment, eps: &Epsilons) -> Vec<[f64; 2]> {
+	let start0 = get_start_point(seg0);
+	let end0 = get_end_point(seg0);
+	let start1 = get_start_point(seg1);
+	let end1 = get_end_point(seg1);
+
+	let mut intersections = Vec::new();
+
+	// Check start0 against seg1
+	if let Some(t1) = find_point_on_segment(seg1, start0, eps) {
+		intersections.push([0.0, t1]);
+	}
+
+	// Check end0 against seg1
+	if let Some(t1) = find_point_on_segment(seg1, end0, eps) {
+		intersections.push([1.0, t1]);
+	}
+
+	// Check start1 against seg0
+	if let Some(t0) = find_point_on_segment(seg0, start1, eps) {
+		intersections.push([t0, 0.0]);
+	}
+
+	// Check end1 against seg0
+	if let Some(t0) = find_point_on_segment(seg0, end1, eps) {
+		intersections.push([t0, 1.0]);
+	}
+
+	// Remove duplicates and sort intersections
+	intersections.sort_unstable_by(|a, b| a[0].partial_cmp(&b[0]).unwrap());
+	intersections.dedup_by(|a, b| vectors_equal(Vector::new(a[0], a[1]), Vector::new(b[0], b[1]), eps.param));
+
+	// Handle special cases
+	if intersections.is_empty() {
+		// Check if segments are identical
+		if vectors_equal(start0, start1, eps.point) && vectors_equal(end0, end1, eps.point) {
+			return vec![[0.0, 0.0], [1.0, 1.0]];
+		}
+	} else if intersections.len() > 2 {
+		// Keep only the first and last intersection points
+		intersections = vec![intersections[0], intersections[intersections.len() - 1]];
+	}
+
+	intersections
+}
+
+fn find_point_on_segment(seg: &PathSegment, point: Vector, eps: &Epsilons) -> Option<f64> {
+	let start = 0.0;
+	let end = 1.0;
+	let mut t = 0.5;
+
+	for _ in 0..32 {
+		// Limit iterations to prevent infinite loops
+		let current_point = sample_path_segment_at(seg, t);
+
+		if vectors_equal(current_point, point, eps.point) {
+			return Some(t);
+		}
+
+		let start_point = sample_path_segment_at(seg, start);
+		let end_point = sample_path_segment_at(seg, end);
+
+		let dist_start = (point - start_point).length_squared();
+		let dist_end = (point - end_point).length_squared();
+		let dist_current = (point - current_point).length_squared();
+
+		if dist_current < dist_start && dist_current < dist_end {
+			return Some(t);
+		}
+
+		if dist_start < dist_end {
+			t = (start + t) / 2.0;
+		} else {
+			t = (t + end) / 2.0;
+		}
+
+		if (end - start) < eps.param {
+			break;
+		}
+	}
+
+	None
 }
 
 #[cfg(test)]

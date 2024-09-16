@@ -247,7 +247,7 @@ fn dual_graph_to_dot(components: &[DualGraphComponent], edges: &SlotMap<DualEdge
 
 fn segment_to_edge(parent: u8) -> impl Fn(&PathSegment) -> Option<MajorGraphEdgeStage1> {
 	move |seg| {
-		if bounding_box_max_extent(&path_segment_bounding_box(seg)) < f64::EPSILON {
+		if bounding_box_max_extent(&path_segment_bounding_box(seg)) < EPS.point {
 			return None;
 		}
 
@@ -255,7 +255,7 @@ fn segment_to_edge(parent: u8) -> impl Fn(&PathSegment) -> Option<MajorGraphEdge
 			// Convert Line Segments expressed as cubic beziers to proper line segments
 			PathSegment::Cubic(start, _, _, end) => {
 				let direction = sample_path_segment_at(seg, 0.1);
-				if (*end - *start).angle_to(direction - *start).abs() < EPS.param {
+				if (*end - *start).angle_to(direction - *start).abs() < EPS.param * 4. {
 					Some((PathSegment::Line(*start, *end), parent))
 				} else {
 					Some((*seg, parent))
@@ -752,10 +752,6 @@ fn compute_point_winding(polygon: &[Vector], tested_point: Vector) -> i32 {
 
 fn compute_winding(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>) -> Option<i32> {
 	let polygon = face_to_polygon(face, edges);
-	#[cfg(feature = "logging")]
-	for point in &polygon {
-		eprintln!("[{}, {}]", point.x, point.y);
-	}
 
 	for i in 0..polygon.len() {
 		let a = polygon[i];
@@ -824,7 +820,7 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 
 		loop {
 			#[cfg(feature = "logging")]
-			eprintln!("Processing edge: {}", (start_edge_key.0.as_ffi() & 0xFF) - 1);
+			eprintln!("Processing edge: {}", (edge_key.0.as_ffi() & 0xFF));
 			let twin = edge.twin.expect("Edge doesn't have a twin");
 			let twin_dual_key = minor_to_dual_edge.get(&twin).copied();
 
@@ -846,7 +842,7 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 
 			edge_key = get_next_edge(edge_key, minor_graph);
 			#[cfg(feature = "logging")]
-			eprintln!("Next edge: {}", (start_edge_key.0.as_ffi() & 0xFF) - 1);
+			eprintln!("Next edge: {}", (edge_key.0.as_ffi() & 0xFF));
 			edge = &minor_graph.edges[edge_key];
 
 			if edge.incident_vertices[0] == start_edge.incident_vertices[0] {
@@ -940,9 +936,15 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 			.iter()
 			.map(|face_key| compute_winding(&dual_vertices[*face_key], &dual_edges).map(|w| (face_key, w)))
 			.collect();
-		let Some(mut windings) = windings else {
+		let Some(windings) = windings else {
 			return Err(BooleanError::NoEarInPolygon);
 		};
+
+		let areas: Vec<_> = component_vertices
+			.iter()
+			.map(|face_key| (face_key, compute_signed_area(&dual_vertices[*face_key], &dual_edges)))
+			.collect();
+		dbg!(&areas);
 
 		#[cfg(feature = "logging")]
 		if cfg!(feature = "logging") {
@@ -966,11 +968,13 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 			count = 1;
 			reverse_winding = true;
 		}
-		if count != 1 {
-			return Err(BooleanError::MultipleOuterFaces);
-		}
-		let outer_face_key = *windings.iter().find(|(&_, winding)| (winding < &0) ^ reverse_winding).expect("No outer face of a component found.").0;
-		// TODO: merge with previous iter
+		let outer_face_key = if count != 1 {
+			// return Err(BooleanError::MultipleOuterFaces);
+			*areas.iter().max_by_key(|(_, area)| ((area.abs() * 1000.) as u64)).unwrap().0
+		} else {
+			*windings.iter().find(|(&_, winding)| (winding < &0) ^ reverse_winding).expect("No outer face of a component found.").0
+		};
+		dbg!(outer_face_key);
 
 		components.push(DualGraphComponent {
 			vertices: component_vertices,
@@ -989,6 +993,8 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 fn get_next_edge(edge_key: MinorEdgeKey, graph: &MinorGraph) -> MinorEdgeKey {
 	let edge = &graph.edges[edge_key];
 	let vertex = &graph.vertices[edge.incident_vertices[1]];
+	#[cfg(feature = "logging")]
+	eprintln!("{edge_key:?}, twin: {:?}, {:?}", edge.twin, vertex.outgoing_edges);
 	let index = vertex.outgoing_edges.iter().position(|&e| Some(edge_key) == graph.edges[e].twin).unwrap();
 	vertex.outgoing_edges[(index + 1) % vertex.outgoing_edges.len()]
 }
@@ -1318,6 +1324,12 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 	split_at_self_intersections(&mut unsplit_edges);
 
 	let (split_edges, total_bounding_box) = split_at_intersections(&unsplit_edges);
+
+	#[cfg(feature = "logging")]
+	for (edge, _, _) in split_edges.iter() {
+		// eprintln!("{}", edge.format_path());
+		eprintln!("{}", path_to_path_data(&vec![*edge], 0.001));
+	}
 
 	let total_bounding_box = match total_bounding_box {
 		Some(bb) => bb,
