@@ -10,7 +10,6 @@ use graphene_core::{Color, GraphicElement, GraphicGroup};
 
 use glam::{DAffine2, DVec2};
 use path_bool::PathBooleanOperation;
-use resvg::tiny_skia::PathSegment;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
@@ -189,14 +188,6 @@ fn boolean_operation(group_of_paths: GraphicGroup, operation: BooleanOperation) 
 	boolean_operation_result
 }
 
-fn to_svg_string(vector: &VectorData, transform: DAffine2) -> String {
-	let mut path = String::new();
-	for subpath in vector.stroke_bezier_paths() {
-		let _ = subpath.subpath_to_svg(&mut path, transform);
-	}
-	path
-}
-
 fn to_path(vector: &VectorData, transform: DAffine2) -> Vec<path_bool::PathSegment> {
 	let mut path = Vec::new();
 	for subpath in vector.stroke_bezier_paths() {
@@ -265,18 +256,6 @@ fn from_path(path_data: &[Path]) -> VectorData {
 	}
 
 	VectorData::from_subpaths(all_subpaths, false)
-}
-
-fn from_svg_string(svg_string: &str) -> VectorData {
-	let svg = format!(r#"<svg xmlns="http://www.w3.org/2000/svg"><path d="{}"></path></svg>"#, svg_string);
-	let Some(tree) = usvg::Tree::from_str(&svg, &Default::default()).ok() else {
-		return VectorData::empty();
-	};
-	let Some(usvg::Node::Path(path)) = tree.root().children().first() else {
-		return VectorData::empty();
-	};
-
-	VectorData::from_subpaths(convert_usvg_path(path), false)
 }
 
 pub fn convert_usvg_path(path: &usvg::Path) -> Vec<Subpath<PointId>> {
