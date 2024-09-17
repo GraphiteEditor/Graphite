@@ -218,12 +218,6 @@ fn to_path_segments(path: &mut Vec<path_bool::PathSegment>, subpath: &bezier_rs:
 		};
 		path.push(segment);
 	}
-	if subpath.len() > 1 {
-		// TODO: make more efficient
-		let start = subpath.iter().next().unwrap().start;
-		let end = subpath.iter().last().unwrap().end;
-		path.push(PathSegment::Line(end, start));
-	}
 }
 fn from_path(path_data: &[Path]) -> VectorData {
 	let subpaths = path_data.iter().filter(|path| !path.is_empty()).map(|path| {
@@ -327,10 +321,10 @@ fn path_bool(a: Path, b: Path, op: PathBooleanOperation) -> String {
 	let a_path = path_bool::path_to_path_data(&a, 0.001);
 	let b_path = path_bool::path_to_path_data(&b, 0.001);
 	// log::debug!("{:?}\n{:?}", a, b);
-	// let a = path_bool::path_from_path_data(&a_path);
-	// let b = path_bool::path_from_path_data(&b_path);
+	let a = path_bool::path_from_path_data(&a_path);
+	let b = path_bool::path_from_path_data(&b_path);
 	// log::debug!("{:?}\n{:?}", a, b);
-	// log::error!("Boolean error  encontered while processing {a_path}\n {op:?}\n {b_path}");
+	log::error!("Boolean error  encontered while processing {a_path}\n {op:?}\n {b_path}");
 	let results = match path_bool::path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, op) {
 		Ok(results) => results,
 		Err(e) => {
@@ -340,7 +334,7 @@ fn path_bool(a: Path, b: Path, op: PathBooleanOperation) -> String {
 	};
 	//results
 	let string = results.iter().map(|result| path_bool::path_to_path_data(result, 0.001)).fold(String::new(), |o, n| o + &n);
-	// log::debug!("result: {}", string);
+	log::debug!("result: {}", string);
 	string
 }
 

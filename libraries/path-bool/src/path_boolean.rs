@@ -881,6 +881,12 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 		eprintln!("faces: {}, dual-edges: {}, cycles: {}", new_vertices.len(), dual_edges.len(), minor_graph.cycles.len())
 	}
 
+	// This can be very useful for debugging:
+	// Copy the face outlines to a file called faces_combined.csv and then use this
+	// gnuplot command:
+	// `plot 'faces_combined.csv' i 0:99 w l, 'faces_combined.csv' index 0 w l lc 'red'`
+	// the first part of the command plots all faces to the graph and the second comand
+	// plots one surface, specifed by the index, in red. This allows you to check if all surfaces are closed paths and can be used in conjunction with the flag debugging to identify issues later down the line as well
 	#[cfg(feature = "logging")]
 	for (vertex_key, vertex) in &dual_vertices {
 		eprintln!("\n\n#{:?}", vertex_key.0);
@@ -965,12 +971,21 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 			// return Err(BooleanError::MultipleOuterFaces);
 			#[cfg(feature = "logging")]
 			eprintln!("Found multiple outer faces: {areas:?}, falling back to area calculation");
-			*areas.iter().max_by_key(|(_, area)| ((area.abs() * 1000.) as u64)).unwrap().0
+			let (key, area) = *areas.iter().max_by_key(|(_, area)| ((area.abs() * 1000.) as u64)).unwrap();
+			if area < 0. {
+				reverse_winding = true;
+			}
+			*key
 		} else {
 			*windings.iter().find(|(&_, winding)| (winding < &0) ^ reverse_winding).expect("No outer face of a component found.").0
 		};
 		#[cfg(feature = "logging")]
 		dbg!(outer_face_key);
+		if reverse_winding {
+			for &edge in component_edges.iter() {
+				// dual_edges[edge].direction_flag = !dual_edges[edge].direction_flag;
+			}
+		}
 
 		components.push(DualGraphComponent {
 			vertices: component_vertices,
@@ -1146,12 +1161,13 @@ fn flag_faces(
 			let outer_face_key = current_tree.component.outer_face.expect("Component doesn't have an outer face.");
 			face_stack.push_back((outer_face_key, a_running_count, b_running_count));
 
-			while let Some((face_key, a_count, b_count)) = face_stack.pop_back() {
+			while let Some((face_key, a_count, b_count)) = face_stack.pop_front() {
 				if visited_faces.contains(&face_key) {
 					continue;
 				}
 				visited_faces.insert(face_key);
 
+				dbg!(face_key, a_count, b_count);
 				let a_flag = get_flag(a_count, a_fill_rule);
 				let b_flag = get_flag(b_count, b_fill_rule);
 				*flags.entry(face_key).or_default() = a_flag | (b_flag << 1);
@@ -1159,6 +1175,8 @@ fn flag_faces(
 				for edge_key in &vertices[face_key].incident_edges {
 					let edge = &edges[*edge_key];
 					let twin_key = edge.twin.expect("Edge doesn't have a twin");
+					#[cfg(feature = "logging")]
+					eprintln!("Processing edge: {:?} to: {:?}", edge_key.0, edges[twin_key].incident_vertex.0);
 					let mut next_a_count = a_count;
 					if edge.parent & 1 != 0 {
 						next_a_count += if edge.direction_flag.forward() { 1 } else { -1 };
@@ -1167,6 +1185,8 @@ fn flag_faces(
 					if edge.parent & 2 != 0 {
 						next_b_count += if edge.direction_flag.forward() { 1 } else { -1 };
 					}
+					#[cfg(feature = "logging")]
+					eprintln!("next_count a: {}, b:{}", next_a_count, next_b_count);
 					face_stack.push_back((edges[twin_key].incident_vertex, next_a_count, next_b_count));
 				}
 
@@ -1181,7 +1201,6 @@ fn flag_faces(
 	}
 }
 
-// TODO(@Truedoctor): Check if we can just iterate over the flags
 fn get_selected_faces<'a>(predicate: &'a impl Fn(u8) -> bool, flags: &'a HashMap<DualVertexKey, u8>) -> impl Iterator<Item = DualVertexKey> + 'a {
 	flags.iter().filter_map(|(key, &flag)| predicate(flag).then_some(*key))
 }
@@ -1378,6 +1397,11 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 	let dual_graph = compute_dual(&minor_graph)?;
 
 	let nesting_trees = compute_nesting_tree(&dual_graph);
+
+	#[cfg(feature = "logging")]
+	for tree in &nesting_trees {
+		eprintln!("nesting_trees: {:?}", tree);
+	}
 
 	let DualGraph { edges, vertices, .. } = &dual_graph;
 
