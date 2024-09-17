@@ -3,8 +3,8 @@ use glam::DVec2;
 use path_bool::*;
 
 pub fn criterion_benchmark(crit: &mut Criterion) {
-	crit.bench_function("intersect 1", |bench| bench.iter(|| path_segment_intersection(&a(), &b(), true, &EPS)));
-	crit.bench_function("intersect 2", |bench| bench.iter(|| path_segment_intersection(&c(), &d(), true, &EPS)));
+	crit.bench_function("intersect 1", |bench| bench.iter(|| path_segment_intersection(black_box(&a()), black_box(&b()), true, &EPS)));
+	crit.bench_function("intersect 2", |bench| bench.iter(|| path_segment_intersection(black_box(&c()), black_box(&d()), true, &EPS)));
 }
 
 criterion_group!(benches, criterion_benchmark);

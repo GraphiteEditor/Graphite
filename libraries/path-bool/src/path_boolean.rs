@@ -1,4 +1,3 @@
-use glam::DVec2;
 use slotmap::{new_key_type, SlotMap};
 
 new_key_type! {
@@ -19,12 +18,12 @@ use crate::intersection_path_segment::{path_segment_intersection, segments_equal
 use crate::path::Path;
 use crate::path_cubic_segment_self_intersection::path_cubic_segment_self_intersection;
 use crate::path_segment::{get_end_point, get_start_point, path_segment_bounding_box, reverse_path_segment, sample_path_segment_at, split_segment_at, PathSegment};
+#[cfg(feature = "logging")]
 use crate::path_to_path_data;
 use crate::quad_tree::QuadTree;
 use crate::vector::{vectors_equal, Vector};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::f64::consts::TAU;
 
 #[derive(Debug, Clone, Copy)]
 pub enum PathBooleanOperation {
@@ -65,6 +64,7 @@ pub struct MajorGraphEdge {
 
 #[derive(Debug, Clone, Default)]
 pub struct MajorGraphVertex {
+	#[cfg_attr(not(feature = "logging"), expect(dead_code))]
 	pub point: Vector,
 	outgoing_edges: Vec<MajorEdgeKey>,
 }
@@ -85,25 +85,6 @@ struct MinorGraphEdge {
 }
 
 impl MinorGraphEdge {
-	#[cfg(feature = "logging")]
-	fn format_path(&self) -> String {
-		use std::fmt::Write;
-		let mut output = String::new();
-		let segments = self.segments.clone();
-		for segment in segments.into_iter() {
-			let _ = match segment {
-				PathSegment::Line(mut start, mut end) | PathSegment::Cubic(mut start, _, _, mut end) => {
-					if self.direction_flag.backwards() {
-						(end, start) = (start, end);
-					}
-					write!(&mut output, "{:.1},{:.1}-{:.1},{:.1}  ", start.x, start.y, end.x, end.y)
-				}
-				x => write!(&mut output, "{:?}", x),
-			};
-		}
-		output
-	}
-
 	fn start_segment(&self) -> PathSegment {
 		let segment = self.segments[0];
 		match self.direction_flag {
@@ -199,7 +180,7 @@ fn major_graph_to_dot(graph: &MajorGraph) -> String {
 	for (vertex_key, vertex) in &graph.vertices {
 		dot.push_str(&format!("  {:?} [label=\"{:.1},{:.1}\"]\n", (vertex_key.0.as_ffi() & 0xFF), vertex.point.x, vertex.point.y));
 	}
-	for (edge_key, edge) in &graph.edges {
+	for (_, edge) in &graph.edges {
 		dot.push_str(&format!(
 			"  {:?} -> {:?}: {:0b}\n",
 			(edge.incident_vertices[0].0.as_ffi() & 0xFF),
@@ -392,9 +373,6 @@ impl std::ops::Not for Direction {
 impl Direction {
 	pub fn forward(self) -> bool {
 		self == Self::Forward
-	}
-	pub fn backwards(self) -> bool {
-		self == Self::Backwards
 	}
 }
 
@@ -667,7 +645,7 @@ fn get_incidence_angle(edge: &MinorGraphEdge) -> f64 {
 }
 
 fn sort_outgoing_edges_by_angle(graph: &mut MinorGraph) {
-	for vertex in graph.vertices.values_mut() {
+	for (vertex_key, vertex) in graph.vertices.iter_mut() {
 		if vertex.outgoing_edges.len() > 2 {
 			vertex.outgoing_edges.sort_by(|&a, &b| {
 				// TODO(@TrueDoctor): Make more robust. The js version seems to sort the data slightly differently when the angles are reallly close. In that case put the edge wich was discovered later first.
@@ -680,14 +658,14 @@ fn sort_outgoing_edges_by_angle(graph: &mut MinorGraph) {
 				}
 				new
 			});
-			let edges: Vec<_> = vertex
-				.outgoing_edges
-				.iter()
-				.map(|key| (*key, &graph.edges[*key]))
-				.map(|(key, edge)| ((key.0.as_ffi() & 0xFF), (edge.start_segment()).start_angle()))
-				.collect();
-			#[cfg(feature = "logging")]
-			dbg!(edges);
+			if cfg!(feature = "logging") {
+				eprintln!("Outgoing edges for {:?}:", vertex_key);
+				for &edge_key in &vertex.outgoing_edges {
+					let edge = &graph.edges[edge_key];
+					let angle = edge.start_segment().start_angle();
+					eprintln!("{:?}: {}°", edge_key.0, angle.to_degrees())
+				}
+			}
 		}
 	}
 }
@@ -926,9 +904,6 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 		}
 		#[cfg(feature = "logging")]
 		eprintln!("component_vertices: {}", component_vertices.len());
-		for edge in &dual_edges {
-			// eprintln!("{:?}", edge.incident_vertex);
-		}
 
 		let windings: Option<Vec<_>> = component_vertices
 			.iter()
@@ -971,21 +946,13 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 			// return Err(BooleanError::MultipleOuterFaces);
 			#[cfg(feature = "logging")]
 			eprintln!("Found multiple outer faces: {areas:?}, falling back to area calculation");
-			let (key, area) = *areas.iter().max_by_key(|(_, area)| ((area.abs() * 1000.) as u64)).unwrap();
-			if area < 0. {
-				reverse_winding = true;
-			}
+			let (key, _) = *areas.iter().max_by_key(|(_, area)| ((area.abs() * 1000.) as u64)).unwrap();
 			*key
 		} else {
 			*windings.iter().find(|(&_, winding)| (winding < &0) ^ reverse_winding).expect("No outer face of a component found.").0
 		};
 		#[cfg(feature = "logging")]
 		dbg!(outer_face_key);
-		if reverse_winding {
-			for &edge in component_edges.iter() {
-				// dual_edges[edge].direction_flag = !dual_edges[edge].direction_flag;
-			}
-		}
 
 		components.push(DualGraphComponent {
 			vertices: component_vertices,

@@ -10,8 +10,6 @@ use graphene_core::{Color, GraphicElement, GraphicGroup};
 
 use glam::{DAffine2, DVec2};
 use path_bool::PathBooleanOperation;
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
 
 pub struct BooleanOperationNode<BooleanOp> {
 	operation: BooleanOp,
@@ -211,6 +209,7 @@ fn to_path_segments(path: &mut Vec<path_bool::PathSegment>, subpath: &bezier_rs:
 		path.push(segment);
 	}
 }
+
 fn from_path(path_data: &[Path]) -> VectorData {
 	const EPSILON: f64 = 1e-5;
 
@@ -302,18 +301,6 @@ pub fn convert_usvg_path(path: &usvg::Path) -> Vec<Subpath<PointId>> {
 	subpaths
 }
 
-// #[cfg(target_arch = "wasm32")]
-// #[wasm_bindgen(module = "/../../frontend/src/utility-functions/computational-geometry.ts")]
-// extern "C" {
-// 	#[wasm_bindgen(js_name = booleanUnion)]
-// 	fn boolean_union(path1: String, path2: String) -> String;
-// 	#[wasm_bindgen(js_name = booleanSubtract)]
-// 	fn boolean_subtract(path1: String, path2: String) -> String;
-// 	#[wasm_bindgen(js_name = booleanIntersect)]
-// 	fn boolean_intersect(path1: String, path2: String) -> String;
-// }
-// #[cfg(not(target_arch = "wasm32"))]
-
 type Path = Vec<path_bool::PathSegment>;
 fn boolean_union(a: Path, b: Path) -> Vec<Path> {
 	path_bool(a, b, PathBooleanOperation::Union)
@@ -321,31 +308,20 @@ fn boolean_union(a: Path, b: Path) -> Vec<Path> {
 
 fn path_bool(a: Path, b: Path, op: PathBooleanOperation) -> Vec<Path> {
 	use path_bool::FillRule;
-	let a_path = path_bool::path_to_path_data(&a, 0.001);
-	let b_path = path_bool::path_to_path_data(&b, 0.001);
-	// log::debug!("{:?}\n{:?}", a, b);
-	// let a = path_bool::path_from_path_data(&a_path);
-	// let b = path_bool::path_from_path_data(&b_path);
-	// log::debug!("{:?}\n{:?}", a, b);
-	// log::error!("Boolean error  encontered while processing {a_path}\n {op:?}\n {b_path}");
-	let results = match path_bool::path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, op) {
+	match path_bool::path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, op) {
 		Ok(results) => results,
 		Err(e) => {
-			// log::error!("Boolean error {e:?} encontered while processing {a}\n {op:?}\n {b}");
+			let a_path = path_bool::path_to_path_data(&a, 0.001);
+			let b_path = path_bool::path_to_path_data(&b, 0.001);
+			log::error!("Boolean error {e:?} encontered while processing {a_path}\n {op:?}\n {b_path}");
 			Vec::new()
 		}
-	};
-	results
-	// let string = results.iter().map(|result| path_bool::path_to_path_data(result, 0.001)).fold(String::new(), |o, n| o + &n);
-	// // log::debug!("result: {}", string);
-	// string
+	}
 }
 
-// #[cfg(not(target_arch = "wasm32"))]
 fn boolean_subtract(a: Path, b: Path) -> Vec<Path> {
 	path_bool(a, b, PathBooleanOperation::Difference)
 }
-// #[cfg(not(target_arch = "wasm32"))]
 fn boolean_intersect(a: Path, b: Path) -> Vec<Path> {
 	path_bool(a, b, PathBooleanOperation::Intersection)
 }

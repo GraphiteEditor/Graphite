@@ -143,9 +143,6 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 				continue; // TODO: what to do?
 			}
 
-			let diff1 = (seg0.start_param - seg0.end_param).abs();
-			let diff2 = (seg1.start_param - seg1.end_param).abs();
-			// dbg!(diff1.min(diff2));
 			let is_linear0 = bounding_box_max_extent(&seg0.bounding_box) <= eps.linear || (seg0.end_param - seg0.start_param).abs() < eps.param;
 			let is_linear1 = bounding_box_max_extent(&seg1.bounding_box) <= eps.linear || (seg1.end_param - seg1.start_param).abs() < eps.param;
 
