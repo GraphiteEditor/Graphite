@@ -173,7 +173,12 @@ async fn circular_repeat(
 }
 
 #[node_macro::node(path(graphene_core::vector))]
-fn bounding_box(_: (), vector_data: VectorData) -> VectorData {
+async fn bounding_box<F: 'n + Copy + Send>(
+	#[implementations((), Footprint)] footprint: F,
+	#[implementations(((), VectorData), (Footprint, VectorData))] vector_data: impl Node<F, Output = VectorData>,
+) -> VectorData {
+	let vector_data = vector_data.eval(footprint).await;
+
 	let bounding_box = vector_data.bounding_box_with_transform(vector_data.transform).unwrap();
 	VectorData::from_subpath(Subpath::new_rect(bounding_box[0], bounding_box[1]))
 }
@@ -378,7 +383,14 @@ async fn sample_points(
 }
 
 #[node_macro::node(path(graphene_core::vector))]
-fn poisson_disk_points(_: (), vector_data: VectorData, separation_disk_diameter: f64, seed: SeedValue) -> VectorData {
+async fn poisson_disk_points<F: 'n + Copy + Send>(
+	#[implementations((), Footprint)] footprint: F,
+	#[implementations(((), VectorData), (Footprint, VectorData))] vector_data: impl Node<F, Output = VectorData>,
+	separation_disk_diameter: f64,
+	seed: SeedValue,
+) -> VectorData {
+	let vector_data = vector_data.eval(footprint).await;
+
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 	let mut result = VectorData::empty();
 	for mut subpath in vector_data.stroke_bezier_paths() {

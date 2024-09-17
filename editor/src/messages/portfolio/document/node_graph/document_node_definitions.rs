@@ -2815,7 +2815,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(concrete!(f64), 1),
 									NodeInput::network(concrete!(u32), 2),
 								],
-								manual_composition: Some(concrete!(())),
+								manual_composition: Some(generic!(T)),
 								implementation: DocumentNodeImplementation::proto("graphene_core::vector::PoissonDiskPointsNode"),
 								..Default::default()
 							},
