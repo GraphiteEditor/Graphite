@@ -1,3 +1,5 @@
+use std::ops::{Div, Mul};
+
 use crate::Node;
 
 use bezier_rs::{ManipulatorGroup, Subpath};
@@ -206,7 +208,7 @@ fn to_path(vector: &VectorData, transform: DAffine2) -> Vec<path_bool::PathSegme
 fn to_path_segments(path: &mut Vec<path_bool::PathSegment>, subpath: &bezier_rs::Subpath<PointId>, transform: DAffine2) {
 	use path_bool::PathSegment;
 	for bezier in subpath.iter() {
-		let transformed = bezier.apply_transformation(|pos| transform.transform_point2(pos));
+		let transformed = bezier.apply_transformation(|pos| transform.transform_point2(pos).mul(10000.).round().div(10000.));
 		let start = transformed.start;
 		let end = transformed.end;
 		let segment = match transformed.handles {
@@ -215,6 +217,12 @@ fn to_path_segments(path: &mut Vec<path_bool::PathSegment>, subpath: &bezier_rs:
 			bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => PathSegment::Cubic(start, handle_start, handle_end, end),
 		};
 		path.push(segment);
+	}
+	if subpath.len() > 1 {
+		// TODO: make more efficient
+		let start = subpath.iter().next().unwrap().start;
+		let end = subpath.iter().last().unwrap().end;
+		path.push(PathSegment::Line(end, start));
 	}
 }
 fn from_path(path_data: &[Path]) -> VectorData {
@@ -316,9 +324,13 @@ fn boolean_union(a: Path, b: Path) -> String {
 
 fn path_bool(a: Path, b: Path, op: PathBooleanOperation) -> String {
 	use path_bool::FillRule;
-	// let a_path = path_bool::path_from_path_data(&a);
-	// let b_path = path_bool::path_from_path_data(&b);
-	// log::error!("Boolean error  encontered while processing {a}\n {op:?}\n {b}");
+	let a_path = path_bool::path_to_path_data(&a, 0.001);
+	let b_path = path_bool::path_to_path_data(&b, 0.001);
+	// log::debug!("{:?}\n{:?}", a, b);
+	// let a = path_bool::path_from_path_data(&a_path);
+	// let b = path_bool::path_from_path_data(&b_path);
+	// log::debug!("{:?}\n{:?}", a, b);
+	// log::error!("Boolean error  encontered while processing {a_path}\n {op:?}\n {b_path}");
 	let results = match path_bool::path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, op) {
 		Ok(results) => results,
 		Err(e) => {
@@ -327,7 +339,9 @@ fn path_bool(a: Path, b: Path, op: PathBooleanOperation) -> String {
 		}
 	};
 	//results
-	results.iter().map(|result| path_bool::path_to_path_data(result, 0.00001)).fold(String::new(), |o, n| o + &n)
+	let string = results.iter().map(|result| path_bool::path_to_path_data(result, 0.001)).fold(String::new(), |o, n| o + &n);
+	// log::debug!("result: {}", string);
+	string
 }
 
 // #[cfg(not(target_arch = "wasm32"))]
