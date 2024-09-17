@@ -26,7 +26,7 @@ Each `DocumentNode` is of a particular type, for example the "Opacity" node type
 DocumentNodeDefinition {
 	name: "Opacity",
 	category: "Image Adjustments",
-	implementation: DocumentNodeImplementation::proto("graphene_core::raster::OpacityNode<_>"),
+	implementation: DocumentNodeImplementation::proto("graphene_core::raster::OpacityNode"),
 	inputs: vec![
 		DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 		DocumentInputType::value("Factor", TaggedValue::F32(100.), false),
@@ -36,7 +36,6 @@ DocumentNodeDefinition {
 	..Default::default()
 },
 ```
-
 
 The identifier here must be the same as that of the proto-node which will be discussed soon (usually the path to the node implementation).
 
@@ -126,7 +125,7 @@ The definition for the constructor of a node that applies the opacity transforma
 ```rs
 (
 	// Matches against the string defined in the document node.
-	ProtoNodeIdentifier::new("graphene_core::raster::OpacityNode<_>"),
+	ProtoNodeIdentifier::new("graphene_core::raster::OpacityNode"),
 	// This function is run when converting the `ProtoNode` struct into the desired struct.
 	|args| {
 		Box::pin(async move {

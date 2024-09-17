@@ -191,7 +191,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(wgpu_executor::CreateGpuSurfaceNode<_>, input: (), params: [&WasmEditorApi]),
 		#[cfg(feature = "gpu")]
 		vec![(
-			ProtoNodeIdentifier::new("graphene_std::executor::MapGpuSingleImageNode<_>"),
+			ProtoNodeIdentifier::new("graphene_std::executor::MapGpuSingleImageNode"),
 			|args| {
 				Box::pin(async move {
 					let document_node: DowncastBothNode<(), graph_craft::document::DocumentNode> = DowncastBothNode::new(args[0].clone());
@@ -209,7 +209,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			),
 		)],
 		vec![(
-			ProtoNodeIdentifier::new("graphene_core::structural::ComposeNode<_, _, _>"),
+			ProtoNodeIdentifier::new("graphene_core::structural::ComposeNode"),
 			|args| {
 				Box::pin(async move {
 					let node = ComposeTypeErased::new(args[0].clone(), args[1].clone());
@@ -226,7 +226,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		)],
 		// Filters
 		vec![(
-			ProtoNodeIdentifier::new("graphene_core::raster::BrightnessContrastNode<_, _, _>"),
+			ProtoNodeIdentifier::new("graphene_core::raster::BrightnessContrastNode"),
 			|args| {
 				Box::pin(async move {
 					use graphene_core::raster::brightness_contrast::*;
@@ -256,7 +256,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		)],
 		vec![
 			(
-				ProtoNodeIdentifier::new("graphene_core::raster::CurvesNode<_>"),
+				ProtoNodeIdentifier::new("graphene_core::raster::CurvesNode"),
 				|args| {
 					use graphene_core::raster::{curve::Curve, GenerateCurvesNode};
 					let curve: DowncastBothNode<(), Curve> = DowncastBothNode::new(args[0].clone());
@@ -274,7 +274,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			),
 			// TODO: Use channel split and merge for this instead of using LuminanceMut for the whole color.
 			(
-				ProtoNodeIdentifier::new("graphene_core::raster::CurvesNode<_>"),
+				ProtoNodeIdentifier::new("graphene_core::raster::CurvesNode"),
 				|args| {
 					use graphene_core::raster::{curve::Curve, GenerateCurvesNode};
 					let curve: DowncastBothNode<(), Curve> = DowncastBothNode::new(args[0].clone());
@@ -292,7 +292,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			),
 		],
 		vec![(
-			ProtoNodeIdentifier::new("graphene_std::raster::ImaginateNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
+			ProtoNodeIdentifier::new("graphene_std::raster::ImaginateNode"),
 			|args: Vec<graph_craft::proto::SharedNodeContainer>| {
 				Box::pin(async move {
 					use graphene_std::raster::ImaginateNode;
