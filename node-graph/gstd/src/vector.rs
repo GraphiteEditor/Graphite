@@ -68,7 +68,7 @@ fn boolean_operation(group_of_paths: GraphicGroup, operation: BooleanOperation) 
 
 			#[allow(unused_unsafe)]
 			let boolean_operation_string = unsafe { boolean_subtract(upper_path_string, lower_path_string) };
-			let boolean_operation_result = from_svg_string(&boolean_operation_string);
+			let boolean_operation_result = from_path(&boolean_operation_string);
 
 			result.colinear_manipulators = boolean_operation_result.colinear_manipulators;
 			result.point_domain = boolean_operation_result.point_domain;
@@ -97,7 +97,7 @@ fn boolean_operation(group_of_paths: GraphicGroup, operation: BooleanOperation) 
 
 					#[allow(unused_unsafe)]
 					let boolean_operation_string = unsafe { boolean_union(upper_path_string, lower_path_string) };
-					let boolean_operation_result = from_svg_string(&boolean_operation_string);
+					let boolean_operation_result = from_path(&boolean_operation_string);
 
 					result.colinear_manipulators = boolean_operation_result.colinear_manipulators;
 					result.point_domain = boolean_operation_result.point_domain;
@@ -123,7 +123,7 @@ fn boolean_operation(group_of_paths: GraphicGroup, operation: BooleanOperation) 
 
 					#[allow(unused_unsafe)]
 					let boolean_operation_string = unsafe { boolean_intersect(upper_path_string, lower_path_string) };
-					let boolean_operation_result = from_svg_string(&boolean_operation_string);
+					let boolean_operation_result = from_path(&boolean_operation_string);
 
 					result.colinear_manipulators = boolean_operation_result.colinear_manipulators;
 					result.point_domain = boolean_operation_result.point_domain;
@@ -149,7 +149,7 @@ fn boolean_operation(group_of_paths: GraphicGroup, operation: BooleanOperation) 
 
 					#[allow(unused_unsafe)]
 					let boolean_intersection_string = unsafe { boolean_intersect(upper_path_string, lower_path_string) };
-					let mut boolean_intersection_result = from_svg_string(&boolean_intersection_string);
+					let mut boolean_intersection_result = from_path(&boolean_intersection_string);
 
 					boolean_intersection_result.transform = all_other_vector_data.transform;
 					boolean_intersection_result.style = all_other_vector_data.style.clone();
@@ -161,7 +161,7 @@ fn boolean_operation(group_of_paths: GraphicGroup, operation: BooleanOperation) 
 					let lower_path_string = to_path(&any_intersection, transform_of_lower_into_space_of_upper);
 
 					#[allow(unused_unsafe)]
-					let union_result = from_svg_string(&unsafe { boolean_union(upper_path_string, lower_path_string) });
+					let union_result = from_path(&unsafe { boolean_union(upper_path_string, lower_path_string) });
 					any_intersection = union_result;
 
 					any_intersection.transform = boolean_intersection_result.transform;
@@ -221,27 +221,50 @@ fn to_path_segments(path: &mut Vec<path_bool::PathSegment>, subpath: &bezier_rs:
 	}
 }
 fn from_path(path_data: &[Path]) -> VectorData {
-	let subpaths = path_data.iter().filter(|path| !path.is_empty()).map(|path| {
-		let mut cubics: Vec<_> = path.iter().map(|segment| segment.to_cubic()).collect();
-		if cubics.len() > 1 {
-			cubics.push(cubics[0]);
+	const EPSILON: f64 = 1e-5;
+
+	fn is_close(a: DVec2, b: DVec2) -> bool {
+		(a - b).length_squared() < EPSILON * EPSILON
+	}
+
+	let mut all_subpaths = Vec::new();
+
+	for path in path_data.iter().filter(|path| !path.is_empty()) {
+		let cubics: Vec<[DVec2; 4]> = path.iter().map(|segment| segment.to_cubic()).collect();
+		let mut groups = Vec::new();
+		let mut current_start = None;
+
+		for (index, cubic) in cubics.iter().enumerate() {
+			let [start, handle1, handle2, end] = *cubic;
+
+			if current_start.is_none() || !is_close(start, current_start.unwrap()) {
+				// Start a new subpath
+				if !groups.is_empty() {
+					all_subpaths.push(Subpath::new(std::mem::take(&mut groups), false));
+				}
+				// Use the correct in-handle (None) and out-handle for the start point
+				groups.push(ManipulatorGroup::new(start, None, Some(handle1)));
+			} else {
+				// Update the out-handle of the previous point
+				if let Some(last) = groups.last_mut() {
+					last.out_handle = Some(handle1);
+				}
+			}
+
+			// Add the end point with the correct in-handle and out-handle (None)
+			groups.push(ManipulatorGroup::new(end, Some(handle2), None));
+
+			current_start = Some(end);
+
+			// Check if this is the last segment
+			if index == cubics.len() - 1 {
+				all_subpaths.push(Subpath::new(groups, false));
+				groups = Vec::new(); // Reset groups for the next path
+			}
 		}
+	}
 
-		let groups: Vec<ManipulatorGroup<PointId>> = cubics
-			.windows(2)
-			.map(|window| {
-				let end = window[1][0];
-				let in_handle = window[0][2];
-				let out_handle = window[1][1];
-
-				ManipulatorGroup::new(end, Some(in_handle), Some(out_handle))
-			})
-			.collect();
-
-		// Create a Subpath from the groups
-		Subpath::new(groups, true)
-	});
-	VectorData::from_subpaths(subpaths, false)
+	VectorData::from_subpaths(all_subpaths, false)
 }
 
 fn from_svg_string(svg_string: &str) -> VectorData {
@@ -313,11 +336,11 @@ pub fn convert_usvg_path(path: &usvg::Path) -> Vec<Subpath<PointId>> {
 // #[cfg(not(target_arch = "wasm32"))]
 
 type Path = Vec<path_bool::PathSegment>;
-fn boolean_union(a: Path, b: Path) -> String {
+fn boolean_union(a: Path, b: Path) -> Vec<Path> {
 	path_bool(a, b, PathBooleanOperation::Union)
 }
 
-fn path_bool(a: Path, b: Path, op: PathBooleanOperation) -> String {
+fn path_bool(a: Path, b: Path, op: PathBooleanOperation) -> Vec<Path> {
 	use path_bool::FillRule;
 	let a_path = path_bool::path_to_path_data(&a, 0.001);
 	let b_path = path_bool::path_to_path_data(&b, 0.001);
@@ -333,17 +356,17 @@ fn path_bool(a: Path, b: Path, op: PathBooleanOperation) -> String {
 			Vec::new()
 		}
 	};
-	//results
-	let string = results.iter().map(|result| path_bool::path_to_path_data(result, 0.001)).fold(String::new(), |o, n| o + &n);
-	// log::debug!("result: {}", string);
-	string
+	results
+	// let string = results.iter().map(|result| path_bool::path_to_path_data(result, 0.001)).fold(String::new(), |o, n| o + &n);
+	// // log::debug!("result: {}", string);
+	// string
 }
 
 // #[cfg(not(target_arch = "wasm32"))]
-fn boolean_subtract(a: Path, b: Path) -> String {
+fn boolean_subtract(a: Path, b: Path) -> Vec<Path> {
 	path_bool(a, b, PathBooleanOperation::Difference)
 }
 // #[cfg(not(target_arch = "wasm32"))]
-fn boolean_intersect(a: Path, b: Path) -> String {
+fn boolean_intersect(a: Path, b: Path) -> Vec<Path> {
 	path_bool(a, b, PathBooleanOperation::Intersection)
 }
