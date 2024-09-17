@@ -6,17 +6,19 @@ mod line_segment_aabb;
 mod math;
 mod path;
 mod path_boolean;
+#[cfg(feature = "parsing")]
 mod path_command;
 mod path_cubic_segment_self_intersection;
+#[cfg(feature = "parsing")]
 mod path_data;
 mod path_segment;
 mod quad_tree;
-mod vector;
 #[cfg(test)]
 mod visual_tests;
 
 pub use intersection_path_segment::path_segment_intersection;
-pub use path_boolean::{path_boolean, FillRule, PathBooleanOperation, EPS};
+pub use path_boolean::{path_boolean, BooleanError, FillRule, PathBooleanOperation, EPS};
+#[cfg(feature = "parsing")]
 pub use path_data::{path_from_path_data, path_to_path_data};
 pub use path_segment::PathSegment;
 
@@ -30,16 +32,8 @@ mod test {
 
 	#[test]
 	fn square() {
-		// let a = path_from_path_data(
-		//     "M 39,20 A 19,19 0 0 1 20,39 19,19 0 0 1 1,20 19,19 0 0 1 20,1 19,19 0 0 1 39,20 Z",
-		// );
-		// let b = path_from_path_data(
-		//     "M 47,28 A 19,19 0 0 1 28,47 19,19 0 0 1 9,28 19,19 0 0 1 28,9 19,19 0 0 1 47,28 Z",
-		// );
 		let a = path_from_path_data("M 10 10 L 50 10 L 30 40 Z");
 		let b = path_from_path_data("M 20 30 L 60 30 L 60 50 L 20 50 Z");
-		// let a = path_from_path_data("M 0 0 L 10 0 L 5 10 Z");
-		// let b = path_from_path_data("M 0 5 L 10  5 L 5 15  Z");
 		let union = path_boolean(
 			&a,
 			path_boolean::FillRule::NonZero,

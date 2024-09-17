@@ -29,7 +29,7 @@ fn out_code(x: f64, y: f64, bounding_box: &AaBb) -> u8 {
 	code
 }
 
-pub fn line_segment_aabb_intersect(seg: LineSegment, bounding_box: &AaBb) -> bool {
+pub(crate) fn line_segment_aabb_intersect(seg: LineSegment, bounding_box: &AaBb) -> bool {
 	let [mut p0, mut p1] = seg;
 
 	let mut outcode0 = out_code(p0.x, p0.y, bounding_box);

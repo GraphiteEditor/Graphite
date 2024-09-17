@@ -6,11 +6,10 @@ use glam::DVec2;
 
 use crate::path_command::{to_absolute_commands, AbsolutePathCommand, PathCommand};
 use crate::path_segment::PathSegment;
-use crate::vector::{vectors_equal, Vector};
 
 pub type Path = Vec<PathSegment>;
 
-fn reflect_control_point(point: Vector, control_point: Vector) -> Vector {
+fn reflect_control_point(point: DVec2, control_point: DVec2) -> DVec2 {
 	point * 2.0 - control_point
 }
 
@@ -18,9 +17,9 @@ pub fn path_from_commands<I>(commands: I) -> impl Iterator<Item = PathSegment>
 where
 	I: IntoIterator<Item = PathCommand>,
 {
-	let mut first_point: Option<Vector> = None;
-	let mut last_point: Option<Vector> = None;
-	let mut last_control_point: Option<Vector> = None;
+	let mut first_point: Option<DVec2> = None;
+	let mut last_point: Option<DVec2> = None;
+	let mut last_control_point: Option<DVec2> = None;
 
 	to_absolute_commands(commands).filter_map(move |cmd| match cmd {
 		AbsolutePathCommand::M(point) => {
@@ -95,13 +94,13 @@ pub fn path_to_commands<'a, I>(segments: I, eps: f64) -> impl Iterator<Item = Pa
 where
 	I: IntoIterator<Item = &'a PathSegment> + 'a,
 {
-	let mut last_point: Option<Vector> = None;
+	let mut last_point: Option<DVec2> = None;
 
 	segments.into_iter().flat_map(move |seg| {
-		let start = crate::path_segment::get_start_point(seg);
+		let start = seg.start();
 		let mut commands = Vec::new();
 
-		if last_point.map_or(true, |lp| !vectors_equal(start, lp, eps)) {
+		if last_point.map_or(true, |lp| !start.abs_diff_eq(lp, eps)) {
 			commands.push(PathCommand::Absolute(AbsolutePathCommand::M(start)));
 		}
 

@@ -2,9 +2,9 @@
 //
 // SPDX-License-Identifier: MIT
 
-use crate::vector::Vector;
+use glam::DVec2;
 
-pub type LineSegment = [Vector; 2];
+pub type LineSegment = [DVec2; 2];
 
 const COLLINEAR_EPS: f64 = f64::EPSILON * 64.0;
 

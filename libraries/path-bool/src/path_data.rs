@@ -4,7 +4,7 @@
 
 use crate::path::{path_from_commands, path_to_commands, Path};
 use crate::path_command::{AbsolutePathCommand, PathCommand, RelativePathCommand};
-use crate::vector::Vector;
+use glam::DVec2;
 use regex::Regex;
 
 pub fn commands_from_path_data(d: &str) -> Vec<PathCommand> {
@@ -54,29 +54,29 @@ pub fn commands_from_path_data(d: &str) -> Vec<PathCommand> {
 	while let Some(cmd) = get_cmd(&mut i, last_cmd) {
 		last_cmd = cmd;
 		match cmd {
-			'M' => commands.push(PathCommand::Absolute(AbsolutePathCommand::M(Vector::new(get_float(&mut i), get_float(&mut i))))),
-			'L' => commands.push(PathCommand::Absolute(AbsolutePathCommand::L(Vector::new(get_float(&mut i), get_float(&mut i))))),
+			'M' => commands.push(PathCommand::Absolute(AbsolutePathCommand::M(DVec2::new(get_float(&mut i), get_float(&mut i))))),
+			'L' => commands.push(PathCommand::Absolute(AbsolutePathCommand::L(DVec2::new(get_float(&mut i), get_float(&mut i))))),
 			'C' => commands.push(PathCommand::Absolute(AbsolutePathCommand::C(
-				Vector::new(get_float(&mut i), get_float(&mut i)),
-				Vector::new(get_float(&mut i), get_float(&mut i)),
-				Vector::new(get_float(&mut i), get_float(&mut i)),
+				DVec2::new(get_float(&mut i), get_float(&mut i)),
+				DVec2::new(get_float(&mut i), get_float(&mut i)),
+				DVec2::new(get_float(&mut i), get_float(&mut i)),
 			))),
 			'S' => commands.push(PathCommand::Absolute(AbsolutePathCommand::S(
-				Vector::new(get_float(&mut i), get_float(&mut i)),
-				Vector::new(get_float(&mut i), get_float(&mut i)),
+				DVec2::new(get_float(&mut i), get_float(&mut i)),
+				DVec2::new(get_float(&mut i), get_float(&mut i)),
 			))),
 			'Q' => commands.push(PathCommand::Absolute(AbsolutePathCommand::Q(
-				Vector::new(get_float(&mut i), get_float(&mut i)),
-				Vector::new(get_float(&mut i), get_float(&mut i)),
+				DVec2::new(get_float(&mut i), get_float(&mut i)),
+				DVec2::new(get_float(&mut i), get_float(&mut i)),
 			))),
-			'T' => commands.push(PathCommand::Absolute(AbsolutePathCommand::T(Vector::new(get_float(&mut i), get_float(&mut i))))),
+			'T' => commands.push(PathCommand::Absolute(AbsolutePathCommand::T(DVec2::new(get_float(&mut i), get_float(&mut i))))),
 			'A' => commands.push(PathCommand::Absolute(AbsolutePathCommand::A(
 				get_float(&mut i),
 				get_float(&mut i),
 				get_float(&mut i),
 				get_bool(&mut i),
 				get_bool(&mut i),
-				Vector::new(get_float(&mut i), get_float(&mut i)),
+				DVec2::new(get_float(&mut i), get_float(&mut i)),
 			))),
 			'Z' | 'z' => commands.push(PathCommand::Absolute(AbsolutePathCommand::Z)),
 			'H' => commands.push(PathCommand::Absolute(AbsolutePathCommand::H(get_float(&mut i)))),

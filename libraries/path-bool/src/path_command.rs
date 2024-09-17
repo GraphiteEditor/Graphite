@@ -2,19 +2,19 @@
 //
 // SPDX-License-Identifier: MIT
 
-use crate::vector::Vector;
+use glam::DVec2;
 
 #[derive(Clone, Debug)]
 pub enum AbsolutePathCommand {
 	H(f64),
 	V(f64),
-	M(Vector),
-	L(Vector),
-	C(Vector, Vector, Vector),
-	S(Vector, Vector),
-	Q(Vector, Vector),
-	T(Vector),
-	A(f64, f64, f64, bool, bool, Vector),
+	M(DVec2),
+	L(DVec2),
+	C(DVec2, DVec2, DVec2),
+	S(DVec2, DVec2),
+	Q(DVec2, DVec2),
+	T(DVec2),
+	A(f64, f64, f64, bool, bool, DVec2),
 	Z,
 }
 
@@ -41,7 +41,7 @@ pub fn to_absolute_commands<I>(commands: I) -> impl Iterator<Item = AbsolutePath
 where
 	I: IntoIterator<Item = PathCommand>,
 {
-	let mut last_point = Vector::ZERO;
+	let mut last_point = DVec2::ZERO;
 	let mut first_point = last_point;
 
 	commands.into_iter().flat_map(move |cmd| match cmd {
@@ -91,36 +91,36 @@ where
 				vec![AbsolutePathCommand::L(last_point)]
 			}
 			RelativePathCommand::M(dx, dy) => {
-				last_point += Vector::new(dx, dy);
+				last_point += DVec2::new(dx, dy);
 				first_point = last_point;
 				vec![AbsolutePathCommand::M(last_point)]
 			}
 			RelativePathCommand::L(dx, dy) => {
-				last_point += Vector::new(dx, dy);
+				last_point += DVec2::new(dx, dy);
 				vec![AbsolutePathCommand::L(last_point)]
 			}
 			RelativePathCommand::C(dx1, dy1, dx2, dy2, dx, dy) => {
-				let c1 = last_point + Vector::new(dx1, dy1);
-				let c2 = last_point + Vector::new(dx2, dy2);
-				last_point += Vector::new(dx, dy);
+				let c1 = last_point + DVec2::new(dx1, dy1);
+				let c2 = last_point + DVec2::new(dx2, dy2);
+				last_point += DVec2::new(dx, dy);
 				vec![AbsolutePathCommand::C(c1, c2, last_point)]
 			}
 			RelativePathCommand::S(dx2, dy2, dx, dy) => {
-				let c2 = last_point + Vector::new(dx2, dy2);
-				last_point += Vector::new(dx, dy);
+				let c2 = last_point + DVec2::new(dx2, dy2);
+				last_point += DVec2::new(dx, dy);
 				vec![AbsolutePathCommand::S(c2, last_point)]
 			}
 			RelativePathCommand::Q(dx1, dy1, dx, dy) => {
-				let control = last_point + Vector::new(dx1, dy1);
-				last_point += Vector::new(dx, dy);
+				let control = last_point + DVec2::new(dx1, dy1);
+				last_point += DVec2::new(dx, dy);
 				vec![AbsolutePathCommand::Q(control, last_point)]
 			}
 			RelativePathCommand::T(dx, dy) => {
-				last_point += Vector::new(dx, dy);
+				last_point += DVec2::new(dx, dy);
 				vec![AbsolutePathCommand::T(last_point)]
 			}
 			RelativePathCommand::A(rx, ry, x_axis_rotation, large_arc_flag, sweep_flag, dx, dy) => {
-				last_point += Vector::new(dx, dy);
+				last_point += DVec2::new(dx, dy);
 				vec![AbsolutePathCommand::A(rx, ry, x_axis_rotation, large_arc_flag, sweep_flag, last_point)]
 			}
 		},

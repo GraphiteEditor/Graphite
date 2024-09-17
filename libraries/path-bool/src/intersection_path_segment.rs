@@ -2,13 +2,14 @@
 //
 // SPDX-License-Identifier: MIT
 
+use glam::DVec2;
+
 use crate::aabb::{bounding_box_max_extent, bounding_boxes_overlap, AaBb};
 use crate::epsilons::Epsilons;
 use crate::line_segment::{line_segment_intersection, line_segments_intersect};
 use crate::line_segment_aabb::line_segment_aabb_intersect;
 use crate::math::lerp;
-use crate::path_segment::{get_end_point, get_start_point, path_segment_bounding_box, sample_path_segment_at, split_segment_at, PathSegment};
-use crate::vector::{vectors_equal, Vector};
+use crate::path_segment::PathSegment;
 
 #[derive(Clone)]
 struct IntersectionSegment {
@@ -20,26 +21,26 @@ struct IntersectionSegment {
 
 #[inline(never)]
 fn subdivide_intersection_segment(int_seg: &IntersectionSegment) -> [IntersectionSegment; 2] {
-	let (seg0, seg1) = split_segment_at(&int_seg.seg, 0.5);
+	let (seg0, seg1) = int_seg.seg.split_at(0.5);
 	let mid_param = (int_seg.start_param + int_seg.end_param) / 2.0;
 	[
 		IntersectionSegment {
 			seg: seg0,
 			start_param: int_seg.start_param,
 			end_param: mid_param,
-			bounding_box: path_segment_bounding_box(&seg0),
+			bounding_box: seg0.bounding_box(),
 		},
 		IntersectionSegment {
 			seg: seg1,
 			start_param: mid_param,
 			end_param: int_seg.end_param,
-			bounding_box: path_segment_bounding_box(&seg1),
+			bounding_box: seg1.bounding_box(),
 		},
 	]
 }
 
 #[inline(never)]
-fn path_segment_to_line_segment(seg: &PathSegment) -> [Vector; 2] {
+fn path_segment_to_line_segment(seg: &PathSegment) -> [DVec2; 2] {
 	match seg {
 		PathSegment::Line(start, end) => [*start, *end],
 		PathSegment::Cubic(start, _, _, end) => [*start, *end],
@@ -63,13 +64,13 @@ fn intersection_segments_overlap(seg0: &IntersectionSegment, seg1: &Intersection
 #[inline(never)]
 pub fn segments_equal(seg0: &PathSegment, seg1: &PathSegment, point_epsilon: f64) -> bool {
 	match (*seg0, *seg1) {
-		(PathSegment::Line(start0, end0), PathSegment::Line(start1, end1)) => vectors_equal(start0, start1, point_epsilon) && vectors_equal(end0, end1, point_epsilon),
+		(PathSegment::Line(start0, end0), PathSegment::Line(start1, end1)) => start0.abs_diff_eq(start1, point_epsilon) && end0.abs_diff_eq(end1, point_epsilon),
 		(PathSegment::Cubic(p00, p01, p02, p03), PathSegment::Cubic(p10, p11, p12, p13)) => {
-			let start_and_end_equal = vectors_equal(p00, p10, point_epsilon) && vectors_equal(p03, p13, point_epsilon);
+			let start_and_end_equal = p00.abs_diff_eq(p10, point_epsilon) && p03.abs_diff_eq(p13, point_epsilon);
 
-			let parameter_equal = vectors_equal(p01, p11, point_epsilon) && vectors_equal(p02, p12, point_epsilon);
-			let direction1 = sample_path_segment_at(seg0, 0.1);
-			let direction2 = sample_path_segment_at(seg1, 0.1);
+			let parameter_equal = p01.abs_diff_eq(p11, point_epsilon) && p02.abs_diff_eq(p12, point_epsilon);
+			let direction1 = seg0.sample_at(0.1);
+			let direction2 = seg1.sample_at(0.1);
 			let angles_equal = (direction1 - p00).angle_to(direction2 - p00).abs() < point_epsilon * 4.;
 			if angles_equal {
 				// eprintln!("deduplicating {:?} {:?} because the angles are equal", seg0, seg1);
@@ -78,16 +79,16 @@ pub fn segments_equal(seg0: &PathSegment, seg1: &PathSegment, point_epsilon: f64
 			start_and_end_equal && (parameter_equal || angles_equal)
 		}
 		(PathSegment::Quadratic(p00, p01, p02), PathSegment::Quadratic(p10, p11, p12)) => {
-			vectors_equal(p00, p10, point_epsilon) && vectors_equal(p01, p11, point_epsilon) && vectors_equal(p02, p12, point_epsilon)
+			p00.abs_diff_eq(p10, point_epsilon) && p01.abs_diff_eq(p11, point_epsilon) && p02.abs_diff_eq(p12, point_epsilon)
 		}
 		(PathSegment::Arc(p00, rx0, ry0, angle0, large_arc0, sweep0, p01), PathSegment::Arc(p10, rx1, ry1, angle1, large_arc1, sweep1, p11)) => {
-			vectors_equal(p00, p10, point_epsilon) &&
+			p00.abs_diff_eq(p10, point_epsilon) &&
             (rx0 - rx1).abs() < point_epsilon &&
             (ry0 - ry1).abs() < point_epsilon &&
             (angle0 - angle1).abs() < point_epsilon && // TODO: Phi can be anything if rx = ry. Also, handle rotations by Pi/2.
             large_arc0 == large_arc1 &&
             sweep0 == sweep1 &&
-            vectors_equal(p01, p11, point_epsilon)
+            p01.abs_diff_eq(p11, point_epsilon)
 		}
 		_ => false,
 	}
@@ -111,13 +112,13 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 			seg: *seg0,
 			start_param: 0.0,
 			end_param: 1.0,
-			bounding_box: path_segment_bounding_box(seg0),
+			bounding_box: seg0.bounding_box(),
 		},
 		IntersectionSegment {
 			seg: *seg1,
 			start_param: 0.0,
 			end_param: 1.0,
-			bounding_box: path_segment_bounding_box(seg1),
+			bounding_box: seg1.bounding_box(),
 		},
 	)];
 	let mut next_pairs = Vec::new();
@@ -188,10 +189,10 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 }
 
 fn calculate_overlap_intersections(seg0: &PathSegment, seg1: &PathSegment, eps: &Epsilons) -> Vec<[f64; 2]> {
-	let start0 = get_start_point(seg0);
-	let end0 = get_end_point(seg0);
-	let start1 = get_start_point(seg1);
-	let end1 = get_end_point(seg1);
+	let start0 = seg0.start();
+	let end0 = seg0.end();
+	let start1 = seg1.start();
+	let end1 = seg1.end();
 
 	let mut intersections = Vec::new();
 
@@ -217,12 +218,12 @@ fn calculate_overlap_intersections(seg0: &PathSegment, seg1: &PathSegment, eps: 
 
 	// Remove duplicates and sort intersections
 	intersections.sort_unstable_by(|a, b| a[0].partial_cmp(&b[0]).unwrap());
-	intersections.dedup_by(|a, b| vectors_equal(Vector::new(a[0], a[1]), Vector::new(b[0], b[1]), eps.param));
+	intersections.dedup_by(|a, b| DVec2::from(*a).abs_diff_eq(DVec2::from(*b), eps.param));
 
 	// Handle special cases
 	if intersections.is_empty() {
 		// Check if segments are identical
-		if vectors_equal(start0, start1, eps.point) && vectors_equal(end0, end1, eps.point) {
+		if (start0.abs_diff_eq(start1, eps.point)) && end0.abs_diff_eq(end1, eps.point) {
 			return vec![[0.0, 0.0], [1.0, 1.0]];
 		}
 	} else if intersections.len() > 2 {
@@ -233,21 +234,21 @@ fn calculate_overlap_intersections(seg0: &PathSegment, seg1: &PathSegment, eps: 
 	intersections
 }
 
-fn find_point_on_segment(seg: &PathSegment, point: Vector, eps: &Epsilons) -> Option<f64> {
+fn find_point_on_segment(seg: &PathSegment, point: DVec2, eps: &Epsilons) -> Option<f64> {
 	let start = 0.0;
 	let end = 1.0;
 	let mut t = 0.5;
 
 	for _ in 0..32 {
 		// Limit iterations to prevent infinite loops
-		let current_point = sample_path_segment_at(seg, t);
+		let current_point = seg.sample_at(t);
 
-		if vectors_equal(current_point, point, eps.point) {
+		if current_point.abs_diff_eq(point, eps.point) {
 			return Some(t);
 		}
 
-		let start_point = sample_path_segment_at(seg, start);
-		let end_point = sample_path_segment_at(seg, end);
+		let start_point = seg.sample_at(start);
+		let end_point = seg.sample_at(end);
 
 		let dist_start = (point - start_point).length_squared();
 		let dist_end = (point - end_point).length_squared();

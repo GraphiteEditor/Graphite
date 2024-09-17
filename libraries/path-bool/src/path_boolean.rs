@@ -17,11 +17,11 @@ use crate::epsilons::Epsilons;
 use crate::intersection_path_segment::{path_segment_intersection, segments_equal};
 use crate::path::Path;
 use crate::path_cubic_segment_self_intersection::path_cubic_segment_self_intersection;
-use crate::path_segment::{get_end_point, get_start_point, path_segment_bounding_box, reverse_path_segment, sample_path_segment_at, split_segment_at, PathSegment};
+use crate::path_segment::PathSegment;
 #[cfg(feature = "logging")]
 use crate::path_to_path_data;
 use crate::quad_tree::QuadTree;
-use crate::vector::{vectors_equal, Vector};
+use glam::DVec2;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -65,7 +65,7 @@ pub struct MajorGraphEdge {
 #[derive(Debug, Clone, Default)]
 pub struct MajorGraphVertex {
 	#[cfg_attr(not(feature = "logging"), expect(dead_code))]
-	pub point: Vector,
+	pub point: DVec2,
 	outgoing_edges: Vec<MajorEdgeKey>,
 }
 
@@ -89,10 +89,12 @@ impl MinorGraphEdge {
 		let segment = self.segments[0];
 		match self.direction_flag {
 			Direction::Forward => segment,
-			Direction::Backwards => reverse_path_segment(&segment),
+			Direction::Backwards => segment.reverse(),
 		}
 	}
 }
+// Compares Segments based on their derivative at the start. If the derivative
+// is equal, check the curvature instead. This should correctly sort most instances.
 fn compare_segments(a: &PathSegment, b: &PathSegment) -> Ordering {
 	let angle_a = a.start_angle();
 	let angle_b = b.start_angle();
@@ -100,7 +102,6 @@ fn compare_segments(a: &PathSegment, b: &PathSegment) -> Ordering {
 	// Normalize angles to [0, 2π)
 	let angle_a = (angle_a * 1000.).round() / 1000.;
 	let angle_b = (angle_b * 1000.).round() / 1000.;
-	// dbg!(a, angle_a.to_degrees(), b, angle_b.to_degrees());
 
 	// Compare angles first
 	match angle_b.partial_cmp(&angle_a) {
@@ -226,14 +227,14 @@ fn dual_graph_to_dot(components: &[DualGraphComponent], edges: &SlotMap<DualEdge
 
 fn segment_to_edge(parent: u8) -> impl Fn(&PathSegment) -> Option<MajorGraphEdgeStage1> {
 	move |seg| {
-		if bounding_box_max_extent(&path_segment_bounding_box(seg)) < EPS.point {
+		if bounding_box_max_extent(&seg.bounding_box()) < EPS.point {
 			return None;
 		}
 
 		match seg {
 			// Convert Line Segments expressed as cubic beziers to proper line segments
 			PathSegment::Cubic(start, _, _, end) => {
-				let direction = sample_path_segment_at(seg, 0.1);
+				let direction = seg.sample_at(0.1);
 				if (*end - *start).angle_to(direction - *start).abs() < EPS.point * 4. {
 					Some((PathSegment::Line(*start, *end), parent))
 				} else {
@@ -256,15 +257,15 @@ fn split_at_self_intersections(edges: &mut Vec<MajorGraphEdgeStage1>) {
 				}
 				let [t1, t2] = intersection;
 				if (t1 - t2).abs() < EPS.param {
-					let (seg1, seg2) = split_segment_at(seg, t1);
+					let (seg1, seg2) = seg.split_at(t1);
 					*seg = seg1;
 					new_edges.push((seg2, *parent));
 				} else {
-					let (seg1, tmp_seg) = split_segment_at(seg, t1);
-					let (seg2, seg3) = split_segment_at(&tmp_seg, (t2 - t1) / (1.0 - t1));
+					let (seg1, tmp_seg) = seg.split_at(t1);
+					let (seg2, seg3) = &tmp_seg.split_at((t2 - t1) / (1.0 - t1));
 					*seg = seg1;
-					new_edges.push((seg2, *parent));
-					new_edges.push((seg3, *parent));
+					new_edges.push((*seg2, *parent));
+					new_edges.push((*seg3, *parent));
 				}
 			}
 		}
@@ -274,7 +275,7 @@ fn split_at_self_intersections(edges: &mut Vec<MajorGraphEdgeStage1>) {
 
 fn split_at_intersections(edges: &[MajorGraphEdgeStage1]) -> (Vec<MajorGraphEdgeStage2>, Option<AaBb>) {
 	// Step 1: Add bounding boxes to edges
-	let with_bounding_box: Vec<MajorGraphEdgeStage2> = edges.iter().map(|(seg, parent)| (*seg, *parent, path_segment_bounding_box(seg))).collect();
+	let with_bounding_box: Vec<MajorGraphEdgeStage2> = edges.iter().map(|(seg, parent)| (*seg, *parent, seg.bounding_box())).collect();
 
 	// Step 2: Calculate total bounding box
 	let total_bounding_box = with_bounding_box.iter().fold(None, |acc, (_, _, bb)| Some(merge_bounding_boxes(acc, bb)));
@@ -297,9 +298,8 @@ fn split_at_intersections(edges: &[MajorGraphEdgeStage1]) -> (Vec<MajorGraphEdge
 	for (i, edge) in with_bounding_box.iter().enumerate() {
 		let candidates = edge_tree.find(&edge.2);
 		for &j in &candidates {
-			let candidate: &(_, _) = &edges[j];
-			let include_endpoints = edge.1 != candidate.1
-				|| !(vectors_equal(get_end_point(&candidate.0), get_start_point(&edge.0), EPS.point) || vectors_equal(get_start_point(&candidate.0), get_end_point(&edge.0), EPS.point));
+			let candidate: &(PathSegment, u8) = &edges[j];
+			let include_endpoints = edge.1 != candidate.1 || !(candidate.0.end().abs_diff_eq(edge.0.start(), EPS.point) || candidate.0.start().abs_diff_eq(edge.0.end(), EPS.point));
 			let intersection = path_segment_intersection(&edge.0, &candidate.0, include_endpoints, &EPS);
 			for [t0, t1] in intersection {
 				add_split(&mut splits_per_edge, i, t0);
@@ -330,13 +330,13 @@ fn split_at_intersections(edges: &[MajorGraphEdgeStage1]) -> (Vec<MajorGraphEdge
 				if tt > 1.0 - EPS.param {
 					continue;
 				}
-				let (seg1, seg2) = split_segment_at(&tmp_seg, tt);
-				new_edges.push((seg1, parent, path_segment_bounding_box(&seg1)));
+				let (seg1, seg2) = tmp_seg.split_at(tt);
+				new_edges.push((seg1, parent, seg1.bounding_box()));
 				tmp_seg = seg2;
 			}
-			new_edges.push((tmp_seg, parent, path_segment_bounding_box(&tmp_seg)));
+			new_edges.push((tmp_seg, parent, tmp_seg.bounding_box()));
 		} else {
-			new_edges.push((seg, parent, path_segment_bounding_box(&seg)));
+			new_edges.push((seg, parent, seg.bounding_box()));
 		}
 	}
 
@@ -389,7 +389,7 @@ fn find_vertices(edges: &[MajorGraphEdgeStage2], bounding_box: AaBb) -> MajorGra
 	let mut vertex_pair_id_to_edges: HashMap<_, Vec<(MajorGraphEdgeStage2, MajorEdgeKey, MajorEdgeKey)>> = HashMap::new();
 
 	for (seg, parent, bounding_box) in edges {
-		let mut get_vertex = |point: Vector| -> MajorVertexKey {
+		let mut get_vertex = |point: DVec2| -> MajorVertexKey {
 			let box_around_point = bounding_box_around_point(point, EPS.point);
 			if let Some(&existing_vertex) = vertex_tree.find(&box_around_point).iter().next() {
 				existing_vertex
@@ -400,19 +400,19 @@ fn find_vertices(edges: &[MajorGraphEdgeStage2], bounding_box: AaBb) -> MajorGra
 			}
 		};
 
-		let start_vertex = get_vertex(get_start_point(seg));
-		let end_vertex = get_vertex(get_end_point(seg));
+		let start_vertex = get_vertex(seg.start());
+		let end_vertex = get_vertex(seg.end());
 
 		if start_vertex == end_vertex {
 			match seg {
 				PathSegment::Line(..) => continue,
 				PathSegment::Cubic(_, c1, c2, _) => {
-					if vectors_equal(*c1, *c2, EPS.point) {
+					if c1.abs_diff_eq(*c2, EPS.point) {
 						continue;
 					}
 				}
 				PathSegment::Quadratic(_, c, _) => {
-					if vectors_equal(get_start_point(seg), *c, EPS.point) {
+					if seg.start().abs_diff_eq(*c, EPS.point) {
 						continue;
 					}
 				}
@@ -425,7 +425,7 @@ fn find_vertices(edges: &[MajorGraphEdgeStage2], bounding_box: AaBb) -> MajorGra
 		if let Some(existing_edges) = vertex_pair_id_to_edges.get(&vertex_pair_id) {
 			if let Some(existing_edge) = existing_edges
 				.iter()
-				.find(|(other_seg, ..)| segments_equal(seg, &other_seg.0, EPS.point) || segments_equal(&reverse_path_segment(seg), &other_seg.0, EPS.point))
+				.find(|(other_seg, ..)| segments_equal(seg, &other_seg.0, EPS.point) || segments_equal(&seg.reverse(), &other_seg.0, EPS.point))
 			{
 				*parents.entry(existing_edge.1).or_default() |= parent;
 				*parents.entry(existing_edge.2).or_default() |= parent;
@@ -633,9 +633,9 @@ fn get_incidence_angle(edge: &MinorGraphEdge) -> f64 {
 
 	// eprintln!("{edge:?}"); //, edge.direction_flag.forward());
 	let (p0, p1) = if edge.direction_flag.forward() {
-		(sample_path_segment_at(seg, 0.0), sample_path_segment_at(seg, EPS.param))
+		(seg.sample_at(0.0), seg.sample_at(EPS.param))
 	} else {
-		(sample_path_segment_at(seg, 1.0), sample_path_segment_at(seg, 1.0 - EPS.param))
+		(seg.sample_at(1.0), seg.sample_at(1.0 - EPS.param))
 	};
 
 	// eprintln!("{p0:?} {p1:?}");
@@ -670,7 +670,7 @@ fn sort_outgoing_edges_by_angle(graph: &mut MinorGraph) {
 	}
 }
 
-fn face_to_polygon(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>) -> Vec<Vector> {
+fn face_to_polygon(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>) -> Vec<DVec2> {
 	const CNT: usize = 3;
 	// #[cfg(feature = "logging")]
 	// eprintln!("incident node counts {}", face.incident_edges.len());
@@ -684,7 +684,7 @@ fn face_to_polygon(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, DualGrap
 				(0..CNT).map(move |i| {
 					let t0 = i as f64 / CNT as f64;
 					let t = if edge.direction_flag.forward() { t0 } else { 1.0 - t0 };
-					sample_path_segment_at(seg, t)
+					seg.sample_at(t)
 				})
 			})
 		})
@@ -697,7 +697,7 @@ fn interval_crosses_point(a: f64, b: f64, p: f64) -> bool {
 	dy1 == dy2
 }
 
-fn line_segment_intersects_horizontal_ray(a: Vector, b: Vector, point: Vector) -> bool {
+fn line_segment_intersects_horizontal_ray(a: DVec2, b: DVec2, point: DVec2) -> bool {
 	if !interval_crosses_point(a.y, b.y, point.y) {
 		return false;
 	}
@@ -705,7 +705,7 @@ fn line_segment_intersects_horizontal_ray(a: Vector, b: Vector, point: Vector) -
 	x >= point.x
 }
 
-fn compute_point_winding(polygon: &[Vector], tested_point: Vector) -> i32 {
+fn compute_point_winding(polygon: &[DVec2], tested_point: DVec2) -> i32 {
 	if polygon.len() <= 2 {
 		return 0;
 	}
@@ -978,7 +978,7 @@ fn get_next_edge(edge_key: MinorEdgeKey, graph: &MinorGraph) -> MinorEdgeKey {
 }
 
 fn test_inclusion(a: &DualGraphComponent, b: &DualGraphComponent, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>, vertices: &SlotMap<DualVertexKey, DualGraphVertex>) -> Option<DualVertexKey> {
-	let tested_point = get_start_point(&edges[a.edges[0]].segments[0]);
+	let tested_point = edges[a.edges[0]].segments[0].start();
 	for (face_key, face) in b.vertices.iter().map(|&key| (key, &vertices[key])) {
 		if Some(face_key) == b.outer_face {
 			continue;
@@ -996,7 +996,7 @@ fn test_inclusion(a: &DualGraphComponent, b: &DualGraphComponent, edges: &SlotMa
 	}
 	None
 }
-fn bounding_box_intersects_horizontal_ray(bounding_box: &AaBb, point: Vector) -> bool {
+fn bounding_box_intersects_horizontal_ray(bounding_box: &AaBb, point: DVec2) -> bool {
 	interval_crosses_point(bounding_box.top, bounding_box.bottom, point[1]) && bounding_box.right >= point[0]
 }
 
@@ -1005,8 +1005,8 @@ struct IntersectionSegment {
 	seg: PathSegment,
 }
 
-pub fn path_segment_horizontal_ray_intersection_count(orig_seg: &PathSegment, point: Vector) -> usize {
-	let total_bounding_box = path_segment_bounding_box(orig_seg);
+pub fn path_segment_horizontal_ray_intersection_count(orig_seg: &PathSegment, point: DVec2) -> usize {
+	let total_bounding_box = orig_seg.bounding_box();
 
 	if !bounding_box_intersects_horizontal_ray(&total_bounding_box, point) {
 		return 0;
@@ -1022,13 +1022,13 @@ pub fn path_segment_horizontal_ray_intersection_count(orig_seg: &PathSegment, po
 		let mut next_segments = Vec::new();
 		for segment in segments {
 			if bounding_box_max_extent(&segment.bounding_box) < EPS.linear {
-				if line_segment_intersects_horizontal_ray(get_start_point(&segment.seg), get_end_point(&segment.seg), point) {
+				if line_segment_intersects_horizontal_ray(segment.seg.start(), segment.seg.end(), point) {
 					count += 1;
 				}
 			} else {
-				let split = split_segment_at(&segment.seg, 0.5);
-				let bounding_box0 = path_segment_bounding_box(&split.0);
-				let bounding_box1 = path_segment_bounding_box(&split.1);
+				let split = &segment.seg.split_at(0.5);
+				let bounding_box0 = split.0.bounding_box();
+				let bounding_box1 = split.1.bounding_box();
 
 				if bounding_box_intersects_horizontal_ray(&bounding_box0, point) {
 					next_segments.push(IntersectionSegment {
@@ -1200,7 +1200,7 @@ fn walk_faces<'a>(faces: &'a HashSet<DualVertexKey>, edges: &SlotMap<DualEdgeKey
 				if current_edge.direction_flag.forward() {
 					result.extend(current_edge.segments.iter().cloned());
 				} else {
-					result.extend(current_edge.segments.iter().map(reverse_path_segment));
+					result.extend(current_edge.segments.iter().map(PathSegment::reverse));
 				}
 				visited_edges.insert(edge);
 				edge = *edge_to_next.get(&edge).unwrap();
@@ -1248,7 +1248,7 @@ fn dump_faces(
 				if edge.direction_flag.forward() {
 					path.extend(edge.segments.iter().cloned());
 				} else {
-					path.extend(edge.segments.iter().map(reverse_path_segment));
+					path.extend(edge.segments.iter().map(PathSegment::reverse));
 				}
 			}
 
@@ -1261,7 +1261,7 @@ fn dump_faces(
 						if edge.direction_flag.forward() {
 							path.extend(edge.segments.iter().cloned());
 						} else {
-							path.extend(edge.segments.iter().map(reverse_path_segment));
+							path.extend(edge.segments.iter().map(PathSegment::reverse));
 						}
 					}
 				}
@@ -1300,6 +1300,61 @@ pub enum BooleanError {
 	NoEarInPolygon,
 }
 
+/// Performs boolean operations on two paths.
+///
+/// Takes two paths, applies specified fill rules, and performs a boolean operation,
+/// returning the resulting path(s).
+///
+/// # Examples
+///
+/// ```
+/// use path_bool::{path_boolean, FillRule, PathBooleanOperation, path_from_path_data, path_to_path_data};
+///
+/// let path_a = path_from_path_data("M 10 10 L 50 10 L 30 40 Z");
+/// let path_b = path_from_path_data("M 20 30 L 60 30 L 60 50 L 20 50 Z");
+///
+/// let result = path_boolean(
+///     &path_a,
+///     FillRule::NonZero,
+///     &path_b,
+///     FillRule::NonZero,
+///     PathBooleanOperation::Intersection
+/// ).unwrap();
+///
+/// let result_data = path_to_path_data(&result[0], 0.001);
+/// assert_eq!(result_data, "M 36.666666666667,30.000000000000 L 23.333333333333,30.000000000000 L 30.000000000000,40.000000000000 L 36.666666666667,30.000000000000");
+/// ```
+///
+/// # Operations
+///
+/// The function supports various boolean operations:
+/// - Union
+/// - Difference
+/// - Intersection
+/// - Exclusion
+/// - Division
+/// - Fracture
+///
+/// See [`PathBooleanOperation`] for more details on each operation.
+///
+/// # Algorithm
+///
+/// The boolean operation is performed in several steps:
+///
+/// 1. Preprocessing: Convert input paths to edges and split at intersections.
+/// 2. Graph Construction: Build a graph representation of path segments.
+/// 3. Intersection Analysis: Compute intersections between path segments.
+/// 4. Graph Transformation: Convert the initial graph into the graph minor using edge contractions.
+/// 5. Nesting Analysis: Determine nesting relationships between path parts.
+/// 6. Boolean Evaluation: Apply the specified operation based on nesting.
+/// 7. Result Construction: Generate final path(s) based on the operation result.
+///
+/// # Errors
+///
+/// Returns a [`BooleanError`] if:
+/// - Input paths are invalid or cannot be processed.
+/// - The operation encounters an unsolvable geometric configuration.
+/// - Issues arise in determining the nesting structure of the paths.
 pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: FillRule, op: PathBooleanOperation) -> Result<Vec<Path>, BooleanError> {
 	let mut unsplit_edges: Vec<MajorGraphEdgeStage1> = a.iter().map(segment_to_edge(1)).chain(b.iter().map(segment_to_edge(2))).flatten().collect();
 
@@ -1553,9 +1608,9 @@ mod tests {
 	fn get_incidence_angle(edge: &MinorGraphEdge) -> f64 {
 		let seg = &edge.segments[0]; // First segment is always the incident one in both fwd and bwd
 		let (p0, p1) = if edge.direction_flag.forward() {
-			(sample_path_segment_at(seg, 0.0), sample_path_segment_at(seg, 0.1))
+			(seg.sample_at(0.0), seg.sample_at(0.1))
 		} else {
-			(sample_path_segment_at(seg, 1.0), sample_path_segment_at(seg, 1.0 - 0.1))
+			(seg.sample_at(1.0), seg.sample_at(1.0 - 0.1))
 		};
 		((p1.y - p0.y).atan2(p1.x - p0.x) + TAU) % TAU
 	}
