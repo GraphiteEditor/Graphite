@@ -1,3 +1,56 @@
+//! Implements boolean operations on paths using graph-based algorithms.
+//!
+//! This module uses concepts from graph theory to efficiently perform boolean
+//! operations on complex paths. The main algorithms involve creating a graph
+//! representation of the paths, simplifying this graph, and then working with
+//! its dual graph to determine the result of the boolean operation.
+//!
+//! ## Graph Minor
+//!
+//! A graph minor is a simplified version of a graph, obtained by contracting edges
+//! (merging connected vertices) and removing isolated vertices. In the context of
+//! path boolean operations, we use a graph minor to simplify the initial graph
+//! representation of the paths. This simplification involves:
+//!
+//! 1. Merging collinear segments into single edges.
+//! 2. Removing vertices that don't represent significant features (like intersections
+//!    or endpoints).
+//!
+//! The resulting graph minor preserves the topological structure of the paths while
+//! reducing computational complexity.
+//!
+//! For more information on graph minors, see:
+//! <https://en.wikipedia.org/wiki/Graph_minor>
+//!
+//! ## Dual Graph
+//!
+//! The dual graph is a graph derived from another graph (the primal graph). In the
+//! context of path boolean operations, we construct the dual graph as follows:
+//!
+//! 1. Each face (region) in the primal graph becomes a vertex in the dual graph.
+//! 2. Each edge in the primal graph becomes an edge in the dual graph, connecting
+//!    the vertices that represent the faces on either side of the original edge.
+//!
+//! The dual graph allows us to efficiently determine which regions are inside or
+//! outside the original paths, which is crucial for performing boolean operations.
+//!
+//! For more information on dual graphs, see:
+//! <https://en.wikipedia.org/wiki/Dual_graph>
+//!
+//! ## Algorithm Overview
+//!
+//! The boolean operation algorithm follows these main steps:
+//!
+//! 1. Create a graph representation of both input paths (MajorGraph).
+//! 2. Simplify this graph to create a graph minor (MinorGraph).
+//! 3. Construct the dual graph of the MinorGraph.
+//! 4. Use the dual graph to determine which regions should be included in the result,
+//!    based on the specific boolean operation being performed.
+//! 5. Reconstruct the resulting path(s) from the selected regions.
+//!
+//! This approach allows for efficient and accurate boolean operations, even on
+//! complex paths with many intersections or self-intersections.
+
 use slotmap::{new_key_type, SlotMap};
 
 new_key_type! {
@@ -25,19 +78,53 @@ use glam::DVec2;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet, VecDeque};
 
+/// Represents the types of boolean operations that can be performed on paths.
 #[derive(Debug, Clone, Copy)]
 pub enum PathBooleanOperation {
+	/// Computes the union of two paths.
+	///
+	/// The result contains all areas that are inside either path A or path B (or both).
+	/// This operation is useful for combining shapes or creating complex outlines.
 	Union,
+
+	/// Computes the difference between two paths (A minus B).
+	///
+	/// The result contains all areas that are inside path A but not inside path B.
+	/// This operation is useful for cutting holes or subtracting shapes from each other.
 	Difference,
+
+	/// Computes the intersection of two paths.
+	///
+	/// The result contains only the areas that are inside both path A and path B.
+	/// This operation is useful for finding overlapping regions between shapes.
 	Intersection,
+
+	/// Computes the symmetric difference (exclusive or) of two paths.
+	///
+	/// The result contains areas that are inside either path A or path B, but not in both.
+	/// This operation is useful for creating non-overlapping regions or finding boundaries.
 	Exclusion,
+
+	/// Divides the first path using the second path as a "knife".
+	///
+	/// This operation splits path A wherever it intersects with path B, but keeps all
+	/// parts of path A. It's useful for creating segments or partitioning shapes.
 	Division,
+
+	/// Breaks both paths into separate pieces where they intersect.
+	///
+	/// This operation splits both path A and path B at their intersection points,
+	/// resulting in all possible non-overlapping segments from both paths.
+	/// It's useful for creating detailed breakdowns of overlapping shapes.
 	Fracture,
 }
 
+/// Specifies how to determine the "inside" of a path for filling.
 #[derive(Debug, Clone, Copy)]
 pub enum FillRule {
+	/// A point is inside if a ray from the point to infinity crosses an odd number of path segments.
 	NonZero,
+	/// A point is inside if a ray from the point to infinity crosses an even number of path segments.
 	EvenOdd,
 }
 
@@ -69,6 +156,9 @@ pub struct MajorGraphVertex {
 	outgoing_edges: Vec<MajorEdgeKey>,
 }
 
+/// Represents the initial graph structure used in boolean operations.
+///
+/// This graph contains all segments from both input paths.
 #[derive(Debug, Clone)]
 struct MajorGraph {
 	edges: SlotMap<MajorEdgeKey, MajorGraphEdge>,
@@ -134,6 +224,9 @@ struct MinorGraphCycle {
 	direction_flag: Direction,
 }
 
+/// Represents a simplified graph structure derived from the MajorGraph.
+///
+/// This graph combines collinear segments and removes unnecessary vertices.
 #[derive(Debug, Clone)]
 struct MinorGraph {
 	edges: SlotMap<MinorEdgeKey, MinorGraphEdge>,
@@ -155,6 +248,10 @@ struct DualGraphVertex {
 	incident_edges: Vec<DualEdgeKey>,
 }
 
+/// Represents a component in the dual graph.
+///
+/// A component is a connected subset of the dual graph, typically corresponding
+/// to a distinct region in the original paths.
 #[derive(Debug, Clone)]
 struct DualGraphComponent {
 	edges: Vec<DualEdgeKey>,
@@ -162,6 +259,11 @@ struct DualGraphComponent {
 	outer_face: Option<DualVertexKey>,
 }
 
+/// Represents the dual graph of the MinorGraph.
+///
+/// In this graph, faces of the MinorGraph become vertices, and edges represent
+/// adjacency between faces. This structure is crucial for determining the
+/// inside/outside regions of the paths.
 #[derive(Debug, Clone)]
 struct DualGraph {
 	components: Vec<DualGraphComponent>,
@@ -169,6 +271,10 @@ struct DualGraph {
 	vertices: SlotMap<DualVertexKey, DualGraphVertex>,
 }
 
+/// Represents the hierarchical nesting of regions in the paths.
+///
+/// This tree structure captures how different regions of the paths are contained
+/// within each other
 #[derive(Debug, Clone)]
 struct NestingTree {
 	component: DualGraphComponent,
@@ -273,6 +379,30 @@ fn split_at_self_intersections(edges: &mut Vec<MajorGraphEdgeStage1>) {
 	edges.extend(new_edges);
 }
 
+/// Splits path segments at their intersections with other segments.
+///
+/// This function performs the following steps:
+/// 1. Computes bounding boxes for all input edges.
+/// 2. Creates a spatial index (quad tree) of edges for efficient intersection checks.
+/// 3. For each edge:
+///    a. Finds potential intersecting edges using the spatial index.
+///    b. Computes precise intersections with these candidates.
+///    c. Records the intersection points as split locations.
+/// 4. Splits the original edges at the recorded intersection points.
+/// 5. Returns the split edges along with an overall bounding box.
+///
+/// The function uses an epsilon value to handle floating-point imprecision
+/// when determining if intersections occur at endpoints.
+///
+/// # Arguments
+///
+/// * `edges` - A slice of initial path segments (MajorGraphEdgeStage1).
+///
+/// # Returns
+///
+/// A tuple containing:
+/// * A vector of split edges (MajorGraphEdgeStage2).
+/// * An optional overall bounding box (AaBb) for all edges.
 fn split_at_intersections(edges: &[MajorGraphEdgeStage1]) -> (Vec<MajorGraphEdgeStage2>, Option<AaBb>) {
 	// Step 1: Add bounding boxes to edges
 	let with_bounding_box: Vec<MajorGraphEdgeStage2> = edges.iter().map(|(seg, parent)| (*seg, *parent, seg.bounding_box())).collect();
@@ -470,6 +600,28 @@ fn get_order(vertex: &MajorGraphVertex) -> usize {
 	vertex.outgoing_edges.len()
 }
 
+/// Computes the minor graph from the major graph.
+///
+/// This function simplifies the graph structure by performing the following steps:
+/// 1. Iterates through vertices of the major graph.
+/// 2. For vertices with exactly two edges (degree 2):
+///    a. Combines the two edges into a single edge if they have the same parent.
+///    b. Updates the endpoints of the new edge to skip the current vertex.
+/// 3. For vertices with degree != 2:
+///    a. Creates a new vertex in the minor graph.
+///    b. Creates new edges in the minor graph for each outgoing edge.
+/// 4. Handles any cyclic components (closed loops with no high-degree vertices).
+///
+/// The resulting minor graph preserves the topological structure of the paths
+/// while reducing the number of vertices and edges.
+///
+/// # Arguments
+///
+/// * `major_graph` - A reference to the MajorGraph.
+///
+/// # Returns
+///
+/// A new MinorGraph representing the simplified structure.
 fn compute_minor(major_graph: &MajorGraph) -> MinorGraph {
 	let mut new_edges = SlotMap::with_key();
 	let mut new_vertices = SlotMap::with_key();
@@ -770,6 +922,29 @@ fn compute_signed_area(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, Dual
 	// panic!("No ear in polygon found.");
 }
 
+/// Computes the dual graph from the minor graph.
+///
+/// This function creates the dual graph by following these steps:
+/// 1. Initializes empty structures for dual graph vertices and edges.
+/// 2. For each edge in the minor graph:
+///    a. Creates a new face (dual vertex) if not already created.
+///    b. Traverses around the face, creating dual edges for each minor edge.
+///    c. Connects dual edges to their twins (edges representing the same minor edge).
+/// 3. Handles special cases like isolated cycles.
+/// 4. Groups dual graph elements into connected components.
+/// 5. Determines the outer face for each component.
+///
+/// The dual graph represents faces of the minor graph as vertices and adjacencies
+/// between faces as edges, effectively flipping the concepts of vertices and faces.
+///
+/// # Arguments
+///
+/// * `minor_graph` - A reference to the MinorGraph.
+///
+/// # Returns
+///
+/// A Result containing either the computed DualGraph or a BooleanError if the
+/// operation cannot be completed successfully.
 fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 	let mut new_vertices: Vec<DualVertexKey> = Vec::new();
 	let mut minor_to_dual_edge: HashMap<MinorEdgeKey, DualEdgeKey> = HashMap::new();
@@ -1050,6 +1225,28 @@ pub fn path_segment_horizontal_ray_intersection_count(orig_seg: &PathSegment, po
 	count
 }
 
+/// Computes the nesting tree of the dual graph components.
+///
+/// This function builds a hierarchical structure representing how the components
+/// of the dual graph are nested within each other. It does this by:
+/// 1. Initializing an empty list of top-level nesting trees.
+/// 2. For each component in the dual graph:
+///    a. Tests for inclusion against existing nesting trees.
+///    b. If included in an existing tree, recursively inserts it at the appropriate level.
+///    c. If not included, creates a new top-level tree.
+///    d. Checks if any existing trees should become children of the new tree.
+/// 3. Continues this process until all components are placed in the nesting structure.
+///
+/// The resulting nesting tree captures the containment relationships between
+/// different regions of the original paths.
+///
+/// # Arguments
+///
+/// * `dual_graph` - A reference to the DualGraph.
+///
+/// # Returns
+///
+/// A vector of NestingTree structures representing the top-level components and their nested subcomponents.
 fn compute_nesting_tree(DualGraph { components, vertices, edges }: &DualGraph) -> Vec<NestingTree> {
 	let mut nesting_trees = Vec::new();
 
@@ -1110,6 +1307,10 @@ fn get_flag(count: i32, fill_rule: FillRule) -> u8 {
 	}
 }
 
+/// Determines which faces should be included in the result based on the boolean operation.
+///
+/// This function applies the specified boolean operation and fill rules to decide
+/// which regions of the dual graph should be part of the resulting path.
 fn flag_faces(
 	nesting_trees: &[NestingTree],
 	a_fill_rule: FillRule,
@@ -1217,6 +1418,11 @@ fn walk_faces<'a>(faces: &'a HashSet<DualVertexKey>, edges: &SlotMap<DualEdgeKey
 	result.into_iter()
 }
 
+/// Reconstructs the resulting path(s) from the selected faces of the dual graph.
+///
+/// This function takes the faces that were flagged for inclusion and reconstructs
+/// the path segments that form the boundaries of these faces, resulting in the
+/// final output of the boolean operation.
 fn dump_faces(
 	nesting_trees: &[NestingTree],
 	predicate: impl Fn(u8) -> bool + Copy,
@@ -1294,9 +1500,12 @@ const OPERATION_PREDICATES: [fn(u8) -> bool; 6] = [
 ];
 
 // TODO: Impl error trait
+/// Represents errors that can occur during boolean operations on paths.
 #[derive(Debug)]
 pub enum BooleanError {
+	/// Indicates that multiple outer faces were found where only one was expected.
 	MultipleOuterFaces,
+	/// Indicates that no valid ear was found in a polygon during triangulation. <https://en.wikipedia.org/wiki/Vertex_(geometry)#Ears>
 	NoEarInPolygon,
 }
 

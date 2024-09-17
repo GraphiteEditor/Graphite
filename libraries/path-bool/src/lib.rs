@@ -1,3 +1,77 @@
+//! A crate for performing boolean operations on 2D paths.
+//!
+//! `path_bool` provides functionality to perform various boolean operations
+//! (such as union, intersection, difference, etc.) on complex 2D paths. It is
+//! designed to handle paths with multiple subpaths, self-intersections, and
+//! different fill rules.
+//!
+//! # Algorithm
+//!
+//! The boolean operations are implemented using a graph-based approach:
+//!
+//! 1. **Path Segmentation**: Input paths are converted into a collection of path segments.
+//! 2. **Intersection Computation**: All intersections between path segments are calculated.
+//! 3. **Graph Construction**: A graph is constructed where vertices represent
+//!    endpoints and intersections, and edges represent path segments.
+//! 4. **Graph Simplification**: The graph is simplified to a "minor graph" by
+//!    merging collinear edges and removing unnecessary vertices.
+//! 5. **Dual Graph Creation**: A dual graph is created where faces of the minor
+//!    graph become vertices.
+//! 6. **Nesting Analysis**: A nesting tree is computed to represent how different
+//!    regions are contained within each other.
+//! 7. **Boolean Evaluation**: Based on the chosen operation and fill rules,
+//!    regions to include in the result are determined.
+//! 8. **Result Construction**: The final path(s) are constructed from the
+//!    selected regions.
+//!
+//! This approach allows for efficient and accurate boolean operations, even on
+//! complex paths with many intersections or self-intersections.
+//!
+//! # Usage
+//!
+//! Here's a basic example of performing an intersection operation on two paths:
+//!
+//! ```
+//! use path_bool::{path_boolean, FillRule, PathBooleanOperation, path_from_path_data, path_to_path_data};
+//!
+//! let path_a = path_from_path_data("M 10 10 L 50 10 L 30 40 Z");
+//! let path_b = path_from_path_data("M 20 30 L 60 30 L 60 50 L 20 50 Z");
+//!
+//! let result = path_boolean(
+//!     &path_a,
+//!     FillRule::NonZero,
+//!     &path_b,
+//!     FillRule::NonZero,
+//!     PathBooleanOperation::Intersection
+//! ).unwrap();
+//!
+//! let result_data = path_to_path_data(&result[0], 0.001);
+//! assert_eq!(result_data, "M 36.666666666667,30.000000000000 L 23.333333333333,30.000000000000 L 30.000000000000,40.000000000000 L 36.666666666667,30.000000000000");
+//! ```
+//!
+//! # Features
+//!
+//! - Supports multiple boolean operations: Union, Intersection, Difference,
+//!   Exclusion, Division, and Fracture.
+//! - Handles both `NonZero` and `EvenOdd` fill rules.
+//! - Works with paths containing lines, cubic Bézier curves, quadratic Bézier
+//!   curves, and elliptical arcs.
+//! - Provides utilities for parsing and generating SVG path data.
+//!
+//! # Further Reading
+//!
+//! For more information on the concepts used in this crate:
+//!
+//! - [Boolean operations on polygons](https://en.wikipedia.org/wiki/Boolean_operations_on_polygons)
+//! - [Graph theory](https://en.wikipedia.org/wiki/Graph_theory)
+//! - [Dual graph](https://en.wikipedia.org/wiki/Dual_graph)
+//! - [SVG Paths](https://developer.mozilla.org/en-US/docs/Web/SVG/Tutorial/Paths)
+//!
+//! # Note
+//!
+//! This crate is designed for 2D paths and is not suitable for 3D geometry
+//! or other specialized use cases.
+
 mod aabb;
 mod epsilons;
 mod intersection_path_segment;
