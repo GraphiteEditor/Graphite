@@ -230,7 +230,7 @@ fn from_path(path_data: &[Path]) -> VectorData {
 			if current_start.is_none() || !is_close(start, current_start.unwrap()) {
 				// Start a new subpath
 				if !groups.is_empty() {
-					all_subpaths.push(Subpath::new(std::mem::take(&mut groups), false));
+					all_subpaths.push(Subpath::new(std::mem::take(&mut groups), true));
 				}
 				// Use the correct in-handle (None) and out-handle for the start point
 				groups.push(ManipulatorGroup::new(start, None, Some(handle1)));
@@ -248,7 +248,7 @@ fn from_path(path_data: &[Path]) -> VectorData {
 
 			// Check if this is the last segment
 			if index == cubics.len() - 1 {
-				all_subpaths.push(Subpath::new(groups, false));
+				all_subpaths.push(Subpath::new(groups, true));
 				groups = Vec::new(); // Reset groups for the next path
 			}
 		}
