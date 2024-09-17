@@ -71,13 +71,15 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		})
 		.collect();
 
-	let default_values: Vec<_> = fields
+	let value_sources: Vec<_> = fields
 		.iter()
 		.map(|field| match field {
-			ParsedField::Regular {
-				default_value: Some(default_value), ..
-			} => quote!(Some(stringify!(#default_value))),
-			_ => quote!(None),
+			ParsedField::Regular { value_source, .. } => match value_source {
+				ValueSource::Default(data) => quote!(ValueSource::Default(stringify!(#data))),
+				ValueSource::Scope(data) => quote!(ValueSource::Scope(#data)),
+				_ => quote!(ValueSource::None),
+			},
+			_ => quote!(ValueSource::None),
 		})
 		.collect();
 
@@ -210,7 +212,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 			use gcore::{Node, NodeIOTypes, concrete, fn_type, future, ProtoNodeIdentifier, WasmNotSync, NodeIO};
 			use gcore::value::ClonedNode;
 			use gcore::ops::TypeNode;
-			use gcore::registry::{NodeMetadata, FieldMetadata, NODE_REGISTRY, NODE_METADATA, DynAnyNode, DowncastBothNode, DynFuture, TypeErasedBox, PanicNode};
+			use gcore::registry::{NodeMetadata, FieldMetadata, NODE_REGISTRY, NODE_METADATA, DynAnyNode, DowncastBothNode, DynFuture, TypeErasedBox, PanicNode, ValueSource};
 			use gcore::ctor::ctor;
 
 			// Use the types specified in the implementation
@@ -245,7 +247,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 							FieldMetadata {
 								name: stringify!(#field_names).to_string(),
 								exposed: #exposed,
-								default_value: #default_values,
+								value_source: #value_sources,
 								number_min: #number_min_values,
 								number_max: #number_max_values,
 								number_mode_range: #number_mode_range_values,

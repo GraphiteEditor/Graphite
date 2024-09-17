@@ -377,12 +377,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(2), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::scope("editor-api"), NodeInput::network(concrete!(String), 1)],
+								inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::scope("editor-api"), NodeInput::network(concrete!(String), 1)],
+								manual_composition: Some(concrete!(())),
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::LoadResourceNode")),
 								..Default::default()
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
+								manual_composition: Some(concrete!(())),
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::DecodeImageNode")),
 								..Default::default()
 							},
@@ -2975,12 +2977,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			.zip(first_node_io.parameters.iter())
 			.enumerate()
 			.map(|(index, (field, ty))| {
-				let default = field.default_value.and_then(|x| TaggedValue::from_primitive_string(x, ty));
 				let exposed = if index == 0 { *ty != fn_type!(()) } else { field.exposed };
 
-				if let Some(default) = default {
-					return NodeInput::value(default, exposed);
-				}
+				match field.value_source {
+					ValueSource::None => {}
+					ValueSource::Default(data) => return NodeInput::value(TaggedValue::from_primitive_string(data, ty).unwrap_or(TaggedValue::None), exposed),
+					ValueSource::Scope(data) => return NodeInput::scope(Cow::Borrowed(data)),
+				};
+
 				if let Some(type_default) = TaggedValue::from_type(ty) {
 					return NodeInput::value(type_default, exposed);
 				}
@@ -2994,6 +2998,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				.iter()
 				.enumerate()
 				.skip(1)
+				.filter(|(_, (field, _))| !matches!(&field.value_source, ValueSource::Scope(_)))
 				.flat_map(|(index, (field, ty))| {
 					let name = field.name.to_case(convert_case::Case::Title);
 					let min = field.number_min;

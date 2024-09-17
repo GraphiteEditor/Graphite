@@ -40,11 +40,19 @@ pub struct NodeMetadata {
 pub struct FieldMetadata {
 	pub name: String,
 	pub exposed: bool,
-	pub default_value: Option<&'static str>,
+	pub value_source: ValueSource,
 	pub number_min: Option<f64>,
 	pub number_max: Option<f64>,
 	pub number_mode_range: Option<(f64, f64)>,
 }
+
+#[derive(Clone, Debug)]
+pub enum ValueSource {
+	None,
+	Default(&'static str),
+	Scope(&'static str),
+}
+
 type NodeRegistry = LazyLock<Mutex<HashMap<String, Vec<(NodeConstructor, NodeIOTypes)>>>>;
 
 pub static NODE_REGISTRY: NodeRegistry = LazyLock::new(|| Mutex::new(HashMap::new()));

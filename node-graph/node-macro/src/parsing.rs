@@ -34,13 +34,21 @@ pub(crate) struct NodeFnAttributes {
 	// Add more attributes as needed
 }
 
+#[derive(Debug, Default)]
+pub enum ValueSource {
+	#[default]
+	None,
+	Default(TokenStream2),
+	Scope(LitStr),
+}
+
 #[derive(Debug)]
 pub(crate) enum ParsedField {
 	Regular {
 		pat_ident: PatIdent,
 		ty: Type,
 		exposed: bool,
-		default_value: Option<TokenStream2>,
+		value_source: ValueSource,
 		number_min: Option<LitFloat>,
 		number_max: Option<LitFloat>,
 		number_mode_range: Option<ExprTuple>,
@@ -229,11 +237,24 @@ fn parse_implementations<T: Parse>(attr: &Attribute, name: &Ident) -> syn::Resul
 
 fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Result<ParsedField> {
 	let name = &pat_ident.ident;
+
 	let default_value = extract_attribute(attrs, "default").and_then(|attr| {
 		attr.parse_args()
 			.map_err(|e| Error::new_spanned(attr, format!("Invalid `default` value for argument '{}': {}", name, e)))
 			.ok()
 	});
+	let scope = extract_attribute(attrs, "scope").and_then(|attr| {
+		attr.parse_args()
+			.map_err(|e| Error::new_spanned(attr, format!("Invalid `scope` value for argument '{}': {}", name, e)))
+			.ok()
+	});
+	let value_source = match (default_value, scope) {
+		(Some(_), Some(_)) => return Err(Error::new_spanned(&pat_ident, "Cannot have both `default` and `scope` attributes")),
+		(Some(default_value), _) => ValueSource::Default(default_value),
+		(_, Some(scope)) => ValueSource::Scope(scope),
+		_ => ValueSource::None,
+	};
+
 	let number_min = extract_attribute(attrs, "min").and_then(|attr| {
 		attr.parse_args()
 			.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `min` value for argument '{}': {}", name, e)))
@@ -267,7 +288,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		let (input_type, output_type) = node_input_type
 			.zip(node_output_type)
 			.ok_or_else(|| Error::new_spanned(&ty, "Invalid Node type. Expected `impl Node<Input, Output = OutputType>`"))?;
-		if default_value.is_some() {
+		if !matches!(&value_source, ValueSource::None) {
 			return Err(Error::new_spanned(&ty, "No default values for `impl Node` allowed"));
 		}
 		let implementations = extract_attribute(attrs, "implementations")
@@ -289,7 +310,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			number_max,
 			number_mode_range,
 			ty,
-			default_value,
+			value_source,
 			implementations,
 		})
 	}
@@ -389,20 +410,29 @@ mod tests {
 						pat_ident: p_name,
 						ty: p_ty,
 						exposed: p_exp,
-						default_value: p_default,
+						value_source: p_default,
 						..
 					},
 					ParsedField::Regular {
 						pat_ident: e_name,
 						ty: e_ty,
 						exposed: e_exp,
-						default_value: e_default,
+						value_source: e_default,
 						..
 					},
 				) => {
 					assert_eq!(p_name, e_name);
 					assert_eq!(p_exp, e_exp);
-					assert_eq!(p_default.to_token_stream().to_string(), e_default.to_token_stream().to_string());
+					match (p_default, e_default) {
+						(ValueSource::None, ValueSource::None) => {}
+						(ValueSource::Default(p), ValueSource::Default(e)) => {
+							assert_eq!(p.to_token_stream().to_string(), e.to_token_stream().to_string());
+						}
+						(ValueSource::Scope(p), ValueSource::Scope(e)) => {
+							assert_eq!(p.value(), e.value());
+						}
+						_ => panic!("Mismatched default values"),
+					}
 					assert_eq!(format!("{:?}", p_ty), format!("{:?}", e_ty));
 				}
 				(
@@ -461,7 +491,7 @@ mod tests {
 				pat_ident: pat_ident("b"),
 				ty: parse_quote!(f64),
 				exposed: false,
-				default_value: None,
+				value_source: ValueSource::None,
 				number_min: None,
 				number_max: None,
 				number_mode_range: None,
@@ -514,7 +544,7 @@ mod tests {
 					pat_ident: pat_ident("translate"),
 					ty: parse_quote!(DVec2),
 					exposed: false,
-					default_value: None,
+					value_source: ValueSource::None,
 					number_min: None,
 					number_max: None,
 					number_mode_range: None,
@@ -532,7 +562,7 @@ mod tests {
 	fn test_node_with_default_values() {
 		let attr = quote!(category("Vector: Generator"));
 		let input = quote!(
-			fn circle(_: (), #[default(50.0)] radius: f64) -> VectorData {
+			fn circle(_: (), #[default(50.)] radius: f64) -> VectorData {
 				// Implementation details...
 			}
 		);
@@ -561,7 +591,7 @@ mod tests {
 				pat_ident: pat_ident("radius"),
 				ty: parse_quote!(f64),
 				exposed: false,
-				default_value: Some(quote!(50.0)),
+				value_source: ValueSource::Default(quote!(50.)),
 				number_min: None,
 				number_max: None,
 				number_mode_range: None,
@@ -607,7 +637,7 @@ mod tests {
 				pat_ident: pat_ident("shadows"),
 				ty: parse_quote!(f64),
 				exposed: false,
-				default_value: None,
+				value_source: ValueSource::None,
 				number_min: None,
 				number_max: None,
 				number_mode_range: None,
@@ -664,7 +694,7 @@ mod tests {
 				pat_ident: pat_ident("b"),
 				ty: parse_quote!(f64),
 				exposed: false,
-				default_value: None,
+				value_source: ValueSource::None,
 				number_min: Some(parse_quote!(-500.)),
 				number_max: Some(parse_quote!(500.)),
 				number_mode_range: Some(parse_quote!((0., 100.))),
@@ -710,7 +740,7 @@ mod tests {
 				pat_ident: pat_ident("path"),
 				ty: parse_quote!(String),
 				exposed: true,
-				default_value: None,
+				value_source: ValueSource::None,
 				number_min: None,
 				number_max: None,
 				number_mode_range: None,

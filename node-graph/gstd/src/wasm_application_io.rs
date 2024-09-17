@@ -54,7 +54,7 @@ async fn draw_image_frame(_: (), image: ImageFrame<graphene_core::raster::SRGBA8
 }
 
 #[node_macro::node]
-async fn load_resource<'a: 'n>(_: (), editor: &'a WasmEditorApi, url: String) -> Arc<[u8]> {
+async fn load_resource<'a: 'n>(_: (), _primary: (), #[scope("editor-api")] editor: &'a WasmEditorApi, url: String) -> Arc<[u8]> {
 	editor.application_io.as_ref().unwrap().load_resource(url).unwrap().await.unwrap()
 }
 
