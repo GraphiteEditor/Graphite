@@ -1167,7 +1167,7 @@ fn flag_faces(
 				}
 				visited_faces.insert(face_key);
 
-				dbg!(face_key, a_count, b_count);
+				// dbg!(face_key, a_count, b_count);
 				let a_flag = get_flag(a_count, a_fill_rule);
 				let b_flag = get_flag(b_count, b_fill_rule);
 				*flags.entry(face_key).or_default() = a_flag | (b_flag << 1);
