@@ -195,8 +195,6 @@ impl<'a> ModifyInputsContext<'a> {
 		let stroke_id = NodeId(generate_uuid());
 		self.network_interface.insert_node(stroke_id, stroke, &[]);
 		self.network_interface.move_node_to_chain_start(&stroke_id, layer, &[]);
-
-		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
 	pub fn insert_image_data(&mut self, image_frame: ImageFrame<Color>, layer: LayerNodeIdentifier) {

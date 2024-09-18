@@ -214,10 +214,6 @@ struct TextToolData {
 impl TextToolData {
 	/// Set the editing state of the currently modifying layer
 	fn set_editing(&self, editable: bool, font_cache: &FontCache, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		if let Some(node_id) = graph_modification_utils::get_fill_id(self.layer, &document.network_interface) {
-			responses.add(NodeGraphMessage::SetVisibility { node_id, visible: !editable });
-		}
-
 		if let Some(editing_text) = self.editing_text.as_ref().filter(|_| editable) {
 			responses.add(FrontendMessage::DisplayEditableTextbox {
 				text: editing_text.text.clone(),
@@ -229,6 +225,8 @@ impl TextToolData {
 			});
 		} else {
 			responses.add(FrontendMessage::DisplayRemoveEditableTextbox);
+			// Clear all selected nodes when no longer editing
+			responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() });
 		}
 	}
 
@@ -257,13 +255,19 @@ impl TextToolData {
 		}
 
 		self.layer = layer;
-		self.load_layer_text_node(document);
+		if self.load_layer_text_node(document).is_some() {
+			responses.add(DocumentMessage::AddTransaction);
 
-		responses.add(DocumentMessage::AddTransaction);
+			self.set_editing(true, font_cache, document, responses);
 
-		self.set_editing(true, font_cache, document, responses);
-
-		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![self.layer.to_node()] });
+			responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![self.layer.to_node()] });
+			// Make the rendered text invisible while editing
+			responses.add(NodeGraphMessage::SetInput {
+				input_connector: InputConnector::node(graph_modification_utils::get_text_id(self.layer, &document.network_interface).unwrap(), 1),
+				input: NodeInput::value(TaggedValue::String("".to_string()), false),
+			});
+			responses.add(NodeGraphMessage::RunDocumentGraph);
+		};
 	}
 
 	fn interact(
@@ -309,6 +313,7 @@ impl TextToolData {
 
 			responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![self.layer.to_node()] });
 
+			responses.add(NodeGraphMessage::RunDocumentGraph);
 			TextToolFsmState::Editing
 		} else {
 			// Removing old text as editable
@@ -415,12 +420,13 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text }) => {
+				tool_data.set_editing(false, font_cache, document, responses);
+
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface).unwrap(), 1),
 					input: NodeInput::value(TaggedValue::String(new_text), false),
 				});
-
-				tool_data.set_editing(false, font_cache, document, responses);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 
 				TextToolFsmState::Ready
 			}
