@@ -31,7 +31,7 @@ use glam::DVec2;
 use wgpu_executor::{Bindgroup, CommandBuffer, PipelineLayout, ShaderHandle, ShaderInputFrame, WgpuShaderInput};
 
 use once_cell::sync::Lazy;
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 
 pub struct NodePropertiesContext<'a> {
 	pub persistent_data: &'a PersistentData,
@@ -2968,8 +2968,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 
 		let NodeMetadata { display_name, category, fields } = metadata;
 		let Some(implementations) = &node_registry.get(&id) else { continue };
+		let valid_inputs: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.input.clone()).collect();
 		let first_node_io = implementations.first().map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
-		let input_type = &first_node_io.input;
+		let mut input_type = &first_node_io.input;
+		if valid_inputs.len() > 1 {
+			input_type = &const { generic!(T) };
+		}
 		let output_type = &first_node_io.output;
 
 		let inputs = fields
