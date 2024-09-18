@@ -79,7 +79,10 @@ impl DocumentMetadata {
 		self.upstream_transforms
 			.get(&layer.to_node())
 			.map(|(footprint, transform)| footprint.transform * *transform)
-			.unwrap_or(self.document_to_viewport)
+			.unwrap_or_else(|| {
+				log::error!("Could not get footprint for layer: {:?}", layer);
+				self.document_to_viewport
+			})
 	}
 
 	pub fn upstream_transform(&self, node_id: NodeId) -> DAffine2 {

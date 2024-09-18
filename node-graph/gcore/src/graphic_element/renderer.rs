@@ -606,14 +606,19 @@ impl GraphicElementRendered for Artboard {
 			"g",
 			// Group tag attributes
 			|attributes| {
+				let matrix = format_transform_matrix(self.transform());
+				if !matrix.is_empty() {
+					attributes.push("transform", matrix);
+				}
+
 				if self.clip {
 					let id = format!("artboard-{}", generate_uuid());
 					let selector = format!("url(#{id})");
 
 					write!(
 						&mut attributes.0.svg_defs,
-						r##"<clipPath id="{id}"><rect x="0" y="0" width="{}" height="{}" /></clipPath>"##,
-						self.dimensions.x, self.dimensions.y
+						r##"<clipPath id="{id}"><rect x="0" y="0" width="{}" height="{}"/></clipPath>"##,
+						self.dimensions.x, self.dimensions.y,
 					)
 					.unwrap();
 					attributes.push("clip-path", selector);
@@ -635,13 +640,13 @@ impl GraphicElementRendered for Artboard {
 		}
 	}
 
-	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
 			let subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
 			metadata.click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
 			metadata.footprints.insert(element_id, (footprint, DAffine2::from_translation(self.location.as_dvec2())));
 		}
-
+		footprint.transform *= self.transform();
 		self.graphic_group.collect_metadata(metadata, footprint, None);
 	}
 

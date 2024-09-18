@@ -8,6 +8,8 @@ pub enum Message {
 	NoOp,
 	Init,
 	Batched(Box<[Message]>),
+	StartBuffer,
+	EndBuffer(graphene_std::renderer::RenderMetadata),
 
 	#[child]
 	Broadcast(BroadcastMessage),

@@ -196,6 +196,19 @@ impl ArtboardToolData {
 			location: position.round().as_ivec2(),
 			dimensions: size.round().as_ivec2(),
 		});
+
+		// TODO: Resize artboard children when resizing left/top edges so that they stay in the same viewport space
+		// let old_top_left = bounds.bounds[0].round().as_ivec2();
+		// let new_top_left = position.round().as_ivec2();
+		// let top_left_delta = new_top_left - old_top_left;
+		// if top_left_delta != IVec2::ZERO {
+		// 	responses.add(GraphOperationMessage::TransformChange {
+		// 		layer: self.selected_artboard.unwrap(),
+		// 		transform: DAffine2::from_translation((-top_left_delta).into()),
+		// 		transform_in: TransformIn::Local,
+		// 		skip_rerender: false,
+		// 	});
+		// }
 	}
 }
 

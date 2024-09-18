@@ -15,7 +15,7 @@ use graphene_core::renderer::{RenderSvgSegmentList, SvgSegment};
 use graphene_core::text::FontCache;
 use graphene_core::transform::Footprint;
 use graphene_core::vector::style::ViewMode;
-use graphene_std::renderer::{format_transform_matrix, RenderMetadata};
+use graphene_std::renderer::format_transform_matrix;
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
 
@@ -614,12 +614,6 @@ impl NodeGraphExecutor {
 	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, transform: DAffine2, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		match node_graph_output {
 			TaggedValue::RenderOutput(render_output) => {
-				let RenderMetadata {
-					footprints,
-					click_targets,
-					vector_data,
-				} = render_output.metadata;
-
 				match render_output.data {
 					graphene_std::wasm_application_io::RenderOutputType::Svg(svg) => {
 						// Send to frontend
@@ -638,9 +632,8 @@ impl NodeGraphExecutor {
 						return Err(format!("Invalid node graph output type: {:#?}", render_output.data));
 					}
 				}
-				responses.add(DocumentMessage::UpdateUpstreamTransforms { upstream_transforms: footprints });
-				responses.add(DocumentMessage::UpdateClickTargets { click_targets });
-				responses.add(DocumentMessage::UpdateVectorModify { vector_modify: vector_data });
+
+				responses.add(Message::EndBuffer(render_output.metadata));
 				responses.add(DocumentMessage::RenderScrollbars);
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(OverlaysMessage::Draw);
