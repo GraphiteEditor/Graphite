@@ -897,7 +897,8 @@ impl NodeNetwork {
 		for (dep_id, output_index, node_id) in dep_changes {
 			let node = self.nodes.get_mut(&dep_id).expect("Encountered invalid node id");
 			let len = node.original_location.dependants.len();
-			node.original_location.dependants.extend(vec![vec![]; (output_index).max(len) - len]);
+			// One must be added to the index to find the length because indexing in rust starts from 0.
+			node.original_location.dependants.extend(vec![vec![]; (output_index + 1).max(len) - len]);
 			// println!("{node_id} {output_index} {}", node.implementation.output_count());
 			node.original_location.dependants[output_index].push(node_id);
 		}
@@ -1061,7 +1062,7 @@ impl NodeNetwork {
 						NodeInput::Node { node_id, output_index, lambda } => {
 							let skip = node.original_location.skip_inputs;
 							nested_node.populate_first_network_input(node_id, output_index, nested_input_index, lambda, node.original_location.inputs(*import_index), skip);
-							let input_node = self.nodes.get_mut(&node_id).unwrap();
+							let input_node = self.nodes.get_mut(&node_id).unwrap_or_else(|| panic!("unable find input node {node_id:?}"));
 							input_node.original_location.dependants[output_index].push(nested_node_id);
 						}
 						NodeInput::Network { import_index, .. } => {

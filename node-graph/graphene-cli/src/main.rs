@@ -78,9 +78,32 @@ fn init_logging() {
 		.unwrap();
 }
 
+// Migrations are done in the editor which is unfortunately not available here.
+// TODO: remove this and share migrations between the edtior and the CLI.
+fn fix_nodes(network: &mut NodeNetwork) {
+	for node in network.nodes.values_mut() {
+		match &mut node.implementation {
+			// Recursively fix
+			DocumentNodeImplementation::Network(network) => fix_nodes(network),
+			// This replicates the migration from the editor linked:
+			// https://github.com/GraphiteEditor/Graphite/blob/d68f91ccca69e90e6d2df78d544d36cd1aaf348e/editor/src/messages/portfolio/portfolio_message_handler.rs#L535
+			// Since the CLI doesn't have the document node definitions, a less robust method of just patching the inputs is used.
+			DocumentNodeImplementation::ProtoNode(proto_node_identifier)
+				if (proto_node_identifier.name.starts_with("graphene_core::ConstructLayerNode") || proto_node_identifier.name.starts_with("graphene_core::AddArtboardNode"))
+					&& node.inputs.len() < 3 =>
+			{
+				node.inputs.push(NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath));
+			}
+			_ => {}
+		}
+	}
+}
+
 fn create_executor(document_string: String, editor_api: Arc<WasmEditorApi>) -> Result<DynamicExecutor, Box<dyn Error>> {
 	let document: serde_json::Value = serde_json::from_str(&document_string).expect("Failed to parse document");
-	let network = serde_json::from_value::<NodeNetwork>(document["network"].clone()).expect("Failed to parse document");
+	let mut network = serde_json::from_value::<NodeNetwork>(document["network_interface"]["network"].clone()).expect("Failed to parse document");
+	fix_nodes(&mut network);
+
 	let wrapped_network = wrap_network_in_scope(network.clone(), editor_api);
 	let compiler = Compiler {};
 	let protograph = compiler.compile_single(wrapped_network)?;
@@ -88,23 +111,31 @@ fn create_executor(document_string: String, editor_api: Arc<WasmEditorApi>) -> R
 	Ok(executor)
 }
 
+// TODO: this is copy pasta from the editor (and does get out of sync)
 pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEditorApi>) -> NodeNetwork {
 	network.generate_node_paths(&[]);
 
 	let inner_network = DocumentNode {
 		implementation: DocumentNodeImplementation::Network(network),
-		inputs: vec![NodeInput::node(NodeId(0), 1)],
+		inputs: vec![],
 		..Default::default()
 	};
 
+	// TODO: Replace with "Output" definition?
+	// let render_node = resolve_document_node_type("Output")
+	// 	.expect("Output node type not found")
+	// 	.node_template_input_override(vec![Some(NodeInput::node(NodeId(1), 0)), Some(NodeInput::node(NodeId(0), 1))])
+	// 	.document_node;
+
 	let render_node = graph_craft::document::DocumentNode {
-		inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(0), 1)],
+		inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(2), 0)],
 		implementation: graph_craft::document::DocumentNodeImplementation::Network(NodeNetwork {
 			exports: vec![NodeInput::node(NodeId(2), 0)],
 			nodes: [
 				DocumentNode {
 					inputs: vec![NodeInput::scope("editor-api")],
-					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
+					manual_composition: Some(concrete!(())),
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::CreateGpuSurfaceNode")),
 					skip_deduplication: true,
 					..Default::default()
 				},
@@ -114,9 +145,11 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode")),
 					..Default::default()
 				},
+				// TODO: Add conversion step
 				DocumentNode {
+					manual_composition: Some(concrete!(graphene_std::application_io::RenderConfig)),
 					inputs: vec![
-						NodeInput::network(concrete!(WasmEditorApi), 1),
+						NodeInput::scope("editor-api"),
 						NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T))), 0),
 						NodeInput::node(NodeId(1), 0),
 					],
@@ -145,7 +178,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 	];
 
 	NodeNetwork {
-		exports: vec![NodeInput::node(NodeId(3), 0)],
+		exports: vec![NodeInput::node(NodeId(1), 0)],
 		nodes: nodes.into_iter().enumerate().map(|(id, node)| (NodeId(id as u64), node)).collect(),
 		scope_injections: [("editor-api".to_string(), (NodeId(2), concrete!(&WasmEditorApi)))].into_iter().collect(),
 	}
