@@ -848,7 +848,7 @@ async fn storage_node<'a: 'n, T: ToStorageBuffer + Send + 'n>(_: (), #[implement
 		.unwrap()
 }
 
-#[node_macro::node]
+#[node_macro::node(category(""))]
 async fn create_output_buffer<'a: 'n>(_: (), size: usize, executor: &'a WgpuExecutor, ty: Type) -> Arc<WgpuShaderInput> {
 	Arc::new(executor.create_output_buffer(size, ty, true).unwrap())
 }
@@ -874,7 +874,7 @@ async fn create_pipeline_layout(
 	}
 }
 
-#[node_macro::node]
+#[node_macro::node(category(""))]
 async fn read_output_buffer<'a: 'n>(_: (), buffer: Arc<WgpuShaderInput>, executor: &'a WgpuExecutor, _compute_pass: ()) -> Vec<u8> {
 	executor.read_output_buffer(buffer).await.unwrap()
 }

@@ -74,7 +74,7 @@ fn regular_polygon(
 	_: (),
 	_input: (),
 	#[default(6)]
-	#[min(3)]
+	#[min(3.)]
 	sides: u32,
 	#[default(50)] radius: f64,
 ) -> VectorData {
@@ -88,7 +88,7 @@ fn star(
 	_: (),
 	_input: (),
 	#[default(5)]
-	#[min(2)]
+	#[min(2.)]
 	sides: u32,
 	#[default(50)] radius: f64,
 	#[default(25)] inner_radius: f64,

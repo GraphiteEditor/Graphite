@@ -30,7 +30,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 	let display_name = match &attributes.display_name.as_ref() {
 		Some(lit) => lit.value(),
-		_ => struct_name.to_string().to_case(Case::Title),
+		None => struct_name.to_string().to_case(Case::Title),
 	};
 	let struct_name = format_ident!("{}Node", struct_name);
 
@@ -44,8 +44,19 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 			ParsedField::Regular { pat_ident, .. } | ParsedField::Node { pat_ident, .. } => pat_ident,
 		})
 		.collect();
-
 	let field_names: Vec<_> = field_idents.iter().map(|pat_ident| &pat_ident.ident).collect();
+
+	let input_names: Vec<_> = fields
+		.iter()
+		.map(|field| match field {
+			ParsedField::Regular { name, .. } | ParsedField::Node { name, .. } => name,
+		})
+		.zip(field_names.iter())
+		.map(|zipped| match zipped {
+			(Some(name), _) => name.value(),
+			(_, name) => name.to_string().to_case(convert_case::Case::Title),
+		})
+		.collect();
 
 	let struct_fields = field_names.iter().zip(struct_generics.iter()).map(|(name, gen)| {
 		quote! { pub(super) #name: #gen }
@@ -197,7 +208,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		#async_keyword fn #fn_name <'n, #(#fn_generics,)*> (#input_ident: #input_type #(, #field_idents: #field_types)*) -> #output_type #where_clause #body
 
 		#[automatically_derived]
-		impl<'n,  #(#fn_generics,)* #(#struct_generics,)*> #graphene_core::Node<'n, #input_type> for #mod_name::#struct_name<#(#struct_generics,)*>
+		impl<'n, #(#fn_generics,)* #(#struct_generics,)*> #graphene_core::Node<'n, #input_type> for #mod_name::#struct_name<#(#struct_generics,)*>
 		#struct_where_clause
 		{
 			#eval_impl
@@ -245,7 +256,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 					fields: vec![
 						#(
 							FieldMetadata {
-								name: stringify!(#field_names).to_string(),
+								name: #input_names,
 								exposed: #exposed,
 								value_source: #value_sources,
 								number_min: #number_min_values,
@@ -350,7 +361,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 						// try polling futures
 						#future_node
 						let any: DynAnyNode<#input_type, _, _> = DynAnyNode::new(node);
-						Box::new(any)  as TypeErasedBox<'_>
+						Box::new(any) as TypeErasedBox<'_>
 					})
 				}, {
 					let node = #struct_name::new(#(PanicNode::<#panic_node_types>::new(),)*);

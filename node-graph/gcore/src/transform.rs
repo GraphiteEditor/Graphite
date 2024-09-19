@@ -216,7 +216,7 @@ impl ApplyTransform for () {
 	fn apply_transform(&mut self, &_modification: &DAffine2) {}
 }
 
-#[node_macro::node]
+#[node_macro::node(category(""))]
 pub(crate) async fn transform<I: Into<Footprint> + ApplyTransform + 'n + Clone + Send + Sync, T: TransformMut + 'n>(
 	#[implementations(Footprint, Footprint, Footprint, (), (), ())] mut input: I,
 	#[implementations(
@@ -247,18 +247,6 @@ pub(crate) async fn transform<I: Into<Footprint> + ApplyTransform + 'n + Clone +
 
 	data
 }
-/*
-#[node_macro::node_impl(TransformNode)]
-pub(crate) async fn transform_vector_data<T: TransformMut>(_empty: (), transform_target: impl Node<(), Output = T>, translate: DVec2, rotate: f64, scale: DVec2, shear: DVec2, _pivot: DVec2) -> T {
-	let modification = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
-
-	let mut data = self.transform_target.eval(()).await;
-
-	let data_transform = data.transform_mut();
-	*data_transform = modification * (*data_transform);
-
-	data
-}*/
 
 #[node_macro::node]
 pub(crate) fn set_transform<Data: TransformMut, TransformInput: Transform>(

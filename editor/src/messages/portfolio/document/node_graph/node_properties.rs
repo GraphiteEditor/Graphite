@@ -96,26 +96,29 @@ pub(crate) fn property_from_type(
 	_context: &mut NodePropertiesContext,
 	number_options: (Option<f64>, Option<f64>, Option<(f64, f64)>),
 ) -> Vec<LayoutGroup> {
-	let (number_min, number_max, mode_range) = number_options;
+	let (mut number_min, mut number_max, range) = number_options;
+	let mut number_input = NumberInput::default();
+	if let Some((range_start, range_end)) = range {
+		number_min = Some(range_start);
+		number_max = Some(range_end);
+		number_input = number_input.mode_range().min(range_start).max(range_end);
+	}
+
 	let min = |x: f64| number_min.unwrap_or(x);
 	let max = |x: f64| number_max.unwrap_or(x);
-	let mut number_input = NumberInput::default();
-	if let Some((range_start, range_end)) = mode_range {
-		number_input = number_input.mode(NumberInputMode::Range).range_min(Some(range_start)).range_max(Some(range_end));
-	}
 
 	let mut extra_widgets = vec![];
 	let widgets = match ty {
 		Type::Concrete(concrete_type) => {
 			match concrete_type.alias.as_ref().map(|x| x.as_ref()) {
 				// Aliased types (ambiguous values)
-				Some("Percentage") => number_widget(document_node, node_id, index, name, number_input.percentage().min(min(0.)).max(max(100.)), false).into(),
-				Some("Angle") => number_widget(document_node, node_id, index, name, number_input.mode_range().min(min(-180.)).max(max(180.)).unit("°"), false).into(),
-				Some("PixelLength") => number_widget(document_node, node_id, index, name, number_input.min(min(0.)).unit("px"), false).into(),
-				Some("Length") => number_widget(document_node, node_id, index, name, number_input.min(min(0.)), false).into(),
-				Some("Fraction") => number_widget(document_node, node_id, index, name, number_input.min(min(0.)).max(max(1.)), false).into(),
-				Some("IntegerCount") => number_widget(document_node, node_id, index, name, number_input.int().min(min(1.)), false).into(),
-				Some("SeedValue") => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)), false).into(),
+				Some("Percentage") => number_widget(document_node, node_id, index, name, number_input.percentage().min(min(0.)).max(max(100.)), true).into(),
+				Some("Angle") => number_widget(document_node, node_id, index, name, number_input.mode_range().min(min(-180.)).max(max(180.)).unit("°"), true).into(),
+				Some("PixelLength") => number_widget(document_node, node_id, index, name, number_input.min(min(0.)).unit("px"), true).into(),
+				Some("Length") => number_widget(document_node, node_id, index, name, number_input.min(min(0.)), true).into(),
+				Some("Fraction") => number_widget(document_node, node_id, index, name, number_input.min(min(0.)).max(max(1.)), true).into(),
+				Some("IntegerCount") => number_widget(document_node, node_id, index, name, number_input.int().min(min(1.)), true).into(),
+				Some("SeedValue") => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)), true).into(),
 				Some("Resolution") => vec2_widget(document_node, node_id, index, name, "W", "H", "px", Some(64.), add_blank_assist),
 
 				// For all other types, use TypeId-based matching
@@ -123,39 +126,39 @@ pub(crate) fn property_from_type(
 					if let Some(internal_id) = concrete_type.id {
 						use std::any::TypeId;
 						match internal_id {
-							x if x == TypeId::of::<bool>() => bool_widget(document_node, node_id, index, name, CheckboxInput::default(), false).into(),
-							x if x == TypeId::of::<f64>() => number_widget(document_node, node_id, index, name, number_input.min(min(f64::NEG_INFINITY)).max(max(f64::INFINITY)), false).into(),
-							x if x == TypeId::of::<u32>() => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)).max(max(f64::from(u32::MAX))), false).into(),
-							x if x == TypeId::of::<u64>() => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)), false).into(),
-							x if x == TypeId::of::<String>() => text_widget(document_node, node_id, index, name, false).into(),
-							x if x == TypeId::of::<Color>() => color_widget(document_node, node_id, index, name, ColorButton::default(), false),
-							x if x == TypeId::of::<Option<Color>>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(true), false),
+							x if x == TypeId::of::<bool>() => bool_widget(document_node, node_id, index, name, CheckboxInput::default(), true).into(),
+							x if x == TypeId::of::<f64>() => number_widget(document_node, node_id, index, name, number_input.min(min(f64::NEG_INFINITY)).max(max(f64::INFINITY)), true).into(),
+							x if x == TypeId::of::<u32>() => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)).max(max(f64::from(u32::MAX))), true).into(),
+							x if x == TypeId::of::<u64>() => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)), true).into(),
+							x if x == TypeId::of::<String>() => text_widget(document_node, node_id, index, name, true).into(),
+							x if x == TypeId::of::<Color>() => color_widget(document_node, node_id, index, name, ColorButton::default(), true),
+							x if x == TypeId::of::<Option<Color>>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(true), true),
 							x if x == TypeId::of::<DVec2>() => vec2_widget(document_node, node_id, index, name, "X", "Y", "", None, add_blank_assist),
 							x if x == TypeId::of::<UVec2>() => vec2_widget(document_node, node_id, index, name, "X", "Y", "", Some(0.), add_blank_assist),
 							x if x == TypeId::of::<IVec2>() => vec2_widget(document_node, node_id, index, name, "X", "Y", "", None, add_blank_assist),
-							x if x == TypeId::of::<Vec<f64>>() => vec_f64_input(document_node, node_id, index, name, TextInput::default(), false).into(),
-							x if x == TypeId::of::<Vec<DVec2>>() => vec_dvec2_input(document_node, node_id, index, name, TextInput::default(), false).into(),
+							x if x == TypeId::of::<Vec<f64>>() => vec_f64_input(document_node, node_id, index, name, TextInput::default(), true).into(),
+							x if x == TypeId::of::<Vec<DVec2>>() => vec_dvec2_input(document_node, node_id, index, name, TextInput::default(), true).into(),
 							x if x == TypeId::of::<Font>() => {
 								let (font_widgets, style_widgets) = font_inputs(document_node, node_id, index, name, false);
 								font_widgets.into_iter().chain(style_widgets.unwrap_or_default()).collect::<Vec<_>>().into()
 							}
-							x if x == TypeId::of::<Curve>() => curves_widget(document_node, node_id, index, name, false),
-							x if x == TypeId::of::<GradientStops>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(false), false),
-							x if x == TypeId::of::<VectorData>() => vector_widget(document_node, node_id, index, name, false).into(),
+							x if x == TypeId::of::<Curve>() => curves_widget(document_node, node_id, index, name, true),
+							x if x == TypeId::of::<GradientStops>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(false), true),
+							x if x == TypeId::of::<VectorData>() => vector_widget(document_node, node_id, index, name, true).into(),
 							x if x == TypeId::of::<Footprint>() => {
 								let widgets = footprint_widget(document_node, node_id, index);
 								let (last, rest) = widgets.split_last().expect("Footprint widget should return multiple rows");
 								extra_widgets = rest.to_vec();
 								last.clone()
 							}
-							x if x == TypeId::of::<BlendMode>() => blend_mode(document_node, node_id, index, name, false),
-							x if x == TypeId::of::<RedGreenBlue>() => color_channel(document_node, node_id, index, name, false),
-							x if x == TypeId::of::<RedGreenBlueAlpha>() => rgba_channel(document_node, node_id, index, name, false),
-							x if x == TypeId::of::<NoiseType>() => noise_type(document_node, node_id, index, name, false),
-							x if x == TypeId::of::<FractalType>() => fractal_type(document_node, node_id, index, name, false, false),
-							x if x == TypeId::of::<CellularDistanceFunction>() => cellular_distance_function(document_node, node_id, index, name, false, false),
-							x if x == TypeId::of::<CellularReturnType>() => cellular_return_type(document_node, node_id, index, name, false, false),
-							x if x == TypeId::of::<DomainWarpType>() => domain_warp_type(document_node, node_id, index, name, false, false),
+							x if x == TypeId::of::<BlendMode>() => blend_mode(document_node, node_id, index, name, true),
+							x if x == TypeId::of::<RedGreenBlue>() => color_channel(document_node, node_id, index, name, true),
+							x if x == TypeId::of::<RedGreenBlueAlpha>() => rgba_channel(document_node, node_id, index, name, true),
+							x if x == TypeId::of::<NoiseType>() => noise_type(document_node, node_id, index, name, true),
+							x if x == TypeId::of::<FractalType>() => fractal_type(document_node, node_id, index, name, true, false),
+							x if x == TypeId::of::<CellularDistanceFunction>() => cellular_distance_function(document_node, node_id, index, name, true, false),
+							x if x == TypeId::of::<CellularReturnType>() => cellular_return_type(document_node, node_id, index, name, true, false),
+							x if x == TypeId::of::<DomainWarpType>() => domain_warp_type(document_node, node_id, index, name, true, false),
 							x if x == TypeId::of::<RelativeAbsolute>() => vec![DropdownInput::new(vec![vec![
 								MenuListEntry::new("Relative")
 									.label("Relative")
@@ -166,8 +169,8 @@ pub(crate) fn property_from_type(
 							]])
 							.widget_holder()]
 							.into(),
-							x if x == TypeId::of::<LineCap>() => line_cap_widget(document_node, node_id, index, name, false),
-							x if x == TypeId::of::<LineJoin>() => line_join_widget(document_node, node_id, index, name, false),
+							x if x == TypeId::of::<LineCap>() => line_cap_widget(document_node, node_id, index, name, true),
+							x if x == TypeId::of::<LineJoin>() => line_join_widget(document_node, node_id, index, name, true),
 							x if x == TypeId::of::<FillType>() => vec![DropdownInput::new(vec![vec![
 								MenuListEntry::new("Solid")
 									.label("Solid")
@@ -188,9 +191,9 @@ pub(crate) fn property_from_type(
 							]])
 							.widget_holder()]
 							.into(),
-							x if x == TypeId::of::<BooleanOperation>() => boolean_operation_radio_buttons(document_node, node_id, index, name, false),
+							x if x == TypeId::of::<BooleanOperation>() => boolean_operation_radio_buttons(document_node, node_id, index, name, true),
 							x if x == TypeId::of::<CentroidType>() => centroid_widget(document_node, node_id, index),
-							x if x == TypeId::of::<LuminanceCalculation>() => luminance_calculation(document_node, node_id, index, name, false),
+							x if x == TypeId::of::<LuminanceCalculation>() => luminance_calculation(document_node, node_id, index, name, true),
 							x if x == TypeId::of::<ImaginateSamplingMethod>() => vec![DropdownInput::new(
 								ImaginateSamplingMethod::list()
 									.into_iter()
@@ -1126,16 +1129,6 @@ pub(crate) fn black_and_white_properties(document_node: &DocumentNode, node_id: 
 		LayoutGroup::Row { widgets: b_weight },
 		LayoutGroup::Row { widgets: m_weight },
 	]
-}
-
-pub(crate) fn percentage_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let widgets = number_widget(document_node, node_id, 0, "Percentage", NumberInput::default().min(0.).max(100.).mode_range(), true);
-
-	vec![LayoutGroup::Row { widgets }]
-}
-
-pub(crate) fn gradient_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	vec![color_widget(document_node, node_id, 0, "Gradient", ColorButton::default().allow_none(false), true)]
 }
 
 pub(crate) fn load_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -2571,6 +2564,45 @@ pub(crate) fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _co
 	}
 
 	widgets
+}
+
+pub fn stroke_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let color_index = 1;
+	let weight_index = 2;
+	let dash_lengths_index = 3;
+	let dash_offset_index = 4;
+	let line_cap_index = 5;
+	let line_join_index = 6;
+	let miter_limit_index = 7;
+
+	let color = color_widget(document_node, node_id, color_index, "Color", ColorButton::default(), true);
+	let weight = number_widget(document_node, node_id, weight_index, "Weight", NumberInput::default().unit("px").min(0.), true);
+
+	let dash_lengths_val = match &document_node.inputs[dash_lengths_index].as_value() {
+		Some(TaggedValue::VecF64(x)) => x,
+		_ => &vec![],
+	};
+	let dash_lengths = vec_f64_input(document_node, node_id, dash_lengths_index, "Dash Lengths", TextInput::default().centered(true), true);
+	let number_input = NumberInput::default().unit("px").disabled(dash_lengths_val.is_empty());
+	let dash_offset = number_widget(document_node, node_id, dash_offset_index, "Dash Offset", number_input, true);
+	let line_cap = line_cap_widget(document_node, node_id, line_cap_index, "Line Cap", true);
+	let line_join = line_join_widget(document_node, node_id, line_join_index, "Line Join", true);
+	let line_join_val = match &document_node.inputs[line_join_index].as_value() {
+		Some(TaggedValue::LineJoin(x)) => x,
+		_ => &LineJoin::Miter,
+	};
+	let number_input = NumberInput::default().min(0.).disabled(line_join_val != &LineJoin::Miter);
+	let miter_limit = number_widget(document_node, node_id, miter_limit_index, "Miter Limit", number_input, true);
+
+	vec![
+		color,
+		LayoutGroup::Row { widgets: weight },
+		LayoutGroup::Row { widgets: dash_lengths },
+		LayoutGroup::Row { widgets: dash_offset },
+		line_cap,
+		line_join,
+		LayoutGroup::Row { widgets: miter_limit },
+	]
 }
 
 pub(crate) fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

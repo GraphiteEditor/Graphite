@@ -415,8 +415,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						.cloned()
 						.collect::<Vec<NodeId>>()
 					{
-						let node = document.network_interface.network_metadata(&[]).unwrap().persistent_metadata.node_metadata.get(node_id);
-						log::debug!("loading {node:?}");
 						if let Some(reference) = document
 							.network_interface
 							.network_metadata(&[])

@@ -952,28 +952,67 @@ impl DomainWarpType {
 }
 
 #[node_macro::node(category("Raster: Adjustment"))]
-async fn channel_mixer_node<T: Adjust<Color>>(
+async fn channel_mixer<T: Adjust<Color>>(
 	footprint: Footprint,
-	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>,
+	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] image: impl Node<Footprint, Output = T>,
+
 	monochrome: bool,
+	#[default(40.)]
+	#[name("Red")]
 	monochrome_r: f64,
+	#[default(40.)]
+	#[name("Green")]
 	monochrome_g: f64,
+	#[default(20.)]
+	#[name("Blue")]
 	monochrome_b: f64,
+	#[default(0.)]
+	#[name("Constant")]
 	monochrome_c: f64,
+
+	#[default(100.)]
+	#[name("(Red) Red")]
 	red_r: f64,
+	#[default(0.)]
+	#[name("(Red) Green")]
 	red_g: f64,
+	#[default(0.)]
+	#[name("(Red) Blue")]
 	red_b: f64,
+	#[default(0.)]
+	#[name("(Red) Constant")]
 	red_c: f64,
+
+	#[default(0.)]
+	#[name("(Green) Red")]
 	green_r: f64,
+	#[default(100.)]
+	#[name("(Green) Green")]
 	green_g: f64,
+	#[default(0.)]
+	#[name("(Green) Blue")]
 	green_b: f64,
+	#[default(0.)]
+	#[name("(Green) Constant")]
 	green_c: f64,
+
+	#[default(0.)]
+	#[name("(Blue) Red")]
 	blue_r: f64,
+	#[default(0.)]
+	#[name("(Blue) Green")]
 	blue_g: f64,
+	#[default(100.)]
+	#[name("(Blue) Blue")]
 	blue_b: f64,
+	#[default(0.)]
+	#[name("(Blue) Constant")]
 	blue_c: f64,
+
+	// Display-only properties (not used within the node)
+	_output_channel: RedGreenBlue,
 ) -> T {
-	let mut input = input.eval(footprint).await;
+	let mut input = image.eval(footprint).await;
 	input.adjust(|color| {
 		let color = color.to_gamma_srgb();
 

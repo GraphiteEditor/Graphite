@@ -46,6 +46,7 @@ pub enum ValueSource {
 pub(crate) enum ParsedField {
 	Regular {
 		pat_ident: PatIdent,
+		name: Option<LitStr>,
 		ty: Type,
 		exposed: bool,
 		value_source: ValueSource,
@@ -56,6 +57,7 @@ pub(crate) enum ParsedField {
 	},
 	Node {
 		pat_ident: PatIdent,
+		name: Option<LitStr>,
 		input_type: Type,
 		output_type: Type,
 		implementations: Punctuated<TypeTuple, Comma>,
@@ -236,18 +238,28 @@ fn parse_implementations<T: Parse>(attr: &Attribute, name: &Ident) -> syn::Resul
 }
 
 fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Result<ParsedField> {
-	let name = &pat_ident.ident;
+	let ident = &pat_ident.ident;
 
-	let default_value = extract_attribute(attrs, "default").and_then(|attr| {
-		attr.parse_args()
-			.map_err(|e| Error::new_spanned(attr, format!("Invalid `default` value for argument '{}': {}", name, e)))
-			.ok()
-	});
-	let scope = extract_attribute(attrs, "scope").and_then(|attr| {
-		attr.parse_args()
-			.map_err(|e| Error::new_spanned(attr, format!("Invalid `scope` value for argument '{}': {}", name, e)))
-			.ok()
-	});
+	let default_value = extract_attribute(attrs, "default")
+		.map(|attr| {
+			attr.parse_args()
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid `default` value for argument '{}': {}", ident, e)))
+		})
+		.transpose()?;
+
+	let scope = extract_attribute(attrs, "scope")
+		.map(|attr| {
+			attr.parse_args()
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid `scope` value for argument '{}': {}", ident, e)))
+		})
+		.transpose()?;
+
+	let name = extract_attribute(attrs, "name")
+		.map(|attr| attr.parse_args().map_err(|e| Error::new_spanned(attr, format!("Invalid `name` value for argument '{}': {}", ident, e))))
+		.transpose()?;
+
+	let exposed = extract_attribute(attrs, "expose").is_some();
+
 	let value_source = match (default_value, scope) {
 		(Some(_), Some(_)) => return Err(Error::new_spanned(&pat_ident, "Cannot have both `default` and `scope` attributes")),
 		(Some(default_value), _) => ValueSource::Default(default_value),
@@ -255,30 +267,40 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		_ => ValueSource::None,
 	};
 
-	let number_min = extract_attribute(attrs, "min").and_then(|attr| {
-		attr.parse_args()
-			.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `min` value for argument '{}': {}", name, e)))
-			.ok()
-	});
-	let number_max = extract_attribute(attrs, "max").and_then(|attr| {
-		attr.parse_args()
-			.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `max` value for argument '{}': {}", name, e)))
-			.ok()
-	});
-	let exposed = extract_attribute(attrs, "expose").is_some();
-	let number_mode_range: Option<ExprTuple> = extract_attribute(attrs, "mode_range").and_then(|attr| {
-		attr.parse_args()
-			.map_err(|e| Error::new_spanned(attr, format!("Invalid `mode_range` tuple of min and max range slider values for argument '{}': {}", name, e)))
-			.ok()
-	});
+	let number_min = extract_attribute(attrs, "min")
+		.map(|attr| {
+			attr.parse_args()
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `min` value for argument '{}': {}", ident, e)))
+		})
+		.transpose()?;
+	let number_max = extract_attribute(attrs, "max")
+		.map(|attr| {
+			attr.parse_args()
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `max` value for argument '{}': {}", ident, e)))
+		})
+		.transpose()?;
+
+	let number_mode_range = extract_attribute(attrs, "range")
+		.map(|attr| {
+			attr.parse_args::<ExprTuple>().map_err(|e| {
+				Error::new_spanned(
+					attr,
+					format!(
+						"Invalid `range` tuple of min and max range slider values for argument '{}': {}\nUSAGE EXAMPLE: #[range((0., 100.))]",
+						ident, e
+					),
+				)
+			})
+		})
+		.transpose()?;
 	if let Some(range) = &number_mode_range {
 		if range.elems.len() != 2 {
-			return Err(Error::new_spanned(range, "Expected a tuple of two values for `mode_range` for the min and max, respectively"));
+			return Err(Error::new_spanned(range, "Expected a tuple of two values for `range` for the min and max, respectively"));
 		}
 	}
 
 	let implementations = extract_attribute(attrs, "implementations")
-		.map(|attr| parse_implementations(attr, name))
+		.map(|attr| parse_implementations(attr, ident))
 		.transpose()?
 		.unwrap_or_default();
 
@@ -292,12 +314,13 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			return Err(Error::new_spanned(&ty, "No default values for `impl Node` allowed"));
 		}
 		let implementations = extract_attribute(attrs, "implementations")
-			.map(|attr| parse_implementations(attr, name))
+			.map(|attr| parse_implementations(attr, ident))
 			.transpose()?
 			.unwrap_or_default();
 
 		Ok(ParsedField::Node {
 			pat_ident,
+			name,
 			input_type,
 			output_type,
 			implementations,
@@ -305,6 +328,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 	} else {
 		Ok(ParsedField::Regular {
 			pat_ident,
+			name,
 			exposed,
 			number_min,
 			number_max,
@@ -489,6 +513,7 @@ mod tests {
 			is_async: false,
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("b"),
+				name: None,
 				ty: parse_quote!(f64),
 				exposed: false,
 				value_source: ValueSource::None,
@@ -536,12 +561,14 @@ mod tests {
 			fields: vec![
 				ParsedField::Node {
 					pat_ident: pat_ident("transform_target"),
+					name: None,
 					input_type: parse_quote!(Footprint),
 					output_type: parse_quote!(T),
 					implementations: Punctuated::new(),
 				},
 				ParsedField::Regular {
 					pat_ident: pat_ident("translate"),
+					name: None,
 					ty: parse_quote!(DVec2),
 					exposed: false,
 					value_source: ValueSource::None,
@@ -589,6 +616,7 @@ mod tests {
 			is_async: false,
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("radius"),
+				name: None,
 				ty: parse_quote!(f64),
 				exposed: false,
 				value_source: ValueSource::Default(quote!(50.)),
@@ -635,6 +663,7 @@ mod tests {
 			is_async: false,
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("shadows"),
+				name: None,
 				ty: parse_quote!(f64),
 				exposed: false,
 				value_source: ValueSource::None,
@@ -661,7 +690,7 @@ mod tests {
 		let input = quote!(
 			fn add(
 				a: f64,
-				#[mode_range(0., 100.)]
+				#[range((0., 100.))]
 				#[min(-500.)]
 				#[max(500.)]
 				b: f64,
@@ -692,6 +721,7 @@ mod tests {
 			is_async: false,
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("b"),
+				name: None,
 				ty: parse_quote!(f64),
 				exposed: false,
 				value_source: ValueSource::None,
@@ -738,6 +768,7 @@ mod tests {
 			is_async: true,
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("path"),
+				name: None,
 				ty: parse_quote!(String),
 				exposed: true,
 				value_source: ValueSource::None,

@@ -25,13 +25,12 @@ use graphene_core::*;
 use graphene_std::application_io::RenderConfig;
 use graphene_std::wasm_application_io::WasmEditorApi;
 
-use glam::DVec2;
-
 #[cfg(feature = "gpu")]
 use wgpu_executor::{Bindgroup, CommandBuffer, PipelineLayout, ShaderHandle, ShaderInputFrame, WgpuShaderInput};
 
+use glam::DVec2;
 use once_cell::sync::Lazy;
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 pub struct NodePropertiesContext<'a> {
 	pub persistent_data: &'a PersistentData,
@@ -65,40 +64,6 @@ static DOCUMENT_NODE_TYPES: once_cell::sync::Lazy<Vec<DocumentNodeDefinition>> =
 fn static_nodes() -> Vec<DocumentNodeDefinition> {
 	let mut custom = vec![
 		DocumentNodeDefinition {
-			identifier: "Percentage Value",
-			category: "Value",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
-					inputs: vec![NodeInput::value(TaggedValue::F64(0.), false)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Percentage".to_string()],
-					output_names: vec!["Out".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::percentage_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Gradient Value",
-			category: "Value",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
-					inputs: vec![NodeInput::value(TaggedValue::GradientStops(vector::style::GradientStops::default()), false)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Gradient".to_string()],
-					output_names: vec!["Out".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::gradient_properties,
-		},
-		DocumentNodeDefinition {
 			identifier: "Identity",
 			category: "General",
 			node_template: NodeTemplate {
@@ -113,7 +78,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			properties: &|_document_node, _node_id, _context| node_properties::string_properties("The identity node simply returns the input"),
+			properties: &|_document_node, _node_id, _context| node_properties::string_properties("The identity node simply passes its data through"),
 		},
 		DocumentNodeDefinition {
 			identifier: "Monitor",
@@ -152,7 +117,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							// Primary (bottom) input type coercion
 							DocumentNode {
 								inputs: vec![NodeInput::network(generic!(T), 0)],
-								implementation: DocumentNodeImplementation::proto("graphene_core::graphic_element::ToGraphicGroupNode"),
+								implementation: DocumentNodeImplementation::proto("graphene_core::graphic_element::GroupNode"),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
@@ -235,24 +200,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 						..Default::default()
 					}),
-					..Default::default()
-				},
-			},
-			properties: &node_properties::node_no_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Group",
-			category: "General",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::graphic_element::ToGraphicGroupNode"),
-					manual_composition: Some(generic!(T)),
-					inputs: vec![NodeInput::value(TaggedValue::VectorData(VectorData::empty()), true)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Element".to_string()],
-					output_names: vec!["Graphic Group".to_string()],
 					..Default::default()
 				},
 			},
@@ -1208,7 +1155,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			identifier: "Image",
-			category: "Ignore",
+			category: "",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -1682,7 +1629,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
-			identifier: "ReadOutputBuffer",
+			identifier: "Read Output Buffer",
 			category: "Debug: GPU",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
@@ -2052,69 +1999,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			properties: &node_properties::curves_properties,
-		},
-		DocumentNodeDefinition {
-			identifier: "Channel Mixer",
-			category: "Raster: Adjustment",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::raster::ChannelMixerNode"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						// Monochrome toggle
-						NodeInput::value(TaggedValue::Bool(false), false),
-						// Monochrome
-						NodeInput::value(TaggedValue::F64(40.), false),
-						NodeInput::value(TaggedValue::F64(40.), false),
-						NodeInput::value(TaggedValue::F64(20.), false),
-						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::F64(100.), false),
-						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::F64(100.), false),
-						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::F64(100.), false),
-						NodeInput::value(TaggedValue::F64(0.), false),
-						// Display-only properties (not used within the node)
-						NodeInput::value(TaggedValue::RedGreenBlue(RedGreenBlue::default()), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec![
-						"Image".to_string(),
-						// Monochrome toggle
-						"Monochrome".to_string(),
-						// Monochrome
-						"Red".to_string(),
-						"Green".to_string(),
-						"Blue".to_string(),
-						"Constant".to_string(),
-						"(Red) Red".to_string(),
-						"(Red) Green".to_string(),
-						"(Red) Blue".to_string(),
-						"(Red) Constant".to_string(),
-						"(Green) Red".to_string(),
-						"(Green) Green".to_string(),
-						"(Green) Blue".to_string(),
-						"(Green) Constant".to_string(),
-						"(Blue) Red".to_string(),
-						"(Blue) Green".to_string(),
-						"(Blue) Blue".to_string(),
-						"(Blue) Constant".to_string(),
-						// Display-only properties (not used within the node)
-						"Output Channel".to_string(),
-					],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::channel_mixer_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Selective Color",
@@ -2541,65 +2425,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			properties: &node_properties::assign_colors_properties,
 		},
-		// TODO Remove
-		DocumentNodeDefinition {
-			identifier: "Fill",
-			category: "Vector: Style",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(0), 0)],
-						nodes: vec![DocumentNode {
-							manual_composition: Some(concrete!(Footprint)),
-							inputs: vec![NodeInput::network(concrete!(VectorData), 0), NodeInput::network(concrete!(vector::style::Fill), 1)],
-							implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::SetFillNode")),
-							..Default::default()
-						}]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					inputs: vec![
-						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-						NodeInput::value(TaggedValue::Fill(vector::style::Fill::Solid(Color::BLACK)), false),
-						NodeInput::value(TaggedValue::OptionalColor(Some(Color::BLACK)), false),
-						NodeInput::value(TaggedValue::Gradient(Default::default()), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [DocumentNodeMetadata {
-								persistent_metadata: DocumentNodePersistentMetadata {
-									display_name: "Set Fill".to_string(),
-									..Default::default()
-								},
-								..Default::default()
-							}]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
-							..Default::default()
-						},
-						..Default::default()
-					}),
-					input_names: vec![
-						"Vector Data".to_string(),
-						"Fill".to_string(),
-						// These backup values aren't exposed to the user, but are used to store the previous fill choices so the user can flip back from Solid to Gradient (or vice versa) without losing their settings
-						"Backup Color".to_string(),
-						"Backup Gradient".to_string(),
-					],
-					output_names: vec!["Vector".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::fill_properties,
-		},
 		DocumentNodeDefinition {
 			identifier: "Boolean Operation",
 			category: "Vector",
@@ -2935,6 +2760,16 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: &node_properties::color_overlay_properties,
 		},
 	];
+
+	type PropertiesLayout = &'static (dyn Fn(&DocumentNode, NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Sync);
+	let properties_overrides = [
+		("graphene_core::raster::adjustments::ChannelMixerNode", &node_properties::channel_mixer_properties as PropertiesLayout),
+		("graphene_core::vector::FillNode", &node_properties::fill_properties as PropertiesLayout),
+		("graphene_core::vector::StrokeNode", &node_properties::stroke_properties as PropertiesLayout),
+	]
+	.into_iter()
+	.collect::<HashMap<_, _>>();
+
 	// Remove struct generics
 	for DocumentNodeDefinition { node_template, .. } in custom.iter_mut() {
 		let NodeTemplate {
@@ -2949,7 +2784,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 	}
 	let node_registry = graphene_core::registry::NODE_REGISTRY.lock().unwrap();
 	'outer: for (id, metadata) in graphene_core::registry::NODE_METADATA.lock().unwrap().drain() {
-		use convert_case::Casing;
 		use graphene_core::registry::*;
 
 		for node in custom.iter() {
@@ -2996,30 +2830,32 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			})
 			.collect();
 
-		let field_types: Vec<_> = fields.iter().zip(first_node_io.parameters.iter()).map(|(field, ty)| (field.clone(), ty.clone())).collect();
-		let properties = move |document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext| {
-			let rows: Vec<_> = field_types
-				.iter()
-				.enumerate()
-				.skip(1)
-				.filter(|(_, (field, _))| !matches!(&field.value_source, ValueSource::Scope(_)))
-				.flat_map(|(index, (field, ty))| {
-					let name = field.name.to_case(convert_case::Case::Title);
-					let min = field.number_min;
-					let max = field.number_max;
-					let mode_range = field.number_mode_range;
+		let properties = match properties_overrides.get(id.as_str()) {
+			Some(properties_function) => *properties_function,
+			None => {
+				let field_types: Vec<_> = fields.iter().zip(first_node_io.parameters.iter()).map(|(field, ty)| (field.clone(), ty.clone())).collect();
+				let properties = move |document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext| {
+					let rows: Vec<_> = field_types
+						.iter()
+						.enumerate()
+						.skip(1)
+						.filter(|(_, (field, _))| !matches!(&field.value_source, ValueSource::Scope(_)))
+						.flat_map(|(index, (field, ty))| {
+							let number_options = (field.number_min, field.number_max, field.number_mode_range);
 
-					node_properties::property_from_type(document_node, node_id, index, &name, ty, context, (min, max, mode_range))
-				})
-				.collect();
-			if rows.is_empty() {
-				node_no_properties(document_node, node_id, context)
-			} else {
-				rows
+							node_properties::property_from_type(document_node, node_id, index, field.name, ty, context, number_options)
+						})
+						.collect();
+
+					if rows.is_empty() {
+						return node_no_properties(document_node, node_id, context);
+					}
+
+					rows
+				};
+				Box::leak(Box::new(properties)) as PropertiesLayout
 			}
 		};
-
-		let properties = Box::leak(Box::new(properties));
 
 		let node = DocumentNodeDefinition {
 			identifier: display_name,
@@ -3033,14 +2869,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: fields.iter().map(|f| f.name.to_case(convert_case::Case::Title).clone()).collect(),
+					input_names: fields.iter().map(|f| f.name.to_string()).collect(),
 					output_names: vec![output_type.to_string()],
 					has_primary_output: true,
 					locked: false,
 					..Default::default()
 				},
 			},
-			category: category.unwrap_or("Debug"),
+			category: category.unwrap_or("UNCATEGORIZED"),
 			properties,
 		};
 		custom.push(node);
@@ -3176,7 +3012,7 @@ pub fn resolve_document_node_type(identifier: &str) -> Option<&DocumentNodeDefin
 pub fn collect_node_types() -> Vec<FrontendNodeType> {
 	DOCUMENT_NODE_TYPES
 		.iter()
-		.filter(|definition| !definition.category.eq_ignore_ascii_case("ignore"))
+		.filter(|definition| !definition.category.is_empty())
 		.map(|definition| FrontendNodeType::new(definition.identifier, definition.category))
 		.collect()
 }

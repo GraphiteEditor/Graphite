@@ -1,3 +1,4 @@
+use crate::registry::types::Percentage;
 use crate::Node;
 
 use core::marker::PhantomData;
@@ -234,17 +235,29 @@ fn number_value(_: (), _primary: (), number: f64) -> f64 {
 	number
 }
 
+// Percentage Value
+#[node_macro::node(category("Value"), name("Percentage Value"))]
+fn percentage_value(_: (), _primary: (), percentage: Percentage) -> f64 {
+	percentage
+}
+
 // Vector2 Value
 #[node_macro::node(category("Value"), name("Vector2 Value"))]
 fn vector2_value(_: (), _primary: (), x: f64, y: f64) -> glam::DVec2 {
 	glam::DVec2::new(x, y)
 }
 
-// TODO: Fix how Color::BLACK isn't working
+// TODO: Make it possible to give Color::BLACK instead of 000000ff as the default
 // Color Value
 #[node_macro::node(category("Value"), name("Color Value"))]
 fn color_value(_: (), _primary: (), #[default(000000ff)] color: crate::Color) -> crate::Color {
 	color
+}
+
+// Gradient Value
+#[node_macro::node(category("Value"), name("Gradient Value"))]
+fn gradient_value(_: (), _primary: (), gradient: crate::vector::style::GradientStops) -> crate::vector::style::GradientStops {
+	gradient
 }
 
 // Color Channel Value
@@ -285,6 +298,7 @@ fn clone<'i, T: Clone + 'i>(_: (), #[implementations(&crate::raster::ImageFrame<
 }
 
 // Identity
+// TODO: Rename to "Passthrough"
 /// The identity function returns the input argument unchanged.
 #[node_macro::node(skip_impl)]
 fn identity<'i, T: 'i>(value: T) -> T {

@@ -272,22 +272,22 @@ async fn to_graphic_element<F: 'n + Send, Data: Into<GraphicElement> + 'n>(
 	data.eval(footprint).await.into()
 }
 
-#[node(name("Group"))]
-async fn to_graphic_group<F: 'n + Send, Data: Into<GraphicGroup> + 'n>(
+#[node(name("Group"), category("General"))]
+async fn group<F: 'n + Send, Data: Into<GraphicGroup> + 'n>(
 	#[implementations((), (), (), (), Footprint)] footprint: F,
 	#[implementations(
-	 	((), VectorData),
+		((), VectorData),
 		((), ImageFrame<Color>),
-	 	((), GraphicGroup),
-	 	((), TextureFrame),
-	 	(Footprint, VectorData),
+		((), GraphicGroup),
+		((), TextureFrame),
+		(Footprint, VectorData),
 		(Footprint, ImageFrame<Color>),
-	 	(Footprint, GraphicGroup),
-	 	(Footprint, TextureFrame),
-	 )]
-	data: impl Node<F, Output = Data>,
+		(Footprint, GraphicGroup),
+		(Footprint, TextureFrame),
+	)]
+	element: impl Node<F, Output = Data>,
 ) -> GraphicGroup {
-	data.eval(footprint).await.into()
+	element.eval(footprint).await.into()
 }
 
 #[node]

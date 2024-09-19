@@ -38,7 +38,7 @@ pub struct NodeMetadata {
 
 #[derive(Clone, Debug)]
 pub struct FieldMetadata {
-	pub name: String,
+	pub name: &'static str,
 	pub exposed: bool,
 	pub value_source: ValueSource,
 	pub number_min: Option<f64>,

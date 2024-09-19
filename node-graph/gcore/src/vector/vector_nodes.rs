@@ -1,5 +1,5 @@
 use super::misc::CentroidType;
-use super::style::{Fill, GradientStops, Stroke};
+use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentId, StrokeId, VectorData};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, SeedValue};
 use crate::renderer::GraphicElementRendered;
@@ -26,7 +26,7 @@ impl VectorIterMut for VectorData {
 	}
 }
 
-#[node_macro::node(path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
 async fn assign_colors<T: VectorIterMut>(
 	footprint: Footprint,
 	#[implementations((Footprint, GraphicGroup), (Footprint, VectorData))] input: impl Node<Footprint, Output = T>,
@@ -69,11 +69,13 @@ async fn assign_colors<T: VectorIterMut>(
 	input
 }
 
-#[node_macro::node(path(graphene_core::vector), name("Fill"))]
-async fn set_fill<T: Into<Fill> + 'n + Send>(
+#[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
+async fn fill<T: Into<Fill> + 'n + Send>(
 	footprint: Footprint,
 	vector_data: impl Node<Footprint, Output = VectorData>,
-	#[implementations(Fill, Color, Option<Color>, crate::vector::style::Gradient)] fill: T,
+	#[implementations(Fill, Color, Option<Color>, crate::vector::style::Gradient)] fill: T, // TODO: Set the default to black
+	_backup_color: Option<Color>,
+	_backup_gradient: Gradient,
 ) -> VectorData {
 	let mut vector_data = vector_data.eval(footprint).await;
 	vector_data.style.set_fill(fill.into());
@@ -81,17 +83,17 @@ async fn set_fill<T: Into<Fill> + 'n + Send>(
 	vector_data
 }
 
-#[node_macro::node(path(graphene_core::vector), category("Vector: Style"))]
+#[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
 async fn stroke(
 	footprint: Footprint,
 	vector_data: impl Node<Footprint, Output = VectorData>,
-	color: Option<Color>,
-	weight: f64,
+	color: Option<Color>, // TODO: Set the default to black
+	#[default(5.)] weight: f64,
 	dash_lengths: Vec<f64>,
 	dash_offset: f64,
 	line_cap: crate::vector::style::LineCap,
 	line_join: crate::vector::style::LineJoin,
-	#[default(4)] miter_limit: f64,
+	#[default(4.)] miter_limit: f64,
 ) -> VectorData {
 	let mut vector_data = vector_data.eval(footprint).await;
 	vector_data.style.set_stroke(Stroke {
@@ -107,7 +109,7 @@ async fn stroke(
 	vector_data
 }
 
-#[node_macro::node(path(graphene_core::vector))]
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn repeat(footprint: Footprint, instance: impl Node<Footprint, Output = VectorData>, #[default(100., 100.)] direction: DVec2, angle: Angle, #[default(4)] instances: IntegerCount) -> VectorData {
 	let instance = instance.eval(footprint).await;
 	let angle = angle.to_radians();
@@ -138,7 +140,7 @@ async fn repeat(footprint: Footprint, instance: impl Node<Footprint, Output = Ve
 	result
 }
 
-#[node_macro::node(path(graphene_core::vector))]
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn circular_repeat(
 	footprint: Footprint,
 	instance: impl Node<Footprint, Output = VectorData>,
@@ -172,7 +174,7 @@ async fn circular_repeat(
 	result
 }
 
-#[node_macro::node(path(graphene_core::vector))]
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn bounding_box<F: 'n + Copy + Send>(
 	#[implementations((), Footprint)] footprint: F,
 	#[implementations(((), VectorData), (Footprint, VectorData))] vector_data: impl Node<F, Output = VectorData>,
@@ -183,7 +185,7 @@ async fn bounding_box<F: 'n + Copy + Send>(
 	VectorData::from_subpath(Subpath::new_rect(bounding_box[0], bounding_box[1]))
 }
 
-#[node_macro::node(path(graphene_core::vector))]
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn solidify_stroke(footprint: Footprint, vector_data: impl Node<Footprint, Output = VectorData>) -> VectorData {
 	// Grab what we need from original data.
 	let vector_data = vector_data.eval(footprint).await;
@@ -246,7 +248,7 @@ impl ConcatElement for GraphicGroup {
 	}
 }
 
-#[node_macro::node(path(graphene_core::vector))]
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + TransformMut + Send>(
 	footprint: Footprint,
 	points: impl Node<Footprint, Output = VectorData>,
@@ -308,7 +310,7 @@ async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + Tr
 	result
 }
 
-#[node_macro::node]
+#[node_macro::node(category("Vector"))]
 async fn sample_points(
 	footprint: Footprint,
 	vector_data: impl Node<Footprint, Output = VectorData>,
@@ -382,7 +384,7 @@ async fn sample_points(
 	result
 }
 
-#[node_macro::node(path(graphene_core::vector))]
+#[node_macro::node(category(""), path(graphene_core::vector))]
 async fn poisson_disk_points<F: 'n + Copy + Send>(
 	#[implementations((), Footprint)] footprint: F,
 	#[implementations(((), VectorData), (Footprint, VectorData))] vector_data: impl Node<F, Output = VectorData>,
@@ -408,7 +410,7 @@ async fn poisson_disk_points<F: 'n + Copy + Send>(
 	result
 }
 
-#[node_macro::node(name("Lengths of Segments of Subpaths"))]
+#[node_macro::node(name("Lengths of Segments of Subpaths"), category(""))]
 async fn lengths_of_segments_of_subpaths(footprint: Footprint, vector_data: impl Node<Footprint, Output = VectorData>) -> Vec<f64> {
 	let vector_data = vector_data.eval(footprint).await;
 
@@ -418,7 +420,7 @@ async fn lengths_of_segments_of_subpaths(footprint: Footprint, vector_data: impl
 		.collect()
 }
 
-#[node_macro::node(path(graphene_core::vector), name("Splines from Points"))]
+#[node_macro::node(name("Splines from Points"), category(""), path(graphene_core::vector))]
 fn splines_from_points(_: (), mut vector_data: VectorData) -> VectorData {
 	let points = &vector_data.point_domain;
 
@@ -443,7 +445,7 @@ fn splines_from_points(_: (), mut vector_data: VectorData) -> VectorData {
 	vector_data
 }
 
-#[node_macro::node(path(graphene_core::vector))]
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn morph(
 	footprint: Footprint,
 	source: impl Node<Footprint, Output = VectorData>,
@@ -532,7 +534,7 @@ async fn morph(
 	result
 }
 
-#[node_macro::node(path(graphene_core::vector))]
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn area(_: (), vector_data: impl Node<Footprint, Output = VectorData>) -> f64 {
 	let vector_data = vector_data.eval(Footprint::default()).await;
 
@@ -544,7 +546,7 @@ async fn area(_: (), vector_data: impl Node<Footprint, Output = VectorData>) -> 
 	area * scale[0] * scale[1]
 }
 
-#[node_macro::node(path(graphene_core::vector))]
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn centroid_node(_: (), vector_data: impl Node<Footprint, Output = VectorData>, centroid_type: CentroidType) -> DVec2 {
 	let vector_data = vector_data.eval(Footprint::default()).await;
 
@@ -593,9 +595,8 @@ async fn centroid_node(_: (), vector_data: impl Node<Footprint, Output = VectorD
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::value::ClonedNode;
-
 	use crate::Node;
+
 	use bezier_rs::Bezier;
 
 	use std::pin::Pin;
@@ -649,9 +650,9 @@ mod test {
 	#[tokio::test]
 	async fn bounding_box() {
 		let bounding_box = BoundingBoxNode {
-			vector_data: ClonedNode::new(VectorData::from_subpath(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE))),
+			vector_data: vector_node(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE)),
 		};
-		let bounding_box = bounding_box.eval(());
+		let bounding_box = bounding_box.eval(Footprint::default()).await;
 		assert_eq!(bounding_box.region_bezier_paths().count(), 1);
 		let subpath = bounding_box.region_bezier_paths().next().unwrap().1;
 		assert_eq!(&subpath.anchors()[..4], &[DVec2::NEG_ONE, DVec2::new(1., -1.), DVec2::ONE, DVec2::new(-1., 1.),]);
@@ -659,7 +660,11 @@ mod test {
 		// test a VectorData with non-zero rotation
 		let mut square = VectorData::from_subpath(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE));
 		square.transform *= DAffine2::from_angle(core::f64::consts::FRAC_PI_4);
-		let bounding_box = BoundingBoxNode { vector_data: ClonedNode(square) }.eval(());
+		let bounding_box = BoundingBoxNode {
+			vector_data: FutureWrapperNode(square),
+		}
+		.eval(Footprint::default())
+		.await;
 		assert_eq!(bounding_box.region_bezier_paths().count(), 1);
 		let subpath = bounding_box.region_bezier_paths().next().unwrap().1;
 		let sqrt2 = core::f64::consts::SQRT_2;
@@ -699,14 +704,15 @@ mod test {
 			assert!(pos.distance(expected) < 1e-3, "Expected {expected} found {pos}");
 		}
 	}
-	#[test]
-	fn poisson() {
+	#[tokio::test]
+	async fn poisson() {
 		let sample_points = super::poisson_disk_points(
-			(),
-			VectorData::from_subpath(Subpath::new_ellipse(DVec2::NEG_ONE * 50., DVec2::ONE * 50.)),
+			Footprint::default(),
+			&vector_node(Subpath::new_ellipse(DVec2::NEG_ONE * 50., DVec2::ONE * 50.)),
 			10. * std::f64::consts::SQRT_2,
 			0,
-		);
+		)
+		.await;
 		assert!(
 			(20..=40).contains(&sample_points.point_domain.positions().len()),
 			"actual len {}",
