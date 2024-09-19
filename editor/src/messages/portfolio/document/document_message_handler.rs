@@ -23,13 +23,13 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 
+use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeNetwork, OldNodeNetwork};
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::ImageFrame;
 use graphene_core::vector::style::ViewMode;
-
-use glam::{DAffine2, DVec2};
+use std::collections::HashSet;
 pub struct DocumentMessageData<'a> {
 	pub document_id: DocumentId,
 	pub ipp: &'a InputPreprocessorMessageHandler,
@@ -478,29 +478,28 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(DocumentMessage::AddTransaction);
 
 				let Some(parent) = self.network_interface.deepest_common_ancestor(&self.selection_network_path, false) else {
-					// Cancel grouping layers across different artboards
-					// TODO: Group each set of layers for each artboard separately
 					return;
 				};
-				let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), self.network_interface.selected_nodes(&[]).unwrap(), parent);
-
-				let node_id = NodeId(generate_uuid());
-				let new_group_node = super::node_graph::document_node_definitions::resolve_document_node_type("Merge")
-					.expect("Failed to create merge node")
-					.default_node_template();
-				responses.add(NodeGraphMessage::InsertNode {
-					node_id,
-					node_template: new_group_node,
-				});
-				let new_group_folder = LayerNodeIdentifier::new_unchecked(node_id);
-				// Move the new folder to the correct position
-				responses.add(NodeGraphMessage::MoveLayerToStack {
-					layer: new_group_folder,
-					parent,
-					insert_index,
-				});
-
-				responses.add(DocumentMessage::MoveSelectedLayersToGroup { parent: new_group_folder });
+				if parent == LayerNodeIdentifier::ROOT_PARENT {
+					let mut selected_artboards = HashSet::new();
+					let selected_nodes = self.network_interface.selected_nodes(&[]).unwrap();
+					for layer in selected_nodes.selected_layers(self.metadata()) {
+						selected_artboards.insert(layer.parent(self.metadata()).unwrap());
+					}
+					for artboard in selected_artboards {
+						let artboard_children: Vec<NodeId> = artboard.children(self.metadata()).filter(|direct_child| {
+							selected_nodes.selected_layers_contains(*direct_child, self.metadata())
+						})  // Assuming direct_child.to_node() returns LayerNodeIdentifier
+						.map(|direct_child| direct_child.to_node()).collect();
+						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: artboard_children.clone() });
+						DocumentMessageHandler::group_layers(responses, self.metadata(), artboard_children, &artboard);
+					}
+				} else {
+					let selected_nodes: Vec<NodeId> = self.selection_network_path.clone()
+					.into_iter()  // Assuming direct_child.to_node() returns LayerNodeIdentifier
+						.collect();
+					DocumentMessageHandler::group_layers(responses, self.metadata(), selected_nodes, &parent);
+				}
 			}
 			DocumentMessage::ImaginateGenerate { imaginate_node } => {
 				let random_value = generate_uuid();
@@ -1564,6 +1563,26 @@ impl DocumentMessageHandler {
 				None
 			})
 			.unwrap_or(0)
+	}
+
+	pub fn group_layers(responses: &mut VecDeque<Message>, metadata: &DocumentMetadata, selected_nodes: Vec<NodeId>, parent: &LayerNodeIdentifier) {
+		let insert_index = DocumentMessageHandler::get_calculated_insert_index(metadata, SelectedNodes(selected_nodes.clone()), *parent);
+		let node_id = NodeId(generate_uuid());
+		let new_group_node = super::node_graph::document_node_definitions::resolve_document_node_type("Merge")
+			.expect("Failed to create merge node")
+			.default_node_template();
+		responses.add(NodeGraphMessage::InsertNode {
+			node_id,
+			node_template: new_group_node,
+		});
+		let new_group_folder = LayerNodeIdentifier::new_unchecked(node_id);
+		// Move the new folder to the correct position
+		responses.add(NodeGraphMessage::MoveLayerToStack {
+			layer: new_group_folder,
+			parent: *parent,
+			insert_index,
+		});
+		responses.add(DocumentMessage::MoveSelectedLayersToGroup { parent: new_group_folder });
 	}
 
 	/// Loads layer resources such as creating the blob URLs for the images and loading all of the fonts in the document.
