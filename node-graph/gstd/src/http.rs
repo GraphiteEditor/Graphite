@@ -1,4 +1,5 @@
 use crate::Node;
+use graphene_core::raster::{ImageFrame, SRGBA8};
 
 pub struct GetNode;
 

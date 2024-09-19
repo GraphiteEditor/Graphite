@@ -35,10 +35,8 @@ let
     # wasm-pack needs this
     extensions = [ "rust-src" "rust-analyzer" "clippy"];
   };
-in
-  # Make a shell with the dependencies we need
-  pkgs.mkShell {
-    packages = with pkgs; [
+
+  packages = with pkgs; [
       rustc-wasm
       nodejs
       cargo
@@ -72,9 +70,11 @@ in
       # Use Mold as a linker
       mold
     ];
-
+in
+  # Make a shell with the dependencies we need
+    pkgs.mkShell {
+    LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath packages;
     # Hacky way to run Cargo through Mold
-    LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [pkgs.openssl pkgs.vulkan-loader pkgs.libxkbcommon pkgs.llvmPackages.libcxxStdenv pkgs.gcc-unwrapped.lib pkgs.llvm pkgs.libraw];
     shellHook = ''
     alias cargo='mold --run cargo'
     '';
