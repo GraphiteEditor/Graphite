@@ -495,10 +495,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						DocumentMessageHandler::group_layers(responses, self.metadata(), artboard_children, &artboard);
 					}
 				} else {
-					let selected_nodes: Vec<NodeId> = self.selection_network_path.clone()
-					.into_iter()  // Assuming direct_child.to_node() returns LayerNodeIdentifier
-						.collect();
-					DocumentMessageHandler::group_layers(responses, self.metadata(), selected_nodes, &parent);
+					DocumentMessageHandler::group_layers(responses, self.metadata(), self.selection_network_path.clone(), &parent);
 				}
 			}
 			DocumentMessage::ImaginateGenerate { imaginate_node } => {
