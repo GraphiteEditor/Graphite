@@ -1,10 +1,4 @@
-// Copyright 2024 Adam Platkevič <rflashster@gmail.com>
-//
-// SPDX-License-Identifier: MIT
-
-// TODO(@TrueDoctor) check math
-
-use glam::DVec2;
+use glam::{DVec2, FloatExt};
 pub use std::f64::consts::PI;
 
 pub fn lin_map(value: f64, in_min: f64, in_max: f64, out_min: f64, out_max: f64) -> f64 {
@@ -12,7 +6,7 @@ pub fn lin_map(value: f64, in_min: f64, in_max: f64, out_min: f64, out_max: f64)
 }
 
 pub fn lerp(a: f64, b: f64, t: f64) -> f64 {
-	a + (b - a) * t
+	a.lerp(b, t)
 }
 
 pub fn vector_angle(u: DVec2, v: DVec2) -> f64 {

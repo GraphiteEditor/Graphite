@@ -1,7 +1,3 @@
-// Copyright 2024 Adam Platkevič <rflashster@gmail.com>
-//
-// SPDX-License-Identifier: MIT
-
 use crate::path::{path_from_commands, path_to_commands, Path};
 use crate::path_command::{AbsolutePathCommand, PathCommand, RelativePathCommand};
 use glam::DVec2;

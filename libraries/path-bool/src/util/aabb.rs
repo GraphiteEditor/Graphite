@@ -1,7 +1,3 @@
-// Copyright 2024 Adam Platkevič <rflashster@gmail.com>
-//
-// SPDX-License-Identifier: MIT
-
 use glam::DVec2;
 
 #[derive(Clone, Copy, Debug, PartialEq)]

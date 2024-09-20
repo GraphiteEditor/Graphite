@@ -1,9 +1,12 @@
-// Copyright 2024 Adam Platkevič <rflashster@gmail.com>
-//
-// SPDX-License-Identifier: MIT
+pub(crate) mod intersection_path_segment;
+pub(crate) mod line_segment;
+pub(crate) mod line_segment_aabb;
+pub(crate) mod path_cubic_segment_self_intersection;
+pub(crate) mod path_segment;
 
 use glam::DVec2;
 
+#[cfg(feature = "parsing")]
 use crate::path_command::{to_absolute_commands, AbsolutePathCommand, PathCommand};
 use crate::path_segment::PathSegment;
 

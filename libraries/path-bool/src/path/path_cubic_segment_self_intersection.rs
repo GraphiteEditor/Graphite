@@ -1,7 +1,3 @@
-// Copyright 2024 Adam Platkevič <rflashster@gmail.com>
-//
-// SPDX-License-Identifier: MIT
-
 use crate::path_segment::PathSegment;
 
 const EPS: f64 = 1e-12;

@@ -1,7 +1,3 @@
-// Copyright 2024 Adam Platkevič <rflashster@gmail.com>
-//
-// SPDX-License-Identifier: MIT
-
 use glam::DVec2;
 
 use crate::aabb::{bounding_box_max_extent, bounding_boxes_overlap, AaBb};
