@@ -2,12 +2,15 @@ use super::common_functionality::shape_editor::ShapeState;
 use super::utility_types::{tool_message_to_tool_type, ToolActionHandlerData, ToolFsmState};
 use crate::application::generate_uuid;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayProvider;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 
 use graphene_core::raster::color::Color;
+
+const ARTBOARD_OVERLAY_PROVIDER: OverlayProvider = |context| DocumentMessage::DrawArtboardOverlays(context).into();
 
 pub struct ToolMessageData<'a> {
 	pub document_id: DocumentId,
@@ -128,6 +131,8 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 				let message = Box::new(TransformLayerMessage::SelectionChanged.into());
 				let on = BroadcastEvent::SelectionChanged;
 				responses.add(BroadcastMessage::UnsubscribeEvent { message, on });
+
+				responses.add(OverlaysMessage::RemoveProvider(ARTBOARD_OVERLAY_PROVIDER));
 			}
 			ToolMessage::InitTools => {
 				// Subscribe the transform layer to selection change events
@@ -165,6 +170,8 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 				// Set initial hints and cursor
 				tool_data.active_tool_mut().process_message(ToolMessage::UpdateHints, responses, &mut data);
 				tool_data.active_tool_mut().process_message(ToolMessage::UpdateCursor, responses, &mut data);
+
+				responses.add(OverlaysMessage::AddProvider(ARTBOARD_OVERLAY_PROVIDER));
 			}
 			ToolMessage::PreUndo => {
 				let tool_data = &mut self.tool_state.tool_data;

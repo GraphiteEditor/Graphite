@@ -247,47 +247,52 @@ impl OverlayContext {
 		self.render_context.stroke();
 	}
 
-	pub fn text(&self, text: &str, pos: DVec2, background: &str, padding: f64) {
-		let pos = pos.round();
+	pub fn text(&self, text: &str, font_color: &str, background_color: Option<&str>, pos: DVec2) {
 		let metrics = self.render_context.measure_text(text).expect("Failed to measure the text dimensions");
-		self.render_context.set_fill_style(&background.into());
-		self.render_context.fill_rect(
-			pos.x + metrics.actual_bounding_box_left(),
-			pos.y - metrics.font_bounding_box_ascent() - metrics.font_bounding_box_descent() - padding * 2.,
-			metrics.actual_bounding_box_right() - metrics.actual_bounding_box_left() + padding * 2.,
-			metrics.font_bounding_box_ascent() + metrics.font_bounding_box_descent() + padding * 2.,
-		);
-		self.render_context.set_fill_style(&"white".into());
-		self.render_context
-			.fill_text(text, pos.x + padding, pos.y - padding - metrics.font_bounding_box_descent())
-			.expect("Failed to draw the text on the canvas");
+		let local_position = pos.round();
+
+		self.draw_text(background_color, local_position, metrics, font_color, text);
 	}
 
-	pub fn angle_text(&self, text: &str, pos: DVec2, direction: DVec2, padding: f64, pivot: Pivot) {
-		self.render_context.translate(pos.x, pos.y).expect("Failed to translate the render context to the specified position");
-
-		let angle = -direction.angle_to(DVec2::X);
-		self.render_context.rotate(angle).expect("Failed to rotate the render context to the specified angle");
+	pub fn text_with_transform(&self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, origin: Pivot) {
+		let [a, b, c, d, e, f] = transform.to_cols_array();
+		self.render_context.set_transform(a, b, c, d, e, f).expect("Failed to rotate the render context to the specified angle");
 
 		let metrics = self.render_context.measure_text(text).expect("Failed to measure the text dimensions");
-
-		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_BLUE));
-
-		let local_position = match pivot {
-			Pivot::LeftCentreY => DVec2::new(padding, (metrics.actual_bounding_box_ascent() + metrics.actual_bounding_box_descent()) / 2.),
-			Pivot::TopCentreX => DVec2::new(
-				-(metrics.actual_bounding_box_right() + metrics.actual_bounding_box_left()) / 2.,
-				padding + metrics.font_bounding_box_ascent(),
-			),
+		let local_position = match origin {
+			Pivot::CenterLeft => DVec2::new(0., (metrics.actual_bounding_box_ascent() + metrics.actual_bounding_box_descent()) / 2.),
+			Pivot::TopCenter => DVec2::new(-(metrics.actual_bounding_box_right() + metrics.actual_bounding_box_left()) / 2., metrics.font_bounding_box_ascent()),
+			Pivot::BottomLeft => DVec2::ZERO,
 		};
-		self.render_context
-			.fill_text(text, local_position.x, local_position.y)
-			.expect("Failed to draw the text at the calculated position");
+
+		self.draw_text(background_color, local_position, metrics, font_color, text);
+
 		self.render_context.reset_transform().expect("Failed to reset the render context transform");
+	}
+
+	fn draw_text(&self, background_color: Option<&str>, local_position: DVec2, metrics: web_sys::TextMetrics, font_color: &str, text: &str) {
+		// Render background
+		if let Some(background) = background_color {
+			self.render_context.set_fill_style(&background.into());
+			self.render_context.fill_rect(
+				local_position.x + metrics.actual_bounding_box_left(),
+				local_position.y - metrics.font_bounding_box_ascent() - metrics.font_bounding_box_descent(),
+				metrics.actual_bounding_box_right() - metrics.actual_bounding_box_left(),
+				metrics.font_bounding_box_ascent() + metrics.font_bounding_box_descent(),
+			);
+		}
+
+		// Render text
+		self.render_context.set_font("12px Source Sans Pro, Arial, sans-serif");
+		self.render_context.set_fill_style(&font_color.into());
+		self.render_context
+			.fill_text(text, local_position.x, local_position.y - metrics.font_bounding_box_descent())
+			.expect("Failed to draw the text on the canvas");
 	}
 }
 
 pub enum Pivot {
-	LeftCentreY,
-	TopCentreX,
+	TopCenter,
+	CenterLeft,
+	BottomLeft,
 }

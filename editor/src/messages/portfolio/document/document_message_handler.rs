@@ -1,11 +1,12 @@
 use super::node_graph::utility_types::Transform;
+use super::overlays::utility_types::Pivot;
 use super::utility_types::clipboards::Clipboard;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{SnappingOptions, SnappingState, GET_SNAP_BOX_FUNCTIONS, GET_SNAP_GEOMETRY_FUNCTIONS};
 use super::utility_types::network_interface::{NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
-use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
+use crate::consts::{ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
@@ -370,6 +371,18 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.network_interface.load_structure();
 				let data_buffer: RawBuffer = self.serialize_root();
 				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
+			}
+			DocumentMessage::DrawArtboardOverlays(overlay_context) => {
+				for layer in self.metadata().all_layers() {
+					if !self.network_interface.is_artboard(&layer.to_node(), &[]) {
+						continue;
+					}
+					let Some(bounds) = self.metadata().bounding_box_document(layer) else { continue };
+
+					let name = self.network_interface.frontend_display_name(&layer.to_node(), &[]);
+					let transform = self.metadata().document_to_viewport * DAffine2::from_translation(bounds[0].min(bounds[1]) - DVec2::Y * 4.);
+					overlay_context.text_with_transform(&name, COLOR_OVERLAY_GRAY, None, transform, Pivot::BottomLeft);
+				}
 			}
 			DocumentMessage::DuplicateSelectedLayers => {
 				let parent = self.new_layer_parent(false);

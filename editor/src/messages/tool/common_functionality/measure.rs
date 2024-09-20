@@ -1,3 +1,4 @@
+use crate::consts::COLOR_OVERLAY_BLUE;
 use crate::messages::portfolio::document::overlays::utility_types::{self, OverlayContext};
 use crate::messages::tool::tool_messages::tool_prelude::*;
 
@@ -6,7 +7,7 @@ use graphene_std::renderer::Rect;
 pub fn overlay(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2, document_to_viewport: DAffine2, overlay_context: &mut OverlayContext) {
 	let transform_to_document = document_to_viewport.inverse() * transform;
 	if selected_bounds.intersects(hovered_bounds) {
-		// TODO: I'm not sure what to do here?
+		// TODO: Figure out what to do here
 		return;
 	}
 
@@ -23,7 +24,8 @@ pub fn overlay(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2,
 		overlay_context.line(min_viewport, max_viewport, None);
 		let length = format!("{:.2}", transform_to_document.transform_vector2(DVec2::X * (turn_x - selected_x)).length());
 		let direction = -(min_viewport - max_viewport).normalize_or_zero();
-		overlay_context.angle_text(&length, (min_viewport + max_viewport) / 2., direction, 5., utility_types::Pivot::TopCentreX);
+		let transform = DAffine2::from_translation((min_viewport + max_viewport) / 2.) * DAffine2::from_angle(-direction.angle_to(DVec2::X));
+		overlay_context.text_with_transform(&length, COLOR_OVERLAY_BLUE, None, transform, utility_types::Pivot::TopCenter);
 	}
 	if turn_y != hovered_y {
 		let min_viewport = transform.transform_point2(DVec2::new(turn_x, turn_y.min(hovered_y)));
@@ -31,6 +33,7 @@ pub fn overlay(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2,
 		overlay_context.line(min_viewport, max_viewport, None);
 		let length = format!("{:.2}", transform_to_document.transform_vector2(DVec2::Y * (turn_y - hovered_y)).length());
 		let direction = (min_viewport - max_viewport).normalize_or_zero().perp();
-		overlay_context.angle_text(&length, (min_viewport + max_viewport) / 2., direction, 5., utility_types::Pivot::LeftCentreY);
+		let transform = DAffine2::from_translation((min_viewport + max_viewport) / 2.) * DAffine2::from_angle(-direction.angle_to(DVec2::X));
+		overlay_context.text_with_transform(&length, COLOR_OVERLAY_BLUE, None, transform, utility_types::Pivot::CenterLeft);
 	}
 }

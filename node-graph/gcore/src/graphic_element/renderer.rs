@@ -599,22 +599,6 @@ impl GraphicElementRendered for Artboard {
 				attributes.push("height", self.dimensions.y.abs().to_string());
 			});
 		}
-		if !render_params.hide_artboards && !render_params.for_export {
-			// Label
-			render.parent_tag(
-				"text",
-				|attributes| {
-					attributes.push("fill", "white");
-					attributes.push("x", (self.location.x.min(self.location.x + self.dimensions.x)).to_string());
-					attributes.push("y", (self.location.y.min(self.location.y + self.dimensions.y) - 4).to_string());
-					attributes.push("font-size", "14px");
-				},
-				|render| {
-					// TODO: Use the artboard's layer name
-					render.svg.push(self.label.to_string().into());
-				},
-			);
-		}
 
 		// Contents group (includes the artwork but not the background)
 		render.parent_tag(

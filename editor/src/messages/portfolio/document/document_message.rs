@@ -50,6 +50,7 @@ pub enum DocumentMessage {
 	DocumentHistoryBackward,
 	DocumentHistoryForward,
 	DocumentStructureChanged,
+	DrawArtboardOverlays(OverlayContext),
 	DuplicateSelectedLayers,
 	EnterNestedNetwork {
 		node_id: NodeId,

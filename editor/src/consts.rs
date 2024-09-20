@@ -75,8 +75,10 @@ pub const SCALE_EFFECT: f64 = 0.5;
 // Keep changes to these colors updated with `Editor.svelte`
 pub const COLOR_OVERLAY_BLUE: &str = "#00a8ff";
 pub const COLOR_OVERLAY_YELLOW: &str = "#ffc848";
-pub const COLOR_OVERLAY_WHITE: &str = "#ffffff";
+pub const COLOR_OVERLAY_GREEN: &str = "#63ce63";
+pub const COLOR_OVERLAY_RED: &str = "#ef5454";
 pub const COLOR_OVERLAY_GRAY: &str = "#cccccc";
+pub const COLOR_OVERLAY_WHITE: &str = "#ffffff";
 
 // Document
 pub const DEFAULT_DOCUMENT_NAME: &str = "Untitled Document";
