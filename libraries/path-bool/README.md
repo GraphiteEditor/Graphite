@@ -62,7 +62,7 @@ This project is a port of PathBool.js and is still in early stages of developmen
 
 MIT License or Apache-2.0
 
-Copyright © 2024 [ Dennis Kobert ]
+Copyright © 2024 [ Graphite Authors ]
 
 ## Acknowledgements
 
