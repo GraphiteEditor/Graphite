@@ -332,22 +332,15 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 	}
 
-	pub fn transform_set(&mut self, mut transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, current_transform: Option<DAffine2>, skip_rerender: bool) {
-		let Some(transform_node_id) = self.existing_node_id("Transform") else { return };
-		let upstream_transform = self.network_interface.document_metadata().upstream_transform(transform_node_id);
-		let to = match transform_in {
-			TransformIn::Local => DAffine2::IDENTITY,
-			TransformIn::Scope { scope } => scope * parent_transform,
-			TransformIn::Viewport => parent_transform,
+	pub fn transform_set(&mut self, mut transform: DAffine2, transform_in: TransformIn, skip_rerender: bool) {
+		let final_transform = match transform_in {
+			TransformIn::Local => DAffine2::IDENTITY * transform,
+			TransformIn::Scope { scope } => scope * transform,
+			TransformIn::Viewport => self.network_interface.document_metadata().downstream_transform_to_viewport(self.layer_node.unwrap()).inverse() * transform,
 		};
 
-		if current_transform
-			.filter(|transform| transform.matrix2.determinant() != 0. && upstream_transform.matrix2.determinant() != 0.)
-			.is_some()
-		{
-			transform *= upstream_transform.inverse();
-		}
-		let final_transform = to.inverse() * transform;
+		let Some(transform_node_id) = self.existing_node_id("Transform") else { return };
+
 		transform_utils::update_transform(self.network_interface, &transform_node_id, final_transform);
 
 		self.responses.add(PropertiesPanelMessage::Refresh);

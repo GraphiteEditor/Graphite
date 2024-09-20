@@ -67,10 +67,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				transform_in,
 				skip_rerender,
 			} => {
-				let parent_transform = network_interface.document_metadata().downstream_transform_to_viewport(layer);
-				let current_transform = Some(network_interface.document_metadata().transform_to_viewport(layer));
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.transform_set(transform, transform_in, parent_transform, current_transform, skip_rerender);
+					modify_inputs.transform_set(transform, transform_in, skip_rerender);
 				}
 			}
 			GraphOperationMessage::TransformSetPivot { layer, pivot } => {

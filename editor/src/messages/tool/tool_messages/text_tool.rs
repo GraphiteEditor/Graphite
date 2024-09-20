@@ -298,6 +298,7 @@ impl TextToolData {
 				parent: document.new_layer_parent(true),
 				insert_index: 0,
 			});
+			responses.add(Message::StartBuffer);
 			responses.add(GraphOperationMessage::FillSet {
 				layer: self.layer,
 				fill: if editing_text.color.is_some() { Fill::Solid(editing_text.color.unwrap()) } else { Fill::None },
