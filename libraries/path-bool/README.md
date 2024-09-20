@@ -1,8 +1,8 @@
-# path_bool
+# Path Bool
 
 A Rust library for performing boolean operations on SVG paths.
 
-`path_bool` is a port of [PathBool.js](https://github.com/r-flash/PathBool.js), providing low-level functionality for boolean operations on complex 2D paths. It handles paths with multiple subpaths, self-intersections, and different fill rules.
+Path Bool is a port of [PathBool.js](https://github.com/r-flash/PathBool.js), providing low-level functionality for boolean operations on complex 2D paths. It handles paths with multiple subpaths, self-intersections, and different fill rules.
 
 ## Features
 
@@ -17,7 +17,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-path_bool = "0.1.0"
+path-bool = "0.1.0"
 ```
 
 ## Usage
@@ -46,24 +46,23 @@ fn main() {
 
 ## Algorithm
 
-The boolean operations are implemented using a graph-based approach. After the parsing the input, self intersecting cubic beziers curves are simplified. Then the intersection points between all edges are calculated. These are then turned into a graph representation where every intersection becomes a new vertex. We then apply edge contractions to remove vertices with a degree of 2 to compute the graph minor. At this stage, identiacal edges are deduplicated. Because we are ultimately interrested in the faces of the graph to decide if they should be included in the final output, we then compute the dual graph in which the faces become vertices and vertices become the new faces. That dual structure is then used to determine which faces (dual vertices) should be included in the final output. 
+The boolean operations are implemented using a graph-based approach. After the parsing the input, self-intersecting cubic beziers curves are simplified. Then the intersection points between all edges are calculated. These are then turned into a graph representation where every intersection becomes a new vertex. We then apply edge contractions to remove vertices with a degree of 2 to compute the [graph minor](https://en.wikipedia.org/wiki/Graph_minor). At this stage, identical edges are deduplicated. Because we are ultimately interested in the faces of the graph to decide if they should be included in the final output, we then compute the dual graph in which the faces become vertices and vertices become the new faces. That dual structure is then used to determine which faces (dual vertices) should be included in the final output.
 
-## Development Status
+## Development status
 
-This project is a port of PathBool.js and is still in early stages of development. Contributions, bug reports, and feedback are welcome!
+This project is a port of PathBool.js and is still in early stages of development. Contributions, bug reports, and feedback are welcome.
 
-## TODO
+Future work includes:
 
 - Comprehensive test suite
 - Performance optimizations
 - Additional examples and documentation
 
-## License
-
-MIT License or Apache-2.0
-
-Copyright © 2024 [ Graphite Authors ]
-
-## Acknowledgements
+## License and acknowledgements
 
 This library is a Rust port of [PathBool.js](https://github.com/r-flash/PathBool.js) by Adam Platkevič.
+
+It is dual-licensed under the MIT License or Apache-2.0 License. You may opt to comply with either license.
+
+Copyright © 2024 Adam Platkevič
+Copyright © 2024 Graphite Authors
