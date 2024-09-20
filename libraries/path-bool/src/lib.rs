@@ -92,7 +92,7 @@ mod test {
 	#[test]
 	fn simple_07() {
 		let a = path_from_path_data("M 37.671452,24 C 52.46888,31.142429 42.887716,37.358779 24,37.671452 16.4505,37.796429 10.328548,31.550534 10.328548,24 c 0,-7.550534 6.120918,-13.671452 13.671452,-13.671452 7.550534,0 6.871598,10.389295 13.671452,13.671452 z",
-    );
+	);
 		let b = path_from_path_data("M 37.671452,24 C 33.698699,53.634887 29.50935,49.018306 24,37.671452 20.7021,30.879219 10.328548,31.550534 10.328548,24 c 0,-7.550534 6.120918,-13.671452 13.671452,-13.671452 7.550534,0 14.674677,6.187863 13.671452,13.671452 z");
 
 		let result = path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, PathBooleanOperation::Union).unwrap();
@@ -234,6 +234,23 @@ mod test {
 		);
 
 		let result = path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, PathBooleanOperation::Difference).unwrap();
+
+		// Add assertions here based on expected results
+		assert_eq!(result.len(), 1, "Expected 1 resulting path for Union operation");
+		dbg!(path_to_path_data(&result[0], 0.001));
+		// Add more specific assertions about the resulting path if needed
+		assert!(!result[0].is_empty());
+	}
+	#[test]
+	fn blobs() {
+		let a = path_from_path_data(
+			"m658.03348 118.4966c7.85928 4.83645 114.84582 7.8304 127.89652 6.52531 20.97932-2.09799 43.06722-24.79623 43.06722-24.79623 0 0-96.43723-26.02101-108.97311-28.54836-20.22849-4.07832-78.95651 36.37872-61.99063 46.81928z
+			m658.03348 115.88649c40.45718-30.01653 82.213-45.24662 103.10032-31.32163 7.83037 5.2203-3.58567 22.51547 13.05064 39.152 3.91519 3.9152-129.49099 2.06705-116.15096-7.83037z
+			m680.87214 56.0165c2.20775-9.60391 62.6449-29.65403 101.79518-30.01652 17.61846-0.16312 119.39605 40.30737 130.50668 54.8128 5.8045 7.57806-76.88558 29.08762-91.35464 31.32162-15.28899 2.36056-144.20983-41.92525-140.94722-56.1179z"
+		);
+		let b = path_from_path_data("");
+
+		let result = path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, PathBooleanOperation::Union).unwrap();
 
 		// Add assertions here based on expected results
 		assert_eq!(result.len(), 1, "Expected 1 resulting path for Union operation");

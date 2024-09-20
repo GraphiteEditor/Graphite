@@ -145,15 +145,15 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<PointId>>, layer: LayerNodeIdentifier) {
-		let shape = resolve_document_node_type("Shape")
-			.expect("Shape node does not exist")
+		let path = resolve_document_node_type("Path")
+			.expect("Path node does not exist")
 			.node_template_input_override([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))]);
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
 		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_node_template();
 		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_node_template();
 
 		let shape_id = NodeId(generate_uuid());
-		self.network_interface.insert_node(shape_id, shape, &[]);
+		self.network_interface.insert_node(shape_id, path, &[]);
 		self.network_interface.move_node_to_chain_start(&shape_id, layer, &[]);
 
 		let transform_id = NodeId(generate_uuid());

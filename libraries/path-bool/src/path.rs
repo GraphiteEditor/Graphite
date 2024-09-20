@@ -99,33 +99,40 @@ where
 {
 	let mut last_point: Option<DVec2> = None;
 
-	segments.into_iter().flat_map(move |seg| {
-		let start = seg.start();
-		let mut commands = Vec::new();
+	segments
+		.into_iter()
+		.flat_map(move |seg| {
+			let start = seg.start();
+			let mut commands = Vec::new();
 
-		if last_point.map_or(true, |lp| !start.abs_diff_eq(lp, eps)) {
-			commands.push(PathCommand::Absolute(AbsolutePathCommand::M(start)));
-		}
+			if last_point.map_or(true, |lp| !start.abs_diff_eq(lp, eps)) {
+				if last_point.is_some() {
+					commands.push(PathCommand::Absolute(AbsolutePathCommand::Z));
+				}
 
-		match seg {
-			PathSegment::Line(_, end) => {
-				commands.push(PathCommand::Absolute(AbsolutePathCommand::L(*end)));
-				last_point = Some(*end);
+				commands.push(PathCommand::Absolute(AbsolutePathCommand::M(start)));
 			}
-			PathSegment::Cubic(_, c1, c2, end) => {
-				commands.push(PathCommand::Absolute(AbsolutePathCommand::C(*c1, *c2, *end)));
-				last_point = Some(*end);
-			}
-			PathSegment::Quadratic(_, c, end) => {
-				commands.push(PathCommand::Absolute(AbsolutePathCommand::Q(*c, *end)));
-				last_point = Some(*end);
-			}
-			PathSegment::Arc(_, rx, ry, x_axis_rotation, large_arc_flag, sweep_flag, end) => {
-				commands.push(PathCommand::Absolute(AbsolutePathCommand::A(*rx, *ry, *x_axis_rotation, *large_arc_flag, *sweep_flag, *end)));
-				last_point = Some(*end);
-			}
-		}
 
-		commands
-	})
+			match seg {
+				PathSegment::Line(_, end) => {
+					commands.push(PathCommand::Absolute(AbsolutePathCommand::L(*end)));
+					last_point = Some(*end);
+				}
+				PathSegment::Cubic(_, c1, c2, end) => {
+					commands.push(PathCommand::Absolute(AbsolutePathCommand::C(*c1, *c2, *end)));
+					last_point = Some(*end);
+				}
+				PathSegment::Quadratic(_, c, end) => {
+					commands.push(PathCommand::Absolute(AbsolutePathCommand::Q(*c, *end)));
+					last_point = Some(*end);
+				}
+				PathSegment::Arc(_, rx, ry, x_axis_rotation, large_arc_flag, sweep_flag, end) => {
+					commands.push(PathCommand::Absolute(AbsolutePathCommand::A(*rx, *ry, *x_axis_rotation, *large_arc_flag, *sweep_flag, *end)));
+					last_point = Some(*end);
+				}
+			}
+
+			commands
+		})
+		.chain(std::iter::once(PathCommand::Absolute(AbsolutePathCommand::Z)))
 }
