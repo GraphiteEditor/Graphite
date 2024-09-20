@@ -2,7 +2,7 @@ use graphene_core::raster::ImageFrame;
 use graphene_core::transform::Footprint;
 use graphene_core::Color;
 
-#[node_macro::node]
+#[node_macro::node(category("Raster"))]
 async fn image_color_palette<F: 'n + Send>(
 	#[implementations((), Footprint)] footprint: F,
 	#[implementations(((), ImageFrame<Color>), (Footprint, ImageFrame<Color>))] image: impl Node<F, Output = ImageFrame<Color>>,
@@ -10,7 +10,7 @@ async fn image_color_palette<F: 'n + Send>(
 	#[max(28.)]
 	max_size: u32,
 ) -> Vec<Color> {
-	const GRID: f32 = 3.0;
+	const GRID: f32 = 3.;
 
 	let bins = GRID * GRID * GRID;
 

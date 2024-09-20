@@ -17,7 +17,7 @@ use std::sync::Mutex;
 use crate::wasm_application_io::WasmApplicationIo;
 
 // TODO: Move to graph-craft
-#[node_macro::node]
+#[node_macro::node(category("Debug: GPU"))]
 async fn compile_gpu<'a: 'n>(_: (), node: &'a DocumentNode, typing_context: TypingContext, io: ShaderIO) -> Result<compilation_client::Shader, String> {
 	let mut typing_context = typing_context;
 	let compiler = graph_craft::graphene_compiler::Compiler {};
@@ -154,7 +154,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(node
 			},*/
 				/*
 			DocumentNode {
-				name: "GetNode".into(),
+				name: "Get Node".into(),
 				inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(0), 0)],
 				implementation: DocumentNodeImplementation::ProtoNode("graphene_core::storage::GetNode".into()),
 				..Default::default()
@@ -166,7 +166,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(node
 			},
 			/*
 			DocumentNode {
-				name: "SaveNode".into(),
+				name: "Save Node".into(),
 				inputs: vec![
 					NodeInput::node(NodeId(5), 0),
 					NodeInput::Inline(InlineRust::new(
@@ -268,7 +268,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(node
 	})
 }
 
-#[node_macro::node]
+#[node_macro::node(category("Debug: GPU"))]
 async fn blend_gpu_image(_: (), foreground: ImageFrame<Color>, background: ImageFrame<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrame<Color> {
 	let foreground_size = DVec2::new(foreground.image.width as f64, foreground.image.height as f64);
 	let background_size = DVec2::new(background.image.width as f64, background.image.height as f64);

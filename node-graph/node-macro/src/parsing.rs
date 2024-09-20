@@ -124,7 +124,7 @@ impl Parse for NodeFnAttributes {
 							Supported attributes are 'category', 'path' and 'name'.
 							
 							Example usage:
-							#[node(category("Value"), name("TestNode"))]
+							#[node_macro::node(category("Value"), name("Test Node"))]
 							"#
 						),
 					));
@@ -184,9 +184,10 @@ fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<Pa
 
 	for (index, arg) in inputs.iter().enumerate() {
 		if let FnArg::Typed(PatType { pat, ty, attrs, .. }) = arg {
+			// Call argument
 			if index == 0 {
 				if extract_attribute(attrs, "default").is_some() {
-					return Err(Error::new_spanned(&attrs[0], "No default values for first argument allowed".to_string()));
+					return Err(Error::new_spanned(&attrs[0], "Call argument cannot be given a default value".to_string()));
 				}
 				if extract_attribute(attrs, "expose").is_some() {
 					return Err(Error::new_spanned(&attrs[0], "Call argument cannot be exposed".to_string()));
@@ -587,7 +588,7 @@ mod tests {
 
 	#[test]
 	fn test_node_with_default_values() {
-		let attr = quote!(category("Vector: Generator"));
+		let attr = quote!(category("Vector: Shape"));
 		let input = quote!(
 			fn circle(_: (), #[default(50.)] radius: f64) -> VectorData {
 				// Implementation details...
@@ -597,7 +598,7 @@ mod tests {
 		let parsed = parse_node_fn(attr, input).unwrap();
 		let expected = ParsedNodeFn {
 			attributes: NodeFnAttributes {
-				category: Some(parse_quote!("Vector: Generator")),
+				category: Some(parse_quote!("Vector: Shape")),
 				display_name: None,
 				path: None,
 				skip_impl: false,

@@ -32,9 +32,9 @@ impl From<std::io::Error> for Error {
 	}
 }
 
-#[node_macro::node]
-fn sample(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<Color> {
-	// resize the image using the image crate
+#[node_macro::node(category("Debug: Raster"))]
+fn sample_image(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<Color> {
+	// Resize the image using the image crate
 	let image = image_frame.image;
 	let data = bytemuck::cast_vec(image.data);
 
@@ -116,7 +116,7 @@ pub struct InsertChannelNode<P, S, Insertion, TargetChannel> {
 }
 
 #[node_macro::old_node_fn(InsertChannelNode<_P, _S>)]
-fn insert_channel_node<
+fn insert_channel<
 	// _P is the color of the input image.
 	_P: RGBMut,
 	_S: Pixel + Luminance,
@@ -277,7 +277,7 @@ pub struct ExtendImageToBoundsNode<Bounds> {
 }
 
 #[node_macro::old_node_fn(ExtendImageToBoundsNode)]
-fn extend_image_to_bounds_node(image: ImageFrame<Color>, bounds: DAffine2) -> ImageFrame<Color> {
+fn extend_image_to_bounds(image: ImageFrame<Color>, bounds: DAffine2) -> ImageFrame<Color> {
 	let image_aabb = Bbox::unit().affine_transform(image.transform()).to_axis_aligned_bbox();
 	let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();
 	if image_aabb.contains(bounds_aabb.start) && image_aabb.contains(bounds_aabb.end) {
@@ -317,7 +317,7 @@ fn extend_image_to_bounds_node(image: ImageFrame<Color>, bounds: DAffine2) -> Im
 	}
 }
 
-#[node_macro::node]
+#[node_macro::node(category("Debug: Raster"))]
 fn empty_image<P: Pixel>(_: (), transform: DAffine2, #[implementations(Color)] color: P) -> ImageFrame<P> {
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
@@ -444,7 +444,7 @@ fn image_frame<_P: Pixel>(image: Image<_P>, transform: DAffine2) -> graphene_cor
 	}
 }
 
-#[node_macro::node]
+#[node_macro::node(category("Raster: Generator"))]
 #[allow(clippy::too_many_arguments)]
 fn noise_pattern(
 	footprint: Footprint,
@@ -594,7 +594,7 @@ fn noise_pattern(
 	}
 }
 
-#[node_macro::node]
+#[node_macro::node(category("Raster: Generator"))]
 fn mandelbrot(footprint: Footprint) -> ImageFrame<Color> {
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 

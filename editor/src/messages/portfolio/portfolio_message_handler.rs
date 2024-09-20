@@ -465,6 +465,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						// 	document.network_interface.set_implementation(node_id, &[], document_node.implementation);
 						// }
 						document.network_interface.replace_implementation(node_id, &[], document_node.implementation);
+						document
+							.network_interface
+							.replace_implementation_metadata(node_id, &[], node_definition.default_node_template().persistent_node_metadata);
 					}
 					let Some(node) = document.network_interface.network(&[]).unwrap().nodes.get(node_id) else {
 						log::error!("could not get node in deserialize_document");
@@ -528,7 +531,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						}
 					}
 
-					// Upgrade construct layer implementation from https://github.com/GraphiteEditor/Graphite/pull/1946
+					// Upgrade layer implementation from https://github.com/GraphiteEditor/Graphite/pull/1946
 					if reference == "Merge" || reference == "Artboard" {
 						let node_definition = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type(reference).unwrap();
 						let new_merge_node = node_definition.default_node_template();

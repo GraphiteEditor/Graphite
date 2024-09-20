@@ -7,6 +7,7 @@ use crate::raster::ImageFrame;
 use crate::raster::Pixel;
 use crate::vector::VectorData;
 use crate::Artboard;
+use crate::ArtboardGroup;
 use crate::GraphicElement;
 use crate::GraphicGroup;
 
@@ -180,8 +181,7 @@ impl From<()> for Footprint {
 	}
 }
 
-use crate::ArtboardGroup;
-#[node_macro::node]
+#[node_macro::node(category("Debug"))]
 fn cull<T>(_footprint: Footprint, #[implementations(VectorData, GraphicGroup, Artboard, ImageFrame<crate::Color>, ArtboardGroup)] data: T) -> T {
 	data
 }
@@ -217,7 +217,7 @@ impl ApplyTransform for () {
 }
 
 #[node_macro::node(category(""))]
-pub(crate) async fn transform<I: Into<Footprint> + ApplyTransform + 'n + Clone + Send + Sync, T: TransformMut + 'n>(
+async fn transform<I: Into<Footprint> + ApplyTransform + 'n + Clone + Send + Sync, T: TransformMut + 'n>(
 	#[implementations(Footprint, Footprint, Footprint, (), (), ())] mut input: I,
 	#[implementations(
 		(Footprint, VectorData),
@@ -248,8 +248,8 @@ pub(crate) async fn transform<I: Into<Footprint> + ApplyTransform + 'n + Clone +
 	data
 }
 
-#[node_macro::node]
-pub(crate) fn set_transform<Data: TransformMut, TransformInput: Transform>(
+#[node_macro::node(category("Debug"))]
+fn replace_transform<Data: TransformMut, TransformInput: Transform>(
 	_: (),
 	#[implementations(VectorData, ImageFrame<crate::Color>, GraphicGroup)] mut data: Data,
 	#[implementations(DAffine2)] transform: TransformInput,

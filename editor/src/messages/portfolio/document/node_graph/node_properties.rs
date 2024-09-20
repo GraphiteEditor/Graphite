@@ -113,6 +113,7 @@ pub(crate) fn property_from_type(
 			match concrete_type.alias.as_ref().map(|x| x.as_ref()) {
 				// Aliased types (ambiguous values)
 				Some("Percentage") => number_widget(document_node, node_id, index, name, number_input.percentage().min(min(0.)).max(max(100.)), true).into(),
+				Some("SignedPercentage") => number_widget(document_node, node_id, index, name, number_input.percentage().min(min(-100.)).max(max(100.)), true).into(),
 				Some("Angle") => number_widget(document_node, node_id, index, name, number_input.mode_range().min(min(-180.)).max(max(180.)).unit("°"), true).into(),
 				Some("PixelLength") => number_widget(document_node, node_id, index, name, number_input.min(min(0.)).unit("px"), true).into(),
 				Some("Length") => number_widget(document_node, node_id, index, name, number_input.min(min(0.)), true).into(),
@@ -1092,45 +1093,6 @@ fn centroid_widget(document_node: &DocumentNode, node_id: NodeId, index: usize) 
 	LayoutGroup::Row { widgets }
 }
 
-pub(crate) fn levels_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let input_shadows = number_widget(document_node, node_id, 1, "Shadows", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
-	let input_midtones = number_widget(document_node, node_id, 2, "Midtones", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
-	let input_highlights = number_widget(document_node, node_id, 3, "Highlights", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
-	let output_minimums = number_widget(document_node, node_id, 4, "Output Minimums", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
-	let output_maximums = number_widget(document_node, node_id, 5, "Output Maximums", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
-
-	vec![
-		LayoutGroup::Row { widgets: input_shadows },
-		LayoutGroup::Row { widgets: input_midtones },
-		LayoutGroup::Row { widgets: input_highlights },
-		LayoutGroup::Row { widgets: output_minimums },
-		LayoutGroup::Row { widgets: output_maximums },
-	]
-}
-
-pub(crate) fn black_and_white_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	const MIN: f64 = -200.;
-	const MAX: f64 = 300.;
-	// TODO: Add tint color (blended above using the "Color" blend mode)
-	let tint = color_widget(document_node, node_id, 1, "Tint", ColorButton::default(), true);
-	let r_weight = number_widget(document_node, node_id, 2, "Reds", NumberInput::default().mode_range().min(MIN).max(MAX).unit("%"), true);
-	let y_weight = number_widget(document_node, node_id, 3, "Yellows", NumberInput::default().mode_range().min(MIN).max(MAX).unit("%"), true);
-	let g_weight = number_widget(document_node, node_id, 4, "Greens", NumberInput::default().mode_range().min(MIN).max(MAX).unit("%"), true);
-	let c_weight = number_widget(document_node, node_id, 5, "Cyans", NumberInput::default().mode_range().min(MIN).max(MAX).unit("%"), true);
-	let b_weight = number_widget(document_node, node_id, 6, "Blues", NumberInput::default().mode_range().min(MIN).max(MAX).unit("%"), true);
-	let m_weight = number_widget(document_node, node_id, 7, "Magentas", NumberInput::default().mode_range().min(MIN).max(MAX).unit("%"), true);
-
-	vec![
-		tint,
-		LayoutGroup::Row { widgets: r_weight },
-		LayoutGroup::Row { widgets: y_weight },
-		LayoutGroup::Row { widgets: g_weight },
-		LayoutGroup::Row { widgets: c_weight },
-		LayoutGroup::Row { widgets: b_weight },
-		LayoutGroup::Row { widgets: m_weight },
-	]
-}
-
 pub(crate) fn load_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let url = text_widget(document_node, node_id, 1, "URL", true);
 
@@ -1300,14 +1262,34 @@ pub(crate) fn noise_pattern_properties(document_node: &DocumentNode, node_id: No
 }
 
 pub(crate) fn brightness_contrast_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let brightness = number_widget(document_node, node_id, 1, "Brightness", NumberInput::default().min(-150.).max(150.), true);
-	let contrast = number_widget(document_node, node_id, 2, "Contrast", NumberInput::default().min(-100.).max(100.), true);
-	let use_legacy = bool_widget(document_node, node_id, 3, "Use Legacy", CheckboxInput::default(), true);
+	let is_use_classic = match &document_node.inputs[3].as_value() {
+		Some(&TaggedValue::Bool(value)) => value,
+		_ => false,
+	};
+	let ((b_min, b_max), (c_min, c_max)) = if is_use_classic { ((-100., 100.), (-100., 100.)) } else { ((-100., 150.), (-50., 100.)) };
+
+	let brightness = number_widget(
+		document_node,
+		node_id,
+		1,
+		"Brightness",
+		NumberInput::default().mode_range().range_min(Some(b_min)).range_max(Some(b_max)).unit("%").display_decimal_places(2),
+		true,
+	);
+	let contrast = number_widget(
+		document_node,
+		node_id,
+		2,
+		"Contrast",
+		NumberInput::default().mode_range().range_min(Some(c_min)).range_max(Some(c_max)).unit("%").display_decimal_places(2),
+		true,
+	);
+	let use_classic = bool_widget(document_node, node_id, 3, "Use Classic", CheckboxInput::default(), true);
 
 	vec![
 		LayoutGroup::Row { widgets: brightness },
 		LayoutGroup::Row { widgets: contrast },
-		LayoutGroup::Row { widgets: use_legacy },
+		LayoutGroup::Row { widgets: use_classic },
 	]
 }
 
@@ -2619,12 +2601,4 @@ pub(crate) fn artboard_properties(document_node: &DocumentNode, node_id: NodeId,
 pub(crate) fn color_fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let color = color_widget(document_node, node_id, 1, "Color", ColorButton::default(), true);
 	vec![color]
-}
-
-pub(crate) fn color_overlay_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let color = color_widget(document_node, node_id, 1, "Color", ColorButton::default(), true);
-	let blend_mode = blend_mode(document_node, node_id, 2, "Blend Mode", true);
-	let opacity = number_widget(document_node, node_id, 3, "Opacity", NumberInput::default().percentage(), true);
-
-	vec![color, blend_mode, LayoutGroup::Row { widgets: opacity }]
 }

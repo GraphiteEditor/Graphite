@@ -29,8 +29,8 @@ impl VectorIterMut for VectorData {
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
 async fn assign_colors<T: VectorIterMut>(
 	footprint: Footprint,
-	#[implementations((Footprint, GraphicGroup), (Footprint, VectorData))] input: impl Node<Footprint, Output = T>,
-	fill: bool,
+	#[implementations((Footprint, GraphicGroup), (Footprint, VectorData))] vector_group: impl Node<Footprint, Output = T>,
+	#[default(true)] fill: bool,
 	stroke: bool,
 	gradient: GradientStops,
 	reverse: bool,
@@ -38,7 +38,7 @@ async fn assign_colors<T: VectorIterMut>(
 	seed: SeedValue,
 	repeat_every: u32,
 ) -> T {
-	let mut input = input.eval(footprint).await;
+	let mut input = vector_group.eval(footprint).await;
 	let vector_data = input.vector_iter_mut();
 	let length = vector_data.len();
 	let gradient = if reverse { gradient.reversed() } else { gradient };
@@ -310,7 +310,7 @@ async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + Tr
 	result
 }
 
-#[node_macro::node(category("Vector"))]
+#[node_macro::node(category(""))]
 async fn sample_points(
 	footprint: Footprint,
 	vector_data: impl Node<Footprint, Output = VectorData>,
@@ -388,6 +388,8 @@ async fn sample_points(
 async fn poisson_disk_points<F: 'n + Copy + Send>(
 	#[implementations((), Footprint)] footprint: F,
 	#[implementations(((), VectorData), (Footprint, VectorData))] vector_data: impl Node<F, Output = VectorData>,
+	#[default(10.)]
+	#[min(0.01)]
 	separation_disk_diameter: f64,
 	seed: SeedValue,
 ) -> VectorData {
@@ -395,6 +397,11 @@ async fn poisson_disk_points<F: 'n + Copy + Send>(
 
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 	let mut result = VectorData::empty();
+
+	if separation_disk_diameter <= 0.01 {
+		return result;
+	}
+
 	for mut subpath in vector_data.stroke_bezier_paths() {
 		if subpath.manipulator_groups().len() < 3 {
 			continue;
@@ -450,8 +457,10 @@ async fn morph(
 	footprint: Footprint,
 	source: impl Node<Footprint, Output = VectorData>,
 	#[expose] target: impl Node<Footprint, Output = VectorData>,
-	start_index: IntegerCount,
-	#[default(0.5)] time: Fraction,
+	#[range((0., 1.))]
+	#[default(0.5)]
+	time: Fraction,
+	#[min(0.)] start_index: IntegerCount,
 ) -> VectorData {
 	let source = source.eval(footprint).await;
 	let target = target.eval(footprint).await;
@@ -547,7 +556,7 @@ async fn area(_: (), vector_data: impl Node<Footprint, Output = VectorData>) -> 
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn centroid_node(_: (), vector_data: impl Node<Footprint, Output = VectorData>, centroid_type: CentroidType) -> DVec2 {
+async fn centroid(_: (), vector_data: impl Node<Footprint, Output = VectorData>, centroid_type: CentroidType) -> DVec2 {
 	let vector_data = vector_data.eval(Footprint::default()).await;
 
 	if centroid_type == CentroidType::Area {

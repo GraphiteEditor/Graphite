@@ -4,7 +4,7 @@
 use super::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
 #[cfg(feature = "alloc")]
 use super::ImageFrame;
-use super::{Channel, Color, Pixel, RGBMut};
+use super::{Channel, Color, Pixel};
 use crate::registry::types::{Angle, Percentage, SignedPercentage};
 use crate::transform::Footprint;
 use crate::vector::style::GradientStops;
@@ -268,7 +268,7 @@ impl From<BlendMode> for vello::peniko::Mix {
 	}
 }
 
-#[node_macro::node(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"))] // Unique to Graphite
 async fn luminance<T: Adjust<Color>>(
 	footprint: Footprint,
 	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>,
@@ -288,7 +288,7 @@ async fn luminance<T: Adjust<Color>>(
 	input
 }
 
-#[node_macro::node(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster"))]
 async fn extract_channel<T: Adjust<Color>>(
 	footprint: Footprint,
 	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>,
@@ -307,7 +307,7 @@ async fn extract_channel<T: Adjust<Color>>(
 	input
 }
 
-#[node_macro::node(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster"))]
 async fn make_opaque<T: Adjust<Color>>(footprint: Footprint, #[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>) -> T {
 	let mut input = input.eval(footprint).await;
 	input.adjust(|color| {
@@ -323,25 +323,25 @@ async fn make_opaque<T: Adjust<Color>>(footprint: Footprint, #[implementations((
 #[node_macro::node(category("Raster: Adjustment"))]
 async fn levels<T: Adjust<Color>>(
 	footprint: Footprint,
-	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>,
-	input_start: f64,
-	input_mid: f64,
-	input_end: f64,
-	output_start: f64,
-	output_end: f64,
+	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] image: impl Node<Footprint, Output = T>,
+	#[default(0.)] shadows: Percentage,
+	#[default(50.)] midtones: Percentage,
+	#[default(100.)] highlights: Percentage,
+	#[default(0.)] output_minimums: Percentage,
+	#[default(100.)] output_maximums: Percentage,
 ) -> T {
-	let mut input = input.eval(footprint).await;
+	let mut input = image.eval(footprint).await;
 	input.adjust(|color| {
 		let color = color.to_gamma_srgb();
 
 		// Input Range (Range: 0-1)
-		let input_shadows = (input_start / 100.) as f32;
-		let input_midtones = (input_mid / 100.) as f32;
-		let input_highlights = (input_end / 100.) as f32;
+		let input_shadows = (shadows / 100.) as f32;
+		let input_midtones = (midtones / 100.) as f32;
+		let input_highlights = (highlights / 100.) as f32;
 
 		// Output Range (Range: 0-1)
-		let output_minimums = (output_start / 100.) as f32;
-		let output_maximums = (output_end / 100.) as f32;
+		let output_minimums = (output_minimums / 100.) as f32;
+		let output_maximums = (output_maximums / 100.) as f32;
 
 		// Midtones interpolation factor between minimums and maximums (Range: 0-1)
 		let midtones = output_minimums + (output_maximums - output_minimums) * input_midtones;
@@ -378,19 +378,31 @@ async fn levels<T: Adjust<Color>>(
 
 // From <https://stackoverflow.com/a/55233732/775283>
 // Works the same for gamma and linear color
-#[node_macro::node(category("Raster: Adjustment"))]
-async fn black_and_white_color<T: Adjust<Color>>(
+#[node_macro::node(name("Black & White"), category("Raster: Adjustment"))]
+async fn black_and_white<T: Adjust<Color>>(
 	footprint: Footprint,
-	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>,
-	tint: Color,
-	reds: f64,
-	yellows: f64,
-	greens: f64,
-	cyans: f64,
-	blues: f64,
-	magentas: f64,
+	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] image: impl Node<Footprint, Output = T>,
+	#[default(000000ff)] tint: Color,
+	#[default(40.)]
+	#[range((-200., 300.))]
+	reds: Percentage,
+	#[default(60.)]
+	#[range((-200., 300.))]
+	yellows: Percentage,
+	#[default(40.)]
+	#[range((-200., 300.))]
+	greens: Percentage,
+	#[default(60.)]
+	#[range((-200., 300.))]
+	cyans: Percentage,
+	#[default(20.)]
+	#[range((-200., 300.))]
+	blues: Percentage,
+	#[default(80.)]
+	#[range((-200., 300.))]
+	magentas: Percentage,
 ) -> T {
-	let mut input = input.eval(footprint).await;
+	let mut input = image.eval(footprint).await;
 	input.adjust(|color| {
 		let color = color.to_gamma_srgb();
 
@@ -431,8 +443,8 @@ async fn black_and_white_color<T: Adjust<Color>>(
 	input
 }
 
-#[node_macro::node(category("Raster: Adjustment"), name("Hue/Saturation"))]
-async fn hue_shift<T: Adjust<Color>>(
+#[node_macro::node(name("Hue/Saturation"), category("Raster: Adjustment"))]
+async fn hue_saturation<T: Adjust<Color>>(
 	footprint: Footprint,
 	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>,
 	hue_shift: Angle,
@@ -476,8 +488,8 @@ async fn invert<T: Adjust<Color>>(footprint: Footprint, #[implementations((Footp
 async fn threshold<T: Adjust<Color>>(
 	footprint: Footprint,
 	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] image: impl Node<Footprint, Output = T>,
-	min_luminance: Percentage,
-	max_luminance: Percentage,
+	#[default(50.)] min_luminance: Percentage,
+	#[default(100.)] max_luminance: Percentage,
 	luminance_calc: LuminanceCalculation,
 ) -> T {
 	let mut input = image.eval(footprint).await;
@@ -558,21 +570,39 @@ impl Blend<Color> for GradientStops {
 	}
 }
 
-#[node_macro::node(category("Raster: Adjustment"))]
-fn blend<T: Blend<Color>>(
-	_: (),
-	#[implementations(Color, GradientStops, ImageFrame<Color>)] over: T,
+#[node_macro::node(category("Raster"))]
+async fn blend<F: 'n + Copy + Send, T: Blend<Color> + Send>(
+	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		((), Color),
+		((), ImageFrame<Color>),
+		((), GradientStops),
+		(Footprint, Color),
+		(Footprint, ImageFrame<Color>),
+		(Footprint, GradientStops),
+	)]
+	over: impl Node<F, Output = T>,
 	#[expose]
-	#[implementations(Color, GradientStops, ImageFrame<Color>)]
-	under: T,
+	#[implementations(
+		((), Color),
+		((), ImageFrame<Color>),
+		((), GradientStops),
+		(Footprint, Color),
+		(Footprint, ImageFrame<Color>),
+		(Footprint, GradientStops),
+	)]
+	under: impl Node<F, Output = T>,
 	blend_mode: BlendMode,
-	#[default(100.)] opacity: crate::registry::types::Percentage,
+	#[default(100.)] opacity: Percentage,
 ) -> T {
+	let over = over.eval(footprint).await;
+	let under = under.eval(footprint).await;
+
 	Blend::blend(&over, &under, |a, b| blend_colors(a, b, blend_mode, opacity / 100.))
 }
 
-#[node_macro::node(category("Raster: Adjustment"))]
-fn blend_pair(input: (Color, Color), blend_mode: BlendMode, opacity: Percentage) -> Color {
+#[node_macro::node(category(""))]
+fn blend_color_pair(input: (Color, Color), blend_mode: BlendMode, opacity: Percentage) -> Color {
 	blend_colors(input.0, input.1, blend_mode, opacity / 100.)
 }
 
@@ -660,10 +690,29 @@ pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode,
 }
 
 #[node_macro::node(category("Raster: Adjustment"))]
-fn gradient_map(_: (), color: Color, gradient: GradientStops, reverse: bool) -> Color {
-	let intensity = color.luminance_srgb();
-	let intensity = if reverse { 1. - intensity } else { intensity };
-	gradient.evalute(intensity as f64)
+async fn gradient_map<F: 'n + Copy + Send, T: Adjust<Color>>(
+	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		((), Color),
+		((), ImageFrame<Color>),
+		((), GradientStops),
+		(Footprint, Color),
+		(Footprint, ImageFrame<Color>),
+		(Footprint, GradientStops),
+	)]
+	image: impl Node<F, Output = T>,
+	gradient: GradientStops,
+	reverse: bool,
+) -> T {
+	let mut input = image.eval(footprint).await;
+
+	input.adjust(|color| {
+		let intensity = color.luminance_srgb();
+		let intensity = if reverse { 1. - intensity } else { intensity };
+		gradient.evalute(intensity as f64)
+	});
+
+	input
 }
 
 // Based on <https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters>
@@ -1093,49 +1142,50 @@ impl core::fmt::Display for SelectiveColorChoice {
 }
 
 // Based on https://blog.pkh.me/p/22-understanding-selective-coloring-in-adobe-photoshop.html
-#[node_macro::node]
+#[node_macro::node(category("Raster: Adjustment"))]
 async fn selective_color<T: Adjust<Color>>(
 	footprint: Footprint,
-	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>,
+	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] image: impl Node<Footprint, Output = T>,
 	mode: RelativeAbsolute,
-	r_c: f64,
-	r_m: f64,
-	r_y: f64,
-	r_k: f64,
-	y_c: f64,
-	y_m: f64,
-	y_y: f64,
-	y_k: f64,
-	g_c: f64,
-	g_m: f64,
-	g_y: f64,
-	g_k: f64,
-	c_c: f64,
-	c_m: f64,
-	c_y: f64,
-	c_k: f64,
-	b_c: f64,
-	b_m: f64,
-	b_y: f64,
-	b_k: f64,
-	m_c: f64,
-	m_m: f64,
-	m_y: f64,
-	m_k: f64,
-	w_c: f64,
-	w_m: f64,
-	w_y: f64,
-	w_k: f64,
-	n_c: f64,
-	n_m: f64,
-	n_y: f64,
-	n_k: f64,
-	k_c: f64,
-	k_m: f64,
-	k_y: f64,
-	k_k: f64,
+	#[name("(Reds) Cyan")] r_c: f64,
+	#[name("(Reds) Magenta")] r_m: f64,
+	#[name("(Reds) Yellow")] r_y: f64,
+	#[name("(Reds) Black")] r_k: f64,
+	#[name("(Yellows) Cyan")] y_c: f64,
+	#[name("(Yellows) Magenta")] y_m: f64,
+	#[name("(Yellows) Yellow")] y_y: f64,
+	#[name("(Yellows) Black")] y_k: f64,
+	#[name("(Greens) Cyan")] g_c: f64,
+	#[name("(Greens) Magenta")] g_m: f64,
+	#[name("(Greens) Yellow")] g_y: f64,
+	#[name("(Greens) Black")] g_k: f64,
+	#[name("(Cyans) Cyan")] c_c: f64,
+	#[name("(Cyans) Magenta")] c_m: f64,
+	#[name("(Cyans) Yellow")] c_y: f64,
+	#[name("(Cyans) Black")] c_k: f64,
+	#[name("(Blues) Cyan")] b_c: f64,
+	#[name("(Blues) Magenta")] b_m: f64,
+	#[name("(Blues) Yellow")] b_y: f64,
+	#[name("(Blues) Black")] b_k: f64,
+	#[name("(Magentas) Cyan")] m_c: f64,
+	#[name("(Magentas) Magenta")] m_m: f64,
+	#[name("(Magentas) Yellow")] m_y: f64,
+	#[name("(Magentas) Black")] m_k: f64,
+	#[name("(Whites) Cyan")] w_c: f64,
+	#[name("(Whites) Magenta")] w_m: f64,
+	#[name("(Whites) Yellow")] w_y: f64,
+	#[name("(Whites) Black")] w_k: f64,
+	#[name("(Neutrals) Cyan")] n_c: f64,
+	#[name("(Neutrals) Magenta")] n_m: f64,
+	#[name("(Neutrals) Yellow")] n_y: f64,
+	#[name("(Neutrals) Black")] n_k: f64,
+	#[name("(Blacks) Cyan")] k_c: f64,
+	#[name("(Blacks) Magenta")] k_m: f64,
+	#[name("(Blacks) Yellow")] k_y: f64,
+	#[name("(Blacks) Black")] k_k: f64,
+	_colors: SelectiveColorChoice,
 ) -> T {
-	let mut input = input.eval(footprint).await;
+	let mut input = image.eval(footprint).await;
 	input.adjust(|color| {
 		let color = color.to_gamma_srgb();
 
@@ -1238,21 +1288,23 @@ impl<P: Pixel> MultiplyAlpha for ImageFrame<P> {
 	}
 }
 
-type PosterizeValue = f64;
 // Based on https://www.axiomx.com/posterize.htm
 // This algorithm produces fully accurate output in relation to the industry standard.
 #[node_macro::node(category("Raster: Adjustment"))]
 async fn posterize<T: Adjust<Color>>(
 	footprint: Footprint,
 	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>,
-	#[default(4)] levels: PosterizeValue,
+	#[default(4)]
+	#[min(2.)]
+	levels: u32,
 ) -> T {
 	let mut input = input.eval(footprint).await;
 	input.adjust(|color| {
 		let color = color.to_gamma_srgb();
 
-		let number_of_areas = levels.recip() as f32;
-		let size_of_areas = (levels - 1.).recip() as f32;
+		let levels = levels as f32;
+		let number_of_areas = levels.recip();
+		let size_of_areas = (levels - 1.).recip();
 		let channel = |channel: f32| (channel / number_of_areas).floor() * size_of_areas;
 		let color = color.map_rgb(channel);
 
@@ -1268,7 +1320,9 @@ async fn exposure<T: Adjust<Color>>(
 	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>,
 	exposure: f64,
 	offset: f64,
-	#[default(1.)] gamma_correction: f64,
+	#[default(1.)]
+	#[range((0.01, 10.))]
+	gamma_correction: f64,
 ) -> T {
 	let mut input = input.eval(footprint).await;
 	input.adjust(|color| {
@@ -1288,9 +1342,10 @@ async fn exposure<T: Adjust<Color>>(
 const WINDOW_SIZE: usize = 1024;
 
 #[cfg(feature = "alloc")]
-#[node_macro::node(category("Raster: Adjustment"))]
+#[node_macro::node(category(""))]
 fn generate_curves<C: Channel + super::Linear>(_: (), curve: Curve, #[implementations(f32)] _target_format: C) -> ValueMapperNode<C> {
 	use bezier_rs::{Bezier, TValue};
+
 	let [mut pos, mut param]: [[f32; 2]; 2] = [[0.; 2], curve.first_handle];
 	let mut lut = vec![C::from_f64(0.); WINDOW_SIZE];
 	let end = CurveManipulatorGroup {
@@ -1328,33 +1383,35 @@ fn generate_curves<C: Channel + super::Linear>(_: (), curve: Curve, #[implementa
 }
 
 #[cfg(feature = "alloc")]
-#[node_macro::node(category("Raster: Adjustment"))]
-pub fn color_fill_node(mut image_frame: ImageFrame<Color>, color: Color) -> ImageFrame<Color> {
-	for pixel in &mut image_frame.image.data {
-		pixel.set_red(color.r());
-		pixel.set_blue(color.b());
-		pixel.set_green(color.g());
-		pixel.alpha_multiply(color);
-	}
-
-	image_frame
-}
-
-#[cfg(feature = "alloc")]
-#[node_macro::node(category("Raster: Adjustment"))]
-pub fn color_overlay_node(mut image: ImageFrame<Color>, color: Color, blend_mode: BlendMode, opacity: Percentage) -> ImageFrame<Color> {
+#[node_macro::node(category("Raster: Adjustment"))] // Unique to Graphite
+async fn color_overlay<F: 'n + Copy + Send, T: Adjust<Color>>(
+	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		((), Color),
+		((), ImageFrame<Color>),
+		((), GradientStops),
+		(Footprint, Color),
+		(Footprint, ImageFrame<Color>),
+		(Footprint, GradientStops),
+	)]
+	image: impl Node<F, Output = T>,
+	#[default(000000ff)] color: Color,
+	blend_mode: BlendMode,
+	#[default(100.)] opacity: Percentage,
+) -> T {
 	let opacity = (opacity as f32 / 100.).clamp(0., 1.);
-	for pixel in &mut image.image.data {
+
+	let mut input = image.eval(footprint).await;
+	input.adjust(|pixel| {
 		let image = pixel.map_rgb(|channel| channel * (1. - opacity));
 
 		// The apply blend mode function divides rgb by the alpha channel for the background. This undoes that.
 		let associated_pixel = Color::from_rgbaf32_unchecked(pixel.r() * pixel.a(), pixel.g() * pixel.a(), pixel.b() * pixel.a(), pixel.a());
 		let overlay = apply_blend_mode(color, associated_pixel, blend_mode).map_rgb(|channel| channel * opacity);
 
-		*pixel = Color::from_rgbaf32(image.r() + overlay.r(), image.g() + overlay.g(), image.b() + overlay.b(), pixel.a()).unwrap();
-	}
-
-	image
+		Color::from_rgbaf32_unchecked(image.r() + overlay.r(), image.g() + overlay.g(), image.b() + overlay.b(), pixel.a())
+	});
+	input
 }
 
 #[test]
@@ -1373,7 +1430,7 @@ fn color_overlay_multiply() {
 	// 100% of the output should come from the multiplied value
 	let opacity = 100_f64;
 
-	let result = color_overlay_node(image, overlay_color, BlendMode::Multiply, opacity);
+	let result = color_overlay(image, overlay_color, BlendMode::Multiply, opacity);
 
 	// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
 	assert_eq!(result.image.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));
@@ -1386,12 +1443,12 @@ pub use index_node::IndexNode;
 mod index_node {
 	use crate::raster::{Color, ImageFrame};
 
-	#[node_macro::node(category("Raster: Adjustment"))]
+	#[node_macro::node(category(""))]
 	pub fn index<T: Default + Clone>(_: (), #[implementations(Vec<ImageFrame<Color>>, Vec<Color>)] input: Vec<T>, index: u32) -> T {
 		if (index as usize) < input.len() {
 			input[index as usize].clone()
 		} else {
-			warn!("The number of segments is {} and the requested segment is {}!", input.len(), index);
+			warn!("The number of segments is {} but the requested segment is {}!", input.len(), index);
 			Default::default()
 		}
 	}

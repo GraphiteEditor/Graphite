@@ -224,75 +224,75 @@ fn logical_not(_: (), input: bool) -> bool {
 }
 
 // Bool Value
-#[node_macro::node(category("Value"), name("Bool Value"))]
+#[node_macro::node(category("Value"))]
 fn bool_value(_: (), _primary: (), #[name("Bool")] bool_value: bool) -> bool {
 	bool_value
 }
 
 // Number Value
-#[node_macro::node(category("Value"), name("Number Value"))]
+#[node_macro::node(category("Value"))]
 fn number_value(_: (), _primary: (), number: f64) -> f64 {
 	number
 }
 
 // Percentage Value
-#[node_macro::node(category("Value"), name("Percentage Value"))]
+#[node_macro::node(category("Value"))]
 fn percentage_value(_: (), _primary: (), percentage: Percentage) -> f64 {
 	percentage
 }
 
 // Vector2 Value
-#[node_macro::node(category("Value"), name("Vector2 Value"))]
+#[node_macro::node(category("Value"))]
 fn vector2_value(_: (), _primary: (), x: f64, y: f64) -> glam::DVec2 {
 	glam::DVec2::new(x, y)
 }
 
 // TODO: Make it possible to give Color::BLACK instead of 000000ff as the default
 // Color Value
-#[node_macro::node(category("Value"), name("Color Value"))]
+#[node_macro::node(category("Value"))]
 fn color_value(_: (), _primary: (), #[default(000000ff)] color: crate::Color) -> crate::Color {
 	color
 }
 
 // Gradient Value
-#[node_macro::node(category("Value"), name("Gradient Value"))]
+#[node_macro::node(category("Value"))]
 fn gradient_value(_: (), _primary: (), gradient: crate::vector::style::GradientStops) -> crate::vector::style::GradientStops {
 	gradient
 }
 
 // Color Channel Value
-#[node_macro::node(category("Value"), name("Color Channel Value"))]
+#[node_macro::node(category("Value"))]
 fn color_channel_value(_: (), _primary: (), color_channel: crate::raster::adjustments::RedGreenBlue) -> crate::raster::adjustments::RedGreenBlue {
 	color_channel
 }
 
 // Blend Mode Value
-#[node_macro::node(category("Value"), name("Blend Mode Value"))]
+#[node_macro::node(category("Value"))]
 fn blend_mode_value(_: (), _primary: (), blend_mode: crate::raster::BlendMode) -> crate::raster::BlendMode {
 	blend_mode
 }
 
 // Size Of
 #[cfg(feature = "std")]
-#[node_macro::node]
+#[node_macro::node(category("Debug"))]
 fn size_of(_: (), ty: crate::Type) -> Option<usize> {
 	ty.size()
 }
 
 // Some
-#[node_macro::node]
+#[node_macro::node(category("Debug"))]
 fn some<T>(_: (), #[implementations(f64, f32, u32, u64, String, crate::Color)] input: T) -> Option<T> {
 	Some(input)
 }
 
 // Unwrap
-#[node_macro::node]
+#[node_macro::node(category("Debug"))]
 fn unwrap<T: Default>(_: (), #[implementations(Option<f64>, Option<f32>, Option<u32>, Option<u64>, Option<String>, Option<crate::Color>)] input: Option<T>) -> T {
 	input.unwrap_or_default()
 }
 
 // Clone
-#[node_macro::node]
+#[node_macro::node(category("Debug"))]
 fn clone<'i, T: Clone + 'i>(_: (), #[implementations(&crate::raster::ImageFrame<crate::Color>)] value: &'i T) -> T {
 	value.clone()
 }

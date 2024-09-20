@@ -828,13 +828,13 @@ impl<T> ShaderInputNode<T> {
 	}
 }
 
-#[node_macro::node]
-async fn uniform_node<'a: 'n, T: ToUniformBuffer + Send + 'n>(_: (), #[implementations(f32, DAffine2)] data: T, executor: &'a WgpuExecutor) -> WgpuShaderInput {
+#[node_macro::node(category(""))]
+async fn uniform<'a: 'n, T: ToUniformBuffer + Send + 'n>(_: (), #[implementations(f32, DAffine2)] data: T, executor: &'a WgpuExecutor) -> WgpuShaderInput {
 	executor.create_uniform_buffer(data).unwrap()
 }
 
-#[node_macro::node]
-async fn storage_node<'a: 'n, T: ToStorageBuffer + Send + 'n>(_: (), #[implementations(Vec<u8>)] data: T, executor: &'a WgpuExecutor) -> WgpuShaderInput {
+#[node_macro::node(category(""))]
+async fn storage<'a: 'n, T: ToStorageBuffer + Send + 'n>(_: (), #[implementations(Vec<u8>)] data: T, executor: &'a WgpuExecutor) -> WgpuShaderInput {
 	executor
 		.create_storage_buffer(
 			data,
@@ -858,7 +858,7 @@ async fn create_compute_pass<'a: 'n>(_: (), layout: PipelineLayout, executor: &'
 	executor.create_compute_pass(&layout, Some(output.into()), instances).unwrap()
 }
 
-#[node_macro::node]
+#[node_macro::node(category("Debug: GPU"))]
 async fn create_pipeline_layout(
 	_: (),
 	shader: impl Node<(), Output = ShaderHandle>,
@@ -894,7 +894,7 @@ pub struct ShaderInputFrame {
 	transform: DAffine2,
 }
 
-#[node_macro::node]
+#[node_macro::node(category(""))]
 async fn render_texture<'a: 'n>(_: (), footprint: Footprint, image: impl Node<Footprint, Output = ShaderInputFrame>, surface: Option<WgpuSurface>, executor: &'a WgpuExecutor) -> SurfaceFrame {
 	let surface = surface.unwrap();
 	let surface_id = surface.window_id;
@@ -910,7 +910,7 @@ async fn render_texture<'a: 'n>(_: (), footprint: Footprint, image: impl Node<Fo
 	}
 }
 
-#[node_macro::node]
+#[node_macro::node(category(""))]
 async fn upload_texture<'a: 'n>(_: (), input: ImageFrame<Color>, executor: &'a WgpuExecutor) -> TextureFrame {
 	// let new_data: Vec<RGBA16F> = input.image.data.into_iter().map(|c| c.into()).collect();
 	let new_data = input.image.data.into_iter().map(SRGBA8::from).collect();

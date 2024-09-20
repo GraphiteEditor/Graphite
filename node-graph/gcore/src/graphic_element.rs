@@ -6,7 +6,6 @@ use crate::vector::VectorData;
 use crate::Color;
 
 use dyn_any::DynAny;
-use node_macro::node;
 
 use core::ops::{Deref, DerefMut};
 use glam::{DAffine2, IVec2};
@@ -227,13 +226,13 @@ impl ArtboardGroup {
 		Default::default()
 	}
 
-	fn add_artboard(&mut self, artboard: Artboard, node_id: Option<NodeId>) {
+	fn append_artboard(&mut self, artboard: Artboard, node_id: Option<NodeId>) {
 		self.artboards.push((artboard, node_id));
 	}
 }
 
-#[node]
-async fn construct_layer<F: 'n + Copy + Send>(
+#[node_macro::node(category(""))]
+async fn layer<F: 'n + Copy + Send>(
 	#[implementations((), Footprint)] footprint: F,
 	#[implementations(((), GraphicGroup), (Footprint, GraphicGroup))] stack: impl Node<F, Output = GraphicGroup>,
 	#[implementations(((), GraphicElement), (Footprint, GraphicElement))] graphic_element: impl Node<F, Output = GraphicElement>,
@@ -254,8 +253,8 @@ async fn construct_layer<F: 'n + Copy + Send>(
 	stack
 }
 
-#[node]
-async fn to_graphic_element<F: 'n + Send, Data: Into<GraphicElement> + 'n>(
+#[node_macro::node(category("Debug"))]
+async fn to_element<F: 'n + Send, Data: Into<GraphicElement> + 'n>(
 	#[implementations((), (), (), (), Footprint)] footprint: F,
 	#[implementations(
 	 	((), VectorData),
@@ -272,8 +271,8 @@ async fn to_graphic_element<F: 'n + Send, Data: Into<GraphicElement> + 'n>(
 	data.eval(footprint).await.into()
 }
 
-#[node(name("Group"), category("General"))]
-async fn group<F: 'n + Send, Data: Into<GraphicGroup> + 'n>(
+#[node_macro::node(category("General"))]
+async fn to_group<F: 'n + Send, Data: Into<GraphicGroup> + 'n>(
 	#[implementations((), (), (), (), Footprint)] footprint: F,
 	#[implementations(
 		((), VectorData),
@@ -290,8 +289,8 @@ async fn group<F: 'n + Send, Data: Into<GraphicGroup> + 'n>(
 	element.eval(footprint).await.into()
 }
 
-#[node]
-async fn construct_artboard<F: 'n + Copy + Send + ApplyTransform>(
+#[node_macro::node(category(""))]
+async fn to_artboard<F: 'n + Copy + Send + ApplyTransform>(
 	#[implementations((), Footprint)] mut footprint: F,
 	#[implementations(((), GraphicGroup), (Footprint, GraphicGroup))] contents: impl Node<F, Output = GraphicGroup>,
 	label: String,
@@ -312,8 +311,8 @@ async fn construct_artboard<F: 'n + Copy + Send + ApplyTransform>(
 		clip,
 	}
 }
-#[node]
-async fn add_artboard<F: 'n + Copy + Send>(
+#[node_macro::node(category(""))]
+async fn append_artboard<F: 'n + Copy + Send>(
 	#[implementations((), Footprint)] footprint: F,
 	#[implementations(((), ArtboardGroup), (Footprint, ArtboardGroup))] artboards: impl Node<F, Output = ArtboardGroup>,
 	#[implementations(((), Artboard), (Footprint, Artboard))] artboard: impl Node<F, Output = Artboard>,
@@ -324,7 +323,7 @@ async fn add_artboard<F: 'n + Copy + Send>(
 
 	// Get the penultimate element of the node path, or None if the path is too short
 	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
-	artboards.add_artboard(artboard, encapsulating_node_id);
+	artboards.append_artboard(artboard, encapsulating_node_id);
 
 	artboards
 }

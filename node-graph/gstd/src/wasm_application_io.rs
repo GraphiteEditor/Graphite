@@ -28,12 +28,12 @@ use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
-#[node_macro::node]
-async fn create_surface_node<'a: 'n>(_: (), editor: &'a WasmEditorApi) -> Arc<WasmSurfaceHandle> {
+#[node_macro::node(category("Debug: GPU"))]
+async fn create_surface<'a: 'n>(_: (), editor: &'a WasmEditorApi) -> Arc<WasmSurfaceHandle> {
 	Arc::new(editor.application_io.as_ref().unwrap().create_window())
 }
 
-#[node_macro::node]
+#[node_macro::node(category("Debug: GPU"))]
 #[cfg(target_arch = "wasm32")]
 async fn draw_image_frame(_: (), image: ImageFrame<graphene_core::raster::SRGBA8>, surface_handle: Arc<WasmSurfaceHandle>) -> graphene_core::application_io::SurfaceHandleFrame<HtmlCanvasElement> {
 	let image_data = image.image.data;
@@ -53,12 +53,12 @@ async fn draw_image_frame(_: (), image: ImageFrame<graphene_core::raster::SRGBA8
 	}
 }
 
-#[node_macro::node]
+#[node_macro::node(category("Network"))]
 async fn load_resource<'a: 'n>(_: (), _primary: (), #[scope("editor-api")] editor: &'a WasmEditorApi, url: String) -> Arc<[u8]> {
 	editor.application_io.as_ref().unwrap().load_resource(url).unwrap().await.unwrap()
 }
 
-#[node_macro::node]
+#[node_macro::node(category("Raster"))]
 fn decode_image(_: (), data: Arc<[u8]>) -> ImageFrame<Color> {
 	let image = image::load_from_memory(data.as_ref()).expect("Failed to decode image");
 	let image = image.to_rgba32f();
@@ -129,20 +129,21 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 	RenderOutputType::CanvasFrame(frame)
 }
 
-#[node_macro::node]
+#[node_macro::node(category(""))]
 #[cfg(target_arch = "wasm32")]
-async fn rasterize<_T: GraphicElementRendered + graphene_core::transform::TransformMut + WasmNotSend + 'n>(
+async fn rasterize<T: GraphicElementRendered + graphene_core::transform::TransformMut + WasmNotSend + 'n>(
 	_: (),
-	#[implementations(VectorData, GraphicGroup)] mut data: _T,
+	#[implementations((Footprint, VectorData), (Footprint, ImageFrame<Color>), (Footprint, GraphicGroup))] data: impl Node<Footprint, Output = T>,
 	footprint: Footprint,
 	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
 ) -> ImageFrame<Color> {
-	let mut render = SvgRender::new();
-
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");
 		return ImageFrame::default();
 	}
+
+	let mut data = data.eval(footprint).await;
+	let mut render = SvgRender::new();
 	let aabb = Bbox::from_transform(footprint.transform).to_axis_aligned_bbox();
 	let size = aabb.size();
 	let resolution = footprint.resolution;
@@ -184,7 +185,7 @@ async fn rasterize<_T: GraphicElementRendered + graphene_core::transform::Transf
 	}
 }
 
-#[node_macro::node]
+#[node_macro::node(category(""))]
 async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	render_config: RenderConfig,
 	editor_api: &'a WasmEditorApi,
