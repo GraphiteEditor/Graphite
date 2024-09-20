@@ -898,21 +898,17 @@ impl GraphicElementRendered for Raster {
 				(image, texture.alpha_blend)
 			}
 		};
-		let transform = transform * self.transform() * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
+		let image_transform = transform * self.transform() * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
 		let layer = blend_mode != Default::default();
 
 		let Some(bounds) = self.bounding_box(transform) else { return };
 		let blending = vello::peniko::BlendMode::new(blend_mode.blend_mode.into(), vello::peniko::Compose::SrcOver);
 
 		if layer {
-			scene.push_layer(
-				blending,
-				blend_mode.opacity,
-				kurbo::Affine::IDENTITY,
-				&vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y),
-			);
+			let rect = vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+			scene.push_layer(blending, blend_mode.opacity, kurbo::Affine::IDENTITY, &rect);
 		}
-		scene.draw_image(&image, vello::kurbo::Affine::new(transform.to_cols_array()));
+		scene.draw_image(&image, vello::kurbo::Affine::new(image_transform.to_cols_array()));
 		if layer {
 			scene.pop_layer()
 		}
