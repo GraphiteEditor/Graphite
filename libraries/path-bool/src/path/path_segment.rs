@@ -12,7 +12,7 @@
 use glam::{DMat2, DMat3, DVec2};
 use std::f64::consts::{PI, TAU};
 
-use crate::aabb::{bounding_box_around_point, expand_bounding_box, extend_bounding_box, merge_bounding_boxes, AaBb};
+use crate::aabb::{bounding_box_around_point, expand_bounding_box, extend_bounding_box, merge_bounding_boxes, Aabb};
 use crate::math::{lerp, vector_angle};
 use crate::EPS;
 
@@ -596,9 +596,9 @@ impl PathSegment {
 	/// # Returns
 	///
 	/// An `AaBb` representing the axis-aligned bounding box of the segment.
-	pub(crate) fn bounding_box(&self) -> AaBb {
+	pub(crate) fn bounding_box(&self) -> Aabb {
 		match *self {
-			PathSegment::Line(start, end) => AaBb {
+			PathSegment::Line(start, end) => Aabb {
 				top: start.y.min(end.y),
 				right: start.x.max(end.x),
 				bottom: start.y.max(end.y),
@@ -607,12 +607,12 @@ impl PathSegment {
 			PathSegment::Cubic(p1, p2, p3, p4) => {
 				let (left, right) = cubic_bounding_interval(p1.x, p2.x, p3.x, p4.x);
 				let (top, bottom) = cubic_bounding_interval(p1.y, p2.y, p3.y, p4.y);
-				AaBb { top, right, bottom, left }
+				Aabb { top, right, bottom, left }
 			}
 			PathSegment::Quadratic(p1, p2, p3) => {
 				let (left, right) = quadratic_bounding_interval(p1.x, p2.x, p3.x);
 				let (top, bottom) = quadratic_bounding_interval(p1.y, p2.y, p3.y);
-				AaBb { top, right, bottom, left }
+				Aabb { top, right, bottom, left }
 			}
 			PathSegment::Arc(start, rx, ry, phi, _, _, end) => {
 				if let Some(center_param) = self.arc_segment_to_center() {

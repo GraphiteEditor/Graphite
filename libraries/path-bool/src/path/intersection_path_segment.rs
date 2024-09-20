@@ -1,6 +1,6 @@
 use glam::DVec2;
 
-use crate::aabb::{bounding_box_max_extent, bounding_boxes_overlap, AaBb};
+use crate::aabb::{bounding_box_max_extent, bounding_boxes_overlap, Aabb};
 use crate::epsilons::Epsilons;
 use crate::line_segment::{line_segment_intersection, line_segments_intersect};
 use crate::line_segment_aabb::line_segment_aabb_intersect;
@@ -12,7 +12,7 @@ struct IntersectionSegment {
 	seg: PathSegment,
 	start_param: f64,
 	end_param: f64,
-	bounding_box: AaBb,
+	bounding_box: Aabb,
 }
 
 #[inline(never)]
@@ -68,9 +68,6 @@ pub fn segments_equal(seg0: &PathSegment, seg1: &PathSegment, point_epsilon: f64
 			let direction1 = seg0.sample_at(0.1);
 			let direction2 = seg1.sample_at(0.1);
 			let angles_equal = (direction1 - p00).angle_to(direction2 - p00).abs() < point_epsilon * 4.;
-			if angles_equal {
-				// eprintln!("deduplicating {:?} {:?} because the angles are equal", seg0, seg1);
-			}
 
 			start_and_end_equal && (parameter_equal || angles_equal)
 		}
@@ -79,12 +76,12 @@ pub fn segments_equal(seg0: &PathSegment, seg1: &PathSegment, point_epsilon: f64
 		}
 		(PathSegment::Arc(p00, rx0, ry0, angle0, large_arc0, sweep0, p01), PathSegment::Arc(p10, rx1, ry1, angle1, large_arc1, sweep1, p11)) => {
 			p00.abs_diff_eq(p10, point_epsilon) &&
-            (rx0 - rx1).abs() < point_epsilon &&
-            (ry0 - ry1).abs() < point_epsilon &&
-            (angle0 - angle1).abs() < point_epsilon && // TODO: Phi can be anything if rx = ry. Also, handle rotations by Pi/2.
-            large_arc0 == large_arc1 &&
-            sweep0 == sweep1 &&
-            p01.abs_diff_eq(p11, point_epsilon)
+			(rx0 - rx1).abs() < point_epsilon &&
+			(ry0 - ry1).abs() < point_epsilon &&
+			(angle0 - angle1).abs() < point_epsilon && // TODO: Phi can be anything if rx = ry. Also, handle rotations by Pi/2.
+			large_arc0 == large_arc1 &&
+			sweep0 == sweep1 &&
+			p01.abs_diff_eq(p11, point_epsilon)
 		}
 		_ => false,
 	}
@@ -127,7 +124,6 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 
 	while !pairs.is_empty() {
 		next_pairs.clear();
-		// dbg!("checking pairs");
 
 		if pairs.len() > 1000 {
 			// TODO: check for intersections of the start/end points. If the two lines overlap, return split points for the start/end points. Use a binary search  to check where the points are on the line.

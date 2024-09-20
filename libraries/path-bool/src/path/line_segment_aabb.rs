@@ -1,4 +1,4 @@
-use crate::aabb::AaBb;
+use crate::aabb::Aabb;
 use crate::line_segment::LineSegment;
 
 const INSIDE: u8 = 0;
@@ -7,7 +7,7 @@ const RIGHT: u8 = 1 << 1;
 const BOTTOM: u8 = 1 << 2;
 const TOP: u8 = 1 << 3;
 
-fn out_code(x: f64, y: f64, bounding_box: &AaBb) -> u8 {
+fn out_code(x: f64, y: f64, bounding_box: &Aabb) -> u8 {
 	let mut code = INSIDE;
 
 	if x < bounding_box.left {
@@ -25,7 +25,7 @@ fn out_code(x: f64, y: f64, bounding_box: &AaBb) -> u8 {
 	code
 }
 
-pub(crate) fn line_segment_aabb_intersect(seg: LineSegment, bounding_box: &AaBb) -> bool {
+pub(crate) fn line_segment_aabb_intersect(seg: LineSegment, bounding_box: &Aabb) -> bool {
 	let [mut p0, mut p1] = seg;
 
 	let mut outcode0 = out_code(p0.x, p0.y, bounding_box);

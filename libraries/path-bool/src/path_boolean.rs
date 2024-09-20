@@ -65,7 +65,7 @@ new_key_type! {
 //
 // SPDX-License-Identifier: MIT
 
-use crate::aabb::{bounding_box_around_point, bounding_box_max_extent, merge_bounding_boxes, AaBb};
+use crate::aabb::{bounding_box_around_point, bounding_box_max_extent, merge_bounding_boxes, Aabb};
 use crate::epsilons::Epsilons;
 use crate::intersection_path_segment::{path_segment_intersection, segments_equal};
 use crate::path::Path;
@@ -138,7 +138,7 @@ pub const EPS: Epsilons = Epsilons {
 };
 
 type MajorGraphEdgeStage1 = (PathSegment, u8);
-type MajorGraphEdgeStage2 = (PathSegment, u8, AaBb);
+type MajorGraphEdgeStage2 = (PathSegment, u8, Aabb);
 
 #[derive(Debug, Clone)]
 pub struct MajorGraphEdge {
@@ -403,7 +403,7 @@ fn split_at_self_intersections(edges: &mut Vec<MajorGraphEdgeStage1>) {
 /// A tuple containing:
 /// * A vector of split edges (MajorGraphEdgeStage2).
 /// * An optional overall bounding box (AaBb) for all edges.
-fn split_at_intersections(edges: &[MajorGraphEdgeStage1]) -> (Vec<MajorGraphEdgeStage2>, Option<AaBb>) {
+fn split_at_intersections(edges: &[MajorGraphEdgeStage1]) -> (Vec<MajorGraphEdgeStage2>, Option<Aabb>) {
 	// Step 1: Add bounding boxes to edges
 	let with_bounding_box: Vec<MajorGraphEdgeStage2> = edges.iter().map(|(seg, parent)| (*seg, *parent, seg.bounding_box())).collect();
 
@@ -507,7 +507,7 @@ impl Direction {
 }
 
 // TODO:(@TrueDoctor) Optimize this by rounding each vertex up and down and then inserting them in a hashmap. This should remove the need for bbox calculations and the quad tree
-fn find_vertices(edges: &[MajorGraphEdgeStage2], bounding_box: AaBb) -> MajorGraph {
+fn find_vertices(edges: &[MajorGraphEdgeStage2], bounding_box: Aabb) -> MajorGraph {
 	let mut vertex_tree = QuadTree::new(bounding_box, POINT_TREE_DEPTH, 8);
 	let mut graph = MajorGraph {
 		edges: SlotMap::with_key(),
@@ -1171,12 +1171,12 @@ fn test_inclusion(a: &DualGraphComponent, b: &DualGraphComponent, edges: &SlotMa
 	}
 	None
 }
-fn bounding_box_intersects_horizontal_ray(bounding_box: &AaBb, point: DVec2) -> bool {
+fn bounding_box_intersects_horizontal_ray(bounding_box: &Aabb, point: DVec2) -> bool {
 	interval_crosses_point(bounding_box.top, bounding_box.bottom, point[1]) && bounding_box.right >= point[0]
 }
 
 struct IntersectionSegment {
-	bounding_box: AaBb,
+	bounding_box: Aabb,
 	seg: PathSegment,
 }
 
@@ -1843,7 +1843,7 @@ mod tests {
 
 	#[test]
 	fn test_bounding_box_intersects_horizontal_ray() {
-		let bbox = AaBb {
+		let bbox = Aabb {
 			top: 10.0,
 			right: 40.0,
 			bottom: 30.0,

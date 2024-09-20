@@ -1,16 +1,16 @@
-use crate::aabb::AaBb;
+use crate::aabb::Aabb;
 use std::collections::HashSet;
 
 pub struct QuadTree<T> {
-	bounding_box: AaBb,
+	bounding_box: Aabb,
 	depth: usize,
 	inner_node_capacity: usize,
 	subtrees: Option<Box<[QuadTree<T>; 4]>>,
-	pairs: Vec<(AaBb, T)>,
+	pairs: Vec<(Aabb, T)>,
 }
 
 impl<T: Clone> QuadTree<T> {
-	pub fn new(bounding_box: AaBb, depth: usize, inner_node_capacity: usize) -> Self {
+	pub fn new(bounding_box: Aabb, depth: usize, inner_node_capacity: usize) -> Self {
 		QuadTree {
 			bounding_box,
 			depth,
@@ -20,7 +20,7 @@ impl<T: Clone> QuadTree<T> {
 		}
 	}
 
-	pub fn insert(&mut self, bounding_box: AaBb, value: T) -> bool {
+	pub fn insert(&mut self, bounding_box: Aabb, value: T) -> bool {
 		if !crate::aabb::bounding_boxes_overlap(&bounding_box, &self.bounding_box) {
 			return false;
 		}
@@ -37,7 +37,7 @@ impl<T: Clone> QuadTree<T> {
 		true
 	}
 
-	pub fn find(&self, bounding_box: &AaBb) -> HashSet<T>
+	pub fn find(&self, bounding_box: &Aabb) -> HashSet<T>
 	where
 		T: Eq + std::hash::Hash + Clone,
 	{
@@ -46,7 +46,7 @@ impl<T: Clone> QuadTree<T> {
 		set
 	}
 
-	fn find_internal(&self, bounding_box: &AaBb, set: &mut HashSet<T>)
+	fn find_internal(&self, bounding_box: &Aabb, set: &mut HashSet<T>)
 	where
 		T: Eq + std::hash::Hash + Clone,
 	{
@@ -77,7 +77,7 @@ impl<T: Clone> QuadTree<T> {
 
 		self.subtrees = Some(Box::new([
 			QuadTree::new(
-				AaBb {
+				Aabb {
 					top: self.bounding_box.top,
 					right: midx,
 					bottom: midy,
@@ -87,7 +87,7 @@ impl<T: Clone> QuadTree<T> {
 				self.inner_node_capacity,
 			),
 			QuadTree::new(
-				AaBb {
+				Aabb {
 					top: self.bounding_box.top,
 					right: self.bounding_box.right,
 					bottom: midy,
@@ -97,7 +97,7 @@ impl<T: Clone> QuadTree<T> {
 				self.inner_node_capacity,
 			),
 			QuadTree::new(
-				AaBb {
+				Aabb {
 					top: midy,
 					right: midx,
 					bottom: self.bounding_box.bottom,
@@ -107,7 +107,7 @@ impl<T: Clone> QuadTree<T> {
 				self.inner_node_capacity,
 			),
 			QuadTree::new(
-				AaBb {
+				Aabb {
 					top: midy,
 					right: self.bounding_box.right,
 					bottom: self.bounding_box.bottom,
