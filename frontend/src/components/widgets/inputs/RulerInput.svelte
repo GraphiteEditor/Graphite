@@ -116,16 +116,19 @@
 <style lang="scss" global>
 	.ruler-input {
 		flex: 1 1 100%;
-		background: var(--color-4-dimgray);
+		background: var(--color-2-mildblack);
 		overflow: hidden;
 		position: relative;
+		box-sizing: border-box;
 
 		&.horizontal {
 			height: 16px;
+			border-bottom: 1px solid var(--color-5-dullgray);
 		}
 
 		&.vertical {
 			width: 16px;
+			border-right: 1px solid var(--color-5-dullgray);
 
 			svg text {
 				text-anchor: end;
@@ -137,7 +140,7 @@
 
 			path {
 				stroke-width: 1px;
-				stroke: var(--color-6-lowergray);
+				stroke: var(--color-5-dullgray);
 			}
 
 			text {

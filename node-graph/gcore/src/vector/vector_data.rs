@@ -7,7 +7,7 @@ use super::style::{PathStyle, Stroke};
 use crate::{AlphaBlending, Color};
 
 use bezier_rs::ManipulatorGroup;
-use dyn_any::{DynAny, StaticType};
+use dyn_any::DynAny;
 
 use core::borrow::Borrow;
 use glam::{DAffine2, DVec2};
@@ -27,6 +27,9 @@ pub struct VectorData {
 	pub point_domain: PointDomain,
 	pub segment_domain: SegmentDomain,
 	pub region_domain: RegionDomain,
+
+	// Used to store the upstream graphic group during destructive Boolean Operations (and other nodes with a similar effect) so that click targets can be preserved.
+	pub upstream_graphic_group: Option<crate::GraphicGroup>,
 }
 
 impl core::hash::Hash for VectorData {
@@ -52,6 +55,7 @@ impl VectorData {
 			point_domain: PointDomain::new(),
 			segment_domain: SegmentDomain::new(),
 			region_domain: RegionDomain::new(),
+			upstream_graphic_group: None,
 		}
 	}
 

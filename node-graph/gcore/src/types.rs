@@ -6,7 +6,69 @@ use dyn_any::StaticType;
 #[cfg(feature = "std")]
 pub use std::borrow::Cow;
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[macro_export]
+macro_rules! concrete {
+	($type:ty) => {
+		$crate::Type::Concrete($crate::TypeDescriptor {
+			id: Some(core::any::TypeId::of::<$type>()),
+			name: $crate::Cow::Borrowed(core::any::type_name::<$type>()),
+			alias: None,
+			size: core::mem::size_of::<$type>(),
+			align: core::mem::align_of::<$type>(),
+		})
+	};
+	($type:ty, $name:ty) => {
+		$crate::Type::Concrete($crate::TypeDescriptor {
+			id: Some(core::any::TypeId::of::<$type>()),
+			name: $crate::Cow::Borrowed(core::any::type_name::<$type>()),
+			alias: Some($crate::Cow::Borrowed(stringify!($name))),
+			size: core::mem::size_of::<$type>(),
+			align: core::mem::align_of::<$type>(),
+		})
+	};
+}
+
+#[macro_export]
+macro_rules! concrete_with_name {
+	($type:ty, $name:expr) => {
+		$crate::Type::Concrete($crate::TypeDescriptor {
+			id: Some(core::any::TypeId::of::<$type>()),
+			name: $crate::Cow::Borrowed($name),
+			alias: None,
+			size: core::mem::size_of::<$type>(),
+			align: core::mem::align_of::<$type>(),
+		})
+	};
+}
+
+#[macro_export]
+macro_rules! generic {
+	($type:ty) => {{
+		$crate::Type::Generic($crate::Cow::Borrowed(stringify!($type)))
+	}};
+}
+
+#[macro_export]
+macro_rules! future {
+	($type:ty) => {{
+		$crate::Type::Future(Box::new(concrete!($type)))
+	}};
+}
+
+#[macro_export]
+macro_rules! fn_type {
+	($type:ty) => {
+		$crate::Type::Fn(Box::new(concrete!(())), Box::new(concrete!($type)))
+	};
+	($in_type:ty, $type:ty, alias: $outname:ty) => {
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(concrete!($type, $outname)))
+	};
+	($in_type:ty, $type:ty) => {
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(concrete!($type)))
+	};
+}
+
+#[derive(Clone, PartialEq, Eq, Hash, Default)]
 pub struct NodeIOTypes {
 	pub input: Type,
 	pub output: Type,
@@ -14,8 +76,30 @@ pub struct NodeIOTypes {
 }
 
 impl NodeIOTypes {
-	pub fn new(input: Type, output: Type, parameters: Vec<Type>) -> Self {
+	pub const fn new(input: Type, output: Type, parameters: Vec<Type>) -> Self {
 		Self { input, output, parameters }
+	}
+
+	pub const fn empty() -> Self {
+		let tds1 = TypeDescriptor {
+			id: None,
+			name: Cow::Borrowed("()"),
+			alias: None,
+			size: 0,
+			align: 0,
+		};
+		let tds2 = TypeDescriptor {
+			id: None,
+			name: Cow::Borrowed("()"),
+			alias: None,
+			size: 0,
+			align: 0,
+		};
+		Self {
+			input: Type::Concrete(tds1),
+			output: Type::Concrete(tds2),
+			parameters: Vec::new(),
+		}
 	}
 
 	pub fn ty(&self) -> Type {
@@ -33,51 +117,15 @@ impl core::fmt::Debug for NodeIOTypes {
 	}
 }
 
-#[macro_export]
-macro_rules! concrete {
-	($type:ty) => {
-		$crate::Type::Concrete($crate::TypeDescriptor {
-			id: Some(core::any::TypeId::of::<$type>()),
-			name: $crate::Cow::Borrowed(core::any::type_name::<$type>()),
-			size: core::mem::size_of::<$type>(),
-			align: core::mem::align_of::<$type>(),
-		})
-	};
-}
-
-#[macro_export]
-macro_rules! concrete_with_name {
-	($type:ty, $name:expr) => {
-		$crate::Type::Concrete($crate::TypeDescriptor {
-			id: Some(core::any::TypeId::of::<$type>()),
-			name: $crate::Cow::Borrowed($name),
-			size: core::mem::size_of::<$type>(),
-			align: core::mem::align_of::<$type>(),
-		})
-	};
-}
-
-#[macro_export]
-macro_rules! generic {
-	($type:ty) => {{
-		$crate::Type::Generic($crate::Cow::Borrowed(stringify!($type)))
-	}};
-}
-
-#[macro_export]
-macro_rules! fn_type {
-	($type:ty) => {
-		$crate::Type::Fn(Box::new(concrete!(())), Box::new(concrete!($type)))
-	};
-	($in_type:ty, $type:ty) => {
-		$crate::Type::Fn(Box::new(concrete!(($in_type))), Box::new(concrete!($type)))
-	};
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Hash, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ProtoNodeIdentifier {
 	pub name: Cow<'static, str>,
+}
+impl From<String> for ProtoNodeIdentifier {
+	fn from(value: String) -> Self {
+		Self { name: Cow::Owned(value) }
+	}
 }
 
 fn migrate_type_descriptor_names<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Cow<'static, str>, D::Error> {
@@ -100,6 +148,8 @@ pub struct TypeDescriptor {
 	pub id: Option<TypeId>,
 	#[serde(deserialize_with = "migrate_type_descriptor_names")]
 	pub name: Cow<'static, str>,
+	#[serde(default)]
+	pub alias: Option<Cow<'static, str>>,
 	#[serde(default)]
 	pub size: usize,
 	#[serde(default)]
@@ -199,6 +249,7 @@ impl Type {
 		Self::Concrete(TypeDescriptor {
 			id: Some(TypeId::of::<T::Static>()),
 			name: Cow::Borrowed(core::any::type_name::<T::Static>()),
+			alias: None,
 			size: core::mem::size_of::<T>(),
 			align: core::mem::align_of::<T>(),
 		})

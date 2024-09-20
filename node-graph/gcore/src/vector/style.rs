@@ -4,7 +4,7 @@ use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
 use crate::renderer::format_transform_matrix;
 use crate::Color;
 
-use dyn_any::{DynAny, StaticType};
+use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use std::fmt::{self, Display, Write};
 
@@ -145,10 +145,9 @@ impl Gradient {
 	}
 
 	/// Adds the gradient def through mutating the first argument, returning the gradient ID.
-	fn render_defs(&self, svg_defs: &mut String, multiplied_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> u64 {
+	fn render_defs(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> u64 {
 		let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-		let transformed_bound_transform = DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);
-		let updated_transform = multiplied_transform * bound_transform;
+		let transformed_bound_transform = element_transform * DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);
 
 		let mut stop = String::new();
 		for (position, color) in self.stops.0.iter() {
@@ -168,7 +167,7 @@ impl Gradient {
 		} else {
 			DAffine2::IDENTITY // Ignore if the transform cannot be inverted (the bounds are zero). See issue #1944.
 		};
-		let mod_points = updated_transform;
+		let mod_points = element_transform * stroke_transform * bound_transform;
 
 		let start = mod_points.transform_point2(self.start);
 		let end = mod_points.transform_point2(self.end);
@@ -301,7 +300,7 @@ impl Fill {
 	}
 
 	/// Renders the fill, adding necessary defs through mutating the first argument.
-	pub fn render(&self, svg_defs: &mut String, multiplied_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> String {
+	pub fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> String {
 		match self {
 			Self::None => r#" fill="none""#.to_string(),
 			Self::Solid(color) => {
@@ -312,7 +311,7 @@ impl Fill {
 				result
 			}
 			Self::Gradient(gradient) => {
-				let gradient_id = gradient.render_defs(svg_defs, multiplied_transform, bounds, transformed_bounds);
+				let gradient_id = gradient.render_defs(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds);
 				format!(r##" fill="url('#{gradient_id}')""##)
 			}
 		}
@@ -450,6 +449,10 @@ impl Display for LineJoin {
 	}
 }
 
+fn daffine2_identity() -> DAffine2 {
+	DAffine2::IDENTITY
+}
+
 #[repr(C)]
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
 pub struct Stroke {
@@ -462,6 +465,8 @@ pub struct Stroke {
 	pub line_cap: LineCap,
 	pub line_join: LineJoin,
 	pub line_join_miter_limit: f64,
+	#[serde(default = "daffine2_identity")]
+	pub transform: DAffine2,
 }
 
 impl core::hash::Hash for Stroke {
@@ -487,6 +492,7 @@ impl Stroke {
 			line_cap: LineCap::Butt,
 			line_join: LineJoin::Miter,
 			line_join_miter_limit: 4.,
+			transform: DAffine2::IDENTITY,
 		}
 	}
 
@@ -499,6 +505,10 @@ impl Stroke {
 			line_cap: if time < 0.5 { self.line_cap } else { other.line_cap },
 			line_join: if time < 0.5 { self.line_join } else { other.line_join },
 			line_join_miter_limit: self.line_join_miter_limit + (other.line_join_miter_limit - self.line_join_miter_limit) * time,
+			transform: DAffine2::from_mat2_translation(
+				time * self.transform.matrix2 + (1. - time) * other.transform.matrix2,
+				self.transform.translation * time + other.transform.translation * (1. - time),
+			),
 		}
 	}
 
@@ -635,6 +645,7 @@ impl Default for Stroke {
 			line_cap: LineCap::Butt,
 			line_join: LineJoin::Miter,
 			line_join_miter_limit: 4.,
+			transform: DAffine2::IDENTITY,
 		}
 	}
 }
@@ -731,6 +742,12 @@ impl PathStyle {
 		self.fill = fill;
 	}
 
+	pub fn set_stroke_transform(&mut self, transform: DAffine2) {
+		if let Some(stroke) = &mut self.stroke {
+			stroke.transform = transform;
+		}
+	}
+
 	/// Replace the path's [Stroke] with a provided one.
 	///
 	/// # Example
@@ -787,15 +804,15 @@ impl PathStyle {
 	}
 
 	/// Renders the shape's fill and stroke attributes as a string with them concatenated together.
-	pub fn render(&self, view_mode: ViewMode, svg_defs: &mut String, multiplied_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> String {
+	pub fn render(&self, view_mode: ViewMode, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> String {
 		match view_mode {
 			ViewMode::Outline => {
-				let fill_attribute = Fill::None.render(svg_defs, multiplied_transform, bounds, transformed_bounds);
+				let fill_attribute = Fill::None.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds);
 				let stroke_attribute = Stroke::new(Some(LAYER_OUTLINE_STROKE_COLOR), LAYER_OUTLINE_STROKE_WEIGHT).render();
 				format!("{fill_attribute}{stroke_attribute}")
 			}
 			_ => {
-				let fill_attribute = self.fill.render(svg_defs, multiplied_transform, bounds, transformed_bounds);
+				let fill_attribute = self.fill.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds);
 				let stroke_attribute = self.stroke.as_ref().map(|stroke| stroke.render()).unwrap_or_default();
 				format!("{fill_attribute}{stroke_attribute}")
 			}

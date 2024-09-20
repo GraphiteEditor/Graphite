@@ -27,7 +27,7 @@ resolver = "2"
 
 [workspace.dependencies]
 # Local dependencies
-dyn-any = { path = "libraries/dyn-any", features = ["derive", "glam"] }
+dyn-any = { path = "libraries/dyn-any", features = ["derive", "glam", "reqwest"] }
 graphene-core = { path = "node-graph/gcore" }
 graph-craft = { path = "node-graph/graph-craft", features = ["serde"] }
 wgpu-executor = { path = "node-graph/wgpu-executor" }
@@ -46,6 +46,8 @@ futures = "0.3"
 env_logger = "0.11"
 log = "0.4"
 bitflags = { version = "2.4", features = ["serde"] }
+ctor = "0.2"
+convert_case = "0.6"
 derivative = "2.2"
 tempfile = "3.6"
 thiserror = "1.0"
@@ -105,7 +107,6 @@ graphene-core = { opt-level = 1 }
 graphene-std = { opt-level = 1 }
 interpreted-executor = { opt-level = 1 } # This is a mitigation for https://github.com/rustwasm/wasm-pack/issues/981 which is needed because the node_registry function is too large
 graphite-proc-macros = { opt-level = 1 }
-autoquant = { opt-level = 3 }
 image = { opt-level = 2 }
 rustc-hash = { opt-level = 3 }
 serde_derive = { opt-level = 1 }

@@ -99,7 +99,7 @@
 				});
 		});
 
-		const START_CATEGORIES_ORDER = ["General", "Value", "Math", "Style"];
+		const START_CATEGORIES_ORDER = ["UNCATEGORIZED", "General", "Value", "Math", "Style"];
 		const END_CATEGORIES_ORDER = ["Debug"];
 		return Array.from(categories)
 			.sort((a, b) => a[0].localeCompare(b[0]))

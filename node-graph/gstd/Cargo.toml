@@ -15,7 +15,6 @@ gpu = [
 	"gpu-executor",
 ]
 wgpu = ["gpu", "dep:wgpu", "graph-craft/wgpu"]
-quantization = ["autoquant"]
 wasm = ["wasm-bindgen", "web-sys", "js-sys"]
 imaginate = ["image/png", "base64", "js-sys", "web-sys", "wasm-bindgen-futures"]
 image-compare = ["dep:image-compare"]
@@ -25,7 +24,7 @@ wayland = ["graph-craft/wayland"]
 
 [dependencies]
 # Local dependencies
-dyn-any = { path = "../../libraries/dyn-any", features = ["derive"] }
+dyn-any = { path = "../../libraries/dyn-any", features = ["derive", "reqwest"] }
 graph-craft = { path = "../graph-craft", features = ["serde"] }
 wgpu-executor = { path = "../wgpu-executor" }
 graphene-core = { path = "../gcore", default-features = false, features = [
@@ -84,9 +83,6 @@ web-sys = { workspace = true, optional = true, features = [
 	"HtmlCanvasElement",
 	"HtmlImageElement",
 	"ImageBitmapRenderingContext",
-] }
-autoquant = { git = "https://github.com/truedoctor/autoquant", optional = true, features = [
-	"fitting",
 ] }
 
 # Optional dependencies

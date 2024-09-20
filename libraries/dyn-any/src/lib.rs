@@ -295,16 +295,21 @@ impl_type!(
 	Quat, Affine2, Affine3A, DAffine2, DAffine3, DQuat
 );
 
+#[cfg(feature = "reqwest")]
+use reqwest::Response;
+#[cfg(feature = "reqwest")]
+impl_type!(Response);
+
 #[cfg(feature = "alloc")]
 unsafe impl<T: crate::StaticType + ?Sized> crate::StaticType for Box<T> {
 	type Static = Box<<T as crate::StaticType>::Static>;
 }
 #[test]
 fn test_tuple_of_boxes() {
-	let tuple = (Box::new(&1 as &dyn DynAny<'static>), Box::new(&2 as &dyn DynAny<'static>));
+	let tuple = (Box::new(&1u32 as &dyn DynAny<'static>), Box::new(&2u32 as &dyn DynAny<'static>));
 	let dyn_any = &tuple as &dyn DynAny;
-	assert_eq!(&1, downcast_ref(*downcast_ref::<(Box<&dyn DynAny>, Box<&dyn DynAny>)>(dyn_any).unwrap().0).unwrap());
-	assert_eq!(&2, downcast_ref(*downcast_ref::<(Box<&dyn DynAny>, Box<&dyn DynAny>)>(dyn_any).unwrap().1).unwrap());
+	assert_eq!(&1, downcast_ref::<u32>(*downcast_ref::<(Box<&dyn DynAny>, Box<&dyn DynAny>)>(dyn_any).unwrap().0).unwrap());
+	assert_eq!(&2, downcast_ref::<u32>(*downcast_ref::<(Box<&dyn DynAny>, Box<&dyn DynAny>)>(dyn_any).unwrap().1).unwrap());
 }
 
 macro_rules! impl_tuple {

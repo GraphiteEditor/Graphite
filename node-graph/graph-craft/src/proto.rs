@@ -1,7 +1,7 @@
 use crate::document::{value, InlineRust};
 use crate::document::{NodeId, OriginalLocation};
 
-use dyn_any::DynAny;
+pub use graphene_core::registry::*;
 use graphene_core::*;
 
 use rustc_hash::FxHashMap;
@@ -10,88 +10,6 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::ops::Deref;
-use std::pin::Pin;
-
-#[cfg(not(target_arch = "wasm32"))]
-pub type DynFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n + Send>>;
-#[cfg(target_arch = "wasm32")]
-pub type DynFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
-pub type LocalFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
-#[cfg(not(target_arch = "wasm32"))]
-pub type Any<'n> = Box<dyn DynAny<'n> + 'n + Send>;
-#[cfg(target_arch = "wasm32")]
-pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
-pub type FutureAny<'n> = DynFuture<'n, Any<'n>>;
-// TODO: is this safe? This is assumed to be send+sync.
-#[cfg(not(target_arch = "wasm32"))]
-pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n + Send + Sync;
-#[cfg(target_arch = "wasm32")]
-pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n;
-pub type TypeErasedPinnedRef<'n> = Pin<&'n TypeErasedNode<'n>>;
-pub type TypeErasedRef<'n> = &'n TypeErasedNode<'n>;
-pub type TypeErasedBox<'n> = Box<TypeErasedNode<'n>>;
-pub type TypeErasedPinned<'n> = Pin<Box<TypeErasedNode<'n>>>;
-
-pub type SharedNodeContainer = std::sync::Arc<NodeContainer>;
-
-pub type NodeConstructor = fn(Vec<SharedNodeContainer>) -> DynFuture<'static, TypeErasedBox<'static>>;
-
-#[derive(Clone)]
-pub struct NodeContainer {
-	#[cfg(feature = "dealloc_nodes")]
-	pub node: *const TypeErasedNode<'static>,
-	#[cfg(not(feature = "dealloc_nodes"))]
-	pub node: TypeErasedRef<'static>,
-}
-
-impl Deref for NodeContainer {
-	type Target = TypeErasedNode<'static>;
-
-	#[cfg(feature = "dealloc_nodes")]
-	fn deref(&self) -> &Self::Target {
-		unsafe { &*(self.node) }
-		#[cfg(not(feature = "dealloc_nodes"))]
-		self.node
-	}
-	#[cfg(not(feature = "dealloc_nodes"))]
-	fn deref(&self) -> &Self::Target {
-		self.node
-	}
-}
-
-/// #Safety
-/// Marks NodeContainer as Sync. This disallows the use of threadlocal storage for nodes as this would invalidate references to them.
-// TODO: implement this on a higher level wrapper to avoid misuse
-#[cfg(feature = "dealloc_nodes")]
-unsafe impl Send for NodeContainer {}
-#[cfg(feature = "dealloc_nodes")]
-unsafe impl Sync for NodeContainer {}
-
-#[cfg(feature = "dealloc_nodes")]
-impl Drop for NodeContainer {
-	fn drop(&mut self) {
-		unsafe { self.dealloc_unchecked() }
-	}
-}
-
-impl core::fmt::Debug for NodeContainer {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("NodeContainer").finish()
-	}
-}
-
-impl NodeContainer {
-	pub fn new(node: TypeErasedBox<'static>) -> SharedNodeContainer {
-		let node = Box::leak(node);
-		Self { node }.into()
-	}
-
-	#[cfg(feature = "dealloc_nodes")]
-	unsafe fn dealloc_unchecked(&mut self) {
-		std::mem::drop(Box::from_raw(self.node as *mut TypeErasedNode));
-	}
-}
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Default, PartialEq, Clone, Hash, Eq)]
@@ -487,7 +405,7 @@ impl ProtoNetwork {
 				self.nodes.push((
 					compose_node_id,
 					ProtoNode {
-						identifier: ProtoNodeIdentifier::new("graphene_core::structural::ComposeNode<_, _, _>"),
+						identifier: ProtoNodeIdentifier::new("graphene_core::structural::ComposeNode"),
 						construction_args: ConstructionArgs::Nodes(vec![(input_node_id, false), (node_id, true)]),
 						input,
 						original_location: OriginalLocation { path, ..Default::default() },
@@ -689,7 +607,7 @@ impl core::fmt::Debug for GraphError {
 pub type GraphErrors = Vec<GraphError>;
 
 /// The `TypingContext` is used to store the types of the nodes indexed by their stable node id.
-#[derive(Default, Clone)]
+#[derive(Default, Clone, dyn_any::DynAny)]
 pub struct TypingContext {
 	lookup: Cow<'static, HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>>,
 	inferred: HashMap<NodeId, NodeIOTypes>,
@@ -855,12 +773,32 @@ impl TypingContext {
 				Err(vec![GraphError::new(node, GraphErrorType::InvalidImplementations { parameters, error_inputs })])
 			}
 			[(org_nio, output)] => {
+				// TODO: Fix unsoundness caused by generic parameters not getting cleaned up
 				let node_io = NodeIOTypes::new(input, (*output).clone(), parameters);
 
 				// Save the inferred type
 				self.inferred.insert(node_id, node_io.clone());
 				self.constructor.insert(node_id, impls[org_nio]);
 				Ok(node_io)
+			}
+			// If two types are available and one of them accepts () an input, always choose that one
+			[first, second] => {
+				if first.0.input != second.0.input {
+					for (org_nio, output) in [first, second] {
+						if org_nio.input != concrete!(()) {
+							continue;
+						}
+						let node_io = NodeIOTypes::new(input, (*output).clone(), parameters);
+
+						// Save the inferred type
+						self.inferred.insert(node_id, node_io.clone());
+						self.constructor.insert(node_id, impls[org_nio]);
+						return Ok(node_io);
+					}
+				}
+				let parameters = [&input].into_iter().chain(&parameters).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
+				let valid = valid_output_types.into_iter().cloned().collect();
+				Err(vec![GraphError::new(node, GraphErrorType::MultipleImplementations { parameters, valid })])
 			}
 
 			_ => {
@@ -977,9 +915,9 @@ mod test {
 				NodeId(12083027370457564588),
 				NodeId(10127202135369428481),
 				NodeId(3781642984881236270),
-				NodeId(9447822059040146367),
-				NodeId(15916837829094140504),
-				NodeId(1758919868423328454)
+				NodeId(12160249450476233602),
+				NodeId(17962581471057044127),
+				NodeId(7906594012485169109)
 			]
 		);
 	}

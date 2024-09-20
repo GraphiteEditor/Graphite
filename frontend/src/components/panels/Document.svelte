@@ -461,6 +461,7 @@
 		<LayoutCol class="table">
 			{#if rulersVisible}
 				<LayoutRow class="ruler-or-scrollbar top-ruler">
+					<LayoutCol class="ruler-corner"></LayoutCol>
 					<RulerInput origin={rulerOrigin.x} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Horizontal" bind:this={rulerHorizontal} />
 				</LayoutRow>
 			{/if}
@@ -653,8 +654,23 @@
 					flex: 0 0 auto;
 				}
 
+				.ruler-corner {
+					background: var(--color-2-mildblack);
+					width: 16px;
+					position: relative;
+
+					&::after {
+						content: "";
+						background: var(--color-5-dullgray);
+						position: absolute;
+						width: 1px;
+						height: 1px;
+						right: 0;
+						bottom: 0;
+					}
+				}
+
 				.top-ruler .ruler-input {
-					padding-left: 16px;
 					margin-right: 16px;
 				}
 

@@ -15,6 +15,14 @@ proc-macro = true
 
 [dependencies]
 # Workspace dependencies
-syn = { workspace = true }
+syn = { workspace = true, features = ["extra-traits", "full", "printing", "parsing", "clone-impls", "proc-macro", "visit-mut"] }
 proc-macro2 = { workspace = true }
 quote = { workspace = true }
+convert_case = { workspace = true }
+
+indoc = "2.0.5"
+proc-macro-crate = "3.1.0"
+
+[dev-dependencies]
+graphene-core = { workspace = true }
+

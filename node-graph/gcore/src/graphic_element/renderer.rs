@@ -4,24 +4,26 @@ pub use quad::Quad;
 pub use rect::Rect;
 
 use crate::raster::{BlendMode, Image, ImageFrame};
-use crate::transform::Transform;
-use crate::uuid::generate_uuid;
+use crate::transform::{Footprint, Transform};
+use crate::uuid::{generate_uuid, NodeId};
 use crate::vector::style::{Fill, Stroke, ViewMode};
 use crate::vector::PointId;
 use crate::Raster;
 use crate::{vector::VectorData, Artboard, Color, GraphicElement, GraphicGroup};
 
 use bezier_rs::Subpath;
+use dyn_any::DynAny;
 
 use base64::Engine;
 use glam::{DAffine2, DVec2};
 use num_traits::Zero;
+use std::collections::HashMap;
 use std::fmt::Write;
 #[cfg(feature = "vello")]
 use vello::*;
 
 /// Represents a clickable target for the layer
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClickTarget {
 	subpath: bezier_rs::Subpath<PointId>,
 	stroke_width: f64,
@@ -268,16 +270,35 @@ pub fn to_transform(transform: DAffine2) -> usvg::Transform {
 	usvg::Transform::from_row(cols[0] as f32, cols[1] as f32, cols[2] as f32, cols[3] as f32, cols[4] as f32, cols[5] as f32)
 }
 
+#[derive(Debug, Clone, PartialEq, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct RenderMetadata {
+	pub footprints: HashMap<NodeId, (Footprint, DAffine2)>,
+	pub click_targets: HashMap<NodeId, Vec<ClickTarget>>,
+	pub vector_data: HashMap<NodeId, VectorData>,
+}
+
 pub trait GraphicElementRendered {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
+
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]>;
-	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>);
+
+	// The upstream click targets for each layer are collected during the render so that they do not have to be calculated for each click detection
+	fn add_upstream_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
+
+	// TODO: Store all click targets in a vec which contains the AABB, click target, and path
+	// fn add_click_targets(&self, click_targets: &mut Vec<([DVec2; 2], ClickTarget, Vec<NodeId>)>, current_path: Option<NodeId>) {}
+
+	// Recursively iterate over data in the render (including groups upstream from vector data in the case of a boolean operation) to collect the footprints, click targets, and vector modify
+	fn collect_metadata(&self, _metadata: &mut RenderMetadata, _footprint: Footprint, _element_id: Option<NodeId>) {}
+
 	#[cfg(feature = "vello")]
 	fn to_vello_scene(&self, transform: DAffine2, context: &mut RenderContext) -> Scene {
 		let mut scene = vello::Scene::new();
 		self.render_to_vello(&mut scene, transform, context);
 		scene
 	}
+
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2, _render_condext: &mut RenderContext) {}
 
@@ -305,7 +326,7 @@ impl GraphicElementRendered for GraphicGroup {
 				}
 			},
 			|render| {
-				for element in self.iter() {
+				for (element, _) in self.iter() {
 					element.render_svg(render, render_params);
 				}
 			},
@@ -313,16 +334,35 @@ impl GraphicElementRendered for GraphicGroup {
 	}
 
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.iter().filter_map(|element| element.bounding_box(transform * self.transform)).reduce(Quad::combine_bounds)
+		self.iter().filter_map(|(element, _)| element.bounding_box(transform * self.transform)).reduce(Quad::combine_bounds)
 	}
 
-	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		for element in self.elements.iter() {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
+		footprint.transform *= self.transform;
+
+		for (element, element_id) in self.elements.iter() {
+			if let Some(element_id) = element_id {
+				element.collect_metadata(metadata, footprint, Some(*element_id));
+			}
+		}
+
+		if let Some(graphic_group_id) = element_id {
+			let mut all_upstream_click_targets = Vec::new();
+			self.add_upstream_click_targets(&mut all_upstream_click_targets);
+			metadata.click_targets.insert(graphic_group_id, all_upstream_click_targets);
+		}
+	}
+
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+		for (element, _) in self.elements.iter() {
 			let mut new_click_targets = Vec::new();
-			element.add_click_targets(&mut new_click_targets);
+
+			element.add_upstream_click_targets(&mut new_click_targets);
+
 			for click_target in new_click_targets.iter_mut() {
 				click_target.apply_transform(element.transform())
 			}
+
 			click_targets.extend(new_click_targets);
 		}
 	}
@@ -344,36 +384,45 @@ impl GraphicElementRendered for GraphicGroup {
 				&vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y),
 			);
 		}
-		for element in self.iter() {
+
+		for (element, _) in self.iter() {
 			element.render_to_vello(scene, child_transform, context);
 		}
+
 		if layer {
 			scene.pop_layer();
 		}
 	}
 
 	fn contains_artboard(&self) -> bool {
-		self.iter().any(|element| element.contains_artboard())
+		self.iter().any(|(element, _)| element.contains_artboard())
 	}
 }
 
 impl GraphicElementRendered for VectorData {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let multiplied_transform = render.transform * self.transform;
+		let set_stroke_transform = self.style.stroke().map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
+		let applied_stroke_transform = set_stroke_transform.unwrap_or(self.transform);
+		let element_transform = set_stroke_transform.map(|stroke_transform| multiplied_transform * stroke_transform.inverse());
+		let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
 		let layer_bounds = self.bounding_box().unwrap_or_default();
-		let transformed_bounds = self.bounding_box_with_transform(multiplied_transform).unwrap_or_default();
+		let transformed_bounds = self.bounding_box_with_transform(applied_stroke_transform).unwrap_or_default();
 
 		let mut path = String::new();
 		for subpath in self.stroke_bezier_paths() {
-			let _ = subpath.subpath_to_svg(&mut path, multiplied_transform);
+			let _ = subpath.subpath_to_svg(&mut path, applied_stroke_transform);
 		}
 
 		render.leaf_tag("path", |attributes| {
 			attributes.push("d", path);
+			let matrix = format_transform_matrix(element_transform);
+			attributes.push("transform", matrix);
 
+			let defs = &mut attributes.0.svg_defs;
 			let fill_and_stroke = self
 				.style
-				.render(render_params.view_mode, &mut attributes.0.svg_defs, multiplied_transform, layer_bounds, transformed_bounds);
+				.render(render_params.view_mode, defs, element_transform, applied_stroke_transform, layer_bounds, transformed_bounds);
 			attributes.push_val(fill_and_stroke);
 
 			if self.alpha_blending.opacity < 1. {
@@ -395,7 +444,29 @@ impl GraphicElementRendered for VectorData {
 		self.bounding_box_with_transform(transform * self.transform).map(|[a, b]| [a - offset, b + offset])
 	}
 
-	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
+		if let Some(element_id) = element_id {
+			let stroke_width = self.style.stroke().as_ref().map_or(0., Stroke::weight);
+			let filled = self.style.fill() != &Fill::None;
+			let fill = |mut subpath: bezier_rs::Subpath<_>| {
+				if filled {
+					subpath.set_closed(true);
+				}
+				subpath
+			};
+			metadata
+				.click_targets
+				.insert(element_id, self.stroke_bezier_paths().map(fill).map(|subpath| ClickTarget::new(subpath, stroke_width)).collect());
+			metadata.vector_data.insert(element_id, self.clone());
+		}
+
+		if let Some(upstream_graphic_group) = &self.upstream_graphic_group {
+			footprint.transform *= self.transform;
+			upstream_graphic_group.collect_metadata(metadata, footprint, None);
+		}
+	}
+
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let stroke_width = self.style.stroke().as_ref().map_or(0., Stroke::weight);
 		let filled = self.style.fill() != &Fill::None;
 		let fill = |mut subpath: bezier_rs::Subpath<_>| {
@@ -411,31 +482,31 @@ impl GraphicElementRendered for VectorData {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext) {
 		use crate::vector::style::GradientType;
 		use vello::peniko;
-
-		let transformed_bounds = GraphicElementRendered::bounding_box(self, transform).unwrap_or_default();
 		let mut layer = false;
+		let stroke_transform = self.style.stroke().map_or(DAffine2::IDENTITY, |stroke| stroke.transform);
+		let path_transform = (transform * self.transform) * stroke_transform.inverse();
+		let transformed_bounds = GraphicElementRendered::bounding_box(self, path_transform).unwrap_or_default();
 
 		if self.alpha_blending.opacity < 1. || self.alpha_blending.blend_mode != BlendMode::default() {
 			layer = true;
 			scene.push_layer(
 				peniko::BlendMode::new(self.alpha_blending.blend_mode.into(), peniko::Compose::SrcOver),
 				self.alpha_blending.opacity,
-				kurbo::Affine::IDENTITY,
+				kurbo::Affine::new((path_transform).to_cols_array()),
 				&kurbo::Rect::new(transformed_bounds[0].x, transformed_bounds[0].y, transformed_bounds[1].x, transformed_bounds[1].y),
 			);
 		}
 
-		let kurbo_transform = kurbo::Affine::new(transform.to_cols_array());
 		let to_point = |p: DVec2| kurbo::Point::new(p.x, p.y);
 		let mut path = kurbo::BezPath::new();
 		for subpath in self.stroke_bezier_paths() {
-			subpath.to_vello_path(self.transform, &mut path);
+			subpath.to_vello_path(stroke_transform, &mut path);
 		}
 
 		match self.style.fill() {
 			Fill::Solid(color) => {
 				let fill = peniko::Brush::Solid(peniko::Color::rgba(color.r() as f64, color.g() as f64, color.b() as f64, color.a() as f64));
-				scene.fill(peniko::Fill::NonZero, kurbo_transform, &fill, None, &path);
+				scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(path_transform.to_cols_array()), &fill, None, &path);
 			}
 			Fill::Gradient(gradient) => {
 				let mut stops = peniko::ColorStops::new();
@@ -472,7 +543,7 @@ impl GraphicElementRendered for VectorData {
 					stops,
 					..Default::default()
 				});
-				scene.fill(peniko::Fill::NonZero, kurbo_transform, &fill, None, &path);
+				scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(path_transform.to_cols_array()), &fill, None, &path);
 			}
 			Fill::None => (),
 		};
@@ -504,7 +575,7 @@ impl GraphicElementRendered for VectorData {
 				dash_offset: stroke.dash_offset,
 			};
 			if stroke.width > 0. {
-				scene.stroke(&stroke, kurbo_transform, color, None, &path);
+				scene.stroke(&stroke, kurbo::Affine::new(path_transform.to_cols_array()), color, None, &path);
 			}
 		}
 		if layer {
@@ -551,21 +622,13 @@ impl GraphicElementRendered for Artboard {
 			"g",
 			// Group tag attributes
 			|attributes| {
-				let matrix = format_transform_matrix(DAffine2::from_translation(self.location.as_dvec2()) * self.graphic_group.transform);
-				if !matrix.is_empty() {
-					attributes.push("transform", matrix);
-				}
-
 				if self.clip {
 					let id = format!("artboard-{}", generate_uuid());
 					let selector = format!("url(#{id})");
 
-					let matrix = format_transform_matrix(self.graphic_group.transform.inverse());
-					let transform = if matrix.is_empty() { String::new() } else { format!(r#" transform="{matrix}""#) };
-
 					write!(
 						&mut attributes.0.svg_defs,
-						r##"<clipPath id="{id}"><rect x="0" y="0" width="{}" height="{}"{transform} /></clipPath>"##,
+						r##"<clipPath id="{id}"><rect x="0" y="0" width="{}" height="{}" /></clipPath>"##,
 						self.dimensions.x, self.dimensions.y
 					)
 					.unwrap();
@@ -574,9 +637,7 @@ impl GraphicElementRendered for Artboard {
 			},
 			// Artboard contents
 			|render| {
-				for element in self.graphic_group.iter() {
-					element.render_svg(render, render_params);
-				}
+				self.graphic_group.render_svg(render, render_params);
 			},
 		);
 	}
@@ -590,13 +651,33 @@ impl GraphicElementRendered for Artboard {
 		}
 	}
 
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
+		if let Some(element_id) = element_id {
+			let subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
+			metadata.click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
+			metadata.footprints.insert(element_id, (footprint, DAffine2::from_translation(self.location.as_dvec2())));
+		}
+
+		self.graphic_group.collect_metadata(metadata, footprint, None);
+	}
+
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+		let mut subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
+
+		if self.graphic_group.transform.matrix2.determinant() != 0. {
+			subpath.apply_transform(self.graphic_group.transform.inverse());
+			click_targets.push(ClickTarget::new(subpath, 0.));
+		}
+	}
+
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
 		use vello::peniko;
 
 		// Render background
 		let color = peniko::Color::rgba(self.background.r() as f64, self.background.g() as f64, self.background.b() as f64, self.background.a() as f64);
-		let rect = kurbo::Rect::new(self.location.x as f64, self.location.y as f64, self.dimensions.x as f64, self.dimensions.y as f64);
+		let [a, b] = [self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()];
+		let rect = kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
 		let blend_mode = peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcOver);
 
 		scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
@@ -606,16 +687,11 @@ impl GraphicElementRendered for Artboard {
 		if self.clip {
 			scene.push_layer(blend_mode, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
 		}
-		self.graphic_group.render_to_vello(scene, transform, context);
+		let child_transform = transform * DAffine2::from_translation(self.location.as_dvec2()) * self.graphic_group.transform;
+		self.graphic_group.render_to_vello(scene, child_transform, context);
 		if self.clip {
 			scene.pop_layer();
 		}
-	}
-
-	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		let mut subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
-		subpath.apply_transform(self.graphic_group.transform.inverse());
-		click_targets.push(ClickTarget::new(subpath, 0.));
 	}
 
 	fn contains_artboard(&self) -> bool {
@@ -625,24 +701,30 @@ impl GraphicElementRendered for Artboard {
 
 impl GraphicElementRendered for crate::ArtboardGroup {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		for artboard in &self.artboards {
+		for (artboard, _) in &self.artboards {
 			artboard.render_svg(render, render_params);
 		}
 	}
 
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.artboards.iter().filter_map(|element| element.bounding_box(transform)).reduce(Quad::combine_bounds)
+		self.artboards.iter().filter_map(|(element, _)| element.bounding_box(transform)).reduce(Quad::combine_bounds)
 	}
 
-	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		for artboard in &self.artboards {
-			artboard.add_click_targets(click_targets);
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>) {
+		for (artboard, element_id) in &self.artboards {
+			artboard.collect_metadata(metadata, footprint, *element_id);
+		}
+	}
+
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+		for (artboard, _) in &self.artboards {
+			artboard.add_upstream_click_targets(click_targets);
 		}
 	}
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
-		for artboard in &self.artboards {
+		for (artboard, _) in &self.artboards {
 			artboard.render_to_vello(scene, transform, context)
 		}
 	}
@@ -693,7 +775,15 @@ impl GraphicElementRendered for ImageFrame<Color> {
 		(transform.matrix2 != glam::DMat2::ZERO).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
 	}
 
-	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
+		let Some(element_id) = element_id else { return };
+		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+
+		metadata.click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
+		metadata.footprints.insert(element_id, (footprint, self.transform));
+	}
+
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 		click_targets.push(ClickTarget::new(subpath, 0.));
 	}
@@ -763,7 +853,15 @@ impl GraphicElementRendered for Raster {
 		(transform.matrix2 != glam::DMat2::ZERO).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
 	}
 
-	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
+		let Some(element_id) = element_id else { return };
+
+		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+		metadata.click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
+		metadata.footprints.insert(element_id, (footprint, self.transform()));
+	}
+
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 		click_targets.push(ClickTarget::new(subpath, 0.));
 	}
@@ -825,11 +923,23 @@ impl GraphicElementRendered for GraphicElement {
 		}
 	}
 
-	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
+		if let Some(element_id) = element_id {
+			metadata.footprints.insert(element_id, (footprint, self.transform()));
+		}
+
 		match self {
-			GraphicElement::VectorData(vector_data) => vector_data.add_click_targets(click_targets),
-			GraphicElement::Raster(raster) => raster.add_click_targets(click_targets),
-			GraphicElement::GraphicGroup(graphic_group) => graphic_group.add_click_targets(click_targets),
+			GraphicElement::VectorData(vector_data) => vector_data.collect_metadata(metadata, footprint, element_id),
+			GraphicElement::Raster(raster) => raster.collect_metadata(metadata, footprint, element_id),
+			GraphicElement::GraphicGroup(graphic_group) => graphic_group.collect_metadata(metadata, footprint, element_id),
+		}
+	}
+
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+		match self {
+			GraphicElement::VectorData(vector_data) => vector_data.add_upstream_click_targets(click_targets),
+			GraphicElement::Raster(raster) => raster.add_upstream_click_targets(click_targets),
+			GraphicElement::GraphicGroup(graphic_group) => graphic_group.add_upstream_click_targets(click_targets),
 		}
 	}
 
@@ -873,8 +983,6 @@ impl<T: Primitive> GraphicElementRendered for T {
 	fn bounding_box(&self, _transform: DAffine2) -> Option<[DVec2; 2]> {
 		None
 	}
-
-	fn add_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
 }
 
 impl GraphicElementRendered for Option<Color> {
@@ -900,8 +1008,6 @@ impl GraphicElementRendered for Option<Color> {
 	fn bounding_box(&self, _transform: DAffine2) -> Option<[DVec2; 2]> {
 		None
 	}
-
-	fn add_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
 }
 
 impl GraphicElementRendered for Vec<Color> {
@@ -923,8 +1029,6 @@ impl GraphicElementRendered for Vec<Color> {
 	fn bounding_box(&self, _transform: DAffine2) -> Option<[DVec2; 2]> {
 		None
 	}
-
-	fn add_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
 }
 
 /// A segment of an svg string to allow for embedding blob urls

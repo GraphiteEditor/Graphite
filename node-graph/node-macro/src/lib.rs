@@ -6,6 +6,9 @@ use syn::{
 	PathSegment, PredicateType, ReturnType, Token, TraitBound, Type, TypeImplTrait, TypeParam, TypeParamBound, TypeTuple, WhereClause, WherePredicate,
 };
 
+mod codegen;
+mod parsing;
+
 /// A macro used to construct a proto node implementation from the given struct and the decorated function.
 ///
 /// This works by generating two `impl` blocks for the given struct:
@@ -86,7 +89,7 @@ use syn::{
 ///   
 ///   When a `let` declaration is generated automatically, this is called **automatic composition**. When opting out, this is called **manual composition**.
 #[proc_macro_attribute]
-pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn old_node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 	// Performs the `node_impl` macro's functionality of attaching an `impl Node for TheGivenStruct` block to the node struct
 	let node_impl = node_impl_proxy(attr.clone(), item.clone());
 
@@ -99,15 +102,21 @@ pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 	new_constructor
 }
 
+#[proc_macro_attribute]
+pub fn node(attr: TokenStream, item: TokenStream) -> TokenStream {
+	// Performs the `node_impl` macro's functionality of attaching an `impl Node for TheGivenStruct` block to the node struct
+	parsing::new_node_fn(attr.into(), item.into()).into()
+}
+
 /// Attaches an `impl TheGivenStruct` block to the node struct, containing a `new` constructor method. This is almost always called by the combined [`node_fn`] macro instead of using this one, however it can be used separately if needed. See that macro's documentation for more information.
 #[proc_macro_attribute]
-pub fn node_new(attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn old_node_new(attr: TokenStream, item: TokenStream) -> TokenStream {
 	node_new_impl(attr, item)
 }
 
 /// Attaches an `impl Node for TheGivenStruct` block to the node struct, containing an implementation of the node's `eval` method for a certain type signature. This can be called with multiple separate functions each having different type signatures. The [`node_fn`] macro calls this macro as well as defining a `new` constructor method on the node struct, which is a necessary part of defining a proto node; therefore you will most likely call that macro on the first decorated function and this macro on any additional decorated functions to provide additional type signatures for the proto node. See that macro's documentation for more information.
 #[proc_macro_attribute]
-pub fn node_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn old_node_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 	node_impl_proxy(attr, item)
 }
 

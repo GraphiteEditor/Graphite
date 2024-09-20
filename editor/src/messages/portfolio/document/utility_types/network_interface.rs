@@ -11,6 +11,7 @@ use bezier_rs::Subpath;
 use graph_craft::document::{value::TaggedValue, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graph_craft::{concrete, Type};
 use graphene_std::renderer::{ClickTarget, Quad};
+use graphene_std::transform::Footprint;
 use graphene_std::vector::{PointId, VectorData, VectorModificationType};
 use interpreted_executor::{dynamic_executor::ResolvedDocumentNodeTypes, node_registry::NODE_REGISTRY};
 
@@ -425,12 +426,12 @@ impl NodeNetworkInterface {
 					};
 				} else {
 					// Disconnect node input if it is not connected to another node in new_ids
-					let tagged_value = TaggedValue::from_type(&self.input_type(&InputConnector::node(*node_id, input_index), network_path).0);
+					let tagged_value = TaggedValue::from_type_or_none(&self.input_type(&InputConnector::node(*node_id, input_index), network_path).0);
 					*input = NodeInput::value(tagged_value, true);
 				}
 			} else if let &mut NodeInput::Network { .. } = input {
 				// Always disconnect network node input
-				let tagged_value = TaggedValue::from_type(&self.input_type(&InputConnector::node(*node_id, input_index), network_path).0);
+				let tagged_value = TaggedValue::from_type_or_none(&self.input_type(&InputConnector::node(*node_id, input_index), network_path).0);
 				*input = NodeInput::value(tagged_value, true);
 			}
 		}
@@ -489,11 +490,11 @@ impl NodeNetworkInterface {
 		if let Some(value) = node.inputs.get(input_index).and_then(|input| input.as_value()) {
 			return Some((value.ty(), TypeSource::TaggedValue));
 		}
-		let node_id_path = [network_path, &[node_id]].concat().clone();
+		let node_id_path = [network_path, &[node_id]].concat();
 		match &node.implementation {
 			DocumentNodeImplementation::Network(_nested_network) => {
 				// Attempt to resolve where this import is within the nested network (it may be connected to the node or directly to an export)
-				let outwards_wires = self.outward_wires(network_path);
+				let outwards_wires = self.outward_wires(&node_id_path);
 				let inputs_using_import = outwards_wires.and_then(|outwards_wires| outwards_wires.get(&OutputConnector::Import(input_index)));
 				let first_input = inputs_using_import.and_then(|input| input.first()).copied();
 
@@ -542,6 +543,7 @@ impl NodeNetworkInterface {
 			return (concrete!(()), TypeSource::Error("node id not in network"));
 		};
 
+		let node_id_path = [network_path.as_slice(), &[node_id]].concat();
 		match &node.implementation {
 			DocumentNodeImplementation::ProtoNode(protonode) => {
 				let Some(node_types) = random_protonode_implementation(protonode) else {
@@ -559,7 +561,7 @@ impl NodeNetworkInterface {
 			}
 			DocumentNodeImplementation::Network(_network) => {
 				// Attempt to resolve where this import is within the nested network
-				let outwards_wires = self.outward_wires(network_path);
+				let outwards_wires = self.outward_wires(&node_id_path);
 				let inputs_using_import = outwards_wires.and_then(|outwards_wires| outwards_wires.get(&OutputConnector::Import(input_index)));
 				let first_input = inputs_using_import.and_then(|input| input.first()).copied();
 
@@ -1443,7 +1445,12 @@ impl NodeNetworkInterface {
 
 /// Gets the type for a random protonode implementation (used if there is no type from the compiled network)
 fn random_protonode_implementation(protonode: &graph_craft::ProtoNodeIdentifier) -> Option<&graphene_std::NodeIOTypes> {
-	let Some(node_io_hashmap) = NODE_REGISTRY.get(protonode) else {
+	let mut protonode = protonode.clone();
+	// TODO: Remove
+	if let Some((path, _generics)) = protonode.name.split_once('<') {
+		protonode = path.to_string().to_string().into();
+	}
+	let Some(node_io_hashmap) = NODE_REGISTRY.get(&protonode) else {
 		log::error!("Could not get hashmap for proto node: {protonode:?}");
 		return None;
 	};
@@ -2326,7 +2333,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested node_metadata in position_from_downstream_node");
 			return None;
 		};
-		match &node_metadata.persistent_metadata.node_type_metadata.clone() {
+		match &node_metadata.persistent_metadata.node_type_metadata {
 			NodeTypePersistentMetadata::Layer(layer_metadata) => {
 				match layer_metadata.position {
 					LayerPosition::Absolute(position) => Some(position),
@@ -2549,8 +2556,7 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn set_document_to_viewport_transform(&mut self, transform: DAffine2) {
-		let document_metadata = self.document_metadata_mut();
-		document_metadata.document_to_viewport = transform;
+		self.document_metadata.document_to_viewport = transform;
 	}
 
 	pub fn is_eligible_to_be_layer(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
@@ -2881,7 +2887,7 @@ impl NodeNetworkInterface {
 			}
 
 			for (parent, child) in children {
-				parent.push_child(self.document_metadata_mut(), child);
+				parent.push_child(&mut self.document_metadata, child);
 			}
 
 			while let Some((primary_root_node_id, parent_layer_node)) = awaiting_primary_flow.pop() {
@@ -2901,7 +2907,7 @@ impl NodeNetworkInterface {
 					}
 				}
 				for child in children {
-					parent_layer_node.push_child(self.document_metadata_mut(), child);
+					parent_layer_node.push_child(&mut self.document_metadata, child);
 				}
 			}
 		}
@@ -2913,8 +2919,19 @@ impl NodeNetworkInterface {
 		self.document_metadata.click_targets.retain(|layer, _| self.document_metadata.structure.contains_key(layer));
 	}
 
-	pub fn document_metadata_mut(&mut self) -> &mut DocumentMetadata {
-		&mut self.document_metadata
+	/// Update the cached transforms of the layers
+	pub fn update_transforms(&mut self, new_upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>) {
+		self.document_metadata.upstream_transforms = new_upstream_transforms;
+	}
+
+	/// Update the cached click targets of the layers
+	pub fn update_click_targets(&mut self, new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>) {
+		self.document_metadata.click_targets = new_click_targets;
+	}
+
+	/// Update the vector modify of the layers
+	pub fn update_vector_modify(&mut self, new_vector_modify: HashMap<NodeId, VectorData>) {
+		self.document_metadata.vector_modify = new_vector_modify;
 	}
 }
 
@@ -3082,7 +3099,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
-	pub fn set_implementation(&mut self, node_id: &NodeId, network_path: &[NodeId], implementation: DocumentNodeImplementation) {
+	pub fn replace_implementation(&mut self, node_id: &NodeId, network_path: &[NodeId], implementation: DocumentNodeImplementation) {
 		let Some(network) = self.network_mut(network_path) else {
 			log::error!("Could not get nested network in set_implementation");
 			return;
@@ -3092,6 +3109,33 @@ impl NodeNetworkInterface {
 			return;
 		};
 		node.implementation = implementation;
+	}
+
+	// TODO: Eventually remove this (probably starting late 2024)
+	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
+	pub fn replace_implementation_metadata(&mut self, node_id: &NodeId, network_path: &[NodeId], metadata: DocumentNodePersistentMetadata) {
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+			log::error!("Could not get network metdata in set implementation");
+			return;
+		};
+		let Some(node_metadata) = network_metadata.persistent_metadata.node_metadata.get_mut(node_id) else {
+			log::error!("Could not get persistent node metadata for node {node_id} in set implementation");
+			return;
+		};
+		node_metadata.persistent_metadata.network_metadata = metadata.network_metadata;
+	}
+
+	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
+	pub fn set_manual_compostion(&mut self, node_id: &NodeId, network_path: &[NodeId], manual_composition: Option<Type>) {
+		let Some(network) = self.network_mut(network_path) else {
+			log::error!("Could not get nested network in set_implementation");
+			return;
+		};
+		let Some(node) = network.nodes.get_mut(node_id) else {
+			log::error!("Could not get node in set_implementation");
+			return;
+		};
+		node.manual_composition = manual_composition;
 	}
 
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
@@ -3360,7 +3404,7 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		let tagged_value = TaggedValue::from_type(&self.input_type(input_connector, network_path).0);
+		let tagged_value = TaggedValue::from_type_or_none(&self.input_type(input_connector, network_path).0);
 
 		let value_input = NodeInput::value(tagged_value, true);
 

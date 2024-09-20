@@ -1,9 +1,11 @@
+use graph_craft::document::NodeNetwork;
 #[cfg(any(feature = "criterion", feature = "iai"))]
-use graph_craft::{document::NodeNetwork, graphene_compiler::Compiler, proto::ProtoNetwork};
+use graph_craft::graphene_compiler::Compiler;
+#[cfg(any(feature = "criterion", feature = "iai"))]
+use graph_craft::proto::ProtoNetwork;
 
 #[cfg(feature = "criterion")]
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-
 #[cfg(all(not(feature = "criterion"), feature = "iai"))]
 use iai_callgrind::{black_box, library_benchmark, library_benchmark_group, main};
 
@@ -18,7 +20,6 @@ fn compile(network: NodeNetwork) -> ProtoNetwork {
 	let compiler = Compiler {};
 	compiler.compile_single(network).unwrap()
 }
-
 #[cfg(all(not(feature = "criterion"), feature = "iai"))]
 fn load_from_name(name: &str) -> NodeNetwork {
 	let content = std::fs::read(&format!("../../demo-artwork/{name}.graphite")).expect("failed to read file");
@@ -27,7 +28,6 @@ fn load_from_name(name: &str) -> NodeNetwork {
 	black_box(compile(black_box(network)));
 	load_network(content)
 }
-
 #[cfg(feature = "criterion")]
 fn compile_to_proto(c: &mut Criterion) {
 	let artworks = glob::glob("../../demo-artwork/*.graphite").expect("failed to read glob pattern");
@@ -44,17 +44,15 @@ fn compile_to_proto(c: &mut Criterion) {
 #[cfg_attr(all(feature = "iai", not(feature="criterion")), benches::with_setup(args = ["isometric-fountain", "painted-dreams", "procedural-string-lights", "red-dress", "valley-of-spires"], setup = load_from_name))]
 // Note that this can not be disabled with a `#[cfg(...)]` because this causes a compile error.
 // Therefore negated condition is used in `#[cfg_attr(...)]` with the attribute `cfg(any())` that is always false.
-#[cfg_attr(any(feature = "criterion", not(feature = "iai")), cfg(any()))]
-pub fn iai_compile_to_proto(input: graph_craft::document::NodeNetwork) {
-	black_box(compile(input));
+pub fn iai_compile_to_proto(_input: NodeNetwork) {
+	#[cfg(all(feature = "iai", not(feature = "criterion")))]
+	black_box(compile(_input));
 }
 
 #[cfg(feature = "criterion")]
 criterion_group!(benches, compile_to_proto);
-
 #[cfg(feature = "criterion")]
 criterion_main!(benches);
-
 #[cfg(all(not(feature = "criterion"), feature = "iai"))]
 library_benchmark_group!(name = compile_group; benchmarks = iai_compile_to_proto);
 

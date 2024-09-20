@@ -1,11 +1,11 @@
 use crate::application_io::TextureFrame;
 use crate::raster::{BlendMode, ImageFrame};
-use crate::transform::{Footprint, Transform, TransformMut};
+use crate::transform::{ApplyTransform, Footprint, Transform, TransformMut};
+use crate::uuid::NodeId;
 use crate::vector::VectorData;
-use crate::{Color, Node};
+use crate::Color;
 
-use dyn_any::{DynAny, StaticType};
-use node_macro::node_fn;
+use dyn_any::DynAny;
 
 use core::ops::{Deref, DerefMut};
 use glam::{DAffine2, IVec2};
@@ -42,7 +42,7 @@ impl AlphaBlending {
 #[derive(Clone, Debug, PartialEq, DynAny, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GraphicGroup {
-	elements: Vec<GraphicElement>,
+	elements: Vec<(GraphicElement, Option<NodeId>)>,
 	pub transform: DAffine2,
 	pub alpha_blending: AlphaBlending,
 }
@@ -64,7 +64,7 @@ impl GraphicGroup {
 
 	pub fn new(elements: Vec<GraphicElement>) -> Self {
 		Self {
-			elements,
+			elements: elements.into_iter().map(|element| (element, None)).collect(),
 			transform: DAffine2::IDENTITY,
 			alpha_blending: AlphaBlending::new(),
 		}
@@ -216,7 +216,7 @@ impl Artboard {
 #[derive(Clone, Default, Debug, Hash, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ArtboardGroup {
-	pub artboards: Vec<Artboard>,
+	pub artboards: Vec<(Artboard, Option<NodeId>)>,
 }
 
 impl ArtboardGroup {
@@ -226,63 +226,81 @@ impl ArtboardGroup {
 		Default::default()
 	}
 
-	fn add_artboard(&mut self, artboard: Artboard) {
-		self.artboards.push(artboard);
+	fn append_artboard(&mut self, artboard: Artboard, node_id: Option<NodeId>) {
+		self.artboards.push((artboard, node_id));
 	}
 }
 
-pub struct ConstructLayerNode<Stack, GraphicElement> {
-	stack: Stack,
-	graphic_element: GraphicElement,
-}
-
-#[node_fn(ConstructLayerNode)]
-async fn construct_layer<Data: Into<GraphicElement> + Send>(
-	footprint: crate::transform::Footprint,
-	mut stack: impl Node<crate::transform::Footprint, Output = GraphicGroup>,
-	graphic_element: impl Node<crate::transform::Footprint, Output = Data>,
+#[node_macro::node(category(""))]
+async fn layer<F: 'n + Copy + Send>(
+	#[implementations((), Footprint)] footprint: F,
+	#[implementations(((), GraphicGroup), (Footprint, GraphicGroup))] stack: impl Node<F, Output = GraphicGroup>,
+	#[implementations(((), GraphicElement), (Footprint, GraphicElement))] graphic_element: impl Node<F, Output = GraphicElement>,
+	node_path: Vec<NodeId>,
 ) -> GraphicGroup {
-	let graphic_element = self.graphic_element.eval(footprint).await;
-	let mut stack = self.stack.eval(footprint).await;
-	stack.push(graphic_element.into());
+	let mut element = graphic_element.eval(footprint).await;
+	let mut stack = stack.eval(footprint).await;
+	if stack.transform.matrix2.determinant() != 0. {
+		*element.transform_mut() = stack.transform.inverse() * element.transform();
+	} else {
+		stack.clear();
+		stack.transform = DAffine2::IDENTITY;
+	}
+
+	// Get the penultimate element of the node path, or None if the path is too short
+	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
+	stack.push((element, encapsulating_node_id));
 	stack
 }
 
-pub struct ToGraphicElementNode {}
-
-#[node_fn(ToGraphicElementNode)]
-fn to_graphic_element<Data: Into<GraphicElement>>(data: Data) -> GraphicElement {
-	data.into()
+#[node_macro::node(category("Debug"))]
+async fn to_element<F: 'n + Send, Data: Into<GraphicElement> + 'n>(
+	#[implementations((), (), (), (), Footprint)] footprint: F,
+	#[implementations(
+	 	((), VectorData),
+		((), ImageFrame<Color>),
+	 	((), GraphicGroup),
+	 	((), TextureFrame),
+	 	(Footprint, VectorData),
+		(Footprint, ImageFrame<Color>),
+	 	(Footprint, GraphicGroup),
+	 	(Footprint, TextureFrame),
+	 )]
+	data: impl Node<F, Output = Data>,
+) -> GraphicElement {
+	data.eval(footprint).await.into()
 }
 
-pub struct ToGraphicGroupNode {}
-
-#[node_fn(ToGraphicGroupNode)]
-fn to_graphic_group<Data: Into<GraphicGroup>>(data: Data) -> GraphicGroup {
-	data.into()
+#[node_macro::node(category("General"))]
+async fn to_group<F: 'n + Send, Data: Into<GraphicGroup> + 'n>(
+	#[implementations((), (), (), (), Footprint)] footprint: F,
+	#[implementations(
+		((), VectorData),
+		((), ImageFrame<Color>),
+		((), GraphicGroup),
+		((), TextureFrame),
+		(Footprint, VectorData),
+		(Footprint, ImageFrame<Color>),
+		(Footprint, GraphicGroup),
+		(Footprint, TextureFrame),
+	)]
+	element: impl Node<F, Output = Data>,
+) -> GraphicGroup {
+	element.eval(footprint).await.into()
 }
 
-pub struct ConstructArtboardNode<Contents, Label, Location, Dimensions, Background, Clip> {
-	contents: Contents,
-	label: Label,
-	location: Location,
-	dimensions: Dimensions,
-	background: Background,
-	clip: Clip,
-}
-
-#[node_fn(ConstructArtboardNode)]
-async fn construct_artboard(
-	mut footprint: Footprint,
-	contents: impl Node<Footprint, Output = GraphicGroup>,
+#[node_macro::node(category(""))]
+async fn to_artboard<F: 'n + Copy + Send + ApplyTransform>(
+	#[implementations((), Footprint)] mut footprint: F,
+	#[implementations(((), GraphicGroup), (Footprint, GraphicGroup))] contents: impl Node<F, Output = GraphicGroup>,
 	label: String,
 	location: IVec2,
 	dimensions: IVec2,
 	background: Color,
 	clip: bool,
 ) -> Artboard {
-	footprint.transform *= DAffine2::from_translation(location.as_dvec2());
-	let graphic_group = self.contents.eval(footprint).await;
+	footprint.apply_transform(&DAffine2::from_translation(location.as_dvec2()));
+	let graphic_group = contents.eval(footprint).await;
 
 	Artboard {
 		graphic_group,
@@ -293,17 +311,19 @@ async fn construct_artboard(
 		clip,
 	}
 }
-pub struct AddArtboardNode<ArtboardGroup, Artboard> {
-	artboards: ArtboardGroup,
-	artboard: Artboard,
-}
+#[node_macro::node(category(""))]
+async fn append_artboard<F: 'n + Copy + Send>(
+	#[implementations((), Footprint)] footprint: F,
+	#[implementations(((), ArtboardGroup), (Footprint, ArtboardGroup))] artboards: impl Node<F, Output = ArtboardGroup>,
+	#[implementations(((), Artboard), (Footprint, Artboard))] artboard: impl Node<F, Output = Artboard>,
+	node_path: Vec<NodeId>,
+) -> ArtboardGroup {
+	let artboard = artboard.eval(footprint).await;
+	let mut artboards = artboards.eval(footprint).await;
 
-#[node_fn(AddArtboardNode)]
-async fn add_artboard<Data: Into<Artboard> + Send>(footprint: Footprint, artboards: impl Node<Footprint, Output = ArtboardGroup>, artboard: impl Node<Footprint, Output = Data>) -> ArtboardGroup {
-	let artboard = self.artboard.eval(footprint).await;
-	let mut artboards = self.artboards.eval(footprint).await;
-
-	artboards.add_artboard(artboard.into());
+	// Get the penultimate element of the node path, or None if the path is too short
+	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
+	artboards.append_artboard(artboard, encapsulating_node_id);
 
 	artboards
 }
@@ -330,7 +350,7 @@ impl From<GraphicGroup> for GraphicElement {
 }
 
 impl Deref for GraphicGroup {
-	type Target = Vec<GraphicElement>;
+	type Target = Vec<(GraphicElement, Option<NodeId>)>;
 	fn deref(&self) -> &Self::Target {
 		&self.elements
 	}
@@ -348,6 +368,7 @@ trait ToGraphicElement: Into<GraphicElement> {}
 
 impl ToGraphicElement for VectorData {}
 impl ToGraphicElement for ImageFrame<Color> {}
+impl ToGraphicElement for TextureFrame {}
 
 impl<T> From<T> for GraphicGroup
 where
@@ -355,7 +376,7 @@ where
 {
 	fn from(value: T) -> Self {
 		Self {
-			elements: (vec![value.into()]),
+			elements: (vec![(value.into(), None)]),
 			transform: DAffine2::IDENTITY,
 			alpha_blending: AlphaBlending::default(),
 		}

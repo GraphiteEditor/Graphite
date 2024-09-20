@@ -91,7 +91,12 @@ export function createDocumentState(editor: Editor) {
 		});
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerDelayedZoomCanvasToFitAll, () => {
+		// TODO: This is horribly hacky
 		setTimeout(() => editor.handle.zoomCanvasToFitAll(), 0);
+		setTimeout(() => editor.handle.zoomCanvasToFitAll(), 1);
+		setTimeout(() => editor.handle.zoomCanvasToFitAll(), 10);
+		setTimeout(() => editor.handle.zoomCanvasToFitAll(), 50);
+		setTimeout(() => editor.handle.zoomCanvasToFitAll(), 100);
 	});
 
 	return {

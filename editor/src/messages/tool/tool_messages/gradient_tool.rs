@@ -86,11 +86,11 @@ impl LayoutHolder for GradientTool {
 		let gradient_type = RadioInput::new(vec![
 			RadioEntryData::new("linear")
 				.label("Linear")
-				.tooltip("Linear Gradient")
+				.tooltip("Linear gradient")
 				.on_update(move |_| GradientToolMessage::UpdateOptions(GradientOptionsUpdate::Type(GradientType::Linear)).into()),
 			RadioEntryData::new("radial")
 				.label("Radial")
-				.tooltip("Radial Gradient")
+				.tooltip("Radial gradient")
 				.on_update(move |_| GradientToolMessage::UpdateOptions(GradientOptionsUpdate::Type(GradientType::Radial)).into()),
 		])
 		.selected_index(Some((self.selected_gradient().unwrap_or(self.options.gradient_type) == GradientType::Radial) as u32))

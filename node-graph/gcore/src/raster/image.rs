@@ -1,6 +1,6 @@
 use super::discrete_srgb::float_to_srgb_u8;
-use super::{Color, ImageSlice};
-use crate::{AlphaBlending, Node};
+use super::Color;
+use crate::AlphaBlending;
 use alloc::vec::Vec;
 use core::hash::{Hash, Hasher};
 use dyn_any::StaticType;
@@ -65,7 +65,7 @@ impl<P: Pixel + Debug> Debug for Image<P> {
 	}
 }
 
-unsafe impl<P: StaticTypeSized + Pixel> StaticType for Image<P>
+unsafe impl<P: dyn_any::StaticTypeSized + Pixel> StaticType for Image<P>
 where
 	P::Static: Pixel,
 {
@@ -124,14 +124,6 @@ impl<P: Pixel> Image<P> {
 			height,
 			data: vec![color; (width * height) as usize],
 			base64_string: None,
-		}
-	}
-
-	pub fn as_slice(&self) -> ImageSlice<P> {
-		ImageSlice {
-			width: self.width,
-			height: self.height,
-			data: self.data.as_slice(),
 		}
 	}
 }
@@ -224,42 +216,6 @@ impl<P: Pixel> IntoIterator for Image<P> {
 	}
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ImageRefNode<P> {
-	_p: PhantomData<P>,
-}
-
-#[node_macro::node_fn(ImageRefNode<_P>)]
-fn image_ref_node<_P: Pixel>(image: &'input Image<_P>) -> ImageSlice<'input, _P> {
-	image.as_slice()
-}
-
-#[derive(Debug, Clone)]
-pub struct CollectNode {}
-
-#[node_macro::node_fn(CollectNode)]
-fn collect_node<_Iter>(input: _Iter) -> Vec<_Iter::Item>
-where
-	_Iter: Iterator,
-{
-	input.collect()
-}
-
-#[derive(Debug)]
-pub struct MapImageSliceNode<Data> {
-	data: Data,
-}
-
-#[node_macro::node_fn(MapImageSliceNode)]
-fn map_node<P: Pixel>(input: (u32, u32), data: Vec<P>) -> Image<P> {
-	Image {
-		width: input.0,
-		height: input.1,
-		data,
-		base64_string: None,
-	}
-}
-
 #[derive(Clone, Debug, PartialEq, Default, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImageFrame<P: Pixel> {
@@ -314,7 +270,7 @@ impl<P: Copy + Pixel> BitmapMut for ImageFrame<P> {
 	}
 }
 
-unsafe impl<P: StaticTypeSized + Pixel> StaticType for ImageFrame<P>
+unsafe impl<P: dyn_any::StaticTypeSized + Pixel> StaticType for ImageFrame<P>
 where
 	P::Static: Pixel,
 {

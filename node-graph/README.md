@@ -10,15 +10,12 @@ The graph that is presented to users in the editor is known as the document grap
 
 ```rs
 pub struct DocumentNode {
-	pub name: String,
 	pub inputs: Vec<NodeInput>,
 	pub manual_composition: Option<Type>,
-	pub has_primary_output: bool,
 	pub implementation: DocumentNodeImplementation,
-	pub metadata: DocumentNodeMetadata,
 	pub skip_deduplication: bool,
-	pub hash: u64,
-	pub path: Option<Vec<NodeId>>,
+	pub visible: bool,
+	pub original_location: OriginalLocation,
 }
 ```
 (Explanatory comments omitted; the actual definition is currently found in [`node-graph/graph-craft/src/document.rs`](https://github.com/GraphiteEditor/Graphite/blob/master/node-graph/graph-craft/src/document.rs))
@@ -29,7 +26,7 @@ Each `DocumentNode` is of a particular type, for example the "Opacity" node type
 DocumentNodeDefinition {
 	name: "Opacity",
 	category: "Image Adjustments",
-	implementation: DocumentNodeImplementation::proto("graphene_core::raster::OpacityNode<_>"),
+	implementation: DocumentNodeImplementation::proto("graphene_core::raster::OpacityNode"),
 	inputs: vec![
 		DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 		DocumentInputType::value("Factor", TaggedValue::F32(100.), false),
@@ -39,7 +36,6 @@ DocumentNodeDefinition {
 	..Default::default()
 },
 ```
-
 
 The identifier here must be the same as that of the proto-node which will be discussed soon (usually the path to the node implementation).
 
@@ -100,28 +96,21 @@ fn test_opacity_node() {
 
 The `graphene_core::value::CopiedNode` is a node that, when evaluated, copies `10_f32` and returns it.
 
-## Creating a new proto node
+## Creating a new node
 
-Instead of manually implementing the `Node` trait with complex generics, one can use the `node_fn` macro, which can be applied to a function like `opacity_node` with an attribute of the name of the node:
+Instead of manually implementing the `Node` trait with complex generics, one can use the `node` macro, which can be applied to a function like `opacity`. This will generate the struct, implementation, node_registry entry, doucment node definition and properties panel entries:
 
 ```rs
-#[derive(Debug, Clone, Copy)]
-pub struct OpacityNode<O> {
-	opacity_multiplier: O,
-}
-
-#[node_macro::node_fn(OpacityNode)]
-fn opacity_node(color: Color, opacity_multiplier: f64) -> Color {
+#[node_macro::node(category("Raster: Adjustments"))]
+fn opacity(_input: (), #[default(424242)] color: Color,#[min(0.1)] opacity_multiplier: f64) -> Color {
 	let opacity_multiplier = opacity_multiplier as f32 / 100.;
 	Color::from_rgbaf32_unchecked(color.r(), color.g(), color.b(), color.a() * opacity_multiplier)
 }
 ```
 
-## Alternative macros
+## Additional Macro Options
 
-`#[node_macro::node_fn(NodeName)]` generates an implementation of the `Node` trait for NodeName with the specific input types, and also generates a `fn new` that can be used to construct the node struct. If multiple implementations for different types are needed, then it is necessary to avoid creating this `new` function twice, so you can use `#[node_macro::node_impl(NodeName)]`.
-
-If you need to manually implement the `Node` trait without using the macro, but wish to have an automatically generated `fn new`, you can use `#[node_macro::node_new(NodeName)]`, which can be applied to a function.
+The macro invocation can be extended with additional attributes. The currently supported attributes are (`name`, `path`, `skip_impl`, `category`). When using generics the `#[implementations()]` attribute can be used to automatically populate the node_registry for you. You can also use the `default`, `expose`, `min`, `max` and `range_mode` attributes to influence how the properties are generated.
 
 ## Executing a document `NodeNetwork`
 
@@ -136,7 +125,7 @@ The definition for the constructor of a node that applies the opacity transforma
 ```rs
 (
 	// Matches against the string defined in the document node.
-	ProtoNodeIdentifier::new("graphene_core::raster::OpacityNode<_>"),
+	ProtoNodeIdentifier::new("graphene_core::raster::OpacityNode"),
 	// This function is run when converting the `ProtoNode` struct into the desired struct.
 	|args| {
 		Box::pin(async move {
@@ -179,6 +168,6 @@ We need a utility to easily view a graph as the various steps are applied. We al
 
 ## Conclusion
 
-Currently defining nodes is a very laborious and error prone process, spanning many files and concepts. It is necessary to simplify this if we want contributors to be able to write their own nodes.
+While we simplify the writing of nodes using the macro by hiding some of the details, creating nodes involves many files and concepts. We will work to continue making this system easier to use.
 
 Any contributions you might have would be greatly appreciated. If any parts of this guide are outdated or difficult to understand, please feel free to ask for help in the Graphite Discord. We are very happy to answer any questions :)

@@ -1,19 +1,21 @@
 use super::DocumentNode;
-use crate::document::NodeId;
 pub use crate::imaginate_input::{ImaginateCache, ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use crate::proto::{Any as DAny, FutureAny};
 use crate::wasm_application_io::WasmEditorApi;
 
-use graphene_core::raster::brush_cache::BrushCache;
-use graphene_core::raster::{BlendMode, LuminanceCalculation};
-use graphene_core::{Color, MemoHash, Node, Type};
-
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
+use graphene_core::raster::brush_cache::BrushCache;
+use graphene_core::raster::{BlendMode, LuminanceCalculation};
+use graphene_core::renderer::RenderMetadata;
+use graphene_core::uuid::NodeId;
+use graphene_core::{Color, MemoHash, Node, Type};
+
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
+use std::str::FromStr;
 pub use std::sync::Arc;
 
 /// Macro to generate the tagged value enum.
@@ -81,31 +83,30 @@ macro_rules! tagged_value {
 					_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
 				}
 			}
-			pub fn from_type(input: &Type) -> Self {
+			pub fn from_type(input: &Type) -> Option<Self> {
 				match input {
 					Type::Generic(_) => {
-						log::warn!("Generic type should be resolved");
-						TaggedValue::None
+						None
 					}
 					Type::Concrete(concrete_type) => {
-						let Some(internal_id) = concrete_type.id else {
-							return TaggedValue::None;
-						};
+						let internal_id = concrete_type.id?;
 						use std::any::TypeId;
 						// TODO: Add default implementations for types such as TaggedValue::Subpaths, and use the defaults here and in document_node_types
 						// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
-						match internal_id {
+						Some(match internal_id {
 							x if x == TypeId::of::<()>() => TaggedValue::None,
 							$( x if x == TypeId::of::<$ty>() => TaggedValue::$identifier(Default::default()), )*
-							_ => TaggedValue::None,
-						}
+							_ => return None,
+						})
 					}
 					Type::Fn(_, output) => TaggedValue::from_type(output),
 					Type::Future(_) => {
-						log::warn!("Future type not used");
-						TaggedValue::None
+						None
 					}
 				}
+			}
+			pub fn from_type_or_none(input: &Type) -> Self {
+				Self::from_type(input).unwrap_or(TaggedValue::None)
 			}
 		}
 	};
@@ -159,7 +160,6 @@ tagged_value! {
 	GradientType(graphene_core::vector::style::GradientType),
 	#[serde(alias = "GradientPositions")] // TODO: Eventually remove this alias (probably starting late 2024)
 	GradientStops(graphene_core::vector::style::GradientStops),
-	Quantization(graphene_core::quantization::QuantizationChannels),
 	OptionalColor(Option<graphene_core::raster::color::Color>),
 	#[serde(alias = "ManipulatorGroupIds")] // TODO: Eventually remove this alias (probably starting late 2024)
 	PointIds(Vec<graphene_core::vector::PointId>),
@@ -192,6 +192,38 @@ impl TaggedValue {
 			TaggedValue::BlendMode(x) => "BlendMode::".to_string() + &x.to_string(),
 			TaggedValue::Color(x) => format!("Color {x:?}"),
 			_ => panic!("Cannot convert to primitive string"),
+		}
+	}
+
+	pub fn from_primitive_string(string: &str, ty: &Type) -> Option<Self> {
+		match ty {
+			Type::Generic(_) => None,
+			Type::Concrete(concrete_type) => {
+				let internal_id = concrete_type.id?;
+				use std::any::TypeId;
+				// TODO: Add default implementations for types such as TaggedValue::Subpaths, and use the defaults here and in document_node_types
+				// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
+				let ty = match internal_id {
+					x if x == TypeId::of::<()>() => TaggedValue::None,
+					x if x == TypeId::of::<String>() => TaggedValue::String(string.into()),
+					x if x == TypeId::of::<f64>() => FromStr::from_str(string).map(TaggedValue::F64).ok()?,
+					x if x == TypeId::of::<u64>() => FromStr::from_str(string).map(TaggedValue::U64).ok()?,
+					x if x == TypeId::of::<u32>() => FromStr::from_str(string).map(TaggedValue::U32).ok()?,
+					x if x == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
+					x if x == TypeId::of::<Color>() => Color::from_rgba_str(string).map(TaggedValue::Color)?,
+					_ => return None,
+				};
+				Some(ty)
+			}
+			Type::Fn(_, output) => TaggedValue::from_primitive_string(string, output),
+			Type::Future(_) => None,
+		}
+	}
+
+	pub fn to_u32(&self) -> u32 {
+		match self {
+			TaggedValue::U32(x) => *x,
+			_ => panic!("Passed value is not of type u32"),
 		}
 	}
 }
@@ -241,12 +273,25 @@ impl<T: AsRef<U> + Sync + Send, U: Sync + Send> UpcastAsRefNode<T, U> {
 	}
 }
 
+#[derive(Debug, Clone, PartialEq, dyn_any::DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct RenderOutput {
+	pub data: RenderOutputType,
+	pub metadata: RenderMetadata,
+}
+
 #[derive(Debug, Clone, PartialEq, dyn_any::DynAny, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum RenderOutput {
+pub enum RenderOutputType {
 	CanvasFrame(graphene_core::SurfaceFrame),
 	Svg(String),
 	Image(Vec<u8>),
+}
+
+impl Hash for RenderOutput {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.data.hash(state)
+	}
 }
 
 /// We hash the floats and so-forth despite it not being reproducible because all inputs to the node graph must be hashed otherwise the graph execution breaks (so sorry about this hack)
