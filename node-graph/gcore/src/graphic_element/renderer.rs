@@ -762,6 +762,9 @@ impl GraphicElementRendered for ImageFrame<Color> {
 					if !matrix.is_empty() {
 						attributes.push("transform", matrix);
 					}
+					if self.alpha_blending.opacity < 1. {
+						attributes.push("opacity", self.alpha_blending.opacity.to_string());
+					}
 					if self.alpha_blending.blend_mode != BlendMode::default() {
 						attributes.push("style", self.alpha_blending.blend_mode.render());
 					}
@@ -839,6 +842,9 @@ impl GraphicElementRendered for Raster {
 					let matrix = format_transform_matrix(transform);
 					if !matrix.is_empty() {
 						attributes.push("transform", matrix);
+					}
+					if blending.opacity < 1. {
+						attributes.push("opacity", blending.opacity.to_string());
 					}
 					if blending.blend_mode != BlendMode::default() {
 						attributes.push("style", blending.blend_mode.render());
