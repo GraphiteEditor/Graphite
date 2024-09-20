@@ -1,6 +1,7 @@
 use crate::text::FontCache;
 use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::style::ViewMode;
+use crate::AlphaBlending;
 
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
 
@@ -70,6 +71,7 @@ pub struct TextureFrame {
 	#[cfg(not(feature = "wgpu"))]
 	pub texture: (),
 	pub transform: DAffine2,
+	pub alpha_blend: AlphaBlending,
 }
 
 impl Hash for TextureFrame {

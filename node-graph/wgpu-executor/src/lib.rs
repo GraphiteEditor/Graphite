@@ -931,5 +931,6 @@ async fn upload_texture<'a: 'n>(_: (), input: ImageFrame<Color>, executor: &'a W
 	TextureFrame {
 		texture: texture.into(),
 		transform: input.transform,
+		alpha_blend: Default::default(),
 	}
 }
