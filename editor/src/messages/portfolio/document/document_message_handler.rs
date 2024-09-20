@@ -715,7 +715,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					}
 				}
 			}
-			DocumentMessage::DrawArtboardOverlays(mut overlay_context) => {
+			DocumentMessage::DrawArtboardOverlays(overlay_context) => {
 				for layer in self.metadata().all_layers() {
 					if !self.network_interface.is_artboard(&layer.to_node(), &[]) {
 						continue;
@@ -723,13 +723,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					let Some(bounds) = self.metadata().bounding_box_document(layer) else { continue };
 
 					let name = self.network_interface.frontend_display_name(&layer.to_node(), &[]);
-					overlay_context.angle_text(
-						&name,
-						DVec2::ZERO,
-						self.metadata().document_to_viewport * DAffine2::from_translation(bounds[0].min(bounds[1])),
-						5.,
-						Pivot::BottomLeft,
-					);
+					let transform = self.metadata().document_to_viewport * DAffine2::from_translation(bounds[0].min(bounds[1]) - DVec2::Y * 4.);
+					overlay_context.transformed_text(&name, transform, 0., "16px sans-serif", Pivot::BottomLeft);
 				}
 			}
 			DocumentMessage::PasteImage { image, mouse } => {

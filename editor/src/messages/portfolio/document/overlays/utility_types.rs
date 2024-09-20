@@ -247,7 +247,8 @@ impl OverlayContext {
 		self.render_context.stroke();
 	}
 
-	pub fn text(&self, text: &str, pos: DVec2, background: &str, padding: f64) {
+	pub fn text(&self, text: &str, pos: DVec2, background: &str, padding: f64, font: &str) {
+		self.render_context.set_font(font);
 		let pos = pos.round();
 		let metrics = self.render_context.measure_text(text).expect("Failed to measure the text dimensions");
 		self.render_context.set_fill_style(&background.into());
@@ -263,9 +264,8 @@ impl OverlayContext {
 			.expect("Failed to draw the text on the canvas");
 	}
 
-	pub fn angle_text(&self, text: &str, pos: DVec2, transform: DAffine2, padding: f64, pivot: Pivot) {
-		let transform = DAffine2::from_translation(pos) * transform;
-
+	pub fn transformed_text(&self, text: &str, transform: DAffine2, padding: f64, font: &str, pivot: Pivot) {
+		self.render_context.set_font(font);
 		let [a, b, c, d, e, f] = transform.to_cols_array();
 		self.render_context.set_transform(a, b, c, d, e, f).expect("Failed to rotate the render context to the specified angle");
 
