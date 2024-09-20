@@ -748,7 +748,7 @@ mod test {
 	async fn morph() {
 		let source = Subpath::new_rect(DVec2::ZERO, DVec2::ONE * 100.);
 		let target = Subpath::new_ellipse(DVec2::NEG_ONE * 100., DVec2::ZERO);
-		let sample_points = super::morph(Footprint::default(), &vector_node(source), &vector_node(target), 0, 0.5).await;
+		let sample_points = super::morph(Footprint::default(), &vector_node(source), &vector_node(target), 0.5, 0).await;
 		assert_eq!(
 			&sample_points.point_domain.positions()[..4],
 			vec![DVec2::new(-25., -50.), DVec2::new(50., -25.), DVec2::new(25., 50.), DVec2::new(-50., 25.)]

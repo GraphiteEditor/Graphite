@@ -835,7 +835,7 @@ mod tests {
 	}
 
 	#[test]
-	#[should_panic(expected = "No default values for first argument allowed")]
+	#[should_panic(expected = "Call argument cannot be given a default value")]
 	fn test_default_value_for_first_arg() {
 		let attr = quote!(category("Invalid"));
 		let input = quote!(

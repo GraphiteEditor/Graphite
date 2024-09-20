@@ -1414,28 +1414,6 @@ async fn color_overlay<F: 'n + Copy + Send, T: Adjust<Color>>(
 	input
 }
 
-#[test]
-fn color_overlay_multiply() {
-	use crate::raster::Image;
-
-	let image_color = Color::from_rgbaf32_unchecked(0.7, 0.6, 0.5, 0.4);
-	let image = ImageFrame {
-		image: Image::new(1, 1, image_color),
-		..Default::default()
-	};
-
-	// Color { red: 0., green: 1., blue: 0., alpha: 1. }
-	let overlay_color = Color::GREEN;
-
-	// 100% of the output should come from the multiplied value
-	let opacity = 100_f64;
-
-	let result = color_overlay(image, overlay_color, BlendMode::Multiply, opacity);
-
-	// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
-	assert_eq!(result.image.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));
-}
-
 #[cfg(feature = "alloc")]
 pub use index_node::IndexNode;
 
@@ -1451,5 +1429,43 @@ mod index_node {
 			warn!("The number of segments is {} but the requested segment is {}!", input.len(), index);
 			Default::default()
 		}
+	}
+}
+
+#[cfg(test)]
+mod test {
+	use crate::raster::{BlendMode, Image, ImageFrame};
+	use crate::{Color, Node};
+	use std::pin::Pin;
+
+	#[derive(Clone)]
+	pub struct FutureWrapperNode<T: Clone>(T);
+
+	impl<'i, T: 'i + Clone + Send> Node<'i, ()> for FutureWrapperNode<T> {
+		type Output = Pin<Box<dyn core::future::Future<Output = T> + 'i + Send>>;
+		fn eval(&'i self, _input: ()) -> Self::Output {
+			let value = self.0.clone();
+			Box::pin(async move { value })
+		}
+	}
+
+	#[tokio::test]
+	async fn color_overlay_multiply() {
+		let image_color = Color::from_rgbaf32_unchecked(0.7, 0.6, 0.5, 0.4);
+		let image = ImageFrame {
+			image: Image::new(1, 1, image_color),
+			..Default::default()
+		};
+
+		// Color { red: 0., green: 1., blue: 0., alpha: 1. }
+		let overlay_color = Color::GREEN;
+
+		// 100% of the output should come from the multiplied value
+		let opacity = 100_f64;
+
+		let result = super::color_overlay((), &FutureWrapperNode(image), overlay_color, BlendMode::Multiply, opacity).await;
+
+		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
+		assert_eq!(result.image.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));
 	}
 }
