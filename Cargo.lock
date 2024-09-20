@@ -4829,8 +4829,9 @@ dependencies = [
  "build-camera-data",
  "image 0.25.2",
  "libraw-rs",
- "num_enum 0.7.3",
- "reqwest 0.12.7",
+ "num_enum 0.7.2",
+ "rayon",
+ "reqwest 0.12.5",
  "tag-derive",
  "thiserror",
 ]
