@@ -762,6 +762,9 @@ impl GraphicElementRendered for ImageFrame<Color> {
 					if !matrix.is_empty() {
 						attributes.push("transform", matrix);
 					}
+					if self.alpha_blending.opacity < 1. {
+						attributes.push("opacity", self.alpha_blending.opacity.to_string());
+					}
 					if self.alpha_blending.blend_mode != BlendMode::default() {
 						attributes.push("style", self.alpha_blending.blend_mode.render());
 					}
@@ -840,6 +843,9 @@ impl GraphicElementRendered for Raster {
 					if !matrix.is_empty() {
 						attributes.push("transform", matrix);
 					}
+					if blending.opacity < 1. {
+						attributes.push("opacity", blending.opacity.to_string());
+					}
 					if blending.blend_mode != BlendMode::default() {
 						attributes.push("style", blending.blend_mode.render());
 					}
@@ -870,7 +876,7 @@ impl GraphicElementRendered for Raster {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
 		use vello::peniko;
 
-		match self {
+		let (image, blend_mode) = match self {
 			Raster::ImageFrame(image_frame) => {
 				let image = &image_frame.image;
 				if image.data.is_empty() {
@@ -883,9 +889,7 @@ impl GraphicElementRendered for Raster {
 					format: peniko::Format::Rgba8,
 					extend: peniko::Extend::Repeat,
 				};
-				let transform = transform * self.transform() * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
-
-				scene.draw_image(&image, vello::kurbo::Affine::new(transform.to_cols_array()));
+				(image, image_frame.alpha_blending)
 			}
 			Raster::Texture(texture) => {
 				let image = vello::peniko::Image {
@@ -897,12 +901,23 @@ impl GraphicElementRendered for Raster {
 				};
 				let id = image.data.id();
 				context.ressource_overrides.insert(id, texture.texture.clone());
-
-				let transform = transform * self.transform() * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
-
-				scene.draw_image(&image, vello::kurbo::Affine::new(transform.to_cols_array()));
+				(image, texture.alpha_blend)
 			}
 		};
+		let image_transform = transform * self.transform() * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
+		let layer = blend_mode != Default::default();
+
+		let Some(bounds) = self.bounding_box(transform) else { return };
+		let blending = vello::peniko::BlendMode::new(blend_mode.blend_mode.into(), vello::peniko::Compose::SrcOver);
+
+		if layer {
+			let rect = vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+			scene.push_layer(blending, blend_mode.opacity, kurbo::Affine::IDENTITY, &rect);
+		}
+		scene.draw_image(&image, vello::kurbo::Affine::new(image_transform.to_cols_array()));
+		if layer {
+			scene.pop_layer()
+		}
 	}
 }
 
