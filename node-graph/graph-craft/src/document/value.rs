@@ -174,7 +174,7 @@ tagged_value! {
 	Curve(graphene_core::raster::curve::Curve),
 	Footprint(graphene_core::transform::Footprint),
 	Palette(Vec<Color>),
-	VectorModification(graphene_core::vector::VectorModification),
+	VectorModification(Box<graphene_core::vector::VectorModification>),
 	CentroidType(graphene_core::vector::misc::CentroidType),
 	BooleanOperation(graphene_core::vector::misc::BooleanOperation),
 	FontCache(Arc<graphene_core::text::FontCache>),

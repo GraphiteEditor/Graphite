@@ -427,7 +427,7 @@ use crate::transform::Footprint;
 async fn path_modify<F: 'n + Send + Sync + Clone>(
 	#[implementations((), Footprint)] input: F,
 	#[implementations(((), VectorData), (Footprint, VectorData))] vector_data: impl Node<F, Output = VectorData>,
-	modification: VectorModification,
+	modification: Box<VectorModification>,
 ) -> VectorData {
 	let mut vector_data = vector_data.eval(input).await;
 	modification.apply(&mut vector_data);

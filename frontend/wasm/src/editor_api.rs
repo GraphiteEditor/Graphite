@@ -844,7 +844,7 @@ impl EditorHandle {
 			if let Some((node_id, modification)) = shape {
 				let node_type = resolve_document_node_type("Path").unwrap();
 				let document_node = node_type
-					.node_template_input_override([None, Some(NodeInput::value(TaggedValue::VectorModification(modification), false))])
+					.node_template_input_override([None, Some(NodeInput::value(TaggedValue::VectorModification(Box::new(modification)), false))])
 					.document_node;
 
 				let node_metadata = document.network_interface.node_metadata(&node_id, &[]).cloned().unwrap_or_default();
