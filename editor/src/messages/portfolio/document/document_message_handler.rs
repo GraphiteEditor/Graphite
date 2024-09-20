@@ -25,11 +25,11 @@ use crate::node_graph_executor::NodeGraphExecutor;
 
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeNetwork, OldNodeNetwork};
-use graphene_core::raster::BlendMode;
-use graphene_core::raster::ImageFrame;
+use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::vector::style::ViewMode;
 
 use glam::{DAffine2, DVec2};
+
 pub struct DocumentMessageData<'a> {
 	pub document_id: DocumentId,
 	pub ipp: &'a InputPreprocessorMessageHandler,
@@ -725,9 +725,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
 				let center_in_viewport = DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_location - ipp.viewport_bounds.top_left));
 				let center_in_viewport_layerspace = center_in_viewport;
-
-				// Scale the image to fit into a 512x512 box
-				let image_size = image_size / DVec2::splat((image_size.max_element() / 512.).max(1.));
 
 				// Make layer the size of the image
 				let fit_image_size = DAffine2::from_scale_angle_translation(image_size, 0., image_size / -2.);

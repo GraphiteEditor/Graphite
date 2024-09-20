@@ -1,324 +1,308 @@
+use crate::registry::types::Percentage;
 use crate::Node;
+
 use core::marker::PhantomData;
 use core::ops::{Add, Div, Mul, Rem, Sub};
 use num_traits::Pow;
+use rand::{Rng, SeedableRng};
 
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
 
-// Add Pair
-// TODO: Delete this redundant (two-argument version of the) add node. It's only used in tests.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct AddPairNode;
-impl<'i, L: Add<R, Output = O> + 'i, R: 'i, O: 'i> Node<'i, (L, R)> for AddPairNode {
-	type Output = <L as Add<R>>::Output;
-	fn eval(&'i self, input: (L, R)) -> Self::Output {
-		input.0 + input.1
-	}
-}
-impl AddPairNode {
-	pub const fn new() -> Self {
-		Self
-	}
-}
-
 // Add
-pub struct AddNode<Second> {
-	second: Second,
-}
-#[node_macro::node_fn(AddNode)]
-fn add_parameter<U, T>(first: U, second: T) -> <U as Add<T>>::Output
-where
-	U: Add<T>,
-{
-	first + second
+#[node_macro::node(category("Math: Arithmetic"))]
+fn add<U: Add<T>, T>(
+	_: (),
+	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, glam::DVec2)] augend: U,
+	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, glam::DVec2)] addend: T,
+) -> <U as Add<T>>::Output {
+	augend + addend
 }
 
 // Subtract
-pub struct SubtractNode<Second> {
-	second: Second,
-}
-#[node_macro::node_fn(SubtractNode)]
-fn sub<U, T>(first: U, second: T) -> <U as Sub<T>>::Output
-where
-	U: Sub<T>,
-{
-	first - second
-}
-
-// Divide
-pub struct DivideNode<Second> {
-	second: Second,
-}
-#[node_macro::node_fn(DivideNode)]
-fn div<U, T>(first: U, second: T) -> <U as Div<T>>::Output
-where
-	U: Div<T>,
-{
-	first / second
+#[node_macro::node(category("Math: Arithmetic"))]
+fn subtract<U: Sub<T>, T>(
+	_: (),
+	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, glam::DVec2)] minuend: U,
+	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, glam::DVec2)] subtrahend: T,
+) -> <U as Sub<T>>::Output {
+	minuend - subtrahend
 }
 
 // Multiply
-pub struct MultiplyNode<Second> {
-	second: Second,
+#[node_macro::node(category("Math: Arithmetic"))]
+fn multiply<U: Mul<T>, T>(
+	_: (),
+	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, glam::DVec2, f64)] multiplier: U,
+	#[default(1.)]
+	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, glam::DVec2, glam::DVec2)]
+	multiplicand: T,
+) -> <U as Mul<T>>::Output {
+	multiplier * multiplicand
 }
-#[node_macro::node_fn(MultiplyNode)]
-fn mul<U, T>(first: U, second: T) -> <U as Mul<T>>::Output
-where
-	U: Mul<T>,
-{
-	first * second
+
+// Divide
+#[node_macro::node(category("Math: Arithmetic"))]
+fn divide<U: Div<T>, T>(
+	_: (),
+	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, glam::DVec2, glam::DVec2)] numerator: U,
+	#[default(1.)]
+	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, glam::DVec2, f64)]
+	denominator: T,
+) -> <U as Div<T>>::Output {
+	numerator / denominator
+}
+
+// Modulo
+#[node_macro::node(category("Math: Arithmetic"))]
+fn modulo<U: Rem<T>, T>(
+	_: (),
+	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32)] numerator: U,
+	#[default(2.)]
+	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32)]
+	modulus: T,
+) -> <U as Rem<T>>::Output {
+	numerator % modulus
 }
 
 // Exponent
-pub struct ExponentNode<Second> {
-	second: Second,
-}
-#[node_macro::node_fn(ExponentNode)]
-fn exp<U, T>(first: U, second: T) -> <U as Pow<T>>::Output
-where
-	U: Pow<T>,
-{
-	first.pow(second)
-}
-
-// Floor
-pub struct FloorNode;
-#[node_macro::node_fn(FloorNode)]
-fn floor(input: f64) -> f64 {
-	input.floor()
+#[node_macro::node(category("Math: Arithmetic"))]
+fn exponent<U: Pow<T>, T>(
+	_: (),
+	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, )] base: U,
+	#[default(2.)]
+	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32)]
+	power: T,
+) -> <U as num_traits::Pow<T>>::Output {
+	base.pow(power)
 }
 
-// Ceil
-pub struct CeilingNode;
-#[node_macro::node_fn(CeilingNode)]
-fn ceil(input: f64) -> f64 {
-	input.ceil()
-}
-
-// Round
-pub struct RoundNode;
-#[node_macro::node_fn(RoundNode)]
-fn round(input: f64) -> f64 {
-	input.round()
-}
-
-// Absolute Value
-pub struct AbsoluteValue;
-#[node_macro::node_fn(AbsoluteValue)]
-fn abs(input: f64) -> f64 {
-	input.abs()
-}
-
-// Log
-pub struct LogarithmNode<Second> {
-	second: Second,
-}
-#[node_macro::node_fn(LogarithmNode)]
-fn ln<U: num_traits::float::Float>(first: U, second: U) -> U {
-	first.log(second)
-}
-
-// Natural Log
-pub struct NaturalLogarithmNode;
-#[node_macro::node_fn(NaturalLogarithmNode)]
-fn ln(input: f64) -> f64 {
-	input.ln()
-}
-
-// Sine
-pub struct SineNode;
-#[node_macro::node_fn(SineNode)]
-fn ln(input: f64) -> f64 {
-	input.sin()
-}
-
-// Cosine
-pub struct CosineNode;
-#[node_macro::node_fn(CosineNode)]
-fn ln(input: f64) -> f64 {
-	input.cos()
-}
-
-// Tangent
-pub struct TangentNode;
-#[node_macro::node_fn(TangentNode)]
-fn ln(input: f64) -> f64 {
-	input.tan()
-}
-
-// Min
-pub struct MinimumNode<Second> {
-	second: Second,
-}
-#[node_macro::node_fn(MinimumNode)]
-fn min<T: core::cmp::PartialOrd>(first: T, second: T) -> T {
-	match first < second {
-		true => first,
-		false => second,
+// Root
+#[node_macro::node(category("Math: Arithmetic"))]
+fn root<U: num_traits::float::Float>(
+	_: (),
+	#[default(2.)]
+	#[implementations(f64, f32)]
+	radicand: U,
+	#[default(2.)]
+	#[implementations(f64, f32)]
+	degree: U,
+) -> U {
+	if degree == U::from(2.).unwrap() {
+		radicand.sqrt()
+	} else if degree == U::from(3.).unwrap() {
+		radicand.cbrt()
+	} else {
+		radicand.powf(U::from(1.).unwrap() / degree)
 	}
 }
 
-// Maxi
-pub struct MaximumNode<Second> {
-	second: Second,
+// Logarithm
+#[node_macro::node(category("Math: Arithmetic"))]
+fn logarithm<U: num_traits::float::Float>(
+	_: (),
+	#[implementations(f64, f32)] value: U,
+	#[default(2.)]
+	#[implementations(f64, f32)]
+	base: U,
+) -> U {
+	if base == U::from(2.).unwrap() {
+		value.log2()
+	} else if base == U::from(10.).unwrap() {
+		value.log10()
+	} else if base - U::from(std::f64::consts::E).unwrap() < U::epsilon() * U::from(1e6).unwrap() {
+		value.ln()
+	} else {
+		value.log(base)
+	}
 }
-#[node_macro::node_fn(MaximumNode)]
-fn max<T: core::cmp::PartialOrd>(first: T, second: T) -> T {
-	match first > second {
-		true => first,
-		false => second,
+
+// Sine
+#[node_macro::node(category("Math: Trig"))]
+fn sine(_: (), theta: f64) -> f64 {
+	theta.sin()
+}
+
+// Cosine
+#[node_macro::node(category("Math: Trig"))]
+fn cosine(_: (), theta: f64) -> f64 {
+	theta.cos()
+}
+
+// Tangent
+#[node_macro::node(category("Math: Trig"))]
+fn tangent(_: (), theta: f64) -> f64 {
+	theta.tan()
+}
+
+// Random
+#[node_macro::node(category("Math: Numeric"))]
+fn random(_: (), _primary: (), seed: u64, min: f64, #[default(1.)] max: f64) -> f64 {
+	let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+	let result = rng.gen::<f64>();
+	let (min, max) = if min < max { (min, max) } else { (max, min) };
+	result * (max - min) + min
+}
+
+// Round
+#[node_macro::node(category("Math: Numeric"))]
+fn round(_: (), value: f64) -> f64 {
+	value.round()
+}
+
+// Floor
+#[node_macro::node(category("Math: Numeric"))]
+fn floor(_: (), value: f64) -> f64 {
+	value.floor()
+}
+
+// Ceiling
+#[node_macro::node(category("Math: Numeric"))]
+fn ceiling(_: (), value: f64) -> f64 {
+	value.ceil()
+}
+
+// Absolute Value
+#[node_macro::node(category("Math: Numeric"))]
+fn absolute_value(_: (), value: f64) -> f64 {
+	value.abs()
+}
+
+// Min
+#[node_macro::node(category("Math: Numeric"))]
+fn min<T: core::cmp::PartialOrd>(_: (), #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] other_value: T) -> T {
+	match value < other_value {
+		true => value,
+		false => other_value,
+	}
+}
+
+// Max
+#[node_macro::node(category("Math: Numeric"))]
+fn max<T: core::cmp::PartialOrd>(_: (), #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] other_value: T) -> T {
+	match value > other_value {
+		true => value,
+		false => other_value,
 	}
 }
 
 // Equals
-pub struct EqualsNode<Second> {
-	second: Second,
-}
-#[node_macro::node_fn(EqualsNode)]
-fn eq<T: core::cmp::PartialEq>(first: T, second: T) -> bool {
-	first == second
-}
-
-// Modulo
-pub struct ModuloNode<Second> {
-	second: Second,
-}
-#[node_macro::node_fn(ModuloNode)]
-fn modulo<U, T>(first: U, second: T) -> <U as Rem<T>>::Output
-where
-	U: Rem<T>,
-{
-	first % second
+#[node_macro::node(category("Math: Logic"))]
+fn equals<U: core::cmp::PartialEq<T>, T>(
+	_: (),
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, &str)]
+	#[min(100.)]
+	#[max(200.)]
+	other_value: U,
+) -> bool {
+	other_value == value
 }
 
-pub struct ConstructVector2<X, Y> {
-	x: X,
-	y: Y,
+// Logical Or
+#[node_macro::node(category("Math: Logic"))]
+fn logical_or(_: (), value: bool, other_value: bool) -> bool {
+	value || other_value
 }
-#[node_macro::node_fn(ConstructVector2)]
-fn construct_vector2(_primary: (), x: f64, y: f64) -> glam::DVec2 {
+
+// Logical And
+#[node_macro::node(category("Math: Logic"))]
+fn logical_and(_: (), value: bool, other_value: bool) -> bool {
+	value && other_value
+}
+
+// Logical Xor
+#[node_macro::node(category("Math: Logic"))]
+fn logical_xor(_: (), value: bool, other_value: bool) -> bool {
+	value ^ other_value
+}
+
+// Logical Not
+#[node_macro::node(category("Math: Logic"))]
+fn logical_not(_: (), input: bool) -> bool {
+	!input
+}
+
+// Bool Value
+#[node_macro::node(category("Value"))]
+fn bool_value(_: (), _primary: (), #[name("Bool")] bool_value: bool) -> bool {
+	bool_value
+}
+
+// Number Value
+#[node_macro::node(category("Value"))]
+fn number_value(_: (), _primary: (), number: f64) -> f64 {
+	number
+}
+
+// Percentage Value
+#[node_macro::node(category("Value"))]
+fn percentage_value(_: (), _primary: (), percentage: Percentage) -> f64 {
+	percentage
+}
+
+// Vector2 Value
+#[node_macro::node(category("Value"))]
+fn vector2_value(_: (), _primary: (), x: f64, y: f64) -> glam::DVec2 {
 	glam::DVec2::new(x, y)
+}
+
+// TODO: Make it possible to give Color::BLACK instead of 000000ff as the default
+// Color Value
+#[node_macro::node(category("Value"))]
+fn color_value(_: (), _primary: (), #[default(000000ff)] color: crate::Color) -> crate::Color {
+	color
+}
+
+// Gradient Value
+#[node_macro::node(category("Value"))]
+fn gradient_value(_: (), _primary: (), gradient: crate::vector::style::GradientStops) -> crate::vector::style::GradientStops {
+	gradient
+}
+
+// Color Channel Value
+#[node_macro::node(category("Value"))]
+fn color_channel_value(_: (), _primary: (), color_channel: crate::raster::adjustments::RedGreenBlue) -> crate::raster::adjustments::RedGreenBlue {
+	color_channel
+}
+
+// Blend Mode Value
+#[node_macro::node(category("Value"))]
+fn blend_mode_value(_: (), _primary: (), blend_mode: crate::raster::BlendMode) -> crate::raster::BlendMode {
+	blend_mode
 }
 
 // Size Of
 #[cfg(feature = "std")]
-pub struct SizeOfNode;
-#[cfg(feature = "std")]
-#[node_macro::node_fn(SizeOfNode)]
-fn flat_map(ty: crate::Type) -> Option<usize> {
+#[node_macro::node(category("Debug"))]
+fn size_of(_: (), ty: crate::Type) -> Option<usize> {
 	ty.size()
 }
 
 // Some
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct SomeNode;
-#[node_macro::node_fn(SomeNode)]
-fn some<T>(input: T) -> Option<T> {
+#[node_macro::node(category("Debug"))]
+fn some<T>(_: (), #[implementations(f64, f32, u32, u64, String, crate::Color)] input: T) -> Option<T> {
 	Some(input)
 }
 
 // Unwrap
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct UnwrapNode;
-#[node_macro::node_fn(UnwrapNode)]
-fn some<T: Default>(input: Option<T>) -> T {
+#[node_macro::node(category("Debug"))]
+fn unwrap<T: Default>(_: (), #[implementations(Option<f64>, Option<f32>, Option<u32>, Option<u64>, Option<String>, Option<crate::Color>)] input: Option<T>) -> T {
 	input.unwrap_or_default()
 }
 
 // Clone
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct CloneNode<O>(PhantomData<O>);
-impl<'i, 'n: 'i, O: Clone + 'i> Node<'i, &'n O> for CloneNode<O> {
-	type Output = O;
-	fn eval(&'i self, input: &'i O) -> Self::Output {
-		input.clone()
-	}
-}
-impl<O> CloneNode<O> {
-	pub const fn new() -> Self {
-		Self(PhantomData)
-	}
-}
-
-// First of Pair
-/// Return the first element of a 2-tuple
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct FirstOfPairNode;
-impl<'i, L: 'i, R: 'i> Node<'i, (L, R)> for FirstOfPairNode {
-	type Output = L;
-	fn eval(&'i self, input: (L, R)) -> Self::Output {
-		input.0
-	}
-}
-impl FirstOfPairNode {
-	pub fn new() -> Self {
-		Self
-	}
-}
-
-// Second of Pair
-/// Return the second element of a 2-tuple
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct SecondOfPairNode;
-impl<'i, L: 'i, R: 'i> Node<'i, (L, R)> for SecondOfPairNode {
-	type Output = R;
-	fn eval(&'i self, input: (L, R)) -> Self::Output {
-		input.1
-	}
-}
-impl SecondOfPairNode {
-	pub fn new() -> Self {
-		Self
-	}
-}
-
-// Swap Pair
-/// Return a new 2-tuple with the elements reversed
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct SwapPairNode;
-impl<'i, L: 'i, R: 'i> Node<'i, (L, R)> for SwapPairNode {
-	type Output = (R, L);
-	fn eval(&'i self, input: (L, R)) -> Self::Output {
-		(input.1, input.0)
-	}
-}
-impl SwapPairNode {
-	pub fn new() -> Self {
-		Self
-	}
-}
-
-// Make Pair
-/// Return a 2-tuple with two duplicates of the input argument
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct MakePairNode;
-impl<'i, O: Clone + 'i> Node<'i, O> for MakePairNode {
-	type Output = (O, O);
-	fn eval(&'i self, input: O) -> Self::Output {
-		(input.clone(), input)
-	}
-}
-impl MakePairNode {
-	pub fn new() -> Self {
-		Self
-	}
+#[node_macro::node(category("Debug"))]
+fn clone<'i, T: Clone + 'i>(_: (), #[implementations(&crate::raster::ImageFrame<crate::Color>)] value: &'i T) -> T {
+	value.clone()
 }
 
 // Identity
-/// Return the input argument unchanged
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct IdentityNode;
-impl<'i, O: 'i> Node<'i, O> for IdentityNode {
-	type Output = O;
-	fn eval(&'i self, input: O) -> Self::Output {
-		input
-	}
-}
-impl IdentityNode {
-	pub fn new() -> Self {
-		Self
-	}
+// TODO: Rename to "Passthrough"
+/// The identity function returns the input argument unchanged.
+#[node_macro::node(skip_impl)]
+fn identity<'i, T: 'i>(value: T) -> T {
+	value
 }
 
 // Type
@@ -331,6 +315,14 @@ where
 	type Output = O;
 	fn eval(&'i self, input: I) -> Self::Output {
 		self.0.eval(input)
+	}
+
+	fn reset(&self) {
+		self.0.reset();
+	}
+
+	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
+		self.0.serialize()
 	}
 }
 impl<'i, N: for<'a> Node<'a, I>, I: 'i> TypeNode<N, I, <N as Node<'i, I>>::Output> {
@@ -345,62 +337,15 @@ impl<'i, N: for<'a> Node<'a, I> + Clone, I: 'i> Clone for TypeNode<N, I, <N as N
 }
 impl<'i, N: for<'a> Node<'a, I> + Copy, I: 'i> Copy for TypeNode<N, I, <N as Node<'i, I>>::Output> {}
 
-// Map Option
-pub struct MapOptionNode<I, Mn> {
-	node: Mn,
-	_i: PhantomData<I>,
-}
-#[node_macro::node_fn(MapOptionNode<_I>)]
-fn map_option_node<_I, N>(input: Option<_I>, node: &'input N) -> Option<<N as Node<'input, _I>>::Output>
-where
-	N: for<'a> Node<'a, _I>,
-{
-	input.map(|x| node.eval(x))
-}
-
-// Map Result
-pub struct MapResultNode<I, E, Mn> {
-	node: Mn,
-	_i: PhantomData<I>,
-	_e: PhantomData<E>,
-}
-#[node_macro::node_fn(MapResultNode<_I, _E>)]
-fn map_result_node<_I, _E, N>(input: Result<_I, _E>, node: &'input N) -> Result<<N as Node<'input, _I>>::Output, _E>
-where
-	N: for<'a> Node<'a, _I>,
-{
-	input.map(|x| node.eval(x))
-}
-
-// Flat Map Result
-pub struct FlatMapResultNode<I, O, E, Mn> {
-	node: Mn,
-	_i: PhantomData<I>,
-	_o: PhantomData<O>,
-	_e: PhantomData<E>,
-}
-#[node_macro::node_fn(FlatMapResultNode<_I, _O, _E>)]
-fn flat_map_node<_I, _O, _E, N>(input: Result<_I, _E>, node: &'input N) -> Result<_O, _E>
-where
-	N: for<'a> Node<'a, _I, Output = Result<_O, _E>>,
-{
-	match input.map(|x| node.eval(x)) {
-		Ok(Ok(x)) => Ok(x),
-		Ok(Err(e)) => Err(e),
-		Err(e) => Err(e),
-	}
-}
-
 // Into
-pub struct IntoNode<I, O> {
-	_i: PhantomData<I>,
+pub struct IntoNode<O> {
 	_o: PhantomData<O>,
 }
 #[cfg(feature = "alloc")]
-#[node_macro::node_fn(IntoNode<_I, _O>)]
-async fn into<_I, _O>(input: _I) -> _O
+#[node_macro::old_node_fn(IntoNode<_O>)]
+async fn into<I, _O>(input: I) -> _O
 where
-	_I: Into<_O> + Sync + Send,
+	I: Into<_O> + Sync + Send,
 {
 	input.into()
 }
@@ -411,85 +356,13 @@ mod test {
 	use crate::{generic::*, structural::*, value::*};
 
 	#[test]
-	pub fn duplicate_node() {
-		let value = ValueNode(4u32);
-		let pair = ComposeNode::new(value, MakePairNode::new());
-		assert_eq!(pair.eval(()), (&4, &4));
-	}
-	#[test]
 	pub fn identity_node() {
 		let value = ValueNode(4u32).then(IdentityNode::new());
 		assert_eq!(value.eval(()), &4);
 	}
 	#[test]
-	pub fn clone_node() {
-		let cloned = ValueNode(4u32).then(CloneNode::new());
-		assert_eq!(cloned.eval(()), 4);
-		let type_erased = &CloneNode::new() as &dyn for<'a> Node<'a, &'a u32, Output = u32>;
-		assert_eq!(type_erased.eval(&4), 4);
-		let type_erased = &cloned as &dyn for<'a> Node<'a, (), Output = u32>;
-		assert_eq!(type_erased.eval(()), 4);
-	}
-	#[test]
-	pub fn first_node() {
-		let first_of_pair = ValueNode((4u32, "a")).then(CloneNode::new()).then(FirstOfPairNode::new());
-		assert_eq!(first_of_pair.eval(()), 4);
-	}
-	#[test]
-	pub fn second_node() {
-		let second_of_pair = ValueNode((4u32, "a")).then(CloneNode::new()).then(SecondOfPairNode::new());
-		assert_eq!(second_of_pair.eval(()), "a");
-	}
-	#[test]
-	pub fn object_safe() {
-		let second_of_pair = ValueNode((4u32, "a")).then(CloneNode::new()).then(SecondOfPairNode::new());
-		let foo = &second_of_pair as &dyn Node<(), Output = &str>;
-		assert_eq!(foo.eval(()), "a");
-	}
-	#[test]
-	pub fn map_result() {
-		let value: ClonedNode<Result<&u32, ()>> = ClonedNode(Ok(&4u32));
-		assert_eq!(value.eval(()), Ok(&4u32));
-		// let type_erased_clone = clone as &dyn for<'a> Node<'a, &'a u32, Output = u32>;
-		let map_result = MapResultNode::new(ValueNode::new(FnNode::new(|x: &u32| *x)));
-		// let type_erased = &map_result as &dyn for<'a> Node<'a, Result<&'a u32, ()>, Output = Result<u32, ()>>;
-		assert_eq!(map_result.eval(Ok(&4u32)), Ok(4u32));
-		let fst = value.then(map_result);
-		// let type_erased = &fst as &dyn for<'a> Node<'a, (), Output = Result<u32, ()>>;
-		assert_eq!(fst.eval(()), Ok(4u32));
-	}
-	#[test]
-	pub fn flat_map_result() {
-		let fst = ValueNode(Ok(&4u32)).then(CloneNode::new());
-		let fn_node: FnNode<_, &u32, Result<&u32, _>> = FnNode::new(|_| Err(8u32));
-		assert_eq!(fn_node.eval(&4u32), Err(8u32));
-		let flat_map = FlatMapResultNode::new(ValueNode::new(fn_node));
-		let fst = fst.then(flat_map);
-		assert_eq!(fst.eval(()), Err(8u32));
-	}
-	#[test]
-	pub fn add_node() {
-		let a = ValueNode(42u32);
-		let b = ValueNode(6u32);
-		let cons_a = ConsNode::new(a);
-		let tuple = b.then(cons_a);
-
-		let sum = tuple.then(AddPairNode::new());
-
-		assert_eq!(sum.eval(()), 48);
-	}
-	#[test]
 	pub fn foo() {
-		fn int(_: (), state: &u32) -> u32 {
-			*state
-		}
-		fn swap(input: (u32, u32)) -> (u32, u32) {
-			(input.1, input.0)
-		}
-		let fnn = FnNode::new(&swap);
-		let fns = FnNodeWithState::new(int, 42u32);
+		let fnn = FnNode::new(|(a, b)| (b, a));
 		assert_eq!(fnn.eval((1u32, 2u32)), (2, 1));
-		let result: u32 = fns.eval(());
-		assert_eq!(result, 42);
 	}
 }

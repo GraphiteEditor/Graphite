@@ -2,11 +2,16 @@
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
+#[cfg(feature = "alloc")]
+use core::future::Future;
 
 #[cfg_attr(feature = "log", macro_use)]
 #[cfg(feature = "log")]
 extern crate log;
 pub use crate as graphene_core;
+
+#[cfg(feature = "reflections")]
+pub use ctor;
 
 pub mod consts;
 pub mod generic;
@@ -24,7 +29,6 @@ pub mod gpu;
 
 #[cfg(feature = "alloc")]
 pub mod memo;
-pub mod storage;
 
 pub mod raster;
 #[cfg(feature = "alloc")]
@@ -40,7 +44,8 @@ pub mod vector;
 #[cfg(feature = "alloc")]
 pub mod application_io;
 
-pub mod quantization;
+#[cfg(feature = "reflections")]
+pub mod registry;
 
 use core::any::TypeId;
 pub use memo::MemoHash;
@@ -65,32 +70,6 @@ pub trait Node<'i, Input: 'i>: 'i {
 	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
 		log::warn!("Node::serialize not implemented for {}", core::any::type_name::<Self>());
 		None
-	}
-}
-
-pub trait NodeMut<'i, Input: 'i>: 'i {
-	type MutOutput: 'i;
-	fn eval_mut(&'i mut self, input: Input) -> Self::MutOutput;
-}
-
-pub trait NodeOnce<'i, Input>
-where
-	Input: 'i,
-{
-	type OnceOutput: 'i;
-	fn eval_once(self, input: Input) -> Self::OnceOutput;
-}
-
-impl<'i, T: Node<'i, I>, I: 'i> NodeOnce<'i, I> for &'i T {
-	type OnceOutput = T::Output;
-	fn eval_once(self, input: I) -> Self::OnceOutput {
-		(self).eval(input)
-	}
-}
-impl<'i, T: Node<'i, I> + ?Sized, I: 'i> NodeMut<'i, I> for &'i T {
-	type MutOutput = T::Output;
-	fn eval_mut(&'i mut self, input: I) -> Self::MutOutput {
-		(*self).eval(input)
 	}
 }
 
@@ -121,6 +100,19 @@ where
 		NodeIOTypes {
 			input: concrete!(<Input as StaticTypeSized>::Static),
 			output: concrete!(<Self::Output as StaticTypeSized>::Static),
+			parameters,
+		}
+	}
+	#[cfg(feature = "alloc")]
+	fn to_async_node_io(&self, parameters: Vec<Type>) -> NodeIOTypes
+	where
+		<Self::Output as Future>::Output: StaticTypeSized,
+		Self::Output: Future,
+	{
+		NodeIOTypes {
+			input: concrete!(<Input as StaticTypeSized>::Static),
+			// TODO return actual future type
+			output: concrete!(<<Self::Output as Future>::Output as StaticTypeSized>::Static),
 			parameters,
 		}
 	}

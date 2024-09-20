@@ -311,6 +311,11 @@ impl Default for LayoutGroup {
 		Self::Row { widgets: Vec::new() }
 	}
 }
+impl From<Vec<WidgetHolder>> for LayoutGroup {
+	fn from(widgets: Vec<WidgetHolder>) -> LayoutGroup {
+		LayoutGroup::Row { widgets }
+	}
+}
 
 impl LayoutGroup {
 	/// Applies a tooltip to all widgets in this row or column without a tooltip.

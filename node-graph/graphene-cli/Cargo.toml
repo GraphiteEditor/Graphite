@@ -12,7 +12,6 @@ wgpu = ["wgpu-executor", "gpu", "graphene-std/wgpu"]
 wayland = ["graphene-std/wayland"]
 profiling = ["wgpu-executor/profiling"]
 passthrough = ["wgpu-executor/passthrough"]
-quantization = ["graphene-std/quantization"]
 gpu = [
 	"interpreted-executor/gpu",
 	"graphene-std/gpu",

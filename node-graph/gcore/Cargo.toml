@@ -16,6 +16,7 @@ type_id_logging = []
 wasm = ["web-sys"]
 wgpu = ["dep:wgpu"]
 vello = ["dep:vello", "bezier-rs/kurbo", "wgpu"]
+dealloc_nodes = ["reflections"]
 std = [
 	"dyn-any",
 	"dyn-any/std",
@@ -25,6 +26,11 @@ std = [
 	"num-traits/std",
 	"rustybuzz",
 	"image",
+	"reflections",
+]
+reflections = [
+	"alloc",
+	"ctor",
 ]
 serde = [
 	"dep:serde",
@@ -54,6 +60,7 @@ half = { version = "2.4.1", default-features = false, features = ["bytemuck"] }
 dyn-any = { workspace = true, optional = true }
 spirv-std = { workspace = true, optional = true }
 serde = { workspace = true, optional = true, features = ["derive"] }
+ctor = { workspace = true, optional = true }
 log = { workspace = true, optional = true }
 rand_chacha = { workspace = true, optional = true }
 bezier-rs = { workspace = true, optional = true }

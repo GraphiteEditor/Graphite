@@ -3,69 +3,9 @@ pub mod node_registry;
 
 #[cfg(test)]
 mod tests {
-	use graph_craft::document::value::TaggedValue;
 	use graphene_core::*;
 
 	use futures::executor::block_on;
-
-	#[test]
-	fn execute_add() {
-		use graph_craft::document::*;
-		use graph_craft::*;
-
-		fn add_network() -> NodeNetwork {
-			NodeNetwork {
-				exports: vec![NodeInput::node(NodeId(1), 0)],
-				nodes: [
-					(
-						NodeId(0),
-						DocumentNode {
-							inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::network(concrete!(&u32), 1)],
-							implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::structural::ConsNode<_, _>")),
-							..Default::default()
-						},
-					),
-					(
-						NodeId(1),
-						DocumentNode {
-							inputs: vec![NodeInput::node(NodeId(0), 0)],
-							implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::AddPairNode")),
-							..Default::default()
-						},
-					),
-				]
-				.into_iter()
-				.collect(),
-				..Default::default()
-			}
-		}
-
-		let network = NodeNetwork {
-			exports: vec![NodeInput::node(NodeId(0), 0)],
-			nodes: [(
-				NodeId(0),
-				DocumentNode {
-					inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::value(graph_craft::document::value::TaggedValue::U32(1u32), false)],
-					implementation: DocumentNodeImplementation::Network(add_network()),
-					..Default::default()
-				},
-			)]
-			.into_iter()
-			.collect(),
-			..Default::default()
-		};
-
-		use crate::dynamic_executor::DynamicExecutor;
-		use graph_craft::graphene_compiler::{Compiler, Executor};
-
-		let compiler = Compiler {};
-		let protograph = compiler.compile_single(network).expect("Graph should be generated");
-
-		let exec = block_on(DynamicExecutor::new(protograph)).unwrap_or_else(|e| panic!("Failed to create executor: {e:?}"));
-
-		let result = block_on((&exec).execute(32_u32)).unwrap();
-		assert_eq!(result, TaggedValue::U32(33));
-	}
 
 	#[test]
 	fn double_number() {
@@ -89,7 +29,7 @@ mod tests {
 					NodeId(1),
 					DocumentNode {
 						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::AddNode<_>")),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::AddNode")),
 						..Default::default()
 					},
 				),

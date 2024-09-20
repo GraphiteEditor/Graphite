@@ -7,7 +7,7 @@ use super::style::{PathStyle, Stroke};
 use crate::{AlphaBlending, Color};
 
 use bezier_rs::ManipulatorGroup;
-use dyn_any::{DynAny, StaticType};
+use dyn_any::DynAny;
 
 use core::borrow::Borrow;
 use glam::{DAffine2, DVec2};

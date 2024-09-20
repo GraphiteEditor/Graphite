@@ -1,6 +1,6 @@
 use super::HandleId;
 
-use dyn_any::{DynAny, StaticType};
+use dyn_any::DynAny;
 
 use glam::{DAffine2, DVec2};
 use std::collections::HashMap;

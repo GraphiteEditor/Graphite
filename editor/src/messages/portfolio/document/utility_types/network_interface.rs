@@ -426,12 +426,12 @@ impl NodeNetworkInterface {
 					};
 				} else {
 					// Disconnect node input if it is not connected to another node in new_ids
-					let tagged_value = TaggedValue::from_type(&self.input_type(&InputConnector::node(*node_id, input_index), network_path).0);
+					let tagged_value = TaggedValue::from_type_or_none(&self.input_type(&InputConnector::node(*node_id, input_index), network_path).0);
 					*input = NodeInput::value(tagged_value, true);
 				}
 			} else if let &mut NodeInput::Network { .. } = input {
 				// Always disconnect network node input
-				let tagged_value = TaggedValue::from_type(&self.input_type(&InputConnector::node(*node_id, input_index), network_path).0);
+				let tagged_value = TaggedValue::from_type_or_none(&self.input_type(&InputConnector::node(*node_id, input_index), network_path).0);
 				*input = NodeInput::value(tagged_value, true);
 			}
 		}
@@ -1445,7 +1445,12 @@ impl NodeNetworkInterface {
 
 /// Gets the type for a random protonode implementation (used if there is no type from the compiled network)
 fn random_protonode_implementation(protonode: &graph_craft::ProtoNodeIdentifier) -> Option<&graphene_std::NodeIOTypes> {
-	let Some(node_io_hashmap) = NODE_REGISTRY.get(protonode) else {
+	let mut protonode = protonode.clone();
+	// TODO: Remove
+	if let Some((path, _generics)) = protonode.name.split_once('<') {
+		protonode = path.to_string().to_string().into();
+	}
+	let Some(node_io_hashmap) = NODE_REGISTRY.get(&protonode) else {
 		log::error!("Could not get hashmap for proto node: {protonode:?}");
 		return None;
 	};
@@ -3121,6 +3126,19 @@ impl NodeNetworkInterface {
 	}
 
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
+	pub fn set_manual_compostion(&mut self, node_id: &NodeId, network_path: &[NodeId], manual_composition: Option<Type>) {
+		let Some(network) = self.network_mut(network_path) else {
+			log::error!("Could not get nested network in set_implementation");
+			return;
+		};
+		let Some(node) = network.nodes.get_mut(node_id) else {
+			log::error!("Could not get node in set_implementation");
+			return;
+		};
+		node.manual_composition = manual_composition;
+	}
+
+	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
 	pub fn replace_inputs(&mut self, node_id: &NodeId, inputs: Vec<NodeInput>, network_path: &[NodeId]) -> Vec<NodeInput> {
 		let Some(network) = self.network_mut(network_path) else {
 			log::error!("Could not get nested network in replace_inputs");
@@ -3386,7 +3404,7 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		let tagged_value = TaggedValue::from_type(&self.input_type(input_connector, network_path).0);
+		let tagged_value = TaggedValue::from_type_or_none(&self.input_type(input_connector, network_path).0);
 
 		let value_input = NodeInput::value(tagged_value, true);
 

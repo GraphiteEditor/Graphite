@@ -22,10 +22,6 @@ gpu = [
 ]
 resvg = ["graphene-std/resvg"]
 vello = ["graphene-std/vello", "resvg", "graphene-core/vello"]
-quantization = [
-	"graphene-std/quantization",
-	"interpreted-executor/quantization",
-]
 
 [dependencies]
 # Local dependencies
@@ -39,6 +35,7 @@ graphene-std = { path = "../node-graph/gstd", features = ["serde"] }
 js-sys = { workspace = true }
 log = { workspace = true }
 bitflags = { workspace = true }
+convert_case = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

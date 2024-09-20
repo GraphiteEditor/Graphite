@@ -1,7 +1,5 @@
-pub use uuid_generation::*;
-
 use dyn_any::DynAny;
-use dyn_any::StaticType;
+pub use uuid_generation::*;
 
 #[derive(Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct Uuid(

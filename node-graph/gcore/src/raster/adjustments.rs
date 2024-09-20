@@ -4,12 +4,14 @@
 use super::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
 #[cfg(feature = "alloc")]
 use super::ImageFrame;
-use super::{Channel, Color, Node, RGBMut};
+use super::{Channel, Color, Pixel};
+use crate::registry::types::{Angle, Percentage, SignedPercentage};
+use crate::transform::Footprint;
 use crate::vector::style::GradientStops;
 use crate::vector::VectorData;
 use crate::GraphicGroup;
 
-use dyn_any::{DynAny, StaticType};
+use dyn_any::DynAny;
 
 use core::cmp::Ordering;
 use core::fmt::Debug;
@@ -266,272 +268,341 @@ impl From<BlendMode> for vello::peniko::Mix {
 	}
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct LuminanceNode<LuminanceCalculation> {
+#[node_macro::node(category("Raster: Adjustment"))] // Unique to Graphite
+async fn luminance<T: Adjust<Color>>(
+	footprint: Footprint,
+	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>,
 	luminance_calc: LuminanceCalculation,
+) -> T {
+	let mut input = input.eval(footprint).await;
+	input.adjust(|color| {
+		let luminance = match luminance_calc {
+			LuminanceCalculation::SRGB => color.luminance_srgb(),
+			LuminanceCalculation::Perceptual => color.luminance_perceptual(),
+			LuminanceCalculation::AverageChannels => color.average_rgb_channels(),
+			LuminanceCalculation::MinimumChannels => color.minimum_rgb_channels(),
+			LuminanceCalculation::MaximumChannels => color.maximum_rgb_channels(),
+		};
+		color.map_rgb(|_| luminance)
+	});
+	input
 }
 
-#[node_macro::node_fn(LuminanceNode)]
-fn luminance_color_node(color: Color, luminance_calc: LuminanceCalculation) -> Color {
-	let luminance = match luminance_calc {
-		LuminanceCalculation::SRGB => color.luminance_srgb(),
-		LuminanceCalculation::Perceptual => color.luminance_perceptual(),
-		LuminanceCalculation::AverageChannels => color.average_rgb_channels(),
-		LuminanceCalculation::MinimumChannels => color.minimum_rgb_channels(),
-		LuminanceCalculation::MaximumChannels => color.maximum_rgb_channels(),
-	};
-	color.map_rgb(|_| luminance)
+#[node_macro::node(category("Raster"))]
+async fn extract_channel<T: Adjust<Color>>(
+	footprint: Footprint,
+	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>,
+	channel: RedGreenBlueAlpha,
+) -> T {
+	let mut input = input.eval(footprint).await;
+	input.adjust(|color| {
+		let extracted_value = match channel {
+			RedGreenBlueAlpha::Red => color.r(),
+			RedGreenBlueAlpha::Green => color.g(),
+			RedGreenBlueAlpha::Blue => color.b(),
+			RedGreenBlueAlpha::Alpha => color.a(),
+		};
+		color.map_rgb(|_| extracted_value).with_alpha(1.)
+	});
+	input
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ExtractChannelNode<TargetChannel> {
-	channel: TargetChannel,
-}
-
-#[node_macro::node_fn(ExtractChannelNode)]
-fn extract_channel_node(color: Color, channel: RedGreenBlueAlpha) -> Color {
-	let extracted_value = match channel {
-		RedGreenBlueAlpha::Red => color.r(),
-		RedGreenBlueAlpha::Green => color.g(),
-		RedGreenBlueAlpha::Blue => color.b(),
-		RedGreenBlueAlpha::Alpha => color.a(),
-	};
-	color.map_rgba(|_| extracted_value)
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ExtractOpaqueNode;
-
-#[node_macro::node_fn(ExtractOpaqueNode)]
-fn extract_opaque_node(color: Color) -> Color {
-	if color.a() == 0. {
-		return color.with_alpha(1.);
-	}
-	Color::from_rgbaf32(color.r() / color.a(), color.g() / color.a(), color.b() / color.a(), 1.).unwrap()
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct LevelsNode<InputStart, InputMid, InputEnd, OutputStart, OutputEnd> {
-	input_start: InputStart,
-	input_mid: InputMid,
-	input_end: InputEnd,
-	output_start: OutputStart,
-	output_end: OutputEnd,
+#[node_macro::node(category("Raster"))]
+async fn make_opaque<T: Adjust<Color>>(footprint: Footprint, #[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>) -> T {
+	let mut input = input.eval(footprint).await;
+	input.adjust(|color| {
+		if color.a() == 0. {
+			return color.with_alpha(1.);
+		}
+		Color::from_rgbaf32(color.r() / color.a(), color.g() / color.a(), color.b() / color.a(), 1.).unwrap()
+	});
+	input
 }
 
 // From https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
-#[node_macro::node_fn(LevelsNode)]
-fn levels_node(color: Color, input_start: f64, input_mid: f64, input_end: f64, output_start: f64, output_end: f64) -> Color {
-	let color = color.to_gamma_srgb();
+#[node_macro::node(category("Raster: Adjustment"))]
+async fn levels<T: Adjust<Color>>(
+	footprint: Footprint,
+	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] image: impl Node<Footprint, Output = T>,
+	#[default(0.)] shadows: Percentage,
+	#[default(50.)] midtones: Percentage,
+	#[default(100.)] highlights: Percentage,
+	#[default(0.)] output_minimums: Percentage,
+	#[default(100.)] output_maximums: Percentage,
+) -> T {
+	let mut input = image.eval(footprint).await;
+	input.adjust(|color| {
+		let color = color.to_gamma_srgb();
 
-	// Input Range (Range: 0-1)
-	let input_shadows = (input_start / 100.) as f32;
-	let input_midtones = (input_mid / 100.) as f32;
-	let input_highlights = (input_end / 100.) as f32;
+		// Input Range (Range: 0-1)
+		let input_shadows = (shadows / 100.) as f32;
+		let input_midtones = (midtones / 100.) as f32;
+		let input_highlights = (highlights / 100.) as f32;
 
-	// Output Range (Range: 0-1)
-	let output_minimums = (output_start / 100.) as f32;
-	let output_maximums = (output_end / 100.) as f32;
+		// Output Range (Range: 0-1)
+		let output_minimums = (output_minimums / 100.) as f32;
+		let output_maximums = (output_maximums / 100.) as f32;
 
-	// Midtones interpolation factor between minimums and maximums (Range: 0-1)
-	let midtones = output_minimums + (output_maximums - output_minimums) * input_midtones;
+		// Midtones interpolation factor between minimums and maximums (Range: 0-1)
+		let midtones = output_minimums + (output_maximums - output_minimums) * input_midtones;
 
-	// Gamma correction (Range: 0.01-10)
-	let gamma = if midtones < 0.5 {
-		// Range: 0-1
-		let x = 1. - midtones * 2.;
-		// Range: 1-10
-		1. + 9. * x
-	} else {
-		// Range: 0-0.5
-		let x = 1. - midtones;
-		// Range: 0-1
-		let x = x * 2.;
-		// Range: 0.01-1
-		x.max(0.01)
-	};
+		// Gamma correction (Range: 0.01-10)
+		let gamma = if midtones < 0.5 {
+			// Range: 0-1
+			let x = 1. - midtones * 2.;
+			// Range: 1-10
+			1. + 9. * x
+		} else {
+			// Range: 0-0.5
+			let x = 1. - midtones;
+			// Range: 0-1
+			let x = x * 2.;
+			// Range: 0.01-1
+			x.max(0.01)
+		};
 
-	// Input levels (Range: 0-1)
-	let highlights_minus_shadows = (input_highlights - input_shadows).clamp(f32::EPSILON, 1.);
-	let color = color.map_rgb(|c| ((c - input_shadows).max(0.) / highlights_minus_shadows).min(1.));
+		// Input levels (Range: 0-1)
+		let highlights_minus_shadows = (input_highlights - input_shadows).clamp(f32::EPSILON, 1.);
+		let color = color.map_rgb(|c| ((c - input_shadows).max(0.) / highlights_minus_shadows).min(1.));
 
-	// Midtones (Range: 0-1)
-	let color = color.gamma(gamma);
+		// Midtones (Range: 0-1)
+		let color = color.gamma(gamma);
 
-	// Output levels (Range: 0-1)
-	let color = color.map_rgb(|c| c * (output_maximums - output_minimums) + output_minimums);
+		// Output levels (Range: 0-1)
+		let color = color.map_rgb(|c| c * (output_maximums - output_minimums) + output_minimums);
 
-	color.to_linear_srgb()
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct BlackAndWhiteNode<Tint, Reds, Yellows, Greens, Cyans, Blues, Magentas> {
-	tint: Tint,
-	reds: Reds,
-	yellows: Yellows,
-	greens: Greens,
-	cyans: Cyans,
-	blues: Blues,
-	magentas: Magentas,
+		color.to_linear_srgb()
+	});
+	input
 }
 
 // From <https://stackoverflow.com/a/55233732/775283>
 // Works the same for gamma and linear color
-#[node_macro::node_fn(BlackAndWhiteNode)]
-fn black_and_white_color_node(color: Color, tint: Color, reds: f64, yellows: f64, greens: f64, cyans: f64, blues: f64, magentas: f64) -> Color {
-	let color = color.to_gamma_srgb();
+#[node_macro::node(name("Black & White"), category("Raster: Adjustment"))]
+async fn black_and_white<T: Adjust<Color>>(
+	footprint: Footprint,
+	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] image: impl Node<Footprint, Output = T>,
+	#[default(000000ff)] tint: Color,
+	#[default(40.)]
+	#[range((-200., 300.))]
+	reds: Percentage,
+	#[default(60.)]
+	#[range((-200., 300.))]
+	yellows: Percentage,
+	#[default(40.)]
+	#[range((-200., 300.))]
+	greens: Percentage,
+	#[default(60.)]
+	#[range((-200., 300.))]
+	cyans: Percentage,
+	#[default(20.)]
+	#[range((-200., 300.))]
+	blues: Percentage,
+	#[default(80.)]
+	#[range((-200., 300.))]
+	magentas: Percentage,
+) -> T {
+	let mut input = image.eval(footprint).await;
+	input.adjust(|color| {
+		let color = color.to_gamma_srgb();
 
-	let reds = reds as f32 / 100.;
-	let yellows = yellows as f32 / 100.;
-	let greens = greens as f32 / 100.;
-	let cyans = cyans as f32 / 100.;
-	let blues = blues as f32 / 100.;
-	let magentas = magentas as f32 / 100.;
+		let reds = reds as f32 / 100.;
+		let yellows = yellows as f32 / 100.;
+		let greens = greens as f32 / 100.;
+		let cyans = cyans as f32 / 100.;
+		let blues = blues as f32 / 100.;
+		let magentas = magentas as f32 / 100.;
 
-	let gray_base = color.r().min(color.g()).min(color.b());
+		let gray_base = color.r().min(color.g()).min(color.b());
 
-	let red_part = color.r() - gray_base;
-	let green_part = color.g() - gray_base;
-	let blue_part = color.b() - gray_base;
-	let alpha_part = color.a();
+		let red_part = color.r() - gray_base;
+		let green_part = color.g() - gray_base;
+		let blue_part = color.b() - gray_base;
+		let alpha_part = color.a();
 
-	let additional = if red_part == 0. {
-		let cyan_part = green_part.min(blue_part);
-		cyan_part * cyans + (green_part - cyan_part) * greens + (blue_part - cyan_part) * blues
-	} else if green_part == 0. {
-		let magenta_part = red_part.min(blue_part);
-		magenta_part * magentas + (red_part - magenta_part) * reds + (blue_part - magenta_part) * blues
-	} else {
-		let yellow_part = red_part.min(green_part);
-		yellow_part * yellows + (red_part - yellow_part) * reds + (green_part - yellow_part) * greens
-	};
+		let additional = if red_part == 0. {
+			let cyan_part = green_part.min(blue_part);
+			cyan_part * cyans + (green_part - cyan_part) * greens + (blue_part - cyan_part) * blues
+		} else if green_part == 0. {
+			let magenta_part = red_part.min(blue_part);
+			magenta_part * magentas + (red_part - magenta_part) * reds + (blue_part - magenta_part) * blues
+		} else {
+			let yellow_part = red_part.min(green_part);
+			yellow_part * yellows + (red_part - yellow_part) * reds + (green_part - yellow_part) * greens
+		};
 
-	let luminance = gray_base + additional;
+		let luminance = gray_base + additional;
 
-	// TODO: Fix "Color" blend mode implementation so it matches the expected behavior perfectly (it's currently close)
-	let color = tint.with_luminance(luminance);
+		// TODO: Fix "Color" blend mode implementation so it matches the expected behavior perfectly (it's currently close)
+		let color = tint.with_luminance(luminance);
 
-	let color = Color::from_rgbaf32(color.r(), color.g(), color.b(), alpha_part).unwrap();
+		let color = Color::from_rgbaf32(color.r(), color.g(), color.b(), alpha_part).unwrap();
 
-	color.to_linear_srgb()
+		color.to_linear_srgb()
+	});
+	input
 }
 
-#[derive(Debug)]
-pub struct HueSaturationNode<Hue, Saturation, Lightness> {
-	hue_shift: Hue,
-	saturation_shift: Saturation,
-	lightness_shift: Lightness,
+#[node_macro::node(name("Hue/Saturation"), category("Raster: Adjustment"))]
+async fn hue_saturation<T: Adjust<Color>>(
+	footprint: Footprint,
+	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>,
+	hue_shift: Angle,
+	saturation_shift: SignedPercentage,
+	lightness_shift: SignedPercentage,
+) -> T {
+	let mut input = input.eval(footprint).await;
+	input.adjust(|color| {
+		let color = color.to_gamma_srgb();
+
+		let [hue, saturation, lightness, alpha] = color.to_hsla();
+
+		let color = Color::from_hsla(
+			(hue + hue_shift as f32 / 360.) % 1.,
+			// TODO: Improve the way saturation works (it's slightly off)
+			(saturation + saturation_shift as f32 / 100.).clamp(0., 1.),
+			// TODO: Fix the way lightness works (it's very off)
+			(lightness + lightness_shift as f32 / 100.).clamp(0., 1.),
+			alpha,
+		);
+
+		color.to_linear_srgb()
+	});
+	input
 }
 
-#[node_macro::node_fn(HueSaturationNode)]
-fn hue_shift_color_node(color: Color, hue_shift: f64, saturation_shift: f64, lightness_shift: f64) -> Color {
-	let color = color.to_gamma_srgb();
-
-	let [hue, saturation, lightness, alpha] = color.to_hsla();
-
-	let color = Color::from_hsla(
-		(hue + hue_shift as f32 / 360.) % 1.,
-		// TODO: Improve the way saturation works (it's slightly off)
-		(saturation + saturation_shift as f32 / 100.).clamp(0., 1.),
-		// TODO: Fix the way lightness works (it's very off)
-		(lightness + lightness_shift as f32 / 100.).clamp(0., 1.),
-		alpha,
-	);
-
-	color.to_linear_srgb()
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct InvertNode;
-
-#[node_macro::node_fn(InvertNode)]
-fn invert_node(color: Color) -> Color {
-	let color = color.to_gamma_srgb();
-
-	let color = color.map_rgb(|c| color.a() - c);
-
-	color.to_linear_srgb()
-}
-
-// TODO replace with trait based implementation
-impl<'i> Node<'i, &'i Color> for InvertNode {
-	type Output = Color;
-
-	fn eval(&'i self, color: &'i Color) -> Self::Output {
+#[node_macro::node(category("Raster: Adjustment"))]
+async fn invert<T: Adjust<Color>>(footprint: Footprint, #[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>) -> T {
+	let mut input = input.eval(footprint).await;
+	input.adjust(|color| {
 		let color = color.to_gamma_srgb();
 
 		let color = color.map_rgb(|c| color.a() - c);
 
 		color.to_linear_srgb()
+	});
+	input
+}
+
+#[node_macro::node(category("Raster: Adjustment"))]
+async fn threshold<T: Adjust<Color>>(
+	footprint: Footprint,
+	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] image: impl Node<Footprint, Output = T>,
+	#[default(50.)] min_luminance: Percentage,
+	#[default(100.)] max_luminance: Percentage,
+	luminance_calc: LuminanceCalculation,
+) -> T {
+	let mut input = image.eval(footprint).await;
+	input.adjust(|color| {
+		let min_luminance = Color::srgb_to_linear(min_luminance as f32 / 100.);
+		let max_luminance = Color::srgb_to_linear(max_luminance as f32 / 100.);
+
+		let luminance = match luminance_calc {
+			LuminanceCalculation::SRGB => color.luminance_srgb(),
+			LuminanceCalculation::Perceptual => color.luminance_perceptual(),
+			LuminanceCalculation::AverageChannels => color.average_rgb_channels(),
+			LuminanceCalculation::MinimumChannels => color.minimum_rgb_channels(),
+			LuminanceCalculation::MaximumChannels => color.maximum_rgb_channels(),
+		};
+
+		if luminance >= min_luminance && luminance <= max_luminance {
+			Color::WHITE
+		} else {
+			Color::BLACK
+		}
+	});
+	input
+}
+
+trait Blend<P: Pixel> {
+	fn blend(&self, under: &Self, blend_fn: impl Fn(P, P) -> P) -> Self;
+}
+
+impl Blend<Color> for Color {
+	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
+		blend_fn(*self, *under)
+	}
+}
+impl Blend<Color> for Option<Color> {
+	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
+		match (self, under) {
+			(Some(a), Some(b)) => Some(blend_fn(*a, *b)),
+			(a, None) => *a,
+			(None, b) => *b,
+		}
 	}
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct ThresholdNode<MinLuminance, MaxLuminance, LuminanceCalc> {
-	min_luminance: MinLuminance,
-	max_luminance: MaxLuminance,
-	luminance_calc: LuminanceCalc,
-}
+impl Blend<Color> for ImageFrame<Color> {
+	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
+		let data = self.image.data.iter().zip(under.image.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
 
-#[node_macro::node_fn(ThresholdNode)]
-fn threshold_node(color: Color, min_luminance: f64, max_luminance: f64, luminance_calc: LuminanceCalculation) -> Color {
-	let min_luminance = Color::srgb_to_linear(min_luminance as f32 / 100.);
-	let max_luminance = Color::srgb_to_linear(max_luminance as f32 / 100.);
-
-	let luminance = match luminance_calc {
-		LuminanceCalculation::SRGB => color.luminance_srgb(),
-		LuminanceCalculation::Perceptual => color.luminance_perceptual(),
-		LuminanceCalculation::AverageChannels => color.average_rgb_channels(),
-		LuminanceCalculation::MinimumChannels => color.minimum_rgb_channels(),
-		LuminanceCalculation::MaximumChannels => color.maximum_rgb_channels(),
-	};
-
-	if luminance >= min_luminance && luminance <= max_luminance {
-		Color::WHITE
-	} else {
-		Color::BLACK
+		ImageFrame {
+			image: super::Image {
+				data,
+				width: self.image.width,
+				height: self.image.height,
+				base64_string: None,
+			},
+			transform: self.transform,
+			alpha_blending: self.alpha_blending,
+		}
 	}
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct BlendColorsNode<Under, BlendMode, Opacity> {
-	under: Under,
+impl Blend<Color> for GradientStops {
+	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
+		let mut combined_stops = self.0.iter().map(|(position, _)| position).chain(under.0.iter().map(|(position, _)| position)).collect::<Vec<_>>();
+		combined_stops.dedup_by(|&mut a, &mut b| (a - b).abs() < 1e-6);
+		combined_stops.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
+
+		let stops = combined_stops
+			.into_iter()
+			.map(|&position| {
+				let over_color = self.evalute(position);
+				let under_color = under.evalute(position);
+				let color = blend_fn(over_color, under_color);
+				(position, color)
+			})
+			.collect::<Vec<_>>();
+
+		GradientStops(stops)
+	}
+}
+
+#[node_macro::node(category("Raster"))]
+async fn blend<F: 'n + Copy + Send, T: Blend<Color> + Send>(
+	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		((), Color),
+		((), ImageFrame<Color>),
+		((), GradientStops),
+		(Footprint, Color),
+		(Footprint, ImageFrame<Color>),
+		(Footprint, GradientStops),
+	)]
+	over: impl Node<F, Output = T>,
+	#[expose]
+	#[implementations(
+		((), Color),
+		((), ImageFrame<Color>),
+		((), GradientStops),
+		(Footprint, Color),
+		(Footprint, ImageFrame<Color>),
+		(Footprint, GradientStops),
+	)]
+	under: impl Node<F, Output = T>,
 	blend_mode: BlendMode,
-	opacity: Opacity,
+	#[default(100.)] opacity: Percentage,
+) -> T {
+	let over = over.eval(footprint).await;
+	let under = under.eval(footprint).await;
+
+	Blend::blend(&over, &under, |a, b| blend_colors(a, b, blend_mode, opacity / 100.))
 }
 
-#[node_macro::node_fn(BlendColorsNode)]
-fn blend_node(over: Color, under: Color, blend_mode: BlendMode, opacity: f64) -> Color {
-	blend_colors(over, under, blend_mode, opacity / 100.)
-}
-
-#[node_macro::node_impl(BlendColorsNode)]
-fn blend_colors(over: GradientStops, under: GradientStops, blend_mode: BlendMode, opacity: f64) -> GradientStops {
-	let mut combined_stops = over.0.iter().map(|(position, _)| position).chain(under.0.iter().map(|(position, _)| position)).collect::<Vec<_>>();
-	combined_stops.dedup_by(|&mut a, &mut b| (a - b).abs() < 1e-6);
-	combined_stops.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
-
-	let stops = combined_stops
-		.into_iter()
-		.map(|&position| {
-			let over_color = over.evalute(position);
-			let under_color = under.evalute(position);
-			let color = blend_colors(over_color, under_color, blend_mode, opacity / 100.);
-			(position, color)
-		})
-		.collect::<Vec<_>>();
-
-	GradientStops(stops)
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct BlendNode<BlendMode, Opacity> {
-	blend_mode: BlendMode,
-	opacity: Opacity,
-}
-
-#[node_macro::node_fn(BlendNode)]
-fn blend_node(input: (Color, Color), blend_mode: BlendMode, opacity: f64) -> Color {
+#[node_macro::node(category(""))]
+fn blend_color_pair(input: (Color, Color), blend_mode: BlendMode, opacity: Percentage) -> Color {
 	blend_colors(input.0, input.1, blend_mode, opacity / 100.)
 }
 
@@ -574,6 +645,37 @@ pub fn apply_blend_mode(foreground: Color, background: Color, blend_mode: BlendM
 	}
 }
 
+trait Adjust<C> {
+	fn adjust(&mut self, map_fn: impl Fn(&C) -> C);
+}
+impl Adjust<Color> for Color {
+	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
+		*self = map_fn(self);
+	}
+}
+impl Adjust<Color> for Option<Color> {
+	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
+		match self {
+			Some(ref mut v) => *v = map_fn(v),
+			None => (),
+		}
+	}
+}
+impl Adjust<Color> for GradientStops {
+	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
+		for (_pos, c) in self.0.iter_mut() {
+			*c = map_fn(c);
+		}
+	}
+}
+impl<C: Pixel> Adjust<C> for ImageFrame<C> {
+	fn adjust(&mut self, map_fn: impl Fn(&C) -> C) {
+		for c in self.image.data.iter_mut() {
+			*c = map_fn(c);
+		}
+	}
+}
+
 #[inline(always)]
 pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode, opacity: f64) -> Color {
 	let target_color = match blend_mode {
@@ -587,75 +689,89 @@ pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode,
 	background.alpha_blend(target_color.to_associated_alpha(opacity as f32))
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct GradientMapNode<Gradient, Reverse> {
-	gradient: Gradient,
-	reverse: Reverse,
-	// TODO: Add support for dithering to break up gradient color banding
-	// TODO: Add support for controlling the gradient interpolation method (instead of always `luminance_srgb()`)
+#[node_macro::node(category("Raster: Adjustment"))]
+async fn gradient_map<F: 'n + Copy + Send, T: Adjust<Color>>(
+	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		((), Color),
+		((), ImageFrame<Color>),
+		((), GradientStops),
+		(Footprint, Color),
+		(Footprint, ImageFrame<Color>),
+		(Footprint, GradientStops),
+	)]
+	image: impl Node<F, Output = T>,
+	gradient: GradientStops,
+	reverse: bool,
+) -> T {
+	let mut input = image.eval(footprint).await;
+
+	input.adjust(|color| {
+		let intensity = color.luminance_srgb();
+		let intensity = if reverse { 1. - intensity } else { intensity };
+		gradient.evalute(intensity as f64)
+	});
+
+	input
 }
 
-#[node_macro::node_fn(GradientMapNode)]
-fn gradient_map_node(color: Color, gradient: GradientStops, reverse: bool) -> Color {
-	let intensity = color.luminance_srgb();
-	let intensity = if reverse { 1. - intensity } else { intensity };
-	gradient.evalute(intensity as f64)
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct VibranceNode<Vibrance> {
-	vibrance: Vibrance,
-}
-
-// Modified from https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters
+// Based on <https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters>
 // The results of this implementation are very close to correct, but not quite perfect
-#[node_macro::node_fn(VibranceNode)]
-fn vibrance_node(color: Color, vibrance: f64) -> Color {
-	let vibrance = vibrance as f32 / 100.;
-	// Slow the effect down by half when it's negative, since artifacts begin appearing past -50%.
-	// So this scales the 0% to -50% range to 0% to -100%.
-	let slowed_vibrance = if vibrance >= 0. { vibrance } else { vibrance * 0.5 };
+#[node_macro::node(category("Raster: Adjustment"))]
+async fn vibrance<T: Adjust<Color>>(
+	footprint: Footprint,
+	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] image: impl Node<Footprint, Output = T>,
+	vibrance: SignedPercentage,
+) -> T {
+	let mut input = image.eval(footprint).await;
+	input.adjust(|color| {
+		let vibrance = vibrance as f32 / 100.;
+		// Slow the effect down by half when it's negative, since artifacts begin appearing past -50%.
+		// So this scales the 0% to -50% range to 0% to -100%.
+		let slowed_vibrance = if vibrance >= 0. { vibrance } else { vibrance * 0.5 };
 
-	let channel_max = color.r().max(color.g()).max(color.b());
-	let channel_min = color.r().min(color.g()).min(color.b());
-	let channel_difference = channel_max - channel_min;
+		let channel_max = color.r().max(color.g()).max(color.b());
+		let channel_min = color.r().min(color.g()).min(color.b());
+		let channel_difference = channel_max - channel_min;
 
-	let scale_multiplier = if channel_max == color.r() {
-		let green_blue_difference = (color.g() - color.b()).abs();
-		let t = (green_blue_difference / channel_difference).min(1.);
-		t * 0.5 + 0.5
-	} else {
-		1.
-	};
-	let scale = slowed_vibrance * scale_multiplier * (2. - channel_difference);
-	let channel_reduction = channel_min * scale;
-	let scale = 1. + scale * (1. - channel_difference);
+		let scale_multiplier = if channel_max == color.r() {
+			let green_blue_difference = (color.g() - color.b()).abs();
+			let t = (green_blue_difference / channel_difference).min(1.);
+			t * 0.5 + 0.5
+		} else {
+			1.
+		};
+		let scale = slowed_vibrance * scale_multiplier * (2. - channel_difference);
+		let channel_reduction = channel_min * scale;
+		let scale = 1. + scale * (1. - channel_difference);
 
-	let luminance_initial = color.to_linear_srgb().luminance_srgb();
-	let altered_color = color.map_rgb(|c| c * scale - channel_reduction).to_linear_srgb();
-	let luminance = altered_color.luminance_srgb();
-	let altered_color = altered_color.map_rgb(|c| c * luminance_initial / luminance);
+		let luminance_initial = color.to_linear_srgb().luminance_srgb();
+		let altered_color = color.map_rgb(|c| c * scale - channel_reduction).to_linear_srgb();
+		let luminance = altered_color.luminance_srgb();
+		let altered_color = altered_color.map_rgb(|c| c * luminance_initial / luminance);
 
-	let channel_max = altered_color.r().max(altered_color.g()).max(altered_color.b());
-	let altered_color = if Color::linear_to_srgb(channel_max) > 1. {
-		let scale = (1. - luminance) / (channel_max - luminance);
-		altered_color.map_rgb(|c| (c - luminance) * scale + luminance)
-	} else {
-		altered_color
-	};
-	let altered_color = altered_color.to_gamma_srgb();
+		let channel_max = altered_color.r().max(altered_color.g()).max(altered_color.b());
+		let altered_color = if Color::linear_to_srgb(channel_max) > 1. {
+			let scale = (1. - luminance) / (channel_max - luminance);
+			altered_color.map_rgb(|c| (c - luminance) * scale + luminance)
+		} else {
+			altered_color
+		};
+		let altered_color = altered_color.to_gamma_srgb();
 
-	if vibrance >= 0. {
-		altered_color
-	} else {
-		// TODO: The result ends up a bit darker than it should be, further investigation is needed
-		let luminance = color.luminance_rec_601();
+		if vibrance >= 0. {
+			altered_color
+		} else {
+			// TODO: The result ends up a bit darker than it should be, further investigation is needed
+			let luminance = color.luminance_rec_601();
 
-		// Near -0% vibrance we mostly use `altered_color`.
-		// Near -100% vibrance, we mostly use half the desaturated luminance color and half `altered_color`.
-		let factor = -slowed_vibrance;
-		altered_color.map_rgb(|c| c * (1. - factor) + luminance * factor)
-	}
+			// Near -0% vibrance we mostly use `altered_color`.
+			// Near -100% vibrance, we mostly use half the desaturated luminance color and half `altered_color`.
+			let factor = -slowed_vibrance;
+			altered_color.map_rgb(|c| c * (1. - factor) + luminance * factor)
+		}
+	});
+	input
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -884,71 +1000,94 @@ impl DomainWarpType {
 	}
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct ChannelMixerNode<Monochrome, MonochromeR, MonochromeG, MonochromeB, MonochromeC, RedR, RedG, RedB, RedC, GreenR, GreenG, GreenB, GreenC, BlueR, BlueG, BlueB, BlueC> {
-	monochrome: Monochrome,
-	monochrome_r: MonochromeR,
-	monochrome_g: MonochromeG,
-	monochrome_b: MonochromeB,
-	monochrome_c: MonochromeC,
-	red_r: RedR,
-	red_g: RedG,
-	red_b: RedB,
-	red_c: RedC,
-	green_r: GreenR,
-	green_g: GreenG,
-	green_b: GreenB,
-	green_c: GreenC,
-	blue_r: BlueR,
-	blue_g: BlueG,
-	blue_b: BlueB,
-	blue_c: BlueC,
-}
+#[node_macro::node(category("Raster: Adjustment"))]
+async fn channel_mixer<T: Adjust<Color>>(
+	footprint: Footprint,
+	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] image: impl Node<Footprint, Output = T>,
 
-#[node_macro::node_fn(ChannelMixerNode)]
-fn channel_mixer_node(
-	color: Color,
 	monochrome: bool,
+	#[default(40.)]
+	#[name("Red")]
 	monochrome_r: f64,
+	#[default(40.)]
+	#[name("Green")]
 	monochrome_g: f64,
+	#[default(20.)]
+	#[name("Blue")]
 	monochrome_b: f64,
+	#[default(0.)]
+	#[name("Constant")]
 	monochrome_c: f64,
+
+	#[default(100.)]
+	#[name("(Red) Red")]
 	red_r: f64,
+	#[default(0.)]
+	#[name("(Red) Green")]
 	red_g: f64,
+	#[default(0.)]
+	#[name("(Red) Blue")]
 	red_b: f64,
+	#[default(0.)]
+	#[name("(Red) Constant")]
 	red_c: f64,
+
+	#[default(0.)]
+	#[name("(Green) Red")]
 	green_r: f64,
+	#[default(100.)]
+	#[name("(Green) Green")]
 	green_g: f64,
+	#[default(0.)]
+	#[name("(Green) Blue")]
 	green_b: f64,
+	#[default(0.)]
+	#[name("(Green) Constant")]
 	green_c: f64,
+
+	#[default(0.)]
+	#[name("(Blue) Red")]
 	blue_r: f64,
+	#[default(0.)]
+	#[name("(Blue) Green")]
 	blue_g: f64,
+	#[default(100.)]
+	#[name("(Blue) Blue")]
 	blue_b: f64,
+	#[default(0.)]
+	#[name("(Blue) Constant")]
 	blue_c: f64,
-) -> Color {
-	let color = color.to_gamma_srgb();
 
-	let (r, g, b, a) = color.components();
+	// Display-only properties (not used within the node)
+	_output_channel: RedGreenBlue,
+) -> T {
+	let mut input = image.eval(footprint).await;
+	input.adjust(|color| {
+		let color = color.to_gamma_srgb();
 
-	let color = if monochrome {
-		let (monochrome_r, monochrome_g, monochrome_b, monochrome_c) = (monochrome_r as f32 / 100., monochrome_g as f32 / 100., monochrome_b as f32 / 100., monochrome_c as f32 / 100.);
+		let (r, g, b, a) = color.components();
 
-		let gray = (r * monochrome_r + g * monochrome_g + b * monochrome_b + monochrome_c).clamp(0., 1.);
+		let color = if monochrome {
+			let (monochrome_r, monochrome_g, monochrome_b, monochrome_c) = (monochrome_r as f32 / 100., monochrome_g as f32 / 100., monochrome_b as f32 / 100., monochrome_c as f32 / 100.);
 
-		Color::from_rgbaf32_unchecked(gray, gray, gray, a)
-	} else {
-		let (red_r, red_g, red_b, red_c) = (red_r as f32 / 100., red_g as f32 / 100., red_b as f32 / 100., red_c as f32 / 100.);
-		let (green_r, green_g, green_b, green_c) = (green_r as f32 / 100., green_g as f32 / 100., green_b as f32 / 100., green_c as f32 / 100.);
-		let (blue_r, blue_g, blue_b, blue_c) = (blue_r as f32 / 100., blue_g as f32 / 100., blue_b as f32 / 100., blue_c as f32 / 100.);
+			let gray = (r * monochrome_r + g * monochrome_g + b * monochrome_b + monochrome_c).clamp(0., 1.);
 
-		let red = (r * red_r + g * red_g + b * red_b + red_c).clamp(0., 1.);
-		let green = (r * green_r + g * green_g + b * green_b + green_c).clamp(0., 1.);
-		let blue = (r * blue_r + g * blue_g + b * blue_b + blue_c).clamp(0., 1.);
+			Color::from_rgbaf32_unchecked(gray, gray, gray, a)
+		} else {
+			let (red_r, red_g, red_b, red_c) = (red_r as f32 / 100., red_g as f32 / 100., red_b as f32 / 100., red_c as f32 / 100.);
+			let (green_r, green_g, green_b, green_c) = (green_r as f32 / 100., green_g as f32 / 100., green_b as f32 / 100., green_c as f32 / 100.);
+			let (blue_r, blue_g, blue_b, blue_c) = (blue_r as f32 / 100., blue_g as f32 / 100., blue_b as f32 / 100., blue_c as f32 / 100.);
 
-		Color::from_rgbaf32_unchecked(red, green, blue, a)
-	};
+			let red = (r * red_r + g * red_g + b * red_b + red_c).clamp(0., 1.);
+			let green = (r * green_r + g * green_g + b * green_b + green_c).clamp(0., 1.);
+			let blue = (r * blue_r + g * blue_g + b * blue_b + blue_c).clamp(0., 1.);
 
-	color.to_linear_srgb()
+			Color::from_rgbaf32_unchecked(red, green, blue, a)
+		};
+
+		color.to_linear_srgb()
+	});
+	input
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1002,241 +1141,192 @@ impl core::fmt::Display for SelectiveColorChoice {
 	}
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct SelectiveColorNode<Absolute, RC, RM, RY, RK, YC, YM, YY, YK, GC, GM, GY, GK, CC, CM, CY, CK, BC, BM, BY, BK, MC, MM, MY, MK, WC, WM, WY, WK, NC, NM, NY, NK, KC, KM, KY, KK> {
-	mode: Absolute,
-	r_c: RC,
-	r_m: RM,
-	r_y: RY,
-	r_k: RK,
-	y_c: YC,
-	y_m: YM,
-	y_y: YY,
-	y_k: YK,
-	g_c: GC,
-	g_m: GM,
-	g_y: GY,
-	g_k: GK,
-	c_c: CC,
-	c_m: CM,
-	c_y: CY,
-	c_k: CK,
-	b_c: BC,
-	b_m: BM,
-	b_y: BY,
-	b_k: BK,
-	m_c: MC,
-	m_m: MM,
-	m_y: MY,
-	m_k: MK,
-	w_c: WC,
-	w_m: WM,
-	w_y: WY,
-	w_k: WK,
-	n_c: NC,
-	n_m: NM,
-	n_y: NY,
-	n_k: NK,
-	k_c: KC,
-	k_m: KM,
-	k_y: KY,
-	k_k: KK,
-}
-
 // Based on https://blog.pkh.me/p/22-understanding-selective-coloring-in-adobe-photoshop.html
-#[node_macro::node_fn(SelectiveColorNode)]
-fn selective_color_node(
-	color: Color,
+#[node_macro::node(category("Raster: Adjustment"))]
+async fn selective_color<T: Adjust<Color>>(
+	footprint: Footprint,
+	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] image: impl Node<Footprint, Output = T>,
 	mode: RelativeAbsolute,
-	r_c: f64,
-	r_m: f64,
-	r_y: f64,
-	r_k: f64,
-	y_c: f64,
-	y_m: f64,
-	y_y: f64,
-	y_k: f64,
-	g_c: f64,
-	g_m: f64,
-	g_y: f64,
-	g_k: f64,
-	c_c: f64,
-	c_m: f64,
-	c_y: f64,
-	c_k: f64,
-	b_c: f64,
-	b_m: f64,
-	b_y: f64,
-	b_k: f64,
-	m_c: f64,
-	m_m: f64,
-	m_y: f64,
-	m_k: f64,
-	w_c: f64,
-	w_m: f64,
-	w_y: f64,
-	w_k: f64,
-	n_c: f64,
-	n_m: f64,
-	n_y: f64,
-	n_k: f64,
-	k_c: f64,
-	k_m: f64,
-	k_y: f64,
-	k_k: f64,
-) -> Color {
-	let color = color.to_gamma_srgb();
+	#[name("(Reds) Cyan")] r_c: f64,
+	#[name("(Reds) Magenta")] r_m: f64,
+	#[name("(Reds) Yellow")] r_y: f64,
+	#[name("(Reds) Black")] r_k: f64,
+	#[name("(Yellows) Cyan")] y_c: f64,
+	#[name("(Yellows) Magenta")] y_m: f64,
+	#[name("(Yellows) Yellow")] y_y: f64,
+	#[name("(Yellows) Black")] y_k: f64,
+	#[name("(Greens) Cyan")] g_c: f64,
+	#[name("(Greens) Magenta")] g_m: f64,
+	#[name("(Greens) Yellow")] g_y: f64,
+	#[name("(Greens) Black")] g_k: f64,
+	#[name("(Cyans) Cyan")] c_c: f64,
+	#[name("(Cyans) Magenta")] c_m: f64,
+	#[name("(Cyans) Yellow")] c_y: f64,
+	#[name("(Cyans) Black")] c_k: f64,
+	#[name("(Blues) Cyan")] b_c: f64,
+	#[name("(Blues) Magenta")] b_m: f64,
+	#[name("(Blues) Yellow")] b_y: f64,
+	#[name("(Blues) Black")] b_k: f64,
+	#[name("(Magentas) Cyan")] m_c: f64,
+	#[name("(Magentas) Magenta")] m_m: f64,
+	#[name("(Magentas) Yellow")] m_y: f64,
+	#[name("(Magentas) Black")] m_k: f64,
+	#[name("(Whites) Cyan")] w_c: f64,
+	#[name("(Whites) Magenta")] w_m: f64,
+	#[name("(Whites) Yellow")] w_y: f64,
+	#[name("(Whites) Black")] w_k: f64,
+	#[name("(Neutrals) Cyan")] n_c: f64,
+	#[name("(Neutrals) Magenta")] n_m: f64,
+	#[name("(Neutrals) Yellow")] n_y: f64,
+	#[name("(Neutrals) Black")] n_k: f64,
+	#[name("(Blacks) Cyan")] k_c: f64,
+	#[name("(Blacks) Magenta")] k_m: f64,
+	#[name("(Blacks) Yellow")] k_y: f64,
+	#[name("(Blacks) Black")] k_k: f64,
+	_colors: SelectiveColorChoice,
+) -> T {
+	let mut input = image.eval(footprint).await;
+	input.adjust(|color| {
+		let color = color.to_gamma_srgb();
 
-	let (r, g, b, a) = color.components();
+		let (r, g, b, a) = color.components();
 
-	let min = |a: f32, b: f32, c: f32| a.min(b).min(c);
-	let max = |a: f32, b: f32, c: f32| a.max(b).max(c);
-	let med = |a: f32, b: f32, c: f32| a + b + c - min(a, b, c) - max(a, b, c);
+		let min = |a: f32, b: f32, c: f32| a.min(b).min(c);
+		let max = |a: f32, b: f32, c: f32| a.max(b).max(c);
+		let med = |a: f32, b: f32, c: f32| a + b + c - min(a, b, c) - max(a, b, c);
 
-	let max_channel = max(r, g, b);
-	let min_channel = min(r, g, b);
+		let max_channel = max(r, g, b);
+		let min_channel = min(r, g, b);
 
-	let pixel_color_range = |choice| match choice {
-		SelectiveColorChoice::Reds => max_channel == r,
-		SelectiveColorChoice::Yellows => min_channel == b,
-		SelectiveColorChoice::Greens => max_channel == g,
-		SelectiveColorChoice::Cyans => min_channel == r,
-		SelectiveColorChoice::Blues => max_channel == b,
-		SelectiveColorChoice::Magentas => min_channel == g,
-		SelectiveColorChoice::Whites => r > 0.5 && g > 0.5 && b > 0.5,
-		SelectiveColorChoice::Neutrals => r > 0. && g > 0. && b > 0. && r < 1. && g < 1. && b < 1.,
-		SelectiveColorChoice::Blacks => r < 0.5 && g < 0.5 && b < 0.5,
-	};
-
-	let color_parameter_group_scale_factor_rgb = max(r, g, b) - med(r, g, b);
-	let color_parameter_group_scale_factor_cmy = med(r, g, b) - min(r, g, b);
-
-	// Used to apply the r, g, or b channel slope (by multiplying it by 1) in relative mode, or no slope (by multiplying it by 0) in absolute mode
-	let (slope_r, slope_g, slope_b) = match mode {
-		RelativeAbsolute::Relative => (r - 1., g - 1., b - 1.),
-		RelativeAbsolute::Absolute => (-1., -1., -1.),
-	};
-
-	let (sum_r, sum_g, sum_b) = [
-		(SelectiveColorChoice::Reds, (r_c as f32, r_m as f32, r_y as f32, r_k as f32)),
-		(SelectiveColorChoice::Yellows, (y_c as f32, y_m as f32, y_y as f32, y_k as f32)),
-		(SelectiveColorChoice::Greens, (g_c as f32, g_m as f32, g_y as f32, g_k as f32)),
-		(SelectiveColorChoice::Cyans, (c_c as f32, c_m as f32, c_y as f32, c_k as f32)),
-		(SelectiveColorChoice::Blues, (b_c as f32, b_m as f32, b_y as f32, b_k as f32)),
-		(SelectiveColorChoice::Magentas, (m_c as f32, m_m as f32, m_y as f32, m_k as f32)),
-		(SelectiveColorChoice::Whites, (w_c as f32, w_m as f32, w_y as f32, w_k as f32)),
-		(SelectiveColorChoice::Neutrals, (n_c as f32, n_m as f32, n_y as f32, n_k as f32)),
-		(SelectiveColorChoice::Blacks, (k_c as f32, k_m as f32, k_y as f32, k_k as f32)),
-	]
-	.into_iter()
-	.fold((0., 0., 0.), |acc, (color_parameter_group, (c, m, y, k))| {
-		// Skip this color parameter group...
-		// ...if it's unchanged from the default of zero offset on all CMYK parameters, or...
-		// ...if this pixel's color isn't in the range affected by this color parameter group
-		if (c < f32::EPSILON && m < f32::EPSILON && y < f32::EPSILON && k < f32::EPSILON) || (!pixel_color_range(color_parameter_group)) {
-			return acc;
-		}
-
-		let (c, m, y, k) = (c / 100., m / 100., y / 100., k / 100.);
-
-		let color_parameter_group_scale_factor = match color_parameter_group {
-			SelectiveColorChoice::Reds | SelectiveColorChoice::Greens | SelectiveColorChoice::Blues => color_parameter_group_scale_factor_rgb,
-			SelectiveColorChoice::Cyans | SelectiveColorChoice::Magentas | SelectiveColorChoice::Yellows => color_parameter_group_scale_factor_cmy,
-			SelectiveColorChoice::Whites => min(r, g, b) * 2. - 1.,
-			SelectiveColorChoice::Neutrals => 1. - ((max(r, g, b) - 0.5).abs() + (min(r, g, b) - 0.5).abs()),
-			SelectiveColorChoice::Blacks => 1. - max(r, g, b) * 2.,
+		let pixel_color_range = |choice| match choice {
+			SelectiveColorChoice::Reds => max_channel == r,
+			SelectiveColorChoice::Yellows => min_channel == b,
+			SelectiveColorChoice::Greens => max_channel == g,
+			SelectiveColorChoice::Cyans => min_channel == r,
+			SelectiveColorChoice::Blues => max_channel == b,
+			SelectiveColorChoice::Magentas => min_channel == g,
+			SelectiveColorChoice::Whites => r > 0.5 && g > 0.5 && b > 0.5,
+			SelectiveColorChoice::Neutrals => r > 0. && g > 0. && b > 0. && r < 1. && g < 1. && b < 1.,
+			SelectiveColorChoice::Blacks => r < 0.5 && g < 0.5 && b < 0.5,
 		};
 
-		let offset_r = ((c + k * (c + 1.)) * slope_r).clamp(-r, -r + 1.) * color_parameter_group_scale_factor;
-		let offset_g = ((m + k * (m + 1.)) * slope_g).clamp(-g, -g + 1.) * color_parameter_group_scale_factor;
-		let offset_b = ((y + k * (y + 1.)) * slope_b).clamp(-b, -b + 1.) * color_parameter_group_scale_factor;
+		let color_parameter_group_scale_factor_rgb = max(r, g, b) - med(r, g, b);
+		let color_parameter_group_scale_factor_cmy = med(r, g, b) - min(r, g, b);
 
-		(acc.0 + offset_r, acc.1 + offset_g, acc.2 + offset_b)
+		// Used to apply the r, g, or b channel slope (by multiplying it by 1) in relative mode, or no slope (by multiplying it by 0) in absolute mode
+		let (slope_r, slope_g, slope_b) = match mode {
+			RelativeAbsolute::Relative => (r - 1., g - 1., b - 1.),
+			RelativeAbsolute::Absolute => (-1., -1., -1.),
+		};
+
+		let (sum_r, sum_g, sum_b) = [
+			(SelectiveColorChoice::Reds, (r_c as f32, r_m as f32, r_y as f32, r_k as f32)),
+			(SelectiveColorChoice::Yellows, (y_c as f32, y_m as f32, y_y as f32, y_k as f32)),
+			(SelectiveColorChoice::Greens, (g_c as f32, g_m as f32, g_y as f32, g_k as f32)),
+			(SelectiveColorChoice::Cyans, (c_c as f32, c_m as f32, c_y as f32, c_k as f32)),
+			(SelectiveColorChoice::Blues, (b_c as f32, b_m as f32, b_y as f32, b_k as f32)),
+			(SelectiveColorChoice::Magentas, (m_c as f32, m_m as f32, m_y as f32, m_k as f32)),
+			(SelectiveColorChoice::Whites, (w_c as f32, w_m as f32, w_y as f32, w_k as f32)),
+			(SelectiveColorChoice::Neutrals, (n_c as f32, n_m as f32, n_y as f32, n_k as f32)),
+			(SelectiveColorChoice::Blacks, (k_c as f32, k_m as f32, k_y as f32, k_k as f32)),
+		]
+		.into_iter()
+		.fold((0., 0., 0.), |acc, (color_parameter_group, (c, m, y, k))| {
+			// Skip this color parameter group...
+			// ...if it's unchanged from the default of zero offset on all CMYK parameters, or...
+			// ...if this pixel's color isn't in the range affected by this color parameter group
+			if (c < f32::EPSILON && m < f32::EPSILON && y < f32::EPSILON && k < f32::EPSILON) || (!pixel_color_range(color_parameter_group)) {
+				return acc;
+			}
+
+			let (c, m, y, k) = (c / 100., m / 100., y / 100., k / 100.);
+
+			let color_parameter_group_scale_factor = match color_parameter_group {
+				SelectiveColorChoice::Reds | SelectiveColorChoice::Greens | SelectiveColorChoice::Blues => color_parameter_group_scale_factor_rgb,
+				SelectiveColorChoice::Cyans | SelectiveColorChoice::Magentas | SelectiveColorChoice::Yellows => color_parameter_group_scale_factor_cmy,
+				SelectiveColorChoice::Whites => min(r, g, b) * 2. - 1.,
+				SelectiveColorChoice::Neutrals => 1. - ((max(r, g, b) - 0.5).abs() + (min(r, g, b) - 0.5).abs()),
+				SelectiveColorChoice::Blacks => 1. - max(r, g, b) * 2.,
+			};
+
+			let offset_r = ((c + k * (c + 1.)) * slope_r).clamp(-r, -r + 1.) * color_parameter_group_scale_factor;
+			let offset_g = ((m + k * (m + 1.)) * slope_g).clamp(-g, -g + 1.) * color_parameter_group_scale_factor;
+			let offset_b = ((y + k * (y + 1.)) * slope_b).clamp(-b, -b + 1.) * color_parameter_group_scale_factor;
+
+			(acc.0 + offset_r, acc.1 + offset_g, acc.2 + offset_b)
+		});
+
+		let color = Color::from_rgbaf32_unchecked((r + sum_r).clamp(0., 1.), (g + sum_g).clamp(0., 1.), (b + sum_b).clamp(0., 1.), a);
+
+		color.to_linear_srgb()
 	});
-
-	let color = Color::from_rgbaf32_unchecked((r + sum_r).clamp(0., 1.), (g + sum_g).clamp(0., 1.), (b + sum_b).clamp(0., 1.), a);
-
-	color.to_linear_srgb()
+	input
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct OpacityNode<O> {
-	opacity_multiplier: O,
+pub(super) trait MultiplyAlpha {
+	fn multiply_alpha(&mut self, factor: f64);
 }
 
-#[node_macro::node_fn(OpacityNode)]
-fn opacity_node(color: Color, opacity_multiplier: f64) -> Color {
-	let opacity_multiplier = opacity_multiplier as f32 / 100.;
-	Color::from_rgbaf32_unchecked(color.r(), color.g(), color.b(), color.a() * opacity_multiplier)
+impl MultiplyAlpha for Color {
+	fn multiply_alpha(&mut self, factor: f64) {
+		*self = Color::from_rgbaf32_unchecked(self.r(), self.g(), self.b(), (self.a() * factor as f32).clamp(0., 1.))
+	}
+}
+impl MultiplyAlpha for VectorData {
+	fn multiply_alpha(&mut self, factor: f64) {
+		self.alpha_blending.opacity *= factor as f32;
+	}
+}
+impl MultiplyAlpha for GraphicGroup {
+	fn multiply_alpha(&mut self, factor: f64) {
+		self.alpha_blending.opacity *= factor as f32;
+	}
+}
+impl<P: Pixel> MultiplyAlpha for ImageFrame<P> {
+	fn multiply_alpha(&mut self, factor: f64) {
+		self.alpha_blending.opacity *= factor as f32;
+	}
 }
 
-#[node_macro::node_impl(OpacityNode)]
-fn opacity_node(mut vector_data: VectorData, opacity_multiplier: f64) -> VectorData {
-	let opacity_multiplier = opacity_multiplier as f32 / 100.;
-	vector_data.alpha_blending.opacity *= opacity_multiplier;
-	vector_data
-}
-
-#[node_macro::node_impl(OpacityNode)]
-fn opacity_node(mut graphic_group: GraphicGroup, opacity_multiplier: f64) -> GraphicGroup {
-	let opacity_multiplier = opacity_multiplier as f32 / 100.;
-	graphic_group.alpha_blending.opacity *= opacity_multiplier;
-	graphic_group
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct BlendModeNode<BM> {
-	blend_mode: BM,
-}
-
-#[node_macro::node_fn(BlendModeNode)]
-fn blend_mode_node(mut vector_data: VectorData, blend_mode: BlendMode) -> VectorData {
-	vector_data.alpha_blending.blend_mode = blend_mode;
-	vector_data
-}
-
-#[node_macro::node_impl(BlendModeNode)]
-fn blend_mode_node(mut graphic_group: GraphicGroup, blend_mode: BlendMode) -> GraphicGroup {
-	graphic_group.alpha_blending.blend_mode = blend_mode;
-	graphic_group
-}
-
-#[node_macro::node_impl(BlendModeNode)]
-fn blend_mode_node(mut image_frame: ImageFrame<Color>, blend_mode: BlendMode) -> ImageFrame<Color> {
-	image_frame.alpha_blending.blend_mode = blend_mode;
-	image_frame
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct PosterizeNode<P> {
-	posterize_value: P,
-}
-
-// Based on http://www.axiomx.com/posterize.htm
+// Based on https://www.axiomx.com/posterize.htm
 // This algorithm produces fully accurate output in relation to the industry standard.
-#[node_macro::node_fn(PosterizeNode)]
-fn posterize(color: Color, posterize_value: f64) -> Color {
-	let color = color.to_gamma_srgb();
+#[node_macro::node(category("Raster: Adjustment"))]
+async fn posterize<T: Adjust<Color>>(
+	footprint: Footprint,
+	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>,
+	#[default(4)]
+	#[min(2.)]
+	levels: u32,
+) -> T {
+	let mut input = input.eval(footprint).await;
+	input.adjust(|color| {
+		let color = color.to_gamma_srgb();
 
-	let number_of_areas = posterize_value.recip() as f32;
-	let size_of_areas = (posterize_value - 1.).recip() as f32;
-	let channel = |channel: f32| (channel / number_of_areas).floor() * size_of_areas;
-	let color = color.map_rgb(channel);
+		let levels = levels as f32;
+		let number_of_areas = levels.recip();
+		let size_of_areas = (levels - 1.).recip();
+		let channel = |channel: f32| (channel / number_of_areas).floor() * size_of_areas;
+		let color = color.map_rgb(channel);
 
-	color.to_linear_srgb()
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct ExposureNode<Exposure, Offset, GammaCorrection> {
-	exposure: Exposure,
-	offset: Offset,
-	gamma_correction: GammaCorrection,
+		color.to_linear_srgb()
+	});
+	input
 }
 
 // Based on https://geraldbakker.nl/psnumbers/exposure.html
-#[node_macro::node_fn(ExposureNode)]
-fn exposure(color: Color, exposure: f64, offset: f64, gamma_correction: f64) -> Color {
-	let adjusted = color
+#[node_macro::node(category("Raster: Adjustment"))]
+async fn exposure<T: Adjust<Color>>(
+	footprint: Footprint,
+	#[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>,
+	exposure: f64,
+	offset: f64,
+	#[default(1.)]
+	#[range((0.01, 10.))]
+	gamma_correction: f64,
+) -> T {
+	let mut input = input.eval(footprint).await;
+	input.adjust(|color| {
+		let adjusted = color
 		// Exposure
 		.map_rgb(|c: f32| c * 2_f32.powf(exposure as f32))
 		// Offset
@@ -1244,24 +1334,20 @@ fn exposure(color: Color, exposure: f64, offset: f64, gamma_correction: f64) -> 
 		// Gamma correction
 		.gamma(gamma_correction as f32);
 
-	adjusted.map_rgb(|c: f32| c.clamp(0., 1.))
+		adjusted.map_rgb(|c: f32| c.clamp(0., 1.))
+	});
+	input
 }
 
 const WINDOW_SIZE: usize = 1024;
 
 #[cfg(feature = "alloc")]
-#[derive(Debug, Clone, Copy)]
-pub struct GenerateCurvesNode<OutputChannel, Curve> {
-	curve: Curve,
-	_channel: core::marker::PhantomData<OutputChannel>,
-}
-
-#[cfg(feature = "alloc")]
-#[node_macro::node_fn(GenerateCurvesNode<_Channel>)]
-fn generate_curves<_Channel: Channel + super::Linear>(_primary: (), curve: Curve) -> ValueMapperNode<_Channel> {
+#[node_macro::node(category(""))]
+fn generate_curves<C: Channel + super::Linear>(_: (), curve: Curve, #[implementations(f32)] _target_format: C) -> ValueMapperNode<C> {
 	use bezier_rs::{Bezier, TValue};
+
 	let [mut pos, mut param]: [[f32; 2]; 2] = [[0.; 2], curve.first_handle];
-	let mut lut = vec![_Channel::from_f64(0.); WINDOW_SIZE];
+	let mut lut = vec![C::from_f64(0.); WINDOW_SIZE];
 	let end = CurveManipulatorGroup {
 		anchor: [1.; 2],
 		handles: [curve.last_handle, [0.; 2]],
@@ -1287,7 +1373,7 @@ fn generate_curves<_Channel: Channel + super::Linear>(_primary: (), curve: Curve
 					// Fall back to a very bad approximation if Bezier-rs fails
 					.unwrap_or_else(|| (x - x0) / (x3 - x0) * (y3 - y0) + y0)
 			};
-			lut[index] = _Channel::from_f64(y);
+			lut[index] = C::from_f64(y);
 		}
 
 		pos = sample.anchor;
@@ -1297,74 +1383,35 @@ fn generate_curves<_Channel: Channel + super::Linear>(_primary: (), curve: Curve
 }
 
 #[cfg(feature = "alloc")]
-#[derive(Debug, Clone)]
-pub struct ColorFillNode<C> {
-	color: C,
-}
-
-#[cfg(feature = "alloc")]
-#[node_macro::node_fn(ColorFillNode)]
-pub fn color_fill_node(mut image_frame: ImageFrame<Color>, color: Color) -> ImageFrame<Color> {
-	for pixel in &mut image_frame.image.data {
-		pixel.set_red(color.r());
-		pixel.set_blue(color.b());
-		pixel.set_green(color.g());
-		pixel.alpha_multiply(color);
-	}
-
-	image_frame
-}
-
-#[cfg(feature = "alloc")]
-pub struct ColorOverlayNode<Color, BlendMode, Opacity> {
-	color: Color,
+#[node_macro::node(category("Raster: Adjustment"))] // Unique to Graphite
+async fn color_overlay<F: 'n + Copy + Send, T: Adjust<Color>>(
+	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		((), Color),
+		((), ImageFrame<Color>),
+		((), GradientStops),
+		(Footprint, Color),
+		(Footprint, ImageFrame<Color>),
+		(Footprint, GradientStops),
+	)]
+	image: impl Node<F, Output = T>,
+	#[default(000000ff)] color: Color,
 	blend_mode: BlendMode,
-	opacity: Opacity,
-}
-
-#[cfg(feature = "alloc")]
-#[node_macro::node_fn(ColorOverlayNode)]
-pub fn color_overlay_node(mut image: ImageFrame<Color>, color: Color, blend_mode: BlendMode, opacity: f64) -> ImageFrame<Color> {
+	#[default(100.)] opacity: Percentage,
+) -> T {
 	let opacity = (opacity as f32 / 100.).clamp(0., 1.);
-	for pixel in &mut image.image.data {
+
+	let mut input = image.eval(footprint).await;
+	input.adjust(|pixel| {
 		let image = pixel.map_rgb(|channel| channel * (1. - opacity));
 
 		// The apply blend mode function divides rgb by the alpha channel for the background. This undoes that.
 		let associated_pixel = Color::from_rgbaf32_unchecked(pixel.r() * pixel.a(), pixel.g() * pixel.a(), pixel.b() * pixel.a(), pixel.a());
 		let overlay = apply_blend_mode(color, associated_pixel, blend_mode).map_rgb(|channel| channel * opacity);
 
-		*pixel = Color::from_rgbaf32(image.r() + overlay.r(), image.g() + overlay.g(), image.b() + overlay.b(), pixel.a()).unwrap();
-	}
-
-	image
-}
-
-#[test]
-fn color_overlay_multiply() {
-	use crate::raster::Image;
-	use crate::value::ClonedNode;
-
-	let image_color = Color::from_rgbaf32_unchecked(0.7, 0.6, 0.5, 0.4);
-	let image = ImageFrame {
-		image: Image::new(1, 1, image_color),
-		..Default::default()
-	};
-
-	// Color { red: 0., green: 1., blue: 0., alpha: 1. }
-	let overlay_color = Color::GREEN;
-
-	// 100% of the output should come from the multiplied value
-	let opacity = 100_f64;
-
-	let result = ColorOverlayNode {
-		color: ClonedNode(overlay_color),
-		blend_mode: ClonedNode(BlendMode::Multiply),
-		opacity: ClonedNode(opacity),
-	}
-	.eval(image);
-
-	// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
-	assert_eq!(result.image.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));
+		Color::from_rgbaf32_unchecked(image.r() + overlay.r(), image.g() + overlay.g(), image.b() + overlay.b(), pixel.a())
+	});
+	input
 }
 
 #[cfg(feature = "alloc")]
@@ -1373,28 +1420,52 @@ pub use index_node::IndexNode;
 #[cfg(feature = "alloc")]
 mod index_node {
 	use crate::raster::{Color, ImageFrame};
-	use crate::Node;
 
-	#[derive(Debug)]
-	pub struct IndexNode<Index> {
-		pub index: Index,
-	}
-
-	#[node_macro::node_fn(IndexNode)]
-	pub fn index_node(input: Vec<ImageFrame<Color>>, index: u32) -> ImageFrame<Color> {
+	#[node_macro::node(category(""))]
+	pub fn index<T: Default + Clone>(_: (), #[implementations(Vec<ImageFrame<Color>>, Vec<Color>)] input: Vec<T>, index: u32) -> T {
 		if (index as usize) < input.len() {
 			input[index as usize].clone()
 		} else {
-			warn!("The number of segments is {} and the requested segment is {}!", input.len(), index);
-			ImageFrame::empty()
+			warn!("The number of segments is {} but the requested segment is {}!", input.len(), index);
+			Default::default()
+		}
+	}
+}
+
+#[cfg(test)]
+mod test {
+	use crate::raster::{BlendMode, Image, ImageFrame};
+	use crate::{Color, Node};
+	use std::pin::Pin;
+
+	#[derive(Clone)]
+	pub struct FutureWrapperNode<T: Clone>(T);
+
+	impl<'i, T: 'i + Clone + Send> Node<'i, ()> for FutureWrapperNode<T> {
+		type Output = Pin<Box<dyn core::future::Future<Output = T> + 'i + Send>>;
+		fn eval(&'i self, _input: ()) -> Self::Output {
+			let value = self.0.clone();
+			Box::pin(async move { value })
 		}
 	}
 
-	#[node_macro::node_impl(IndexNode)]
-	pub fn index_node(input: Vec<Color>, index: u32) -> Option<Color> {
-		if index as usize >= input.len() {
-			warn!("Index of colors is out of range: index is {index} and length is {}", input.len());
-		}
-		input.into_iter().nth(index as usize)
+	#[tokio::test]
+	async fn color_overlay_multiply() {
+		let image_color = Color::from_rgbaf32_unchecked(0.7, 0.6, 0.5, 0.4);
+		let image = ImageFrame {
+			image: Image::new(1, 1, image_color),
+			..Default::default()
+		};
+
+		// Color { red: 0., green: 1., blue: 0., alpha: 1. }
+		let overlay_color = Color::GREEN;
+
+		// 100% of the output should come from the multiplied value
+		let opacity = 100_f64;
+
+		let result = super::color_overlay((), &FutureWrapperNode(image), overlay_color, BlendMode::Multiply, opacity).await;
+
+		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
+		assert_eq!(result.image.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));
 	}
 }

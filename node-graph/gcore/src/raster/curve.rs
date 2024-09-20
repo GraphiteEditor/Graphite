@@ -1,7 +1,7 @@
 use super::{Channel, Linear, LuminanceMut};
 use crate::Node;
 
-use dyn_any::{DynAny, StaticType};
+use dyn_any::{DynAny, StaticType, StaticTypeSized};
 
 use core::ops::{Add, Mul, Sub};
 
@@ -174,6 +174,10 @@ impl CubicSplines {
 
 pub struct ValueMapperNode<C> {
 	lut: Vec<C>,
+}
+
+unsafe impl<C: StaticTypeSized> StaticType for ValueMapperNode<C> {
+	type Static = ValueMapperNode<C::Static>;
 }
 
 impl<C> ValueMapperNode<C> {

@@ -1,4 +1,4 @@
-use dyn_any::{DynAny, StaticType};
+use dyn_any::DynAny;
 
 use std::collections::HashMap;
 

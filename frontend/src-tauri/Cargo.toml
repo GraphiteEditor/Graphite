@@ -17,7 +17,6 @@ default = ["custom-protocol"]
 # DO NOT remove this
 custom-protocol = ["tauri/custom-protocol"]
 gpu = ["graphite-editor/gpu"]
-quantization = ["graphite-editor/quantization"]
 
 [dependencies]
 # Local dependencies

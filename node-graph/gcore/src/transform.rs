@@ -1,4 +1,3 @@
-use dyn_any::StaticType;
 use glam::DAffine2;
 
 use glam::DVec2;
@@ -8,9 +7,9 @@ use crate::raster::ImageFrame;
 use crate::raster::Pixel;
 use crate::vector::VectorData;
 use crate::Artboard;
+use crate::ArtboardGroup;
 use crate::GraphicElement;
 use crate::GraphicGroup;
-use crate::Node;
 
 pub trait Transform {
 	fn transform(&self) -> DAffine2;
@@ -176,15 +175,15 @@ impl Footprint {
 	}
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct CullNode<VectorData> {
-	pub(crate) vector_data: VectorData,
+impl From<()> for Footprint {
+	fn from(_: ()) -> Self {
+		Footprint::default()
+	}
 }
 
-#[node_macro::node_fn(CullNode)]
-fn cull_vector_data<T>(footprint: Footprint, vector_data: T) -> T {
-	// TODO: Implement culling
-	vector_data
+#[node_macro::node(category("Debug"))]
+fn cull<T>(_footprint: Footprint, #[implementations(VectorData, GraphicGroup, Artboard, ImageFrame<crate::Color>, ArtboardGroup)] data: T) -> T {
+	data
 }
 
 impl core::hash::Hash for Footprint {
@@ -205,20 +204,30 @@ impl TransformMut for Footprint {
 	}
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct TransformNode<TransformTarget, Translation, Rotation, Scale, Shear, Pivot> {
-	pub(crate) transform_target: TransformTarget,
-	pub(crate) translate: Translation,
-	pub(crate) rotate: Rotation,
-	pub(crate) scale: Scale,
-	pub(crate) shear: Shear,
-	pub(crate) _pivot: Pivot,
+pub trait ApplyTransform {
+	fn apply_transform(&mut self, modification: &DAffine2);
+}
+impl<T: TransformMut> ApplyTransform for T {
+	fn apply_transform(&mut self, &modification: &DAffine2) {
+		*self.transform_mut() = self.transform() * modification
+	}
+}
+impl ApplyTransform for () {
+	fn apply_transform(&mut self, &_modification: &DAffine2) {}
 }
 
-#[node_macro::node_fn(TransformNode)]
-pub(crate) async fn transform_vector_data<T: TransformMut>(
-	mut footprint: Footprint,
-	transform_target: impl Node<Footprint, Output = T>,
+#[node_macro::node(category(""))]
+async fn transform<I: Into<Footprint> + ApplyTransform + 'n + Clone + Send + Sync, T: TransformMut + 'n>(
+	#[implementations(Footprint, Footprint, Footprint, (), (), ())] mut input: I,
+	#[implementations(
+		(Footprint, VectorData),
+		(Footprint, GraphicGroup),
+		(Footprint, ImageFrame<crate::Color>),
+		((), VectorData),
+		((), GraphicGroup),
+		((), ImageFrame<crate::Color>),
+	)]
+	transform_target: impl Node<I, Output = T>,
 	translate: DVec2,
 	rotate: f64,
 	scale: DVec2,
@@ -226,24 +235,25 @@ pub(crate) async fn transform_vector_data<T: TransformMut>(
 	_pivot: DVec2,
 ) -> T {
 	let modification = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
+	let footprint = input.clone().into();
 	if !footprint.ignore_modifications {
-		*footprint.transform_mut() = footprint.transform() * modification;
+		input.apply_transform(&modification);
 	}
 
-	let mut data = self.transform_target.eval(footprint).await;
+	let mut data = transform_target.eval(input).await;
 
 	let data_transform = data.transform_mut();
 	*data_transform = modification * (*data_transform);
 
 	data
 }
-#[derive(Debug, Clone, Copy)]
-pub struct SetTransformNode<TransformInput> {
-	pub(crate) transform: TransformInput,
-}
 
-#[node_macro::node_fn(SetTransformNode)]
-pub(crate) fn set_transform<Data: TransformMut, TransformInput: Transform>(mut data: Data, transform: TransformInput) -> Data {
+#[node_macro::node(category("Debug"))]
+fn replace_transform<Data: TransformMut, TransformInput: Transform>(
+	_: (),
+	#[implementations(VectorData, ImageFrame<crate::Color>, GraphicGroup)] mut data: Data,
+	#[implementations(DAffine2)] transform: TransformInput,
+) -> Data {
 	let data_transform = data.transform_mut();
 	*data_transform = transform.transform();
 	data

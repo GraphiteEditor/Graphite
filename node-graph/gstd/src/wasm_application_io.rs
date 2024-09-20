@@ -11,7 +11,8 @@ use graphene_core::raster::ImageFrame;
 use graphene_core::renderer::RenderMetadata;
 use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
 use graphene_core::transform::Footprint;
-use graphene_core::Node;
+use graphene_core::vector::VectorData;
+use graphene_core::GraphicGroup;
 use graphene_core::{Color, WasmNotSend};
 
 #[cfg(target_arch = "wasm32")]
@@ -27,24 +28,14 @@ use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
-pub struct CreateSurfaceNode {}
-
-#[node_macro::node_fn(CreateSurfaceNode)]
-async fn create_surface_node<'a: 'input>(editor: &'a WasmEditorApi) -> Arc<WasmSurfaceHandle> {
+#[node_macro::node(category("Debug: GPU"))]
+async fn create_surface<'a: 'n>(_: (), editor: &'a WasmEditorApi) -> Arc<WasmSurfaceHandle> {
 	Arc::new(editor.application_io.as_ref().unwrap().create_window())
 }
 
+#[node_macro::node(category("Debug: GPU"))]
 #[cfg(target_arch = "wasm32")]
-pub struct DrawImageFrameNode<Surface> {
-	surface_handle: Surface,
-}
-
-#[node_macro::node_fn(DrawImageFrameNode)]
-#[cfg(target_arch = "wasm32")]
-async fn draw_image_frame_node<'a: 'input>(
-	image: ImageFrame<graphene_core::raster::SRGBA8>,
-	surface_handle: Arc<WasmSurfaceHandle>,
-) -> graphene_core::application_io::SurfaceHandleFrame<HtmlCanvasElement> {
+async fn draw_image_frame(_: (), image: ImageFrame<graphene_core::raster::SRGBA8>, surface_handle: Arc<WasmSurfaceHandle>) -> graphene_core::application_io::SurfaceHandleFrame<HtmlCanvasElement> {
 	let image_data = image.image.data;
 	let array: Clamped<&[u8]> = Clamped(bytemuck::cast_slice(image_data.as_slice()));
 	if image.image.width > 0 && image.image.height > 0 {
@@ -62,19 +53,13 @@ async fn draw_image_frame_node<'a: 'input>(
 	}
 }
 
-pub struct LoadResourceNode<Url> {
-	url: Url,
-}
-
-#[node_macro::node_fn(LoadResourceNode)]
-async fn load_resource_node<'a: 'input>(editor: &'a WasmEditorApi, url: String) -> Arc<[u8]> {
+#[node_macro::node(category("Network"))]
+async fn load_resource<'a: 'n>(_: (), _primary: (), #[scope("editor-api")] editor: &'a WasmEditorApi, url: String) -> Arc<[u8]> {
 	editor.application_io.as_ref().unwrap().load_resource(url).unwrap().await.unwrap()
 }
 
-pub struct DecodeImageNode;
-
-#[node_macro::node_fn(DecodeImageNode)]
-fn decode_image_node<'a: 'input>(data: Arc<[u8]>) -> ImageFrame<Color> {
+#[node_macro::node(category("Raster"))]
+fn decode_image(_: (), data: Arc<[u8]>) -> ImageFrame<Color> {
 	let image = image::load_from_memory(data.as_ref()).expect("Failed to decode image");
 	let image = image.to_rgba32f();
 	let image = ImageFrame {
@@ -144,25 +129,21 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 	RenderOutputType::CanvasFrame(frame)
 }
 
+#[node_macro::node(category(""))]
 #[cfg(target_arch = "wasm32")]
-pub struct RasterizeNode<Footprint, Surface> {
-	footprint: Footprint,
-	surface_handle: Surface,
-}
-
-#[node_macro::node_fn(RasterizeNode)]
-#[cfg(target_arch = "wasm32")]
-async fn rasterize<_T: GraphicElementRendered + graphene_core::transform::TransformMut + WasmNotSend>(
-	mut data: _T,
+async fn rasterize<T: GraphicElementRendered + graphene_core::transform::TransformMut + WasmNotSend + 'n>(
+	_: (),
+	#[implementations((Footprint, VectorData), (Footprint, ImageFrame<Color>), (Footprint, GraphicGroup))] data: impl Node<Footprint, Output = T>,
 	footprint: Footprint,
 	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
 ) -> ImageFrame<Color> {
-	let mut render = SvgRender::new();
-
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");
 		return ImageFrame::default();
 	}
+
+	let mut data = data.eval(footprint).await;
+	let mut render = SvgRender::new();
 	let aabb = Bbox::from_transform(footprint.transform).to_axis_aligned_bbox();
 	let size = aabb.size();
 	let resolution = footprint.resolution;
@@ -204,16 +185,23 @@ async fn rasterize<_T: GraphicElementRendered + graphene_core::transform::Transf
 	}
 }
 
-pub struct RenderNode<EditorApi, Data, Surface> {
-	editor_api: EditorApi,
-	data: Data,
-	_surface_handle: Surface,
-}
-
-#[node_macro::node_fn(RenderNode)]
-async fn render_node<'a: 'input, T: 'input + GraphicElementRendered + WasmNotSend>(
+#[node_macro::node(category(""))]
+async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	render_config: RenderConfig,
 	editor_api: &'a WasmEditorApi,
+	#[implementations(
+		(Footprint, VectorData),
+		(Footprint, ImageFrame<Color>),
+		(Footprint, GraphicGroup),
+		(Footprint, graphene_core::Artboard),
+		(Footprint, graphene_core::ArtboardGroup),
+		(Footprint, Option<Color>),
+		(Footprint, Vec<Color>),
+		(Footprint, bool),
+		(Footprint, f32),
+		(Footprint, f64),
+		(Footprint, String),
+	)]
 	data: impl Node<Footprint, Output = T>,
 	_surface_handle: impl Node<(), Output = Option<wgpu_executor::WgpuSurface>>,
 ) -> RenderOutput {
@@ -222,9 +210,9 @@ async fn render_node<'a: 'input, T: 'input + GraphicElementRendered + WasmNotSen
 	let RenderConfig { hide_artboards, for_export, .. } = render_config;
 	let render_params = RenderParams::new(render_config.view_mode, ImageRenderMode::Base64, None, false, hide_artboards, for_export);
 
-	let data = self.data.eval(footprint).await;
+	let data = data.eval(footprint).await;
 	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
-	let surface_handle = self._surface_handle.eval(()).await;
+	let surface_handle = _surface_handle.eval(()).await;
 	let use_vello = editor_api.editor_preferences.use_vello();
 	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
 	let use_vello = use_vello && surface_handle.is_some();

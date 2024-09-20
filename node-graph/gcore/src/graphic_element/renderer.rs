@@ -12,7 +12,7 @@ use crate::Raster;
 use crate::{vector::VectorData, Artboard, Color, GraphicElement, GraphicGroup};
 
 use bezier_rs::Subpath;
-use dyn_any::{DynAny, StaticType};
+use dyn_any::DynAny;
 
 use base64::Engine;
 use glam::{DAffine2, DVec2};

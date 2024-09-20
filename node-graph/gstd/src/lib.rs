@@ -7,6 +7,8 @@ extern crate log;
 
 pub mod raster;
 
+pub mod text;
+
 pub mod vector;
 
 pub mod http;
@@ -16,12 +18,7 @@ pub mod any;
 #[cfg(feature = "gpu")]
 pub mod gpu_nodes;
 
-#[cfg(feature = "quantization")]
-pub mod quantization;
-
 pub use graphene_core::*;
-
-pub mod image_segmentation;
 
 pub mod image_color_palette;
 

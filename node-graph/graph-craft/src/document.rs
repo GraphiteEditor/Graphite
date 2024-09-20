@@ -1,7 +1,7 @@
 use crate::document::value::TaggedValue;
 use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 
-use dyn_any::{DynAny, StaticType};
+use dyn_any::DynAny;
 use graphene_core::memo::MemoHashGuard;
 pub use graphene_core::uuid::generate_uuid;
 pub use graphene_core::uuid::NodeId;
@@ -275,6 +275,12 @@ impl DocumentNode {
 		let DocumentNodeImplementation::ProtoNode(fqn) = self.implementation else {
 			unreachable!("tried to resolve not flattened node on resolved node {self:?}");
 		};
+
+		// TODO replace with proper generics removal
+		let identifier = match fqn.name.clone().split_once('<') {
+			Some((path, _generics)) => ProtoNodeIdentifier { name: Cow::Owned(path.to_string()) },
+			_ => ProtoNodeIdentifier { name: fqn.name },
+		};
 		let (input, mut args) = if let Some(ty) = self.manual_composition {
 			(ProtoNodeInput::ManualComposition(ty), ConstructionArgs::Nodes(vec![]))
 		} else {
@@ -314,7 +320,7 @@ impl DocumentNode {
 			}));
 		}
 		ProtoNode {
-			identifier: fqn,
+			identifier,
 			input,
 			construction_args: args,
 			original_location: self.original_location,

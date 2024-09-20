@@ -1,16 +1,15 @@
 use crate::wasm_application_io::WasmEditorApi;
 
-use dyn_any::{DynAny, StaticType};
+use dyn_any::DynAny;
 use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use graph_craft::proto::DynFuture;
-use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
+use graphene_core::raster::bbox::Bbox;
 use graphene_core::raster::{
-	Alpha, Bitmap, BitmapMut, BlendMode, BlendNode, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, Image, ImageFrame, Linear, LinearChannel, Luminance, NoiseType, Pixel,
-	RGBMut, RedGreenBlue, Sample,
+	Alpha, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, Image, ImageFrame, Linear, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, RedGreenBlue,
+	Sample,
 };
 use graphene_core::transform::{Footprint, Transform};
-use graphene_core::value::CopiedNode;
-use graphene_core::{AlphaBlending, Color, Node, WasmNotSend};
+use graphene_core::{AlphaBlending, Color, Node};
 
 use fastnoise_lite;
 use glam::{DAffine2, DVec2, Vec2};
@@ -20,7 +19,6 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::marker::PhantomData;
-use std::path::Path;
 
 #[derive(Debug, DynAny)]
 pub enum Error {
@@ -34,40 +32,9 @@ impl From<std::io::Error> for Error {
 	}
 }
 
-pub trait FileSystem {
-	fn open<P: AsRef<Path>>(&self, path: P) -> Result<Box<dyn std::io::Read>, Error>;
-}
-
-#[derive(Clone)]
-pub struct StdFs;
-impl FileSystem for StdFs {
-	fn open<P: AsRef<Path>>(&self, path: P) -> Result<Reader, Error> {
-		Ok(Box::new(std::fs::File::open(path)?))
-	}
-}
-type Reader = Box<dyn std::io::Read>;
-
-pub struct FileNode<FileSystem> {
-	fs: FileSystem,
-}
-#[node_macro::node_fn(FileNode)]
-fn file_node<P: AsRef<Path>, FS: FileSystem>(path: P, fs: FS) -> Result<Reader, Error> {
-	fs.open(path)
-}
-
-pub struct BufferNode;
-#[node_macro::node_fn(BufferNode)]
-fn buffer_node<R: std::io::Read>(reader: R) -> Result<Vec<u8>, Error> {
-	Ok(std::io::Read::bytes(reader).collect::<Result<Vec<_>, _>>()?)
-}
-
-pub struct SampleNode<ImageFrame> {
-	image_frame: ImageFrame,
-}
-
-#[node_macro::node_fn(SampleNode)]
-fn sample(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<Color> {
-	// resize the image using the image crate
+#[node_macro::node(category("Debug: Raster"))]
+fn sample_image(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<Color> {
+	// Resize the image using the image crate
 	let image = image_frame.image;
 	let data = bytemuck::cast_vec(image.data);
 
@@ -129,7 +96,7 @@ pub struct MapImageNode<P, MapFn> {
 	_p: PhantomData<P>,
 }
 
-#[node_macro::node_fn(MapImageNode<_P>)]
+#[node_macro::old_node_fn(MapImageNode<_P>)]
 fn map_image<MapFn, _P, Img: BitmapMut<Pixel = _P>>(image: Img, map_fn: &'input MapFn) -> Img
 where
 	MapFn: for<'any_input> Node<'any_input, _P, Output = _P> + 'input,
@@ -148,8 +115,8 @@ pub struct InsertChannelNode<P, S, Insertion, TargetChannel> {
 	_s: PhantomData<S>,
 }
 
-#[node_macro::node_fn(InsertChannelNode<_P, _S>)]
-fn insert_channel_node<
+#[node_macro::old_node_fn(InsertChannelNode<_P, _S>)]
+fn insert_channel<
 	// _P is the color of the input image.
 	_P: RGBMut,
 	_S: Pixel + Luminance,
@@ -195,7 +162,7 @@ pub struct MaskImageNode<P, S, Stencil> {
 	_s: PhantomData<S>,
 }
 
-#[node_macro::node_fn(MaskImageNode<_P, _S>)]
+#[node_macro::old_node_fn(MaskImageNode<_P, _S>)]
 fn mask_image<
 	// _P is the color of the input image. It must have an alpha channel because that is going to
 	// be modified by the mask
@@ -247,7 +214,7 @@ pub struct BlendImageTupleNode<P, Fg, MapFn> {
 	_fg: PhantomData<Fg>,
 }
 
-#[node_macro::node_fn(BlendImageTupleNode<_P, _Fg>)]
+#[node_macro::old_node_fn(BlendImageTupleNode<_P, _Fg>)]
 fn blend_image_tuple<_P: Alpha + Pixel + Debug, MapFn, _Fg: Sample<Pixel = _P> + Transform>(images: (ImageFrame<_P>, _Fg), map_fn: &'input MapFn) -> ImageFrame<_P>
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input + Clone,
@@ -255,72 +222,6 @@ where
 	let (background, foreground) = images;
 
 	blend_image(foreground, background, map_fn)
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct BlendImageNode<P, Background, MapFn> {
-	background: Background,
-	map_fn: MapFn,
-	_p: PhantomData<P>,
-}
-
-#[node_macro::node_fn(BlendImageNode<_P>)]
-async fn blend_image_node<_P: Alpha + Pixel + Debug + WasmNotSend + Sync + 'static, MapFn, Forground: Sample<Pixel = _P> + Transform + Send>(
-	foreground: Forground,
-	background: ImageFrame<_P>,
-	map_fn: &'input MapFn,
-) -> ImageFrame<_P>
-where
-	for<'a> MapFn: Node<'a, (_P, _P), Output = _P> + 'input,
-{
-	blend_new_image(foreground, background, map_fn)
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct BlendReverseImageNode<P, Background, MapFn> {
-	background: Background,
-	map_fn: MapFn,
-	_p: PhantomData<P>,
-}
-
-#[node_macro::node_fn(BlendReverseImageNode<_P>)]
-fn blend_image_node<_P: Alpha + Pixel + Debug, MapFn, Background: Transform + Sample<Pixel = _P>>(foreground: ImageFrame<_P>, background: Background, map_fn: &'input MapFn) -> ImageFrame<_P>
-where
-	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input,
-{
-	blend_new_image(background, foreground, map_fn)
-}
-
-fn blend_new_image<'input, _P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform>(foreground: Frame, background: ImageFrame<_P>, map_fn: &'input MapFn) -> ImageFrame<_P>
-where
-	MapFn: Node<'input, (_P, _P), Output = _P>,
-{
-	let foreground_aabb = Bbox::unit().affine_transform(foreground.transform()).to_axis_aligned_bbox();
-	let background_aabb = Bbox::unit().affine_transform(background.transform()).to_axis_aligned_bbox();
-
-	let Some(aabb) = foreground_aabb.union_non_empty(&background_aabb) else {
-		return ImageFrame::empty();
-	};
-
-	if background_aabb.contains(foreground_aabb.start) && background_aabb.contains(foreground_aabb.end) {
-		return blend_image(foreground, background, map_fn);
-	}
-
-	// Clamp the foreground image to the background image
-	let start = aabb.start.as_uvec2();
-	let end = aabb.end.as_uvec2();
-
-	let new_background = Image::new(end.x - start.x, end.y - start.y, _P::TRANSPARENT);
-	let size = DVec2::new(new_background.width as f64, new_background.height as f64);
-	let transfrom = DAffine2::from_scale_angle_translation(size, 0., start.as_dvec2());
-	let mut new_background = ImageFrame {
-		image: new_background,
-		transform: transfrom,
-		alpha_blending: background.alpha_blending,
-	};
-
-	new_background = blend_image(background, new_background, map_fn);
-	blend_image(foreground, new_background, map_fn)
 }
 
 fn blend_image<'input, _P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: BitmapMut<Pixel = _P> + Transform + Sample<Pixel = _P>>(
@@ -371,29 +272,12 @@ where
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ExtendImageNode<Background> {
-	background: Background,
-}
-
-#[node_macro::node_fn(ExtendImageNode)]
-fn extend_image_node(foreground: ImageFrame<Color>, background: ImageFrame<Color>) -> ImageFrame<Color> {
-	let foreground_aabb = Bbox::unit().affine_transform(foreground.transform()).to_axis_aligned_bbox();
-	let background_aabb = Bbox::unit().affine_transform(background.transform()).to_axis_aligned_bbox();
-
-	if foreground_aabb.contains(background_aabb.start) && foreground_aabb.contains(background_aabb.end) {
-		return foreground;
-	}
-
-	blend_image(foreground, background, &BlendNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.)))
-}
-
-#[derive(Debug, Clone, Copy)]
 pub struct ExtendImageToBoundsNode<Bounds> {
 	bounds: Bounds,
 }
 
-#[node_macro::node_fn(ExtendImageToBoundsNode)]
-fn extend_image_to_bounds_node(image: ImageFrame<Color>, bounds: DAffine2) -> ImageFrame<Color> {
+#[node_macro::old_node_fn(ExtendImageToBoundsNode)]
+fn extend_image_to_bounds(image: ImageFrame<Color>, bounds: DAffine2) -> ImageFrame<Color> {
 	let image_aabb = Bbox::unit().affine_transform(image.transform()).to_axis_aligned_bbox();
 	let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();
 	if image_aabb.contains(bounds_aabb.start) && image_aabb.contains(bounds_aabb.end) {
@@ -401,7 +285,7 @@ fn extend_image_to_bounds_node(image: ImageFrame<Color>, bounds: DAffine2) -> Im
 	}
 
 	if image.image.width == 0 || image.image.height == 0 {
-		return EmptyImageNode::new(CopiedNode::new(Color::TRANSPARENT)).eval(bounds);
+		return empty_image((), bounds, Color::TRANSPARENT);
 	}
 
 	let orig_image_scale = DVec2::new(image.image.width as f64, image.image.height as f64);
@@ -433,32 +317,8 @@ fn extend_image_to_bounds_node(image: ImageFrame<Color>, bounds: DAffine2) -> Im
 	}
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct MergeBoundingBoxNode<Data> {
-	_data: PhantomData<Data>,
-}
-
-#[node_macro::node_fn(MergeBoundingBoxNode<_Data>)]
-fn merge_bounding_box_node<_Data: Transform>(input: (Option<AxisAlignedBbox>, _Data)) -> Option<AxisAlignedBbox> {
-	let (initial_aabb, data) = input;
-
-	let snd_aabb = Bbox::unit().affine_transform(data.transform()).to_axis_aligned_bbox();
-
-	if let Some(fst_aabb) = initial_aabb {
-		fst_aabb.union_non_empty(&snd_aabb)
-	} else {
-		Some(snd_aabb)
-	}
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct EmptyImageNode<P, FillColor> {
-	pub color: FillColor,
-	_p: PhantomData<P>,
-}
-
-#[node_macro::node_fn(EmptyImageNode<_P>)]
-fn empty_image<_P: Pixel>(transform: DAffine2, color: _P) -> ImageFrame<_P> {
+#[node_macro::node(category("Debug: Raster"))]
+fn empty_image<P: Pixel>(_: (), transform: DAffine2, #[implementations(Color)] color: P) -> ImageFrame<P> {
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
 
@@ -575,7 +435,7 @@ pub struct ImageFrameNode<P, Transform> {
 	transform: Transform,
 	_p: PhantomData<P>,
 }
-#[node_macro::node_fn(ImageFrameNode<_P>)]
+#[node_macro::old_node_fn(ImageFrameNode<_P>)]
 fn image_frame<_P: Pixel>(image: Image<_P>, transform: DAffine2) -> graphene_core::raster::ImageFrame<_P> {
 	graphene_core::raster::ImageFrame {
 		image,
@@ -584,42 +444,7 @@ fn image_frame<_P: Pixel>(image: Image<_P>, transform: DAffine2) -> graphene_cor
 	}
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct NoisePatternNode<
-	Clip,
-	Seed,
-	Scale,
-	NoiseType,
-	DomainWarpType,
-	DomainWarpAmplitude,
-	FractalType,
-	FractalOctaves,
-	FractalLacunarity,
-	FractalGain,
-	FractalWeightedStrength,
-	FractalPingPongStrength,
-	CellularDistanceFunction,
-	CellularReturnType,
-	CellularJitter,
-> {
-	clip: Clip,
-	seed: Seed,
-	scale: Scale,
-	noise_type: NoiseType,
-	domain_warp_type: DomainWarpType,
-	domain_warp_amplitude: DomainWarpAmplitude,
-	fractal_type: FractalType,
-	fractal_octaves: FractalOctaves,
-	fractal_lacunarity: FractalLacunarity,
-	fractal_gain: FractalGain,
-	fractal_weighted_strength: FractalWeightedStrength,
-	fractal_ping_pong_strength: FractalPingPongStrength,
-	cellular_distance_function: CellularDistanceFunction,
-	cellular_return_type: CellularReturnType,
-	cellular_jitter: CellularJitter,
-}
-
-#[node_macro::node_fn(NoisePatternNode)]
+#[node_macro::node(category("Raster: Generator"))]
 #[allow(clippy::too_many_arguments)]
 fn noise_pattern(
 	footprint: Footprint,
@@ -769,11 +594,8 @@ fn noise_pattern(
 	}
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct MandelbrotNode;
-
-#[node_macro::node_fn(MandelbrotNode)]
-fn mandelbrot_node(footprint: Footprint) -> ImageFrame<Color> {
+#[node_macro::node(category("Raster: Generator"))]
+fn mandelbrot(footprint: Footprint) -> ImageFrame<Color> {
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
 	let image_bounds = Bbox::from_transform(DAffine2::IDENTITY).to_axis_aligned_bbox();
@@ -801,7 +623,7 @@ fn mandelbrot_node(footprint: Footprint) -> ImageFrame<Color> {
 			let pos = Vec2::new(x as f32, y as f32);
 			let c = pos * scale + coordinate_offset;
 
-			let iter = mandelbrot(c, max_iter);
+			let iter = mandelbrot_impl(c, max_iter);
 			data.push(map_color(iter, max_iter));
 		}
 	}
@@ -818,7 +640,7 @@ fn mandelbrot_node(footprint: Footprint) -> ImageFrame<Color> {
 }
 
 #[inline(always)]
-fn mandelbrot(c: Vec2, max_iter: usize) -> usize {
+fn mandelbrot_impl(c: Vec2, max_iter: usize) -> usize {
 	let mut z = Vec2::new(0.0, 0.0);
 	for i in 0..max_iter {
 		z = Vec2::new(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c;
@@ -832,22 +654,4 @@ fn mandelbrot(c: Vec2, max_iter: usize) -> usize {
 fn map_color(iter: usize, max_iter: usize) -> Color {
 	let v = iter as f32 / max_iter as f32;
 	Color::from_rgbaf32_unchecked(v, v, v, 1.)
-}
-
-#[cfg(test)]
-mod test {
-
-	#[test]
-	fn load_image() {
-		// TODO: reenable this test
-		/*
-		let image = image_node::<&str>();
-
-		let grayscale_picture = image.then(MapResultNode::new(&image));
-		let export = export_image_node();
-
-		let picture = grayscale_picture.eval("test-image-1.png").expect("Failed to load image");
-		export.eval((picture, "test-image-1-result.png")).unwrap();
-		*/
-	}
 }

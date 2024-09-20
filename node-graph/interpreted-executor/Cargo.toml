@@ -8,7 +8,6 @@ license = "MIT OR Apache-2.0"
 default = []
 serde = ["dep:serde", "graphene-std/serde", "glam/serde"]
 gpu = ["graphene-std/gpu", "graphene-core/gpu", "graphene-std/wgpu"]
-quantization = ["graphene-std/quantization"]
 
 [dependencies]
 # Local dependencies
