@@ -1,6 +1,4 @@
-use std::ops::{Div, Mul};
-
-use crate::Node;
+use crate::transform::Footprint;
 
 use bezier_rs::{ManipulatorGroup, Subpath};
 use graphene_core::transform::Transform;
@@ -10,13 +8,16 @@ use graphene_core::{Color, GraphicElement, GraphicGroup};
 
 use glam::{DAffine2, DVec2};
 use path_bool::PathBooleanOperation;
+use std::ops::{Div, Mul};
 
-pub struct BooleanOperationNode<BooleanOp> {
-	operation: BooleanOp,
-}
+#[node_macro::node(category(""))]
+async fn boolean_operation<F: 'n + Copy + Send>(
+	#[implementations((), Footprint)] footprint: F,
+	#[implementations(((), GraphicGroup), (Footprint, GraphicGroup))] group_of_paths: impl Node<F, Output = GraphicGroup>,
+	operation: BooleanOperation,
+) -> VectorData {
+	let group_of_paths = group_of_paths.eval(footprint).await;
 
-#[node_macro::old_node_fn(BooleanOperationNode)]
-fn boolean_operation(group_of_paths: GraphicGroup, operation: BooleanOperation) -> VectorData {
 	fn vector_from_image<T: Transform>(image_frame: T) -> VectorData {
 		let corner1 = DVec2::ZERO;
 		let corner2 = DVec2::new(1., 1.);
@@ -313,7 +314,7 @@ fn path_bool(a: Path, b: Path, op: PathBooleanOperation) -> Vec<Path> {
 		Err(e) => {
 			let a_path = path_bool::path_to_path_data(&a, 0.001);
 			let b_path = path_bool::path_to_path_data(&b, 0.001);
-			log::error!("Boolean error {e:?} encontered while processing {a_path}\n {op:?}\n {b_path}");
+			log::error!("Boolean error {e:?} encountered while processing {a_path}\n {op:?}\n {b_path}");
 			Vec::new()
 		}
 	}

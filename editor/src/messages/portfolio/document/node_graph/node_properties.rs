@@ -2268,17 +2268,10 @@ pub(crate) fn generate_node_properties(document_node: &DocumentNode, node_id: No
 }
 
 pub(crate) fn boolean_operation_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let group_of_paths_index = 0;
 	let operation_index = 1;
-
-	let mut widgets = start_widgets(document_node, node_id, group_of_paths_index, "Group of Paths", FrontendGraphDataType::Graphic, true);
-
-	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-	widgets.push(TextLabel::new("The output of a layer stack, which contains all elements to operate on").widget_holder());
-
 	let operation = boolean_operation_radio_buttons(document_node, node_id, operation_index, "Operation", true);
 
-	vec![LayoutGroup::Row { widgets }, operation]
+	vec![operation]
 }
 
 pub(crate) fn copy_to_points_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
