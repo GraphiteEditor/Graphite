@@ -49,14 +49,13 @@ const EPSILON: f64 = 0.0001;
 const TX: f32 = 0.1;
 
 fn compute_dark_channel(image: &DynamicImage) -> DynamicImage {
-	let rgba_image = image.to_rgba8();
-	let (width, height) = rgba_image.dimensions();
+	let (width, height) = image.dimensions();
 	let mut dark_channel = GrayImage::new(width, height);
 	let half_patch = PATCH_SIZE / 2;
 
 	for y in 0..height {
 		for x in 0..width {
-			let pixel = rgba_image.get_pixel(x, y);
+			let pixel = image.get_pixel(x, y);
 			let min_intensity = min(min(pixel[0], pixel[1]), pixel[2]);
 			dark_channel.put_pixel(x, y, Luma([min_intensity]));
 		}
@@ -81,7 +80,7 @@ fn compute_dark_channel(image: &DynamicImage) -> DynamicImage {
 					}
 				}
 			}
-			let alpha = rgba_image.get_pixel(x, y)[3];
+			let alpha = image.get_pixel(x, y)[3];
 			eroded_channel.put_pixel(x, y, Rgba([local_min, local_min, local_min, alpha]));
 		}
 	}
@@ -89,9 +88,8 @@ fn compute_dark_channel(image: &DynamicImage) -> DynamicImage {
 	DynamicImage::ImageRgba8(eroded_channel)
 }
 
-fn estimate_atmospheric_light(img: &DynamicImage, dark_channel: &DynamicImage) -> Rgba<u8> {
-	let (width, height) = img.dimensions();
-	let hazy = img.to_rgba8();
+fn estimate_atmospheric_light(hazy: &DynamicImage, dark_channel: &DynamicImage) -> Rgba<u8> {
+	let (width, height) = hazy.dimensions();
 	let dark = dark_channel.to_luma_alpha8();
 	let total_pixels = (width * height) as usize;
 	let num_pixels = ((TOP_PERCENT / 100.0) * total_pixels as f64).ceil() as usize;
@@ -119,9 +117,8 @@ fn estimate_atmospheric_light(img: &DynamicImage, dark_channel: &DynamicImage) -
 	}
 
 	let num_pixels = num_pixels as f64;
-	let atm_light = Rgba([(atm_sum[0] / num_pixels) as u8, (atm_sum[1] / num_pixels) as u8, (atm_sum[2] / num_pixels) as u8, 255]);
 
-	atm_light
+	Rgba([(atm_sum[0] / num_pixels) as u8, (atm_sum[1] / num_pixels) as u8, (atm_sum[2] / num_pixels) as u8, 255])
 }
 
 fn estimate_transmission_map(image: &DynamicImage, dark_channel: &DynamicImage, omega: f64) -> DynamicImage {
@@ -155,9 +152,7 @@ fn refine_transmission_map(img: &DynamicImage, transmission_map: &DynamicImage) 
 
 	let normalized_gray_image = DynamicImage::ImageLuma8(normalized_gray_image);
 
-	let refined_transmission_map = guided_filter(&normalized_gray_image, transmission_map, RADIUS, EPSILON);
-
-	refined_transmission_map
+	guided_filter(&normalized_gray_image, transmission_map, RADIUS, EPSILON)
 }
 
 fn recover(im: &DynamicImage, t: &DynamicImage, a: Rgba<u8>) -> DynamicImage {
@@ -195,9 +190,7 @@ fn dehaze(img: DynamicImage, percent_dehaze: f64) -> DynamicImage {
 
 	let refined_transmission_map = refine_transmission_map(&img, &transmission_map);
 
-	let dehazed_image = recover(&img, &refined_transmission_map, atmospheric_light);
-
-	dehazed_image
+	recover(&img, &refined_transmission_map, atmospheric_light)
 }
 
 fn guided_filter(guidance_img: &DynamicImage, input_img: &DynamicImage, r: u32, epsilon: f64) -> DynamicImage {
