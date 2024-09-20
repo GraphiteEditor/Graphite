@@ -170,6 +170,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 				// Set initial hints and cursor
 				tool_data.active_tool_mut().process_message(ToolMessage::UpdateHints, responses, &mut data);
 				tool_data.active_tool_mut().process_message(ToolMessage::UpdateCursor, responses, &mut data);
+
 				responses.add(OverlaysMessage::AddProvider(ARTBOARD_OVERLAY_PROVIDER));
 			}
 			ToolMessage::PreUndo => {

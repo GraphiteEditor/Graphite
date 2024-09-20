@@ -50,6 +50,7 @@ pub enum DocumentMessage {
 	DocumentHistoryBackward,
 	DocumentHistoryForward,
 	DocumentStructureChanged,
+	DrawArtboardOverlays(OverlayContext),
 	DuplicateSelectedLayers,
 	EnterNestedNetwork {
 		node_id: NodeId,
@@ -96,7 +97,6 @@ pub enum DocumentMessage {
 		resize: Key,
 		resize_opposite_corner: Key,
 	},
-	DrawArtboardOverlays(OverlayContext),
 	PasteImage {
 		image: Image<Color>,
 		mouse: Option<(f64, f64)>,

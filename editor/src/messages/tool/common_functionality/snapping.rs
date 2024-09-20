@@ -5,7 +5,7 @@ mod layer_snapper;
 mod snap_results;
 pub use {alignment_snapper::*, distribution_snapper::*, grid_snapper::*, layer_snapper::*, snap_results::*};
 
-use crate::consts::COLOR_OVERLAY_BLUE;
+use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_WHITE};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{BoundingBoxSnapTarget, GeometrySnapTarget, GridSnapTarget, SnapTarget};
@@ -466,7 +466,8 @@ impl SnapManager {
 			}
 
 			if !any_align && ind.distribution_equal_distance_x.is_none() && ind.distribution_equal_distance_y.is_none() {
-				overlay_context.text(&format!("{:?} to {:?}", ind.source, ind.target), viewport - DVec2::new(0., 5.), "#000000cc", 3., "10px sans-serif");
+				let text = format!("{:?} to {:?}", ind.source, ind.target);
+				overlay_context.text(&text, COLOR_OVERLAY_BLUE, Some(COLOR_OVERLAY_WHITE), viewport - DVec2::new(0., 5.));
 				overlay_context.square(viewport, Some(4.), Some(COLOR_OVERLAY_BLUE), Some(COLOR_OVERLAY_BLUE));
 			}
 		}
