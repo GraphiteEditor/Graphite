@@ -23,12 +23,13 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 
-use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeNetwork, OldNodeNetwork};
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::ImageFrame;
 use graphene_core::vector::style::ViewMode;
+
+use glam::{DAffine2, DVec2};
 pub struct DocumentMessageData<'a> {
 	pub document_id: DocumentId,
 	pub ipp: &'a InputPreprocessorMessageHandler,
@@ -1560,6 +1561,7 @@ impl DocumentMessageHandler {
 						return Some(index);
 					}
 				}
+				//trace!("{:?}", parent.children(metadata).enumerate().collect::<Vec<_>>());
 				None
 			})
 			.unwrap_or(0)
