@@ -16,6 +16,7 @@ fn reflect_control_point(point: DVec2, control_point: DVec2) -> DVec2 {
 	point * 2.0 - control_point
 }
 
+#[cfg(feature = "parsing")]
 pub fn path_from_commands<I>(commands: I) -> impl Iterator<Item = PathSegment>
 where
 	I: IntoIterator<Item = PathCommand>,
@@ -93,6 +94,7 @@ where
 	})
 }
 
+#[cfg(feature = "parsing")]
 pub fn path_to_commands<'a, I>(segments: I, eps: f64) -> impl Iterator<Item = PathCommand> + 'a
 where
 	I: IntoIterator<Item = &'a PathSegment> + 'a,
