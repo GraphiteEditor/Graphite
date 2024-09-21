@@ -36,7 +36,7 @@ pub fn init_graphite() {
 }
 
 /// When a panic occurs, notify the user and log the error to the JS console before the backend dies
-pub fn panic_hook(info: &panic::PanicInfo) {
+pub fn panic_hook(info: &panic::PanicHookInfo) {
 	let info = info.to_string();
 	let backtrace = Error::new("stack").stack().to_string();
 	if backtrace.contains("DynAnyNode") {
