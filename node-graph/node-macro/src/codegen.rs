@@ -203,6 +203,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	let identifier = quote!(format!("{}::{}", #path, stringify!(#struct_name)));
 
 	let register_node_impl = generate_register_node_impl(parsed, &field_names, &struct_name, &identifier)?;
+	let import_name = format_ident!("_IMPORT_STUB_{}", mod_name.to_string().to_case(Case::UpperSnake));
 
 	Ok(quote! {
 		/// Underlying implementation for [#struct_name]
@@ -219,10 +220,6 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		#[doc(inline)]
 		pub use #mod_name::#struct_name;
 
-		// Use the types specified in the implementation
-		#[cfg(__never_compiled)]
-		static _IMPORTS: core::marker::PhantomData<#(#all_implementation_types,)*> = core::marker::PhantomData;
-
 		#[doc(hidden)]
 		mod #mod_name {
 			use super::*;
@@ -233,6 +230,9 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 			use gcore::registry::{NodeMetadata, FieldMetadata, NODE_REGISTRY, NODE_METADATA, DynAnyNode, DowncastBothNode, DynFuture, TypeErasedBox, PanicNode, ValueSource};
 			use gcore::ctor::ctor;
 
+			// Use the types specified in the implementation
+
+			static #import_name: core::marker::PhantomData<(#(#all_implementation_types,)*)> = core::marker::PhantomData;
 
 			#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 			pub struct #struct_name<#(#struct_generics,)*> {
