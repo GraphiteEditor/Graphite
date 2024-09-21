@@ -29,7 +29,7 @@ impl VectorIterMut for VectorData {
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
 async fn assign_colors<T: VectorIterMut>(
 	footprint: Footprint,
-	#[implementations((Footprint, GraphicGroup), (Footprint, VectorData))] vector_group: impl Node<Footprint, Output = T>,
+	#[implementations(Footprint -> GraphicGroup, Footprint -> VectorData)] vector_group: impl Node<Footprint, Output = T>,
 	#[default(true)] fill: bool,
 	stroke: bool,
 	gradient: GradientStops,
@@ -177,7 +177,7 @@ async fn circular_repeat(
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn bounding_box<F: 'n + Copy + Send>(
 	#[implementations((), Footprint)] footprint: F,
-	#[implementations(((), VectorData), (Footprint, VectorData))] vector_data: impl Node<F, Output = VectorData>,
+	#[implementations(() -> VectorData, Footprint -> VectorData)] vector_data: impl Node<F, Output = VectorData>,
 ) -> VectorData {
 	let vector_data = vector_data.eval(footprint).await;
 
@@ -253,7 +253,7 @@ async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + Tr
 	footprint: Footprint,
 	points: impl Node<Footprint, Output = VectorData>,
 	#[expose]
-	#[implementations((Footprint, VectorData), (Footprint, GraphicGroup))]
+	#[implementations(Footprint -> VectorData, Footprint -> GraphicGroup)]
 	instance: impl Node<Footprint, Output = I>,
 	#[default(1)] random_scale_min: f64,
 	#[default(1)] random_scale_max: f64,
@@ -387,7 +387,7 @@ async fn sample_points(
 #[node_macro::node(category(""), path(graphene_core::vector))]
 async fn poisson_disk_points<F: 'n + Copy + Send>(
 	#[implementations((), Footprint)] footprint: F,
-	#[implementations(((), VectorData), (Footprint, VectorData))] vector_data: impl Node<F, Output = VectorData>,
+	#[implementations(() -> VectorData, Footprint -> VectorData)] vector_data: impl Node<F, Output = VectorData>,
 	#[default(10.)]
 	#[min(0.01)]
 	separation_disk_diameter: f64,

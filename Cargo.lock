@@ -3850,6 +3850,7 @@ dependencies = [
  "graphene-core",
  "indoc",
  "proc-macro-crate 3.2.0",
+ "proc-macro-error",
  "proc-macro2",
  "quote",
  "syn 2.0.77",

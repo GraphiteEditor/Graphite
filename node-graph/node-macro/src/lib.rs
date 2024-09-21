@@ -1,5 +1,6 @@
 use proc_macro::TokenStream;
 use proc_macro2::Span;
+use proc_macro_error::proc_macro_error;
 use quote::{format_ident, quote, ToTokens};
 use syn::{
 	parse_macro_input, punctuated::Punctuated, token::Comma, AngleBracketedGenericArguments, AssocType, FnArg, GenericArgument, GenericParam, Ident, ItemFn, Lifetime, Pat, PatIdent, PathArguments,
@@ -8,6 +9,7 @@ use syn::{
 
 mod codegen;
 mod parsing;
+mod validation;
 
 /// A macro used to construct a proto node implementation from the given struct and the decorated function.
 ///
@@ -102,6 +104,7 @@ pub fn old_node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 	new_constructor
 }
 
+#[proc_macro_error]
 #[proc_macro_attribute]
 pub fn node(attr: TokenStream, item: TokenStream) -> TokenStream {
 	// Performs the `node_impl` macro's functionality of attaching an `impl Node for TheGivenStruct` block to the node struct

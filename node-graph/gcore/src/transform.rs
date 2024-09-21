@@ -220,12 +220,12 @@ impl ApplyTransform for () {
 async fn transform<I: Into<Footprint> + ApplyTransform + 'n + Clone + Send + Sync, T: TransformMut + 'n>(
 	#[implementations(Footprint, Footprint, Footprint, (), (), ())] mut input: I,
 	#[implementations(
-		(Footprint, VectorData),
-		(Footprint, GraphicGroup),
-		(Footprint, ImageFrame<crate::Color>),
-		((), VectorData),
-		((), GraphicGroup),
-		((), ImageFrame<crate::Color>),
+		Footprint -> VectorData,
+		Footprint -> GraphicGroup,
+		Footprint -> ImageFrame<crate::Color>,
+		() -> VectorData,
+		() -> GraphicGroup,
+		() -> ImageFrame<crate::Color>,
 	)]
 	transform_target: impl Node<I, Output = T>,
 	translate: DVec2,

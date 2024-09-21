@@ -5,7 +5,7 @@ use graphene_core::Color;
 #[node_macro::node(category("Raster"))]
 async fn image_color_palette<F: 'n + Send>(
 	#[implementations((), Footprint)] footprint: F,
-	#[implementations(((), ImageFrame<Color>), (Footprint, ImageFrame<Color>))] image: impl Node<F, Output = ImageFrame<Color>>,
+	#[implementations(() -> ImageFrame<Color>, Footprint -> ImageFrame<Color>)] image: impl Node<F, Output = ImageFrame<Color>>,
 	#[min(1.)]
 	#[max(28.)]
 	max_size: u32,

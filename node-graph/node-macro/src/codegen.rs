@@ -140,7 +140,10 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 	let all_implementation_types = fields.iter().flat_map(|field| match field {
 		ParsedField::Regular { implementations, .. } => implementations.into_iter().cloned().collect::<Vec<_>>(),
-		ParsedField::Node { implementations, .. } => implementations.into_iter().map(|tuple| syn::Type::Tuple(tuple.clone())).collect(),
+		ParsedField::Node { implementations, .. } => implementations
+			.into_iter()
+			.flat_map(|implementation| [implementation.input.clone(), implementation.output.clone()])
+			.collect(),
 	});
 	let all_implementation_types = all_implementation_types.chain(input.implementations.iter().cloned());
 
@@ -216,6 +219,10 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		#[doc(inline)]
 		pub use #mod_name::#struct_name;
 
+		// Use the types specified in the implementation
+		#[cfg(__never_compiled)]
+		static _IMPORTS: core::marker::PhantomData<#(#all_implementation_types,)*> = core::marker::PhantomData;
+
 		#[doc(hidden)]
 		mod #mod_name {
 			use super::*;
@@ -226,9 +233,6 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 			use gcore::registry::{NodeMetadata, FieldMetadata, NODE_REGISTRY, NODE_METADATA, DynAnyNode, DowncastBothNode, DynFuture, TypeErasedBox, PanicNode, ValueSource};
 			use gcore::ctor::ctor;
 
-			// Use the types specified in the implementation
-			#[cfg(__never_compiled)]
-			static _IMPORTS: core::marker::PhantomData<#(#all_implementation_types,)*> = core::marker::PhantomData;
 
 			#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 			pub struct #struct_name<#(#struct_generics,)*> {
@@ -286,19 +290,19 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 			match field {
 				ParsedField::Regular { implementations, ty, .. } => {
 					if !implementations.is_empty() {
-						implementations.into_iter().map(|ty| (&unit, ty, false)).collect()
+						implementations.iter().map(|ty| (&unit, ty, false)).collect()
 					} else {
 						vec![(&unit, ty, false)]
 					}
 				}
 				ParsedField::Node {
 					implementations,
-					output_type,
 					input_type,
+					output_type,
 					..
 				} => {
 					if !implementations.is_empty() {
-						implementations.into_iter().map(|tup| (&tup.elems[0], &tup.elems[1], true)).collect()
+						implementations.iter().map(|impl_| (&impl_.input, &impl_.output, true)).collect()
 					} else {
 						vec![(input_type, output_type, true)]
 					}
