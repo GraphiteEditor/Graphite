@@ -946,9 +946,9 @@ mod tests {
 		assert!(result.is_err());
 		let error = result.unwrap_err();
 		let error_message = error.to_string();
-		assert!(error_message.contains("Invalid implementations for argument 'input'"));
-		assert!(error_message.contains("Expected a comma-separated list of 'InputType -> OutputType' pairs"));
-		assert!(error_message.contains("Expected '->' after input type in implementations attribute for impl Node field"));
+		assert!(error_message.contains("Invalid #[implementations(...)] for argument `input`"));
+		assert!(error_message.contains("Expected a comma-separated list of `InputType -> OutputType` pairs"));
+		assert!(error_message.contains("Expected `->` arrow after input type in #[implementations(...)] on a field of type `impl Node`"));
 	}
 
 	#[test]
