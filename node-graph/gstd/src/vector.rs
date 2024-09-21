@@ -13,7 +13,7 @@ use std::ops::{Div, Mul};
 #[node_macro::node(category(""))]
 async fn boolean_operation<F: 'n + Copy + Send>(
 	#[implementations((), Footprint)] footprint: F,
-	#[implementations(((), GraphicGroup), (Footprint, GraphicGroup))] group_of_paths: impl Node<F, Output = GraphicGroup>,
+	#[implementations(() -> GraphicGroup, Footprint -> GraphicGroup)] group_of_paths: impl Node<F, Output = GraphicGroup>,
 	operation: BooleanOperation,
 ) -> VectorData {
 	let group_of_paths = group_of_paths.eval(footprint).await;
