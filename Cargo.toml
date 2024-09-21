@@ -16,6 +16,7 @@ members = [
 	"node-graph/gpu-executor",
 	"node-graph/gpu-compiler/gpu-compiler-bin-wrapper",
 	"libraries/dyn-any",
+	"libraries/path-bool",
 	"libraries/bezier-rs",
 	"libraries/raw-rs",
 	"libraries/raw-rs/tag-derive",
@@ -32,6 +33,7 @@ graphene-core = { path = "node-graph/gcore" }
 graph-craft = { path = "node-graph/graph-craft", features = ["serde"] }
 wgpu-executor = { path = "node-graph/wgpu-executor" }
 bezier-rs = { path = "libraries/bezier-rs", features = ["dyn-any"] }
+path-bool = { path = "libraries/path-bool", features = ["parsing"] }
 node-macro = { path = "node-graph/node-macro" }
 
 # Workspace dependencies

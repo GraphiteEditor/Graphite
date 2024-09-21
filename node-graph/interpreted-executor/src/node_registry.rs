@@ -360,7 +360,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Footprint, fn_params: [Footprint => TextureFrame]),
 		register_node!(graphene_core::structural::ConsNode<_, _>, input: Image<Color>, params: [&str]),
 		register_node!(graphene_std::raster::ImageFrameNode<_, _>, input: Image<Color>, params: [DAffine2]),
-		register_node!(graphene_std::vector::BooleanOperationNode<_>, input: GraphicGroup, fn_params: [() => graphene_core::vector::misc::BooleanOperation]),
 	];
 	let mut map: HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> = HashMap::new();
 	for (id, entry) in graphene_core::registry::NODE_REGISTRY.lock().unwrap().iter() {
