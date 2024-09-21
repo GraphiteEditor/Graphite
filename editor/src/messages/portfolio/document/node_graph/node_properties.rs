@@ -132,7 +132,7 @@ pub(crate) fn property_from_type(
 							x if x == TypeId::of::<u32>() => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)).max(max(f64::from(u32::MAX))), true).into(),
 							x if x == TypeId::of::<u64>() => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)), true).into(),
 							x if x == TypeId::of::<String>() => text_widget(document_node, node_id, index, name, true).into(),
-							x if x == TypeId::of::<Color>() => color_widget(document_node, node_id, index, name, ColorButton::default(), true),
+							x if x == TypeId::of::<Color>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(false), true),
 							x if x == TypeId::of::<Option<Color>>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(true), true),
 							x if x == TypeId::of::<DVec2>() => vec2_widget(document_node, node_id, index, name, "X", "Y", "", None, add_blank_assist),
 							x if x == TypeId::of::<UVec2>() => vec2_widget(document_node, node_id, index, name, "X", "Y", "", Some(0.), add_blank_assist),
@@ -2589,9 +2589,4 @@ pub(crate) fn artboard_properties(document_node: &DocumentNode, node_id: NodeId,
 	let clip_row = LayoutGroup::Row { widgets: clip };
 
 	vec![location, dimensions, background, clip_row]
-}
-
-pub(crate) fn color_fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let color = color_widget(document_node, node_id, 1, "Color", ColorButton::default(), true);
-	vec![color]
 }

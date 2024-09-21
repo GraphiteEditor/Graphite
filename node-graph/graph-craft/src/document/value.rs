@@ -9,6 +9,7 @@ use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
 use graphene_core::renderer::RenderMetadata;
 use graphene_core::uuid::NodeId;
+use graphene_core::vector::style::Fill;
 use graphene_core::{Color, MemoHash, Node, Type};
 
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
@@ -210,7 +211,10 @@ impl TaggedValue {
 					x if x == TypeId::of::<u64>() => FromStr::from_str(string).map(TaggedValue::U64).ok()?,
 					x if x == TypeId::of::<u32>() => FromStr::from_str(string).map(TaggedValue::U32).ok()?,
 					x if x == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
+					// TODO: Make it possible to give Color::BLACK instead of 000000ff as the default
 					x if x == TypeId::of::<Color>() => Color::from_rgba_str(string).map(TaggedValue::Color)?,
+					x if x == TypeId::of::<Option<Color>>() => Color::from_rgba_str(string).map(|color| TaggedValue::OptionalColor(Some(color)))?,
+					x if x == TypeId::of::<Fill>() => Color::from_rgba_str(string).map(|color| TaggedValue::Fill(Fill::solid(color)))?,
 					_ => return None,
 				};
 				Some(ty)

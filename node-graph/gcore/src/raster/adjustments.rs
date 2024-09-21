@@ -1,3 +1,5 @@
+// TODO: Implement: (1) Color Balance, (2) Photo Filter, (3) Color Lookup
+
 #![allow(clippy::too_many_arguments)]
 
 #[cfg(feature = "alloc")]
@@ -269,9 +271,17 @@ impl From<BlendMode> for vello::peniko::Mix {
 }
 
 #[node_macro::node(category("Raster: Adjustment"))] // Unique to Graphite
-async fn luminance<T: Adjust<Color>>(
-	footprint: Footprint,
-	#[implementations(Footprint -> Color, Footprint -> ImageFrame<Color>)] input: impl Node<Footprint, Output = T>,
+async fn luminance<F: 'n + Send, T: Adjust<Color>>(
+	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		() -> Color,
+		() -> ImageFrame<Color>,
+		() -> GradientStops,
+		Footprint -> Color,
+		Footprint -> ImageFrame<Color>,
+		Footprint -> GradientStops,
+	)]
+	input: impl Node<F, Output = T>,
 	luminance_calc: LuminanceCalculation,
 ) -> T {
 	let mut input = input.eval(footprint).await;
@@ -289,9 +299,17 @@ async fn luminance<T: Adjust<Color>>(
 }
 
 #[node_macro::node(category("Raster"))]
-async fn extract_channel<T: Adjust<Color>>(
-	footprint: Footprint,
-	#[implementations(Footprint -> Color, Footprint -> ImageFrame<Color>)] input: impl Node<Footprint, Output = T>,
+async fn extract_channel<F: 'n + Send, T: Adjust<Color>>(
+	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		() -> Color,
+		() -> ImageFrame<Color>,
+		() -> GradientStops,
+		Footprint -> Color,
+		Footprint -> ImageFrame<Color>,
+		Footprint -> GradientStops,
+	)]
+	input: impl Node<F, Output = T>,
 	channel: RedGreenBlueAlpha,
 ) -> T {
 	let mut input = input.eval(footprint).await;
@@ -308,7 +326,18 @@ async fn extract_channel<T: Adjust<Color>>(
 }
 
 #[node_macro::node(category("Raster"))]
-async fn make_opaque<T: Adjust<Color>>(footprint: Footprint, #[implementations(Footprint -> Color, Footprint -> ImageFrame<Color>)] input: impl Node<Footprint, Output = T>) -> T {
+async fn make_opaque<F: 'n + Send, T: Adjust<Color>>(
+	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		() -> Color,
+		() -> ImageFrame<Color>,
+		() -> GradientStops,
+		Footprint -> Color,
+		Footprint -> ImageFrame<Color>,
+		Footprint -> GradientStops,
+	)]
+	input: impl Node<F, Output = T>,
+) -> T {
 	let mut input = input.eval(footprint).await;
 	input.adjust(|color| {
 		if color.a() == 0. {
@@ -321,9 +350,17 @@ async fn make_opaque<T: Adjust<Color>>(footprint: Footprint, #[implementations(F
 
 // From https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
 #[node_macro::node(category("Raster: Adjustment"))]
-async fn levels<T: Adjust<Color>>(
-	footprint: Footprint,
-	#[implementations(Footprint -> Color, Footprint -> ImageFrame<Color>)] image: impl Node<Footprint, Output = T>,
+async fn levels<F: 'n + Send, T: Adjust<Color>>(
+	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		() -> Color,
+		() -> ImageFrame<Color>,
+		() -> GradientStops,
+		Footprint -> Color,
+		Footprint -> ImageFrame<Color>,
+		Footprint -> GradientStops,
+	)]
+	image: impl Node<F, Output = T>,
 	#[default(0.)] shadows: Percentage,
 	#[default(50.)] midtones: Percentage,
 	#[default(100.)] highlights: Percentage,
@@ -379,9 +416,17 @@ async fn levels<T: Adjust<Color>>(
 // From <https://stackoverflow.com/a/55233732/775283>
 // Works the same for gamma and linear color
 #[node_macro::node(name("Black & White"), category("Raster: Adjustment"))]
-async fn black_and_white<T: Adjust<Color>>(
-	footprint: Footprint,
-	#[implementations(Footprint -> Color, Footprint -> ImageFrame<Color>)] image: impl Node<Footprint, Output = T>,
+async fn black_and_white<F: 'n + Send, T: Adjust<Color>>(
+	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		() -> Color,
+		() -> ImageFrame<Color>,
+		() -> GradientStops,
+		Footprint -> Color,
+		Footprint -> ImageFrame<Color>,
+		Footprint -> GradientStops,
+	)]
+	image: impl Node<F, Output = T>,
 	#[default(000000ff)] tint: Color,
 	#[default(40.)]
 	#[range((-200., 300.))]
@@ -444,9 +489,17 @@ async fn black_and_white<T: Adjust<Color>>(
 }
 
 #[node_macro::node(name("Hue/Saturation"), category("Raster: Adjustment"))]
-async fn hue_saturation<T: Adjust<Color>>(
-	footprint: Footprint,
-	#[implementations(Footprint -> Color, Footprint -> ImageFrame<Color>)] input: impl Node<Footprint, Output = T>,
+async fn hue_saturation<F: 'n + Send, T: Adjust<Color>>(
+	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		() -> Color,
+		() -> ImageFrame<Color>,
+		() -> GradientStops,
+		Footprint -> Color,
+		Footprint -> ImageFrame<Color>,
+		Footprint -> GradientStops,
+	)]
+	input: impl Node<F, Output = T>,
 	hue_shift: Angle,
 	saturation_shift: SignedPercentage,
 	lightness_shift: SignedPercentage,
@@ -472,7 +525,18 @@ async fn hue_saturation<T: Adjust<Color>>(
 }
 
 #[node_macro::node(category("Raster: Adjustment"))]
-async fn invert<T: Adjust<Color>>(footprint: Footprint, #[implementations(Footprint -> Color, Footprint -> ImageFrame<Color>)] input: impl Node<Footprint, Output = T>) -> T {
+async fn invert<F: 'n + Send, T: Adjust<Color>>(
+	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		() -> Color,
+		() -> ImageFrame<Color>,
+		() -> GradientStops,
+		Footprint -> Color,
+		Footprint -> ImageFrame<Color>,
+		Footprint -> GradientStops,
+	)]
+	input: impl Node<F, Output = T>,
+) -> T {
 	let mut input = input.eval(footprint).await;
 	input.adjust(|color| {
 		let color = color.to_gamma_srgb();
@@ -485,9 +549,17 @@ async fn invert<T: Adjust<Color>>(footprint: Footprint, #[implementations(Footpr
 }
 
 #[node_macro::node(category("Raster: Adjustment"))]
-async fn threshold<T: Adjust<Color>>(
-	footprint: Footprint,
-	#[implementations(Footprint -> Color, Footprint -> ImageFrame<Color>)] image: impl Node<Footprint, Output = T>,
+async fn threshold<F: 'n + Send, T: Adjust<Color>>(
+	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		() -> Color,
+		() -> ImageFrame<Color>,
+		() -> GradientStops,
+		Footprint -> Color,
+		Footprint -> ImageFrame<Color>,
+		Footprint -> GradientStops,
+	)]
+	image: impl Node<F, Output = T>,
 	#[default(50.)] min_luminance: Percentage,
 	#[default(100.)] max_luminance: Percentage,
 	luminance_calc: LuminanceCalculation,
@@ -718,9 +790,17 @@ async fn gradient_map<F: 'n + Copy + Send, T: Adjust<Color>>(
 // Based on <https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters>
 // The results of this implementation are very close to correct, but not quite perfect
 #[node_macro::node(category("Raster: Adjustment"))]
-async fn vibrance<T: Adjust<Color>>(
-	footprint: Footprint,
-	#[implementations(Footprint -> Color, Footprint -> ImageFrame<Color>)] image: impl Node<Footprint, Output = T>,
+async fn vibrance<F: 'n + Send, T: Adjust<Color>>(
+	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		() -> Color,
+		() -> ImageFrame<Color>,
+		() -> GradientStops,
+		Footprint -> Color,
+		Footprint -> ImageFrame<Color>,
+		Footprint -> GradientStops,
+	)]
+	image: impl Node<F, Output = T>,
 	vibrance: SignedPercentage,
 ) -> T {
 	let mut input = image.eval(footprint).await;
@@ -1001,9 +1081,17 @@ impl DomainWarpType {
 }
 
 #[node_macro::node(category("Raster: Adjustment"))]
-async fn channel_mixer<T: Adjust<Color>>(
-	footprint: Footprint,
-	#[implementations(Footprint -> Color, Footprint -> ImageFrame<Color>)] image: impl Node<Footprint, Output = T>,
+async fn channel_mixer<F: 'n + Send, T: Adjust<Color>>(
+	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		() -> Color,
+		() -> ImageFrame<Color>,
+		() -> GradientStops,
+		Footprint -> Color,
+		Footprint -> ImageFrame<Color>,
+		Footprint -> GradientStops,
+	)]
+	image: impl Node<F, Output = T>,
 
 	monochrome: bool,
 	#[default(40.)]
@@ -1143,9 +1231,17 @@ impl core::fmt::Display for SelectiveColorChoice {
 
 // Based on https://blog.pkh.me/p/22-understanding-selective-coloring-in-adobe-photoshop.html
 #[node_macro::node(category("Raster: Adjustment"))]
-async fn selective_color<T: Adjust<Color>>(
-	footprint: Footprint,
-	#[implementations(Footprint -> Color, Footprint -> ImageFrame<Color>)] image: impl Node<Footprint, Output = T>,
+async fn selective_color<F: 'n + Send, T: Adjust<Color>>(
+	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		() -> Color,
+		() -> ImageFrame<Color>,
+		() -> GradientStops,
+		Footprint -> Color,
+		Footprint -> ImageFrame<Color>,
+		Footprint -> GradientStops,
+	)]
+	image: impl Node<F, Output = T>,
 	mode: RelativeAbsolute,
 	#[name("(Reds) Cyan")] r_c: f64,
 	#[name("(Reds) Magenta")] r_m: f64,
@@ -1291,9 +1387,17 @@ impl<P: Pixel> MultiplyAlpha for ImageFrame<P> {
 // Based on https://www.axiomx.com/posterize.htm
 // This algorithm produces fully accurate output in relation to the industry standard.
 #[node_macro::node(category("Raster: Adjustment"))]
-async fn posterize<T: Adjust<Color>>(
-	footprint: Footprint,
-	#[implementations(Footprint -> Color, Footprint -> ImageFrame<Color>)] input: impl Node<Footprint, Output = T>,
+async fn posterize<F: 'n + Send, T: Adjust<Color>>(
+	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		() -> Color,
+		() -> ImageFrame<Color>,
+		() -> GradientStops,
+		Footprint -> Color,
+		Footprint -> ImageFrame<Color>,
+		Footprint -> GradientStops,
+	)]
+	input: impl Node<F, Output = T>,
 	#[default(4)]
 	#[min(2.)]
 	levels: u32,
@@ -1315,9 +1419,17 @@ async fn posterize<T: Adjust<Color>>(
 
 // Based on https://geraldbakker.nl/psnumbers/exposure.html
 #[node_macro::node(category("Raster: Adjustment"))]
-async fn exposure<T: Adjust<Color>>(
-	footprint: Footprint,
-	#[implementations(Footprint -> Color, Footprint -> ImageFrame<Color>)] input: impl Node<Footprint, Output = T>,
+async fn exposure<F: 'n + Send, T: Adjust<Color>>(
+	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		() -> Color,
+		() -> ImageFrame<Color>,
+		() -> GradientStops,
+		Footprint -> Color,
+		Footprint -> ImageFrame<Color>,
+		Footprint -> GradientStops,
+	)]
+	input: impl Node<F, Output = T>,
 	exposure: f64,
 	offset: f64,
 	#[default(1.)]

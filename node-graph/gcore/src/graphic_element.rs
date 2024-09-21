@@ -235,10 +235,10 @@ impl ArtboardGroup {
 async fn layer<F: 'n + Copy + Send>(
 	#[implementations((), Footprint)] footprint: F,
 	#[implementations(() -> GraphicGroup, Footprint -> GraphicGroup)] stack: impl Node<F, Output = GraphicGroup>,
-	#[implementations(() -> GraphicElement, Footprint -> GraphicElement)] graphic_element: impl Node<F, Output = GraphicElement>,
+	#[implementations(() -> GraphicElement, Footprint -> GraphicElement)] element: impl Node<F, Output = GraphicElement>,
 	node_path: Vec<NodeId>,
 ) -> GraphicGroup {
-	let mut element = graphic_element.eval(footprint).await;
+	let mut element = element.eval(footprint).await;
 	let mut stack = stack.eval(footprint).await;
 	if stack.transform.matrix2.determinant() != 0. {
 		*element.transform_mut() = stack.transform.inverse() * element.transform();
@@ -257,15 +257,15 @@ async fn layer<F: 'n + Copy + Send>(
 async fn to_element<F: 'n + Send, Data: Into<GraphicElement> + 'n>(
 	#[implementations((), (), (), (), Footprint)] footprint: F,
 	#[implementations(
-		() -> VectorData,
-		() -> ImageFrame<Color>,
 		() -> GraphicGroup,
-		() -> TextureFrame,
-		Footprint -> VectorData,
+	 	() -> VectorData,
+		() -> ImageFrame<Color>,
+	 	() -> TextureFrame,
+	 	Footprint -> GraphicGroup,
+	 	Footprint -> VectorData,
 		Footprint -> ImageFrame<Color>,
-		Footprint -> GraphicGroup,
-		Footprint -> TextureFrame,
-	)]
+	 	Footprint -> TextureFrame,
+	 )]
 	data: impl Node<F, Output = Data>,
 ) -> GraphicElement {
 	data.eval(footprint).await.into()
@@ -275,13 +275,13 @@ async fn to_element<F: 'n + Send, Data: Into<GraphicElement> + 'n>(
 async fn to_group<F: 'n + Send, Data: Into<GraphicGroup> + 'n>(
 	#[implementations((), (), (), (), Footprint)] footprint: F,
 	#[implementations(
+		() -> GraphicGroup,
 		() -> VectorData,
 		() -> ImageFrame<Color>,
-		() -> GraphicGroup,
 		() -> TextureFrame,
+		Footprint -> GraphicGroup,
 		Footprint -> VectorData,
 		Footprint -> ImageFrame<Color>,
-		Footprint -> GraphicGroup,
 		Footprint -> TextureFrame,
 	)]
 	element: impl Node<F, Output = Data>,
@@ -290,9 +290,19 @@ async fn to_group<F: 'n + Send, Data: Into<GraphicGroup> + 'n>(
 }
 
 #[node_macro::node(category(""))]
-async fn to_artboard<F: 'n + Copy + Send + ApplyTransform>(
-	#[implementations((), Footprint)] mut footprint: F,
-	#[implementations(() -> GraphicGroup, Footprint -> GraphicGroup)] contents: impl Node<F, Output = GraphicGroup>,
+async fn to_artboard<F: 'n + Copy + Send + ApplyTransform, Data: Into<GraphicGroup> + 'n>(
+	#[implementations((), (), (), (), Footprint)] mut footprint: F,
+	#[implementations(
+		() -> GraphicGroup,
+		() -> VectorData,
+		() -> ImageFrame<Color>,
+		() -> TextureFrame,
+		Footprint -> GraphicGroup,
+		Footprint -> VectorData,
+		Footprint -> ImageFrame<Color>,
+		Footprint -> TextureFrame,
+	)]
+	contents: impl Node<F, Output = Data>,
 	label: String,
 	location: IVec2,
 	dimensions: IVec2,
@@ -303,7 +313,7 @@ async fn to_artboard<F: 'n + Copy + Send + ApplyTransform>(
 	let graphic_group = contents.eval(footprint).await;
 
 	Artboard {
-		graphic_group,
+		graphic_group: graphic_group.into(),
 		label,
 		location: location.min(location + dimensions),
 		dimensions: dimensions.abs(),
@@ -311,6 +321,7 @@ async fn to_artboard<F: 'n + Copy + Send + ApplyTransform>(
 		clip,
 	}
 }
+
 #[node_macro::node(category(""))]
 async fn append_artboard<F: 'n + Copy + Send>(
 	#[implementations((), Footprint)] footprint: F,

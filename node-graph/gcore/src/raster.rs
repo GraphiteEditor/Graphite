@@ -1,11 +1,11 @@
-use core::fmt::Debug;
-
+pub use self::color::{Color, Luma, SRGBA8};
+use crate::vector::VectorData;
+use crate::GraphicGroup;
 use crate::{registry::types::Percentage, transform::Footprint};
 
 use bytemuck::{Pod, Zeroable};
+use core::fmt::Debug;
 use glam::DVec2;
-
-pub use self::color::{Color, Luma, SRGBA8};
 
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
@@ -291,12 +291,12 @@ trait SetBlendMode {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode);
 }
 
-impl SetBlendMode for crate::vector::VectorData {
+impl SetBlendMode for VectorData {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
 		self.alpha_blending.blend_mode = blend_mode;
 	}
 }
-impl SetBlendMode for crate::GraphicGroup {
+impl SetBlendMode for GraphicGroup {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
 		self.alpha_blending.blend_mode = blend_mode;
 	}
@@ -308,9 +308,17 @@ impl SetBlendMode for ImageFrame<Color> {
 }
 
 #[node_macro::node(category("Style"))]
-async fn blend_mode<T: SetBlendMode>(
-	footprint: Footprint,
-	#[implementations(Footprint -> crate::vector::VectorData, Footprint -> crate::GraphicGroup, Footprint -> ImageFrame<Color>)] value: impl Node<Footprint, Output = T>,
+async fn blend_mode<F: 'n + Send, T: SetBlendMode>(
+	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		() -> GraphicGroup,
+		() -> VectorData,
+		() -> ImageFrame<Color>,
+		Footprint -> GraphicGroup,
+		Footprint -> VectorData,
+		Footprint -> ImageFrame<Color>,
+	)]
+	value: impl Node<F, Output = T>,
 	blend_mode: BlendMode,
 ) -> T {
 	let mut value = value.eval(footprint).await;
@@ -319,9 +327,17 @@ async fn blend_mode<T: SetBlendMode>(
 }
 
 #[node_macro::node(category("Style"))]
-async fn opacity<T: MultiplyAlpha>(
-	footprint: Footprint,
-	#[implementations(Footprint -> crate::vector::VectorData, Footprint -> crate::GraphicGroup, Footprint -> ImageFrame<Color>)] value: impl Node<Footprint, Output = T>,
+async fn opacity<F: 'n + Send, T: MultiplyAlpha>(
+	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		() -> GraphicGroup,
+		() -> VectorData,
+		() -> ImageFrame<Color>,
+		Footprint -> GraphicGroup,
+		Footprint -> VectorData,
+		Footprint -> ImageFrame<Color>,
+	)]
+	value: impl Node<F, Output = T>,
 	#[default(100.)] factor: Percentage,
 ) -> T {
 	let mut value = value.eval(footprint).await;

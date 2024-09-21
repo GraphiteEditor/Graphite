@@ -1,5 +1,5 @@
 use crate::registry::types::Percentage;
-use crate::Node;
+use crate::{Color, Node};
 
 use core::marker::PhantomData;
 use core::ops::{Add, Div, Mul, Rem, Sub};
@@ -247,10 +247,9 @@ fn vector2_value(_: (), _primary: (), x: f64, y: f64) -> glam::DVec2 {
 	glam::DVec2::new(x, y)
 }
 
-// TODO: Make it possible to give Color::BLACK instead of 000000ff as the default
 // Color Value
 #[node_macro::node(category("Value"))]
-fn color_value(_: (), _primary: (), #[default(000000ff)] color: crate::Color) -> crate::Color {
+fn color_value(_: (), _primary: (), #[default(000000ff)] color: Option<Color>) -> Option<Color> {
 	color
 }
 
@@ -281,19 +280,19 @@ fn size_of(_: (), ty: crate::Type) -> Option<usize> {
 
 // Some
 #[node_macro::node(category("Debug"))]
-fn some<T>(_: (), #[implementations(f64, f32, u32, u64, String, crate::Color)] input: T) -> Option<T> {
+fn some<T>(_: (), #[implementations(f64, f32, u32, u64, String, Color)] input: T) -> Option<T> {
 	Some(input)
 }
 
 // Unwrap
 #[node_macro::node(category("Debug"))]
-fn unwrap<T: Default>(_: (), #[implementations(Option<f64>, Option<f32>, Option<u32>, Option<u64>, Option<String>, Option<crate::Color>)] input: Option<T>) -> T {
+fn unwrap<T: Default>(_: (), #[implementations(Option<f64>, Option<f32>, Option<u32>, Option<u64>, Option<String>, Option<Color>)] input: Option<T>) -> T {
 	input.unwrap_or_default()
 }
 
 // Clone
 #[node_macro::node(category("Debug"))]
-fn clone<'i, T: Clone + 'i>(_: (), #[implementations(&crate::raster::ImageFrame<crate::Color>)] value: &'i T) -> T {
+fn clone<'i, T: Clone + 'i>(_: (), #[implementations(&crate::raster::ImageFrame<Color>)] value: &'i T) -> T {
 	value.clone()
 }
 

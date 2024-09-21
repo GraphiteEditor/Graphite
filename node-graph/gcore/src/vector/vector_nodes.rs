@@ -27,9 +27,15 @@ impl VectorIterMut for VectorData {
 }
 
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
-async fn assign_colors<T: VectorIterMut>(
-	footprint: Footprint,
-	#[implementations(Footprint -> GraphicGroup, Footprint -> VectorData)] vector_group: impl Node<Footprint, Output = T>,
+async fn assign_colors<F: 'n + Send, T: VectorIterMut>(
+	#[implementations((), (), Footprint)] footprint: F,
+	#[implementations(
+		() -> GraphicGroup,
+		() -> VectorData,
+		Footprint -> GraphicGroup,
+		Footprint -> VectorData,
+	)]
+	vector_group: impl Node<F, Output = T>,
 	#[default(true)] fill: bool,
 	stroke: bool,
 	gradient: GradientStops,
@@ -70,10 +76,19 @@ async fn assign_colors<T: VectorIterMut>(
 }
 
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
-async fn fill<T: Into<Fill> + 'n + Send>(
-	footprint: Footprint,
-	vector_data: impl Node<Footprint, Output = VectorData>,
-	#[implementations(Fill, Color, Option<Color>, crate::vector::style::Gradient)] fill: T, // TODO: Set the default to black
+async fn fill<F: 'n + Send, T: Into<Fill> + 'n + Send>(
+	#[implementations((), (), (), (), Footprint)] footprint: F,
+	#[implementations(
+		() -> VectorData,
+		() -> VectorData,
+		() -> VectorData,
+		() -> VectorData,
+		Footprint -> VectorData,
+	)]
+	vector_data: impl Node<F, Output = VectorData>,
+	#[implementations(Fill, Option<Color>, Color, Gradient, Fill, Option<Color>, Color, Gradient)]
+	// #[default("000000ff")] // TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
+	fill: T,
 	_backup_color: Option<Color>,
 	_backup_gradient: Gradient,
 ) -> VectorData {
@@ -84,10 +99,17 @@ async fn fill<T: Into<Fill> + 'n + Send>(
 }
 
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
-async fn stroke(
-	footprint: Footprint,
-	vector_data: impl Node<Footprint, Output = VectorData>,
-	color: Option<Color>, // TODO: Set the default to black
+async fn stroke<F: 'n + Send, T: Into<Option<Color>> + 'n + Send>(
+	#[implementations((), (), Footprint)] footprint: F,
+	#[implementations(
+		() -> VectorData,
+		() -> VectorData,
+		Footprint -> VectorData,
+	)]
+	vector_data: impl Node<F, Output = VectorData>,
+	#[implementations(Option<Color>, Color, Option<Color>, Color)]
+	// #[default("000000ff")] // TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
+	color: T,
 	#[default(5.)] weight: f64,
 	dash_lengths: Vec<f64>,
 	dash_offset: f64,
@@ -97,7 +119,7 @@ async fn stroke(
 ) -> VectorData {
 	let mut vector_data = vector_data.eval(footprint).await;
 	vector_data.style.set_stroke(Stroke {
-		color,
+		color: color.into(),
 		weight,
 		dash_lengths,
 		dash_offset,
