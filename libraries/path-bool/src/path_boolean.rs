@@ -780,36 +780,10 @@ fn remove_dangling_edges(graph: &mut MinorGraph) {
 	});
 }
 
-fn get_incidence_angle(edge: &MinorGraphEdge) -> f64 {
-	let seg = &edge.segments[0]; // TODO: explain in comment why this is always the incident one in both fwd and bwd
-
-	// eprintln!("{edge:?}"); //, edge.direction_flag.forward());
-	let (p0, p1) = if edge.direction_flag.forward() {
-		(seg.sample_at(0.0), seg.sample_at(EPS.param))
-	} else {
-		(seg.sample_at(1.0), seg.sample_at(1.0 - EPS.param))
-	};
-
-	// eprintln!("{p0:?} {p1:?}");
-	let angle = (p1.y - p0.y).atan2(p1.x - p0.x);
-	// eprintln!("angle: {}", angle);
-	(angle * 10000.).round() / 1000.
-}
-
 fn sort_outgoing_edges_by_angle(graph: &mut MinorGraph) {
 	for (vertex_key, vertex) in graph.vertices.iter_mut() {
 		if vertex.outgoing_edges.len() > 2 {
-			vertex.outgoing_edges.sort_by(|&a, &b| {
-				// TODO(@TrueDoctor): Make more robust. The js version seems to sort the data slightly differently when the angles are reallly close. In that case put the edge wich was discovered later first.
-				let new = graph.edges[a].partial_cmp(&graph.edges[b]).unwrap();
-				let old = (get_incidence_angle(&graph.edges[a]) - (a.0.as_ffi() & 0xFFFFFF) as f64 / 1000000.)
-					.partial_cmp(&(get_incidence_angle(&graph.edges[b]) - (b.0.as_ffi() & 0xFFFFFF) as f64 / 1000000.))
-					.unwrap_or(b.cmp(&a));
-				if new != old {
-					// dbg!(new, old, a, b);
-				}
-				new
-			});
+			vertex.outgoing_edges.sort_by(|&a, &b| graph.edges[a].partial_cmp(&graph.edges[b]).unwrap());
 			if cfg!(feature = "logging") {
 				eprintln!("Outgoing edges for {:?}:", vertex_key);
 				for &edge_key in &vertex.outgoing_edges {
@@ -1335,7 +1309,6 @@ fn flag_faces(
 				}
 				visited_faces.insert(face_key);
 
-				// dbg!(face_key, a_count, b_count);
 				let a_flag = get_flag(a_count, a_fill_rule);
 				let b_flag = get_flag(b_count, b_fill_rule);
 				*flags.entry(face_key).or_default() = a_flag | (b_flag << 1);

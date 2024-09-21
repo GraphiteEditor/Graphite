@@ -155,7 +155,6 @@ impl PathSegment {
 				let b = 6. * b;
 				let numerator = a.x * b.y - a.y * b.x;
 				let denominator = a.length_squared() * a.length();
-				// dbg!(a, b, numerator, denominator);
 				if denominator == 0.0 {
 					0.0
 				} else {

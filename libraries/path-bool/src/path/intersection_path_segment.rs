@@ -88,7 +88,6 @@ pub fn segments_equal(seg0: &PathSegment, seg1: &PathSegment, point_epsilon: f64
 }
 
 pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoints: bool, eps: &Epsilons) -> Vec<[f64; 2]> {
-	// dbg!(&seg0, &seg1, endpoints);
 	if let (PathSegment::Line(start0, end0), PathSegment::Line(start1, end1)) = (seg0, seg1) {
 		if let Some(st) = line_segment_intersection([*start0, *end0], [*start1, *end1], eps.param) {
 			if !endpoints && (st.0 < eps.param || st.0 > 1.0 - eps.param) && (st.1 < eps.param || st.1 > 1.0 - eps.param) {
@@ -126,7 +125,6 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 		next_pairs.clear();
 
 		if pairs.len() > 1000 {
-			// TODO: check for intersections of the start/end points. If the two lines overlap, return split points for the start/end points. Use a binary search  to check where the points are on the line.
 			return calculate_overlap_intersections(seg0, seg1, eps);
 		}
 
@@ -143,7 +141,6 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 				let line_segment0 = path_segment_to_line_segment(&seg0.seg);
 				let line_segment1 = path_segment_to_line_segment(&seg1.seg);
 				if let Some(st) = line_segment_intersection(line_segment0, line_segment1, eps.param) {
-					// dbg!("pushing param");
 					params.push([lerp(seg0.start_param, seg0.end_param, st.0), lerp(seg1.start_param, seg1.end_param, st.1)]);
 				}
 			} else {
