@@ -1,11 +1,13 @@
 use crate::parsing::{Implementation, ParsedField, ParsedNodeFn};
+
 use proc_macro_error::emit_error;
 use quote::quote;
 use syn::{spanned::Spanned, GenericParam, Type};
 
 pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 	let validators: &[fn(&ParsedNodeFn)] = &[
-		validate_implementations_for_generics, // Add more validators here as needed
+		// Add more validators here as needed
+		validate_implementations_for_generics,
 		validate_primary_input_expose,
 	];
 
@@ -20,10 +22,10 @@ fn validate_primary_input_expose(parsed: &ParsedNodeFn) {
 	if let Some(ParsedField::Regular { exposed: true, pat_ident, .. }) = parsed.fields.first() {
 		emit_error!(
 			pat_ident.span(),
-			"Unnecessary #[expose] attribute on primary input '{}'. The second argument is always implicitly exposed.",
+			"Unnecessary #[expose] attribute on primary input `{}`. Primary inputs are always exposed.",
 			pat_ident.ident;
-			help = "You can safely remove the #[expose] attribute from this field";
-			note = "The second argument '{}' is considered the primary input and is always exposed by default", pat_ident.ident
+			help = "You can safely remove the #[expose] attribute from this field.";
+			note = "The function's second argument, `{}`, is the node's primary input and it's always exposed by default", pat_ident.ident
 		);
 	}
 }
@@ -38,11 +40,11 @@ fn validate_implementations_for_generics(parsed: &ParsedNodeFn) {
 					if contains_generic_param(ty, &parsed.fn_generics) && implementations.is_empty() {
 						emit_error!(
 							ty.span(),
-							"Generic type '{}' in field '{}' requires an #[implementations] attribute",
+							"Generic type `{}` in field `{}` requires an #[implementations(...)] attribute",
 							quote!(#ty),
 							pat_ident.ident;
 							help = "Add #[implementations(ConcreteType1, ConcreteType2)] to field '{}'", pat_ident.ident;
-							help = "Use #[skip_impl] if you want to manually implement the node"
+							help = "Or use #[skip_impl] if you want to manually implement the node"
 						);
 					}
 				}
@@ -56,10 +58,10 @@ fn validate_implementations_for_generics(parsed: &ParsedNodeFn) {
 					if (contains_generic_param(input_type, &parsed.fn_generics) || contains_generic_param(output_type, &parsed.fn_generics)) && implementations.is_empty() {
 						emit_error!(
 							pat_ident.span(),
-							"Generic types in Node field '{}' require an #[implementations] attribute",
+							"Generic types in Node field `{}` require an #[implementations(...)] attribute",
 							pat_ident.ident;
 							help = "Add #[implementations(InputType1 -> OutputType1, InputType2 -> OutputType2)] to field '{}'", pat_ident.ident;
-							help = "Use #[skip_impl] if you want to manually implement the node"
+							help = "Or use #[skip_impl] if you want to manually implement the node"
 						);
 					}
 					// Additional check for Node implementations
@@ -76,7 +78,7 @@ fn validate_node_implementation(impl_: &Implementation, input_type: &Type, outpu
 	if contains_generic_param(&impl_.input, fn_generics) || contains_generic_param(&impl_.output, fn_generics) {
 		emit_error!(
 			impl_.input.span(),
-			"Implementation types '{}' and '{}' must be concrete, not generic",
+			"Implementation types `{}` and `{}` must be concrete, not generic",
 			quote!(#input_type), quote!(#output_type);
 			help = "Replace generic types with concrete types in the implementation"
 		);

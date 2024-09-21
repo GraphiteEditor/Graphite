@@ -83,9 +83,8 @@ impl Parse for Implementation {
 			Error::new(
 				input.span(),
 				formatdoc!(
-					"Failed to parse input type for implementation.
-                    Expected a valid Rust type.
-                    Error: {}",
+					"Failed to parse input type for #[implementation(...)]. Expected a valid Rust type.
+					Error: {}",
 					e,
 				),
 			)
@@ -94,8 +93,8 @@ impl Parse for Implementation {
 			Error::new(
 				input.span(),
 				indoc!(
-					"Expected '->' after input type in implementations attribute for impl Node field.
-                    The correct syntax is 'InputType -> OutputType'."
+					"Expected `->` arrow after input type in #[implementations(...)] on a field of type `impl Node`.
+					The correct syntax is `InputType -> OutputType`."
 				),
 			)
 		})?;
@@ -103,9 +102,8 @@ impl Parse for Implementation {
 			Error::new(
 				input.span(),
 				formatdoc!(
-					"Failed to parse output type for implementation.
-                    Expected a valid Rust type after '->'.
-                    Error: {}",
+					"Failed to parse output type for #[implementation(...)]. Expected a valid Rust type after `->`.
+					Error: {}",
 					e
 				),
 			)
@@ -293,10 +291,10 @@ fn parse_node_implementations<T: Parse>(attr: &Attribute, name: &Ident) -> syn::
 		Error::new(
 			e.span(),
 			formatdoc!(
-				"Invalid implementations for argument '{}'.
-            Expected a comma-separated list of 'InputType -> OutputType' pairs.
-            Example: #[implementations(i32 -> f64, String -> Vec<u8>)]
-            Error: {}",
+				"Invalid #[implementations(...)] for argument `{}`.
+				Expected a comma-separated list of `InputType -> OutputType` pairs.
+				Example: #[implementations(i32 -> f64, String -> Vec<u8>)]
+				Error: {}",
 				name,
 				e
 			),
@@ -455,15 +453,7 @@ pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
 		return Error::new(e.span(), format!("Validation Error:\n{e}")).to_compile_error();
 	}
 	match generate_node_code(&parsed_node) {
-		Ok(parsed) => {
-			/*let generated_code = generate_node_code(&parsed);
-			// panic!("{}", generated_code.to_string());
-			quote! {
-				// #item
-				#generated_code
-			}*/
-			parsed
-		}
+		Ok(parsed) => parsed,
 		Err(e) => {
 			// Return the error as a compile error
 			Error::new(e.span(), format!("Failed to parse node function: {}", e)).to_compile_error()

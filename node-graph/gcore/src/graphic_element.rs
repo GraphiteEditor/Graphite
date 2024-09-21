@@ -257,15 +257,15 @@ async fn layer<F: 'n + Copy + Send>(
 async fn to_element<F: 'n + Send, Data: Into<GraphicElement> + 'n>(
 	#[implementations((), (), (), (), Footprint)] footprint: F,
 	#[implementations(
-	 	() -> VectorData,
+		() -> VectorData,
 		() -> ImageFrame<Color>,
-	 	() -> GraphicGroup,
-	 	() -> TextureFrame,
-	 	Footprint -> VectorData,
+		() -> GraphicGroup,
+		() -> TextureFrame,
+		Footprint -> VectorData,
 		Footprint -> ImageFrame<Color>,
-	 	Footprint -> GraphicGroup,
-	 	Footprint -> TextureFrame,
-	 )]
+		Footprint -> GraphicGroup,
+		Footprint -> TextureFrame,
+	)]
 	data: impl Node<F, Output = Data>,
 ) -> GraphicElement {
 	data.eval(footprint).await.into()
@@ -275,14 +275,14 @@ async fn to_element<F: 'n + Send, Data: Into<GraphicElement> + 'n>(
 async fn to_group<F: 'n + Send, Data: Into<GraphicGroup> + 'n>(
 	#[implementations((), (), (), (), Footprint)] footprint: F,
 	#[implementations(
-	 	() -> VectorData,
+		() -> VectorData,
 		() -> ImageFrame<Color>,
-	 	() -> GraphicGroup,
-	 	() -> TextureFrame,
-	 	Footprint -> VectorData,
+		() -> GraphicGroup,
+		() -> TextureFrame,
+		Footprint -> VectorData,
 		Footprint -> ImageFrame<Color>,
-	 	Footprint -> GraphicGroup,
-	 	Footprint -> TextureFrame,
+		Footprint -> GraphicGroup,
+		Footprint -> TextureFrame,
 	)]
 	element: impl Node<F, Output = Data>,
 ) -> GraphicGroup {
