@@ -213,7 +213,7 @@ struct TextToolData {
 
 impl TextToolData {
 	/// Set the editing state of the currently modifying layer
-	fn set_editing(&self, editable: bool, font_cache: &FontCache, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	fn set_editing(&self, editable: bool, font_cache: &FontCache, responses: &mut VecDeque<Message>) {
 		if let Some(editing_text) = self.editing_text.as_ref().filter(|_| editable) {
 			responses.add(FrontendMessage::DisplayEditableTextbox {
 				text: editing_text.text.clone(),
@@ -251,14 +251,14 @@ impl TextToolData {
 		}
 
 		if tool_state == TextToolFsmState::Editing {
-			self.set_editing(false, font_cache, document, responses);
+			self.set_editing(false, font_cache, responses);
 		}
 
 		self.layer = layer;
 		if self.load_layer_text_node(document).is_some() {
 			responses.add(DocumentMessage::AddTransaction);
 
-			self.set_editing(true, font_cache, document, responses);
+			self.set_editing(true, font_cache, responses);
 
 			responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![self.layer.to_node()] });
 			// Make the rendered text invisible while editing
@@ -310,7 +310,7 @@ impl TextToolData {
 				skip_rerender: true,
 			});
 
-			self.set_editing(true, font_cache, document, responses);
+			self.set_editing(true, font_cache, responses);
 
 			responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![self.layer.to_node()] });
 
@@ -318,7 +318,7 @@ impl TextToolData {
 			TextToolFsmState::Editing
 		} else {
 			// Removing old text as editable
-			self.set_editing(false, font_cache, document, responses);
+			self.set_editing(false, font_cache, responses);
 
 			TextToolFsmState::Ready
 		}
@@ -410,7 +410,7 @@ impl Fsm for TextToolFsmState {
 			}
 			(state, TextToolMessage::Abort) => {
 				if state == TextToolFsmState::Editing {
-					tool_data.set_editing(false, font_cache, document, responses);
+					tool_data.set_editing(false, font_cache, responses);
 				}
 
 				TextToolFsmState::Ready
@@ -421,7 +421,7 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text }) => {
-				tool_data.set_editing(false, font_cache, document, responses);
+				tool_data.set_editing(false, font_cache, responses);
 
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface).unwrap(), 1),
