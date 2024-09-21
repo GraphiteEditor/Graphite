@@ -71,7 +71,7 @@ impl SelectedNodes {
 		})
 	}
 
-	pub fn selected_visible_layers<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
+	pub fn selected_visible_layers<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
 		self.selected_layers(network_interface.document_metadata())
 			.filter(move |&layer| self.layer_visible(layer, network_interface))
 	}
@@ -86,21 +86,21 @@ impl SelectedNodes {
 		})
 	}
 
-	pub fn selected_unlocked_layers<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
+	pub fn selected_unlocked_layers<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
 		self.selected_layers(network_interface.document_metadata())
 			.filter(move |&layer| !self.layer_locked(layer, network_interface))
 	}
 
-	pub fn selected_visible_and_unlocked_layers<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
+	pub fn selected_visible_and_unlocked_layers<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
 		self.selected_layers(network_interface.document_metadata())
 			.filter(move |&layer| self.layer_visible(layer, network_interface) && !self.layer_locked(layer, network_interface))
 	}
 
-	pub fn selected_layers<'a>(&'a self, metadata: &'a DocumentMetadata) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
+	pub fn selected_layers<'a>(&'a self, metadata: &'a DocumentMetadata) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
 		metadata.all_layers().filter(|layer| self.0.contains(&layer.to_node()))
 	}
 
-	pub fn selected_layers_except_artboards<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
+	pub fn selected_layers_except_artboards<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
 		self.selected_layers(network_interface.document_metadata())
 			.filter(move |&layer| !network_interface.is_artboard(&layer.to_node(), &[]))
 	}
