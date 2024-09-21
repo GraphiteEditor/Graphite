@@ -133,7 +133,7 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 #[cfg(target_arch = "wasm32")]
 async fn rasterize<T: GraphicElementRendered + graphene_core::transform::TransformMut + WasmNotSend + 'n>(
 	_: (),
-	#[implementations((Footprint, VectorData), (Footprint, ImageFrame<Color>), (Footprint, GraphicGroup))] data: impl Node<Footprint, Output = T>,
+	#[implementations(Footprint -> VectorData, Footprint -> ImageFrame<Color>, Footprint -> GraphicGroup)] data: impl Node<Footprint, Output = T>,
 	footprint: Footprint,
 	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
 ) -> ImageFrame<Color> {
@@ -190,17 +190,17 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	render_config: RenderConfig,
 	editor_api: &'a WasmEditorApi,
 	#[implementations(
-		(Footprint, VectorData),
-		(Footprint, ImageFrame<Color>),
-		(Footprint, GraphicGroup),
-		(Footprint, graphene_core::Artboard),
-		(Footprint, graphene_core::ArtboardGroup),
-		(Footprint, Option<Color>),
-		(Footprint, Vec<Color>),
-		(Footprint, bool),
-		(Footprint, f32),
-		(Footprint, f64),
-		(Footprint, String),
+		Footprint -> VectorData,
+		Footprint -> ImageFrame<Color>,
+		Footprint -> GraphicGroup,
+		Footprint -> graphene_core::Artboard,
+		Footprint -> graphene_core::ArtboardGroup,
+		Footprint -> Option<Color>,
+		Footprint -> Vec<Color>,
+		Footprint -> bool,
+		Footprint -> f32,
+		Footprint -> f64,
+		Footprint -> String,
 	)]
 	data: impl Node<Footprint, Output = T>,
 	_surface_handle: impl Node<(), Output = Option<wgpu_executor::WgpuSurface>>,
