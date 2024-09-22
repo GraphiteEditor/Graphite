@@ -309,7 +309,13 @@ impl SetBlendMode for ImageFrame<Color> {
 
 #[node_macro::node(category("Style"))]
 async fn blend_mode<F: 'n + Send, T: SetBlendMode>(
-	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		(),
+		(),
+		(),
+		Footprint,
+	)]
+	footprint: F,
 	#[implementations(
 		() -> GraphicGroup,
 		() -> VectorData,
@@ -328,7 +334,13 @@ async fn blend_mode<F: 'n + Send, T: SetBlendMode>(
 
 #[node_macro::node(category("Style"))]
 async fn opacity<F: 'n + Send, T: MultiplyAlpha>(
-	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		(),
+		(),
+		(),
+		Footprint,
+	)]
+	footprint: F,
 	#[implementations(
 		() -> GraphicGroup,
 		() -> VectorData,

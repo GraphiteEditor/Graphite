@@ -1,5 +1,3 @@
-// TODO: Implement: (1) Color Balance, (2) Photo Filter, (3) Color Lookup
-
 #![allow(clippy::too_many_arguments)]
 
 #[cfg(feature = "alloc")]
@@ -20,6 +18,21 @@ use core::fmt::Debug;
 #[cfg(feature = "serde")]
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
+
+// TODO: Implement the following:
+// Color Balance
+// Aims for interoperable compatibility with:
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27blnc%27%20%3D%20Color%20Balance
+//
+// Photo Filter
+// Aims for interoperable compatibility with:
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27phfl%27%20%3D%20Photo%20Filter
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=of%20the%20file.-,Photo%20Filter,-Key%20is%20%27phfl
+//
+// Color Lookup
+// Aims for interoperable compatibility with:
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27clrL%27%20%3D%20Color%20Lookup
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Color%20Lookup%20(Photoshop%20CS6
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
@@ -270,9 +283,15 @@ impl From<BlendMode> for vello::peniko::Mix {
 	}
 }
 
-#[node_macro::node(category("Raster: Adjustment"))] // Unique to Graphite
+#[node_macro::node(category("Raster: Adjustment"))]
 async fn luminance<F: 'n + Send, T: Adjust<Color>>(
-	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		(),
+		(),
+		(),
+		Footprint,
+	)]
+	footprint: F,
 	#[implementations(
 		() -> Color,
 		() -> ImageFrame<Color>,
@@ -300,7 +319,13 @@ async fn luminance<F: 'n + Send, T: Adjust<Color>>(
 
 #[node_macro::node(category("Raster"))]
 async fn extract_channel<F: 'n + Send, T: Adjust<Color>>(
-	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		(),
+		(),
+		(),
+		Footprint,
+	)]
+	footprint: F,
 	#[implementations(
 		() -> Color,
 		() -> ImageFrame<Color>,
@@ -327,7 +352,13 @@ async fn extract_channel<F: 'n + Send, T: Adjust<Color>>(
 
 #[node_macro::node(category("Raster"))]
 async fn make_opaque<F: 'n + Send, T: Adjust<Color>>(
-	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		(),
+		(),
+		(),
+		Footprint,
+	)]
+	footprint: F,
 	#[implementations(
 		() -> Color,
 		() -> ImageFrame<Color>,
@@ -348,10 +379,20 @@ async fn make_opaque<F: 'n + Send, T: Adjust<Color>>(
 	input
 }
 
-// From https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
+// Aims for interoperable compatibility with:
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27%20%3D%20Brightness/Contrast-,%27levl%27%20%3D%20Levels,-%27curv%27%20%3D%20Curves
+//
+// Algorithm from:
+// https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
 #[node_macro::node(category("Raster: Adjustment"))]
 async fn levels<F: 'n + Send, T: Adjust<Color>>(
-	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		(),
+		(),
+		(),
+		Footprint,
+	)]
+	footprint: F,
 	#[implementations(
 		() -> Color,
 		() -> ImageFrame<Color>,
@@ -413,11 +454,22 @@ async fn levels<F: 'n + Send, T: Adjust<Color>>(
 	input
 }
 
-// From <https://stackoverflow.com/a/55233732/775283>
+// Aims for interoperable compatibility with:
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27blwh%27%20%3D%20Black%20and%20White
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Black%20White%20(Photoshop%20CS3)
+//
+// Algorithm from:
+// https://stackoverflow.com/a/55233732/775283
 // Works the same for gamma and linear color
 #[node_macro::node(name("Black & White"), category("Raster: Adjustment"))]
 async fn black_and_white<F: 'n + Send, T: Adjust<Color>>(
-	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		(),
+		(),
+		(),
+		Footprint,
+	)]
+	footprint: F,
 	#[implementations(
 		() -> Color,
 		() -> ImageFrame<Color>,
@@ -427,7 +479,7 @@ async fn black_and_white<F: 'n + Send, T: Adjust<Color>>(
 		Footprint -> GradientStops,
 	)]
 	image: impl Node<F, Output = T>,
-	#[default(000000ff)] tint: Color,
+	#[default(Color::BLACK)] tint: Color,
 	#[default(40.)]
 	#[range((-200., 300.))]
 	reds: Percentage,
@@ -488,9 +540,18 @@ async fn black_and_white<F: 'n + Send, T: Adjust<Color>>(
 	input
 }
 
+// Aims for interoperable compatibility with:
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27hue%20%27%20%3D%20Old,saturation%2C%20Photoshop%205.0
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=0%20%3D%20Use%20other.-,Hue/Saturation,-Hue/Saturation%20settings
 #[node_macro::node(name("Hue/Saturation"), category("Raster: Adjustment"))]
 async fn hue_saturation<F: 'n + Send, T: Adjust<Color>>(
-	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		(),
+		(),
+		(),
+		Footprint,
+	)]
+	footprint: F,
 	#[implementations(
 		() -> Color,
 		() -> ImageFrame<Color>,
@@ -524,9 +585,17 @@ async fn hue_saturation<F: 'n + Send, T: Adjust<Color>>(
 	input
 }
 
+// Aims for interoperable compatibility with:
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27%20%3D%20Color%20Lookup-,%27nvrt%27%20%3D%20Invert,-%27post%27%20%3D%20Posterize
 #[node_macro::node(category("Raster: Adjustment"))]
 async fn invert<F: 'n + Send, T: Adjust<Color>>(
-	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		(),
+		(),
+		(),
+		Footprint,
+	)]
+	footprint: F,
 	#[implementations(
 		() -> Color,
 		() -> ImageFrame<Color>,
@@ -548,9 +617,17 @@ async fn invert<F: 'n + Send, T: Adjust<Color>>(
 	input
 }
 
+// Aims for interoperable compatibility with:
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=post%27%20%3D%20Posterize-,%27thrs%27%20%3D%20Threshold,-%27grdm%27%20%3D%20Gradient
 #[node_macro::node(category("Raster: Adjustment"))]
 async fn threshold<F: 'n + Send, T: Adjust<Color>>(
-	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		(),
+		(),
+		(),
+		Footprint,
+	)]
+	footprint: F,
 	#[implementations(
 		() -> Color,
 		() -> ImageFrame<Color>,
@@ -643,8 +720,14 @@ impl Blend<Color> for GradientStops {
 }
 
 #[node_macro::node(category("Raster"))]
-async fn blend<F: 'n + Copy + Send, T: Blend<Color> + Send>(
-	#[implementations((), (), (), Footprint)] footprint: F,
+async fn blend<F: 'n + Send + Copy, T: Blend<Color> + Send>(
+	#[implementations(
+		(),
+		(),
+		(),
+		Footprint,
+	)]
+	footprint: F,
 	#[implementations(
 		() -> Color,
 		() -> ImageFrame<Color>,
@@ -761,9 +844,18 @@ pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode,
 	background.alpha_blend(target_color.to_associated_alpha(opacity as f32))
 }
 
+// Aims for interoperable compatibility with:
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27grdm%27%20%3D%20Gradient%20Map
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Gradient%20settings%20(Photoshop%206.0)
 #[node_macro::node(category("Raster: Adjustment"))]
-async fn gradient_map<F: 'n + Copy + Send, T: Adjust<Color>>(
-	#[implementations((), (), (), Footprint)] footprint: F,
+async fn gradient_map<F: 'n + Send, T: Adjust<Color>>(
+	#[implementations(
+		(),
+		(),
+		(),
+		Footprint,
+	)]
+	footprint: F,
 	#[implementations(
 		() -> Color,
 		() -> ImageFrame<Color>,
@@ -787,11 +879,22 @@ async fn gradient_map<F: 'n + Copy + Send, T: Adjust<Color>>(
 	input
 }
 
-// Based on <https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters>
+// Aims for interoperable compatibility with:
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27-,vibA%27%20%3D%20Vibrance,-%27hue%20%27%20%3D%20Old
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Vibrance%20(Photoshop%20CS3)
+//
+// Algorithm based on:
+// https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters
 // The results of this implementation are very close to correct, but not quite perfect
 #[node_macro::node(category("Raster: Adjustment"))]
 async fn vibrance<F: 'n + Send, T: Adjust<Color>>(
-	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		(),
+		(),
+		(),
+		Footprint,
+	)]
+	footprint: F,
 	#[implementations(
 		() -> Color,
 		() -> ImageFrame<Color>,
@@ -1080,9 +1183,18 @@ impl DomainWarpType {
 	}
 }
 
+// Aims for interoperable compatibility with:
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27mixr%27%20%3D%20Channel%20Mixer
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Lab%20color%20only-,Channel%20Mixer,-Key%20is%20%27mixr
 #[node_macro::node(category("Raster: Adjustment"))]
 async fn channel_mixer<F: 'n + Send, T: Adjust<Color>>(
-	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		(),
+		(),
+		(),
+		Footprint,
+	)]
+	footprint: F,
 	#[implementations(
 		() -> Color,
 		() -> ImageFrame<Color>,
@@ -1229,10 +1341,21 @@ impl core::fmt::Display for SelectiveColorChoice {
 	}
 }
 
-// Based on https://blog.pkh.me/p/22-understanding-selective-coloring-in-adobe-photoshop.html
+// Aims for interoperable compatibility with:
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27selc%27%20%3D%20Selective%20color
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=from%20%2D100...100.%20.-,Selective%20Color,-Selective%20Color%20settings
+//
+// Algorithm based on:
+// https://blog.pkh.me/p/22-understanding-selective-coloring-in-adobe-photoshop.html
 #[node_macro::node(category("Raster: Adjustment"))]
 async fn selective_color<F: 'n + Send, T: Adjust<Color>>(
-	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		(),
+		(),
+		(),
+		Footprint,
+	)]
+	footprint: F,
 	#[implementations(
 		() -> Color,
 		() -> ImageFrame<Color>,
@@ -1384,11 +1507,21 @@ impl<P: Pixel> MultiplyAlpha for ImageFrame<P> {
 	}
 }
 
-// Based on https://www.axiomx.com/posterize.htm
+// Aims for interoperable compatibility with:
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=nvrt%27%20%3D%20Invert-,%27post%27%20%3D%20Posterize,-%27thrs%27%20%3D%20Threshold
+//
+// Algorithm based on:
+// https://www.axiomx.com/posterize.htm
 // This algorithm produces fully accurate output in relation to the industry standard.
 #[node_macro::node(category("Raster: Adjustment"))]
 async fn posterize<F: 'n + Send, T: Adjust<Color>>(
-	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		(),
+		(),
+		(),
+		Footprint,
+	)]
+	footprint: F,
 	#[implementations(
 		() -> Color,
 		() -> ImageFrame<Color>,
@@ -1417,10 +1550,21 @@ async fn posterize<F: 'n + Send, T: Adjust<Color>>(
 	input
 }
 
-// Based on https://geraldbakker.nl/psnumbers/exposure.html
+// Aims for interoperable compatibility with:
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=curv%27%20%3D%20Curves-,%27expA%27%20%3D%20Exposure,-%27vibA%27%20%3D%20Vibrance
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Flag%20(%20%3D%20128%20)-,Exposure,-Key%20is%20%27expA
+//
+// Algorithm based on:
+// https://geraldbakker.nl/psnumbers/exposure.html
 #[node_macro::node(category("Raster: Adjustment"))]
 async fn exposure<F: 'n + Send, T: Adjust<Color>>(
-	#[implementations((), (), (), Footprint)] footprint: F,
+	#[implementations(
+		(),
+		(),
+		(),
+		Footprint,
+	)]
+	footprint: F,
 	#[implementations(
 		() -> Color,
 		() -> ImageFrame<Color>,
@@ -1455,7 +1599,7 @@ const WINDOW_SIZE: usize = 1024;
 
 #[cfg(feature = "alloc")]
 #[node_macro::node(category(""))]
-fn generate_curves<C: Channel + super::Linear>(_: (), curve: Curve, #[implementations(f32)] _target_format: C) -> ValueMapperNode<C> {
+fn generate_curves<C: Channel + super::Linear>(_: (), curve: Curve, #[implementations(f32, f64)] _target_format: C) -> ValueMapperNode<C> {
 	use bezier_rs::{Bezier, TValue};
 
 	let [mut pos, mut param]: [[f32; 2]; 2] = [[0.; 2], curve.first_handle];
@@ -1495,9 +1639,15 @@ fn generate_curves<C: Channel + super::Linear>(_: (), curve: Curve, #[implementa
 }
 
 #[cfg(feature = "alloc")]
-#[node_macro::node(category("Raster: Adjustment"))] // Unique to Graphite
-async fn color_overlay<F: 'n + Copy + Send, T: Adjust<Color>>(
-	#[implementations((), (), (), Footprint)] footprint: F,
+#[node_macro::node(category("Raster: Adjustment"))]
+async fn color_overlay<F: 'n + Send, T: Adjust<Color>>(
+	#[implementations(
+		(),
+		(),
+		(),
+		Footprint,
+	)]
+	footprint: F,
 	#[implementations(
 		() -> Color,
 		() -> ImageFrame<Color>,
@@ -1507,7 +1657,7 @@ async fn color_overlay<F: 'n + Copy + Send, T: Adjust<Color>>(
 		Footprint -> GradientStops,
 	)]
 	image: impl Node<F, Output = T>,
-	#[default(000000ff)] color: Color,
+	#[default(Color::BLACK)] color: Color,
 	blend_mode: BlendMode,
 	#[default(100.)] opacity: Percentage,
 ) -> T {

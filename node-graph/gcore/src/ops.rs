@@ -1,8 +1,13 @@
+use crate::raster::adjustments::RedGreenBlue;
+use crate::raster::BlendMode;
+use crate::raster::ImageFrame;
 use crate::registry::types::Percentage;
+use crate::vector::style::GradientStops;
 use crate::{Color, Node};
 
 use core::marker::PhantomData;
 use core::ops::{Add, Div, Mul, Rem, Sub};
+use glam::DVec2;
 use num_traits::Pow;
 use rand::{Rng, SeedableRng};
 
@@ -13,8 +18,8 @@ use spirv_std::num_traits::float::Float;
 #[node_macro::node(category("Math: Arithmetic"))]
 fn add<U: Add<T>, T>(
 	_: (),
-	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, glam::DVec2)] augend: U,
-	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, glam::DVec2)] addend: T,
+	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, DVec2, f64, DVec2)] augend: U,
+	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, DVec2, DVec2, f64)] addend: T,
 ) -> <U as Add<T>>::Output {
 	augend + addend
 }
@@ -23,8 +28,8 @@ fn add<U: Add<T>, T>(
 #[node_macro::node(category("Math: Arithmetic"))]
 fn subtract<U: Sub<T>, T>(
 	_: (),
-	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, glam::DVec2)] minuend: U,
-	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, glam::DVec2)] subtrahend: T,
+	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, DVec2, f64, DVec2)] minuend: U,
+	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, DVec2, DVec2, f64)] subtrahend: T,
 ) -> <U as Sub<T>>::Output {
 	minuend - subtrahend
 }
@@ -33,9 +38,9 @@ fn subtract<U: Sub<T>, T>(
 #[node_macro::node(category("Math: Arithmetic"))]
 fn multiply<U: Mul<T>, T>(
 	_: (),
-	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, glam::DVec2, f64)] multiplier: U,
+	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, DVec2, f64, DVec2)] multiplier: U,
 	#[default(1.)]
-	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, glam::DVec2, glam::DVec2)]
+	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, DVec2, DVec2, f64)]
 	multiplicand: T,
 ) -> <U as Mul<T>>::Output {
 	multiplier * multiplicand
@@ -45,9 +50,9 @@ fn multiply<U: Mul<T>, T>(
 #[node_macro::node(category("Math: Arithmetic"))]
 fn divide<U: Div<T>, T>(
 	_: (),
-	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, glam::DVec2, glam::DVec2)] numerator: U,
+	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, DVec2, DVec2, f64)] numerator: U,
 	#[default(1.)]
-	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, glam::DVec2, f64)]
+	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, DVec2, f64, DVec2)]
 	denominator: T,
 ) -> <U as Div<T>>::Output {
 	numerator / denominator
@@ -57,9 +62,9 @@ fn divide<U: Div<T>, T>(
 #[node_macro::node(category("Math: Arithmetic"))]
 fn modulo<U: Rem<T>, T>(
 	_: (),
-	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32)] numerator: U,
+	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, DVec2, DVec2, f64)] numerator: U,
 	#[default(2.)]
-	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32)]
+	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, DVec2, f64, DVec2)]
 	modulus: T,
 ) -> <U as Rem<T>>::Output {
 	numerator % modulus
@@ -69,7 +74,7 @@ fn modulo<U: Rem<T>, T>(
 #[node_macro::node(category("Math: Arithmetic"))]
 fn exponent<U: Pow<T>, T>(
 	_: (),
-	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, )] base: U,
+	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32)] base: U,
 	#[default(2.)]
 	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32)]
 	power: T,
@@ -119,52 +124,63 @@ fn logarithm<U: num_traits::float::Float>(
 
 // Sine
 #[node_macro::node(category("Math: Trig"))]
-fn sine(_: (), theta: f64) -> f64 {
+fn sine<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] theta: U) -> U {
 	theta.sin()
 }
 
 // Cosine
 #[node_macro::node(category("Math: Trig"))]
-fn cosine(_: (), theta: f64) -> f64 {
+fn cosine<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] theta: U) -> U {
 	theta.cos()
 }
 
 // Tangent
 #[node_macro::node(category("Math: Trig"))]
-fn tangent(_: (), theta: f64) -> f64 {
+fn tangent<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] theta: U) -> U {
 	theta.tan()
 }
 
 // Random
 #[node_macro::node(category("Math: Numeric"))]
-fn random(_: (), _primary: (), seed: u64, min: f64, #[default(1.)] max: f64) -> f64 {
+fn random<U: num_traits::float::Float>(
+	_: (),
+	_primary: (),
+	seed: u64,
+	#[implementations(f64, f32)]
+	#[default(0.)]
+	min: U,
+	#[implementations(f64, f32)]
+	#[default(1.)]
+	max: U,
+) -> f64 {
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 	let result = rng.gen::<f64>();
 	let (min, max) = if min < max { (min, max) } else { (max, min) };
+	let (min, max) = (min.to_f64().unwrap(), max.to_f64().unwrap());
 	result * (max - min) + min
 }
 
 // Round
 #[node_macro::node(category("Math: Numeric"))]
-fn round(_: (), value: f64) -> f64 {
+fn round<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] value: U) -> U {
 	value.round()
 }
 
 // Floor
 #[node_macro::node(category("Math: Numeric"))]
-fn floor(_: (), value: f64) -> f64 {
+fn floor<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] value: U) -> U {
 	value.floor()
 }
 
 // Ceiling
 #[node_macro::node(category("Math: Numeric"))]
-fn ceiling(_: (), value: f64) -> f64 {
+fn ceiling<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] value: U) -> U {
 	value.ceil()
 }
 
 // Absolute Value
 #[node_macro::node(category("Math: Numeric"))]
-fn absolute_value(_: (), value: f64) -> f64 {
+fn absolute_value<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] value: U) -> U {
 	value.abs()
 }
 
@@ -190,8 +206,8 @@ fn max<T: core::cmp::PartialOrd>(_: (), #[implementations(f64, &f64, f32, &f32, 
 #[node_macro::node(category("Math: Logic"))]
 fn equals<U: core::cmp::PartialEq<T>, T>(
 	_: (),
-	#[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T,
-	#[implementations(f64, &f64, f32, &f32, u32, &u32, &str)]
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] value: T,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)]
 	#[min(100.)]
 	#[max(200.)]
 	other_value: U,
@@ -243,31 +259,31 @@ fn percentage_value(_: (), _primary: (), percentage: Percentage) -> f64 {
 
 // Vector2 Value
 #[node_macro::node(category("Value"))]
-fn vector2_value(_: (), _primary: (), x: f64, y: f64) -> glam::DVec2 {
-	glam::DVec2::new(x, y)
+fn vector2_value(_: (), _primary: (), x: f64, y: f64) -> DVec2 {
+	DVec2::new(x, y)
 }
 
 // Color Value
 #[node_macro::node(category("Value"))]
-fn color_value(_: (), _primary: (), #[default(000000ff)] color: Option<Color>) -> Option<Color> {
+fn color_value(_: (), _primary: (), #[default(Color::BLACK)] color: Option<Color>) -> Option<Color> {
 	color
 }
 
 // Gradient Value
 #[node_macro::node(category("Value"))]
-fn gradient_value(_: (), _primary: (), gradient: crate::vector::style::GradientStops) -> crate::vector::style::GradientStops {
+fn gradient_value(_: (), _primary: (), gradient: GradientStops) -> GradientStops {
 	gradient
 }
 
 // Color Channel Value
 #[node_macro::node(category("Value"))]
-fn color_channel_value(_: (), _primary: (), color_channel: crate::raster::adjustments::RedGreenBlue) -> crate::raster::adjustments::RedGreenBlue {
+fn color_channel_value(_: (), _primary: (), color_channel: RedGreenBlue) -> RedGreenBlue {
 	color_channel
 }
 
 // Blend Mode Value
 #[node_macro::node(category("Value"))]
-fn blend_mode_value(_: (), _primary: (), blend_mode: crate::raster::BlendMode) -> crate::raster::BlendMode {
+fn blend_mode_value(_: (), _primary: (), blend_mode: BlendMode) -> BlendMode {
 	blend_mode
 }
 
@@ -292,7 +308,7 @@ fn unwrap<T: Default>(_: (), #[implementations(Option<f64>, Option<f32>, Option<
 
 // Clone
 #[node_macro::node(category("Debug"))]
-fn clone<'i, T: Clone + 'i>(_: (), #[implementations(&crate::raster::ImageFrame<Color>)] value: &'i T) -> T {
+fn clone<'i, T: Clone + 'i>(_: (), #[implementations(&ImageFrame<Color>)] value: &'i T) -> T {
 	value.clone()
 }
 

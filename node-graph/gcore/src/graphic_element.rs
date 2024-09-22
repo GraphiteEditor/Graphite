@@ -232,10 +232,22 @@ impl ArtboardGroup {
 }
 
 #[node_macro::node(category(""))]
-async fn layer<F: 'n + Copy + Send>(
-	#[implementations((), Footprint)] footprint: F,
-	#[implementations(() -> GraphicGroup, Footprint -> GraphicGroup)] stack: impl Node<F, Output = GraphicGroup>,
-	#[implementations(() -> GraphicElement, Footprint -> GraphicElement)] element: impl Node<F, Output = GraphicElement>,
+async fn layer<F: 'n + Send + Copy>(
+	#[implementations(
+		(),
+		Footprint,
+	)]
+	footprint: F,
+	#[implementations(
+		() -> GraphicGroup,
+		Footprint -> GraphicGroup,
+	)]
+	stack: impl Node<F, Output = GraphicGroup>,
+	#[implementations(
+		() -> GraphicElement,
+		Footprint -> GraphicElement,
+	)]
+	element: impl Node<F, Output = GraphicElement>,
 	node_path: Vec<NodeId>,
 ) -> GraphicGroup {
 	let mut element = element.eval(footprint).await;
@@ -255,7 +267,14 @@ async fn layer<F: 'n + Copy + Send>(
 
 #[node_macro::node(category("Debug"))]
 async fn to_element<F: 'n + Send, Data: Into<GraphicElement> + 'n>(
-	#[implementations((), (), (), (), Footprint)] footprint: F,
+	#[implementations(
+		(),
+		(),
+		(),
+		(),
+		Footprint,
+	)]
+	footprint: F,
 	#[implementations(
 		() -> GraphicGroup,
 	 	() -> VectorData,
@@ -265,7 +284,7 @@ async fn to_element<F: 'n + Send, Data: Into<GraphicElement> + 'n>(
 	 	Footprint -> VectorData,
 		Footprint -> ImageFrame<Color>,
 	 	Footprint -> TextureFrame,
-	 )]
+	)]
 	data: impl Node<F, Output = Data>,
 ) -> GraphicElement {
 	data.eval(footprint).await.into()
@@ -273,7 +292,14 @@ async fn to_element<F: 'n + Send, Data: Into<GraphicElement> + 'n>(
 
 #[node_macro::node(category("General"))]
 async fn to_group<F: 'n + Send, Data: Into<GraphicGroup> + 'n>(
-	#[implementations((), (), (), (), Footprint)] footprint: F,
+	#[implementations(
+		(),
+		(),
+		(),
+		(),
+		Footprint,
+	)]
+	footprint: F,
 	#[implementations(
 		() -> GraphicGroup,
 		() -> VectorData,
@@ -290,8 +316,15 @@ async fn to_group<F: 'n + Send, Data: Into<GraphicGroup> + 'n>(
 }
 
 #[node_macro::node(category(""))]
-async fn to_artboard<F: 'n + Copy + Send + ApplyTransform, Data: Into<GraphicGroup> + 'n>(
-	#[implementations((), (), (), (), Footprint)] mut footprint: F,
+async fn to_artboard<F: 'n + Send + ApplyTransform, Data: Into<GraphicGroup> + 'n>(
+	#[implementations(
+		(),
+		(),
+		(),
+		(),
+		Footprint,
+	)]
+	mut footprint: F,
 	#[implementations(
 		() -> GraphicGroup,
 		() -> VectorData,
@@ -323,10 +356,22 @@ async fn to_artboard<F: 'n + Copy + Send + ApplyTransform, Data: Into<GraphicGro
 }
 
 #[node_macro::node(category(""))]
-async fn append_artboard<F: 'n + Copy + Send>(
-	#[implementations((), Footprint)] footprint: F,
-	#[implementations(() -> ArtboardGroup, Footprint -> ArtboardGroup)] artboards: impl Node<F, Output = ArtboardGroup>,
-	#[implementations(() -> Artboard, Footprint -> Artboard)] artboard: impl Node<F, Output = Artboard>,
+async fn append_artboard<F: 'n + Send + Copy>(
+	#[implementations(
+		(),
+		Footprint,
+	)]
+	footprint: F,
+	#[implementations(
+		() -> ArtboardGroup,
+		Footprint -> ArtboardGroup,
+	)]
+	artboards: impl Node<F, Output = ArtboardGroup>,
+	#[implementations(
+		() -> Artboard,
+		Footprint -> Artboard,
+	)]
+	artboard: impl Node<F, Output = Artboard>,
 	node_path: Vec<NodeId>,
 ) -> ArtboardGroup {
 	let artboard = artboard.eval(footprint).await;

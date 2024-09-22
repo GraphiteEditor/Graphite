@@ -1,4 +1,5 @@
 use super::HandleId;
+use crate::transform::Footprint;
 use crate::vector::{PointId, VectorData};
 
 use bezier_rs::Subpath;
@@ -35,13 +36,12 @@ impl CornerRadius for [f64; 4] {
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn circle(_: (), _primary: (), #[default(50.)] radius: f64) -> VectorData {
-	let radius: f64 = radius;
+fn circle<F: 'n + Send>(#[implementations((), Footprint)] _footprint: F, _primary: (), #[default(50.)] radius: f64) -> VectorData {
 	super::VectorData::from_subpath(Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius)))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn ellipse(_: (), _primary: (), #[default(50)] radius_x: f64, #[default(25)] radius_y: f64) -> VectorData {
+fn ellipse<F: 'n + Send>(#[implementations((), Footprint)] _footprint: F, _primary: (), #[default(50)] radius_x: f64, #[default(25)] radius_y: f64) -> VectorData {
 	let radius = DVec2::new(radius_x, radius_y);
 	let corner1 = -radius;
 	let corner2 = radius;
@@ -56,8 +56,8 @@ fn ellipse(_: (), _primary: (), #[default(50)] radius_x: f64, #[default(25)] rad
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn rectangle<T: CornerRadius>(
-	_: (),
+fn rectangle<F: 'n + Send, T: CornerRadius>(
+	#[implementations((), Footprint)] _footprint: F,
 	_primary: (),
 	#[default(100)] width: f64,
 	#[default(100)] height: f64,
@@ -69,8 +69,8 @@ fn rectangle<T: CornerRadius>(
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn regular_polygon(
-	_: (),
+fn regular_polygon<F: 'n + Send>(
+	#[implementations((), Footprint)] _footprint: F,
 	_primary: (),
 	#[default(6)]
 	#[min(3.)]
@@ -83,8 +83,8 @@ fn regular_polygon(
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn star(
-	_: (),
+fn star<F: 'n + Send>(
+	#[implementations((), Footprint)] _footprint: F,
 	_primary: (),
 	#[default(5)]
 	#[min(2.)]
@@ -100,12 +100,12 @@ fn star(
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn line(_: (), _primary: (), #[default((0., -50.))] start: DVec2, #[default((0., 50.))] end: DVec2) -> VectorData {
+fn line<F: 'n + Send>(#[implementations((), Footprint)] _footprint: F, _primary: (), #[default((0., -50.))] start: DVec2, #[default((0., 50.))] end: DVec2) -> VectorData {
 	super::VectorData::from_subpath(Subpath::new_line(start, end))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn spline(_: (), _primary: (), points: Vec<DVec2>) -> VectorData {
+fn spline<F: 'n + Send>(#[implementations((), Footprint)] _footprint: F, _primary: (), points: Vec<DVec2>) -> VectorData {
 	let mut spline = super::VectorData::from_subpath(Subpath::new_cubic_spline(points));
 	for pair in spline.segment_domain.ids().windows(2) {
 		spline.colinear_manipulators.push([HandleId::end(pair[0]), HandleId::primary(pair[1])]);
@@ -116,7 +116,7 @@ fn spline(_: (), _primary: (), points: Vec<DVec2>) -> VectorData {
 // TODO(TrueDoctor): I removed the Arc requirement we should think about when it makes sense to use it vs making a generic value node
 
 #[node_macro::node(category(""))]
-fn path(_: (), path_data: Vec<Subpath<PointId>>, colinear_manipulators: Vec<PointId>) -> super::VectorData {
+fn path<F: 'n + Send>(#[implementations((), Footprint)] _footprint: F, path_data: Vec<Subpath<PointId>>, colinear_manipulators: Vec<PointId>) -> super::VectorData {
 	let mut vector_data = super::VectorData::from_subpaths(path_data, false);
 	vector_data.colinear_manipulators = colinear_manipulators
 		.iter()
