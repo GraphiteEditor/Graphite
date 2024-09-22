@@ -130,7 +130,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							},
 							DocumentNode {
-								manual_composition: Some(concrete!(Footprint)),
+								manual_composition: Some(generic!(T)),
 								inputs: vec![
 									NodeInput::node(NodeId(1), 0),
 									NodeInput::node(NodeId(2), 0),
@@ -215,7 +215,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						nodes: [
 							// Ensure this ID is kept in sync with the ID in set_alias so that the name input is kept in sync with the alias
 							DocumentNode {
-								manual_composition: Some(concrete!(Footprint)),
+								manual_composition: Some(generic!(T)),
+								implementation: DocumentNodeImplementation::proto("graphene_core::graphic_element::ToArtboardNode"),
 								inputs: vec![
 									NodeInput::network(concrete!(TaggedValue), 1),
 									NodeInput::value(TaggedValue::String(String::from("Artboard")), false),
@@ -224,7 +225,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(concrete!(TaggedValue), 4),
 									NodeInput::network(concrete!(TaggedValue), 5),
 								],
-								implementation: DocumentNodeImplementation::proto("graphene_core::graphic_element::ToArtboardNode"),
 								..Default::default()
 							},
 							// The monitor node is used to display a thumbnail in the UI.
@@ -876,7 +876,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Red), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::adjustments::ExtractChannelNode")),
-								manual_composition: Some(concrete!(Footprint)),
+								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
 							DocumentNode {
@@ -885,7 +885,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Green), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::adjustments::ExtractChannelNode")),
-								manual_composition: Some(concrete!(Footprint)),
+								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
 							DocumentNode {
@@ -894,7 +894,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Blue), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::adjustments::ExtractChannelNode")),
-								manual_composition: Some(concrete!(Footprint)),
+								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
 							DocumentNode {
@@ -903,7 +903,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Alpha), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::adjustments::ExtractChannelNode")),
-								manual_composition: Some(concrete!(Footprint)),
+								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
 						]
@@ -1880,6 +1880,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
+			// Aims for interoperable compatibility with:
+			// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27brit%27%20%3D%20Brightness/Contrast
+			// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Padding-,Brightness%20and%20Contrast,-Key%20is%20%27brit
 			identifier: "Brightness/Contrast",
 			category: "Raster: Adjustment",
 			node_template: NodeTemplate {
@@ -1901,6 +1904,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			properties: &node_properties::brightness_contrast_properties,
 		},
+		// Aims for interoperable compatibility with:
+		// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=levl%27%20%3D%20Levels-,%27curv%27%20%3D%20Curves,-%27expA%27%20%3D%20Exposure
+		// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Max%20input%20range-,Curves,-Curves%20settings%20files
 		DocumentNodeDefinition {
 			identifier: "Curves",
 			category: "Raster: Adjustment",
@@ -2264,7 +2270,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						nodes: [
 							DocumentNode {
 								inputs: vec![NodeInput::network(concrete!(graphene_core::vector::VectorData), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::vector_nodes::LengthsOfSegmentsOfSubpathsNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::vector_nodes::SubpathSegmentLengthsNode")),
 								manual_composition: Some(concrete!(Footprint)),
 								..Default::default()
 							},
@@ -2275,7 +2281,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(concrete!(f64), 2),  // From the document node's parameters
 									NodeInput::network(concrete!(f64), 3),  // From the document node's parameters
 									NodeInput::network(concrete!(bool), 4), // From the document node's parameters
-									NodeInput::node(NodeId(0), 0),          // From output 0 of Lengths of Segments of Subpaths
+									NodeInput::node(NodeId(0), 0),          // From output 0 of SubpathSegmentLengthsNode
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::vector_nodes::SamplePointsNode")),
 								manual_composition: Some(concrete!(Footprint)),
@@ -2309,7 +2315,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: [
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Lengths of Segments of Subpaths".to_string(),
+										display_name: "Subpath Segment Lengths".to_string(),
 										..Default::default()
 									},
 									..Default::default()
@@ -2439,27 +2445,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			properties: &node_properties::index_properties,
-		},
-		// Applies the given color to each pixel of an image but maintains the alpha value
-		DocumentNodeDefinition {
-			identifier: "Color Fill",
-			category: "Raster",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::raster::adjustments::ColorFillNode"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::Color(Color::BLACK), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Color".to_string()],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			properties: &node_properties::color_fill_properties,
 		},
 	];
 

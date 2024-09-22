@@ -482,6 +482,17 @@ impl core::hash::Hash for Stroke {
 	}
 }
 
+impl From<Color> for Stroke {
+	fn from(color: Color) -> Self {
+		Self::new(Some(color), 1.)
+	}
+}
+impl From<Option<Color>> for Stroke {
+	fn from(color: Option<Color>) -> Self {
+		Self::new(color, 1.)
+	}
+}
+
 impl Stroke {
 	pub const fn new(color: Option<Color>, weight: f64) -> Self {
 		Self {

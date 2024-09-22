@@ -9,6 +9,7 @@ use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
 use graphene_core::renderer::RenderMetadata;
 use graphene_core::uuid::NodeId;
+use graphene_core::vector::style::Fill;
 use graphene_core::{Color, MemoHash, Node, Type};
 
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
@@ -196,6 +197,52 @@ impl TaggedValue {
 	}
 
 	pub fn from_primitive_string(string: &str, ty: &Type) -> Option<Self> {
+		fn to_dvec2(input: &str) -> Option<DVec2> {
+			let mut split = input.split(',');
+			let x = split.next()?.trim().parse().ok()?;
+			let y = split.next()?.trim().parse().ok()?;
+			Some(DVec2::new(x, y))
+		}
+
+		fn to_color(input: &str) -> Option<Color> {
+			// String syntax (e.g. "000000ff")
+			if input.starts_with('"') && input.ends_with('"') {
+				let color = input.trim().trim_matches('"').trim().trim_start_matches('#');
+				match color.len() {
+					6 => return Color::from_rgb_str(color),
+					8 => return Color::from_rgba_str(color),
+					_ => {
+						log::error!("Invalid default value color string: {}", input);
+						return None;
+					}
+				}
+			}
+
+			// Color constant syntax (e.g. Color::BLACK)
+			let mut choices = input.split("::");
+			let (first, second) = (choices.next()?.trim(), choices.next()?.trim());
+			if first == "Color" {
+				return Some(match second {
+					"BLACK" => Color::BLACK,
+					"WHITE" => Color::WHITE,
+					"RED" => Color::RED,
+					"GREEN" => Color::GREEN,
+					"BLUE" => Color::BLUE,
+					"YELLOW" => Color::YELLOW,
+					"CYAN" => Color::CYAN,
+					"MAGENTA" => Color::MAGENTA,
+					"TRANSPARENT" => Color::TRANSPARENT,
+					_ => {
+						log::error!("Invalid default value color constant: {}", input);
+						return None;
+					}
+				});
+			}
+
+			log::error!("Invalid default value color: {}", input);
+			None
+		}
+
 		match ty {
 			Type::Generic(_) => None,
 			Type::Concrete(concrete_type) => {
@@ -209,8 +256,11 @@ impl TaggedValue {
 					x if x == TypeId::of::<f64>() => FromStr::from_str(string).map(TaggedValue::F64).ok()?,
 					x if x == TypeId::of::<u64>() => FromStr::from_str(string).map(TaggedValue::U64).ok()?,
 					x if x == TypeId::of::<u32>() => FromStr::from_str(string).map(TaggedValue::U32).ok()?,
+					x if x == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
 					x if x == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
-					x if x == TypeId::of::<Color>() => Color::from_rgba_str(string).map(TaggedValue::Color)?,
+					x if x == TypeId::of::<Color>() => to_color(string).map(TaggedValue::Color)?,
+					x if x == TypeId::of::<Option<Color>>() => to_color(string).map(|color| TaggedValue::OptionalColor(Some(color)))?,
+					x if x == TypeId::of::<Fill>() => to_color(string).map(|color| TaggedValue::Fill(Fill::solid(color)))?,
 					_ => return None,
 				};
 				Some(ty)

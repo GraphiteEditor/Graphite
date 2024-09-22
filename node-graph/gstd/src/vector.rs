@@ -11,9 +11,17 @@ use path_bool::PathBooleanOperation;
 use std::ops::{Div, Mul};
 
 #[node_macro::node(category(""))]
-async fn boolean_operation<F: 'n + Copy + Send>(
-	#[implementations((), Footprint)] footprint: F,
-	#[implementations(() -> GraphicGroup, Footprint -> GraphicGroup)] group_of_paths: impl Node<F, Output = GraphicGroup>,
+async fn boolean_operation<F: 'n + Send>(
+	#[implementations(
+		(),
+		Footprint,
+	)]
+	footprint: F,
+	#[implementations(
+		() -> GraphicGroup,
+		Footprint -> GraphicGroup,
+	)]
+	group_of_paths: impl Node<F, Output = GraphicGroup>,
 	operation: BooleanOperation,
 ) -> VectorData {
 	let group_of_paths = group_of_paths.eval(footprint).await;
@@ -303,6 +311,7 @@ pub fn convert_usvg_path(path: &usvg::Path) -> Vec<Subpath<PointId>> {
 }
 
 type Path = Vec<path_bool::PathSegment>;
+
 fn boolean_union(a: Path, b: Path) -> Vec<Path> {
 	path_bool(a, b, PathBooleanOperation::Union)
 }
@@ -323,6 +332,7 @@ fn path_bool(a: Path, b: Path, op: PathBooleanOperation) -> Vec<Path> {
 fn boolean_subtract(a: Path, b: Path) -> Vec<Path> {
 	path_bool(a, b, PathBooleanOperation::Difference)
 }
+
 fn boolean_intersect(a: Path, b: Path) -> Vec<Path> {
 	path_bool(a, b, PathBooleanOperation::Intersection)
 }

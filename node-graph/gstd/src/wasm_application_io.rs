@@ -133,7 +133,12 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 #[cfg(target_arch = "wasm32")]
 async fn rasterize<T: GraphicElementRendered + graphene_core::transform::TransformMut + WasmNotSend + 'n>(
 	_: (),
-	#[implementations(Footprint -> VectorData, Footprint -> ImageFrame<Color>, Footprint -> GraphicGroup)] data: impl Node<Footprint, Output = T>,
+	#[implementations(
+		Footprint -> VectorData,
+		Footprint -> ImageFrame<Color>,
+		Footprint -> GraphicGroup,
+	)]
+	data: impl Node<Footprint, Output = T>,
 	footprint: Footprint,
 	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
 ) -> ImageFrame<Color> {

@@ -1,15 +1,9 @@
-use glam::DAffine2;
-
-use glam::DVec2;
-
 use crate::raster::bbox::AxisAlignedBbox;
-use crate::raster::ImageFrame;
-use crate::raster::Pixel;
+use crate::raster::{ImageFrame, Pixel};
 use crate::vector::VectorData;
-use crate::Artboard;
-use crate::ArtboardGroup;
-use crate::GraphicElement;
-use crate::GraphicGroup;
+use crate::{Artboard, ArtboardGroup, Color, GraphicElement, GraphicGroup};
+
+use glam::{DAffine2, DVec2};
 
 pub trait Transform {
 	fn transform(&self) -> DAffine2;
@@ -182,7 +176,7 @@ impl From<()> for Footprint {
 }
 
 #[node_macro::node(category("Debug"))]
-fn cull<T>(_footprint: Footprint, #[implementations(VectorData, GraphicGroup, Artboard, ImageFrame<crate::Color>, ArtboardGroup)] data: T) -> T {
+fn cull<T>(_footprint: Footprint, #[implementations(VectorData, GraphicGroup, Artboard, ImageFrame<Color>, ArtboardGroup)] data: T) -> T {
 	data
 }
 
@@ -217,15 +211,21 @@ impl ApplyTransform for () {
 }
 
 #[node_macro::node(category(""))]
-async fn transform<I: Into<Footprint> + ApplyTransform + 'n + Clone + Send + Sync, T: TransformMut + 'n>(
-	#[implementations(Footprint, Footprint, Footprint, (), (), ())] mut input: I,
+async fn transform<I: Into<Footprint> + 'n + ApplyTransform + Clone + Send + Sync, T: 'n + TransformMut>(
 	#[implementations(
-		Footprint -> VectorData,
-		Footprint -> GraphicGroup,
-		Footprint -> ImageFrame<crate::Color>,
+		(),
+		(),
+		(),
+		Footprint,
+	)]
+	mut input: I,
+	#[implementations(
 		() -> VectorData,
 		() -> GraphicGroup,
-		() -> ImageFrame<crate::Color>,
+		() -> ImageFrame<Color>,
+		Footprint -> VectorData,
+		Footprint -> GraphicGroup,
+		Footprint -> ImageFrame<Color>,
 	)]
 	transform_target: impl Node<I, Output = T>,
 	translate: DVec2,
@@ -251,7 +251,7 @@ async fn transform<I: Into<Footprint> + ApplyTransform + 'n + Clone + Send + Syn
 #[node_macro::node(category("Debug"))]
 fn replace_transform<Data: TransformMut, TransformInput: Transform>(
 	_: (),
-	#[implementations(VectorData, ImageFrame<crate::Color>, GraphicGroup)] mut data: Data,
+	#[implementations(VectorData, ImageFrame<Color>, GraphicGroup)] mut data: Data,
 	#[implementations(DAffine2)] transform: TransformInput,
 ) -> Data {
 	let data_transform = data.transform_mut();

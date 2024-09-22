@@ -436,8 +436,8 @@ pub struct ImageFrameNode<P, Transform> {
 	_p: PhantomData<P>,
 }
 #[node_macro::old_node_fn(ImageFrameNode<_P>)]
-fn image_frame<_P: Pixel>(image: Image<_P>, transform: DAffine2) -> graphene_core::raster::ImageFrame<_P> {
-	graphene_core::raster::ImageFrame {
+fn image_frame<_P: Pixel>(image: Image<_P>, transform: DAffine2) -> ImageFrame<_P> {
+	ImageFrame {
 		image,
 		transform,
 		alpha_blending: AlphaBlending::default(),
@@ -463,7 +463,7 @@ fn noise_pattern(
 	cellular_distance_function: CellularDistanceFunction,
 	cellular_return_type: CellularReturnType,
 	cellular_jitter: f64,
-) -> graphene_core::raster::ImageFrame<Color> {
+) -> ImageFrame<Color> {
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
 	let mut size = viewport_bounds.size();
