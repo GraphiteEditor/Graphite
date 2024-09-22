@@ -58,12 +58,18 @@ fn visual_tests() {
 		let mut width = String::new();
 		let mut height = String::new();
 		let mut view_box = String::new();
+		let mut transform = String::new();
 		for event in svg_tree {
 			match event {
 				Event::Tag("svg", svg::node::element::tag::Type::Start, attributes) => {
 					width = attributes.get("width").map(|s| s.to_string()).unwrap_or_default();
 					height = attributes.get("height").map(|s| s.to_string()).unwrap_or_default();
 					view_box = attributes.get("viewBox").map(|s| s.to_string()).unwrap_or_default();
+				}
+				Event::Tag("g", svg::node::element::tag::Type::Start, attributes) => {
+					if let Some(transform_attr) = attributes.get("transform") {
+						transform = transform_attr.to_string();
+					}
 				}
 				Event::Tag("path", svg::node::element::tag::Type::Empty, attributes) => {
 					let data = attributes.get("d").map(|s| s.to_string()).expect("Path data not found");
@@ -106,10 +112,16 @@ fn visual_tests() {
 
 		let result = path_boolean::path_boolean(&a, a_fill_rule, &b, b_fill_rule, op).unwrap();
 
-		// Create the result SVG with correct dimensions
+		// Create the result SVG with correct dimensions and transform
 		let mut result_svg = format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"{}\">", width, height, view_box);
+		if !transform.is_empty() {
+			result_svg.push_str(&format!("<g transform=\"{}\">", transform));
+		}
 		for path in &result {
 			result_svg.push_str(&format!("<path d=\"{}\" {}/>", path_to_path_data(path, 1e-4), first_path_attributes));
+		}
+		if !transform.is_empty() {
+			result_svg.push_str("</g>");
 		}
 		result_svg.push_str("</svg>");
 

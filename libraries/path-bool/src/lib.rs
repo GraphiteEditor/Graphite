@@ -258,4 +258,21 @@ mod test {
 		// Add more specific assertions about the resulting path if needed
 		assert!(!result[0].is_empty());
 	}
+	#[test]
+	fn shared_line() {
+		let a = path_from_path_data(
+			"m 658.03348,118.4966 c 7.85928,4.83645 114.84582,7.8304 127.89652,6.52531 20.97932,-2.09799 43.06722,-24.79623 43.06722,-24.79623 0,0 -96.43723,-26.02101 -108.97311,-28.54836 -20.22849,-4.07832 -78.95651,36.37872 -61.99063,46.81928 Z"
+		);
+		let b = path_from_path_data(
+			"m 658.03348,115.88649 c 40.45718,-30.01653 82.213,-45.24662 103.10032,-31.32163 7.83037,5.2203 -3.58567,22.51547 13.05064,39.152 3.91519,3.9152 -129.49099,2.06705 -116.15096,-7.83037 z",
+		);
+
+		let result = path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, PathBooleanOperation::Union).unwrap();
+
+		// Add assertions here based on expected results
+		assert_eq!(result.len(), 1, "Expected 1 resulting path for Union operation");
+		dbg!(path_to_path_data(&result[0], 0.001));
+		// Add more specific assertions about the resulting path if needed
+		assert!(!result[0].is_empty());
+	}
 }

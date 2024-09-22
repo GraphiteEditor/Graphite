@@ -798,8 +798,6 @@ fn sort_outgoing_edges_by_angle(graph: &mut MinorGraph) {
 
 fn face_to_polygon(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>) -> Vec<DVec2> {
 	const CNT: usize = 3;
-	// #[cfg(feature = "logging")]
-	// eprintln!("incident node counts {}", face.incident_edges.len());
 
 	face.incident_edges
 		.iter()

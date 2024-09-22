@@ -24,6 +24,7 @@ pub fn commands_from_path_data(d: &str) -> Vec<PathCommand> {
 			match last_cmd {
 				'M' => Some('L'),
 				'm' => Some('l'),
+				'z' | 'Z' => None,
 				_ => Some(last_cmd),
 			}
 		}
