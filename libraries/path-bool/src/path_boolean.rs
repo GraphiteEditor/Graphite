@@ -51,8 +51,6 @@
 //! This approach allows for efficient and accurate boolean operations, even on
 //! complex paths with many intersections or self-intersections.
 
-use slotmap::{new_key_type, SlotMap};
-
 new_key_type! {
 	pub struct MajorVertexKey;
 	pub struct MajorEdgeKey;
@@ -74,7 +72,9 @@ use crate::path_segment::PathSegment;
 #[cfg(feature = "logging")]
 use crate::path_to_path_data;
 use crate::quad_tree::QuadTree;
+
 use glam::DVec2;
+use slotmap::{new_key_type, SlotMap};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -183,6 +183,7 @@ impl MinorGraphEdge {
 		}
 	}
 }
+
 // Compares Segments based on their derivative at the start. If the derivative
 // is equal, check the curvature instead. This should correctly sort most instances.
 fn compare_segments(a: &PathSegment, b: &PathSegment) -> Ordering {
@@ -651,7 +652,7 @@ fn compute_minor(major_graph: &MajorGraph) -> MinorGraph {
 				segments.push(edge.seg);
 				visited.insert(edge.incident_vertices[1]);
 				let next_vertex = &major_graph.vertices[edge.incident_vertices[1]];
-				// choose the edge which is not our twin so we can make progress
+				// Choose the edge which is not our twin so we can make progress
 				edge_key = *next_vertex.outgoing_edges.iter().find(|&&e| Some(e) != edge.twin).unwrap();
 				edge = &major_graph.edges[edge_key];
 			}
@@ -718,7 +719,7 @@ fn compute_minor(major_graph: &MajorGraph) -> MinorGraph {
 }
 
 fn remove_dangling_edges(graph: &mut MinorGraph) {
-	// Basically DFS for each parent with bfs number
+	// Basically DFS for each parent with BFS number
 	fn walk(parent: u8, graph: &MinorGraph) -> HashSet<MinorVertexKey> {
 		let mut kept_vertices = HashSet::new();
 		let mut vertex_to_level = HashMap::new();
@@ -803,7 +804,6 @@ fn face_to_polygon(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, DualGrap
 		.iter()
 		.flat_map(|&edge_key| {
 			let edge = &edges[edge_key];
-			// eprintln!("{}", path_to_path_data(&edge.segments, 0.001));
 			edge.segments.iter().flat_map(move |seg| {
 				(0..CNT).map(move |i| {
 					let t0 = i as f64 / CNT as f64;
@@ -883,7 +883,7 @@ fn compute_signed_area(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, Dual
 		// let center = (a + b + c) / 3.;
 		// let winding = compute_point_winding(&polygon, center);
 		// if winding != 0 {
-		//         return (winding, center);
+		//     return (winding, center);
 		// }
 	}
 
@@ -1002,16 +1002,18 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 	let mut visited_edges = HashSet::new();
 
 	if cfg!(feature = "logging") {
-		// eeprintln!("minor_to_dual: {:#?}", minor_to_dual_edge);
+		// eprintln!("minor_to_dual: {:#?}", minor_to_dual_edge);
 		eprintln!("faces: {}, dual-edges: {}, cycles: {}", new_vertices.len(), dual_edges.len(), minor_graph.cycles.len())
 	}
 
 	// This can be very useful for debugging:
-	// Copy the face outlines to a file called faces_combined.csv and then use this
-	// gnuplot command:
-	// `plot 'faces_combined.csv' i 0:99 w l, 'faces_combined.csv' index 0 w l lc 'red'`
-	// the first part of the command plots all faces to the graph and the second comand
-	// plots one surface, specifed by the index, in red. This allows you to check if all surfaces are closed paths and can be used in conjunction with the flag debugging to identify issues later down the line as well
+	// Copy the face outlines to a file called faces_combined.csv and then use this gnuplot command:
+	// ```
+	// plot 'faces_combined.csv' i 0:99 w l, 'faces_combined.csv' index 0 w l lc 'red'
+	// ```
+	// The first part of the command plots all faces to the graph and the second comand plots one surface,
+	// specified by the index, in red. This allows you to check if all surfaces are closed paths and can
+	// be used in conjunction with the flag debugging to identify issues later down the line as well.
 	#[cfg(feature = "logging")]
 	for (vertex_key, vertex) in &dual_vertices {
 		eprintln!("\n\n#{:?}", vertex_key.0);
@@ -1429,7 +1431,7 @@ fn dump_faces(
 				}
 			}
 
-			// poke holes in the face
+			// Poke holes in the face
 			if let Some(subtrees) = tree.outgoing_edges.get(&face_key) {
 				for subtree in subtrees {
 					let outer_face_key = subtree.component.outer_face.unwrap();
@@ -1550,7 +1552,7 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 
 	let total_bounding_box = match total_bounding_box {
 		Some(bb) => bb,
-		None => return Ok(Vec::new()), // input geometry is empty
+		None => return Ok(Vec::new()), // Input geometry is empty
 	};
 
 	let major_graph = find_vertices(&split_edges, total_bounding_box);
@@ -1633,10 +1635,9 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 
 #[cfg(test)]
 mod tests {
-	use std::f64::consts::TAU;
-
 	use super::*;
-	use glam::DVec2; // Assuming DVec2 is defined in your crate
+	use glam::DVec2;
+	use std::f64::consts::TAU; // Assuming DVec2 is defined in your crate
 
 	#[test]
 	fn test_split_at_intersections() {

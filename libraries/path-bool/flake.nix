@@ -23,7 +23,7 @@
         };
         buildInputs = with pkgs; [
             llvm
-        ];        
+        ];
         in {
         devShells.default = pkgs.mkShell {
           stdenv = pkgs.clangStdenv;
@@ -38,8 +38,8 @@
             toolchain
             llvm
             cargo
-         ];
-         inherit buildInputs;
+          ];
+          inherit buildInputs;
           
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath buildInputs;
         };

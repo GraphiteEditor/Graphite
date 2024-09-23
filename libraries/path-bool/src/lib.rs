@@ -6,7 +6,6 @@ mod parsing {
 	pub(crate) mod path_command;
 	pub(crate) mod path_data;
 }
-
 mod util {
 	pub(crate) mod aabb;
 	pub(crate) mod epsilons;
@@ -30,10 +29,8 @@ pub use path_segment::PathSegment;
 
 #[cfg(test)]
 mod test {
-	use crate::{
-		path_boolean::{self, FillRule, PathBooleanOperation},
-		path_data::{path_from_path_data, path_to_path_data},
-	};
+	use crate::path_boolean::{self, FillRule, PathBooleanOperation};
+	use crate::path_data::{path_from_path_data, path_to_path_data};
 	use path_boolean::path_boolean;
 
 	#[test]
@@ -50,7 +47,6 @@ mod test {
 		.unwrap();
 		dbg!(path_to_path_data(&union[0], 0.001));
 		assert!(!union[0].is_empty());
-		// panic!();
 	}
 
 	#[test]

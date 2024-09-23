@@ -4,7 +4,17 @@ version = "0.1.0"
 rust-version = "1.81"
 authors = ["Graphite Authors <contact@graphite.rs>", "Adam Platkevič"]
 edition = "2021"
-keywords = ["bezier", "boolean", "path", "ops", "operations", "2d"]
+keywords = [
+	"bezier",
+	"curve",
+	"boolean",
+	"path",
+	"geometry",
+	"computational geometry",
+	"vector graphics",
+	"2d",
+	"graphics",
+]
 categories = ["graphics", "mathematics"]
 license = "MIT OR Apache-2.0"
 
@@ -31,7 +41,6 @@ criterion = { version = "0.5", features = ["html_reports"] }
 [[bench]]
 name = "painted_dreams"
 harness = false
-
 [[bench]]
 name = "path_segment_intersection"
 harness = false

@@ -1,3 +1,6 @@
+use crate::path_boolean::{self, FillRule, PathBooleanOperation};
+use crate::path_data::{path_from_path_data, path_to_path_data};
+
 use core::panic;
 use glob::glob;
 use image::{DynamicImage, GenericImageView, RgbaImage};
@@ -7,9 +10,6 @@ use resvg::usvg::{Options, Tree};
 use std::fs;
 use std::path::PathBuf;
 use svg::parser::Event;
-
-use crate::path_boolean::{self, FillRule, PathBooleanOperation};
-use crate::path_data::{path_from_path_data, path_to_path_data};
 
 const TOLERANCE: u8 = 84;
 
@@ -31,7 +31,7 @@ fn visual_tests() {
 		("fracture", PathBooleanOperation::Fracture),
 	];
 
-	let folders: Vec<(String, PathBuf, &str, PathBooleanOperation)> = glob("__fixtures__/visual-tests/*/")
+	let folders: Vec<(String, PathBuf, &str, PathBooleanOperation)> = glob("visual-tests/*/")
 		.expect("Failed to read glob pattern")
 		.flat_map(|entry| {
 			let dir = entry.expect("Failed to get directory entry");

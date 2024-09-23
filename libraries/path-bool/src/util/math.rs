@@ -15,7 +15,7 @@ pub fn vector_angle(u: DVec2, v: DVec2) -> f64 {
 	let sign = u.x * v.y - u.y * v.x;
 
 	if sign.abs() < EPS && (u + v).length_squared() < EPS * EPS {
-		// TODO: u can be scaled
+		// TODO: `u` can be scaled
 		return PI;
 	}
 

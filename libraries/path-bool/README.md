@@ -50,13 +50,14 @@ The boolean operations are implemented using a graph-based approach. After the p
 
 ## Development status
 
-This project is a port of PathBool.js and is still in early stages of development. Contributions, bug reports, and feedback are welcome.
+This project is a port of PathBool.js which is still in early stages of development. Contributions, bug reports, and feedback are welcome.
 
 Future work includes:
 
 - Comprehensive test suite
 - Performance optimizations
 - Additional examples and documentation
+- Support for path builder tool features
 
 ## License and acknowledgements
 

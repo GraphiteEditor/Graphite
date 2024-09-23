@@ -104,7 +104,7 @@ impl PathSegment {
 			PathSegment::Cubic(start, control1, control2, _) => {
 				let diff = control1 - start;
 				if diff.abs_diff_eq(DVec2::ZERO, EPS.point) {
-					// if this diff were empty too, the segments would have been convertet to a line
+					// if this diff were empty too, the segments would have been converted to a line
 					(control2 - start).angle_to(DVec2::X)
 				} else {
 					diff.angle_to(DVec2::X)
@@ -162,9 +162,9 @@ impl PathSegment {
 				}
 			}
 			PathSegment::Quadratic(start, control, end) => {
-				// first derivatiave
+				// First derivative
 				let a = 2. * (control - start);
-				// second derivatiave
+				// Second derivative
 				let b = 2. * (start - 2. * control + end);
 				let numerator = a.x * b.y - a.y * b.x;
 				let denominator = a.length_squared() * a.length();
@@ -594,7 +594,7 @@ impl PathSegment {
 	///
 	/// # Returns
 	///
-	/// An `AaBb` representing the axis-aligned bounding box of the segment.
+	/// An [`Aabb`] representing the axis-aligned bounding box of the segment.
 	pub(crate) fn bounding_box(&self) -> Aabb {
 		match *self {
 			PathSegment::Line(start, end) => Aabb {
@@ -619,7 +619,7 @@ impl PathSegment {
 					let mut bounding_box = extend_bounding_box(Some(bounding_box_around_point(start, 0.)), end);
 
 					if phi == 0. || rx == ry {
-						// FIXME: the following gives false positives, resulting in larger boxes
+						// TODO: Fix the fact that the following gives false positives, resulting in larger boxes
 						if in_interval(-PI, center_param.theta1, theta2) || in_interval(PI, center_param.theta1, theta2) {
 							bounding_box = extend_bounding_box(Some(bounding_box), DVec2::new(center_param.center.x - rx, center_param.center.y));
 						}
@@ -632,9 +632,9 @@ impl PathSegment {
 						if in_interval(PI / 2., center_param.theta1, theta2) || in_interval(5. * PI / 2., center_param.theta1, theta2) {
 							bounding_box = extend_bounding_box(Some(bounding_box), DVec2::new(center_param.center.x, center_param.center.y + ry));
 						}
-						expand_bounding_box(&bounding_box, 1e-11) // TODO: get rid of expansion
+						expand_bounding_box(&bounding_box, 1e-11) // TODO: Get rid of expansion
 					} else {
-						// TODO: don't convert to cubics
+						// TODO: Don't convert to cubics
 						let cubics = self.arc_segment_to_cubics(PI / 16.);
 						let mut bounding_box = None;
 						for cubic_seg in cubics {

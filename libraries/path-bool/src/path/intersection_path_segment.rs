@@ -1,11 +1,11 @@
-use glam::DVec2;
-
 use crate::aabb::{bounding_box_max_extent, bounding_boxes_overlap, Aabb};
 use crate::epsilons::Epsilons;
 use crate::line_segment::{line_segment_intersection, line_segments_intersect};
 use crate::line_segment_aabb::line_segment_aabb_intersect;
 use crate::math::lerp;
 use crate::path_segment::PathSegment;
+
+use glam::DVec2;
 
 #[derive(Clone)]
 struct IntersectionSegment {
@@ -119,7 +119,7 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 	let mut subdivided0 = Vec::new();
 	let mut subdivided1 = Vec::new();
 
-	// check if start and end points are on the other bezier curves. If so, add as intersection.
+	// Check if start and end points are on the other bezier curves. If so, add an intersection.
 
 	while !pairs.is_empty() {
 		next_pairs.clear();
