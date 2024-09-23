@@ -880,18 +880,11 @@ fn compute_signed_area(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, Dual
 		let b = polygon[(i + 1) % polygon.len()];
 		area += a.x * b.y;
 		area -= b.x * a.y;
-		// let center = (a + b + c) / 3.;
-		// let winding = compute_point_winding(&polygon, center);
-		// if winding != 0 {
-		//     return (winding, center);
-		// }
 	}
 
 	#[cfg(feature = "logging")]
 	eprintln!("winding: {}", area);
 	area
-
-	// panic!("No ear in polygon found.");
 }
 
 /// Computes the dual graph from the minor graph.
@@ -1002,7 +995,6 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 	let mut visited_edges = HashSet::new();
 
 	if cfg!(feature = "logging") {
-		// eprintln!("minor_to_dual: {:#?}", minor_to_dual_edge);
 		eprintln!("faces: {}, dual-edges: {}, cycles: {}", new_vertices.len(), dual_edges.len(), minor_graph.cycles.len())
 	}
 
@@ -1092,7 +1084,6 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 			reverse_winding = true;
 		}
 		let outer_face_key = if count != 1 {
-			// return Err(BooleanError::MultipleOuterFaces);
 			#[cfg(feature = "logging")]
 			eprintln!("Found multiple outer faces: {areas:?}, falling back to area calculation");
 			let (key, _) = *areas.iter().max_by_key(|(_, area)| ((area.abs() * 1000.) as u64)).unwrap();
@@ -1546,7 +1537,6 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 
 	#[cfg(feature = "logging")]
 	for (edge, _, _) in split_edges.iter() {
-		// eprintln!("{}", edge.format_path());
 		eprintln!("{}", path_to_path_data(&vec![*edge], 0.001));
 	}
 
@@ -1577,7 +1567,6 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 
 	#[cfg(feature = "logging")]
 	for (key, edge) in minor_graph.edges.iter() {
-		// eprintln!("{}", edge.format_path());
 		eprintln!("{key:?}:\n{}", path_to_path_data(&edge.segments, 0.001));
 	}
 	#[cfg(feature = "logging")]
@@ -1685,7 +1674,7 @@ mod tests {
 		let minor_graph = compute_minor(&major_graph);
 
 		// Print minor graph state
-		//     eprintln!("Minor Graph:");
+		eprintln!("Minor Graph:");
 		print_minor_graph_state(&minor_graph);
 
 		// Assertions
