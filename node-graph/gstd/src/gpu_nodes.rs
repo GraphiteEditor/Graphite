@@ -295,7 +295,7 @@ async fn blend_gpu_image(_: (), foreground: ImageFrame<Color>, background: Image
 								let fg_point = (*i4) * bg_point + (*i5);
 
 								if !((fg_point.cmpge(Vec2::ZERO) & bg_point.cmpge(Vec2::ZERO)) == BVec2::new(true, true)) {{
-									Color::from_rgbaf32_unchecked(0.0, 0.0, 0.0, 0.0)
+									Color::from_rgbaf32_unchecked(0., 0., 0., 0.)
 								}} else {{
 									i2[((fg_point.y as u32) * i3 + (fg_point.x as u32)) as usize]
 								}}

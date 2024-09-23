@@ -72,8 +72,8 @@ impl<T: Clone> QuadTree<T> {
 			return;
 		}
 
-		let midx = (self.bounding_box.left + self.bounding_box.right) / 2.0;
-		let midy = (self.bounding_box.top + self.bounding_box.bottom) / 2.0;
+		let midx = (self.bounding_box.left + self.bounding_box.right) / 2.;
+		let midy = (self.bounding_box.top + self.bounding_box.bottom) / 2.;
 
 		self.subtrees = Some(Box::new([
 			QuadTree::new(

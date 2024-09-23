@@ -49,7 +49,7 @@ fn add_network() -> NodeNetwork {
 							if _global_index.x < i2[2] {{
 								i0[_global_index.x as usize]
 							}} else {{
-								Color::from_rgbaf32_unchecked(0.0, 0.0, 0.0, 0.0)
+								Color::from_rgbaf32_unchecked(0., 0., 0., 0.)
 							}},
 						))"#,
 					TaggedValue::BlendMode(BlendMode::Normal).to_primitive_string(),

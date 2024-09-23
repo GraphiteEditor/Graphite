@@ -13,7 +13,7 @@ use crate::path_segment::PathSegment;
 pub type Path = Vec<PathSegment>;
 
 fn reflect_control_point(point: DVec2, control_point: DVec2) -> DVec2 {
-	point * 2.0 - control_point
+	point * 2. - control_point
 }
 
 #[cfg(feature = "parsing")]

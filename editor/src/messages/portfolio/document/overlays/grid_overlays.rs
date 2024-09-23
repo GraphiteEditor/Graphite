@@ -160,7 +160,7 @@ fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context
 	let max_x = bounds.0.iter().map(|&corner| corner.x).max_by(cmp).unwrap_or_default();
 	let spacing_x = isometric_spacing.x;
 	let tan = tan_a;
-	let multiply = -1.0;
+	let multiply = -1.;
 	let project = |corner: &DVec2| corner.y + multiply * tan * (corner.x - origin.x);
 	let inverse_project = |corner: &DVec2| corner.y - tan * multiply * (corner.x - origin.x);
 	let min_y = bounds.0.into_iter().min_by(|a, b| inverse_project(a).partial_cmp(&inverse_project(b)).unwrap()).unwrap_or_default();

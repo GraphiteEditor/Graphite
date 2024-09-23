@@ -355,7 +355,7 @@ impl Color {
 	/// let color = Color::from_rgbaf32(0.3, 0.14, 0.15, 0.92).unwrap();
 	/// assert!(color.components() == (0.3, 0.14, 0.15, 0.92));
 	///
-	/// let color = Color::from_rgbaf32(1.0, 1.0, 1.0, f32::NAN);
+	/// let color = Color::from_rgbaf32(1., 1., 1., f32::NAN);
 	/// assert!(color == None);
 	/// ```
 	#[inline(always)]

@@ -86,19 +86,19 @@ impl Vertex {
 
 const VERTICES: &[Vertex] = &[
 	Vertex {
-		position: [-1., 1., 0.0],
+		position: [-1., 1., 0.],
 		tex_coords: [0., 0.],
 	}, // A
 	Vertex {
-		position: [-1., -1., 0.0],
+		position: [-1., -1., 0.],
 		tex_coords: [0., 1.],
 	}, // B
 	Vertex {
-		position: [1., 1., 0.0],
+		position: [1., 1., 0.],
 		tex_coords: [1., 0.],
 	}, // C
 	Vertex {
-		position: [1., -1., 0.0],
+		position: [1., -1., 0.],
 		tex_coords: [1., 1.],
 	}, // D
 ];

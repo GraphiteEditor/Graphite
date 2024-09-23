@@ -607,7 +607,7 @@ mod tests {
 		)
 		.all());
 
-		let t4 = 1.0;
+		let t4 = 1.;
 		assert!(utils::dvec2_compare(
 			subpath.evaluate(SubpathTValue::GlobalParametric(t4)),
 			quadratic_bezier.evaluate(TValue::Parametric(1.)),

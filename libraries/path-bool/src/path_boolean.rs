@@ -368,7 +368,7 @@ fn split_at_self_intersections(edges: &mut Vec<MajorGraphEdgeStage1>) {
 					new_edges.push((seg2, *parent));
 				} else {
 					let (seg1, tmp_seg) = seg.split_at(t1);
-					let (seg2, seg3) = &tmp_seg.split_at((t2 - t1) / (1.0 - t1));
+					let (seg2, seg3) = &tmp_seg.split_at((t2 - t1) / (1. - t1));
 					*seg = seg1;
 					new_edges.push((*seg2, *parent));
 					new_edges.push((*seg3, *parent));
@@ -447,17 +447,17 @@ fn split_at_intersections(edges: &[MajorGraphEdgeStage1]) -> (Vec<MajorGraphEdge
 			let mut splits = splits.clone();
 			splits.sort_by(|a, b| a.partial_cmp(b).unwrap());
 			let mut tmp_seg = seg;
-			let mut prev_t = 0.0;
+			let mut prev_t = 0.;
 			for &t in splits.iter() {
-				if t > 1.0 - EPS.param {
+				if t > 1. - EPS.param {
 					break;
 				}
-				let tt = (t - prev_t) / (1.0 - prev_t);
+				let tt = (t - prev_t) / (1. - prev_t);
 				prev_t = t;
 				if tt < EPS.param {
 					continue;
 				}
-				if tt > 1.0 - EPS.param {
+				if tt > 1. - EPS.param {
 					continue;
 				}
 				let (seg1, seg2) = tmp_seg.split_at(tt);
@@ -807,7 +807,7 @@ fn face_to_polygon(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, DualGrap
 			edge.segments.iter().flat_map(move |seg| {
 				(0..CNT).map(move |i| {
 					let t0 = i as f64 / CNT as f64;
-					let t = if edge.direction_flag.forward() { t0 } else { 1.0 - t0 };
+					let t = if edge.direction_flag.forward() { t0 } else { 1. - t0 };
 					seg.sample_at(t)
 				})
 			})
@@ -1661,14 +1661,14 @@ mod tests {
 
 	fn unsplit_edges() -> Vec<(PathSegment, u8)> {
 		let unsplit_edges = vec![
-			(PathSegment::Arc(DVec2::new(39.0, 20.0), 19.0, 19.0, 0.0, false, true, DVec2::new(20.0, 39.0)), 1),
-			(PathSegment::Arc(DVec2::new(20.0, 39.0), 19.0, 19.0, 0.0, false, true, DVec2::new(1.0, 20.0)), 1),
-			(PathSegment::Arc(DVec2::new(1.0, 20.0), 19.0, 19.0, 0.0, false, true, DVec2::new(20.0, 1.0)), 1),
-			(PathSegment::Arc(DVec2::new(20.0, 1.0), 19.0, 19.0, 0.0, false, true, DVec2::new(39.0, 20.0)), 1),
-			(PathSegment::Arc(DVec2::new(47.0, 28.0), 19.0, 19.0, 0.0, false, true, DVec2::new(28.0, 47.0)), 2),
-			(PathSegment::Arc(DVec2::new(28.0, 47.0), 19.0, 19.0, 0.0, false, true, DVec2::new(9.0, 28.0)), 2),
-			(PathSegment::Arc(DVec2::new(9.0, 28.0), 19.0, 19.0, 0.0, false, true, DVec2::new(28.0, 9.0)), 2),
-			(PathSegment::Arc(DVec2::new(28.0, 9.0), 19.0, 19.0, 0.0, false, true, DVec2::new(47.0, 28.0)), 2),
+			(PathSegment::Arc(DVec2::new(39., 20.), 19., 19., 0., false, true, DVec2::new(20., 39.)), 1),
+			(PathSegment::Arc(DVec2::new(20., 39.), 19., 19., 0., false, true, DVec2::new(1., 20.)), 1),
+			(PathSegment::Arc(DVec2::new(1., 20.), 19., 19., 0., false, true, DVec2::new(20., 1.)), 1),
+			(PathSegment::Arc(DVec2::new(20., 1.), 19., 19., 0., false, true, DVec2::new(39., 20.)), 1),
+			(PathSegment::Arc(DVec2::new(47., 28.), 19., 19., 0., false, true, DVec2::new(28., 47.)), 2),
+			(PathSegment::Arc(DVec2::new(28., 47.), 19., 19., 0., false, true, DVec2::new(9., 28.)), 2),
+			(PathSegment::Arc(DVec2::new(9., 28.), 19., 19., 0., false, true, DVec2::new(28., 9.)), 2),
+			(PathSegment::Arc(DVec2::new(28., 9.), 19., 19., 0., false, true, DVec2::new(47., 28.)), 2),
 		];
 		unsplit_edges
 	}
@@ -1788,18 +1788,18 @@ mod tests {
 	fn get_incidence_angle(edge: &MinorGraphEdge) -> f64 {
 		let seg = &edge.segments[0]; // First segment is always the incident one in both fwd and bwd
 		let (p0, p1) = if edge.direction_flag.forward() {
-			(seg.sample_at(0.0), seg.sample_at(0.1))
+			(seg.sample_at(0.), seg.sample_at(0.1))
 		} else {
-			(seg.sample_at(1.0), seg.sample_at(1.0 - 0.1))
+			(seg.sample_at(1.), seg.sample_at(1. - 0.1))
 		};
 		((p1.y - p0.y).atan2(p1.x - p0.x) + TAU) % TAU
 	}
 
 	#[test]
 	fn test_path_segment_horizontal_ray_intersection_count() {
-		let orig_seg = PathSegment::Arc(DVec2::new(24.0, 10.090978), 13.909023, 13.909023, 0.0, false, true, DVec2::new(47., 24.0));
+		let orig_seg = PathSegment::Arc(DVec2::new(24., 10.090978), 13.909023, 13.909023, 0., false, true, DVec2::new(47., 24.));
 
-		let point = DVec2::new(37.99, 24.0);
+		let point = DVec2::new(37.99, 24.);
 
 		eprintln!("Starting test with segment: {:?}", orig_seg);
 		eprintln!("Test point: {:?}", point);
@@ -1815,15 +1815,15 @@ mod tests {
 	#[test]
 	fn test_bounding_box_intersects_horizontal_ray() {
 		let bbox = Aabb {
-			top: 10.0,
-			right: 40.0,
-			bottom: 30.0,
-			left: 20.0,
+			top: 10.,
+			right: 40.,
+			bottom: 30.,
+			left: 20.,
 		};
 
-		assert!(bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(0.0, 30.0)));
-		assert!(bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(20.0, 30.0)));
-		assert!(bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(10.0, 20.0)));
-		assert!(!bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(30.0, 40.0)));
+		assert!(bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(0., 30.)));
+		assert!(bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(20., 30.)));
+		assert!(bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(10., 20.)));
+		assert!(!bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(30., 40.)));
 	}
 }

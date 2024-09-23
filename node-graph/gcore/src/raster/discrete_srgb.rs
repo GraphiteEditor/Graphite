@@ -56,16 +56,16 @@ const FLOAT_SRGB_LERP: [u32; 27] = [
 #[inline]
 pub fn float_to_srgb_u8(mut f: f32) -> u8 {
 	// Clamp f to [0, 1], with a negated condition to handle NaNs as 0.
-	if !(f >= 0.0) {
-		f = 0.0;
-	} else if f > 1.0 {
-		f = 1.0;
+	if !(f >= 0.) {
+		f = 0.;
+	} else if f > 1. {
+		f = 1.;
 	}
 
 	// Shift away slightly from 0.0 to reduce exponent range.
 	const C: f32 = 0.009842521f32;
 	let u = (f + C).to_bits() - C.to_bits();
-	if u > (1.0 + C).to_bits() - C.to_bits() {
+	if u > (1. + C).to_bits() - C.to_bits() {
 		// We clamped f to [0, 1], and the integer representations
 		// of the positive finite non-NaN floats are monotonic.
 		// This makes the later LUT lookup panicless.
@@ -144,7 +144,7 @@ mod tests {
 		} else if f <= 0.0031308f32 {
 			12.92_f32 * f
 		} else if f < 1_f32 {
-			1.055f32 * f.powf(1.0_f32 / 2.4_f32) - 0.055f32
+			1.055f32 * f.powf(1_f32 / 2.4_f32) - 0.055f32
 		} else {
 			1_f32
 		}
@@ -164,7 +164,7 @@ mod tests {
 	}
 
 	fn srgb_u8_to_float_ref(c: u8) -> f32 {
-		srgb_to_float_ref(c as f32 * (1_f32 / 255.0_f32))
+		srgb_to_float_ref(c as f32 * (1_f32 / 255_f32))
 	}
 
 	#[test]

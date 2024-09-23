@@ -42,8 +42,8 @@ pub(crate) fn line_segment_aabb_intersect(seg: LineSegment, bounding_box: &Aabb)
 		} else {
 			// failed both tests, so calculate the line segment to clip
 			// from an outside point to an intersection with clip edge
-			let mut x = 0.0;
-			let mut y = 0.0;
+			let mut x = 0.;
+			let mut y = 0.;
 
 			// At least one endpoint is outside the clip rectangle; pick it.
 			let outcode_out = if outcode1 > outcode0 { outcode1 } else { outcode0 };
