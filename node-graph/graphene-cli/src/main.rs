@@ -49,6 +49,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		node_graph_message_sender: Box::new(UpdateLogger {}),
 		editor_preferences: Box::new(EditorPreferences::default()),
 	});
+
+	let document = graph_craft::util::load_from_name(document_path.as_str());
 	let executor = create_executor(document_string, editor_api)?;
 	let render_config = graphene_core::application_io::RenderConfig::default();
 

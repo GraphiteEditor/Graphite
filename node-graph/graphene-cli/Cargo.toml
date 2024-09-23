@@ -32,7 +32,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 bezier-rs = { workspace = true }
 glam = { workspace = true }
-graph-craft = { workspace = true }
+graph-craft = { workspace = true, features = ["loading"] }
 dyn-any = { workspace = true }
 graphene-core = { workspace = true }
 futures = { workspace = true }

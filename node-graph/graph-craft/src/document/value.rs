@@ -30,7 +30,7 @@ macro_rules! tagged_value {
 			$( $(#[$meta] ) *$identifier( $ty ), )*
 			RenderOutput(RenderOutput),
 			SurfaceFrame(graphene_core::SurfaceFrame),
-			#[serde(skip)]
+			#[cfg_attr(feature = "serde", serde(skip))]
 			EditorApi(Arc<WasmEditorApi>)
 		}
 
@@ -117,7 +117,7 @@ tagged_value! {
 	String(String),
 	U32(u32),
 	U64(u64),
-	#[serde(alias = "F32")] // TODO: Eventually remove this alias (probably starting late 2024)
+	#[cfg_attr(feature = "serde", serde(alias = "F32"))] // TODO: Eventually remove this alias (probably starting late 2024)
 	F64(f64),
 	Bool(bool),
 	UVec2(UVec2),
@@ -139,7 +139,7 @@ tagged_value! {
 	Fill(graphene_core::vector::style::Fill),
 	Stroke(graphene_core::vector::style::Stroke),
 	F64Array4([f64; 4]),
-	#[serde(alias = "VecF32")] // TODO: Eventually remove this alias (probably starting late 2024)
+	#[cfg_attr(feature = "serde", serde(alias = "VecF32"))] // TODO: Eventually remove this alias (probably starting late 2024)
 	VecF64(Vec<f64>),
 	VecU64(Vec<u64>),
 	NodePath(Vec<NodeId>),
@@ -159,10 +159,10 @@ tagged_value! {
 	FillChoice(graphene_core::vector::style::FillChoice),
 	Gradient(graphene_core::vector::style::Gradient),
 	GradientType(graphene_core::vector::style::GradientType),
-	#[serde(alias = "GradientPositions")] // TODO: Eventually remove this alias (probably starting late 2024)
+	#[cfg_attr(feature = "serde", serde(alias = "GradientPositions"))] // TODO: Eventually remove this alias (probably starting late 2024)
 	GradientStops(graphene_core::vector::style::GradientStops),
 	OptionalColor(Option<graphene_core::raster::color::Color>),
-	#[serde(alias = "ManipulatorGroupIds")] // TODO: Eventually remove this alias (probably starting late 2024)
+	#[cfg_attr(feature = "serde", serde(alias = "ManipulatorGroupIds"))] // TODO: Eventually remove this alias (probably starting late 2024)
 	PointIds(Vec<graphene_core::vector::PointId>),
 	Font(graphene_core::text::Font),
 	BrushStrokes(Vec<graphene_core::vector::brush_stroke::BrushStroke>),

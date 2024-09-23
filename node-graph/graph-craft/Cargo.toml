@@ -11,8 +11,7 @@ dealloc_nodes = ["graphene-core/dealloc_nodes"]
 wgpu = []
 tokio = ["dep:tokio"]
 wayland = []
-criterion = []
-iai = []
+loading = ["serde_json", "serde"]
 
 [dependencies]
 # Local dependencies
@@ -40,6 +39,7 @@ wgpu-executor = { workspace = true }
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
 
 # Workspace dependencies
 [target.'cfg(target_arch = "wasm32")'.dependencies]
@@ -53,8 +53,7 @@ winit = { workspace = true }
 
 [dev-dependencies]
 # Workspace dependencies
-serde_json = { workspace = true }
-graph-craft = { workspace = true, features = ["serde"] }
+graph-craft = { workspace = true, features = ["loading"] }
 
 # Required dependencies
 criterion = { version = "0.5", features = ["html_reports"]}
@@ -63,9 +62,9 @@ iai-callgrind = { version = "0.12.3"}
 
 # Benchmarks
 [[bench]]
-name = "compile_demo_art"
+name = "compile_demo_art_criterion"
 harness = false
 
-# [[bench]]
-# name = "exec_demo_art"
-# harness = false
+[[bench]]
+name = "compile_demo_art_iai"
+harness = false

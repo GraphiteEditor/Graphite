@@ -1,5 +1,6 @@
 pub mod dynamic_executor;
 pub mod node_registry;
+pub mod util;
 
 #[cfg(test)]
 mod tests {
