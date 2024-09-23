@@ -22,8 +22,8 @@ async fn image_color_palette<F: 'n + Send>(
 
 	let bins = GRID * GRID * GRID;
 
-	let mut histogram: Vec<usize> = vec![0; (bins + 1.0) as usize];
-	let mut colors: Vec<Vec<Color>> = vec![vec![]; (bins + 1.0) as usize];
+	let mut histogram: Vec<usize> = vec![0; (bins + 1.) as usize];
+	let mut colors: Vec<Vec<Color>> = vec![vec![]; (bins + 1.) as usize];
 
 	let image = image.eval(footprint).await;
 	for pixel in image.image.data.iter() {
@@ -44,10 +44,10 @@ async fn image_color_palette<F: 'n + Send>(
 	for i in shorted.iter().take(max_size as usize) {
 		let list = colors[*i].clone();
 
-		let mut r = 0.0;
-		let mut g = 0.0;
-		let mut b = 0.0;
-		let mut a = 0.0;
+		let mut r = 0.;
+		let mut g = 0.;
+		let mut b = 0.;
+		let mut a = 0.;
 
 		for color in list.iter() {
 			r += color.r();
@@ -86,7 +86,7 @@ mod test {
 						image: Image {
 							width: 100,
 							height: 100,
-							data: vec![Color::from_rgbaf32(0.0, 0.0, 0.0, 1.0).unwrap(); 10000],
+							data: vec![Color::from_rgbaf32(0., 0., 0., 1.).unwrap(); 10000],
 							base64_string: None,
 						},
 						..Default::default()
@@ -94,6 +94,6 @@ mod test {
 				})
 			}),
 		};
-		assert_eq!(futures::executor::block_on(node.eval(())), [Color::from_rgbaf32(0.0, 0.0, 0.0, 1.0).unwrap()]);
+		assert_eq!(futures::executor::block_on(node.eval(())), [Color::from_rgbaf32(0., 0., 0., 1.).unwrap()]);
 	}
 }

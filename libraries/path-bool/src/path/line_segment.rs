@@ -2,7 +2,7 @@ use glam::DVec2;
 
 pub type LineSegment = [DVec2; 2];
 
-const COLLINEAR_EPS: f64 = f64::EPSILON * 64.0;
+const COLLINEAR_EPS: f64 = f64::EPSILON * 64.;
 
 #[inline(never)]
 pub fn line_segment_intersection([p1, p2]: LineSegment, [p3, p4]: LineSegment, eps: f64) -> Option<(f64, f64)> {
@@ -21,7 +21,7 @@ pub fn line_segment_intersection([p1, p2]: LineSegment, [p3, p4]: LineSegment, e
 	let s = (c.x * b.y - c.y * b.x) / denom;
 	let t = (a.x * c.y - a.y * c.x) / denom;
 
-	if (-eps..=1.0 + eps).contains(&s) && (-eps..=1.0 + eps).contains(&t) {
+	if (-eps..=1. + eps).contains(&s) && (-eps..=1. + eps).contains(&t) {
 		Some((s, t))
 	} else {
 		None

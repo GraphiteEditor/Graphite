@@ -357,7 +357,7 @@ impl Bezier1d {
 	fn value_at(&self, t: f64) -> f64 {
 		let bz = self;
 		let order = bz.len() - 1;
-		let u = 1.0 - t;
+		let u = 1. - t;
 		let mut bc = 1.;
 		let mut tn = 1.;
 		let mut tmp = bz[0] * u;
@@ -611,7 +611,7 @@ mod tests {
 
 	#[test]
 	fn find_bernstein_roots() {
-		let bz = Bezier1d(vec![50.0, -100.0, 170.0]);
+		let bz = Bezier1d(vec![50., -100., 170.]);
 		let mut solutions = Vec::new();
 		bz.find_bernstein_roots(&mut solutions, 0, 0., 1.);
 

@@ -309,7 +309,7 @@ fn extend_image_to_bounds(image: ImageFrame<Color>, bounds: DAffine2) -> ImageFr
 
 	// Compute new transform.
 	// let layer_to_new_texture_space = (DAffine2::from_scale(1. / new_scale) * DAffine2::from_translation(new_start) * layer_to_image_space).inverse();
-	let new_texture_to_layer_space = image.transform * DAffine2::from_scale(1.0 / orig_image_scale) * DAffine2::from_translation(new_start) * DAffine2::from_scale(new_scale);
+	let new_texture_to_layer_space = image.transform * DAffine2::from_scale(1. / orig_image_scale) * DAffine2::from_translation(new_start) * DAffine2::from_scale(new_scale);
 	ImageFrame {
 		image: new_img,
 		transform: new_texture_to_layer_space,
@@ -641,10 +641,10 @@ fn mandelbrot(footprint: Footprint) -> ImageFrame<Color> {
 
 #[inline(always)]
 fn mandelbrot_impl(c: Vec2, max_iter: usize) -> usize {
-	let mut z = Vec2::new(0.0, 0.0);
+	let mut z = Vec2::new(0., 0.);
 	for i in 0..max_iter {
-		z = Vec2::new(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c;
-		if z.length_squared() > 4.0 {
+		z = Vec2::new(z.x * z.x - z.y * z.y, 2. * z.x * z.y) + c;
+		if z.length_squared() > 4. {
 			return i;
 		}
 	}

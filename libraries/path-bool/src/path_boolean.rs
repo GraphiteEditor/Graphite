@@ -51,8 +51,6 @@
 //! This approach allows for efficient and accurate boolean operations, even on
 //! complex paths with many intersections or self-intersections.
 
-use slotmap::{new_key_type, SlotMap};
-
 new_key_type! {
 	pub struct MajorVertexKey;
 	pub struct MajorEdgeKey;
@@ -74,9 +72,12 @@ use crate::path_segment::PathSegment;
 #[cfg(feature = "logging")]
 use crate::path_to_path_data;
 use crate::quad_tree::QuadTree;
+
 use glam::DVec2;
+use slotmap::{new_key_type, SlotMap};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::fmt::Display;
 
 /// Represents the types of boolean operations that can be performed on paths.
 #[derive(Debug, Clone, Copy)]
@@ -183,6 +184,7 @@ impl MinorGraphEdge {
 		}
 	}
 }
+
 // Compares Segments based on their derivative at the start. If the derivative
 // is equal, check the curvature instead. This should correctly sort most instances.
 fn compare_segments(a: &PathSegment, b: &PathSegment) -> Ordering {
@@ -368,7 +370,7 @@ fn split_at_self_intersections(edges: &mut Vec<MajorGraphEdgeStage1>) {
 					new_edges.push((seg2, *parent));
 				} else {
 					let (seg1, tmp_seg) = seg.split_at(t1);
-					let (seg2, seg3) = &tmp_seg.split_at((t2 - t1) / (1.0 - t1));
+					let (seg2, seg3) = &tmp_seg.split_at((t2 - t1) / (1. - t1));
 					*seg = seg1;
 					new_edges.push((*seg2, *parent));
 					new_edges.push((*seg3, *parent));
@@ -447,17 +449,17 @@ fn split_at_intersections(edges: &[MajorGraphEdgeStage1]) -> (Vec<MajorGraphEdge
 			let mut splits = splits.clone();
 			splits.sort_by(|a, b| a.partial_cmp(b).unwrap());
 			let mut tmp_seg = seg;
-			let mut prev_t = 0.0;
+			let mut prev_t = 0.;
 			for &t in splits.iter() {
-				if t > 1.0 - EPS.param {
+				if t > 1. - EPS.param {
 					break;
 				}
-				let tt = (t - prev_t) / (1.0 - prev_t);
+				let tt = (t - prev_t) / (1. - prev_t);
 				prev_t = t;
 				if tt < EPS.param {
 					continue;
 				}
-				if tt > 1.0 - EPS.param {
+				if tt > 1. - EPS.param {
 					continue;
 				}
 				let (seg1, seg2) = tmp_seg.split_at(tt);
@@ -651,7 +653,7 @@ fn compute_minor(major_graph: &MajorGraph) -> MinorGraph {
 				segments.push(edge.seg);
 				visited.insert(edge.incident_vertices[1]);
 				let next_vertex = &major_graph.vertices[edge.incident_vertices[1]];
-				// choose the edge which is not our twin so we can make progress
+				// Choose the edge which is not our twin so we can make progress
 				edge_key = *next_vertex.outgoing_edges.iter().find(|&&e| Some(e) != edge.twin).unwrap();
 				edge = &major_graph.edges[edge_key];
 			}
@@ -718,7 +720,7 @@ fn compute_minor(major_graph: &MajorGraph) -> MinorGraph {
 }
 
 fn remove_dangling_edges(graph: &mut MinorGraph) {
-	// Basically DFS for each parent with bfs number
+	// Basically DFS for each parent with BFS number
 	fn walk(parent: u8, graph: &MinorGraph) -> HashSet<MinorVertexKey> {
 		let mut kept_vertices = HashSet::new();
 		let mut vertex_to_level = HashMap::new();
@@ -780,36 +782,10 @@ fn remove_dangling_edges(graph: &mut MinorGraph) {
 	});
 }
 
-fn get_incidence_angle(edge: &MinorGraphEdge) -> f64 {
-	let seg = &edge.segments[0]; // TODO: explain in comment why this is always the incident one in both fwd and bwd
-
-	// eprintln!("{edge:?}"); //, edge.direction_flag.forward());
-	let (p0, p1) = if edge.direction_flag.forward() {
-		(seg.sample_at(0.0), seg.sample_at(EPS.param))
-	} else {
-		(seg.sample_at(1.0), seg.sample_at(1.0 - EPS.param))
-	};
-
-	// eprintln!("{p0:?} {p1:?}");
-	let angle = (p1.y - p0.y).atan2(p1.x - p0.x);
-	// eprintln!("angle: {}", angle);
-	(angle * 10000.).round() / 1000.
-}
-
 fn sort_outgoing_edges_by_angle(graph: &mut MinorGraph) {
 	for (vertex_key, vertex) in graph.vertices.iter_mut() {
 		if vertex.outgoing_edges.len() > 2 {
-			vertex.outgoing_edges.sort_by(|&a, &b| {
-				// TODO(@TrueDoctor): Make more robust. The js version seems to sort the data slightly differently when the angles are reallly close. In that case put the edge wich was discovered later first.
-				let new = graph.edges[a].partial_cmp(&graph.edges[b]).unwrap();
-				let old = (get_incidence_angle(&graph.edges[a]) - (a.0.as_ffi() & 0xFFFFFF) as f64 / 1000000.)
-					.partial_cmp(&(get_incidence_angle(&graph.edges[b]) - (b.0.as_ffi() & 0xFFFFFF) as f64 / 1000000.))
-					.unwrap_or(b.cmp(&a));
-				if new != old {
-					// dbg!(new, old, a, b);
-				}
-				new
-			});
+			vertex.outgoing_edges.sort_by(|&a, &b| graph.edges[a].partial_cmp(&graph.edges[b]).unwrap());
 			if cfg!(feature = "logging") {
 				eprintln!("Outgoing edges for {:?}:", vertex_key);
 				for &edge_key in &vertex.outgoing_edges {
@@ -824,18 +800,15 @@ fn sort_outgoing_edges_by_angle(graph: &mut MinorGraph) {
 
 fn face_to_polygon(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>) -> Vec<DVec2> {
 	const CNT: usize = 3;
-	// #[cfg(feature = "logging")]
-	// eprintln!("incident node counts {}", face.incident_edges.len());
 
 	face.incident_edges
 		.iter()
 		.flat_map(|&edge_key| {
 			let edge = &edges[edge_key];
-			// eprintln!("{}", path_to_path_data(&edge.segments, 0.001));
 			edge.segments.iter().flat_map(move |seg| {
 				(0..CNT).map(move |i| {
 					let t0 = i as f64 / CNT as f64;
-					let t = if edge.direction_flag.forward() { t0 } else { 1.0 - t0 };
+					let t = if edge.direction_flag.forward() { t0 } else { 1. - t0 };
 					seg.sample_at(t)
 				})
 			})
@@ -908,18 +881,11 @@ fn compute_signed_area(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, Dual
 		let b = polygon[(i + 1) % polygon.len()];
 		area += a.x * b.y;
 		area -= b.x * a.y;
-		// let center = (a + b + c) / 3.;
-		// let winding = compute_point_winding(&polygon, center);
-		// if winding != 0 {
-		//         return (winding, center);
-		// }
 	}
 
 	#[cfg(feature = "logging")]
 	eprintln!("winding: {}", area);
 	area
-
-	// panic!("No ear in polygon found.");
 }
 
 /// Computes the dual graph from the minor graph.
@@ -1030,16 +996,17 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 	let mut visited_edges = HashSet::new();
 
 	if cfg!(feature = "logging") {
-		// eeprintln!("minor_to_dual: {:#?}", minor_to_dual_edge);
 		eprintln!("faces: {}, dual-edges: {}, cycles: {}", new_vertices.len(), dual_edges.len(), minor_graph.cycles.len())
 	}
 
 	// This can be very useful for debugging:
-	// Copy the face outlines to a file called faces_combined.csv and then use this
-	// gnuplot command:
-	// `plot 'faces_combined.csv' i 0:99 w l, 'faces_combined.csv' index 0 w l lc 'red'`
-	// the first part of the command plots all faces to the graph and the second comand
-	// plots one surface, specifed by the index, in red. This allows you to check if all surfaces are closed paths and can be used in conjunction with the flag debugging to identify issues later down the line as well
+	// Copy the face outlines to a file called faces_combined.csv and then use this gnuplot command:
+	// ```
+	// plot 'faces_combined.csv' i 0:99 w l, 'faces_combined.csv' index 0 w l lc 'red'
+	// ```
+	// The first part of the command plots all faces to the graph and the second comand plots one surface,
+	// specified by the index, in red. This allows you to check if all surfaces are closed paths and can
+	// be used in conjunction with the flag debugging to identify issues later down the line as well.
 	#[cfg(feature = "logging")]
 	for (vertex_key, vertex) in &dual_vertices {
 		eprintln!("\n\n#{:?}", vertex_key.0);
@@ -1118,7 +1085,6 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 			reverse_winding = true;
 		}
 		let outer_face_key = if count != 1 {
-			// return Err(BooleanError::MultipleOuterFaces);
 			#[cfg(feature = "logging")]
 			eprintln!("Found multiple outer faces: {areas:?}, falling back to area calculation");
 			let (key, _) = *areas.iter().max_by_key(|(_, area)| ((area.abs() * 1000.) as u64)).unwrap();
@@ -1335,7 +1301,6 @@ fn flag_faces(
 				}
 				visited_faces.insert(face_key);
 
-				// dbg!(face_key, a_count, b_count);
 				let a_flag = get_flag(a_count, a_fill_rule);
 				let b_flag = get_flag(b_count, b_fill_rule);
 				*flags.entry(face_key).or_default() = a_flag | (b_flag << 1);
@@ -1458,7 +1423,7 @@ fn dump_faces(
 				}
 			}
 
-			// poke holes in the face
+			// Poke holes in the face
 			if let Some(subtrees) = tree.outgoing_edges.get(&face_key) {
 				for subtree in subtrees {
 					let outer_face_key = subtree.component.outer_face.unwrap();
@@ -1499,7 +1464,6 @@ const OPERATION_PREDICATES: [fn(u8) -> bool; 6] = [
 	|flag: u8| flag > 0,               // Fracture
 ];
 
-// TODO: Impl error trait
 /// Represents errors that can occur during boolean operations on paths.
 #[derive(Debug)]
 pub enum BooleanError {
@@ -1507,6 +1471,17 @@ pub enum BooleanError {
 	MultipleOuterFaces,
 	/// Indicates that no valid ear was found in a polygon during triangulation. <https://en.wikipedia.org/wiki/Vertex_(geometry)#Ears>
 	NoEarInPolygon,
+	InvalidPathCommand(char),
+}
+
+impl Display for BooleanError {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::MultipleOuterFaces => f.write_str("Found multiple candidates for the outer face in a connected component of the dual graph."),
+			Self::NoEarInPolygon => f.write_str("Failed to compute winding order for one of the faces, this usually happens when the polygon is malformed."),
+			Self::InvalidPathCommand(cmd) => f.write_fmt(format_args!("Encountered a '{cmd}' while parsing the svg data which was not recogniezed")),
+		}
+	}
 }
 
 /// Performs boolean operations on two paths.
@@ -1519,8 +1494,8 @@ pub enum BooleanError {
 /// ```
 /// use path_bool::{path_boolean, FillRule, PathBooleanOperation, path_from_path_data, path_to_path_data};
 ///
-/// let path_a = path_from_path_data("M 10 10 L 50 10 L 30 40 Z");
-/// let path_b = path_from_path_data("M 20 30 L 60 30 L 60 50 L 20 50 Z");
+/// let path_a = path_from_path_data("M 10 10 L 50 10 L 30 40 Z").unwrap();
+/// let path_b = path_from_path_data("M 20 30 L 60 30 L 60 50 L 20 50 Z").unwrap();
 ///
 /// let result = path_boolean(
 ///     &path_a,
@@ -1573,13 +1548,12 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 
 	#[cfg(feature = "logging")]
 	for (edge, _, _) in split_edges.iter() {
-		// eprintln!("{}", edge.format_path());
 		eprintln!("{}", path_to_path_data(&vec![*edge], 0.001));
 	}
 
 	let total_bounding_box = match total_bounding_box {
 		Some(bb) => bb,
-		None => return Ok(Vec::new()), // input geometry is empty
+		None => return Ok(Vec::new()), // Input geometry is empty
 	};
 
 	let major_graph = find_vertices(&split_edges, total_bounding_box);
@@ -1604,7 +1578,6 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 
 	#[cfg(feature = "logging")]
 	for (key, edge) in minor_graph.edges.iter() {
-		// eprintln!("{}", edge.format_path());
 		eprintln!("{key:?}:\n{}", path_to_path_data(&edge.segments, 0.001));
 	}
 	#[cfg(feature = "logging")]
@@ -1662,10 +1635,9 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 
 #[cfg(test)]
 mod tests {
-	use std::f64::consts::TAU;
-
 	use super::*;
-	use glam::DVec2; // Assuming DVec2 is defined in your crate
+	use glam::DVec2;
+	use std::f64::consts::TAU; // Assuming DVec2 is defined in your crate
 
 	#[test]
 	fn test_split_at_intersections() {
@@ -1690,14 +1662,14 @@ mod tests {
 
 	fn unsplit_edges() -> Vec<(PathSegment, u8)> {
 		let unsplit_edges = vec![
-			(PathSegment::Arc(DVec2::new(39.0, 20.0), 19.0, 19.0, 0.0, false, true, DVec2::new(20.0, 39.0)), 1),
-			(PathSegment::Arc(DVec2::new(20.0, 39.0), 19.0, 19.0, 0.0, false, true, DVec2::new(1.0, 20.0)), 1),
-			(PathSegment::Arc(DVec2::new(1.0, 20.0), 19.0, 19.0, 0.0, false, true, DVec2::new(20.0, 1.0)), 1),
-			(PathSegment::Arc(DVec2::new(20.0, 1.0), 19.0, 19.0, 0.0, false, true, DVec2::new(39.0, 20.0)), 1),
-			(PathSegment::Arc(DVec2::new(47.0, 28.0), 19.0, 19.0, 0.0, false, true, DVec2::new(28.0, 47.0)), 2),
-			(PathSegment::Arc(DVec2::new(28.0, 47.0), 19.0, 19.0, 0.0, false, true, DVec2::new(9.0, 28.0)), 2),
-			(PathSegment::Arc(DVec2::new(9.0, 28.0), 19.0, 19.0, 0.0, false, true, DVec2::new(28.0, 9.0)), 2),
-			(PathSegment::Arc(DVec2::new(28.0, 9.0), 19.0, 19.0, 0.0, false, true, DVec2::new(47.0, 28.0)), 2),
+			(PathSegment::Arc(DVec2::new(39., 20.), 19., 19., 0., false, true, DVec2::new(20., 39.)), 1),
+			(PathSegment::Arc(DVec2::new(20., 39.), 19., 19., 0., false, true, DVec2::new(1., 20.)), 1),
+			(PathSegment::Arc(DVec2::new(1., 20.), 19., 19., 0., false, true, DVec2::new(20., 1.)), 1),
+			(PathSegment::Arc(DVec2::new(20., 1.), 19., 19., 0., false, true, DVec2::new(39., 20.)), 1),
+			(PathSegment::Arc(DVec2::new(47., 28.), 19., 19., 0., false, true, DVec2::new(28., 47.)), 2),
+			(PathSegment::Arc(DVec2::new(28., 47.), 19., 19., 0., false, true, DVec2::new(9., 28.)), 2),
+			(PathSegment::Arc(DVec2::new(9., 28.), 19., 19., 0., false, true, DVec2::new(28., 9.)), 2),
+			(PathSegment::Arc(DVec2::new(28., 9.), 19., 19., 0., false, true, DVec2::new(47., 28.)), 2),
 		];
 		unsplit_edges
 	}
@@ -1713,7 +1685,7 @@ mod tests {
 		let minor_graph = compute_minor(&major_graph);
 
 		// Print minor graph state
-		//     eprintln!("Minor Graph:");
+		eprintln!("Minor Graph:");
 		print_minor_graph_state(&minor_graph);
 
 		// Assertions
@@ -1817,18 +1789,18 @@ mod tests {
 	fn get_incidence_angle(edge: &MinorGraphEdge) -> f64 {
 		let seg = &edge.segments[0]; // First segment is always the incident one in both fwd and bwd
 		let (p0, p1) = if edge.direction_flag.forward() {
-			(seg.sample_at(0.0), seg.sample_at(0.1))
+			(seg.sample_at(0.), seg.sample_at(0.1))
 		} else {
-			(seg.sample_at(1.0), seg.sample_at(1.0 - 0.1))
+			(seg.sample_at(1.), seg.sample_at(1. - 0.1))
 		};
 		((p1.y - p0.y).atan2(p1.x - p0.x) + TAU) % TAU
 	}
 
 	#[test]
 	fn test_path_segment_horizontal_ray_intersection_count() {
-		let orig_seg = PathSegment::Arc(DVec2::new(24.0, 10.090978), 13.909023, 13.909023, 0.0, false, true, DVec2::new(47., 24.0));
+		let orig_seg = PathSegment::Arc(DVec2::new(24., 10.090978), 13.909023, 13.909023, 0., false, true, DVec2::new(47., 24.));
 
-		let point = DVec2::new(37.99, 24.0);
+		let point = DVec2::new(37.99, 24.);
 
 		eprintln!("Starting test with segment: {:?}", orig_seg);
 		eprintln!("Test point: {:?}", point);
@@ -1844,15 +1816,15 @@ mod tests {
 	#[test]
 	fn test_bounding_box_intersects_horizontal_ray() {
 		let bbox = Aabb {
-			top: 10.0,
-			right: 40.0,
-			bottom: 30.0,
-			left: 20.0,
+			top: 10.,
+			right: 40.,
+			bottom: 30.,
+			left: 20.,
 		};
 
-		assert!(bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(0.0, 30.0)));
-		assert!(bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(20.0, 30.0)));
-		assert!(bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(10.0, 20.0)));
-		assert!(!bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(30.0, 40.0)));
+		assert!(bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(0., 30.)));
+		assert!(bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(20., 30.)));
+		assert!(bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(10., 20.)));
+		assert!(!bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(30., 40.)));
 	}
 }

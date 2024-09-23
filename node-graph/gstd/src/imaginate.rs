@@ -517,10 +517,10 @@ pub fn pick_safe_imaginate_resolution((width, height): (f64, f64)) -> (u64, u64)
 		let scale = (MAX_RESOLUTION as f64 / resolution as f64).sqrt();
 		let size = size.as_dvec2() * scale;
 
-		if size.x < 64.0 {
+		if size.x < 64. {
 			// The image is extremely wide
 			(64, MAX_DIMENSION)
-		} else if size.y < 64.0 {
+		} else if size.y < 64. {
 			// The image is extremely high
 			(MAX_DIMENSION, 64)
 		} else {

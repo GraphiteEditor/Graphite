@@ -1926,10 +1926,10 @@ impl NodeGraphMessageHandler {
 		// }
 
 		let curve_length = 24.;
-		let curve_falloff_rate = curve_length * std::f64::consts::PI * 2.0;
+		let curve_falloff_rate = curve_length * std::f64::consts::PI * 2.;
 
-		let horizontal_curve_amount = -(2.0f64.powf((-10. * horizontal_gap) / curve_falloff_rate)) + 1.;
-		let vertical_curve_amount = -(2.0f64.powf((-10. * vertical_gap) / curve_falloff_rate)) + 1.;
+		let horizontal_curve_amount = -(2_f64.powf((-10. * horizontal_gap) / curve_falloff_rate)) + 1.;
+		let vertical_curve_amount = -(2_f64.powf((-10. * vertical_gap) / curve_falloff_rate)) + 1.;
 		let horizontal_curve = horizontal_curve_amount * curve_length;
 		let vertical_curve = vertical_curve_amount * curve_length;
 

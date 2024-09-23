@@ -34,7 +34,7 @@ use crate::EPS;
 /// use path_bool::PathSegment;
 /// use glam::DVec2;
 ///
-/// let line = PathSegment::Line(DVec2::new(0.0, 0.0), DVec2::new(1.0, 1.0));
+/// let line = PathSegment::Line(DVec2::new(0., 0.), DVec2::new(1., 1.));
 /// ```
 ///
 /// Creating a cubic Bézier curve:
@@ -43,10 +43,10 @@ use crate::EPS;
 /// use glam::DVec2;
 ///
 /// let cubic = PathSegment::Cubic(
-///     DVec2::new(0.0, 0.0),
-///     DVec2::new(1.0, 0.0),
-///     DVec2::new(1.0, 1.0),
-///     DVec2::new(2.0, 1.0)
+///     DVec2::new(0., 0.),
+///     DVec2::new(1., 0.),
+///     DVec2::new(1., 1.),
+///     DVec2::new(2., 1.)
 /// );
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -95,7 +95,7 @@ impl PathSegment {
 	/// use glam::DVec2;
 	/// use std::f64::consts::{TAU, FRAC_PI_4};
 	///
-	/// let line = PathSegment::Line(DVec2::new(0.0, 0.0), DVec2::new(1.0, 1.0));
+	/// let line = PathSegment::Line(DVec2::new(0., 0.), DVec2::new(1., 1.));
 	/// assert_eq!(line.start_angle(), TAU  - (FRAC_PI_4));
 	/// ```
 	pub fn start_angle(&self) -> f64 {
@@ -104,7 +104,7 @@ impl PathSegment {
 			PathSegment::Cubic(start, control1, control2, _) => {
 				let diff = control1 - start;
 				if diff.abs_diff_eq(DVec2::ZERO, EPS.point) {
-					// if this diff were empty too, the segments would have been convertet to a line
+					// if this diff were empty too, the segments would have been converted to a line
 					(control2 - start).angle_to(DVec2::X)
 				} else {
 					diff.angle_to(DVec2::X)
@@ -134,43 +134,42 @@ impl PathSegment {
 	/// use path_bool::PathSegment;
 	/// use glam::DVec2;
 	///
-	/// let line = PathSegment::Line(DVec2::new(0.0, 0.0), DVec2::new(1.0, 1.0));
-	/// assert_eq!(line.start_curvature(), 0.0);
+	/// let line = PathSegment::Line(DVec2::new(0., 0.), DVec2::new(1., 1.));
+	/// assert_eq!(line.start_curvature(), 0.);
 	///
 	/// let curve = PathSegment::Cubic(
-	///     DVec2::new(0.0, 0.0),
-	///     DVec2::new(0.0, 1.0),
-	///     DVec2::new(1.0, 1.0),
-	///     DVec2::new(1.0, 0.0)
+	///     DVec2::new(0., 0.),
+	///     DVec2::new(0., 1.),
+	///     DVec2::new(1., 1.),
+	///     DVec2::new(1., 0.)
 	/// );
-	/// assert!(curve.start_curvature() < 0.0);
+	/// assert!(curve.start_curvature() < 0.);
 	/// ```
 	pub fn start_curvature(&self) -> f64 {
 		match *self {
-			PathSegment::Line(_, _) => 0.0,
+			PathSegment::Line(_, _) => 0.,
 			PathSegment::Cubic(start, control1, control2, _) => {
 				let a = control1 - start;
 				let a = 3. * a;
-				let b = start - 2.0 * control1 + control2;
+				let b = start - 2. * control1 + control2;
 				let b = 6. * b;
 				let numerator = a.x * b.y - a.y * b.x;
 				let denominator = a.length_squared() * a.length();
-				// dbg!(a, b, numerator, denominator);
-				if denominator == 0.0 {
-					0.0
+				if denominator == 0. {
+					0.
 				} else {
 					numerator / denominator
 				}
 			}
 			PathSegment::Quadratic(start, control, end) => {
-				// first derivatiave
+				// First derivative
 				let a = 2. * (control - start);
-				// second derivatiave
-				let b = 2. * (start - 2.0 * control + end);
+				// Second derivative
+				let b = 2. * (start - 2. * control + end);
 				let numerator = a.x * b.y - a.y * b.x;
 				let denominator = a.length_squared() * a.length();
-				if denominator == 0.0 {
-					0.0
+				if denominator == 0. {
+					0.
 				} else {
 					numerator / denominator
 				}
@@ -196,10 +195,10 @@ impl PathSegment {
 	/// use path_bool::PathSegment;
 	/// use glam::DVec2;
 	///
-	/// let line = PathSegment::Line(DVec2::new(0.0, 0.0), DVec2::new(1.0, 1.0));
+	/// let line = PathSegment::Line(DVec2::new(0., 0.), DVec2::new(1., 1.));
 	/// let cubic = line.to_cubic();
-	/// assert_eq!(cubic[0], DVec2::new(0.0, 0.0));
-	/// assert_eq!(cubic[3], DVec2::new(1.0, 1.0));
+	/// assert_eq!(cubic[0], DVec2::new(0., 0.));
+	/// assert_eq!(cubic[3], DVec2::new(1., 1.));
 	/// ```
 	///
 	/// # Panics
@@ -257,10 +256,10 @@ impl PathSegment {
 	/// use path_bool::PathSegment;
 	/// use glam::DVec2;
 	///
-	/// let line = PathSegment::Line(DVec2::new(0.0, 0.0), DVec2::new(1.0, 1.0));
+	/// let line = PathSegment::Line(DVec2::new(0., 0.), DVec2::new(1., 1.));
 	/// let reversed = line.reverse();
-	/// assert_eq!(reversed.start(), DVec2::new(1.0, 1.0));
-	/// assert_eq!(reversed.end(), DVec2::new(0.0, 0.0));
+	/// assert_eq!(reversed.start(), DVec2::new(1., 1.));
+	/// assert_eq!(reversed.end(), DVec2::new(0., 0.));
 	/// ```
 	pub fn reverse(&self) -> PathSegment {
 		match *self {
@@ -283,7 +282,7 @@ impl PathSegment {
 	/// is an `Arc`, or `None` otherwise.
 	pub fn arc_segment_to_center(&self) -> Option<PathArcSegmentCenterParametrization> {
 		if let PathSegment::Arc(xy1, rx, ry, phi, fa, fs, xy2) = *self {
-			if rx == 0.0 || ry == 0.0 {
+			if rx == 0. || ry == 0. {
 				return None;
 			}
 
@@ -298,7 +297,7 @@ impl PathSegment {
 			let mut rx = rx.abs();
 			let mut ry = ry.abs();
 			let lambda = x1_prime2 / rx2 + y1_prime2 / ry2 + 1e-12;
-			if lambda > 1.0 {
+			if lambda > 1. {
 				let lambda_sqrt = lambda.sqrt();
 				rx *= lambda_sqrt;
 				ry *= lambda_sqrt;
@@ -307,7 +306,7 @@ impl PathSegment {
 				ry2 *= lambda_abs;
 			}
 
-			let sign = if fa == fs { -1.0 } else { 1.0 };
+			let sign = if fa == fs { -1. } else { 1. };
 			let multiplier = ((rx2 * ry2 - rx2 * y1_prime2 - ry2 * x1_prime2) / (rx2 * y1_prime2 + ry2 * x1_prime2)).sqrt();
 			let cx_prime = sign * multiplier * ((rx * xy1_prime.y) / ry);
 			let cy_prime = sign * multiplier * ((-ry * xy1_prime.x) / rx);
@@ -315,12 +314,12 @@ impl PathSegment {
 			let cxy = rotation_matrix.transpose() * DVec2::new(cx_prime, cy_prime) + (xy1 + xy2) * 0.5;
 
 			let vec1 = DVec2::new((xy1_prime.x - cx_prime) / rx, (xy1_prime.y - cy_prime) / ry);
-			let theta1 = vector_angle(DVec2::new(1.0, 0.0), vec1);
+			let theta1 = vector_angle(DVec2::new(1., 0.), vec1);
 			let mut delta_theta = vector_angle(vec1, DVec2::new((-xy1_prime.x - cx_prime) / rx, (-xy1_prime.y - cy_prime) / ry));
 
-			if !fs && delta_theta > 0.0 {
+			if !fs && delta_theta > 0. {
 				delta_theta -= TAU;
-			} else if fs && delta_theta < 0.0 {
+			} else if fs && delta_theta < 0. {
 				delta_theta += TAU;
 			}
 
@@ -342,7 +341,7 @@ impl PathSegment {
 	///
 	/// # Arguments
 	///
-	/// * `t` - A value between 0.0 and 1.0 representing the position along the segment.
+	/// * `t` - A value between 0. and 1. representing the position along the segment.
 	///
 	/// # Examples
 	///
@@ -350,8 +349,8 @@ impl PathSegment {
 	/// use path_bool::PathSegment;
 	/// use glam::DVec2;
 	///
-	/// let line = PathSegment::Line(DVec2::new(0.0, 0.0), DVec2::new(2.0, 2.0));
-	/// assert_eq!(line.sample_at(0.5), DVec2::new(1.0, 1.0));
+	/// let line = PathSegment::Line(DVec2::new(0., 0.), DVec2::new(2., 2.));
+	/// assert_eq!(line.sample_at(0.5), DVec2::new(1., 1.));
 	/// ```
 	pub fn sample_at(&self, t: f64) -> DVec2 {
 		match *self {
@@ -405,22 +404,22 @@ impl PathSegment {
 				let from_unit = DMat3::from_translation(center_param.center) * DMat3::from_angle(phi.to_radians()) * DMat3::from_scale(DVec2::new(rx, ry));
 
 				let theta = center_param.delta_theta / count as f64;
-				let k = (4.0 / 3.0) * (theta / 4.0).tan();
+				let k = (4. / 3.) * (theta / 4.).tan();
 				let sin_theta = theta.sin();
 				let cos_theta = theta.cos();
 
 				(0..count)
 					.map(|i| {
-						let start = DVec2::new(1.0, 0.0);
-						let control1 = DVec2::new(1.0, k);
+						let start = DVec2::new(1., 0.);
+						let control1 = DVec2::new(1., k);
 						let control2 = DVec2::new(cos_theta + k * sin_theta, sin_theta - k * cos_theta);
 						let end = DVec2::new(cos_theta, sin_theta);
 
 						let matrix = DMat3::from_angle(center_param.theta1 + i as f64 * theta) * from_unit;
-						let start = (matrix * start.extend(1.0)).truncate();
-						let control1 = (matrix * control1.extend(1.0)).truncate();
-						let control2 = (matrix * control2.extend(1.0)).truncate();
-						let end = (matrix * end.extend(1.0)).truncate();
+						let start = (matrix * start.extend(1.)).truncate();
+						let control1 = (matrix * control1.extend(1.)).truncate();
+						let control2 = (matrix * control2.extend(1.)).truncate();
+						let end = (matrix * end.extend(1.)).truncate();
 
 						PathSegment::Cubic(start, control1, control2, end)
 					})
@@ -466,7 +465,7 @@ impl PathArcSegmentCenterParametrization {
 		let mut xy2 = rotation_matrix * DVec2::new(self.rx * (self.theta1 + self.delta_theta).cos(), self.ry * (self.theta1 + self.delta_theta).sin()) + self.center;
 
 		let fa = self.delta_theta.abs() > PI;
-		let fs = self.delta_theta > 0.0;
+		let fs = self.delta_theta > 0.;
 		xy1 = start.unwrap_or(xy1);
 		xy2 = end.unwrap_or(xy2);
 
@@ -509,27 +508,27 @@ fn cubic_bounding_interval(p0: f64, p1: f64, p2: f64, p3: f64) -> (f64, f64) {
 	let mut min = p0.min(p3);
 	let mut max = p0.max(p3);
 
-	let a = 3.0 * (-p0 + 3.0 * p1 - 3.0 * p2 + p3);
-	let b = 6.0 * (p0 - 2.0 * p1 + p2);
-	let c = 3.0 * (p1 - p0);
-	let d = b * b - 4.0 * a * c;
+	let a = 3. * (-p0 + 3. * p1 - 3. * p2 + p3);
+	let b = 6. * (p0 - 2. * p1 + p2);
+	let c = 3. * (p1 - p0);
+	let d = b * b - 4. * a * c;
 
-	if d < 0.0 || a == 0.0 {
+	if d < 0. || a == 0. {
 		// TODO: if a=0, solve linear
 		return (min, max);
 	}
 
 	let sqrt_d = d.sqrt();
 
-	let t0 = (-b - sqrt_d) / (2.0 * a);
-	if 0.0 < t0 && t0 < 1.0 {
+	let t0 = (-b - sqrt_d) / (2. * a);
+	if 0. < t0 && t0 < 1. {
 		let x0 = eval_cubic_1d(p0, p1, p2, p3, t0);
 		min = min.min(x0);
 		max = max.max(x0);
 	}
 
-	let t1 = (-b + sqrt_d) / (2.0 * a);
-	if 0.0 < t1 && t1 < 1.0 {
+	let t1 = (-b + sqrt_d) / (2. * a);
+	if 0. < t1 && t1 < 1. {
 		let x1 = eval_cubic_1d(p0, p1, p2, p3, t1);
 		min = min.min(x1);
 		max = max.max(x1);
@@ -570,14 +569,14 @@ fn quadratic_bounding_interval(p0: f64, p1: f64, p2: f64) -> (f64, f64) {
 	let mut min = p0.min(p2);
 	let mut max = p0.max(p2);
 
-	let denominator = p0 - 2.0 * p1 + p2;
+	let denominator = p0 - 2. * p1 + p2;
 
-	if denominator == 0.0 {
+	if denominator == 0. {
 		return (min, max);
 	}
 
 	let t = (p0 - p1) / denominator;
-	if (0.0..=1.0).contains(&t) {
+	if (0.0..=1.).contains(&t) {
 		let x = eval_quadratic_1d(p0, p1, p2, t);
 		min = min.min(x);
 		max = max.max(x);
@@ -595,7 +594,7 @@ impl PathSegment {
 	///
 	/// # Returns
 	///
-	/// An `AaBb` representing the axis-aligned bounding box of the segment.
+	/// An [`Aabb`] representing the axis-aligned bounding box of the segment.
 	pub(crate) fn bounding_box(&self) -> Aabb {
 		match *self {
 			PathSegment::Line(start, end) => Aabb {
@@ -617,34 +616,34 @@ impl PathSegment {
 			PathSegment::Arc(start, rx, ry, phi, _, _, end) => {
 				if let Some(center_param) = self.arc_segment_to_center() {
 					let theta2 = center_param.theta1 + center_param.delta_theta;
-					let mut bounding_box = extend_bounding_box(Some(bounding_box_around_point(start, 0.0)), end);
+					let mut bounding_box = extend_bounding_box(Some(bounding_box_around_point(start, 0.)), end);
 
-					if phi == 0.0 || rx == ry {
-						// FIXME: the following gives false positives, resulting in larger boxes
+					if phi == 0. || rx == ry {
+						// TODO: Fix the fact that the following gives false positives, resulting in larger boxes
 						if in_interval(-PI, center_param.theta1, theta2) || in_interval(PI, center_param.theta1, theta2) {
 							bounding_box = extend_bounding_box(Some(bounding_box), DVec2::new(center_param.center.x - rx, center_param.center.y));
 						}
-						if in_interval(-PI / 2.0, center_param.theta1, theta2) || in_interval(3.0 * PI / 2.0, center_param.theta1, theta2) {
+						if in_interval(-PI / 2., center_param.theta1, theta2) || in_interval(3. * PI / 2., center_param.theta1, theta2) {
 							bounding_box = extend_bounding_box(Some(bounding_box), DVec2::new(center_param.center.x, center_param.center.y - ry));
 						}
-						if in_interval(0.0, center_param.theta1, theta2) || in_interval(2.0 * PI, center_param.theta1, theta2) {
+						if in_interval(0., center_param.theta1, theta2) || in_interval(2. * PI, center_param.theta1, theta2) {
 							bounding_box = extend_bounding_box(Some(bounding_box), DVec2::new(center_param.center.x + rx, center_param.center.y));
 						}
-						if in_interval(PI / 2.0, center_param.theta1, theta2) || in_interval(5.0 * PI / 2.0, center_param.theta1, theta2) {
+						if in_interval(PI / 2., center_param.theta1, theta2) || in_interval(5. * PI / 2., center_param.theta1, theta2) {
 							bounding_box = extend_bounding_box(Some(bounding_box), DVec2::new(center_param.center.x, center_param.center.y + ry));
 						}
-						expand_bounding_box(&bounding_box, 1e-11) // TODO: get rid of expansion
+						expand_bounding_box(&bounding_box, 1e-11) // TODO: Get rid of expansion
 					} else {
-						// TODO: don't convert to cubics
-						let cubics = self.arc_segment_to_cubics(PI / 16.0);
+						// TODO: Don't convert to cubics
+						let cubics = self.arc_segment_to_cubics(PI / 16.);
 						let mut bounding_box = None;
 						for cubic_seg in cubics {
 							bounding_box = Some(merge_bounding_boxes(bounding_box, &cubic_seg.bounding_box()));
 						}
-						bounding_box.unwrap_or_else(|| bounding_box_around_point(start, 0.0))
+						bounding_box.unwrap_or_else(|| bounding_box_around_point(start, 0.))
 					}
 				} else {
-					extend_bounding_box(Some(bounding_box_around_point(start, 0.0)), end)
+					extend_bounding_box(Some(bounding_box_around_point(start, 0.)), end)
 				}
 			}
 		}
@@ -654,7 +653,7 @@ impl PathSegment {
 	///
 	/// # Arguments
 	///
-	/// * `t` - A value between 0.0 and 1.0 representing the split point along the segment.
+	/// * `t` - A value between 0. and 1. representing the split point along the segment.
 	///
 	/// # Returns
 	///
@@ -666,10 +665,10 @@ impl PathSegment {
 	/// use path_bool::PathSegment;
 	/// use glam::DVec2;
 	///
-	/// let line = PathSegment::Line(DVec2::new(0.0, 0.0), DVec2::new(2.0, 2.0));
+	/// let line = PathSegment::Line(DVec2::new(0., 0.), DVec2::new(2., 2.));
 	/// let (first_half, second_half) = line.split_at(0.5);
-	/// assert_eq!(first_half.end(), DVec2::new(1.0, 1.0));
-	/// assert_eq!(second_half.start(), DVec2::new(1.0, 1.0));
+	/// assert_eq!(first_half.end(), DVec2::new(1., 1.));
+	/// assert_eq!(second_half.start(), DVec2::new(1., 1.));
 	/// ```
 	pub fn split_at(&self, t: f64) -> (PathSegment, PathSegment) {
 		match *self {

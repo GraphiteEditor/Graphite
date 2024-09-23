@@ -239,7 +239,7 @@ fn brush(_footprint: Footprint, image: ImageFrame<Color>, bounds: ImageFrame<Col
 			// For numerical stability we want to place the first blit point at a stable, integer offset
 			// in layer space.
 			let snap_offset = positions[0].floor() - positions[0];
-			let stroke_origin_in_layer = bbox.start - snap_offset - DVec2::splat(stroke.style.diameter / 2.0);
+			let stroke_origin_in_layer = bbox.start - snap_offset - DVec2::splat(stroke.style.diameter / 2.);
 			let stroke_to_layer = DAffine2::from_translation(stroke_origin_in_layer) * DAffine2::from_scale(stroke_size);
 
 			let normal_blend = BlendColorPairNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
@@ -297,7 +297,7 @@ fn brush(_footprint: Footprint, image: ImageFrame<Color>, bounds: ImageFrame<Col
 			}
 		}
 
-		let blend_params = BlendColorPairNode::new(CopiedNode::new(BlendMode::MultiplyAlpha), CopiedNode::new(100.0));
+		let blend_params = BlendColorPairNode::new(CopiedNode::new(BlendMode::MultiplyAlpha), CopiedNode::new(100.));
 		let blend_executor = BlendImageTupleNode::new(ValueNode::new(blend_params));
 		actual_image = blend_executor.eval((actual_image, erase_restore_mask));
 	}

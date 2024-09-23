@@ -513,7 +513,7 @@ mod tests {
 
 		let subpath: Subpath<EmptyId> = Subpath::from_bezier(&Bezier::from_quadratic_dvec2(start, handle, end));
 
-		assert_eq!(subpath.evaluate(SubpathTValue::GlobalEuclidean(0.0)), start);
-		assert_eq!(subpath.evaluate(SubpathTValue::GlobalEuclidean(1.0)), end);
+		assert_eq!(subpath.evaluate(SubpathTValue::GlobalEuclidean(0.)), start);
+		assert_eq!(subpath.evaluate(SubpathTValue::GlobalEuclidean(1.)), end);
 	}
 }

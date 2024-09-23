@@ -2285,7 +2285,7 @@ impl NodeNetworkInterface {
 			let chain_width_grid_spaces = self.chain_width(node_id, network_path);
 
 			let node_bottom_right = node_top_left + DVec2::new(width as f64, height as f64);
-			let chain_top_left = node_top_left - DVec2::new((chain_width_grid_spaces * crate::consts::GRID_SIZE) as f64, 0.0);
+			let chain_top_left = node_top_left - DVec2::new((chain_width_grid_spaces * crate::consts::GRID_SIZE) as f64, 0.);
 			let radius = 10.;
 			let subpath = bezier_rs::Subpath::new_rounded_rect(chain_top_left, node_bottom_right, [radius; 4]);
 			let node_click_target = ClickTarget::new(subpath, 0.);
@@ -5083,7 +5083,7 @@ impl Ports {
 
 	fn insert_layer_output(&mut self, node_top_left: DVec2) {
 		// The center of the click target is always 24 px down from the top left corner of the node
-		let center = node_top_left + DVec2::new(2. * 24., -8.0);
+		let center = node_top_left + DVec2::new(2. * 24., -8.);
 		self.insert_output_port_at_center(0, center);
 	}
 

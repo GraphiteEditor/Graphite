@@ -1,11 +1,11 @@
-use glam::DVec2;
-
 use crate::aabb::{bounding_box_max_extent, bounding_boxes_overlap, Aabb};
 use crate::epsilons::Epsilons;
 use crate::line_segment::{line_segment_intersection, line_segments_intersect};
 use crate::line_segment_aabb::line_segment_aabb_intersect;
 use crate::math::lerp;
 use crate::path_segment::PathSegment;
+
+use glam::DVec2;
 
 #[derive(Clone)]
 struct IntersectionSegment {
@@ -18,7 +18,7 @@ struct IntersectionSegment {
 #[inline(never)]
 fn subdivide_intersection_segment(int_seg: &IntersectionSegment) -> [IntersectionSegment; 2] {
 	let (seg0, seg1) = int_seg.seg.split_at(0.5);
-	let mid_param = (int_seg.start_param + int_seg.end_param) / 2.0;
+	let mid_param = (int_seg.start_param + int_seg.end_param) / 2.;
 	[
 		IntersectionSegment {
 			seg: seg0,
@@ -88,10 +88,9 @@ pub fn segments_equal(seg0: &PathSegment, seg1: &PathSegment, point_epsilon: f64
 }
 
 pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoints: bool, eps: &Epsilons) -> Vec<[f64; 2]> {
-	// dbg!(&seg0, &seg1, endpoints);
 	if let (PathSegment::Line(start0, end0), PathSegment::Line(start1, end1)) = (seg0, seg1) {
 		if let Some(st) = line_segment_intersection([*start0, *end0], [*start1, *end1], eps.param) {
-			if !endpoints && (st.0 < eps.param || st.0 > 1.0 - eps.param) && (st.1 < eps.param || st.1 > 1.0 - eps.param) {
+			if !endpoints && (st.0 < eps.param || st.0 > 1. - eps.param) && (st.1 < eps.param || st.1 > 1. - eps.param) {
 				return vec![];
 			}
 			return vec![st.into()];
@@ -103,14 +102,14 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 	let mut pairs = vec![(
 		IntersectionSegment {
 			seg: *seg0,
-			start_param: 0.0,
-			end_param: 1.0,
+			start_param: 0.,
+			end_param: 1.,
 			bounding_box: seg0.bounding_box(),
 		},
 		IntersectionSegment {
 			seg: *seg1,
-			start_param: 0.0,
-			end_param: 1.0,
+			start_param: 0.,
+			end_param: 1.,
 			bounding_box: seg1.bounding_box(),
 		},
 	)];
@@ -120,13 +119,12 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 	let mut subdivided0 = Vec::new();
 	let mut subdivided1 = Vec::new();
 
-	// check if start and end points are on the other bezier curves. If so, add as intersection.
+	// Check if start and end points are on the other bezier curves. If so, add an intersection.
 
 	while !pairs.is_empty() {
 		next_pairs.clear();
 
 		if pairs.len() > 1000 {
-			// TODO: check for intersections of the start/end points. If the two lines overlap, return split points for the start/end points. Use a binary search  to check where the points are on the line.
 			return calculate_overlap_intersections(seg0, seg1, eps);
 		}
 
@@ -143,7 +141,6 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 				let line_segment0 = path_segment_to_line_segment(&seg0.seg);
 				let line_segment1 = path_segment_to_line_segment(&seg1.seg);
 				if let Some(st) = line_segment_intersection(line_segment0, line_segment1, eps.param) {
-					// dbg!("pushing param");
 					params.push([lerp(seg0.start_param, seg0.end_param, st.0), lerp(seg1.start_param, seg1.end_param, st.1)]);
 				}
 			} else {
@@ -174,7 +171,7 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 	}
 
 	if !endpoints {
-		params.retain(|[s, t]| (s > &eps.param && s < &(1.0 - eps.param)) || (t > &eps.param && t < &(1.0 - eps.param)));
+		params.retain(|[s, t]| (s > &eps.param && s < &(1. - eps.param)) || (t > &eps.param && t < &(1. - eps.param)));
 	}
 
 	params
@@ -190,22 +187,22 @@ fn calculate_overlap_intersections(seg0: &PathSegment, seg1: &PathSegment, eps: 
 
 	// Check start0 against seg1
 	if let Some(t1) = find_point_on_segment(seg1, start0, eps) {
-		intersections.push([0.0, t1]);
+		intersections.push([0., t1]);
 	}
 
 	// Check end0 against seg1
 	if let Some(t1) = find_point_on_segment(seg1, end0, eps) {
-		intersections.push([1.0, t1]);
+		intersections.push([1., t1]);
 	}
 
 	// Check start1 against seg0
 	if let Some(t0) = find_point_on_segment(seg0, start1, eps) {
-		intersections.push([t0, 0.0]);
+		intersections.push([t0, 0.]);
 	}
 
 	// Check end1 against seg0
 	if let Some(t0) = find_point_on_segment(seg0, end1, eps) {
-		intersections.push([t0, 1.0]);
+		intersections.push([t0, 1.]);
 	}
 
 	// Remove duplicates and sort intersections
@@ -216,7 +213,7 @@ fn calculate_overlap_intersections(seg0: &PathSegment, seg1: &PathSegment, eps: 
 	if intersections.is_empty() {
 		// Check if segments are identical
 		if (start0.abs_diff_eq(start1, eps.point)) && end0.abs_diff_eq(end1, eps.point) {
-			return vec![[0.0, 0.0], [1.0, 1.0]];
+			return vec![[0., 0.], [1., 1.]];
 		}
 	} else if intersections.len() > 2 {
 		// Keep only the first and last intersection points
@@ -227,8 +224,8 @@ fn calculate_overlap_intersections(seg0: &PathSegment, seg1: &PathSegment, eps: 
 }
 
 fn find_point_on_segment(seg: &PathSegment, point: DVec2, eps: &Epsilons) -> Option<f64> {
-	let start = 0.0;
-	let end = 1.0;
+	let start = 0.;
+	let end = 1.;
 	let mut t = 0.5;
 
 	for _ in 0..32 {
@@ -251,9 +248,9 @@ fn find_point_on_segment(seg: &PathSegment, point: DVec2, eps: &Epsilons) -> Opt
 		}
 
 		if dist_start < dist_end {
-			t = (start + t) / 2.0;
+			t = (start + t) / 2.;
 		} else {
-			t = (t + end) / 2.0;
+			t = (t + end) / 2.;
 		}
 
 		if (end - start) < eps.param {
@@ -283,16 +280,16 @@ mod test {
 			DVec2::new(458.37027, 572.165771),
 			DVec2::new(428.525848, 486.720093),
 			DVec2::new(368.618805, 467.485992),
-			DVec2::new(273.0, 476.0),
+			DVec2::new(273., 476.),
 		)
 	}
 	fn b() -> PathSegment {
-		PathSegment::Cubic(DVec2::new(273.0, 476.0), DVec2::new(419.0, 463.0), DVec2::new(481.741198, 514.692273), DVec2::new(481.333333, 768.0))
+		PathSegment::Cubic(DVec2::new(273., 476.), DVec2::new(419., 463.), DVec2::new(481.741198, 514.692273), DVec2::new(481.333333, 768.))
 	}
 	fn c() -> PathSegment {
-		PathSegment::Cubic(DVec2::new(273.0, 476.0), DVec2::new(107.564178, 490.730591), DVec2::new(161.737915, 383.575775), DVec2::new(0.0, 340.0))
+		PathSegment::Cubic(DVec2::new(273., 476.), DVec2::new(107.564178, 490.730591), DVec2::new(161.737915, 383.575775), DVec2::new(0., 340.))
 	}
 	fn d() -> PathSegment {
-		PathSegment::Cubic(DVec2::new(0.0, 340.0), DVec2::new(161.737914, 383.575765), DVec2::new(107.564182, 490.730587), DVec2::new(273.0, 476.0))
+		PathSegment::Cubic(DVec2::new(0., 340.), DVec2::new(161.737914, 383.575765), DVec2::new(107.564182, 490.730587), DVec2::new(273., 476.))
 	}
 }

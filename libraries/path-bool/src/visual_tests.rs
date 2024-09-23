@@ -1,3 +1,6 @@
+use crate::path_boolean::{self, FillRule, PathBooleanOperation};
+use crate::path_data::{path_from_path_data, path_to_path_data};
+
 use core::panic;
 use glob::glob;
 use image::{DynamicImage, GenericImageView, RgbaImage};
@@ -7,9 +10,6 @@ use resvg::usvg::{Options, Tree};
 use std::fs;
 use std::path::PathBuf;
 use svg::parser::Event;
-
-use crate::path_boolean::{self, FillRule, PathBooleanOperation};
-use crate::path_data::{path_from_path_data, path_to_path_data};
 
 const TOLERANCE: u8 = 84;
 
@@ -31,7 +31,7 @@ fn visual_tests() {
 		("fracture", PathBooleanOperation::Fracture),
 	];
 
-	let folders: Vec<(String, PathBuf, &str, PathBooleanOperation)> = glob("__fixtures__/visual-tests/*/")
+	let folders: Vec<(String, PathBuf, &str, PathBooleanOperation)> = glob("visual-tests/*/")
 		.expect("Failed to read glob pattern")
 		.flat_map(|entry| {
 			let dir = entry.expect("Failed to get directory entry");
@@ -58,12 +58,18 @@ fn visual_tests() {
 		let mut width = String::new();
 		let mut height = String::new();
 		let mut view_box = String::new();
+		let mut transform = String::new();
 		for event in svg_tree {
 			match event {
 				Event::Tag("svg", svg::node::element::tag::Type::Start, attributes) => {
 					width = attributes.get("width").map(|s| s.to_string()).unwrap_or_default();
 					height = attributes.get("height").map(|s| s.to_string()).unwrap_or_default();
 					view_box = attributes.get("viewBox").map(|s| s.to_string()).unwrap_or_default();
+				}
+				Event::Tag("g", svg::node::element::tag::Type::Start, attributes) => {
+					if let Some(transform_attr) = attributes.get("transform") {
+						transform = transform_attr.to_string();
+					}
 				}
 				Event::Tag("path", svg::node::element::tag::Type::Empty, attributes) => {
 					let data = attributes.get("d").map(|s| s.to_string()).expect("Path data not found");
@@ -98,18 +104,24 @@ fn visual_tests() {
 		let a_node = paths[0].clone();
 		let b_node = paths[1].clone();
 
-		let a = path_from_path_data(&a_node.0);
-		let b = path_from_path_data(&b_node.0);
+		let a = path_from_path_data(&a_node.0).unwrap();
+		let b = path_from_path_data(&b_node.0).unwrap();
 
 		let a_fill_rule = get_fill_rule(&a_node.1);
 		let b_fill_rule = get_fill_rule(&b_node.1);
 
 		let result = path_boolean::path_boolean(&a, a_fill_rule, &b, b_fill_rule, op).unwrap();
 
-		// Create the result SVG with correct dimensions
+		// Create the result SVG with correct dimensions and transform
 		let mut result_svg = format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"{}\">", width, height, view_box);
+		if !transform.is_empty() {
+			result_svg.push_str(&format!("<g transform=\"{}\">", transform));
+		}
 		for path in &result {
 			result_svg.push_str(&format!("<path d=\"{}\" {}/>", path_to_path_data(path, 1e-4), first_path_attributes));
+		}
+		if !transform.is_empty() {
+			result_svg.push_str("</g>");
 		}
 		result_svg.push_str("</svg>");
 

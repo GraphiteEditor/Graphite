@@ -45,7 +45,7 @@ async fn draw_image_frame(_: (), image: ImageFrame<graphene_core::raster::SRGBA8
 		// TODO: replace "2d" with "bitmaprenderer" once we switch to ImageBitmap (lives on gpu) from ImageData (lives on cpu)
 		let context = canvas.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
 		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(array, image.image.width, image.image.height).expect("Failed to construct ImageData");
-		context.put_image_data(&image_data, 0.0, 0.0).unwrap();
+		context.put_image_data(&image_data, 0., 0.).unwrap();
 	}
 	graphene_core::application_io::SurfaceHandleFrame {
 		surface_handle,
