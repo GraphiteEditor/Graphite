@@ -974,12 +974,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::SetOpacityForSelectedLayers { opacity } => {
 				let opacity = opacity.clamp(0., 1.);
-				let mut added_transaction = false;
 				for layer in self.network_interface.selected_nodes(&[]).unwrap().selected_layers_except_artboards(&self.network_interface) {
-					if !added_transaction {
-						responses.add(DocumentMessage::AddTransaction);
-						added_transaction = true;
-					}
 					responses.add(GraphOperationMessage::OpacitySet { layer, opacity });
 				}
 			}
@@ -1942,6 +1937,7 @@ impl DocumentMessageHandler {
 							Message::NoOp
 						}
 					})
+					.on_commit(|_| DocumentMessage::AddTransaction.into())
 					.widget_holder(),
 				//
 				Separator::new(SeparatorType::Unrelated).widget_holder(),
