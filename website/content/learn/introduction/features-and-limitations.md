@@ -23,7 +23,7 @@ Raster image editing is a growing capability that will develop over time into th
 
 A prototype Brush tool exists letting you draw simple doodles and sketches. However it is very limited in its capabilities and there are multiple bugs and performance issues with the feature. It can be used in a limited capacity, but don't expect to paint anything too impressive using raster brushes quite yet.
 
-The raster-based Imaginate feature enables you to synthesize artwork using generative AI based on text descriptions. With it, you can also nondestructively modify your vector art and imported images. You can inpaint (or outpaint) the content in a specific masked part of an image or use it to touch up quick-and-dirty compositions. This feature is temporarily out of comission but will be resurrected, and further improved upon, in early 2024.
+The raster-based Imaginate feature enables you to synthesize artwork using generative AI based on text descriptions. With it, you can also nondestructively modify your vector art and imported images. You can inpaint (or outpaint) the content in a specific masked part of an image or use it to touch up quick-and-dirty compositions. This feature is temporarily out of comission but will be resurrected, and further improved upon, in the near future.
 
 ### Procedural design
 
@@ -69,11 +69,11 @@ Saved documents will eventually fail to render in future versions of the Graphit
 
 ### Limited raster capabilities
 
-While you can import bitmap images, apply image effects in the node graph, and draw brush strokes, there is not much tooling yet to make the overall raster workflow that useful. Marquee selection is an upcoming feature in the first half of 2024 which will significantly improve the utility of raster editing in Graphite. Hardware accelerated rendering, to offload work from the CPU to GPU, is also planned for early 2024 which will drastically improve the performance.
+While you can import bitmap images, apply image effects in the node graph, and draw brush strokes, there is not much tooling yet to make the overall raster workflow that useful. Marquee selection is an upcoming feature in the first half of 2025 which will significantly improve the utility of raster editing in Graphite. Hardware accelerated rendering, to offload work from the CPU to GPU, is also planned for early 2025 which will drastically improve the performance of working with millions of pixels.
 
 ### Performance bottlenecks
 
-Graphite has several temporary performance bottlenecks that currently yield poor performance when working with raster content, complex vector artwork, and large procedural node graphs. Each of these limitations will be resolved by finishing the implementations of the incomplete systems that impose slowdowns in their current forms. For example, caching in the node graph isn't operational and GPU-accelerated rendering isn't enabled yet. This will be a central focus throughout 2024.
+Graphite has several temporary performance bottlenecks that currently yield poor performance when working with raster content, complex vector artwork, and large procedural node graphs. Each of these limitations will be resolved by finishing the implementations of the incomplete systems that impose slowdowns in their current forms. For example, caching in the node graph isn't operational and GPU-accelerated rendering isn't enabled yet. This will be a central focus throughout 2024 and 2025.
 
 ### Best-effort Safari support
 

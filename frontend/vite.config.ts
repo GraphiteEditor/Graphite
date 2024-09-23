@@ -2,6 +2,7 @@
 
 import { spawnSync } from "child_process";
 
+import fs from "fs";
 import path from "path";
 
 import { svelte } from "@sveltejs/vite-plugin-svelte";
@@ -87,6 +88,7 @@ export default defineConfig({
 type LicenseInfo = {
 	licenseName: string;
 	licenseText: string;
+	noticeText?: string;
 	packages: PackageInfo[];
 };
 
@@ -117,70 +119,132 @@ function formatThirdPartyLicenses(jsLicenses: Dependency[]): string {
 		process.exit(1);
 	}
 
+	// Find then duplicate this license if one of its packages is `path-bool`, adding its notice text.
+	let foundLicensesIndex;
+	let foundPackagesIndex;
+	licenses.forEach((license, licenseIndex) => {
+		license.packages.forEach((pkg, pkgIndex) => {
+			if (pkg.name === "path-bool") {
+				foundLicensesIndex = licenseIndex;
+				foundPackagesIndex = pkgIndex;
+			}
+		});
+	});
+	if (foundLicensesIndex !== undefined && foundPackagesIndex !== undefined) {
+		const license = licenses[foundLicensesIndex];
+		const pkg = license.packages[foundPackagesIndex];
+
+		license.packages = license.packages.filter((pkg) => pkg.name !== "path-bool");
+		const noticeText = fs.readFileSync(path.resolve(__dirname, "../libraries/path-bool/NOTICE"), "utf8");
+
+		licenses.push({
+			licenseName: license.licenseName,
+			licenseText: license.licenseText,
+			noticeText,
+			packages: [pkg],
+		});
+	}
+
 	// Augment the imported Rust license list with the provided JS license list.
 	jsLicenses.forEach((jsLicense) => {
 		const name = jsLicense.name || "";
 		const version = jsLicense.version || "";
 		const author = jsLicense.author?.text() || "";
-		const licenseText = trimBlankLines(jsLicense.licenseText ?? "");
 		const licenseName = jsLicense.license || "";
+		const licenseText = trimBlankLines(jsLicense.licenseText || "");
+		const noticeText = trimBlankLines(jsLicense.noticeText || "");
+
 		let repository = jsLicense.repository || "";
 		if (repository && typeof repository === "object") repository = repository.url;
-
 		// Remove the `git+` or `git://` prefix and `.git` suffix.
 		const repo = repository ? repository.replace(/^.*(github.com\/.*?\/.*?)(?:.git)/, "https://$1") : repository;
 
-		const matchedLicense = licenses.find((license) => trimBlankLines(license.licenseText || "") === licenseText);
+		const matchedLicense = licenses.find(
+			(license) => license.licenseName === licenseName && trimBlankLines(license.licenseText || "") === licenseText && trimBlankLines(license.noticeText || "") === noticeText,
+		);
 
-		const packages: PackageInfo = { name, version, author, repository: repo };
-		if (matchedLicense) matchedLicense.packages.push(packages);
-		else licenses.push({ licenseName, licenseText, packages: [packages] });
+		const pkg: PackageInfo = { name, version, author, repository: repo };
+		if (matchedLicense) matchedLicense.packages.push(pkg);
+		else licenses.push({ licenseName, licenseText, noticeText, packages: [pkg] });
+	});
+
+	// Combine any license notices into the license text.
+	licenses.forEach((license, index) => {
+		if (license.noticeText) {
+			licenses[index].licenseText += "\n\n";
+			licenses[index].licenseText += " _______________________________________\n";
+			licenses[index].licenseText += "│                                       │\n";
+			licenses[index].licenseText += "│ THE FOLLOWING NOTICE FILE IS INCLUDED │\n";
+			licenses[index].licenseText += "│                                       │\n";
+			licenses[index].licenseText += " ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾\n\n";
+			licenses[index].licenseText += `${license.noticeText}\n`;
+			licenses[index].noticeText = undefined;
+		}
 	});
 
 	// De-duplicate any licenses with the same text by merging their lists of packages.
-	licenses.forEach((license, licenseIndex) => {
-		licenses.slice(0, licenseIndex).forEach((comparisonLicense) => {
-			if (license.licenseText === comparisonLicense.licenseText) {
-				license.packages.push(...comparisonLicense.packages);
+	const licensesNormalizedWhitespace = licenses.map((license) => license.licenseText.replace(/[\n\s]+/g, " ").trim());
+	licenses.forEach((currentLicense, currentLicenseIndex) => {
+		licenses.slice(0, currentLicenseIndex).forEach((comparisonLicense, comparisonLicenseIndex) => {
+			if (licensesNormalizedWhitespace[currentLicenseIndex] === licensesNormalizedWhitespace[comparisonLicenseIndex]) {
+				currentLicense.packages.push(...comparisonLicense.packages);
 				comparisonLicense.packages = [];
 				// After emptying the packages, the redundant license with no packages will be removed in the next step's `filter()`.
 			}
 		});
 	});
 
-	// Filter out the internal Graphite crates, which are not third-party.
+	// Filter out first-party internal Graphite crates.
 	licenses = licenses.filter((license) => {
 		license.packages = license.packages.filter(
 			(packageInfo) =>
 				!(packageInfo.repository && packageInfo.repository.toLowerCase().includes("github.com/GraphiteEditor/Graphite".toLowerCase())) &&
-				!(packageInfo.author && packageInfo.author.toLowerCase().includes("contact@graphite.rs")),
+				!(
+					packageInfo.author &&
+					packageInfo.author.toLowerCase().includes("contact@graphite.rs") &&
+					// Exclude a comma which indicates multiple authors, which we need to not filter out
+					!packageInfo.author.toLowerCase().includes(",")
+				),
 		);
 		return license.packages.length > 0;
 	});
 
-	// Sort the licenses, and the packages using each license, alphabetically.
-	licenses.sort((a, b) => a.licenseName.localeCompare(b.licenseName));
+	// Sort the licenses by the number of packages using the same license, and then alphabetically by license name.
 	licenses.sort((a, b) => a.licenseText.localeCompare(b.licenseText));
+	licenses.sort((a, b) => a.licenseName.localeCompare(b.licenseName));
+	licenses.sort((a, b) => b.packages.length - a.packages.length);
+	// Sort the individual packages using each license alphabetically.
 	licenses.forEach((license) => {
 		license.packages.sort((a, b) => a.name.localeCompare(b.name));
 	});
 
-	// Append a block for each license shared by multiple packages with identical license text.
-	let formattedLicenseNotice = "GRAPHITE THIRD-PARTY SOFTWARE LICENSE NOTICES";
-	licenses.forEach((license) => {
-		let packagesWithSameLicense = "";
-		license.packages.forEach((packageInfo) => {
-			const { name, version, author, repository } = packageInfo;
-			packagesWithSameLicense += `${name} ${version}${author ? ` - ${author}` : ""}${repository ? ` - ${repository}` : ""}\n`;
-		});
-		packagesWithSameLicense = packagesWithSameLicense.trim();
-		const packagesLineLength = Math.max(...packagesWithSameLicense.split("\n").map((line) => line.length));
+	// Prepare a header for the license notice.
+	let formattedLicenseNotice = "";
+	formattedLicenseNotice += "▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐\n";
+	formattedLicenseNotice += "▐▐                                                   ▐▐\n";
+	formattedLicenseNotice += "▐▐   GRAPHITE THIRD-PARTY SOFTWARE LICENSE NOTICES   ▐▐\n";
+	formattedLicenseNotice += "▐▐                                                   ▐▐\n";
+	formattedLicenseNotice += "▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐\n";
 
-		formattedLicenseNotice += "\n\n--------------------------------------------------------------------------------\n\n";
-		formattedLicenseNotice += `The following packages are licensed under the terms of the ${license.licenseName} license as printed beneath:\n`;
-		formattedLicenseNotice += `${"_".repeat(packagesLineLength)}\n`;
-		formattedLicenseNotice += `${packagesWithSameLicense}\n`;
-		formattedLicenseNotice += `${"‾".repeat(packagesLineLength)}\n`;
+	// Append a block for each license shared by multiple packages with identical license text.
+	licenses.forEach((license) => {
+		let packagesWithSameLicense = license.packages.map((packageInfo) => {
+			const { name, version, author, repository } = packageInfo;
+			return `${name} ${version}${author ? ` - ${author}` : ""}${repository ? ` - ${repository}` : ""}`;
+		});
+		const multi = packagesWithSameLicense.length !== 1;
+		const saysLicense = license.licenseName.toLowerCase().includes("license");
+		const header = `The package${multi ? "s" : ""} listed here ${multi ? "are" : "is"} licensed under the terms of the ${license.licenseName}${saysLicense ? "" : " license"} printed beneath`;
+		const packagesLineLength = Math.max(header.length, ...packagesWithSameLicense.map((line) => line.length));
+		packagesWithSameLicense = packagesWithSameLicense.map((line) => `│ ${line}${" ".repeat(packagesLineLength - line.length)} │`);
+
+		formattedLicenseNotice += "\n";
+		formattedLicenseNotice += ` ${"_".repeat(packagesLineLength + 2)}\n`;
+		formattedLicenseNotice += `│ ${" ".repeat(packagesLineLength)} │\n`;
+		formattedLicenseNotice += `│ ${header}${" ".repeat(packagesLineLength - header.length)} │\n`;
+		formattedLicenseNotice += `│${"_".repeat(packagesLineLength + 2)}│\n`;
+		formattedLicenseNotice += `${packagesWithSameLicense.join("\n")}\n`;
+		formattedLicenseNotice += ` ${"‾".repeat(packagesLineLength + 2)}\n`;
 		formattedLicenseNotice += `${license.licenseText}\n`;
 	});
 	return formattedLicenseNotice;
@@ -262,10 +326,8 @@ function htmlDecode(input: string): string {
 	};
 
 	return input.replace(/&([^;]+);/g, (entity: string, entityCode: string) => {
-		const maybeEntity = Object.keys(htmlEntities).find((key) => key === entityCode);
-		if (maybeEntity) {
-			return maybeEntity[1];
-		}
+		const maybeEntity = Object.entries(htmlEntities).find(([key, _]) => key === entityCode);
+		if (maybeEntity) return maybeEntity[1];
 
 		let match;
 		// eslint-disable-next-line no-cond-assign
