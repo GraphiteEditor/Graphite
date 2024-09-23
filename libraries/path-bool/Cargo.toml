@@ -2,12 +2,11 @@
 name = "path-bool"
 version = "0.1.0"
 rust-version = "1.81"
-authors = ["Graphite Authors <contact@graphite.rs>"]
+authors = ["Graphite Authors <contact@graphite.rs>", "Adam Platkevič"]
 edition = "2021"
 keywords = ["bezier", "boolean", "path", "ops", "operations", "2d"]
 categories = ["graphics", "mathematics"]
 license = "MIT OR Apache-2.0"
-
 
 [features]
 logging = ["parsing"]
@@ -26,7 +25,7 @@ resvg = "0.42"
 image = "0.24"
 
 # Required dependencies
-criterion = { version = "0.5", features = ["html_reports"]}
+criterion = { version = "0.5", features = ["html_reports"] }
 
 # Benchmarks
 [[bench]]
