@@ -28,8 +28,8 @@ Here's a basic example of performing an intersection operation on two paths:
 use path_bool::{path_boolean, FillRule, PathBooleanOperation, path_from_path_data, path_to_path_data};
 
 fn main() {
-    let path_a = path_from_path_data("M 10 10 L 50 10 L 30 40 Z");
-    let path_b = path_from_path_data("M 20 30 L 60 30 L 60 50 L 20 50 Z");
+    let path_a = path_from_path_data("M 10 10 L 50 10 L 30 40 Z").unwrap();
+    let path_b = path_from_path_data("M 20 30 L 60 30 L 60 50 L 20 50 Z").unwrap();
 
     let result = path_boolean(
         &path_a,

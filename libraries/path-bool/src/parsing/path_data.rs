@@ -1,9 +1,10 @@
 use crate::path::{path_from_commands, path_to_commands, Path};
 use crate::path_command::{AbsolutePathCommand, PathCommand, RelativePathCommand};
+use crate::BooleanError;
 use glam::DVec2;
 use regex::Regex;
 
-pub fn commands_from_path_data(d: &str) -> Vec<PathCommand> {
+pub fn commands_from_path_data(d: &str) -> Result<Vec<PathCommand>, BooleanError> {
 	let re_float = Regex::new(r"^\s*,?\s*(-?\d*(?:\d\.|\.\d|\d)\d*(?:[eE][+\-]?\d+)?)").unwrap();
 	let re_cmd = Regex::new(r"^\s*([MLCSQTAZHVmlhvcsqtaz])").unwrap();
 	let re_bool = Regex::new(r"^\s*,?\s*([01])").unwrap();
@@ -112,15 +113,15 @@ pub fn commands_from_path_data(d: &str) -> Vec<PathCommand> {
 				get_float(&mut i),
 				get_float(&mut i),
 			))),
-			_ => panic!("Invalid command: {}", cmd),
+			_ => return Err(BooleanError::InvalidPathCommand(cmd)),
 		}
 	}
 
-	commands
+	Ok(commands)
 }
 
-pub fn path_from_path_data(d: &str) -> Path {
-	path_from_commands(commands_from_path_data(d)).collect()
+pub fn path_from_path_data(d: &str) -> Result<Path, BooleanError> {
+	Ok(path_from_commands(commands_from_path_data(d)?).collect())
 }
 
 pub fn path_to_path_data(path: &Path, eps: f64) -> String {

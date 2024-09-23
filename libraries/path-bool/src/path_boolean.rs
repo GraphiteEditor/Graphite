@@ -77,6 +77,7 @@ use glam::DVec2;
 use slotmap::{new_key_type, SlotMap};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::fmt::Display;
 
 /// Represents the types of boolean operations that can be performed on paths.
 #[derive(Debug, Clone, Copy)]
@@ -1463,7 +1464,6 @@ const OPERATION_PREDICATES: [fn(u8) -> bool; 6] = [
 	|flag: u8| flag > 0,               // Fracture
 ];
 
-// TODO: Impl error trait
 /// Represents errors that can occur during boolean operations on paths.
 #[derive(Debug)]
 pub enum BooleanError {
@@ -1471,6 +1471,17 @@ pub enum BooleanError {
 	MultipleOuterFaces,
 	/// Indicates that no valid ear was found in a polygon during triangulation. <https://en.wikipedia.org/wiki/Vertex_(geometry)#Ears>
 	NoEarInPolygon,
+	InvalidPathCommand(char),
+}
+
+impl Display for BooleanError {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::MultipleOuterFaces => f.write_str("Found multiple candidates for the outer face in a connected component of the dual graph."),
+			Self::NoEarInPolygon => f.write_str("Failed to compute winding order for one of the faces, this usually happens when the polygon is malformed."),
+			Self::InvalidPathCommand(cmd) => f.write_fmt(format_args!("Encountered a '{cmd}' while parsing the svg data which was not recogniezed")),
+		}
+	}
 }
 
 /// Performs boolean operations on two paths.
@@ -1483,8 +1494,8 @@ pub enum BooleanError {
 /// ```
 /// use path_bool::{path_boolean, FillRule, PathBooleanOperation, path_from_path_data, path_to_path_data};
 ///
-/// let path_a = path_from_path_data("M 10 10 L 50 10 L 30 40 Z");
-/// let path_b = path_from_path_data("M 20 30 L 60 30 L 60 50 L 20 50 Z");
+/// let path_a = path_from_path_data("M 10 10 L 50 10 L 30 40 Z").unwrap();
+/// let path_b = path_from_path_data("M 20 30 L 60 30 L 60 50 L 20 50 Z").unwrap();
 ///
 /// let result = path_boolean(
 ///     &path_a,

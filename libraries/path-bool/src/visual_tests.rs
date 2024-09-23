@@ -104,8 +104,8 @@ fn visual_tests() {
 		let a_node = paths[0].clone();
 		let b_node = paths[1].clone();
 
-		let a = path_from_path_data(&a_node.0);
-		let b = path_from_path_data(&b_node.0);
+		let a = path_from_path_data(&a_node.0).unwrap();
+		let b = path_from_path_data(&b_node.0).unwrap();
 
 		let a_fill_rule = get_fill_rule(&a_node.1);
 		let b_fill_rule = get_fill_rule(&b_node.1);
