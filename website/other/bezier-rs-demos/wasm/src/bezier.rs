@@ -1,10 +1,12 @@
 use crate::svg_drawing::*;
-use crate::utils::parse_cap;
+use crate::utils::{parse_cap, parse_point};
 
 use bezier_rs::{ArcStrategy, ArcsOptions, Bezier, Identifier, TValue, TValueType};
 
 use glam::DVec2;
+use js_sys::Array;
 use wasm_bindgen::prelude::*;
+use wasm_bindgen::{JsCast, JsValue};
 
 #[wasm_bindgen]
 pub enum WasmMaximizeArcs {
@@ -19,11 +21,6 @@ const SCALE_UNIT_VECTOR_FACTOR: f64 = 50.;
 #[wasm_bindgen]
 #[derive(Clone)]
 pub struct WasmBezier(Bezier);
-
-/// Serialize some data and then convert it to a JsValue.
-fn to_js_value<T: serde::Serialize>(data: T) -> JsValue {
-	serde_wasm_bindgen::to_value(&serde_json::to_string(&data).unwrap()).unwrap()
-}
 
 fn convert_wasm_maximize_arcs(wasm_enum_value: WasmMaximizeArcs) -> ArcStrategy {
 	match wasm_enum_value {
@@ -53,22 +50,30 @@ impl Identifier for EmptyId {
 
 #[wasm_bindgen]
 impl WasmBezier {
-	/// Expect js_points to be a list of 2 pairs.
 	pub fn new_linear(js_points: JsValue) -> WasmBezier {
-		let points: [DVec2; 2] = serde_wasm_bindgen::from_value(js_points).unwrap();
-		WasmBezier(Bezier::from_linear_dvec2(points[0], points[1]))
+		let array = js_points.dyn_into::<Array>().unwrap();
+		let point1 = parse_point(&array.get(0));
+		let point2 = parse_point(&array.get(1));
+		WasmBezier(Bezier::from_linear_dvec2(point1, point2))
 	}
 
 	/// Expect js_points to be a list of 3 pairs.
 	pub fn new_quadratic(js_points: JsValue) -> WasmBezier {
-		let points: [DVec2; 3] = serde_wasm_bindgen::from_value(js_points).unwrap();
-		WasmBezier(Bezier::from_quadratic_dvec2(points[0], points[1], points[2]))
+		let array = js_points.dyn_into::<Array>().unwrap();
+		let point1 = parse_point(&array.get(0));
+		let point2 = parse_point(&array.get(1));
+		let point3 = parse_point(&array.get(2));
+		WasmBezier(Bezier::from_quadratic_dvec2(point1, point2, point3))
 	}
 
 	/// Expect js_points to be a list of 4 pairs.
 	pub fn new_cubic(js_points: JsValue) -> WasmBezier {
-		let points: [DVec2; 4] = serde_wasm_bindgen::from_value(js_points).unwrap();
-		WasmBezier(Bezier::from_cubic_dvec2(points[0], points[1], points[2], points[3]))
+		let array = js_points.dyn_into::<Array>().unwrap();
+		let point1 = parse_point(&array.get(0));
+		let point2 = parse_point(&array.get(1));
+		let point3 = parse_point(&array.get(2));
+		let point4 = parse_point(&array.get(3));
+		WasmBezier(Bezier::from_cubic_dvec2(point1, point2, point3, point4))
 	}
 
 	fn draw_bezier_through_points(bezier: Bezier, through_point: DVec2) -> String {
@@ -86,15 +91,21 @@ impl WasmBezier {
 	}
 
 	pub fn quadratic_through_points(js_points: JsValue, t: f64) -> String {
-		let points: [DVec2; 3] = serde_wasm_bindgen::from_value(js_points).unwrap();
-		let bezier = Bezier::quadratic_through_points(points[0], points[1], points[2], Some(t));
-		WasmBezier::draw_bezier_through_points(bezier, points[1])
+		let array = js_points.dyn_into::<Array>().unwrap();
+		let point1 = parse_point(&array.get(0));
+		let point2 = parse_point(&array.get(1));
+		let point3 = parse_point(&array.get(2));
+		let bezier = Bezier::quadratic_through_points(point1, point2, point3, Some(t));
+		WasmBezier::draw_bezier_through_points(bezier, point2)
 	}
 
 	pub fn cubic_through_points(js_points: JsValue, t: f64, midpoint_separation: f64) -> String {
-		let points: [DVec2; 3] = serde_wasm_bindgen::from_value(js_points).unwrap();
-		let bezier = Bezier::cubic_through_points(points[0], points[1], points[2], Some(t), Some(midpoint_separation));
-		WasmBezier::draw_bezier_through_points(bezier, points[1])
+		let array = js_points.dyn_into::<Array>().unwrap();
+		let point1 = parse_point(&array.get(0));
+		let point2 = parse_point(&array.get(1));
+		let point3 = parse_point(&array.get(2));
+		let bezier = Bezier::cubic_through_points(point1, point2, point3, Some(t), Some(midpoint_separation));
+		WasmBezier::draw_bezier_through_points(bezier, point2)
 	}
 
 	pub fn set_start(&mut self, x: f64, y: f64) {
@@ -114,7 +125,12 @@ impl WasmBezier {
 	}
 
 	pub fn get_points(&self) -> JsValue {
-		to_js_value(self.0.get_points().collect::<Vec<DVec2>>())
+		JsValue::from(
+			self.0
+				.get_points()
+				.map(|point| [JsValue::from_f64(point.x), JsValue::from_f64(point.y)].iter().collect::<Array>())
+				.collect::<Array>(),
+		)
 	}
 
 	fn get_bezier_path(&self) -> String {
@@ -434,8 +450,10 @@ impl WasmBezier {
 	}
 
 	pub fn intersect_line_segment(&self, js_points: JsValue) -> String {
-		let points: [DVec2; 2] = serde_wasm_bindgen::from_value(js_points).unwrap();
-		let line = Bezier::from_linear_dvec2(points[0], points[1]);
+		let array = js_points.dyn_into::<Array>().unwrap();
+		let point1 = parse_point(&array.get(0));
+		let point2 = parse_point(&array.get(1));
+		let line = Bezier::from_linear_dvec2(point1, point2);
 
 		let bezier_curve_svg = self.get_bezier_path();
 
@@ -454,8 +472,11 @@ impl WasmBezier {
 	}
 
 	pub fn intersect_quadratic_segment(&self, js_points: JsValue, error: f64, minimum_separation: f64) -> String {
-		let points: [DVec2; 3] = serde_wasm_bindgen::from_value(js_points).unwrap();
-		let quadratic = Bezier::from_quadratic_dvec2(points[0], points[1], points[2]);
+		let array = js_points.dyn_into::<Array>().unwrap();
+		let point1 = parse_point(&array.get(0));
+		let point2 = parse_point(&array.get(1));
+		let point3 = parse_point(&array.get(2));
+		let quadratic = Bezier::from_quadratic_dvec2(point1, point2, point3);
 
 		let bezier_curve_svg = self.get_bezier_path();
 
@@ -474,8 +495,12 @@ impl WasmBezier {
 	}
 
 	pub fn intersect_cubic_segment(&self, js_points: JsValue, error: f64, minimum_separation: f64) -> String {
-		let points: [DVec2; 4] = serde_wasm_bindgen::from_value(js_points).unwrap();
-		let cubic = Bezier::from_cubic_dvec2(points[0], points[1], points[2], points[3]);
+		let array = js_points.dyn_into::<Array>().unwrap();
+		let point1 = parse_point(&array.get(0));
+		let point2 = parse_point(&array.get(1));
+		let point3 = parse_point(&array.get(2));
+		let point4 = parse_point(&array.get(3));
+		let cubic = Bezier::from_cubic_dvec2(point1, point2, point3, point4);
 
 		let bezier_curve_svg = self.get_bezier_path();
 
@@ -511,23 +536,25 @@ impl WasmBezier {
 	}
 
 	pub fn intersect_rectangle(&self, js_points: JsValue) -> String {
-		let points: [DVec2; 2] = serde_wasm_bindgen::from_value(js_points).unwrap();
+		let array = js_points.dyn_into::<Array>().unwrap();
+		let point1 = parse_point(&array.get(0));
+		let point2 = parse_point(&array.get(1));
 
 		let bezier_curve_svg = self.get_bezier_path();
 
 		let mut rectangle_svg = String::new();
 		[
-			Bezier::from_linear_coordinates(points[0].x, points[0].y, points[1].x, points[0].y),
-			Bezier::from_linear_coordinates(points[1].x, points[0].y, points[1].x, points[1].y),
-			Bezier::from_linear_coordinates(points[1].x, points[1].y, points[0].x, points[1].y),
-			Bezier::from_linear_coordinates(points[0].x, points[1].y, points[0].x, points[0].y),
+			Bezier::from_linear_coordinates(point1.x, point1.y, point2.x, point1.y),
+			Bezier::from_linear_coordinates(point2.x, point1.y, point2.x, point2.y),
+			Bezier::from_linear_coordinates(point2.x, point2.y, point1.x, point2.y),
+			Bezier::from_linear_coordinates(point1.x, point2.y, point1.x, point1.y),
 		]
 		.iter()
 		.for_each(|line| line.to_svg(&mut rectangle_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new()));
 
 		let intersections_svg = self
 			.0
-			.rectangle_intersections(points[0], points[1])
+			.rectangle_intersections(point1, point2)
 			.iter()
 			.map(|intersection_t| {
 				let point = &self.0.evaluate(TValue::Parametric(*intersection_t));
@@ -650,18 +677,25 @@ impl WasmBezier {
 	}
 
 	pub fn join(&self, js_points: &JsValue) -> String {
+		let array = js_points.to_owned().dyn_into::<Array>().unwrap();
 		let other_bezier: Bezier = match self.0.get_points().count() {
 			2 => {
-				let points: [DVec2; 2] = serde_wasm_bindgen::from_value(js_points.into()).unwrap();
-				Bezier::from_linear_dvec2(points[0], points[1])
+				let point1 = parse_point(&array.get(0));
+				let point2 = parse_point(&array.get(1));
+				Bezier::from_linear_dvec2(point1, point2)
 			}
 			3 => {
-				let points: [DVec2; 3] = serde_wasm_bindgen::from_value(js_points.into()).unwrap();
-				Bezier::from_quadratic_dvec2(points[0], points[1], points[2])
+				let point1 = parse_point(&array.get(0));
+				let point2 = parse_point(&array.get(1));
+				let point3 = parse_point(&array.get(2));
+				Bezier::from_quadratic_dvec2(point1, point2, point3)
 			}
 			4 => {
-				let points: [DVec2; 4] = serde_wasm_bindgen::from_value(js_points.into()).unwrap();
-				Bezier::from_cubic_dvec2(points[0], points[1], points[2], points[3])
+				let point1 = parse_point(&array.get(0));
+				let point2 = parse_point(&array.get(1));
+				let point3 = parse_point(&array.get(2));
+				let point4 = parse_point(&array.get(3));
+				Bezier::from_cubic_dvec2(point1, point2, point3, point4)
 			}
 			_ => unreachable!(),
 		};

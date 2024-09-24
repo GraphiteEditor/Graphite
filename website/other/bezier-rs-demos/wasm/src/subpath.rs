@@ -1,12 +1,14 @@
 use crate::svg_drawing::*;
-use crate::utils::{parse_cap, parse_join};
+use crate::utils::{parse_cap, parse_join, parse_point};
 
 use bezier_rs::{Bezier, ManipulatorGroup, Subpath, SubpathTValue, TValueType};
 
 use glam::DVec2;
+use js_sys::Array;
 use js_sys::Math;
 use std::fmt::Write;
 use wasm_bindgen::prelude::*;
+use wasm_bindgen::{JsCast, JsValue};
 
 #[derive(Clone, PartialEq, Hash)]
 pub(crate) struct EmptyId;
@@ -34,8 +36,21 @@ fn parse_t_variant(t_variant: &String, t: f64) -> SubpathTValue {
 #[wasm_bindgen]
 impl WasmSubpath {
 	/// Expects js_points to be an unbounded list of triples, where each item is a tuple of floats.
+	/// The input TypeScript type is: (number[] | undefined)[][]
 	pub fn from_triples(js_points: JsValue, closed: bool) -> WasmSubpath {
-		let point_triples: Vec<[Option<DVec2>; 3]> = serde_wasm_bindgen::from_value(js_points).unwrap();
+		let point_triples = js_points
+			.dyn_into::<Array>()
+			.unwrap()
+			.iter()
+			.map(|manipulator_group| {
+				let triple = manipulator_group.dyn_into::<Array>().unwrap();
+				let anchor = parse_point(&triple.get(0));
+				let in_handle = if triple.get(1).is_falsy() { None } else { Some(parse_point(&triple.get(1))) };
+				let out_handle = if triple.get(2).is_falsy() { None } else { Some(parse_point(&triple.get(2))) };
+				[Some(anchor), in_handle, out_handle]
+			})
+			.collect::<Vec<_>>();
+
 		let manipulator_groups = point_triples
 			.into_iter()
 			.map(|point_triple| ManipulatorGroup {
@@ -273,8 +288,10 @@ impl WasmSubpath {
 	}
 
 	pub fn intersect_line_segment(&self, js_points: JsValue, error: f64, minimum_separation: f64) -> String {
-		let points: [DVec2; 2] = serde_wasm_bindgen::from_value(js_points).unwrap();
-		let line = Bezier::from_linear_dvec2(points[0], points[1]);
+		let array = js_points.dyn_into::<Array>().unwrap();
+		let point1 = parse_point(&array.get(0));
+		let point2 = parse_point(&array.get(1));
+		let line = Bezier::from_linear_dvec2(point1, point2);
 
 		let subpath_svg = self.to_default_svg();
 
@@ -305,8 +322,11 @@ impl WasmSubpath {
 	}
 
 	pub fn intersect_quadratic_segment(&self, js_points: JsValue, error: f64, minimum_separation: f64) -> String {
-		let points: [DVec2; 3] = serde_wasm_bindgen::from_value(js_points).unwrap();
-		let line = Bezier::from_quadratic_dvec2(points[0], points[1], points[2]);
+		let array = js_points.dyn_into::<Array>().unwrap();
+		let point1 = parse_point(&array.get(0));
+		let point2 = parse_point(&array.get(1));
+		let point3 = parse_point(&array.get(2));
+		let line = Bezier::from_quadratic_dvec2(point1, point2, point3);
 
 		let subpath_svg = self.to_default_svg();
 
@@ -337,8 +357,12 @@ impl WasmSubpath {
 	}
 
 	pub fn intersect_cubic_segment(&self, js_points: JsValue, error: f64, minimum_separation: f64) -> String {
-		let points: [DVec2; 4] = serde_wasm_bindgen::from_value(js_points).unwrap();
-		let line = Bezier::from_cubic_dvec2(points[0], points[1], points[2], points[3]);
+		let array = js_points.dyn_into::<Array>().unwrap();
+		let point1 = parse_point(&array.get(0));
+		let point2 = parse_point(&array.get(1));
+		let point3 = parse_point(&array.get(2));
+		let point4 = parse_point(&array.get(3));
+		let line = Bezier::from_cubic_dvec2(point1, point2, point3, point4);
 
 		let subpath_svg = self.to_default_svg();
 
@@ -387,23 +411,25 @@ impl WasmSubpath {
 	}
 
 	pub fn intersect_rectangle(&self, js_points: JsValue, error: f64, minimum_separation: f64) -> String {
-		let points: [DVec2; 2] = serde_wasm_bindgen::from_value(js_points).unwrap();
+		let array = js_points.dyn_into::<Array>().unwrap();
+		let point1 = parse_point(&array.get(0));
+		let point2 = parse_point(&array.get(1));
 
 		let subpath_svg = self.to_default_svg();
 
 		let mut rectangle_svg = String::new();
 		[
-			Bezier::from_linear_coordinates(points[0].x, points[0].y, points[1].x, points[0].y),
-			Bezier::from_linear_coordinates(points[1].x, points[0].y, points[1].x, points[1].y),
-			Bezier::from_linear_coordinates(points[1].x, points[1].y, points[0].x, points[1].y),
-			Bezier::from_linear_coordinates(points[0].x, points[1].y, points[0].x, points[0].y),
+			Bezier::from_linear_coordinates(point1.x, point1.y, point2.x, point1.y),
+			Bezier::from_linear_coordinates(point2.x, point1.y, point2.x, point2.y),
+			Bezier::from_linear_coordinates(point2.x, point2.y, point1.x, point2.y),
+			Bezier::from_linear_coordinates(point1.x, point2.y, point1.x, point1.y),
 		]
 		.iter()
 		.for_each(|line| line.to_svg(&mut rectangle_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new()));
 
 		let intersections_svg = self
 			.0
-			.rectangle_intersections(points[0], points[1], Some(error), Some(minimum_separation))
+			.rectangle_intersections(point1, point2, Some(error), Some(minimum_separation))
 			.iter()
 			.map(|(segment_index, intersection_t)| {
 				let point = self.0.evaluate(SubpathTValue::Parametric {

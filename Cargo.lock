@@ -533,9 +533,6 @@ dependencies = [
  "glam",
  "js-sys",
  "log",
- "serde",
- "serde-wasm-bindgen",
- "serde_json",
  "wasm-bindgen",
 ]
 

@@ -13,16 +13,20 @@ license = "Apache-2.0"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = []
+logging = ["log"]
+
 [dependencies]
 # Workspace dependencies
 bezier-rs = { workspace = true }
-log = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
-serde-wasm-bindgen = { workspace = true }
 wasm-bindgen = { workspace = true }
-serde_json = { workspace = true }
 js-sys = { workspace = true }
-glam = { workspace = true, features = ["serde"] }
+glam = { workspace = true }
+log = { workspace = true, optional = true }
+
+[dev-dependencies]
+log = { workspace = true }
 
 [package.metadata.wasm-pack.profile.dev]
 wasm-opt = false
@@ -33,7 +37,7 @@ demangle-name-section = true
 dwarf-debug-info = true
 
 [package.metadata.wasm-pack.profile.release]
-wasm-opt = ["-Os"]
+wasm-opt = ["-Oz"]
 
 [package.metadata.wasm-pack.profile.release.wasm-bindgen]
 debug-js-glue = false

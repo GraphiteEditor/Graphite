@@ -5,28 +5,34 @@ mod utils;
 
 use wasm_bindgen::prelude::*;
 
+#[cfg(feature = "logging")]
 pub static LOGGER: WasmLog = WasmLog;
+#[cfg(feature = "logging")]
 thread_local! { pub static HAS_CRASHED: std::cell::RefCell<bool> = const { std::cell::RefCell::new(false) } }
 
 /// Initialize the backend
 #[wasm_bindgen(start)]
 pub fn init() {
-	// Set up the logger with a default level of debug
-	log::set_logger(&LOGGER).expect("Failed to set logger");
-	log::set_max_level(log::LevelFilter::Trace);
+	#[cfg(feature = "logging")]
+	{
+		// Set up the logger with a default level of debug
+		log::set_logger(&LOGGER).expect("Failed to set logger");
+		log::set_max_level(log::LevelFilter::Trace);
 
-	fn panic_hook(info: &std::panic::PanicInfo<'_>) {
-		// Skip if we have already panicked
-		if HAS_CRASHED.with(|cell| cell.replace(true)) {
-			return;
+		fn panic_hook(info: &std::panic::PanicInfo<'_>) {
+			// Skip if we have already panicked
+			if HAS_CRASHED.with(|cell| cell.replace(true)) {
+				return;
+			}
+			log::error!("{}", info);
 		}
-		log::error!("{}", info);
-	}
 
-	std::panic::set_hook(Box::new(panic_hook));
+		std::panic::set_hook(Box::new(panic_hook));
+	}
 }
 
 /// Logging to the JS console
+#[cfg(feature = "logging")]
 #[wasm_bindgen]
 extern "C" {
 	#[wasm_bindgen(js_namespace = console)]
@@ -39,9 +45,11 @@ extern "C" {
 	fn error(msg: &str, format: &str);
 }
 
+#[cfg(feature = "logging")]
 #[derive(Default)]
 pub struct WasmLog;
 
+#[cfg(feature = "logging")]
 impl log::Log for WasmLog {
 	fn enabled(&self, metadata: &log::Metadata) -> bool {
 		metadata.level() <= log::Level::Info

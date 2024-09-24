@@ -11,7 +11,7 @@ const bezierFeatures = {
 	"bezier-through-points": {
 		name: "Bezier Through Points",
 		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => {
-			const points = JSON.parse(bezier.get_points());
+			const points = bezier.get_points();
 			if (Object.values(options).length === 1) {
 				return WasmBezier.quadratic_through_points(points, options.t);
 			}
@@ -514,7 +514,7 @@ const bezierFeatures = {
 	join: {
 		name: "Join",
 		callback: (bezier: WasmBezierInstance): string => {
-			const points = JSON.parse(bezier.get_points());
+			const points = bezier.get_points();
 			let examplePoints = [];
 			if (points.length === 2) {
 				examplePoints = [
