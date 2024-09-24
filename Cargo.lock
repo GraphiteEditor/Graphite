@@ -2380,7 +2380,6 @@ dependencies = [
  "dyn-any",
  "futures",
  "glam",
- "glob",
  "graph-craft",
  "graphene-core",
  "iai-callgrind",
@@ -3207,13 +3206,16 @@ dependencies = [
 name = "interpreted-executor"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "dyn-any",
  "futures",
  "glam",
+ "glob",
  "gpu-executor",
  "graph-craft",
  "graphene-core",
  "graphene-std",
+ "iai-callgrind",
  "log",
  "num-traits",
  "once_cell",

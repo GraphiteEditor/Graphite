@@ -28,3 +28,18 @@ once_cell = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+# Workspace dependencies
+graph-craft = { workspace = true, features = ["loading"] }
+
+# Required dependencies
+criterion = { version = "0.5", features = ["html_reports"]}
+glob = "0.3"
+iai-callgrind = { version = "0.12.3"}
+
+# Benchmarks
+[[bench]]
+name = "run_demo_art_criterion"
+harness = false
+

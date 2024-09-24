@@ -17,3 +17,5 @@ pub fn load_from_name(name: &str) -> NodeNetwork {
 	let content = std::str::from_utf8(&content).unwrap();
 	load_network(content)
 }
+
+pub static DEMO_ART: [&str; 5] = ["red-dress", "valley-of-spires", "painted-dreams", "isometric-fountain", "procedural-string-lights"];

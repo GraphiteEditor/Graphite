@@ -14,6 +14,7 @@ use std::panic::UnwindSafe;
 use std::sync::Arc;
 
 /// An executor of a node graph that does not require an online compilation server, and instead uses `Box<dyn ...>`.
+#[derive(Clone)]
 pub struct DynamicExecutor {
 	output: NodeId,
 	/// Stores all of the dynamic node structs.
@@ -170,7 +171,7 @@ impl std::fmt::Display for IntrospectError {
 ///   This maps document paths to node IDs and their associated type information.
 ///
 /// A store of the dynamically typed nodes and also the source map.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct BorrowTree {
 	/// A hashmap of node IDs and dynamically typed nodes.
 	nodes: HashMap<NodeId, (SharedNodeContainer, Path)>,
