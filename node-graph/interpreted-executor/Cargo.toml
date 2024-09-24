@@ -40,6 +40,14 @@ iai-callgrind = { version = "0.12.3"}
 
 # Benchmarks
 [[bench]]
-name = "run_demo_art_criterion"
+name = "update_executor"
+harness = false
+
+[[bench]]
+name = "run_once"
+harness = false
+
+[[bench]]
+name = "run_cached"
 harness = false
 

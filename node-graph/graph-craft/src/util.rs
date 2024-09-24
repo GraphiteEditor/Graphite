@@ -18,4 +18,4 @@ pub fn load_from_name(name: &str) -> NodeNetwork {
 	load_network(content)
 }
 
-pub static DEMO_ART: [&str; 5] = ["red-dress", "valley-of-spires", "painted-dreams", "isometric-fountain", "procedural-string-lights"];
+pub static DEMO_ART: [&str; 5] = ["painted-dreams", "red-dress", "valley-of-spires", "isometric-fountain", "procedural-string-lights"];
