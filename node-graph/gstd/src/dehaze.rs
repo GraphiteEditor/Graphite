@@ -1,34 +1,44 @@
-use graph_craft::proto::types::Percentage;
+use graph_craft::proto::types::SignedPercentage;
 use graphene_core::raster::{Image, ImageFrame};
 use graphene_core::transform::Footprint;
 use graphene_core::Color;
+
 use image::{DynamicImage, GenericImage, GenericImageView, GrayImage, ImageBuffer, Luma, Rgba, RgbaImage};
 use ndarray::{Array2, ArrayBase, Dim, OwnedRepr};
 use std::cmp::{max, min};
 
 #[node_macro::node(category("Raster: Filter"))]
-async fn dehaze_image_node<F: 'n + Send + Sync>(
-	#[implementations((), Footprint)] footprint: F,
-	#[implementations(((), ImageFrame<Color>),(Footprint, ImageFrame<Color>))] image_frame: impl Node<F, Output = ImageFrame<Color>>,
-	#[min(-100.)]
-	#[default(0.)]
-	strength: Percentage,
+async fn dehaze<F: 'n + Send + Sync>(
+	#[implementations(
+		(),
+		Footprint,
+	)]
+	footprint: F,
+	#[implementations(
+		() -> ImageFrame<Color>,
+		Footprint -> ImageFrame<Color>,
+	)]
+	image_frame: impl Node<F, Output = ImageFrame<Color>>,
+	strength: SignedPercentage,
 ) -> ImageFrame<Color> {
 	let image_frame = image_frame.eval(footprint).await;
+
+	// Prepare the image data for processing
 	let image = image_frame.image;
-	let data = bytemuck::cast_vec(image.data);
-	let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, data).expect("Failed to convert internal ImageFrame into image-rs data type.");
+	let image_data = bytemuck::cast_vec(image.data);
+	let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, image_data).expect("Failed to convert internal ImageFrame into image-rs data type.");
 	let dynamic_image: image::DynamicImage = image_buffer.into();
-	let dehazed_dynamic_image = dehaze(dynamic_image, strength);
 
-	let buffer = dehazed_dynamic_image.to_rgba32f();
-	let buffer = buffer.into_raw();
-	let vec = bytemuck::cast_vec(buffer);
+	// Run the dehaze algorithm
+	let dehazed_dynamic_image = dehaze_image(dynamic_image, strength / 100.);
 
+	// Prepare the image data for returning
+	let buffer = dehazed_dynamic_image.to_rgba32f().into_raw();
+	let color_vec = bytemuck::cast_vec(buffer);
 	let dehazed_image = Image {
 		width: image.width,
 		height: image.height,
-		data: vec,
+		data: color_vec,
 		base64_string: None,
 	};
 
@@ -39,14 +49,30 @@ async fn dehaze_image_node<F: 'n + Send + Sync>(
 	}
 }
 
-// There is no real point in modifying these values because they do not change the final result all that much,
-// The authors of the paper recommended using these values to get a reasonable balance of performance and quality
-// The only parameter that needs to be modified is omega to control the level of dehaze which is done in the dehaze() function
+// There is no real point in modifying these values because they do not change the final result all that much.
+// The authors of the paper recommended using these values to get a reasonable balance of performance and quality.
 const PATCH_SIZE: u32 = 15;
 const TOP_PERCENT: f64 = 0.001;
 const RADIUS: u32 = 60;
 const EPSILON: f64 = 0.0001;
 const TX: f32 = 0.1;
+
+// Dehazing algorithm based on "Improved Single Haze Removal Algorithm Based on Color Attenuation Prior"
+// Paper: <https://www.mdpi.com/2076-3417/9/19/4011>
+// Author's reference code: <https://github.com/datngo93/ICAP>
+// TODO: Implement the "Adaptive Tone Remapping" described in the paper but omitted from the reference code.
+// TODO: Its algorithm is from "Color Image Enhancement Based on Adaptive Nonlinear Curves of Luminance Features":
+// TODO: Paper: <http://ocean.kisti.re.kr/downfile/volume/ieek/E1STAN/2015/v15n1/E1STAN_2015_v15n1_60.pdf>
+fn dehaze_image(img: DynamicImage, strength: f64) -> DynamicImage {
+	// TODO: Break out this pair of steps into its own node, with a memoize node which caches the pair of outputs, so the strength can be adjusted without recomputing these two steps.
+	let dark_channel = compute_dark_channel(&img);
+	let atmospheric_light = estimate_atmospheric_light(&img, &dark_channel);
+
+	let transmission_map = estimate_transmission_map(&img, &dark_channel, strength);
+	let refined_transmission_map = refine_transmission_map(&img, &transmission_map);
+
+	recover(&img, &refined_transmission_map, atmospheric_light)
+}
 
 fn compute_dark_channel(image: &DynamicImage) -> DynamicImage {
 	let (width, height) = image.dimensions();
@@ -92,7 +118,7 @@ fn estimate_atmospheric_light(hazy: &DynamicImage, dark_channel: &DynamicImage) 
 	let (width, height) = hazy.dimensions();
 	let dark = dark_channel.to_luma_alpha8();
 	let total_pixels = (width * height) as usize;
-	let num_pixels = ((TOP_PERCENT / 100.0) * total_pixels as f64).ceil() as usize;
+	let num_pixels = ((TOP_PERCENT / 100.) * total_pixels as f64).ceil() as usize;
 
 	let mut intensities: Vec<(u32, u32, f64)> = Vec::with_capacity(total_pixels);
 
@@ -108,7 +134,7 @@ fn estimate_atmospheric_light(hazy: &DynamicImage, dark_channel: &DynamicImage) 
 
 	let top_intensities = &intensities[..num_pixels];
 
-	let mut atm_sum = [0.0, 0.0, 0.0];
+	let mut atm_sum = [0., 0., 0.];
 	for (x, y, _) in top_intensities {
 		let pixel = hazy.get_pixel(*x, *y);
 		atm_sum[0] += pixel[0] as f64;
@@ -127,13 +153,13 @@ fn estimate_transmission_map(image: &DynamicImage, dark_channel: &DynamicImage, 
 
 	for y in 0..height {
 		for x in 0..width {
-			let min_intensity = dark_channel.get_pixel(x, y).0[0] as f32 / 255.0;
-			let transmission_value = 1.0 - omega * min_intensity as f64;
+			let min_intensity = dark_channel.get_pixel(x, y).0[0] as f32 / 255.;
+			let transmission_value = 1. - omega * min_intensity as f64; // TODO: Fix how negative strength isn't working (it's behaving the same as 0)
 			let alpha = image.get_pixel(x, y)[3];
 			transmission_map.put_pixel(
 				x,
 				y,
-				Rgba([(transmission_value * 255.0) as u8, (transmission_value * 255.0) as u8, (transmission_value * 255.0) as u8, alpha]),
+				Rgba([(transmission_value * 255.) as u8, (transmission_value * 255.) as u8, (transmission_value * 255.) as u8, alpha]),
 			);
 		}
 	}
@@ -146,7 +172,7 @@ fn refine_transmission_map(img: &DynamicImage, transmission_map: &DynamicImage) 
 
 	let normalized_gray_image: GrayImage = ImageBuffer::from_fn(gray_image.width(), gray_image.height(), |x, y| {
 		let pixel = gray_image.get_pixel(x, y);
-		let normalized_value = (pixel[0] as f64 / 255.0) * 255.0;
+		let normalized_value = (pixel[0] as f64 / 255.) * 255.;
 		Luma([normalized_value as u8])
 	});
 
@@ -159,17 +185,17 @@ fn recover(im: &DynamicImage, t: &DynamicImage, a: Rgba<u8>) -> DynamicImage {
 	let (width, height) = im.dimensions();
 	let mut res = DynamicImage::new_rgba8(width, height);
 
-	let a = [a[0] as f32 / 255.0, a[1] as f32 / 255.0, a[2] as f32 / 255.0];
+	let a = [a[0] as f32 / 255., a[1] as f32 / 255., a[2] as f32 / 255.];
 
 	for y in 0..height {
 		for x in 0..width {
 			let im_pixel = im.get_pixel(x, y).0;
 			let t_pixel = t.get_pixel(x, y).0;
-			let t_val = f32::max(t_pixel[0] as f32 / 255.0, TX);
+			let t_val = f32::max(t_pixel[0] as f32 / 255., TX);
 
 			let mut res_pixel = [0; 4];
 			for ind in 0..3 {
-				res_pixel[ind] = ((((im_pixel[ind] as f32 / 255.0 - a[ind]) / t_val) + a[ind]).clamp(0.0, 1.0) * 255.0) as u8;
+				res_pixel[ind] = ((((im_pixel[ind] as f32 / 255. - a[ind]) / t_val) + a[ind]).clamp(0., 1.) * 255.) as u8;
 			}
 			res_pixel[3] = im_pixel[3];
 
@@ -178,19 +204,6 @@ fn recover(im: &DynamicImage, t: &DynamicImage, a: Rgba<u8>) -> DynamicImage {
 	}
 
 	res
-}
-
-fn dehaze(img: DynamicImage, percent_dehaze: f64) -> DynamicImage {
-	let dark_channel = compute_dark_channel(&img);
-
-	let atmospheric_light = estimate_atmospheric_light(&img, &dark_channel);
-
-	let scale = (percent_dehaze - 1.0) / 100.0;
-	let transmission_map = estimate_transmission_map(&img, &dark_channel, scale);
-
-	let refined_transmission_map = refine_transmission_map(&img, &transmission_map);
-
-	recover(&img, &refined_transmission_map, atmospheric_light)
 }
 
 fn guided_filter(guidance_img: &DynamicImage, input_img: &DynamicImage, r: u32, epsilon: f64) -> DynamicImage {
@@ -251,7 +264,7 @@ fn image_to_ndarray(img: &DynamicImage) -> Array2<f64> {
 	let (width, height) = img.dimensions();
 	let mut array = Array2::zeros((height as usize, width as usize));
 	for (x, y, pixel) in img.pixels() {
-		let luminance = pixel.0[0] as f64 / 255.0;
+		let luminance = pixel.0[0] as f64 / 255.;
 		array[(y as usize, x as usize)] = luminance;
 	}
 	array
@@ -260,7 +273,7 @@ fn image_to_ndarray(img: &DynamicImage) -> Array2<f64> {
 fn ndarray_to_image(array: &Array2<f64>, width: u32, height: u32) -> DynamicImage {
 	let mut img = DynamicImage::new_rgba8(width, height);
 	for ((y, x), &value) in array.indexed_iter() {
-		let clamped_value = (value * 255.0).clamp(0.0, 255.0) as u8;
+		let clamped_value = (value * 255.).clamp(0., 255.) as u8;
 		img.put_pixel(x as u32, y as u32, Rgba([clamped_value, clamped_value, clamped_value, 255]));
 	}
 	img

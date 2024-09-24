@@ -88,4 +88,4 @@ web-sys = { workspace = true, optional = true, features = [
 
 # Optional dependencies
 image-compare = { version = "0.4.1", optional = true }
-ndarray = "0.15.6"
+ndarray = "0.16.1"
