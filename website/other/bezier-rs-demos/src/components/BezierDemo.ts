@@ -105,6 +105,7 @@ class BezierDemo extends HTMLElement implements Demo {
 	}
 
 	getSliderUnit(sliderValue: number, variable: string): string {
+		const _ = sliderValue;
 		const sliderUnit = this.sliderUnits[variable];
 		return (Array.isArray(sliderUnit) ? "" : sliderUnit) || "";
 	}

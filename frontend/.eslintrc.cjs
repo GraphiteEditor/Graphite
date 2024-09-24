@@ -64,13 +64,24 @@ module.exports = {
 		"@typescript-eslint/indent": "off",
 		"@typescript-eslint/camelcase": "off",
 		"@typescript-eslint/no-use-before-define": "off",
-		"@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", ignoreRestSiblings: true }],
+		"@typescript-eslint/no-unused-vars": [
+			"error",
+			{
+				args: "all",
+				argsIgnorePattern: "^_",
+				caughtErrors: "all",
+				caughtErrorsIgnorePattern: "^_",
+				destructuredArrayIgnorePattern: "^_",
+				varsIgnorePattern: "^_",
+				ignoreRestSiblings: true,
+			},
+		],
 		"@typescript-eslint/consistent-type-imports": "error",
 		"@typescript-eslint/consistent-type-definitions": ["error", "type"],
 		"@typescript-eslint/consistent-type-assertions": ["error", { assertionStyle: "as", objectLiteralTypeAssertions: "never" }],
 		"@typescript-eslint/consistent-indexed-object-style": ["error", "record"],
 		"@typescript-eslint/consistent-generic-constructors": ["error", "constructor"],
-		"@typescript-eslint/ban-types": ["error", { types: { null: "Use `undefined` instead." } }],
+		"@typescript-eslint/no-restricted-types": ["error", { types: { null: "Use `undefined` instead." } }],
 
 		// Prettier plugin config (for validating and fixing formatting)
 		"prettier/prettier": "error",
