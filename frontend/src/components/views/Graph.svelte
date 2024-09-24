@@ -178,10 +178,10 @@
 			const { nodeOutput, nodeInput } = resolveWire(wire);
 			if (!nodeOutput || !nodeInput) return [];
 
-			const wireStartNode = $nodeGraph.nodes.get((wire.wireStart as Node).nodeId);
+			const wireStartNode = wire.wireStart.nodeId !== undefined ? $nodeGraph.nodes.get(wire.wireStart.nodeId) : undefined;
 			const wireStart = wireStartNode?.isLayer || false;
 
-			const wireEndNode = $nodeGraph.nodes.get((wire.wireEnd as Node).nodeId);
+			const wireEndNode = wire.wireEnd.nodeId !== undefined ? $nodeGraph.nodes.get(wire.wireEnd.nodeId) : undefined;
 			const wireEnd = (wireEndNode?.isLayer && Number(wire.wireEnd.index) === 0) || false;
 
 			return [createWirePath(nodeOutput, nodeInput, wireStart, wireEnd, wire.dashed)];

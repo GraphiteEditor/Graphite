@@ -30,7 +30,7 @@ if (isInstallNeeded()) {
 
 		// eslint-disable-next-line no-console
 		console.log("Finished installing npm packages.");
-	} catch (error) {
+	} catch (_) {
 		// eslint-disable-next-line no-console
 		console.error("Failed to install npm packages. Please run `npm install` from the `/frontend` directory.");
 		process.exit(1);

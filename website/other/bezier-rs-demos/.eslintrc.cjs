@@ -12,12 +12,6 @@ module.exports = {
 		ecmaVersion: "latest",
 		project: "./tsconfig.json",
 	},
-	overrides: [
-		{
-			extends: ["plugin:@typescript-eslint/disable-type-checked"],
-			files: [".eslintrc.cjs"],
-		},
-	],
 	ignorePatterns: [
 		// Ignore generated directories
 		"node_modules/",
@@ -27,6 +21,12 @@ module.exports = {
 		// Don't ignore JS and TS dotfiles in this folder
 		"!.*.js",
 		"!.*.ts",
+	],
+	overrides: [
+		{
+			extends: ["plugin:@typescript-eslint/disable-type-checked"],
+			files: ["./*.js", "./*.cjs"],
+		},
 	],
 	rules: {
 		// Standard ESLint config (for ordinary JS syntax linting)

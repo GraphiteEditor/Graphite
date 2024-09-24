@@ -203,7 +203,7 @@
 
 	function setColorRGB(channel: keyof RGB, strength: number | undefined) {
 		// Do nothing if the given value is undefined
-		if (strength === undefined) undefined;
+		if (strength === undefined) return undefined;
 		// Set the specified channel to the given value
 		else if (channel === "r") setColor(new Color(strength / 255, newColor.green, newColor.blue, newColor.alpha));
 		else if (channel === "g") setColor(new Color(newColor.red, strength / 255, newColor.blue, newColor.alpha));
@@ -212,7 +212,7 @@
 
 	function setColorHSV(channel: keyof HSV, strength: number | undefined) {
 		// Do nothing if the given value is undefined
-		if (strength === undefined) undefined;
+		if (strength === undefined) return undefined;
 		// Set the specified channel to the given value
 		else if (channel === "h") hue = strength / 360;
 		else if (channel === "s") saturation = strength / 100;

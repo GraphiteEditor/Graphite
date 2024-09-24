@@ -42,11 +42,8 @@
 		(e.target as HTMLElement | undefined)?.focus();
 
 		// Open the menu list floating menu
-		if (self) {
-			self.open = true;
-		} else {
-			throw new Error("The menu bar floating menu has no associated ref");
-		}
+		if (self) self.open = true;
+		else throw new Error("The menu bar floating menu has no reference to `self`");
 	}
 </script>
 

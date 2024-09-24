@@ -40,7 +40,7 @@ module.exports = {
 		},
 		{
 			extends: ["plugin:@typescript-eslint/disable-type-checked"],
-			files: [".eslintrc.cjs"],
+			files: ["./*.js", "./*.cjs"],
 		},
 	],
 	rules: {

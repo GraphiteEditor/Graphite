@@ -59,10 +59,9 @@
 
 				// New fields in `MenuListEntry`
 				shortcutRequiresLock: entry.shortcut ? shortcutRequiresLock(entry.shortcut.keys) : undefined,
-				value: undefined,
+				value: "",
 				disabled: entry.disabled ?? undefined,
 				font: undefined,
-				ref: undefined,
 			});
 
 			entries = updateMenuBarLayout.layout.map(menuBarEntryToMenuListEntry);

@@ -12,31 +12,12 @@ export class JsMessage {
 }
 
 const TupleToVec2 = Transform(({ value }: { value: [number, number] | undefined }) => (value === undefined ? undefined : { x: value[0], y: value[1] }));
-const ImportsToVec2Array = Transform(({ obj }) => {
-	const imports: { outputMetadata: FrontendGraphOutput; position: XY }[] = [];
-	obj.imports.forEach(([outputMetadata, x, y]: [FrontendGraphOutput, number, number]) => {
-		outputMetadata.connectedTo = outputMetadata.connectedTo.map((connector: any) => {
-			if (connector.export !== undefined) return { index: connector.export.index };
-			return { nodeId: connector.node.nodeId, index: connector.node.inputIndex };
-		});
-		imports.push({ outputMetadata, position: { x, y } });
-	});
-	return imports;
-});
-const ExportsToVec2Array = Transform(({ obj }) => {
-	const exports: { inputMetadata: FrontendGraphInput; position: XY }[] = [];
-	obj.exports.forEach(([inputMetadata, x, y]: [FrontendGraphInput, number, number]) => {
-		if (inputMetadata.connectedTo !== undefined) {
-			if (inputMetadata.connectedTo?.import !== undefined) {
-				inputMetadata.connectedTo = { index: inputMetadata.connectedTo?.import.index };
-			} else {
-				inputMetadata.connectedTo = { nodeId: inputMetadata.connectedTo?.node.nodeId, index: inputMetadata.connectedTo?.node.outputIndex };
-			}
-		}
-		exports.push({ inputMetadata, position: { x, y } });
-	});
-	return exports;
-});
+const ImportsToVec2Array = Transform(({ obj: { imports } }: { obj: { imports: [FrontendGraphOutput, number, number][] } }) =>
+	imports.map(([outputMetadata, x, y]) => ({ outputMetadata, position: { x, y } })),
+);
+const ExportsToVec2Array = Transform(({ obj: { exports } }: { obj: { exports: [FrontendGraphInput, number, number][] } }) =>
+	exports.map(([inputMetadata, x, y]) => ({ inputMetadata, position: { x, y } })),
+);
 
 // const BigIntTupleToVec2 = Transform(({ value }: { value: [bigint, bigint] | undefined }) => (value === undefined ? undefined : { x: Number(value[0]), y: Number(value[1]) }));
 
@@ -187,21 +168,10 @@ export type ContextMenuInformation = {
 export type FrontendGraphDataType = "General" | "Raster" | "VectorData" | "Number" | "Graphic" | "Artboard";
 
 export class Node {
-	readonly nodeId!: bigint;
 	readonly index!: bigint;
+	// Omitted if this Node is an Import or Export to/from the node network
+	readonly nodeId?: bigint;
 }
-
-export class Export {
-	readonly index!: bigint;
-}
-
-export class Import {
-	readonly index!: bigint;
-}
-
-export type OutputConnector = Node | Import;
-
-export type InputConnector = Node | Export;
 
 const CreateOutputConnectorOptional = Transform(({ obj }) => {
 	if (obj.connectedTo == undefined) {
@@ -228,11 +198,11 @@ export class FrontendGraphInput {
 	readonly resolvedType!: string | undefined;
 
 	@CreateOutputConnectorOptional
-	connectedTo!: OutputConnector | undefined;
+	connectedTo!: Node | undefined;
 }
 
 const CreateInputConnectorArray = Transform(({ obj }) => {
-	const newInputConnectors: InputConnector[] = [];
+	const newInputConnectors: Node[] = [];
 	obj.connectedTo.forEach((connector: any) => {
 		if (connector.export !== undefined) {
 			newInputConnectors.push({ index: connector.export });
@@ -257,7 +227,7 @@ export class FrontendGraphOutput {
 	readonly resolvedType!: string | undefined;
 
 	@CreateInputConnectorArray
-	readonly connectedTo!: InputConnector[];
+	connectedTo!: Node[];
 }
 
 export class FrontendNode {
@@ -329,10 +299,10 @@ const CreateInputConnector = Transform(({ obj }) => {
 
 export class FrontendNodeWire {
 	@CreateOutputConnector
-	readonly wireStart!: OutputConnector;
+	readonly wireStart!: Node;
 
 	@CreateInputConnector
-	readonly wireEnd!: InputConnector;
+	readonly wireEnd!: Node;
 
 	readonly dashed!: boolean;
 }

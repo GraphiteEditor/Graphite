@@ -14,7 +14,7 @@
 
 	const pointerPosition = (direction: ScrollbarDirection, e: PointerEvent): number => (direction === "Vertical" ? e.clientY : e.clientX);
 
-	const dispatch = createEventDispatcher<{ handlePosition: number; pressTrack: number; pointerup }>();
+	const dispatch = createEventDispatcher<{ handlePosition: number; pressTrack: number; pointerup: undefined }>();
 
 	export let direction: ScrollbarDirection = "Vertical";
 	export let handlePosition = 0.5;

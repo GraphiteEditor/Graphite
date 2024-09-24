@@ -48,7 +48,7 @@
 			activeEntrySkipWatcher = false;
 		} else if (activeEntry !== DASH_ENTRY) {
 			// We need to set to the initial value first to track a right history step, as if we hover in initial selection.
-			dispatch("hoverInEntry", initialSelectedIndex);
+			if (initialSelectedIndex !== undefined) dispatch("hoverInEntry", initialSelectedIndex);
 			dispatch("selectedIndex", entries.flat().indexOf(activeEntry));
 		}
 	}
@@ -58,7 +58,7 @@
 	}
 
 	function dispatchHoverOutEntry() {
-		dispatch("hoverOutEntry", initialSelectedIndex);
+		if (initialSelectedIndex !== undefined) dispatch("hoverOutEntry", initialSelectedIndex);
 	}
 
 	function makeActiveEntry(): MenuListEntry {

@@ -15,8 +15,8 @@
 		"build-profiling": "npm run wasm:build-profiling && vite build",
 		"build": "npm run wasm:build-production && vite build",
 		"---------- UTILITIES ----------": "",
-		"lint": "eslint .",
-		"lint-fix": "eslint . --fix",
+		"lint": "eslint . && tsc --noEmit",
+		"lint-fix": "eslint . --fix && tsc --noEmit",
 		"---------- INTERNAL ----------": "",
 		"setup": "node package-installer.js",
 		"wasm:build-dev": "wasm-pack build ./wasm --dev --target=web",
@@ -30,7 +30,6 @@
 		"@tauri-apps/api": "^1.6.0",
 		"class-transformer": "^0.5.1",
 		"idb-keyval": "^6.2.1",
-		"paper": "^0.12.18",
 		"reflect-metadata": "^0.2.2"
 	},
 	"devDependencies": {

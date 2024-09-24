@@ -219,7 +219,7 @@
 
 		childReference.open = true;
 		// The reason we bother taking `highlightdEntry` as an argument is because, when this function is called, it can ensure `highlightedEntry` is not undefined.
-		// But here we still have to set `highlighted` to itself so Svelte knows to reactively update it after we set its `.ref.open` property.
+		// But here we still have to set `highlighted` to itself so Svelte knows to reactively update it after we set its `childReference.open` property.
 		highlighted = highlighted;
 
 		// Highlight first item
@@ -452,11 +452,11 @@
 
 					{#if entry.children}
 						<MenuList
-							on:naturalWidth={() => {
+							on:naturalWidth={({ detail }) => {
 								// We do a manual dispatch here instead of just `on:naturalWidth` as a workaround for the <script> tag
 								// at the top of this file displaying a "'render' implicitly has return type 'any' because..." error.
 								// See explanation at <https://github.com/sveltejs/language-tools/issues/452#issuecomment-723148184>.
-								dispatch("naturalWidth");
+								dispatch("naturalWidth", detail);
 							}}
 							open={getChildReference(entry)?.open || false}
 							direction="TopRight"
