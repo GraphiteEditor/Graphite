@@ -648,6 +648,54 @@ impl PathSegment {
 			}
 		}
 	}
+	pub(crate) fn approx_bounding_box(&self) -> Aabb {
+		match *self {
+			PathSegment::Line(start, end) => Aabb {
+				top: start.y.min(end.y),
+				right: start.x.max(end.x),
+				bottom: start.y.max(end.y),
+				left: start.x.min(end.x),
+			},
+			PathSegment::Cubic(p1, p2, p3, p4) => {
+				// Use the control points to create a bounding box
+				let left = p1.x.min(p2.x).min(p3.x).min(p4.x);
+				let right = p1.x.max(p2.x).max(p3.x).max(p4.x);
+				let top = p1.y.min(p2.y).min(p3.y).min(p4.y);
+				let bottom = p1.y.max(p2.y).max(p3.y).max(p4.y);
+				Aabb { top, right, bottom, left }
+			}
+			PathSegment::Quadratic(p1, p2, p3) => {
+				// Use the control points to create a bounding box
+				let left = p1.x.min(p2.x).min(p3.x);
+				let right = p1.x.max(p2.x).max(p3.x);
+				let top = p1.y.min(p2.y).min(p3.y);
+				let bottom = p1.y.max(p2.y).max(p3.y);
+				Aabb { top, right, bottom, left }
+			}
+			PathSegment::Arc(start, rx, ry, phi, _, _, end) => {
+				// Create a bounding box that encompasses the entire ellipse
+				let center = DVec2::new((start.x + end.x) / 2.0, (start.y + end.y) / 2.0);
+
+				// Rotate the ellipse axes
+				let (sin_phi, cos_phi) = phi.sin_cos();
+				let rx_cos = rx * cos_phi.abs();
+				let rx_sin = rx * sin_phi.abs();
+				let ry_cos = ry * cos_phi.abs();
+				let ry_sin = ry * sin_phi.abs();
+
+				// Calculate the extents of the rotated ellipse
+				let extent_x = (rx_cos + ry_sin).max(rx_cos + ry_sin);
+				let extent_y = (rx_sin + ry_cos).max(rx_sin + ry_cos);
+
+				Aabb {
+					left: center.x - extent_x,
+					right: center.x + extent_x,
+					top: center.y - extent_y,
+					bottom: center.y + extent_y,
+				}
+			}
+		}
+	}
 
 	/// Splits the path segment at a given parameter value.
 	///

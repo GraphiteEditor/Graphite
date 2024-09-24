@@ -1168,8 +1168,8 @@ pub fn path_segment_horizontal_ray_intersection_count(orig_seg: &PathSegment, po
 				}
 			} else {
 				let split = &segment.seg.split_at(0.5);
-				let bounding_box0 = split.0.bounding_box();
-				let bounding_box1 = split.1.bounding_box();
+				let bounding_box0 = split.0.approx_bounding_box();
+				let bounding_box1 = split.1.approx_bounding_box();
 
 				if bounding_box_intersects_horizontal_ray(&bounding_box0, point) {
 					next_segments.push(IntersectionSegment {

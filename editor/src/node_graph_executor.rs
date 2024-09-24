@@ -1,6 +1,5 @@
 use crate::consts::FILE_SAVE_SUFFIX;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
-use crate::messages::portfolio::document::node_graph::document_node_definitions::wrap_network_in_scope;
 use crate::messages::prelude::*;
 
 use graph_craft::concrete;
@@ -21,6 +20,7 @@ use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
 
 use glam::{DAffine2, DVec2, UVec2};
+use interpreted_executor::util::wrap_network_in_scope;
 use once_cell::sync::Lazy;
 use spin::Mutex;
 use std::sync::mpsc::{Receiver, Sender};
