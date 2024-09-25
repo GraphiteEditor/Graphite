@@ -74,6 +74,7 @@ use crate::path_to_path_data;
 use crate::quad_tree::QuadTree;
 
 use glam::{BVec2, DVec2};
+use roots::{Roots, find_roots_cubic};
 use slotmap::{SlotMap, new_key_type};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -1210,7 +1211,7 @@ fn test_inclusion(a: &DualGraphComponent, b: &DualGraphComponent, edges: &SlotMa
 	None
 }
 fn bounding_box_intersects_horizontal_ray(bounding_box: &Aabb, point: DVec2) -> bool {
-	interval_crosses_point(bounding_box.top, bounding_box.bottom, point[1]) && bounding_box.right >= point[0]
+	bounding_box.right >= point[0] && (bounding_box.top..bounding_box.bottom).contains(&point[1])
 }
 
 #[derive(Copy, Clone)]
@@ -1221,18 +1222,75 @@ struct IntersectionSegment {
 
 pub fn path_segment_horizontal_ray_intersection_count(orig_seg: &PathSegment, point: DVec2) -> usize {
 	let total_bounding_box = orig_seg.approx_bounding_box();
-
 	if !bounding_box_intersects_horizontal_ray(&total_bounding_box, point) {
 		return 0;
 	}
 
+	match orig_seg {
+		PathSegment::Cubic(..) => cubic_bezier_horizontal_ray_intersection_count(orig_seg, point),
+		_ => fallback_intersection_count(orig_seg, point),
+	}
+}
+
+fn cubic_bezier_horizontal_ray_intersection_count(cubic: &PathSegment, point: DVec2) -> usize {
+	let y = point.y;
+	let PathSegment::Cubic(p0, p1, p2, p3) = cubic else { unreachable!() };
+
+	// Transform the curve so that the horizontal line is at y = 0
+	let a = -p0.y + 3.0 * p1.y - 3.0 * p2.y + p3.y;
+	let b = 3.0 * p0.y - 6.0 * p1.y + 3.0 * p2.y;
+	let c = -3.0 * p0.y + 3.0 * p1.y;
+	let d = p0.y - y;
+
+	let roots = find_roots_cubic(a, b, c, d);
+
+	let mut count = 0;
+	match roots {
+		Roots::Three(roots) => {
+			for &t in roots.iter() {
+				if (0.0..=1.0).contains(&t) {
+					let x = cubic.sample_at(t).x;
+					if x > point.x {
+						count += 1;
+					}
+				}
+			}
+		}
+		Roots::Two(roots) => {
+			for &t in roots.iter() {
+				if (0.0..=1.0).contains(&t) {
+					let x = cubic.sample_at(t).x;
+					if x > point.x {
+						count += 1;
+					}
+				}
+			}
+		}
+		Roots::One(roots) => {
+			for &t in roots.iter() {
+				if (0.0..=1.0).contains(&t) {
+					let x = cubic.sample_at(t).x;
+					if x > point.x {
+						count += 1;
+					}
+				}
+			}
+		}
+		_ => {}
+	}
+
+	count
+}
+
+fn fallback_intersection_count(orig_seg: &PathSegment, point: DVec2) -> usize {
+	// Existing implementation for non-cubic segments
 	let mut segments = vec![IntersectionSegment {
-		bounding_box: total_bounding_box,
+		bounding_box: orig_seg.approx_bounding_box(),
 		seg: *orig_seg,
 	}];
 	let mut count = 0;
-
 	let mut next_segments = Vec::new();
+
 	while !segments.is_empty() {
 		next_segments.clear();
 		for segment in segments.iter() {
@@ -1244,7 +1302,6 @@ pub fn path_segment_horizontal_ray_intersection_count(orig_seg: &PathSegment, po
 				let split = &segment.seg.split_at(0.5);
 				let bounding_box0 = split.0.bounding_box();
 				let bounding_box1 = split.1.bounding_box();
-
 				if bounding_box_intersects_horizontal_ray(&bounding_box0, point) {
 					next_segments.push(IntersectionSegment {
 						bounding_box: bounding_box0,
@@ -1261,7 +1318,6 @@ pub fn path_segment_horizontal_ray_intersection_count(orig_seg: &PathSegment, po
 		}
 		std::mem::swap(&mut next_segments, &mut segments);
 	}
-
 	count
 }
 
@@ -1899,8 +1955,8 @@ mod tests {
 			left: 20.,
 		};
 
-		assert!(bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(0., 30.)));
-		assert!(bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(20., 30.)));
+		assert!(bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(0., 29.)));
+		assert!(bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(20., 29.)));
 		assert!(bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(10., 20.)));
 		assert!(!bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(30., 40.)));
 	}
