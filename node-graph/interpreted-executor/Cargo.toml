@@ -28,3 +28,26 @@ once_cell = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+# Workspace dependencies
+graph-craft = { workspace = true, features = ["loading"] }
+
+# Required dependencies
+criterion = { version = "0.5", features = ["html_reports"]}
+glob = "0.3"
+iai-callgrind = { version = "0.12.3"}
+
+# Benchmarks
+[[bench]]
+name = "update_executor"
+harness = false
+
+[[bench]]
+name = "run_once"
+harness = false
+
+[[bench]]
+name = "run_cached"
+harness = false
+
