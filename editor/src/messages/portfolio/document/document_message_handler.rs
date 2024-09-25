@@ -489,31 +489,32 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::GroupSelectedLayers => {
 				responses.add(DocumentMessage::AddTransaction);
-
-				let Some(parent) = self.network_interface.deepest_common_ancestor(&self.selection_network_path, false) else {
-					// Cancel grouping layers across different artboards
-					// TODO: Group each set of layers for each artboard separately
-					return;
-				};
-				let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), self.network_interface.selected_nodes(&[]).unwrap(), parent);
-
-				let node_id = NodeId(generate_uuid());
-				let new_group_node = super::node_graph::document_node_definitions::resolve_document_node_type("Merge")
-					.expect("Failed to create merge node")
-					.default_node_template();
-				responses.add(NodeGraphMessage::InsertNode {
-					node_id,
-					node_template: new_group_node,
-				});
-				let new_group_folder = LayerNodeIdentifier::new_unchecked(node_id);
-				// Move the new folder to the correct position
-				responses.add(NodeGraphMessage::MoveLayerToStack {
-					layer: new_group_folder,
-					parent,
-					insert_index,
-				});
-
-				responses.add(DocumentMessage::MoveSelectedLayersToGroup { parent: new_group_folder });
+				let mut parent_per_selected_nodes: HashMap<LayerNodeIdentifier, Vec<NodeId>> = HashMap::new();
+				let artboards = LayerNodeIdentifier::ROOT_PARENT
+					.children(self.metadata())
+					.filter(|x| self.network_interface.is_artboard(&x.to_node(), &self.selection_network_path));
+				let selected_nodes: SelectedNodes = self.network_interface.selected_nodes(&[]).unwrap();
+				if artboards.clone().count() > 0 {
+					// Artboard workflow
+					for artboard in artboards {
+						let selected_descendants = artboard.descendants(self.metadata()).filter(|x| selected_nodes.selected_layers_contains(*x, self.metadata()));
+						for selected_descendant in selected_descendants {
+							parent_per_selected_nodes.entry(artboard).or_insert_with(Vec::new).push(selected_descendant.to_node());
+						}
+					}
+					let mut new_folders: Vec<NodeId> = Vec::new();
+					for children in parent_per_selected_nodes.values() {
+						self.network_interface.selected_nodes_mut(&self.selection_network_path).unwrap().set_selected_nodes(children.clone());
+						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: children.clone() });
+						let parent: LayerNodeIdentifier = self.network_interface.deepest_common_ancestor(&self.selection_network_path, false).unwrap();
+						new_folders.push(DocumentMessageHandler::group_layers(responses, self.metadata(), &children, &parent));
+					}
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_folders });
+				} else {
+					// Non-artboard workflow
+					let parent: LayerNodeIdentifier = self.network_interface.deepest_common_ancestor(&self.selection_network_path, false).unwrap();
+					DocumentMessageHandler::group_layers(responses, self.metadata(), &self.network_interface.selected_nodes(&self.selection_network_path).unwrap().0, &parent);
+				}
 			}
 			DocumentMessage::ImaginateGenerate { imaginate_node } => {
 				let random_value = generate_uuid();
@@ -1565,10 +1566,31 @@ impl DocumentMessageHandler {
 						return Some(index);
 					}
 				}
-
+				//trace!("{:?}", parent.children(metadata).enumerate().collect::<Vec<_>>());
 				None
 			})
 			.unwrap_or(0)
+	}
+
+	pub fn group_layers(responses: &mut VecDeque<Message>, metadata: &DocumentMetadata, selected_nodes: &Vec<NodeId>, parent: &LayerNodeIdentifier) -> NodeId {
+		let insert_index = DocumentMessageHandler::get_calculated_insert_index(metadata, SelectedNodes(selected_nodes.clone()), *parent);
+		let node_id = NodeId(generate_uuid());
+		let new_group_node = super::node_graph::document_node_definitions::resolve_document_node_type("Merge")
+			.expect("Failed to create merge node")
+			.default_node_template();
+		responses.add(NodeGraphMessage::InsertNode {
+			node_id,
+			node_template: new_group_node,
+		});
+		let new_group_folder = LayerNodeIdentifier::new_unchecked(node_id);
+		// Move the new folder to the correct position
+		responses.add(NodeGraphMessage::MoveLayerToStack {
+			layer: new_group_folder,
+			parent: *parent,
+			insert_index,
+		});
+		responses.add(DocumentMessage::MoveSelectedLayersToGroup { parent: new_group_folder });
+		node_id
 	}
 
 	/// Loads layer resources such as creating the blob URLs for the images and loading all of the fonts in the document.
