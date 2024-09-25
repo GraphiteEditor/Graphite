@@ -72,7 +72,8 @@ use crate::path_segment::PathSegment;
 #[cfg(feature = "logging")]
 use crate::path_to_path_data;
 use crate::quad_tree::QuadTree;
-use glam::DVec2;
+
+use glam::{BVec2, DVec2};
 use slotmap::{SlotMap, new_key_type};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -244,6 +245,25 @@ struct DualGraphHalfEdge {
 	twin: Option<DualEdgeKey>,
 }
 
+impl DualGraphHalfEdge {
+	fn start_segment(&self) -> PathSegment {
+		let segment = self.segments[0];
+		match self.direction_flag {
+			Direction::Forward => segment,
+			Direction::Backwards => segment.reverse(),
+		}
+	}
+
+	fn outer_boundnig_box(&self) -> (DVec2, DVec2) {
+		self.segments
+			.iter()
+			.map(|seg| seg.approx_bounding_box())
+			.fold((DVec2::INFINITY, DVec2::NEG_INFINITY), |(min, max), new| {
+				(min.min((new.left, new.top).into()), max.max((new.right, new.bottom).into()))
+			})
+	}
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct DualGraphVertex {
 	incident_edges: Vec<DualEdgeKey>,
@@ -258,6 +278,8 @@ struct DualGraphComponent {
 	edges: Vec<DualEdgeKey>,
 	vertices: Vec<DualVertexKey>,
 	outer_face: Option<DualVertexKey>,
+	inner_bb: (DVec2, DVec2),
+	outer_bb: (DVec2, DVec2),
 }
 
 /// Represents the dual graph of the MinorGraph.
@@ -1124,6 +1146,16 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 				ord => ord,
 			})
 			.unwrap();
+		let inner_bb = dual_vertices[outer_face_key]
+			.incident_edges
+			.iter()
+			.map(|edge_key| dual_edges[*edge_key].start_segment().start())
+			.fold((DVec2::INFINITY, DVec2::NEG_INFINITY), |(min, max), point| (min.min(point), max.max(point)));
+		let outer_bb = dual_vertices[outer_face_key]
+			.incident_edges
+			.iter()
+			.map(|edge_key| dual_edges[*edge_key].outer_boundnig_box())
+			.fold((DVec2::INFINITY, DVec2::NEG_INFINITY), |(min, max), (bb_min, bb_max)| (min.min(bb_min), max.max(bb_max)));
 		// } else {
 		// 	*windings.iter().find(|(&_, winding)| (winding < &0) ^ reverse_winding).expect("No outer face of a component found.").0
 		// };
@@ -1134,6 +1166,8 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 			vertices: component_vertices,
 			edges: component_edges,
 			outer_face: Some(outer_face_key),
+			inner_bb,
+			outer_bb,
 		});
 	}
 
@@ -1154,6 +1188,9 @@ fn get_next_edge(edge_key: MinorEdgeKey, graph: &MinorGraph) -> MinorEdgeKey {
 }
 
 fn test_inclusion(a: &DualGraphComponent, b: &DualGraphComponent, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>, vertices: &SlotMap<DualVertexKey, DualGraphVertex>) -> Option<DualVertexKey> {
+	if a.inner_bb.0.cmpge(b.outer_bb.0) & a.inner_bb.1.cmple(b.outer_bb.1) != BVec2::TRUE {
+		return None;
+	}
 	let tested_point = edges[a.edges[0]].segments[0].start();
 	for (face_key, face) in b.vertices.iter().map(|&key| (key, &vertices[key])) {
 		if Some(face_key) == b.outer_face {
