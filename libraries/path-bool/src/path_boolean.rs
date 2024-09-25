@@ -1213,6 +1213,7 @@ fn bounding_box_intersects_horizontal_ray(bounding_box: &Aabb, point: DVec2) -> 
 	interval_crosses_point(bounding_box.top, bounding_box.bottom, point[1]) && bounding_box.right >= point[0]
 }
 
+#[derive(Copy, Clone)]
 struct IntersectionSegment {
 	bounding_box: Aabb,
 	seg: PathSegment,
@@ -1231,9 +1232,10 @@ pub fn path_segment_horizontal_ray_intersection_count(orig_seg: &PathSegment, po
 	}];
 	let mut count = 0;
 
+	let mut next_segments = Vec::new();
 	while !segments.is_empty() {
-		let mut next_segments = Vec::new();
-		for segment in segments {
+		next_segments.clear();
+		for segment in segments.iter() {
 			if bounding_box_max_extent(&segment.bounding_box) < EPS.linear {
 				if line_segment_intersects_horizontal_ray(segment.seg.start(), segment.seg.end(), point) {
 					count += 1;
@@ -1257,7 +1259,7 @@ pub fn path_segment_horizontal_ray_intersection_count(orig_seg: &PathSegment, po
 				}
 			}
 		}
-		segments = next_segments;
+		std::mem::swap(&mut next_segments, &mut segments);
 	}
 
 	count
@@ -1285,26 +1287,26 @@ pub fn path_segment_horizontal_ray_intersection_count(orig_seg: &PathSegment, po
 /// # Returns
 ///
 /// A vector of NestingTree structures representing the top-level components and their nested subcomponents.
-fn compute_nesting_tree(DualGraph { components, vertices, edges }: &DualGraph) -> Vec<NestingTree> {
-	let mut nesting_trees = Vec::new();
+fn compute_nesting_tree(DualGraph { components, vertices, edges }: &mut DualGraph) -> Vec<NestingTree> {
+	let mut nesting_trees = Vec::with_capacity(4);
 
-	for component in components {
+	for component in components.drain(..) {
 		insert_component(&mut nesting_trees, component, edges, vertices);
 	}
 
 	nesting_trees
 }
 
-fn insert_component(trees: &mut Vec<NestingTree>, component: &DualGraphComponent, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>, vertices: &SlotMap<DualVertexKey, DualGraphVertex>) {
+fn insert_component(trees: &mut Vec<NestingTree>, component: DualGraphComponent, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>, vertices: &SlotMap<DualVertexKey, DualGraphVertex>) {
 	for tree in trees.iter_mut() {
-		if let Some(face_key) = test_inclusion(component, &tree.component, edges, vertices) {
+		if let Some(face_key) = test_inclusion(&component, &tree.component, edges, vertices) {
 			if let Some(children) = tree.outgoing_edges.get_mut(&face_key) {
 				insert_component(children, component, edges, vertices);
 			} else {
 				tree.outgoing_edges.insert(
 					face_key,
 					vec![NestingTree {
-						component: component.clone(),
+						component,
 						outgoing_edges: HashMap::new(),
 					}],
 				);
@@ -1314,7 +1316,7 @@ fn insert_component(trees: &mut Vec<NestingTree>, component: &DualGraphComponent
 	}
 
 	let mut new_tree = NestingTree {
-		component: component.clone(),
+		component,
 		outgoing_edges: HashMap::new(),
 	};
 
@@ -1672,9 +1674,9 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 		assert_eq!(twin.twin.unwrap(), edge_key, "Twin relationship should be symmetrical for edge {:?}", edge_key);
 	}
 
-	let dual_graph = compute_dual(&minor_graph)?;
+	let mut dual_graph = compute_dual(&minor_graph)?;
 
-	let nesting_trees = compute_nesting_tree(&dual_graph);
+	let nesting_trees = compute_nesting_tree(&mut dual_graph);
 
 	#[cfg(feature = "logging")]
 	for tree in &nesting_trees {
