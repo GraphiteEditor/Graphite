@@ -1,4 +1,4 @@
-use graph_craft::proto::types::SignedPercentage;
+use graph_craft::proto::types::Percentage;
 use graphene_core::raster::{Image, ImageFrame};
 use graphene_core::transform::Footprint;
 use graphene_core::Color;
@@ -19,7 +19,7 @@ async fn dehaze<F: 'n + Send + Sync>(
 		Footprint -> ImageFrame<Color>,
 	)]
 	image_frame: impl Node<F, Output = ImageFrame<Color>>,
-	strength: SignedPercentage,
+	strength: Percentage,
 ) -> ImageFrame<Color> {
 	let image_frame = image_frame.eval(footprint).await;
 
@@ -57,21 +57,18 @@ const RADIUS: u32 = 60;
 const EPSILON: f64 = 0.0001;
 const TX: f32 = 0.1;
 
-// Dehazing algorithm based on "Improved Single Haze Removal Algorithm Based on Color Attenuation Prior"
-// Paper: <https://www.mdpi.com/2076-3417/9/19/4011>
-// Author's reference code: <https://github.com/datngo93/ICAP>
-// TODO: Implement the "Adaptive Tone Remapping" described in the paper but omitted from the reference code.
-// TODO: Its algorithm is from "Color Image Enhancement Based on Adaptive Nonlinear Curves of Luminance Features":
-// TODO: Paper: <http://ocean.kisti.re.kr/downfile/volume/ieek/E1STAN/2015/v15n1/E1STAN_2015_v15n1_60.pdf>
-fn dehaze_image(img: DynamicImage, strength: f64) -> DynamicImage {
+// Dehazing algorithm based on "Single Image Haze Removal Using Dark Channel Prior"
+// Paper: <https://www.researchgate.net/publication/220182411_Single_Image_Haze_Removal_Using_Dark_Channel_Prior>
+// TODO: Make this algorithm work with negative strength values
+fn dehaze_image(image: DynamicImage, strength: f64) -> DynamicImage {
 	// TODO: Break out this pair of steps into its own node, with a memoize node which caches the pair of outputs, so the strength can be adjusted without recomputing these two steps.
-	let dark_channel = compute_dark_channel(&img);
-	let atmospheric_light = estimate_atmospheric_light(&img, &dark_channel);
+	let dark_channel = compute_dark_channel(&image);
+	let atmospheric_light = estimate_atmospheric_light(&image, &dark_channel);
 
-	let transmission_map = estimate_transmission_map(&img, &dark_channel, strength);
-	let refined_transmission_map = refine_transmission_map(&img, &transmission_map);
+	let transmission_map = estimate_transmission_map(&image, &dark_channel, strength);
+	let refined_transmission_map = refine_transmission_map(&image, &transmission_map);
 
-	recover(&img, &refined_transmission_map, atmospheric_light)
+	recover(&image, &refined_transmission_map, atmospheric_light)
 }
 
 fn compute_dark_channel(image: &DynamicImage) -> DynamicImage {
@@ -154,7 +151,7 @@ fn estimate_transmission_map(image: &DynamicImage, dark_channel: &DynamicImage, 
 	for y in 0..height {
 		for x in 0..width {
 			let min_intensity = dark_channel.get_pixel(x, y).0[0] as f32 / 255.;
-			let transmission_value = 1. - omega * min_intensity as f64; // TODO: Fix how negative strength isn't working (it's behaving the same as 0)
+			let transmission_value = 1. - omega * min_intensity as f64;
 			let alpha = image.get_pixel(x, y)[3];
 			transmission_map.put_pixel(
 				x,
