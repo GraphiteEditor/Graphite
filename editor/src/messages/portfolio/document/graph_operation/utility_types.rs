@@ -332,7 +332,7 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 	}
 
-	pub fn transform_set(&mut self, mut transform: DAffine2, transform_in: TransformIn, skip_rerender: bool) {
+	pub fn transform_set(&mut self, transform: DAffine2, transform_in: TransformIn, skip_rerender: bool) {
 		let final_transform = match transform_in {
 			TransformIn::Local => DAffine2::IDENTITY * transform,
 			TransformIn::Scope { scope } => scope * transform,

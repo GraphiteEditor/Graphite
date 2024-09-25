@@ -265,6 +265,7 @@ impl Fsm for PolygonToolFsmState {
 				let nodes = vec![(NodeId(0), node)];
 
 				let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, document.new_layer_parent(false), responses);
+				responses.add(Message::StartBuffer);
 				responses.add(GraphOperationMessage::TransformSet {
 					layer,
 					transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),

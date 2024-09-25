@@ -454,9 +454,22 @@ impl GraphicElementRendered for VectorData {
 				}
 				subpath
 			};
-			metadata
-				.click_targets
-				.insert(element_id, self.stroke_bezier_paths().map(fill).map(|subpath| ClickTarget::new(subpath, stroke_width)).collect());
+
+			let mut click_targets = self
+				.stroke_bezier_paths()
+				.map(fill)
+				.map(|subpath| ClickTarget::new(subpath, stroke_width))
+				.collect::<Vec<ClickTarget>>();
+
+			// if click_targets.is_empty() {
+			// 	if let Some(first_position) = self.point_domain.positions().first() {
+			// 		let manipulator_groups = vec![bezier_rs::ManipulatorGroup::new_anchor(*first_position)];
+			// 		click_targets.push(ClickTarget::new(Subpath::new(manipulator_groups, false), 0.));
+			// 	}
+			// }
+
+			// log::debug!("click_targets: {:?}", click_targets);
+			metadata.click_targets.insert(element_id, click_targets);
 			metadata.vector_data.insert(element_id, self.clone());
 		}
 
