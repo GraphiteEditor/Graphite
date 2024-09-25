@@ -1284,8 +1284,7 @@ fn insert_component(trees: &mut Vec<NestingTree>, component: &DualGraphComponent
 	let mut i = 0;
 	while i < trees.len() {
 		if let Some(face_key) = test_inclusion(&trees[i].component, &new_tree.component, edges, vertices) {
-			// TODO: (@TrueDoctor) use swap remove
-			let tree = trees.remove(i);
+			let tree = trees.swap_remove(i);
 			new_tree.outgoing_edges.entry(face_key).or_default().push(tree);
 		} else {
 			i += 1;
