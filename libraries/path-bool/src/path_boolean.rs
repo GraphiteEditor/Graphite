@@ -1228,7 +1228,7 @@ pub fn path_segment_horizontal_ray_intersection_count(orig_seg: &PathSegment, po
 
 	match orig_seg {
 		PathSegment::Cubic(..) => cubic_bezier_horizontal_ray_intersection_count(orig_seg, point),
-		_ => fallback_intersection_count(orig_seg, point),
+		_ => fallback_intersection_count(orig_seg, total_bounding_box, point),
 	}
 }
 
@@ -1282,12 +1282,9 @@ fn cubic_bezier_horizontal_ray_intersection_count(cubic: &PathSegment, point: DV
 	count
 }
 
-fn fallback_intersection_count(orig_seg: &PathSegment, point: DVec2) -> usize {
+fn fallback_intersection_count(orig_seg: &PathSegment, bounding_box: Aabb, point: DVec2) -> usize {
 	// Existing implementation for non-cubic segments
-	let mut segments = vec![IntersectionSegment {
-		bounding_box: orig_seg.approx_bounding_box(),
-		seg: *orig_seg,
-	}];
+	let mut segments = vec![IntersectionSegment { bounding_box, seg: *orig_seg }];
 	let mut count = 0;
 	let mut next_segments = Vec::new();
 
