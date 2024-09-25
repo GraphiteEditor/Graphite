@@ -3813,6 +3813,7 @@ dependencies = [
  "regex",
  "resvg",
  "roots",
+ "rustc-hash 2.1.1",
  "slotmap",
  "svg",
 ]

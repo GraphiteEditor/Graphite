@@ -75,10 +75,16 @@ use crate::quad_tree::QuadTree;
 
 use glam::{BVec2, DVec2};
 use roots::{Roots, find_roots_cubic};
+use rustc_hash::FxHashMap as HashMap;
+use rustc_hash::FxHashSet as HashSet;
 use slotmap::{SlotMap, new_key_type};
 use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::VecDeque;
 use std::fmt::Display;
+
+fn new_hash_map<K, V>(capacity: usize) -> HashMap<K, V> {
+	HashMap::with_capacity_and_hasher(capacity, Default::default())
+}
 
 /// Represents the types of boolean operations that can be performed on paths.
 #[derive(Debug, Clone, Copy)]
@@ -442,7 +448,7 @@ fn split_at_intersections(edges: &[MajorGraphEdgeStage1]) -> (Vec<MajorGraphEdge
 	// Step 3: Create edge tree for efficient intersection checks
 	let mut edge_tree = QuadTree::new(total_bounding_box, INTERSECTION_TREE_DEPTH, 8);
 
-	let mut splits_per_edge: HashMap<usize, Vec<f64>> = HashMap::new();
+	let mut splits_per_edge: HashMap<usize, Vec<f64>> = HashMap::default();
 
 	fn add_split(splits_per_edge: &mut HashMap<usize, Vec<f64>>, i: usize, t: f64) {
 		splits_per_edge.entry(i).or_default().push(t);
@@ -538,9 +544,9 @@ fn find_vertices(edges: &[MajorGraphEdgeStage2], bounding_box: Aabb) -> MajorGra
 		vertices: SlotMap::with_key(),
 	};
 
-	let mut parents: HashMap<MajorEdgeKey, u8> = HashMap::new();
+	let mut parents: HashMap<MajorEdgeKey, u8> = new_hash_map(edges.len());
 
-	let mut vertex_pair_id_to_edges: HashMap<_, Vec<(MajorGraphEdgeStage2, MajorEdgeKey, MajorEdgeKey)>> = HashMap::new();
+	let mut vertex_pair_id_to_edges: HashMap<_, Vec<(MajorGraphEdgeStage2, MajorEdgeKey, MajorEdgeKey)>> = new_hash_map(edges.len());
 
 	for (seg, parent, bounding_box) in edges {
 		let mut get_vertex = |point: DVec2| -> MajorVertexKey {
@@ -649,9 +655,12 @@ fn get_order(vertex: &MajorGraphVertex) -> usize {
 fn compute_minor(major_graph: &MajorGraph) -> MinorGraph {
 	let mut new_edges = SlotMap::with_key();
 	let mut new_vertices = SlotMap::with_key();
-	let mut to_minor_vertex = HashMap::new();
-	let mut id_to_edge = HashMap::new();
-	let mut visited = HashSet::new();
+	let vertex_count = major_graph.vertices.len();
+	let edge_count = major_graph.edges.len();
+	let mut to_minor_vertex = new_hash_map(vertex_count);
+	let mut id_to_edge = new_hash_map(edge_count);
+	// merge with to_minor_vertex
+	let mut visited = HashSet::with_capacity_and_hasher(vertex_count, Default::default());
 
 	// Handle components that are not cycles
 	for (major_vertex_key, vertex) in &major_graph.vertices {
@@ -744,8 +753,10 @@ fn compute_minor(major_graph: &MajorGraph) -> MinorGraph {
 fn remove_dangling_edges(graph: &mut MinorGraph) {
 	// Basically DFS for each parent with BFS number
 	fn walk(parent: u8, graph: &MinorGraph) -> HashSet<MinorVertexKey> {
-		let mut kept_vertices = HashSet::new();
-		let mut vertex_to_level = HashMap::new();
+		// merge
+		let vertex_count = graph.vertices.len();
+		let mut kept_vertices = HashSet::with_capacity_and_hasher(vertex_count, Default::default());
+		let mut vertex_to_level = new_hash_map(vertex_count);
 
 		fn visit(
 			vertex: MinorVertexKey,
@@ -959,8 +970,9 @@ fn compute_signed_area(face: &DualGraphVertex, edges: &SlotMap<DualEdgeKey, Dual
 /// operation cannot be completed successfully.
 fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 	let mut new_vertices: Vec<DualVertexKey> = Vec::new();
-	let mut minor_to_dual_edge: HashMap<MinorEdgeKey, DualEdgeKey> = HashMap::new();
-	let mut dual_edges = SlotMap::with_key();
+	let edge_count = minor_graph.edges.len();
+	let mut minor_to_dual_edge: HashMap<MinorEdgeKey, DualEdgeKey> = new_hash_map(edge_count);
+	let mut dual_edges = SlotMap::with_capacity_and_key(edge_count);
 	let mut dual_vertices = SlotMap::with_key();
 
 	for (start_edge_key, start_edge) in &minor_graph.edges {
@@ -1037,9 +1049,9 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 		new_vertices.push(outer_face_key);
 	}
 
-	let mut components = Vec::new();
-	let mut visited_vertices = HashSet::new();
-	let mut visited_edges = HashSet::new();
+	let mut components = Vec::with_capacity(12);
+	let mut visited_vertices = HashSet::with_capacity_and_hasher(dual_vertices.len(), Default::default());
+	let mut visited_edges = HashSet::with_capacity_and_hasher(edge_count, Default::default());
 
 	if cfg!(feature = "logging") {
 		eprintln!("faces: {}, dual-edges: {}, cycles: {}", new_vertices.len(), dual_edges.len(), minor_graph.cycles.len())
@@ -1360,7 +1372,7 @@ fn insert_component(trees: &mut Vec<NestingTree>, component: DualGraphComponent,
 					face_key,
 					vec![NestingTree {
 						component,
-						outgoing_edges: HashMap::new(),
+						outgoing_edges: HashMap::default(),
 					}],
 				);
 			}
@@ -1370,7 +1382,7 @@ fn insert_component(trees: &mut Vec<NestingTree>, component: DualGraphComponent,
 
 	let mut new_tree = NestingTree {
 		component,
-		outgoing_edges: HashMap::new(),
+		outgoing_edges: HashMap::default(),
 	};
 
 	let mut i = 0;
@@ -1411,12 +1423,15 @@ fn flag_faces(
 	vertices: &SlotMap<DualVertexKey, DualGraphVertex>,
 	flags: &mut HashMap<DualVertexKey, u8>,
 ) {
+	let mut visited_faces = HashSet::default();
+	let mut face_stack = VecDeque::new();
 	for tree in nesting_trees.iter() {
 		let mut tree_stack = vec![(tree, 0, 0)];
 
 		while let Some((current_tree, a_running_count, b_running_count)) = tree_stack.pop() {
-			let mut visited_faces = HashSet::new();
-			let mut face_stack = VecDeque::new();
+			// TODO: Test if clearing is faster
+			visited_faces.clear();
+			face_stack.clear();
 
 			let outer_face_key = current_tree.component.outer_face.expect("Component doesn't have an outer face.");
 			face_stack.push_back((outer_face_key, a_running_count, b_running_count));
@@ -1469,7 +1484,7 @@ fn walk_faces<'a>(faces: &'a [DualVertexKey], edges: &SlotMap<DualEdgeKey, DualG
 	// TODO: Try using a binary search to avoid the hashset construction
 	let is_removed_edge = |edge: &DualGraphHalfEdge| face_set.contains(&edge.incident_vertex) == face_set.contains(&edges[edge.twin.unwrap()].incident_vertex);
 
-	let mut edge_to_next = HashMap::new();
+	let mut edge_to_next = HashMap::with_capacity_and_hasher(edges.len(), Default::default());
 	for face_key in faces {
 		let face = &vertices[*face_key];
 		let mut prev_edge = *face.incident_edges.last().unwrap();
@@ -1479,8 +1494,8 @@ fn walk_faces<'a>(faces: &'a [DualVertexKey], edges: &SlotMap<DualEdgeKey, DualG
 		}
 	}
 
-	let mut visited_edges = HashSet::new();
-	let mut result = Vec::new();
+	let mut visited_edges = HashSet::with_capacity_and_hasher(edges.len(), Default::default());
+	let mut result = Vec::with_capacity(edges.len());
 
 	for &face_key in faces {
 		let face = &vertices[face_key];
@@ -1743,7 +1758,7 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 	#[cfg(feature = "logging")]
 	eprintln!("{}", dual_graph_to_dot(&dual_graph.components, edges));
 
-	let mut flags = HashMap::new();
+	let mut flags = new_hash_map(vertices.len());
 	flag_faces(&nesting_trees, a_fill_rule, b_fill_rule, edges, vertices, &mut flags);
 
 	#[cfg(feature = "logging")]
