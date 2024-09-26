@@ -15,6 +15,7 @@ use graphene_core::vector::{PointId, VectorModificationType};
 use graphene_core::{Artboard, Color};
 
 use glam::{DAffine2, DVec2, IVec2};
+use graphene_std::vector::VectorData;
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformIn {
@@ -145,9 +146,12 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<PointId>>, layer: LayerNodeIdentifier) {
+		let vector_data = VectorData::from_subpaths(subpaths, true);
+
 		let path = resolve_document_node_type("Path")
 			.expect("Path node does not exist")
-			.node_template_input_override([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))]);
+			.node_template_input_override([Some(NodeInput::value(TaggedValue::VectorData(vector_data), false))]);
+
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
 		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_node_template();
 		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_node_template();
