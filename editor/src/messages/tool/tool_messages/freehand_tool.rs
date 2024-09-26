@@ -234,12 +234,6 @@ impl Fsm for FreehandToolFsmState {
 				tool_options.stroke.apply_stroke(tool_data.weight, layer, responses);
 				tool_data.layer = Some(layer);
 
-				// First point should not be rendered in artboard space
-				// let transform = document.metadata().transform_to_viewport(parent);
-				// let position = transform.inverse().transform_point2(input.mouse.position);
-
-				// extend_path_with_next_segment(tool_data, position, responses);
-
 				FreehandToolFsmState::Drawing
 			}
 			(FreehandToolFsmState::Drawing, FreehandToolMessage::PointerMove) => {

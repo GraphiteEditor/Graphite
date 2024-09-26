@@ -167,11 +167,7 @@ impl OverlayContext {
 	pub fn outline_vector(&mut self, vector_data: &VectorData, transform: DAffine2) {
 		self.render_context.begin_path();
 		let mut last_point = None;
-		for (_, bezier, start_id, end_id) in vector_data.segment_bezier_iter().peekable() {
-			// Do not draw the last stroke of the vector data if it is an open path
-			// if iter.peek().is_none() {
-			// 	break;
-			// }
+		for (_, bezier, start_id, end_id) in vector_data.segment_bezier_iter() {
 			let move_to = last_point != Some(start_id);
 			last_point = Some(end_id);
 

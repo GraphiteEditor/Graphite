@@ -119,10 +119,6 @@ impl Dispatcher {
 					let mut update_click_targets = VecDeque::new();
 					update_click_targets.push_back(DocumentMessage::UpdateClickTargets { click_targets }.into());
 					self.message_queues.push(update_click_targets);
-
-					// let mut update_vector_modify = VecDeque::new();
-					// update_vector_modify.push_back(DocumentMessage::UpdateVectorModify { vector_modify: vector_data }.into());
-					// self.message_queues.push(update_vector_modify);
 				}
 				Message::NoOp => {}
 				Message::Init => {

@@ -270,6 +270,8 @@ pub fn to_transform(transform: DAffine2) -> usvg::Transform {
 	usvg::Transform::from_row(cols[0] as f32, cols[1] as f32, cols[2] as f32, cols[3] as f32, cols[4] as f32, cols[5] as f32)
 }
 
+// TODO: Click targets can be removed from the render output, since the vector data is available in the vector modify data from Monitor nodes.
+// This will require that the transform for child layers into that layer space be calculated, or it could be returned from the RenderOutput instead of click targets.
 #[derive(Debug, Clone, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RenderMetadata {
