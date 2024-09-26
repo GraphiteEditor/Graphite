@@ -98,7 +98,7 @@ The `graphene_core::value::CopiedNode` is a node that, when evaluated, copies `1
 
 ## Creating a new node
 
-Instead of manually implementing the `Node` trait with complex generics, one can use the `node` macro, which can be applied to a function like `opacity`. This will generate the struct, implementation, node_registry entry, doucment node definition and properties panel entries:
+Instead of manually implementing the `Node` trait with complex generics, one can use the `node` macro, which can be applied to a function like `opacity`. This will generate the struct, implementation, node_registry entry, document node definition and properties panel entries:
 
 ```rs
 #[node_macro::node(category("Raster: Adjustments"))]
@@ -115,10 +115,10 @@ The macro invocation can be extended with additional attributes. The currently s
 ## Executing a document `NodeNetwork`
 
 When the document graph is executed, the following steps occur:
-- The `NodeNetwork` is flattened using `NodeNetwork::flatten`. This involves removing any `DocumentNodeImplementation::Network` - which allow for nested document node networks (not currently exposed in the UI). Instead, all of the inner nodes are moved into a single node graph.
-- The `NodeNetwork` is converted into a proto-graph, which separates out the primary input from the secondary inputs. The secondary inputs are stored as a list of node ids in the `ConstructionArgs` struct in the `ProtoNode`. Converting a document graph into a proto graph is done with `NodeNetwork::into_proto_networks`.
+- The `NodeNetwork` is flattened using `NodeNetwork::flatten`. This involves removing any `DocumentNodeImplementation::Network` - which allow for nested document node networks. Instead, all of the inner nodes are moved into a single node graph.
+- The `NodeNetwork` is converted into a proto-graph. Each node's inputs are stored as a list of node IDs in the `ConstructionArgs` struct in the `ProtoNode`. Converting a document graph into a proto graph is done with `NodeNetwork::into_proto_networks`.
 - The newly created `ProtoNode`s are then converted into the corresponding constructor functions using the mapping defined in `node-graph/interpreted-executor/src/node_registry.rs`. This is done by `BorrowTree::push_node`.
-- The constructor functions are run with the `ConstructionArgs` enum. Constructors generally evaluate the result of these secondary inputs e.g. if you have a `Pi` node that is used as the second input to an `Add` node, the `Add` node's constructor will evaluate the `Pi` node. This is visible if you place a log statement in the `Pi` node's implementation.
+- The constructor functions are run with the `ConstructionArgs` enum. Constructors generally evaluate the result of these inputs, e.g. if you have a `Pi` node that is used as the second input to an `Add` node, the `Add` node's constructor will evaluate the `Pi` node. This is visible if you place a log statement in the `Pi` node's implementation.
 - The resolved functions are stored in a `BorrowTree`, which allows previous proto-nodes to be referenced as inputs by later nodes. The `BorrowTree` ensures nodes can't be removed while being referenced by other nodes.
 
 The definition for the constructor of a node that applies the opacity transformation to each pixel of an image:
@@ -141,7 +141,7 @@ The definition for the constructor of a node that applies the opacity transforma
 			any.into_type_erased()
 		})
 	},
-	// Defines the input, output, and parameters (where each parameter is a function taking in some input and returning another input).
+	// Defines the call argument, return value, and inputs.
 	NodeIOTypes::new(concrete!(Image<Color>), concrete!(Image<Color>), vec![fn_type!((), f64))]),
 ),
 ```

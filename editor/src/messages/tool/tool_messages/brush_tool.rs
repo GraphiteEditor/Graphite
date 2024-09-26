@@ -330,7 +330,7 @@ impl Fsm for BrushToolFsmState {
 
 				let layer_document_scale = document.metadata().transform_to_document(parent) * tool_data.transform;
 
-				// TODO: Also scale it based on the input image ('Background' parameter).
+				// TODO: Also scale it based on the input image ('Background' input).
 				// TODO: Resizing the input image results in a different brush size from the chosen diameter.
 				let layer_scale = 0.0001_f64 // Safety against division by zero
 					.max((layer_document_scale.matrix2 * glam::DVec2::X).length())

@@ -2495,17 +2495,17 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 
 		let NodeMetadata { display_name, category, fields } = metadata;
 		let Some(implementations) = &node_registry.get(&id) else { continue };
-		let valid_inputs: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.input.clone()).collect();
+		let valid_inputs: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
 		let first_node_io = implementations.first().map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
-		let mut input_type = &first_node_io.input;
+		let mut input_type = &first_node_io.call_argument;
 		if valid_inputs.len() > 1 {
 			input_type = &const { generic!(T) };
 		}
-		let output_type = &first_node_io.output;
+		let output_type = &first_node_io.return_value;
 
 		let inputs = fields
 			.iter()
-			.zip(first_node_io.parameters.iter())
+			.zip(first_node_io.inputs.iter())
 			.enumerate()
 			.map(|(index, (field, ty))| {
 				let exposed = if index == 0 { *ty != fn_type!(()) } else { field.exposed };
@@ -2526,7 +2526,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		let properties = match properties_overrides.get(id.as_str()) {
 			Some(properties_function) => *properties_function,
 			None => {
-				let field_types: Vec<_> = fields.iter().zip(first_node_io.parameters.iter()).map(|(field, ty)| (field.clone(), ty.clone())).collect();
+				let field_types: Vec<_> = fields.iter().zip(first_node_io.inputs.iter()).map(|(field, ty)| (field.clone(), ty.clone())).collect();
 				let properties = move |document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext| {
 					let rows: Vec<_> = field_types
 						.iter()

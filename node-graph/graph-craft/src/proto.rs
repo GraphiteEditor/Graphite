@@ -40,7 +40,7 @@ impl core::fmt::Display for ProtoNetwork {
 			f.write_str("{\n")?;
 
 			f.write_str(&"\t".repeat(indent + 1))?;
-			f.write_str("Primary input: ")?;
+			f.write_str("Input: ")?;
 			match &node.input {
 				ProtoNodeInput::None => f.write_str("None")?,
 				ProtoNodeInput::ManualComposition(ty) => f.write_fmt(format_args!("Manual Composition (type = {ty:?})"))?,
@@ -80,11 +80,11 @@ impl core::fmt::Display for ProtoNetwork {
 pub enum ConstructionArgs {
 	/// A value of a type that is known, allowing serialization (serde::Deserialize is not object safe)
 	Value(MemoHash<value::TaggedValue>),
-	// TODO: use a struct for clearer naming.
 	/// A list of nodes used as inputs to the constructor function in `node_registry.rs`.
 	/// The bool indicates whether to treat the node as lambda node.
+	// TODO: use a struct for clearer naming.
 	Nodes(Vec<(NodeId, bool)>),
-	// TODO: What?
+	/// Used for GPU computation to work around the limitations of rust-gpu.
 	Inline(InlineRust),
 }
 
@@ -136,7 +136,8 @@ impl ConstructionArgs {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
-/// A proto node is an intermediate step between the `DocumentNode` and the boxed struct that actually runs the node (found in the [`BorrowTree`]). It has one primary input and several secondary inputs in [`ConstructionArgs`].
+/// A proto node is an intermediate step between the `DocumentNode` and the boxed struct that actually runs the node (found in the [`BorrowTree`]).
+/// At different stages in the compilation process, this struct will be transformed into a reduced (more restricted) form acting as a subset of its original form, but that restricted form is still valid in the earlier stage in the compilation process before it was transformed.
 pub struct ProtoNode {
 	pub construction_args: ConstructionArgs,
 	pub input: ProtoNodeInput,
@@ -157,14 +158,13 @@ impl Default for ProtoNode {
 	}
 }
 
-/// A ProtoNodeInput represents the primary input of a node in a ProtoNetwork.
-/// Similar to [`crate::document::NodeInput`].
+/// Similar to the document node's [`crate::document::NodeInput`].
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ProtoNodeInput {
 	/// [`ProtoNode`]s do not require any input, e.g. the value node just takes in [`ConstructionArgs`].
 	None,
-	/// A ManualComposition input represents an input that opts out of being resolved through the default `ComposeNode`, which first runs the previous (upstream) node, then passes that evaluated
+	/// A ManualComposition input represents an input that opts out of being resolved through the `ComposeNode`, which first runs the previous (upstream) node, then passes that evaluated
 	/// result to this node. Instead, ManualComposition lets this node actually consume the provided input instead of passing it to its predecessor.
 	///
 	/// Say we have the network `a -> b -> c` where `c` is the output node and `a` is the input node.
@@ -536,11 +536,11 @@ impl ProtoNetwork {
 pub enum GraphErrorType {
 	NodeNotFound(NodeId),
 	InputNodeNotFound(NodeId),
-	UnexpectedGenerics { index: usize, parameters: Vec<Type> },
+	UnexpectedGenerics { index: usize, inputs: Vec<Type> },
 	NoImplementations,
 	NoConstructor,
-	InvalidImplementations { parameters: String, error_inputs: Vec<Vec<(usize, (Type, Type))>> },
-	MultipleImplementations { parameters: String, valid: Vec<NodeIOTypes> },
+	InvalidImplementations { inputs: String, error_inputs: Vec<Vec<(usize, (Type, Type))>> },
+	MultipleImplementations { inputs: String, valid: Vec<NodeIOTypes> },
 }
 impl core::fmt::Debug for GraphErrorType {
 	// TODO: format with the document graph context so the input index is the same as in the graph UI.
@@ -548,17 +548,17 @@ impl core::fmt::Debug for GraphErrorType {
 		match self {
 			GraphErrorType::NodeNotFound(id) => write!(f, "Input node {id} is not present in the typing context"),
 			GraphErrorType::InputNodeNotFound(id) => write!(f, "Input node {id} is not present in the typing context"),
-			GraphErrorType::UnexpectedGenerics { index, parameters } => write!(f, "Generic parameters should not exist but found at {index}: {parameters:?}"),
+			GraphErrorType::UnexpectedGenerics { index, inputs } => write!(f, "Generic inputs should not exist but found at {index}: {inputs:?}"),
 			GraphErrorType::NoImplementations => write!(f, "No implementations found"),
 			GraphErrorType::NoConstructor => write!(f, "No construct found for node"),
-			GraphErrorType::InvalidImplementations { parameters, error_inputs } => {
+			GraphErrorType::InvalidImplementations { inputs, error_inputs } => {
 				let ordinal = |x: usize| match x.to_string().as_str() {
 					x if x.ends_with('1') && !x.ends_with("11") => format!("{x}st"),
 					x if x.ends_with('2') && !x.ends_with("12") => format!("{x}nd"),
 					x if x.ends_with('3') && !x.ends_with("13") => format!("{x}rd"),
 					x => format!("{x}th"),
 				};
-				let format_index = |index: usize| if index == 0 { "primary".to_string() } else { format!("{} parameter", ordinal(index)) };
+				let format_index = |index: usize| if index == 0 { "primary".to_string() } else { format!("{} secondary", ordinal(index)) };
 				let format_error = |(index, (real, expected)): &(usize, (Type, Type))| format!("• The {} input expected {} but found {}", format_index(*index), expected, real);
 				let format_error_list = |errors: &Vec<(usize, (Type, Type))>| errors.iter().map(format_error).collect::<Vec<_>>().join("\n");
 				let errors = error_inputs.iter().map(format_error_list).collect::<Vec<_>>();
@@ -568,7 +568,7 @@ impl core::fmt::Debug for GraphErrorType {
 					consider using undo to go back and try another way to connect the nodes.\n\
 					\n\
 					No node implementation exists for type:\n\
-					({parameters})\n\
+					({inputs})\n\
 					\n\
 					Caused by{}:\n\
 					{}",
@@ -576,7 +576,7 @@ impl core::fmt::Debug for GraphErrorType {
 					errors.join("\n")
 				)
 			}
-			GraphErrorType::MultipleImplementations { parameters, valid } => write!(f, "Multiple implementations found ({parameters}):\n{valid:#?}"),
+			GraphErrorType::MultipleImplementations { inputs, valid } => write!(f, "Multiple implementations found ({inputs}):\n{valid:#?}"),
 		}
 	}
 }
@@ -656,8 +656,8 @@ impl TypingContext {
 			return Ok(inferred.clone());
 		}
 
-		let parameters = match node.construction_args {
-			// If the node has a value parameter we can infer the return type from it
+		let inputs = match node.construction_args {
+			// If the node has a value input we can infer the return type from it
 			ConstructionArgs::Value(ref v) => {
 				assert!(matches!(node.input, ProtoNodeInput::None));
 				// TODO: This should return a reference to the value
@@ -665,7 +665,7 @@ impl TypingContext {
 				self.inferred.insert(node_id, types.clone());
 				return Ok(types);
 			}
-			// If the node has nodes as parameters we can infer the types from the node outputs
+			// If the node has nodes as inputs we can infer the types from the node outputs
 			ConstructionArgs::Nodes(ref nodes) => nodes
 				.iter()
 				.map(|(id, _)| {
@@ -684,19 +684,19 @@ impl TypingContext {
 			ProtoNodeInput::ManualComposition(ref ty) => ty.clone(),
 			ProtoNodeInput::Node(id) | ProtoNodeInput::NodeLambda(id) => {
 				let input = self.inferred.get(&id).ok_or_else(|| vec![GraphError::new(node, GraphErrorType::InputNodeNotFound(id))])?;
-				input.output.clone()
+				input.return_value.clone()
 			}
 		};
 		let impls = self.lookup.get(&node.identifier).ok_or_else(|| vec![GraphError::new(node, GraphErrorType::NoImplementations)])?;
 
-		if let Some(index) = parameters.iter().position(|p| {
+		if let Some(index) = inputs.iter().position(|p| {
 			matches!(p,
 			Type::Fn(_, b) if matches!(b.as_ref(), Type::Generic(_)))
 		}) {
-			return Err(vec![GraphError::new(node, GraphErrorType::UnexpectedGenerics { index, parameters })]);
+			return Err(vec![GraphError::new(node, GraphErrorType::UnexpectedGenerics { index, inputs })]);
 		}
 
-		/// Checks if a proposed input to a particular (primary or secondary) input is valid for its type signature.
+		/// Checks if a proposed input to a particular (primary or secondary) input connector is valid for its type signature.
 		/// `from` indicates the value given to a input, `to` indicates the input's allowed type as specified by its type signature.
 		fn valid_subtype(from: &Type, to: &Type) -> bool {
 			match (from, to) {
@@ -721,10 +721,10 @@ impl TypingContext {
 			}
 		}
 
-		// List of all implementations that match the input and parameter types
+		// List of all implementations that match the input types
 		let valid_output_types = impls
 			.keys()
-			.filter(|node_io| valid_subtype(&input, &node_io.input) && parameters.iter().zip(node_io.parameters.iter()).all(|(p1, p2)| valid_subtype(p1, p2)))
+			.filter(|node_io| valid_subtype(&input, &node_io.call_argument) && inputs.iter().zip(node_io.inputs.iter()).all(|(p1, p2)| valid_subtype(p1, p2)))
 			.collect::<Vec<_>>();
 
 		// Attempt to substitute generic types with concrete types and save the list of results
@@ -733,12 +733,12 @@ impl TypingContext {
 			.map(|node_io| {
 				collect_generics(node_io)
 					.iter()
-					.try_for_each(|generic| check_generic(node_io, &input, &parameters, generic).map(|_| ()))
+					.try_for_each(|generic| check_generic(node_io, &input, &inputs, generic).map(|_| ()))
 					.map(|_| {
-						if let Type::Generic(out) = &node_io.output {
-							((*node_io).clone(), check_generic(node_io, &input, &parameters, out).unwrap())
+						if let Type::Generic(out) = &node_io.return_value {
+							((*node_io).clone(), check_generic(node_io, &input, &inputs, out).unwrap())
 						} else {
-							((*node_io).clone(), node_io.output.clone())
+							((*node_io).clone(), node_io.return_value.clone())
 						}
 					})
 			})
@@ -754,9 +754,9 @@ impl TypingContext {
 				for node_io in impls.keys() {
 					let current_errors = [&input]
 						.into_iter()
-						.chain(&parameters)
+						.chain(&inputs)
 						.cloned()
-						.zip([&node_io.input].into_iter().chain(&node_io.parameters).cloned())
+						.zip([&node_io.call_argument].into_iter().chain(&node_io.inputs).cloned())
 						.enumerate()
 						.filter(|(_, (p1, p2))| !valid_subtype(p1, p2))
 						.map(|(index, ty)| (node.original_location.inputs(index).min_by_key(|s| s.node.len()).map(|s| s.index).unwrap_or(index), ty))
@@ -769,12 +769,12 @@ impl TypingContext {
 						error_inputs.push(current_errors);
 					}
 				}
-				let parameters = [&input].into_iter().chain(&parameters).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
-				Err(vec![GraphError::new(node, GraphErrorType::InvalidImplementations { parameters, error_inputs })])
+				let inputs = [&input].into_iter().chain(&inputs).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
+				Err(vec![GraphError::new(node, GraphErrorType::InvalidImplementations { inputs, error_inputs })])
 			}
 			[(org_nio, output)] => {
 				// TODO: Fix unsoundness caused by generic parameters not getting cleaned up
-				let node_io = NodeIOTypes::new(input, (*output).clone(), parameters);
+				let node_io = NodeIOTypes::new(input, (*output).clone(), inputs);
 
 				// Save the inferred type
 				self.inferred.insert(node_id, node_io.clone());
@@ -783,12 +783,12 @@ impl TypingContext {
 			}
 			// If two types are available and one of them accepts () an input, always choose that one
 			[first, second] => {
-				if first.0.input != second.0.input {
+				if first.0.call_argument != second.0.call_argument {
 					for (org_nio, output) in [first, second] {
-						if org_nio.input != concrete!(()) {
+						if org_nio.call_argument != concrete!(()) {
 							continue;
 						}
-						let node_io = NodeIOTypes::new(input, (*output).clone(), parameters);
+						let node_io = NodeIOTypes::new(input, (*output).clone(), inputs);
 
 						// Save the inferred type
 						self.inferred.insert(node_id, node_io.clone());
@@ -796,15 +796,15 @@ impl TypingContext {
 						return Ok(node_io);
 					}
 				}
-				let parameters = [&input].into_iter().chain(&parameters).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
+				let inputs = [&input].into_iter().chain(&inputs).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
 				let valid = valid_output_types.into_iter().cloned().collect();
-				Err(vec![GraphError::new(node, GraphErrorType::MultipleImplementations { parameters, valid })])
+				Err(vec![GraphError::new(node, GraphErrorType::MultipleImplementations { inputs, valid })])
 			}
 
 			_ => {
-				let parameters = [&input].into_iter().chain(&parameters).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
+				let inputs = [&input].into_iter().chain(&inputs).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
 				let valid = valid_output_types.into_iter().cloned().collect();
-				Err(vec![GraphError::new(node, GraphErrorType::MultipleImplementations { parameters, valid })])
+				Err(vec![GraphError::new(node, GraphErrorType::MultipleImplementations { inputs, valid })])
 			}
 		}
 	}
@@ -812,14 +812,14 @@ impl TypingContext {
 
 /// Returns a list of all generic types used in the node
 fn collect_generics(types: &NodeIOTypes) -> Vec<Cow<'static, str>> {
-	let inputs = [&types.input].into_iter().chain(types.parameters.iter().flat_map(|x| x.fn_output()));
+	let inputs = [&types.call_argument].into_iter().chain(types.inputs.iter().flat_map(|x| x.fn_output()));
 	let mut generics = inputs
 		.filter_map(|t| match t {
 			Type::Generic(out) => Some(out.clone()),
 			_ => None,
 		})
 		.collect::<Vec<_>>();
-	if let Type::Generic(out) = &types.output {
+	if let Type::Generic(out) = &types.return_value {
 		generics.push(out.clone());
 	}
 	generics.dedup();
@@ -828,9 +828,9 @@ fn collect_generics(types: &NodeIOTypes) -> Vec<Cow<'static, str>> {
 
 /// Checks if a generic type can be substituted with a concrete type and returns the concrete type
 fn check_generic(types: &NodeIOTypes, input: &Type, parameters: &[Type], generic: &str) -> Result<Type, String> {
-	let inputs = [(Some(&types.input), Some(input))]
+	let inputs = [(Some(&types.call_argument), Some(input))]
 		.into_iter()
-		.chain(types.parameters.iter().map(|x| x.fn_output()).zip(parameters.iter().map(|x| x.fn_output())));
+		.chain(types.inputs.iter().map(|x| x.fn_output()).zip(parameters.iter().map(|x| x.fn_output())));
 	let concrete_inputs = inputs.filter(|(ni, _)| matches!(ni, Some(Type::Generic(input)) if generic == input));
 	let mut outputs = concrete_inputs.flat_map(|(_, out)| out);
 	let out_ty = outputs

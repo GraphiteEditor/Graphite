@@ -100,11 +100,11 @@ impl DynamicExecutor {
 	}
 
 	pub fn input_type(&self) -> Option<Type> {
-		self.typing_context.type_of(self.output).map(|node_io| node_io.input.clone())
+		self.typing_context.type_of(self.output).map(|node_io| node_io.call_argument.clone())
 	}
 
 	pub fn output_type(&self) -> Option<Type> {
-		self.typing_context.type_of(self.output).map(|node_io| node_io.output.clone())
+		self.typing_context.type_of(self.output).map(|node_io| node_io.return_value.clone())
 	}
 
 	pub fn document_node_types<'a>(&'a self, nodes: impl Iterator<Item = Path> + 'a) -> impl Iterator<Item = (Path, NodeTypes)> + 'a {
@@ -327,7 +327,7 @@ impl BorrowTree {
 			log::warn!("did not find type");
 			return false;
 		};
-		let inputs = [&node_io.input].into_iter().chain(&node_io.parameters).cloned().collect();
+		let inputs = [&node_io.call_argument].into_iter().chain(&node_io.inputs).cloned().collect();
 
 		let node_path = &proto_node.original_location.path.as_ref().unwrap_or(const { &vec![] });
 
@@ -337,7 +337,7 @@ impl BorrowTree {
 			id,
 			NodeTypes {
 				inputs,
-				output: node_io.output.clone(),
+				output: node_io.return_value.clone(),
 			},
 		);
 		let modified = *entry != update;

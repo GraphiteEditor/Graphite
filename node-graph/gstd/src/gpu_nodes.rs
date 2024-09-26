@@ -33,9 +33,9 @@ async fn compile_gpu<'a: 'n>(_: (), node: &'a DocumentNode, typing_context: Typi
 		.inputs
 		.iter()
 		.map(|id| typing_context.type_of(*id).unwrap())
-		.map(|node_io| node_io.output.clone())
+		.map(|node_io| node_io.return_value.clone())
 		.collect();
-	let output_types = proto_networks.iter().map(|network| typing_context.type_of(network.output).unwrap().output.clone()).collect();
+	let output_types = proto_networks.iter().map(|network| typing_context.type_of(network.output).unwrap().return_value.clone()).collect();
 
 	Ok(compilation_client::compile(proto_networks, input_types, output_types, io).await.unwrap())
 }

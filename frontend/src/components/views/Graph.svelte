@@ -280,20 +280,20 @@
 		editor.handle.createNode(nodeType, $nodeGraph.contextMenuInformation.contextMenuCoordinates.x, $nodeGraph.contextMenuInformation.contextMenuCoordinates.y);
 	}
 
-	function nodeBorderMask(nodeWidth: number, primaryInputExists: boolean, parameters: number, primaryOutputExists: boolean, exposedOutputs: number): string {
-		const nodeHeight = Math.max(1 + parameters, 1 + exposedOutputs) * 24;
+	function nodeBorderMask(nodeWidth: number, primaryInputExists: boolean, exposedSecondaryInputs: number, primaryOutputExists: boolean, exposedSecondaryOutputs: number): string {
+		const nodeHeight = Math.max(1 + exposedSecondaryInputs, 1 + exposedSecondaryOutputs) * 24;
 
 		const boxes: { x: number; y: number; width: number; height: number }[] = [];
 
 		// Primary input
 		if (primaryInputExists) boxes.push({ x: -8, y: 4, width: 16, height: 16 });
-		// Parameter inputs
-		for (let i = 0; i < parameters; i++) boxes.push({ x: -8, y: 4 + (i + 1) * 24, width: 16, height: 16 });
+		// Secondary inputs
+		for (let i = 0; i < exposedSecondaryInputs; i++) boxes.push({ x: -8, y: 4 + (i + 1) * 24, width: 16, height: 16 });
 
 		// Primary output
 		if (primaryOutputExists) boxes.push({ x: nodeWidth - 8, y: 4, width: 16, height: 16 });
 		// Exposed outputs
-		for (let i = 0; i < exposedOutputs; i++) boxes.push({ x: nodeWidth - 8, y: 4 + (i + 1) * 24, width: 16, height: 16 });
+		for (let i = 0; i < exposedSecondaryOutputs; i++) boxes.push({ x: nodeWidth - 8, y: 4 + (i + 1) * 24, width: 16, height: 16 });
 
 		return borderMask(boxes, nodeWidth, nodeHeight);
 	}
@@ -704,17 +704,17 @@
 					<span class="node-error hover" transition:fade={FADE_TRANSITION} data-node-error>{node.errors}</span>
 				{/if}
 				<!-- Primary row -->
-				<div class="primary" class:in-selected-network={$nodeGraph.inSelectedNetwork} class:no-parameter-section={exposedInputsOutputs.length === 0}>
+				<div class="primary" class:in-selected-network={$nodeGraph.inSelectedNetwork} class:no-secondary-section={exposedInputsOutputs.length === 0}>
 					<IconLabel icon={nodeIcon(node.reference)} />
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
 					<TextLabel tooltip={editor.handle.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined}>{node.displayName}</TextLabel>
 				</div>
-				<!-- Parameter rows -->
+				<!-- Secondary rows -->
 				{#if exposedInputsOutputs.length > 0}
-					<div class="parameters" class:in-selected-network={$nodeGraph.inSelectedNetwork}>
-						{#each exposedInputsOutputs as parameter, index}
-							<div class={`parameter expanded ${index < node.exposedInputs.length ? "input" : "output"}`}>
-								<TextLabel tooltip={parameter.name}>{parameter.name}</TextLabel>
+					<div class="secondary" class:in-selected-network={$nodeGraph.inSelectedNetwork}>
+						{#each exposedInputsOutputs as secondary, index}
+							<div class={`secondary-row expanded ${index < node.exposedInputs.length ? "input" : "output"}`}>
+								<TextLabel tooltip={secondary.name}>{secondary.name}</TextLabel>
 							</div>
 						{/each}
 					</div>
@@ -740,20 +740,20 @@
 							{/if}
 						</svg>
 					{/if}
-					{#each node.exposedInputs as parameter, index}
+					{#each node.exposedInputs as secondary, index}
 						{#if index < node.exposedInputs.length}
 							<svg
 								xmlns="http://www.w3.org/2000/svg"
 								viewBox="0 0 8 8"
 								class="port"
 								data-port="input"
-								data-datatype={parameter.dataType}
-								style:--data-color={`var(--color-data-${parameter.dataType.toLowerCase()})`}
-								style:--data-color-dim={`var(--color-data-${parameter.dataType.toLowerCase()}-dim)`}
+								data-datatype={secondary.dataType}
+								style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
+								style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
 								bind:this={inputs[nodeIndex + 1][index + (node.primaryInput ? 1 : 0)]}
 							>
-								<title>{`${dataTypeTooltip(parameter)}\n${inputConnectedToText(parameter)}`}</title>
-								{#if parameter.connectedTo !== undefined}
+								<title>{`${dataTypeTooltip(secondary)}\n${inputConnectedToText(secondary)}`}</title>
+								{#if secondary.connectedTo !== undefined}
 									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 								{:else}
 									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
@@ -783,19 +783,19 @@
 							{/if}
 						</svg>
 					{/if}
-					{#each node.exposedOutputs as parameter, outputIndex}
+					{#each node.exposedOutputs as secondary, outputIndex}
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
 							class="port"
 							data-port="output"
-							data-datatype={parameter.dataType}
-							style:--data-color={`var(--color-data-${parameter.dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${parameter.dataType.toLowerCase()}-dim)`}
+							data-datatype={secondary.dataType}
+							style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
+							style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
 							bind:this={outputs[nodeIndex + 1][outputIndex + (node.primaryOutput ? 1 : 0)]}
 						>
-							<title>{`${dataTypeTooltip(parameter)}\n${outputConnectedToText(parameter)}`}</title>
-							{#if parameter.connectedTo !== undefined}
+							<title>{`${dataTypeTooltip(secondary)}\n${outputConnectedToText(secondary)}`}</title>
+							{#if secondary.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
@@ -1300,7 +1300,7 @@
 					}
 				}
 
-				.parameters {
+				.secondary {
 					background: rgba(var(--color-f-white-rgb), 0.1);
 
 					&.in-selected-network {
@@ -1332,7 +1332,7 @@
 				border-radius: 2px 2px 0 0;
 				background: rgba(var(--color-f-white-rgb), 0.05);
 
-				&.no-parameter-section {
+				&.no-secondary-section {
 					border-radius: 2px;
 				}
 
@@ -1347,13 +1347,13 @@
 				}
 			}
 
-			.parameters {
+			.secondary {
 				display: flex;
 				flex-direction: column;
 				width: 100%;
 				position: relative;
 
-				.parameter {
+				.secondary-row {
 					position: relative;
 					display: flex;
 					align-items: center;

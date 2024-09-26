@@ -70,14 +70,14 @@ macro_rules! fn_type {
 
 #[derive(Clone, PartialEq, Eq, Hash, Default)]
 pub struct NodeIOTypes {
-	pub input: Type,
-	pub output: Type,
-	pub parameters: Vec<Type>,
+	pub call_argument: Type,
+	pub return_value: Type,
+	pub inputs: Vec<Type>,
 }
 
 impl NodeIOTypes {
-	pub const fn new(input: Type, output: Type, parameters: Vec<Type>) -> Self {
-		Self { input, output, parameters }
+	pub const fn new(call_argument: Type, return_value: Type, inputs: Vec<Type>) -> Self {
+		Self { call_argument, return_value, inputs }
 	}
 
 	pub const fn empty() -> Self {
@@ -96,14 +96,14 @@ impl NodeIOTypes {
 			align: 0,
 		};
 		Self {
-			input: Type::Concrete(tds1),
-			output: Type::Concrete(tds2),
-			parameters: Vec::new(),
+			call_argument: Type::Concrete(tds1),
+			return_value: Type::Concrete(tds2),
+			inputs: Vec::new(),
 		}
 	}
 
 	pub fn ty(&self) -> Type {
-		Type::Fn(Box::new(self.input.clone()), Box::new(self.output.clone()))
+		Type::Fn(Box::new(self.call_argument.clone()), Box::new(self.return_value.clone()))
 	}
 }
 
@@ -111,8 +111,8 @@ impl core::fmt::Debug for NodeIOTypes {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		f.write_fmt(format_args!(
 			"node({}) -> {}",
-			[&self.input].into_iter().chain(&self.parameters).map(|input| input.to_string()).collect::<Vec<_>>().join(", "),
-			self.output
+			[&self.call_argument].into_iter().chain(&self.inputs).map(|input| input.to_string()).collect::<Vec<_>>().join(", "),
+			self.return_value
 		))
 	}
 }

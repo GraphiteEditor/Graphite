@@ -60,11 +60,11 @@ macro_rules! register_node {
 			},
 			{
 				let node = <$path>::new($(
-						graphene_std::any::PanicNode::<(), $type>::new()
+					graphene_std::any::PanicNode::<(), $type>::new()
 				),*);
 				let params = vec![$(fn_type!((), $type)),*];
 				let mut node_io = <$path as NodeIO<'_, $input>>::to_node_io(&node, params);
-				node_io.input = concrete!(<$input as StaticType>::Static);
+				node_io.call_argument = concrete!(<$input as StaticType>::Static);
 				node_io
 			},
 		)
@@ -72,7 +72,7 @@ macro_rules! register_node {
 }
 macro_rules! async_node {
 	// TODO: we currently need to annotate the type here because the compiler would otherwise (correctly)
-	// assign a Pin<Box<dyn Future<Output=T>>> type to the node, which is not what we want for now.
+	// TODO: assign a Pin<Box<dyn Future<Output=T>>> type to the node, which is not what we want for now.
 	//
 	// This `params` variant of the macro wraps the normal `fn_params` variant and is used as a shorthand for writing `T` instead of `() => T`
 	($path:ty, input: $input:ty, params: [$($type:ty),*]) => {
@@ -91,13 +91,13 @@ macro_rules! async_node {
 			},
 			{
 				let node = <$path>::new($(
-							graphene_std::any::PanicNode::<$arg, core::pin::Pin<Box<dyn core::future::Future<Output = $type> + Send>>>::new()
+					graphene_std::any::PanicNode::<$arg, core::pin::Pin<Box<dyn core::future::Future<Output = $type> + Send>>>::new()
 				),*);
 				// TODO: Propagate the future type through the node graph
 				// let params = vec![$(Type::Fn(Box::new(concrete!(())), Box::new(Type::Future(Box::new(concrete!($type)))))),*];
 				let params = vec![$(fn_type!($arg, $type)),*];
 				let mut node_io = NodeIO::<'_, $input>::to_async_node_io(&node, params);
-				node_io.input = concrete!(<$input as StaticType>::Static);
+				node_io.call_argument = concrete!(<$input as StaticType>::Static);
 				node_io
 			},
 		)

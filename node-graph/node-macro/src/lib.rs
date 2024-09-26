@@ -1,3 +1,5 @@
+// TODO: Deprecate and remove this file
+
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use proc_macro_error::proc_macro_error;
@@ -51,14 +53,14 @@ mod validation;
 ///       where S1: Node<'input, (), Output = f64>,
 ///   ```
 ///   
-///   for two `f64` parameter (secondary input) types. Since Graphene works by having each function evaluate its upstream node as a lambda that returns output data, these secondary inputs are not directly `f64` values but rather `Node`s that output `f64` values when evaluated (in this case, with an empty input of `()`).
+///   for two `f64` secondary input types. Since Graphene works by having each function evaluate its upstream node as a lambda that returns output data, these secondary inputs are not directly `f64` values but rather `Node`s that output `f64` values when evaluated (in this case, with an empty input of `()`).
 /// - Mapping the function's return type to the impl'd `Node` trait's associated type, e.g.:
 ///   
 ///   ```ignore
 ///   Output = Color
 ///   ```
 ///   
-///   for a `Color` return (secondary output) type.
+///   for a `Color` secondary output type.
 ///
 /// ## `eval()` method generation
 ///

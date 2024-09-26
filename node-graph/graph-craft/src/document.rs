@@ -98,22 +98,34 @@ pub struct DocumentNode {
 	/// - A [`NodeInput::Network`] which specifies that this input is from outside the graph, which is resolved in the graph flattening step in the case of nested networks.
 	///
 	/// In the root network, it is resolved when evaluating the borrow tree.
-	/// Ensure the click target in the encapsulating network is updated when the inputs cause the node shape to change (currently only when exposing/hiding an input) by using network.update_click_target(node_id).
+	/// Ensure the click target in the encapsulating network is updated when the inputs cause the node shape to change (currently only when exposing/hiding an input)
+	/// by using network.update_click_target(node_id).
 	#[cfg_attr(feature = "serde", serde(deserialize_with = "deserialize_inputs"))]
 	pub inputs: Vec<NodeInput>,
-	/// Manual composition is a way to override the default composition flow of one node into another.
+	/// Manual composition is the methodology by which most nodes are implemented, involving a call argument and upstream inputs.
+	/// By contrast, automatic composition is an alternative way to handle the composition of nodes as they execute in the graph.
+	/// Normally, the program (the compiled graph) builds up its call stack, with each node calling its upstream predecessor to acquire its input data.
+	/// When the document graph becomes the proto graph, that conceptual model changes into a model that's unique to the proto graph.
+	/// Automatic composition allows a document node to be translated into its place in the proto graph differently, such that
+	/// the node doesn't participate in that process of being called with a call argument and calling its upstream predecessor.
+	/// Instead, it is called directly with its input data from the upstream node, skipping the call stack building process.
+	/// The abstraction is provided by the compiler for nodes which opt for automatic composition. It works by inserting a `ComposeNode`
+	/// into the proto graph, which does the job of calling the upstream node and feeding its output into the downstream node's first input.
+	/// That first input is typically used by manual composition nodes as the call argument, but for automatic composition nodes,
+	/// that first input becomes the input data from the upstream node passed in by the `ComposeNode`.
 	///
-	/// Through the usual node composition flow, the upstream node providing the primary input for a node is evaluated before the node itself is run.
-	/// - Abstract example: upstream node `G` is evaluated and its data feeds into the primary input of downstream node `F`,
+	/// Through automatic composition, the upstream node providing the first input for a proto node is evaluated before the proto node itself is run.
+	/// (That first input is usually the call argument when manual composition is used.)
+	/// - Abstract example: upstream node `G` is evaluated and its data feeds into the first input of downstream node `F`,
 	///   just like function composition where function `G` is evaluated and its result is fed into function `F`.
-	/// - Concrete example: a node that takes an image as primary input will get that image data from an upstream node that produces image output data and is evaluated first before being fed downstream.
+	/// - Concrete example: a node that takes an image as its first input will get that image data from an upstream node that produces image output data and is evaluated first before being fed downstream.
 	///
 	/// This is achieved by automatically inserting `ComposeNode`s, which run the first node with the overall input and then feed the resulting output into the second node.
 	/// The `ComposeNode` is basically a function composition operator: the parentheses in `F(G(x))` or circle math operator in `(F ∘ G)(x)`.
 	/// For flexibility, instead of being a language construct, Graphene splits out composition itself as its own low-level node so that behavior can be overridden.
 	/// The `ComposeNode`s are then inserted during the graph rewriting step for nodes that don't opt out with `manual_composition`.
 	/// Instead of node `G` feeding into node `F` feeding as the result back to the caller,
-	/// the graph is rewritten so nodes `G` and `F` both feed as lambdas into the parameters of a `ComposeNode` which calls `F(G(input))` and returns the result to the caller.
+	/// the graph is rewritten so nodes `G` and `F` both feed as lambdas into the inputs of a `ComposeNode` which calls `F(G(input))` and returns the result to the caller.
 	///
 	/// A node's manual composition input represents an input that is not resolved through graph rewriting with a `ComposeNode`,
 	/// and is instead just passed in when evaluating this node within the borrow tree.
@@ -305,15 +317,15 @@ impl DocumentNode {
 				NodeInput::Reflection(_) => unreachable!("Reflection input was not resolved"),
 			}
 		};
-		assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network { .. })), "received non resolved parameter");
+		assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network { .. })), "received non-resolved input");
 		assert!(
 			!self.inputs.iter().any(|input| matches!(input, NodeInput::Value { .. })),
-			"received value as parameter. inputs: {:#?}, construction_args: {:#?}",
+			"received value as input. inputs: {:#?}, construction_args: {:#?}",
 			self.inputs,
 			args
 		);
 
-		// If we have one parameter of the type inline, set it as the construction args
+		// If we have one input of the type inline, set it as the construction args
 		if let &[NodeInput::Inline(ref inline)] = self.inputs.as_slice() {
 			args = ConstructionArgs::Inline(inline.clone());
 		}

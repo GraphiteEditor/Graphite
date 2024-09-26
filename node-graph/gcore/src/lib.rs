@@ -96,24 +96,24 @@ where
 		core::any::type_name::<Self::Output>()
 	}
 	#[cfg(feature = "alloc")]
-	fn to_node_io(&self, parameters: Vec<Type>) -> NodeIOTypes {
+	fn to_node_io(&self, inputs: Vec<Type>) -> NodeIOTypes {
 		NodeIOTypes {
-			input: concrete!(<Input as StaticTypeSized>::Static),
-			output: concrete!(<Self::Output as StaticTypeSized>::Static),
-			parameters,
+			call_argument: concrete!(<Input as StaticTypeSized>::Static),
+			return_value: concrete!(<Self::Output as StaticTypeSized>::Static),
+			inputs,
 		}
 	}
 	#[cfg(feature = "alloc")]
-	fn to_async_node_io(&self, parameters: Vec<Type>) -> NodeIOTypes
+	fn to_async_node_io(&self, inputs: Vec<Type>) -> NodeIOTypes
 	where
 		<Self::Output as Future>::Output: StaticTypeSized,
 		Self::Output: Future,
 	{
 		NodeIOTypes {
-			input: concrete!(<Input as StaticTypeSized>::Static),
+			call_argument: concrete!(<Input as StaticTypeSized>::Static),
 			// TODO return actual future type
-			output: concrete!(<<Self::Output as Future>::Output as StaticTypeSized>::Static),
-			parameters,
+			return_value: concrete!(<<Self::Output as Future>::Output as StaticTypeSized>::Static),
+			inputs,
 		}
 	}
 }

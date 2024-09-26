@@ -105,7 +105,7 @@ pub fn get_blend_mode(layer: LayerNodeIdentifier, network_interface: &NodeNetwor
 /// Get the current opacity of a layer from the closest Opacity node.
 /// This may differ from the actual opacity contained within the data type reaching this layer, because that actual opacity may be:
 /// - Multiplied with additional opacity nodes earlier in the chain
-/// - Set by an Opacity node with an exposed parameter value driven by another node
+/// - Set by an Opacity node with an exposed input value driven by another node
 /// - Already factored into the pixel alpha channel of an image
 /// - The default value of 100% if no Opacity node is present, but this function returns None in that case
 ///

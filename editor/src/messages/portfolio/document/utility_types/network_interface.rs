@@ -511,7 +511,7 @@ impl NodeNetworkInterface {
 				}
 			}
 			DocumentNodeImplementation::ProtoNode(_) => {
-				// If a node has manual composition, then offset the input index by 1 since the proto node also includes the type of the parameter passed through manual composition.
+				// If a node has manual composition, then offset the input index by 1 since the proto node also includes the type of the input passed through manual composition.
 				let manual_composition_offset = if node.manual_composition.is_some() { 1 } else { 0 };
 				self.resolved_types
 					.types
@@ -552,7 +552,7 @@ impl NodeNetworkInterface {
 
 				let skip_footprint = if node.manual_composition.is_some() { 1 } else { 0 };
 
-				let Some(input_type) = std::iter::once(node_types.input.clone()).chain(node_types.parameters.clone()).nth(input_index + skip_footprint) else {
+				let Some(input_type) = std::iter::once(node_types.call_argument.clone()).chain(node_types.inputs.clone()).nth(input_index + skip_footprint) else {
 					log::error!("Could not get type");
 					return (concrete!(()), TypeSource::Error("could not get the protonode's input"));
 				};
@@ -678,7 +678,7 @@ impl NodeNetworkInterface {
 				let node_id_path = &[network_path, &[*node_id]].concat();
 				let primary_output_type = self.resolved_types.types.get(node_id_path).map(|ty| (ty.output.clone(), TypeSource::Compiled)).or_else(|| {
 					let node_types = random_protonode_implementation(protonode)?;
-					Some((node_types.output.clone(), TypeSource::RandomProtonodeImplementation))
+					Some((node_types.return_value.clone(), TypeSource::RandomProtonodeImplementation))
 				});
 
 				output_types.push(primary_output_type);
