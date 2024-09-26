@@ -73,11 +73,12 @@ use crate::path_segment::PathSegment;
 use crate::path_to_path_data;
 use crate::quad_tree::QuadTree;
 
-use glam::{BVec2, DVec2};
+use glam::{BVec2, DVec2, I64Vec2};
 use roots::{Roots, find_roots_cubic};
 use rustc_hash::FxHashMap as HashMap;
 use rustc_hash::FxHashSet as HashSet;
 use slotmap::{SlotMap, new_key_type};
+use smallvec::SmallVec;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
 use std::fmt::Display;
@@ -536,30 +537,61 @@ impl Direction {
 	}
 }
 
+const ROUNDING_FACTOR: f64 = 1.0 / EPS.point;
+
+fn round_point(point: DVec2) -> I64Vec2 {
+	(point * ROUNDING_FACTOR).as_i64vec2()
+}
+
 // TODO:(@TrueDoctor) Optimize this by rounding each vertex up and down and then inserting them in a hashmap. This should remove the need for bbox calculations and the quad tree
 fn find_vertices(edges: &[MajorGraphEdgeStage2], bounding_box: Aabb) -> MajorGraph {
-	let mut vertex_tree = QuadTree::new(bounding_box, POINT_TREE_DEPTH, 8);
 	let mut graph = MajorGraph {
 		edges: SlotMap::with_key(),
 		vertices: SlotMap::with_key(),
 	};
 
 	let mut parents: HashMap<MajorEdgeKey, u8> = new_hash_map(edges.len());
+	let mut vertex_pair_id_to_edges: HashMap<_, SmallVec<[(MajorGraphEdgeStage2, MajorEdgeKey, MajorEdgeKey); 2]>> = new_hash_map(edges.len());
+	let mut vertex_hashmap: HashMap<I64Vec2, MajorVertexKey> = new_hash_map(edges.len() * 2);
 
-	let mut vertex_pair_id_to_edges: HashMap<_, Vec<(MajorGraphEdgeStage2, MajorEdgeKey, MajorEdgeKey)>> = new_hash_map(edges.len());
+	// let mut vertex_tree = QuadTree::new(bounding_box, POINT_TREE_DEPTH, 8);
+	// let mut graph = MajorGraph {
+	// 	edges: SlotMap::with_key(),
+	// 	vertices: SlotMap::with_key(),
+	// };
+
+	// let mut parents: HashMap<MajorEdgeKey, u8> = new_hash_map(edges.len());
+
+	// let mut vertex_pair_id_to_edges: HashMap<_, Vec<(MajorGraphEdgeStage2, MajorEdgeKey, MajorEdgeKey)>> = new_hash_map(edges.len());
 
 	for (seg, parent, bounding_box) in edges {
+		// let mut get_vertex = |point: DVec2| -> MajorVertexKey {
+		// 	let box_around_point = bounding_box_around_point(point, EPS.point);
+		// 	if let Some(&existing_vertex) = vertex_tree.find(&box_around_point).iter().next() {
+		// 		existing_vertex
+		// 	} else {
+		// 		let vertex_key = graph.vertices.insert(MajorGraphVertex { point, outgoing_edges: Vec::new() });
+		// 		vertex_tree.insert(box_around_point, vertex_key);
+		// 		vertex_key
+		// 	}
+		// };
 		let mut get_vertex = |point: DVec2| -> MajorVertexKey {
-			let box_around_point = bounding_box_around_point(point, EPS.point);
-			if let Some(&existing_vertex) = vertex_tree.find(&box_around_point).iter().next() {
-				existing_vertex
-			} else {
-				let vertex_key = graph.vertices.insert(MajorGraphVertex { point, outgoing_edges: Vec::new() });
-				vertex_tree.insert(box_around_point, vertex_key);
-				vertex_key
+			let rounded = round_point(point);
+			let key = rounded;
+			if let Some(&vertex) = vertex_hashmap.get(&key) {
+				return vertex;
 			}
-		};
 
+			let vertex_key = graph.vertices.insert(MajorGraphVertex { point, outgoing_edges: Vec::new() });
+			// for offset in offsets.iter() {
+			for dx in -1..=1 {
+				for dy in -1..=1 {
+					let offset = I64Vec2::new(dx, dy);
+					vertex_hashmap.insert(rounded + offset, vertex_key);
+				}
+			}
+			vertex_key
+		};
 		let start_vertex = get_vertex(seg.start());
 		let end_vertex = get_vertex(seg.end());
 
@@ -1132,6 +1164,8 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 						vertices: component_vertices.clone(),
 						edges: component_edges.clone(),
 						outer_face: None,
+						inner_bb: Default::default(),
+						outer_bb: Default::default(),
 					}],
 					&dual_edges,
 				)
