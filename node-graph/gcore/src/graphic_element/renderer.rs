@@ -275,7 +275,6 @@ pub fn to_transform(transform: DAffine2) -> usvg::Transform {
 pub struct RenderMetadata {
 	pub footprints: HashMap<NodeId, (Footprint, DAffine2)>,
 	pub click_targets: HashMap<NodeId, Vec<ClickTarget>>,
-	pub vector_data: HashMap<NodeId, VectorData>,
 }
 
 pub trait GraphicElementRendered {
@@ -455,22 +454,13 @@ impl GraphicElementRendered for VectorData {
 				subpath
 			};
 
-			let mut click_targets = self
+			let click_targets = self
 				.stroke_bezier_paths()
 				.map(fill)
 				.map(|subpath| ClickTarget::new(subpath, stroke_width))
 				.collect::<Vec<ClickTarget>>();
 
-			// if click_targets.is_empty() {
-			// 	if let Some(first_position) = self.point_domain.positions().first() {
-			// 		let manipulator_groups = vec![bezier_rs::ManipulatorGroup::new_anchor(*first_position)];
-			// 		click_targets.push(ClickTarget::new(Subpath::new(manipulator_groups, false), 0.));
-			// 	}
-			// }
-
-			// log::debug!("click_targets: {:?}", click_targets);
 			metadata.click_targets.insert(element_id, click_targets);
-			metadata.vector_data.insert(element_id, self.clone());
 		}
 
 		if let Some(upstream_graphic_group) = &self.upstream_graphic_group {

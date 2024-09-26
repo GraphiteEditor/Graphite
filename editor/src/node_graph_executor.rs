@@ -16,6 +16,7 @@ use graphene_core::text::FontCache;
 use graphene_core::transform::Footprint;
 use graphene_core::vector::style::ViewMode;
 use graphene_std::renderer::format_transform_matrix;
+use graphene_std::vector::VectorData;
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
 
@@ -44,6 +45,7 @@ pub struct NodeRuntime {
 	// TODO: Remove, it doesn't need to be persisted anymore
 	/// The current renders of the thumbnails for layer nodes.
 	thumbnail_renders: HashMap<NodeId, Vec<SvgSegment>>,
+	vector_modify: HashMap<NodeId, VectorData>,
 }
 
 /// Messages passed from the editor thread to the node runtime thread.
@@ -74,6 +76,7 @@ pub struct ExecutionResponse {
 	result: Result<TaggedValue, String>,
 	responses: VecDeque<FrontendMessage>,
 	transform: DAffine2,
+	vector_modify: HashMap<NodeId, VectorData>,
 }
 
 pub struct CompilationResponse {
@@ -131,6 +134,7 @@ impl NodeRuntime {
 			monitor_nodes: Vec::new(),
 
 			thumbnail_renders: Default::default(),
+			vector_modify: Default::default(),
 		}
 	}
 
@@ -203,6 +207,7 @@ impl NodeRuntime {
 
 					let result = self.execute_network(render_config).await;
 					let mut responses = VecDeque::new();
+					// TODO: Only process monitor nodes if the graph has changed, not when only the Footprint changes
 					self.process_monitor_nodes(&mut responses, self.update_thumbnails);
 					self.update_thumbnails = false;
 
@@ -211,6 +216,7 @@ impl NodeRuntime {
 						result,
 						responses,
 						transform,
+						vector_modify: self.vector_modify.clone(),
 					});
 				}
 			}
@@ -282,8 +288,18 @@ impl NodeRuntime {
 
 			if let Some(io) = introspected_data.downcast_ref::<IORecord<Footprint, graphene_core::GraphicElement>>() {
 				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
+			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), graphene_core::GraphicElement>>() {
+				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
 			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Footprint, graphene_core::Artboard>>() {
 				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
+			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), graphene_core::Artboard>>() {
+				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
+			}
+			// Insert the vector modify if we are dealing with vector data
+			else if let Some(record) = introspected_data.downcast_ref::<IORecord<Footprint, VectorData>>() {
+				self.vector_modify.insert(parent_network_node_id, record.output.clone());
+			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<(), VectorData>>() {
+				self.vector_modify.insert(parent_network_node_id, record.output.clone());
 			}
 		}
 	}
@@ -535,6 +551,7 @@ impl NodeGraphExecutor {
 						result,
 						responses: existing_responses,
 						transform,
+						vector_modify,
 					} = execution_response;
 
 					responses.add(OverlaysMessage::Draw);
@@ -550,6 +567,7 @@ impl NodeGraphExecutor {
 					};
 
 					responses.extend(existing_responses.into_iter().map(Into::into));
+					document.network_interface.update_vector_modify(vector_modify);
 
 					let execution_context = self.futures.remove(&execution_id).ok_or_else(|| "Invalid generation ID".to_string())?;
 					if let Some(export_config) = execution_context.export_config {

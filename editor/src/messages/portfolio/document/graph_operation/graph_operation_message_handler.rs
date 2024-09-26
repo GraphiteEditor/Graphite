@@ -189,6 +189,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				let layer = modify_inputs.create_layer(id);
 				modify_inputs.insert_text(text, font, size, layer);
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
+				responses.add(GraphOperationMessage::StrokeSet { layer, stroke: Stroke::default() });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			GraphOperationMessage::ResizeArtboard { layer, location, dimensions } => {
