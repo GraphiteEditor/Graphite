@@ -176,7 +176,7 @@ struct MajorGraph {
 
 #[derive(Debug, Clone, PartialEq)]
 struct MinorGraphEdge {
-	segments: Vec<PathSegment>,
+	segments: SmallVec<[PathSegment; 4]>,
 	parent: u8,
 	incident_vertices: [MinorVertexKey; 2],
 	direction_flag: Direction,
@@ -700,16 +700,18 @@ fn compute_minor(major_graph: &MajorGraph) -> MinorGraph {
 	let vertex_count = major_graph.vertices.len();
 	let edge_count = major_graph.edges.len();
 	let mut new_edges = SlotMap::with_capacity_and_key(edge_count / 2);
-	let mut new_vertices = SlotMap::with_capacity_and_key((vertex_count as f32).sqrt() as usize);
+	let mut new_vertices = SlotMap::with_capacity_and_key(vertex_count.ilog2() as usize + 2);
 	let mut to_minor_vertex = new_hash_map(vertex_count);
 	let mut id_to_edge = new_hash_map(edge_count);
 	// merge with to_minor_vertex
 	let mut visited = HashSet::with_capacity_and_hasher(vertex_count, Default::default());
 
+	let mut skipped = 0;
 	// Handle components that are not cycles
 	for (major_vertex_key, vertex) in &major_graph.vertices {
 		// Edges are contracted
 		if get_order(vertex) == 2 {
+			skipped += 1;
 			continue;
 		}
 		let start_vertex = *to_minor_vertex
@@ -717,7 +719,7 @@ fn compute_minor(major_graph: &MajorGraph) -> MinorGraph {
 			.or_insert_with(|| new_vertices.insert(MinorGraphVertex { outgoing_edges: SmallVec::new() }));
 
 		for &start_edge_key in &vertex.outgoing_edges {
-			let mut segments = Vec::new();
+			let mut segments = SmallVec::new();
 			let mut edge_key = start_edge_key;
 			let mut edge = &major_graph.edges[edge_key];
 
@@ -769,7 +771,7 @@ fn compute_minor(major_graph: &MajorGraph) -> MinorGraph {
 		let mut edge_key = vertex.outgoing_edges[0];
 		let mut edge = &major_graph.edges[edge_key];
 		let mut cycle = MinorGraphCycle {
-			segments: Vec::new(),
+			segments: Vec::with_capacity(4),
 			parent: edge.parent,
 			direction_flag: edge.direction_flag,
 		};
@@ -1038,7 +1040,7 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 			let twin_dual_key = minor_to_dual_edge.get(&twin).copied();
 
 			let new_edge_key = dual_edges.insert(DualGraphHalfEdge {
-				segments: edge.segments.clone(),
+				segments: edge.segments.to_vec(),
 				parent: edge.parent,
 				incident_vertex: face_key,
 				direction_flag: edge.direction_flag,
