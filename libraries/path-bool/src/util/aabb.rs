@@ -8,6 +8,12 @@ pub(crate) struct Aabb {
 	pub left: f64,
 }
 
+impl Aabb {
+	pub(crate) fn min(&self) -> DVec2 {
+		DVec2::new(self.left, self.top)
+	}
+}
+
 pub(crate) fn bounding_boxes_overlap(a: &Aabb, b: &Aabb) -> bool {
 	a.left <= b.right && b.left <= a.right && a.top <= b.bottom && b.top <= a.bottom
 }

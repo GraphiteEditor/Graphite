@@ -73,7 +73,7 @@ use crate::path_segment::PathSegment;
 use crate::path_to_path_data;
 use crate::quad_tree::QuadTree;
 
-use glam::{BVec2, DVec2, I64Vec2};
+use glam::{BVec2, DVec2, I64Vec2, IVec2};
 use roots::{Roots, find_roots_cubic};
 use rustc_hash::FxHashMap as HashMap;
 use rustc_hash::FxHashSet as HashSet;
@@ -537,22 +537,22 @@ impl Direction {
 	}
 }
 
-const ROUNDING_FACTOR: f64 = 1.0 / EPS.point;
+const ROUNDING_FACTOR: f64 = 1.0 / (2. * EPS.point);
 
-fn round_point(point: DVec2) -> I64Vec2 {
-	(point * ROUNDING_FACTOR).as_i64vec2()
+fn round_point(point: DVec2) -> IVec2 {
+	(point * ROUNDING_FACTOR).as_ivec2()
 }
 
-// TODO:(@TrueDoctor) Optimize this by rounding each vertex up and down and then inserting them in a hashmap. This should remove the need for bbox calculations and the quad tree
-fn find_vertices(edges: &[MajorGraphEdgeStage2], bounding_box: Aabb) -> MajorGraph {
+// TODO: Using 32bit values here might lead to incorrect results when the values collide. Even though this is very unlikely we should think about this case
+fn find_vertices(edges: &[MajorGraphEdgeStage2], total_bounding_box: Aabb) -> MajorGraph {
 	let mut graph = MajorGraph {
-		edges: SlotMap::with_key(),
+		edges: SlotMap::with_capacity_and_key(edges.len()),
 		vertices: SlotMap::with_key(),
 	};
 
 	let mut parents: HashMap<MajorEdgeKey, u8> = new_hash_map(edges.len());
 	let mut vertex_pair_id_to_edges: HashMap<_, SmallVec<[(MajorGraphEdgeStage2, MajorEdgeKey, MajorEdgeKey); 2]>> = new_hash_map(edges.len());
-	let mut vertex_hashmap: HashMap<I64Vec2, MajorVertexKey> = new_hash_map(edges.len() * 2);
+	let mut vertex_hashmap: HashMap<IVec2, MajorVertexKey> = new_hash_map(edges.len() * 2);
 
 	// let mut vertex_tree = QuadTree::new(bounding_box, POINT_TREE_DEPTH, 8);
 	// let mut graph = MajorGraph {
@@ -563,6 +563,7 @@ fn find_vertices(edges: &[MajorGraphEdgeStage2], bounding_box: Aabb) -> MajorGra
 	// let mut parents: HashMap<MajorEdgeKey, u8> = new_hash_map(edges.len());
 
 	// let mut vertex_pair_id_to_edges: HashMap<_, Vec<(MajorGraphEdgeStage2, MajorEdgeKey, MajorEdgeKey)>> = new_hash_map(edges.len());
+	// let offsets = [IVec2::new(0, -1), IVec2::new(-1, 0), IVec2::new(0, 0), IVec2::new(0, 1), IVec2::new(1, 0)];
 
 	for (seg, parent, bounding_box) in edges {
 		// let mut get_vertex = |point: DVec2| -> MajorVertexKey {
@@ -577,23 +578,36 @@ fn find_vertices(edges: &[MajorGraphEdgeStage2], bounding_box: Aabb) -> MajorGra
 		// };
 		let mut get_vertex = |point: DVec2| -> MajorVertexKey {
 			let rounded = round_point(point);
-			let key = rounded;
-			if let Some(&vertex) = vertex_hashmap.get(&key) {
+			if let Some(&vertex) = vertex_hashmap.get(&rounded) {
+				return vertex;
+			}
+			if let Some(&vertex) = vertex_hashmap.get(&(rounded - IVec2::X)) {
+				return vertex;
+			}
+			if let Some(&vertex) = vertex_hashmap.get(&(rounded - IVec2::Y)) {
+				return vertex;
+			}
+			if let Some(&vertex) = vertex_hashmap.get(&(rounded + IVec2::X)) {
+				return vertex;
+			}
+			if let Some(&vertex) = vertex_hashmap.get(&(rounded + IVec2::Y)) {
 				return vertex;
 			}
 
 			let vertex_key = graph.vertices.insert(MajorGraphVertex { point, outgoing_edges: Vec::new() });
 			// for offset in offsets.iter() {
-			for dx in -1..=1 {
-				for dy in -1..=1 {
-					let offset = I64Vec2::new(dx, dy);
-					vertex_hashmap.insert(rounded + offset, vertex_key);
-				}
-			}
+			// for dx in -1..=1 {
+			// 	for dy in -1..=1 {
+			let offset = IVec2::ZERO;
+			// let offset = IVec2::new(dx, dy);
+			vertex_hashmap.insert(rounded + offset, vertex_key);
+			// 	}
+			// }
 			vertex_key
 		};
-		let start_vertex = get_vertex(seg.start());
-		let end_vertex = get_vertex(seg.end());
+		// we should subtract the center instead here
+		let start_vertex = get_vertex(seg.start() - total_bounding_box.min());
+		let end_vertex = get_vertex(seg.end() - total_bounding_box.min());
 
 		if start_vertex == end_vertex {
 			match seg {
