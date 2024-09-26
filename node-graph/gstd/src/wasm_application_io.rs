@@ -225,7 +225,6 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	let mut metadata = RenderMetadata {
 		footprints: HashMap::new(),
 		click_targets: HashMap::new(),
-		vector_data: HashMap::new(),
 	};
 	data.collect_metadata(&mut metadata, footprint, None);
 

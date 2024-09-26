@@ -270,12 +270,13 @@ pub fn to_transform(transform: DAffine2) -> usvg::Transform {
 	usvg::Transform::from_row(cols[0] as f32, cols[1] as f32, cols[2] as f32, cols[3] as f32, cols[4] as f32, cols[5] as f32)
 }
 
+// TODO: Click targets can be removed from the render output, since the vector data is available in the vector modify data from Monitor nodes.
+// This will require that the transform for child layers into that layer space be calculated, or it could be returned from the RenderOutput instead of click targets.
 #[derive(Debug, Clone, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RenderMetadata {
 	pub footprints: HashMap<NodeId, (Footprint, DAffine2)>,
 	pub click_targets: HashMap<NodeId, Vec<ClickTarget>>,
-	pub vector_data: HashMap<NodeId, VectorData>,
 }
 
 pub trait GraphicElementRendered {
@@ -454,10 +455,14 @@ impl GraphicElementRendered for VectorData {
 				}
 				subpath
 			};
-			metadata
-				.click_targets
-				.insert(element_id, self.stroke_bezier_paths().map(fill).map(|subpath| ClickTarget::new(subpath, stroke_width)).collect());
-			metadata.vector_data.insert(element_id, self.clone());
+
+			let click_targets = self
+				.stroke_bezier_paths()
+				.map(fill)
+				.map(|subpath| ClickTarget::new(subpath, stroke_width))
+				.collect::<Vec<ClickTarget>>();
+
+			metadata.click_targets.insert(element_id, click_targets);
 		}
 
 		if let Some(upstream_graphic_group) = &self.upstream_graphic_group {
@@ -606,14 +611,19 @@ impl GraphicElementRendered for Artboard {
 			"g",
 			// Group tag attributes
 			|attributes| {
+				let matrix = format_transform_matrix(self.transform());
+				if !matrix.is_empty() {
+					attributes.push("transform", matrix);
+				}
+
 				if self.clip {
 					let id = format!("artboard-{}", generate_uuid());
 					let selector = format!("url(#{id})");
 
 					write!(
 						&mut attributes.0.svg_defs,
-						r##"<clipPath id="{id}"><rect x="0" y="0" width="{}" height="{}" /></clipPath>"##,
-						self.dimensions.x, self.dimensions.y
+						r##"<clipPath id="{id}"><rect x="0" y="0" width="{}" height="{}"/></clipPath>"##,
+						self.dimensions.x, self.dimensions.y,
 					)
 					.unwrap();
 					attributes.push("clip-path", selector);
@@ -635,13 +645,13 @@ impl GraphicElementRendered for Artboard {
 		}
 	}
 
-	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
 			let subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
 			metadata.click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
 			metadata.footprints.insert(element_id, (footprint, DAffine2::from_translation(self.location.as_dvec2())));
 		}
-
+		footprint.transform *= self.transform();
 		self.graphic_group.collect_metadata(metadata, footprint, None);
 	}
 

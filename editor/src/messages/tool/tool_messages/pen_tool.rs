@@ -525,21 +525,11 @@ impl Fsm for PenToolFsmState {
 					tool_data.layer = Some(layer);
 					tool_data.next_point = position;
 					tool_data.next_handle_start = position;
-				} else {
-					// New path layer
-					let node_type = resolve_document_node_type("Path").expect("Path node does not exist");
-					let nodes = vec![(NodeId(0), node_type.default_node_template())];
-
-					let parent = document.new_layer_parent(true);
-					let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, parent, responses);
-					tool_options.fill.apply_fill(layer, responses);
-					tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
-					tool_data.layer = Some(layer);
-
+				} else if let Some(layer) = tool_data.layer {
+					// Add the first point to a new layer
 					// Generate first point
 					let id = PointId::generate();
-					let transform = document.metadata().transform_to_document(parent);
-					let pos = transform.inverse().transform_point2(snapped.snapped_point_document);
+					let pos = document.metadata().transform_to_viewport(layer).inverse().transform_point2(viewport);
 					let modification_type = VectorModificationType::InsertPoint { id, position: pos };
 					responses.add(GraphOperationMessage::Vector { layer, modification_type });
 					tool_data.add_point(LastPoint {
@@ -550,9 +540,21 @@ impl Fsm for PenToolFsmState {
 					});
 					tool_data.next_point = pos;
 					tool_data.next_handle_start = pos;
+				} else {
+					// New path layer
+					let node_type = resolve_document_node_type("Path").expect("Path node does not exist");
+					let nodes = vec![(NodeId(0), node_type.default_node_template())];
+
+					let parent = document.new_layer_parent(true);
+					let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, parent, responses);
+					tool_options.fill.apply_fill(layer, responses);
+					tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
+					tool_data.layer = Some(layer);
+					responses.add(Message::StartBuffer);
+					responses.add(PenToolMessage::DragStart);
+					return PenToolFsmState::Ready;
 				}
 				tool_data.handle_end = None;
-
 				// Enter the dragging handle state while the mouse is held down, allowing the user to move the mouse and position the handle
 				PenToolFsmState::DraggingHandle
 			}

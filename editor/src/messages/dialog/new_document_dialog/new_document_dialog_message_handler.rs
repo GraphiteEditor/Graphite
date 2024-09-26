@@ -30,11 +30,12 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 						id: NodeId(generate_uuid()),
 						artboard: graphene_core::Artboard::new(IVec2::ZERO, self.dimensions.as_ivec2()),
 					});
-					responses.add(FrontendMessage::TriggerDelayedZoomCanvasToFitAll);
 				}
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
+				responses.add(Message::StartBuffer);
+				responses.add(FrontendMessage::TriggerDelayedZoomCanvasToFitAll);
 			}
 		}
 

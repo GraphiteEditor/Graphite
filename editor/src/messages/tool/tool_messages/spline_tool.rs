@@ -205,14 +205,6 @@ impl Fsm for SplineToolFsmState {
 				responses.add(DocumentMessage::DeselectAllLayers);
 
 				let parent = document.new_layer_parent(true);
-				let transform = document.metadata().transform_to_viewport(parent);
-
-				let snapped_position = input.mouse.position;
-
-				let pos = transform.inverse().transform_point2(snapped_position);
-
-				tool_data.points.push(pos);
-				tool_data.next_point = pos;
 
 				tool_data.weight = tool_options.line_weight;
 
@@ -224,6 +216,8 @@ impl Fsm for SplineToolFsmState {
 				tool_options.fill.apply_fill(layer, responses);
 				tool_options.stroke.apply_stroke(tool_data.weight, layer, responses);
 				tool_data.layer = Some(layer);
+
+				responses.add(Message::StartBuffer);
 
 				SplineToolFsmState::Drawing
 			}
@@ -237,11 +231,9 @@ impl Fsm for SplineToolFsmState {
 				let transform = document.metadata().transform_to_viewport(layer);
 				let pos = transform.inverse().transform_point2(snapped_position);
 
-				if let Some(last_pos) = tool_data.points.last() {
-					if last_pos.distance(pos) > DRAG_THRESHOLD {
-						tool_data.points.push(pos);
-						tool_data.next_point = pos;
-					}
+				if tool_data.points.last().map_or(true, |last_pos| last_pos.distance(pos) > DRAG_THRESHOLD) {
+					tool_data.points.push(pos);
+					tool_data.next_point = pos;
 				}
 
 				update_spline(document, tool_data, true, responses);

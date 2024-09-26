@@ -6,6 +6,7 @@ use graphene_core::text::Font;
 
 #[derive(Debug, Default)]
 pub struct Dispatcher {
+	buffered_queue: Option<Vec<VecDeque<Message>>>,
 	message_queues: Vec<VecDeque<Message>>,
 	pub responses: Vec<FrontendMessage>,
 	pub message_handlers: DispatcherMessageHandlers,
@@ -65,8 +66,18 @@ impl Dispatcher {
 
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T) {
 		self.message_queues.push(VecDeque::from_iter([message.into()]));
-
 		while let Some(message) = self.message_queues.last_mut().and_then(VecDeque::pop_front) {
+			// Do not buffer the EndBuffer message
+			if !matches!(message, Message::EndBuffer(_)) {
+				if let Some(buffered_queue) = &mut self.buffered_queue {
+					// Store each message in a deque so that its children are added before future messages
+					let mut message_deque = VecDeque::new();
+					message_deque.push_back(message);
+					buffered_queue.push(message_deque);
+					continue;
+				}
+			}
+
 			// Skip processing of this message if it will be processed later (at the end of the shallowest level queue)
 			if SIDE_EFFECT_FREE_MESSAGES.contains(&message.to_discriminant()) {
 				let already_in_queue = self.message_queues.first().filter(|queue| queue.contains(&message)).is_some();
@@ -90,6 +101,25 @@ impl Dispatcher {
 
 			// Process the action by forwarding it to the relevant message handler, or saving the FrontendMessage to be sent to the frontend
 			match message {
+				Message::StartBuffer => {
+					self.buffered_queue = Some(std::mem::take(&mut self.message_queues));
+				}
+				Message::EndBuffer(render_metadata) => {
+					// The buffered vec is added before the metadata messages, because the end of the vec is processed first
+					if let Some(buffered_queue) = self.buffered_queue.take() {
+						self.message_queues.extend(buffered_queue);
+					};
+
+					let graphene_std::renderer::RenderMetadata { footprints, click_targets } = render_metadata;
+
+					let mut update_upstream_transform = VecDeque::new();
+					update_upstream_transform.push_back(DocumentMessage::UpdateUpstreamTransforms { upstream_transforms: footprints }.into());
+					self.message_queues.push(update_upstream_transform);
+
+					let mut update_click_targets = VecDeque::new();
+					update_click_targets.push_back(DocumentMessage::UpdateClickTargets { click_targets }.into());
+					self.message_queues.push(update_click_targets);
+				}
 				Message::NoOp => {}
 				Message::Init => {
 					// Load persistent data from the browser database

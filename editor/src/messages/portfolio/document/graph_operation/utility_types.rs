@@ -15,6 +15,7 @@ use graphene_core::vector::{PointId, VectorModificationType};
 use graphene_core::{Artboard, Color};
 
 use glam::{DAffine2, DVec2, IVec2};
+use graphene_std::vector::VectorData;
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformIn {
@@ -145,9 +146,12 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<PointId>>, layer: LayerNodeIdentifier) {
+		let vector_data = VectorData::from_subpaths(subpaths, true);
+
 		let path = resolve_document_node_type("Path")
 			.expect("Path node does not exist")
-			.node_template_input_override([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))]);
+			.node_template_input_override([Some(NodeInput::value(TaggedValue::VectorData(vector_data), false))]);
+
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
 		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_node_template();
 		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_node_template();
@@ -195,8 +199,6 @@ impl<'a> ModifyInputsContext<'a> {
 		let stroke_id = NodeId(generate_uuid());
 		self.network_interface.insert_node(stroke_id, stroke, &[]);
 		self.network_interface.move_node_to_chain_start(&stroke_id, layer, &[]);
-
-		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
 	pub fn insert_image_data(&mut self, image_frame: ImageFrame<Color>, layer: LayerNodeIdentifier) {
@@ -334,22 +336,15 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 	}
 
-	pub fn transform_set(&mut self, mut transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, current_transform: Option<DAffine2>, skip_rerender: bool) {
-		let Some(transform_node_id) = self.existing_node_id("Transform") else { return };
-		let upstream_transform = self.network_interface.document_metadata().upstream_transform(transform_node_id);
-		let to = match transform_in {
-			TransformIn::Local => DAffine2::IDENTITY,
-			TransformIn::Scope { scope } => scope * parent_transform,
-			TransformIn::Viewport => parent_transform,
+	pub fn transform_set(&mut self, transform: DAffine2, transform_in: TransformIn, skip_rerender: bool) {
+		let final_transform = match transform_in {
+			TransformIn::Local => DAffine2::IDENTITY * transform,
+			TransformIn::Scope { scope } => scope * transform,
+			TransformIn::Viewport => self.network_interface.document_metadata().downstream_transform_to_viewport(self.layer_node.unwrap()).inverse() * transform,
 		};
 
-		if current_transform
-			.filter(|transform| transform.matrix2.determinant() != 0. && upstream_transform.matrix2.determinant() != 0.)
-			.is_some()
-		{
-			transform *= upstream_transform.inverse();
-		}
-		let final_transform = to.inverse() * transform;
+		let Some(transform_node_id) = self.existing_node_id("Transform") else { return };
+
 		transform_utils::update_transform(self.network_interface, &transform_node_id, final_transform);
 
 		self.responses.add(PropertiesPanelMessage::Refresh);
