@@ -434,7 +434,7 @@ fn split_at_self_intersections(edges: &mut Vec<MajorGraphEdgeStage1>) {
 /// A tuple containing:
 /// * A vector of split edges (MajorGraphEdgeStage2).
 /// * An optional overall bounding box (AaBb) for all edges.
-fn split_at_intersections(edges: &[MajorGraphEdgeStage1]) -> (Vec<MajorGraphEdgeStage2>, Option<Aabb>) {
+fn split_at_intersections(edges: &[MajorGraphEdgeStage1]) -> (Vec<MajorGraphEdgeStage1>, Option<Aabb>) {
 	// Step 1: Add bounding boxes to edges
 	let with_bounding_box: Vec<MajorGraphEdgeStage2> = edges.iter().map(|(seg, parent)| (*seg, *parent, seg.bounding_box())).collect();
 
@@ -492,12 +492,12 @@ fn split_at_intersections(edges: &[MajorGraphEdgeStage1]) -> (Vec<MajorGraphEdge
 					continue;
 				}
 				let (seg1, seg2) = tmp_seg.split_at(tt);
-				new_edges.push((seg1, parent, seg1.bounding_box()));
+				new_edges.push((seg1, parent));
 				tmp_seg = seg2;
 			}
-			new_edges.push((tmp_seg, parent, tmp_seg.bounding_box()));
+			new_edges.push((tmp_seg, parent));
 		} else {
-			new_edges.push((seg, parent, seg.bounding_box()));
+			new_edges.push((seg, parent));
 		}
 	}
 
@@ -544,7 +544,7 @@ fn round_point(point: DVec2) -> IVec2 {
 }
 
 // TODO: Using 32bit values here might lead to incorrect results when the values collide. Even though this is very unlikely we should think about this case
-fn find_vertices(edges: &[MajorGraphEdgeStage2], total_bounding_box: Aabb) -> MajorGraph {
+fn find_vertices(edges: &[MajorGraphEdgeStage1], total_bounding_box: Aabb) -> MajorGraph {
 	let mut graph = MajorGraph {
 		edges: SlotMap::with_capacity_and_key(edges.len() * 2),
 		vertices: SlotMap::with_capacity_and_key(edges.len()),
@@ -564,7 +564,7 @@ fn find_vertices(edges: &[MajorGraphEdgeStage2], total_bounding_box: Aabb) -> Ma
 	// let mut vertex_pair_id_to_edges: HashMap<_, Vec<(MajorGraphEdgeStage2, MajorEdgeKey, MajorEdgeKey)>> = new_hash_map(edges.len());
 	// let offsets = [IVec2::new(0, -1), IVec2::new(-1, 0), IVec2::new(0, 0), IVec2::new(0, 1), IVec2::new(1, 0)];
 
-	for (seg, parent, bounding_box) in edges {
+	for (seg, parent) in edges {
 		// let mut get_vertex = |point: DVec2| -> MajorVertexKey {
 		// 	let box_around_point = bounding_box_around_point(point, EPS.point);
 		// 	if let Some(&existing_vertex) = vertex_tree.find(&box_around_point).iter().next() {
@@ -1737,7 +1737,7 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 	let (split_edges, total_bounding_box) = split_at_intersections(&unsplit_edges);
 
 	#[cfg(feature = "logging")]
-	for (edge, _, _) in split_edges.iter() {
+	for (edge, _) in split_edges.iter() {
 		eprintln!("{}", path_to_path_data(&vec![*edge], 0.001));
 	}
 
