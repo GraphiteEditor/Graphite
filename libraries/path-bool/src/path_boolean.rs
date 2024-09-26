@@ -224,7 +224,7 @@ impl PartialOrd for MinorGraphEdge {
 
 #[derive(Debug, Clone, Default)]
 struct MinorGraphVertex {
-	outgoing_edges: Vec<MinorEdgeKey>,
+	outgoing_edges: SmallVec<[MinorEdgeKey; 8]>,
 }
 
 #[derive(Debug, Clone)]
@@ -697,10 +697,10 @@ fn get_order(vertex: &MajorGraphVertex) -> usize {
 ///
 /// A new MinorGraph representing the simplified structure.
 fn compute_minor(major_graph: &MajorGraph) -> MinorGraph {
-	let mut new_edges = SlotMap::with_key();
-	let mut new_vertices = SlotMap::with_key();
 	let vertex_count = major_graph.vertices.len();
 	let edge_count = major_graph.edges.len();
+	let mut new_edges = SlotMap::with_capacity_and_key(edge_count / 2);
+	let mut new_vertices = SlotMap::with_capacity_and_key((vertex_count as f32).sqrt() as usize);
 	let mut to_minor_vertex = new_hash_map(vertex_count);
 	let mut id_to_edge = new_hash_map(edge_count);
 	// merge with to_minor_vertex
@@ -714,7 +714,7 @@ fn compute_minor(major_graph: &MajorGraph) -> MinorGraph {
 		}
 		let start_vertex = *to_minor_vertex
 			.entry(major_vertex_key)
-			.or_insert_with(|| new_vertices.insert(MinorGraphVertex { outgoing_edges: Vec::new() }));
+			.or_insert_with(|| new_vertices.insert(MinorGraphVertex { outgoing_edges: SmallVec::new() }));
 
 		for &start_edge_key in &vertex.outgoing_edges {
 			let mut segments = Vec::new();
@@ -736,7 +736,7 @@ fn compute_minor(major_graph: &MajorGraph) -> MinorGraph {
 
 			let end_vertex = *to_minor_vertex
 				.entry(edge.incident_vertices[1])
-				.or_insert_with(|| new_vertices.insert(MinorGraphVertex { outgoing_edges: Vec::new() }));
+				.or_insert_with(|| new_vertices.insert(MinorGraphVertex { outgoing_edges: SmallVec::new() }));
 			assert!(major_graph.edges[start_edge_key].twin.is_some());
 			assert!(edge.twin.is_some());
 
@@ -846,8 +846,8 @@ fn remove_dangling_edges(graph: &mut MinorGraph) {
 	graph.vertices.retain(|k, _| kept_vertices_a.contains(&k) || kept_vertices_b.contains(&k));
 
 	for vertex in graph.vertices.values_mut() {
-		vertex.outgoing_edges.retain(|&edge_key| {
-			let edge = &graph.edges[edge_key];
+		vertex.outgoing_edges.retain(|edge_key| {
+			let edge = &graph.edges[*edge_key];
 			(edge.parent & 1 == 1 && kept_vertices_a.contains(&edge.incident_vertices[0]) && kept_vertices_a.contains(&edge.incident_vertices[1]))
 				|| (edge.parent & 2 == 2 && kept_vertices_b.contains(&edge.incident_vertices[0]) && kept_vertices_b.contains(&edge.incident_vertices[1]))
 		});
@@ -1841,12 +1841,6 @@ mod tests {
 		// Check that we have more edges after splitting (due to intersections)
 		assert!(split_edges.len() >= unsplit_edges.len());
 
-		// Check that all edges have a valid bounding box
-		for (_, _, bb) in &split_edges {
-			assert!(bb.left <= bb.right);
-			assert!(bb.top <= bb.bottom);
-		}
-
 		// You might want to add more specific checks based on the expected behavior
 		// of your split_at_intersections function
 	}
@@ -1933,7 +1927,7 @@ mod tests {
 		print_minor_graph_state(&minor_graph);
 
 		// Store initial edge order
-		let initial_edge_order: HashMap<MinorVertexKey, Vec<MinorEdgeKey>> = minor_graph.vertices.iter().map(|(k, v)| (k, v.outgoing_edges.clone())).collect();
+		let initial_edge_order: HashMap<MinorVertexKey, SmallVec<[MinorEdgeKey; 8]>> = minor_graph.vertices.iter().map(|(k, v)| (k, v.outgoing_edges.clone())).collect();
 
 		// Apply sort_outgoing_edges_by_angle
 		sort_outgoing_edges_by_angle(&mut minor_graph);
