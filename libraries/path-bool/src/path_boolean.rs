@@ -162,7 +162,7 @@ pub struct MajorGraphEdge {
 pub struct MajorGraphVertex {
 	#[cfg_attr(not(feature = "logging"), expect(dead_code))]
 	pub point: DVec2,
-	outgoing_edges: Vec<MajorEdgeKey>,
+	outgoing_edges: SmallVec<[MajorEdgeKey; 4]>,
 }
 
 /// Represents the initial graph structure used in boolean operations.
@@ -546,12 +546,11 @@ fn round_point(point: DVec2) -> IVec2 {
 // TODO: Using 32bit values here might lead to incorrect results when the values collide. Even though this is very unlikely we should think about this case
 fn find_vertices(edges: &[MajorGraphEdgeStage2], total_bounding_box: Aabb) -> MajorGraph {
 	let mut graph = MajorGraph {
-		edges: SlotMap::with_capacity_and_key(edges.len()),
-		vertices: SlotMap::with_key(),
+		edges: SlotMap::with_capacity_and_key(edges.len() * 2),
+		vertices: SlotMap::with_capacity_and_key(edges.len()),
 	};
 
-	let mut parents: HashMap<MajorEdgeKey, u8> = new_hash_map(edges.len());
-	let mut vertex_pair_id_to_edges: HashMap<_, SmallVec<[(MajorGraphEdgeStage2, MajorEdgeKey, MajorEdgeKey); 2]>> = new_hash_map(edges.len());
+	let mut vertex_pair_id_to_edges: HashMap<_, SmallVec<[(PathSegment, u8, MajorEdgeKey, MajorEdgeKey); 2]>> = new_hash_map(edges.len());
 	let mut vertex_hashmap: HashMap<IVec2, MajorVertexKey> = new_hash_map(edges.len() * 2);
 
 	// let mut vertex_tree = QuadTree::new(bounding_box, POINT_TREE_DEPTH, 8);
@@ -594,7 +593,10 @@ fn find_vertices(edges: &[MajorGraphEdgeStage2], total_bounding_box: Aabb) -> Ma
 				return vertex;
 			}
 
-			let vertex_key = graph.vertices.insert(MajorGraphVertex { point, outgoing_edges: Vec::new() });
+			let vertex_key = graph.vertices.insert(MajorGraphVertex {
+				point,
+				outgoing_edges: SmallVec::new(),
+			});
 			// for offset in offsets.iter() {
 			// for dx in -1..=1 {
 			// 	for dy in -1..=1 {
@@ -631,10 +633,12 @@ fn find_vertices(edges: &[MajorGraphEdgeStage2], total_bounding_box: Aabb) -> Ma
 		if let Some(existing_edges) = vertex_pair_id_to_edges.get(&vertex_pair_id) {
 			if let Some(existing_edge) = existing_edges
 				.iter()
-				.find(|(other_seg, ..)| segments_equal(seg, &other_seg.0, EPS.point) || segments_equal(&seg.reverse(), &other_seg.0, EPS.point))
+				.find(|(other_seg, ..)| segments_equal(seg, other_seg, EPS.point) || segments_equal(&seg.reverse(), other_seg, EPS.point))
 			{
-				*parents.entry(existing_edge.1).or_default() |= parent;
-				*parents.entry(existing_edge.2).or_default() |= parent;
+				if existing_edge.1 != *parent {
+					graph.edges[existing_edge.2].parent = 0b11;
+					graph.edges[existing_edge.3].parent = 0b11;
+				}
 				continue;
 			}
 		}
@@ -660,13 +664,7 @@ fn find_vertices(edges: &[MajorGraphEdgeStage2], total_bounding_box: Aabb) -> Ma
 		graph.vertices[start_vertex].outgoing_edges.push(fwd_edge_key);
 		graph.vertices[end_vertex].outgoing_edges.push(bwd_edge_key);
 
-		vertex_pair_id_to_edges
-			.entry(vertex_pair_id)
-			.or_default()
-			.push(((*seg, *parent, *bounding_box), fwd_edge_key, bwd_edge_key));
-	}
-	for (edge_key, parent) in parents {
-		graph.edges[edge_key].parent |= parent;
+		vertex_pair_id_to_edges.entry(vertex_pair_id).or_default().push((*seg, *parent, fwd_edge_key, bwd_edge_key));
 	}
 
 	graph
