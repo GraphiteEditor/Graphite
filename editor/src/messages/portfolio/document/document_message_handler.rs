@@ -1028,7 +1028,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					return;
 				}
 
-				self.document_undo_history.pop_back();
+				self.undo(ipp, responses);
 				self.network_interface.finish_transaction();
 				responses.add(OverlaysMessage::Draw);
 			}
