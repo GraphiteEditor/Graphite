@@ -10,7 +10,6 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 
 use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
-use graphene_core::uuid::generate_uuid;
 use graphene_core::Color;
 
 #[derive(Default)]
@@ -187,7 +186,7 @@ impl Fsm for LineToolFsmState {
 				]);
 				let nodes = vec![(NodeId(0), node)];
 
-				let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, document.new_layer_parent(false), responses);
+				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_parent(false), responses);
 				responses.add(Message::StartBuffer);
 				responses.add(GraphOperationMessage::TransformSet {
 					layer,

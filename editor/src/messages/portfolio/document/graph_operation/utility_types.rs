@@ -140,7 +140,7 @@ impl<'a> ModifyInputsContext<'a> {
 			Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
 		]);
 
-		let boolean_id = NodeId(generate_uuid());
+		let boolean_id = NodeId::new();
 		self.network_interface.insert_node(boolean_id, boolean, &[]);
 		self.network_interface.move_node_to_chain_start(&boolean_id, layer, &[]);
 	}
@@ -156,19 +156,19 @@ impl<'a> ModifyInputsContext<'a> {
 		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_node_template();
 		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_node_template();
 
-		let shape_id = NodeId(generate_uuid());
+		let shape_id = NodeId::new();
 		self.network_interface.insert_node(shape_id, path, &[]);
 		self.network_interface.move_node_to_chain_start(&shape_id, layer, &[]);
 
-		let transform_id = NodeId(generate_uuid());
+		let transform_id = NodeId::new();
 		self.network_interface.insert_node(transform_id, transform, &[]);
 		self.network_interface.move_node_to_chain_start(&transform_id, layer, &[]);
 
-		let fill_id = NodeId(generate_uuid());
+		let fill_id = NodeId::new();
 		self.network_interface.insert_node(fill_id, fill, &[]);
 		self.network_interface.move_node_to_chain_start(&fill_id, layer, &[]);
 
-		let stroke_id = NodeId(generate_uuid());
+		let stroke_id = NodeId::new();
 		self.network_interface.insert_node(stroke_id, stroke, &[]);
 		self.network_interface.move_node_to_chain_start(&stroke_id, layer, &[]);
 	}
@@ -184,19 +184,19 @@ impl<'a> ModifyInputsContext<'a> {
 			Some(NodeInput::value(TaggedValue::F64(size), false)),
 		]);
 
-		let text_id = NodeId(generate_uuid());
+		let text_id = NodeId::new();
 		self.network_interface.insert_node(text_id, text, &[]);
 		self.network_interface.move_node_to_chain_start(&text_id, layer, &[]);
 
-		let transform_id = NodeId(generate_uuid());
+		let transform_id = NodeId::new();
 		self.network_interface.insert_node(transform_id, transform, &[]);
 		self.network_interface.move_node_to_chain_start(&transform_id, layer, &[]);
 
-		let fill_id = NodeId(generate_uuid());
+		let fill_id = NodeId::new();
 		self.network_interface.insert_node(fill_id, fill, &[]);
 		self.network_interface.move_node_to_chain_start(&fill_id, layer, &[]);
 
-		let stroke_id = NodeId(generate_uuid());
+		let stroke_id = NodeId::new();
 		self.network_interface.insert_node(stroke_id, stroke, &[]);
 		self.network_interface.move_node_to_chain_start(&stroke_id, layer, &[]);
 	}
@@ -207,11 +207,11 @@ impl<'a> ModifyInputsContext<'a> {
 			.expect("Image node does not exist")
 			.node_template_input_override([Some(NodeInput::value(TaggedValue::ImageFrame(image_frame), false))]);
 
-		let image_id = NodeId(generate_uuid());
+		let image_id = NodeId::new();
 		self.network_interface.insert_node(image_id, image, &[]);
 		self.network_interface.move_node_to_chain_start(&image_id, layer, &[]);
 
-		let transform_id = NodeId(generate_uuid());
+		let transform_id = NodeId::new();
 		self.network_interface.insert_node(transform_id, transform, &[]);
 		self.network_interface.move_node_to_chain_start(&transform_id, layer, &[]);
 	}
@@ -253,7 +253,7 @@ impl<'a> ModifyInputsContext<'a> {
 				log::error!("Node type {} does not exist in ModifyInputsContext::existing_node_id", reference);
 				return None;
 			};
-			let node_id = NodeId(generate_uuid());
+			let node_id = NodeId::new();
 			self.network_interface.insert_node(node_id, node_definition.default_node_template(), &[]);
 			self.network_interface.move_node_to_chain_start(&node_id, output_layer, &[]);
 			Some(node_id)
