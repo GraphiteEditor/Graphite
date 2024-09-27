@@ -138,7 +138,6 @@ pub enum FillRule {
 }
 
 const INTERSECTION_TREE_DEPTH: usize = 8;
-const POINT_TREE_DEPTH: usize = 8;
 
 pub const EPS: Epsilons = Epsilons {
 	point: 1e-5,
@@ -364,7 +363,7 @@ fn dual_graph_to_dot(components: &[DualGraphComponent], edges: &SlotMap<DualEdge
 
 fn segment_to_edge(parent: u8) -> impl Fn(&PathSegment) -> Option<MajorGraphEdgeStage1> {
 	move |seg| {
-		if bounding_box_max_extent(&seg.bounding_box()) < EPS.point {
+		if bounding_box_max_extent(&seg.bounding_box()) < EPS.point / 2. {
 			return None;
 		}
 
@@ -436,7 +435,7 @@ fn split_at_self_intersections(edges: &mut Vec<MajorGraphEdgeStage1>) {
 /// * An optional overall bounding box (AaBb) for all edges.
 fn split_at_intersections(edges: &[MajorGraphEdgeStage1]) -> (Vec<MajorGraphEdgeStage1>, Option<Aabb>) {
 	// Step 1: Add bounding boxes to edges
-	let with_bounding_box: Vec<MajorGraphEdgeStage2> = edges.iter().map(|(seg, parent)| (*seg, *parent, seg.bounding_box())).collect();
+	let with_bounding_box: Vec<MajorGraphEdgeStage2> = edges.iter().map(|(seg, parent)| (*seg, *parent, seg.approx_bounding_box())).collect();
 
 	// Step 2: Calculate total bounding box
 	let total_bounding_box = with_bounding_box.iter().fold(None, |acc, (_, _, bb)| Some(merge_bounding_boxes(acc, bb)));
