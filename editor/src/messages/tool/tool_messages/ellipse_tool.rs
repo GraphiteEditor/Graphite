@@ -10,7 +10,6 @@ use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::SnapData;
 
 use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
-use graphene_core::uuid::generate_uuid;
 use graphene_core::Color;
 
 #[derive(Default)]
@@ -206,7 +205,7 @@ impl Fsm for EllipseToolFsmState {
 				let node = node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(0.5), false)), Some(NodeInput::value(TaggedValue::F64(0.5), false))]);
 				let nodes = vec![(NodeId(0), node)];
 
-				let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, document.new_layer_parent(true), responses);
+				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_parent(true), responses);
 				responses.add(Message::StartBuffer);
 				responses.add(GraphOperationMessage::TransformSet {
 					layer,

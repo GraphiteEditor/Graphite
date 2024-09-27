@@ -322,7 +322,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				};
 				let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), self.network_interface.selected_nodes(&[]).unwrap(), parent);
 
-				let folder_id = NodeId(generate_uuid());
+				let folder_id = NodeId::new();
 				let boolean_operation_layer = LayerNodeIdentifier::new_unchecked(folder_id);
 				responses.add(GraphOperationMessage::NewBooleanOperationLayer {
 					id: folder_id,
@@ -338,7 +338,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(DocumentMessage::MoveSelectedLayersToGroup { parent: boolean_operation_layer });
 			}
 			DocumentMessage::CreateEmptyFolder => {
-				let id = NodeId(generate_uuid());
+				let id = NodeId::new();
 
 				let parent = self
 					.network_interface
@@ -505,7 +505,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				};
 				let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), self.network_interface.selected_nodes(&[]).unwrap(), parent);
 
-				let node_id = NodeId(generate_uuid());
+				let node_id = NodeId::new();
 				let new_group_node = document_node_definitions::resolve_document_node_type("Merge")
 					.expect("Failed to create merge node")
 					.default_node_template();
@@ -740,7 +740,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				let transform = center_in_viewport_layerspace * fit_image_size;
 
-				let layer_node_id = NodeId(generate_uuid());
+				let layer_node_id = NodeId::new();
 				let layer_id = LayerNodeIdentifier::new_unchecked(layer_node_id);
 
 				responses.add(DocumentMessage::AddTransaction);
@@ -785,7 +785,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let viewport_location = mouse.map_or(ipp.viewport_bounds.center() + ipp.viewport_bounds.top_left, |pos| pos.into());
 				let center_in_viewport = DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_location - ipp.viewport_bounds.top_left));
 
-				let layer_node_id = NodeId(generate_uuid());
+				let layer_node_id = NodeId::new();
 				let layer_id = LayerNodeIdentifier::new_unchecked(layer_node_id);
 
 				responses.add(DocumentMessage::AddTransaction);
@@ -1231,7 +1231,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let bounds_rounded_dimensions = (bounds[1] - bounds[0]).round();
 
 				// Create an artboard and set its dimensions to the bounding box size and location
-				let node_id = NodeId(generate_uuid());
+				let node_id = NodeId::new();
 				let node_layer_id = LayerNodeIdentifier::new_unchecked(node_id);
 				let new_artboard_node = document_node_definitions::resolve_document_node_type("Artboard")
 					.expect("Failed to create artboard node")

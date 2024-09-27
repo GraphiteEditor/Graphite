@@ -1,5 +1,4 @@
 use super::tool_prelude::*;
-use crate::application::generate_uuid;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -365,7 +364,7 @@ impl Fsm for ArtboardToolFsmState {
 						});
 					}
 				} else {
-					let id = NodeId(generate_uuid());
+					let id = NodeId::new();
 
 					tool_data.selected_artboard = Some(LayerNodeIdentifier::new_unchecked(id));
 
