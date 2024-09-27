@@ -534,8 +534,8 @@ impl Direction {
 
 const ROUNDING_FACTOR: f64 = 1.0 / (2. * EPS.point);
 
-fn round_point(point: DVec2) -> IVec2 {
-	(point * ROUNDING_FACTOR).as_ivec2()
+fn round_point(point: DVec2) -> I64Vec2 {
+	(point * ROUNDING_FACTOR).as_i64vec2()
 }
 
 // TODO: Using 32bit values here might lead to incorrect results when the values collide. Even though this is very unlikely we should think about this case
@@ -546,7 +546,7 @@ fn find_vertices(edges: &[MajorGraphEdgeStage1], total_bounding_box: Aabb) -> Ma
 	};
 
 	let mut vertex_pair_id_to_edges: HashMap<_, SmallVec<[(PathSegment, u8, MajorEdgeKey, MajorEdgeKey); 2]>> = new_hash_map(edges.len());
-	let mut vertex_hashmap: HashMap<IVec2, MajorVertexKey> = new_hash_map(edges.len() * 2);
+	let mut vertex_hashmap: HashMap<I64Vec2, MajorVertexKey> = new_hash_map(edges.len() * 2);
 
 	// let mut vertex_tree = QuadTree::new(bounding_box, POINT_TREE_DEPTH, 8);
 	// let mut graph = MajorGraph {
@@ -575,16 +575,16 @@ fn find_vertices(edges: &[MajorGraphEdgeStage1], total_bounding_box: Aabb) -> Ma
 			if let Some(&vertex) = vertex_hashmap.get(&rounded) {
 				return vertex;
 			}
-			if let Some(&vertex) = vertex_hashmap.get(&(rounded - IVec2::X)) {
+			if let Some(&vertex) = vertex_hashmap.get(&(rounded - I64Vec2::X)) {
 				return vertex;
 			}
-			if let Some(&vertex) = vertex_hashmap.get(&(rounded - IVec2::Y)) {
+			if let Some(&vertex) = vertex_hashmap.get(&(rounded - I64Vec2::Y)) {
 				return vertex;
 			}
-			if let Some(&vertex) = vertex_hashmap.get(&(rounded + IVec2::X)) {
+			if let Some(&vertex) = vertex_hashmap.get(&(rounded + I64Vec2::X)) {
 				return vertex;
 			}
-			if let Some(&vertex) = vertex_hashmap.get(&(rounded + IVec2::Y)) {
+			if let Some(&vertex) = vertex_hashmap.get(&(rounded + I64Vec2::Y)) {
 				return vertex;
 			}
 
@@ -595,7 +595,7 @@ fn find_vertices(edges: &[MajorGraphEdgeStage1], total_bounding_box: Aabb) -> Ma
 			// for offset in offsets.iter() {
 			// for dx in -1..=1 {
 			// 	for dy in -1..=1 {
-			let offset = IVec2::ZERO;
+			let offset = I64Vec2::ZERO;
 			// let offset = IVec2::new(dx, dy);
 			vertex_hashmap.insert(rounded + offset, vertex_key);
 			// 	}
@@ -603,8 +603,8 @@ fn find_vertices(edges: &[MajorGraphEdgeStage1], total_bounding_box: Aabb) -> Ma
 			vertex_key
 		};
 		// we should subtract the center instead here
-		let start_vertex = get_vertex(seg.start() - total_bounding_box.min());
-		let end_vertex = get_vertex(seg.end() - total_bounding_box.min());
+		let start_vertex = get_vertex(seg.start());
+		let end_vertex = get_vertex(seg.end());
 
 		if start_vertex == end_vertex {
 			match seg {
