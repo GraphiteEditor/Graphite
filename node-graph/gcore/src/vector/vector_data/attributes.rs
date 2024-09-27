@@ -4,6 +4,7 @@ use dyn_any::DynAny;
 
 use glam::{DAffine2, DVec2};
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 
 /// A simple macro for creating strongly typed ids (to avoid confusion when passing around ids).
 macro_rules! create_ids {
@@ -20,6 +21,13 @@ macro_rules! create_ids {
 				/// Generate a new random id
 				pub fn generate() -> Self {
 					Self(crate::uuid::generate_uuid())
+				}
+
+				pub fn generate_from_hash(self) -> Self {
+					let mut hasher = std::hash::DefaultHasher::new();
+					self.hash(&mut hasher);
+					let hash_value = hasher.finish();
+					Self(hash_value)
 				}
 
 				/// Gets the inner raw value.
@@ -159,6 +167,10 @@ impl PointDomain {
 	fn concat(&mut self, other: &Self, transform: DAffine2, id_map: &IdMap) {
 		self.id.extend(other.id.iter().map(|id| *id_map.point_map.get(id).unwrap_or(id)));
 		self.positions.extend(other.positions.iter().map(|&pos| transform.transform_point2(pos)));
+	}
+
+	fn map_ids(&mut self, id_map: &IdMap) {
+		self.id.iter_mut().for_each(|id| *id = *id_map.point_map.get(id).unwrap_or(id));
 	}
 
 	fn transform(&mut self, transform: DAffine2) {
@@ -353,6 +365,10 @@ impl SegmentDomain {
 		self.stroke.extend(&other.stroke);
 	}
 
+	fn map_ids(&mut self, id_map: &IdMap) {
+		self.ids.iter_mut().for_each(|id| *id = *id_map.segment_map.get(id).unwrap_or(id));
+	}
+
 	fn transform(&mut self, transform: DAffine2) {
 		for handles in &mut self.handles {
 			*handles = handles.apply_transformation(|p| transform.transform_point2(p));
@@ -459,6 +475,13 @@ impl RegionDomain {
 				.map(|range| *id_map.segment_map.get(range.start()).unwrap_or(range.start())..=*id_map.segment_map.get(range.end()).unwrap_or(range.end())),
 		);
 		self.fill.extend(&other.fill);
+	}
+
+	fn map_ids(&mut self, id_map: &IdMap) {
+		self.ids.iter_mut().for_each(|id| *id = *id_map.region_map.get(id).unwrap_or(id));
+		self.segment_range
+			.iter_mut()
+			.for_each(|range| *range = *id_map.segment_map.get(range.start()).unwrap_or(range.start())..=*id_map.segment_map.get(range.end()).unwrap_or(range.end()));
 	}
 }
 
@@ -589,6 +612,23 @@ impl super::VectorData {
 	pub fn transform(&mut self, transform: DAffine2) {
 		self.point_domain.transform(transform);
 		self.segment_domain.transform(transform);
+	}
+
+	pub fn new_ids_from_hash(&mut self) {
+		let point_map = self.point_domain.ids().iter().map(|&old| (old, old.generate_from_hash())).collect::<HashMap<_, _>>();
+		let segment_map = self.segment_domain.ids().iter().map(|&old| (old, old.generate_from_hash())).collect::<HashMap<_, _>>();
+		let region_map = self.region_domain.ids().iter().map(|&old| (old, old.generate_from_hash())).collect::<HashMap<_, _>>();
+
+		let id_map = IdMap {
+			point_offset: self.point_domain.ids().len(),
+			point_map,
+			segment_map,
+			region_map,
+		};
+
+		self.point_domain.map_ids(&id_map);
+		self.segment_domain.map_ids(&id_map);
+		self.region_domain.map_ids(&id_map);
 	}
 }
 
