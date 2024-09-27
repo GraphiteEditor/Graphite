@@ -319,7 +319,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				};
 				let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), self.network_interface.selected_nodes(&[]).unwrap(), parent);
 
-				let folder_id = NodeId(generate_uuid());
+				let folder_id = NodeId::new();
 				let boolean_operation_layer = LayerNodeIdentifier::new_unchecked(folder_id);
 				responses.add(GraphOperationMessage::NewBooleanOperationLayer {
 					id: folder_id,
@@ -335,7 +335,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(DocumentMessage::MoveSelectedLayersToGroup { parent: boolean_operation_layer });
 			}
 			DocumentMessage::CreateEmptyFolder => {
-				let id = NodeId(generate_uuid());
+				let id = NodeId::new();
 
 				let parent = self
 					.network_interface
@@ -497,7 +497,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				};
 				let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), self.network_interface.selected_nodes(&[]).unwrap(), parent);
 
-				let node_id = NodeId(generate_uuid());
+				let node_id = NodeId::new();
 				let new_group_node = super::node_graph::document_node_definitions::resolve_document_node_type("Merge")
 					.expect("Failed to create merge node")
 					.default_node_template();
@@ -749,7 +749,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let image_frame = ImageFrame { image, ..Default::default() };
 
 				use crate::messages::tool::common_functionality::graph_modification_utils;
-				let layer = graph_modification_utils::new_image_layer(image_frame, NodeId(generate_uuid()), self.new_layer_parent(true), responses);
+				let layer = graph_modification_utils::new_image_layer(image_frame, NodeId::new(), self.new_layer_parent(true), responses);
 
 				// `layer` cannot be `ROOT_PARENT` since it is the newly created layer
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
@@ -769,7 +769,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let viewport_location = mouse.map_or(ipp.viewport_bounds.center() + ipp.viewport_bounds.top_left, |pos| pos.into());
 				let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
 				let center_in_viewport = DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_location - ipp.viewport_bounds.top_left));
-				let layer = graph_modification_utils::new_svg_layer(svg, center_in_viewport, NodeId(generate_uuid()), self.new_layer_parent(true), responses);
+				let layer = graph_modification_utils::new_svg_layer(svg, center_in_viewport, NodeId::new(), self.new_layer_parent(true), responses);
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 				responses.add(ToolMessage::ActivateTool { tool_type: ToolType::Select });
 			}

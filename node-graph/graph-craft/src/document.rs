@@ -747,11 +747,11 @@ fn migrate_layer_to_merge<'de, D: serde::Deserializer<'de>>(deserializer: D) -> 
 }
 // TODO: Eventually remove this (probably starting late 2024)
 fn default_import_metadata() -> (NodeId, IVec2) {
-	(NodeId(generate_uuid()), IVec2::new(-25, -4))
+	(NodeId::new(), IVec2::new(-25, -4))
 }
 // TODO: Eventually remove this (probably starting late 2024)
 fn default_export_metadata() -> (NodeId, IVec2) {
-	(NodeId(generate_uuid()), IVec2::new(8, -4))
+	(NodeId::new(), IVec2::new(8, -4))
 }
 
 #[derive(Clone, Default, Debug, DynAny)]
@@ -1016,7 +1016,7 @@ impl NodeNetwork {
 
 	/// Remove all nodes that contain [`DocumentNodeImplementation::Network`] by moving the nested nodes into the parent network.
 	pub fn flatten(&mut self, node_id: NodeId) {
-		self.flatten_with_fns(node_id, merge_ids, || NodeId(generate_uuid()))
+		self.flatten_with_fns(node_id, merge_ids, || NodeId::new())
 	}
 
 	/// Remove all nodes that contain [`DocumentNodeImplementation::Network`] by moving the nested nodes into the parent network.

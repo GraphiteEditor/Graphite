@@ -7,7 +7,6 @@
 use crate::helpers::translate_key;
 use crate::{Error, EDITOR, EDITOR_HANDLE, EDITOR_HAS_CRASHED};
 
-use editor::application::generate_uuid;
 use editor::application::Editor;
 use editor::consts::FILE_SAVE_SUFFIX;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
@@ -574,7 +573,7 @@ impl EditorHandle {
 	/// Creates a new document node in the node graph
 	#[wasm_bindgen(js_name = createNode)]
 	pub fn create_node(&self, node_type: String, x: i32, y: i32) {
-		let id = NodeId(generate_uuid());
+		let id = NodeId::new();
 		let message = NodeGraphMessage::CreateNodeFromContextMenu {
 			node_id: Some(id),
 			node_type,
