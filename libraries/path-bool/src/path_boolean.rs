@@ -65,6 +65,7 @@ new_key_type! {
 
 use crate::aabb::{Aabb, bounding_box_around_point, bounding_box_max_extent, expand_bounding_box, extend_bounding_box, merge_bounding_boxes};
 use crate::epsilons::Epsilons;
+use crate::grid::{BitVec, Grid};
 use crate::intersection_path_segment::{path_segment_intersection, segments_equal};
 use crate::path::Path;
 use crate::path_cubic_segment_self_intersection::path_cubic_segment_self_intersection;
@@ -431,29 +432,42 @@ fn split_at_self_intersections(edges: &mut Vec<MajorGraphEdgeStage1>) {
 /// A tuple containing:
 /// * A vector of split edges (MajorGraphEdgeStage2).
 /// * An optional overall bounding box (AaBb) for all edges.
-fn split_at_intersections(edges: &[MajorGraphEdgeStage1]) -> (Vec<MajorGraphEdgeStage1>, Option<Aabb>) {
-	if edges.is_empty() {
-		return (Vec::new(), None);
-	}
-
+fn split_at_intersections(edges: &[MajorGraphEdgeStage1]) -> Vec<MajorGraphEdgeStage1> {
 	// Step 1: Add bounding boxes to edges
 	let with_bounding_box: Vec<MajorGraphEdgeStage2> = edges.iter().map(|(seg, parent)| (*seg, *parent, seg.approx_bounding_box())).collect();
 	// Step 2: Calculate total bounding box
-	let total_bounding_box = with_bounding_box.iter().fold(Default::default(), |acc, (_, _, bb)| merge_bounding_boxes(&acc, &bb));
+	let total_bounding_box = with_bounding_box.iter().fold(Default::default(), |acc, (_, _, bb)| merge_bounding_boxes(&acc, bb));
+
+	let max_extent = bounding_box_max_extent(&total_bounding_box);
+	let cell_size = max_extent / (edges.len() as f64).sqrt();
+
+	// Step 3: Create grid for efficient intersection checks
+	let mut grid = Grid::new(cell_size, edges.len());
 
 	// Step 3: Create edge tree for efficient intersection checks
-	let mut edge_tree = QuadTree::new(total_bounding_box, INTERSECTION_TREE_DEPTH, 8);
+	// let mut edge_tree = QuadTree::new(total_bounding_box, INTERSECTION_TREE_DEPTH, 16);
+	// let mut rtree = crate::util::rtree::RTree::new(24);
 
-	let mut splits_per_edge: HashMap<usize, Vec<f64>> = HashMap::default();
+	let mut splits_per_edge: Vec<Vec<f64>> = vec![Vec::new(); edges.len()];
 
-	fn add_split(splits_per_edge: &mut HashMap<usize, Vec<f64>>, i: usize, t: f64) {
-		splits_per_edge.entry(i).or_default().push(t);
+	fn add_split(splits_per_edge: &mut [Vec<f64>], i: usize, t: f64) {
+		splits_per_edge[i].push(t);
 	}
+	// let mut candidates = Vec::with_capacity(8);
+	let mut candidates = BitVec::new(edges.len());
 
 	// Step 4: Find intersections and record split points
 	for (i, edge) in with_bounding_box.iter().enumerate() {
-		let candidates = edge_tree.find(&edge.2);
-		for &j in &candidates {
+		// let candidates = edge_tree.find(&edge.2);
+		// let mut quad_candidates: Vec<_> = quad_candidates.into_iter().collect();
+		// quad_candidates.sort_unstable();
+		// let mut candidates = rtree.query(&edge.2);
+		// candidates.sort_unstable();
+		// assert_eq!(candidates, quad_candidates);
+		candidates.clear();
+		grid.query(&edge.2, &mut candidates);
+
+		for j in candidates.iter_set_bits() {
 			let candidate: &(PathSegment, u8) = &edges[j];
 			let include_endpoints = edge.1 != candidate.1 || !(candidate.0.end().abs_diff_eq(edge.0.start(), EPS.point) || candidate.0.start().abs_diff_eq(edge.0.end(), EPS.point));
 			let intersection = path_segment_intersection(&edge.0, &candidate.0, include_endpoints, &EPS);
@@ -462,14 +476,16 @@ fn split_at_intersections(edges: &[MajorGraphEdgeStage1]) -> (Vec<MajorGraphEdge
 				add_split(&mut splits_per_edge, j, t1);
 			}
 		}
-		edge_tree.insert(edge.2, i);
+		grid.insert(&edge.2, i);
+		// edge_tree.insert(edge.2, i);
+		// rtree.insert(edge.2, i);
 	}
 
 	// Step 5: Apply splits to create new edges
 	let mut new_edges = Vec::new();
 
 	for (i, (seg, parent, _)) in with_bounding_box.into_iter().enumerate() {
-		if let Some(splits) = splits_per_edge.get(&i) {
+		if let Some(splits) = splits_per_edge.get(i) {
 			let mut splits = splits.clone();
 			splits.sort_by(|a, b| a.partial_cmp(b).unwrap());
 			let mut tmp_seg = seg;
@@ -496,7 +512,7 @@ fn split_at_intersections(edges: &[MajorGraphEdgeStage1]) -> (Vec<MajorGraphEdge
 		}
 	}
 
-	(new_edges, Some(total_bounding_box))
+	new_edges
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -539,7 +555,7 @@ fn round_point(point: DVec2) -> I64Vec2 {
 }
 
 // TODO: Using 32bit values here might lead to incorrect results when the values collide. Even though this is very unlikely we should think about this case
-fn find_vertices(edges: &[MajorGraphEdgeStage1], total_bounding_box: Aabb) -> MajorGraph {
+fn find_vertices(edges: &[MajorGraphEdgeStage1]) -> MajorGraph {
 	let mut graph = MajorGraph {
 		edges: SlotMap::with_capacity_and_key(edges.len() * 2),
 		vertices: SlotMap::with_capacity_and_key(edges.len()),
@@ -1730,21 +1746,19 @@ impl Display for BooleanError {
 pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: FillRule, op: PathBooleanOperation) -> Result<Vec<Path>, BooleanError> {
 	let mut unsplit_edges: Vec<MajorGraphEdgeStage1> = a.iter().map(segment_to_edge(1)).chain(b.iter().map(segment_to_edge(2))).flatten().collect();
 
+	if unsplit_edges.is_empty() {
+		return Ok(Vec::new());
+	}
 	split_at_self_intersections(&mut unsplit_edges);
 
-	let (split_edges, total_bounding_box) = split_at_intersections(&unsplit_edges);
+	let split_edges = split_at_intersections(&unsplit_edges);
 
 	#[cfg(feature = "logging")]
 	for (edge, _) in split_edges.iter() {
 		eprintln!("{}", path_to_path_data(&vec![*edge], 0.001));
 	}
 
-	let total_bounding_box = match total_bounding_box {
-		Some(bb) => bb,
-		None => return Ok(Vec::new()), // Input geometry is empty
-	};
-
-	let major_graph = find_vertices(&split_edges, total_bounding_box);
+	let major_graph = find_vertices(&split_edges);
 
 	#[cfg(feature = "logging")]
 	eprintln!("Major graph:");
@@ -1831,10 +1845,7 @@ mod tests {
 	#[test]
 	fn test_split_at_intersections() {
 		let unsplit_edges = unsplit_edges();
-		let (split_edges, total_bounding_box) = split_at_intersections(&unsplit_edges);
-
-		// Check that we have a valid bounding box
-		assert!(total_bounding_box.is_some());
+		let split_edges = split_at_intersections(&unsplit_edges);
 
 		// Check that we have more edges after splitting (due to intersections)
 		assert!(split_edges.len() >= unsplit_edges.len());
@@ -1861,8 +1872,8 @@ mod tests {
 	fn test_compute_minor() {
 		// Set up the initial graph
 		let unsplit_edges = unsplit_edges();
-		let (split_edges, total_bounding_box) = split_at_intersections(&unsplit_edges);
-		let major_graph = find_vertices(&split_edges, total_bounding_box.unwrap());
+		let split_edges = split_at_intersections(&unsplit_edges);
+		let major_graph = find_vertices(&split_edges);
 
 		// Compute minor graph
 		let minor_graph = compute_minor(&major_graph);
@@ -1916,8 +1927,8 @@ mod tests {
 	fn test_sort_outgoing_edges_by_angle() {
 		// Set up the initial graph
 		let unsplit_edges = unsplit_edges();
-		let (split_edges, total_bounding_box) = split_at_intersections(&unsplit_edges);
-		let major_graph = find_vertices(&split_edges, total_bounding_box.unwrap());
+		let split_edges = split_at_intersections(&unsplit_edges);
+		let major_graph = find_vertices(&split_edges);
 		let mut minor_graph = compute_minor(&major_graph);
 
 		// Print initial state
