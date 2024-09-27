@@ -6,7 +6,7 @@ use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{generate_uuid, NodeId, NodeInput};
+use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
 use graphene_core::vector::brush_stroke::BrushStroke;
