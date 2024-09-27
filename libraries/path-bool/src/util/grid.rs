@@ -49,17 +49,14 @@ impl Grid {
 	}
 }
 
-use std::mem::size_of;
-
 pub struct BitVec {
 	data: Vec<u64>,
-	capacity: usize,
 }
 
 impl BitVec {
 	pub fn new(capacity: usize) -> Self {
 		let num_words = (capacity + 63) / 64;
-		BitVec { data: vec![0; num_words], capacity }
+		BitVec { data: vec![0; num_words] }
 	}
 
 	pub fn set(&mut self, index: usize) {
@@ -91,7 +88,7 @@ impl<'a> Iterator for BitVecIterator<'a> {
 	type Item = usize;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		while self.word_index < self.bit_vec.data.len() {
+		loop {
 			if self.current_word == 0 {
 				self.word_index += 1;
 				if self.word_index == self.bit_vec.data.len() {
@@ -107,7 +104,6 @@ impl<'a> Iterator for BitVecIterator<'a> {
 
 			return Some(result);
 		}
-		None
 	}
 }
 
