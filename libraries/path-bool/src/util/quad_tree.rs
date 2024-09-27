@@ -72,50 +72,14 @@ impl<T: Clone> QuadTree<T> {
 			return;
 		}
 
-		let mid_x = (self.bounding_box.left + self.bounding_box.right) / 2.;
-		let mid_y = (self.bounding_box.top + self.bounding_box.bottom) / 2.;
+		let mid_x = (self.bounding_box.left() + self.bounding_box.right()) / 2.;
+		let mid_y = (self.bounding_box.top() + self.bounding_box.bottom()) / 2.;
 
 		self.subtrees = Some(Box::new([
-			QuadTree::new(
-				Aabb {
-					top: self.bounding_box.top,
-					right: mid_x,
-					bottom: mid_y,
-					left: self.bounding_box.left,
-				},
-				self.depth - 1,
-				self.inner_node_capacity,
-			),
-			QuadTree::new(
-				Aabb {
-					top: self.bounding_box.top,
-					right: self.bounding_box.right,
-					bottom: mid_y,
-					left: mid_x,
-				},
-				self.depth - 1,
-				self.inner_node_capacity,
-			),
-			QuadTree::new(
-				Aabb {
-					top: mid_y,
-					right: mid_x,
-					bottom: self.bounding_box.bottom,
-					left: self.bounding_box.left,
-				},
-				self.depth - 1,
-				self.inner_node_capacity,
-			),
-			QuadTree::new(
-				Aabb {
-					top: mid_y,
-					right: self.bounding_box.right,
-					bottom: self.bounding_box.bottom,
-					left: mid_x,
-				},
-				self.depth - 1,
-				self.inner_node_capacity,
-			),
+			QuadTree::new(Aabb::new(self.bounding_box.left(), self.bounding_box.top(), mid_x, mid_y), self.depth - 1, self.inner_node_capacity),
+			QuadTree::new(Aabb::new(mid_x, self.bounding_box.top(), self.bounding_box.right(), mid_y), self.depth - 1, self.inner_node_capacity),
+			QuadTree::new(Aabb::new(self.bounding_box.left(), mid_y, mid_x, self.bounding_box.bottom()), self.depth - 1, self.inner_node_capacity),
+			QuadTree::new(Aabb::new(mid_x, mid_y, self.bounding_box.right(), self.bounding_box.bottom()), self.depth - 1, self.inner_node_capacity),
 		]));
 	}
 }

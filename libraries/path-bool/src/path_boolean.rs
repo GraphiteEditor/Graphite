@@ -63,7 +63,7 @@ new_key_type! {
 //
 // SPDX-License-Identifier: MIT
 
-use crate::aabb::{Aabb, bounding_box_around_point, bounding_box_max_extent, merge_bounding_boxes};
+use crate::aabb::{Aabb, bounding_box_around_point, bounding_box_max_extent, expand_bounding_box, extend_bounding_box, merge_bounding_boxes};
 use crate::epsilons::Epsilons;
 use crate::intersection_path_segment::{path_segment_intersection, segments_equal};
 use crate::path::Path;
@@ -261,13 +261,11 @@ impl DualGraphHalfEdge {
 		}
 	}
 
-	fn outer_boundnig_box(&self) -> (DVec2, DVec2) {
+	fn outer_boundnig_box(&self) -> Aabb {
 		self.segments
 			.iter()
 			.map(|seg| seg.approx_bounding_box())
-			.fold((DVec2::INFINITY, DVec2::NEG_INFINITY), |(min, max), new| {
-				(min.min((new.left, new.top).into()), max.max((new.right, new.bottom).into()))
-			})
+			.fold(Default::default(), |old, new| merge_bounding_boxes(&old, &new))
 	}
 }
 
@@ -285,8 +283,8 @@ struct DualGraphComponent {
 	edges: Vec<DualEdgeKey>,
 	vertices: Vec<DualVertexKey>,
 	outer_face: Option<DualVertexKey>,
-	inner_bb: (DVec2, DVec2),
-	outer_bb: (DVec2, DVec2),
+	inner_bb: Aabb,
+	outer_bb: Aabb,
 }
 
 /// Represents the dual graph of the MinorGraph.
@@ -434,16 +432,14 @@ fn split_at_self_intersections(edges: &mut Vec<MajorGraphEdgeStage1>) {
 /// * A vector of split edges (MajorGraphEdgeStage2).
 /// * An optional overall bounding box (AaBb) for all edges.
 fn split_at_intersections(edges: &[MajorGraphEdgeStage1]) -> (Vec<MajorGraphEdgeStage1>, Option<Aabb>) {
+	if edges.is_empty() {
+		return (Vec::new(), None);
+	}
+
 	// Step 1: Add bounding boxes to edges
 	let with_bounding_box: Vec<MajorGraphEdgeStage2> = edges.iter().map(|(seg, parent)| (*seg, *parent, seg.approx_bounding_box())).collect();
-
 	// Step 2: Calculate total bounding box
-	let total_bounding_box = with_bounding_box.iter().fold(None, |acc, (_, _, bb)| Some(merge_bounding_boxes(acc, bb)));
-
-	let total_bounding_box = match total_bounding_box {
-		Some(bb) => bb,
-		None => return (Vec::new(), None),
-	};
+	let total_bounding_box = with_bounding_box.iter().fold(Default::default(), |acc, (_, _, bb)| merge_bounding_boxes(&acc, &bb));
 
 	// Step 3: Create edge tree for efficient intersection checks
 	let mut edge_tree = QuadTree::new(total_bounding_box, INTERSECTION_TREE_DEPTH, 8);
@@ -1210,12 +1206,13 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 			.incident_edges
 			.iter()
 			.map(|edge_key| dual_edges[*edge_key].start_segment().start())
-			.fold((DVec2::INFINITY, DVec2::NEG_INFINITY), |(min, max), point| (min.min(point), max.max(point)));
+			.fold(Default::default(), |bbox, point| extend_bounding_box(Some(bbox), point));
 		let outer_bb = dual_vertices[outer_face_key]
 			.incident_edges
 			.iter()
 			.map(|edge_key| dual_edges[*edge_key].outer_boundnig_box())
-			.fold((DVec2::INFINITY, DVec2::NEG_INFINITY), |(min, max), (bb_min, bb_max)| (min.min(bb_min), max.max(bb_max)));
+			.reduce(|acc, new| merge_bounding_boxes(&acc, &new))
+			.unwrap_or_default();
 		// } else {
 		// 	*windings.iter().find(|(&_, winding)| (winding < &0) ^ reverse_winding).expect("No outer face of a component found.").0
 		// };
@@ -1248,7 +1245,7 @@ fn get_next_edge(edge_key: MinorEdgeKey, graph: &MinorGraph) -> MinorEdgeKey {
 }
 
 fn test_inclusion(a: &DualGraphComponent, b: &DualGraphComponent, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>, vertices: &SlotMap<DualVertexKey, DualGraphVertex>) -> Option<DualVertexKey> {
-	if a.inner_bb.0.cmpge(b.outer_bb.0) & a.inner_bb.1.cmple(b.outer_bb.1) != BVec2::TRUE {
+	if a.inner_bb.min().cmpge(b.outer_bb.min()) & a.inner_bb.max().cmple(b.outer_bb.max()) != BVec2::TRUE {
 		return None;
 	}
 	let tested_point = edges[a.edges[0]].segments[0].start();
@@ -1270,7 +1267,7 @@ fn test_inclusion(a: &DualGraphComponent, b: &DualGraphComponent, edges: &SlotMa
 	None
 }
 fn bounding_box_intersects_horizontal_ray(bounding_box: &Aabb, point: DVec2) -> bool {
-	bounding_box.right >= point[0] && (bounding_box.top..bounding_box.bottom).contains(&point[1])
+	bounding_box.right() >= point[0] && (bounding_box.top()..bounding_box.bottom()).contains(&point[1])
 }
 
 #[derive(Copy, Clone)]
@@ -2001,12 +1998,7 @@ mod tests {
 
 	#[test]
 	fn test_bounding_box_intersects_horizontal_ray() {
-		let bbox = Aabb {
-			top: 10.,
-			right: 40.,
-			bottom: 30.,
-			left: 20.,
-		};
+		let bbox = Aabb::new(20., 10., 40., 30.);
 
 		assert!(bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(0., 29.)));
 		assert!(bounding_box_intersects_horizontal_ray(&bbox, DVec2::new(20., 29.)));
