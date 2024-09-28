@@ -317,9 +317,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			}
 			PortfolioMessage::Import => {
 				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
-				if self.active_document().is_some() {
-					responses.add(FrontendMessage::TriggerImport);
-				}
+				responses.add(FrontendMessage::TriggerImport);
 			}
 			PortfolioMessage::LoadDocumentResources { document_id } => {
 				if let Some(document) = self.document_mut(document_id) {
@@ -634,6 +632,68 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						}
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
+				}
+			}
+			PortfolioMessage::PasteImage {
+				name,
+				image,
+				mouse,
+				parent_and_insert_index,
+			} => {
+				let create_document = self.documents.is_empty();
+
+				if create_document {
+					responses.add(PortfolioMessage::NewDocumentWithName {
+						name: name.clone().unwrap_or("Untitled Document".into()),
+					});
+				}
+
+				responses.add(DocumentMessage::PasteImage {
+					name,
+					image,
+					mouse,
+					parent_and_insert_index,
+				});
+
+				if create_document {
+					// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted image
+					responses.add(Message::StartBuffer);
+					responses.add(DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true });
+
+					// TODO: Figure out how to get StartBuffer to work here so we can delete this and use `DocumentMessage::ZoomCanvasToFitAll` instead
+					responses.add(Message::StartBuffer);
+					responses.add(FrontendMessage::TriggerDelayedZoomCanvasToFitAll);
+				}
+			}
+			PortfolioMessage::PasteSvg {
+				name,
+				svg,
+				mouse,
+				parent_and_insert_index,
+			} => {
+				let create_document = self.documents.is_empty();
+
+				if create_document {
+					responses.add(PortfolioMessage::NewDocumentWithName {
+						name: name.clone().unwrap_or("Untitled Document".into()),
+					});
+				}
+
+				responses.add(DocumentMessage::PasteSvg {
+					name,
+					svg,
+					mouse,
+					parent_and_insert_index,
+				});
+
+				if create_document {
+					// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted image
+					responses.add(Message::StartBuffer);
+					responses.add(DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true });
+
+					// TODO: Figure out how to get StartBuffer to work here so we can delete this and use `DocumentMessage::ZoomCanvasToFitAll` instead
+					responses.add(Message::StartBuffer);
+					responses.add(FrontendMessage::TriggerDelayedZoomCanvasToFitAll);
 				}
 			}
 			PortfolioMessage::PrevDocument => {

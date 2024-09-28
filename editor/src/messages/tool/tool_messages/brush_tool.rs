@@ -1,4 +1,5 @@
 use super::tool_prelude::*;
+use crate::consts::DEFAULT_BRUSH_SIZE;
 use crate::messages::portfolio::document::graph_operation::transform_utils::{get_current_normalized_pivot, get_current_transform};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -41,7 +42,7 @@ pub struct BrushOptions {
 impl Default for BrushOptions {
 	fn default() -> Self {
 		Self {
-			diameter: 40.,
+			diameter: DEFAULT_BRUSH_SIZE,
 			hardness: 0.,
 			flow: 100.,
 			spacing: 20.,

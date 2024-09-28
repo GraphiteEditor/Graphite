@@ -1,4 +1,5 @@
 use super::tool_prelude::*;
+use crate::consts::DEFAULT_STROKE_WIDTH;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_endpoint_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -31,7 +32,7 @@ pub struct FreehandOptions {
 impl Default for FreehandOptions {
 	fn default() -> Self {
 		Self {
-			line_weight: 5.,
+			line_weight: DEFAULT_STROKE_WIDTH,
 			fill: ToolColorOptions::new_none(),
 			stroke: ToolColorOptions::new_primary(),
 		}

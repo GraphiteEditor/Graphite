@@ -593,17 +593,55 @@ impl EditorHandle {
 
 	/// Pastes an image
 	#[wasm_bindgen(js_name = pasteImage)]
-	pub fn paste_image(&self, image_data: Vec<u8>, width: u32, height: u32, mouse_x: Option<f64>, mouse_y: Option<f64>) {
+	pub fn paste_image(
+		&self,
+		name: Option<String>,
+		image_data: Vec<u8>,
+		width: u32,
+		height: u32,
+		mouse_x: Option<f64>,
+		mouse_y: Option<f64>,
+		insert_parent_id: Option<u64>,
+		insert_index: Option<usize>,
+	) {
 		let mouse = mouse_x.and_then(|x| mouse_y.map(|y| (x, y)));
 		let image = graphene_core::raster::Image::from_image_data(&image_data, width, height);
-		let message = DocumentMessage::PasteImage { image, mouse };
+
+		let parent_and_insert_index = if let (Some(insert_parent_id), Some(insert_index)) = (insert_parent_id, insert_index) {
+			let insert_parent_id = NodeId(insert_parent_id);
+			let parent = LayerNodeIdentifier::new_unchecked(insert_parent_id);
+			Some((parent, insert_index))
+		} else {
+			None
+		};
+
+		let message = PortfolioMessage::PasteImage {
+			name,
+			image,
+			mouse,
+			parent_and_insert_index,
+		};
 		self.dispatch(message);
 	}
 
 	#[wasm_bindgen(js_name = pasteSvg)]
-	pub fn paste_svg(&self, svg: String, mouse_x: Option<f64>, mouse_y: Option<f64>) {
+	pub fn paste_svg(&self, name: Option<String>, svg: String, mouse_x: Option<f64>, mouse_y: Option<f64>, insert_parent_id: Option<u64>, insert_index: Option<usize>) {
 		let mouse = mouse_x.and_then(|x| mouse_y.map(|y| (x, y)));
-		let message = DocumentMessage::PasteSvg { svg, mouse };
+
+		let parent_and_insert_index = if let (Some(insert_parent_id), Some(insert_index)) = (insert_parent_id, insert_index) {
+			let insert_parent_id = NodeId(insert_parent_id);
+			let parent = LayerNodeIdentifier::new_unchecked(insert_parent_id);
+			Some((parent, insert_index))
+		} else {
+			None
+		};
+
+		let message = PortfolioMessage::PasteSvg {
+			name,
+			svg,
+			mouse,
+			parent_and_insert_index,
+		};
 		self.dispatch(message);
 	}
 

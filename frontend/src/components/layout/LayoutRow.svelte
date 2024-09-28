@@ -42,6 +42,7 @@
 	on:dragleave
 	on:dragover
 	on:dragstart
+	on:drop
 	on:mouseup
 	on:pointerdown
 	on:pointerenter
@@ -58,7 +59,6 @@ on:copy
 on:cut
 on:drag
 on:dragenter
-on:drop
 on:focus
 on:fullscreenchange
 on:fullscreenerror

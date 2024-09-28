@@ -1,9 +1,10 @@
+use super::node_graph::document_node_definitions;
 use super::node_graph::utility_types::Transform;
 use super::overlays::utility_types::Pivot;
 use super::utility_types::clipboards::Clipboard;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{SnappingOptions, SnappingState, GET_SNAP_BOX_FUNCTIONS, GET_SNAP_GEOMETRY_FUNCTIONS};
-use super::utility_types::network_interface::{NodeNetworkInterface, TransactionStatus};
+use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
 use crate::consts::{ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
@@ -18,7 +19,7 @@ use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, 
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils::{get_blend_mode, get_opacity};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_opacity};
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
@@ -29,7 +30,7 @@ use graph_craft::document::{NodeId, NodeNetwork, OldNodeNetwork};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::vector::style::ViewMode;
 
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DVec2, IVec2};
 
 pub struct DocumentMessageData<'a> {
 	pub document_id: DocumentId,
@@ -380,7 +381,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					let Some(bounds) = self.metadata().bounding_box_document(layer) else { continue };
 
 					let name = self.network_interface.frontend_display_name(&layer.to_node(), &[]);
-					let transform = self.metadata().document_to_viewport * DAffine2::from_translation(bounds[0].min(bounds[1]) - DVec2::Y * 4.);
+
+					let (_, angle, translation) = self.metadata().document_to_viewport.to_scale_angle_translation();
+					let translation = translation + bounds[0].min(bounds[1]) - DVec2::Y * 4.;
+					let transform = DAffine2::from_angle_translation(angle, translation);
+
 					overlay_context.text_with_transform(&name, COLOR_OVERLAY_GRAY, None, transform, Pivot::BottomLeft);
 				}
 			}
@@ -498,7 +503,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), self.network_interface.selected_nodes(&[]).unwrap(), parent);
 
 				let node_id = NodeId(generate_uuid());
-				let new_group_node = super::node_graph::document_node_definitions::resolve_document_node_type("Merge")
+				let new_group_node = document_node_definitions::resolve_document_node_type("Merge")
 					.expect("Failed to create merge node")
 					.default_node_template();
 				responses.add(NodeGraphMessage::InsertNode {
@@ -546,23 +551,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(DocumentMessage::ImaginateGenerate { imaginate_node });
 				}
 			}
-			DocumentMessage::ImportSvg {
-				id,
-				svg,
-				transform,
-				parent,
-				insert_index,
-			} => {
-				responses.add(DocumentMessage::StartTransaction);
-				responses.add(GraphOperationMessage::NewSvg {
-					id,
-					svg,
-					transform,
-					parent,
-					insert_index,
-				});
-				responses.add(DocumentMessage::EndTransaction);
-			}
 			DocumentMessage::MoveSelectedLayersTo { parent, insert_index } => {
 				if !self.selection_network_path.is_empty() {
 					log::error!("Moving selected layers is only supported for the Document Network");
@@ -608,7 +596,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				let layers_to_move = self.network_interface.shallowest_unique_layers_sorted(&self.selection_network_path);
 				// Offset the index for layers to move that are below another layer to move. For example when moving 1 and 2 between 3 and 4, 2 should be inserted at the same index as 1 since 1 is moved first.
-				let layers_to_move_with_insert_offset: Vec<(LayerNodeIdentifier, usize)> = layers_to_move
+				let layers_to_move_with_insert_offset = layers_to_move
 					.iter()
 					.map(|layer| {
 						if layer.parent(self.metadata()) != Some(parent) {
@@ -727,7 +715,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					}
 				}
 			}
-			DocumentMessage::PasteImage { image, mouse } => {
+			DocumentMessage::PasteImage {
+				name,
+				image,
+				mouse,
+				parent_and_insert_index,
+			} => {
 				// All the image's pixels have been converted to 0..=1, linear, and premultiplied by `Color::from_rgba8_srgb`
 
 				let image_size = DVec2::new(image.width as f64, image.height as f64);
@@ -744,12 +737,27 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				let transform = center_in_viewport_layerspace * fit_image_size;
 
+				let layer_node_id = NodeId(generate_uuid());
+				let layer_id = LayerNodeIdentifier::new_unchecked(layer_node_id);
+
 				responses.add(DocumentMessage::AddTransaction);
 
 				let image_frame = ImageFrame { image, ..Default::default() };
+				let layer = graph_modification_utils::new_image_layer(image_frame, layer_node_id, self.new_layer_parent(true), responses);
 
-				use crate::messages::tool::common_functionality::graph_modification_utils;
-				let layer = graph_modification_utils::new_image_layer(image_frame, NodeId(generate_uuid()), self.new_layer_parent(true), responses);
+				if let Some(name) = name {
+					responses.add(NodeGraphMessage::SetDisplayName {
+						node_id: layer.to_node(),
+						alias: name,
+					});
+				}
+				if let Some((parent, insert_index)) = parent_and_insert_index {
+					responses.add(NodeGraphMessage::MoveLayerToStack {
+						layer: layer_id,
+						parent,
+						insert_index,
+					});
+				}
 
 				// `layer` cannot be `ROOT_PARENT` since it is the newly created layer
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
@@ -764,12 +772,37 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				// Force chosen tool to be Select Tool after importing image.
 				responses.add(ToolMessage::ActivateTool { tool_type: ToolType::Select });
 			}
-			DocumentMessage::PasteSvg { svg, mouse } => {
-				use crate::messages::tool::common_functionality::graph_modification_utils;
-				let viewport_location = mouse.map_or(ipp.viewport_bounds.center() + ipp.viewport_bounds.top_left, |pos| pos.into());
+			DocumentMessage::PasteSvg {
+				name,
+				svg,
+				mouse,
+				parent_and_insert_index,
+			} => {
 				let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
+				let viewport_location = mouse.map_or(ipp.viewport_bounds.center() + ipp.viewport_bounds.top_left, |pos| pos.into());
 				let center_in_viewport = DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_location - ipp.viewport_bounds.top_left));
-				let layer = graph_modification_utils::new_svg_layer(svg, center_in_viewport, NodeId(generate_uuid()), self.new_layer_parent(true), responses);
+
+				let layer_node_id = NodeId(generate_uuid());
+				let layer_id = LayerNodeIdentifier::new_unchecked(layer_node_id);
+
+				responses.add(DocumentMessage::AddTransaction);
+
+				let layer = graph_modification_utils::new_svg_layer(svg, center_in_viewport, layer_node_id, self.new_layer_parent(true), responses);
+
+				if let Some(name) = name {
+					responses.add(NodeGraphMessage::SetDisplayName {
+						node_id: layer.to_node(),
+						alias: name,
+					});
+				}
+				if let Some((parent, insert_index)) = parent_and_insert_index {
+					responses.add(NodeGraphMessage::MoveLayerToStack {
+						layer: layer_id,
+						parent,
+						insert_index,
+					});
+				}
+
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 				responses.add(ToolMessage::ActivateTool { tool_type: ToolType::Select });
 			}
@@ -1180,6 +1213,44 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::SelectionStepForward => {
 				self.network_interface.selection_step_forward(&self.selection_network_path);
 				responses.add(BroadcastEvent::SelectionChanged);
+			}
+			DocumentMessage::WrapContentInArtboard { place_artboard_at_origin } => {
+				// Get bounding box of all layers
+				let bounds = self.network_interface.document_bounds_document_space(false);
+				let Some(bounds) = bounds else { return };
+				let bounds_rounded_dimensions = (bounds[1] - bounds[0]).round();
+
+				// Create an artboard and set its dimensions to the bounding box size and location
+				let node_id = NodeId(generate_uuid());
+				let node_layer_id = LayerNodeIdentifier::new_unchecked(node_id);
+				let new_artboard_node = document_node_definitions::resolve_document_node_type("Artboard")
+					.expect("Failed to create artboard node")
+					.default_node_template();
+				responses.add(NodeGraphMessage::InsertNode {
+					node_id,
+					node_template: new_artboard_node,
+				});
+				responses.add(NodeGraphMessage::ShiftNodePosition { node_id, x: 15, y: -3 });
+				responses.add(GraphOperationMessage::ResizeArtboard {
+					layer: LayerNodeIdentifier::new_unchecked(node_id),
+					location: if place_artboard_at_origin { IVec2::ZERO } else { bounds[0].round().as_ivec2() },
+					dimensions: bounds_rounded_dimensions.as_ivec2(),
+				});
+
+				// Connect the current output data to the artboard's input data, and the artboard's output to the document output
+				responses.add(NodeGraphMessage::InsertNodeBetween {
+					node_id,
+					input_connector: network_interface::InputConnector::Export(0),
+					insert_node_input_index: 1,
+				});
+
+				// Shift the content by half its width and height so it gets centered in the artboard
+				responses.add(GraphOperationMessage::TransformChange {
+					layer: node_layer_id,
+					transform: DAffine2::from_translation(bounds_rounded_dimensions / 2.),
+					transform_in: TransformIn::Local,
+					skip_rerender: true,
+				});
 			}
 			DocumentMessage::ZoomCanvasTo100Percent => {
 				responses.add_front(NavigationMessage::CanvasZoomSet { zoom_factor: 1. });

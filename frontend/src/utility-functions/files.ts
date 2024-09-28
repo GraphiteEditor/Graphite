@@ -22,7 +22,7 @@ export function downloadFileText(filename: string, text: string) {
 	downloadFileBlob(filename, blob);
 }
 
-export async function upload<T extends "text" | "data">(acceptedExtensions: string, textOrData: T): Promise<UploadResult<T>> {
+export async function upload<T extends "text" | "data" | "both">(acceptedExtensions: string, textOrData: T): Promise<UploadResult<T>> {
 	return new Promise<UploadResult<T>>((resolve, _) => {
 		const element = document.createElement("input");
 		element.type = "file";
@@ -36,7 +36,15 @@ export async function upload<T extends "text" | "data">(acceptedExtensions: stri
 
 					const filename = file.name;
 					const type = file.type;
-					const content = (textOrData === "text" ? await file.text() : new Uint8Array(await file.arrayBuffer())) as UploadResultType<T>;
+					const content = (
+						textOrData === "text"
+							? await file.text()
+							: textOrData === "data"
+								? new Uint8Array(await file.arrayBuffer())
+								: textOrData === "both"
+									? { text: await file.text(), data: new Uint8Array(await file.arrayBuffer()) }
+									: undefined
+					) as UploadResultType<T>;
 
 					resolve({ filename, type, content });
 				}
@@ -50,7 +58,7 @@ export async function upload<T extends "text" | "data">(acceptedExtensions: stri
 	});
 }
 export type UploadResult<T> = { filename: string; type: string; content: UploadResultType<T> };
-type UploadResultType<T> = T extends "text" ? string : T extends "data" ? Uint8Array : never;
+type UploadResultType<T> = T extends "text" ? string : T extends "data" ? Uint8Array : T extends "both" ? { text: string; data: Uint8Array } : never;
 
 export function blobToBase64(blob: Blob): Promise<string> {
 	return new Promise((resolve) => {

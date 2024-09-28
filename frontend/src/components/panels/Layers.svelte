@@ -4,6 +4,7 @@
 	import { beginDraggingElement } from "@graphite/io-managers/drag";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
+	import { extractPixelData } from "@graphite/utility-functions/rasterization";
 	import type { Editor } from "@graphite/wasm-communication/editor";
 	import { defaultWidgetLayout, patchWidgetLayout, UpdateDocumentLayerDetails, UpdateDocumentLayerStructureJs, UpdateLayersPanelOptionsLayout } from "@graphite/wasm-communication/messages";
 	import type { DataBuffer, LayerPanelEntry } from "@graphite/wasm-communication/messages";
@@ -305,6 +306,8 @@
 	}
 
 	function updateInsertLine(event: DragEvent) {
+		if (!draggable) return;
+
 		// Stop the drag from being shown as cancelled
 		event.preventDefault();
 		dragInPanel = true;
@@ -312,13 +315,48 @@
 		if (list) draggingData = calculateDragIndex(list, event.clientY, draggingData?.select);
 	}
 
-	async function drop() {
-		if (draggingData && dragInPanel) {
-			const { select, insertParentId, insertIndex } = draggingData;
+	function drop(e: DragEvent) {
+		if (!draggingData) return;
+		const { select, insertParentId, insertIndex } = draggingData;
 
-			select?.();
-			editor.handle.moveLayerInTree(insertParentId, insertIndex);
+		e.preventDefault();
+
+		if (e.dataTransfer) {
+			// Moving layers
+			if (e.dataTransfer.items.length === 0) {
+				if (draggable && dragInPanel) {
+					select?.();
+					editor.handle.moveLayerInTree(insertParentId, insertIndex);
+				}
+			}
+			// Importing files
+			else {
+				Array.from(e.dataTransfer.items).forEach(async (item) => {
+					const file = item.getAsFile();
+					if (!file) return;
+
+					if (file.type.includes("svg")) {
+						const svgData = await file.text();
+						editor.handle.pasteSvg(file.name, svgData, undefined, undefined, insertParentId, insertIndex);
+						return;
+					}
+
+					if (file.type.startsWith("image")) {
+						const imageData = await extractPixelData(file);
+						editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height, undefined, undefined, insertParentId, insertIndex);
+						return;
+					}
+
+					// When we eventually have sub-documents, this should be changed to import the document instead of opening it in a separate tab
+					if (file.name.endsWith(".graphite")) {
+						const content = await file.text();
+						editor.handle.openDocumentFile(file.name, content);
+						return;
+					}
+				});
+			}
 		}
+
 		draggingData = undefined;
 		fakeHighlight = undefined;
 		dragInPanel = false;
@@ -369,7 +407,7 @@
 		<WidgetLayout layout={layersPanelOptionsLayout} />
 	</LayoutRow>
 	<LayoutRow class="list-area" scrollableY={true}>
-		<LayoutCol class="list" data-layer-panel bind:this={list} on:click={() => deselectAllLayers()} on:dragover={(e) => draggable && updateInsertLine(e)} on:dragend={() => draggable && drop()}>
+		<LayoutCol class="list" data-layer-panel bind:this={list} on:click={() => deselectAllLayers()} on:dragover={updateInsertLine} on:dragend={drop} on:drop={drop}>
 			{#each layers as listing, index}
 				<LayoutRow
 					class="layer"

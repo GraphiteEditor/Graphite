@@ -77,13 +77,6 @@ pub enum DocumentMessage {
 		imaginate_node: Vec<NodeId>,
 		then_generate: bool,
 	},
-	ImportSvg {
-		id: NodeId,
-		svg: String,
-		transform: DAffine2,
-		parent: LayerNodeIdentifier,
-		insert_index: usize,
-	},
 	MoveSelectedLayersTo {
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
@@ -98,12 +91,16 @@ pub enum DocumentMessage {
 		resize_opposite_corner: Key,
 	},
 	PasteImage {
+		name: Option<String>,
 		image: Image<Color>,
 		mouse: Option<(f64, f64)>,
+		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
 	},
 	PasteSvg {
+		name: Option<String>,
 		svg: String,
 		mouse: Option<(f64, f64)>,
+		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
 	},
 	Redo,
 	RenameDocument {
@@ -176,6 +173,9 @@ pub enum DocumentMessage {
 	PTZUpdate,
 	SelectionStepBack,
 	SelectionStepForward,
+	WrapContentInArtboard {
+		place_artboard_at_origin: bool,
+	},
 	ZoomCanvasTo100Percent,
 	ZoomCanvasTo200Percent,
 	ZoomCanvasToFitAll,

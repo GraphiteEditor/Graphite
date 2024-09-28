@@ -103,7 +103,6 @@ impl LayoutHolder for MenuBarMessageHandler {
 							label: "Import…".into(),
 							shortcut: action_keys!(PortfolioMessageDiscriminant::Import),
 							action: MenuBarEntry::create_action(|_| PortfolioMessage::Import.into()),
-							disabled: no_active_document, // TODO: Allow importing an image (or dragging it in, or pasting) without an active document to create a new one with an artboards of the image's size (issue #1140)
 							..MenuBarEntry::default()
 						},
 						MenuBarEntry {

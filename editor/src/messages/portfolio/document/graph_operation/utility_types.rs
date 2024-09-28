@@ -145,32 +145,36 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.move_node_to_chain_start(&boolean_id, layer, &[]);
 	}
 
-	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<PointId>>, layer: LayerNodeIdentifier) {
+	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<PointId>>, layer: LayerNodeIdentifier, include_transform: bool, include_fill: bool, include_stroke: bool) {
 		let vector_data = VectorData::from_subpaths(subpaths, true);
 
-		let path = resolve_document_node_type("Path")
+		let shape = resolve_document_node_type("Path")
 			.expect("Path node does not exist")
 			.node_template_input_override([Some(NodeInput::value(TaggedValue::VectorData(vector_data), false))]);
-
-		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
-		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_node_template();
-		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_node_template();
-
 		let shape_id = NodeId(generate_uuid());
-		self.network_interface.insert_node(shape_id, path, &[]);
+		self.network_interface.insert_node(shape_id, shape, &[]);
 		self.network_interface.move_node_to_chain_start(&shape_id, layer, &[]);
 
-		let transform_id = NodeId(generate_uuid());
-		self.network_interface.insert_node(transform_id, transform, &[]);
-		self.network_interface.move_node_to_chain_start(&transform_id, layer, &[]);
+		if include_transform {
+			let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
+			let transform_id = NodeId(generate_uuid());
+			self.network_interface.insert_node(transform_id, transform, &[]);
+			self.network_interface.move_node_to_chain_start(&transform_id, layer, &[]);
+		}
 
-		let fill_id = NodeId(generate_uuid());
-		self.network_interface.insert_node(fill_id, fill, &[]);
-		self.network_interface.move_node_to_chain_start(&fill_id, layer, &[]);
+		if include_fill {
+			let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_node_template();
+			let fill_id = NodeId(generate_uuid());
+			self.network_interface.insert_node(fill_id, fill, &[]);
+			self.network_interface.move_node_to_chain_start(&fill_id, layer, &[]);
+		}
 
-		let stroke_id = NodeId(generate_uuid());
-		self.network_interface.insert_node(stroke_id, stroke, &[]);
-		self.network_interface.move_node_to_chain_start(&stroke_id, layer, &[]);
+		if include_stroke {
+			let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_node_template();
+			let stroke_id = NodeId(generate_uuid());
+			self.network_interface.insert_node(stroke_id, stroke, &[]);
+			self.network_interface.move_node_to_chain_start(&stroke_id, layer, &[]);
+		}
 	}
 
 	pub fn insert_text(&mut self, text: String, font: Font, size: f64, layer: LayerNodeIdentifier) {

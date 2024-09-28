@@ -41,12 +41,22 @@ impl DialogLayoutHolder for CloseDocumentDialog {
 
 impl LayoutHolder for CloseDocumentDialog {
 	fn layout(&self) -> Layout {
+		let max_length = 60;
+		let max_one_line_length = 40;
+
+		let mut name = self.document_name.clone();
+
+		name.truncate(max_length);
+		let ellipsis = if self.document_name.len() > max_length { "…" } else { "" };
+
+		let break_lines = if self.document_name.len() > max_one_line_length { '\n' } else { ' ' };
+
 		Layout::WidgetLayout(WidgetLayout::new(vec![
 			LayoutGroup::Row {
 				widgets: vec![TextLabel::new("Save document before closing it?").bold(true).widget_holder()],
 			},
 			LayoutGroup::Row {
-				widgets: vec![TextLabel::new(format!("\"{}\" has unsaved changes", self.document_name)).multiline(true).widget_holder()],
+				widgets: vec![TextLabel::new(format!("\"{name}{ellipsis}\"{break_lines}has unsaved changes")).multiline(true).widget_holder()],
 			},
 		]))
 	}
