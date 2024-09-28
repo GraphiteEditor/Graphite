@@ -129,7 +129,8 @@ export abstract class DocumentDetails {
 
 	readonly isSaved!: boolean;
 
-	readonly id!: bigint | string;
+	// This field must be provided by the subclass implementation
+	// readonly id!: bigint | string;
 
 	get displayName(): string {
 		return `${this.name}${this.isSaved ? "" : "*"}`;

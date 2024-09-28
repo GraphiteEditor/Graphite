@@ -1,8 +1,12 @@
 <script lang="ts" context="module">
+	import Document from "@graphite/components/panels/Document.svelte";
+	import Layers from "@graphite/components/panels/Layers.svelte";
+	import Properties from "@graphite/components/panels/Properties.svelte";
+
 	const PANEL_COMPONENTS = {
-		Document: (await import("@graphite/components/panels/Document.svelte")).default,
-		Layers: (await import("@graphite/components/panels/Layers.svelte")).default,
-		Properties: (await import("@graphite/components/panels/Properties.svelte")).default,
+		Document,
+		Layers,
+		Properties,
 	};
 	type PanelType = keyof typeof PANEL_COMPONENTS;
 </script>

@@ -1,7 +1,7 @@
 {
 	"compilerOptions": {
-		"target": "ES2020",
-		"module": "esnext",
+		"target": "ESNext",
+		"module": "ESNext",
 		"strict": true,
 		"importHelpers": true,
 		"moduleResolution": "node",
@@ -14,7 +14,7 @@
 		"paths": {
 			"@/*": ["src/*"]
 		},
-		"lib": ["esnext", "dom", "dom.iterable", "scripthost"]
+		"lib": ["ESNext", "DOM", "DOM.Iterable", "ScriptHost"]
 	},
 	"include": ["src/**/*.ts", "src/**/*.d.ts", "*.ts", "*.js", "*.cjs"],
 	"exclude": ["node_modules"],
