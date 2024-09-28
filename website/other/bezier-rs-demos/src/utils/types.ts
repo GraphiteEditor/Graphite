@@ -85,18 +85,31 @@ export type Demo = {
 	onMouseDown(event: MouseEvent): void;
 	onMouseUp(): void;
 	onMouseMove(event: MouseEvent): void;
-	getSliderUnit(sliderValue: number, variable: string): string;
+	getSliderUnit(variable: string): string;
 } & HTMLElement;
 
-export type DemoPane = {
-	name: string;
-	demos: DemoArgs[];
-	id: string;
-	buildDemo(demo: DemoArgs): HTMLElement;
-} & HTMLElement;
+export type DemoGroup = {} & HTMLElement;
 
 export const BEZIER_T_VALUE_VARIANTS = ["Parametric", "Euclidean"] as const;
 export const SUBPATH_T_VALUE_VARIANTS = ["GlobalParametric", "GlobalEuclidean"] as const;
 
 export const CAP_VARIANTS = ["Butt", "Round", "Square"] as const;
 export const JOIN_VARIANTS = ["Bevel", "Miter", "Round"] as const;
+
+export const BEZIER_DEMO_DEFAULTS = {
+	Linear: [
+		[55, 60],
+		[165, 120],
+	],
+	Quadratic: [
+		[55, 50],
+		[165, 30],
+		[185, 170],
+	],
+	Cubic: [
+		[55, 30],
+		[85, 140],
+		[175, 30],
+		[185, 160],
+	],
+};

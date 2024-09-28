@@ -34,6 +34,7 @@ class SubpathDemo extends HTMLElement {
 
 	sliderUnits!: Record<string, string | string[]>;
 
+	// Called when the element is added to the DOM
 	async connectedCallback() {
 		this.title = this.getAttribute("title") || "";
 		this.triples = JSON.parse(this.getAttribute("triples") || "[]");
@@ -45,15 +46,11 @@ class SubpathDemo extends HTMLElement {
 		this.callback = subpathFeatures[this.key].callback as SubpathCallback;
 		this.sliderData = Object.assign({}, ...this.inputOptions.map((s) => ({ [s.variable]: s.default })));
 		this.sliderUnits = Object.assign({}, ...this.inputOptions.map((s) => ({ [s.variable]: s.unit })));
-		this.render();
+		renderDemo(this);
 
 		const figure = this.querySelector("figure") as HTMLElement;
 		this.subpath = WasmSubpath.from_triples(this.triples, this.closed) as WasmSubpathInstance;
 		this.drawDemo(figure);
-	}
-
-	render() {
-		renderDemo(this);
 	}
 
 	drawDemo(figure: HTMLElement, mouseLocation?: [number, number]) {
@@ -91,8 +88,7 @@ class SubpathDemo extends HTMLElement {
 		}
 	}
 
-	getSliderUnit(sliderValue: number, variable: string): string {
-		const _ = sliderValue;
+	getSliderUnit(variable: string): string {
 		const sliderUnit = this.sliderUnits[variable];
 		return (Array.isArray(sliderUnit) ? "" : sliderUnit) || "";
 	}

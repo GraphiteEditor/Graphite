@@ -48,7 +48,7 @@ body > h2 {
 	margin-top: 40px;
 }
 
-/* Demo Pane styles */
+/* Demo group styles */
 .demo-row {
 	display: flex;
 	flex-direction: row;
@@ -59,7 +59,7 @@ body > h2 {
 	margin-top: 20px;
 }
 
-.demo-pane-header {
+.demo-group-header {
 	display: inline-block;
 	position: relative;
 	margin-top: 2em;
@@ -69,7 +69,7 @@ body > h2 {
 	color: var(--color-navy);
 }
 
-.demo-pane-header a {
+.demo-group-header a {
 	display: none;
 	position: absolute;
 	left: 0;
@@ -78,11 +78,11 @@ body > h2 {
 	opacity: 0.5;
 }
 
-.demo-pane-header:hover a {
+.demo-group-header:hover a {
 	display: inline-block;
 }
 
-.demo-pane-container {
+.demo-group-container {
 	position: relative;
 	width: fit-content;
 	margin: auto;

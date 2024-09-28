@@ -1,58 +1,31 @@
 import { default as init } from "@/../wasm/pkg";
 import BezierDemo from "@/components/BezierDemo";
-import BezierDemoPane from "@/components/BezierDemoPane";
 import SubpathDemo from "@/components/SubpathDemo";
-import SubpathDemoPane from "@/components/SubpathDemoPane";
 import type { BezierFeatureKey } from "@/features/bezier-features";
 import bezierFeatures from "@/features/bezier-features";
 import type { SubpathFeatureKey } from "@/features/subpath-features";
 import subpathFeatures from "@/features/subpath-features";
+import { bezierDemoGroup, subpathDemoGroup } from "@/utils/groups";
 
 (async () => {
 	await init();
 
 	window.customElements.define("bezier-demo", BezierDemo);
-	window.customElements.define("bezier-demo-pane", BezierDemoPane);
 	window.customElements.define("subpath-demo", SubpathDemo);
-	window.customElements.define("subpath-demo-pane", SubpathDemoPane);
 
-	window.addEventListener("hashchange", (e: Event) => {
-		const hashChangeEvent = e as HashChangeEvent;
-		const isOldHashSolo = isUrlSolo(hashChangeEvent.oldURL);
-		const isNewHashSolo = isUrlSolo(hashChangeEvent.newURL);
+	window.addEventListener("hashchange", (e: HashChangeEvent) => {
+		const isOldHashSolo = isUrlSolo(e.oldURL);
+		const isNewHashSolo = isUrlSolo(e.newURL);
 		const target = document.getElementById(window.location.hash.substring(1));
 		// Determine whether the page needs to recompute which examples to show
-		if (!target || isOldHashSolo !== isNewHashSolo) {
-			renderExamples();
-		}
+		if (!target || isOldHashSolo !== isNewHashSolo) renderExamples();
 	});
 
 	renderExamples();
 })();
 
-function renderBezierPane(featureName: BezierFeatureKey, container?: HTMLElement) {
-	const feature = bezierFeatures[featureName];
-	const demo = document.createElement("bezier-demo-pane");
-
-	demo.setAttribute("name", featureName);
-	demo.setAttribute("demoOptions", JSON.stringify(feature.demoOptions || {}));
-	demo.setAttribute("triggerOnMouseMove", String(feature.triggerOnMouseMove));
-	container?.append(demo);
-}
-
-function renderSubpathPane(featureName: SubpathFeatureKey, container?: HTMLElement) {
-	const feature = subpathFeatures[featureName];
-	const demo = document.createElement("subpath-demo-pane");
-
-	demo.setAttribute("name", featureName);
-	demo.setAttribute("inputOptions", JSON.stringify(feature.inputOptions || []));
-	demo.setAttribute("triggerOnMouseMove", String(feature.triggerOnMouseMove));
-	container?.append(demo);
-}
-
 function isUrlSolo(url: string): boolean {
-	const hash = url.split("#")?.[1];
-	const splitHash = hash?.split("/");
+	const splitHash = url.split("#")?.[1]?.split("/");
 	return splitHash?.length === 3 && splitHash?.[2] === "solo";
 }
 
@@ -63,10 +36,20 @@ function renderExamples() {
 	// Determine which examples to render based on hash
 	if (splitHash[0] === "#bezier" && splitHash[1] in bezierFeatures && splitHash[2] === "solo") {
 		window.document.body.innerHTML = `<div id="bezier-demos"></div>`;
-		renderBezierPane(splitHash[1] as BezierFeatureKey, document.getElementById("bezier-demos") || undefined);
+		const container = document.getElementById("bezier-demos");
+		if (!container) return;
+
+		const key = splitHash[1] as BezierFeatureKey;
+		const demo = bezierDemoGroup(key, bezierFeatures[key]);
+		container.append(demo);
 	} else if (splitHash[0] === "#subpath" && splitHash[1] in subpathFeatures && splitHash[2] === "solo") {
 		window.document.body.innerHTML = `<div id="subpath-demos"></div>`;
-		renderSubpathPane(splitHash[1] as SubpathFeatureKey, document.getElementById("subpath-demos") || undefined);
+		const container = document.getElementById("subpath-demos");
+		if (!container) return;
+
+		const key = splitHash[1] as SubpathFeatureKey;
+		const demo = subpathDemoGroup(key, subpathFeatures[key]);
+		container.append(demo);
 	} else {
 		window.document.body.innerHTML = `
 		<h1 class="website-header">Bezier-rs Interactive Documentation</h1>
@@ -83,17 +66,12 @@ function renderExamples() {
 		`.trim();
 
 		const bezierDemos = document.getElementById("bezier-demos") || undefined;
-		const subpathDemos = document.getElementById("subpath-demos") || undefined;
+		if (bezierDemos) Object.entries(bezierFeatures).forEach(([key, options]) => bezierDemos.appendChild(bezierDemoGroup(key as BezierFeatureKey, options)));
 
-		(Object.keys(bezierFeatures) as BezierFeatureKey[]).forEach((feature) => renderBezierPane(feature, bezierDemos));
-		(Object.keys(subpathFeatures) as SubpathFeatureKey[]).forEach((feature) => renderSubpathPane(feature, subpathDemos));
+		const subpathDemos = document.getElementById("subpath-demos") || undefined;
+		if (subpathDemos) Object.entries(subpathFeatures).forEach(([key, options]) => subpathDemos.appendChild(subpathDemoGroup(key as SubpathFeatureKey, options)));
 	}
 
 	// Scroll to specified hash if it exists
-	if (hash) {
-		const target = document.getElementById(hash.substring(1));
-		if (target) {
-			target.scrollIntoView();
-		}
-	}
+	if (hash) document.getElementById(hash.substring(1))?.scrollIntoView();
 }

@@ -1,4 +1,4 @@
-import type { Demo, DemoPane, InputOption } from "@/utils/types";
+import type { Demo, DemoArgs, DemoGroup, InputOption } from "@/utils/types";
 
 export function renderDemo(demo: Demo) {
 	const header = document.createElement("h4");
@@ -25,7 +25,7 @@ export function renderDemo(demo: Demo) {
 
 		const sliderLabel = document.createElement("div");
 		const sliderData = demo.sliderData[inputOption.variable];
-		const sliderUnit = demo.getSliderUnit(sliderData, inputOption.variable);
+		const sliderUnit = demo.getSliderUnit(inputOption.variable);
 		sliderLabel.className = "slider-label";
 		sliderLabel.innerText = `${inputOption.variable}: ${isDropdown ? "" : sliderData}${sliderUnit}`;
 		sliderContainer.appendChild(sliderLabel);
@@ -69,7 +69,7 @@ export function renderDemo(demo: Demo) {
 				const target = event.target as HTMLInputElement;
 				demo.sliderData[inputOption.variable] = Number(target.value);
 				const data = demo.sliderData[inputOption.variable];
-				const unit = demo.getSliderUnit(demo.sliderData[inputOption.variable], inputOption.variable);
+				const unit = demo.getSliderUnit(inputOption.variable);
 				sliderLabel.innerText = `${inputOption.variable}: ${data}${unit}`;
 
 				const ratio = (Number(target.value) - Number(inputOption.min)) / range;
@@ -86,19 +86,19 @@ export function renderDemo(demo: Demo) {
 	demo.append(parentSliderContainer);
 }
 
-export function renderDemoPane(demoPane: DemoPane) {
+export function renderDemoGroup<T extends DemoArgs>(demoGroup: DemoGroup, id: string, name: string, demos: T[], buildDemo: (demo: T) => HTMLElement) {
 	const container = document.createElement("div");
-	container.className = "demo-pane-container";
+	container.className = "demo-group-container";
 
 	const headerAnchorLink = document.createElement("a");
 	headerAnchorLink.innerText = "#";
 	const currentHash = window.location.hash.split("/");
 	// Add header and href anchor if not on a solo example page
 	if (currentHash.length !== 3 && currentHash[2] !== "solo") {
-		headerAnchorLink.href = `#${demoPane.id}`;
+		headerAnchorLink.href = `#${id}`;
 		const header = document.createElement("h3");
-		header.innerText = demoPane.name;
-		header.className = "demo-pane-header";
+		header.innerText = name;
+		header.className = "demo-group-header";
 		header.append(headerAnchorLink);
 		container.append(header);
 	}
@@ -106,14 +106,14 @@ export function renderDemoPane(demoPane: DemoPane) {
 	const demoRow = document.createElement("div");
 	demoRow.className = "demo-row";
 
-	demoPane.demos.forEach((demo) => {
+	demos.forEach((demo) => {
 		if (demo.disabled) {
 			return;
 		}
-		const demoComponent = demoPane.buildDemo(demo);
+		const demoComponent = buildDemo(demo);
 		demoRow.append(demoComponent);
 	});
 
 	container.append(demoRow);
-	demoPane.append(container);
+	demoGroup.append(container);
 }

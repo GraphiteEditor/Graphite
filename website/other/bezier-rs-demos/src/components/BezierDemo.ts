@@ -5,8 +5,6 @@ import { renderDemo } from "@/utils/render";
 import type { BezierCallback, BezierCurveType, InputOption, WasmBezierManipulatorKey, Demo } from "@/utils/types";
 import { getConstructorKey, getCurveType } from "@/utils/types";
 
-const SELECTABLE_RANGE = 10;
-
 // Given the number of points in the curve, map the index of a point to the correct manipulator key
 const MANIPULATOR_KEYS_FROM_BEZIER_TYPE: { [key in BezierCurveType]: WasmBezierManipulatorKey[] } = {
 	Linear: ["set_start", "set_end"],
@@ -42,6 +40,7 @@ class BezierDemo extends HTMLElement implements Demo {
 	// Avoids "recursive use of an object detected which would lead to unsafe aliasing in rust" error when moving mouse fast.
 	locked!: boolean;
 
+	// Called when the element is added to the DOM
 	async connectedCallback() {
 		this.title = this.getAttribute("title") || "";
 		this.points = JSON.parse(this.getAttribute("points") || "[]");
@@ -56,15 +55,11 @@ class BezierDemo extends HTMLElement implements Demo {
 		this.activeIndex = undefined as number | undefined;
 		this.sliderData = Object.assign({}, ...this.inputOptions.map((s) => ({ [s.variable]: s.default })));
 		this.sliderUnits = Object.assign({}, ...this.inputOptions.map((s) => ({ [s.variable]: s.unit })));
-		this.render();
+		renderDemo(this);
 
 		const figure = this.querySelector("figure") as HTMLElement;
 		this.bezier = WasmBezier[getConstructorKey(curveType)](this.points);
 		this.drawDemo(figure);
-	}
-
-	render() {
-		renderDemo(this);
 	}
 
 	drawDemo(figure: HTMLElement, mouseLocation?: [number, number]) {
@@ -72,6 +67,8 @@ class BezierDemo extends HTMLElement implements Demo {
 	}
 
 	onMouseDown(event: MouseEvent) {
+		const SELECTABLE_RANGE = 10;
+
 		const mx = event.offsetX;
 		const my = event.offsetY;
 		for (let pointIndex = 0; pointIndex < this.points.length; pointIndex += 1) {
@@ -104,8 +101,7 @@ class BezierDemo extends HTMLElement implements Demo {
 		this.locked = false;
 	}
 
-	getSliderUnit(sliderValue: number, variable: string): string {
-		const _ = sliderValue;
+	getSliderUnit(variable: string): string {
 		const sliderUnit = this.sliderUnits[variable];
 		return (Array.isArray(sliderUnit) ? "" : sliderUnit) || "";
 	}
