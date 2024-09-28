@@ -2,8 +2,6 @@
 	import Document from "@graphite/components/panels/Document.svelte";
 	import Layers from "@graphite/components/panels/Layers.svelte";
 	import Properties from "@graphite/components/panels/Properties.svelte";
-	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 
 	const PANEL_COMPONENTS = {
 		Document,
@@ -18,11 +16,14 @@
 
 	import { platformIsMac, isEventSupported } from "@graphite/utility-functions/platform";
 
+	import { extractPixelData } from "@graphite/utility-functions/rasterization";
 	import type { Editor } from "@graphite/wasm-communication/editor";
 	import { type LayoutKeysGroup, type Key } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
+	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
@@ -48,6 +49,35 @@
 
 		if (platformIsMac()) return reservedKey ? [ALT, COMMAND] : [COMMAND];
 		return reservedKey ? [CONTROL, ALT] : [CONTROL];
+	}
+
+	function dropFile(e: DragEvent) {
+		if (!e.dataTransfer) return;
+
+		e.preventDefault();
+
+		Array.from(e.dataTransfer.items).forEach(async (item) => {
+			const file = item.getAsFile();
+			if (!file) return;
+
+			if (file.type.includes("svg")) {
+				const svgData = await file.text();
+				editor.handle.pasteSvg(file.name, svgData);
+				return;
+			}
+
+			if (file.type.startsWith("image")) {
+				const imageData = await extractPixelData(file);
+				editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height);
+				return;
+			}
+
+			if (file.name.endsWith(".graphite")) {
+				const content = await file.text();
+				editor.handle.openDocumentFile(file.name, content);
+				return;
+			}
+		});
 	}
 
 	export async function scrollTabIntoView(newIndex: number) {
@@ -76,7 +106,7 @@
 						}
 					}}
 					on:mouseup={(e) => {
-						// Fallback for Safari:
+						// Middle mouse button click fallback for Safari:
 						// https://developer.mozilla.org/en-US/docs/Web/API/Element/auxclick_event#browser_compatibility
 						// The downside of using mouseup is that the mousedown didn't have to originate in the same element.
 						// A possible future improvement could save the target element during mousedown and check if it's the same here.
@@ -110,7 +140,7 @@
 		{#if panelType}
 			<svelte:component this={PANEL_COMPONENTS[panelType]} />
 		{:else}
-			<LayoutCol class="empty-panel">
+			<LayoutCol class="empty-panel" on:dragover={(e) => e.preventDefault()} on:drop={dropFile}>
 				<LayoutCol class="content">
 					<LayoutRow class="logotype">
 						<IconLabel icon="GraphiteLogotypeSolid" />

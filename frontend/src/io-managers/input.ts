@@ -283,17 +283,21 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 			}
 
 			const file = item.getAsFile();
+			if (!file) return;
 
-			if (file?.type === "svg") {
+			if (file.type.includes("svg")) {
 				const text = await file.text();
-				editor.handle.pasteSvg(text);
-
+				editor.handle.pasteSvg(file.name, text);
 				return;
 			}
 
-			if (file?.type.startsWith("image")) {
+			if (file.type.startsWith("image")) {
 				const imageData = await extractPixelData(file);
-				editor.handle.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height);
+				editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height);
+			}
+
+			if (file.name.endsWith(".graphite")) {
+				editor.handle.openDocumentFile(file.name, await file.text());
 			}
 		});
 	}
@@ -316,52 +320,63 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 			if (!clipboardItems) throw new Error("Clipboard API unsupported");
 
 			// Read any layer data or images from the clipboard
-			Array.from(clipboardItems).forEach(async (item) => {
-				// Read plain text and, if it is a layer, pass it to the editor
-				if (item.types.includes("text/plain")) {
-					const blob = await item.getType("text/plain");
-					const reader = new FileReader();
-					reader.onload = () => {
-						const text = reader.result as string;
+			const success = await Promise.any(
+				Array.from(clipboardItems).map(async (item) => {
+					// Read plain text and, if it is a layer, pass it to the editor
+					if (item.types.includes("text/plain")) {
+						const blob = await item.getType("text/plain");
+						const reader = new FileReader();
+						reader.onload = () => {
+							const text = reader.result as string;
 
-						if (text.startsWith("graphite/layer: ")) {
-							editor.handle.pasteSerializedData(text.substring(16, text.length));
-						}
-					};
-					reader.readAsText(blob);
-				}
+							if (text.startsWith("graphite/layer: ")) {
+								editor.handle.pasteSerializedData(text.substring(16, text.length));
+							}
+						};
+						reader.readAsText(blob);
+						return true;
+					}
 
-				// Read an image from the clipboard and pass it to the editor to be loaded
-				const imageType = item.types.find((type) => type.startsWith("image/"));
+					// Read an image from the clipboard and pass it to the editor to be loaded
+					const imageType = item.types.find((type) => type.startsWith("image/"));
 
-				if (imageType === "svg") {
-					const blob = await item.getType("text/plain");
-					const reader = new FileReader();
-					reader.onload = () => {
-						const text = reader.result as string;
-						editor.handle.pasteSvg(text);
-					};
-					reader.readAsText(blob);
+					// Import the actual SVG content if it's an SVG
+					if (imageType?.includes("svg")) {
+						const blob = await item.getType("text/plain");
+						const reader = new FileReader();
+						reader.onload = () => {
+							const text = reader.result as string;
+							editor.handle.pasteSvg(undefined, text);
+						};
+						reader.readAsText(blob);
+						return true;
+					}
 
-					return;
-				}
+					// Import the bitmap image if it's an image
+					if (imageType) {
+						const blob = await item.getType(imageType);
+						const reader = new FileReader();
+						reader.onload = async () => {
+							if (reader.result instanceof ArrayBuffer) {
+								const imageData = await extractPixelData(new Blob([reader.result], { type: imageType }));
+								editor.handle.pasteImage(undefined, new Uint8Array(imageData.data), imageData.width, imageData.height);
+							}
+						};
+						reader.readAsArrayBuffer(blob);
+						return true;
+					}
 
-				if (imageType) {
-					const blob = await item.getType(imageType);
-					const reader = new FileReader();
-					reader.onload = async () => {
-						if (reader.result instanceof ArrayBuffer) {
-							const imageData = await extractPixelData(new Blob([reader.result], { type: imageType }));
-							editor.handle.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height);
-						}
-					};
-					reader.readAsArrayBuffer(blob);
-				}
-			});
+					// The API limits what kinds of data we can access, so we can get copied images and our text encodings of copied nodes, but not files (like
+					// .graphite or even image files). However, the user can paste those with Ctrl+V, which we recommend they in the error message that's shown to them.
+					return false;
+				}),
+			);
+
+			if (!success) throw new Error("No valid clipboard data");
 		} catch (err) {
 			const unsupported = stripIndents`
 				This browser does not support reading from the clipboard.
-				Use the keyboard shortcut to paste instead.
+				Use the standard keyboard shortcut to paste instead.
 				`;
 			const denied = stripIndents`
 				The browser's clipboard permission has been denied.
@@ -369,11 +384,16 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 				Open the browser's website settings (usually accessible
 				just left of the URL) to allow this permission.
 				`;
+			const nothing = stripIndents`
+				No valid clipboard data was found. You may have better
+				luck pasting with the standard keyboard shortcut instead.
+				`;
 
 			const matchMessage = {
 				"clipboard-read": unsupported,
 				"Clipboard API unsupported": unsupported,
 				"Permission denied": denied,
+				"No valid clipboard data": nothing,
 			};
 			const message = Object.entries(matchMessage).find(([key]) => String(err).includes(key))?.[1] || String(err);
 

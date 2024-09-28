@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::consts::DRAG_THRESHOLD;
+use crate::consts::{DEFAULT_STROKE_WIDTH, DRAG_THRESHOLD};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -27,7 +27,7 @@ pub struct SplineOptions {
 impl Default for SplineOptions {
 	fn default() -> Self {
 		Self {
-			line_weight: 5.,
+			line_weight: DEFAULT_STROKE_WIDTH,
 			fill: ToolColorOptions::new_none(),
 			stroke: ToolColorOptions::new_primary(),
 		}

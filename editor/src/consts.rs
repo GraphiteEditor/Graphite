@@ -40,6 +40,9 @@ pub const SLOWING_DIVISOR: f64 = 10.;
 pub const NUDGE_AMOUNT: f64 = 1.;
 pub const BIG_NUDGE_AMOUNT: f64 = 10.;
 
+// Tools
+pub const DEFAULT_STROKE_WIDTH: f64 = 2.;
+
 // Select tool
 pub const SELECTION_TOLERANCE: f64 = 5.;
 pub const SELECTION_DRAG_ANGLE: f64 = 90.;
@@ -65,6 +68,7 @@ pub const LINE_ROTATE_SNAP_ANGLE: f64 = 15.;
 
 // Brush tool
 pub const BRUSH_SIZE_CHANGE_KEYBOARD: f64 = 5.;
+pub const DEFAULT_BRUSH_SIZE: f64 = 20.;
 
 // Scrollbars
 pub const SCROLLBAR_SPACING: f64 = 0.1;

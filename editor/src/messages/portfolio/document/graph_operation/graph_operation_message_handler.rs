@@ -173,7 +173,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(id);
-				modify_inputs.insert_vector_data(subpaths, layer);
+				modify_inputs.insert_vector_data(subpaths, layer, true, true, true);
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
@@ -228,6 +228,10 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				};
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 
+				let size = tree.size();
+				let offset_to_center = DVec2::new(size.width() as f64, size.height() as f64) / -2.;
+				let transform = transform * DAffine2::from_translation(offset_to_center);
+
 				import_usvg_node(&mut modify_inputs, &usvg::Node::Group(Box::new(tree.root().clone())), transform, id, parent, insert_index);
 			}
 		}
@@ -260,15 +264,20 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 		usvg::Node::Path(path) => {
 			let subpaths = convert_usvg_path(path);
 			let bounds = subpaths.iter().filter_map(|subpath| subpath.bounding_box()).reduce(Quad::combine_bounds).unwrap_or_default();
-			modify_inputs.insert_vector_data(subpaths, layer);
+
+			modify_inputs.insert_vector_data(subpaths, layer, true, path.fill().is_some(), path.stroke().is_some());
 
 			if let Some(transform_node_id) = modify_inputs.existing_node_id("Transform") {
 				transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, transform * usvg_transform(node.abs_transform()));
 			}
 
-			let bounds_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-			apply_usvg_fill(path.fill(), modify_inputs, transform * usvg_transform(node.abs_transform()), bounds_transform);
-			apply_usvg_stroke(path.stroke(), modify_inputs, transform * usvg_transform(node.abs_transform()));
+			if let Some(fill) = path.fill() {
+				let bounds_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
+				apply_usvg_fill(fill, modify_inputs, transform * usvg_transform(node.abs_transform()), bounds_transform);
+			}
+			if let Some(stroke) = path.stroke() {
+				apply_usvg_stroke(stroke, modify_inputs, transform * usvg_transform(node.abs_transform()));
+			}
 		}
 		usvg::Node::Image(_image) => {
 			warn!("Skip image")
@@ -281,96 +290,90 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 	}
 }
 
-fn apply_usvg_stroke(stroke: Option<&usvg::Stroke>, modify_inputs: &mut ModifyInputsContext, transform: DAffine2) {
-	if let Some(stroke) = stroke {
-		if let usvg::Paint::Color(color) = &stroke.paint() {
-			modify_inputs.stroke_set(Stroke {
-				color: Some(usvg_color(*color, stroke.opacity().get())),
-				weight: stroke.width().get() as f64,
-				dash_lengths: stroke.dasharray().as_ref().map(|lengths| lengths.iter().map(|&length| length as f64).collect()).unwrap_or_default(),
-				dash_offset: stroke.dashoffset() as f64,
-				line_cap: match stroke.linecap() {
-					usvg::LineCap::Butt => LineCap::Butt,
-					usvg::LineCap::Round => LineCap::Round,
-					usvg::LineCap::Square => LineCap::Square,
-				},
-				line_join: match stroke.linejoin() {
-					usvg::LineJoin::Miter => LineJoin::Miter,
-					usvg::LineJoin::MiterClip => LineJoin::Miter,
-					usvg::LineJoin::Round => LineJoin::Round,
-					usvg::LineJoin::Bevel => LineJoin::Bevel,
-				},
-				line_join_miter_limit: stroke.miterlimit().get() as f64,
-				transform,
-			})
-		} else {
-			warn!("Skip non-solid stroke")
-		}
+fn apply_usvg_stroke(stroke: &usvg::Stroke, modify_inputs: &mut ModifyInputsContext, transform: DAffine2) {
+	if let usvg::Paint::Color(color) = &stroke.paint() {
+		modify_inputs.stroke_set(Stroke {
+			color: Some(usvg_color(*color, stroke.opacity().get())),
+			weight: stroke.width().get() as f64,
+			dash_lengths: stroke.dasharray().as_ref().map(|lengths| lengths.iter().map(|&length| length as f64).collect()).unwrap_or_default(),
+			dash_offset: stroke.dashoffset() as f64,
+			line_cap: match stroke.linecap() {
+				usvg::LineCap::Butt => LineCap::Butt,
+				usvg::LineCap::Round => LineCap::Round,
+				usvg::LineCap::Square => LineCap::Square,
+			},
+			line_join: match stroke.linejoin() {
+				usvg::LineJoin::Miter => LineJoin::Miter,
+				usvg::LineJoin::MiterClip => LineJoin::Miter,
+				usvg::LineJoin::Round => LineJoin::Round,
+				usvg::LineJoin::Bevel => LineJoin::Bevel,
+			},
+			line_join_miter_limit: stroke.miterlimit().get() as f64,
+			transform,
+		})
 	}
 }
 
-fn apply_usvg_fill(fill: Option<&usvg::Fill>, modify_inputs: &mut ModifyInputsContext, transform: DAffine2, bounds_transform: DAffine2) {
-	if let Some(fill) = &fill {
-		modify_inputs.fill_set(match &fill.paint() {
-			usvg::Paint::Color(color) => Fill::solid(usvg_color(*color, fill.opacity().get())),
-			usvg::Paint::LinearGradient(linear) => {
-				let local = [DVec2::new(linear.x1() as f64, linear.y1() as f64), DVec2::new(linear.x2() as f64, linear.y2() as f64)];
+fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, transform: DAffine2, bounds_transform: DAffine2) {
+	modify_inputs.fill_set(match &fill.paint() {
+		usvg::Paint::Color(color) => Fill::solid(usvg_color(*color, fill.opacity().get())),
+		usvg::Paint::LinearGradient(linear) => {
+			let local = [DVec2::new(linear.x1() as f64, linear.y1() as f64), DVec2::new(linear.x2() as f64, linear.y2() as f64)];
 
-				// TODO: fix this
-				// let to_doc_transform = if linear.base.units() == usvg::Units::UserSpaceOnUse {
-				// 	transform
-				// } else {
-				// 	transformed_bound_transform
-				// };
-				let to_doc_transform = transform;
-				let to_doc = to_doc_transform * usvg_transform(linear.transform());
+			// TODO: fix this
+			// let to_doc_transform = if linear.base.units() == usvg::Units::UserSpaceOnUse {
+			// 	transform
+			// } else {
+			// 	transformed_bound_transform
+			// };
+			let to_doc_transform = transform;
+			let to_doc = to_doc_transform * usvg_transform(linear.transform());
 
-				let document = [to_doc.transform_point2(local[0]), to_doc.transform_point2(local[1])];
-				let layer = [transform.inverse().transform_point2(document[0]), transform.inverse().transform_point2(document[1])];
+			let document = [to_doc.transform_point2(local[0]), to_doc.transform_point2(local[1])];
+			let layer = [transform.inverse().transform_point2(document[0]), transform.inverse().transform_point2(document[1])];
 
-				let [start, end] = [bounds_transform.inverse().transform_point2(layer[0]), bounds_transform.inverse().transform_point2(layer[1])];
-				let stops = linear.stops().iter().map(|stop| (stop.offset().get() as f64, usvg_color(stop.color(), stop.opacity().get()))).collect();
-				let stops = GradientStops(stops);
+			let [start, end] = [bounds_transform.inverse().transform_point2(layer[0]), bounds_transform.inverse().transform_point2(layer[1])];
+			let stops = linear.stops().iter().map(|stop| (stop.offset().get() as f64, usvg_color(stop.color(), stop.opacity().get()))).collect();
+			let stops = GradientStops(stops);
 
-				Fill::Gradient(Gradient {
-					start,
-					end,
-					transform: DAffine2::IDENTITY,
-					gradient_type: GradientType::Linear,
-					stops,
-				})
-			}
-			usvg::Paint::RadialGradient(radial) => {
-				let local = [DVec2::new(radial.cx() as f64, radial.cy() as f64), DVec2::new(radial.fx() as f64, radial.fy() as f64)];
+			Fill::Gradient(Gradient {
+				start,
+				end,
+				transform: DAffine2::IDENTITY,
+				gradient_type: GradientType::Linear,
+				stops,
+			})
+		}
+		usvg::Paint::RadialGradient(radial) => {
+			let local = [DVec2::new(radial.cx() as f64, radial.cy() as f64), DVec2::new(radial.fx() as f64, radial.fy() as f64)];
 
-				// TODO: fix this
-				// let to_doc_transform = if radial.base.units == usvg::Units::UserSpaceOnUse {
-				// 	transform
-				// } else {
-				// 	transformed_bound_transform
-				// };
-				let to_doc_transform = transform;
-				let to_doc = to_doc_transform * usvg_transform(radial.transform());
+			// TODO: fix this
+			// let to_doc_transform = if radial.base.units == usvg::Units::UserSpaceOnUse {
+			// 	transform
+			// } else {
+			// 	transformed_bound_transform
+			// };
+			let to_doc_transform = transform;
+			let to_doc = to_doc_transform * usvg_transform(radial.transform());
 
-				let document = [to_doc.transform_point2(local[0]), to_doc.transform_point2(local[1])];
-				let layer = [transform.inverse().transform_point2(document[0]), transform.inverse().transform_point2(document[1])];
+			let document = [to_doc.transform_point2(local[0]), to_doc.transform_point2(local[1])];
+			let layer = [transform.inverse().transform_point2(document[0]), transform.inverse().transform_point2(document[1])];
 
-				let [start, end] = [bounds_transform.inverse().transform_point2(layer[0]), bounds_transform.inverse().transform_point2(layer[1])];
-				let stops = radial.stops().iter().map(|stop| (stop.offset().get() as f64, usvg_color(stop.color(), stop.opacity().get()))).collect();
-				let stops = GradientStops(stops);
+			let [start, end] = [bounds_transform.inverse().transform_point2(layer[0]), bounds_transform.inverse().transform_point2(layer[1])];
+			let stops = radial.stops().iter().map(|stop| (stop.offset().get() as f64, usvg_color(stop.color(), stop.opacity().get()))).collect();
+			let stops = GradientStops(stops);
 
-				Fill::Gradient(Gradient {
-					start,
-					end,
-					transform: DAffine2::IDENTITY,
-					gradient_type: GradientType::Radial,
-					stops,
-				})
-			}
-			usvg::Paint::Pattern(_) => {
-				warn!("Skip pattern");
-				return;
-			}
-		});
-	}
+			Fill::Gradient(Gradient {
+				start,
+				end,
+				transform: DAffine2::IDENTITY,
+				gradient_type: GradientType::Radial,
+				stops,
+			})
+		}
+		usvg::Paint::Pattern(_) => {
+			warn!("Skip pattern");
+			return;
+		}
+	});
 }

@@ -141,7 +141,7 @@ async fn stroke<F: 'n + Send, T: Into<Option<Color>> + 'n + Send>(
 	)]
 	#[default(Color::BLACK)]
 	color: T,
-	#[default(5.)] weight: f64,
+	#[default(2.)] weight: f64,
 	dash_lengths: Vec<f64>,
 	dash_offset: f64,
 	line_cap: crate::vector::style::LineCap,

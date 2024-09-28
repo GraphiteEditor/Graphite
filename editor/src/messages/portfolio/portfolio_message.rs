@@ -4,7 +4,9 @@ use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
 
+use graphene_core::raster::Image;
 use graphene_core::text::Font;
+use graphene_core::Color;
 
 #[impl_message(Message, Portfolio)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -86,6 +88,18 @@ pub enum PortfolioMessage {
 	},
 	PasteSerializedData {
 		data: String,
+	},
+	PasteImage {
+		name: Option<String>,
+		image: Image<Color>,
+		mouse: Option<(f64, f64)>,
+		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
+	},
+	PasteSvg {
+		name: Option<String>,
+		svg: String,
+		mouse: Option<(f64, f64)>,
+		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
 	},
 	PrevDocument,
 	SetActivePanel {

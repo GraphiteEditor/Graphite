@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::consts::LINE_ROTATE_SNAP_ANGLE;
+use crate::consts::{DEFAULT_STROKE_WIDTH, LINE_ROTATE_SNAP_ANGLE};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -28,7 +28,7 @@ pub struct LineOptions {
 impl Default for LineOptions {
 	fn default() -> Self {
 		Self {
-			line_weight: 5.,
+			line_weight: DEFAULT_STROKE_WIDTH,
 			stroke: ToolColorOptions::new_primary(),
 		}
 	}

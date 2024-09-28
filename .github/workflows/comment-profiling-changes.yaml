@@ -9,6 +9,8 @@ env:
 
 jobs:
   profile:
+    # TODO(TrueDoctor): Fix and reenable this action
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3

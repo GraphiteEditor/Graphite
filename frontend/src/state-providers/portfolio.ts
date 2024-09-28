@@ -65,17 +65,22 @@ export function createPortfolioState(editor: Editor) {
 		editor.handle.openDocumentFile(data.filename, data.content);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerImport, async () => {
-		const data = await upload("image/*", "data");
+		const data = await upload("image/*", "both");
 
 		if (data.type.includes("svg")) {
-			const svg = new TextDecoder().decode(data.content);
-			editor.handle.pasteSvg(svg);
-
+			const svg = new TextDecoder().decode(data.content.data);
+			editor.handle.pasteSvg(data.filename, svg);
 			return;
 		}
 
-		const imageData = await extractPixelData(new Blob([data.content], { type: data.type }));
-		editor.handle.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height);
+		// In case the user accidentally uploads a Graphite file, open it instead of failing to import it
+		if (data.filename.endsWith(".graphite")) {
+			editor.handle.openDocumentFile(data.filename, data.content.text);
+			return;
+		}
+
+		const imageData = await extractPixelData(new Blob([data.content.data], { type: data.type }));
+		editor.handle.pasteImage(data.filename, new Uint8Array(imageData.data), imageData.width, imageData.height);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerDownloadTextFile, (triggerFileDownload) => {
 		downloadFileText(triggerFileDownload.name, triggerFileDownload.document);

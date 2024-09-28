@@ -1,4 +1,5 @@
 use super::tool_prelude::*;
+use crate::consts::DEFAULT_STROKE_WIDTH;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -28,7 +29,7 @@ pub struct EllipseToolOptions {
 impl Default for EllipseToolOptions {
 	fn default() -> Self {
 		Self {
-			line_weight: 5.,
+			line_weight: DEFAULT_STROKE_WIDTH,
 			fill: ToolColorOptions::new_secondary(),
 			stroke: ToolColorOptions::new_primary(),
 		}

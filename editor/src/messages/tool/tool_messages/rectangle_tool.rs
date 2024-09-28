@@ -1,4 +1,5 @@
 use super::tool_prelude::*;
+use crate::consts::DEFAULT_STROKE_WIDTH;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::{graph_operation::utility_types::TransformIn, overlays::utility_types::OverlayContext};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -27,7 +28,7 @@ pub struct RectangleToolOptions {
 impl Default for RectangleToolOptions {
 	fn default() -> Self {
 		Self {
-			line_weight: 5.,
+			line_weight: DEFAULT_STROKE_WIDTH,
 			fill: ToolColorOptions::new_secondary(),
 			stroke: ToolColorOptions::new_primary(),
 		}

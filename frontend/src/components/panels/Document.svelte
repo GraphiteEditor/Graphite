@@ -118,23 +118,33 @@
 		};
 	})($document.toolShelfLayout.layout[0]);
 
-	function pasteFile(e: DragEvent) {
+	function dropFile(e: DragEvent) {
 		const { dataTransfer } = e;
+		const [x, y] = e.target instanceof Element && e.target.closest("[data-viewport]") ? [e.clientX, e.clientY] : [undefined, undefined];
 		if (!dataTransfer) return;
+
 		e.preventDefault();
 
 		Array.from(dataTransfer.items).forEach(async (item) => {
 			const file = item.getAsFile();
-			if (file?.type.includes("svg")) {
-				const svgData = await file.text();
-				editor.handle.pasteSvg(svgData, e.clientX, e.clientY);
+			if (!file) return;
 
+			if (file.type.includes("svg")) {
+				const svgData = await file.text();
+				editor.handle.pasteSvg(file.name, svgData, x, y);
 				return;
 			}
 
-			if (file?.type.startsWith("image")) {
+			if (file.type.startsWith("image")) {
 				const imageData = await extractPixelData(file);
-				editor.handle.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height, e.clientX, e.clientY);
+				editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height, x, y);
+				return;
+			}
+
+			if (file.name.endsWith(".graphite")) {
+				const content = await file.text();
+				editor.handle.openDocumentFile(file.name, content);
+				return;
 			}
 		});
 	}
@@ -426,7 +436,7 @@
 	});
 </script>
 
-<LayoutCol class="document">
+<LayoutCol class="document" on:dragover={(e) => e.preventDefault()} on:drop={dropFile}>
 	<LayoutRow class="options-bar" classes={{ "for-graph": $document.graphViewOverlayOpen }} scrollableX={true}>
 		{#if !$document.graphViewOverlayOpen}
 			<WidgetLayout layout={$document.documentModeLayout} />
@@ -482,7 +492,7 @@
 							y={cursorTop}
 						/>
 					{/if}
-					<div class="viewport" on:pointerdown={(e) => canvasPointerDown(e)} on:dragover={(e) => e.preventDefault()} on:drop={(e) => pasteFile(e)} bind:this={viewport} data-viewport>
+					<div class="viewport" on:pointerdown={(e) => canvasPointerDown(e)} bind:this={viewport} data-viewport>
 						<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
 							{@html artworkSvg}
 						</svg>
