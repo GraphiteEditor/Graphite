@@ -392,9 +392,9 @@ async fn flatten_vector_elements<F: 'n + Send>(
 		() -> GraphicGroup,
 		Footprint -> GraphicGroup,
 	)]
-	vector_data: impl Node<F, Output = GraphicGroup>,
+	graphic_group_input: impl Node<F, Output = GraphicGroup>,
 ) -> VectorData {
-	let graphic_group = vector_data.eval(footprint).await;
+	let graphic_group = graphic_group_input.eval(footprint).await;
 
 	fn concat_group(graphic_group: &GraphicGroup, current_transform: DAffine2, result: &mut VectorData) {
 		for (element, _) in graphic_group.iter() {
@@ -874,8 +874,9 @@ mod test {
 		let direction = DVec2::X * 1.5;
 		let instances = 3;
 		let repeated = super::repeat(Footprint::default(), &vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
-		assert_eq!(repeated.region_bezier_paths().count(), 3);
-		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
+		let vector_data = super::flatten_vector_elements(Footprint::default(), &FutureWrapperNode(repeated)).await;
+		assert_eq!(vector_data.region_bezier_paths().count(), 3);
+		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
 			assert!((subpath.manipulator_groups()[0].anchor - direction * index as f64 / (instances - 1) as f64).length() < 1e-5);
 		}
 	}
@@ -884,16 +885,18 @@ mod test {
 		let direction = DVec2::new(12., 10.);
 		let instances = 8;
 		let repeated = super::repeat(Footprint::default(), &vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
-		assert_eq!(repeated.region_bezier_paths().count(), 8);
-		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
+		let vector_data = super::flatten_vector_elements(Footprint::default(), &FutureWrapperNode(repeated)).await;
+		assert_eq!(vector_data.region_bezier_paths().count(), 8);
+		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
 			assert!((subpath.manipulator_groups()[0].anchor - direction * index as f64 / (instances - 1) as f64).length() < 1e-5);
 		}
 	}
 	#[tokio::test]
 	async fn circle_repeat() {
 		let repeated = super::circular_repeat(Footprint::default(), &vector_node(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE)), 45., 4., 8).await;
-		assert_eq!(repeated.region_bezier_paths().count(), 8);
-		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
+		let vector_data = super::flatten_vector_elements(Footprint::default(), &FutureWrapperNode(repeated)).await;
+		assert_eq!(vector_data.region_bezier_paths().count(), 8);
+		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
 			let expected_angle = (index as f64 + 1.) * 45.;
 			let center = (subpath.manipulator_groups()[0].anchor + subpath.manipulator_groups()[2].anchor) / 2.;
 			let actual_angle = DVec2::Y.angle_to(center).to_degrees();
