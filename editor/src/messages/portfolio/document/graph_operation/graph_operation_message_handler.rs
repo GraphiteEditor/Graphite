@@ -207,6 +207,10 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					});
 				}
 				// TODO: Replace deleted artboards with merge nodes
+				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
+
+				let new_node_id = NodeId::new();
+				let new_layer = modify_inputs.create_layer(new_node_id);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
 				responses.add(NodeGraphMessage::SendGraph);
