@@ -1,6 +1,4 @@
 import { default as init } from "@/../wasm/pkg";
-import BezierDemo from "@/components/BezierDemo";
-import SubpathDemo from "@/components/SubpathDemo";
 import type { BezierFeatureKey } from "@/features/bezier-features";
 import bezierFeatures from "@/features/bezier-features";
 import type { SubpathFeatureKey } from "@/features/subpath-features";
@@ -9,9 +7,6 @@ import { bezierDemoGroup, subpathDemoGroup } from "@/utils/groups";
 
 (async () => {
 	await init();
-
-	window.customElements.define("bezier-demo", BezierDemo);
-	window.customElements.define("subpath-demo", SubpathDemo);
 
 	window.addEventListener("hashchange", (e: HashChangeEvent) => {
 		const isOldHashSolo = isUrlSolo(e.oldURL);
@@ -59,9 +54,9 @@ function renderExamples() {
 			for detailed function descriptions and API usage. Click and drag on the endpoints of the demo curves to visualize the various Bezier utilities and functions.
 		</p>
 		
-		<h2 class="class-header">Beziers</h2>
+		<h2 class="category-header">Beziers</h2>
 		<div id="bezier-demos"></div>
-		<h2 class="class-header">Subpaths</h2>
+		<h2 class="category-header">Subpaths</h2>
 		<div id="subpath-demos"></div>
 		`.trim();
 

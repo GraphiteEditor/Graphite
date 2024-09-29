@@ -1,6 +1,8 @@
-import type { Demo, DemoArgs, DemoGroup, InputOption } from "@/utils/types";
+import type { newBezierDemo } from "@/components/BezierDemo";
+import type { newSubpathDemo } from "@/components/SubpathDemo";
+import type { DemoArgs, DemoGroup, InputOption } from "@/utils/types";
 
-export function renderDemo(demo: Demo) {
+export function renderDemo(demo: ReturnType<typeof newBezierDemo> | ReturnType<typeof newSubpathDemo>) {
 	const header = document.createElement("h4");
 	header.className = "demo-header";
 	header.innerText = demo.title;
@@ -11,8 +13,8 @@ export function renderDemo(demo: Demo) {
 	figure.addEventListener("mouseup", demo.onMouseUp.bind(demo));
 	figure.addEventListener("mousemove", demo.onMouseMove.bind(demo));
 
-	demo.append(header);
-	demo.append(figure);
+	demo.element.append(header);
+	demo.element.append(figure);
 
 	const parentSliderContainer = document.createElement("div");
 	parentSliderContainer.className = "parent-slider-container";
@@ -43,9 +45,7 @@ export function renderDemo(demo: Demo) {
 				selectInput.append(option);
 			});
 
-			if (inputOption.disabled) {
-				selectInput.disabled = true;
-			}
+			if (inputOption.disabled) selectInput.disabled = true;
 
 			selectInput.addEventListener("change", (event: Event) => {
 				demo.sliderData[inputOption.variable] = Number((event.target as HTMLInputElement).value);
@@ -83,7 +83,7 @@ export function renderDemo(demo: Demo) {
 		parentSliderContainer.append(sliderContainer);
 	});
 
-	demo.append(parentSliderContainer);
+	demo.element.append(parentSliderContainer);
 }
 
 export function renderDemoGroup<T extends DemoArgs>(demoGroup: DemoGroup, id: string, name: string, demos: T[], buildDemo: (demo: T) => HTMLElement) {
@@ -107,9 +107,7 @@ export function renderDemoGroup<T extends DemoArgs>(demoGroup: DemoGroup, id: st
 	demoRow.className = "demo-row";
 
 	demos.forEach((demo) => {
-		if (demo.disabled) {
-			return;
-		}
+		if (demo.disabled) return;
 		const demoComponent = buildDemo(demo);
 		demoRow.append(demoComponent);
 	});

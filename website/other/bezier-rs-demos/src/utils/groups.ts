@@ -1,3 +1,5 @@
+import { newBezierDemo } from "@/components/BezierDemo";
+import { newSubpathDemo } from "@/components/SubpathDemo";
 import type { BezierFeatureKey, BezierFeatureOptions } from "@/features/bezier-features";
 import bezierFeatures from "@/features/bezier-features";
 import type { SubpathFeatureKey, SubpathFeatureOptions } from "@/features/subpath-features";
@@ -21,17 +23,7 @@ export function bezierDemoGroup(key: BezierFeatureKey, options: BezierFeatureOpt
 		inputOptions: demoOptions[curveType]?.inputOptions || demoOptions.Quadratic?.inputOptions || [],
 	}));
 
-	const buildDemo = (demo: BezierDemoArgs): HTMLElement => {
-		const bezierDemo = document.createElement("bezier-demo");
-		bezierDemo.setAttribute("title", demo.title);
-		bezierDemo.setAttribute("points", JSON.stringify(demo.points));
-		bezierDemo.setAttribute("key", key);
-		bezierDemo.setAttribute("inputOptions", JSON.stringify(demo.inputOptions));
-		bezierDemo.setAttribute("triggerOnMouseMove", String(triggerOnMouseMove));
-		return bezierDemo;
-	};
-
-	renderDemoGroup(element, id, name, demos, buildDemo);
+	renderDemoGroup(element, id, name, demos, (demo: BezierDemoArgs): HTMLElement => newBezierDemo(demo.title, demo.points, key, demo.inputOptions, triggerOnMouseMove).element);
 
 	return element;
 }
@@ -71,19 +63,11 @@ export function subpathDemoGroup(key: SubpathFeatureKey, options: SubpathFeature
 	];
 
 	const buildDemo = (demo: SubpathDemoArgs): HTMLElement => {
-		const subpathDemo = document.createElement("subpath-demo");
-		subpathDemo.setAttribute("title", demo.title);
-		subpathDemo.setAttribute("triples", JSON.stringify(demo.triples));
-		subpathDemo.setAttribute("closed", String(demo.closed));
-		subpathDemo.setAttribute("key", key);
-
 		const newInputOptions = inputOptions.map((option) => ({
 			...option,
 			disabled: option.isDisabledForClosed && demo.closed,
 		}));
-		subpathDemo.setAttribute("inputOptions", JSON.stringify(newInputOptions));
-		subpathDemo.setAttribute("triggerOnMouseMove", String(triggerOnMouseMove));
-		return subpathDemo;
+		return newSubpathDemo(demo.title, demo.triples, key, demo.closed, newInputOptions, triggerOnMouseMove).element;
 	};
 
 	renderDemoGroup(element, id, name, demos, buildDemo);
