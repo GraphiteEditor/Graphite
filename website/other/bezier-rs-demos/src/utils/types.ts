@@ -82,13 +82,11 @@ export type Demo = {
 	sliderUnits: Record<string, string | string[]>;
 
 	drawDemo(figure: HTMLElement, mouseLocation?: [number, number]): void;
-	onMouseDown(event: MouseEvent): void;
+	onMouseDown(e: MouseEvent): void;
 	onMouseUp(): void;
-	onMouseMove(event: MouseEvent): void;
+	onMouseMove(e: MouseEvent): void;
 	getSliderUnit(variable: string): string;
-} & HTMLElement;
-
-export type DemoGroup = {} & HTMLElement;
+};
 
 export const BEZIER_T_VALUE_VARIANTS = ["Parametric", "Euclidean"] as const;
 export const SUBPATH_T_VALUE_VARIANTS = ["GlobalParametric", "GlobalEuclidean"] as const;
@@ -96,20 +94,24 @@ export const SUBPATH_T_VALUE_VARIANTS = ["GlobalParametric", "GlobalEuclidean"] 
 export const CAP_VARIANTS = ["Butt", "Round", "Square"] as const;
 export const JOIN_VARIANTS = ["Bevel", "Miter", "Round"] as const;
 
-export const BEZIER_DEMO_DEFAULTS = {
-	Linear: [
-		[55, 60],
-		[165, 120],
-	],
-	Quadratic: [
-		[55, 50],
-		[165, 30],
-		[185, 170],
-	],
-	Cubic: [
-		[55, 30],
-		[85, 140],
-		[175, 30],
-		[185, 160],
-	],
-};
+export function getBezierDemoPointDefaults() {
+	// We use a function to generate a new object each time it is called
+	// to prevent one instance from being shared and modified across demos
+	return {
+		Linear: [
+			[55, 60],
+			[165, 120],
+		],
+		Quadratic: [
+			[55, 50],
+			[165, 30],
+			[185, 170],
+		],
+		Cubic: [
+			[55, 30],
+			[85, 140],
+			[175, 30],
+			[185, 160],
+		],
+	};
+}

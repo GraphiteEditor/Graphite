@@ -5,12 +5,10 @@ import bezierFeatures from "@/features/bezier-features";
 import type { SubpathFeatureKey, SubpathFeatureOptions } from "@/features/subpath-features";
 import subpathFeatures from "@/features/subpath-features";
 import { renderDemoGroup } from "@/utils/render";
-import { BEZIER_CURVE_TYPE, BEZIER_DEMO_DEFAULTS } from "@/utils/types";
+import { BEZIER_CURVE_TYPE, getBezierDemoPointDefaults } from "@/utils/types";
 import type { BezierCurveType, BezierDemoArgs, SubpathDemoArgs } from "@/utils/types";
 
 export function bezierDemoGroup(key: BezierFeatureKey, options: BezierFeatureOptions): HTMLDivElement {
-	const element = document.createElement("div");
-
 	const demoOptions = options.demoOptions || {};
 	const triggerOnMouseMove = options.triggerOnMouseMove || false;
 	const name = bezierFeatures[key].name;
@@ -19,18 +17,14 @@ export function bezierDemoGroup(key: BezierFeatureKey, options: BezierFeatureOpt
 	const demos: BezierDemoArgs[] = BEZIER_CURVE_TYPE.map((curveType: BezierCurveType) => ({
 		title: curveType,
 		disabled: demoOptions[curveType]?.disabled || false,
-		points: demoOptions[curveType]?.customPoints || BEZIER_DEMO_DEFAULTS[curveType],
+		points: demoOptions[curveType]?.customPoints || getBezierDemoPointDefaults()[curveType],
 		inputOptions: demoOptions[curveType]?.inputOptions || demoOptions.Quadratic?.inputOptions || [],
 	}));
 
-	renderDemoGroup(element, id, name, demos, (demo: BezierDemoArgs): HTMLElement => newBezierDemo(demo.title, demo.points, key, demo.inputOptions, triggerOnMouseMove).element);
-
-	return element;
+	return renderDemoGroup(id, name, demos, (demo: BezierDemoArgs): HTMLElement => newBezierDemo(demo.title, demo.points, key, demo.inputOptions, triggerOnMouseMove).element);
 }
 
 export function subpathDemoGroup(key: SubpathFeatureKey, options: SubpathFeatureOptions): HTMLDivElement {
-	const element = document.createElement("div");
-
 	const inputOptions = options.inputOptions || [];
 	const triggerOnMouseMove = options.triggerOnMouseMove || false;
 	const name = subpathFeatures[key].name;
@@ -70,7 +64,5 @@ export function subpathDemoGroup(key: SubpathFeatureKey, options: SubpathFeature
 		return newSubpathDemo(demo.title, demo.triples, key, demo.closed, newInputOptions, triggerOnMouseMove).element;
 	};
 
-	renderDemoGroup(element, id, name, demos, buildDemo);
-
-	return element;
+	return renderDemoGroup(id, name, demos, buildDemo);
 }

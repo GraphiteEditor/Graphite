@@ -2,7 +2,7 @@ import { WasmBezier } from "@/../wasm/pkg";
 import type { BezierFeatureKey } from "@/features/bezier-features";
 import bezierFeatures from "@/features/bezier-features";
 import { renderDemo } from "@/utils/render";
-import type { BezierCallback, BezierCurveType, InputOption, WasmBezierManipulatorKey } from "@/utils/types";
+import type { BezierCurveType, InputOption, WasmBezierManipulatorKey } from "@/utils/types";
 import { getConstructorKey, getCurveType } from "@/utils/types";
 
 // Given the number of points in the curve, map the index of a point to the correct manipulator key
@@ -13,9 +13,6 @@ const MANIPULATOR_KEYS_FROM_BEZIER_TYPE: { [key in BezierCurveType]: WasmBezierM
 };
 
 export function newBezierDemo(title: string, points: number[][], key: BezierFeatureKey, inputOptions: InputOption[], triggerOnMouseMove: boolean) {
-	// Avoids "recursive use of an object detected which would lead to unsafe aliasing in rust" error when moving mouse fast.
-	let locked = false;
-
 	const curveType = getCurveType(points.length);
 
 	const data = {
@@ -23,7 +20,7 @@ export function newBezierDemo(title: string, points: number[][], key: BezierFeat
 		title,
 		inputOptions,
 		bezier: WasmBezier[getConstructorKey(curveType)](points),
-		callback: bezierFeatures[key].callback as BezierCallback,
+		callback: bezierFeatures[key].callback,
 		manipulatorKeys: MANIPULATOR_KEYS_FROM_BEZIER_TYPE[curveType],
 		activePointIndex: undefined as number | undefined,
 		sliderData: Object.assign({}, ...inputOptions.map((s) => ({ [s.variable]: s.default }))),
@@ -36,8 +33,8 @@ export function newBezierDemo(title: string, points: number[][], key: BezierFeat
 	};
 
 	renderDemo(data);
-	const figure = data.element.querySelector("figure") as HTMLElement;
-	drawDemo(figure);
+	const figure = data.element.querySelector("[data-demo-figure]");
+	if (figure instanceof HTMLElement) drawDemo(figure);
 
 	function drawDemo(figure: HTMLElement, mouseLocation?: [number, number]) {
 		figure.innerHTML = data.callback(data.bezier, data.sliderData, mouseLocation);
@@ -46,35 +43,33 @@ export function newBezierDemo(title: string, points: number[][], key: BezierFeat
 	function onMouseDown(e: MouseEvent) {
 		const SELECTABLE_RANGE = 10;
 
-		const mx = e.offsetX;
-		const my = e.offsetY;
-		for (let pointIndex = 0; pointIndex < points.length; pointIndex += 1) {
-			const point = points[pointIndex];
-			if (point && Math.abs(mx - point[0]) < SELECTABLE_RANGE && Math.abs(my - point[1]) < SELECTABLE_RANGE) {
-				data.activePointIndex = pointIndex;
-				return;
-			}
-		}
+		const distances = points.flatMap((point, pointIndex) => {
+			if (!point) return [];
+			const distance = Math.sqrt(Math.pow(e.offsetX - point[0], 2) + Math.pow(e.offsetY - point[1], 2));
+			return distance < SELECTABLE_RANGE ? [{ pointIndex, distance }] : [];
+		});
+		const closest = distances.sort((a, b) => a.distance - b.distance)[0];
+		if (closest) data.activePointIndex = closest.pointIndex;
 	}
 
 	function onMouseUp() {
 		data.activePointIndex = undefined;
 	}
 
+	let locked = false;
 	function onMouseMove(e: MouseEvent) {
-		if (locked) return;
+		if (locked || !(e.currentTarget instanceof HTMLElement)) return;
 		locked = true;
-		const mx = e.offsetX;
-		const my = e.offsetY;
-		const figure = e.currentTarget as HTMLElement;
 
 		if (data.activePointIndex !== undefined) {
-			data.bezier[data.manipulatorKeys[data.activePointIndex]](mx, my);
-			points[data.activePointIndex] = [mx, my];
-			drawDemo(figure);
+			data.bezier[data.manipulatorKeys[data.activePointIndex]](e.offsetX, e.offsetY);
+			points[data.activePointIndex] = [e.offsetX, e.offsetY];
+
+			drawDemo(e.currentTarget);
 		} else if (triggerOnMouseMove) {
-			drawDemo(figure, [mx, my]);
+			drawDemo(e.currentTarget, [e.offsetX, e.offsetY]);
 		}
+
 		locked = false;
 	}
 

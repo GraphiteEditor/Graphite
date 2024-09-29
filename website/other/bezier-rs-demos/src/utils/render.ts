@@ -1,117 +1,140 @@
 import type { newBezierDemo } from "@/components/BezierDemo";
 import type { newSubpathDemo } from "@/components/SubpathDemo";
-import type { DemoArgs, DemoGroup, InputOption } from "@/utils/types";
+import type { DemoArgs } from "@/utils/types";
 
 export function renderDemo(demo: ReturnType<typeof newBezierDemo> | ReturnType<typeof newSubpathDemo>) {
-	const header = document.createElement("h4");
-	header.className = "demo-header";
-	header.innerText = demo.title;
+	const id = String(Math.random()).slice(2);
+	demo.element.insertAdjacentHTML(
+		"beforeend",
+		`
+		<h4 class="demo-header">${demo.title}</h4>
+		<div class="demo-figure" data-demo-figure="${id}"></div>
+		<div class="parent-input-container" data-parent-input-container="${id}">
+			${(() =>
+				demo.inputOptions
+					.map((inputOption) =>
+						`
+						<div
+							class="${(() => {
+								if (inputOption.inputType === "dropdown") return "select-container";
+								if (inputOption.inputType === "slider") return "slider-container";
+								return "";
+							})()}"
+							data-input-container
+						>
+							<div class="input-label" data-input-label>
+								${inputOption.variable}: ${inputOption.inputType === "dropdown" ? "" : demo.sliderData[inputOption.variable]}${demo.getSliderUnit(inputOption.variable)}
+							</div>
+							${(() => {
+								if (inputOption.inputType !== "dropdown") return "";
+								return `
+									<select class="select-input" value="${inputOption.default}" ${inputOption.disabled ? "disabled" : ""} data-select>
+										${inputOption.options?.map((value, idx) => `<option value="${idx}" id="${idx}-${value}">${value}</option>`).join("\n")}
+									</select>
+									`.trim();
+							})()}
+							${(() => {
+								if (inputOption.inputType !== "slider") return "";
+								const ratio = (Number(inputOption.default) - (inputOption.min || 0)) / ((inputOption.max || 100) - (inputOption.min || 0));
+								return `
+									<input
+										class="slider-input"
+										type="range"
+										max="${inputOption.max}"
+										min="${inputOption.min}"
+										step="${inputOption.step}"
+										value="${inputOption.default}"
+										style="--range-ratio: ${ratio}"
+										data-slider-input
+									/>
+									`.trim();
+							})()}
+						</div>
+						`.trim(),
+					)
+					.join("\n"))()}
+		</div>
+		`.trim(),
+	);
 
-	const figure = document.createElement("figure");
-	figure.className = "demo-figure";
-	figure.addEventListener("mousedown", demo.onMouseDown.bind(demo));
-	figure.addEventListener("mouseup", demo.onMouseUp.bind(demo));
-	figure.addEventListener("mousemove", demo.onMouseMove.bind(demo));
+	const figure = demo.element.querySelector(`[data-demo-figure="${id}"]`);
+	if (!(figure instanceof HTMLElement)) return;
+	figure.addEventListener("mousedown", demo.onMouseDown);
+	figure.addEventListener("mouseup", demo.onMouseUp);
+	figure.addEventListener("mousemove", demo.onMouseMove);
 
-	demo.element.append(header);
-	demo.element.append(figure);
+	demo.inputOptions.forEach((inputOption, index) => {
+		const inputContainer = demo.element.querySelectorAll(`[data-parent-input-container="${id}"] [data-input-container]`)[index];
+		if (!(inputContainer instanceof HTMLDivElement)) return;
 
-	const parentSliderContainer = document.createElement("div");
-	parentSliderContainer.className = "parent-slider-container";
+		if (inputOption.inputType === "dropdown") {
+			const selectElement = inputContainer.querySelector("[data-select]");
+			if (!(selectElement instanceof HTMLSelectElement)) return;
 
-	demo.inputOptions.forEach((inputOption: InputOption) => {
-		const isDropdown = inputOption.inputType === "dropdown";
+			selectElement.addEventListener("change", (e: Event) => {
+				if (!(e.target instanceof HTMLSelectElement)) return;
 
-		const sliderContainer = document.createElement("div");
-		sliderContainer.className = isDropdown ? "select-container" : "slider-container";
-
-		const sliderLabel = document.createElement("div");
-		const sliderData = demo.sliderData[inputOption.variable];
-		const sliderUnit = demo.getSliderUnit(inputOption.variable);
-		sliderLabel.className = "slider-label";
-		sliderLabel.innerText = `${inputOption.variable}: ${isDropdown ? "" : sliderData}${sliderUnit}`;
-		sliderContainer.appendChild(sliderLabel);
-
-		if (isDropdown) {
-			const selectInput = document.createElement("select");
-			selectInput.className = "select-input";
-			selectInput.value = String(inputOption.default);
-			inputOption.options?.forEach((value, idx) => {
-				const id = `${idx}-${value}`;
-				const option = document.createElement("option");
-				option.value = String(idx);
-				option.id = id;
-				option.text = value;
-				selectInput.append(option);
-			});
-
-			if (inputOption.disabled) selectInput.disabled = true;
-
-			selectInput.addEventListener("change", (event: Event) => {
-				demo.sliderData[inputOption.variable] = Number((event.target as HTMLInputElement).value);
+				demo.sliderData[inputOption.variable] = Number(e.target.value);
 				demo.drawDemo(figure);
 			});
-			sliderContainer.appendChild(selectInput);
-		} else {
-			const sliderInput = document.createElement("input");
-			sliderInput.className = "slider-input";
-			sliderInput.type = "range";
-			sliderInput.max = String(inputOption.max);
-			sliderInput.min = String(inputOption.min);
-			sliderInput.step = String(inputOption.step);
-			sliderInput.value = String(inputOption.default);
-			const range = Number(inputOption.max) - Number(inputOption.min);
-
-			const ratio = (Number(inputOption.default) - Number(inputOption.min)) / range;
-			sliderInput.style.setProperty("--range-ratio", String(ratio));
-
-			sliderInput.addEventListener("input", (event: Event) => {
-				const target = event.target as HTMLInputElement;
-				demo.sliderData[inputOption.variable] = Number(target.value);
-				const data = demo.sliderData[inputOption.variable];
-				const unit = demo.getSliderUnit(inputOption.variable);
-				sliderLabel.innerText = `${inputOption.variable}: ${data}${unit}`;
-
-				const ratio = (Number(target.value) - Number(inputOption.min)) / range;
-				sliderInput.style.setProperty("--range-ratio", String(ratio));
-
-				demo.drawDemo(figure);
-			});
-			sliderContainer.appendChild(sliderInput);
 		}
 
-		parentSliderContainer.append(sliderContainer);
-	});
+		if (inputOption.inputType === "slider") {
+			const sliderInput = inputContainer.querySelector("[data-slider-input]");
+			if (!(sliderInput instanceof HTMLInputElement)) return;
 
-	demo.element.append(parentSliderContainer);
+			sliderInput.addEventListener("input", (e: Event) => {
+				const target = e.target;
+				if (!(target instanceof HTMLInputElement)) return;
+
+				// Set the slider label text
+				const variable = inputOption.variable;
+				const data = demo.sliderData[variable];
+				const unit = demo.getSliderUnit(variable);
+				const label = inputContainer.querySelector("[data-input-label]");
+				if (!(label instanceof HTMLDivElement)) return;
+				label.innerText = `${variable}: ${data}${unit}`;
+
+				// Set the slider input range percentage
+				sliderInput.style.setProperty("--range-ratio", String((Number(target.value) - (inputOption.min || 0)) / ((inputOption.max || 100) - (inputOption.min || 0))));
+
+				// Update the slider data and redraw the demo
+				demo.sliderData[variable] = Number(target.value);
+				demo.drawDemo(figure);
+			});
+		}
+	});
 }
 
-export function renderDemoGroup<T extends DemoArgs>(demoGroup: DemoGroup, id: string, name: string, demos: T[], buildDemo: (demo: T) => HTMLElement) {
-	const container = document.createElement("div");
-	container.className = "demo-group-container";
+export function renderDemoGroup<T extends DemoArgs>(id: string, name: string, demos: T[], buildDemo: (demo: T) => HTMLElement): HTMLDivElement {
+	const demoGroup = document.createElement("div");
+	demoGroup.className = "demo-group-container";
 
-	const headerAnchorLink = document.createElement("a");
-	headerAnchorLink.innerText = "#";
-	const currentHash = window.location.hash.split("/");
-	// Add header and href anchor if not on a solo example page
-	if (currentHash.length !== 3 && currentHash[2] !== "solo") {
-		headerAnchorLink.href = `#${id}`;
-		const header = document.createElement("h3");
-		header.innerText = name;
-		header.className = "demo-group-header";
-		header.append(headerAnchorLink);
-		container.append(header);
+	demoGroup.insertAdjacentHTML(
+		"beforeend",
+		`
+		${(() => {
+			// Add header and href anchor if not on a solo example page
+			const currentHash = window.location.hash.split("/");
+			if (currentHash.length === 3 || currentHash[2] === "solo") return "";
+			return `
+				<h3 class="demo-group-header">
+					<a href="#${id}">#</a>
+					${name}
+				</h3>
+				`.trim();
+		})()}
+		<div class="demo-row" data-demo-row></div>
+		`.trim(),
+	);
+
+	const demoRow = demoGroup.querySelector("[data-demo-row]");
+	if (demoRow) {
+		demos.forEach((demo) => {
+			if (demo.disabled) return;
+			demoRow.append(buildDemo(demo));
+		});
 	}
 
-	const demoRow = document.createElement("div");
-	demoRow.className = "demo-row";
-
-	demos.forEach((demo) => {
-		if (demo.disabled) return;
-		const demoComponent = buildDemo(demo);
-		demoRow.append(demoComponent);
-	});
-
-	container.append(demoRow);
-	demoGroup.append(container);
+	return demoGroup;
 }

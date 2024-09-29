@@ -103,7 +103,7 @@ body > h2 {
 	border: solid 1px black;
 }
 
-.parent-slider-container {
+.parent-input-container {
 	display: flex;
 	justify-content: center;
 	flex-direction: column;
@@ -123,7 +123,7 @@ svg text {
 	padding-bottom: 5px;
 }
 
-.slider-label {
+.input-label {
 	font-family: monospace;
 	display: flex;
 	justify-content: left;
@@ -139,7 +139,6 @@ input[type="range"] {
 	border-radius: 5px;
 	background: linear-gradient(var(--range-fill-dark), var(--range-fill-dark)) 0 / calc(0.5 * var(--range-thumb-height) + var(--range-ratio) * (100% - var(--range-thumb-height))) var(--range-fill-light);
 	background-repeat: no-repeat;
-
 }
 
 /* Input Thumb */

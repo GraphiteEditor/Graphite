@@ -46,11 +46,12 @@ const subpathFeatures = {
 		inputOptions: [
 			subpathTValueVariantOptions,
 			{
+				variable: "steps",
+				inputType: "slider",
 				min: 2,
 				max: 30,
 				step: 1,
 				default: 5,
-				variable: "steps",
 			},
 		],
 	},
@@ -163,6 +164,7 @@ const subpathFeatures = {
 		inputOptions: [
 			{
 				variable: "distance",
+				inputType: "slider",
 				min: -25,
 				max: 25,
 				step: 1,
@@ -171,6 +173,7 @@ const subpathFeatures = {
 			joinOptions,
 			{
 				variable: "join: Miter - limit",
+				inputType: "slider",
 				min: 1,
 				max: 10,
 				step: 0.25,
@@ -184,6 +187,7 @@ const subpathFeatures = {
 		inputOptions: [
 			{
 				variable: "distance",
+				inputType: "slider",
 				min: 0,
 				max: 25,
 				step: 1,
@@ -192,6 +196,7 @@ const subpathFeatures = {
 			joinOptions,
 			{
 				variable: "join: Miter - limit",
+				inputType: "slider",
 				min: 1,
 				max: 10,
 				step: 0.25,
@@ -206,6 +211,7 @@ const subpathFeatures = {
 		inputOptions: [
 			{
 				variable: "angle",
+				inputType: "slider",
 				min: 0,
 				max: 2,
 				step: 1 / 50,
