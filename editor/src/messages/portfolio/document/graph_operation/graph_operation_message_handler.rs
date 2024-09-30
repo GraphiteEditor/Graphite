@@ -1,7 +1,7 @@
 use super::transform_utils;
 use super::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 use crate::messages::prelude::*;
 
@@ -200,17 +200,58 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 			}
 			GraphOperationMessage::ClearArtboards => {
+				let mut artboard_to_merge_node: HashMap<NodeId, NodeId> = HashMap::new();
+
+				// Create merge nodes, modify downstream connections
+				for artboard in network_interface.all_artboards() {
+					let Some(document_node) = network_interface.network(&[]).unwrap().nodes.get(&artboard.to_node()) else {
+						log::error!("Artboard not created");
+						return;
+					};
+					let artboard_input_provider = document_node.inputs[1].as_node().unwrap_or_default();
+					let node_id = NodeId::new();
+					let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
+					modify_inputs.create_layer(node_id);
+					artboard_to_merge_node.insert(artboard.to_node(), node_id);
+					responses.add(NodeGraphMessage::SetDisplayName {
+						node_id,
+						alias: network_interface.frontend_display_name(&artboard.to_node(), &[]),
+					});
+
+					if artboard_input_provider != NodeId::default() {
+						responses.add(NodeGraphMessage::SetInput {
+							input_connector: InputConnector::node(node_id, 1),
+							input: NodeInput::node(artboard_input_provider, 0),
+						});
+					}
+				}
+
+				// Modify upstream connections
+				for (artboard, merge_node) in artboard_to_merge_node.clone() {
+					let outward_wires = network_interface.outward_wires(&[]).unwrap().get(&OutputConnector::node(artboard, 0)).unwrap();
+					for outward_wire in outward_wires {
+						if let Some(value) = artboard_to_merge_node.get(&outward_wire.node_id().unwrap_or_default()) {
+							responses.add(NodeGraphMessage::SetInput {
+								input_connector: InputConnector::node(*value, outward_wire.input_index()),
+								input: NodeInput::node(merge_node, 0),
+							});
+						} else {
+							trace!("\n{:?}\n{:?}", merge_node, outward_wire.node_id().unwrap_or_default());
+							responses.add(NodeGraphMessage::SetInput {
+								input_connector: InputConnector::Export(0),
+								input: NodeInput::node(merge_node, 0),
+							});
+						}
+					}
+				}
+
 				for artboard in network_interface.all_artboards() {
 					responses.add(NodeGraphMessage::DeleteNodes {
 						node_ids: vec![artboard.to_node()],
 						delete_children: false,
 					});
 				}
-				// TODO: Replace deleted artboards with merge nodes
-				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 
-				let new_node_id = NodeId::new();
-				let new_layer = modify_inputs.create_layer(new_node_id);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
 				responses.add(NodeGraphMessage::SendGraph);
