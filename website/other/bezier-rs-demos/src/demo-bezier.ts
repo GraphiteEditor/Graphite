@@ -1,38 +1,28 @@
 import { WasmBezier } from "@/../wasm/pkg";
 import type { BezierFeatureKey } from "@/features-bezier";
 import bezierFeatures from "@/features-bezier";
-import { renderDemo } from "@/main";
 import type { InputOption } from "@/types";
 import { getConstructorKey, getCurveType, MANIPULATOR_KEYS_FROM_BEZIER_TYPE } from "@/types";
 
 export function demoBezier(title: string, points: number[][], key: BezierFeatureKey, inputOptions: InputOption[], triggerOnMouseMove: boolean) {
-	const curveType = getCurveType(points.length);
-
 	const data = {
 		element: document.createElement("div"),
 		title,
 		inputOptions,
-		bezier: WasmBezier[getConstructorKey(curveType)](points),
+		bezier: WasmBezier[getConstructorKey(getCurveType(points.length))](points),
 		callback: bezierFeatures[key].callback,
-		manipulatorKeys: MANIPULATOR_KEYS_FROM_BEZIER_TYPE[curveType],
+		manipulatorKeys: MANIPULATOR_KEYS_FROM_BEZIER_TYPE[getCurveType(points.length)],
 		activePointIndex: undefined as number | undefined,
 		sliderData: Object.assign({}, ...inputOptions.map((s) => ({ [s.variable]: s.default }))),
 		sliderUnits: Object.assign({}, ...inputOptions.map((s) => ({ [s.variable]: s.unit }))),
-		drawDemo,
+		locked: false,
+		updateDemoSVG,
 		onMouseDown,
-		onMouseUp,
 		onMouseMove,
-		getSliderUnit,
+		onMouseUp,
 	};
 
-	renderDemo(data);
-
-	const figure = data.element.querySelector("[data-demo-figure]");
-	if (figure instanceof HTMLElement) drawDemo(figure);
-
-	// Methods
-
-	function drawDemo(figure: HTMLElement, mouseLocation?: [number, number]) {
+	function updateDemoSVG(figure: HTMLElement, mouseLocation?: [number, number]) {
 		figure.innerHTML = data.callback(data.bezier, data.sliderData, mouseLocation);
 	}
 
@@ -48,30 +38,24 @@ export function demoBezier(title: string, points: number[][], key: BezierFeature
 		if (closest) data.activePointIndex = closest.pointIndex;
 	}
 
-	function onMouseUp() {
-		data.activePointIndex = undefined;
-	}
-
-	let locked = false;
 	function onMouseMove(e: MouseEvent) {
-		if (locked || !(e.currentTarget instanceof HTMLElement)) return;
-		locked = true;
+		if (data.locked || !(e.currentTarget instanceof HTMLElement)) return;
+		data.locked = true;
 
 		if (data.activePointIndex !== undefined) {
 			data.bezier[data.manipulatorKeys[data.activePointIndex]](e.offsetX, e.offsetY);
 			points[data.activePointIndex] = [e.offsetX, e.offsetY];
 
-			drawDemo(e.currentTarget);
+			updateDemoSVG(e.currentTarget);
 		} else if (triggerOnMouseMove) {
-			drawDemo(e.currentTarget, [e.offsetX, e.offsetY]);
+			updateDemoSVG(e.currentTarget, [e.offsetX, e.offsetY]);
 		}
 
-		locked = false;
+		data.locked = false;
 	}
 
-	function getSliderUnit(variable: string): string {
-		const sliderUnit = data.sliderUnits[variable];
-		return (Array.isArray(sliderUnit) ? "" : sliderUnit) || "";
+	function onMouseUp() {
+		data.activePointIndex = undefined;
 	}
 
 	return data;

@@ -6,11 +6,11 @@ import type { BezierFeatureKey, BezierFeatureOptions } from "@/features-bezier";
 import subpathFeatures from "@/features-subpath";
 import type { SubpathFeatureKey, SubpathFeatureOptions } from "@/features-subpath";
 import { BEZIER_CURVE_TYPE, getBezierDemoPointDefaults, getSubpathDemoArgs } from "@/types";
-import type { DemoArgs, BezierCurveType, BezierDemoArgs, SubpathDemoArgs } from "@/types";
+import type { DemoArgs, BezierCurveType, BezierDemoArgs, SubpathDemoArgs, DemoData } from "@/types";
 
-(async () => {
-	await init();
+init().then(renderPage);
 
+function renderPage() {
 	// Determine whether the page needs to recompute which examples to show
 	window.addEventListener("hashchange", (e: HashChangeEvent) => {
 		const isUrlSolo = (url: string) => {
@@ -21,13 +21,10 @@ import type { DemoArgs, BezierCurveType, BezierDemoArgs, SubpathDemoArgs } from 
 		const isOldHashSolo = isUrlSolo(e.oldURL);
 		const isNewHashSolo = isUrlSolo(e.newURL);
 		const target = document.getElementById(window.location.hash.substring(1));
-		if (!target || isOldHashSolo !== isNewHashSolo) renderExamples();
+		if (!target || isOldHashSolo !== isNewHashSolo) renderPage();
 	});
 
-	renderExamples();
-})();
-
-function renderExamples() {
+	// Get the hash from the URL
 	const hash = window.location.hash;
 	const splitHash = hash.split("/");
 
@@ -81,14 +78,81 @@ function renderExamples() {
 	if (subpathDemos) Object.entries(subpathFeatures).forEach(([key, options]) => subpathDemos.appendChild(subpathDemoGroup(key as SubpathFeatureKey, options)));
 }
 
-export function renderDemo(demo: ReturnType<typeof demoBezier> | ReturnType<typeof demoSubpath>) {
-	const id = String(Math.random()).slice(2);
+function bezierDemoGroup(key: BezierFeatureKey, options: BezierFeatureOptions): HTMLDivElement {
+	const demoOptions = options.demoOptions || {};
+	const demos: BezierDemoArgs[] = BEZIER_CURVE_TYPE.map((curveType: BezierCurveType) => ({
+		title: curveType,
+		disabled: demoOptions[curveType]?.disabled || false,
+		points: demoOptions[curveType]?.customPoints || getBezierDemoPointDefaults()[curveType],
+		inputOptions: demoOptions[curveType]?.inputOptions || demoOptions.Quadratic?.inputOptions || [],
+	}));
+	return renderDemoGroup(`bezier/${key}`, bezierFeatures[key].name, demos, (demo: BezierDemoArgs) =>
+		demoBezier(demo.title, demo.points, key, demo.inputOptions, options.triggerOnMouseMove || false),
+	);
+}
+
+function subpathDemoGroup(key: SubpathFeatureKey, options: SubpathFeatureOptions): HTMLDivElement {
+	const buildDemo = (demo: SubpathDemoArgs) => {
+		const newInputOptions = (options.inputOptions || []).map((option) => ({
+			...option,
+			disabled: option.isDisabledForClosed && demo.closed,
+		}));
+		return demoSubpath(demo.title, demo.triples, key, demo.closed, newInputOptions, options.triggerOnMouseMove || false);
+	};
+	return renderDemoGroup(`subpath/${key}`, subpathFeatures[key].name, getSubpathDemoArgs(), buildDemo);
+}
+
+function renderDemoGroup<T extends DemoArgs>(id: string, name: string, demos: T[], buildDemo: (demo: T) => DemoData): HTMLDivElement {
+	const demoGroup = document.createElement("div");
+	demoGroup.className = "demo-group-container";
+
+	demoGroup.insertAdjacentHTML(
+		"beforeend",
+		`
+		${(() => {
+			// Add header and href anchor if not on a solo example page
+			const currentHash = window.location.hash.split("/");
+			if (currentHash.length === 3 || currentHash[2] === "solo") return "";
+			return `
+				<h3 class="demo-group-header">
+					<a href="#${id}">#</a>
+					${name}
+				</h3>
+				`.trim();
+		})()}
+		<div class="demo-row" data-demo-row></div>
+		`.trim(),
+	);
+
+	const demoRow = demoGroup.querySelector("[data-demo-row]");
+	if (!demoRow) return demoGroup;
+
+	demos.forEach((demo) => {
+		if (demo.disabled) return;
+		const data = buildDemo(demo);
+
+		renderDemo(data);
+
+		const figure = data.element.querySelector("[data-demo-figure]");
+		if (figure instanceof HTMLElement) data.updateDemoSVG(figure);
+
+		demoRow.append(data.element);
+	});
+
+	return demoGroup;
+}
+
+function renderDemo(demo: DemoData) {
+	const getSliderUnit = (data: DemoData, variable: string): string => {
+		return (Array.isArray(data.sliderUnits[variable]) ? "" : data.sliderUnits[variable]) || "";
+	};
+
 	demo.element.insertAdjacentHTML(
 		"beforeend",
 		`
 		<h4 class="demo-header">${demo.title}</h4>
-		<div class="demo-figure" data-demo-figure="${id}"></div>
-		<div class="parent-input-container" data-parent-input-container="${id}">
+		<div class="demo-figure" data-demo-figure></div>
+		<div class="parent-input-container" data-parent-input-container>
 			${(() =>
 				demo.inputOptions
 					.map((inputOption) =>
@@ -102,7 +166,7 @@ export function renderDemo(demo: ReturnType<typeof demoBezier> | ReturnType<type
 							data-input-container
 						>
 							<div class="input-label" data-input-label>
-								${inputOption.variable}: ${inputOption.inputType === "dropdown" ? "" : demo.sliderData[inputOption.variable]}${demo.getSliderUnit(inputOption.variable)}
+								${inputOption.variable}: ${inputOption.inputType === "dropdown" ? "" : demo.sliderData[inputOption.variable]}${getSliderUnit(demo, inputOption.variable)}
 							</div>
 							${(() => {
 								if (inputOption.inputType !== "dropdown") return "";
@@ -136,14 +200,14 @@ export function renderDemo(demo: ReturnType<typeof demoBezier> | ReturnType<type
 		`.trim(),
 	);
 
-	const figure = demo.element.querySelector(`[data-demo-figure="${id}"]`);
+	const figure = demo.element.querySelector(`[data-demo-figure]`);
 	if (!(figure instanceof HTMLElement)) return;
 	figure.addEventListener("mousedown", demo.onMouseDown);
 	figure.addEventListener("mouseup", demo.onMouseUp);
 	figure.addEventListener("mousemove", demo.onMouseMove);
 
 	demo.inputOptions.forEach((inputOption, index) => {
-		const inputContainer = demo.element.querySelectorAll(`[data-parent-input-container="${id}"] [data-input-container]`)[index];
+		const inputContainer = demo.element.querySelectorAll(`[data-parent-input-container] [data-input-container]`)[index];
 		if (!(inputContainer instanceof HTMLDivElement)) return;
 
 		if (inputOption.inputType === "dropdown") {
@@ -154,7 +218,7 @@ export function renderDemo(demo: ReturnType<typeof demoBezier> | ReturnType<type
 				if (!(e.target instanceof HTMLSelectElement)) return;
 
 				demo.sliderData[inputOption.variable] = Number(e.target.value);
-				demo.drawDemo(figure);
+				demo.updateDemoSVG(figure);
 			});
 		}
 
@@ -169,7 +233,7 @@ export function renderDemo(demo: ReturnType<typeof demoBezier> | ReturnType<type
 				// Set the slider label text
 				const variable = inputOption.variable;
 				const data = demo.sliderData[variable];
-				const unit = demo.getSliderUnit(variable);
+				const unit = getSliderUnit(demo, variable);
 				const label = inputContainer.querySelector("[data-input-label]");
 				if (!(label instanceof HTMLDivElement)) return;
 				label.innerText = `${variable}: ${data}${unit}`;
@@ -179,76 +243,8 @@ export function renderDemo(demo: ReturnType<typeof demoBezier> | ReturnType<type
 
 				// Update the slider data and redraw the demo
 				demo.sliderData[variable] = Number(target.value);
-				demo.drawDemo(figure);
+				demo.updateDemoSVG(figure);
 			});
 		}
 	});
-}
-
-function renderDemoGroup<T extends DemoArgs>(id: string, name: string, demos: T[], buildDemo: (demo: T) => HTMLElement): HTMLDivElement {
-	const demoGroup = document.createElement("div");
-	demoGroup.className = "demo-group-container";
-
-	demoGroup.insertAdjacentHTML(
-		"beforeend",
-		`
-		${(() => {
-			// Add header and href anchor if not on a solo example page
-			const currentHash = window.location.hash.split("/");
-			if (currentHash.length === 3 || currentHash[2] === "solo") return "";
-			return `
-				<h3 class="demo-group-header">
-					<a href="#${id}">#</a>
-					${name}
-				</h3>
-				`.trim();
-		})()}
-		<div class="demo-row" data-demo-row></div>
-		`.trim(),
-	);
-
-	const demoRow = demoGroup.querySelector("[data-demo-row]");
-	if (demoRow) {
-		demos.forEach((demo) => {
-			if (demo.disabled) return;
-			demoRow.append(buildDemo(demo));
-		});
-	}
-
-	return demoGroup;
-}
-
-function bezierDemoGroup(key: BezierFeatureKey, options: BezierFeatureOptions): HTMLDivElement {
-	const demoOptions = options.demoOptions || {};
-	const triggerOnMouseMove = options.triggerOnMouseMove || false;
-	const name = bezierFeatures[key].name;
-	const id = `bezier/${key}`;
-
-	const demos: BezierDemoArgs[] = BEZIER_CURVE_TYPE.map((curveType: BezierCurveType) => ({
-		title: curveType,
-		disabled: demoOptions[curveType]?.disabled || false,
-		points: demoOptions[curveType]?.customPoints || getBezierDemoPointDefaults()[curveType],
-		inputOptions: demoOptions[curveType]?.inputOptions || demoOptions.Quadratic?.inputOptions || [],
-	}));
-
-	return renderDemoGroup(id, name, demos, (demo: BezierDemoArgs): HTMLElement => demoBezier(demo.title, demo.points, key, demo.inputOptions, triggerOnMouseMove).element);
-}
-
-function subpathDemoGroup(key: SubpathFeatureKey, options: SubpathFeatureOptions): HTMLDivElement {
-	const inputOptions = options.inputOptions || [];
-	const triggerOnMouseMove = options.triggerOnMouseMove || false;
-	const name = subpathFeatures[key].name;
-	const id = `subpath/${key}`;
-
-	const demos = getSubpathDemoArgs();
-
-	const buildDemo = (demo: SubpathDemoArgs): HTMLElement => {
-		const newInputOptions = inputOptions.map((option) => ({
-			...option,
-			disabled: option.isDisabledForClosed && demo.closed,
-		}));
-		return demoSubpath(demo.title, demo.triples, key, demo.closed, newInputOptions, triggerOnMouseMove).element;
-	};
-
-	return renderDemoGroup(id, name, demos, buildDemo);
 }

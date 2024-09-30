@@ -1,7 +1,6 @@
 import { WasmSubpath } from "@/../wasm/pkg";
 import type { SubpathFeatureKey } from "@/features-subpath";
 import subpathFeatures from "@/features-subpath";
-import { renderDemo } from "@/main";
 import { type WasmSubpathInstance, type WasmSubpathManipulatorKey, type InputOption, POINT_INDEX_TO_MANIPULATOR } from "@/types";
 
 export function demoSubpath(title: string, triples: (number[] | undefined)[][], key: SubpathFeatureKey, closed: boolean, inputOptions: InputOption[], triggerOnMouseMove: boolean) {
@@ -16,21 +15,14 @@ export function demoSubpath(title: string, triples: (number[] | undefined)[][], 
 		activePointIndex: undefined as number | undefined,
 		sliderData: Object.assign({}, ...inputOptions.map((s) => ({ [s.variable]: s.default }))),
 		sliderUnits: Object.assign({}, ...inputOptions.map((s) => ({ [s.variable]: s.unit }))),
-		drawDemo,
+		locked: false,
+		updateDemoSVG,
 		onMouseDown,
-		onMouseUp,
 		onMouseMove,
-		getSliderUnit,
+		onMouseUp,
 	};
 
-	renderDemo(data);
-
-	const figure = data.element.querySelector("[data-demo-figure]");
-	if (figure instanceof HTMLElement) drawDemo(figure);
-
-	// Methods
-
-	function drawDemo(figure: HTMLElement, mouseLocation?: [number, number]) {
+	function updateDemoSVG(figure: HTMLElement, mouseLocation?: [number, number]) {
 		figure.innerHTML = data.callback(data.subpath, data.sliderData, mouseLocation);
 	}
 
@@ -51,31 +43,25 @@ export function demoSubpath(title: string, triples: (number[] | undefined)[][], 
 		}
 	}
 
-	function onMouseUp() {
-		data.activeManipulatorIndex = undefined;
-		data.activePointIndex = undefined;
-	}
-
-	let locked = false;
 	function onMouseMove(e: MouseEvent) {
-		if (locked || !(e.currentTarget instanceof HTMLElement)) return;
-		locked = true;
+		if (data.locked || !(e.currentTarget instanceof HTMLElement)) return;
+		data.locked = true;
 
 		if (data.activeManipulatorIndex !== undefined && data.activePointIndex !== undefined) {
 			data.subpath[POINT_INDEX_TO_MANIPULATOR[data.activePointIndex]](data.activeManipulatorIndex, e.offsetX, e.offsetY);
 			triples[data.activeManipulatorIndex][data.activePointIndex] = [e.offsetX, e.offsetY];
 
-			drawDemo(e.currentTarget);
+			updateDemoSVG(e.currentTarget);
 		} else if (triggerOnMouseMove) {
-			drawDemo(e.currentTarget, [e.offsetX, e.offsetY]);
+			updateDemoSVG(e.currentTarget, [e.offsetX, e.offsetY]);
 		}
 
-		locked = false;
+		data.locked = false;
 	}
 
-	function getSliderUnit(variable: string): string {
-		const sliderUnit = data.sliderUnits[variable];
-		return (Array.isArray(sliderUnit) ? "" : sliderUnit) || "";
+	function onMouseUp() {
+		data.activeManipulatorIndex = undefined;
+		data.activePointIndex = undefined;
 	}
 
 	return data;
