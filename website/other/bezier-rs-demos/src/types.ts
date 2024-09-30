@@ -1,6 +1,4 @@
 import type * as WasmPkg from "@/../wasm/pkg";
-import type { demoBezier } from "@/demo-bezier";
-import type { demoSubpath } from "@/demo-subpath";
 
 export type WasmRawInstance = typeof WasmPkg;
 export type WasmBezierInstance = InstanceType<WasmRawInstance["WasmBezier"]>;
@@ -12,7 +10,32 @@ export type WasmBezierManipulatorKey = "set_start" | "set_handle_start" | "set_h
 export type WasmSubpathInstance = InstanceType<WasmRawInstance["WasmSubpath"]>;
 export type WasmSubpathManipulatorKey = "set_anchor" | "set_in_handle" | "set_out_handle";
 
-export type DemoData = ReturnType<typeof demoBezier> | ReturnType<typeof demoSubpath>;
+type DemoDataCommon = {
+	title: string;
+	element: HTMLDivElement;
+	inputOptions: InputOption[];
+	locked: boolean;
+	triggerOnMouseMove: boolean;
+	sliderData: Record<string, number>;
+	sliderUnits: Record<string, string | string[]>;
+	activePointIndex: number | undefined;
+};
+export type DemoDataBezier = DemoDataCommon & {
+	kind: "bezier";
+	manipulatorKeys: WasmBezierManipulatorKey[];
+	bezier: WasmBezierInstance;
+	points: number[][];
+	callback: BezierCallback;
+};
+export type DemoDataSubpath = DemoDataCommon & {
+	kind: "subpath";
+	activeManipulatorIndex: number | undefined;
+	manipulatorKeys: WasmSubpathManipulatorKey[] | undefined;
+	subpath: WasmSubpathInstance;
+	triples: (number[] | undefined)[][];
+	callback: SubpathCallback;
+};
+export type DemoData = DemoDataBezier | DemoDataSubpath;
 
 export const BEZIER_CURVE_TYPE = ["Linear", "Quadratic", "Cubic"] as const;
 export type BezierCurveType = (typeof BEZIER_CURVE_TYPE)[number];

@@ -1,6 +1,5 @@
 import { default as init } from "@/../wasm/pkg";
-import { demoBezier } from "@/demo-bezier";
-import { demoSubpath } from "@/demo-subpath";
+import { demoBezier, demoSubpath, onMouseDown, onMouseMove, onMouseUp, updateDemoSVG } from "@/demos";
 import bezierFeatures from "@/features-bezier";
 import type { BezierFeatureKey, BezierFeatureOptions } from "@/features-bezier";
 import subpathFeatures from "@/features-subpath";
@@ -134,7 +133,7 @@ function renderDemoGroup<T extends DemoArgs>(id: string, name: string, demos: T[
 		renderDemo(data);
 
 		const figure = data.element.querySelector("[data-demo-figure]");
-		if (figure instanceof HTMLElement) data.updateDemoSVG(figure);
+		if (figure instanceof HTMLElement) updateDemoSVG(data, figure);
 
 		demoRow.append(data.element);
 	});
@@ -202,9 +201,9 @@ function renderDemo(demo: DemoData) {
 
 	const figure = demo.element.querySelector(`[data-demo-figure]`);
 	if (!(figure instanceof HTMLElement)) return;
-	figure.addEventListener("mousedown", demo.onMouseDown);
-	figure.addEventListener("mouseup", demo.onMouseUp);
-	figure.addEventListener("mousemove", demo.onMouseMove);
+	figure.addEventListener("mousedown", (e) => onMouseDown(demo, e));
+	figure.addEventListener("mouseup", () => onMouseUp(demo));
+	figure.addEventListener("mousemove", (e) => onMouseMove(demo, e));
 
 	demo.inputOptions.forEach((inputOption, index) => {
 		const inputContainer = demo.element.querySelectorAll(`[data-parent-input-container] [data-input-container]`)[index];
@@ -218,7 +217,7 @@ function renderDemo(demo: DemoData) {
 				if (!(e.target instanceof HTMLSelectElement)) return;
 
 				demo.sliderData[inputOption.variable] = Number(e.target.value);
-				demo.updateDemoSVG(figure);
+				updateDemoSVG(demo, figure);
 			});
 		}
 
@@ -243,7 +242,7 @@ function renderDemo(demo: DemoData) {
 
 				// Update the slider data and redraw the demo
 				demo.sliderData[variable] = Number(target.value);
-				demo.updateDemoSVG(figure);
+				updateDemoSVG(demo, figure);
 			});
 		}
 	});
