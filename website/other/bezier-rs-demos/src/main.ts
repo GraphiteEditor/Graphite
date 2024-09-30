@@ -1,11 +1,10 @@
-import { default as init } from "@/../wasm/pkg";
-import { demoBezier, demoSubpath, onMouseDown, onMouseMove, onMouseUp, updateDemoSVG } from "@/demos";
+import { default as init, WasmSubpath, WasmBezier } from "@/../wasm/pkg";
 import bezierFeatures from "@/features-bezier";
 import type { BezierFeatureKey, BezierFeatureOptions } from "@/features-bezier";
 import subpathFeatures from "@/features-subpath";
 import type { SubpathFeatureKey, SubpathFeatureOptions } from "@/features-subpath";
-import { BEZIER_CURVE_TYPE, getBezierDemoPointDefaults, getSubpathDemoArgs } from "@/types";
-import type { DemoArgs, BezierCurveType, BezierDemoArgs, SubpathDemoArgs, DemoData } from "@/types";
+import type { DemoArgs, BezierCurveType, BezierDemoArgs, SubpathDemoArgs, DemoData, WasmSubpathInstance, WasmSubpathManipulatorKey, InputOption, DemoDataBezier, DemoDataSubpath } from "@/types";
+import { BEZIER_CURVE_TYPE, getBezierDemoPointDefaults, getSubpathDemoArgs, POINT_INDEX_TO_MANIPULATOR, getConstructorKey, getCurveType, MANIPULATOR_KEYS_FROM_BEZIER_TYPE } from "@/types";
 
 init().then(renderPage);
 
@@ -99,6 +98,103 @@ function subpathDemoGroup(key: SubpathFeatureKey, options: SubpathFeatureOptions
 		return demoSubpath(demo.title, demo.triples, key, demo.closed, newInputOptions, options.triggerOnMouseMove || false);
 	};
 	return renderDemoGroup(`subpath/${key}`, subpathFeatures[key].name, getSubpathDemoArgs(), buildDemo);
+}
+
+function demoBezier(title: string, points: number[][], key: BezierFeatureKey, inputOptions: InputOption[], triggerOnMouseMove: boolean): DemoDataBezier {
+	return {
+		kind: "bezier",
+		title,
+		element: document.createElement("div"),
+		inputOptions,
+		locked: false,
+		triggerOnMouseMove,
+		sliderData: Object.assign({}, ...inputOptions.map((s) => ({ [s.variable]: s.default }))),
+		sliderUnits: Object.assign({}, ...inputOptions.map((s) => ({ [s.variable]: s.unit }))),
+		activePointIndex: undefined as number | undefined,
+		manipulatorKeys: MANIPULATOR_KEYS_FROM_BEZIER_TYPE[getCurveType(points.length)],
+		bezier: WasmBezier[getConstructorKey(getCurveType(points.length))](points),
+		points,
+		callback: bezierFeatures[key].callback,
+	};
+}
+
+function demoSubpath(title: string, triples: (number[] | undefined)[][], key: SubpathFeatureKey, closed: boolean, inputOptions: InputOption[], triggerOnMouseMove: boolean): DemoDataSubpath {
+	return {
+		kind: "subpath",
+		title,
+		element: document.createElement("div"),
+		inputOptions,
+		locked: false,
+		triggerOnMouseMove,
+		sliderData: Object.assign({}, ...inputOptions.map((s) => ({ [s.variable]: s.default }))),
+		sliderUnits: Object.assign({}, ...inputOptions.map((s) => ({ [s.variable]: s.unit }))),
+		activePointIndex: undefined as number | undefined,
+		activeManipulatorIndex: undefined as number | undefined,
+		manipulatorKeys: undefined as undefined | WasmSubpathManipulatorKey[],
+		subpath: WasmSubpath.from_triples(triples, closed) as WasmSubpathInstance,
+		triples,
+		callback: subpathFeatures[key].callback,
+	};
+}
+
+function updateDemoSVG(data: DemoData, figure: HTMLElement, mouseLocation?: [number, number]) {
+	if (data.kind === "subpath") figure.innerHTML = data.callback(data.subpath, data.sliderData, mouseLocation);
+	if (data.kind === "bezier") figure.innerHTML = data.callback(data.bezier, data.sliderData, mouseLocation);
+}
+
+function onMouseDown(data: DemoData, e: MouseEvent) {
+	const SELECTABLE_RANGE = 10;
+
+	let distances;
+	if (data.kind === "bezier") {
+		distances = data.points.flatMap((point, pointIndex) => {
+			if (!point) return [];
+			const distance = Math.sqrt(Math.pow(e.offsetX - point[0], 2) + Math.pow(e.offsetY - point[1], 2));
+			return distance < SELECTABLE_RANGE ? [{ manipulatorIndex: undefined, pointIndex, distance }] : [];
+		});
+	} else if (data.kind === "subpath") {
+		distances = data.triples.flatMap((triple, manipulatorIndex) =>
+			triple.flatMap((point, pointIndex) => {
+				if (!point) return [];
+				const distance = Math.sqrt(Math.pow(e.offsetX - point[0], 2) + Math.pow(e.offsetY - point[1], 2));
+				return distance < SELECTABLE_RANGE ? [{ manipulatorIndex, pointIndex, distance }] : [];
+			}),
+		);
+	} else {
+		return;
+	}
+
+	const closest = distances.sort((a, b) => a.distance - b.distance)[0];
+	if (closest) {
+		if (data.kind === "subpath") data.activeManipulatorIndex = closest.manipulatorIndex;
+		data.activePointIndex = closest.pointIndex;
+	}
+}
+
+function onMouseMove(data: DemoData, e: MouseEvent) {
+	if (data.locked || !(e.currentTarget instanceof HTMLElement)) return;
+	data.locked = true;
+
+	if (data.kind === "bezier" && data.activePointIndex !== undefined) {
+		data.bezier[data.manipulatorKeys[data.activePointIndex]](e.offsetX, e.offsetY);
+		data.points[data.activePointIndex] = [e.offsetX, e.offsetY];
+
+		updateDemoSVG(data, e.currentTarget);
+	} else if (data.kind === "subpath" && data.activePointIndex !== undefined && data.activeManipulatorIndex !== undefined) {
+		data.subpath[POINT_INDEX_TO_MANIPULATOR[data.activePointIndex]](data.activeManipulatorIndex, e.offsetX, e.offsetY);
+		data.triples[data.activeManipulatorIndex][data.activePointIndex] = [e.offsetX, e.offsetY];
+
+		updateDemoSVG(data, e.currentTarget);
+	} else if (data.triggerOnMouseMove) {
+		updateDemoSVG(data, e.currentTarget, [e.offsetX, e.offsetY]);
+	}
+
+	data.locked = false;
+}
+
+function onMouseUp(data: DemoData) {
+	data.activePointIndex = undefined;
+	if (data.kind === "subpath") data.activeManipulatorIndex = undefined;
 }
 
 function renderDemoGroup<T extends DemoArgs>(id: string, name: string, demos: T[], buildDemo: (demo: T) => DemoData): HTMLDivElement {

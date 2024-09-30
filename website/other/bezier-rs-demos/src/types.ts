@@ -1,14 +1,12 @@
 import type * as WasmPkg from "@/../wasm/pkg";
 
-export type WasmRawInstance = typeof WasmPkg;
+type WasmRawInstance = typeof WasmPkg;
 export type WasmBezierInstance = InstanceType<WasmRawInstance["WasmBezier"]>;
-
-export type WasmBezierKey = keyof WasmBezierInstance;
-export type WasmBezierConstructorKey = "new_linear" | "new_quadratic" | "new_cubic";
-export type WasmBezierManipulatorKey = "set_start" | "set_handle_start" | "set_handle_end" | "set_end";
 
 export type WasmSubpathInstance = InstanceType<WasmRawInstance["WasmSubpath"]>;
 export type WasmSubpathManipulatorKey = "set_anchor" | "set_in_handle" | "set_out_handle";
+type WasmBezierConstructorKey = "new_linear" | "new_quadratic" | "new_cubic";
+type WasmBezierManipulatorKey = "set_start" | "set_handle_start" | "set_handle_end" | "set_end";
 
 type DemoDataCommon = {
 	title: string;
@@ -51,10 +49,6 @@ export type BezierDemoOptions = {
 	};
 };
 
-export type SubpathInputOption = InputOption & {
-	isDisabledForClosed?: boolean;
-};
-
 export type InputOption = {
 	variable: string;
 	min?: number;
@@ -65,6 +59,9 @@ export type InputOption = {
 	inputType?: "slider" | "dropdown";
 	options?: string[];
 	disabled?: boolean;
+};
+export type SubpathInputOption = InputOption & {
+	isDisabledForClosed?: boolean;
 };
 
 export function getCurveType(numPoints: number): BezierCurveType {
@@ -106,8 +103,8 @@ export type SubpathDemoArgs = {
 export const BEZIER_T_VALUE_VARIANTS = ["Parametric", "Euclidean"] as const;
 export const SUBPATH_T_VALUE_VARIANTS = ["GlobalParametric", "GlobalEuclidean"] as const;
 
-export const CAP_VARIANTS = ["Butt", "Round", "Square"] as const;
-export const JOIN_VARIANTS = ["Bevel", "Miter", "Round"] as const;
+const CAP_VARIANTS = ["Butt", "Round", "Square"] as const;
+const JOIN_VARIANTS = ["Bevel", "Miter", "Round"] as const;
 
 export const POINT_INDEX_TO_MANIPULATOR: WasmSubpathManipulatorKey[] = ["set_anchor", "set_in_handle", "set_out_handle"];
 
