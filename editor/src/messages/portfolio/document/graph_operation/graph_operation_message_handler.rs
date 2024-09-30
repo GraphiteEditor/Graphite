@@ -236,7 +236,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 								input: NodeInput::node(merge_node, 0),
 							});
 						} else {
-							trace!("\n{:?}\n{:?}", merge_node, outward_wire.node_id().unwrap_or_default());
 							responses.add(NodeGraphMessage::SetInput {
 								input_connector: InputConnector::Export(0),
 								input: NodeInput::node(merge_node, 0),
