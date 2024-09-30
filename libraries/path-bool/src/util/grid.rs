@@ -4,14 +4,14 @@ use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 
 pub(crate) struct Grid {
-	cell_size: f64,
+	cell_factor: f64,
 	cells: FxHashMap<IVec2, SmallVec<[usize; 6]>>,
 }
 
 impl Grid {
 	pub(crate) fn new(cell_size: f64, edges: usize) -> Self {
 		Grid {
-			cell_size,
+			cell_factor: cell_size.recip(),
 			cells: FxHashMap::with_capacity_and_hasher(edges, Default::default()),
 		}
 	}
@@ -45,7 +45,7 @@ impl Grid {
 	}
 
 	fn point_to_cell(&self, point: DVec2) -> IVec2 {
-		(point / self.cell_size).as_ivec2()
+		(point * self.cell_factor).as_ivec2()
 	}
 }
 

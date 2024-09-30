@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use crate::aabb::{Aabb, bounding_box_max_extent, bounding_boxes_overlap};
 use crate::epsilons::Epsilons;
 use crate::line_segment::{line_segment_intersection, line_segments_intersect};
@@ -113,7 +115,15 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 			let path2 = path_segment_cubic_to_lyon(*s2, *c12, *c22, *e2);
 
 			let intersections = path1.cubic_intersections_t(&path2);
+			let mut file = std::fs::File::options().append(true).create(true).open("/tmp/intersections").unwrap();
+			let format_curve = |seg0: &PathSegment| seg0.to_cubic().map(|point| format!("{} {}", point.x, point.y)).join(" ");
 			let intersections: Vec<_> = intersections.into_iter().map(|(s, t)| [s, t]).collect();
+			let intersections_fmt: Vec<_> = intersections.iter().map(|[s, t]| format!("{},{}", s, t)).collect();
+			if !intersections.is_empty() {
+				writeln!(&mut file, "{}\n{}\n{}\n", format_curve(seg0), format_curve(seg1), intersections_fmt.join(" "),).unwrap();
+				file.flush().unwrap();
+			}
+			// let intersections: Vec<_> = intersections.into_iter().map(|(s, t)| [s, t]).collect();
 			return intersections;
 		}
 		(PathSegment::Cubic(_, _, _, _), PathSegment::Line(_, _)) => {
@@ -125,6 +135,7 @@ pub fn path_segment_intersection(seg0: &PathSegment, seg1: &PathSegment, endpoin
 		_ => (),
 	};
 
+	// Fallback for quadratics and arc segments
 	// https://math.stackexchange.com/questions/20321/how-can-i-tell-when-two-cubic-b%C3%A9zier-curves-intersect
 
 	let mut pairs = vec![(
