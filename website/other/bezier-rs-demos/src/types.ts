@@ -226,6 +226,24 @@ export const subpathTValueVariantOptions = {
 	options: SUBPATH_T_VALUE_VARIANTS,
 };
 
+export const distanceOptions = {
+	variable: "distance",
+	inputType: "slider",
+	min: -25,
+	max: 25,
+	step: 1,
+	default: 10,
+};
+
+export const miterLimitOptions = {
+	variable: "join: Miter - limit",
+	inputType: "slider",
+	min: 1,
+	max: 10,
+	step: 0.25,
+	default: 4,
+};
+
 export const joinOptions = {
 	variable: "join",
 	inputType: "dropdown",

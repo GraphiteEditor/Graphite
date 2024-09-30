@@ -84,9 +84,8 @@ function bezierDemoGroup(key: BezierFeatureKey, options: BezierFeatureOptions): 
 		points: demoOptions[curveType]?.customPoints || getBezierDemoPointDefaults()[curveType],
 		inputOptions: demoOptions[curveType]?.inputOptions || demoOptions.Quadratic?.inputOptions || [],
 	}));
-	return renderDemoGroup(`bezier/${key}`, bezierFeatures[key].name, demos, (demo: BezierDemoArgs) =>
-		demoBezier(demo.title, demo.points, key, demo.inputOptions, options.triggerOnMouseMove || false),
-	);
+	const buildDemo = (demo: BezierDemoArgs) => demoBezier(demo.title, demo.points, key, demo.inputOptions, options.triggerOnMouseMove || false);
+	return renderDemoGroup(`bezier/${key}`, bezierFeatures[key].name, demos, buildDemo);
 }
 
 function subpathDemoGroup(key: SubpathFeatureKey, options: SubpathFeatureOptions): HTMLDivElement {

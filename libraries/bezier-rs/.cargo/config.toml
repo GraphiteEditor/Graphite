@@ -1,0 +1,2 @@
+[build]
+rustdocflags = ["--html-in-header", "./libraries/bezier-rs/header.html"]

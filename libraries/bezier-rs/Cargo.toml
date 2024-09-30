@@ -24,3 +24,18 @@ dyn-any = { version = "0.3.0", path = "../dyn-any", optional = true }
 kurbo = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 log = { workspace = true, optional = true }
+
+[build-dependencies]
+# SWC dependencies for compiling TypeScript to JavaScript
+swc = "0.289.0"
+swc_common = "0.40.0"
+swc_ecma_ast = "0.121.0"
+swc_ecma_parser = { version = "0.152.0", features = ["verify", "typescript"] }
+swc_ecma_transforms_typescript = "0.202.0"
+swc_ecma_visit = "0.107.0"
+
+# Additional dependencies
+anyhow = "1.0" # For error handling in build.rs
+
+# [package.metadata.docs.rs]
+# rustdoc-args = ["--html-in-header", "./header.html"]

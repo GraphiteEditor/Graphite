@@ -1,5 +1,16 @@
 import type { SubpathCallback, SubpathInputOption, WasmSubpathInstance } from "@/types";
-import { capOptions, joinOptions, tSliderOptions, subpathTValueVariantOptions, intersectionErrorOptions, minimumSeparationOptions, separationDiskDiameter, SUBPATH_T_VALUE_VARIANTS } from "@/types";
+import {
+	capOptions,
+	joinOptions,
+	tSliderOptions,
+	subpathTValueVariantOptions,
+	intersectionErrorOptions,
+	minimumSeparationOptions,
+	separationDiskDiameter,
+	SUBPATH_T_VALUE_VARIANTS,
+	miterLimitOptions,
+	distanceOptions,
+} from "@/types";
 
 const subpathFeatures = {
 	constructor: {
@@ -160,49 +171,12 @@ const subpathFeatures = {
 	offset: {
 		name: "Offset",
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.offset(options.distance, options.join, options.miter_limit),
-		inputOptions: [
-			{
-				variable: "distance",
-				inputType: "slider",
-				min: -25,
-				max: 25,
-				step: 1,
-				default: 10,
-			},
-			joinOptions,
-			{
-				variable: "join: Miter - limit",
-				inputType: "slider",
-				min: 1,
-				max: 10,
-				step: 0.25,
-				default: 4,
-			},
-		],
+		inputOptions: [distanceOptions, miterLimitOptions],
 	},
 	outline: {
 		name: "Outline",
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.outline(options.distance, options.join, options.cap, options.miter_limit),
-		inputOptions: [
-			{
-				variable: "distance",
-				inputType: "slider",
-				min: 0,
-				max: 25,
-				step: 1,
-				default: 10,
-			},
-			joinOptions,
-			{
-				variable: "join: Miter - limit",
-				inputType: "slider",
-				min: 1,
-				max: 10,
-				step: 0.25,
-				default: 4,
-			},
-			{ ...capOptions, isDisabledForClosed: true },
-		],
+		inputOptions: [{ ...distanceOptions, min: 0 }, joinOptions, miterLimitOptions, { ...capOptions, isDisabledForClosed: true }],
 	},
 	rotate: {
 		name: "Rotate",
