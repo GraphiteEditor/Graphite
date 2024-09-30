@@ -1,6 +1,5 @@
-import { capOptions, joinOptions, tSliderOptions, subpathTValueVariantOptions, intersectionErrorOptions, minimumSeparationOptions, separationDiskDiameter } from "@/utils/options";
-import type { SubpathCallback, SubpathInputOption, WasmSubpathInstance } from "@/utils/types";
-import { SUBPATH_T_VALUE_VARIANTS } from "@/utils/types";
+import type { SubpathCallback, SubpathInputOption, WasmSubpathInstance } from "@/types";
+import { capOptions, joinOptions, tSliderOptions, subpathTValueVariantOptions, intersectionErrorOptions, minimumSeparationOptions, separationDiskDiameter, SUBPATH_T_VALUE_VARIANTS } from "@/types";
 
 const subpathFeatures = {
 	constructor: {

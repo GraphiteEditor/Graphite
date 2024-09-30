@@ -1,12 +1,10 @@
 import { WasmSubpath } from "@/../wasm/pkg";
-import type { SubpathFeatureKey } from "@/features/subpath-features";
-import subpathFeatures from "@/features/subpath-features";
-import { renderDemo } from "@/utils/render";
-import type { WasmSubpathInstance, WasmSubpathManipulatorKey, InputOption } from "@/utils/types";
+import type { SubpathFeatureKey } from "@/features-subpath";
+import subpathFeatures from "@/features-subpath";
+import { renderDemo } from "@/main";
+import { type WasmSubpathInstance, type WasmSubpathManipulatorKey, type InputOption, POINT_INDEX_TO_MANIPULATOR } from "@/types";
 
-const POINT_INDEX_TO_MANIPULATOR: WasmSubpathManipulatorKey[] = ["set_anchor", "set_in_handle", "set_out_handle"];
-
-export function newSubpathDemo(title: string, triples: (number[] | undefined)[][], key: SubpathFeatureKey, closed: boolean, inputOptions: InputOption[], triggerOnMouseMove: boolean) {
+export function demoSubpath(title: string, triples: (number[] | undefined)[][], key: SubpathFeatureKey, closed: boolean, inputOptions: InputOption[], triggerOnMouseMove: boolean) {
 	const data = {
 		element: document.createElement("div"),
 		title,
@@ -26,8 +24,11 @@ export function newSubpathDemo(title: string, triples: (number[] | undefined)[][
 	};
 
 	renderDemo(data);
+
 	const figure = data.element.querySelector("[data-demo-figure]");
 	if (figure instanceof HTMLElement) drawDemo(figure);
+
+	// Methods
 
 	function drawDemo(figure: HTMLElement, mouseLocation?: [number, number]) {
 		figure.innerHTML = data.callback(data.subpath, data.sliderData, mouseLocation);

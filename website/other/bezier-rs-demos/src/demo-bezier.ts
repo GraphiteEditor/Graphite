@@ -1,18 +1,11 @@
 import { WasmBezier } from "@/../wasm/pkg";
-import type { BezierFeatureKey } from "@/features/bezier-features";
-import bezierFeatures from "@/features/bezier-features";
-import { renderDemo } from "@/utils/render";
-import type { BezierCurveType, InputOption, WasmBezierManipulatorKey } from "@/utils/types";
-import { getConstructorKey, getCurveType } from "@/utils/types";
+import type { BezierFeatureKey } from "@/features-bezier";
+import bezierFeatures from "@/features-bezier";
+import { renderDemo } from "@/main";
+import type { InputOption } from "@/types";
+import { getConstructorKey, getCurveType, MANIPULATOR_KEYS_FROM_BEZIER_TYPE } from "@/types";
 
-// Given the number of points in the curve, map the index of a point to the correct manipulator key
-const MANIPULATOR_KEYS_FROM_BEZIER_TYPE: { [key in BezierCurveType]: WasmBezierManipulatorKey[] } = {
-	Linear: ["set_start", "set_end"],
-	Quadratic: ["set_start", "set_handle_start", "set_end"],
-	Cubic: ["set_start", "set_handle_start", "set_handle_end", "set_end"],
-};
-
-export function newBezierDemo(title: string, points: number[][], key: BezierFeatureKey, inputOptions: InputOption[], triggerOnMouseMove: boolean) {
+export function demoBezier(title: string, points: number[][], key: BezierFeatureKey, inputOptions: InputOption[], triggerOnMouseMove: boolean) {
 	const curveType = getCurveType(points.length);
 
 	const data = {
@@ -33,8 +26,11 @@ export function newBezierDemo(title: string, points: number[][], key: BezierFeat
 	};
 
 	renderDemo(data);
+
 	const figure = data.element.querySelector("[data-demo-figure]");
 	if (figure instanceof HTMLElement) drawDemo(figure);
+
+	// Methods
 
 	function drawDemo(figure: HTMLElement, mouseLocation?: [number, number]) {
 		figure.innerHTML = data.callback(data.bezier, data.sliderData, mouseLocation);
