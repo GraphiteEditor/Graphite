@@ -2822,6 +2822,7 @@ impl NodeNetworkInterface {
 			}
 			return Some(modified);
 		}
+
 		self.document_metadata
 			.click_targets
 			.get(&layer)
