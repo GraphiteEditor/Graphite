@@ -94,6 +94,8 @@ pub enum GraphOperationMessage {
 		text: String,
 		font: Font,
 		size: f64,
+		line_height_ratio: f64,
+		character_spacing: f64,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},

@@ -2056,11 +2056,20 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							false,
 						),
 						NodeInput::value(TaggedValue::F64(24.), false),
+						NodeInput::value(TaggedValue::F64(1.2), false),
+						NodeInput::value(TaggedValue::F64(1.), false),
 					],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Editor API".to_string(), "Text".to_string(), "Font".to_string(), "Size".to_string()],
+					input_names: vec![
+						"Editor API".to_string(),
+						"Text".to_string(),
+						"Font".to_string(),
+						"Size".to_string(),
+						"Line Height".to_string(),
+						"Character Spacing".to_string(),
+					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
