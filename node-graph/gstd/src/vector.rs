@@ -208,8 +208,8 @@ fn to_path_segments(path: &mut Vec<path_bool::PathSegment>, subpath: &bezier_rs:
 	let mut global_start = None;
 	let mut global_end = DVec2::ZERO;
 	for bezier in subpath.iter() {
-		const EPS: f64 = 1e-8;
-		let transformed = bezier.apply_transformation(|pos| transform.transform_point2(pos).mul(EPS.recip()).round().div(EPS.recip()));
+		const EPS: f64 = 1e-6;
+		let transformed = bezier.apply_transformation(|pos| transform.transform_point2(pos).mul(EPS.recip()).round().mul(EPS));
 		let start = transformed.start;
 		let end = transformed.end;
 		if global_start.is_none() {
@@ -223,9 +223,9 @@ fn to_path_segments(path: &mut Vec<path_bool::PathSegment>, subpath: &bezier_rs:
 		};
 		path.push(segment);
 	}
-	if let Some(start) = global_start {
-		path.push(PathSegment::Line(start, global_end));
-	}
+	// if let Some(start) = global_start {
+	// 	path.push(PathSegment::Line(start, global_end));
+	// }
 }
 
 fn from_path(path_data: &[Path]) -> VectorData {
@@ -327,6 +327,11 @@ fn boolean_union(a: Path, b: Path) -> Vec<Path> {
 
 fn path_bool(a: Path, b: Path, op: PathBooleanOperation) -> Vec<Path> {
 	use path_bool::FillRule;
+	let a_path = path_bool::path_to_path_data(&a, 0.001);
+	let b_path = path_bool::path_to_path_data(&b, 0.001);
+	log::error!("Boolean error  encountered while processing {a_path}\n {op:?}\n {b_path}");
+	let a = path_bool::path_from_path_data(&a_path).unwrap();
+	let b = path_bool::path_from_path_data(&b_path).unwrap();
 	match path_bool::path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, op) {
 		Ok(results) => results,
 		Err(e) => {
