@@ -21,7 +21,7 @@ This is the second of our quarterly progress report blog posts. If you missed th
 All Q2 2024 commits may be [viewed in this list](https://github.com/GraphiteEditor/Graphite/commits/master/?since=2024-04-01&until=2024-06-30) and all noteworthy changes are detailed below. To showcase the much anticipated introduction of boolean path operations, the new *Painted Dreams* artwork shown here extensively utilizes nondestructive booleans.
 
 <div class="demo-artwork">
-	<a href="https://editor.graphite.rs/#demo/isometric-fountain">
+	<a href="https://editor.graphite.rs/#demo/painted-dreams">
 		<img src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Painted Dreams" />
 	</a>
 	<p>

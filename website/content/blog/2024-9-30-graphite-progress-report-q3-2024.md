@@ -1,24 +1,39 @@
 +++
 title = "Graphite progress report (Q3 2024)"
-date = 2024-09-30
+date = 2024-10-02
 [extra]
-banner = "ToDo"
-banner_png = "ToDo"
-author = "Keavon Chambers"
-summary = "Graphite's Q3 2024 update introduces node graph organisation, non destructive vector editing, and faster boolean operations."
-reddit = "ToDo"
-twitter = "ToDo"
+banner = "https://files.keavon.com/-/OddUnfortunateLeopard/capture.png"
+banner_png = "https://files.keavon.com/-/OddUnfortunateLeopard/capture.png"
+author = "Keavon Chambers & Hypercube"
+summary = "TODO: Summary"
+reddit = "TODO: Reddit link"
+twitter = "TODO: Twitter link"
 +++
 
-[Graphite](/), an open source 2D procedural graphics editor, has spent the months of July, August, and September introducing node graph organisation, non destructive vector editing, faster boolean operations, and many more improvements.
+[Graphite](/), a new open source 2D procedural graphics editor, has spent April–June introducing **boolean path operations, a new gradient picker, layer locking**, and more improvements.
 
-In this quater we have continued iterating on the usability of our unqiue node powered vector workflow. As we reach the conclusion of the [Google Summer of Code](/blog/graphite-internships-announcing-participation-in-gsoc-2024/) projects, we now have a polished node graph organisation system, a working RAW image pipeline (not yet in the editor), and a WebGPU based renderer (File -> Preferences -> Vello). Thanks to the students for their hard work on this and to Google's open source team for sponsoring.
+Overall, editor functionality has been shaping up and becoming an all around useful tool suite, with notable reductions in rough edges for the vector graphics workflow (our initial focus). Raster and raw photo processing workflows are also now in-development by our [Google Summer of Code](/blog/graphite-internships-announcing-participation-in-gsoc-2024/) student interns. Node graph quality-of-life improvements centered around tidy node organization are also the focus of the summer work that's underway. These projects are detailed below.
 
 <!-- more -->
 
-This is the third of our quarterly progress report blog posts. If you missed the [last one](../graphite-progress-report-q2-2024), be sure to check it out as well. If you'd like to help speed up future progress, please consider [getting involved](/volunteer) with code, QA/bug testing, or art/marketing projects. [Donations](/donate) are also valued, as are [stars of GitHub](https://github.com/GraphiteEditor/Graphite). Follow along and partake in our [Discord community](https://discord.graphite.rs), too.
+This is the second of our quarterly progress report blog posts. If you missed the [first one](../graphite-progress-report-q1-2024), be sure to check it out as well. If you'd like to help speed up future progress, please consider [getting involved](/volunteer) with code, QA/bug testing, or art/marketing projects. [Donations](/donate) are also valued, as are [stars of GitHub](https://github.com/GraphiteEditor/Graphite). Follow along and partake in our [Discord community](https://discord.graphite.rs), too.
 
-All Q3 2024 commits may be [viewed in this list](https://github.com/GraphiteEditor/Graphite/commits/master/?since=2024-07-01&until=2024-09-30) and all noteworthy changes are detailed below.
+All Q2 2024 commits may be [viewed in this list](https://github.com/GraphiteEditor/Graphite/commits/master/?since=2024-04-01&until=2024-06-30) and all noteworthy changes are detailed below. To showcase the much anticipated introduction of boolean path operations, the new *Painted Dreams* artwork shown here extensively utilizes nondestructive booleans.
+
+<div class="demo-artwork">
+	<a href="https://editor.graphite.rs/#demo/isometric-fountain">
+		<img src="https://files.keavon.com/-/OddUnfortunateLeopard/capture.png" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Painted Dreams" />
+	</a>
+	<p>
+		<span>
+			<em>Painted Dreams</em>
+		</span>
+		<br />
+		<span>
+			<a href="https://editor.graphite.rs/#demo/painted-dreams">Open this artwork</a> to<br />explore it yourself.
+		</span>
+	</p>
+</div>
 
 ## Additions
 
@@ -27,9 +42,14 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 -->
 
 - Nondestructive vector editing <small>([#1676](https://github.com/GraphiteEditor/Graphite/pull/1676))</small>
+  <div class="video-background">
+  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+  		<source src="https://files.keavon.com/-/TransparentPriceyEsok/capture_15_.mp4" type="video/webm" />
+  		<source src="https://files.keavon.com/-/TransparentPriceyEsok/capture_15_.mp4" type="video/mp4" />
+  	</video>
+  </div>
 
 - Basic artboard snapping <small>([#1734](https://github.com/GraphiteEditor/Graphite/pull/1734))</small>
-
 
 - Draggable upstream nodes feature <small>([#1812](https://github.com/GraphiteEditor/Graphite/pull/1812))</small>
 
@@ -88,7 +108,6 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 - Fix a lot of Clippy warnings <small>([#1808](https://github.com/GraphiteEditor/Graphite/pull/1808))</small>
 
 - Disable snapping by default as a bug mitigation, and assorted cleanup <small>([commit a17ed68](https://github.com/GraphiteEditor/Graphite/commit/a17ed68008ab9d16f929fac2d23fc98367d7e151))</small>
-
 
 - Fix snapping bug where snapped-together shapes couldn't be moved <small>([#1818](https://github.com/GraphiteEditor/Graphite/pull/1818))</small>
 
