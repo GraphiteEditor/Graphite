@@ -27,6 +27,17 @@ pub use parsing::path_data::{path_from_path_data, path_to_path_data};
 pub use path_boolean::{path_boolean, BooleanError, FillRule, PathBooleanOperation, EPS};
 pub use path_segment::PathSegment;
 
+pub fn sort_paths(paths: &mut [Vec<PathSegment>]) {
+	for path in paths.iter_mut() {
+		let min = path
+			.iter()
+			.min_by(|a, b| (a.start().x, a.start().y).partial_cmp(&(b.start().x, b.start().y)).unwrap_or(std::cmp::Ordering::Less));
+		let index = path.iter().position(|p| p.start() == min.unwrap().start());
+		path.rotate_left(index.unwrap());
+	}
+	paths.sort_unstable_by(|a, b| a[0].start().x.partial_cmp(&b[0].start().x).unwrap_or(std::cmp::Ordering::Less));
+}
+
 #[cfg(test)]
 mod test {
 	use crate::path_boolean::{self, FillRule, PathBooleanOperation};
