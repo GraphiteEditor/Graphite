@@ -471,8 +471,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						log::error!("could not get node in deserialize_document");
 						continue;
 					};
+					let inputs_count = node.inputs.len();
 
-					if reference == "Fill" && node.inputs.len() == 8 {
+					if reference == "Fill" && inputs_count == 8 {
 						let node_definition = resolve_document_node_type(reference).unwrap();
 						let document_node = node_definition.default_node_template().document_node;
 						document.network_interface.replace_implementation(node_id, &[], document_node.implementation.clone());
@@ -527,6 +528,26 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 									.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Gradient(gradient), false), &[]);
 							}
 						}
+					}
+
+					// Upgrade Text node to include line height and character spacing, which were previously hardcoded to 1, from https://github.com/GraphiteEditor/Graphite/pull/2016
+					if reference == "Text" && inputs_count == 4 {
+						let node_definition = resolve_document_node_type(reference).unwrap();
+						let document_node = node_definition.default_node_template().document_node;
+						document.network_interface.replace_implementation(node_id, &[], document_node.implementation.clone());
+
+						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), &[]);
+
+						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), &[]);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), &[]);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), &[]);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[3].clone(), &[]);
+						document
+							.network_interface
+							.set_input(&InputConnector::node(*node_id, 4), NodeInput::value(TaggedValue::F64(1.), false), &[]);
+						document
+							.network_interface
+							.set_input(&InputConnector::node(*node_id, 5), NodeInput::value(TaggedValue::F64(1.), false), &[]);
 					}
 
 					// Upgrade layer implementation from https://github.com/GraphiteEditor/Graphite/pull/1946
