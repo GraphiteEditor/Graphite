@@ -46,9 +46,6 @@ jobs:
           echo "Latest updated version:"
           rustc --version
 
-      - name: 🔧 Add .cargo/bin to PATH
-        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-
       - name: 📜 Prepare to install Rust dependencies
         uses: cargo-bins/cargo-binstall@main
 
@@ -70,7 +67,7 @@ jobs:
           NODE_ENV: production
         run: |
           cd frontend
-          npm run build
+          PATH=~/.cargo/bin:$PATH npm run build
 
       - name: 📤 Publish to Cloudflare Pages
         id: cloudflare
