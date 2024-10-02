@@ -328,10 +328,7 @@ fn boolean_union(a: Path, b: Path) -> Vec<Path> {
 
 fn path_bool(a: Path, b: Path, op: PathBooleanOperation) -> Vec<Path> {
 	match path_bool::path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, op) {
-		Ok(mut results) => {
-			path_bool::sort_paths(&mut results);
-			results
-		}
+		Ok(results) => results,
 		Err(e) => {
 			let a_path = path_bool::path_to_path_data(&a, 0.001);
 			let b_path = path_bool::path_to_path_data(&b, 0.001);

@@ -27,26 +27,10 @@ pub use parsing::path_data::{path_from_path_data, path_to_path_data};
 pub use path_boolean::{path_boolean, BooleanError, FillRule, PathBooleanOperation, EPS};
 pub use path_segment::PathSegment;
 
-pub fn sort_paths(paths: &mut [Vec<PathSegment>]) {
-	for path in paths.iter_mut() {
-		let min = path
-			.iter()
-			.min_by(|a, b| (a.start().x, a.start().y).partial_cmp(&(b.start().x, b.start().y)).unwrap_or(std::cmp::Ordering::Less));
-		let index = path.iter().position(|p| p.start() == min.unwrap().start());
-		// dbg!(&path);
-		dbg!(index);
-		// path.rotate_left(index.unwrap());
-		// dbg!(&path);
-		// path.rotate_left(20);
-	}
-	paths.sort_unstable_by(|a, b| a[0].start().x.partial_cmp(&b[0].start().x).unwrap_or(std::cmp::Ordering::Less));
-}
-
 #[cfg(test)]
 mod test {
 	use crate::path_boolean::{self, FillRule, PathBooleanOperation};
 	use crate::path_data::{path_from_path_data, path_to_path_data};
-	use crate::sort_paths;
 	use path_boolean::path_boolean;
 
 	#[test]
@@ -326,7 +310,5 @@ mod test {
 		// Add more specific assertions about the resulting path if needed
 		assert_eq!(result.len(), 1);
 		assert!(!result[0].is_empty());
-		sort_paths(&mut result);
-		// dbg!(path_to_path_data(&result[0], 0.001));
 	}
 }
