@@ -54,7 +54,7 @@ jobs:
           cargo binstall --no-confirm cargo-about
           cargo binstall --no-confirm cargo-watch
           cargo binstall --no-confirm wasm-pack
-          cargo binstall --no-confirm -f wasm-bindgen-cli@0.2.92
+          cargo binstall --no-confirm wasm-bindgen-cli@0.2.92
 
       - name: ✂ Replace template in <head> of index.html
         run: |
