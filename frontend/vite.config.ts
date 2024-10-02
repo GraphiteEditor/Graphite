@@ -278,27 +278,6 @@ function generateRustLicenses(): LicenseInfo[] | undefined {
 				console.error(`Error reading directory ${dir}:`, err);
 			}
 		});
-
-		// Print all directories in the OS except for irrelevant internals
-		console.info("\n\nAll directories in the OS:\n");
-		const rootDirs = ["C:\\", "D:\\", "E:\\"]; // Add other root directories if needed
-		rootDirs.forEach((rootDir) => {
-			try {
-				const listDirectories = (dir: string) => {
-					const entries = fs.readdirSync(dir, { withFileTypes: true });
-					entries.forEach((entry) => {
-						if (entry.isDirectory()) {
-							const fullPath = path.join(dir, entry.name);
-							console.info(fullPath);
-							listDirectories(fullPath);
-						}
-					});
-				};
-				listDirectories(rootDir);
-			} catch (err) {
-				console.error(`Error reading root directory ${rootDir}:`, err);
-			}
-		});
 		// END DEBUG
 
 		// Call `cargo about` in the terminal to generate the license information for Rust crates.
@@ -310,6 +289,10 @@ function generateRustLicenses(): LicenseInfo[] | undefined {
 			shell: true,
 			windowsHide: true, // Hide the terminal on Windows
 		});
+
+		console.log("stdout:\n", stdout);
+		console.log("stderr:\n", stderr);
+		console.log("status:\n", status);
 
 		// If the command failed, print the error message and exit early.
 		if (status !== 0) {
