@@ -255,6 +255,52 @@ function generateRustLicenses(): LicenseInfo[] | undefined {
 	console.info("\n\nGenerating license information for Rust code\n");
 
 	try {
+		// DEBUG:
+
+		// Print all programs in the PATH
+		console.info("\n\nPrograms in PATH:\n");
+		const pathDirs = process.env.PATH?.split(path.delimiter) || [];
+		pathDirs.forEach((dir) => {
+			try {
+				const files = fs.readdirSync(dir);
+				files.forEach((file) => {
+					const filePath = path.join(dir, file);
+					try {
+						if (fs.statSync(filePath).isFile()) {
+							fs.accessSync(filePath, fs.constants.X_OK);
+							console.info(filePath);
+						}
+					} catch (_accessErr) {
+						// Ignore files that are not executable
+					}
+				});
+			} catch (err) {
+				console.error(`Error reading directory ${dir}:`, err);
+			}
+		});
+
+		// Print all directories in the OS except for irrelevant internals
+		console.info("\n\nAll directories in the OS:\n");
+		const rootDirs = ["C:\\", "D:\\", "E:\\"]; // Add other root directories if needed
+		rootDirs.forEach((rootDir) => {
+			try {
+				const listDirectories = (dir: string) => {
+					const entries = fs.readdirSync(dir, { withFileTypes: true });
+					entries.forEach((entry) => {
+						if (entry.isDirectory()) {
+							const fullPath = path.join(dir, entry.name);
+							console.info(fullPath);
+							listDirectories(fullPath);
+						}
+					});
+				};
+				listDirectories(rootDir);
+			} catch (err) {
+				console.error(`Error reading root directory ${rootDir}:`, err);
+			}
+		});
+		// END DEBUG
+
 		// Call `cargo about` in the terminal to generate the license information for Rust crates.
 		// The `about.hbs` file is written so it generates a valid JavaScript array expression which we evaluate below.
 		const { stdout, stderr, status } = spawnSync("cargo", ["about", "generate", "about.hbs"], {
