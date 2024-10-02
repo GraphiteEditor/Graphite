@@ -23,6 +23,11 @@ jobs:
       - name: 📥 Clone and checkout repository
         uses: actions/checkout@v3
 
+      - name: 📦 Install system dependencies
+        run: |
+          sudo apt update
+          sudo apt install libgtk-3-dev libsoup2.4-dev libjavascriptcoregtk-4.0-dev libwebkit2gtk-4.0-dev
+
       - name: 🟢 Install the latest Node.js
         uses: actions/setup-node@v4
         with:
@@ -47,10 +52,6 @@ jobs:
           cargo install cargo-watch
           cargo install wasm-pack
           cargo install -f wasm-bindgen-cli@0.2.92
-
-      - name: 📦 Install system dependencies
-        run: |
-          sudo apt install libgtk-3-dev libsoup2.4-dev libjavascriptcoregtk-4.0-dev libwebkit2gtk-4.0-dev
 
       - name: ✂ Replace template in <head> of index.html
         run: |
