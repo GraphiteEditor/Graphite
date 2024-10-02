@@ -5,10 +5,11 @@ use graphene_core::transform::Transform;
 use graphene_core::vector::misc::BooleanOperation;
 pub use graphene_core::vector::*;
 use graphene_core::{Color, GraphicElement, GraphicGroup};
+use path_bool::FillRule;
+use path_bool::PathBooleanOperation;
 
 use glam::{DAffine2, DVec2};
-use path_bool::PathBooleanOperation;
-use std::ops::{Div, Mul};
+use std::ops::Mul;
 
 #[node_macro::node(category(""))]
 async fn boolean_operation<F: 'n + Send>(
@@ -326,15 +327,6 @@ fn boolean_union(a: Path, b: Path) -> Vec<Path> {
 }
 
 fn path_bool(a: Path, b: Path, op: PathBooleanOperation) -> Vec<Path> {
-	use path_bool::FillRule;
-	let a_path = path_bool::path_to_path_data(&a, 0.001);
-	log::debug!("old: {:?}", a);
-	let b_path = path_bool::path_to_path_data(&b, 0.001);
-	// log::error!("Boolean error  encountered while processing {a_path}\n {op:?}\n {b_path}");
-	let a_new = path_bool::path_from_path_data(&a_path).unwrap();
-	log::debug!("new: {:?}", a_new);
-
-	// let b = path_bool::path_from_path_data(&b_path).unwrap();
 	match path_bool::path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, op) {
 		Ok(mut results) => {
 			path_bool::sort_paths(&mut results);
