@@ -255,57 +255,27 @@ function generateRustLicenses(): LicenseInfo[] | undefined {
 	console.info("\n\nGenerating license information for Rust code\n");
 
 	try {
-		// DEBUG:
-
-		// Print all programs in the PATH
-		console.info("\n\nPrograms in PATH:\n");
-		const pathDirs = process.env.PATH?.split(path.delimiter) || [];
-		pathDirs.forEach((dir) => {
-			try {
-				const files = fs.readdirSync(dir);
-				files.forEach((file) => {
-					const filePath = path.join(dir, file);
-					try {
-						if (fs.statSync(filePath).isFile()) {
-							fs.accessSync(filePath, fs.constants.X_OK);
-							console.info(filePath);
-						}
-					} catch (_accessErr) {
-						// Ignore files that are not executable
-					}
-				});
-			} catch (err) {
-				console.error(`Error reading directory ${dir}:`, err);
-			}
-		});
-		// END DEBUG
-
 		// Call `cargo about` in the terminal to generate the license information for Rust crates.
 		// The `about.hbs` file is written so it generates a valid JavaScript array expression which we evaluate below.
-		const spawnReturn = spawnSync("cargo", ["about", "generate", "about.hbs"], {
+		const { stdout, stderr, status, error } = spawnSync("cargo", ["about", "generate", "about.hbs"], {
 			cwd: path.join(__dirname, ".."),
 			encoding: "utf8",
-			timeout: 60000, // One minute
+			timeout: 5 * 60000, // Five minutes
 			shell: true,
 			windowsHide: true, // Hide the terminal on Windows
 		});
 
-		console.log("spawnReturn:\n", spawnReturn);
-		console.log("spawnReturn JSON:\n", JSON.stringify(spawnReturn));
-
 		// If the command failed, print the error message and exit early.
-		if (spawnReturn.status !== 0) {
+		if (status !== 0) {
 			// Cargo returns 101 when the subcommand (`about`) wasn't found, so we skip printing the below error message in that case.
-			if (spawnReturn.status !== 101) {
-				console.error("cargo-about failed", spawnReturn.status, spawnReturn.stderr);
-			}
+			if (status !== 101) console.error("cargo-about failed.\n", "Status: ", status, "Error: ", error, "\nstderr:", stderr);
 			return undefined;
 		}
 
 		// Make sure the output starts with this expected label, which lets us know the file generated with expected output.
 		// We don't want to eval an error message or something else, so we fail early if that happens.
-		if (!spawnReturn.stdout.trim().startsWith("GENERATED_BY_CARGO_ABOUT:")) {
-			console.error("Unexpected output from cargo-about", spawnReturn.stdout);
+		if (!stdout.trim().startsWith("GENERATED_BY_CARGO_ABOUT:")) {
+			console.error("Unexpected output from cargo-about", stdout);
 			return undefined;
 		}
 
@@ -313,7 +283,7 @@ function generateRustLicenses(): LicenseInfo[] | undefined {
 		// Security-wise, eval() isn't any worse than require(), but it's able to work without a temporary file.
 		// We call eval indirectly to avoid a warning as explained here: <https://esbuild.github.io/content-types/#direct-eval>.
 		const indirectEval = eval;
-		const licensesArray = indirectEval(spawnReturn.stdout) as LicenseInfo[];
+		const licensesArray = indirectEval(stdout) as LicenseInfo[];
 
 		// Remove the HTML character encoding caused by Handlebars.
 		const rustLicenses = (licensesArray || []).map(
