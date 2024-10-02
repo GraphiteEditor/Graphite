@@ -1338,8 +1338,10 @@ fn get_selected_faces<'a>(predicate: &'a impl Fn(u8) -> bool, flags: &'a HashMap
 	flags.iter().filter_map(|(key, &flag)| predicate(flag).then_some(*key))
 }
 
-fn walk_faces<'a>(faces: &'a HashSet<DualVertexKey>, edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>, vertices: &SlotMap<DualVertexKey, DualGraphVertex>) -> impl Iterator<Item = PathSegment> + 'a {
-	let is_removed_edge = |edge: &DualGraphHalfEdge| faces.contains(&edge.incident_vertex) == faces.contains(&edges[edge.twin.unwrap()].incident_vertex);
+fn walk_faces<'a>(faces: &'a [DualVertexKey], edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>, vertices: &SlotMap<DualVertexKey, DualGraphVertex>) -> impl Iterator<Item = PathSegment> + 'a {
+	let face_set: HashSet<_> = faces.iter().copied().collect();
+	// TODO: Try using a binary search to avioid the hashset construction
+	let is_removed_edge = |edge: &DualGraphHalfEdge| face_set.contains(&edge.incident_vertex) == face_set.contains(&edges[edge.twin.unwrap()].incident_vertex);
 
 	let mut edge_to_next = HashMap::new();
 	for face_key in faces {
@@ -1627,7 +1629,8 @@ pub fn path_boolean(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: Fill
 	match op {
 		PathBooleanOperation::Division | PathBooleanOperation::Fracture => Ok(dump_faces(&nesting_trees, predicate, edges, vertices, &flags)),
 		_ => {
-			let selected_faces: HashSet<DualVertexKey> = get_selected_faces(&predicate, &flags).collect();
+			let mut selected_faces: Vec<DualVertexKey> = get_selected_faces(&predicate, &flags).collect();
+			selected_faces.sort_unstable();
 			Ok(vec![walk_faces(&selected_faces, edges, vertices).collect()])
 		}
 	}
