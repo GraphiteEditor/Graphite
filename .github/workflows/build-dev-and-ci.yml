@@ -46,12 +46,18 @@ jobs:
           echo "Latest updated version:"
           rustc --version
 
+      - name: 🔧 Add .cargo/bin to PATH
+        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: 📜 Prepare to install Rust dependencies
+        uses: cargo-bins/cargo-binstall@main
+
       - name: 📜 Install Rust dependencies
         run: |
-          cargo install cargo-about
-          cargo install cargo-watch
-          cargo install wasm-pack
-          cargo install -f wasm-bindgen-cli@0.2.92
+          cargo binstall cargo-about
+          cargo binstall cargo-watch
+          cargo binstall wasm-pack
+          cargo binstall -f wasm-bindgen-cli@0.2.92
 
       - name: ✂ Replace template in <head> of index.html
         run: |
