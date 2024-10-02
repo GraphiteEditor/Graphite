@@ -282,7 +282,7 @@ function generateRustLicenses(): LicenseInfo[] | undefined {
 
 		// Call `cargo about` in the terminal to generate the license information for Rust crates.
 		// The `about.hbs` file is written so it generates a valid JavaScript array expression which we evaluate below.
-		const { stdout, stderr, status } = spawnSync("cargo", ["about", "generate", "about.hbs"], {
+		const spawnReturn = spawnSync("cargo", ["about", "generate", "about.hbs"], {
 			cwd: path.join(__dirname, ".."),
 			encoding: "utf8",
 			timeout: 60000, // One minute
@@ -290,23 +290,22 @@ function generateRustLicenses(): LicenseInfo[] | undefined {
 			windowsHide: true, // Hide the terminal on Windows
 		});
 
-		console.log("stdout:\n", stdout);
-		console.log("stderr:\n", stderr);
-		console.log("status:\n", status);
+		console.log("spawnReturn:\n", spawnReturn);
+		console.log("spawnReturn JSON:\n", JSON.stringify(spawnReturn));
 
 		// If the command failed, print the error message and exit early.
-		if (status !== 0) {
+		if (spawnReturn.status !== 0) {
 			// Cargo returns 101 when the subcommand (`about`) wasn't found, so we skip printing the below error message in that case.
-			if (status !== 101) {
-				console.error("cargo-about failed", status, stderr);
+			if (spawnReturn.status !== 101) {
+				console.error("cargo-about failed", spawnReturn.status, spawnReturn.stderr);
 			}
 			return undefined;
 		}
 
 		// Make sure the output starts with this expected label, which lets us know the file generated with expected output.
 		// We don't want to eval an error message or something else, so we fail early if that happens.
-		if (!stdout.trim().startsWith("GENERATED_BY_CARGO_ABOUT:")) {
-			console.error("Unexpected output from cargo-about", stdout);
+		if (!spawnReturn.stdout.trim().startsWith("GENERATED_BY_CARGO_ABOUT:")) {
+			console.error("Unexpected output from cargo-about", spawnReturn.stdout);
 			return undefined;
 		}
 
@@ -314,7 +313,7 @@ function generateRustLicenses(): LicenseInfo[] | undefined {
 		// Security-wise, eval() isn't any worse than require(), but it's able to work without a temporary file.
 		// We call eval indirectly to avoid a warning as explained here: <https://esbuild.github.io/content-types/#direct-eval>.
 		const indirectEval = eval;
-		const licensesArray = indirectEval(stdout) as LicenseInfo[];
+		const licensesArray = indirectEval(spawnReturn.stdout) as LicenseInfo[];
 
 		// Remove the HTML character encoding caused by Handlebars.
 		const rustLicenses = (licensesArray || []).map(
