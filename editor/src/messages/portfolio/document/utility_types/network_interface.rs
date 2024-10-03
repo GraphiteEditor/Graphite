@@ -3749,11 +3749,20 @@ impl NodeNetworkInterface {
 		self.unload_node_click_targets(node_id, network_path);
 	}
 
+	pub fn set_pinned(&mut self, node_id: &NodeId, network_path: &[NodeId], pinned: bool) {
+		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+			log::error!("Could not get node {node_id} in set_pinned");
+			return;
+		};
+
+		node_metadata.persistent_metadata.pinned = pinned;
+		self.transaction_modified();
+	}
+
 	pub fn set_visibility(&mut self, node_id: &NodeId, network_path: &[NodeId], is_visible: bool) {
 		let Some(network) = self.network_mut(network_path) else {
 			return;
 		};
-
 		let Some(node) = network.nodes.get_mut(node_id) else {
 			log::error!("Could not get node {node_id} in set_visibility");
 			return;
@@ -5301,6 +5310,9 @@ pub struct DocumentNodePersistentMetadata {
 	/// Represents the lock icon for locking/unlocking the node in the graph UI. When locked, a node cannot be moved in the graph UI.
 	#[serde(default)]
 	pub locked: bool,
+	/// Indicates that the node will be shown in the Properties panel when it would otherwise be empty, letting a user easily edit its properties by just deselecting everything.
+	#[serde(default)]
+	pub pinned: bool,
 	/// Metadata that is specific to either nodes or layers, which are chosen states for displaying as a left-to-right node or bottom-to-top layer.
 	/// All fields in NodeTypePersistentMetadata should automatically be updated by using the network interface API
 	pub node_type_metadata: NodeTypePersistentMetadata,
@@ -5316,6 +5328,7 @@ impl Default for DocumentNodePersistentMetadata {
 			input_names: Vec::new(),
 			output_names: Vec::new(),
 			has_primary_output: true,
+			pinned: false,
 			locked: false,
 			node_type_metadata: NodeTypePersistentMetadata::default(),
 			network_metadata: None,

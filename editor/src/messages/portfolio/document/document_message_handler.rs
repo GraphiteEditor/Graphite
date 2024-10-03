@@ -382,8 +382,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 					let name = self.network_interface.frontend_display_name(&layer.to_node(), &[]);
 
-					let (_, angle, translation) = self.metadata().document_to_viewport.to_scale_angle_translation();
-					let translation = translation + bounds[0].min(bounds[1]) - DVec2::Y * 4.;
+					let (scale, angle, translation) = self.metadata().document_to_viewport.to_scale_angle_translation();
+					let translation = translation + scale * bounds[0].min(bounds[1]) - DVec2::Y * 4.;
 					let transform = DAffine2::from_angle_translation(angle, translation);
 
 					overlay_context.text_with_transform(&name, COLOR_OVERLAY_GRAY, None, transform, Pivot::BottomLeft);

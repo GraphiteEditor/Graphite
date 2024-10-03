@@ -1219,6 +1219,28 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			NodeGraphMessage::SetLocked { node_id, locked } => {
 				network_interface.set_locked(&node_id, selection_network_path, locked);
 			}
+			NodeGraphMessage::ToggleSelectedIsPinned => {
+				let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else {
+					log::error!("Could not get selected nodes in NodeGraphMessage::ToggleSelectedIsPinned");
+					return;
+				};
+				let node_ids = selected_nodes.selected_nodes().cloned().collect::<Vec<_>>();
+
+				// If any of the selected nodes are pinned, unpin them all. Otherwise, pin them all.
+				let pinned = !node_ids.iter().all(|node_id| {
+					if let Some(node) = network_interface.node_metadata(node_id, breadcrumb_network_path) {
+						node.persistent_metadata.pinned
+					} else {
+						false
+					}
+				});
+
+				responses.add(DocumentMessage::AddTransaction);
+				for node_id in &node_ids {
+					responses.add(NodeGraphMessage::SetPinned { node_id: *node_id, pinned });
+				}
+				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids });
+			}
 			NodeGraphMessage::ToggleSelectedVisibility => {
 				let Some(network) = network_interface.network(selection_network_path) else {
 					return;
@@ -1227,7 +1249,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					log::error!("Could not get selected nodes in NodeGraphMessage::ToggleSelectedLocked");
 					return;
 				};
-
 				let node_ids = selected_nodes.selected_nodes().cloned().collect::<Vec<_>>();
 
 				// If any of the selected nodes are hidden, show them all. Otherwise, hide them all.
@@ -1254,6 +1275,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::SetVisibility { node_id, visible });
 				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids: vec![node_id] });
+			}
+			NodeGraphMessage::SetPinned { node_id, pinned } => {
+				network_interface.set_pinned(&node_id, selection_network_path, pinned);
 			}
 			NodeGraphMessage::SetVisibility { node_id, visible } => {
 				network_interface.set_visibility(&node_id, selection_network_path, visible);
@@ -1459,8 +1483,7 @@ impl NodeGraphMessageHandler {
 		};
 
 		let mut selection = selected_nodes.selected_nodes();
-
-		// If there is at least one other selected node then show the hide or show button
+		// If there is at least one selected node then show the hide or show button
 		if selection.next().is_some() {
 			// Check if any of the selected nodes are disabled
 			let all_visible = selected_nodes.selected_nodes().all(|id| {
@@ -1479,11 +1502,44 @@ impl NodeGraphMessageHandler {
 			let (hide_show_label, hide_show_icon) = if all_visible { ("Make Hidden", "EyeVisible") } else { ("Make Visible", "EyeHidden") };
 			let hide_button = TextButton::new(hide_show_label)
 				.icon(Some(hide_show_icon.to_string()))
-				.tooltip(if all_visible { "Hide selected nodes/layers" } else { "Show selected nodes/layers" }.to_string() + if multiple_nodes { "s" } else { "" })
+				.tooltip(if all_visible { "Hide" } else { "Show" }.to_string() + " selected " + if multiple_nodes { "nodes/layers" } else { "node/layer" })
 				.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleSelectedVisibility))
 				.on_update(move |_| NodeGraphMessage::ToggleSelectedVisibility.into())
 				.widget_holder();
 			widgets.push(hide_button);
+
+			widgets.push(Separator::new(SeparatorType::Related).widget_holder());
+		}
+
+		let mut selection = selected_nodes.selected_nodes();
+		// If there is at least one selected node then show the pin or unpin button
+		if selection.next().is_some() {
+			// Check if any of the selected nodes are pinned
+			let all_unpinned = !selected_nodes.selected_nodes().all(|id| {
+				if let Some(node) = network_interface.node_metadata(id, breadcrumb_network_path) {
+					node.persistent_metadata.pinned
+				} else {
+					error!("Could not get node {id} in update_selection_action_buttons");
+					false
+				}
+			});
+
+			// Check if multiple nodes are selected
+			let multiple_nodes = selection.next().is_some();
+
+			// Generate the visible/hidden button accordingly
+			let (pin_unpin_label, pin_unpin_icon) = if all_unpinned { ("Pin", "CheckboxUnchecked") } else { ("Unpin", "CheckboxChecked") };
+			let pin_button = TextButton::new(pin_unpin_label)
+				.icon(Some(pin_unpin_icon.to_string()))
+				.tooltip(
+					if all_unpinned { "Pin" } else { "Unpin" }.to_string()
+						+ " selected " + if multiple_nodes { "nodes/layers" } else { "node/layer" }
+						+ " in the Properties panel when nothing is selected",
+				)
+				.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleSelectedIsPinned))
+				.on_update(move |_| NodeGraphMessage::ToggleSelectedIsPinned.into())
+				.widget_holder();
+			widgets.push(pin_button);
 
 			widgets.push(Separator::new(SeparatorType::Related).widget_holder());
 		}
@@ -1518,10 +1574,12 @@ impl NodeGraphMessageHandler {
 			warn!("No selected nodes in collate_properties");
 			return Vec::new();
 		};
+
 		// We want:
 		// - If only nodes (no layers) are selected: display each node's properties
-		// - If one layer is selected, and zero or more of its upstream nodes: display the properties for the layer and its upstream nodes
+		// - If one layer is selected, and zero or more of its (primary flow) upstream nodes: display the properties for the layer and all its upstream nodes
 		// - If multiple layers are selected, or one node plus other non-upstream nodes: display nothing
+		// - If nothing is selected, display any pinned nodes/layers
 
 		// First, we filter all the selections into layers and nodes
 		let (mut layers, mut nodes) = (Vec::new(), Vec::new());
@@ -1536,10 +1594,35 @@ impl NodeGraphMessageHandler {
 		// Next, we decide what to display based on the number of layers and nodes selected
 		match layers.len() {
 			// If no layers are selected, show properties for all selected nodes
-			0 => nodes
-				.iter()
-				.filter_map(|node_id| network.nodes.get(node_id).map(|node| node_properties::generate_node_properties(node, *node_id, context)))
-				.collect(),
+			0 => {
+				let selected_nodes = nodes
+					.iter()
+					.filter_map(|node_id| network.nodes.get(node_id).map(|node| node_properties::generate_node_properties(node, *node_id, context)))
+					.collect::<Vec<_>>();
+				if !selected_nodes.is_empty() {
+					return selected_nodes;
+				}
+
+				// And if no nodes are selected, show properties for all pinned nodes
+				network
+					.nodes
+					.iter()
+					.filter_map(|(node_id, node)| {
+						let pinned = if let Some(node) = context.network_interface.node_metadata(node_id, context.selection_network_path) {
+							node.persistent_metadata.pinned
+						} else {
+							error!("Could not get node {node_id} in collate_properties");
+							false
+						};
+
+						if pinned {
+							Some(node_properties::generate_node_properties(node, *node_id, context))
+						} else {
+							None
+						}
+					})
+					.collect::<Vec<_>>()
+			}
 			// If one layer is selected, filter out all selected nodes that are not upstream of it. If there are no nodes left, show properties for the layer. Otherwise, show nothing.
 			1 => {
 				let nodes_not_upstream_of_layer = nodes.into_iter().filter(|&selected_node_id| {
