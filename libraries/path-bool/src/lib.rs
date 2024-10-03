@@ -302,7 +302,7 @@ mod test {
 		)
 		.unwrap();
 
-		let mut result = path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, PathBooleanOperation::Union).unwrap();
+		let result = path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, PathBooleanOperation::Union).unwrap();
 
 		// Add assertions here based on expected results
 		assert_eq!(result.len(), 1, "Expected 1 resulting path for Union operation");
