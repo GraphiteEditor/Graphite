@@ -23,7 +23,7 @@ body {
 	color: var(--color-navy);
 }
 
-.class-header {
+.category-header {
 	color: var(--color-navy);
 	font-family: "Bona Nova", serif;
 	margin-bottom: 0
@@ -48,7 +48,7 @@ body > h2 {
 	margin-top: 40px;
 }
 
-/* Demo Pane styles */
+/* Demo group styles */
 .demo-row {
 	display: flex;
 	flex-direction: row;
@@ -59,7 +59,7 @@ body > h2 {
 	margin-top: 20px;
 }
 
-.demo-pane-header {
+.demo-group-header {
 	display: inline-block;
 	position: relative;
 	margin-top: 2em;
@@ -69,7 +69,7 @@ body > h2 {
 	color: var(--color-navy);
 }
 
-.demo-pane-header a {
+.demo-group-header a {
 	display: none;
 	position: absolute;
 	left: 0;
@@ -78,11 +78,11 @@ body > h2 {
 	opacity: 0.5;
 }
 
-.demo-pane-header:hover a {
+.demo-group-header:hover a {
 	display: inline-block;
 }
 
-.demo-pane-container {
+.demo-group-container {
 	position: relative;
 	width: fit-content;
 	margin: auto;
@@ -103,7 +103,7 @@ body > h2 {
 	border: solid 1px black;
 }
 
-.parent-slider-container {
+.parent-input-container {
 	display: flex;
 	justify-content: center;
 	flex-direction: column;
@@ -123,7 +123,7 @@ svg text {
 	padding-bottom: 5px;
 }
 
-.slider-label {
+.input-label {
 	font-family: monospace;
 	display: flex;
 	justify-content: left;
@@ -139,7 +139,6 @@ input[type="range"] {
 	border-radius: 5px;
 	background: linear-gradient(var(--range-fill-dark), var(--range-fill-dark)) 0 / calc(0.5 * var(--range-thumb-height) + var(--range-ratio) * (100% - var(--range-thumb-height))) var(--range-fill-light);
 	background-repeat: no-repeat;
-
 }
 
 /* Input Thumb */
