@@ -5,12 +5,13 @@ use crate::messages::prelude::*;
 pub struct DemoArtworkDialog;
 
 /// `(name, thumbnail, filename)`
-pub const ARTWORK: [(&str, &str, &str); 5] = [
+pub const ARTWORK: [(&str, &str, &str); 6] = [
 	("Isometric Fountain", "ThumbnailIsometricFountain", "isometric-fountain.graphite"),
-	("Valley of Spires", "ThumbnailValleyOfSpires", "valley-of-spires.graphite"),
+	("Changing Seasons", "ThumbnailChangingSeasons", "changing-seasons.graphite"),
 	("Painted Dreams", "ThumbnailPaintedDreams", "painted-dreams.graphite"),
 	("Red Dress", "ThumbnailRedDress", "red-dress.graphite"),
 	("Procedural String Lights", "ThumbnailProceduralStringLights", "procedural-string-lights.graphite"),
+	("Valley of Spires", "ThumbnailValleyOfSpires", "valley-of-spires.graphite"),
 ];
 
 impl DialogLayoutHolder for DemoArtworkDialog {
