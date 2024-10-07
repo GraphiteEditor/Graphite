@@ -712,7 +712,7 @@ impl TypingContext {
 				// While these two relations aren't a truth about the universe, they are a design decision that we are employing in our language design that is also common in other languages.
 				// For example, Rust implements these same relations as it describes here: <https://doc.rust-lang.org/nomicon/subtyping.html>
 				// More details explained here: <https://github.com/GraphiteEditor/Graphite/issues/1741>
-				(Type::Fn(in1, out1), Type::Fn(in2, out2)) => valid_subtype(out1, out2) && (valid_subtype(in1, in2) || **in1 == concrete!(())),
+				(Type::Fn(in1, out1), Type::Fn(in2, out2)) => valid_subtype(out2, out1) && (valid_subtype(in1, in2) || **in1 == concrete!(())),
 				// If either the proposed input or the allowed input are generic, we allow the substitution (meaning this is a valid subtype).
 				// TODO: Add proper generic counting which is not based on the name
 				(Type::Generic(_), _) | (_, Type::Generic(_)) => true,
@@ -724,7 +724,7 @@ impl TypingContext {
 		// List of all implementations that match the input types
 		let valid_output_types = impls
 			.keys()
-			.filter(|node_io| valid_subtype(&input, &node_io.call_argument) && inputs.iter().zip(node_io.inputs.iter()).all(|(p1, p2)| valid_subtype(p1, p2)))
+			.filter(|node_io| valid_subtype(&node_io.call_argument, &input) && inputs.iter().zip(node_io.inputs.iter()).all(|(p1, p2)| valid_subtype(p1, p2)))
 			.collect::<Vec<_>>();
 
 		// Attempt to substitute generic types with concrete types and save the list of results
@@ -772,9 +772,8 @@ impl TypingContext {
 				let inputs = [&input].into_iter().chain(&inputs).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
 				Err(vec![GraphError::new(node, GraphErrorType::InvalidImplementations { inputs, error_inputs })])
 			}
-			[(org_nio, output)] => {
-				// TODO: Fix unsoundness caused by generic parameters not getting cleaned up
-				let node_io = NodeIOTypes::new(input, (*output).clone(), inputs);
+			[(org_nio, _)] => {
+				let node_io = org_nio.clone();
 
 				// Save the inferred type
 				self.inferred.insert(node_id, node_io.clone());
@@ -784,16 +783,15 @@ impl TypingContext {
 			// If two types are available and one of them accepts () an input, always choose that one
 			[first, second] => {
 				if first.0.call_argument != second.0.call_argument {
-					for (org_nio, output) in [first, second] {
+					for (org_nio, _) in [first, second] {
 						if org_nio.call_argument != concrete!(()) {
 							continue;
 						}
-						let node_io = NodeIOTypes::new(input, (*output).clone(), inputs);
 
 						// Save the inferred type
-						self.inferred.insert(node_id, node_io.clone());
+						self.inferred.insert(node_id, org_nio.clone());
 						self.constructor.insert(node_id, impls[org_nio]);
-						return Ok(node_io);
+						return Ok(org_nio.clone());
 					}
 				}
 				let inputs = [&input].into_iter().chain(&inputs).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
