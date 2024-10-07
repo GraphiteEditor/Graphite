@@ -1,6 +1,5 @@
-import { capOptions, joinOptions, tSliderOptions, subpathTValueVariantOptions, intersectionErrorOptions, minimumSeparationOptions, separationDiskDiameter } from "@/utils/options";
-import type { SubpathCallback, SubpathInputOption, WasmSubpathInstance } from "@/utils/types";
-import { SUBPATH_T_VALUE_VARIANTS } from "@/utils/types";
+import type { SubpathCallback, SubpathInputOption, WasmSubpathInstance } from "@/types";
+import { capOptions, joinOptions, tSliderOptions, subpathTValueVariantOptions, intersectionErrorOptions, minimumSeparationOptions, separationDiskDiameter, SUBPATH_T_VALUE_VARIANTS } from "@/types";
 
 const subpathFeatures = {
 	constructor: {
@@ -46,11 +45,12 @@ const subpathFeatures = {
 		inputOptions: [
 			subpathTValueVariantOptions,
 			{
+				variable: "steps",
+				inputType: "slider",
 				min: 2,
 				max: 30,
 				step: 1,
 				default: 5,
-				variable: "steps",
 			},
 		],
 	},
@@ -163,6 +163,7 @@ const subpathFeatures = {
 		inputOptions: [
 			{
 				variable: "distance",
+				inputType: "slider",
 				min: -25,
 				max: 25,
 				step: 1,
@@ -171,6 +172,7 @@ const subpathFeatures = {
 			joinOptions,
 			{
 				variable: "join: Miter - limit",
+				inputType: "slider",
 				min: 1,
 				max: 10,
 				step: 0.25,
@@ -184,6 +186,7 @@ const subpathFeatures = {
 		inputOptions: [
 			{
 				variable: "distance",
+				inputType: "slider",
 				min: 0,
 				max: 25,
 				step: 1,
@@ -192,6 +195,7 @@ const subpathFeatures = {
 			joinOptions,
 			{
 				variable: "join: Miter - limit",
+				inputType: "slider",
 				min: 1,
 				max: 10,
 				step: 0.25,
@@ -206,6 +210,7 @@ const subpathFeatures = {
 		inputOptions: [
 			{
 				variable: "angle",
+				inputType: "slider",
 				min: 0,
 				max: 2,
 				step: 1 / 50,

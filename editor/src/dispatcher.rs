@@ -467,6 +467,7 @@ mod test {
 		// UNCOMMENT THIS FOR RUNNING UNDER MIRI
 		//
 		// let files = [
+		// 	include_str!("../../demo-artwork/changing-seasons.graphite"),
 		// 	include_str!("../../demo-artwork/isometric-fountain.graphite"),
 		// 	include_str!("../../demo-artwork/painted-dreams.graphite"),
 		// 	include_str!("../../demo-artwork/procedural-string-lights.graphite"),

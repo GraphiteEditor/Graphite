@@ -139,9 +139,14 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		locked: bool,
 	},
+	ToggleSelectedIsPinned,
 	ToggleSelectedVisibility,
 	ToggleVisibility {
 		node_id: NodeId,
+	},
+	SetPinned {
+		node_id: NodeId,
+		pinned: bool,
 	},
 	SetVisibility {
 		node_id: NodeId,

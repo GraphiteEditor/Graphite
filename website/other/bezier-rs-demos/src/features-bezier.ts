@@ -1,7 +1,6 @@
 import { WasmBezier } from "@/../wasm/pkg";
-import { capOptions, tSliderOptions, bezierTValueVariantOptions, errorOptions, minimumSeparationOptions } from "@/utils/options";
-import type { BezierDemoOptions, WasmBezierInstance, BezierCallback, InputOption } from "@/utils/types";
-import { BEZIER_T_VALUE_VARIANTS } from "@/utils/types";
+import type { BezierDemoOptions, WasmBezierInstance, BezierCallback, InputOption } from "@/types";
+import { capOptions, tSliderOptions, bezierTValueVariantOptions, errorOptions, minimumSeparationOptions, BEZIER_T_VALUE_VARIANTS } from "@/types";
 
 const bezierFeatures = {
 	constructor: {
@@ -29,11 +28,12 @@ const bezierFeatures = {
 				],
 				inputOptions: [
 					{
+						variable: "t",
+						inputType: "slider",
 						min: 0.01,
 						max: 0.99,
 						step: 0.01,
 						default: 0.5,
-						variable: "t",
 					},
 				],
 			},
@@ -45,18 +45,20 @@ const bezierFeatures = {
 				],
 				inputOptions: [
 					{
+						variable: "t",
+						inputType: "slider",
 						min: 0.01,
 						max: 0.99,
 						step: 0.01,
 						default: 0.5,
-						variable: "t",
 					},
 					{
+						variable: "midpoint separation",
+						inputType: "slider",
 						min: 0,
 						max: 100,
 						step: 2,
 						default: 30,
-						variable: "midpoint separation",
 					},
 				],
 			},
@@ -87,11 +89,12 @@ const bezierFeatures = {
 				inputOptions: [
 					bezierTValueVariantOptions,
 					{
+						variable: "steps",
+						inputType: "slider",
 						min: 2,
 						max: 15,
 						step: 1,
 						default: 5,
-						variable: "steps",
 					},
 				],
 			},
@@ -185,6 +188,7 @@ const bezierFeatures = {
 					bezierTValueVariantOptions,
 					{
 						variable: "t1",
+						inputType: "slider",
 						min: 0,
 						max: 1,
 						step: 0.01,
@@ -192,6 +196,7 @@ const bezierFeatures = {
 					},
 					{
 						variable: "t2",
+						inputType: "slider",
 						min: 0,
 						max: 1,
 						step: 0.01,
@@ -259,6 +264,7 @@ const bezierFeatures = {
 				inputOptions: [
 					{
 						variable: "distance",
+						inputType: "slider",
 						min: -30,
 						max: 30,
 						step: 1,
@@ -276,6 +282,7 @@ const bezierFeatures = {
 				inputOptions: [
 					{
 						variable: "distance",
+						inputType: "slider",
 						min: 0,
 						max: 30,
 						step: 1,
@@ -294,6 +301,7 @@ const bezierFeatures = {
 				inputOptions: [
 					{
 						variable: "start_distance",
+						inputType: "slider",
 						min: 0,
 						max: 30,
 						step: 1,
@@ -301,6 +309,7 @@ const bezierFeatures = {
 					},
 					{
 						variable: "end_distance",
+						inputType: "slider",
 						min: 0,
 						max: 30,
 						step: 1,
@@ -328,6 +337,7 @@ const bezierFeatures = {
 				inputOptions: [
 					{
 						variable: "distance1",
+						inputType: "slider",
 						min: 0,
 						max: 30,
 						step: 1,
@@ -335,6 +345,7 @@ const bezierFeatures = {
 					},
 					{
 						variable: "distance2",
+						inputType: "slider",
 						min: 0,
 						max: 30,
 						step: 1,
@@ -342,6 +353,7 @@ const bezierFeatures = {
 					},
 					{
 						variable: "distance3",
+						inputType: "slider",
 						min: 0,
 						max: 30,
 						step: 1,
@@ -349,6 +361,7 @@ const bezierFeatures = {
 					},
 					{
 						variable: "distance4",
+						inputType: "slider",
 						min: 0,
 						max: 30,
 						step: 1,
@@ -366,12 +379,13 @@ const bezierFeatures = {
 			const inputOptions: InputOption[] = [
 				{
 					variable: "strategy",
-					default: 0,
 					inputType: "dropdown",
+					default: 0,
 					options: ["Automatic", "FavorLargerArcs", "FavorCorrectness"],
 				},
 				{
 					variable: "error",
+					inputType: "slider",
 					min: 0.05,
 					max: 1,
 					step: 0.05,
@@ -379,6 +393,7 @@ const bezierFeatures = {
 				},
 				{
 					variable: "max_iterations",
+					inputType: "slider",
 					min: 50,
 					max: 200,
 					step: 1,
@@ -492,6 +507,7 @@ const bezierFeatures = {
 				inputOptions: [
 					{
 						variable: "angle",
+						inputType: "slider",
 						min: 0,
 						max: 2,
 						step: 1 / 50,

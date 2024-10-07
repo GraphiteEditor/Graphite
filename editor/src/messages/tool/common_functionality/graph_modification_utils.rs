@@ -127,14 +127,16 @@ pub fn get_text_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkIn
 }
 
 /// Gets properties from the Text node
-pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<(&String, &Font, f64)> {
+pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<(&String, &Font, f64, f64, f64)> {
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Text")?;
 
 	let Some(TaggedValue::String(text)) = &inputs[1].as_value() else { return None };
 	let Some(TaggedValue::Font(font)) = &inputs[2].as_value() else { return None };
 	let Some(&TaggedValue::F64(font_size)) = inputs[3].as_value() else { return None };
+	let Some(&TaggedValue::F64(line_height_ratio)) = inputs[4].as_value() else { return None };
+	let Some(&TaggedValue::F64(character_spacing)) = inputs[5].as_value() else { return None };
 
-	Some((text, font, font_size))
+	Some((text, font, font_size, line_height_ratio, character_spacing))
 }
 
 pub fn get_stroke_width(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {

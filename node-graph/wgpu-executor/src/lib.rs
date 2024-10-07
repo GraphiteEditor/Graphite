@@ -911,8 +911,13 @@ async fn render_texture<'a: 'n>(_: (), footprint: Footprint, image: impl Node<Fo
 }
 
 #[node_macro::node(category(""))]
-async fn upload_texture<'a: 'n>(_: (), input: ImageFrame<Color>, executor: &'a WgpuExecutor) -> TextureFrame {
+async fn upload_texture<'a: 'n, F: Copy + Send + Sync + 'n>(
+	#[implementations((), Footprint)] footprint: F,
+	#[implementations(() -> ImageFrame<Color>, Footprint -> ImageFrame<Color>)] input: impl Node<F, Output = ImageFrame<Color>>,
+	executor: &'a WgpuExecutor,
+) -> TextureFrame {
 	// let new_data: Vec<RGBA16F> = input.image.data.into_iter().map(|c| c.into()).collect();
+	let input = input.eval(footprint).await;
 	let new_data = input.image.data.into_iter().map(SRGBA8::from).collect();
 	let new_image = Image {
 		width: input.image.width,

@@ -5,10 +5,11 @@ use graphene_core::transform::Transform;
 use graphene_core::vector::misc::BooleanOperation;
 pub use graphene_core::vector::*;
 use graphene_core::{Color, GraphicElement, GraphicGroup};
+use path_bool::FillRule;
+use path_bool::PathBooleanOperation;
 
 use glam::{DAffine2, DVec2};
-use path_bool::PathBooleanOperation;
-use std::ops::{Div, Mul};
+use std::ops::Mul;
 
 #[node_macro::node(category(""))]
 async fn boolean_operation<F: 'n + Send>(
@@ -205,17 +206,26 @@ fn to_path(vector: &VectorData, transform: DAffine2) -> Vec<path_bool::PathSegme
 
 fn to_path_segments(path: &mut Vec<path_bool::PathSegment>, subpath: &bezier_rs::Subpath<PointId>, transform: DAffine2) {
 	use path_bool::PathSegment;
+	let mut global_start = None;
+	let mut global_end = DVec2::ZERO;
 	for bezier in subpath.iter() {
 		const EPS: f64 = 1e-8;
-		let transformed = bezier.apply_transformation(|pos| transform.transform_point2(pos).mul(EPS.recip()).round().div(EPS.recip()));
+		let transformed = bezier.apply_transformation(|pos| transform.transform_point2(pos).mul(EPS.recip()).round().mul(EPS));
 		let start = transformed.start;
 		let end = transformed.end;
+		if global_start.is_none() {
+			global_start = Some(start);
+		}
+		global_end = end;
 		let segment = match transformed.handles {
 			bezier_rs::BezierHandles::Linear => PathSegment::Line(start, end),
 			bezier_rs::BezierHandles::Quadratic { handle } => PathSegment::Quadratic(start, handle, end),
 			bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => PathSegment::Cubic(start, handle_start, handle_end, end),
 		};
 		path.push(segment);
+	}
+	if let Some(start) = global_start {
+		path.push(PathSegment::Line(global_end, start));
 	}
 }
 
@@ -317,7 +327,6 @@ fn boolean_union(a: Path, b: Path) -> Vec<Path> {
 }
 
 fn path_bool(a: Path, b: Path, op: PathBooleanOperation) -> Vec<Path> {
-	use path_bool::FillRule;
 	match path_bool::path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, op) {
 		Ok(results) => results,
 		Err(e) => {

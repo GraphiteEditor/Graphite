@@ -1091,7 +1091,6 @@ impl ShapeState {
 
 			// Check by comparing the handle positions to the anchor if this manipulator group is a point
 			let already_sharp = positions.next().is_none();
-
 			if already_sharp {
 				self.convert_manipulator_handles_to_colinear(&vector_data, id, responses, layer);
 			} else {

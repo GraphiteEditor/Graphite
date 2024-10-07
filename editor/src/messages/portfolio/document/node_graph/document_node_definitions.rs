@@ -1777,11 +1777,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::network(concrete!(ImageFrame<Color>), 0), NodeInput::node(NodeId(0), 0)],
+								manual_composition: Some(generic!(T)),
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::UploadTextureNode")),
 								..Default::default()
 							},
 							DocumentNode {
-								manual_composition: Some(concrete!(Footprint)),
+								manual_composition: Some(generic!(T)),
 								inputs: vec![NodeInput::node(NodeId(1), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode")),
 								..Default::default()
@@ -2056,11 +2057,20 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							false,
 						),
 						NodeInput::value(TaggedValue::F64(24.), false),
+						NodeInput::value(TaggedValue::F64(1.2), false),
+						NodeInput::value(TaggedValue::F64(1.), false),
 					],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Editor API".to_string(), "Text".to_string(), "Font".to_string(), "Size".to_string()],
+					input_names: vec![
+						"Editor API".to_string(),
+						"Text".to_string(),
+						"Font".to_string(),
+						"Size".to_string(),
+						"Line Height".to_string(),
+						"Character Spacing".to_string(),
+					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},

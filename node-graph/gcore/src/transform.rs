@@ -1,3 +1,4 @@
+use crate::application_io::TextureFrame;
 use crate::raster::bbox::AxisAlignedBbox;
 use crate::raster::{ImageFrame, Pixel};
 use crate::vector::VectorData;
@@ -216,6 +217,7 @@ async fn transform<I: Into<Footprint> + 'n + ApplyTransform + Clone + Send + Syn
 		(),
 		(),
 		(),
+		(),
 		Footprint,
 	)]
 	mut input: I,
@@ -223,9 +225,11 @@ async fn transform<I: Into<Footprint> + 'n + ApplyTransform + Clone + Send + Syn
 		() -> VectorData,
 		() -> GraphicGroup,
 		() -> ImageFrame<Color>,
+		() -> TextureFrame,
 		Footprint -> VectorData,
 		Footprint -> GraphicGroup,
 		Footprint -> ImageFrame<Color>,
+		Footprint -> TextureFrame,
 	)]
 	transform_target: impl Node<I, Output = T>,
 	translate: DVec2,

@@ -53,9 +53,9 @@ impl OutlineBuilder for Builder {
 	}
 }
 
-fn font_properties(buzz_face: &rustybuzz::Face, font_size: f64) -> (f64, f64, UnicodeBuffer) {
+fn font_properties(buzz_face: &rustybuzz::Face, font_size: f64, line_height_ratio: f64) -> (f64, f64, UnicodeBuffer) {
 	let scale = (buzz_face.units_per_em() as f64).recip() * font_size;
-	let line_height = font_size;
+	let line_height = font_size * line_height_ratio;
 	let buffer = UnicodeBuffer::new();
 	(scale, line_height, buffer)
 }
@@ -68,10 +68,10 @@ fn push_str(buffer: &mut UnicodeBuffer, word: &str, trailing_space: bool) {
 	}
 }
 
-fn wrap_word(line_width: Option<f64>, glyph_buffer: &GlyphBuffer, scale: f64, x_pos: f64) -> bool {
+fn wrap_word(line_width: Option<f64>, glyph_buffer: &GlyphBuffer, font_size: f64, character_spacing: f64, x_pos: f64) -> bool {
 	if let Some(line_width) = line_width {
-		let word_length: i32 = glyph_buffer.glyph_positions().iter().map(|pos| pos.x_advance).sum();
-		let scaled_word_length = word_length as f64 * scale;
+		let word_length: f64 = glyph_buffer.glyph_positions().iter().map(|pos| pos.x_advance as f64 * character_spacing).sum();
+		let scaled_word_length = word_length * font_size;
 
 		if scaled_word_length + x_pos > line_width {
 			return true;
@@ -80,14 +80,14 @@ fn wrap_word(line_width: Option<f64>, glyph_buffer: &GlyphBuffer, scale: f64, x_
 	false
 }
 
-pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f64, line_width: Option<f64>) -> Vec<Subpath<PointId>> {
+pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f64, line_height_ratio: f64, character_spacing: f64, line_width: Option<f64>) -> Vec<Subpath<PointId>> {
 	let buzz_face = match buzz_face {
 		Some(face) => face,
 		// Show blank layer if font has not loaded
 		None => return vec![],
 	};
 
-	let (scale, line_height, mut buffer) = font_properties(&buzz_face, font_size);
+	let (scale, line_height, mut buffer) = font_properties(&buzz_face, font_size, line_height_ratio);
 
 	let mut builder = Builder {
 		current_subpath: Subpath::new(Vec::new(), false),
@@ -105,13 +105,13 @@ pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f64, li
 			push_str(&mut buffer, word, index != length - 1);
 			let glyph_buffer = rustybuzz::shape(&buzz_face, &[], buffer);
 
-			if wrap_word(line_width, &glyph_buffer, scale, builder.pos.x) {
+			if wrap_word(line_width, &glyph_buffer, scale, character_spacing, builder.pos.x) {
 				builder.pos = DVec2::new(0., builder.pos.y + line_height);
 			}
 
 			for (glyph_position, glyph_info) in glyph_buffer.glyph_positions().iter().zip(glyph_buffer.glyph_infos()) {
 				if let Some(line_width) = line_width {
-					if builder.pos.x + (glyph_position.x_advance as f64 * builder.scale) >= line_width {
+					if builder.pos.x + (glyph_position.x_advance as f64 * builder.scale * character_spacing) >= line_width {
 						builder.pos = DVec2::new(0., builder.pos.y + line_height);
 					}
 				}
@@ -121,7 +121,7 @@ pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f64, li
 					builder.other_subpaths.push(core::mem::replace(&mut builder.current_subpath, Subpath::new(Vec::new(), false)));
 				}
 
-				builder.pos += DVec2::new(glyph_position.x_advance as f64, glyph_position.y_advance as f64) * builder.scale;
+				builder.pos += DVec2::new(glyph_position.x_advance as f64 * character_spacing, glyph_position.y_advance as f64) * builder.scale;
 			}
 
 			buffer = glyph_buffer.clear();
@@ -131,14 +131,14 @@ pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f64, li
 	builder.other_subpaths
 }
 
-pub fn bounding_box(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f64, line_width: Option<f64>) -> DVec2 {
+pub fn bounding_box(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f64, line_height_ratio: f64, character_spacing: f64, line_width: Option<f64>) -> DVec2 {
 	let buzz_face = match buzz_face {
 		Some(face) => face,
 		// Show blank layer if font has not loaded
 		None => return DVec2::ZERO,
 	};
 
-	let (scale, line_height, mut buffer) = font_properties(&buzz_face, font_size);
+	let (scale, line_height, mut buffer) = font_properties(&buzz_face, font_size, line_height_ratio);
 
 	let mut pos = DVec2::ZERO;
 	let mut bounds = DVec2::ZERO;
@@ -150,17 +150,17 @@ pub fn bounding_box(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f6
 
 			let glyph_buffer = rustybuzz::shape(&buzz_face, &[], buffer);
 
-			if wrap_word(line_width, &glyph_buffer, scale, pos.x) {
+			if wrap_word(line_width, &glyph_buffer, scale, character_spacing, pos.x) {
 				pos = DVec2::new(0., pos.y + line_height);
 			}
 
 			for glyph_position in glyph_buffer.glyph_positions() {
 				if let Some(line_width) = line_width {
-					if pos.x + (glyph_position.x_advance as f64 * scale) >= line_width {
+					if pos.x + (glyph_position.x_advance as f64 * scale * character_spacing) >= line_width {
 						pos = DVec2::new(0., pos.y + line_height);
 					}
 				}
-				pos += DVec2::new(glyph_position.x_advance as f64, glyph_position.y_advance as f64) * scale;
+				pos += DVec2::new(glyph_position.x_advance as f64 * character_spacing, glyph_position.y_advance as f64) * scale;
 			}
 			bounds = bounds.max(pos + DVec2::new(0., line_height));
 
