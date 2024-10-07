@@ -772,9 +772,8 @@ impl TypingContext {
 				let inputs = [&input].into_iter().chain(&inputs).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
 				Err(vec![GraphError::new(node, GraphErrorType::InvalidImplementations { inputs, error_inputs })])
 			}
-			[(org_nio, output)] => {
-				// TODO: Fix unsoundness caused by generic parameters not getting cleaned up
-				let node_io = NodeIOTypes::new(input, (*output).clone(), inputs);
+			[(org_nio, _)] => {
+				let node_io = org_nio.clone();
 
 				// Save the inferred type
 				self.inferred.insert(node_id, node_io.clone());
@@ -784,16 +783,15 @@ impl TypingContext {
 			// If two types are available and one of them accepts () an input, always choose that one
 			[first, second] => {
 				if first.0.call_argument != second.0.call_argument {
-					for (org_nio, output) in [first, second] {
+					for (org_nio, _) in [first, second] {
 						if org_nio.call_argument != concrete!(()) {
 							continue;
 						}
-						let node_io = NodeIOTypes::new(input, (*output).clone(), inputs);
 
 						// Save the inferred type
-						self.inferred.insert(node_id, node_io.clone());
+						self.inferred.insert(node_id, org_nio.clone());
 						self.constructor.insert(node_id, impls[org_nio]);
-						return Ok(node_io);
+						return Ok(org_nio.clone());
 					}
 				}
 				let inputs = [&input].into_iter().chain(&inputs).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
