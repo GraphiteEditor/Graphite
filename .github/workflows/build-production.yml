@@ -7,25 +7,23 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  INDEX_HTML_HEAD_REPLACEMENT: <script defer data-domain="editor.graphite.rs" data-api="https://graphite.rs/visit/event" src="https://graphite.rs/visit/script.hash.js"></script>
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       deployments: write
-    env:
-      RUSTC_WRAPPER: /usr/bin/sccache
-      CARGO_INCREMENTAL: 0
-      SCCACHE_DIR: /var/lib/github-actions/.cache
-      INDEX_HTML_HEAD_REPLACEMENT: <script defer data-domain="editor.graphite.rs" data-api="https://graphite.rs/visit/event" src="https://graphite.rs/visit/script.hash.js"></script>
 
     steps:
       - name: 📥 Clone and checkout repository
         uses: actions/checkout@v3
 
-      - name: 🗑 Clear wasm-bindgen cache
-        run: rm -r ~/.cache/.wasm-pack
+      - name: 📦 Install system dependencies
+        run: |
+          sudo apt update
+          sudo apt install libgtk-3-dev libsoup2.4-dev libjavascriptcoregtk-4.0-dev libwebkit2gtk-4.0-dev
 
       - name: 🟢 Install the latest Node.js
         uses: actions/setup-node@v4
@@ -45,6 +43,16 @@ jobs:
           echo "Latest updated version:"
           rustc --version
 
+      - name: 📜 Prepare to install Rust dependencies
+        uses: cargo-bins/cargo-binstall@main
+
+      - name: 📜 Install Rust dependencies
+        run: |
+          cargo binstall --no-confirm cargo-about
+          cargo binstall --no-confirm cargo-watch
+          cargo binstall --no-confirm wasm-pack
+          cargo binstall --no-confirm wasm-bindgen-cli@0.2.92
+
       - name: ✂ Replace template in <head> of index.html
         run: |
           sed -i "s|<!-- INDEX_HTML_HEAD_REPLACEMENT -->|$INDEX_HTML_HEAD_REPLACEMENT|" frontend/index.html
@@ -54,7 +62,7 @@ jobs:
           NODE_ENV: production
         run: |
           cd frontend
-          mold -run npm run build
+          PATH=~/.cargo/bin:$PATH npm run build
 
       - name: 📤 Publish to Cloudflare Pages
         id: cloudflare
