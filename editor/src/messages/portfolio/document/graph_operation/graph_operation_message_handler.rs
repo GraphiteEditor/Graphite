@@ -236,6 +236,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 								input: NodeInput::node(merge_node, 0),
 							});
 						} else {
+							// TODO: this will need to be rethought when there are nodes that can receive artboard's output
 							responses.add(NodeGraphMessage::SetInput {
 								input_connector: InputConnector::Export(0),
 								input: NodeInput::node(merge_node, 0),
