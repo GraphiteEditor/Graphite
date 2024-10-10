@@ -8,6 +8,7 @@ use graphene_std::vector::VectorData;
 
 use glam::{DAffine2, DVec2};
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::num::NonZeroU64;
 
 // ================
@@ -21,6 +22,7 @@ pub struct DocumentMetadata {
 	pub upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
 	pub structure: HashMap<LayerNodeIdentifier, NodeRelations>,
 	pub click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
+	pub clip_targets: HashSet<NodeId>,
 	pub vector_modify: HashMap<NodeId, VectorData>,
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
@@ -33,6 +35,7 @@ impl Default for DocumentMetadata {
 			structure: HashMap::new(),
 			vector_modify: HashMap::new(),
 			click_targets: HashMap::new(),
+			clip_targets: HashSet::new(),
 			document_to_viewport: DAffine2::IDENTITY,
 		}
 	}
@@ -148,6 +151,10 @@ impl DocumentMetadata {
 		static EMPTY: Vec<ClickTarget> = Vec::new();
 		let click_targets = self.click_targets.get(&layer).unwrap_or(&EMPTY);
 		click_targets.iter().map(ClickTarget::subpath)
+	}
+
+	pub fn is_clip(&self, node: NodeId) -> bool {
+		self.clip_targets.contains(&node)
 	}
 }
 

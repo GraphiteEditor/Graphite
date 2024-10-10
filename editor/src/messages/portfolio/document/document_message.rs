@@ -162,6 +162,9 @@ pub enum DocumentMessage {
 	UpdateClickTargets {
 		click_targets: HashMap<NodeId, Vec<ClickTarget>>,
 	},
+	UpdateClipTargets {
+		clip_targets: HashSet<NodeId>,
+	},
 	UpdateVectorModify {
 		vector_modify: HashMap<NodeId, VectorData>,
 	},
