@@ -17,7 +17,7 @@ use dyn_any::DynAny;
 use base64::Engine;
 use glam::{DAffine2, DVec2};
 use num_traits::Zero;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 #[cfg(feature = "vello")]
 use vello::*;
@@ -277,6 +277,7 @@ pub fn to_transform(transform: DAffine2) -> usvg::Transform {
 pub struct RenderMetadata {
 	pub footprints: HashMap<NodeId, (Footprint, DAffine2)>,
 	pub click_targets: HashMap<NodeId, Vec<ClickTarget>>,
+	pub clip_targets: HashSet<NodeId>,
 }
 
 pub trait GraphicElementRendered {
@@ -650,6 +651,9 @@ impl GraphicElementRendered for Artboard {
 			let subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
 			metadata.click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
 			metadata.footprints.insert(element_id, (footprint, DAffine2::from_translation(self.location.as_dvec2())));
+			if self.clip {
+				metadata.clip_targets.insert(element_id);
+			}
 		}
 		footprint.transform *= self.transform();
 		self.graphic_group.collect_metadata(metadata, footprint, None);
