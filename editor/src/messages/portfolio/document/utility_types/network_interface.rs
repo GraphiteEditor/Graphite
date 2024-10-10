@@ -1248,15 +1248,11 @@ impl NodeNetworkInterface {
 	}
 
 	/// Ancestor that is shared by all layers and that is deepest (more nested). Default may be the root. Skips selected non-folder, non-artboard layers
-	pub fn deepest_common_ancestor(&self, network_path: &[NodeId], include_self: bool) -> Option<LayerNodeIdentifier> {
+	pub fn deepest_common_ancestor(&self, selected_nodes: &SelectedNodes, network_path: &[NodeId], include_self: bool) -> Option<LayerNodeIdentifier> {
 		if !network_path.is_empty() {
 			log::error!("Currently can only get deepest common ancestor in the document network");
 			return None;
 		}
-		let Some(selected_nodes) = self.selected_nodes(network_path) else {
-			log::error!("Could not get selected nodes in deepest_common_ancestor");
-			return None;
-		};
 		selected_nodes
 			.selected_layers(&self.document_metadata)
 			.map(|layer| {
