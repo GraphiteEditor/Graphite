@@ -17,7 +17,7 @@ use futures::Future;
 use glam::{DAffine2, UVec2};
 use std::pin::Pin;
 use std::sync::Arc;
-use vello::{AaConfig, AaSupport, DebugLayers, RenderParams, Renderer, RendererOptions, Scene};
+use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
 use wgpu::util::DeviceExt;
 use wgpu::{Buffer, BufferDescriptor, Origin3d, ShaderModule, SurfaceConfiguration, SurfaceError, Texture, TextureAspect, TextureView};
 
@@ -160,8 +160,6 @@ impl WgpuExecutor {
 			width,
 			height,
 			antialiasing_method: AaConfig::Msaa8,
-			// This setting can be used to visualize things like bounding boxes used for rendering
-			debug: DebugLayers::none(),
 		};
 
 		{
@@ -178,10 +176,7 @@ impl WgpuExecutor {
 					Some(texture_view),
 				);
 			}
-			renderer
-				.render_to_surface_async(&self.context.device, &self.context.queue, scene, &surface_texture, &render_params)
-				.await
-				.unwrap();
+			renderer.render_to_surface(&self.context.device, &self.context.queue, scene, &surface_texture, &render_params).unwrap();
 		}
 
 		surface_texture.present();
@@ -301,7 +296,7 @@ impl WgpuExecutor {
 			label: None,
 			layout: None,
 			module: &layout.shader.0,
-			entry_point: layout.entry_point.as_str(),
+			entry_point: Some(layout.entry_point.as_str()),
 			compilation_options: Default::default(),
 			cache: None,
 		});
@@ -335,7 +330,7 @@ impl WgpuExecutor {
 			let dimensions = instances.get();
 			let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None, timestamp_writes: None });
 			cpass.set_pipeline(&compute_pipeline);
-			cpass.set_bind_group(0, &bind_group, &[]);
+			cpass.set_bind_group(0, Some(&bind_group), &[]);
 			cpass.insert_debug_marker("compute node network evaluation");
 			cpass.push_debug_group("compute shader");
 			cpass.dispatch_workgroups(dimensions.0, dimensions.1, dimensions.2); // Number of cells to run, the (x,y,z) size of item being processed
@@ -450,7 +445,7 @@ impl WgpuExecutor {
 			});
 
 			render_pass.set_pipeline(&self.render_configuration.render_pipeline);
-			render_pass.set_bind_group(0, &output_texture_bind_group, &[]);
+			render_pass.set_bind_group(0, Some(&output_texture_bind_group), &[]);
 			render_pass.set_vertex_buffer(0, self.render_configuration.vertex_buffer.slice(..));
 			render_pass.set_index_buffer(self.render_configuration.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 			render_pass.draw_indexed(0..self.render_configuration.num_indices, 0, 0..1);
@@ -600,13 +595,13 @@ impl WgpuExecutor {
 			layout: Some(&render_pipeline_layout),
 			vertex: wgpu::VertexState {
 				module: &shader,
-				entry_point: "vs_main",
+				entry_point: Some("vs_main"),
 				buffers: &[Vertex::desc()],
 				compilation_options: Default::default(),
 			},
 			fragment: Some(wgpu::FragmentState {
 				module: &shader,
-				entry_point: "fs_main",
+				entry_point: Some("fs_main"),
 				targets: &[Some(wgpu::ColorTargetState {
 					format: wgpu::TextureFormat::Bgra8Unorm,
 					blend: Some(wgpu::BlendState {

@@ -21,7 +21,7 @@ Next, install the dependencies required for development builds:
 ```sh
 cargo install cargo-watch
 cargo install wasm-pack
-cargo install -f wasm-bindgen-cli@0.2.92
+cargo install -f wasm-bindgen-cli@0.2.94
 ```
 
 Regarding the last one: you'll likely get faster build times if you manually install that specific version of `wasm-bindgen-cli`. It is supposed to be installed automatically but a version mismatch causes it to reinstall every single recompilation. It may need to be manually updated periodically to match the version of the `wasm-bindgen` dependency in [`Cargo.toml`](https://github.com/GraphiteEditor/Graphite/blob/master/Cargo.toml).
