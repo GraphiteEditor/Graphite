@@ -62,16 +62,16 @@ ron = "0.8"
 fastnoise-lite = "1.1"
 spirv-std = { git = "https://github.com/GraphiteEditor/rust-gpu.git" }
 wgpu-types = "22"
-wgpu = { version = "22.1", features = ["strict_asserts"] }
+wgpu = { git = "https://github.com/gfx-rs/wgpu.git", features = ["strict_asserts"] } # TODO switch back to stable when a release is made
 once_cell = "1.13" # Remove when `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) is stabilized in Rust 1.80 and we bump our MSRV
-wasm-bindgen = "=0.2.92" # NOTICE: ensure this stays in sync with the `wasm-bindgen-cli` version in `website/content/volunteer/guide/getting-started/_index.md`. We pin this version because wasm-bindgen upgrades may break various things.
+wasm-bindgen = "=0.2.94" # NOTICE: ensure this stays in sync with the `wasm-bindgen-cli` version in `website/content/volunteer/guide/getting-started/_index.md`. We pin this version because wasm-bindgen upgrades may break various things.
 wasm-bindgen-futures = "0.4"
-js-sys = "=0.3.69"
-web-sys = "=0.3.69"
+js-sys = "=0.3.71"
+web-sys = "=0.3.71"
 winit = "0.29"
 url = "2.5"
 tokio = { version = "1.29", features = ["fs", "io-std"] }
-vello = { git = "https://github.com/linebender/vello" }
+vello = { git = "https://github.com/0hypercube/vello", branch = "latest-wgpu" } # TODO switch back to stable when a release is made
 resvg = "0.42"
 usvg = "0.42"
 rand = { version = "0.8", default-features = false }
