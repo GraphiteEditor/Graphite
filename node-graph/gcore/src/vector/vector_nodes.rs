@@ -4,7 +4,7 @@ use super::{PointId, SegmentId, StrokeId, VectorData};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
-use crate::{Color, GraphicGroup};
+use crate::{Color, GraphicElement, GraphicGroup};
 
 use bezier_rs::{Cap, Join, Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
@@ -179,34 +179,33 @@ async fn repeat<F: 'n + Send>(
 	direction: DVec2,
 	angle: Angle,
 	#[default(4)] instances: IntegerCount,
-) -> VectorData {
+) -> GraphicGroup {
 	let instance = instance.eval(footprint).await;
+	let first_vector_transform = instance.transform;
+
 	let angle = angle.to_radians();
 	let instances = instances.max(1);
 	let total = (instances - 1) as f64;
 
-	if instances == 1 {
-		return instance;
-	}
-
-	// Repeat the vector data
-	let mut result = VectorData::empty();
+	let mut result = GraphicGroup::EMPTY;
 
 	let Some(bounding_box) = instance.bounding_box_with_transform(instance.transform) else {
-		return instance;
+		return result;
 	};
+
 	let center = (bounding_box[0] + bounding_box[1]) / 2.;
 
 	for i in 0..instances {
 		let translation = i as f64 * direction / total;
 		let angle = i as f64 * angle / total;
+		let mut new_vector_data = result.last().and_then(|(element, _)| element.as_vector_data()).unwrap_or(&instance).clone();
+		new_vector_data.new_ids_from_hash();
+		let modification = DAffine2::from_translation(center) * DAffine2::from_angle(angle) * DAffine2::from_translation(translation) * DAffine2::from_translation(-center);
 
-		let transform = DAffine2::from_translation(center) * DAffine2::from_angle(angle) * DAffine2::from_translation(translation) * DAffine2::from_translation(-center);
-
-		result.concat(&instance, transform);
+		let data_transform = new_vector_data.transform_mut();
+		*data_transform = modification * first_vector_transform;
+		result.push((new_vector_data.into(), None));
 	}
-
-	result.style.set_stroke_transform(DAffine2::IDENTITY);
 
 	result
 }
@@ -226,19 +225,17 @@ async fn circular_repeat<F: 'n + Send>(
 	angle_offset: Angle,
 	#[default(5)] radius: Length,
 	#[default(5)] instances: IntegerCount,
-) -> VectorData {
+) -> GraphicGroup {
 	let instance = instance.eval(footprint).await;
+	let first_vector_transform = instance.transform;
 	let instances = instances.max(1);
 
-	if instances == 1 {
-		return instance;
-	}
-
-	let mut result = VectorData::empty();
+	let mut result = GraphicGroup::EMPTY;
 
 	let Some(bounding_box) = instance.bounding_box_with_transform(instance.transform) else {
-		return instance;
+		return result;
 	};
+
 	let center = (bounding_box[0] + bounding_box[1]) / 2.;
 
 	let base_transform = DVec2::new(0., radius) - center;
@@ -246,11 +243,14 @@ async fn circular_repeat<F: 'n + Send>(
 	for i in 0..instances {
 		let angle = (std::f64::consts::TAU / instances as f64) * i as f64 + angle_offset.to_radians();
 		let rotation = DAffine2::from_angle(angle);
-		let transform = DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform);
-		result.concat(&instance, transform);
-	}
+		let modification = DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform);
+		let mut new_vector_data = result.last().and_then(|(element, _)| element.as_vector_data()).unwrap_or(&instance).clone();
+		new_vector_data.new_ids_from_hash();
 
-	result.style.set_stroke_transform(DAffine2::IDENTITY);
+		let data_transform = new_vector_data.transform_mut();
+		*data_transform = modification * first_vector_transform;
+		result.push((new_vector_data.into(), None));
+	}
 
 	result
 }
@@ -333,6 +333,42 @@ async fn solidify_stroke<F: 'n + Send>(
 		result.style.set_stroke(Stroke::default());
 	}
 
+	result
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn flatten_vector_elements<F: 'n + Send>(
+	#[implementations(
+		(),
+		Footprint,
+	)]
+	footprint: F,
+	#[implementations(
+		() -> GraphicGroup,
+		Footprint -> GraphicGroup,
+	)]
+	graphic_group_input: impl Node<F, Output = GraphicGroup>,
+) -> VectorData {
+	let graphic_group = graphic_group_input.eval(footprint).await;
+
+	fn concat_group(graphic_group: &GraphicGroup, current_transform: DAffine2, result: &mut VectorData) {
+		for (element, _) in graphic_group.iter() {
+			match element {
+				GraphicElement::VectorData(vector_data) => {
+					result.concat(vector_data, current_transform);
+				}
+				GraphicElement::GraphicGroup(graphic_group) => {
+					concat_group(graphic_group, current_transform * graphic_group.transform, result);
+				}
+				_ => {}
+			}
+		}
+	}
+
+	let mut result = VectorData::empty();
+	concat_group(&graphic_group, DAffine2::IDENTITY, &mut result);
+	// TODO: This leads to incorrect stroke widths when flattening groups with different transforms.
+	result.style.set_stroke_transform(DAffine2::IDENTITY);
 	result
 }
 
@@ -793,8 +829,9 @@ mod test {
 		let direction = DVec2::X * 1.5;
 		let instances = 3;
 		let repeated = super::repeat(Footprint::default(), &vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
-		assert_eq!(repeated.region_bezier_paths().count(), 3);
-		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
+		let vector_data = super::flatten_vector_elements(Footprint::default(), &FutureWrapperNode(repeated)).await;
+		assert_eq!(vector_data.region_bezier_paths().count(), 3);
+		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
 			assert!((subpath.manipulator_groups()[0].anchor - direction * index as f64 / (instances - 1) as f64).length() < 1e-5);
 		}
 	}
@@ -803,16 +840,18 @@ mod test {
 		let direction = DVec2::new(12., 10.);
 		let instances = 8;
 		let repeated = super::repeat(Footprint::default(), &vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
-		assert_eq!(repeated.region_bezier_paths().count(), 8);
-		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
+		let vector_data = super::flatten_vector_elements(Footprint::default(), &FutureWrapperNode(repeated)).await;
+		assert_eq!(vector_data.region_bezier_paths().count(), 8);
+		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
 			assert!((subpath.manipulator_groups()[0].anchor - direction * index as f64 / (instances - 1) as f64).length() < 1e-5);
 		}
 	}
 	#[tokio::test]
 	async fn circle_repeat() {
 		let repeated = super::circular_repeat(Footprint::default(), &vector_node(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE)), 45., 4., 8).await;
-		assert_eq!(repeated.region_bezier_paths().count(), 8);
-		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
+		let vector_data = super::flatten_vector_elements(Footprint::default(), &FutureWrapperNode(repeated)).await;
+		assert_eq!(vector_data.region_bezier_paths().count(), 8);
+		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
 			let expected_angle = (index as f64 + 1.) * 45.;
 			let center = (subpath.manipulator_groups()[0].anchor + subpath.manipulator_groups()[2].anchor) / 2.;
 			let actual_angle = DVec2::Y.angle_to(center).to_degrees();

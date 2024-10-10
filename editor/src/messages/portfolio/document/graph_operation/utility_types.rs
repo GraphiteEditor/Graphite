@@ -239,18 +239,28 @@ impl<'a> ModifyInputsContext<'a> {
 	// Gets the node id of a node with a specific reference that is upstream from the layer node, and creates it if it does not exist
 	pub fn existing_node_id(&mut self, reference: &'static str) -> Option<NodeId> {
 		// Start from the layer node or export
-		let node_id = self.get_output_layer().map_or(Vec::new(), |output_layer| vec![output_layer.to_node()]);
+		let output_layer = self.get_output_layer()?;
+		let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]).0.nested_type();
 
-		let upstream = self.network_interface.upstream_flow_back_from_nodes(node_id, &[], network_interface::FlowType::HorizontalFlow);
-
-		let is_traversal_start = |node_id: NodeId| {
-			self.layer_node.map(|layer| layer.to_node()) == Some(node_id) || self.network_interface.network(&[]).unwrap().exports.iter().any(|export| export.as_node() == Some(node_id))
-		};
+		let upstream = self
+			.network_interface
+			.upstream_flow_back_from_nodes(vec![output_layer.to_node()], &[], network_interface::FlowType::HorizontalFlow);
 
 		// Take until another layer node is found (but not the first layer node)
-		let existing_node_id = upstream
-			.take_while(|node_id| is_traversal_start(*node_id) || !self.network_interface.is_layer(node_id, &[]))
-			.find(|node_id| self.network_interface.reference(node_id, &[]).is_some_and(|node_reference| node_reference == reference));
+		let mut existing_node_id = None;
+		for upstream_node in upstream.collect::<Vec<_>>() {
+			let upstream_node_input_type = self.network_interface.input_type(&InputConnector::node(upstream_node, 0), &[]).0.nested_type();
+			let is_traversal_start = |node_id: NodeId| {
+				self.layer_node.map(|layer| layer.to_node()) == Some(node_id) || self.network_interface.network(&[]).unwrap().exports.iter().any(|export| export.as_node() == Some(node_id))
+			};
+			if !is_traversal_start(upstream_node) && (self.network_interface.is_layer(&upstream_node, &[]) || upstream_node_input_type != layer_input_type) {
+				break;
+			}
+			if self.network_interface.reference(&upstream_node, &[]).is_some_and(|node_reference| node_reference == reference) {
+				existing_node_id = Some(upstream_node);
+				break;
+			}
+		}
 
 		// Create a new node if the node does not exist and update its inputs
 		existing_node_id.or_else(|| {
