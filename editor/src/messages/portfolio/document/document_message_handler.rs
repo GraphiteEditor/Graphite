@@ -1109,6 +1109,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					.collect();
 				self.network_interface.update_click_targets(layer_click_targets);
 			}
+			DocumentMessage::UpdateClipTargets { clip_targets } => {
+				self.network_interface.update_clip_targets(clip_targets);
+			}
 			DocumentMessage::UpdateVectorModify { vector_modify } => {
 				self.network_interface.update_vector_modify(vector_modify);
 			}
@@ -1351,13 +1354,12 @@ impl DocumentMessageHandler {
 	pub fn click_xray(&self, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
 		let point = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
-		self.metadata()
-			.all_layers()
-			.filter(|&layer| self.network_interface.selected_nodes(&[]).unwrap().layer_visible(layer, &self.network_interface))
-			.filter(|&layer| !self.network_interface.selected_nodes(&[]).unwrap().layer_locked(layer, &self.network_interface))
-			.filter_map(|layer| self.metadata().click_targets(layer).map(|targets| (layer, targets)))
-			.filter(move |(layer, target)| target.iter().any(|target| target.intersect_point(point, self.metadata().transform_to_document(*layer))))
-			.map(|(layer, _)| layer)
+
+		ClickXRayIter {
+			next_layer: LayerNodeIdentifier::ROOT_PARENT.first_child(self.metadata()),
+			network_interface: &self.network_interface,
+			point,
+		}
 	}
 
 	/// Find the deepest layer given in the sorted array (by returning the one which is not a folder from the list of layers under the click location).
@@ -2098,4 +2100,51 @@ fn default_document_network_interface() -> NodeNetworkInterface {
 	let mut network_interface = NodeNetworkInterface::default();
 	network_interface.add_export(TaggedValue::ArtboardGroup(graphene_core::ArtboardGroup::EMPTY), -1, "".to_string(), &[]);
 	network_interface
+}
+
+#[derive(Clone)]
+pub struct ClickXRayIter<'a> {
+	next_layer: Option<LayerNodeIdentifier>,
+	network_interface: &'a NodeNetworkInterface,
+	point: DVec2,
+}
+
+impl ClickXRayIter<'_> {
+	fn check_clicked_and_use_children(&self, layer: LayerNodeIdentifier) -> (bool, bool) {
+		let (mut clicked, mut use_children) = (true, true);
+		let selected_layers = self.network_interface.selected_nodes(&[]).unwrap();
+		if !selected_layers.layer_visible(layer, &self.network_interface) || selected_layers.layer_locked(layer, &self.network_interface) {
+			return (false, false); // Skip this layer and children if the layer is invisible or locked
+		}
+		let click_targets = self.network_interface.document_metadata().click_targets(layer);
+		let transform = self.network_interface.document_metadata().transform_to_document(layer);
+		let intersects = click_targets.map_or(false, |targets| targets.iter().any(|target| target.intersect_point(self.point, transform)));
+
+		if !intersects {
+			clicked = false;
+		}
+
+		if self.network_interface.document_metadata().is_clip(layer.to_node()) && !intersects {
+			use_children = false;
+		}
+		(clicked, use_children)
+	}
+}
+
+impl<'a> Iterator for ClickXRayIter<'a> {
+	type Item = LayerNodeIdentifier;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		while let Some(layer) = self.next_layer.take() {
+			let (clicked, use_children) = self.check_clicked_and_use_children(layer);
+			let metadata = self.network_interface.document_metadata();
+			let child = use_children.then(|| layer.first_child(metadata)).flatten();
+			self.next_layer = child.or_else(|| layer.ancestors(metadata).find_map(|ancestor| ancestor.next_sibling(metadata)));
+
+			if clicked {
+				return Some(layer);
+			}
+		}
+		None
+	}
 }
