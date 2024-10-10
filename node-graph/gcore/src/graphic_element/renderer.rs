@@ -793,13 +793,7 @@ impl GraphicElementRendered for ImageFrame<Color> {
 		if image.data.is_empty() {
 			return;
 		}
-		let image = vello::peniko::Image {
-			data: image.to_flat_u8().0.into(),
-			width: image.width,
-			height: image.height,
-			format: peniko::Format::Rgba8,
-			extend: peniko::Extend::Repeat,
-		};
+		let image = vello::peniko::Image::new(image.to_flat_u8().0.into(), peniko::Format::Rgba8, image.width, image.height).with_extend(peniko::Extend::Repeat);
 		let transform = transform * self.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
 
 		scene.draw_image(&image, vello::kurbo::Affine::new(transform.to_cols_array()));
@@ -876,23 +870,11 @@ impl GraphicElementRendered for Raster {
 				if image.data.is_empty() {
 					return;
 				}
-				let image = vello::peniko::Image {
-					data: image.to_flat_u8().0.into(),
-					width: image.width,
-					height: image.height,
-					format: peniko::Format::Rgba8,
-					extend: peniko::Extend::Repeat,
-				};
+				let image = vello::peniko::Image::new(image.to_flat_u8().0.into(), peniko::Format::Rgba8, image.width, image.height).with_extend(peniko::Extend::Repeat);
 				(image, image_frame.alpha_blending)
 			}
 			Raster::Texture(texture) => {
-				let image = vello::peniko::Image {
-					data: vec![].into(),
-					width: texture.texture.width(),
-					height: texture.texture.height(),
-					format: peniko::Format::Rgba8,
-					extend: peniko::Extend::Repeat,
-				};
+				let image = vello::peniko::Image::new(vec![].into(), peniko::Format::Rgba8, texture.texture.width(), texture.texture.height()).with_extend(peniko::Extend::Repeat);
 				let id = image.data.id();
 				context.ressource_overrides.insert(id, texture.texture.clone());
 				(image, texture.alpha_blend)
