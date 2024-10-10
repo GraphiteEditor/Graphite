@@ -2280,7 +2280,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							DocumentNode {
 								inputs: vec![NodeInput::network(concrete!(graphene_core::vector::VectorData), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::vector_nodes::SubpathSegmentLengthsNode")),
-								manual_composition: Some(concrete!(Footprint)),
+								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
 							DocumentNode {
@@ -2293,13 +2293,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::node(NodeId(0), 0),          // From output 0 of SubpathSegmentLengthsNode
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::vector_nodes::SamplePointsNode")),
-								manual_composition: Some(concrete!(Footprint)),
+								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(1), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode")),
-								manual_composition: Some(concrete!(Footprint)),
+								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
 						]
@@ -2385,8 +2385,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode")),
-								manual_composition: Some(concrete!(())),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode")),
+								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
 						]
