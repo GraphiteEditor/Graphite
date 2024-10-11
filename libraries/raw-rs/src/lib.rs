@@ -3,10 +3,12 @@ pub mod demosaicing;
 pub mod metadata;
 pub mod postprocessing;
 pub mod preprocessing;
+pub mod processing;
 pub mod tiff;
 
 use crate::metadata::identify::CameraModel;
 
+use processing::{Pixel, PixelTransform, RawPixel, RawPixelTransform};
 use tag_derive::Tag;
 use tiff::file::TiffRead;
 use tiff::tags::{Compression, ImageLength, ImageWidth, Orientation, StripByteCounts, SubIfd, Tag};
@@ -103,21 +105,51 @@ pub fn process_8bit(raw_image: RawImage) -> Image<u8> {
 
 pub fn process_16bit(raw_image: RawImage) -> Image<u16> {
 	let mut raw_image = crate::preprocessing::camera_data::calculate_conversion_matrices(raw_image);
-	// let raw_image = crate::preprocessing::subtract_black::subtract_black(raw_image);
-	// let raw_image = crate::preprocessing::scale_colors::scale_colors(raw_image);
 	let subtract_black = raw_image.subtract_black_fn();
 	let scale_colors = raw_image.scale_colors_fn();
+	let convert_to_rgb = raw_image.convert_to_rgb_fn();
+	let mut record_histogram = raw_image.record_histogram_fn();
 
-	for (index, value) in raw_image.data.iter_mut().enumerate() {
-		let row = index / raw_image.width;
-		let column = index % raw_image.width;
-		*value = scale_colors(subtract_black(*value, row, column), row, column);
-	}
+	raw_image.apply((subtract_black, scale_colors));
+	let mut image = raw_image.demosaic_and_apply((convert_to_rgb, &mut record_histogram));
 
-	let image = crate::demosaicing::linear_demosaicing::linear_demosaic(raw_image);
-	let image = crate::postprocessing::convert_to_rgb::convert_to_rgb(image);
+	image.histogram = Some(record_histogram.histogram);
+
 	let image = crate::postprocessing::transform::transform(image);
 	crate::postprocessing::gamma_correction::gamma_correction(image)
+}
+
+impl RawImage {
+	fn apply(&mut self, mut transform: impl RawPixelTransform) {
+		for (index, value) in self.data.iter_mut().enumerate() {
+			let pixel = RawPixel {
+				value: *value,
+				row: index / self.width,
+				column: index % self.width,
+			};
+			*value = transform.apply(pixel);
+		}
+	}
+
+	fn demosaic_and_apply(self, mut transform: impl PixelTransform) -> Image<u16> {
+		let mut image = vec![0; self.width * self.height * 3];
+		for Pixel { red, blue, green, row, column } in self.linear_demosaic_iter().map(|pixel| transform.apply(pixel)) {
+			let pixel_index = row * self.width + column;
+			image[3 * pixel_index] = red;
+			image[3 * pixel_index + 1] = blue;
+			image[3 * pixel_index + 2] = green;
+		}
+
+		Image {
+			channels: 3,
+			data: image,
+			width: self.width,
+			height: self.height,
+			transform: self.transform,
+			rgb_to_camera: self.rgb_to_camera,
+			histogram: None,
+		}
+	}
 }
 
 #[derive(Error, Debug)]

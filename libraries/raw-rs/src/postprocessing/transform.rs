@@ -1,5 +1,4 @@
-use crate::Image;
-use crate::Transform;
+use crate::{Image, Transform};
 
 pub fn transform(mut image: Image<u16>) -> Image<u16> {
 	if image.transform.is_identity() {
