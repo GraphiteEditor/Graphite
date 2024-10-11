@@ -1081,6 +1081,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				}
 				responses.add(NodeGraphMessage::SendGraph);
 			}
+			DocumentMessage::ToggleSelectedVisibility => {
+				responses.add(NodeGraphMessage::ToggleSelectedVisibility);
+			}
 			DocumentMessage::ToggleGridVisibility => {
 				self.snapping_state.grid_snapping = !self.snapping_state.grid_snapping;
 				responses.add(OverlaysMessage::Draw);
@@ -1311,6 +1314,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				SelectedLayersRaise,
 				SelectedLayersRaiseToFront,
 				UngroupSelectedLayers,
+				ToggleSelectedVisibility
 			);
 			if !self.graph_view_overlay_open {
 				select.extend(actions!(DocumentMessageDiscriminant; NudgeSelectedLayers));
