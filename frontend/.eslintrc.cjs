@@ -94,6 +94,7 @@ module.exports = {
 		"import/no-unresolved": "error",
 		// `no-duplicates` disabled due to <https://github.com/import-js/eslint-plugin-import/issues/1479#issuecomment-1789527447>. Reenable if that issue gets fixed.
 		"import/no-duplicates": "off",
+		"no-duplicate-imports": "error",
 		"import/prefer-default-export": "off",
 		"import/no-relative-packages": "error",
 		"import/order": [
