@@ -1,4 +1,4 @@
-use crate::{Image, RawImage};
+use crate::{Pixel, RawImage};
 
 fn average(data: &[u16], indexes: impl Iterator<Item = i64>) -> u16 {
 	let mut sum = 0;
@@ -13,62 +13,67 @@ fn average(data: &[u16], indexes: impl Iterator<Item = i64>) -> u16 {
 	(sum / count) as u16
 }
 
-pub fn linear_demosaic(raw_image: RawImage) -> Image<u16> {
-	match raw_image.cfa_pattern {
-		[0, 1, 1, 2] => linear_demosaic_rggb(raw_image),
-		_ => todo!(),
-	}
-}
+// This trait is here only to circumvent Rust's lifetime capturing rules in return type impl Trait.
+// See https://youtu.be/CWiz_RtA1Hw?si=j0si4qE2Y20f71Uo
+// This should be removed when Rust 2024 edition is released as described in https://blog.rust-lang.org/2024/09/05/impl-trait-capture-rules.html
+pub trait Captures<U> {}
+impl<T: ?Sized, U> Captures<U> for T {}
 
-fn linear_demosaic_rggb(raw_image: RawImage) -> Image<u16> {
-	let mut image = vec![0; raw_image.width * raw_image.height * 3];
-	let width = raw_image.width as i64;
-	let height = raw_image.height as i64;
-
-	for row in 0..height {
-		let row_by_width = row * width;
-
-		for col in 0..width {
-			let pixel_index = row_by_width + col;
-
-			let vertical_indexes = [pixel_index + width, pixel_index - width];
-			let horizontal_indexes = [pixel_index + 1, pixel_index - 1];
-			let cross_indexes = [pixel_index + width, pixel_index - width, pixel_index + 1, pixel_index - 1];
-			let diagonal_indexes = [pixel_index + width + 1, pixel_index - width + 1, pixel_index + width - 1, pixel_index - width - 1];
-
-			let pixel_index = pixel_index as usize;
-			match (row % 2 == 0, col % 2 == 0) {
-				(true, true) => {
-					image[3 * pixel_index] = raw_image.data[pixel_index];
-					image[3 * pixel_index + 1] = average(&raw_image.data, cross_indexes.into_iter());
-					image[3 * pixel_index + 2] = average(&raw_image.data, diagonal_indexes.into_iter());
-				}
-				(true, false) => {
-					image[3 * pixel_index] = average(&raw_image.data, horizontal_indexes.into_iter());
-					image[3 * pixel_index + 1] = raw_image.data[pixel_index];
-					image[3 * pixel_index + 2] = average(&raw_image.data, vertical_indexes.into_iter());
-				}
-				(false, true) => {
-					image[3 * pixel_index] = average(&raw_image.data, vertical_indexes.into_iter());
-					image[3 * pixel_index + 1] = raw_image.data[pixel_index];
-					image[3 * pixel_index + 2] = average(&raw_image.data, horizontal_indexes.into_iter());
-				}
-				(false, false) => {
-					image[3 * pixel_index] = average(&raw_image.data, diagonal_indexes.into_iter());
-					image[3 * pixel_index + 1] = average(&raw_image.data, cross_indexes.into_iter());
-					image[3 * pixel_index + 2] = raw_image.data[pixel_index];
-				}
-			}
+impl RawImage {
+	pub fn linear_demosaic_iter(&self) -> impl Iterator<Item = Pixel> + Captures<&'_ ()> {
+		match self.cfa_pattern {
+			[0, 1, 1, 2] => self.linear_demosaic_rggb_iter(),
+			_ => todo!(),
 		}
 	}
 
-	Image {
-		channels: 3,
-		data: image,
-		width: raw_image.width,
-		height: raw_image.height,
-		transform: raw_image.transform,
-		rgb_to_camera: raw_image.rgb_to_camera,
-		histogram: None,
+	fn linear_demosaic_rggb_iter(&self) -> impl Iterator<Item = Pixel> + Captures<&'_ ()> {
+		let width = self.width as i64;
+		let height = self.height as i64;
+
+		(0..height).flat_map(move |row| {
+			let row_by_width = row * width;
+
+			(0..width).map(move |column| {
+				let pixel_index = row_by_width + column;
+
+				let vertical_indexes = [pixel_index + width, pixel_index - width];
+				let horizontal_indexes = [pixel_index + 1, pixel_index - 1];
+				let cross_indexes = [pixel_index + width, pixel_index - width, pixel_index + 1, pixel_index - 1];
+				let diagonal_indexes = [pixel_index + width + 1, pixel_index - width + 1, pixel_index + width - 1, pixel_index - width - 1];
+
+				let pixel_index = pixel_index as usize;
+				match (row % 2 == 0, column % 2 == 0) {
+					(true, true) => Pixel {
+						red: self.data[pixel_index],
+						blue: average(&self.data, cross_indexes.into_iter()),
+						green: average(&self.data, diagonal_indexes.into_iter()),
+						row: row as usize,
+						column: column as usize,
+					},
+					(true, false) => Pixel {
+						red: average(&self.data, horizontal_indexes.into_iter()),
+						blue: self.data[pixel_index],
+						green: average(&self.data, vertical_indexes.into_iter()),
+						row: row as usize,
+						column: column as usize,
+					},
+					(false, true) => Pixel {
+						red: average(&self.data, vertical_indexes.into_iter()),
+						blue: self.data[pixel_index],
+						green: average(&self.data, horizontal_indexes.into_iter()),
+						row: row as usize,
+						column: column as usize,
+					},
+					(false, false) => Pixel {
+						red: average(&self.data, diagonal_indexes.into_iter()),
+						blue: average(&self.data, cross_indexes.into_iter()),
+						green: self.data[pixel_index],
+						row: row as usize,
+						column: column as usize,
+					},
+				}
+			})
+		})
 	}
 }
