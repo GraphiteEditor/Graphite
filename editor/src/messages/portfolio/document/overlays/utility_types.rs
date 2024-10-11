@@ -38,10 +38,10 @@ impl OverlayContext {
 			self.render_context.line_to(quad.0[i].x.round() - 0.5, quad.0[i].y.round() - 0.5);
 		}
 		if let Some(color_fill) = color_fill {
-			self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(color_fill));
+			self.render_context.set_fill_style_str(color_fill);
 			self.render_context.fill();
 		}
-		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_BLUE));
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
 		self.render_context.stroke();
 	}
 
@@ -70,7 +70,7 @@ impl OverlayContext {
 		self.render_context.begin_path();
 		self.render_context.move_to(start.x, start.y);
 		self.render_context.line_to(end.x, end.y);
-		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(color.unwrap_or(COLOR_OVERLAY_BLUE)));
+		self.render_context.set_stroke_style_str(color.unwrap_or(COLOR_OVERLAY_BLUE));
 		self.render_context.stroke();
 	}
 
@@ -83,8 +83,8 @@ impl OverlayContext {
 			.expect("Failed to draw the circle");
 
 		let fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
-		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(fill));
-		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_BLUE));
+		self.render_context.set_fill_style_str(fill);
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
 		self.render_context.fill();
 		self.render_context.stroke();
 	}
@@ -105,8 +105,8 @@ impl OverlayContext {
 
 		self.render_context.begin_path();
 		self.render_context.rect(corner.x, corner.y, size, size);
-		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(color_fill));
-		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(color_stroke));
+		self.render_context.set_fill_style_str(color_fill);
+		self.render_context.set_stroke_style_str(color_stroke);
 		self.render_context.fill();
 		self.render_context.stroke();
 	}
@@ -120,7 +120,7 @@ impl OverlayContext {
 
 		self.render_context.begin_path();
 		self.render_context.rect(corner.x, corner.y, size, size);
-		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(color_fill));
+		self.render_context.set_fill_style_str(color_fill);
 		self.render_context.fill();
 	}
 
@@ -130,8 +130,8 @@ impl OverlayContext {
 		let position = position.round();
 		self.render_context.begin_path();
 		self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("Failed to draw the circle");
-		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(color_fill));
-		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(color_stroke));
+		self.render_context.set_fill_style_str(color_fill);
+		self.render_context.set_stroke_style_str(color_stroke);
 		self.render_context.fill();
 		self.render_context.stroke();
 	}
@@ -142,7 +142,7 @@ impl OverlayContext {
 
 		self.render_context.begin_path();
 		self.render_context.arc(x, y, PIVOT_DIAMETER / 2., 0., TAU).expect("Failed to draw the circle");
-		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_YELLOW));
+		self.render_context.set_fill_style_str(COLOR_OVERLAY_YELLOW);
 		self.render_context.fill();
 
 		// Crosshair
@@ -150,7 +150,7 @@ impl OverlayContext {
 		// Round line caps add half the stroke width to the length on each end, so we subtract that here before halving to get the radius
 		let crosshair_radius = (PIVOT_CROSSHAIR_LENGTH - PIVOT_CROSSHAIR_THICKNESS) / 2.;
 
-		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_YELLOW));
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_YELLOW);
 		self.render_context.set_line_cap("round");
 
 		self.render_context.begin_path();
@@ -174,14 +174,14 @@ impl OverlayContext {
 			self.bezier_command(bezier, transform, move_to);
 		}
 
-		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_BLUE));
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
 		self.render_context.stroke();
 	}
 
 	pub fn outline_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
 		self.render_context.begin_path();
 		self.bezier_command(bezier, transform, true);
-		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_BLUE));
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
 		self.render_context.stroke();
 	}
 
@@ -243,7 +243,7 @@ impl OverlayContext {
 			}
 		}
 
-		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_BLUE));
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
 		self.render_context.stroke();
 	}
 
@@ -273,7 +273,7 @@ impl OverlayContext {
 	fn draw_text(&self, background_color: Option<&str>, local_position: DVec2, metrics: web_sys::TextMetrics, font_color: &str, text: &str) {
 		// Render background
 		if let Some(background) = background_color {
-			self.render_context.set_fill_style(&background.into());
+			self.render_context.set_fill_style_str(background);
 			self.render_context.fill_rect(
 				local_position.x + metrics.actual_bounding_box_left(),
 				local_position.y - metrics.font_bounding_box_ascent() - metrics.font_bounding_box_descent(),
@@ -284,7 +284,7 @@ impl OverlayContext {
 
 		// Render text
 		self.render_context.set_font("12px Source Sans Pro, Arial, sans-serif");
-		self.render_context.set_fill_style(&font_color.into());
+		self.render_context.set_fill_style_str(font_color);
 		self.render_context
 			.fill_text(text, local_position.x, local_position.y - metrics.font_bounding_box_descent())
 			.expect("Failed to draw the text on the canvas");
