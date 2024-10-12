@@ -1,4 +1,4 @@
-use crate::{Image, Pixel, Histogram, CHANNELS_IN_RGB};
+use crate::{Histogram, Image, Pixel, CHANNELS_IN_RGB};
 use std::f64::consts::E;
 
 impl Image<u16> {
@@ -20,9 +20,7 @@ impl Image<u16> {
 
 		let curve = generate_gamma_curve(0.45, 4.5, (white << 3) as f64);
 
-		move |pixel: Pixel| {
-			pixel.values.map(|value| curve[value as usize])
-		}
+		move |pixel: Pixel| pixel.values.map(|value| curve[value as usize])
 	}
 }
 

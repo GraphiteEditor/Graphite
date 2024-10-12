@@ -1,4 +1,4 @@
-use crate::{Image, Transform, Captures, Pixel};
+use crate::{Captures, Image, Pixel, Transform};
 
 impl Image<u16> {
 	pub fn transform_iter(&self) -> (usize, usize, impl Iterator<Item = Pixel> + Captures<&'_ ()>) {
@@ -37,7 +37,7 @@ impl Image<u16> {
 				index = (index.0 + row_step.0, index.1 + row_step.1);
 
 				temp
-			})
+			}),
 		)
 	}
 }
