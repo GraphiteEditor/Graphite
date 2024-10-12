@@ -23,8 +23,9 @@ macro_rules! create_ids {
 					Self(crate::uuid::generate_uuid())
 				}
 
-				pub fn generate_from_hash(self) -> Self {
+				pub fn generate_from_hash(self, node_id: u64) -> Self {
 					let mut hasher = std::hash::DefaultHasher::new();
+					node_id.hash(&mut hasher);
 					self.hash(&mut hasher);
 					let hash_value = hasher.finish();
 					Self(hash_value)
@@ -614,10 +615,10 @@ impl super::VectorData {
 		self.segment_domain.transform(transform);
 	}
 
-	pub fn new_ids_from_hash(&mut self) {
-		let point_map = self.point_domain.ids().iter().map(|&old| (old, old.generate_from_hash())).collect::<HashMap<_, _>>();
-		let segment_map = self.segment_domain.ids().iter().map(|&old| (old, old.generate_from_hash())).collect::<HashMap<_, _>>();
-		let region_map = self.region_domain.ids().iter().map(|&old| (old, old.generate_from_hash())).collect::<HashMap<_, _>>();
+	pub fn vector_new_ids_from_hash(&mut self, node_id: u64) {
+		let point_map = self.point_domain.ids().iter().map(|&old| (old, old.generate_from_hash(node_id))).collect::<HashMap<_, _>>();
+		let segment_map = self.segment_domain.ids().iter().map(|&old| (old, old.generate_from_hash(node_id))).collect::<HashMap<_, _>>();
+		let region_map = self.region_domain.ids().iter().map(|&old| (old, old.generate_from_hash(node_id))).collect::<HashMap<_, _>>();
 
 		let id_map = IdMap {
 			point_offset: self.point_domain.ids().len(),

@@ -164,17 +164,22 @@ async fn stroke<F: 'n + Send, T: Into<Option<Color>> + 'n + Send>(
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn repeat<F: 'n + Send>(
+async fn repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + Transform + TransformMut + Send>(
 	#[implementations(
 		(),
+		(),
+		Footprint,
 		Footprint,
 	)]
 	footprint: F,
+	// TODO: Implement other GraphicElementRendered types.
 	#[implementations(
 		() -> VectorData,
+		() -> GraphicGroup,
 		Footprint -> VectorData,
+		Footprint -> GraphicGroup,
 	)]
-	instance: impl Node<F, Output = VectorData>,
+	instance: impl Node<F, Output = I>,
 	#[default(100., 100.)]
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
 	direction: DVec2,
@@ -182,7 +187,7 @@ async fn repeat<F: 'n + Send>(
 	#[default(4)] instances: IntegerCount,
 ) -> GraphicGroup {
 	let instance = instance.eval(footprint).await;
-	let first_vector_transform = instance.transform;
+	let first_vector_transform = instance.transform();
 
 	let angle = angle.to_radians();
 	let instances = instances.max(1);
@@ -190,7 +195,7 @@ async fn repeat<F: 'n + Send>(
 
 	let mut result = GraphicGroup::EMPTY;
 
-	let Some(bounding_box) = instance.bounding_box_with_transform(instance.transform) else {
+	let Some(bounding_box) = instance.bounding_box(first_vector_transform) else {
 		return result;
 	};
 
@@ -199,41 +204,46 @@ async fn repeat<F: 'n + Send>(
 	for i in 0..instances {
 		let translation = i as f64 * direction / total;
 		let angle = i as f64 * angle / total;
-		let mut new_vector_data = result.last().and_then(|(element, _)| element.as_vector_data()).unwrap_or(&instance).clone();
-		new_vector_data.new_ids_from_hash();
+		let mut new_instance = result.last().map(|(element, _)| element.clone()).unwrap_or(instance.to_graphic_element());
+		new_instance.new_ids_from_hash(None);
 		let modification = DAffine2::from_translation(center) * DAffine2::from_angle(angle) * DAffine2::from_translation(translation) * DAffine2::from_translation(-center);
 
-		let data_transform = new_vector_data.transform_mut();
+		let data_transform = new_instance.transform_mut();
 		*data_transform = modification * first_vector_transform;
-		result.push((new_vector_data.into(), None));
+		result.push((new_instance, None));
 	}
 
 	result
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn circular_repeat<F: 'n + Send>(
+async fn circular_repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + Transform + TransformMut + Send>(
 	#[implementations(
 		(),
+		(),
+		Footprint,
 		Footprint,
 	)]
 	footprint: F,
+	// TODO: Implement other GraphicElementRendered types.
 	#[implementations(
 		() -> VectorData,
+		() -> GraphicGroup,
 		Footprint -> VectorData,
+		Footprint -> GraphicGroup,
 	)]
-	instance: impl Node<F, Output = VectorData>,
+	instance: impl Node<F, Output = I>,
 	angle_offset: Angle,
 	#[default(5)] radius: Length,
 	#[default(5)] instances: IntegerCount,
 ) -> GraphicGroup {
 	let instance = instance.eval(footprint).await;
-	let first_vector_transform = instance.transform;
+	let first_vector_transform = instance.transform();
 	let instances = instances.max(1);
 
 	let mut result = GraphicGroup::EMPTY;
 
-	let Some(bounding_box) = instance.bounding_box_with_transform(instance.transform) else {
+	let Some(bounding_box) = instance.bounding_box(first_vector_transform) else {
 		return result;
 	};
 
@@ -245,12 +255,96 @@ async fn circular_repeat<F: 'n + Send>(
 		let angle = (std::f64::consts::TAU / instances as f64) * i as f64 + angle_offset.to_radians();
 		let rotation = DAffine2::from_angle(angle);
 		let modification = DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform);
-		let mut new_vector_data = result.last().and_then(|(element, _)| element.as_vector_data()).unwrap_or(&instance).clone();
-		new_vector_data.new_ids_from_hash();
+		let mut new_instance = result.last().map(|(element, _)| element.clone()).unwrap_or(instance.to_graphic_element());
+		new_instance.new_ids_from_hash(None);
 
-		let data_transform = new_vector_data.transform_mut();
+		let data_transform = new_instance.transform_mut();
 		*data_transform = modification * first_vector_transform;
-		result.push((new_vector_data.into(), None));
+		result.push((new_instance, None));
+	}
+
+	result
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn copy_to_points<F: 'n + Send + Copy, I: GraphicElementRendered + ConcatElement + TransformMut + Send + 'n>(
+	#[implementations(
+		(),
+		(),
+		Footprint,
+	)]
+	footprint: F,
+	#[implementations(
+		() -> VectorData,
+		() -> VectorData,
+		Footprint -> VectorData,
+	)]
+	points: impl Node<F, Output = VectorData>,
+	#[expose]
+	#[implementations(
+		() -> VectorData,
+		() -> GraphicGroup,
+		Footprint -> VectorData,
+		Footprint -> GraphicGroup,
+	)]
+	instance: impl Node<F, Output = I>,
+	#[default(1)] random_scale_min: f64,
+	#[default(1)] random_scale_max: f64,
+	random_scale_bias: f64,
+	random_scale_seed: SeedValue,
+	random_rotation: Angle,
+	random_rotation_seed: SeedValue,
+) -> GraphicGroup {
+	let points = points.eval(footprint).await;
+	let instance = instance.eval(footprint).await;
+	let instance_transform = instance.transform();
+
+	let random_scale_difference = random_scale_max - random_scale_min;
+
+	let points_list = points.point_domain.positions();
+
+	let instance_bounding_box = instance.bounding_box(DAffine2::IDENTITY).unwrap_or_default();
+	let instance_center = -0.5 * (instance_bounding_box[0] + instance_bounding_box[1]);
+
+	let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed.into());
+	let mut rotation_rng = rand::rngs::StdRng::seed_from_u64(random_rotation_seed.into());
+
+	let do_scale = random_scale_difference.abs() > 1e-6;
+	let do_rotation = random_rotation.abs() > 1e-6;
+
+	let mut result = GraphicGroup::default();
+	for &point in points_list {
+		let center_transform = DAffine2::from_translation(instance_center);
+
+		let translation = points.transform.transform_point2(point);
+
+		let rotation = if do_rotation {
+			let degrees = (rotation_rng.gen::<f64>() - 0.5) * random_rotation;
+			degrees / 360. * std::f64::consts::TAU
+		} else {
+			0.
+		};
+
+		let scale = if do_scale {
+			if random_scale_bias.abs() < 1e-6 {
+				// Linear
+				random_scale_min + scale_rng.gen::<f64>() * random_scale_difference
+			} else {
+				// Weighted (see <https://www.desmos.com/calculator/gmavd3m9bd>)
+				let horizontal_scale_factor = 1. - 2_f64.powf(random_scale_bias);
+				let scale_factor = (1. - scale_rng.gen::<f64>() * horizontal_scale_factor).log2() / random_scale_bias;
+				random_scale_min + scale_factor * random_scale_difference
+			}
+		} else {
+			random_scale_min
+		};
+
+		let mut new_instance = result.last().map(|(element, _)| element.clone()).unwrap_or(instance.to_graphic_element());
+		new_instance.new_ids_from_hash(None);
+
+		let data_transform = new_instance.transform_mut();
+		*data_transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation) * center_transform * instance_transform;
+		result.push((new_instance, None));
 	}
 
 	result
@@ -430,84 +524,6 @@ impl ConcatElement for GraphicGroup {
 		}
 		self.alpha_blending = other.alpha_blending;
 	}
-}
-
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn copy_to_points<F: 'n + Send + Copy, I: GraphicElementRendered + Default + ConcatElement + TransformMut + Send>(
-	#[implementations(
-		(),
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> VectorData,
-		() -> VectorData,
-		Footprint -> VectorData,
-	)]
-	points: impl Node<F, Output = VectorData>,
-	#[expose]
-	#[implementations(
-		() -> VectorData,
-		() -> GraphicGroup,
-		Footprint -> VectorData,
-		Footprint -> GraphicGroup,
-	)]
-	instance: impl Node<F, Output = I>,
-	#[default(1)] random_scale_min: f64,
-	#[default(1)] random_scale_max: f64,
-	random_scale_bias: f64,
-	random_scale_seed: SeedValue,
-	random_rotation: Angle,
-	random_rotation_seed: SeedValue,
-) -> I {
-	let points = points.eval(footprint).await;
-	let instance = instance.eval(footprint).await;
-
-	let random_scale_difference = random_scale_max - random_scale_min;
-
-	let points_list = points.point_domain.positions();
-
-	let instance_bounding_box = instance.bounding_box(DAffine2::IDENTITY).unwrap_or_default();
-	let instance_center = -0.5 * (instance_bounding_box[0] + instance_bounding_box[1]);
-
-	let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed.into());
-	let mut rotation_rng = rand::rngs::StdRng::seed_from_u64(random_rotation_seed.into());
-
-	let do_scale = random_scale_difference.abs() > 1e-6;
-	let do_rotation = random_rotation.abs() > 1e-6;
-
-	let mut result = I::default();
-	for &point in points_list {
-		let center_transform = DAffine2::from_translation(instance_center);
-
-		let translation = points.transform.transform_point2(point);
-
-		let rotation = if do_rotation {
-			let degrees = (rotation_rng.gen::<f64>() - 0.5) * random_rotation;
-			degrees / 360. * std::f64::consts::TAU
-		} else {
-			0.
-		};
-
-		let scale = if do_scale {
-			if random_scale_bias.abs() < 1e-6 {
-				// Linear
-				random_scale_min + scale_rng.gen::<f64>() * random_scale_difference
-			} else {
-				// Weighted (see <https://www.desmos.com/calculator/gmavd3m9bd>)
-				let horizontal_scale_factor = 1. - 2_f64.powf(random_scale_bias);
-				let scale_factor = (1. - scale_rng.gen::<f64>() * horizontal_scale_factor).log2() / random_scale_bias;
-				random_scale_min + scale_factor * random_scale_difference
-			}
-		} else {
-			random_scale_min
-		};
-
-		result.concat(&instance, DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation) * center_transform);
-	}
-
-	result
 }
 
 #[node_macro::node(category(""))]
