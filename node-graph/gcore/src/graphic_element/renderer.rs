@@ -17,7 +17,7 @@ use dyn_any::DynAny;
 use base64::Engine;
 use glam::{DAffine2, DVec2};
 use num_traits::Zero;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 #[cfg(feature = "vello")]
 use vello::*;
@@ -57,34 +57,28 @@ impl ClickTarget {
 		self.bounding_box = self.subpath.bounding_box();
 	}
 
-	/// Does the click target intersect the rectangle
-	pub fn intersect_rectangle(&self, document_quad: Quad, layer_transform: DAffine2) -> bool {
+	/// Does the click target intersect the path
+	pub fn intersect_path<It: Iterator<Item = bezier_rs::Bezier>>(&self, mut bezier_iter: impl FnMut() -> It, layer_transform: DAffine2) -> bool {
 		// Check if the matrix is not invertible
 		if layer_transform.matrix2.determinant().abs() <= f64::EPSILON {
 			return false;
 		}
-		let quad = layer_transform.inverse() * document_quad;
+		let inverse = layer_transform.inverse();
+		let mut bezier_iter = || bezier_iter().map(|bezier| bezier.apply_transformation(|point| inverse.transform_point2(point)));
 
 		// Check if outlines intersect
-		if self
-			.subpath
-			.iter()
-			.any(|path_segment| quad.bezier_lines().any(|line| !path_segment.intersections(&line, None, None).is_empty()))
-		{
+		let outline_intersects = |path_segment: bezier_rs::Bezier| bezier_iter().any(|line| !path_segment.intersections(&line, None, None).is_empty());
+		if self.subpath.iter().any(outline_intersects) {
 			return true;
 		}
 		// Check if selection is entirely within the shape
-		if self.subpath.closed() && self.subpath.contains_point(quad.center()) {
+		if self.subpath.closed() && bezier_iter().next().is_some_and(|bezier| self.subpath.contains_point(bezier.start)) {
 			return true;
 		}
 
 		// Check if shape is entirely within selection
-		self.subpath
-			.manipulator_groups()
-			.first()
-			.map(|group| group.anchor)
-			.map(|shape_point| quad.contains(shape_point))
-			.unwrap_or_default()
+		let any_point_from_subpath = self.subpath.manipulator_groups().first().map(|group| group.anchor);
+		any_point_from_subpath.is_some_and(|shape_point| bezier_iter().map(|bezier| bezier.winding(shape_point)).sum::<i32>() != 0)
 	}
 
 	/// Does the click target intersect the point (accounting for stroke size)
@@ -102,7 +96,7 @@ impl ClickTarget {
 		// Allows for selecting lines
 		// TODO: actual intersection of stroke
 		let inflated_quad = Quad::from_box(target_bounds);
-		self.intersect_rectangle(inflated_quad, layer_transform)
+		self.intersect_path(|| inflated_quad.bezier_lines(), layer_transform)
 	}
 
 	/// Does the click target intersect the point (not accounting for stroke size)
@@ -277,6 +271,7 @@ pub fn to_transform(transform: DAffine2) -> usvg::Transform {
 pub struct RenderMetadata {
 	pub footprints: HashMap<NodeId, (Footprint, DAffine2)>,
 	pub click_targets: HashMap<NodeId, Vec<ClickTarget>>,
+	pub clip_targets: HashSet<NodeId>,
 }
 
 pub trait GraphicElementRendered {
@@ -650,6 +645,9 @@ impl GraphicElementRendered for Artboard {
 			let subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
 			metadata.click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
 			metadata.footprints.insert(element_id, (footprint, DAffine2::from_translation(self.location.as_dvec2())));
+			if self.clip {
+				metadata.clip_targets.insert(element_id);
+			}
 		}
 		footprint.transform *= self.transform();
 		self.graphic_group.collect_metadata(metadata, footprint, None);

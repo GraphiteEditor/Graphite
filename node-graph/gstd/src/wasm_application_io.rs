@@ -19,7 +19,7 @@ use graphene_core::{Color, WasmNotSend};
 use base64::Engine;
 #[cfg(target_arch = "wasm32")]
 use glam::DAffine2;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::Clamped;
@@ -225,6 +225,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	let mut metadata = RenderMetadata {
 		footprints: HashMap::new(),
 		click_targets: HashMap::new(),
+		clip_targets: HashSet::new(),
 	};
 	data.collect_metadata(&mut metadata, footprint, None);
 

@@ -29,6 +29,8 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeNetwork, OldNodeNetwork};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::vector::style::ViewMode;
+use graphene_std::renderer::{ClickTarget, Quad};
+use graphene_std::vector::path_bool_lib;
 
 use glam::{DAffine2, DVec2, IVec2};
 
@@ -1109,6 +1111,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					.collect();
 				self.network_interface.update_click_targets(layer_click_targets);
 			}
+			DocumentMessage::UpdateClipTargets { clip_targets } => {
+				self.network_interface.update_clip_targets(clip_targets);
+			}
 			DocumentMessage::UpdateVectorModify { vector_modify } => {
 				self.network_interface.update_vector_modify(vector_modify);
 			}
@@ -1333,31 +1338,19 @@ impl DocumentMessageHandler {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
 		let document_quad = document_to_viewport.inverse() * viewport_quad;
 
-		self.metadata()
-			.all_layers()
-			.filter(|&layer| self.network_interface.selected_nodes(&[]).unwrap().layer_visible(layer, &self.network_interface))
-			.filter(|&layer| !self.network_interface.selected_nodes(&[]).unwrap().layer_locked(layer, &self.network_interface))
-			.filter(|&layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
-			.filter_map(|layer| self.metadata().click_targets(layer).map(|targets| (layer, targets)))
-			.filter(move |(layer, target)| {
-				target
-					.iter()
-					.any(move |target| target.intersect_rectangle(document_quad, self.metadata().transform_to_document(*layer)))
-			})
-			.map(|(layer, _)| layer)
+		ClickXRayIter::new(&self.network_interface, XRayTarget::Quad(document_quad))
+	}
+
+	/// Runs an intersection test with all layers and a viewport space quad; ignoring artboards
+	pub fn intersect_quad_no_artboards<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+		self.intersect_quad(viewport_quad, ipp).filter(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
 
 	/// Find all of the layers that were clicked on from a viewport space location
 	pub fn click_xray(&self, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
 		let point = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
-		self.metadata()
-			.all_layers()
-			.filter(|&layer| self.network_interface.selected_nodes(&[]).unwrap().layer_visible(layer, &self.network_interface))
-			.filter(|&layer| !self.network_interface.selected_nodes(&[]).unwrap().layer_locked(layer, &self.network_interface))
-			.filter_map(|layer| self.metadata().click_targets(layer).map(|targets| (layer, targets)))
-			.filter(move |(layer, target)| target.iter().any(|target| target.intersect_point(point, self.metadata().transform_to_document(*layer))))
-			.map(|(layer, _)| layer)
+		ClickXRayIter::new(&self.network_interface, XRayTarget::Point(point))
 	}
 
 	/// Find the deepest layer given in the sorted array (by returning the one which is not a folder from the list of layers under the click location).
@@ -2098,4 +2091,141 @@ fn default_document_network_interface() -> NodeNetworkInterface {
 	let mut network_interface = NodeNetworkInterface::default();
 	network_interface.add_export(TaggedValue::ArtboardGroup(graphene_core::ArtboardGroup::EMPTY), -1, "".to_string(), &[]);
 	network_interface
+}
+
+/// Targets for the [`ClickXRayIter`]. In order to reduce computation, we prefer just a point/path test where possible.
+#[derive(Clone)]
+enum XRayTarget {
+	Point(DVec2),
+	Quad(Quad),
+	Path(Vec<path_bool_lib::PathSegment>),
+}
+
+/// The result for the [`ClickXRayIter`] on the layer
+struct XRayResult {
+	clicked: bool,
+	use_children: bool,
+}
+
+/// An iterator for finding layers within an [`XRayTarget`]. Constructed by [`DocumentMessageHandler::intersect_quad`] and [`DocumentMessageHandler::click_xray`].
+#[derive(Clone)]
+pub struct ClickXRayIter<'a> {
+	next_layer: Option<LayerNodeIdentifier>,
+	network_interface: &'a NodeNetworkInterface,
+	parent_targets: Vec<(LayerNodeIdentifier, XRayTarget)>,
+}
+
+fn quad_to_path_lib_segments(quad: Quad) -> Vec<path_bool_lib::PathSegment> {
+	quad.edges().into_iter().map(|[start, end]| path_bool_lib::PathSegment::Line(start, end)).collect()
+}
+
+fn click_targets_to_path_lib_segments<'a>(click_targets: impl Iterator<Item = &'a ClickTarget>, transform: DAffine2) -> Vec<path_bool_lib::PathSegment> {
+	let segment = |bezier: bezier_rs::Bezier| match bezier.handles {
+		bezier_rs::BezierHandles::Linear => path_bool_lib::PathSegment::Line(bezier.start, bezier.end),
+		bezier_rs::BezierHandles::Quadratic { handle } => path_bool_lib::PathSegment::Quadratic(bezier.start, handle, bezier.end),
+		bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => path_bool_lib::PathSegment::Cubic(bezier.start, handle_start, handle_end, bezier.end),
+	};
+	click_targets
+		.flat_map(|target| target.subpath().iter())
+		.map(|bezier| segment(bezier.apply_transformation(|x| transform.transform_point2(x))))
+		.collect()
+}
+
+impl<'a> ClickXRayIter<'a> {
+	fn new(network_interface: &'a NodeNetworkInterface, target: XRayTarget) -> Self {
+		Self {
+			next_layer: LayerNodeIdentifier::ROOT_PARENT.first_child(network_interface.document_metadata()),
+			network_interface,
+			parent_targets: vec![(LayerNodeIdentifier::ROOT_PARENT, target)],
+		}
+	}
+
+	/// Handles the checking of the layer where the target is a rect or path
+	fn check_layer_area_target(&mut self, click_targets: Option<&Vec<ClickTarget>>, clip: bool, layer: LayerNodeIdentifier, path: Vec<path_bool_lib::PathSegment>, transform: DAffine2) -> XRayResult {
+		// Convert back to Bezier-rs types for intersections
+		let segment = |bezier: &path_bool_lib::PathSegment| match *bezier {
+			path_bool_lib::PathSegment::Line(start, end) => bezier_rs::Bezier::from_linear_dvec2(start, end),
+			path_bool_lib::PathSegment::Cubic(start, h1, h2, end) => bezier_rs::Bezier::from_cubic_dvec2(start, h1, h2, end),
+			path_bool_lib::PathSegment::Quadratic(start, h1, end) => bezier_rs::Bezier::from_quadratic_dvec2(start, h1, end),
+			path_bool_lib::PathSegment::Arc(_, _, _, _, _, _, _) => unimplemented!(),
+		};
+		let get_clip = || path.iter().map(segment);
+
+		let intersects = click_targets.map_or(false, |targets| targets.iter().any(|target| target.intersect_path(get_clip, transform)));
+		let clicked = intersects;
+		let mut use_children = !clip || intersects;
+
+		// In the case of a clip path where the area partially intersects, it is necessary to do a boolean operation.
+		// We do this on this using the target area to reduce computation (as the target area is usually very simple).
+		if clip && intersects {
+			let clip_path = click_targets_to_path_lib_segments(click_targets.iter().flat_map(|x| x.iter()), transform);
+			let subtracted = graphene_std::vector::boolean_intersect(path, clip_path).into_iter().flatten().collect::<Vec<_>>();
+			if subtracted.is_empty() {
+				use_children = false;
+			} else {
+				// All child layers will use the new clipped target area
+				self.parent_targets.push((layer, XRayTarget::Path(subtracted)));
+			}
+		}
+		XRayResult { clicked, use_children }
+	}
+
+	/// Handles the checking of the layer to find if it has been clicked
+	fn check_layer(&mut self, layer: LayerNodeIdentifier) -> XRayResult {
+		let selected_layers = self.network_interface.selected_nodes(&[]).unwrap();
+		// Discard invisible and locked layers
+		if !selected_layers.layer_visible(layer, self.network_interface) || selected_layers.layer_locked(layer, self.network_interface) {
+			return XRayResult { clicked: false, use_children: false };
+		}
+
+		let click_targets = self.network_interface.document_metadata().click_targets(layer);
+		let transform = self.network_interface.document_metadata().transform_to_document(layer);
+		let target = &self.parent_targets.last().expect("In `check_layer()`: there should be a `target`").1;
+		let clip = self.network_interface.document_metadata().is_clip(layer.to_node());
+
+		match target {
+			// Single points are much cheaper than paths so have their own special case
+			XRayTarget::Point(point) => {
+				let intersects = click_targets.map_or(false, |targets| targets.iter().any(|target| target.intersect_point(*point, transform)));
+				XRayResult {
+					clicked: intersects,
+					use_children: !clip || intersects,
+				}
+			}
+			XRayTarget::Quad(quad) => self.check_layer_area_target(click_targets, clip, layer, quad_to_path_lib_segments(*quad), transform),
+			XRayTarget::Path(path) => self.check_layer_area_target(click_targets, clip, layer, path.clone(), transform),
+		}
+	}
+}
+
+impl<'a> Iterator for ClickXRayIter<'a> {
+	type Item = LayerNodeIdentifier;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		// While there are still layers in the layer tree
+		while let Some(layer) = self.next_layer.take() {
+			let XRayResult { clicked, use_children } = self.check_layer(layer);
+			let metadata = self.network_interface.document_metadata();
+			// If we should use the children and also there is a child, that child is the next layer.
+			self.next_layer = use_children.then(|| layer.first_child(metadata)).flatten();
+
+			// If we aren't using children, iterate up the ancestors until there is a layer with a sibling
+			for ancestor in layer.ancestors(metadata) {
+				if self.next_layer.is_some() {
+					break;
+				}
+				// If there is a clipped area for this ancestor (that we are now exiting), discard it.
+				if self.parent_targets.last().is_some_and(|(id, _)| *id == ancestor) {
+					self.parent_targets.pop();
+				}
+				self.next_layer = ancestor.next_sibling(metadata)
+			}
+
+			if clicked {
+				return Some(layer);
+			}
+		}
+		assert!(self.parent_targets.is_empty(), "The parent targets should always be empty (since we have left all layers)");
+		None
+	}
 }
