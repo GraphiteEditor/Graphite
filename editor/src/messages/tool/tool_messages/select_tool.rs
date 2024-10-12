@@ -471,7 +471,7 @@ impl Fsm for SelectToolFsmState {
 					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
 
 					// Draw outline visualizations on the layers to be selected
-					for layer in document.intersect_quad(quad, input) {
+					for layer in document.intersect_quad_no_artboards(quad, input) {
 						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
 					}
 
@@ -914,7 +914,7 @@ impl Fsm for SelectToolFsmState {
 
 				if !tool_data.has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
 					let quad = tool_data.selection_quad();
-					let intersection = document.intersect_quad(quad, input);
+					let intersection = document.intersect_quad_no_artboards(quad, input);
 
 					if let Some(path) = intersection.last() {
 						let replacement_selected_layers: Vec<_> = document
@@ -1007,7 +1007,7 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::DrawingBox { .. }, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
 				let quad = tool_data.selection_quad();
-				let new_selected: HashSet<_> = document.intersect_quad(quad, input).collect();
+				let new_selected: HashSet<_> = document.intersect_quad_no_artboards(quad, input).collect();
 				let current_selected: HashSet<_> = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
 				if new_selected != current_selected {
 					tool_data.layers_dragging = new_selected.into_iter().collect();

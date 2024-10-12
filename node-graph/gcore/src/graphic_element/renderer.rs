@@ -58,33 +58,27 @@ impl ClickTarget {
 	}
 
 	/// Does the click target intersect the rectangle
-	pub fn intersect_rectangle(&self, document_quad: Quad, layer_transform: DAffine2) -> bool {
+	pub fn intersect_path<It: Iterator<Item = bezier_rs::Bezier>>(&self, mut bezier_iter: impl FnMut() -> It, layer_transform: DAffine2) -> bool {
 		// Check if the matrix is not invertible
 		if layer_transform.matrix2.determinant().abs() <= f64::EPSILON {
 			return false;
 		}
-		let quad = layer_transform.inverse() * document_quad;
+		let inverse = layer_transform.inverse();
+		let mut bezier_iter = || bezier_iter().map(|bezier| bezier.apply_transformation(|point| inverse.transform_point2(point)));
 
 		// Check if outlines intersect
-		if self
-			.subpath
-			.iter()
-			.any(|path_segment| quad.bezier_lines().any(|line| !path_segment.intersections(&line, None, None).is_empty()))
-		{
+		let outline_intersects = |path_segment: bezier_rs::Bezier| bezier_iter().any(|line| !path_segment.intersections(&line, None, None).is_empty());
+		if self.subpath.iter().any(outline_intersects) {
 			return true;
 		}
 		// Check if selection is entirely within the shape
-		if self.subpath.closed() && self.subpath.contains_point(quad.center()) {
+		if self.subpath.closed() && bezier_iter().next().is_some_and(|bezier| self.subpath.contains_point(bezier.start)) {
 			return true;
 		}
 
 		// Check if shape is entirely within selection
-		self.subpath
-			.manipulator_groups()
-			.first()
-			.map(|group| group.anchor)
-			.map(|shape_point| quad.contains(shape_point))
-			.unwrap_or_default()
+		let any_point_from_subpath = self.subpath.manipulator_groups().first().map(|group| group.anchor);
+		any_point_from_subpath.is_some_and(|shape_point| bezier_iter().map(|bezier| bezier.winding(shape_point)).sum::<i32>() != 0)
 	}
 
 	/// Does the click target intersect the point (accounting for stroke size)
@@ -102,7 +96,7 @@ impl ClickTarget {
 		// Allows for selecting lines
 		// TODO: actual intersection of stroke
 		let inflated_quad = Quad::from_box(target_bounds);
-		self.intersect_rectangle(inflated_quad, layer_transform)
+		self.intersect_path(|| inflated_quad.bezier_lines(), layer_transform)
 	}
 
 	/// Does the click target intersect the point (not accounting for stroke size)
