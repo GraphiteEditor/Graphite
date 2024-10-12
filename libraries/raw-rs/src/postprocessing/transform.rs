@@ -1,44 +1,48 @@
-use crate::{Image, Transform};
+use crate::{Image, Transform, Captures, Pixel};
 
-pub fn transform(mut image: Image<u16>) -> Image<u16> {
-	if image.transform.is_identity() {
-		return image;
+impl Image<u16> {
+	pub fn transform_iter(&self) -> (usize, usize, impl Iterator<Item = Pixel> + Captures<&'_ ()>) {
+		let (final_width, final_height) = if self.transform.will_swap_coordinates() {
+			(self.height, self.width)
+		} else {
+			(self.width, self.height)
+		};
+
+		let index_0_0 = inverse_transform_index(self.transform, 0, 0, self.width, self.height);
+		let index_0_1 = inverse_transform_index(self.transform, 0, 1, self.width, self.height);
+		let index_1_0 = inverse_transform_index(self.transform, 1, 0, self.width, self.height);
+
+		let column_step = (index_0_1.0 - index_0_0.0, index_0_1.1 - index_0_0.1);
+		let row_step = (index_1_0.0 - index_0_0.0, index_1_0.1 - index_0_0.1);
+		let mut index = index_0_0;
+
+		let channels = self.channels as usize;
+
+		(
+			final_width,
+			final_height,
+			(0..final_height).flat_map(move |row| {
+				let temp = (0..final_width).map(move |column| {
+					let initial_index = (self.width as i64 * index.0 + index.1) as usize;
+					let pixel = &self.data[channels * initial_index..channels * (initial_index + 1)];
+					index = (index.0 + column_step.0, index.1 + column_step.1);
+
+					Pixel {
+						values: pixel.try_into().unwrap(),
+						row,
+						column,
+					}
+				});
+
+				index = (index.0 + row_step.0, index.1 + row_step.1);
+
+				temp
+			})
+		)
 	}
-
-	let channels = image.channels as usize;
-	let mut data = vec![0; channels * image.width * image.height];
-
-	let (final_width, final_height) = if image.transform.will_swap_coordinates() {
-		(image.height, image.width)
-	} else {
-		(image.width, image.height)
-	};
-
-	let mut initial_index = inverse_transform_index(image.transform, 0, 0, image.width, image.height);
-	let column_step = inverse_transform_index(image.transform, 0, 1, image.width, image.height) as i64 - initial_index as i64;
-	let row_step = inverse_transform_index(image.transform, 1, 0, image.width, image.height) as i64 - inverse_transform_index(image.transform, 0, final_width, image.width, image.height) as i64;
-
-	for row in 0..final_height {
-		for col in 0..final_width {
-			let transformed_index = final_width * row + col;
-
-			let copy_from_range = channels * initial_index..channels * (initial_index + 1);
-			let copy_to_range = channels * transformed_index..channels * (transformed_index + 1);
-			data[copy_to_range].copy_from_slice(&image.data[copy_from_range]);
-
-			initial_index = (initial_index as i64 + column_step) as usize;
-		}
-		initial_index = (initial_index as i64 + row_step) as usize;
-	}
-
-	image.data = data;
-	image.width = final_width;
-	image.height = final_height;
-
-	image
 }
 
-pub fn inverse_transform_index(transform: Transform, mut row: usize, mut column: usize, width: usize, height: usize) -> usize {
+pub fn inverse_transform_index(transform: Transform, mut row: usize, mut column: usize, width: usize, height: usize) -> (i64, i64) {
 	let value = match transform {
 		Transform::Horizontal => 0,
 		Transform::MirrorHorizontal => 1,
@@ -62,5 +66,5 @@ pub fn inverse_transform_index(transform: Transform, mut row: usize, mut column:
 		column = width - 1 - column;
 	}
 
-	width * row + column
+	(row as i64, column as i64)
 }

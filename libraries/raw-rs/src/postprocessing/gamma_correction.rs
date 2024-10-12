@@ -1,32 +1,29 @@
-use crate::Image;
+use crate::{Image, Pixel, Histogram, CHANNELS_IN_RGB};
 use std::f64::consts::E;
 
-pub fn gamma_correction(mut image: Image<u16>) -> Image<u16> {
-	let Some(histogram) = image.histogram else { return image };
+impl Image<u16> {
+	pub fn gamma_correction_fn(&self, histogram: &Histogram) -> impl Fn(Pixel) -> [u16; CHANNELS_IN_RGB] {
+		let percentage = self.width * self.height;
 
-	let percentage = image.width * image.height;
+		let mut white = 0;
+		for channel_histogram in histogram {
+			let mut total = 0;
+			for i in (0x20..0x2000).rev() {
+				total += channel_histogram[i] as u64;
 
-	let mut white = 0;
-	for channel_histogram in histogram {
-		let mut total = 0;
-		for i in (0x20..0x2000).rev() {
-			total += channel_histogram[i] as u64;
-
-			if total * 100 > percentage as u64 {
-				white = white.max(i);
-				break;
+				if total * 100 > percentage as u64 {
+					white = white.max(i);
+					break;
+				}
 			}
 		}
+
+		let curve = generate_gamma_curve(0.45, 4.5, (white << 3) as f64);
+
+		move |pixel: Pixel| {
+			pixel.values.map(|value| curve[value as usize])
+		}
 	}
-
-	let curve = generate_gamma_curve(0.45, 4.5, (white << 3) as f64);
-
-	for value in image.data.iter_mut() {
-		*value = curve[*value as usize];
-	}
-	image.histogram = None;
-
-	image
 }
 
 /// `max_intensity` must be non-zero.
