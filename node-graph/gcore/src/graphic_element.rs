@@ -6,6 +6,7 @@ use crate::vector::VectorData;
 use crate::Color;
 
 use dyn_any::DynAny;
+use specta::datatype::reference;
 
 use core::ops::{Deref, DerefMut};
 use glam::{DAffine2, IVec2};
@@ -313,6 +314,41 @@ async fn to_group<F: 'n + Send, Data: Into<GraphicGroup> + 'n>(
 	element: impl Node<F, Output = Data>,
 ) -> GraphicGroup {
 	element.eval(footprint).await.into()
+}
+
+#[node_macro::node(category("General"))]
+async fn flatten_group<F: 'n + Send>(
+	#[implementations(
+		(),
+		Footprint,
+	)]
+	footprint: F,
+	#[implementations(
+		() -> GraphicGroup,
+		Footprint -> GraphicGroup,
+	)]
+	group: impl Node<F, Output = GraphicGroup>,
+	fully_flatten: bool,
+) -> GraphicGroup {
+	let mut nested_group = group.eval(footprint).await;
+	let mut flat_group = GraphicGroup::EMPTY;
+	fn flatten_group(result_group: &mut GraphicGroup, current_group: GraphicGroup, fully_flatten: bool) {
+		for (element, reference) in current_group.elements {
+			let mut collection_group = GraphicGroup::EMPTY;
+			if fully_flatten {
+				if let GraphicElement::GraphicGroup(nested_group) = element {
+					flatten_group(&mut collection_group, nested_group, fully_flatten);
+				} else {
+					collection_group.push((element, reference));
+				}
+			} else {
+				collection_group.push((element, reference));
+			}
+			result_group.append(&mut collection_group.elements);
+		}
+	}
+	flatten_group(&mut flat_group, nested_group, fully_flatten);
+	flat_group
 }
 
 #[node_macro::node(category(""))]

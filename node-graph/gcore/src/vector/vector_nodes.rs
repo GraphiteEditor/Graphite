@@ -674,7 +674,7 @@ async fn subpath_segment_lengths<F: 'n + Send>(
 		.collect()
 }
 
-#[node_macro::node(name("Splines from Points"), category(""), path(graphene_core::vector))]
+#[node_macro::node(name("Splines from Points"), category("Vector"), path(graphene_core::vector))]
 fn splines_from_points(_: (), mut vector_data: VectorData) -> VectorData {
 	let points = &vector_data.point_domain;
 

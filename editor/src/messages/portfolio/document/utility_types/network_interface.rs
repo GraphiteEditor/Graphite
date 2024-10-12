@@ -3603,7 +3603,7 @@ impl NodeNetworkInterface {
 		};
 
 		// Check whether the being-deleted node's first (primary) input is a node
-		let mut reconnect_to_input = network.nodes.get(node_id).and_then(|node| {
+		let reconnect_to_input = network.nodes.get(node_id).and_then(|node| {
 			node.inputs
 				.iter()
 				.find(|input| input.is_exposed_to_frontend(network_path.is_empty()))
@@ -3625,15 +3625,22 @@ impl NodeNetworkInterface {
 
 		let mut reconnect_node = None;
 
+		// Don't reconnect if the upstream node is a layer and there are multiple downstream inputs to reconnect
+		let multiple_disconnect_and_upstream_is_layer = downstream_inputs_to_disconnect.len() > 1
+			&& reconnect_to_input
+				.as_ref()
+				.is_some_and(|upstream_input| upstream_input.as_node().map_or(false, |node_id| self.is_layer(&node_id, network_path)));
+
 		for downstream_input in &downstream_inputs_to_disconnect {
 			self.disconnect_input(downstream_input, network_path);
 			// Prevent reconnecting export to import until https://github.com/GraphiteEditor/Graphite/issues/1762 is solved
 			if !(matches!(reconnect_to_input, Some(NodeInput::Network { .. })) && matches!(downstream_input, InputConnector::Export(_))) {
-				if let Some(reconnect_input) = reconnect_to_input.take() {
-					// Get the reconnect node position only if it is in a stack
+				if let Some(reconnect_input) = &reconnect_to_input {
 					reconnect_node = reconnect_input.as_node().and_then(|node_id| if self.is_stack(&node_id, network_path) { Some(node_id) } else { None });
 					self.disconnect_input(&InputConnector::node(*node_id, 0), network_path);
-					self.set_input(downstream_input, reconnect_input, network_path);
+					if !multiple_disconnect_and_upstream_is_layer {
+						self.set_input(downstream_input, reconnect_input.clone(), network_path);
+					}
 				}
 			}
 		}
