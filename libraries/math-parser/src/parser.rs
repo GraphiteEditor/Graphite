@@ -12,6 +12,8 @@ use pest::{
 use pest_derive::Parser;
 use thiserror::Error;
 
+use crate::ast::{BinaryOp, Literal, Node, UnaryOp};
+
 #[derive(Parser)]
 #[grammar = "./grammer.pest"] // Point to the grammar file
 struct ExprParser;
@@ -37,49 +39,6 @@ lazy_static! {
                 | Op::prefix(Rule::invsec)
                 | Op::prefix(Rule::invcot))
     };
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Literal {
-    Int(u64),
-    Float(f64),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum BinaryOp {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Pow,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum UnaryOp {
-    Neg,
-    Sqrt,
-    Sin,
-    Cos,
-    Tan,
-    Csc,
-    Sec,
-    Cot,
-    InvSin,
-    InvCos,
-    InvTan,
-    InvCsc,
-    InvSec,
-    InvCot,
-    Fac,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Node {
-    Lit(Literal),
-    Var(String),
-    GlobalVar(String),
-    BinOp { lhs: Box<Node>, op: BinaryOp, rhs: Box<Node> },
-    UnaryOp { val: Box<Node>, op: UnaryOp },
 }
 
 #[derive(Error, Debug)]
@@ -110,6 +69,15 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<Node, ParseError> {
 
                     Node::Var(name)
                 }
+                Rule::fn_call => {
+                    let mut pairs = primary.into_inner();
+                    let name = pairs.next().expect("fn_call always has 2 children").as_str().to_string();
+
+                    Node::FnCall {
+                        name,
+                        expr: Box::new(parse_expr(pairs.next().expect("fn_call always has two children").into_inner())?),
+                    }
+                }
                 Rule::global_var => {
                     let name = primary.as_str().split_at(1).1.to_string();
 
@@ -117,7 +85,6 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<Node, ParseError> {
                 }
                 Rule::expr => parse_expr(primary.into_inner())?,
                 Rule::float => Node::Lit(Literal::Float(primary.as_str().parse::<f64>()?)),
-
                 rule => unreachable!("Expr::parse expected int, expr, ident, found {:?}", rule),
             })
         })
@@ -148,6 +115,7 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<Node, ParseError> {
                 val: Box::new(lhs?),
                 op: match op.as_rule() {
                     Rule::fac => UnaryOp::Fac,
+
                     _ => unreachable!(),
                 },
             })
@@ -215,11 +183,9 @@ mod tests {
             val: Box::new(Node::Lit(Literal::Int(16))),
             op: UnaryOp::Sqrt,
         },
-        test_parse_sqr_ident: "sqr(16)" => Node::BinOp {
-
-             lhs: Box::new(Node::Var("sqr".to_string())),
-             op:  BinaryOp::Mul,
-             rhs: Box::new(Node::Lit(Literal::Int(16)) )
+        test_parse_sqr_ident: "sqr(16)" => Node::FnCall {
+             name:"sqr".to_string(),
+             expr: Box::new(Node::Lit(Literal::Int(16)))
         },
         test_parse_global_var: "$variable_one1 - 11" => Node::BinOp {
 

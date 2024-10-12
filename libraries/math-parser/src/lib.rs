@@ -1,5 +1,3 @@
+mod ast;
 mod parser;
-
-fn main() {
-    println!("h");
-}
+mod value;
