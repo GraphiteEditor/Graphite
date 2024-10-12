@@ -115,12 +115,12 @@ pub(crate) fn property_from_type(
 				Some("Percentage") => number_widget(document_node, node_id, index, name, number_input.percentage().min(min(0.)).max(max(100.)), true).into(),
 				Some("SignedPercentage") => number_widget(document_node, node_id, index, name, number_input.percentage().min(min(-100.)).max(max(100.)), true).into(),
 				Some("Angle") => number_widget(document_node, node_id, index, name, number_input.mode_range().min(min(-180.)).max(max(180.)).unit("°"), true).into(),
-				Some("PixelLength") => number_widget(document_node, node_id, index, name, number_input.min(min(0.)).unit("px"), true).into(),
+				Some("PixelLength") => number_widget(document_node, node_id, index, name, number_input.min(min(0.)).unit(" px"), true).into(),
 				Some("Length") => number_widget(document_node, node_id, index, name, number_input.min(min(0.)), true).into(),
 				Some("Fraction") => number_widget(document_node, node_id, index, name, number_input.min(min(0.)).max(max(1.)), true).into(),
 				Some("IntegerCount") => number_widget(document_node, node_id, index, name, number_input.int().min(min(1.)), true).into(),
 				Some("SeedValue") => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)), true).into(),
-				Some("Resolution") => vec2_widget(document_node, node_id, index, name, "W", "H", "px", Some(64.), add_blank_assist),
+				Some("Resolution") => vec2_widget(document_node, node_id, index, name, "W", "H", " px", Some(64.), add_blank_assist),
 
 				// For all other types, use TypeId-based matching
 				_ => {
@@ -1681,9 +1681,10 @@ pub(crate) fn rectangle_properties(document_node: &DocumentNode, node_id: NodeId
 }
 
 pub(crate) fn line_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| vec2_widget(document_node, node_id, index, name, "X", "Y", "px", None, add_blank_assist);
+	let operand = |name: &str, index| vec2_widget(document_node, node_id, index, name, "X", "Y", " px", None, add_blank_assist);
 	vec![operand("Start", 1), operand("End", 2)]
 }
+
 pub(crate) fn spline_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	vec![LayoutGroup::Row {
 		widgets: vec_dvec2_input(document_node, node_id, 1, "Points", TextInput::default().centered(true), true),
@@ -2555,14 +2556,14 @@ pub fn stroke_properties(document_node: &DocumentNode, node_id: NodeId, _context
 	let miter_limit_index = 7;
 
 	let color = color_widget(document_node, node_id, color_index, "Color", ColorButton::default(), true);
-	let weight = number_widget(document_node, node_id, weight_index, "Weight", NumberInput::default().unit("px").min(0.), true);
+	let weight = number_widget(document_node, node_id, weight_index, "Weight", NumberInput::default().unit(" px").min(0.), true);
 
 	let dash_lengths_val = match &document_node.inputs[dash_lengths_index].as_value() {
 		Some(TaggedValue::VecF64(x)) => x,
 		_ => &vec![],
 	};
 	let dash_lengths = vec_f64_input(document_node, node_id, dash_lengths_index, "Dash Lengths", TextInput::default().centered(true), true);
-	let number_input = NumberInput::default().unit("px").disabled(dash_lengths_val.is_empty());
+	let number_input = NumberInput::default().unit(" px").disabled(dash_lengths_val.is_empty());
 	let dash_offset = number_widget(document_node, node_id, dash_offset_index, "Dash Offset", number_input, true);
 	let line_cap = line_cap_widget(document_node, node_id, line_cap_index, "Line Cap", true);
 	let line_join = line_join_widget(document_node, node_id, line_join_index, "Line Join", true);
@@ -2582,6 +2583,26 @@ pub fn stroke_properties(document_node: &DocumentNode, node_id: NodeId, _context
 		line_join,
 		LayoutGroup::Row { widgets: miter_limit },
 	]
+}
+
+pub fn offset_path_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let distance_index = 1;
+	let line_join_index = 2;
+	let miter_limit_index = 3;
+
+	let number_input = NumberInput::default().unit(" px");
+	let distance = number_widget(document_node, node_id, distance_index, "Offset", number_input, true);
+
+	let line_join = line_join_widget(document_node, node_id, line_join_index, "Line Join", true);
+	let line_join_val = match &document_node.inputs[line_join_index].as_value() {
+		Some(TaggedValue::LineJoin(x)) => x,
+		_ => &LineJoin::Miter,
+	};
+
+	let number_input = NumberInput::default().min(0.).disabled(line_join_val != &LineJoin::Miter);
+	let miter_limit = number_widget(document_node, node_id, miter_limit_index, "Miter Limit", number_input, true);
+
+	vec![LayoutGroup::Row { widgets: distance }, line_join, LayoutGroup::Row { widgets: miter_limit }]
 }
 
 pub(crate) fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

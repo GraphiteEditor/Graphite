@@ -3,7 +3,7 @@
 
 	import { clamp } from "@graphite/utility-functions/math";
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import { type HSV, type RGB, type FillChoice } from "@graphite/wasm-communication/messages";
+	import type { HSV, RGB, FillChoice } from "@graphite/wasm-communication/messages";
 	import { Color, Gradient } from "@graphite/wasm-communication/messages";
 
 	import FloatingMenu, { type MenuDirection } from "@graphite/components/layout/FloatingMenu.svelte";

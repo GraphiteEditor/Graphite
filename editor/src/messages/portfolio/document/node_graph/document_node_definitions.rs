@@ -2462,6 +2462,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		("graphene_core::raster::adjustments::ChannelMixerNode", &node_properties::channel_mixer_properties as PropertiesLayout),
 		("graphene_core::vector::FillNode", &node_properties::fill_properties as PropertiesLayout),
 		("graphene_core::vector::StrokeNode", &node_properties::stroke_properties as PropertiesLayout),
+		("graphene_core::vector::OffsetPathNode", &node_properties::offset_path_properties as PropertiesLayout),
 		(
 			"graphene_core::raster::adjustments::SelectiveColorNode",
 			&node_properties::selective_color_properties as PropertiesLayout,
