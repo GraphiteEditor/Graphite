@@ -57,7 +57,7 @@ impl ClickTarget {
 		self.bounding_box = self.subpath.bounding_box();
 	}
 
-	/// Does the click target intersect the rectangle
+	/// Does the click target intersect the path
 	pub fn intersect_path<It: Iterator<Item = bezier_rs::Bezier>>(&self, mut bezier_iter: impl FnMut() -> It, layer_transform: DAffine2) -> bool {
 		// Check if the matrix is not invertible
 		if layer_transform.matrix2.determinant().abs() <= f64::EPSILON {

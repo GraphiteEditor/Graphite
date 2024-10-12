@@ -29,10 +29,10 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeNetwork, OldNodeNetwork};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::vector::style::ViewMode;
-
-use glam::{DAffine2, DVec2, IVec2};
 use graphene_std::renderer::{ClickTarget, Quad};
 use graphene_std::vector::path_bool_lib;
+
+use glam::{DAffine2, DVec2, IVec2};
 
 pub struct DocumentMessageData<'a> {
 	pub document_id: DocumentId,
@@ -2112,7 +2112,7 @@ struct XRayResult {
 pub struct ClickXRayIter<'a> {
 	next_layer: Option<LayerNodeIdentifier>,
 	network_interface: &'a NodeNetworkInterface,
-	paret_targets: Vec<(LayerNodeIdentifier, XRayTarget)>,
+	parent_targets: Vec<(LayerNodeIdentifier, XRayTarget)>,
 }
 
 fn quad_to_path_lib_segments(quad: Quad) -> Vec<path_bool_lib::PathSegment> {
@@ -2120,14 +2120,14 @@ fn quad_to_path_lib_segments(quad: Quad) -> Vec<path_bool_lib::PathSegment> {
 }
 
 fn click_targets_to_path_lib_segments<'a>(click_targets: impl Iterator<Item = &'a ClickTarget>, transform: DAffine2) -> Vec<path_bool_lib::PathSegment> {
-	let segment = |bézier: bezier_rs::Bezier| match bézier.handles {
-		bezier_rs::BezierHandles::Linear => path_bool_lib::PathSegment::Line(bézier.start, bézier.end),
-		bezier_rs::BezierHandles::Quadratic { handle } => path_bool_lib::PathSegment::Quadratic(bézier.start, handle, bézier.end),
-		bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => path_bool_lib::PathSegment::Cubic(bézier.start, handle_start, handle_end, bézier.end),
+	let segment = |bezier: bezier_rs::Bezier| match bezier.handles {
+		bezier_rs::BezierHandles::Linear => path_bool_lib::PathSegment::Line(bezier.start, bezier.end),
+		bezier_rs::BezierHandles::Quadratic { handle } => path_bool_lib::PathSegment::Quadratic(bezier.start, handle, bezier.end),
+		bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => path_bool_lib::PathSegment::Cubic(bezier.start, handle_start, handle_end, bezier.end),
 	};
 	click_targets
 		.flat_map(|target| target.subpath().iter())
-		.map(|bézier| segment(bézier.apply_transformation(|x| transform.transform_point2(x))))
+		.map(|bezier| segment(bezier.apply_transformation(|x| transform.transform_point2(x))))
 		.collect()
 }
 
@@ -2136,14 +2136,14 @@ impl<'a> ClickXRayIter<'a> {
 		Self {
 			next_layer: LayerNodeIdentifier::ROOT_PARENT.first_child(network_interface.document_metadata()),
 			network_interface,
-			paret_targets: vec![(LayerNodeIdentifier::ROOT_PARENT, target)],
+			parent_targets: vec![(LayerNodeIdentifier::ROOT_PARENT, target)],
 		}
 	}
 
 	/// Handles the checking of the layer where the target is a rect or path
 	fn check_layer_area_target(&mut self, click_targets: Option<&Vec<ClickTarget>>, clip: bool, layer: LayerNodeIdentifier, path: Vec<path_bool_lib::PathSegment>, transform: DAffine2) -> XRayResult {
-		// Convert back to bézier-rs types for intersections
-		let segment = |bézier: &path_bool_lib::PathSegment| match *bézier {
+		// Convert back to Bezier-rs types for intersections
+		let segment = |bezier: &path_bool_lib::PathSegment| match *bezier {
 			path_bool_lib::PathSegment::Line(start, end) => bezier_rs::Bezier::from_linear_dvec2(start, end),
 			path_bool_lib::PathSegment::Cubic(start, h1, h2, end) => bezier_rs::Bezier::from_cubic_dvec2(start, h1, h2, end),
 			path_bool_lib::PathSegment::Quadratic(start, h1, end) => bezier_rs::Bezier::from_quadratic_dvec2(start, h1, end),
@@ -2164,7 +2164,7 @@ impl<'a> ClickXRayIter<'a> {
 				use_children = false;
 			} else {
 				// All child layers will use the new clipped target area
-				self.paret_targets.push((layer, XRayTarget::Path(subtracted)));
+				self.parent_targets.push((layer, XRayTarget::Path(subtracted)));
 			}
 		}
 		XRayResult { clicked, use_children }
@@ -2173,14 +2173,14 @@ impl<'a> ClickXRayIter<'a> {
 	/// Handles the checking of the layer to find if it has been clicked
 	fn check_layer(&mut self, layer: LayerNodeIdentifier) -> XRayResult {
 		let selected_layers = self.network_interface.selected_nodes(&[]).unwrap();
-		// Discard invisble and locked layers
-		if !selected_layers.layer_visible(layer, &self.network_interface) || selected_layers.layer_locked(layer, &self.network_interface) {
+		// Discard invisible and locked layers
+		if !selected_layers.layer_visible(layer, self.network_interface) || selected_layers.layer_locked(layer, self.network_interface) {
 			return XRayResult { clicked: false, use_children: false };
 		}
 
 		let click_targets = self.network_interface.document_metadata().click_targets(layer);
 		let transform = self.network_interface.document_metadata().transform_to_document(layer);
-		let target = &self.paret_targets.last().expect("there should be a target").1;
+		let target = &self.parent_targets.last().expect("In `check_layer()`: there should be a `target`").1;
 		let clip = self.network_interface.document_metadata().is_clip(layer.to_node());
 
 		match target {
@@ -2209,14 +2209,14 @@ impl<'a> Iterator for ClickXRayIter<'a> {
 			// If we should use the children and also there is a child, that child is the next layer.
 			self.next_layer = use_children.then(|| layer.first_child(metadata)).flatten();
 
-			// If we aren't using children, iterate up the ancestors until there is a lyer with a sibling
+			// If we aren't using children, iterate up the ancestors until there is a layer with a sibling
 			for ancestor in layer.ancestors(metadata) {
 				if self.next_layer.is_some() {
 					break;
 				}
 				// If there is a clipped area for this ancestor (that we are now exiting), discard it.
-				if self.paret_targets.last().is_some_and(|(id, _)| *id == ancestor) {
-					self.paret_targets.pop();
+				if self.parent_targets.last().is_some_and(|(id, _)| *id == ancestor) {
+					self.parent_targets.pop();
 				}
 				self.next_layer = ancestor.next_sibling(metadata)
 			}
@@ -2225,7 +2225,7 @@ impl<'a> Iterator for ClickXRayIter<'a> {
 				return Some(layer);
 			}
 		}
-		assert!(self.paret_targets.is_empty(), "The parent targets should always be empty (since we have left all layers)");
+		assert!(self.parent_targets.is_empty(), "The parent targets should always be empty (since we have left all layers)");
 		None
 	}
 }

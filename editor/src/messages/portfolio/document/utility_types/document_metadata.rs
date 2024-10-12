@@ -7,8 +7,7 @@ use graphene_std::vector::PointId;
 use graphene_std::vector::VectorData;
 
 use glam::{DAffine2, DVec2};
-use std::collections::HashMap;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
 
 // ================
