@@ -1,18 +1,13 @@
-use crate::{Pixel, PixelTransform, RawImage};
-
-const CHANNELS_IN_RGB: usize = 3;
+use crate::{Pixel, PixelTransform, RawImage, CHANNELS_IN_RGB, Histogram};
 
 impl RawImage {
-	pub fn convert_to_rgb_fn(&self) -> impl Fn(Pixel) -> Pixel {
+	pub fn convert_to_rgb_fn(&self) -> impl Fn(Pixel) -> [u16; CHANNELS_IN_RGB] {
 		let Some(rgb_to_camera) = self.rgb_to_camera else { todo!() };
 
-		move |mut pixel: Pixel| {
-			let [red, blue, green] = std::array::from_fn(|i| i).map(|i| rgb_to_camera[i][0] * pixel.red as f64 + rgb_to_camera[i][1] * pixel.blue as f64 + rgb_to_camera[i][2] * pixel.green as f64);
-
-			pixel.red = (red as u16).clamp(0, u16::MAX);
-			pixel.green = (green as u16).clamp(0, u16::MAX);
-			pixel.blue = (blue as u16).clamp(0, u16::MAX);
-			pixel
+		move |pixel: Pixel| {
+			std::array::from_fn(|i| i)
+				.map(|i| rgb_to_camera[i].iter().zip(pixel.values.iter()).map(|(&coeff, &value)| coeff * value as f64).sum())
+				.map(|x: f64| (x as u16).clamp(0, u16::MAX))
 		}
 	}
 
@@ -22,7 +17,7 @@ impl RawImage {
 }
 
 pub struct RecordHistogram {
-	pub histogram: [[usize; 0x2000]; CHANNELS_IN_RGB],
+	pub histogram: Histogram,
 }
 
 impl RecordHistogram {
@@ -34,10 +29,8 @@ impl RecordHistogram {
 }
 
 impl PixelTransform for &mut RecordHistogram {
-	fn apply(&mut self, pixel: Pixel) -> Pixel {
-		self.histogram[0][pixel.red as usize >> CHANNELS_IN_RGB] += 1;
-		self.histogram[1][pixel.blue as usize >> CHANNELS_IN_RGB] += 1;
-		self.histogram[2][pixel.green as usize >> CHANNELS_IN_RGB] += 1;
-		pixel
+	fn apply(&mut self, pixel: Pixel) -> [u16; CHANNELS_IN_RGB] {
+		self.histogram.iter_mut().zip(pixel.values.iter()).for_each(|(histogram, &value)| histogram[value as usize >> CHANNELS_IN_RGB] += 1);
+		pixel.values
 	}
 }

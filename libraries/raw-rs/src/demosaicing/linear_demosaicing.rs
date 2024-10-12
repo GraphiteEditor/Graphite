@@ -1,4 +1,4 @@
-use crate::{Pixel, RawImage};
+use crate::{Pixel, RawImage ,Captures};
 
 fn average(data: &[u16], indexes: impl Iterator<Item = i64>) -> u16 {
 	let mut sum = 0;
@@ -12,12 +12,6 @@ fn average(data: &[u16], indexes: impl Iterator<Item = i64>) -> u16 {
 
 	(sum / count) as u16
 }
-
-// This trait is here only to circumvent Rust's lifetime capturing rules in return type impl Trait.
-// See https://youtu.be/CWiz_RtA1Hw?si=j0si4qE2Y20f71Uo
-// This should be removed when Rust 2024 edition is released as described in https://blog.rust-lang.org/2024/09/05/impl-trait-capture-rules.html
-pub trait Captures<U> {}
-impl<T: ?Sized, U> Captures<U> for T {}
 
 impl RawImage {
 	pub fn linear_demosaic_iter(&self) -> impl Iterator<Item = Pixel> + Captures<&'_ ()> {
@@ -45,30 +39,38 @@ impl RawImage {
 				let pixel_index = pixel_index as usize;
 				match (row % 2 == 0, column % 2 == 0) {
 					(true, true) => Pixel {
-						red: self.data[pixel_index],
-						blue: average(&self.data, cross_indexes.into_iter()),
-						green: average(&self.data, diagonal_indexes.into_iter()),
+						values: [
+							self.data[pixel_index],
+							average(&self.data, cross_indexes.into_iter()),
+							average(&self.data, diagonal_indexes.into_iter()),
+						],
 						row: row as usize,
 						column: column as usize,
 					},
 					(true, false) => Pixel {
-						red: average(&self.data, horizontal_indexes.into_iter()),
-						blue: self.data[pixel_index],
-						green: average(&self.data, vertical_indexes.into_iter()),
+						values: [
+							average(&self.data, horizontal_indexes.into_iter()),
+							self.data[pixel_index],
+							average(&self.data, vertical_indexes.into_iter()),
+						],
 						row: row as usize,
 						column: column as usize,
 					},
 					(false, true) => Pixel {
-						red: average(&self.data, vertical_indexes.into_iter()),
-						blue: self.data[pixel_index],
-						green: average(&self.data, horizontal_indexes.into_iter()),
+						values: [
+							average(&self.data, vertical_indexes.into_iter()),
+							self.data[pixel_index],
+							average(&self.data, horizontal_indexes.into_iter()),
+						],
 						row: row as usize,
 						column: column as usize,
 					},
 					(false, false) => Pixel {
-						red: average(&self.data, diagonal_indexes.into_iter()),
-						blue: average(&self.data, cross_indexes.into_iter()),
-						green: self.data[pixel_index],
+						values: [
+							average(&self.data, diagonal_indexes.into_iter()),
+							average(&self.data, cross_indexes.into_iter()),
+							self.data[pixel_index],
+						],
 						row: row as usize,
 						column: column as usize,
 					},

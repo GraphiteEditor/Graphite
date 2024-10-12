@@ -1,3 +1,5 @@
+use crate::CHANNELS_IN_RGB;
+
 #[derive(Clone, Copy)]
 pub struct RawPixel {
 	pub value: u16,
@@ -7,9 +9,7 @@ pub struct RawPixel {
 
 #[derive(Clone, Copy)]
 pub struct Pixel {
-	pub red: u16,
-	pub blue: u16,
-	pub green: u16,
+	pub values: [u16; CHANNELS_IN_RGB],
 	pub row: usize,
 	pub column: usize,
 }
@@ -34,20 +34,20 @@ impl<T1: RawPixelTransform, T2: RawPixelTransform> RawPixelTransform for (T1, T2
 }
 
 pub trait PixelTransform {
-	fn apply(&mut self, pixel: Pixel) -> Pixel;
+	fn apply(&mut self, pixel: Pixel) -> [u16; CHANNELS_IN_RGB];
 }
 
-impl<T: Fn(Pixel) -> Pixel> PixelTransform for T {
-	fn apply(&mut self, pixel: Pixel) -> Pixel {
+impl<T: Fn(Pixel) -> [u16; CHANNELS_IN_RGB]> PixelTransform for T {
+	fn apply(&mut self, pixel: Pixel) -> [u16; CHANNELS_IN_RGB] {
 		self(pixel)
 	}
 }
 
 impl<T1: PixelTransform, T2: PixelTransform> PixelTransform for (T1, T2) {
-	fn apply(&mut self, mut pixel: Pixel) -> Pixel {
-		pixel = self.0.apply(pixel);
-		pixel = self.1.apply(pixel);
+	fn apply(&mut self, mut pixel: Pixel) -> [u16; CHANNELS_IN_RGB] {
+		pixel.values = self.0.apply(pixel);
+		pixel.values = self.1.apply(pixel);
 
-		pixel
+		pixel.values
 	}
 }
