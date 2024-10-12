@@ -4,6 +4,7 @@ use super::{PointId, SegmentId, StrokeId, VectorData};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
+use crate::vector::style::LineJoin;
 use crate::{Color, GraphicGroup};
 
 use bezier_rs::{Cap, Join, Subpath, SubpathTValue, TValue};
@@ -60,7 +61,7 @@ async fn assign_colors<F: 'n + Send, T: VectorIterMut>(
 		let factor = match randomize {
 			true => rng.gen::<f64>(),
 			false => match repeat_every {
-				0 => i as f64 / (length - 1) as f64,
+				0 => i as f64 / (length - 1).max(1) as f64,
 				1 => 0.,
 				_ => i as f64 % repeat_every as f64 / (repeat_every - 1) as f64,
 			},
@@ -145,7 +146,7 @@ async fn stroke<F: 'n + Send, T: Into<Option<Color>> + 'n + Send>(
 	dash_lengths: Vec<f64>,
 	dash_offset: f64,
 	line_cap: crate::vector::style::LineCap,
-	line_join: crate::vector::style::LineJoin,
+	line_join: LineJoin,
 	#[default(4.)] miter_limit: f64,
 ) -> VectorData {
 	let mut vector_data = vector_data.eval(footprint).await;
@@ -278,6 +279,50 @@ async fn bounding_box<F: 'n + Send>(
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn offset_path<F: 'n + Send>(
+	#[implementations(
+		(),
+		Footprint,
+	)]
+	footprint: F,
+	#[implementations(
+		() -> VectorData,
+		Footprint -> VectorData,
+	)]
+	vector_data: impl Node<F, Output = VectorData>,
+	distance: f64,
+	line_join: LineJoin,
+	#[default(4.)] miter_limit: f64,
+) -> VectorData {
+	let vector_data = vector_data.eval(footprint).await;
+
+	let subpaths = vector_data.stroke_bezier_paths();
+	let mut result = VectorData::empty();
+	result.style = vector_data.style.clone();
+	result.style.set_stroke_transform(DAffine2::IDENTITY);
+
+	// Perform operation on all subpaths in this shape.
+	for mut subpath in subpaths {
+		subpath.apply_transform(vector_data.transform);
+
+		// Taking the existing stroke data and passing it to Bezier-rs to generate new paths.
+		let subpath_out = subpath.offset(
+			-distance,
+			match line_join {
+				LineJoin::Miter => Join::Miter(Some(miter_limit)),
+				LineJoin::Bevel => Join::Bevel,
+				LineJoin::Round => Join::Round,
+			},
+		);
+
+		// One closed subpath, open path.
+		result.append_subpath(subpath_out, false);
+	}
+
+	result
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn solidify_stroke<F: 'n + Send>(
 	#[implementations(
 		(),
@@ -305,9 +350,9 @@ async fn solidify_stroke<F: 'n + Send>(
 		let subpath_out = subpath.outline(
 			stroke.weight / 2., // Diameter to radius.
 			match stroke.line_join {
-				crate::vector::style::LineJoin::Miter => Join::Miter(Some(stroke.line_join_miter_limit)),
-				crate::vector::style::LineJoin::Bevel => Join::Bevel,
-				crate::vector::style::LineJoin::Round => Join::Round,
+				LineJoin::Miter => Join::Miter(Some(stroke.line_join_miter_limit)),
+				LineJoin::Bevel => Join::Bevel,
+				LineJoin::Round => Join::Round,
 			},
 			match stroke.line_cap {
 				crate::vector::style::LineCap::Butt => Cap::Butt,
