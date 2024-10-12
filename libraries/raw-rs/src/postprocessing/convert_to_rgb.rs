@@ -1,4 +1,4 @@
-use crate::{Pixel, PixelTransform, RawImage, CHANNELS_IN_RGB, Histogram};
+use crate::{Histogram, Pixel, PixelTransform, RawImage, CHANNELS_IN_RGB};
 
 impl RawImage {
 	pub fn convert_to_rgb_fn(&self) -> impl Fn(Pixel) -> [u16; CHANNELS_IN_RGB] {
@@ -30,7 +30,10 @@ impl RecordHistogram {
 
 impl PixelTransform for &mut RecordHistogram {
 	fn apply(&mut self, pixel: Pixel) -> [u16; CHANNELS_IN_RGB] {
-		self.histogram.iter_mut().zip(pixel.values.iter()).for_each(|(histogram, &value)| histogram[value as usize >> CHANNELS_IN_RGB] += 1);
+		self.histogram
+			.iter_mut()
+			.zip(pixel.values.iter())
+			.for_each(|(histogram, &value)| histogram[value as usize >> CHANNELS_IN_RGB] += 1);
 		pixel.values
 	}
 }

@@ -1,4 +1,4 @@
-use crate::{Pixel, RawImage ,Captures};
+use crate::{Captures, Pixel, RawImage};
 
 fn average(data: &[u16], indexes: impl Iterator<Item = i64>) -> u16 {
 	let mut sum = 0;

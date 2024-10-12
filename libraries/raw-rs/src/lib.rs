@@ -137,9 +137,12 @@ impl RawImage {
 
 	pub fn demosaic_and_apply(self, mut transform: impl PixelTransform) -> Image<u16> {
 		let mut image = vec![0; self.width * self.height * 3];
-		for Pixel { values, row, column } in self.linear_demosaic_iter().map(|mut pixel| { pixel.values = transform.apply(pixel); pixel }) {
+		for Pixel { values, row, column } in self.linear_demosaic_iter().map(|mut pixel| {
+			pixel.values = transform.apply(pixel);
+			pixel
+		}) {
 			let pixel_index = row * self.width + column;
-			image[3 * pixel_index..3 * (pixel_index+1)].copy_from_slice(&values);
+			image[3 * pixel_index..3 * (pixel_index + 1)].copy_from_slice(&values);
 		}
 
 		Image {
@@ -169,9 +172,12 @@ impl Image<u16> {
 	pub fn transform_and_apply(self, mut transform: impl PixelTransform) -> Image<u16> {
 		let mut image = vec![0; self.width * self.height * 3];
 		let (width, height, iter) = self.transform_iter();
-		for Pixel { values, row, column } in iter.map(|mut pixel| { pixel.values = transform.apply(pixel); pixel }) {
+		for Pixel { values, row, column } in iter.map(|mut pixel| {
+			pixel.values = transform.apply(pixel);
+			pixel
+		}) {
 			let pixel_index = row * width + column;
-			image[3 * pixel_index..3 * (pixel_index+1)].copy_from_slice(&values);
+			image[3 * pixel_index..3 * (pixel_index + 1)].copy_from_slice(&values);
 		}
 
 		Image {
