@@ -1,7 +1,11 @@
 [package]
 name = "math-parser"
-version = "0.1.0"
+version = "0.0.0"
+rust-version = "1.79"
 edition = "2021"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+description = "Parser for Graphite style mathematics expressions"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 pest = "2.7"

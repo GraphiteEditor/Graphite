@@ -35,6 +35,7 @@ graph-craft = { path = "node-graph/graph-craft", features = ["serde"] }
 wgpu-executor = { path = "node-graph/wgpu-executor" }
 bezier-rs = { path = "libraries/bezier-rs", features = ["dyn-any"] }
 path-bool = { path = "libraries/path-bool", default-features = false }
+math-parser = { path = "libraries/math-parser" }
 node-macro = { path = "node-graph/node-macro" }
 
 # Workspace dependencies
