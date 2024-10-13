@@ -21,6 +21,7 @@ members = [
 	"libraries/raw-rs",
 	"libraries/raw-rs/tag-derive",
 	"libraries/raw-rs/build-camera-data",
+	"libraries/math-parser",
 	"website/other/bezier-rs-demos/wasm",
 ]
 exclude = ["node-graph/gpu-compiler"]
