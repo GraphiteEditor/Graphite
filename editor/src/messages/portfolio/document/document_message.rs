@@ -154,6 +154,7 @@ pub enum DocumentMessage {
 		id: NodeId,
 	},
 	ToggleSelectedVisibility,
+	ToggleSelectedLocked,
 	ToggleGridVisibility,
 	ToggleOverlaysVisibility,
 	ToggleSnapping,

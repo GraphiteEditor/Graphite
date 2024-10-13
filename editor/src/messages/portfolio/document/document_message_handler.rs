@@ -1081,6 +1081,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				}
 				responses.add(NodeGraphMessage::SendGraph);
 			}
+			DocumentMessage::ToggleSelectedLocked => responses.add(NodeGraphMessage::ToggleSelectedLocked),
 			DocumentMessage::ToggleSelectedVisibility => {
 				responses.add(NodeGraphMessage::ToggleSelectedVisibility);
 			}
@@ -1314,7 +1315,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				SelectedLayersRaise,
 				SelectedLayersRaiseToFront,
 				UngroupSelectedLayers,
-				ToggleSelectedVisibility
+				ToggleSelectedVisibility,
+				ToggleSelectedLocked
 			);
 			if !self.graph_view_overlay_open {
 				select.extend(actions!(DocumentMessageDiscriminant; NudgeSelectedLayers));
