@@ -153,6 +153,8 @@ pub enum DocumentMessage {
 	ToggleLayerExpansion {
 		id: NodeId,
 	},
+	ToggleSelectedVisibility,
+	ToggleSelectedLocked,
 	ToggleGridVisibility,
 	ToggleOverlaysVisibility,
 	ToggleSnapping,
