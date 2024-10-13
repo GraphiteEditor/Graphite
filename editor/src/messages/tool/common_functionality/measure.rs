@@ -1,5 +1,5 @@
 use crate::consts::COLOR_OVERLAY_BLUE;
-use crate::messages::portfolio::document::overlays::utility_types::{self, OverlayContext};
+use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, Pivot};
 use crate::messages::tool::tool_messages::tool_prelude::*;
 
 use graphene_std::renderer::Rect;
@@ -25,7 +25,7 @@ pub fn overlay(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2,
 		let length = format!("{:.2}", transform_to_document.transform_vector2(DVec2::X * (turn_x - selected_x)).length());
 		let direction = -(min_viewport - max_viewport).normalize_or_zero();
 		let transform = DAffine2::from_translation((min_viewport + max_viewport) / 2.) * DAffine2::from_angle(-direction.angle_to(DVec2::X));
-		overlay_context.text_with_transform(&length, COLOR_OVERLAY_BLUE, None, transform, utility_types::Pivot::TopCenter);
+		overlay_context.text(&length, COLOR_OVERLAY_BLUE, None, transform, 5., [Pivot::Middle, Pivot::Start]);
 	}
 	if turn_y != hovered_y {
 		let min_viewport = transform.transform_point2(DVec2::new(turn_x, turn_y.min(hovered_y)));
@@ -34,6 +34,6 @@ pub fn overlay(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2,
 		let length = format!("{:.2}", transform_to_document.transform_vector2(DVec2::Y * (turn_y - hovered_y)).length());
 		let direction = (min_viewport - max_viewport).normalize_or_zero().perp();
 		let transform = DAffine2::from_translation((min_viewport + max_viewport) / 2.) * DAffine2::from_angle(-direction.angle_to(DVec2::X));
-		overlay_context.text_with_transform(&length, COLOR_OVERLAY_BLUE, None, transform, utility_types::Pivot::CenterLeft);
+		overlay_context.text(&length, COLOR_OVERLAY_BLUE, None, transform, 5., [Pivot::Start, Pivot::Middle]);
 	}
 }
