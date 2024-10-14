@@ -6,7 +6,6 @@ use crate::vector::VectorData;
 use crate::Color;
 
 use dyn_any::DynAny;
-use specta::datatype::reference;
 
 use core::ops::{Deref, DerefMut};
 use glam::{DAffine2, IVec2};
@@ -330,22 +329,29 @@ async fn flatten_group<F: 'n + Send>(
 	group: impl Node<F, Output = GraphicGroup>,
 	fully_flatten: bool,
 ) -> GraphicGroup {
-	let mut nested_group = group.eval(footprint).await;
+	let nested_group = group.eval(footprint).await;
 	let mut flat_group = GraphicGroup::EMPTY;
 	fn flatten_group(result_group: &mut GraphicGroup, current_group: GraphicGroup, fully_flatten: bool) {
+		let mut collection_group = GraphicGroup::EMPTY;
 		for (element, reference) in current_group.elements {
-			let mut collection_group = GraphicGroup::EMPTY;
-			if fully_flatten {
-				if let GraphicElement::GraphicGroup(nested_group) = element {
-					flatten_group(&mut collection_group, nested_group, fully_flatten);
+			if let GraphicElement::GraphicGroup(mut nested_group) = element {
+				nested_group.transform *= current_group.transform;
+				let mut sub_group = GraphicGroup::EMPTY;
+				if fully_flatten {
+					flatten_group(&mut sub_group, nested_group, fully_flatten);
 				} else {
-					collection_group.push((element, reference));
+					for (collection_element, _) in &mut nested_group.elements {
+						*collection_element.transform_mut() = nested_group.transform * collection_element.transform();
+					}
+					sub_group = nested_group;
 				}
+				collection_group.append(&mut sub_group.elements);
 			} else {
 				collection_group.push((element, reference));
 			}
-			result_group.append(&mut collection_group.elements);
 		}
+
+		result_group.append(&mut collection_group.elements);
 	}
 	flatten_group(&mut flat_group, nested_group, fully_flatten);
 	flat_group

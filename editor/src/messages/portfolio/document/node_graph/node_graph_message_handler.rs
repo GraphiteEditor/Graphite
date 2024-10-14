@@ -752,8 +752,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				};
 
-				responses.add(DocumentMessage::EndTransaction);
-
 				if let Some(preview_node) = self.preview_on_mouse_up {
 					responses.add(NodeGraphMessage::TogglePreview { node_id: preview_node });
 					self.preview_on_mouse_up = None;
@@ -992,6 +990,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				self.box_selection_start = None;
 				self.wire_in_progress_from_connector = None;
 				self.wire_in_progress_to_connector = None;
+				responses.add(DocumentMessage::EndTransaction);
 				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 				responses.add(FrontendMessage::UpdateBox { box_selection: None })
 			}
