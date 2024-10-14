@@ -6,11 +6,11 @@ use crate::value::Value;
 pub struct Unit {
 	pub scale: f64,
 	// Exponent of length unit (meters)
-	pub length: f32,
+	pub length: i32,
 	// Exponent of mass unit (kilograms)
-	pub mass: f32,
+	pub mass: i32,
 	// Exponent of time unit (seconds)
-	pub time: f32,
+	pub time: i32,
 }
 
 #[derive(Debug, PartialEq)]

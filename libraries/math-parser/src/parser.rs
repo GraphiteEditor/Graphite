@@ -1,6 +1,7 @@
 use std::num::{ParseFloatError, ParseIntError};
 
 use lazy_static::lazy_static;
+use num_complex::ComplexFloat;
 use pest::{
 	iterators::Pairs,
 	pratt_parser::{Assoc, Op, PrattParser},
@@ -53,20 +54,20 @@ pub enum TypeError {
 #[derive(Error, Debug)]
 pub enum ParseError {
 	#[error("ParseIntError: {0}")]
-	ParseIntError(#[from] ParseIntError),
+	ParseInt(#[from] ParseIntError),
 	#[error("ParseFloatError: {0}")]
-	ParseFloatError(#[from] ParseFloatError),
+	ParseFloat(#[from] ParseFloatError),
 
 	#[error("TypeError: {0}")]
-	TypeError(#[from] TypeError),
+	Type(#[from] TypeError),
 
 	#[error("PestError: {0}")]
-	PestError(#[from] pest::error::Error<Rule>),
+	Pest(#[from] Box<pest::error::Error<Rule>>),
 }
 
 impl Node {
 	pub fn from_str(s: &str) -> Result<Node, ParseError> {
-		let pairs = ExprParser::parse(Rule::program, s)?.next().expect("program should have atleast one child").into_inner();
+		let pairs = ExprParser::parse(Rule::program, s).map_err(Box::new)?;
 		Ok(parse_expr(pairs)?.0)
 	}
 }
@@ -83,27 +84,27 @@ impl NodeMetadata {
 
 fn parse_unit(pairs: Pairs<Rule>) -> Result<Unit, ParseError> {
 	let mut scale = 1.0;
-	let mut length = 0.0;
-	let mut mass = 0.0;
-	let mut time = 0.0;
+	let mut length = 0;
+	let mut mass = 0;
+	let mut time = 0;
 
 	for pair in pairs {
 		match pair.as_rule() {
-			Rule::nano => scale = 1e-9,
-			Rule::micro => scale = 1e-6,
-			Rule::milli => scale = 1e-3,
-			Rule::centi => scale = 1e-2,
-			Rule::deci => scale = 1e-1,
-			Rule::deca => scale = 1e1,
-			Rule::hecto => scale = 1e2,
-			Rule::kilo => scale = 1e3,
-			Rule::mega => scale = 1e6,
-			Rule::giga => scale = 1e9,
-			Rule::tera => scale = 1e12,
+			Rule::nano => scale *= 1e-9,
+			Rule::micro => scale *= 1e-6,
+			Rule::milli => scale *= 1e-3,
+			Rule::centi => scale *= 1e-2,
+			Rule::deci => scale *= 1e-1,
+			Rule::deca => scale *= 1e1,
+			Rule::hecto => scale *= 1e2,
+			Rule::kilo => scale *= 1e3,
+			Rule::mega => scale *= 1e6,
+			Rule::giga => scale *= 1e9,
+			Rule::tera => scale *= 1e12,
 
-			Rule::meter => length = 1.0,
-			Rule::gram => mass = 1.0,
-			Rule::second => time = 1.0,
+			Rule::meter => length = 1,
+			Rule::gram => mass = 1,
+			Rule::second => time = 1,
 
 			_ => unreachable!(), // All possible rules should be covered
 		}
@@ -174,7 +175,7 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 					let value = primary.as_str().parse::<f64>()?;
 					(Node::Lit(Literal::Float(value)), NodeMetadata::new(None))
 				}
-				rule => unreachable!("Expr::parse expected int, expr, ident, found {:?}", rule),
+				rule => unreachable!("unexpected rule: {:?}", rule),
 			})
 		})
 		.map_prefix(|op, rhs| {
@@ -194,21 +195,21 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 				Rule::invcsc => UnaryOp::InvCsc,
 				Rule::invsec => UnaryOp::InvSec,
 				Rule::invcot => UnaryOp::InvCot,
-				_ => unreachable!(),
+				rule => unreachable!("unexpected rule: {:?}", rule),
 			};
 
 			let node = Node::UnaryOp { expr: Box::new(rhs), op };
 
 			let unit = match rhs_metadata.unit {
 				Some(unit) => match op {
-					UnaryOp::Sqrt => Some(Unit {
+					UnaryOp::Sqrt if unit.length % 2 == 0 && unit.mass % 2 == 0 && unit.time % 2 == 0 => Some(Unit {
 						scale: unit.scale.sqrt(),
-						length: unit.length / 2.0,
-						mass: unit.mass / 2.0,
-						time: unit.mass / 2.0,
+						length: unit.length / 2,
+						mass: unit.mass / 2,
+						time: unit.time / 2,
 					}),
 					UnaryOp::Neg => Some(unit),
-					op => return Err(ParseError::TypeError(TypeError::InvalidUnaryOp(Some(unit), op))),
+					op => return Err(ParseError::Type(TypeError::InvalidUnaryOp(Some(unit), op))),
 				},
 				None => None,
 			};
@@ -219,12 +220,13 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 			let (lhs_node, lhs_metadata) = lhs?;
 
 			let op = match op.as_rule() {
+				Rule::EOI => return Ok((lhs_node, lhs_metadata)),
 				Rule::fac => UnaryOp::Fac,
-				_ => unreachable!(),
+				rule => unreachable!("unexpected rule: {:?}", rule),
 			};
 
 			if lhs_metadata.unit.is_some() {
-				return Err(ParseError::TypeError(TypeError::InvalidUnaryOp(lhs_metadata.unit, op)));
+				return Err(ParseError::Type(TypeError::InvalidUnaryOp(lhs_metadata.unit, op)));
 			}
 
 			Ok((Node::UnaryOp { expr: Box::new(lhs_node), op }, lhs_metadata))
@@ -240,7 +242,7 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 				Rule::div => BinaryOp::Div,
 				Rule::pow => BinaryOp::Pow,
 				Rule::paren => BinaryOp::Mul,
-				_ => unreachable!(),
+				rule => unreachable!("unexpected rule: {:?}", rule),
 			};
 
 			let unit = match (lhs_metadata.unit, rhs_metadata.unit) {
@@ -261,32 +263,38 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 						if lhs_unit == rhs_unit {
 							Some(lhs_unit)
 						} else {
-							return Err(ParseError::TypeError(TypeError::InvalidBinaryOp(Some(lhs_unit), op, Some(rhs_unit))));
+							return Err(ParseError::Type(TypeError::InvalidBinaryOp(Some(lhs_unit), op, Some(rhs_unit))));
 						}
 					}
 					BinaryOp::Pow => {
-						return Err(ParseError::TypeError(TypeError::InvalidBinaryOp(Some(lhs_unit), op, Some(rhs_unit))));
+						return Err(ParseError::Type(TypeError::InvalidBinaryOp(Some(lhs_unit), op, Some(rhs_unit))));
 					}
 				},
 
 				(Some(lhs_unit), None) => match op {
-					BinaryOp::Add | BinaryOp::Sub => return Err(ParseError::TypeError(TypeError::InvalidBinaryOp(Some(lhs_unit), op, None))),
+					BinaryOp::Add | BinaryOp::Sub => return Err(ParseError::Type(TypeError::InvalidBinaryOp(Some(lhs_unit), op, None))),
 					BinaryOp::Pow => {
+						//TODO: improve error type
+						//TODO: support 1 / int
 						if let Ok(Value::Number(Number::Real(val))) = rhs.eval() {
-							Some(Unit {
-								scale: lhs_unit.scale.powf(val),
-								length: lhs_unit.length * val as f32,
-								mass: lhs_unit.mass * val as f32,
-								time: lhs_unit.time * val as f32,
-							})
+							if (val - val as i32 as f64).abs() <= f64::EPSILON {
+								Some(Unit {
+									scale: lhs_unit.scale.powf(val),
+									length: lhs_unit.length * val as i32,
+									mass: lhs_unit.mass * val as i32,
+									time: lhs_unit.time * val as i32,
+								})
+							} else {
+								return Err(ParseError::Type(TypeError::InvalidBinaryOp(Some(lhs_unit), op, None)));
+							}
 						} else {
-							return Err(ParseError::TypeError(TypeError::InvalidBinaryOp(Some(lhs_unit), op, None)));
+							return Err(ParseError::Type(TypeError::InvalidBinaryOp(Some(lhs_unit), op, None)));
 						}
 					}
 					_ => Some(lhs_unit),
 				},
 				(None, Some(rhs_unit)) => match op {
-					BinaryOp::Add | BinaryOp::Sub | BinaryOp::Pow => return Err(ParseError::TypeError(TypeError::InvalidBinaryOp(None, op, Some(rhs_unit)))),
+					BinaryOp::Add | BinaryOp::Sub | BinaryOp::Pow => return Err(ParseError::Type(TypeError::InvalidBinaryOp(None, op, Some(rhs_unit)))),
 					_ => Some(rhs_unit),
 				},
 				(None, None) => None,

@@ -102,48 +102,42 @@ impl Number {
 
 	pub fn unary_op(self, op: UnaryOp) -> Number {
 		match self {
-			Number::Real(real) => {
-				let result = match op {
-					UnaryOp::Neg => Number::Real(-real),
-					UnaryOp::Sqrt => Number::Real(real.sqrt()),
+			Number::Real(real) => match op {
+				UnaryOp::Neg => Number::Real(-real),
+				UnaryOp::Sqrt => Number::Real(real.sqrt()),
 
-					UnaryOp::Sin => Number::Real(real.sin()),
-					UnaryOp::Cos => Number::Real(real.cos()),
-					UnaryOp::Tan => Number::Real(real.tan()),
-					UnaryOp::Csc => Number::Real(1.0 / real.sin()),
-					UnaryOp::Sec => Number::Real(1.0 / real.cos()),
-					UnaryOp::Cot => Number::Real(1.0 / real.tan()),
+				UnaryOp::Sin => Number::Real(real.sin()),
+				UnaryOp::Cos => Number::Real(real.cos()),
+				UnaryOp::Tan => Number::Real(real.tan()),
+				UnaryOp::Csc => Number::Real(1.0 / real.sin()),
+				UnaryOp::Sec => Number::Real(1.0 / real.cos()),
+				UnaryOp::Cot => Number::Real(1.0 / real.tan()),
 
-					UnaryOp::InvSin => Number::Real(real.asin()),
-					UnaryOp::InvCos => Number::Real(real.acos()),
-					UnaryOp::InvTan => Number::Real(real.atan()),
+				UnaryOp::InvSin => Number::Real(real.asin()),
+				UnaryOp::InvCos => Number::Real(real.acos()),
+				UnaryOp::InvTan => Number::Real(real.atan()),
 
-					_ => unreachable!(),
-				};
-				result
-			}
+				_ => unreachable!(),
+			},
 
-			Number::Complex(complex) => {
-				let result = match op {
-					UnaryOp::Neg => Number::Complex(-complex),
-					UnaryOp::Sqrt => Number::Complex(complex.sqrt()),
+			Number::Complex(complex) => match op {
+				UnaryOp::Neg => Number::Complex(-complex),
+				UnaryOp::Sqrt => Number::Complex(complex.sqrt()),
 
-					UnaryOp::Sin => Number::Complex(complex.sin()),
-					UnaryOp::Cos => Number::Complex(complex.cos()),
-					UnaryOp::Tan => Number::Complex(complex.tan()),
+				UnaryOp::Sin => Number::Complex(complex.sin()),
+				UnaryOp::Cos => Number::Complex(complex.cos()),
+				UnaryOp::Tan => Number::Complex(complex.tan()),
 
-					UnaryOp::Csc => Number::Complex(Complex::new(1.0, 0.0) / complex.sin()),
-					UnaryOp::Sec => Number::Complex(Complex::new(1.0, 0.0) / complex.cos()),
-					UnaryOp::Cot => Number::Complex(Complex::new(1.0, 0.0) / complex.tan()),
+				UnaryOp::Csc => Number::Complex(Complex::new(1.0, 0.0) / complex.sin()),
+				UnaryOp::Sec => Number::Complex(Complex::new(1.0, 0.0) / complex.cos()),
+				UnaryOp::Cot => Number::Complex(Complex::new(1.0, 0.0) / complex.tan()),
 
-					UnaryOp::InvSin => Number::Complex(complex.asin()),
-					UnaryOp::InvCos => Number::Complex(complex.acos()),
-					UnaryOp::InvTan => Number::Complex(complex.atan()),
+				UnaryOp::InvSin => Number::Complex(complex.asin()),
+				UnaryOp::InvCos => Number::Complex(complex.acos()),
+				UnaryOp::InvTan => Number::Complex(complex.atan()),
 
-					_ => unreachable!(),
-				};
-				result
-			}
+				_ => unreachable!(),
+			},
 		}
 	}
 
