@@ -24,10 +24,11 @@ impl<T: Fn(RawPixel) -> u16> RawPixelTransform for T {
 	}
 }
 
-impl<T1: RawPixelTransform, T2: RawPixelTransform> RawPixelTransform for (T1, T2) {
+impl<T1: RawPixelTransform, T2: RawPixelTransform, T3: RawPixelTransform> RawPixelTransform for (T1, T2, T3) {
 	fn apply(&mut self, mut pixel: RawPixel) -> u16 {
 		pixel.value = self.0.apply(pixel);
 		pixel.value = self.1.apply(pixel);
+		pixel.value = self.2.apply(pixel);
 
 		pixel.value
 	}

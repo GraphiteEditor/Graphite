@@ -36,8 +36,8 @@ pub struct RawImage {
 	pub maximum: u16,
 	pub black: SubtractBlack,
 	pub camera_model: Option<CameraModel>,
-	pub camera_white_balance_multiplier: Option<[f64; 4]>,
-	pub white_balance_multiplier: Option<[f64; 4]>,
+	pub camera_white_balance: Option<[f64; 4]>,
+	pub white_balance: Option<[f64; 4]>,
 	pub camera_to_rgb: Option<[[f64; 3]; 3]>,
 	pub rgb_to_camera: Option<[[f64; 3]; 3]>,
 }
@@ -106,8 +106,9 @@ pub fn process_16bit(raw_image: RawImage) -> Image<u16> {
 	let raw_image = crate::preprocessing::camera_data::calculate_conversion_matrices(raw_image);
 
 	let subtract_black = raw_image.subtract_black_fn();
-	let scale_colors = raw_image.scale_colors_fn();
-	let raw_image = raw_image.apply((subtract_black, scale_colors));
+	let scale_white_balance = raw_image.scale_white_balance_fn();
+	let scale_to_16bit = raw_image.scale_to_16bit_fn();
+	let raw_image = raw_image.apply((subtract_black, scale_white_balance, scale_to_16bit));
 
 	let convert_to_rgb = raw_image.convert_to_rgb_fn();
 	let mut record_histogram = raw_image.record_histogram_fn();
