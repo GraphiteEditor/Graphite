@@ -2142,8 +2142,8 @@ impl<'a> ClickXRayIter<'a> {
 	fn new(network_interface: &'a NodeNetworkInterface, target: XRayTarget) -> Self {
 		if let Some(first_layer) = LayerNodeIdentifier::ROOT_PARENT.first_child(network_interface.document_metadata()) {
 			Self {
-				next_layer: Some(first_layer),
 				network_interface,
+				next_layer: Some(first_layer),
 				parent_targets: vec![(LayerNodeIdentifier::ROOT_PARENT, target)],
 			}
 		} else {
