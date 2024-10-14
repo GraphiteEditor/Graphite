@@ -87,6 +87,8 @@ pub fn decode<R: Read + Seek>(reader: &mut R) -> Result<RawImage, DecoderError> 
 	raw_image.camera_model = Some(camera_model);
 	raw_image.transform = transform;
 
+	raw_image.calculate_conversion_matrices();
+
 	Ok(raw_image)
 }
 
@@ -103,8 +105,6 @@ pub fn process_8bit(raw_image: RawImage) -> Image<u8> {
 }
 
 pub fn process_16bit(raw_image: RawImage) -> Image<u16> {
-	let raw_image = crate::preprocessing::camera_data::calculate_conversion_matrices(raw_image);
-
 	let subtract_black = raw_image.subtract_black_fn();
 	let scale_white_balance = raw_image.scale_white_balance_fn();
 	let scale_to_16bit = raw_image.scale_to_16bit_fn();

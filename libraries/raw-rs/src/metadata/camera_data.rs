@@ -24,42 +24,42 @@ const XYZ_TO_RGB: [[f64; 3]; 3] = [
 	[0.019334, 0.119193, 0.950227],
 ];
 
-pub fn calculate_conversion_matrices(mut raw_image: RawImage) -> RawImage {
-	let Some(ref camera_model) = raw_image.camera_model else { return raw_image };
-	let camera_name_needle = camera_model.make.to_owned() + " " + &camera_model.model;
+impl RawImage {
+	pub fn calculate_conversion_matrices(&mut self) {
+		let Some(ref camera_model) = self.camera_model else { return };
+		let camera_name_needle = camera_model.make.to_owned() + " " + &camera_model.model;
 
-	let camera_to_xyz = CAMERA_DATA
-		.iter()
-		.find(|(camera_name_haystack, _)| camera_name_needle == *camera_name_haystack)
-		.map(|(_, data)| data.camera_to_xyz.map(|x| (x as f64) / 10_000.));
-	let Some(camera_to_xyz) = camera_to_xyz else { return raw_image };
+		let camera_to_xyz = CAMERA_DATA
+			.iter()
+			.find(|(camera_name_haystack, _)| camera_name_needle == *camera_name_haystack)
+			.map(|(_, data)| data.camera_to_xyz.map(|x| (x as f64) / 10_000.));
+		let Some(camera_to_xyz) = camera_to_xyz else { return };
 
-	let mut camera_to_rgb = [[0.; 3]; 3];
-	for i in 0..3 {
-		for j in 0..3 {
-			for k in 0..3 {
-				camera_to_rgb[i][j] += camera_to_xyz[i * 3 + k] * XYZ_TO_RGB[k][j];
+		let mut camera_to_rgb = [[0.; 3]; 3];
+		for i in 0..3 {
+			for j in 0..3 {
+				for k in 0..3 {
+					camera_to_rgb[i][j] += camera_to_xyz[i * 3 + k] * XYZ_TO_RGB[k][j];
+				}
 			}
 		}
+
+		let white_balance_multiplier = camera_to_rgb.map(|x| 1. / x.iter().sum::<f64>());
+		for (index, row) in camera_to_rgb.iter_mut().enumerate() {
+			*row = row.map(|x| x * white_balance_multiplier[index]);
+		}
+		let rgb_to_camera = transpose(pseudoinverse(camera_to_rgb));
+
+		let cfa_white_balance_multiplier = if let Some(white_balance) = self.camera_white_balance {
+			white_balance
+		} else {
+			self.cfa_pattern.map(|index| white_balance_multiplier[index as usize])
+		};
+
+		self.white_balance = Some(cfa_white_balance_multiplier);
+		self.camera_to_rgb = Some(camera_to_rgb);
+		self.rgb_to_camera = Some(rgb_to_camera);
 	}
-
-	let white_balance_multiplier = camera_to_rgb.map(|x| 1. / x.iter().sum::<f64>());
-	for (index, row) in camera_to_rgb.iter_mut().enumerate() {
-		*row = row.map(|x| x * white_balance_multiplier[index]);
-	}
-	let rgb_to_camera = transpose(pseudoinverse(camera_to_rgb));
-
-	let cfa_white_balance_multiplier = if let Some(white_balance) = raw_image.camera_white_balance {
-		white_balance
-	} else {
-		raw_image.cfa_pattern.map(|index| white_balance_multiplier[index as usize])
-	};
-
-	raw_image.white_balance = Some(cfa_white_balance_multiplier);
-	raw_image.camera_to_rgb = Some(camera_to_rgb);
-	raw_image.rgb_to_camera = Some(rgb_to_camera);
-
-	raw_image
 }
 
 #[allow(clippy::needless_range_loop)]
