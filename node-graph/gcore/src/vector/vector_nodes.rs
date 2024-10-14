@@ -195,7 +195,7 @@ async fn repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + Transform 
 
 	let mut result = GraphicGroup::EMPTY;
 
-	let Some(bounding_box) = instance.bounding_box(first_vector_transform) else {
+	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY) else {
 		return result;
 	};
 
@@ -243,12 +243,11 @@ async fn circular_repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + T
 
 	let mut result = GraphicGroup::EMPTY;
 
-	let Some(bounding_box) = instance.bounding_box(first_vector_transform) else {
+	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY) else {
 		return result;
 	};
 
 	let center = (bounding_box[0] + bounding_box[1]) / 2.;
-
 	let base_transform = DVec2::new(0., radius) - center;
 
 	for i in 0..instances {
