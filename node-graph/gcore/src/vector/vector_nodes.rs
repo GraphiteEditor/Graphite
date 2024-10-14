@@ -947,9 +947,10 @@ mod test {
 		let points = Subpath::new_rect(DVec2::NEG_ONE * 10., DVec2::ONE * 10.);
 		let instance = Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE);
 		let expected_points = VectorData::from_subpath(points.clone()).point_domain.positions().to_vec();
-		let bounding_box = super::copy_to_points(Footprint::default(), &vector_node(points), &vector_node(instance), 1., 1., 0., 0, 0., 0).await;
-		assert_eq!(bounding_box.region_bezier_paths().count(), expected_points.len());
-		for (index, (_, subpath)) in bounding_box.region_bezier_paths().enumerate() {
+		let copy_to_points = super::copy_to_points(Footprint::default(), &vector_node(points), &vector_node(instance), 1., 1., 0., 0, 0., 0).await;
+		let flattened_copy_to_points = super::flatten_vector_elements(Footprint::default(), &FutureWrapperNode(copy_to_points)).await;
+		assert_eq!(flattened_copy_to_points.region_bezier_paths().count(), expected_points.len());
+		for (index, (_, subpath)) in flattened_copy_to_points.region_bezier_paths().enumerate() {
 			let offset = expected_points[index];
 			assert_eq!(
 				&subpath.anchors()[..4],
