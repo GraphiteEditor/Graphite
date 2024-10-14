@@ -3,9 +3,50 @@ use crate::ast::{BinaryOp, UnaryOp};
 type Complex = num_complex::Complex<f64>;
 
 #[derive(Debug, PartialEq)]
+pub enum Value {
+	Number(Number),
+}
+
+impl Value {
+	pub fn from_f64(x: f64) -> Self {
+		Self::Number(Number::Real(x))
+	}
+
+	pub fn as_real(&self) -> Option<f64> {
+		match self {
+			Self::Number(Number::Real(val)) => Some(*val),
+			_ => None,
+		}
+	}
+}
+
+impl From<f64> for Value {
+	fn from(x: f64) -> Self {
+		Self::from_f64(x)
+	}
+}
+
+impl core::fmt::Display for Value {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Value::Number(num) => num.fmt(f),
+		}
+	}
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Number {
 	Real(f64),
 	Complex(Complex),
+}
+
+impl std::fmt::Display for Number {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Number::Real(real) => real.fmt(f),
+			Number::Complex(complex) => complex.fmt(f),
+		}
+	}
 }
 
 impl Number {
@@ -108,40 +149,5 @@ impl Number {
 
 	pub fn from_f64(x: f64) -> Self {
 		Self::Real(x)
-	}
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Value {
-	Number(Number),
-}
-
-impl Value {
-	pub fn from_f64(x: f64) -> Self {
-		Self::Number(Number::Real(x))
-	}
-	/// Attempt to convert to a real number
-	pub fn as_real(&self) -> Option<f64> {
-		match self {
-			Self::Complex(real, imaginary) if imaginary.abs() < f64::EPSILON => Some(*real),
-			_ => None,
-		}
-	}
-}
-
-impl From<f64> for Value {
-	fn from(x: f64) -> Self {
-		Self::from_f64(x)
-	}
-}
-
-impl core::fmt::Display for Value {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		if let Some(real) = self.as_real() {
-			return real.fmt(f);
-		}
-		match self {
-			Value::Complex(real, imaginary) => write!(f, "{real}{imaginary:+}i"),
-		}
 	}
 }

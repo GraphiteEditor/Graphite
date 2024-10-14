@@ -34,7 +34,7 @@ pub enum BinaryOp {
 	Pow,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum UnaryOp {
 	Neg,
 	Sqrt,
@@ -100,7 +100,7 @@ mod tests {
 			$(
 				#[test]
 				fn $name() {
-					let result = $expr.eval();
+					let result = $expr.eval().unwrap();
 					assert_eq!(result, $expected);
 				}
 			)*

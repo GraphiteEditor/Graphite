@@ -86,8 +86,8 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 		.map_primary(|primary| {
 			Ok(match primary.as_rule() {
 				Rule::int => {
-					let value = primary.as_str().parse::<u64>()? as f64;
-					(Node::Lit(Literal::Float(value)), NodeMetadata::new(None))
+					let value = primary.as_str().parse::<u64>()?;
+					(Node::Lit(Literal::Int(value as i32)), NodeMetadata::new(None))
 				}
 				Rule::var => {
 					let name = primary.as_str().to_string();
