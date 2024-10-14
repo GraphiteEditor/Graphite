@@ -1,5 +1,6 @@
 WHITESPACE   =  _{ " " | "\t" | "\\left" | "\\right" | NEWLINE }
-  
+ 
+//TODO: propper indentation and formatting
 program      =  _{ SOI ~ expr ~ EOI }
     expr     =  { atom ~ (infix ~ atom)* }
     atom     =  _{ prefix? ~ primary ~ postfix?}
@@ -32,8 +33,28 @@ program      =  _{ SOI ~ expr ~ EOI }
       fn_call =  { var ~ "(" ~ expr ~ ")"}
       var     =  @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
       global_var=  @{ "$" ~ var }
-      lit    =  _{ float | int }
+      lit    =  _{ float | int ~ unit?}
         float  =  @{ int ~ "." ~ int? ~ exp? | int ~ exp }
           exp  =  _{ ^"e" ~ ("+" | "-")? ~ int }
         int    =  @{ ASCII_DIGIT+ }
+        unit   =  @{ (base_unit ~ WHITESPACE) | (scale ~ base_unit) }
+        base_unit = { meter | second | gram }
+          meter  =   { "m" }
+          second =   { "s" }
+          gram   =   { "g" }
+
+        scale  = { nano | micro | milli | centi | deci | deca | hecto | kilo | mega | giga | tera }
+
+        nano   = { "n" }
+        micro  = { "µ" | "u" }
+        milli  = { "m" }
+        centi  = { "c" }
+        deci   = { "d" }
+        deca   = { "da" }
+        hecto  = { "h" }
+        kilo   = { "k" }
+        mega   = { "M" }
+        giga   = { "G" }
+        tera   = { "T" }
+          
 
