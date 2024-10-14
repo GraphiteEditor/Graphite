@@ -963,6 +963,7 @@ impl PortfolioMessageHandler {
 				/text>"#
 				// It's a mystery why the `/text>` tag above needs to be missing its `<`, but when it exists it prints the `<` character in the text. However this works with it removed.
 				.to_string();
+			responses.add(Message::EndBuffer(graphene_std::renderer::RenderMetadata::default()));
 			responses.add(FrontendMessage::UpdateDocumentArtwork { svg: error });
 		}
 		result

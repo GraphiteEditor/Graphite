@@ -266,7 +266,7 @@ pub fn to_transform(transform: DAffine2) -> usvg::Transform {
 
 // TODO: Click targets can be removed from the render output, since the vector data is available in the vector modify data from Monitor nodes.
 // This will require that the transform for child layers into that layer space be calculated, or it could be returned from the RenderOutput instead of click targets.
-#[derive(Debug, Clone, PartialEq, DynAny)]
+#[derive(Debug, Default, Clone, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RenderMetadata {
 	pub footprints: HashMap<NodeId, (Footprint, DAffine2)>,
@@ -300,6 +300,12 @@ pub trait GraphicElementRendered {
 
 	fn contains_artboard(&self) -> bool {
 		false
+	}
+
+	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {}
+
+	fn to_graphic_element(&self) -> GraphicElement {
+		GraphicElement::default()
 	}
 }
 
@@ -392,6 +398,16 @@ impl GraphicElementRendered for GraphicGroup {
 
 	fn contains_artboard(&self) -> bool {
 		self.iter().any(|(element, _)| element.contains_artboard())
+	}
+
+	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {
+		for (element, node_id) in self.elements.iter_mut() {
+			element.new_ids_from_hash(*node_id);
+		}
+	}
+
+	fn to_graphic_element(&self) -> GraphicElement {
+		GraphicElement::GraphicGroup(self.clone())
 	}
 }
 
@@ -581,6 +597,14 @@ impl GraphicElementRendered for VectorData {
 		if layer {
 			scene.pop_layer();
 		}
+	}
+
+	fn new_ids_from_hash(&mut self, reference: Option<NodeId>) {
+		self.vector_new_ids_from_hash(reference.map(|id| id.0).unwrap_or_default());
+	}
+
+	fn to_graphic_element(&self) -> GraphicElement {
+		GraphicElement::VectorData(Box::new(self.clone()))
 	}
 }
 
@@ -946,6 +970,14 @@ impl GraphicElementRendered for GraphicElement {
 			GraphicElement::VectorData(vector_data) => vector_data.contains_artboard(),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.contains_artboard(),
 			GraphicElement::Raster(raster) => raster.contains_artboard(),
+		}
+	}
+
+	fn new_ids_from_hash(&mut self, reference: Option<NodeId>) {
+		match self {
+			GraphicElement::VectorData(vector_data) => vector_data.new_ids_from_hash(reference),
+			GraphicElement::GraphicGroup(graphic_group) => graphic_group.new_ids_from_hash(reference),
+			GraphicElement::Raster(_) => (),
 		}
 	}
 }

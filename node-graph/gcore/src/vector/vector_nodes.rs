@@ -5,7 +5,7 @@ use crate::registry::types::{Angle, Fraction, IntegerCount, Length, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::style::LineJoin;
-use crate::{Color, GraphicGroup};
+use crate::{Color, GraphicElement, GraphicGroup};
 
 use bezier_rs::{Cap, Join, Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
@@ -164,94 +164,187 @@ async fn stroke<F: 'n + Send, T: Into<Option<Color>> + 'n + Send>(
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn repeat<F: 'n + Send>(
+async fn repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + Transform + TransformMut + Send>(
 	#[implementations(
 		(),
+		(),
+		Footprint,
 		Footprint,
 	)]
 	footprint: F,
+	// TODO: Implement other GraphicElementRendered types.
 	#[implementations(
 		() -> VectorData,
+		() -> GraphicGroup,
 		Footprint -> VectorData,
+		Footprint -> GraphicGroup,
 	)]
-	instance: impl Node<F, Output = VectorData>,
+	instance: impl Node<F, Output = I>,
 	#[default(100., 100.)]
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
 	direction: DVec2,
 	angle: Angle,
 	#[default(4)] instances: IntegerCount,
-) -> VectorData {
+) -> GraphicGroup {
 	let instance = instance.eval(footprint).await;
+	let first_vector_transform = instance.transform();
+
 	let angle = angle.to_radians();
 	let instances = instances.max(1);
 	let total = (instances - 1) as f64;
 
-	if instances == 1 {
-		return instance;
-	}
+	let mut result = GraphicGroup::EMPTY;
 
-	// Repeat the vector data
-	let mut result = VectorData::empty();
-
-	let Some(bounding_box) = instance.bounding_box_with_transform(instance.transform) else {
-		return instance;
+	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY) else {
+		return result;
 	};
+
 	let center = (bounding_box[0] + bounding_box[1]) / 2.;
 
 	for i in 0..instances {
 		let translation = i as f64 * direction / total;
 		let angle = i as f64 * angle / total;
+		let mut new_instance = result.last().map(|(element, _)| element.clone()).unwrap_or(instance.to_graphic_element());
+		new_instance.new_ids_from_hash(None);
+		let modification = DAffine2::from_translation(center) * DAffine2::from_angle(angle) * DAffine2::from_translation(translation) * DAffine2::from_translation(-center);
 
-		let transform = DAffine2::from_translation(center) * DAffine2::from_angle(angle) * DAffine2::from_translation(translation) * DAffine2::from_translation(-center);
-
-		result.concat(&instance, transform);
+		let data_transform = new_instance.transform_mut();
+		*data_transform = modification * first_vector_transform;
+		result.push((new_instance, None));
 	}
-
-	result.style.set_stroke_transform(DAffine2::IDENTITY);
 
 	result
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn circular_repeat<F: 'n + Send>(
+async fn circular_repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + Transform + TransformMut + Send>(
 	#[implementations(
+		(),
+		(),
+		Footprint,
+		Footprint,
+	)]
+	footprint: F,
+	// TODO: Implement other GraphicElementRendered types.
+	#[implementations(
+		() -> VectorData,
+		() -> GraphicGroup,
+		Footprint -> VectorData,
+		Footprint -> GraphicGroup,
+	)]
+	instance: impl Node<F, Output = I>,
+	angle_offset: Angle,
+	#[default(5)] radius: Length,
+	#[default(5)] instances: IntegerCount,
+) -> GraphicGroup {
+	let instance = instance.eval(footprint).await;
+	let first_vector_transform = instance.transform();
+	let instances = instances.max(1);
+
+	let mut result = GraphicGroup::EMPTY;
+
+	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY) else {
+		return result;
+	};
+
+	let center = (bounding_box[0] + bounding_box[1]) / 2.;
+	let base_transform = DVec2::new(0., radius) - center;
+
+	for i in 0..instances {
+		let angle = (std::f64::consts::TAU / instances as f64) * i as f64 + angle_offset.to_radians();
+		let rotation = DAffine2::from_angle(angle);
+		let modification = DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform);
+		let mut new_instance = result.last().map(|(element, _)| element.clone()).unwrap_or(instance.to_graphic_element());
+		new_instance.new_ids_from_hash(None);
+
+		let data_transform = new_instance.transform_mut();
+		*data_transform = modification * first_vector_transform;
+		result.push((new_instance, None));
+	}
+
+	result
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn copy_to_points<F: 'n + Send + Copy, I: GraphicElementRendered + ConcatElement + TransformMut + Send + 'n>(
+	#[implementations(
+		(),
 		(),
 		Footprint,
 	)]
 	footprint: F,
 	#[implementations(
 		() -> VectorData,
+		() -> VectorData,
 		Footprint -> VectorData,
 	)]
-	instance: impl Node<F, Output = VectorData>,
-	angle_offset: Angle,
-	#[default(5)] radius: Length,
-	#[default(5)] instances: IntegerCount,
-) -> VectorData {
+	points: impl Node<F, Output = VectorData>,
+	#[expose]
+	#[implementations(
+		() -> VectorData,
+		() -> GraphicGroup,
+		Footprint -> VectorData,
+		Footprint -> GraphicGroup,
+	)]
+	instance: impl Node<F, Output = I>,
+	#[default(1)] random_scale_min: f64,
+	#[default(1)] random_scale_max: f64,
+	random_scale_bias: f64,
+	random_scale_seed: SeedValue,
+	random_rotation: Angle,
+	random_rotation_seed: SeedValue,
+) -> GraphicGroup {
+	let points = points.eval(footprint).await;
 	let instance = instance.eval(footprint).await;
-	let instances = instances.max(1);
+	let instance_transform = instance.transform();
 
-	if instances == 1 {
-		return instance;
+	let random_scale_difference = random_scale_max - random_scale_min;
+
+	let points_list = points.point_domain.positions();
+
+	let instance_bounding_box = instance.bounding_box(DAffine2::IDENTITY).unwrap_or_default();
+	let instance_center = -0.5 * (instance_bounding_box[0] + instance_bounding_box[1]);
+
+	let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed.into());
+	let mut rotation_rng = rand::rngs::StdRng::seed_from_u64(random_rotation_seed.into());
+
+	let do_scale = random_scale_difference.abs() > 1e-6;
+	let do_rotation = random_rotation.abs() > 1e-6;
+
+	let mut result = GraphicGroup::default();
+	for &point in points_list {
+		let center_transform = DAffine2::from_translation(instance_center);
+
+		let translation = points.transform.transform_point2(point);
+
+		let rotation = if do_rotation {
+			let degrees = (rotation_rng.gen::<f64>() - 0.5) * random_rotation;
+			degrees / 360. * std::f64::consts::TAU
+		} else {
+			0.
+		};
+
+		let scale = if do_scale {
+			if random_scale_bias.abs() < 1e-6 {
+				// Linear
+				random_scale_min + scale_rng.gen::<f64>() * random_scale_difference
+			} else {
+				// Weighted (see <https://www.desmos.com/calculator/gmavd3m9bd>)
+				let horizontal_scale_factor = 1. - 2_f64.powf(random_scale_bias);
+				let scale_factor = (1. - scale_rng.gen::<f64>() * horizontal_scale_factor).log2() / random_scale_bias;
+				random_scale_min + scale_factor * random_scale_difference
+			}
+		} else {
+			random_scale_min
+		};
+
+		let mut new_instance = result.last().map(|(element, _)| element.clone()).unwrap_or(instance.to_graphic_element());
+		new_instance.new_ids_from_hash(None);
+
+		let data_transform = new_instance.transform_mut();
+		*data_transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation) * center_transform * instance_transform;
+		result.push((new_instance, None));
 	}
-
-	let mut result = VectorData::empty();
-
-	let Some(bounding_box) = instance.bounding_box_with_transform(instance.transform) else {
-		return instance;
-	};
-	let center = (bounding_box[0] + bounding_box[1]) / 2.;
-
-	let base_transform = DVec2::new(0., radius) - center;
-
-	for i in 0..instances {
-		let angle = (std::f64::consts::TAU / instances as f64) * i as f64 + angle_offset.to_radians();
-		let rotation = DAffine2::from_angle(angle);
-		let transform = DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform);
-		result.concat(&instance, transform);
-	}
-
-	result.style.set_stroke_transform(DAffine2::IDENTITY);
 
 	result
 }
@@ -381,6 +474,42 @@ async fn solidify_stroke<F: 'n + Send>(
 	result
 }
 
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn flatten_vector_elements<F: 'n + Send>(
+	#[implementations(
+		(),
+		Footprint,
+	)]
+	footprint: F,
+	#[implementations(
+		() -> GraphicGroup,
+		Footprint -> GraphicGroup,
+	)]
+	graphic_group_input: impl Node<F, Output = GraphicGroup>,
+) -> VectorData {
+	let graphic_group = graphic_group_input.eval(footprint).await;
+
+	fn concat_group(graphic_group: &GraphicGroup, current_transform: DAffine2, result: &mut VectorData) {
+		for (element, _) in graphic_group.iter() {
+			match element {
+				GraphicElement::VectorData(vector_data) => {
+					result.concat(vector_data, current_transform);
+				}
+				GraphicElement::GraphicGroup(graphic_group) => {
+					concat_group(graphic_group, current_transform * graphic_group.transform, result);
+				}
+				_ => {}
+			}
+		}
+	}
+
+	let mut result = VectorData::empty();
+	concat_group(&graphic_group, DAffine2::IDENTITY, &mut result);
+	// TODO: This leads to incorrect stroke widths when flattening groups with different transforms.
+	result.style.set_stroke_transform(DAffine2::IDENTITY);
+	result
+}
+
 pub trait ConcatElement {
 	fn concat(&mut self, other: &Self, transform: DAffine2);
 }
@@ -394,84 +523,6 @@ impl ConcatElement for GraphicGroup {
 		}
 		self.alpha_blending = other.alpha_blending;
 	}
-}
-
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn copy_to_points<F: 'n + Send + Copy, I: GraphicElementRendered + Default + ConcatElement + TransformMut + Send>(
-	#[implementations(
-		(),
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> VectorData,
-		() -> VectorData,
-		Footprint -> VectorData,
-	)]
-	points: impl Node<F, Output = VectorData>,
-	#[expose]
-	#[implementations(
-		() -> VectorData,
-		() -> GraphicGroup,
-		Footprint -> VectorData,
-		Footprint -> GraphicGroup,
-	)]
-	instance: impl Node<F, Output = I>,
-	#[default(1)] random_scale_min: f64,
-	#[default(1)] random_scale_max: f64,
-	random_scale_bias: f64,
-	random_scale_seed: SeedValue,
-	random_rotation: Angle,
-	random_rotation_seed: SeedValue,
-) -> I {
-	let points = points.eval(footprint).await;
-	let instance = instance.eval(footprint).await;
-
-	let random_scale_difference = random_scale_max - random_scale_min;
-
-	let points_list = points.point_domain.positions();
-
-	let instance_bounding_box = instance.bounding_box(DAffine2::IDENTITY).unwrap_or_default();
-	let instance_center = -0.5 * (instance_bounding_box[0] + instance_bounding_box[1]);
-
-	let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed.into());
-	let mut rotation_rng = rand::rngs::StdRng::seed_from_u64(random_rotation_seed.into());
-
-	let do_scale = random_scale_difference.abs() > 1e-6;
-	let do_rotation = random_rotation.abs() > 1e-6;
-
-	let mut result = I::default();
-	for &point in points_list {
-		let center_transform = DAffine2::from_translation(instance_center);
-
-		let translation = points.transform.transform_point2(point);
-
-		let rotation = if do_rotation {
-			let degrees = (rotation_rng.gen::<f64>() - 0.5) * random_rotation;
-			degrees / 360. * std::f64::consts::TAU
-		} else {
-			0.
-		};
-
-		let scale = if do_scale {
-			if random_scale_bias.abs() < 1e-6 {
-				// Linear
-				random_scale_min + scale_rng.gen::<f64>() * random_scale_difference
-			} else {
-				// Weighted (see <https://www.desmos.com/calculator/gmavd3m9bd>)
-				let horizontal_scale_factor = 1. - 2_f64.powf(random_scale_bias);
-				let scale_factor = (1. - scale_rng.gen::<f64>() * horizontal_scale_factor).log2() / random_scale_bias;
-				random_scale_min + scale_factor * random_scale_difference
-			}
-		} else {
-			random_scale_min
-		};
-
-		result.concat(&instance, DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation) * center_transform);
-	}
-
-	result
 }
 
 #[node_macro::node(category(""))]
@@ -622,7 +673,7 @@ async fn subpath_segment_lengths<F: 'n + Send>(
 		.collect()
 }
 
-#[node_macro::node(name("Splines from Points"), category(""), path(graphene_core::vector))]
+#[node_macro::node(name("Splines from Points"), category("Vector"), path(graphene_core::vector))]
 fn splines_from_points(_: (), mut vector_data: VectorData) -> VectorData {
 	let points = &vector_data.point_domain;
 
@@ -838,8 +889,9 @@ mod test {
 		let direction = DVec2::X * 1.5;
 		let instances = 3;
 		let repeated = super::repeat(Footprint::default(), &vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
-		assert_eq!(repeated.region_bezier_paths().count(), 3);
-		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
+		let vector_data = super::flatten_vector_elements(Footprint::default(), &FutureWrapperNode(repeated)).await;
+		assert_eq!(vector_data.region_bezier_paths().count(), 3);
+		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
 			assert!((subpath.manipulator_groups()[0].anchor - direction * index as f64 / (instances - 1) as f64).length() < 1e-5);
 		}
 	}
@@ -848,16 +900,18 @@ mod test {
 		let direction = DVec2::new(12., 10.);
 		let instances = 8;
 		let repeated = super::repeat(Footprint::default(), &vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
-		assert_eq!(repeated.region_bezier_paths().count(), 8);
-		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
+		let vector_data = super::flatten_vector_elements(Footprint::default(), &FutureWrapperNode(repeated)).await;
+		assert_eq!(vector_data.region_bezier_paths().count(), 8);
+		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
 			assert!((subpath.manipulator_groups()[0].anchor - direction * index as f64 / (instances - 1) as f64).length() < 1e-5);
 		}
 	}
 	#[tokio::test]
 	async fn circle_repeat() {
 		let repeated = super::circular_repeat(Footprint::default(), &vector_node(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE)), 45., 4., 8).await;
-		assert_eq!(repeated.region_bezier_paths().count(), 8);
-		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
+		let vector_data = super::flatten_vector_elements(Footprint::default(), &FutureWrapperNode(repeated)).await;
+		assert_eq!(vector_data.region_bezier_paths().count(), 8);
+		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
 			let expected_angle = (index as f64 + 1.) * 45.;
 			let center = (subpath.manipulator_groups()[0].anchor + subpath.manipulator_groups()[2].anchor) / 2.;
 			let actual_angle = DVec2::Y.angle_to(center).to_degrees();
@@ -893,9 +947,10 @@ mod test {
 		let points = Subpath::new_rect(DVec2::NEG_ONE * 10., DVec2::ONE * 10.);
 		let instance = Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE);
 		let expected_points = VectorData::from_subpath(points.clone()).point_domain.positions().to_vec();
-		let bounding_box = super::copy_to_points(Footprint::default(), &vector_node(points), &vector_node(instance), 1., 1., 0., 0, 0., 0).await;
-		assert_eq!(bounding_box.region_bezier_paths().count(), expected_points.len());
-		for (index, (_, subpath)) in bounding_box.region_bezier_paths().enumerate() {
+		let copy_to_points = super::copy_to_points(Footprint::default(), &vector_node(points), &vector_node(instance), 1., 1., 0., 0, 0., 0).await;
+		let flattened_copy_to_points = super::flatten_vector_elements(Footprint::default(), &FutureWrapperNode(copy_to_points)).await;
+		assert_eq!(flattened_copy_to_points.region_bezier_paths().count(), expected_points.len());
+		for (index, (_, subpath)) in flattened_copy_to_points.region_bezier_paths().enumerate() {
 			let offset = expected_points[index];
 			assert_eq!(
 				&subpath.anchors()[..4],

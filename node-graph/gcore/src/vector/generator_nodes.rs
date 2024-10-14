@@ -114,7 +114,6 @@ fn spline<F: 'n + Send>(#[implementations((), Footprint)] _footprint: F, _primar
 }
 
 // TODO(TrueDoctor): I removed the Arc requirement we should think about when it makes sense to use it vs making a generic value node
-
 #[node_macro::node(category(""))]
 fn path<F: 'n + Send>(#[implementations((), Footprint)] _footprint: F, path_data: Vec<Subpath<PointId>>, colinear_manipulators: Vec<PointId>) -> super::VectorData {
 	let mut vector_data = super::VectorData::from_subpaths(path_data, false);
