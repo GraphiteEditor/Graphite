@@ -49,13 +49,13 @@ pub fn calculate_conversion_matrices(mut raw_image: RawImage) -> RawImage {
 	}
 	let rgb_to_camera = transpose(pseudoinverse(camera_to_rgb));
 
-	let cfa_white_balance_multiplier = if let Some(white_balance) = raw_image.camera_white_balance_multiplier {
+	let cfa_white_balance_multiplier = if let Some(white_balance) = raw_image.camera_white_balance {
 		white_balance
 	} else {
 		raw_image.cfa_pattern.map(|index| white_balance_multiplier[index as usize])
 	};
 
-	raw_image.white_balance_multiplier = Some(cfa_white_balance_multiplier);
+	raw_image.white_balance = Some(cfa_white_balance_multiplier);
 	raw_image.camera_to_rgb = Some(camera_to_rgb);
 	raw_image.rgb_to_camera = Some(rgb_to_camera);
 
