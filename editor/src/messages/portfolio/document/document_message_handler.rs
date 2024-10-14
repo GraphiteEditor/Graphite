@@ -2140,10 +2140,18 @@ fn click_targets_to_path_lib_segments<'a>(click_targets: impl Iterator<Item = &'
 
 impl<'a> ClickXRayIter<'a> {
 	fn new(network_interface: &'a NodeNetworkInterface, target: XRayTarget) -> Self {
-		Self {
-			next_layer: LayerNodeIdentifier::ROOT_PARENT.first_child(network_interface.document_metadata()),
-			network_interface,
-			parent_targets: vec![(LayerNodeIdentifier::ROOT_PARENT, target)],
+		if let Some(first_layer) = LayerNodeIdentifier::ROOT_PARENT.first_child(network_interface.document_metadata()) {
+			Self {
+				next_layer: Some(first_layer),
+				network_interface,
+				parent_targets: vec![(LayerNodeIdentifier::ROOT_PARENT, target)],
+			}
+		} else {
+			Self {
+				network_interface,
+				next_layer: Default::default(),
+				parent_targets: Default::default(),
+			}
 		}
 	}
 
