@@ -4,10 +4,11 @@ extern crate log;
 mod ast;
 mod parser;
 mod value;
+use ast::EvalError;
 use parser::ParseError;
 use value::Value;
 
-pub fn evaluate(expression: &str) -> Result<Value, ParseError> {
+pub fn evaluate(expression: &str) -> Result<Result<Value, EvalError>, ParseError> {
 	debug!("Evaluating expression {expression}");
 	ast::Node::from_str(expression).map(|node| node.eval())
 }
@@ -17,7 +18,7 @@ mod tests {
 	use super::*;
 	#[track_caller]
 	fn end_to_end(expression: &str, value: impl Into<Value>) {
-		assert_eq!(evaluate(expression).unwrap(), value.into());
+		assert_eq!(evaluate(expression).unwrap().unwrap(), value.into());
 	}
 	#[test]
 	fn simple_infix() {

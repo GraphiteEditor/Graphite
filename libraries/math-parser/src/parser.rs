@@ -185,10 +185,8 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 				_ => unreachable!(),
 			};
 
-			// Handle unit calculations or type errors based on the operator
 			let unit = match (lhs_metadata.unit, rhs_metadata.unit) {
 				(Some(lhs_unit), Some(rhs_unit)) => match op {
-					// Example: handle unit combination for multiplication and division
 					BinaryOp::Mul => Some(Unit {
 						scale: lhs_unit.scale * rhs_unit.scale,
 						length: lhs_unit.length + rhs_unit.length,
@@ -201,7 +199,6 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 						mass: lhs_unit.mass - rhs_unit.mass,
 						time: lhs_unit.time - rhs_unit.time,
 					}),
-					// Add and subtract only make sense for compatible units
 					BinaryOp::Add | BinaryOp::Sub => {
 						if lhs_unit == rhs_unit {
 							Some(lhs_unit)
@@ -209,7 +206,6 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 							return Err(ParseError::TypeError(TypeError::InvalidBinaryOp(Some(lhs_unit), op, Some(rhs_unit))));
 						}
 					}
-					// Handle other cases like exponentiation, etc.
 					BinaryOp::Pow => {
 						return Err(ParseError::TypeError(TypeError::InvalidBinaryOp(Some(lhs_unit), op, Some(rhs_unit))));
 					}
