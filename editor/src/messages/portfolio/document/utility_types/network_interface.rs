@@ -2930,6 +2930,11 @@ impl NodeNetworkInterface {
 		self.document_metadata.click_targets = new_click_targets;
 	}
 
+	/// Update the cached clip targets of the layers
+	pub fn update_clip_targets(&mut self, new_clip_targets: HashSet<NodeId>) {
+		self.document_metadata.clip_targets = new_clip_targets;
+	}
+
 	/// Update the vector modify of the layers
 	pub fn update_vector_modify(&mut self, new_vector_modify: HashMap<NodeId, VectorData>) {
 		self.document_metadata.vector_modify = new_vector_modify;

@@ -110,7 +110,11 @@ impl Dispatcher {
 						self.message_queues.extend(buffered_queue);
 					};
 
-					let graphene_std::renderer::RenderMetadata { footprints, click_targets } = render_metadata;
+					let graphene_std::renderer::RenderMetadata {
+						footprints,
+						click_targets,
+						clip_targets,
+					} = render_metadata;
 
 					let mut update_upstream_transform = VecDeque::new();
 					update_upstream_transform.push_back(DocumentMessage::UpdateUpstreamTransforms { upstream_transforms: footprints }.into());
@@ -118,6 +122,7 @@ impl Dispatcher {
 
 					let mut update_click_targets = VecDeque::new();
 					update_click_targets.push_back(DocumentMessage::UpdateClickTargets { click_targets }.into());
+					update_click_targets.push_back(DocumentMessage::UpdateClipTargets { clip_targets }.into());
 					self.message_queues.push(update_click_targets);
 				}
 				Message::NoOp => {}

@@ -102,7 +102,7 @@ async fn execute_shader<I: Pod + Send + Sync, O: Pod + Send + Sync>(device: Arc<
 		label: None,
 		layout: None,
 		module: &cs_module,
-		entry_point: entry_point.as_str(),
+		entry_point: Some(entry_point.as_str()),
 		compilation_options: Default::default(),
 		cache: None,
 	});
@@ -130,7 +130,7 @@ async fn execute_shader<I: Pod + Send + Sync, O: Pod + Send + Sync>(device: Arc<
 	{
 		let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None, timestamp_writes: None });
 		cpass.set_pipeline(&compute_pipeline);
-		cpass.set_bind_group(0, &bind_group, &[]);
+		cpass.set_bind_group(0, Some(&bind_group), &[]);
 		cpass.insert_debug_marker("compute node network evaluation");
 		cpass.dispatch_workgroups(data.len().min(65535) as u32, 1, 1); // Number of cells to run, the (x,y,z) size of item being processed
 	}

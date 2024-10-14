@@ -916,18 +916,12 @@ impl EditorHandle {
 
 #[wasm_bindgen(js_name = evaluateMathExpression)]
 pub fn evaluate_math_expression(expression: &str) -> Option<f64> {
-	// TODO: Rewrite our own purpose-built math expression parser that supports unit conversions.
-
-	let mut context = meval::Context::new();
-	context.var("tau", std::f64::consts::TAU);
-	context.func("log", f64::log10);
-	context.func("log10", f64::log10);
-	context.func("log2", f64::log2);
-
-	// Insert asterisks where implicit multiplication is used in the expression string
-	let expression = implicit_multiplication_preprocess(expression);
-
-	meval::eval_str_with_context(expression, &context).ok()
+	let value = math_parser::evaluate(expression).inspect_err(|err| error!("Math parser error on \"{expression}\": {err}")).ok()?;
+	let Some(real) = value.as_real() else {
+		error!("{value} was not a real; skipping.");
+		return None;
+	};
+	Some(real)
 }
 
 // Modified from this public domain snippet: <https://gist.github.com/Titaniumtown/c181be5d06505e003d8c4d1e372684ff>

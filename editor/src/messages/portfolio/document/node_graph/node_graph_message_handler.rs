@@ -1339,10 +1339,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							log::error!("Could not get transient metadata for node {node_id}");
 							continue;
 						};
-						if click_targets
-							.node_click_target
-							.intersect_rectangle(Quad::from_box([box_selection_start, box_selection_end_graph]), DAffine2::IDENTITY)
-						{
+						let quad = Quad::from_box([box_selection_start, box_selection_end_graph]);
+						if click_targets.node_click_target.intersect_path(|| quad.bezier_lines(), DAffine2::IDENTITY) {
 							nodes.insert(node_id);
 						}
 					}

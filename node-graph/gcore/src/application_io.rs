@@ -78,14 +78,14 @@ impl Hash for TextureFrame {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
 		#[cfg(feature = "wgpu")]
-		self.texture.global_id().hash(state);
+		self.texture.hash(state);
 	}
 }
 
 impl PartialEq for TextureFrame {
 	fn eq(&self, other: &Self) -> bool {
 		#[cfg(feature = "wgpu")]
-		return self.transform.eq(&other.transform) && self.texture.global_id() == other.texture.global_id();
+		return self.transform.eq(&other.transform) && self.texture == other.texture;
 
 		#[cfg(not(feature = "wgpu"))]
 		self.transform.eq(&other.transform)

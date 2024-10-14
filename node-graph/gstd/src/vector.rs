@@ -5,6 +5,7 @@ use graphene_core::transform::Transform;
 use graphene_core::vector::misc::BooleanOperation;
 pub use graphene_core::vector::*;
 use graphene_core::{Color, GraphicElement, GraphicGroup};
+pub use path_bool as path_bool_lib;
 use path_bool::FillRule;
 use path_bool::PathBooleanOperation;
 
@@ -342,6 +343,6 @@ fn boolean_subtract(a: Path, b: Path) -> Vec<Path> {
 	path_bool(a, b, PathBooleanOperation::Difference)
 }
 
-fn boolean_intersect(a: Path, b: Path) -> Vec<Path> {
+pub fn boolean_intersect(a: Path, b: Path) -> Vec<Path> {
 	path_bool(a, b, PathBooleanOperation::Intersection)
 }
