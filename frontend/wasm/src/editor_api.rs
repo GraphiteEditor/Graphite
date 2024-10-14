@@ -916,7 +916,11 @@ impl EditorHandle {
 
 #[wasm_bindgen(js_name = evaluateMathExpression)]
 pub fn evaluate_math_expression(expression: &str) -> Option<f64> {
-	let value = math_parser::evaluate(expression).inspect_err(|err| error!("Math parser error on \"{expression}\": {err}")).ok()?;
+	let value = math_parser::evaluate(expression)
+		.inspect_err(|err| error!("Math parser error on \"{expression}\": {err}"))
+		.ok()?
+		.inspect_err(|err| error!("Math evaluate error on \"{expression}\": {err} "))
+		.ok()?;
 	let Some(real) = value.as_real() else {
 		error!("{value} was not a real; skipping.");
 		return None;
