@@ -384,11 +384,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 					let name = self.network_interface.frontend_display_name(&layer.to_node(), &[]);
 
-					let (scale, angle, translation) = self.metadata().document_to_viewport.to_scale_angle_translation();
-					let translation = translation + scale * bounds[0].min(bounds[1]) - DVec2::Y * 4.;
-					let transform = DAffine2::from_angle_translation(angle, translation);
+					let transform = self.metadata().document_to_viewport
+						* DAffine2::from_translation(bounds[0].min(bounds[1]))
+						* DAffine2::from_scale(DVec2::splat(self.document_ptz.zoom().recip()))
+						* DAffine2::from_translation(-DVec2::Y * 4.);
 
-					overlay_context.text_with_transform(&name, COLOR_OVERLAY_GRAY, None, transform, Pivot::BottomLeft);
+					overlay_context.text(&name, COLOR_OVERLAY_GRAY, None, transform, 0., [Pivot::Start, Pivot::End]);
 				}
 			}
 			DocumentMessage::DuplicateSelectedLayers => {
@@ -1081,6 +1082,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				}
 				responses.add(NodeGraphMessage::SendGraph);
 			}
+			DocumentMessage::ToggleSelectedLocked => responses.add(NodeGraphMessage::ToggleSelectedLocked),
+			DocumentMessage::ToggleSelectedVisibility => {
+				responses.add(NodeGraphMessage::ToggleSelectedVisibility);
+			}
 			DocumentMessage::ToggleGridVisibility => {
 				self.snapping_state.grid_snapping = !self.snapping_state.grid_snapping;
 				responses.add(OverlaysMessage::Draw);
@@ -1311,6 +1316,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				SelectedLayersRaise,
 				SelectedLayersRaiseToFront,
 				UngroupSelectedLayers,
+				ToggleSelectedVisibility,
+				ToggleSelectedLocked
 			);
 			if !self.graph_view_overlay_open {
 				select.extend(actions!(DocumentMessageDiscriminant; NudgeSelectedLayers));
