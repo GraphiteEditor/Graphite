@@ -81,18 +81,71 @@ impl NodeMetadata {
 	}
 }
 
+fn parse_unit(pairs: Pairs<Rule>) -> Result<Unit, ParseError> {
+	let mut scale = 1.0;
+	let mut length = 0.0;
+	let mut mass = 0.0;
+	let mut time = 0.0;
+
+	for pair in pairs {
+		match pair.as_rule() {
+			Rule::nano => scale = 1e-9,
+			Rule::micro => scale = 1e-6,
+			Rule::milli => scale = 1e-3,
+			Rule::centi => scale = 1e-2,
+			Rule::deci => scale = 1e-1,
+			Rule::deca => scale = 1e1,
+			Rule::hecto => scale = 1e2,
+			Rule::kilo => scale = 1e3,
+			Rule::mega => scale = 1e6,
+			Rule::giga => scale = 1e9,
+			Rule::tera => scale = 1e12,
+
+			Rule::meter => length = 1.0,
+			Rule::gram => mass = 1.0,
+			Rule::second => time = 1.0,
+
+			_ => unreachable!(), // All possible rules should be covered
+		}
+	}
+
+	Ok(Unit { scale, length, mass, time })
+}
+
+fn parse_lit(mut pairs: Pairs<Rule>) -> Result<(Literal, Option<Unit>), ParseError> {
+	let literal = match pairs.next() {
+		Some(lit) => match lit.as_rule() {
+			Rule::int => {
+				let value = lit.as_str().parse::<i32>()?;
+				Literal::Int(value)
+			}
+			Rule::float => {
+				let value = lit.as_str().parse::<f64>()?;
+				Literal::Float(value)
+			}
+			_ => unreachable!(),
+		},
+		None => unreachable!(), // No literal found
+	};
+
+	let unit = if let Some(unit_pair) = pairs.next() {
+		let unit_pairs = unit_pair.into_inner(); // Get the inner pairs for the unit
+		Some(parse_unit(unit_pairs)?)
+	} else {
+		None // No unit
+	};
+
+	Ok((literal, unit))
+}
+
 fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 	PRATT_PARSER
 		.map_primary(|primary| {
 			Ok(match primary.as_rule() {
-				Rule::int => {
-					let value = primary.as_str().parse::<u64>()?;
-					(Node::Lit(Literal::Int(value as i32)), NodeMetadata::new(None))
-				}
-				Rule::var => {
-					let name = primary.as_str().to_string();
+				Rule::lit => {
+					let (lit, unit) = parse_lit(primary.into_inner())?;
 
-					(Node::Var(name), NodeMetadata::new(None))
+					(Node::Lit(lit), NodeMetadata { unit })
 				}
 				Rule::fn_call => {
 					let mut pairs = primary.into_inner();
@@ -110,6 +163,11 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 					let name = primary.as_str().split_at(1).1.to_string();
 
 					(Node::GlobalVar(name), NodeMetadata::new(None))
+				}
+				Rule::var => {
+					let name = primary.as_str().to_string();
+
+					(Node::Var(name), NodeMetadata::new(None))
 				}
 				Rule::expr => parse_expr(primary.into_inner())?,
 				Rule::float => {
@@ -225,7 +283,7 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 							return Err(ParseError::TypeError(TypeError::InvalidBinaryOp(Some(lhs_unit), op, None)));
 						}
 					}
-					_ => return Err(ParseError::TypeError(TypeError::InvalidBinaryOp(Some(lhs_unit), op, None))),
+					_ => Some(lhs_unit),
 				},
 				(None, Some(rhs_unit)) => match op {
 					BinaryOp::Add | BinaryOp::Sub | BinaryOp::Pow => return Err(ParseError::TypeError(TypeError::InvalidBinaryOp(None, op, Some(rhs_unit)))),
@@ -245,19 +303,20 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 		.parse(pairs)
 }
 
+//TODO: set up Unit test for Units
 #[cfg(test)]
 mod tests {
 	use super::*;
 	macro_rules! test_parser {
-	($($name:ident: $input:expr => $expected:expr),* $(,)?) => {
-		$(
-			#[test]
-			fn $name() {
-				let result = Node::from_str($input).unwrap();
-				assert_eq!(result, $expected);
-			}
-		)*
-	};
+		($($name:ident: $input:expr => $expected:expr),* $(,)?) => {
+			$(
+				#[test]
+				fn $name() {
+					let result = Node::from_str($input).unwrap();
+					assert_eq!(result, $expected);
+				}
+			)*
+		};
 	}
 
 	test_parser! {
