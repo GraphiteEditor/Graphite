@@ -4,7 +4,6 @@ use crate::value::Value;
 
 #[derive(Debug, PartialEq)]
 pub struct Unit {
-	pub scale: f64,
 	// Exponent of length unit (meters)
 	pub length: i32,
 	// Exponent of mass unit (kilograms)
@@ -15,7 +14,6 @@ pub struct Unit {
 
 #[derive(Debug, PartialEq)]
 pub enum Literal {
-	Int(i32),
 	Float(f64),
 }
 
@@ -70,7 +68,6 @@ impl Node {
 	pub fn eval(&self) -> Result<Value, EvalError> {
 		match self {
 			Node::Lit(lit) => match lit {
-				Literal::Int(num) => Ok(Value::from_f64(*num as f64)),
 				Literal::Float(num) => Ok(Value::from_f64(*num)),
 			},
 
@@ -109,31 +106,31 @@ mod tests {
 
 	eval_tests! {
 		test_addition: Value::from_f64(7.0) => Node::BinOp {
-			lhs: Box::new(Node::Lit(Literal::Int(3))),
+			lhs: Box::new(Node::Lit(Literal::Float(3.0))),
 			op: BinaryOp::Add,
-			rhs: Box::new(Node::Lit(Literal::Int(4))),
+			rhs: Box::new(Node::Lit(Literal::Float(4.0))),
 		},
 		test_subtraction: Value::from_f64(1.0) => Node::BinOp {
-			lhs: Box::new(Node::Lit(Literal::Int(5))),
+			lhs: Box::new(Node::Lit(Literal::Float(5.0))),
 			op: BinaryOp::Sub,
-			rhs: Box::new(Node::Lit(Literal::Int(4))),
+			rhs: Box::new(Node::Lit(Literal::Float(4.0))),
 		},
 		test_multiplication: Value::from_f64(12.0) => Node::BinOp {
-			lhs: Box::new(Node::Lit(Literal::Int(3))),
+			lhs: Box::new(Node::Lit(Literal::Float(3.0))),
 			op: BinaryOp::Mul,
-			rhs: Box::new(Node::Lit(Literal::Int(4))),
+			rhs: Box::new(Node::Lit(Literal::Float(4.0))),
 		},
 		test_division: Value::from_f64(2.5) => Node::BinOp {
 			lhs: Box::new(Node::Lit(Literal::Float(5.0))),
 			op: BinaryOp::Div,
-			rhs: Box::new(Node::Lit(Literal::Int(2))),
+			rhs: Box::new(Node::Lit(Literal::Float(2.0))),
 		},
 		test_negation: Value::from_f64(-3.0) => Node::UnaryOp {
-			expr: Box::new(Node::Lit(Literal::Int(3))),
+			expr: Box::new(Node::Lit(Literal::Float(3.0))),
 			op: UnaryOp::Neg,
 		},
 		test_sqrt: Value::from_f64(2.0) => Node::UnaryOp {
-			expr: Box::new(Node::Lit(Literal::Int(4))),
+			expr: Box::new(Node::Lit(Literal::Float(4.0))),
 			op: UnaryOp::Sqrt,
 		},
 		test_sine: Value::from_f64(0.0) => Node::UnaryOp {
@@ -145,9 +142,9 @@ mod tests {
 			op: UnaryOp::Cos,
 		},
 		// test_power: Value::from_f64(8.0) => Node::BinOp {
-		// 	lhs: Box::new(Node::Lit(Literal::Int(2))),
+		// 	lhs: Box::new(Node::Lit(Literal::Float(2.0))),
 		// 	op: BinaryOp::Pow,
-		// 	rhs: Box::new(Node::Lit(Literal::Int(3))),
+		// 	rhs: Box::new(Node::Lit(Literal::Float(3.0))),
 		// },
 	}
 }

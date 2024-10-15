@@ -82,7 +82,7 @@ impl NodeMetadata {
 	}
 }
 
-fn parse_unit(pairs: Pairs<Rule>) -> Result<Unit, ParseError> {
+fn parse_unit(pairs: Pairs<Rule>) -> Result<(Unit, f64), ParseError> {
 	let mut scale = 1.0;
 	let mut length = 0;
 	let mut mass = 0;
@@ -110,15 +110,15 @@ fn parse_unit(pairs: Pairs<Rule>) -> Result<Unit, ParseError> {
 		}
 	}
 
-	Ok(Unit { scale, length, mass, time })
+	Ok((Unit { length, mass, time }, scale))
 }
 
 fn parse_lit(mut pairs: Pairs<Rule>) -> Result<(Literal, Option<Unit>), ParseError> {
 	let literal = match pairs.next() {
 		Some(lit) => match lit.as_rule() {
 			Rule::int => {
-				let value = lit.as_str().parse::<i32>()?;
-				Literal::Int(value)
+				let value = lit.as_str().parse::<i32>()? as f64;
+				Literal::Float(value)
 			}
 			Rule::float => {
 				let value = lit.as_str().parse::<f64>()?;
@@ -129,14 +129,19 @@ fn parse_lit(mut pairs: Pairs<Rule>) -> Result<(Literal, Option<Unit>), ParseErr
 		None => unreachable!(), // No literal found
 	};
 
-	let unit = if let Some(unit_pair) = pairs.next() {
+	if let Some(unit_pair) = pairs.next() {
 		let unit_pairs = unit_pair.into_inner(); // Get the inner pairs for the unit
-		Some(parse_unit(unit_pairs)?)
-	} else {
-		None // No unit
-	};
+		let (unit, scale) = parse_unit(unit_pairs)?;
 
-	Ok((literal, unit))
+		Ok((
+			match literal {
+				Literal::Float(num) => Literal::Float(num * scale),
+			},
+			Some(unit),
+		))
+	} else {
+		Ok((literal, None))
+	}
 }
 
 fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
@@ -203,7 +208,6 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 			let unit = match rhs_metadata.unit {
 				Some(unit) => match op {
 					UnaryOp::Sqrt if unit.length % 2 == 0 && unit.mass % 2 == 0 && unit.time % 2 == 0 => Some(Unit {
-						scale: unit.scale.sqrt(),
 						length: unit.length / 2,
 						mass: unit.mass / 2,
 						time: unit.time / 2,
@@ -248,13 +252,11 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 			let unit = match (lhs_metadata.unit, rhs_metadata.unit) {
 				(Some(lhs_unit), Some(rhs_unit)) => match op {
 					BinaryOp::Mul => Some(Unit {
-						scale: lhs_unit.scale * rhs_unit.scale,
 						length: lhs_unit.length + rhs_unit.length,
 						mass: lhs_unit.mass + rhs_unit.mass,
 						time: lhs_unit.time + rhs_unit.time,
 					}),
 					BinaryOp::Div => Some(Unit {
-						scale: lhs_unit.scale / rhs_unit.scale,
 						length: lhs_unit.length - rhs_unit.length,
 						mass: lhs_unit.mass - rhs_unit.mass,
 						time: lhs_unit.time - rhs_unit.time,
@@ -279,7 +281,6 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 						if let Ok(Value::Number(Number::Real(val))) = rhs.eval() {
 							if (val - val as i32 as f64).abs() <= f64::EPSILON {
 								Some(Unit {
-									scale: lhs_unit.scale.powf(val),
 									length: lhs_unit.length * val as i32,
 									mass: lhs_unit.mass * val as i32,
 									time: lhs_unit.time * val as i32,
@@ -328,57 +329,57 @@ mod tests {
 	}
 
 	test_parser! {
-		test_parse_int_literal: "42" => Node::Lit(Literal::Int(42)),
+		test_parse_int_literal: "42" => Node::Lit(Literal::Float(42.0)),
 		test_parse_float_literal: "3.14" => Node::Lit(Literal::Float(3.14)),
 		test_parse_ident: "x" => Node::Var("x".to_string()),
 		test_parse_unary_neg: "-42" => Node::UnaryOp {
-			expr: Box::new(Node::Lit(Literal::Int(42))),
+			expr: Box::new(Node::Lit(Literal::Float(42.0))),
 			op: UnaryOp::Neg,
 		},
 		test_parse_binary_add: "1 + 2" => Node::BinOp {
-			lhs: Box::new(Node::Lit(Literal::Int(1))),
+			lhs: Box::new(Node::Lit(Literal::Float(1.0))),
 			op: BinaryOp::Add,
-			rhs: Box::new(Node::Lit(Literal::Int(2))),
+			rhs: Box::new(Node::Lit(Literal::Float(2.0))),
 		},
 		test_parse_binary_mul: "3 * 4" => Node::BinOp {
-			lhs: Box::new(Node::Lit(Literal::Int(3))),
+			lhs: Box::new(Node::Lit(Literal::Float(3.0))),
 			op: BinaryOp::Mul,
-			rhs: Box::new(Node::Lit(Literal::Int(4))),
+			rhs: Box::new(Node::Lit(Literal::Float(4.0))),
 		},
 		test_parse_binary_pow: "2 ^ 3" => Node::BinOp {
-			lhs: Box::new(Node::Lit(Literal::Int(2))),
+			lhs: Box::new(Node::Lit(Literal::Float(2.0))),
 			op: BinaryOp::Pow,
-			rhs: Box::new(Node::Lit(Literal::Int(3))),
+			rhs: Box::new(Node::Lit(Literal::Float(3.0))),
 		},
 		test_parse_unary_sqrt: "sqrt(16)" => Node::UnaryOp {
-			expr: Box::new(Node::Lit(Literal::Int(16))),
+			expr: Box::new(Node::Lit(Literal::Float(16.0))),
 			op: UnaryOp::Sqrt,
 		},
 		test_parse_sqr_ident: "sqr(16)" => Node::FnCall {
 			 name:"sqr".to_string(),
-			 expr: Box::new(Node::Lit(Literal::Int(16)))
+			 expr: Box::new(Node::Lit(Literal::Float(16.0)))
 		},
 		test_parse_global_var: "$variable_one1 - 11" => Node::BinOp {
 
 			 lhs: Box::new(Node::GlobalVar("variable_one1".to_string())),
 			 op:  BinaryOp::Sub,
-			 rhs: Box::new(Node::Lit(Literal::Int(11)) )
+			 rhs: Box::new(Node::Lit(Literal::Float(11.0)) )
 		},
 		test_parse_complex_expr: "(1 + 2)  3 - 4 ^ 2" => Node::BinOp {
 			lhs: Box::new(Node::BinOp {
 				lhs: Box::new(Node::BinOp {
-					lhs: Box::new(Node::Lit(Literal::Int(1))),
+					lhs: Box::new(Node::Lit(Literal::Float(1.0))),
 					op: BinaryOp::Add,
-					rhs: Box::new(Node::Lit(Literal::Int(2))),
+					rhs: Box::new(Node::Lit(Literal::Float(2.0))),
 				}),
 				op: BinaryOp::Mul,
-				rhs: Box::new(Node::Lit(Literal::Int(3))),
+				rhs: Box::new(Node::Lit(Literal::Float(3.0))),
 			}),
 			op: BinaryOp::Sub,
 			rhs: Box::new(Node::BinOp {
-				lhs: Box::new(Node::Lit(Literal::Int(4))),
+				lhs: Box::new(Node::Lit(Literal::Float(4.0))),
 				op: BinaryOp::Pow,
-				rhs: Box::new(Node::Lit(Literal::Int(2))),
+				rhs: Box::new(Node::Lit(Literal::Float(2.0))),
 			}),
 		}
 	}
