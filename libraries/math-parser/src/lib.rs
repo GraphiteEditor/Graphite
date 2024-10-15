@@ -2,17 +2,20 @@
 extern crate log;
 
 mod ast;
+mod context;
+mod executer;
 mod parser;
 mod value;
-use ast::EvalError;
+use context::{EvalContext, ValueMap};
+use executer::EvalError;
 use parser::ParseError;
 use value::Value;
 
 pub fn evaluate(expression: &str) -> Result<Result<Value, EvalError>, ParseError> {
 	debug!("Evaluating expression {expression}");
 	let expr = ast::Node::from_str(expression);
-	dbg!(&expr);
-	expr.map(|node| node.eval())
+	let context = EvalContext::default();
+	expr.map(|node| node.eval(&context))
 }
 
 #[cfg(test)]

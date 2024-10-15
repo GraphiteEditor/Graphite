@@ -12,6 +12,7 @@ use thiserror::Error;
 
 use crate::{
 	ast::{BinaryOp, Literal, Node, UnaryOp, Unit},
+	context::EvalContext,
 	value::{Number, Value},
 };
 
@@ -125,9 +126,9 @@ fn parse_lit(mut pairs: Pairs<Rule>) -> Result<(Literal, Unit), ParseError> {
 				let value = lit.as_str().parse::<f64>()?;
 				Literal::Float(value)
 			}
-			_ => unreachable!(),
+			rule => unreachable!("unexpected rule: {:?}", rule),
 		},
-		None => unreachable!(), // No literal found
+		None => unreachable!("expected rule"), // No literal found
 	};
 
 	if let Some(unit_pair) = pairs.next() {
@@ -278,7 +279,7 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 					BinaryOp::Pow => {
 						//TODO: improve error type
 						//TODO: support 1 / int
-						if let Ok(Value::Number(Number::Real(val))) = rhs.eval() {
+						if let Ok(Value::Number(Number::Real(val))) = rhs.eval(&EvalContext::default()) {
 							if (val - val as i32 as f64).abs() <= f64::EPSILON {
 								Unit {
 									length: lhs_unit.length * val as i32,

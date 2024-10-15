@@ -6,7 +6,7 @@ use crate::ast::{BinaryOp, UnaryOp};
 
 type Complex = num_complex::Complex<f64>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Value {
 	Number(Number),
 }
@@ -38,7 +38,7 @@ impl core::fmt::Display for Value {
 	}
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Number {
 	Real(f64),
 	Complex(Complex),
