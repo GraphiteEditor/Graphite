@@ -2,8 +2,9 @@ use thiserror::Error;
 
 use crate::{
 	ast::{Literal, Node},
+	constants::default_functions,
 	context::{EvalContext, FunctionProvider, ValueProvider},
-	value::Value,
+	value::{Number, Value},
 };
 
 #[derive(Debug, Error)]
@@ -20,6 +21,7 @@ impl Node {
 		match self {
 			Node::Lit(lit) => match lit {
 				Literal::Float(num) => Ok(Value::from_f64(*num)),
+				Literal::Complex(num) => Ok(Value::Number(Number::Complex(*num))),
 			},
 
 			Node::BinOp { lhs, op, rhs } => match (lhs.eval(context)?, rhs.eval(context)?) {
@@ -30,10 +32,13 @@ impl Node {
 			},
 			Node::Var(name) => context.get_value(name).ok_or_else(|| EvalError::MissingValue(name.clone())),
 			Node::FnCall { name, expr } => {
-				if let Some(val) = context.run_function(name, &expr.iter().map(|expr| expr.eval(context)).collect::<Result<Vec<Value>, EvalError>>()?) {
+				let values = expr.iter().map(|expr| expr.eval(context)).collect::<Result<Vec<Value>, EvalError>>()?;
+				if let Some(val) = default_functions(name, &values) {
+					Ok(val)
+				} else if let Some(val) = context.run_function(name, &values) {
 					Ok(val)
 				} else {
-					context.get_value(name).ok_or_else(|| EvalError::MissingValue(name.to_string()))
+					context.get_value(name).ok_or_else(|| EvalError::MissingFunction(name.to_string()))
 				}
 			}
 		}
@@ -88,14 +93,6 @@ mod tests {
 		test_sqrt: Value::from_f64(2.0) => Node::UnaryOp {
 			expr: Box::new(Node::Lit(Literal::Float(4.0))),
 			op: UnaryOp::Sqrt,
-		},
-		test_sine: Value::from_f64(0.0) => Node::UnaryOp {
-			expr: Box::new(Node::Lit(Literal::Float(0.0))),
-			op: UnaryOp::Sin,
-		},
-		test_cosine: Value::from_f64(1.0) => Node::UnaryOp {
-			expr: Box::new(Node::Lit(Literal::Float(0.0))),
-			op: UnaryOp::Cos,
 		},
 		 test_power: Value::from_f64(8.0) => Node::BinOp {
 			 lhs: Box::new(Node::Lit(Literal::Float(2.0))),

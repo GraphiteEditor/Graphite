@@ -1,59 +1,60 @@
-WHITESPACE   =  _{ " " | "\t" }
- 
-//TODO: propper indentation and formatting
-program      =  _{ SOI ~ expr ~ EOI }
-    expr     =  { atom ~ (infix ~ atom)* }
-    atom     =  _{ prefix? ~ primary ~ postfix?}
-    infix    =  _{ add | sub | mul | div | pow | paren }
-      add    =   { "+" } // Addition
-      sub    =   { "-" } // Subtraction
-      mul    =   { "*" } // Multiplication
-      div    =   { "/" } // Division
-      mod    =   { "%" } // Modulo
-      pow    =   { "^" } // Exponantiation
-      paren  =   { ""  } // Nothing operator, usually multiplication
-    prefix   =  _{ neg | sqrt | sin | cos | tan | csc | sec | cot | invsin | invcos | invtan | invcsc | invsec| invcot }
-      neg    =   { "-" } // Negation
-      sqrt   =   {"sqrt"}
-      sin    =   {"sin"}
-      cos    =   {"cos"}
-      tan    =   {"tan"}
-      csc    =   {"csc"}
-      sec    =   {"sec"}
-      cot    =   {"cot"}
-      invsin =   {"asin"}
-      invcos =   {"cos"}
-      invtan =   {"tan"}
-      invcsc =   {"csc"}
-      invsec =   {"sec"}
-      invcot =   {"cot"}
-    postfix  =  _{ fac }
-      fac    =   { "!" } // Factorial
-    primary  =  _{ fn_call | ( "(" ~ expr ~ ")" ) | lit | var }
-      fn_call =  { var ~ "(" ~ expr ~ ("," ~ expr)* ~ ")"}
-      var     =  @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
-      lit    =  { float | int ~ unit?}
-        float  =  @{ int ~ "." ~ int? ~ exp? | int ~ exp }
-          exp  =  _{ ^"e" ~ ("+" | "-")? ~ int }
-        int    =  @{ ASCII_DIGIT+ }
-        unit   =  @{ (base_unit ~ WHITESPACE) | (scale ~ base_unit) }
-        base_unit = { meter | second | gram }
-          meter  =   { "m" }
-          second =   { "s" }
-          gram   =   { "g" }
+WHITESPACE    =  _{ " " | "\t" }
 
-        scale  = { nano | micro | milli | centi | deci | deca | hecto | kilo | mega | giga | tera }
+// TODO: Proper indentation and formatting
+program       =  _{ SOI ~ expr ~ EOI }
 
-        nano   = { "n" }
-        micro  = { "µ" | "u" }
-        milli  = { "m" }
-        centi  = { "c" }
-        deci   = { "d" }
-        deca   = { "da" }
-        hecto  = { "h" }
-        kilo   = { "k" }
-        mega   = { "M" }
-        giga   = { "G" }
-        tera   = { "T" }
-          
+expr          =  { atom ~ (infix ~ atom)* }
+atom          =  _{ prefix? ~ primary ~ postfix? }
+infix         =  _{ add | sub | mul | div | pow | paren }
+add           =  { "+" }    // Addition
+sub           =  { "-" }    // Subtraction
+mul           =  { "*" }    // Multiplication
+div           =  { "/" }    // Division
+mod           =  { "%" }    // Modulo
+pow           =  { "^" }    // Exponentiation
+paren         =  { ""  }    // Implicit multiplication operator
 
+prefix        =  _{ neg | sqrt }
+neg           =  { "-" }    // Negation
+sqrt          =  { "sqrt" }
+
+postfix       =  _{ fac }
+fac           =  { "!" }    // Factorial
+
+primary       =  _{ fn_call | ("(" ~ expr ~ ")") | lit | constant | var }
+fn_call       =  { var ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
+var           =  @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+lit           =  { float | int ~ unit? }
+
+float         =  @{ int ~ "." ~ int? ~ exp? | int ~ exp }
+exp           =  _{ ^"e" ~ ("+" | "-")? ~ int }
+int           =  @{ ASCII_DIGIT+ }
+
+unit          =  @{ (base_unit ~ WHITESPACE) | (scale ~ base_unit) }
+base_unit     =  { meter | second | gram }
+meter         =  { "m" }
+second        =  { "s" }
+gram          =  { "g" }
+
+scale         =  { nano | micro | milli | centi | deci | deca | hecto | kilo | mega | giga | tera }
+nano          =  { "n" }
+micro         =  { "µ" | "u" }
+milli         =  { "m" }
+centi         =  { "c" }
+deci          =  { "d" }
+deca          =  { "da" }
+hecto         =  { "h" }
+kilo          =  { "k" }
+mega          =  { "M" }
+giga          =  { "G" }
+tera          =  { "T" }
+
+// Constants
+constant              =  { infinity | imaginary_unit | pi | tau | euler_number | golden_ratio | gravity_acceleration }
+infinity              =  { "inf" | "INF" | "infinity" | "INFINITY" | "∞" }
+imaginary_unit        =  { "i" | "I" }
+pi                    =  { "pi" | "PI" | "π" }
+tau                   =  { "tau" | "TAU" | "τ" }
+euler_number          =  { "e" }
+golden_ratio          =  { "phi" | "PHI" | "φ" }
+gravity_acceleration  =  { "G" }

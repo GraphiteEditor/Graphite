@@ -2,13 +2,18 @@ use std::collections::HashMap;
 
 use crate::value::Value;
 
-pub struct ValueMap(HashMap<String, Value>);
-
-pub struct NothingMap;
-
+//TODO: editor integration, implement these traits for whatever is needed, maybe merge them if needed
 pub trait ValueProvider {
 	fn get_value(&self, name: &str) -> Option<Value>;
 }
+
+pub trait FunctionProvider {
+	fn run_function(&self, name: &str, args: &[Value]) -> Option<Value>;
+}
+
+pub struct ValueMap(HashMap<String, Value>);
+
+pub struct NothingMap;
 
 impl ValueProvider for &ValueMap {
 	fn get_value(&self, name: &str) -> Option<Value> {
@@ -17,7 +22,7 @@ impl ValueProvider for &ValueMap {
 }
 
 impl ValueProvider for NothingMap {
-	fn get_value(&self, name: &str) -> Option<Value> {
+	fn get_value(&self, _: &str) -> Option<Value> {
 		None
 	}
 }
@@ -46,12 +51,8 @@ impl ValueMap {
 	}
 }
 
-pub trait FunctionProvider {
-	fn run_function(&self, name: &str, args: &[Value]) -> Option<Value>;
-}
-
 impl FunctionProvider for NothingMap {
-	fn run_function(&self, name: &str, args: &[Value]) -> Option<Value> {
+	fn run_function(&self, _: &str, _: &[Value]) -> Option<Value> {
 		None
 	}
 }

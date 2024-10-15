@@ -4,7 +4,7 @@ use num_complex::ComplexFloat;
 
 use crate::ast::{BinaryOp, UnaryOp};
 
-type Complex = num_complex::Complex<f64>;
+pub type Complex = num_complex::Complex<f64>;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Value {
@@ -110,19 +110,6 @@ impl Number {
 				UnaryOp::Neg => Number::Real(-real),
 				UnaryOp::Sqrt => Number::Real(real.sqrt()),
 
-				UnaryOp::Sin => Number::Real(real.sin()),
-				UnaryOp::Cos => Number::Real(real.cos()),
-				UnaryOp::Tan => Number::Real(real.tan()),
-				UnaryOp::Csc => Number::Real(real.sin().recip()),
-				UnaryOp::Sec => Number::Real(real.cos().recip()),
-				UnaryOp::Cot => Number::Real(real.tan().recip()),
-
-				UnaryOp::InvSin => Number::Real(real.asin()),
-				UnaryOp::InvCos => Number::Real(real.acos()),
-				UnaryOp::InvTan => Number::Real(real.atan()),
-				UnaryOp::InvCsc => Number::Real(real.recip().asin()),
-				UnaryOp::InvSec => Number::Real(real.recip().acos()),
-				UnaryOp::InvCot => Number::Real((PI / 2.0 - real).atan()),
 				UnaryOp::Fac => todo!("Implement factorial"),
 			},
 
@@ -130,20 +117,6 @@ impl Number {
 				UnaryOp::Neg => Number::Complex(-complex),
 				UnaryOp::Sqrt => Number::Complex(complex.sqrt()),
 
-				UnaryOp::Sin => Number::Complex(complex.sin()),
-				UnaryOp::Cos => Number::Complex(complex.cos()),
-				UnaryOp::Tan => Number::Complex(complex.tan()),
-
-				UnaryOp::Csc => Number::Complex(complex.sin().recip()),
-				UnaryOp::Sec => Number::Complex(complex.cos().recip()),
-				UnaryOp::Cot => Number::Complex(complex.tan().recip()),
-
-				UnaryOp::InvSin => Number::Complex(complex.asin()),
-				UnaryOp::InvCos => Number::Complex(complex.acos()),
-				UnaryOp::InvTan => Number::Complex(complex.atan()),
-				UnaryOp::InvCsc => Number::Complex(complex.recip().asin()),
-				UnaryOp::InvSec => Number::Complex(complex.recip().acos()),
-				UnaryOp::InvCot => Number::Complex((PI / 2.0 - complex).atan()),
 				UnaryOp::Fac => todo!("Implement factorial"),
 			},
 		}

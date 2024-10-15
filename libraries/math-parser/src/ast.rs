@@ -1,3 +1,5 @@
+use crate::value::Complex;
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct Unit {
 	// Exponent of length unit (meters)
@@ -23,6 +25,7 @@ impl Unit {
 #[derive(Debug, PartialEq)]
 pub enum Literal {
 	Float(f64),
+	Complex(Complex),
 }
 
 impl From<f64> for Literal {
@@ -44,18 +47,6 @@ pub enum BinaryOp {
 pub enum UnaryOp {
 	Neg,
 	Sqrt,
-	Sin,
-	Cos,
-	Tan,
-	Csc,
-	Sec,
-	Cot,
-	InvSin,
-	InvCos,
-	InvTan,
-	InvCsc,
-	InvSec,
-	InvCot,
 	Fac,
 }
 

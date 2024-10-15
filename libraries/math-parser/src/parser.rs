@@ -3,7 +3,7 @@ use std::num::{ParseFloatError, ParseIntError};
 use lazy_static::lazy_static;
 use num_complex::ComplexFloat;
 use pest::{
-	iterators::Pairs,
+	iterators::{Pair, Pairs},
 	pratt_parser::{Assoc, Op, PrattParser},
 	Parser,
 };
@@ -13,7 +13,7 @@ use thiserror::Error;
 use crate::{
 	ast::{BinaryOp, Literal, Node, UnaryOp, Unit},
 	context::EvalContext,
-	value::{Number, Value},
+	value::{Complex, Number, Value},
 };
 
 #[derive(Parser)]
@@ -27,19 +27,7 @@ lazy_static! {
 			.op(Op::infix(Rule::mul, Assoc::Left) | Op::infix(Rule::div, Assoc::Left) | Op::infix(Rule::paren, Assoc::Left))
 			.op(Op::infix(Rule::pow, Assoc::Right))
 			.op(Op::postfix(Rule::fac) | Op::postfix(Rule::EOI))
-			.op(Op::prefix(Rule::sqrt)
-				| Op::prefix(Rule::sin)
-				| Op::prefix(Rule::cos)
-				| Op::prefix(Rule::tan)
-				| Op::prefix(Rule::csc)
-				| Op::prefix(Rule::sec)
-				| Op::prefix(Rule::cot)
-				| Op::prefix(Rule::invsin)
-				| Op::prefix(Rule::invcos)
-				| Op::prefix(Rule::invtan)
-				| Op::prefix(Rule::invcsc)
-				| Op::prefix(Rule::invsec)
-				| Op::prefix(Rule::invcot))
+			.op(Op::prefix(Rule::sqrt))
 			.op(Op::prefix(Rule::neg))
 	};
 }
@@ -115,6 +103,18 @@ fn parse_unit(pairs: Pairs<Rule>) -> Result<(Unit, f64), ParseError> {
 	Ok((Unit { length, mass, time }, scale))
 }
 
+fn parse_const(pair: Pair<Rule>) -> Literal {
+	match pair.as_rule() {
+		Rule::infinity => Literal::Float(f64::INFINITY),
+		Rule::imaginary_unit => Literal::Complex(Complex::new(0.0, 1.0)),
+		Rule::pi => Literal::Float(std::f64::consts::PI),
+		Rule::tau => Literal::Float(2.0 * std::f64::consts::PI),
+		Rule::euler_number => Literal::Float(std::f64::consts::E),
+		Rule::golden_ratio => Literal::Float(1.61803398875),
+		_ => unreachable!("Unexpected constant: {:?}", pair),
+	}
+}
+
 fn parse_lit(mut pairs: Pairs<Rule>) -> Result<(Literal, Unit), ParseError> {
 	let literal = match pairs.next() {
 		Some(lit) => match lit.as_rule() {
@@ -138,6 +138,7 @@ fn parse_lit(mut pairs: Pairs<Rule>) -> Result<(Literal, Unit), ParseError> {
 		Ok((
 			match literal {
 				Literal::Float(num) => Literal::Float(num * scale),
+				Literal::Complex(num) => Literal::Complex(num * scale),
 			},
 			unit,
 		))
@@ -167,6 +168,11 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 						NodeMetadata::new(Unit::BASE_UNIT),
 					)
 				}
+				Rule::constant => {
+					let lit = parse_const(primary.into_inner().next().expect("constant should have atleast 1 child"));
+
+					(Node::Lit(lit), NodeMetadata::new(Unit::BASE_UNIT))
+				}
 				Rule::var => {
 					let name = primary.as_str().to_string();
 
@@ -185,18 +191,7 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 			let op = match op.as_rule() {
 				Rule::neg => UnaryOp::Neg,
 				Rule::sqrt => UnaryOp::Sqrt,
-				Rule::sin => UnaryOp::Sin,
-				Rule::cos => UnaryOp::Cos,
-				Rule::tan => UnaryOp::Tan,
-				Rule::csc => UnaryOp::Csc,
-				Rule::sec => UnaryOp::Sec,
-				Rule::cot => UnaryOp::Cot,
-				Rule::invsin => UnaryOp::InvSin,
-				Rule::invcos => UnaryOp::InvCos,
-				Rule::invtan => UnaryOp::InvTan,
-				Rule::invcsc => UnaryOp::InvCsc,
-				Rule::invsec => UnaryOp::InvSec,
-				Rule::invcot => UnaryOp::InvCot,
+
 				rule => unreachable!("unexpected rule: {:?}", rule),
 			};
 
