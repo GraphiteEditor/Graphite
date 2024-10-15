@@ -1,3 +1,7 @@
+use std::f64::consts::PI;
+
+use num_complex::ComplexFloat;
+
 use crate::ast::{BinaryOp, UnaryOp};
 
 type Complex = num_complex::Complex<f64>;
@@ -109,15 +113,17 @@ impl Number {
 				UnaryOp::Sin => Number::Real(real.sin()),
 				UnaryOp::Cos => Number::Real(real.cos()),
 				UnaryOp::Tan => Number::Real(real.tan()),
-				UnaryOp::Csc => Number::Real(1.0 / real.sin()),
-				UnaryOp::Sec => Number::Real(1.0 / real.cos()),
-				UnaryOp::Cot => Number::Real(1.0 / real.tan()),
+				UnaryOp::Csc => Number::Real(real.sin().recip()),
+				UnaryOp::Sec => Number::Real(real.cos().recip()),
+				UnaryOp::Cot => Number::Real(real.tan().recip()),
 
 				UnaryOp::InvSin => Number::Real(real.asin()),
 				UnaryOp::InvCos => Number::Real(real.acos()),
 				UnaryOp::InvTan => Number::Real(real.atan()),
-
-				_ => unreachable!(),
+				UnaryOp::InvCsc => Number::Real(real.recip().asin()),
+				UnaryOp::InvSec => Number::Real(real.recip().acos()),
+				UnaryOp::InvCot => Number::Real((PI / 2.0 - real).atan()),
+				UnaryOp::Fac => todo!("Implement factorial"),
 			},
 
 			Number::Complex(complex) => match op {
@@ -128,15 +134,17 @@ impl Number {
 				UnaryOp::Cos => Number::Complex(complex.cos()),
 				UnaryOp::Tan => Number::Complex(complex.tan()),
 
-				UnaryOp::Csc => Number::Complex(Complex::new(1.0, 0.0) / complex.sin()),
-				UnaryOp::Sec => Number::Complex(Complex::new(1.0, 0.0) / complex.cos()),
-				UnaryOp::Cot => Number::Complex(Complex::new(1.0, 0.0) / complex.tan()),
+				UnaryOp::Csc => Number::Complex(complex.sin().recip()),
+				UnaryOp::Sec => Number::Complex(complex.cos().recip()),
+				UnaryOp::Cot => Number::Complex(complex.tan().recip()),
 
 				UnaryOp::InvSin => Number::Complex(complex.asin()),
 				UnaryOp::InvCos => Number::Complex(complex.acos()),
 				UnaryOp::InvTan => Number::Complex(complex.atan()),
-
-				_ => unreachable!(),
+				UnaryOp::InvCsc => Number::Complex(complex.recip().asin()),
+				UnaryOp::InvSec => Number::Complex(complex.recip().acos()),
+				UnaryOp::InvCot => Number::Complex((PI / 2.0 - complex).atan()),
+				UnaryOp::Fac => todo!("Implement factorial"),
 			},
 		}
 	}

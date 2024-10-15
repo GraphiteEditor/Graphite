@@ -23,10 +23,10 @@ lazy_static! {
 	static ref PRATT_PARSER: PrattParser<Rule> = {
 		PrattParser::new()
 			.op(Op::infix(Rule::add, Assoc::Left) | Op::infix(Rule::sub, Assoc::Left))
-			.op(Op::infix(Rule::mul, Assoc::Left) | Op::infix(Rule::div, Assoc::Left) | Op::infix(Rule::paren, Assoc::Left) | Op::infix(Rule::pow, Assoc::Right))
+			.op(Op::infix(Rule::mul, Assoc::Left) | Op::infix(Rule::div, Assoc::Left) | Op::infix(Rule::paren, Assoc::Left))
+			.op(Op::infix(Rule::pow, Assoc::Right))
 			.op(Op::postfix(Rule::fac) | Op::postfix(Rule::EOI))
-			.op(Op::prefix(Rule::neg)
-				| Op::prefix(Rule::sqrt)
+			.op(Op::prefix(Rule::sqrt)
 				| Op::prefix(Rule::sin)
 				| Op::prefix(Rule::cos)
 				| Op::prefix(Rule::tan)
@@ -39,6 +39,7 @@ lazy_static! {
 				| Op::prefix(Rule::invcsc)
 				| Op::prefix(Rule::invsec)
 				| Op::prefix(Rule::invcot))
+			.op(Op::prefix(Rule::neg))
 	};
 }
 
@@ -164,11 +165,6 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 						},
 						NodeMetadata::new(Unit::BASE_UNIT),
 					)
-				}
-				Rule::global_var => {
-					let name = primary.as_str().split_at(1).1.to_string();
-
-					(Node::GlobalVar(name), NodeMetadata::new(Unit::BASE_UNIT))
 				}
 				Rule::var => {
 					let name = primary.as_str().to_string();
@@ -363,12 +359,7 @@ mod tests {
 			 name:"sqr".to_string(),
 			 expr: Box::new(Node::Lit(Literal::Float(16.0)))
 		},
-		test_parse_global_var: "$variable_one1 - 11" => Node::BinOp {
 
-			 lhs: Box::new(Node::GlobalVar("variable_one1".to_string())),
-			 op:  BinaryOp::Sub,
-			 rhs: Box::new(Node::Lit(Literal::Float(11.0)) )
-		},
 		test_parse_complex_expr: "(1 + 2)  3 - 4 ^ 2" => Node::BinOp {
 			lhs: Box::new(Node::BinOp {
 				lhs: Box::new(Node::BinOp {

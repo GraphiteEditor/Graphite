@@ -68,7 +68,6 @@ pub enum Node {
 	Lit(Literal),
 	Var(String),
 	FnCall { name: String, expr: Box<Node> },
-	GlobalVar(String),
 	BinOp { lhs: Box<Node>, op: BinaryOp, rhs: Box<Node> },
 	UnaryOp { expr: Box<Node>, op: UnaryOp },
 }
@@ -91,7 +90,6 @@ impl Node {
 			},
 			Node::Var(_) => todo!("implement vars"),
 			Node::FnCall { .. } => todo!("implement function calls"),
-			Node::GlobalVar(_) => todo!("Implement global vars"),
 		}
 	}
 }
@@ -153,10 +151,10 @@ mod tests {
 			expr: Box::new(Node::Lit(Literal::Float(0.0))),
 			op: UnaryOp::Cos,
 		},
-		// test_power: Value::from_f64(8.0) => Node::BinOp {
-		// 	lhs: Box::new(Node::Lit(Literal::Float(2.0))),
-		// 	op: BinaryOp::Pow,
-		// 	rhs: Box::new(Node::Lit(Literal::Float(3.0))),
-		// },
+		 test_power: Value::from_f64(8.0) => Node::BinOp {
+			 lhs: Box::new(Node::Lit(Literal::Float(2.0))),
+			 op: BinaryOp::Pow,
+			 rhs: Box::new(Node::Lit(Literal::Float(3.0))),
+		 },
 	}
 }
