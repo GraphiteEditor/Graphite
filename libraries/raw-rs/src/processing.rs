@@ -1,4 +1,5 @@
 use crate::CHANNELS_IN_RGB;
+use fortuples::fortuples;
 
 #[derive(Clone, Copy)]
 pub struct RawPixel {
@@ -24,13 +25,18 @@ impl<T: Fn(RawPixel) -> u16> RawPixelTransform for T {
 	}
 }
 
-impl<T1: RawPixelTransform, T2: RawPixelTransform, T3: RawPixelTransform> RawPixelTransform for (T1, T2, T3) {
-	fn apply(&mut self, mut pixel: RawPixel) -> u16 {
-		pixel.value = self.0.apply(pixel);
-		pixel.value = self.1.apply(pixel);
-		pixel.value = self.2.apply(pixel);
+fortuples! {
+	#[tuples::min_size(1)]
+	#[tuples::max_size(8)]
+	impl RawPixelTransform for #Tuple
+	where
+		#(#Member: RawPixelTransform),*
+	{
+		fn apply(&mut self, mut pixel: RawPixel) -> u16 {
+			#(pixel.value = #self.apply(pixel);)*
 
-		pixel.value
+			pixel.value
+		}
 	}
 }
 
@@ -44,11 +50,17 @@ impl<T: Fn(Pixel) -> [u16; CHANNELS_IN_RGB]> PixelTransform for T {
 	}
 }
 
-impl<T1: PixelTransform, T2: PixelTransform> PixelTransform for (T1, T2) {
-	fn apply(&mut self, mut pixel: Pixel) -> [u16; CHANNELS_IN_RGB] {
-		pixel.values = self.0.apply(pixel);
-		pixel.values = self.1.apply(pixel);
+fortuples! {
+	#[tuples::min_size(1)]
+	#[tuples::max_size(8)]
+	impl PixelTransform for #Tuple
+	where
+		#(#Member: PixelTransform),*
+	{
+		fn apply(&mut self, mut pixel: Pixel) -> [u16; CHANNELS_IN_RGB] {
+			#(pixel.values = #self.apply(pixel);)*
 
-		pixel.values
+			pixel.values
+		}
 	}
 }
