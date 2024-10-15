@@ -375,6 +375,7 @@ body > .page {
 // =====================
 
 :is(h1, h2, h3, h4, article > :first-child) ~ :is(p, ul, ol, ol li p, img, a:has(> img:only-child)),
+:is(h1, h2, h3, h4, article > :first-child) ~ :is(ul, ol) li p + img,
 :is(h1, h2, h3, h4, p) ~ .feature-icons,
 p ~ :is(h1, h2, h3, h4, details summary, blockquote, .image-comparison, .video-background, .video-embed),
 .video-embed + :is(p, .link, .button),
@@ -446,6 +447,10 @@ p {
 	text-justify: inter-character; // Only supported in Firefox
 	-webkit-hyphens: auto;
 	hyphens: auto;
+
+	code {
+		text-justify: auto;
+	}
 }
 
 h1,

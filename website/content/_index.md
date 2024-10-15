@@ -329,6 +329,8 @@ Nondestructive editing means every decision is tied to a parameter you can adjus
 
 Blend across color schemes. Morph shapes before they're scattered around the canvas. The possibilities are endless.
 
+<a href="https://editor.graphite.rs/#demo/changing-seasons">Open this artwork</a> and give it a try yourself.
+
 </div>
 
 <div class="block video-background">

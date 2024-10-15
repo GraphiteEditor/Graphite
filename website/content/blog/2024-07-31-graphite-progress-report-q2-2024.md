@@ -21,7 +21,7 @@ This is the second of our quarterly progress report blog posts. If you missed th
 All Q2 2024 commits may be [viewed in this list](https://github.com/GraphiteEditor/Graphite/commits/master/?since=2024-04-01&until=2024-06-30) and all noteworthy changes are detailed below. To showcase the much anticipated introduction of boolean path operations, the new *Painted Dreams* artwork shown here extensively utilizes nondestructive booleans.
 
 <div class="demo-artwork">
-	<a href="https://editor.graphite.rs/#demo/isometric-fountain">
+	<a href="https://editor.graphite.rs/#demo/painted-dreams">
 		<img src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Painted Dreams" />
 	</a>
 	<p>
@@ -152,7 +152,7 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
   - [Weekly updates](https://github.com/GraphiteEditor/Graphite/discussions/1773) are being posted while the project is ongoing
 
-- [Elbert Ronnie](https://github.com/elbertronnie)'s Google Summer of Code project has begun building the Raw-rs library for decoding raw image formats, with the goal of supporting photo processing in Graphite once the project is completed — to date this has included:
+- [Elbert Ronnie](https://github.com/elbertronnie)'s Google Summer of Code project has begun building a library for decoding raw image formats, with the goal of supporting photo processing in Graphite once the project is completed — to date this has included:
 
   - Initial code foundations including a basic custom TIFF decoder <small>([#1757](https://github.com/GraphiteEditor/Graphite/pull/1757))</small>
 
@@ -216,7 +216,7 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
 - Fixed bugs where the *Poisson-Disk Points*, *Repeat*, *Circular Repeat*, and *Bounding Box* node input shapes weren't using their transform <small>([#1784](https://github.com/GraphiteEditor/Graphite/pull/1784), [#1792](https://github.com/GraphiteEditor/Graphite/pull/1792))</small>
 
-- Improved the Path tool's point selection behavior so clicking a selected anchor deselects all other selected points <small>([#1782](https://github.com/GraphiteEditor/Graphite/pull/1782))</small>
+- Improvements to the Path tool's point selection behavior so clicking a selected anchor deselects all other selected points <small>([#1782](https://github.com/GraphiteEditor/Graphite/pull/1782))</small>
 
 - Regression fix for being unable to arrange layers with no artboard present <small>([#1786](https://github.com/GraphiteEditor/Graphite/pull/1786))</small>
 

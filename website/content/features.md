@@ -142,10 +142,6 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<span>Imaginate (Stable Diffusion node/tool)</span>
 		</div>
 		<div class="feature-icon ongoing" title="Development Ongoing">
-			<img class="atlas" style="--atlas-index: 12" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>GPU-accelerated raster rendering</span>
-		</div>
-		<div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Infinitely zoomable/panable content</span>
 		</div>
@@ -153,7 +149,11 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<img class="atlas" style="--atlas-index: 19" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Raw photo processing</span>
 		</div>
-		<div class="feature-icon">
+		<div class="feature-icon ongoing" title="Development Ongoing">
+			<img class="atlas" style="--atlas-index: 12" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>GPU-accelerated raster rendering</span>
+		</div>
+		<div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Graph data attribute spreadsheets</span>
 		</div>
@@ -162,12 +162,12 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<span>Timeline with animation channels</span>
 		</div>
 		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 57" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Signed distance fields</span>
-		</div>
-		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Lightweight desktop app (with <a target="_blank" href="https://tauri.app/">Tauri</a>)</span>
+		</div>
+		<!-- Alpha 4 -->
+		<div class="feature-icon heading" title="Expected to begin February 2025" data-year="2025">
+			<h3>— Alpha 4 —</h3>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 54" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
@@ -178,12 +178,12 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<span>Local fonts access</span>
 		</div>
 		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 5" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Rewrite of the basic brush tool</span>
+			<img class="atlas" style="--atlas-index: 57" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Signed distance fields</span>
 		</div>
-		<!-- Alpha 4 -->
-		<div class="feature-icon heading" title="Expected to begin February 2025" data-year="2025">
-			<h3>— Alpha 4 —</h3>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 5" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Brush tool rewrite</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 56" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
@@ -212,10 +212,6 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 50" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Shape builder tool</span>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 48" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Mesh vector format</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 28" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
@@ -252,6 +248,10 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 27" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Automation and batch processing</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 48" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>NURBS and mesh vector formats</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 25" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
