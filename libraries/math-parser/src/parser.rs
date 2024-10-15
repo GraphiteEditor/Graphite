@@ -162,7 +162,7 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 					(
 						Node::FnCall {
 							name,
-							expr: Box::new(parse_expr(pairs.next().expect("fn_call always has two children").into_inner())?.0),
+							expr: pairs.map(|p| parse_expr(p.into_inner()).map(|expr| expr.0)).collect::<Result<Vec<Node>, ParseError>>()?,
 						},
 						NodeMetadata::new(Unit::BASE_UNIT),
 					)
@@ -358,7 +358,7 @@ mod tests {
 		},
 		test_parse_sqr_ident: "sqr(16)" => Node::FnCall {
 			 name:"sqr".to_string(),
-			 expr: Box::new(Node::Lit(Literal::Float(16.0)))
+			 expr: vec![Node::Lit(Literal::Float(16.0))]
 		},
 
 		test_parse_complex_expr: "(1 + 2)  3 - 4 ^ 2" => Node::BinOp {

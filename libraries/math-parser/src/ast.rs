@@ -63,7 +63,7 @@ pub enum UnaryOp {
 pub enum Node {
 	Lit(Literal),
 	Var(String),
-	FnCall { name: String, expr: Box<Node> },
+	FnCall { name: String, expr: Vec<Node> },
 	BinOp { lhs: Box<Node>, op: BinaryOp, rhs: Box<Node> },
 	UnaryOp { expr: Box<Node>, op: UnaryOp },
 }

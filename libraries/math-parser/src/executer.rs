@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use crate::{
 	ast::{Literal, Node},
-	context::{EvalContext, ValueProvider},
+	context::{EvalContext, FunctionProvider, ValueProvider},
 	value::Value,
 };
 
@@ -10,10 +10,13 @@ use crate::{
 pub enum EvalError {
 	#[error("Missing value: {0}")]
 	MissingValue(String),
+
+	#[error("Missing function: {0}")]
+	MissingFunction(String),
 }
 
 impl Node {
-	pub fn eval<T: ValueProvider>(&self, context: &EvalContext<T>) -> Result<Value, EvalError> {
+	pub fn eval<V: ValueProvider, F: FunctionProvider>(&self, context: &EvalContext<V, F>) -> Result<Value, EvalError> {
 		match self {
 			Node::Lit(lit) => match lit {
 				Literal::Float(num) => Ok(Value::from_f64(*num)),
@@ -25,8 +28,14 @@ impl Node {
 			Node::UnaryOp { expr, op } => match expr.eval(context)? {
 				Value::Number(num) => Ok(Value::Number(num.unary_op(*op))),
 			},
-			Node::Var(name) => context.get_value(name).cloned().ok_or_else(|| EvalError::MissingValue(name.clone())),
-			Node::FnCall { .. } => todo!("implement function calls"),
+			Node::Var(name) => context.get_value(name).ok_or_else(|| EvalError::MissingValue(name.clone())),
+			Node::FnCall { name, expr } => {
+				if let Some(val) = context.run_function(name, &expr.iter().map(|expr| expr.eval(context)).collect::<Result<Vec<Value>, EvalError>>()?) {
+					Ok(val)
+				} else {
+					context.get_value(name).ok_or_else(|| EvalError::MissingValue(name.to_string()))
+				}
+			}
 		}
 	}
 }
