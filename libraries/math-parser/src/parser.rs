@@ -45,10 +45,10 @@ lazy_static! {
 #[derive(Error, Debug)]
 pub enum TypeError {
 	#[error("Invalid BinOp: {0:?} {1:?} {2:?}")]
-	InvalidBinaryOp(Option<Unit>, BinaryOp, Option<Unit>),
+	InvalidBinaryOp(Unit, BinaryOp, Unit),
 
 	#[error("Invalid UnaryOp: {0:?}")]
-	InvalidUnaryOp(Option<Unit>, UnaryOp),
+	InvalidUnaryOp(Unit, UnaryOp),
 }
 
 #[derive(Error, Debug)]
@@ -73,11 +73,11 @@ impl Node {
 }
 
 struct NodeMetadata {
-	pub unit: Option<Unit>,
+	pub unit: Unit,
 }
 
 impl NodeMetadata {
-	pub fn new(unit: Option<Unit>) -> Self {
+	pub fn new(unit: Unit) -> Self {
 		Self { unit }
 	}
 }
@@ -113,7 +113,7 @@ fn parse_unit(pairs: Pairs<Rule>) -> Result<(Unit, f64), ParseError> {
 	Ok((Unit { length, mass, time }, scale))
 }
 
-fn parse_lit(mut pairs: Pairs<Rule>) -> Result<(Literal, Option<Unit>), ParseError> {
+fn parse_lit(mut pairs: Pairs<Rule>) -> Result<(Literal, Unit), ParseError> {
 	let literal = match pairs.next() {
 		Some(lit) => match lit.as_rule() {
 			Rule::int => {
@@ -137,10 +137,10 @@ fn parse_lit(mut pairs: Pairs<Rule>) -> Result<(Literal, Option<Unit>), ParseErr
 			match literal {
 				Literal::Float(num) => Literal::Float(num * scale),
 			},
-			Some(unit),
+			unit,
 		))
 	} else {
-		Ok((literal, None))
+		Ok((literal, Unit::BASE_UNIT))
 	}
 }
 
@@ -162,23 +162,23 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 							name,
 							expr: Box::new(parse_expr(pairs.next().expect("fn_call always has two children").into_inner())?.0),
 						},
-						NodeMetadata::new(None),
+						NodeMetadata::new(Unit::BASE_UNIT),
 					)
 				}
 				Rule::global_var => {
 					let name = primary.as_str().split_at(1).1.to_string();
 
-					(Node::GlobalVar(name), NodeMetadata::new(None))
+					(Node::GlobalVar(name), NodeMetadata::new(Unit::BASE_UNIT))
 				}
 				Rule::var => {
 					let name = primary.as_str().to_string();
 
-					(Node::Var(name), NodeMetadata::new(None))
+					(Node::Var(name), NodeMetadata::new(Unit::BASE_UNIT))
 				}
 				Rule::expr => parse_expr(primary.into_inner())?,
 				Rule::float => {
 					let value = primary.as_str().parse::<f64>()?;
-					(Node::Lit(Literal::Float(value)), NodeMetadata::new(None))
+					(Node::Lit(Literal::Float(value)), NodeMetadata::new(Unit::BASE_UNIT))
 				}
 				rule => unreachable!("unexpected rule: {:?}", rule),
 			})
@@ -204,18 +204,20 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 			};
 
 			let node = Node::UnaryOp { expr: Box::new(rhs), op };
+			let unit = rhs_metadata.unit;
 
-			let unit = match rhs_metadata.unit {
-				Some(unit) => match op {
-					UnaryOp::Sqrt if unit.length % 2 == 0 && unit.mass % 2 == 0 && unit.time % 2 == 0 => Some(Unit {
+			let unit = if !unit.is_base() {
+				match op {
+					UnaryOp::Sqrt if unit.length % 2 == 0 && unit.mass % 2 == 0 && unit.time % 2 == 0 => Unit {
 						length: unit.length / 2,
 						mass: unit.mass / 2,
 						time: unit.time / 2,
-					}),
-					UnaryOp::Neg => Some(unit),
-					op => return Err(ParseError::Type(TypeError::InvalidUnaryOp(Some(unit), op))),
-				},
-				None => None,
+					},
+					UnaryOp::Neg => unit,
+					op => return Err(ParseError::Type(TypeError::InvalidUnaryOp(unit, op))),
+				}
+			} else {
+				Unit::BASE_UNIT
 			};
 
 			Ok((node, NodeMetadata::new(unit)))
@@ -229,7 +231,7 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 				rule => unreachable!("unexpected rule: {:?}", rule),
 			};
 
-			if lhs_metadata.unit.is_some() {
+			if !lhs_metadata.unit.is_base() {
 				return Err(ParseError::Type(TypeError::InvalidUnaryOp(lhs_metadata.unit, op)));
 			}
 
@@ -249,56 +251,58 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 				rule => unreachable!("unexpected rule: {:?}", rule),
 			};
 
-			let unit = match (lhs_metadata.unit, rhs_metadata.unit) {
-				(Some(lhs_unit), Some(rhs_unit)) => match op {
-					BinaryOp::Mul => Some(Unit {
+			let (lhs_unit, rhs_unit) = (lhs_metadata.unit, rhs_metadata.unit);
+
+			let unit = match (!lhs_unit.is_base(), !rhs_unit.is_base()) {
+				(true, true) => match op {
+					BinaryOp::Mul => Unit {
 						length: lhs_unit.length + rhs_unit.length,
 						mass: lhs_unit.mass + rhs_unit.mass,
 						time: lhs_unit.time + rhs_unit.time,
-					}),
-					BinaryOp::Div => Some(Unit {
+					},
+					BinaryOp::Div => Unit {
 						length: lhs_unit.length - rhs_unit.length,
 						mass: lhs_unit.mass - rhs_unit.mass,
 						time: lhs_unit.time - rhs_unit.time,
-					}),
+					},
 					BinaryOp::Add | BinaryOp::Sub => {
 						if lhs_unit == rhs_unit {
-							Some(lhs_unit)
+							lhs_unit
 						} else {
-							return Err(ParseError::Type(TypeError::InvalidBinaryOp(Some(lhs_unit), op, Some(rhs_unit))));
+							return Err(ParseError::Type(TypeError::InvalidBinaryOp(lhs_unit, op, rhs_unit)));
 						}
 					}
 					BinaryOp::Pow => {
-						return Err(ParseError::Type(TypeError::InvalidBinaryOp(Some(lhs_unit), op, Some(rhs_unit))));
+						return Err(ParseError::Type(TypeError::InvalidBinaryOp(lhs_unit, op, rhs_unit)));
 					}
 				},
 
-				(Some(lhs_unit), None) => match op {
-					BinaryOp::Add | BinaryOp::Sub => return Err(ParseError::Type(TypeError::InvalidBinaryOp(Some(lhs_unit), op, None))),
+				(true, false) => match op {
+					BinaryOp::Add | BinaryOp::Sub => return Err(ParseError::Type(TypeError::InvalidBinaryOp(lhs_unit, op, Unit::BASE_UNIT))),
 					BinaryOp::Pow => {
 						//TODO: improve error type
 						//TODO: support 1 / int
 						if let Ok(Value::Number(Number::Real(val))) = rhs.eval() {
 							if (val - val as i32 as f64).abs() <= f64::EPSILON {
-								Some(Unit {
+								Unit {
 									length: lhs_unit.length * val as i32,
 									mass: lhs_unit.mass * val as i32,
 									time: lhs_unit.time * val as i32,
-								})
+								}
 							} else {
-								return Err(ParseError::Type(TypeError::InvalidBinaryOp(Some(lhs_unit), op, None)));
+								return Err(ParseError::Type(TypeError::InvalidBinaryOp(lhs_unit, op, Unit::BASE_UNIT)));
 							}
 						} else {
-							return Err(ParseError::Type(TypeError::InvalidBinaryOp(Some(lhs_unit), op, None)));
+							return Err(ParseError::Type(TypeError::InvalidBinaryOp(lhs_unit, op, Unit::BASE_UNIT)));
 						}
 					}
-					_ => Some(lhs_unit),
+					_ => Unit::BASE_UNIT,
 				},
-				(None, Some(rhs_unit)) => match op {
-					BinaryOp::Add | BinaryOp::Sub | BinaryOp::Pow => return Err(ParseError::Type(TypeError::InvalidBinaryOp(None, op, Some(rhs_unit)))),
-					_ => Some(rhs_unit),
+				(false, true) => match op {
+					BinaryOp::Add | BinaryOp::Sub | BinaryOp::Pow => return Err(ParseError::Type(TypeError::InvalidBinaryOp(Unit::BASE_UNIT, op, rhs_unit))),
+					_ => Unit::BASE_UNIT,
 				},
-				(None, None) => None,
+				(false, false) => Unit::BASE_UNIT,
 			};
 
 			let node = Node::BinOp {

@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use crate::value::Value;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Unit {
 	// Exponent of length unit (meters)
 	pub length: i32,
@@ -10,6 +10,18 @@ pub struct Unit {
 	pub mass: i32,
 	// Exponent of time unit (seconds)
 	pub time: i32,
+}
+
+impl Unit {
+	pub const BASE_UNIT: Unit = Unit { length: 0, mass: 0, time: 0 };
+
+	pub fn base_unit() -> Self {
+		Self::BASE_UNIT
+	}
+
+	pub fn is_base(&self) -> bool {
+		*self == Self::BASE_UNIT
+	}
 }
 
 #[derive(Debug, PartialEq)]
