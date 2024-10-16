@@ -71,6 +71,16 @@ impl GraphicGroup {
 	}
 }
 
+impl crate::vector::ApplyStyle for GraphicGroup {
+	fn apply(&mut self, mut modify_fn: impl FnMut(&mut crate::vector::PathStyle, DAffine2)) {
+		// The style is applied only to direct children (a bit unintuitive perhaps)
+		for (direct_child, _) in self.elements.iter_mut() {
+			let GraphicElement::VectorData(direct_child) = direct_child else { continue };
+			modify_fn(&mut direct_child.style, self.transform * direct_child.transform);
+		}
+	}
+}
+
 /// The possible forms of graphical content held in a Vec by the `elements` field of [`GraphicElement`].
 /// Can be another recursively nested [`GraphicGroup`], a [`VectorData`] shape, an [`ImageFrame`], or an [`Artboard`].
 #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
