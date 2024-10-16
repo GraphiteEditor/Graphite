@@ -95,12 +95,13 @@ js = ["image-interaction.js", "video-embed.js"]
 <section id="screenshots" class="carousel window-size-1" data-carousel data-carousel-jostle-hint>
 
 <div class="carousel-slide" data-carousel-slide>
-	<!-- Copy of last --><img src="https://static.graphite.rs/content/index/gui-mockup-nodes__6.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
-	<img src="https://static.graphite.rs/content/index/gui-demo-painted-dreams.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
-	<img src="https://static.graphite.rs/content/index/gui-demo-node-graph-valley-of-spires.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
-	<img src="https://static.graphite.rs/content/index/gui-demo-fractal.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
-	<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__6.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
-	<!-- Copy of first --><img src="https://static.graphite.rs/content/index/gui-demo-painted-dreams.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
+	<!-- Copy of last --><img src="https://static.graphite.rs/content/index/gui-mockup-nodes__7.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
+	<img src="https://static.graphite.rs/content/index/gui-demo-painted-dreams__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
+	<img src="https://static.graphite.rs/content/index/magazine-page-layout.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
+	<img src="https://static.graphite.rs/content/index/gui-demo-node-graph-valley-of-spires__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
+	<img src="https://static.graphite.rs/content/index/gui-demo-fractal__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
+	<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__7.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
+	<!-- Copy of first --><img src="https://static.graphite.rs/content/index/gui-demo-painted-dreams__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
 </div>
 
 <div class="carousel-slide torn left" data-carousel-slide-torn-left></div>
@@ -124,6 +125,7 @@ js = ["image-interaction.js", "video-embed.js"]
 <button class="dot" data-carousel-dot></button>
 <button class="dot" data-carousel-dot></button>
 <button class="dot" data-carousel-dot></button>
+<button class="dot" data-carousel-dot></button>
 <button class="direction next" data-carousel-next>
 
 <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
@@ -142,7 +144,10 @@ js = ["image-interaction.js", "video-embed.js"]
 	<a href="https://editor.graphite.rs/#demo/painted-dreams"><em>Painted Dreams</em></a> — Made using nondestructive boolean operations and procedural dot patterns
 </p>
 <p data-carousel-description>
-	<a href="https://editor.graphite.rs/#demo/valley-of-spires"><em>Valley of Spires</em></a> — The layer stack is represented, under the hood, by a node graph (shown fully expanded)
+	Design for a magazine spread, a preview of the upcoming focus on desktop publishing
+</p>
+<p data-carousel-description>
+	<a href="https://editor.graphite.rs/#demo/valley-of-spires"><em>Valley of Spires</em></a> — All layer stacks are represented, under the hood, by a node graph
 </p>
 <p data-carousel-description>
 	Mandelbrot fractal filled with a noise pattern, procedurally generated and infinitely scalable
