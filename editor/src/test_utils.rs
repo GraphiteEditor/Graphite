@@ -78,7 +78,11 @@ impl EditorTestUtils for Editor {
 			..Default::default()
 		};
 		let modifier_keys = ModifierKeys::default();
-		self.input(InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys });
+		self.input(InputPreprocessorMessage::PointerMove {
+			editor_mouse_state,
+			modifier_keys,
+			pen_data: None,
+		});
 	}
 
 	fn mousedown(&mut self, editor_mouse_state: EditorMouseState) {
