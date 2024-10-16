@@ -11,19 +11,27 @@ use bezier_rs::{Cap, Join, Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
 use rand::{Rng, SeedableRng};
 
+/// Implemented for types that can be converted to an iterator of vector data.
+/// Used for the fill and stroke node so they can be used on VectorData or GraphicGroup
 trait VectorIterMut {
-	fn vector_iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut VectorData>;
+	fn vector_iter_mut<'a>(&'a mut self) -> impl Iterator<Item = (&'a mut VectorData, DAffine2)> + 'a;
 }
 
 impl VectorIterMut for GraphicGroup {
-	fn vector_iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut VectorData> {
-		self.iter_mut().filter_map(|(element, _)| element.as_vector_data_mut()).collect::<Vec<_>>().into_iter()
+	fn vector_iter_mut<'a>(&'a mut self) -> impl Iterator<Item = (&'a mut VectorData, DAffine2)> + 'a {
+		let parent_transform = self.transform;
+		// Grab only the direct children (perhaps unintuitive?)
+		self.iter_mut().filter_map(|(element, _)| element.as_vector_data_mut()).map(move |vector| {
+			let transform = parent_transform * vector.transform;
+			(vector, transform)
+		})
 	}
 }
 
 impl VectorIterMut for VectorData {
-	fn vector_iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut VectorData> {
-		std::iter::once(self)
+	fn vector_iter_mut<'a>(&'a mut self) -> impl Iterator<Item = (&'a mut VectorData, DAffine2)> + 'a {
+		let transform = self.transform;
+		std::iter::once((self, transform))
 	}
 }
 
@@ -51,13 +59,12 @@ async fn assign_colors<F: 'n + Send, T: VectorIterMut>(
 	repeat_every: u32,
 ) -> T {
 	let mut input = vector_group.eval(footprint).await;
-	let vector_data = input.vector_iter_mut();
-	let length = vector_data.len();
+	let length = input.vector_iter_mut().count();
 	let gradient = if reverse { gradient.reversed() } else { gradient };
 
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 
-	for (i, vector_data) in vector_data.enumerate() {
+	for (i, (vector_data, _)) in input.vector_iter_mut().enumerate() {
 		let factor = match randomize {
 			true => rng.gen::<f64>(),
 			false => match repeat_every {
@@ -81,22 +88,8 @@ async fn assign_colors<F: 'n + Send, T: VectorIterMut>(
 	input
 }
 
-/// A trait to allow the application of the path style (which allows the fill and stroke node to support either GraphicGroup or VectorData)
-pub trait ApplyStyle {
-	fn apply(&mut self, modify_fn: impl FnMut(&mut crate::vector::PathStyle, DAffine2)) {
-		let _ = modify_fn;
-	}
-}
-
-impl ApplyStyle for VectorData {
-	fn apply(&mut self, mut modify_fn: impl FnMut(&mut crate::vector::PathStyle, DAffine2)) {
-		// Simply modify the only path style available here.
-		modify_fn(&mut self.style, self.transform)
-	}
-}
-
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
-async fn fill<F: 'n + Send, FillTy: Into<Fill> + 'n + Send, TargetTy: ApplyStyle + 'n + Send>(
+async fn fill<F: 'n + Send, FillTy: Into<Fill> + 'n + Send, TargetTy: VectorIterMut + 'n + Send>(
 	#[implementations(
 		(),
 		(),
@@ -160,13 +153,15 @@ async fn fill<F: 'n + Send, FillTy: Into<Fill> + 'n + Send, TargetTy: ApplyStyle
 ) -> TargetTy {
 	let mut target = vector_data.eval(footprint).await;
 	let fill: Fill = fill.into();
-	target.apply(|style, _| style.set_fill(fill.clone()));
+	for (target, _transform) in target.vector_iter_mut() {
+		target.style.set_fill(fill.clone());
+	}
 
 	target
 }
 
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
-async fn stroke<F: 'n + Send, ColourTy: Into<Option<Color>> + 'n + Send, TargetTy: ApplyStyle + 'n + Send>(
+async fn stroke<F: 'n + Send, ColourTy: Into<Option<Color>> + 'n + Send, TargetTy: VectorIterMut + 'n + Send>(
 	#[implementations(
 		(),
 		(),
@@ -219,7 +214,10 @@ async fn stroke<F: 'n + Send, ColourTy: Into<Option<Color>> + 'n + Send, TargetT
 		line_join_miter_limit: miter_limit,
 		transform: DAffine2::IDENTITY,
 	};
-	target.apply(|style, transform| style.set_stroke(Stroke { transform, ..stroke.clone() }));
+	for (target, transform) in target.vector_iter_mut() {
+		target.style.set_stroke(Stroke { transform, ..stroke.clone() });
+	}
+
 	target
 }
 
