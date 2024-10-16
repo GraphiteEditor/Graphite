@@ -250,14 +250,19 @@ impl<'a> ModifyInputsContext<'a> {
 		let mut existing_node_id = None;
 		for upstream_node in upstream.collect::<Vec<_>>() {
 			let upstream_node_input_type = self.network_interface.input_type(&InputConnector::node(upstream_node, 0), &[]).0.nested_type();
+
+			// Check if this is the node we have been searching for.
+			if self.network_interface.reference(&upstream_node, &[]).is_some_and(|node_reference| node_reference == reference) {
+				existing_node_id = Some(upstream_node);
+				break;
+			}
+
 			let is_traversal_start = |node_id: NodeId| {
 				self.layer_node.map(|layer| layer.to_node()) == Some(node_id) || self.network_interface.network(&[]).unwrap().exports.iter().any(|export| export.as_node() == Some(node_id))
 			};
+
+			// If the type changes then break?? This should at least be after checking if the node is correct (otherwise the brush tool breaks.)
 			if !is_traversal_start(upstream_node) && (self.network_interface.is_layer(&upstream_node, &[]) || upstream_node_input_type != layer_input_type) {
-				break;
-			}
-			if self.network_interface.reference(&upstream_node, &[]).is_some_and(|node_reference| node_reference == reference) {
-				existing_node_id = Some(upstream_node);
 				break;
 			}
 		}
