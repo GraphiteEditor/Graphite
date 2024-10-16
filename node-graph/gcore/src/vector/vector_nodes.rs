@@ -14,11 +14,11 @@ use rand::{Rng, SeedableRng};
 /// Implemented for types that can be converted to an iterator of vector data.
 /// Used for the fill and stroke node so they can be used on VectorData or GraphicGroup
 trait VectorIterMut {
-	fn vector_iter_mut<'a>(&'a mut self) -> impl Iterator<Item = (&'a mut VectorData, DAffine2)> + 'a;
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = (&mut VectorData, DAffine2)>;
 }
 
 impl VectorIterMut for GraphicGroup {
-	fn vector_iter_mut<'a>(&'a mut self) -> impl Iterator<Item = (&'a mut VectorData, DAffine2)> + 'a {
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = (&mut VectorData, DAffine2)> {
 		let parent_transform = self.transform;
 		// Grab only the direct children (perhaps unintuitive?)
 		self.iter_mut().filter_map(|(element, _)| element.as_vector_data_mut()).map(move |vector| {
@@ -29,7 +29,7 @@ impl VectorIterMut for GraphicGroup {
 }
 
 impl VectorIterMut for VectorData {
-	fn vector_iter_mut<'a>(&'a mut self) -> impl Iterator<Item = (&'a mut VectorData, DAffine2)> + 'a {
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = (&mut VectorData, DAffine2)> {
 		let transform = self.transform;
 		std::iter::once((self, transform))
 	}
