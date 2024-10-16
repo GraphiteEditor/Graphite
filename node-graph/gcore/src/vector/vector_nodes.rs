@@ -11,19 +11,27 @@ use bezier_rs::{Cap, Join, Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
 use rand::{Rng, SeedableRng};
 
+/// Implemented for types that can be converted to an iterator of vector data.
+/// Used for the fill and stroke node so they can be used on VectorData or GraphicGroup
 trait VectorIterMut {
-	fn vector_iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut VectorData>;
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = (&mut VectorData, DAffine2)>;
 }
 
 impl VectorIterMut for GraphicGroup {
-	fn vector_iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut VectorData> {
-		self.iter_mut().filter_map(|(element, _)| element.as_vector_data_mut()).collect::<Vec<_>>().into_iter()
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = (&mut VectorData, DAffine2)> {
+		let parent_transform = self.transform;
+		// Grab only the direct children (perhaps unintuitive?)
+		self.iter_mut().filter_map(|(element, _)| element.as_vector_data_mut()).map(move |vector| {
+			let transform = parent_transform * vector.transform;
+			(vector, transform)
+		})
 	}
 }
 
 impl VectorIterMut for VectorData {
-	fn vector_iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut VectorData> {
-		std::iter::once(self)
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = (&mut VectorData, DAffine2)> {
+		let transform = self.transform;
+		std::iter::once((self, transform))
 	}
 }
 
@@ -51,13 +59,12 @@ async fn assign_colors<F: 'n + Send, T: VectorIterMut>(
 	repeat_every: u32,
 ) -> T {
 	let mut input = vector_group.eval(footprint).await;
-	let vector_data = input.vector_iter_mut();
-	let length = vector_data.len();
+	let length = input.vector_iter_mut().count();
 	let gradient = if reverse { gradient.reversed() } else { gradient };
 
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 
-	for (i, vector_data) in vector_data.enumerate() {
+	for (i, (vector_data, _)) in input.vector_iter_mut().enumerate() {
 		let factor = match randomize {
 			true => rng.gen::<f64>(),
 			false => match repeat_every {
@@ -82,12 +89,23 @@ async fn assign_colors<F: 'n + Send, T: VectorIterMut>(
 }
 
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
-async fn fill<F: 'n + Send, T: Into<Fill> + 'n + Send>(
+async fn fill<F: 'n + Send, FillTy: Into<Fill> + 'n + Send, TargetTy: VectorIterMut + 'n + Send>(
 	#[implementations(
 		(),
 		(),
 		(),
 		(),
+		(),
+		(),
+		(),
+		(),
+		Footprint,
+		Footprint,
+		Footprint,
+		Footprint,
+		Footprint,
+		Footprint,
+		Footprint,
 		Footprint,
 	)]
 	footprint: F,
@@ -96,10 +114,29 @@ async fn fill<F: 'n + Send, T: Into<Fill> + 'n + Send>(
 		() -> VectorData,
 		() -> VectorData,
 		() -> VectorData,
+		() -> GraphicGroup,
+		() -> GraphicGroup,
+		() -> GraphicGroup,
+		() -> GraphicGroup,
 		Footprint -> VectorData,
+		Footprint -> VectorData,
+		Footprint -> VectorData,
+		Footprint -> VectorData,
+		Footprint -> GraphicGroup,
+		Footprint -> GraphicGroup,
+		Footprint -> GraphicGroup,
+		Footprint -> GraphicGroup,
 	)]
-	vector_data: impl Node<F, Output = VectorData>,
+	vector_data: impl Node<F, Output = TargetTy>,
 	#[implementations(
+		Fill,
+		Option<Color>,
+		Color,
+		Gradient,
+		Fill,
+		Option<Color>,
+		Color,
+		Gradient,
 		Fill,
 		Option<Color>,
 		Color,
@@ -110,47 +147,64 @@ async fn fill<F: 'n + Send, T: Into<Fill> + 'n + Send>(
 		Gradient,
 	)]
 	#[default(Color::BLACK)]
-	fill: T,
+	fill: FillTy,
 	_backup_color: Option<Color>,
 	_backup_gradient: Gradient,
-) -> VectorData {
-	let mut vector_data = vector_data.eval(footprint).await;
-	vector_data.style.set_fill(fill.into());
+) -> TargetTy {
+	let mut target = vector_data.eval(footprint).await;
+	let fill: Fill = fill.into();
+	for (target, _transform) in target.vector_iter_mut() {
+		target.style.set_fill(fill.clone());
+	}
 
-	vector_data
+	target
 }
 
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
-async fn stroke<F: 'n + Send, T: Into<Option<Color>> + 'n + Send>(
+async fn stroke<F: 'n + Send, ColourTy: Into<Option<Color>> + 'n + Send, TargetTy: VectorIterMut + 'n + Send>(
 	#[implementations(
 		(),
 		(),
+		(),
+		(),
+		Footprint,
+		Footprint,
+		Footprint,
 		Footprint,
 	)]
 	footprint: F,
 	#[implementations(
 		() -> VectorData,
 		() -> VectorData,
+		() -> GraphicGroup,
+		() -> GraphicGroup,
 		Footprint -> VectorData,
+		Footprint -> VectorData,
+		Footprint -> GraphicGroup,
+		Footprint -> GraphicGroup,
 	)]
-	vector_data: impl Node<F, Output = VectorData>,
+	vector_data: impl Node<F, Output = TargetTy>,
 	#[implementations(
+		Option<Color>,
+		Color,
+		Option<Color>,
+		Color,
 		Option<Color>,
 		Color,
 		Option<Color>,
 		Color,
 	)]
 	#[default(Color::BLACK)]
-	color: T,
+	color: ColourTy,
 	#[default(2.)] weight: f64,
 	dash_lengths: Vec<f64>,
 	dash_offset: f64,
 	line_cap: crate::vector::style::LineCap,
 	line_join: LineJoin,
 	#[default(4.)] miter_limit: f64,
-) -> VectorData {
-	let mut vector_data = vector_data.eval(footprint).await;
-	vector_data.style.set_stroke(Stroke {
+) -> TargetTy {
+	let mut target = vector_data.eval(footprint).await;
+	let stroke = Stroke {
 		color: color.into(),
 		weight,
 		dash_lengths,
@@ -158,9 +212,13 @@ async fn stroke<F: 'n + Send, T: Into<Option<Color>> + 'n + Send>(
 		line_cap,
 		line_join,
 		line_join_miter_limit: miter_limit,
-		transform: vector_data.transform,
-	});
-	vector_data
+		transform: DAffine2::IDENTITY,
+	};
+	for (target, transform) in target.vector_iter_mut() {
+		target.style.set_stroke(Stroke { transform, ..stroke.clone() });
+	}
+
+	target
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
