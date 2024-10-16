@@ -83,7 +83,9 @@ async fn assign_colors<F: 'n + Send, T: VectorIterMut>(
 
 /// A trait to allow the application of the path style (which allows the fill and stroke node to support either GraphicGroup or VectorData)
 pub trait ApplyStyle {
-	fn apply(&mut self, modify_fn: impl FnMut(&mut crate::vector::PathStyle, DAffine2)) {}
+	fn apply(&mut self, modify_fn: impl FnMut(&mut crate::vector::PathStyle, DAffine2)) {
+		let _ = modify_fn;
+	}
 }
 
 impl ApplyStyle for VectorData {
