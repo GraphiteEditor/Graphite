@@ -151,7 +151,7 @@ pub fn input_mappings() -> Mapping {
 		//
 		// TextToolMessage
 		entry!(KeyUp(MouseLeft); action_dispatch=TextToolMessage::Interact),
-		entry!(KeyDown(Escape); action_dispatch=TextToolMessage::Abort),
+		entry!(KeyDown(Escape); action_dispatch=TextToolMessage::CommitText),
 		entry!(KeyDown(Enter); modifiers=[Accel], action_dispatch=TextToolMessage::CommitText),
 		//
 		// GradientToolMessage
