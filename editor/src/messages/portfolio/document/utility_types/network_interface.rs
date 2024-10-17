@@ -3837,7 +3837,7 @@ impl NodeNetworkInterface {
 					.and_then(|outward_wires| (outward_wires.len() == 1).then(|| outward_wires[0]))
 					.and_then(|downstream_connector| if downstream_connector.input_index() == 0 { downstream_connector.node_id() } else { None })
 			})
-			.filter(|downstream_node_id| self.is_layer(&downstream_node_id, network_path))
+			.filter(|downstream_node_id| self.is_layer(downstream_node_id, network_path))
 			.and_then(|downstream_layer| self.position(&downstream_layer, network_path));
 
 		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
@@ -3869,7 +3869,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 		// Set the position to stack if necessary
-		if let Some(downstream_position) = is_layer.then(|| single_downstream_layer_position).flatten() {
+		if let Some(downstream_position) = is_layer.then_some(single_downstream_layer_position).flatten() {
 			node_metadata.persistent_metadata.node_type_metadata = NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
 				position: LayerPosition::Stack((position.y - downstream_position.y - 3).max(0) as u32),
 				owned_nodes: TransientMetadata::Unloaded,
