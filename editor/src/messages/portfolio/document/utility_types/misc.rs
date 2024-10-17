@@ -464,3 +464,9 @@ impl PTZ {
 		self.zoom = zoom.clamp(crate::consts::VIEWPORT_ZOOM_SCALE_MIN, crate::consts::VIEWPORT_ZOOM_SCALE_MAX)
 	}
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum GroupFolderType {
+	Layer,
+	BooleanOperation(graphene_std::vector::misc::BooleanOperation),
+}
