@@ -497,7 +497,7 @@ impl Fsm for TextToolFsmState {
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Edit Text")]),
 			]),
 			TextToolFsmState::Editing => HintData(vec![
-				HintGroup(vec![HintInfo::keys([Key::Escape], "Discard Changes")]),
+				HintGroup(vec![HintInfo::keys([Key::Escape], "Commit Changes")]),
 				HintGroup(vec![HintInfo::keys([Key::Control, Key::Enter], "Commit Changes").add_mac_keys([Key::Command, Key::Enter])]),
 			]),
 		};
