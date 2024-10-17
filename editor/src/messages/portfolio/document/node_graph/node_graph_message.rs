@@ -29,6 +29,10 @@ pub enum NodeGraphMessage {
 		output_connector: OutputConnector,
 		input_connector: InputConnector,
 	},
+	ConnectUpstreamOutputToInput {
+		downstream_input: InputConnector,
+		input_connector: InputConnector,
+	},
 	Cut,
 	DeleteNodes {
 		node_ids: Vec<NodeId>,
@@ -61,6 +65,10 @@ pub enum NodeGraphMessage {
 		layer: LayerNodeIdentifier,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
+	},
+	MoveNodeToChainStart {
+		node_id: NodeId,
+		parent: LayerNodeIdentifier,
 	},
 	PasteNodes {
 		serialized_nodes: String,
