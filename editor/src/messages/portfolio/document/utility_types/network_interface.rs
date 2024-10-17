@@ -3329,12 +3329,10 @@ impl NodeNetworkInterface {
 						log::error!("Could not get outward wires in set_input");
 						return;
 					};
-					log::debug!("outward_wires: {outward_wires:?}");
 					// If it is a layer and is connected to a single layer, set its position to stack at its previous y position
 					if old_upstream_node_is_layer && outward_wires.len() == 1 && outward_wires[0].input_index() == 0 {
 						if let Some(downstream_node_id) = outward_wires[0].node_id() {
 							if self.is_layer(&downstream_node_id, network_path) {
-								log::debug!("Setting stack position calculated offset");
 								self.set_stack_position_calculated_offset(&old_upstream_node_id, &downstream_node_id, network_path);
 								self.unload_upstream_node_click_targets(vec![old_upstream_node_id], network_path);
 							}

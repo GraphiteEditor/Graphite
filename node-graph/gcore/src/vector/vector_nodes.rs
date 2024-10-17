@@ -548,10 +548,10 @@ async fn flatten_vector_elements<F: 'n + Send>(
 	let graphic_group = graphic_group_input.eval(footprint).await;
 
 	fn concat_group(graphic_group: &GraphicGroup, current_transform: DAffine2, result: &mut VectorData) {
-		for (element, _) in graphic_group.iter() {
+		for (element, reference) in graphic_group.iter() {
 			match element {
 				GraphicElement::VectorData(vector_data) => {
-					result.concat(vector_data, current_transform);
+					result.concat(vector_data, current_transform, reference.map(|node_id| node_id.0).unwrap_or_default());
 				}
 				GraphicElement::GraphicGroup(graphic_group) => {
 					concat_group(graphic_group, current_transform * graphic_group.transform, result);
@@ -565,15 +565,17 @@ async fn flatten_vector_elements<F: 'n + Send>(
 	concat_group(&graphic_group, DAffine2::IDENTITY, &mut result);
 	// TODO: This leads to incorrect stroke widths when flattening groups with different transforms.
 	result.style.set_stroke_transform(DAffine2::IDENTITY);
+
+	log::debug!("Flattened vector elements: {:?}", result);
 	result
 }
 
 pub trait ConcatElement {
-	fn concat(&mut self, other: &Self, transform: DAffine2);
+	fn concat(&mut self, other: &Self, transform: DAffine2, node_id: u64);
 }
 
 impl ConcatElement for GraphicGroup {
-	fn concat(&mut self, other: &Self, transform: DAffine2) {
+	fn concat(&mut self, other: &Self, transform: DAffine2, _node_id: u64) {
 		// TODO: Decide if we want to keep this behavior whereby the layers are flattened
 		for (mut element, footprint_mapping) in other.iter().cloned() {
 			*element.transform_mut() = transform * element.transform() * other.transform();
