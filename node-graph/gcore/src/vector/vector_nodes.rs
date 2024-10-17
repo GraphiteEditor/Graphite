@@ -566,7 +566,6 @@ async fn flatten_vector_elements<F: 'n + Send>(
 	// TODO: This leads to incorrect stroke widths when flattening groups with different transforms.
 	result.style.set_stroke_transform(DAffine2::IDENTITY);
 
-	log::debug!("Flattened vector elements: {:?}", result);
 	result
 }
 
