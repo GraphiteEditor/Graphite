@@ -499,14 +499,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if let Some(clicked_output) = clicked_output {
 					responses.add(DocumentMessage::StartTransaction);
 					self.initial_disconnecting = false;
-					// Disconnect vertical output wire from an already-connected layer
-					if let OutputConnector::Node { node_id, .. } = clicked_output {
-						if network_interface.is_layer(&node_id, selection_network_path) {
-							if let Some(input_connectors) = network_interface.outward_wires(selection_network_path).and_then(|outward_wires| outward_wires.get(&clicked_output)) {
-								self.disconnecting = input_connectors.first().cloned();
-							}
-						}
-					}
 
 					self.wire_in_progress_from_connector = network_interface.output_position(&clicked_output, selection_network_path);
 					return;
