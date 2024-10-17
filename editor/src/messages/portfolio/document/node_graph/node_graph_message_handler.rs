@@ -198,6 +198,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				});
 				responses.add(NodeGraphMessage::SendGraph);
 			}
+			NodeGraphMessage::ConnectUpstreamOutputToInput { downstream_input, input_connector } => {
+				let Some(upstream_node) = network_interface.upstream_output_connector(&downstream_input, selection_network_path) else {
+					log::error!("Failed to find upstream node for downstream_input");
+					return;
+				};
+				responses.add(NodeGraphMessage::CreateWire {
+					output_connector: upstream_node,
+					input_connector,
+				});
+			}
 			NodeGraphMessage::Cut => {
 				responses.add(NodeGraphMessage::Copy);
 				responses.add(NodeGraphMessage::DeleteSelectedNodes { delete_children: true });
@@ -310,6 +320,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index } => {
 				network_interface.move_layer_to_stack(layer, parent, insert_index, selection_network_path);
+			}
+			NodeGraphMessage::MoveNodeToChainStart { node_id, parent } => {
+				network_interface.move_node_to_chain_start(&node_id, parent, selection_network_path);
 			}
 			NodeGraphMessage::PasteNodes { serialized_nodes } => {
 				let data = match serde_json::from_str::<Vec<(NodeId, NodeTemplate)>>(&serialized_nodes) {
@@ -499,14 +512,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if let Some(clicked_output) = clicked_output {
 					responses.add(DocumentMessage::StartTransaction);
 					self.initial_disconnecting = false;
-					// Disconnect vertical output wire from an already-connected layer
-					if let OutputConnector::Node { node_id, .. } = clicked_output {
-						if network_interface.is_layer(&node_id, selection_network_path) {
-							if let Some(input_connectors) = network_interface.outward_wires(selection_network_path).and_then(|outward_wires| outward_wires.get(&clicked_output)) {
-								self.disconnecting = input_connectors.first().cloned();
-							}
-						}
-					}
 
 					self.wire_in_progress_from_connector = network_interface.output_position(&clicked_output, selection_network_path);
 					return;

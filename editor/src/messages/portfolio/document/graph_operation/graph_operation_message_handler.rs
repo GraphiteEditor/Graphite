@@ -1,7 +1,7 @@
 use super::transform_utils;
 use super::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 use crate::messages::prelude::*;
 
@@ -95,14 +95,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 			}
 			GraphOperationMessage::SetUpstreamToChain { layer } => {
-				let Some(first_chain_node) = network_interface
-					.upstream_flow_back_from_nodes(
-						vec![layer.to_node()],
-						&[],
-						crate::messages::portfolio::document::utility_types::network_interface::FlowType::HorizontalFlow,
-					)
-					.nth(1)
-				else {
+				let Some(OutputConnector::Node { node_id: first_chain_node, .. }) = network_interface.upstream_output_connector(&InputConnector::node(layer.to_node(), 1), &[]) else {
 					return;
 				};
 
