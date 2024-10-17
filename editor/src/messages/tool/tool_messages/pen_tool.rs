@@ -1,9 +1,10 @@
 use super::tool_prelude::*;
 use crate::consts::{DEFAULT_STROKE_WIDTH, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE};
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{self, resolve_document_node_type};
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
@@ -215,6 +216,8 @@ struct PenToolData {
 	angle: f64,
 	auto_panning: AutoPanning,
 	modifiers: ModifierState,
+
+	buffering_merged_vector: bool,
 }
 impl PenToolData {
 	fn latest_point(&self) -> Option<&LastPoint> {
@@ -513,7 +516,8 @@ impl Fsm for PenToolFsmState {
 				let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
 
 				// Perform extension of an existing path
-				if let Some((layer, point, position)) = should_extend(document, viewport, crate::consts::SNAP_POINT_TOLERANCE) {
+				let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+				if let Some((layer, point, position)) = should_extend(document, viewport, crate::consts::SNAP_POINT_TOLERANCE, selected_nodes.selected_layers(document.metadata())) {
 					tool_data.add_point(LastPoint {
 						id: point,
 						pos: position,
@@ -557,11 +561,111 @@ impl Fsm for PenToolFsmState {
 				PenToolFsmState::DraggingHandle
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart) => {
-				if tool_data.handle_end.is_some() {
-					responses.add(DocumentMessage::StartTransaction);
+				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
+				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, None, false);
+				let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
+				// Early return if the buffer was started and this message is being run again after the buffer (so that place_anchor updates the state with the newly merged vector)
+				if tool_data.buffering_merged_vector {
+					tool_data.bend_from_previous_point(SnapData::new(document, input), transform);
+					tool_data.place_anchor(SnapData::new(document, input), transform, input.mouse.position, responses);
+					tool_data.buffering_merged_vector = false;
+					PenToolFsmState::DraggingHandle
+				} else {
+					if tool_data.handle_end.is_some() {
+						responses.add(DocumentMessage::StartTransaction);
+					}
+					// Merge two layers if the point is connected to the end point of another path
+
+					// This might not be the correct solution to artboards being included as the other layer, which occurs due to the compute_modified_vector call in should_extend using the click targets for a layer instead of vector data.
+					let layers = LayerNodeIdentifier::ROOT_PARENT
+						.descendants(document.metadata())
+						.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
+					if let Some((other_layer, _, _)) = should_extend(document, viewport, crate::consts::SNAP_POINT_TOLERANCE, layers) {
+						if let Some(current_layer) = tool_data.layer.filter(|current_layer| *current_layer != other_layer) {
+							// Calculate the downstream transforms in order to bring the other vector data into the same layer space
+							let current_transform = document.metadata().downstream_transform_to_document(current_layer);
+							let other_transform = document.metadata().downstream_transform_to_document(other_layer);
+							// Represents the change in position that would occur if the other layer was moved below the current layer
+							let transform_delta = current_transform * other_transform.inverse();
+							let offset = transform_delta.inverse();
+							responses.add(GraphOperationMessage::TransformChange {
+								layer: other_layer,
+								transform: offset,
+								transform_in: crate::messages::portfolio::document::graph_operation::utility_types::TransformIn::Local,
+								skip_rerender: false,
+							});
+
+							// Move the other layer below the current layer for positioning purposes
+							let current_layer_parent = current_layer.parent(document.metadata()).unwrap();
+							let current_layer_index = current_layer_parent.children(document.metadata()).position(|child| child == current_layer).unwrap();
+							responses.add(NodeGraphMessage::MoveLayerToStack {
+								layer: other_layer,
+								parent: current_layer_parent,
+								insert_index: current_layer_index + 1,
+							});
+
+							// Merge the inputs of the two layers
+							let merge_node_id = NodeId::new();
+							let merge_node = document_node_definitions::resolve_document_node_type("Merge")
+								.expect("Failed to create merge node")
+								.default_node_template();
+							responses.add(NodeGraphMessage::InsertNode {
+								node_id: merge_node_id,
+								node_template: merge_node,
+							});
+							responses.add(NodeGraphMessage::SetToNodeOrLayer {
+								node_id: merge_node_id,
+								is_layer: false,
+							});
+							responses.add(NodeGraphMessage::MoveNodeToChainStart {
+								node_id: merge_node_id,
+								parent: current_layer,
+							});
+							responses.add(NodeGraphMessage::ConnectUpstreamOutputToInput {
+								downstream_input: InputConnector::node(other_layer.to_node(), 1),
+								input_connector: InputConnector::node(merge_node_id, 1),
+							});
+							responses.add(NodeGraphMessage::DeleteNodes {
+								node_ids: vec![other_layer.to_node()],
+								delete_children: false,
+							});
+
+							// Add a flatten vector elements node after the merge
+							let flatten_node_id = NodeId::new();
+							let flatten_node = document_node_definitions::resolve_document_node_type("Flatten Vector Elements")
+								.expect("Failed to create flatten node")
+								.default_node_template();
+							responses.add(NodeGraphMessage::InsertNode {
+								node_id: flatten_node_id,
+								node_template: flatten_node,
+							});
+							responses.add(NodeGraphMessage::MoveNodeToChainStart {
+								node_id: flatten_node_id,
+								parent: current_layer,
+							});
+
+							// Add a path node after the flatten node
+							let path_node_id = NodeId::new();
+							let path_node = document_node_definitions::resolve_document_node_type("Path")
+								.expect("Failed to create path node")
+								.default_node_template();
+							responses.add(NodeGraphMessage::InsertNode {
+								node_id: path_node_id,
+								node_template: path_node,
+							});
+							responses.add(NodeGraphMessage::MoveNodeToChainStart {
+								node_id: path_node_id,
+								parent: current_layer,
+							});
+							responses.add(NodeGraphMessage::RunDocumentGraph);
+							responses.add(Message::StartBuffer);
+						}
+					}
+					// Even if no buffer was started, the message still has to be run again in order to call bend_from_previous_point
+					tool_data.buffering_merged_vector = true;
+					responses.add(PenToolMessage::DragStart);
+					PenToolFsmState::PlacingAnchor
 				}
-				tool_data.bend_from_previous_point(SnapData::new(document, input), transform);
-				PenToolFsmState::DraggingHandle
 			}
 			(PenToolFsmState::DraggingHandle, PenToolMessage::DragStop) => tool_data
 				.finish_placing_handle(SnapData::new(document, input), transform, responses)
