@@ -9,11 +9,11 @@ use glam::DVec2;
 pub fn should_extend(document: &DocumentMessageHandler, goal: DVec2, tolerance: f64, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Option<(LayerNodeIdentifier, PointId, DVec2)> {
 	let mut best = None;
 	let mut best_distance_squared = tolerance * tolerance;
-
 	for layer in layers {
 		let viewspace = document.metadata().transform_to_viewport(layer);
-
-		let vector_data = document.network_interface.compute_modified_vector(layer)?;
+		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
+			continue;
+		};
 		for id in vector_data.single_connected_points() {
 			let Some(point) = vector_data.point_domain.position_from_id(id) else { continue };
 
