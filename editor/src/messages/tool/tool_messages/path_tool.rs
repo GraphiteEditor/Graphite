@@ -72,6 +72,7 @@ pub enum PathToolMessage {
 	SelectedPointYChanged {
 		new_y: f64,
 	},
+	ClosePath,
 }
 
 impl ToolMetadata for PathTool {
@@ -168,7 +169,17 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		let updating_point = message == ToolMessage::Path(PathToolMessage::SelectedPointUpdated);
 
-		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, true);
+		match message {
+			ToolMessage::Path(PathToolMessage::ClosePath) => {
+				responses.add(DocumentMessage::AddTransaction);
+				tool_data.shape_editor.close_selected_path(&tool_data.document, responses);
+				responses.add(DocumentMessage::EndTransaction);
+				responses.add(OverlaysMessage::Draw);
+			}
+			_ => {
+				self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, true);
+			}
+		}
 
 		if updating_point {
 			self.send_layout(responses, LayoutTarget::ToolOptions);
@@ -188,6 +199,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeselectAllPoints,
 				BreakPath,
 				DeleteAndBreakPath,
+				ClosePath,
 			),
 			PathToolFsmState::Dragging => actions!(PathToolMessageDiscriminant;
 				Escape,

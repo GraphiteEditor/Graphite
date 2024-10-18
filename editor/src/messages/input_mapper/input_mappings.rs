@@ -45,6 +45,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(MouseLeft); action_dispatch=NavigationMessage::EndCanvasPTZWithClick { commit_key: MouseLeft }),
 		entry!(KeyDown(MouseMiddle); action_dispatch=NavigationMessage::EndCanvasPTZWithClick { commit_key: MouseMiddle }),
 		entry!(KeyDown(MouseRight); action_dispatch=NavigationMessage::EndCanvasPTZWithClick { commit_key: MouseRight }),
+		entry!(KeyDown(KeyJ); modifiers=[Control], action_dispatch=ToolMessage::Path(PathToolMessage::ClosePath)),
 		//
 		// ===============
 		// NORMAL PRIORITY

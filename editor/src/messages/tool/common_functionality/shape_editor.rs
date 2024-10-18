@@ -169,6 +169,46 @@ impl ClosestSegment {
 
 // TODO Consider keeping a list of selected manipulators to minimize traversals of the layers
 impl ShapeState {
+
+// Closes the selected path by connecting the last selected point to the first selected point.
+pub fn close_selected_path(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+    for (&layer, state) in &self.selected_shape_state {
+        let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
+            continue;
+        };
+
+        let selected_points: Vec<_> = state.selected_points.iter().filter_map(|&point| {
+            if let ManipulatorPointId::Anchor(id) = point {
+                Some(id)
+            } else {
+                None
+            }
+        }).collect();
+
+        if selected_points.len() < 2 {
+            continue;
+        }
+
+        let start_point = selected_points[0];
+        let end_point = selected_points[selected_points.len() - 1];
+
+        if start_point == end_point {
+            continue
+        }
+
+        let start_pos = vector_data.point_domain.position_from_id(start_point).unwrap_or_default();
+        let end_pos = vector_data.point_domain.position_from_id(end_point).unwrap_or_default();
+
+        let segment_id = SegmentId::generate();
+        let modification_type = VectorModificationType::InsertSegment {
+            id: segment_id,
+				points: [end_point, start_point],
+				handles: [None, None],
+			};
+			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		}
+	}
+	
 	// Snap, returning a viewport delta
 	pub fn snap(&self, snap_manager: &mut SnapManager, snap_cache: &SnapCache, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, previous_mouse: DVec2) -> DVec2 {
 		let snap_data = SnapData::new_snap_cache(document, input, snap_cache);
