@@ -547,7 +547,9 @@ async fn flatten_vector_elements<F: 'n + Send>(
 	graphic_group_input: impl Node<F, Output = GraphicGroup>,
 ) -> VectorData {
 	let graphic_group = graphic_group_input.eval(footprint).await;
-
+	// A node based solution to support passing through vector data could be a network node with a cache node connected to
+	// a flatten vector elements connected to an if else node, another connection from the cache directly
+	// To the if else node, and another connection from the cache to a matches type node connected to the if else node.
 	fn concat_group(graphic_group: &GraphicGroup, current_transform: DAffine2, result: &mut VectorData) {
 		for (element, reference) in graphic_group.iter() {
 			match element {

@@ -6,7 +6,6 @@ use crate::messages::portfolio::document::utility_types::network_interface::Node
 use crate::messages::prelude::*;
 
 use bezier_rs::{Bezier, BezierHandles, TValue};
-use dyn_any::DynAny;
 use graphene_core::transform::Transform;
 use graphene_core::vector::{ManipulatorPointId, PointId, VectorData, VectorModificationType};
 
@@ -1071,11 +1070,7 @@ impl ShapeState {
 				continue;
 			};
 
-			for point in self.selected_points() {
-				if let Some(_) = point.as_anchor() {
-					continue;
-				}
-
+			for point in self.selected_points().filter(|point| point.as_handle().is_some()) {
 				let anchor = point.get_anchor(&vector_data);
 				if let Some(handles) = point.get_handle_pair(&vector_data) {
 					points_to_select.push((layer, anchor, Some(handles[1].to_manipulator_point())));
