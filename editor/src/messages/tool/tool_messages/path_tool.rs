@@ -72,7 +72,7 @@ pub enum PathToolMessage {
 	SelectedPointYChanged {
 		new_y: f64,
 	},
-	Tab,
+	AlternateSelectedHandles,
 }
 
 impl ToolMetadata for PathTool {
@@ -170,7 +170,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 		let updating_point = message == ToolMessage::Path(PathToolMessage::SelectedPointUpdated);
 
 		match message {
-			ToolMessage::Path(PathToolMessage::Tab) => {
+			ToolMessage::Path(PathToolMessage::AlternateSelectedHandles) => {
 				tool_data.shape_editor.alternate_selected_handles(&tool_data.document.network_interface);
 			}
 			_ => {
@@ -196,7 +196,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeselectAllPoints,
 				BreakPath,
 				DeleteAndBreakPath,
-				Tab,
 			),
 			PathToolFsmState::Dragging => actions!(PathToolMessageDiscriminant;
 				Escape,
@@ -207,7 +206,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				Delete,
 				BreakPath,
 				DeleteAndBreakPath,
-				Tab,
+				AlternateSelectedHandles,
 			),
 			PathToolFsmState::DrawingBox => actions!(PathToolMessageDiscriminant;
 				FlipSmoothSharp,

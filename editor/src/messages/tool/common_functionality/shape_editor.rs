@@ -1061,7 +1061,7 @@ impl ShapeState {
 		}
 	}
 
-	/// Swaps selected handles to
+	/// Alternate selected handles to mirrors
 	pub fn alternate_selected_handles(&mut self, network_interface: &NodeNetworkInterface) {
 		let mut handles_to_update = Vec::new();
 
