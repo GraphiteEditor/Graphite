@@ -1065,7 +1065,7 @@ impl ShapeState {
 	pub fn alternate_selected_handles(&mut self, network_interface: &NodeNetworkInterface) {
 		let mut handles_to_update = Vec::new();
 
-		for (&layer, _) in &self.selected_shape_state {
+		for &layer in self.selected_shape_state.keys() {
 			let Some(vector_data) = network_interface.compute_modified_vector(layer) else {
 				continue;
 			};
