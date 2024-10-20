@@ -1080,6 +1080,11 @@ impl ShapeState {
 
 		for (layer, handle_to_deselect, handle_to_select) in handles_to_update {
 			if let Some(state) = self.selected_shape_state.get_mut(&layer) {
+				let set = &state.selected_points;
+				// If both selected, keep them selected
+				if set.contains(&handle_to_deselect) && set.contains(&handle_to_select) {
+					continue;
+				}
 				state.deselect_point(handle_to_deselect);
 				state.select_point(handle_to_select);
 			}

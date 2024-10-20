@@ -738,6 +738,7 @@ impl Fsm for PathToolFsmState {
 					HintInfo::keys([Key::Alt], "Toggle Colinear Handles"),
 					// TODO: Switch this to the "Alt" key (since it's equivalent to the "From Center" modifier when drawing a line). And show this only when a handle is being dragged.
 					HintInfo::keys([Key::Shift], "Equidistant Handles"),
+					HintInfo::keys([Key::Tab], "Select Oppposite Handles"),
 					// TODO: Add "Snap 15°" modifier with the "Shift" key (only when a handle is being dragged).
 					// TODO: Add "Lock Angle" modifier with the "Ctrl" key (only when a handle is being dragged).
 				]),
