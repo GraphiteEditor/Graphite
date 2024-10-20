@@ -191,6 +191,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				BreakPath,
 				DeleteAndBreakPath,
 				Space,
+				SpaceStop,
 			),
 			PathToolFsmState::Dragging => actions!(PathToolMessageDiscriminant;
 				Escape,
@@ -202,6 +203,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				BreakPath,
 				DeleteAndBreakPath,
 				Space,
+				SpaceStop,
 			),
 			PathToolFsmState::DrawingBox => actions!(PathToolMessageDiscriminant;
 				FlipSmoothSharp,
@@ -266,9 +268,15 @@ struct PathToolData {
 	snap_cache: SnapCache,
 	double_click_handled: bool,
 	auto_panning: AutoPanning,
+	selected_points_before_space: Vec<ManipulatorPointId>,
 }
 
 impl PathToolData {
+	fn add_selected_points(&mut self, points: Vec<ManipulatorPointId>) -> PathToolFsmState {
+		self.selected_points_before_space = points;
+		PathToolFsmState::Dragging
+	}
+
 	fn start_insertion(&mut self, responses: &mut VecDeque<Message>, segment: ClosestSegment) -> PathToolFsmState {
 		if self.segment.is_some() {
 			warn!("Segment was `Some(..)` before `start_insertion`")
@@ -291,7 +299,6 @@ impl PathToolData {
 			PathToolFsmState::Ready
 		}
 	}
-
 	fn end_insertion(&mut self, shape_editor: &mut ShapeState, responses: &mut VecDeque<Message>, kind: InsertEndKind) -> PathToolFsmState {
 		let mut commit_transaction = false;
 		match self.segment.as_mut() {
@@ -609,19 +616,19 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(PathToolFsmState::Dragging, PathToolMessage::Space) => {
+				//TODO: dont have to clone maybe, lifetime stuff?
+				tool_data.add_selected_points(tool_action_data.shape_editor.selected_points().cloned().collect());
 				tool_action_data.shape_editor.select_handles_and_anchor(&tool_action_data.document.network_interface);
 				responses.add(PathToolMessage::SelectedPointUpdated);
-				self
-				// PathToolFsmState::Dragging
-				// save the originally selected points, so can revert back to it up spaceup
+				// self
+				PathToolFsmState::Dragging
 			}
 			(_, PathToolMessage::SpaceStop) => {
-				// try revert back to where it was without holding space?
-				// tool_action_data.shape_editor.select
 				tool_action_data.shape_editor.deselect_all_points();
+				tool_action_data.shape_editor.select_points_by_manipulator_id(&tool_data.selected_points_before_space);
 				responses.add(PathToolMessage::SelectedPointUpdated);
-				self
-				// PathToolFsmState::Dragging
+				// self
+				PathToolFsmState::Dragging
 			}
 			(_, PathToolMessage::DragStop { equidistant }) => {
 				let equidistant = input.keyboard.get(equidistant as usize);
