@@ -72,6 +72,12 @@ pub enum PathToolMessage {
 	SelectedPointYChanged {
 		new_y: f64,
 	},
+<<<<<<< HEAD
+=======
+	Tab,
+	Space,
+	SpaceStop,
+>>>>>>> 36dfb9d9 (in progress:)
 }
 
 impl ToolMetadata for PathTool {
@@ -188,6 +194,11 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeselectAllPoints,
 				BreakPath,
 				DeleteAndBreakPath,
+<<<<<<< HEAD
+=======
+				Tab, //TODO: maybe remove tab space from ready  ? need to test it
+				Space,
+>>>>>>> 36dfb9d9 (in progress:)
 			),
 			PathToolFsmState::Dragging => actions!(PathToolMessageDiscriminant;
 				Escape,
@@ -198,6 +209,11 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				Delete,
 				BreakPath,
 				DeleteAndBreakPath,
+<<<<<<< HEAD
+=======
+				Tab,
+				Space,
+>>>>>>> 36dfb9d9 (in progress:)
 			),
 			PathToolFsmState::DrawingBox => actions!(PathToolMessageDiscriminant;
 				FlipSmoothSharp,
@@ -603,6 +619,21 @@ impl Fsm for PathToolFsmState {
 				responses.add(PathToolMessage::SelectedPointUpdated);
 
 				PathToolFsmState::Ready
+			}
+			(PathToolFsmState::Dragging, PathToolMessage::Space) => {
+				tool_action_data.shape_editor.select_handles_and_anchor(&tool_action_data.document.network_interface);
+				responses.add(PathToolMessage::SelectedPointUpdated);
+				self
+				// PathToolFsmState::Dragging
+				// save the originally selected points, so can revert back to it up spaceup
+			}
+			(_, PathToolMessage::SpaceStop) => {
+				// try revert back to where it was without holding space?
+				// tool_action_data.shape_editor.select
+				tool_action_data.shape_editor.deselect_all_points();
+				responses.add(PathToolMessage::SelectedPointUpdated);
+				self
+				// PathToolFsmState::Dragging
 			}
 			(_, PathToolMessage::DragStop { equidistant }) => {
 				let equidistant = input.keyboard.get(equidistant as usize);
