@@ -495,34 +495,38 @@ impl GraphicElementRendered for VectorData {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext) {
+	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _: &mut RenderContext) {
 		use crate::vector::style::GradientType;
 		use vello::peniko;
 		let mut layer = false;
-		let stroke_transform = self.style.stroke().map_or(DAffine2::IDENTITY, |stroke| stroke.transform);
-		let path_transform = (transform * self.transform) * stroke_transform.inverse();
-		let transformed_bounds = GraphicElementRendered::bounding_box(self, path_transform).unwrap_or_default();
+
+		let multiplied_transform = parent_transform * self.transform;
+		let set_stroke_transform = self.style.stroke().map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
+		let applied_stroke_transform = set_stroke_transform.unwrap_or(multiplied_transform);
+		let element_transform = set_stroke_transform.map(|stroke_transform| multiplied_transform * stroke_transform.inverse());
+		let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
+		let layer_bounds = self.bounding_box().unwrap_or_default();
 
 		if self.alpha_blending.opacity < 1. || self.alpha_blending.blend_mode != BlendMode::default() {
 			layer = true;
 			scene.push_layer(
 				peniko::BlendMode::new(self.alpha_blending.blend_mode.into(), peniko::Compose::SrcOver),
 				self.alpha_blending.opacity,
-				kurbo::Affine::new((path_transform).to_cols_array()),
-				&kurbo::Rect::new(transformed_bounds[0].x, transformed_bounds[0].y, transformed_bounds[1].x, transformed_bounds[1].y),
+				kurbo::Affine::new(multiplied_transform.to_cols_array()),
+				&kurbo::Rect::new(layer_bounds[0].x, layer_bounds[0].y, layer_bounds[1].x, layer_bounds[1].y),
 			);
 		}
 
 		let to_point = |p: DVec2| kurbo::Point::new(p.x, p.y);
 		let mut path = kurbo::BezPath::new();
 		for subpath in self.stroke_bezier_paths() {
-			subpath.to_vello_path(stroke_transform, &mut path);
+			subpath.to_vello_path(applied_stroke_transform, &mut path);
 		}
 
 		match self.style.fill() {
 			Fill::Solid(color) => {
 				let fill = peniko::Brush::Solid(peniko::Color::rgba(color.r() as f64, color.g() as f64, color.b() as f64, color.a() as f64));
-				scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(path_transform.to_cols_array()), &fill, None, &path);
+				scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, &path);
 			}
 			Fill::Gradient(gradient) => {
 				let mut stops = peniko::ColorStops::new();
@@ -533,13 +537,15 @@ impl GraphicElementRendered for VectorData {
 					});
 				}
 				// Compute bounding box of the shape to determine the gradient start and end points
-				let bounds = self.bounding_box().unwrap_or_default();
-				let lerp_bounds = |p: DVec2| bounds[0] + (bounds[1] - bounds[0]) * p;
-				let start = lerp_bounds(gradient.start);
-				let end = lerp_bounds(gradient.end);
+				let bounds = self.nonzero_bounding_box();
+				let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
-				let start = self.transform.transform_point2(start);
-				let end = self.transform.transform_point2(end);
+				let inverse_parent_transform = (parent_transform.matrix2.determinant() != 0.).then(|| parent_transform.inverse()).unwrap_or_default();
+				let mod_points = inverse_parent_transform * multiplied_transform * bound_transform;
+
+				let start = mod_points.transform_point2(gradient.start);
+				let end = mod_points.transform_point2(gradient.end);
+
 				let fill = peniko::Brush::Gradient(peniko::Gradient {
 					kind: match gradient.gradient_type {
 						GradientType::Linear => peniko::GradientKind::Linear {
@@ -559,7 +565,11 @@ impl GraphicElementRendered for VectorData {
 					stops,
 					..Default::default()
 				});
-				scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(path_transform.to_cols_array()), &fill, None, &path);
+				// Vello does `elment_transform * brush_transform` internally. We don't want elment_transform to have any impact so we need to left multiply by the inverse.
+				// This makes the final internal brush transform equal to `parent_transform`, allowing you to strech a gradient by transforming the parent folder.
+				let inverse_element_transform = (element_transform.matrix2.determinant() != 0.).then(|| element_transform.inverse()).unwrap_or_default();
+				let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
+				scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), &path);
 			}
 			Fill::None => (),
 		};
@@ -591,7 +601,7 @@ impl GraphicElementRendered for VectorData {
 				dash_offset: stroke.dash_offset,
 			};
 			if stroke.width > 0. {
-				scene.stroke(&stroke, kurbo::Affine::new(path_transform.to_cols_array()), color, None, &path);
+				scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), color, None, &path);
 			}
 		}
 		if layer {
@@ -703,7 +713,8 @@ impl GraphicElementRendered for Artboard {
 		if self.clip {
 			scene.push_layer(blend_mode, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
 		}
-		let child_transform = transform * DAffine2::from_translation(self.location.as_dvec2()) * self.graphic_group.transform;
+		// Since the graphic group's transform is right multiplied in when rendering the graphic group, we just need to right multiply by the offset here.
+		let child_transform = transform * DAffine2::from_translation(self.location.as_dvec2());
 		self.graphic_group.render_to_vello(scene, child_transform, context);
 		if self.clip {
 			scene.pop_layer();
