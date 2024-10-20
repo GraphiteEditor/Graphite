@@ -238,10 +238,10 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 		})
 	}
-	// Gets the node id of a node with a specific reference that is upstream from the layer node, and creates it if it does not exist
-	// The returned node is based on the selection dots in the layer. The right most dot will always insert/access the path that flows directly into the layer
-	// Each dot after that represents an existing path node
-	// If there is an existing upstream node, then it will always be returned first.
+	/// Gets the node id of a node with a specific reference that is upstream from the layer node, and creates it if it does not exist
+	/// The returned node is based on the selection dots in the layer. The right most dot will always insert/access the path that flows directly into the layer
+	/// Each dot after that represents an existing path node
+	/// If there is an existing upstream node, then it will always be returned first.
 	pub fn existing_node_id(&mut self, reference: &'static str) -> Option<NodeId> {
 		// Start from the layer node or export
 		let output_layer = self.get_output_layer()?;
