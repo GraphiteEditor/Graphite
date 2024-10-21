@@ -1066,7 +1066,7 @@ impl ShapeState {
 		let mut points_to_select = Vec::new();
 		let mut anchors_to_select = Vec::new();
 
-		for (&layer, _) in &self.selected_shape_state {
+		for &layer in self.selected_shape_state.keys() {
 			let Some(vector_data) = network_interface.compute_modified_vector(layer) else {
 				continue;
 			};
