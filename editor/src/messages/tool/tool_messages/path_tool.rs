@@ -172,6 +172,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 		match message {
 			ToolMessage::Path(PathToolMessage::AlternateSelectedHandles) => {
 				tool_data.shape_editor.alternate_selected_handles(&tool_data.document.network_interface);
+				responses.add(PathToolMessage::SelectedPointUpdated);
+				responses.add(OverlaysMessage::Draw);
 			}
 			_ => {
 				self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, true);
