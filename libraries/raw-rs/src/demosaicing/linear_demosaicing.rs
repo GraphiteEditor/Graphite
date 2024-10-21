@@ -1,4 +1,4 @@
-use crate::{Captures, Pixel, RawImage};
+use crate::{Pixel, RawImage};
 
 fn average(data: &[u16], indexes: impl Iterator<Item = i64>) -> u16 {
 	let mut sum = 0;
@@ -14,14 +14,14 @@ fn average(data: &[u16], indexes: impl Iterator<Item = i64>) -> u16 {
 }
 
 impl RawImage {
-	pub fn linear_demosaic_iter(&self) -> impl Iterator<Item = Pixel> + Captures<&'_ ()> {
+	pub fn linear_demosaic_iter(&self) -> impl Iterator<Item = Pixel> + use<'_> {
 		match self.cfa_pattern {
 			[0, 1, 1, 2] => self.linear_demosaic_rggb_iter(),
 			_ => todo!(),
 		}
 	}
 
-	fn linear_demosaic_rggb_iter(&self) -> impl Iterator<Item = Pixel> + Captures<&'_ ()> {
+	fn linear_demosaic_rggb_iter(&self) -> impl Iterator<Item = Pixel> + use<'_> {
 		let width = self.width as i64;
 		let height = self.height as i64;
 
