@@ -200,9 +200,3 @@ pub enum DecoderError {
 	#[error("An IO Error ocurred")]
 	IoError(#[from] std::io::Error),
 }
-
-// This trait is here only to circumvent Rust's lifetime capturing rules in return type impl Trait.
-// See https://youtu.be/CWiz_RtA1Hw?si=j0si4qE2Y20f71Uo
-// This should be removed when Rust 2024 edition is released as described in https://blog.rust-lang.org/2024/09/05/impl-trait-capture-rules.html
-pub trait Captures<U> {}
-impl<T: ?Sized, U> Captures<U> for T {}

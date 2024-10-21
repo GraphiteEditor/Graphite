@@ -1,7 +1,7 @@
-use crate::{Captures, Image, Pixel, Transform};
+use crate::{Image, Pixel, Transform};
 
 impl Image<u16> {
-	pub fn transform_iter(&self) -> (usize, usize, impl Iterator<Item = Pixel> + Captures<&'_ ()>) {
+	pub fn transform_iter(&self) -> (usize, usize, impl Iterator<Item = Pixel> + use<'_>) {
 		let (final_width, final_height) = if self.transform.will_swap_coordinates() {
 			(self.height, self.width)
 		} else {
