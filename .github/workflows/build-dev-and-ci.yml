@@ -91,6 +91,21 @@ jobs:
         run: |
           mold -run cargo test --all-features
 
+      - name: 🔬 Check Rust formatting for Raw-rs
+        run: |
+          cd libraries/raw-rs
+          mold -run cargo fmt --all -- --check
+
+      - name: 🦀 Build Rust code for Raw-rs
+        run: |
+          cd libraries/raw-rs
+          mold -run cargo build --all-features
+
+      - name: 🧪 Run Rust tests for Raw-rs
+        run: |
+          cd libraries/raw-rs
+          mold -run cargo test --all-features
+
   # miri:
   #   runs-on: self-hosted
 
