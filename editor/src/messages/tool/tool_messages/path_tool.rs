@@ -72,12 +72,8 @@ pub enum PathToolMessage {
 	SelectedPointYChanged {
 		new_y: f64,
 	},
-<<<<<<< HEAD
-=======
-	Tab,
 	Space,
 	SpaceStop,
->>>>>>> 36dfb9d9 (in progress:)
 }
 
 impl ToolMetadata for PathTool {
@@ -194,11 +190,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeselectAllPoints,
 				BreakPath,
 				DeleteAndBreakPath,
-<<<<<<< HEAD
-=======
-				Tab, //TODO: maybe remove tab space from ready  ? need to test it
 				Space,
->>>>>>> 36dfb9d9 (in progress:)
 			),
 			PathToolFsmState::Dragging => actions!(PathToolMessageDiscriminant;
 				Escape,
@@ -209,11 +201,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				Delete,
 				BreakPath,
 				DeleteAndBreakPath,
-<<<<<<< HEAD
-=======
-				Tab,
 				Space,
->>>>>>> 36dfb9d9 (in progress:)
 			),
 			PathToolFsmState::DrawingBox => actions!(PathToolMessageDiscriminant;
 				FlipSmoothSharp,
