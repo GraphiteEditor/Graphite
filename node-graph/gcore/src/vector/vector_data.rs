@@ -306,7 +306,7 @@ impl ManipulatorPointId {
 		}
 	}
 
-	/// Attempt to get a pair of handles. For an anchor this is the first to handles connected. For a handle it is self and the first opposing handle.
+	/// Attempt to get a pair of handles. For an anchor this is the first two handles connected. For a handle it is self and the first opposing handle.
 	#[must_use]
 	pub fn get_handle_pair(self, vector_data: &VectorData) -> Option<[HandleId; 2]> {
 		match self {
