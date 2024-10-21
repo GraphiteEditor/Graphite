@@ -72,8 +72,8 @@ pub enum PathToolMessage {
 	SelectedPointYChanged {
 		new_y: f64,
 	},
-	Space,
-	SpaceStop,
+	SelectAnchorAndHandle,
+	ResumeOriginalSelection,
 }
 
 impl ToolMetadata for PathTool {
@@ -190,7 +190,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeselectAllPoints,
 				BreakPath,
 				DeleteAndBreakPath,
-				SpaceStop,
+				ResumeOriginalSelection,
 			),
 			PathToolFsmState::Dragging => actions!(PathToolMessageDiscriminant;
 				Escape,
@@ -201,8 +201,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				Delete,
 				BreakPath,
 				DeleteAndBreakPath,
-				Space,
-				SpaceStop,
+				SelectAnchorAndHandle,
+				ResumeOriginalSelection,
 			),
 			PathToolFsmState::DrawingBox => actions!(PathToolMessageDiscriminant;
 				FlipSmoothSharp,
@@ -214,7 +214,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeleteAndBreakPath,
 				Escape,
 				RightClick,
-				SpaceStop,
+				ResumeOriginalSelection,
 			),
 			PathToolFsmState::InsertPoint => actions!(PathToolMessageDiscriminant;
 				Enter,
@@ -224,7 +224,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				Delete,
 				RightClick,
 				GRS,
-				SpaceStop,
+				ResumeOriginalSelection,
 			),
 		}
 	}
@@ -621,7 +621,7 @@ impl Fsm for PathToolFsmState {
 
 				PathToolFsmState::Ready
 			}
-			(PathToolFsmState::Dragging, PathToolMessage::Space) => {
+			(PathToolFsmState::Dragging, PathToolMessage::SelectAnchorAndHandle) => {
 				if tool_data.space_held {
 					return PathToolFsmState::Dragging;
 				}
@@ -631,14 +631,14 @@ impl Fsm for PathToolFsmState {
 				responses.add(PathToolMessage::SelectedPointUpdated);
 				PathToolFsmState::Dragging
 			}
-			(PathToolFsmState::Dragging, PathToolMessage::SpaceStop) => {
+			(PathToolFsmState::Dragging, PathToolMessage::ResumeOriginalSelection) => {
 				tool_data.space_held = false;
 				tool_action_data.shape_editor.deselect_all_points();
 				tool_action_data.shape_editor.select_points_by_manipulator_id(&tool_data.selected_points_before_space);
 				responses.add(PathToolMessage::SelectedPointUpdated);
 				PathToolFsmState::Dragging
 			}
-			(PathToolFsmState::Ready, PathToolMessage::SpaceStop) => {
+			(PathToolFsmState::Ready, PathToolMessage::ResumeOriginalSelection) => {
 				tool_data.space_held = false;
 				tool_data.remove_selected_points();
 				PathToolFsmState::Ready
