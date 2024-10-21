@@ -190,7 +190,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeselectAllPoints,
 				BreakPath,
 				DeleteAndBreakPath,
-				Space,
 				SpaceStop,
 			),
 			PathToolFsmState::Dragging => actions!(PathToolMessageDiscriminant;
@@ -215,6 +214,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeleteAndBreakPath,
 				Escape,
 				RightClick,
+				SpaceStop,
 			),
 			PathToolFsmState::InsertPoint => actions!(PathToolMessageDiscriminant;
 				Enter,
@@ -224,6 +224,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				Delete,
 				RightClick,
 				GRS,
+				SpaceStop,
 			),
 		}
 	}
@@ -269,12 +270,17 @@ struct PathToolData {
 	double_click_handled: bool,
 	auto_panning: AutoPanning,
 	selected_points_before_space: Vec<ManipulatorPointId>,
+	space_held: bool,
 }
 
 impl PathToolData {
 	fn add_selected_points(&mut self, points: Vec<ManipulatorPointId>) -> PathToolFsmState {
 		self.selected_points_before_space = points;
 		PathToolFsmState::Dragging
+	}
+
+	fn remove_selected_points(&mut self) {
+		self.selected_points_before_space.clear();
 	}
 
 	fn start_insertion(&mut self, responses: &mut VecDeque<Message>, segment: ClosestSegment) -> PathToolFsmState {
@@ -616,19 +622,26 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(PathToolFsmState::Dragging, PathToolMessage::Space) => {
-				//TODO: dont have to clone maybe, lifetime stuff?
+				if tool_data.space_held {
+					return PathToolFsmState::Dragging;
+				}
+				tool_data.space_held = true;
 				tool_data.add_selected_points(tool_action_data.shape_editor.selected_points().cloned().collect());
 				tool_action_data.shape_editor.select_handles_and_anchor(&tool_action_data.document.network_interface);
 				responses.add(PathToolMessage::SelectedPointUpdated);
-				// self
 				PathToolFsmState::Dragging
 			}
-			(_, PathToolMessage::SpaceStop) => {
+			(PathToolFsmState::Dragging, PathToolMessage::SpaceStop) => {
+				tool_data.space_held = false;
 				tool_action_data.shape_editor.deselect_all_points();
 				tool_action_data.shape_editor.select_points_by_manipulator_id(&tool_data.selected_points_before_space);
 				responses.add(PathToolMessage::SelectedPointUpdated);
-				// self
 				PathToolFsmState::Dragging
+			}
+			(PathToolFsmState::Ready, PathToolMessage::SpaceStop) => {
+				tool_data.space_held = false;
+				tool_data.remove_selected_points();
+				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::DragStop { equidistant }) => {
 				let equidistant = input.keyboard.get(equidistant as usize);
@@ -755,6 +768,7 @@ impl Fsm for PathToolFsmState {
 					HintInfo::keys([Key::Alt], "Toggle Colinear Handles"),
 					// TODO: Switch this to the "Alt" key (since it's equivalent to the "From Center" modifier when drawing a line). And show this only when a handle is being dragged.
 					HintInfo::keys([Key::Shift], "Equidistant Handles"),
+					HintInfo::keys([Key::Space], "Drag anchor"),
 					// TODO: Add "Snap 15°" modifier with the "Shift" key (only when a handle is being dragged).
 					// TODO: Add "Lock Angle" modifier with the "Ctrl" key (only when a handle is being dragged).
 				]),

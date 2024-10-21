@@ -2,7 +2,7 @@ use super::graph_modification_utils;
 use super::snapping::{SnapCache, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{GeometrySnapSource, SnapSource};
-use crate::messages::portfolio::document::utility_types::network_interface::{self, NodeNetworkInterface};
+use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
 
 use bezier_rs::{Bezier, BezierHandles, TValue};
@@ -1063,37 +1063,43 @@ impl ShapeState {
 
 	/// Selects handles and anchor connected to current handle
 	pub fn select_handles_and_anchor(&mut self, network_interface: &NodeNetworkInterface) {
-		let mut anchor_and_handles_to_select = Vec::new();
+		let mut points_to_select = Vec::new();
+		let mut anchors_to_select = Vec::new();
+
 		for (&layer, _) in &self.selected_shape_state {
 			let Some(vector_data) = network_interface.compute_modified_vector(layer) else {
 				continue;
 			};
 
 			for point in self.selected_points() {
+				let anchor = point.get_anchor(&vector_data);
+				anchors_to_select.push((layer, anchor));
+
 				if let Some(handles) = point.get_handle_pair(&vector_data) {
-					let anchor = handles[0].to_manipulator_point().get_anchor(&vector_data);
 					//handle[0] is selected, handle[1] is other
-					anchor_and_handles_to_select.push((layer, handles[1].to_manipulator_point(), anchor));
+					points_to_select.push((layer, handles[1].to_manipulator_point()));
 				}
 			}
 		}
 
-		for (layer, handle, anchor) in anchor_and_handles_to_select {
+		for (layer, anchor) in anchors_to_select {
 			if let Some(state) = self.selected_shape_state.get_mut(&layer) {
-				state.select_point(handle);
 				match anchor {
 					Some(anchor) => state.select_point(ManipulatorPointId::Anchor(anchor)),
 					None => continue,
 				}
 			}
 		}
+		for (layer, point) in points_to_select {
+			if let Some(state) = self.selected_shape_state.get_mut(&layer) {
+				state.select_point(point);
+			}
+		}
 	}
 
 	pub fn select_points_by_manipulator_id(&mut self, points: &Vec<ManipulatorPointId>) {
-		// Collect layers to modify first
 		let layers_to_modify: Vec<_> = self.selected_shape_state.keys().cloned().collect();
 
-		// Now perform the mutations on collected layers
 		for layer in layers_to_modify {
 			if let Some(state) = self.selected_shape_state.get_mut(&layer) {
 				for point in points {
