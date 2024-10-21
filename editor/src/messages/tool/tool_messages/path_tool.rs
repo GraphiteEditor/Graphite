@@ -305,6 +305,7 @@ impl PathToolData {
 			PathToolFsmState::Ready
 		}
 	}
+
 	fn end_insertion(&mut self, shape_editor: &mut ShapeState, responses: &mut VecDeque<Message>, kind: InsertEndKind) -> PathToolFsmState {
 		let mut commit_transaction = false;
 		match self.segment.as_mut() {
