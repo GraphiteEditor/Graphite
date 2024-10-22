@@ -628,7 +628,10 @@ impl Fsm for PathToolFsmState {
 				}
 				tool_data.space_held = true;
 				tool_data.add_selected_points(tool_action_data.shape_editor.selected_points().cloned().collect());
-				tool_action_data.shape_editor.select_handles_and_anchor(&tool_action_data.document.network_interface);
+				tool_action_data
+					.shape_editor
+					.select_handles_and_anchor_connected_to_current_handle(&tool_action_data.document.network_interface);
+
 				responses.add(PathToolMessage::SelectedPointUpdated);
 				responses.add(OverlaysMessage::Draw);
 				PathToolFsmState::Dragging

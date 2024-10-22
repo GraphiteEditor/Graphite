@@ -1062,9 +1062,8 @@ impl ShapeState {
 	}
 
 	/// Selects handles and anchor connected to current handle
-	pub fn select_handles_and_anchor(&mut self, network_interface: &NodeNetworkInterface) {
-		let mut points_to_select = Vec::new();
-		let mut anchors_to_select = Vec::new();
+	pub fn select_handles_and_anchor_connected_to_current_handle(&mut self, network_interface: &NodeNetworkInterface) {
+		let mut points_to_select: Vec<(LayerNodeIdentifier, Option<PointId>, Option<ManipulatorPointId>)> = Vec::new();
 
 		for &layer in self.selected_shape_state.keys() {
 			let Some(vector_data) = network_interface.compute_modified_vector(layer) else {
@@ -1073,26 +1072,22 @@ impl ShapeState {
 
 			for point in self.selected_points() {
 				let anchor = point.get_anchor(&vector_data);
-				anchors_to_select.push((layer, anchor));
-
 				if let Some(handles) = point.get_handle_pair(&vector_data) {
-					//handle[0] is selected, handle[1] is other
-					points_to_select.push((layer, handles[1].to_manipulator_point()));
+					points_to_select.push((layer, anchor, Some(handles[1].to_manipulator_point())));
+				} else {
+					points_to_select.push((layer, anchor, None));
 				}
 			}
 		}
 
-		for (layer, anchor) in anchors_to_select {
+		for (layer, anchor, handle) in points_to_select {
 			if let Some(state) = self.selected_shape_state.get_mut(&layer) {
-				match anchor {
-					Some(anchor) => state.select_point(ManipulatorPointId::Anchor(anchor)),
-					None => continue,
+				if let Some(anchor) = anchor {
+					state.select_point(ManipulatorPointId::Anchor(anchor));
 				}
-			}
-		}
-		for (layer, point) in points_to_select {
-			if let Some(state) = self.selected_shape_state.get_mut(&layer) {
-				state.select_point(point);
+				if let Some(handle) = handle {
+					state.select_point(handle);
+				}
 			}
 		}
 	}
