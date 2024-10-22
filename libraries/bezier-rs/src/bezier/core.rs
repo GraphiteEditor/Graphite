@@ -201,8 +201,11 @@ impl Bezier {
 	/// Returns true if the corresponding points of the two `Bezier`s are within the provided absolute value difference from each other.
 	/// The points considered includes the start, end, and any relevant handles.
 	pub fn abs_diff_eq(&self, other: &Bezier, max_abs_diff: f64) -> bool {
-		let self_points = self.get_points().collect::<Vec<DVec2>>();
-		let other_points = other.get_points().collect::<Vec<DVec2>>();
+		let a = if self.is_linear() { Self::from_linear_dvec2(self.start, self.end) } else { *self };
+		let b = if other.is_linear() { Self::from_linear_dvec2(other.start, other.end) } else { *other };
+
+		let self_points = a.get_points().collect::<Vec<DVec2>>();
+		let other_points = b.get_points().collect::<Vec<DVec2>>();
 
 		self_points.len() == other_points.len() && self_points.into_iter().zip(other_points).all(|(a, b)| a.abs_diff_eq(b, max_abs_diff))
 	}
