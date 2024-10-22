@@ -1822,6 +1822,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "fortuples"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "87630a8087e9cac4b7edfb6ee5e250ddca9112b57b6b17d8f5107375a3a8eace"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "futf"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4916,6 +4927,7 @@ version = "0.0.1"
 dependencies = [
  "bitstream-io",
  "build-camera-data",
+ "fortuples",
  "image 0.25.2",
  "libraw-rs",
  "num_enum 0.7.3",

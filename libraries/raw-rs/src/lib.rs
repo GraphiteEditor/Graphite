@@ -3,10 +3,12 @@ pub mod demosaicing;
 pub mod metadata;
 pub mod postprocessing;
 pub mod preprocessing;
+pub mod processing;
 pub mod tiff;
 
 use crate::metadata::identify::CameraModel;
 
+use processing::{Pixel, PixelTransform, RawPixel, RawPixelTransform};
 use tag_derive::Tag;
 use tiff::file::TiffRead;
 use tiff::tags::{Compression, ImageLength, ImageWidth, Orientation, StripByteCounts, SubIfd, Tag};
@@ -15,6 +17,9 @@ use tiff::{Ifd, TiffError};
 
 use std::io::{Read, Seek};
 use thiserror::Error;
+
+pub const CHANNELS_IN_RGB: usize = 3;
+pub type Histogram = [[usize; 0x2000]; CHANNELS_IN_RGB];
 
 pub enum SubtractBlack {
 	None,
@@ -31,8 +36,8 @@ pub struct RawImage {
 	pub maximum: u16,
 	pub black: SubtractBlack,
 	pub camera_model: Option<CameraModel>,
-	pub camera_white_balance_multiplier: Option<[f64; 4]>,
-	pub white_balance_multiplier: Option<[f64; 4]>,
+	pub camera_white_balance: Option<[f64; 4]>,
+	pub white_balance: Option<[f64; 4]>,
 	pub camera_to_rgb: Option<[[f64; 3]; 3]>,
 	pub rgb_to_camera: Option<[[f64; 3]; 3]>,
 }
@@ -45,8 +50,6 @@ pub struct Image<T> {
 	/// See <https://github.com/GraphiteEditor/Graphite/pull/1923#discussion_r1725070342> for more information.
 	pub channels: u8,
 	pub transform: Transform,
-	pub rgb_to_camera: Option<[[f64; 3]; 3]>,
-	pub(crate) histogram: Option<[[usize; 0x2000]; 3]>,
 }
 
 #[allow(dead_code)]
@@ -84,6 +87,8 @@ pub fn decode<R: Read + Seek>(reader: &mut R) -> Result<RawImage, DecoderError> 
 	raw_image.camera_model = Some(camera_model);
 	raw_image.transform = transform;
 
+	raw_image.calculate_conversion_matrices();
+
 	Ok(raw_image)
 }
 
@@ -96,19 +101,94 @@ pub fn process_8bit(raw_image: RawImage) -> Image<u8> {
 		width: image.width,
 		height: image.height,
 		transform: image.transform,
-		rgb_to_camera: image.rgb_to_camera,
-		histogram: image.histogram,
 	}
 }
 
 pub fn process_16bit(raw_image: RawImage) -> Image<u16> {
-	let raw_image = crate::preprocessing::camera_data::calculate_conversion_matrices(raw_image);
-	let raw_image = crate::preprocessing::subtract_black::subtract_black(raw_image);
-	let raw_image = crate::preprocessing::scale_colors::scale_colors(raw_image);
-	let image = crate::demosaicing::linear_demosaicing::linear_demosaic(raw_image);
-	let image = crate::postprocessing::convert_to_rgb::convert_to_rgb(image);
-	let image = crate::postprocessing::transform::transform(image);
-	crate::postprocessing::gamma_correction::gamma_correction(image)
+	let subtract_black = raw_image.subtract_black_fn();
+	let scale_white_balance = raw_image.scale_white_balance_fn();
+	let scale_to_16bit = raw_image.scale_to_16bit_fn();
+	let raw_image = raw_image.apply((subtract_black, scale_white_balance, scale_to_16bit));
+
+	let convert_to_rgb = raw_image.convert_to_rgb_fn();
+	let mut record_histogram = raw_image.record_histogram_fn();
+	let image = raw_image.demosaic_and_apply((convert_to_rgb, &mut record_histogram));
+
+	let gamma_correction = image.gamma_correction_fn(&record_histogram.histogram);
+	if image.transform == Transform::Horizontal {
+		image.apply(gamma_correction)
+	} else {
+		image.transform_and_apply(gamma_correction)
+	}
+}
+
+impl RawImage {
+	pub fn apply(mut self, mut transform: impl RawPixelTransform) -> RawImage {
+		for (index, value) in self.data.iter_mut().enumerate() {
+			let pixel = RawPixel {
+				value: *value,
+				row: index / self.width,
+				column: index % self.width,
+			};
+			*value = transform.apply(pixel);
+		}
+
+		self
+	}
+
+	pub fn demosaic_and_apply(self, mut transform: impl PixelTransform) -> Image<u16> {
+		let mut image = vec![0; self.width * self.height * 3];
+		for Pixel { values, row, column } in self.linear_demosaic_iter().map(|mut pixel| {
+			pixel.values = transform.apply(pixel);
+			pixel
+		}) {
+			let pixel_index = row * self.width + column;
+			image[3 * pixel_index..3 * (pixel_index + 1)].copy_from_slice(&values);
+		}
+
+		Image {
+			channels: 3,
+			data: image,
+			width: self.width,
+			height: self.height,
+			transform: self.transform,
+		}
+	}
+}
+
+impl Image<u16> {
+	pub fn apply(mut self, mut transform: impl PixelTransform) -> Image<u16> {
+		for (index, values) in self.data.chunks_exact_mut(3).enumerate() {
+			let pixel = Pixel {
+				values: values.try_into().unwrap(),
+				row: index / self.width,
+				column: index % self.width,
+			};
+			values.copy_from_slice(&transform.apply(pixel));
+		}
+
+		self
+	}
+
+	pub fn transform_and_apply(self, mut transform: impl PixelTransform) -> Image<u16> {
+		let mut image = vec![0; self.width * self.height * 3];
+		let (width, height, iter) = self.transform_iter();
+		for Pixel { values, row, column } in iter.map(|mut pixel| {
+			pixel.values = transform.apply(pixel);
+			pixel
+		}) {
+			let pixel_index = row * width + column;
+			image[3 * pixel_index..3 * (pixel_index + 1)].copy_from_slice(&values);
+		}
+
+		Image {
+			channels: 3,
+			data: image,
+			width,
+			height,
+			transform: Transform::Horizontal,
+		}
+	}
 }
 
 #[derive(Error, Debug)]
