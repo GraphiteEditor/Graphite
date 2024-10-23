@@ -269,7 +269,7 @@ struct PathToolData {
 }
 
 impl PathToolData {
-	fn add_selected_points(&mut self, points: Vec<ManipulatorPointId>) -> PathToolFsmState {
+	fn save_points_before_anchor_toggle(&mut self, points: Vec<ManipulatorPointId>) -> PathToolFsmState {
 		self.saved_points_before_anchor_select_toggle = points;
 		PathToolFsmState::Dragging
 	}
@@ -555,7 +555,7 @@ impl Fsm for PathToolFsmState {
 				if initial_press {
 					responses.add(PathToolMessage::SelectedPointUpdated);
 					tool_data.select_anchor_toggled = true;
-					tool_data.add_selected_points(shape_editor.selected_points().cloned().collect());
+					tool_data.save_points_before_anchor_toggle(shape_editor.selected_points().cloned().collect());
 					shape_editor.select_handles_and_anchor_connected_to_current_handle(&document.network_interface);
 				} else if released_from_toggle {
 					responses.add(PathToolMessage::SelectedPointUpdated);
