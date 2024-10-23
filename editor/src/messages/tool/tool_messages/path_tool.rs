@@ -769,6 +769,8 @@ impl Fsm for PathToolFsmState {
 				HintGroup(vec![
 					// TODO: Switch this to the "S" key. Also, make the hint dynamically say "Make Colinear" or "Make Not Colinear" based on its current state. And only
 					// TODO: show this hint if a handle (not an anchor) is being dragged, and disable that shortcut so it can''s equivalent to the "From Center" modifier when drawing a line). And show this only when a handle is being dragged.
+					HintInfo::keys([Key::Alt], "Toggle Colinear Handles"),
+					// TODO: Switch this to the "Alt" key (since it's equivalent to the "From Center" modifier when drawing a line). And show this only when a handle is being dragged.
 					HintInfo::keys([Key::Shift], "Equidistant Handles"),
 					HintInfo::keys([Key::Space], "Drag anchor"),
 					// TODO: Add "Snap 15°" modifier with the "Shift" key (only when a handle is being dragged).
