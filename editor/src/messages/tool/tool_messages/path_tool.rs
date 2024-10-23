@@ -58,10 +58,12 @@ pub enum PathToolMessage {
 	PointerMove {
 		alt: Key,
 		shift: Key,
+		move_anchor_and_handles: Key,
 	},
 	PointerOutsideViewport {
 		alt: Key,
 		shift: Key,
+		move_anchor_and_handles: Key,
 	},
 	RightClick,
 	SelectAllAnchors,
@@ -72,8 +74,6 @@ pub enum PathToolMessage {
 	SelectedPointYChanged {
 		new_y: f64,
 	},
-	SelectAnchorAndHandle,
-	ResumeOriginalSelection,
 }
 
 impl ToolMetadata for PathTool {
@@ -190,7 +190,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeselectAllPoints,
 				BreakPath,
 				DeleteAndBreakPath,
-				ResumeOriginalSelection,
 			),
 			PathToolFsmState::Dragging => actions!(PathToolMessageDiscriminant;
 				Escape,
@@ -201,8 +200,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				Delete,
 				BreakPath,
 				DeleteAndBreakPath,
-				SelectAnchorAndHandle,
-				ResumeOriginalSelection,
 			),
 			PathToolFsmState::DrawingBox => actions!(PathToolMessageDiscriminant;
 				FlipSmoothSharp,
@@ -214,7 +211,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeleteAndBreakPath,
 				Escape,
 				RightClick,
-				ResumeOriginalSelection,
 			),
 			PathToolFsmState::InsertPoint => actions!(PathToolMessageDiscriminant;
 				Enter,
@@ -224,7 +220,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				Delete,
 				RightClick,
 				GRS,
-				ResumeOriginalSelection,
 			),
 		}
 	}
@@ -269,18 +264,18 @@ struct PathToolData {
 	snap_cache: SnapCache,
 	double_click_handled: bool,
 	auto_panning: AutoPanning,
-	selected_points_before_space: Vec<ManipulatorPointId>,
-	space_held: bool,
+	saved_points_before_anchor_select_toggle: Vec<ManipulatorPointId>,
+	select_anchor_toggled: bool,
 }
 
 impl PathToolData {
 	fn add_selected_points(&mut self, points: Vec<ManipulatorPointId>) -> PathToolFsmState {
-		self.selected_points_before_space = points;
+		self.saved_points_before_anchor_select_toggle = points;
 		PathToolFsmState::Dragging
 	}
 
-	fn remove_selected_points(&mut self) {
-		self.selected_points_before_space.clear();
+	fn remove_saved_points(&mut self) {
+		self.saved_points_before_anchor_select_toggle.clear();
 	}
 
 	fn start_insertion(&mut self, responses: &mut VecDeque<Message>, segment: ClosestSegment) -> PathToolFsmState {
@@ -539,17 +534,37 @@ impl Fsm for PathToolFsmState {
 				let direct_insert_without_sliding = input.keyboard.get(ctrl as usize);
 				tool_data.mouse_down(shape_editor, document, input, responses, add_to_selection, direct_insert_without_sliding)
 			}
-			(PathToolFsmState::DrawingBox, PathToolMessage::PointerMove { alt, shift }) => {
+			(PathToolFsmState::DrawingBox, PathToolMessage::PointerMove { alt, shift, move_anchor_and_handles }) => {
 				tool_data.previous_mouse_position = input.mouse.position;
 				responses.add(OverlaysMessage::Draw);
 
 				// Auto-panning
-				let messages = [PathToolMessage::PointerOutsideViewport { alt, shift }.into(), PathToolMessage::PointerMove { alt, shift }.into()];
+				let messages = [
+					PathToolMessage::PointerOutsideViewport { alt, shift, move_anchor_and_handles }.into(),
+					PathToolMessage::PointerMove { alt, shift, move_anchor_and_handles }.into(),
+				];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				PathToolFsmState::DrawingBox
 			}
-			(PathToolFsmState::Dragging, PathToolMessage::PointerMove { alt, shift }) => {
+			(PathToolFsmState::Dragging, PathToolMessage::PointerMove { alt, shift, move_anchor_and_handles }) => {
+				let anchor_and_handle_toggled = input.keyboard.get(move_anchor_and_handles as usize);
+				let initial_press = anchor_and_handle_toggled && !tool_data.select_anchor_toggled;
+				let released_from_toggle = tool_data.select_anchor_toggled && !anchor_and_handle_toggled;
+
+				if initial_press {
+					responses.add(PathToolMessage::SelectedPointUpdated);
+					tool_data.select_anchor_toggled = true;
+					tool_data.add_selected_points(shape_editor.selected_points().cloned().collect());
+					shape_editor.select_handles_and_anchor_connected_to_current_handle(&document.network_interface);
+				} else if released_from_toggle {
+					responses.add(PathToolMessage::SelectedPointUpdated);
+					tool_data.select_anchor_toggled = false;
+					shape_editor.deselect_all_points();
+					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_anchor_select_toggle);
+					tool_data.remove_saved_points();
+				}
+
 				let alt_state = input.keyboard.get(alt as usize);
 				let shift_state = input.keyboard.get(shift as usize);
 				if !tool_data.update_colinear(shift_state, alt_state, shape_editor, document, responses) {
@@ -557,7 +572,10 @@ impl Fsm for PathToolFsmState {
 				}
 
 				// Auto-panning
-				let messages = [PathToolMessage::PointerOutsideViewport { alt, shift }.into(), PathToolMessage::PointerMove { alt, shift }.into()];
+				let messages = [
+					PathToolMessage::PointerOutsideViewport { alt, shift, move_anchor_and_handles }.into(),
+					PathToolMessage::PointerMove { alt, shift, move_anchor_and_handles }.into(),
+				];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				PathToolFsmState::Dragging
@@ -579,9 +597,12 @@ impl Fsm for PathToolFsmState {
 
 				PathToolFsmState::Dragging
 			}
-			(state, PathToolMessage::PointerOutsideViewport { alt, shift }) => {
+			(state, PathToolMessage::PointerOutsideViewport { alt, shift, move_anchor_and_handles }) => {
 				// Auto-panning
-				let messages = [PathToolMessage::PointerOutsideViewport { alt, shift }.into(), PathToolMessage::PointerMove { alt, shift }.into()];
+				let messages = [
+					PathToolMessage::PointerOutsideViewport { alt, shift, move_anchor_and_handles }.into(),
+					PathToolMessage::PointerMove { alt, shift, move_anchor_and_handles }.into(),
+				];
 				tool_data.auto_panning.stop(&messages, responses);
 
 				state
@@ -622,33 +643,11 @@ impl Fsm for PathToolFsmState {
 
 				PathToolFsmState::Ready
 			}
-			(PathToolFsmState::Dragging, PathToolMessage::SelectAnchorAndHandle) => {
-				if tool_data.space_held {
-					return PathToolFsmState::Dragging;
-				}
-				tool_data.space_held = true;
-				tool_data.add_selected_points(tool_action_data.shape_editor.selected_points().cloned().collect());
-				tool_action_data
-					.shape_editor
-					.select_handles_and_anchor_connected_to_current_handle(&tool_action_data.document.network_interface);
-
-				responses.add(PathToolMessage::SelectedPointUpdated);
-				responses.add(OverlaysMessage::Draw);
-				PathToolFsmState::Dragging
-			}
-			(PathToolFsmState::Dragging, PathToolMessage::ResumeOriginalSelection) => {
-				tool_data.space_held = false;
-				tool_action_data.shape_editor.deselect_all_points();
-				tool_action_data.shape_editor.select_points_by_manipulator_id(&tool_data.selected_points_before_space);
-				responses.add(PathToolMessage::SelectedPointUpdated);
-				PathToolFsmState::Dragging
-			}
-			(PathToolFsmState::Ready, PathToolMessage::ResumeOriginalSelection) => {
-				tool_data.space_held = false;
-				tool_data.remove_selected_points();
-				PathToolFsmState::Ready
-			}
 			(_, PathToolMessage::DragStop { equidistant }) => {
+				// cleanup for select_anchor toggle
+				tool_data.remove_saved_points();
+				tool_data.select_anchor_toggled = false;
+
 				let equidistant = input.keyboard.get(equidistant as usize);
 
 				let nearest_point = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD);
@@ -769,9 +768,7 @@ impl Fsm for PathToolFsmState {
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![
 					// TODO: Switch this to the "S" key. Also, make the hint dynamically say "Make Colinear" or "Make Not Colinear" based on its current state. And only
-					// TODO: show this hint if a handle (not an anchor) is being dragged, and disable that shortcut so it can't be pressed even with the hint not shown.
-					HintInfo::keys([Key::Alt], "Toggle Colinear Handles"),
-					// TODO: Switch this to the "Alt" key (since it's equivalent to the "From Center" modifier when drawing a line). And show this only when a handle is being dragged.
+					// TODO: show this hint if a handle (not an anchor) is being dragged, and disable that shortcut so it can''s equivalent to the "From Center" modifier when drawing a line). And show this only when a handle is being dragged.
 					HintInfo::keys([Key::Shift], "Equidistant Handles"),
 					HintInfo::keys([Key::Space], "Drag anchor"),
 					// TODO: Add "Snap 15°" modifier with the "Shift" key (only when a handle is being dragged).
