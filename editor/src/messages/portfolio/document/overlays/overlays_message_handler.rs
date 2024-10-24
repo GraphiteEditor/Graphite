@@ -1,6 +1,11 @@
 use super::utility_types::OverlayProvider;
 use crate::messages::prelude::*;
 
+#[cfg(target_arch = "wasm32")]
+use glam::DVec2;
+#[cfg(target_arch = "wasm32")]
+use web_sys::HtmlCanvasElement;
+
 pub struct OverlaysMessageData<'a> {
 	pub overlays_visible: bool,
 	pub ipp: &'a InputPreprocessorMessageHandler,
@@ -11,6 +16,21 @@ pub struct OverlaysMessageHandler {
 	pub overlay_providers: HashSet<OverlayProvider>,
 	canvas: Option<web_sys::HtmlCanvasElement>,
 	context: Option<web_sys::CanvasRenderingContext2d>,
+}
+
+impl OverlaysMessageHandler {
+	#[cfg(target_arch = "wasm32")]
+	fn apply_dpi_scaling(canvas: &HtmlCanvasElement, logical_size: DVec2) -> (f64, DVec2) {
+		let window = web_sys::window().expect("no global `window` exists");
+		let device_pixel_ratio = window.device_pixel_ratio();
+
+		let physical_size = logical_size * device_pixel_ratio;
+
+		canvas.style().set_property("width", &format!("{}px", logical_size.x)).unwrap();
+		canvas.style().set_property("height", &format!("{}px", logical_size.y)).unwrap();
+
+		(device_pixel_ratio, physical_size)
+	}
 }
 
 impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessageHandler {
@@ -37,19 +57,21 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 					context.dyn_into().expect("Context should be a canvas 2d context")
 				});
 
-				let size = ipp.viewport_bounds.size().as_uvec2();
-
-				context.clear_rect(0., 0., ipp.viewport_bounds.size().x, ipp.viewport_bounds.size().y);
+				let logical_size = ipp.viewport_bounds.size();
+				let (device_pixel_ratio, physical_size) = Self::apply_dpi_scaling(canvas, logical_size);
+				context.clear_rect(0., 0., physical_size.x, physical_size.y);
 
 				if overlays_visible {
 					responses.add(DocumentMessage::GridOverlays(OverlayContext {
 						render_context: context.clone(),
-						size: size.as_dvec2(),
+						size: logical_size,
+						device_pixel_ratio,
 					}));
 					for provider in &self.overlay_providers {
 						responses.add(provider(OverlayContext {
 							render_context: context.clone(),
-							size: size.as_dvec2(),
+							size: logical_size,
+							device_pixel_ratio,
 						}));
 					}
 				}
