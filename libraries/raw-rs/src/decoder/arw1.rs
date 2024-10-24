@@ -31,7 +31,6 @@ pub fn decode_a100<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage
 		camera_white_balance: None,
 		white_balance: None,
 		camera_to_rgb: None,
-		rgb_to_camera: None,
 	}
 }
 

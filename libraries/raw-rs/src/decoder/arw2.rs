@@ -55,7 +55,6 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 		camera_white_balance: ifd.white_balance_levels.map(|arr| arr.map(|x| x as f64)),
 		white_balance: None,
 		camera_to_rgb: None,
-		rgb_to_camera: None,
 	}
 }
 
