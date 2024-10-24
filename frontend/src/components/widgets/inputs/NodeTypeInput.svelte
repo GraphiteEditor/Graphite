@@ -1,5 +1,4 @@
 <script lang="ts">
-
 	import { createEventDispatcher, getContext, onMount } from "svelte";
 
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
@@ -97,60 +96,60 @@
 
 <style lang="scss" global>
 	.create-node-menu {
-		max-height: 40vh; 
+		max-height: 40vh;
 		min-width: 250px;
 		display:flex;
 		flex-direction: column;
 		align-items: stretch;
-	}
 
-	.text-input {
-		flex: 0 0 auto;
-		margin-bottom: 4px;
-	}
+		.text-input {
+			flex: 0 0 auto;
+			margin-bottom: 4px;
+		}
 
-	.list-results {
-		overflow-y: auto;
-		flex: 1 1 auto;
-		// Together with the `margin-right: 4px;` on `details` below, this keeps a gap between the listings and the scrollbar
-		margin-right: -4px;
+		.list-results {
+			overflow-y: auto;
+			flex: 1 1 auto;
+			// Together with the `margin-right: 4px;` on `details` below, this keeps a gap between the listings and the scrollbar
+			margin-right: -4px;
 
-		details {
-			cursor: pointer;
-			position: relative;
-			// Together with the `margin-right: -4px;` on `.list-results` above, this keeps a gap between the listings and the scrollbar
-			margin-right: 4px;
+			details {
+				cursor: pointer;
+				position: relative;
+				// Together with the `margin-right: -4px;` on `.list-results` above, this keeps a gap between the listings and the scrollbar
+				margin-right: 4px;
 
-			&[open] summary .text-label::before {
-				transform: rotate(90deg);
-			}
+				&[open] summary .text-label::before {
+					transform: rotate(90deg);
+				}
 
-			summary {
-				display: flex;
-				align-items: center;
-				gap: 2px;
+				summary {
+					display: flex;
+					align-items: center;
+					gap: 2px;
 
-				.text-label {
-					padding-left: 16px;
-					position: relative;
+					.text-label {
+						padding-left: 16px;
+						position: relative;
 
-					&::before {
-						content: "";
-						position: absolute;
-						margin: auto;
-						top: 0;
-						bottom: 0;
-						left: 0;
-						width: 8px;
-						height: 8px;
-						background: var(--icon-expand-collapse-arrow);
+						&::before {
+							content: "";
+							position: absolute;
+							margin: auto;
+							top: 0;
+							bottom: 0;
+							left: 0;
+							width: 8px;
+							height: 8px;
+							background: var(--icon-expand-collapse-arrow);
+						}
 					}
 				}
-			}
 
-			.text-button {
-				width: 100%;
-				margin: 4px 0;
+				.text-button {
+					width: 100%;
+					margin: 4px 0;
+				}
 			}
 		}
 	}
