@@ -7,14 +7,13 @@
 	import type { IconName } from "@graphite/utility-functions/icons";
 	import type { Editor } from "@graphite/wasm-communication/editor";
 	import type { Node } from "@graphite/wasm-communication/messages";
-	import type { FrontendNodeWire, FrontendNodeType, FrontendNode, FrontendGraphInput, FrontendGraphOutput, FrontendGraphDataType, WirePath } from "@graphite/wasm-communication/messages";
+	import type { FrontendNodeWire, FrontendNode, FrontendGraphInput, FrontendGraphOutput, FrontendGraphDataType, WirePath } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
+	import NodeTypeInput from "@graphite/components/widgets/inputs/NodeTypeInput.svelte";
 	import RadioInput from "@graphite/components/widgets/inputs/RadioInput.svelte";
-	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	const GRID_COLLAPSE_SPACING = 10;
@@ -25,14 +24,12 @@
 
 	let graph: HTMLDivElement | undefined;
 	let nodesContainer: HTMLDivElement | undefined;
-	let nodeSearchInput: TextInput | undefined;
 
 	// TODO: Using this not-complete code, or another better approach, make it so the dragged in-progress connector correctly handles showing/hiding the SVG shape of the connector caps
 	// let wireInProgressFromLayerTop: bigint | undefined = undefined;
 	// let wireInProgressFromLayerBottom: bigint | undefined = undefined;
 
 	let nodeWirePaths: WirePath[] = [];
-	let searchTerm = "";
 
 	// TODO: Convert these arrays-of-arrays to a Map?
 	let inputs: SVGSVGElement[][] = [];
@@ -43,13 +40,6 @@
 
 	$: gridSpacing = calculateGridSpacing($nodeGraph.transform.scale);
 	$: dotRadius = 1 + Math.floor($nodeGraph.transform.scale - 0.5 + 0.001) / 2;
-	$: nodeCategories = buildNodeCategories($nodeGraph.nodeTypes, searchTerm);
-
-	$: (() => {
-		if ($nodeGraph.contextMenuInformation?.contextMenuData === "CreateNode") {
-			setTimeout(() => nodeSearchInput?.focus(), 0);
-		}
-	})();
 
 	$: wirePaths = createWirePaths($nodeGraph.wirePathInProgress, nodeWirePaths);
 
@@ -62,63 +52,6 @@
 		}
 
 		return sparse;
-	}
-
-	type NodeCategoryDetails = {
-		nodes: FrontendNodeType[];
-		open: boolean;
-	};
-
-	function buildNodeCategories(nodeTypes: FrontendNodeType[], searchTerm: string): [string, NodeCategoryDetails][] {
-		const categories = new Map<string, NodeCategoryDetails>();
-
-		nodeTypes.forEach((node) => {
-			let nameIncludesSearchTerm = node.name.toLowerCase().includes(searchTerm.toLowerCase());
-			// Quick and dirty hack to alias "Layer" to "Merge" in the search
-			if (node.name === "Merge") {
-				nameIncludesSearchTerm = nameIncludesSearchTerm || "Layer".toLowerCase().includes(searchTerm.toLowerCase());
-			}
-
-			if (searchTerm.length > 0 && !nameIncludesSearchTerm && !node.category.toLowerCase().includes(searchTerm.toLowerCase())) {
-				return;
-			}
-
-			const category = categories.get(node.category);
-			let open = nameIncludesSearchTerm;
-			if (searchTerm.length === 0) {
-				open = false;
-			}
-
-			if (category) {
-				category.open = open;
-				category.nodes.push(node);
-			} else
-				categories.set(node.category, {
-					open,
-					nodes: [node],
-				});
-		});
-
-		const START_CATEGORIES_ORDER = ["UNCATEGORIZED", "General", "Value", "Math", "Style"];
-		const END_CATEGORIES_ORDER = ["Debug"];
-		return Array.from(categories)
-			.sort((a, b) => a[0].localeCompare(b[0]))
-			.sort((a, b) => {
-				const aIndex = START_CATEGORIES_ORDER.findIndex((x) => a[0].startsWith(x));
-				const bIndex = START_CATEGORIES_ORDER.findIndex((x) => b[0].startsWith(x));
-				if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
-				if (aIndex !== -1) return -1;
-				if (bIndex !== -1) return 1;
-				return 0;
-			})
-			.sort((a, b) => {
-				const aIndex = END_CATEGORIES_ORDER.findIndex((x) => a[0].startsWith(x));
-				const bIndex = END_CATEGORIES_ORDER.findIndex((x) => b[0].startsWith(x));
-				if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
-				if (aIndex !== -1) return 1;
-				if (bIndex !== -1) return -1;
-				return 0;
-			});
 	}
 
 	function createWirePaths(wirePathInProgress: WirePath | undefined, nodeWirePaths: WirePath[]): WirePath[] {
@@ -399,21 +332,7 @@
 			}}
 		>
 			{#if $nodeGraph.contextMenuInformation.contextMenuData === "CreateNode"}
-				<TextInput placeholder="Search Nodes..." value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
-				<div class="list-results" on:wheel|passive|stopPropagation>
-					{#each nodeCategories as nodeCategory}
-						<details open={nodeCategory[1].open}>
-							<summary>
-								<TextLabel>{nodeCategory[0]}</TextLabel>
-							</summary>
-							{#each nodeCategory[1].nodes as nodeType}
-								<TextButton label={nodeType.name} action={() => createNode(nodeType.name)} />
-							{/each}
-						</details>
-					{:else}
-						<TextLabel>No search results</TextLabel>
-					{/each}
-				</div>
+				<NodeTypeInput on:selectNodeType={(e) => createNode(e.detail)} />
 			{:else}
 				{@const contextMenuData = $nodeGraph.contextMenuInformation.contextMenuData}
 				<LayoutRow class="toggle-layer-or-node">
@@ -870,64 +789,6 @@
 			z-index: 3;
 			background-color: var(--color-3-darkgray);
 			border-radius: 4px;
-
-			&.create-node-menu {
-				height: 200px; // For some reason, when attemping to make this taller, the bottom few categories don't open when clicked, but instead immediately close the menu
-				width: 180px; // Also when making this wider, clicking the scrollbar on the right edge of the menu causes the menu to close immediately
-			}
-
-			.text-input {
-				flex: 0 0 auto;
-				margin-bottom: 4px;
-			}
-
-			.list-results {
-				overflow-y: auto;
-				flex: 1 1 auto;
-				// Together with the `margin-right: 4px;` on `details` below, this keeps a gap between the listings and the scrollbar
-				margin-right: -4px;
-
-				details {
-					cursor: pointer;
-					display: flex;
-					flex-direction: column;
-					// Together with the `margin-right: -4px;` on `.list-results` above, this keeps a gap between the listings and the scrollbar
-					margin-right: 4px;
-
-					&[open] summary .text-label::before {
-						transform: rotate(90deg);
-					}
-
-					summary {
-						display: flex;
-						align-items: center;
-						gap: 2px;
-
-						.text-label {
-							padding-left: 16px;
-							position: relative;
-							width: 100%;
-
-							&::before {
-								content: "";
-								position: absolute;
-								margin: auto;
-								top: 0;
-								bottom: 0;
-								left: 0;
-								width: 8px;
-								height: 8px;
-								background: var(--icon-expand-collapse-arrow);
-							}
-						}
-					}
-
-					.text-button {
-						width: 100%;
-						margin: 4px 0;
-					}
-				}
-			}
 
 			.toggle-layer-or-node .text-label {
 				line-height: 24px;

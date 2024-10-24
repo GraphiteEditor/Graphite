@@ -45,6 +45,8 @@ pub struct PopoverButton {
 
 	pub icon: Option<String>,
 
+	pub label: Option<String>,
+
 	pub disabled: bool,
 
 	pub tooltip: String,
