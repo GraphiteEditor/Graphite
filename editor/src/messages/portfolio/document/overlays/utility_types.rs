@@ -24,6 +24,7 @@ pub struct OverlayContext {
 	#[specta(skip)]
 	pub render_context: web_sys::CanvasRenderingContext2d,
 	pub size: DVec2,
+	pub device_pixel_ratio: f64,
 }
 // Message hashing isn't used but is required by the message system macros
 impl core::hash::Hash for OverlayContext {
@@ -31,11 +32,27 @@ impl core::hash::Hash for OverlayContext {
 }
 
 impl OverlayContext {
+	pub fn dpr(&self) -> f64 {
+		self.device_pixel_ratio
+	}
+
+	fn offset(&self) -> DVec2 {
+		DVec2::splat(0.5 / self.dpr())
+	}
+
+	pub fn align_to_pixel(&self, coord: DVec2) -> DVec2 {
+		(coord * self.dpr()).round() / self.dpr() - self.offset()
+	}
+
 	pub fn quad(&mut self, quad: Quad, color_fill: Option<&str>) {
 		self.render_context.begin_path();
-		self.render_context.move_to(quad.0[3].x.round() - 0.5, quad.0[3].y.round() - 0.5);
+
+		let start = self.align_to_pixel(quad.0[3]);
+		self.render_context.move_to(start.x, start.y);
+
 		for i in 0..4 {
-			self.render_context.line_to(quad.0[i].x.round() - 0.5, quad.0[i].y.round() - 0.5);
+			let point = self.align_to_pixel(quad.0[i]);
+			self.render_context.line_to(point.x, point.y);
 		}
 		if let Some(color_fill) = color_fill {
 			self.render_context.set_fill_style_str(color_fill);
@@ -50,12 +67,14 @@ impl OverlayContext {
 	}
 
 	pub fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, dash_width: Option<f64>) {
-		let start = start.round() - DVec2::splat(0.5);
-		let end = end.round() - DVec2::splat(0.5);
+		let start = self.align_to_pixel(start);
+		let end = self.align_to_pixel(end);
+
 		if let Some(dash_width) = dash_width {
+			let scaled_dash_width = dash_width * self.dpr();
 			let array = js_sys::Array::new();
-			array.push(&JsValue::from(1));
-			array.push(&JsValue::from(dash_width - 1.));
+			array.push(&JsValue::from(self.dpr()));
+			array.push(&JsValue::from(scaled_dash_width - self.dpr()));
 			self.render_context
 				.set_line_dash(&JsValue::from(array))
 				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
@@ -75,12 +94,11 @@ impl OverlayContext {
 	}
 
 	pub fn manipulator_handle(&mut self, position: DVec2, selected: bool) {
-		let position = position.round() - DVec2::splat(0.5);
+		let position = self.align_to_pixel(position);
+		let radius = (MANIPULATOR_GROUP_MARKER_SIZE / 2.) * self.dpr();
 
 		self.render_context.begin_path();
-		self.render_context
-			.arc(position.x, position.y, MANIPULATOR_GROUP_MARKER_SIZE / 2., 0., TAU)
-			.expect("Failed to draw the circle");
+		self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("Failed to draw the circle");
 
 		let fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
 		self.render_context.set_fill_style_str(fill);
@@ -96,11 +114,11 @@ impl OverlayContext {
 	}
 
 	pub fn square(&mut self, position: DVec2, size: Option<f64>, color_fill: Option<&str>, color_stroke: Option<&str>) {
-		let size = size.unwrap_or(MANIPULATOR_GROUP_MARKER_SIZE);
+		let size = size.unwrap_or(MANIPULATOR_GROUP_MARKER_SIZE) * self.dpr();
 		let color_fill = color_fill.unwrap_or(COLOR_OVERLAY_WHITE);
 		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
 
-		let position = position.round() - DVec2::splat(0.5);
+		let position = self.align_to_pixel(position);
 		let corner = position - DVec2::splat(size) / 2.;
 
 		self.render_context.begin_path();
@@ -112,10 +130,10 @@ impl OverlayContext {
 	}
 
 	pub fn pixel(&mut self, position: DVec2, color: Option<&str>) {
-		let size = 1.;
+		let size = self.dpr();
 		let color_fill = color.unwrap_or(COLOR_OVERLAY_WHITE);
 
-		let position = position.round() - DVec2::splat(0.5);
+		let position = self.align_to_pixel(position);
 		let corner = position - DVec2::splat(size) / 2.;
 
 		self.render_context.begin_path();
@@ -127,7 +145,8 @@ impl OverlayContext {
 	pub fn circle(&mut self, position: DVec2, radius: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
 		let color_fill = color_fill.unwrap_or(COLOR_OVERLAY_WHITE);
 		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
-		let position = position.round();
+		let position = self.align_to_pixel(position);
+		let radius = radius * self.dpr();
 		self.render_context.begin_path();
 		self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("Failed to draw the circle");
 		self.render_context.set_fill_style_str(color_fill);
@@ -136,19 +155,21 @@ impl OverlayContext {
 		self.render_context.stroke();
 	}
 	pub fn pivot(&mut self, position: DVec2) {
-		let (x, y) = (position.round() - DVec2::splat(0.5)).into();
+		let position = self.align_to_pixel(position);
+		let (x, y) = position.into();
 
 		// Circle
 
+		let radius = (PIVOT_DIAMETER / 2.) * self.dpr();
 		self.render_context.begin_path();
-		self.render_context.arc(x, y, PIVOT_DIAMETER / 2., 0., TAU).expect("Failed to draw the circle");
+		self.render_context.arc(x, y, radius, 0., TAU).expect("Failed to draw the circle");
 		self.render_context.set_fill_style_str(COLOR_OVERLAY_YELLOW);
 		self.render_context.fill();
 
 		// Crosshair
 
 		// Round line caps add half the stroke width to the length on each end, so we subtract that here before halving to get the radius
-		let crosshair_radius = (PIVOT_CROSSHAIR_LENGTH - PIVOT_CROSSHAIR_THICKNESS) / 2.;
+		let crosshair_radius = ((PIVOT_CROSSHAIR_LENGTH - PIVOT_CROSSHAIR_THICKNESS) / 2.) * self.dpr();
 
 		self.render_context.set_stroke_style_str(COLOR_OVERLAY_YELLOW);
 		self.render_context.set_line_cap("round");
@@ -208,31 +229,23 @@ impl OverlayContext {
 				continue;
 			};
 
-			self.render_context.move_to(transform.transform_point2(first.start()).x, transform.transform_point2(first.start()).y);
+			let start = self.align_to_pixel(transform.transform_point2(first.start()));
+			self.render_context.move_to(start.x, start.y);
 			for curve in curves {
 				match curve.handles {
 					bezier_rs::BezierHandles::Linear => {
-						let a = transform.transform_point2(curve.end());
-						let a = a.round() - DVec2::splat(0.5);
-
-						self.render_context.line_to(a.x, a.y)
+						let end = self.align_to_pixel(transform.transform_point2(curve.end()));
+						self.render_context.line_to(end.x, end.y)
 					}
 					bezier_rs::BezierHandles::Quadratic { handle } => {
-						let a = transform.transform_point2(handle);
-						let b = transform.transform_point2(curve.end());
-						let a = a.round() - DVec2::splat(0.5);
-						let b = b.round() - DVec2::splat(0.5);
-
+						let a = self.align_to_pixel(transform.transform_point2(handle));
+						let b = self.align_to_pixel(transform.transform_point2(curve.end()));
 						self.render_context.quadratic_curve_to(a.x, a.y, b.x, b.y)
 					}
 					bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
-						let a = transform.transform_point2(handle_start);
-						let b = transform.transform_point2(handle_end);
-						let c = transform.transform_point2(curve.end());
-						let a = a.round() - DVec2::splat(0.5);
-						let b = b.round() - DVec2::splat(0.5);
-						let c = c.round() - DVec2::splat(0.5);
-
+						let a = self.align_to_pixel(transform.transform_point2(handle_start));
+						let b = self.align_to_pixel(transform.transform_point2(handle_end));
+						let c = self.align_to_pixel(transform.transform_point2(curve.end()));
 						self.render_context.bezier_curve_to(a.x, a.y, b.x, b.y, c.x, c.y)
 					}
 				}
@@ -248,7 +261,11 @@ impl OverlayContext {
 	}
 
 	pub fn text(&self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {
+		let font_size = 12.0;
+
+		self.render_context.set_font(&format!("{}px Source Sans Pro, Arial, sans-serif", font_size));
 		let metrics = self.render_context.measure_text(text).expect("Failed to measure the text dimensions");
+
 		let x = match pivot[0] {
 			Pivot::Start => padding,
 			Pivot::Middle => -(metrics.actual_bounding_box_right() + metrics.actual_bounding_box_left()) / 2.,
@@ -260,7 +277,8 @@ impl OverlayContext {
 			Pivot::End => -padding,
 		};
 
-		let [a, b, c, d, e, f] = (transform * DAffine2::from_translation(DVec2::new(x, y))).to_cols_array();
+		let position = self.align_to_pixel(DVec2::new(x, y));
+		let [a, b, c, d, e, f] = (transform * DAffine2::from_translation(position)).to_cols_array();
 		self.render_context.set_transform(a, b, c, d, e, f).expect("Failed to rotate the render context to the specified angle");
 
 		if let Some(background) = background_color {
@@ -273,7 +291,6 @@ impl OverlayContext {
 			);
 		}
 
-		self.render_context.set_font("12px Source Sans Pro, Arial, sans-serif");
 		self.render_context.set_fill_style_str(font_color);
 		self.render_context.fill_text(text, 0., 0.).expect("Failed to draw the text at the calculated position");
 		self.render_context.reset_transform().expect("Failed to reset the render context transform");
