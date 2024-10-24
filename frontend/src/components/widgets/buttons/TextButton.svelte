@@ -11,7 +11,7 @@
 
 	// Note: IconButton should be used if only an icon, but no label, is desired.
 	// However, if multiple TextButton widgets are used in a group with only some having no label, this component is able to accommodate that.
-	export let label: string;
+	export let label: string | undefined;
 	export let icon: IconName | undefined = undefined;
 	export let hoverIcon: IconName | undefined = undefined;
 	export let emphasized = false;
@@ -20,6 +20,15 @@
 	export let disabled = false;
 	export let tooltip: string | undefined = undefined;
 	export let menuListChildren: MenuListEntry[][] | undefined = undefined;
+
+	// Classes
+	let className = "";
+	export { className as class };
+	export let classes: Record<string, boolean> = {};
+
+	$: extraClasses = Object.entries(classes)
+		.flatMap(([className, stateName]) => (stateName ? [className] : []))
+		.join(" ");
 
 	// Callbacks
 	// TODO: Replace this with an event binding (and on other components that do this)
@@ -49,7 +58,7 @@
 
 <ConditionalWrapper condition={menuListChildrenExists} wrapperClass="text-button-container">
 	<button
-		class="text-button"
+		class={`text-button ${className} ${extraClasses}`.trim()}
 		class:open={self?.open}
 		class:hover-icon={hoverIcon && !disabled}
 		class:emphasized
@@ -63,6 +72,7 @@
 		tabindex={disabled ? -1 : 0}
 		data-floating-menu-spawner={menuListChildrenExists ? "" : "no-hover-transfer"}
 		on:click={onClick}
+		{...$$restProps}
 	>
 		{#if icon}
 			<IconLabel {icon} />

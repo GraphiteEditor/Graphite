@@ -162,6 +162,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		const { target } = e;
 		const isTargetingCanvas = target instanceof Element && (target.closest("[data-viewport]") || target.closest("[data-node-graph]"));
 		const inDialog = target instanceof Element && target.closest("[data-dialog] [data-floating-menu-content]");
+		const inContextMenu = target instanceof Element && target.closest("[data-context-menu]");
 		const inTextInput = target === textToolInteractiveInputElement;
 
 		if (get(dialog).visible && !inDialog) {
@@ -170,7 +171,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 			e.stopPropagation();
 		}
 
-		if (!inTextInput) {
+		if (!inTextInput && !inContextMenu) {
 			if (textToolInteractiveInputElement) editor.handle.onChangeText(textInputCleanup(textToolInteractiveInputElement.innerText));
 			else viewportPointerInteractionOngoing = isTargetingCanvas instanceof Element;
 		}

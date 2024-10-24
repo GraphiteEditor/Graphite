@@ -19,6 +19,14 @@ pub enum NodeGraphMessage {
 	Init,
 	SelectedNodesUpdated,
 	Copy,
+	CreateNodeInLayerNoTransaction {
+		node_type: String,
+		layer: LayerNodeIdentifier,
+	},
+	CreateNodeInLayerWithTransaction {
+		node_type: String,
+		layer: LayerNodeIdentifier,
+	},
 	CreateNodeFromContextMenu {
 		node_id: Option<NodeId>,
 		node_type: String,
