@@ -2,6 +2,7 @@ use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, Fron
 use super::{document_node_definitions, node_properties};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::NodePropertiesContext;
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -13,7 +14,7 @@ use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graphene_core::*;
-use renderer::{ClickTarget, Quad};
+use renderer::Quad;
 
 use glam::{DAffine2, DVec2, IVec2};
 use std::cmp::Ordering;
@@ -135,6 +136,18 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				copy_text += &serde_json::to_string(&copied_nodes).expect("Could not serialize copy");
 
 				responses.add(FrontendMessage::TriggerTextCopy { copy_text });
+			}
+			NodeGraphMessage::CreateNodeInLayerNoTransaction { node_type, layer } => {
+				let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) else {
+					return;
+				};
+				modify_inputs.create_node(&node_type);
+			}
+			NodeGraphMessage::CreateNodeInLayerWithTransaction { node_type, layer } => {
+				responses.add(DocumentMessage::AddTransaction);
+				responses.add(NodeGraphMessage::CreateNodeInLayerNoTransaction { node_type, layer });
+				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			NodeGraphMessage::CreateNodeFromContextMenu { node_id, node_type, x, y } => {
 				let node_id = node_id.unwrap_or_else(|| NodeId::new());
@@ -428,31 +441,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					.selected_nodes(selection_network_path)
 					.map(|selected_nodes| selected_nodes.selected_nodes().cloned().collect())
 					.unwrap_or_default();
-
-				// If the user is clicking on the create nodes list or context menu, break here
-				if let Some(context_menu) = &self.context_menu {
-					let context_menu_viewport = network_metadata
-						.persistent_metadata
-						.navigation_metadata
-						.node_graph_to_viewport
-						.transform_point2(DVec2::new(context_menu.context_menu_coordinates.0 as f64, context_menu.context_menu_coordinates.1 as f64));
-					let (width, height) = if matches!(context_menu.context_menu_data, ContextMenuData::ToggleLayer { .. }) {
-						// Height and width for toggle layer menu
-						(173., 34.)
-					} else {
-						// Height and width for create node menu
-						(180., 200.)
-					};
-					let context_menu_subpath = bezier_rs::Subpath::new_rounded_rect(
-						DVec2::new(context_menu_viewport.x, context_menu_viewport.y),
-						DVec2::new(context_menu_viewport.x + width, context_menu_viewport.y + height),
-						[5.; 4],
-					);
-					let context_menu_click_target = ClickTarget::new(context_menu_subpath, 0.);
-					if context_menu_click_target.intersect_point(click, DAffine2::IDENTITY) {
-						return;
-					}
-				}
 
 				// Since the user is clicking elsewhere in the graph, ensure the add nodes list is closed
 				if self.context_menu.is_some() {
@@ -1613,19 +1601,20 @@ impl NodeGraphMessageHandler {
 			}
 			// If one layer is selected, filter out all selected nodes that are not upstream of it. If there are no nodes left, show properties for the layer. Otherwise, show nothing.
 			1 => {
+				let layer = layers[0];
 				let nodes_not_upstream_of_layer = nodes.into_iter().filter(|&selected_node_id| {
 					!context
 						.network_interface
-						.is_node_upstream_of_another_by_horizontal_flow(layers[0], context.selection_network_path, selected_node_id)
+						.is_node_upstream_of_another_by_horizontal_flow(layer, context.selection_network_path, selected_node_id)
 				});
 				if nodes_not_upstream_of_layer.count() > 0 {
 					return Vec::new();
 				}
 
 				// Iterate through all the upstream nodes, but stop when we reach another layer (since that's a point where we switch from horizontal to vertical flow)
-				context
+				let mut properties = context
 					.network_interface
-					.upstream_flow_back_from_nodes(vec![layers[0]], context.selection_network_path, network_interface::FlowType::HorizontalFlow)
+					.upstream_flow_back_from_nodes(vec![layer], context.selection_network_path, network_interface::FlowType::HorizontalFlow)
 					.enumerate()
 					.take_while(|(i, node_id)| {
 						if *i == 0 {
@@ -1636,7 +1625,16 @@ impl NodeGraphMessageHandler {
 					})
 					.filter_map(|(_, node_id)| network.nodes.get(&node_id).map(|node| (node, node_id)))
 					.map(|(node, node_id)| node_properties::generate_node_properties(node, node_id, context))
-					.collect()
+					.collect::<Vec<_>>();
+
+				let layer = LayerNodeIdentifier::new_unchecked(layer);
+				let node_chooser = NodeTypeInput::new()
+					.on_update(move |node_type| NodeGraphMessage::CreateNodeInLayerWithTransaction { node_type: node_type.clone(), layer }.into())
+					.widget_holder();
+				let popover_layout = vec![LayoutGroup::Row { widgets: vec![node_chooser] }];
+				let add_node_button = PopoverButton::new().label(Some("Add Node".to_string())).popover_layout(popover_layout).widget_holder();
+				properties.push(LayoutGroup::Row { widgets: vec![add_node_button] });
+				properties
 			}
 			// If multiple layers and/or nodes are selected, show nothing
 			_ => Vec::new(),
