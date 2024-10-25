@@ -317,60 +317,63 @@ impl Fsm for BrushToolFsmState {
 				responses.add(DocumentMessage::StartTransaction);
 				let loaded_layer = tool_data.load_existing_strokes(document);
 
-				let layer = loaded_layer.unwrap_or_else(|| new_brush_layer(document, responses));
-				tool_data.layer = Some(layer);
+				if let Some(layer) = loaded_layer {
+					let pos = document
+						.network_interface
+						.document_metadata()
+						.downstream_transform_to_viewport(layer)
+						.inverse()
+						.transform_point2(input.mouse.position);
+					let layer_position = tool_data.transform.inverse().transform_point2(pos);
+					let layer_document_scale = document.metadata().downstream_transform_to_viewport(layer) * tool_data.transform;
 
-				let parent = layer.parent(document.metadata()).unwrap_or_else(|| document.new_layer_parent(true));
-				let parent_transform = document
-					.network_interface
-					.document_metadata()
-					.transform_to_viewport(parent)
-					.inverse()
-					.transform_point2(input.mouse.position);
-				let layer_position = tool_data.transform.inverse().transform_point2(parent_transform);
+					// TODO: Also scale it based on the input image ('Background' input).
+					// TODO: Resizing the input image results in a different brush size from the chosen diameter.
+					let layer_scale = 0.0001_f64 // Safety against division by zero
+						.max((layer_document_scale.matrix2 * glam::DVec2::X).length())
+						.max((layer_document_scale.matrix2 * glam::DVec2::Y).length());
 
-				let layer_document_scale = document.metadata().transform_to_document(parent) * tool_data.transform;
+					// Start a new stroke with a single sample
+					let blend_mode = match tool_options.draw_mode {
+						DrawMode::Draw => tool_options.blend_mode,
+						DrawMode::Erase => BlendMode::Erase,
+						DrawMode::Restore => BlendMode::Restore,
+					};
+					tool_data.strokes.push(BrushStroke {
+						trace: vec![BrushInputSample { position: layer_position }],
+						style: BrushStyle {
+							color: tool_options.color.active_color().unwrap_or_default(),
+							diameter: tool_options.diameter / layer_scale,
+							hardness: tool_options.hardness,
+							flow: tool_options.flow,
+							spacing: tool_options.spacing,
+							blend_mode,
+						},
+					});
 
-				// TODO: Also scale it based on the input image ('Background' input).
-				// TODO: Resizing the input image results in a different brush size from the chosen diameter.
-				let layer_scale = 0.0001_f64 // Safety against division by zero
-					.max((layer_document_scale.matrix2 * glam::DVec2::X).length())
-					.max((layer_document_scale.matrix2 * glam::DVec2::Y).length());
-
-				// Start a new stroke with a single sample
-				let blend_mode = match tool_options.draw_mode {
-					DrawMode::Draw => tool_options.blend_mode,
-					DrawMode::Erase => BlendMode::Erase,
-					DrawMode::Restore => BlendMode::Restore,
-				};
-				tool_data.strokes.push(BrushStroke {
-					trace: vec![BrushInputSample { position: layer_position }],
-					style: BrushStyle {
-						color: tool_options.color.active_color().unwrap_or_default(),
-						diameter: tool_options.diameter / layer_scale,
-						hardness: tool_options.hardness,
-						flow: tool_options.flow,
-						spacing: tool_options.spacing,
-						blend_mode,
-					},
-				});
-
-				tool_data.update_strokes(responses);
-
-				BrushToolFsmState::Drawing
+					tool_data.update_strokes(responses);
+					BrushToolFsmState::Drawing
+				}
+				// Create the new layer, wait for the render output to return its transform, and then create the rest of the layer
+				else {
+					new_brush_layer(document, responses);
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(Message::StartBuffer);
+					responses.add(BrushToolMessage::DragStart);
+					BrushToolFsmState::Ready
+				}
 			}
 
 			(BrushToolFsmState::Drawing, BrushToolMessage::PointerMove) => {
 				if let Some(layer) = tool_data.layer {
 					if let Some(stroke) = tool_data.strokes.last_mut() {
-						let parent = layer.parent(document.metadata()).unwrap_or(LayerNodeIdentifier::ROOT_PARENT);
-						let parent_position = document
+						let layer_position = document
 							.network_interface
 							.document_metadata()
-							.transform_to_viewport(parent)
+							.downstream_transform_to_viewport(layer)
 							.inverse()
 							.transform_point2(input.mouse.position);
-						let layer_position = tool_data.transform.inverse().transform_point2(parent_position);
+						let layer_position = tool_data.transform.inverse().transform_point2(layer_position);
 
 						stroke.trace.push(BrushInputSample { position: layer_position })
 					}
