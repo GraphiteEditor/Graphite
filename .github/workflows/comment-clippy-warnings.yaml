@@ -35,6 +35,7 @@ jobs:
           # Run Clippy and filter output
           CLIPPY_OUTPUT=$(cargo clippy --all-targets --all-features -- -W clippy::all 2>&1 | grep -vE "^(\s*Updating|\s*Download|\s*Compiling|\s*Checking|Finished)")
           cd libraries/raw-rs
+          CLIPPY_OUTPUT+=$'\n\n'
           CLIPPY_OUTPUT+=$(cargo clippy --all-targets --all-features -- -W clippy::all 2>&1 | grep -vE "^(\s*Updating|\s*Download|\s*Compiling|\s*Checking|Finished)")
 
           # Escape special characters for JSON
