@@ -6,8 +6,8 @@ use glam::{DAffine2, DVec2};
 async fn log_to_console<T: core::fmt::Debug, F: Send + 'n>(
 	#[implementations((), (), (), (), (), (), (), (), Footprint)] footprint: F,
 	#[implementations(
-		() -> String,  () -> bool, () -> f64, () ->  u32,  () -> u64, () -> DVec2, () -> VectorData, () -> DAffine2,
-		Footprint -> String,  Footprint -> bool, Footprint -> f64, Footprint ->  u32,  Footprint -> u64, Footprint -> DVec2, Footprint -> VectorData, Footprint -> DAffine2,
+		() -> String, () -> bool, () -> f64, () -> u32, () -> u64, () -> DVec2, () -> VectorData, () -> DAffine2,
+		Footprint -> String, Footprint -> bool, Footprint -> f64, Footprint -> u32, Footprint -> u64, Footprint -> DVec2, Footprint -> VectorData, Footprint -> DAffine2,
 	)]
 	value: impl Node<F, Output = T>,
 ) -> T {
@@ -22,8 +22,8 @@ async fn log_to_console<T: core::fmt::Debug, F: Send + 'n>(
 async fn to_string<T: core::fmt::Debug + 'n, F: Send + 'n>(
 	#[implementations((), (), (), (), (), (), Footprint)] footprint: F,
 	#[implementations(
-		() -> String,  () -> bool, () -> f64, () ->  u32,  () -> u64, () -> DVec2, 
-		Footprint -> String,  Footprint -> bool, Footprint -> f64, Footprint ->  u32,  Footprint -> u64, Footprint -> DVec2,
+		() -> String, () -> bool, () -> f64, () -> u32, () -> u64, () -> DVec2,
+		Footprint -> String, Footprint -> bool, Footprint -> f64, Footprint -> u32, Footprint -> u64, Footprint -> DVec2,
 	)]
 	value: impl Node<F, Output = T>,
 ) -> String {
@@ -37,14 +37,14 @@ async fn switch<T, F: Send + 'n>(
 	condition: bool,
 	#[expose]
 	#[implementations(
-		() -> String,  () -> bool, () -> f64, () ->  u32,  () -> u64, () -> DVec2, () -> VectorData, () -> DAffine2,
-		Footprint -> String,  Footprint -> bool, Footprint -> f64, Footprint ->  u32,  Footprint -> u64, Footprint -> DVec2, Footprint -> VectorData, Footprint -> DAffine2
+		() -> String, () -> bool, () -> f64, () -> u32, () -> u64, () -> DVec2, () -> VectorData, () -> DAffine2,
+		Footprint -> String, Footprint -> bool, Footprint -> f64, Footprint -> u32, Footprint -> u64, Footprint -> DVec2, Footprint -> VectorData, Footprint -> DAffine2
 	)]
 	if_true: impl Node<F, Output = T>,
 	#[expose]
 	#[implementations(
-		() -> String,  () -> bool, () -> f64, () ->  u32,  () -> u64, () -> DVec2, () -> VectorData, () -> DAffine2,
-		Footprint -> String,  Footprint -> bool, Footprint -> f64, Footprint ->  u32,  Footprint -> u64, Footprint -> DVec2, Footprint -> VectorData, Footprint -> DAffine2
+		() -> String, () -> bool, () -> f64, () -> u32, () -> u64, () -> DVec2, () -> VectorData, () -> DAffine2,
+		Footprint -> String, Footprint -> bool, Footprint -> f64, Footprint -> u32, Footprint -> u64, Footprint -> DVec2, Footprint -> VectorData, Footprint -> DAffine2
 	)]
 	if_false: impl Node<F, Output = T>,
 ) -> T {
