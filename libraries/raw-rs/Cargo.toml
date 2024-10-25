@@ -1,3 +1,11 @@
+[workspace]
+members = ["tag-derive", "build-camera-data"]
+resolver = "2"
+
+[workspace.dependencies]
+quote = "1.0.37"
+syn = "2.0.79"
+
 [package]
 name = "raw-rs"
 version = "0.0.1"
@@ -20,18 +28,14 @@ raw-rs-tests = ["dep:image", "dep:libraw-rs", "dep:reqwest", "dep:rayon"]
 tag-derive = { path = "tag-derive" }
 build-camera-data = { path = "build-camera-data" }
 
-# Workspace dependencies
-thiserror = { workspace = true }
-
 # Required dependencies
-bitstream-io = "2.3.0"
-num_enum = "0.7.2"
+bitstream-io = "2.5.3"
+num_enum = "0.7.3"
 fortuples = "0.9.1"
-
-# Optional workspace dependencies
-image = { workspace = true, optional = true }
-reqwest = { workspace = true, optional = true }
+thiserror = "1.0.64"
 
 # Optional dependencies (should be dev dependencies, but Cargo currently doesn't allow optional dev dependencies)
+image = { version = "0.25.3", optional = true }
+reqwest = { version = "0.12.8", optional = true, features = ["blocking"] }
 libraw-rs = { version = "0.0.4", optional = true }
 rayon = { version = "1.10.0", optional = true }

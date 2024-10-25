@@ -41,7 +41,7 @@ impl From<Value> for CustomValue {
 			Value::Float(x) => CustomValue::Float(x),
 			Value::Boolean(x) => CustomValue::Boolean(x),
 			Value::Array(x) => CustomValue::Array(x.into_iter().map(|x| x.into()).collect()),
-			_ => panic!("Unsuported data type"),
+			_ => panic!("Unsupported data type"),
 		}
 	}
 }
