@@ -4,9 +4,14 @@ on:
   push:
     branches:
       - master
+    paths:
+      - 'libraries/raw-rs/**'
   pull_request:
     branches:
       - master
+    paths:
+      - 'libraries/raw-rs/**'
+
 env:
   CARGO_TERM_COLOR: always
 
