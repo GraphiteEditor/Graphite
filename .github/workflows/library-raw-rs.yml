@@ -40,14 +40,14 @@ jobs:
       - name: 🔬 Check Rust formatting
         run: |
           cd libraries/raw-rs
-          mold -run cargo fmt --all -- --check
+          cargo fmt --all -- --check
 
       - name: 🦀 Build Rust code
         run: |
           cd libraries/raw-rs
-          mold -run cargo build --release --all-features
+          cargo build --release --all-features
 
       - name: 🧪 Run Rust tests
         run: |
           cd libraries/raw-rs
-          mold -run cargo test --release --all-features
+          cargo test --release --all-features
