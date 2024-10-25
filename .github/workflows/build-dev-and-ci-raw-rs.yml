@@ -67,9 +67,11 @@ jobs:
       - name: 🔒 Check crate security advisories
         uses: EmbarkStudios/cargo-deny-action@v1
         with:
+          manifest-path: ./libraries/raw-rs/Cargo.toml
           command: check advisories
 
       - name: 📜 Check crate license compatibility
         uses: EmbarkStudios/cargo-deny-action@v1
         with:
+          manifest-path: ./libraries/raw-rs/Cargo.toml
           command: check bans licenses sources
