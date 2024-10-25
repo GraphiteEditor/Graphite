@@ -178,11 +178,11 @@ impl SegmentModification {
 			let Some(&stroke) = self.stroke.get(&add_id) else { continue };
 
 			let Some(start_index) = point_domain.resolve_id(start) else {
-				warn!("invalid start id");
+				warn!("invalid start id: {:#?}", start);
 				continue;
 			};
 			let Some(end_index) = point_domain.resolve_id(end) else {
-				warn!("invalid end id");
+				warn!("invalid end id: {:#?}", end);
 				continue;
 			};
 

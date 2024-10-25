@@ -2563,19 +2563,10 @@ impl NodeNetworkInterface {
 		let input_count = self.number_of_inputs(node_id, network_path);
 		let output_count = self.number_of_outputs(node_id, network_path);
 
-		let outward_wires = self
-			.outward_wires(network_path)
-			.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(*node_id, 0)).cloned())
-			.unwrap_or_default();
-
-		let has_single_output_wire = outward_wires.len() <= 1;
-
-		// TODO: Eventually allow nodes at the bottom of a stack to be layers, where `input_count` is 0
 		self.node_metadata(node_id, network_path)
 			.is_some_and(|node_metadata| node_metadata.persistent_metadata.has_primary_output)
 			&& output_count == 1
-			&& (input_count == 1 || input_count == 2)
-			&& has_single_output_wire
+			&& (input_count <= 2)
 	}
 
 	pub fn node_graph_ptz_mut(&mut self, network_path: &[NodeId]) -> Option<&mut PTZ> {
@@ -3284,15 +3275,19 @@ impl NodeNetworkInterface {
 								node_id: downstream_node_id,
 								input_index,
 							} => {
-								// If a layer is connected to another node, it should be set to stack positioning
+								// If a layer has a single connection to the bottom of another layer, it should be set to stack positioning
 								let Some(downstream_node_metadata) = self.node_metadata(downstream_node_id, network_path) else {
 									log::error!("Could not get downstream node_metadata in set_input");
 									return;
 								};
 								match &downstream_node_metadata.persistent_metadata.node_type_metadata {
 									NodeTypePersistentMetadata::Layer(_) => {
-										// If the layer feeds into the bottom input of layer, set its position to stack at its previous y position
-										if *input_index == 0 {
+										// If the layer feeds into the bottom input of layer, and has no other outputs, set its position to stack at its previous y position
+										let multiple_outward_wires = self
+											.outward_wires(network_path)
+											.and_then(|all_outward_wires| all_outward_wires.get(&OutputConnector::node(*upstream_node_id, 0)))
+											.is_some_and(|outward_wires| outward_wires.len() > 1);
+										if *input_index == 0 && !multiple_outward_wires {
 											self.set_stack_position_calculated_offset(upstream_node_id, downstream_node_id, network_path);
 										} else {
 											self.set_absolute_position(upstream_node_id, current_node_position, network_path);
@@ -3324,25 +3319,31 @@ impl NodeNetworkInterface {
 			// If a node is disconnected.
 			(NodeInput::Node { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
 				self.unload_outward_wires(network_path);
-				// If a node was previously connected, and it is no longer connected to any nodes, then set its position to absolute at its previous position
+
 				if let Some((old_upstream_node_id, previous_position)) = previous_metadata {
-					let mut set_to_absolute = true;
-					// Do not set to absolute if the node is being disconnected, but still has another connection to a layer node
-					if matches!(new_input, NodeInput::Value { .. }) {
-						if let Some(outward_wires) = self
-							.outward_wires(network_path)
-							.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(old_upstream_node_id, 0)))
-						{
-							if outward_wires.len() == 1
-								&& outward_wires[0].input_index() == 0
-								&& outward_wires[0].node_id().is_some_and(|downstream_node| self.is_layer(&downstream_node, network_path))
-							{
-								set_to_absolute = false;
+					let old_upstream_node_is_layer = self.is_layer(&old_upstream_node_id, network_path);
+					let Some(outward_wires) = self
+						.outward_wires(network_path)
+						.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(old_upstream_node_id, 0)))
+					else {
+						log::error!("Could not get outward wires in set_input");
+						return;
+					};
+					// If it is a layer and is connected to a single layer, set its position to stack at its previous y position
+					if old_upstream_node_is_layer && outward_wires.len() == 1 && outward_wires[0].input_index() == 0 {
+						if let Some(downstream_node_id) = outward_wires[0].node_id() {
+							if self.is_layer(&downstream_node_id, network_path) {
+								self.set_stack_position_calculated_offset(&old_upstream_node_id, &downstream_node_id, network_path);
+								self.unload_upstream_node_click_targets(vec![old_upstream_node_id], network_path);
 							}
 						}
 					}
-
-					if set_to_absolute {
+					// If it is a node and is eligible to be in a chain, then set it to chain positioning
+					else if !old_upstream_node_is_layer {
+						self.try_set_node_to_chain(&old_upstream_node_id, network_path);
+					}
+					// If a node was previously connected, and it is no longer connected to any nodes, then set its position to absolute at its previous position
+					else {
 						self.set_absolute_position(&old_upstream_node_id, previous_position, network_path);
 					}
 				}
@@ -3625,12 +3626,6 @@ impl NodeNetworkInterface {
 
 		let mut reconnect_node = None;
 
-		// Don't reconnect if the upstream node is a layer and there are multiple downstream inputs to reconnect
-		let multiple_disconnect_and_upstream_is_layer = downstream_inputs_to_disconnect.len() > 1
-			&& reconnect_to_input
-				.as_ref()
-				.is_some_and(|upstream_input| upstream_input.as_node().map_or(false, |node_id| self.is_layer(&node_id, network_path)));
-
 		for downstream_input in &downstream_inputs_to_disconnect {
 			self.disconnect_input(downstream_input, network_path);
 			// Prevent reconnecting export to import until https://github.com/GraphiteEditor/Graphite/issues/1762 is solved
@@ -3638,9 +3633,7 @@ impl NodeNetworkInterface {
 				if let Some(reconnect_input) = &reconnect_to_input {
 					reconnect_node = reconnect_input.as_node().and_then(|node_id| if self.is_stack(&node_id, network_path) { Some(node_id) } else { None });
 					self.disconnect_input(&InputConnector::node(*node_id, 0), network_path);
-					if !multiple_disconnect_and_upstream_is_layer {
-						self.set_input(downstream_input, reconnect_input.clone(), network_path);
-					}
+					self.set_input(downstream_input, reconnect_input.clone(), network_path);
 				}
 			}
 		}
@@ -3815,7 +3808,13 @@ impl NodeNetworkInterface {
 			(false, true) => {
 				// If a node is set to a layer
 				if let Some(upstream_sibling_id) = upstream_sibling_id {
-					if self.is_layer(&upstream_sibling_id, network_path) {
+					// If the upstream sibling layer has a single output, then set it to stack position
+					if self.is_layer(&upstream_sibling_id, network_path)
+						&& self
+							.outward_wires(network_path)
+							.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(upstream_sibling_id, 0)))
+							.is_some_and(|outward_wires| outward_wires.len() == 1)
+					{
 						self.set_stack_position_calculated_offset(&upstream_sibling_id, node_id, network_path);
 					} else {
 						self.set_upstream_chain_to_absolute(&upstream_sibling_id, network_path);
@@ -3830,38 +3829,52 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		let downstream_is_layer = self
+		let single_downstream_layer_position = self
 			.outward_wires(network_path)
 			.and_then(|outward_wires| {
 				outward_wires
 					.get(&OutputConnector::node(*node_id, 0))
-					.and_then(|outward_wires| outward_wires.first())
+					.and_then(|outward_wires| (outward_wires.len() == 1).then(|| outward_wires[0]))
 					.and_then(|downstream_connector| if downstream_connector.input_index() == 0 { downstream_connector.node_id() } else { None })
 			})
-			.is_some_and(|downstream_node_id| self.is_layer(&downstream_node_id, network_path));
+			.filter(|downstream_node_id| self.is_layer(downstream_node_id, network_path))
+			.and_then(|downstream_layer| self.position(&downstream_layer, network_path));
 
 		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
 			log::error!("Could not get node_metadata for node {node_id}");
 			return;
 		};
 
+		// First set the position to absolute
 		node_metadata.persistent_metadata.node_type_metadata = if is_layer {
-			if downstream_is_layer {
-				NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
-					position: LayerPosition::Stack(0),
-					owned_nodes: TransientMetadata::Unloaded,
-				})
-			} else {
-				NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
-					position: LayerPosition::Absolute(position),
-					owned_nodes: TransientMetadata::Unloaded,
-				})
-			}
+			NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
+				position: LayerPosition::Absolute(position),
+				owned_nodes: TransientMetadata::Unloaded,
+			})
 		} else {
 			NodeTypePersistentMetadata::Node(NodePersistentMetadata {
 				position: NodePosition::Absolute(position),
 			})
 		};
+
+		// Try build the chain
+		if is_layer {
+			self.try_set_upstream_to_chain(&InputConnector::node(*node_id, 1), network_path);
+		} else {
+			self.try_set_node_to_chain(node_id, network_path);
+		}
+
+		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+			log::error!("Could not get node_metadata for node {node_id}");
+			return;
+		};
+		// Set the position to stack if necessary
+		if let Some(downstream_position) = is_layer.then_some(single_downstream_layer_position).flatten() {
+			node_metadata.persistent_metadata.node_type_metadata = NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
+				position: LayerPosition::Stack((position.y - downstream_position.y - 3).max(0) as u32),
+				owned_nodes: TransientMetadata::Unloaded,
+			})
+		}
 
 		if is_layer {
 			node_metadata.transient_metadata.node_type_metadata = NodeTypeTransientMetadata::Layer(LayerTransientMetadata::default());
@@ -3869,33 +3882,8 @@ impl NodeNetworkInterface {
 			node_metadata.transient_metadata.node_type_metadata = NodeTypeTransientMetadata::Node;
 		}
 
-		if is_layer {
-			self.try_set_upstream_to_chain(&InputConnector::node(*node_id, 1), network_path);
-			// Reload click target of the layer which used to encapsulate the node
-
-			let mut downstream_layer = Some(*node_id);
-			while let Some(downstream_layer_id) = downstream_layer {
-				if downstream_layer_id == *node_id || !self.is_layer(&downstream_layer_id, network_path) {
-					let Some(outward_wires) = self.outward_wires(network_path) else {
-						log::error!("Could not get outward wires in set_to_node_or_layer");
-						downstream_layer = None;
-						break;
-					};
-					downstream_layer = outward_wires
-						.get(&OutputConnector::node(downstream_layer_id, 0))
-						.and_then(|outward_wires| if outward_wires.len() == 1 { outward_wires[0].node_id() } else { None });
-				} else {
-					break;
-				}
-			}
-			if let Some(downstream_layer) = downstream_layer {
-				self.unload_node_click_targets(&downstream_layer, network_path);
-			}
-		} else {
-			self.try_set_upstream_to_chain(&InputConnector::node(*node_id, 0), network_path);
-		}
-
 		self.transaction_modified();
+		self.unload_stack_dependents(network_path);
 		self.unload_upstream_node_click_targets(vec![*node_id], network_path);
 		self.unload_all_nodes_bounding_box(network_path);
 		self.unload_import_export_ports(network_path);
@@ -4114,9 +4102,39 @@ impl NodeNetworkInterface {
 					}
 					downstream_id = upstream_node;
 				}
-				if set_position_to_chain {
-					self.unload_upstream_node_click_targets(vec![*input_connector_node_id], network_path);
+			}
+			// Reload click target of the layer which used to encapsulate the node
+			if set_position_to_chain {
+				let mut downstream_layer = Some(*input_connector_node_id);
+				while let Some(downstream_layer_id) = downstream_layer {
+					if downstream_layer_id == *input_connector_node_id || !self.is_layer(&downstream_layer_id, network_path) {
+						let Some(outward_wires) = self.outward_wires(network_path) else {
+							log::error!("Could not get outward wires in try_set_upstream_to_chain");
+							downstream_layer = None;
+							break;
+						};
+						downstream_layer = outward_wires
+							.get(&OutputConnector::node(downstream_layer_id, 0))
+							.and_then(|outward_wires| if outward_wires.len() == 1 { outward_wires[0].node_id() } else { None });
+					} else {
+						break;
+					}
 				}
+				if let Some(downstream_layer) = downstream_layer {
+					self.unload_node_click_targets(&downstream_layer, network_path);
+				}
+			}
+		}
+	}
+
+	fn try_set_node_to_chain(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
+		if let Some(outward_wires) = self
+			.outward_wires(network_path)
+			.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(*node_id, 0)))
+			.cloned()
+		{
+			if outward_wires.len() == 1 {
+				self.try_set_upstream_to_chain(&outward_wires[0], network_path)
 			}
 		}
 	}
@@ -4146,7 +4164,7 @@ impl NodeNetworkInterface {
 		};
 		for upstream_id in self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::HorizontalFlow).collect::<Vec<_>>().iter() {
 			let Some(previous_position) = self.position(upstream_id, network_path) else {
-				log::error!("Could not get position in set_to_node_or_layer");
+				log::error!("Could not get position in set_upstream_chain_to_absolute");
 				return;
 			};
 			// Set any chain nodes to absolute positioning
@@ -4594,16 +4612,7 @@ impl NodeNetworkInterface {
 				self.transaction_modified();
 				// Unload click targets for all upstream nodes, since they may have been derived from the node that was shifted
 				self.unload_upstream_node_click_targets(vec![*node_id], network_path);
-
-				if let Some(outward_wires) = self
-					.outward_wires(network_path)
-					.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(*node_id, 0)))
-					.cloned()
-				{
-					if outward_wires.len() == 1 {
-						self.try_set_upstream_to_chain(&outward_wires[0], network_path)
-					}
-				}
+				self.try_set_node_to_chain(node_id, network_path);
 			} else if let NodePosition::Chain = node_metadata.position {
 				self.set_upstream_chain_to_absolute(node_id, network_path);
 				self.shift_node(node_id, shift, network_path);
