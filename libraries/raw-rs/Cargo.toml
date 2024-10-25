@@ -26,6 +26,7 @@ thiserror = { workspace = true }
 # Required dependencies
 bitstream-io = "2.3.0"
 num_enum = "0.7.2"
+fortuples = "0.9.1"
 
 # Optional workspace dependencies
 image = { workspace = true, optional = true }
