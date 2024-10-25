@@ -37,6 +37,9 @@ jobs:
           echo "Latest updated version:"
           rustc --version
 
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
       - name: 🔬 Check Rust formatting
         run: |
           cd libraries/raw-rs
