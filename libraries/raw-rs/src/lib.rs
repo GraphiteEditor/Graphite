@@ -39,7 +39,6 @@ pub struct RawImage {
 	pub camera_white_balance: Option<[f64; 4]>,
 	pub white_balance: Option<[f64; 4]>,
 	pub camera_to_rgb: Option<[[f64; 3]; 3]>,
-	pub rgb_to_camera: Option<[[f64; 3]; 3]>,
 }
 
 pub struct Image<T> {
