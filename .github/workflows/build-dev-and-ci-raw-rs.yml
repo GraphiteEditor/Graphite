@@ -1,0 +1,75 @@
+name: "Raw-rs: Dev & CI"
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: self-hosted
+    permissions:
+      contents: read
+    env:
+      RUSTC_WRAPPER: /usr/bin/sccache
+      CARGO_INCREMENTAL: 0
+      SCCACHE_DIR: /var/lib/github-actions/.cache
+
+    steps:
+      - name: 📥 Clone and checkout repository
+        uses: actions/checkout@v3
+
+      - name: 🦀 Install the latest Rust
+        run: |
+          echo "Initial system version:"
+          rustc --version
+          rustup update stable
+          echo "Latest updated version:"
+          rustc --version
+
+      - name: 🔬 Check Rust formatting
+        run: |
+          cd libraries/raw-rs
+          mold -run cargo fmt --all -- --check
+
+      - name: 🦀 Build Rust code
+        run: |
+          cd libraries/raw-rs
+          mold -run cargo build --release --all-features
+
+      - name: 🧪 Run Rust tests
+        run: |
+          cd libraries/raw-rs
+          mold -run cargo test --release --all-features
+
+  # miri:
+  #   runs-on: self-hosted
+
+  #   steps:
+  #     - uses: actions/checkout@v3
+
+  #     - name: 🧪 Run Rust miri
+  #       run: |
+  #         mold -run cargo +nightly miri nextest run -j32 --all-features
+
+  cargo-deny:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Clone and checkout repository
+        uses: actions/checkout@v3
+
+      - name: 🔒 Check crate security advisories
+        uses: EmbarkStudios/cargo-deny-action@v1
+        with:
+          command: check advisories
+
+      - name: 📜 Check crate license compatibility
+        uses: EmbarkStudios/cargo-deny-action@v1
+        with:
+          command: check bans licenses sources
