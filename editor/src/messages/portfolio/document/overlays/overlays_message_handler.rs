@@ -18,21 +18,6 @@ pub struct OverlaysMessageHandler {
 	context: Option<web_sys::CanvasRenderingContext2d>,
 }
 
-impl OverlaysMessageHandler {
-	#[cfg(target_arch = "wasm32")]
-	fn apply_dpi_scaling(canvas: &HtmlCanvasElement, logical_size: DVec2) -> (f64, DVec2) {
-		let window = web_sys::window().expect("no global `window` exists");
-		let device_pixel_ratio = window.device_pixel_ratio();
-
-		let physical_size = logical_size * device_pixel_ratio;
-
-		canvas.style().set_property("width", &format!("{}px", logical_size.x)).unwrap();
-		canvas.style().set_property("height", &format!("{}px", logical_size.y)).unwrap();
-
-		(device_pixel_ratio, physical_size)
-	}
-}
-
 impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessageHandler {
 	fn process_message(&mut self, message: OverlaysMessage, responses: &mut VecDeque<Message>, data: OverlaysMessageData) {
 		let OverlaysMessageData { overlays_visible, ipp } = data;
@@ -58,8 +43,10 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 				});
 
 				let logical_size = ipp.viewport_bounds.size();
-				let (device_pixel_ratio, physical_size) = Self::apply_dpi_scaling(canvas, logical_size);
-				context.clear_rect(0., 0., physical_size.x, physical_size.y);
+				let window = web_sys::window().expect("no global `window` exists");
+				let device_pixel_ratio = window.device_pixel_ratio();
+
+				context.clear_rect(0., 0., logical_size.x, logical_size.y);
 
 				if overlays_visible {
 					responses.add(DocumentMessage::GridOverlays(OverlayContext {

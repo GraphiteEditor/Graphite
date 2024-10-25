@@ -36,12 +36,17 @@ impl OverlayContext {
 		self.device_pixel_ratio
 	}
 
-	fn offset(&self) -> DVec2 {
-		DVec2::splat(0.5 / self.dpr())
+	pub fn align_to_pixel(&self, coord: DVec2) -> DVec2 {
+		(coord * self.dpr()).round() / self.dpr() - DVec2::splat(0.5 / self.dpr())
 	}
 
-	pub fn align_to_pixel(&self, coord: DVec2) -> DVec2 {
-		(coord * self.dpr()).round() / self.dpr() - self.offset()
+	pub fn size_adjustment_factor(&self) -> f64 {
+		let sqrt_dpr = self.dpr().sqrt();
+		((sqrt_dpr * 10.0).round() / 10.0).max(1.0)
+	}
+
+	pub fn adjusted_size(&self, size: f64) -> f64 {
+		size * self.size_adjustment_factor()
 	}
 
 	pub fn quad(&mut self, quad: Quad, color_fill: Option<&str>) {
@@ -71,7 +76,7 @@ impl OverlayContext {
 		let end = self.align_to_pixel(end);
 
 		if let Some(dash_width) = dash_width {
-			let scaled_dash_width = dash_width * self.dpr();
+			let scaled_dash_width = self.adjusted_size(dash_width);
 			let array = js_sys::Array::new();
 			array.push(&JsValue::from(self.dpr()));
 			array.push(&JsValue::from(scaled_dash_width - self.dpr()));
@@ -95,7 +100,7 @@ impl OverlayContext {
 
 	pub fn manipulator_handle(&mut self, position: DVec2, selected: bool) {
 		let position = self.align_to_pixel(position);
-		let radius = (MANIPULATOR_GROUP_MARKER_SIZE / 2.) * self.dpr();
+		let radius = self.adjusted_size(MANIPULATOR_GROUP_MARKER_SIZE / 2.);
 
 		self.render_context.begin_path();
 		self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("Failed to draw the circle");
@@ -114,7 +119,7 @@ impl OverlayContext {
 	}
 
 	pub fn square(&mut self, position: DVec2, size: Option<f64>, color_fill: Option<&str>, color_stroke: Option<&str>) {
-		let size = size.unwrap_or(MANIPULATOR_GROUP_MARKER_SIZE) * self.dpr();
+		let size = self.adjusted_size(size.unwrap_or(MANIPULATOR_GROUP_MARKER_SIZE));
 		let color_fill = color_fill.unwrap_or(COLOR_OVERLAY_WHITE);
 		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
 
@@ -130,7 +135,7 @@ impl OverlayContext {
 	}
 
 	pub fn pixel(&mut self, position: DVec2, color: Option<&str>) {
-		let size = self.dpr();
+		let size = self.adjusted_size(MANIPULATOR_GROUP_MARKER_SIZE);
 		let color_fill = color.unwrap_or(COLOR_OVERLAY_WHITE);
 
 		let position = self.align_to_pixel(position);
@@ -146,7 +151,7 @@ impl OverlayContext {
 		let color_fill = color_fill.unwrap_or(COLOR_OVERLAY_WHITE);
 		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
 		let position = self.align_to_pixel(position);
-		let radius = radius * self.dpr();
+		let radius = self.adjusted_size(radius);
 		self.render_context.begin_path();
 		self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("Failed to draw the circle");
 		self.render_context.set_fill_style_str(color_fill);
@@ -160,7 +165,7 @@ impl OverlayContext {
 
 		// Circle
 
-		let radius = (PIVOT_DIAMETER / 2.) * self.dpr();
+		let radius = self.adjusted_size(PIVOT_DIAMETER / 2.);
 		self.render_context.begin_path();
 		self.render_context.arc(x, y, radius, 0., TAU).expect("Failed to draw the circle");
 		self.render_context.set_fill_style_str(COLOR_OVERLAY_YELLOW);
@@ -221,6 +226,7 @@ impl OverlayContext {
 
 	pub fn outline(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
 		self.render_context.begin_path();
+		self.render_context.set_line_width(self.size_adjustment_factor());
 		for subpath in subpaths {
 			let subpath = subpath.borrow();
 			let mut curves = subpath.iter().peekable();
