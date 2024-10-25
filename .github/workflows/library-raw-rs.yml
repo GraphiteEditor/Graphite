@@ -21,7 +21,8 @@ jobs:
     permissions:
       contents: read
     env:
-      RUSTC_WRAPPER: /usr/bin/sccache
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
       CARGO_INCREMENTAL: 0
       SCCACHE_DIR: /var/lib/github-actions/.cache
 
@@ -37,10 +38,8 @@ jobs:
           echo "Latest updated version:"
           rustc --version
 
-      - name: 📥 Install sccache
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y sccache
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.6
 
       - name: 🔬 Check Rust formatting
         run: |
@@ -56,3 +55,7 @@ jobs:
         run: |
           cd libraries/raw-rs
           cargo test --release --all-features
+
+      - name: Run sccache stat for check
+        shell: bash
+        run: sccache --show-stats
