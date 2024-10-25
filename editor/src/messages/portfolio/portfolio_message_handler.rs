@@ -749,6 +749,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				responses.add(FrontendMessage::UpdateActiveDocument { document_id });
+				responses.add(ToolMessage::InitTools);
+				responses.add(NodeGraphMessage::Init);
 				responses.add(OverlaysMessage::Draw);
 				responses.add(BroadcastEvent::ToolAbort);
 				responses.add(BroadcastEvent::SelectionChanged);

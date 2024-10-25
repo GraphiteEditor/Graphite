@@ -1025,7 +1025,6 @@ impl NodeNetwork {
 			warn!("The node which was supposed to be flattened does not exist in the network, id {node_id} network {self:#?}");
 			return;
 		};
-
 		// If the node is hidden, replace it with an identity node
 		let identity_node = DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into());
 		if !node.visible && node.implementation != identity_node {
@@ -1033,8 +1032,8 @@ impl NodeNetwork {
 
 			// Connect layer node to the graphic group below
 			node.inputs.drain(1..);
+			node.manual_composition = None;
 			self.nodes.insert(id, node);
-
 			return;
 		}
 
