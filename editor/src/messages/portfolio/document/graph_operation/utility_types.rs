@@ -268,17 +268,20 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 
 		// Create a new node if the node does not exist and update its inputs
-		existing_node_id.or_else(|| {
-			let output_layer = self.get_output_layer()?;
-			let Some(node_definition) = resolve_document_node_type(reference) else {
-				log::error!("Node type {} does not exist in ModifyInputsContext::existing_node_id", reference);
-				return None;
-			};
-			let node_id = NodeId::new();
-			self.network_interface.insert_node(node_id, node_definition.default_node_template(), &[]);
-			self.network_interface.move_node_to_chain_start(&node_id, output_layer, &[]);
-			Some(node_id)
-		})
+		existing_node_id.or_else(|| self.create_node(reference))
+	}
+
+	/// Create a new node inside the layer
+	pub fn create_node(&mut self, reference: &str) -> Option<NodeId> {
+		let output_layer = self.get_output_layer()?;
+		let Some(node_definition) = resolve_document_node_type(reference) else {
+			log::error!("Node type {} does not exist in ModifyInputsContext::existing_node_id", reference);
+			return None;
+		};
+		let node_id = NodeId::new();
+		self.network_interface.insert_node(node_id, node_definition.default_node_template(), &[]);
+		self.network_interface.move_node_to_chain_start(&node_id, output_layer, &[]);
+		Some(node_id)
 	}
 
 	pub fn fill_set(&mut self, fill: Fill) {

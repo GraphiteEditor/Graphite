@@ -228,7 +228,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::PropertiesPanel(message) => {
 				let properties_panel_message_handler_data = PropertiesPanelMessageHandlerData {
 					network_interface: &self.network_interface,
-					selection_path: &self.selection_network_path,
+					selection_network_path: &self.selection_network_path,
 					document_name: self.name.as_str(),
 					executor,
 				};
@@ -358,6 +358,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::DebugPrintDocument => {
 				info!("{:#?}", self.network_interface);
+			}
+			DocumentMessage::DeleteNode { node_id } => {
+				responses.add(DocumentMessage::StartTransaction);
+
+				responses.add(NodeGraphMessage::DeleteNodes {
+					node_ids: vec![node_id],
+					delete_children: true,
+				});
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SelectedNodesUpdated);
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::DeleteSelectedLayers => {
 				responses.add(NodeGraphMessage::DeleteSelectedNodes { delete_children: true });
@@ -1008,6 +1019,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(GraphOperationMessage::BlendModeSet { layer, blend_mode });
 				}
 			}
+			DocumentMessage::SetNodePinned { node_id, pinned } => {
+				responses.add(DocumentMessage::StartTransaction);
+				responses.add(NodeGraphMessage::SetPinned { node_id, pinned });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SelectedNodesUpdated);
+				responses.add(NodeGraphMessage::SendGraph);
+			}
 			DocumentMessage::SetOpacityForSelectedLayers { opacity } => {
 				let opacity = opacity.clamp(0., 1.);
 				for layer in self.network_interface.selected_nodes(&[]).unwrap().selected_layers_except_artboards(&self.network_interface) {
@@ -1026,6 +1044,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				if let Some(closure) = closure {
 					*closure(&mut self.snapping_state) = snapping_state;
 				}
+			}
+			DocumentMessage::SetToNodeOrLayer { node_id, is_layer } => {
+				responses.add(DocumentMessage::StartTransaction);
+				responses.add(NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer });
 			}
 			DocumentMessage::SetViewMode { view_mode } => {
 				self.view_mode = view_mode;

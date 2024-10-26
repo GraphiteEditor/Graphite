@@ -140,6 +140,7 @@ import NodeOutput from "@graphite-frontend/assets/icon-16px-solid/node-output.sv
 import NodeShape from "@graphite-frontend/assets/icon-16px-solid/node-shape.svg";
 import NodeText from "@graphite-frontend/assets/icon-16px-solid/node-text.svg";
 import NodeTransform from "@graphite-frontend/assets/icon-16px-solid/node-transform.svg";
+import Node from "@graphite-frontend/assets/icon-16px-solid/node.svg";
 import PadlockLocked from "@graphite-frontend/assets/icon-16px-solid/padlock-locked.svg";
 import PadlockUnlocked from "@graphite-frontend/assets/icon-16px-solid/padlock-unlocked.svg";
 import Paste from "@graphite-frontend/assets/icon-16px-solid/paste.svg";
@@ -205,6 +206,7 @@ const SOLID_16PX = {
 	Layer: { svg: Layer, size: 16 },
 	License: { svg: License, size: 16 },
 	NewLayer: { svg: NewLayer, size: 16 },
+	Node: { svg: Node, size: 16 },
 	NodeBlur: { svg: NodeBlur, size: 16 },
 	NodeBrushwork: { svg: NodeBrushwork, size: 16 },
 	NodeColorCorrection: { svg: NodeColorCorrection, size: 16 },
@@ -226,9 +228,9 @@ const SOLID_16PX = {
 	Reload: { svg: Reload, size: 16 },
 	Rescale: { svg: Rescale, size: 16 },
 	Reset: { svg: Reset, size: 16 },
+	Reverse: { svg: Reverse, size: 16 },
 	ReverseRadialGradientToLeft: { svg: ReverseRadialGradientToLeft, size: 16 },
 	ReverseRadialGradientToRight: { svg: ReverseRadialGradientToRight, size: 16 },
-	Reverse: { svg: Reverse, size: 16 },
 	Settings: { svg: Settings, size: 16 },
 	Stack: { svg: Stack, size: 16 },
 	Trash: { svg: Trash, size: 16 },
