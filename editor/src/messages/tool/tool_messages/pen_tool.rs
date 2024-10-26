@@ -242,7 +242,7 @@ impl PenToolData {
 
 		// Break the control
 		let Some(last_pos) = self.latest_point().map(|point| point.pos) else { return };
-		let transform = document.metadata().document_to_viewport * transform;
+		let transform = transform * document.metadata().document_to_viewport;
 		let on_top = transform.transform_point2(self.next_point).distance_squared(transform.transform_point2(last_pos)) < crate::consts::SNAP_POINT_TOLERANCE.powi(2);
 		if on_top {
 			if let Some(point) = self.latest_point_mut() {
