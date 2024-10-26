@@ -6,6 +6,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Node
 use crate::messages::prelude::*;
 
 use bezier_rs::{Bezier, BezierHandles, TValue};
+use dyn_any::DynAny;
 use graphene_core::transform::Transform;
 use graphene_core::vector::{ManipulatorPointId, PointId, VectorData, VectorModificationType};
 
@@ -1061,6 +1062,52 @@ impl ShapeState {
 		}
 	}
 
+	/// Selects handles and anchor connected to current handle
+	pub fn select_handles_and_anchor_connected_to_current_handle(&mut self, network_interface: &NodeNetworkInterface) {
+		let mut points_to_select: Vec<(LayerNodeIdentifier, Option<PointId>, Option<ManipulatorPointId>)> = Vec::new();
+
+		for &layer in self.selected_shape_state.keys() {
+			let Some(vector_data) = network_interface.compute_modified_vector(layer) else {
+				continue;
+			};
+
+			for point in self.selected_points() {
+				if let Some(_) = point.as_anchor() {
+					continue;
+				}
+
+				let anchor = point.get_anchor(&vector_data);
+				if let Some(handles) = point.get_handle_pair(&vector_data) {
+					points_to_select.push((layer, anchor, Some(handles[1].to_manipulator_point())));
+				} else {
+					points_to_select.push((layer, anchor, None));
+				}
+			}
+		}
+
+		for (layer, anchor, handle) in points_to_select {
+			if let Some(state) = self.selected_shape_state.get_mut(&layer) {
+				if let Some(anchor) = anchor {
+					state.select_point(ManipulatorPointId::Anchor(anchor));
+				}
+				if let Some(handle) = handle {
+					state.select_point(handle);
+				}
+			}
+		}
+	}
+
+	pub fn select_points_by_manipulator_id(&mut self, points: &Vec<ManipulatorPointId>) {
+		let layers_to_modify: Vec<_> = self.selected_shape_state.keys().cloned().collect();
+
+		for layer in layers_to_modify {
+			if let Some(state) = self.selected_shape_state.get_mut(&layer) {
+				for point in points {
+					state.select_point(*point);
+				}
+			}
+		}
+	}
 	/// Converts a nearby clicked anchor point's handles between sharp (zero-length handles) and smooth (pulled-apart handle(s)).
 	/// If both handles aren't zero-length, they are set that. If both are zero-length, they are stretched apart by a reasonable amount.
 	/// This can can be activated by double clicking on an anchor with the Path tool.
