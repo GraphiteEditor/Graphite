@@ -9,10 +9,10 @@
 	import type { Node } from "@graphite/wasm-communication/messages";
 	import type { FrontendNodeWire, FrontendNode, FrontendGraphInput, FrontendGraphOutput, FrontendGraphDataType, WirePath } from "@graphite/wasm-communication/messages";
 
+	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import NodeTypeInput from "@graphite/components/widgets/inputs/NodeTypeInput.svelte";
 	import RadioInput from "@graphite/components/widgets/inputs/RadioInput.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
@@ -324,7 +324,6 @@
 	{#if $nodeGraph.contextMenuInformation}
 		<LayoutCol
 			class="context-menu"
-			classes={{ "create-node-menu": $nodeGraph.contextMenuInformation.contextMenuData === "CreateNode" }}
 			data-context-menu
 			styles={{
 				left: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates.x * $nodeGraph.transform.scale + $nodeGraph.transform.x}px`,
@@ -332,7 +331,7 @@
 			}}
 		>
 			{#if $nodeGraph.contextMenuInformation.contextMenuData === "CreateNode"}
-				<NodeTypeInput on:selectNodeType={(e) => createNode(e.detail)} />
+				<NodeCatalog on:selectNodeType={(e) => createNode(e.detail)} />
 			{:else}
 				{@const contextMenuData = $nodeGraph.contextMenuInformation.contextMenuData}
 				<LayoutRow class="toggle-layer-or-node">

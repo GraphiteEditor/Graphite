@@ -1642,7 +1642,7 @@ impl NodeGraphMessageHandler {
 							.widget_holder(),
 						Separator::new(SeparatorType::Related).widget_holder(),
 						{
-							let node_chooser = NodeTypeInput::new()
+							let node_chooser = NodeCatalog::new()
 								.on_update(move |node_type| {
 									NodeGraphMessage::CreateNodeInLayerWithTransaction {
 										node_type: node_type.clone(),

@@ -655,26 +655,13 @@ impl EditorHandle {
 	/// Unpin a node given its node ID
 	#[wasm_bindgen(js_name = unpinNode)]
 	pub fn unpin_node(&self, id: u64) {
-		self.dispatch(DocumentMessage::StartTransaction);
-		self.dispatch(NodeGraphMessage::SetPinned { node_id: NodeId(id), pinned: false });
-		self.dispatch(NodeGraphMessage::RunDocumentGraph);
-		self.dispatch(NodeGraphMessage::SelectedNodesUpdated);
-		self.dispatch(NodeGraphMessage::SendGraph);
+		self.dispatch(DocumentMessage::SetNodePinned { node_id: NodeId(id), pinned: false });
 	}
 
 	/// Delete a layer or node given its node ID
 	#[wasm_bindgen(js_name = deleteNode)]
 	pub fn delete_node(&self, id: u64) {
-		self.dispatch(DocumentMessage::StartTransaction);
-
-		let id = NodeId(id);
-		self.dispatch(NodeGraphMessage::DeleteNodes {
-			node_ids: vec![id],
-			delete_children: true,
-		});
-		self.dispatch(NodeGraphMessage::RunDocumentGraph);
-		self.dispatch(NodeGraphMessage::SelectedNodesUpdated);
-		self.dispatch(NodeGraphMessage::SendGraph);
+		self.dispatch(DocumentMessage::DeleteNode { node_id: NodeId(id) });
 	}
 
 	/// Toggle lock state of a layer from the layer list
@@ -702,11 +689,7 @@ impl EditorHandle {
 	/// Toggle display type for a layer
 	#[wasm_bindgen(js_name = setToNodeOrLayer)]
 	pub fn set_to_node_or_layer(&self, id: u64, is_layer: bool) {
-		self.dispatch(DocumentMessage::StartTransaction);
-
-		let node_id = NodeId(id);
-		let message = NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer };
-		self.dispatch(message);
+		self.dispatch(DocumentMessage::SetToNodeOrLayer { node_id: NodeId(id), is_layer });
 	}
 
 	#[wasm_bindgen(js_name = injectImaginatePollServerStatus)]

@@ -45,6 +45,9 @@ pub enum DocumentMessage {
 	},
 	CreateEmptyFolder,
 	DebugPrintDocument,
+	DeleteNode {
+		node_id: NodeId,
+	},
 	DeleteSelectedLayers,
 	DeselectAllLayers,
 	DocumentHistoryBackward,
@@ -128,6 +131,10 @@ pub enum DocumentMessage {
 	SetBlendModeForSelectedLayers {
 		blend_mode: BlendMode,
 	},
+	SetNodePinned {
+		node_id: NodeId,
+		pinned: bool,
+	},
 	SetOpacityForSelectedLayers {
 		opacity: f64,
 	},
@@ -141,6 +148,10 @@ pub enum DocumentMessage {
 		#[serde(skip)]
 		closure: Option<for<'a> fn(&'a mut SnappingState) -> &'a mut bool>,
 		snapping_state: bool,
+	},
+	SetToNodeOrLayer {
+		node_id: NodeId,
+		is_layer: bool,
 	},
 	SetViewMode {
 		view_mode: ViewMode,

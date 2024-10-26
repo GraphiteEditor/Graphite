@@ -276,7 +276,7 @@ pub enum NumberInputMode {
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq, Default)]
-pub struct NodeTypeInput {
+pub struct NodeCatalog {
 	pub disabled: bool,
 
 	// Callbacks

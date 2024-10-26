@@ -214,13 +214,13 @@ impl LayoutMessageHandler {
 
 				responses.add(callback_message);
 			}
-			Widget::NodeTypeInput(node_type_input) => match action {
+			Widget::NodeCatalog(node_type_input) => match action {
 				WidgetValueAction::Commit => {
 					let callback_message = (node_type_input.on_commit.callback)(&());
 					responses.add(callback_message);
 				}
 				WidgetValueAction::Update => {
-					let value = value.as_str().expect("NodeTypeInput update was not of type String").to_string();
+					let value = value.as_str().expect("NodeCatalog update was not of type String").to_string();
 					let callback_message = (node_type_input.on_update.callback)(&value);
 					responses.add(callback_message);
 				}

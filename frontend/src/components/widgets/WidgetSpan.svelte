@@ -6,6 +6,7 @@
 	import type { Widget, WidgetSpanColumn, WidgetSpanRow } from "@graphite/wasm-communication/messages";
 	import { narrowWidgetProps, isWidgetSpanColumn, isWidgetSpanRow } from "@graphite/wasm-communication/messages";
 
+	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
 	import BreadcrumbTrailButtons from "@graphite/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
 	import ColorButton from "@graphite/components/widgets/buttons/ColorButton.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
@@ -16,7 +17,6 @@
 	import CurveInput from "@graphite/components/widgets/inputs/CurveInput.svelte";
 	import DropdownInput from "@graphite/components/widgets/inputs/DropdownInput.svelte";
 	import FontInput from "@graphite/components/widgets/inputs/FontInput.svelte";
-	import NodeTypeInput from "@graphite/components/widgets/inputs/NodeTypeInput.svelte";
 	import NumberInput from "@graphite/components/widgets/inputs/NumberInput.svelte";
 	import PivotInput from "@graphite/components/widgets/inputs/PivotInput.svelte";
 	import RadioInput from "@graphite/components/widgets/inputs/RadioInput.svelte";
@@ -128,9 +128,9 @@
 		{#if imageLabel}
 			<ImageLabel {...exclude(imageLabel)} />
 		{/if}
-		{@const nodeTypeInput = narrowWidgetProps(component.props, "NodeTypeInput")}
-		{#if nodeTypeInput}
-			<NodeTypeInput {...exclude(nodeTypeInput)} on:selectNodeType={(e) => widgetValueCommitAndUpdate(index, e.detail)} />
+		{@const nodeCatalog = narrowWidgetProps(component.props, "NodeCatalog")}
+		{#if nodeCatalog}
+			<NodeCatalog {...exclude(nodeCatalog)} on:selectNodeType={(e) => widgetValueCommitAndUpdate(index, e.detail)} />
 		{/if}
 		{@const numberInput = narrowWidgetProps(component.props, "NumberInput")}
 		{#if numberInput}

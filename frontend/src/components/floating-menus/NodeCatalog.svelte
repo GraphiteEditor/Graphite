@@ -7,22 +7,28 @@
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+
+	const dispatch = createEventDispatcher<{ selectNodeType: string }>();
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
+
+	export let disabled = false;
 
 	let nodeSearchInput: TextInput | undefined = undefined;
 	let searchTerm = "";
-	export let disabled = false;
-	const dispatch = createEventDispatcher<{ selectNodeType: string }>();
+
+	$: nodeCategories = buildNodeCategories($nodeGraph.nodeTypes, searchTerm);
 
 	type NodeCategoryDetails = {
 		nodes: FrontendNodeType[];
 		open: boolean;
 	};
+
 	function buildNodeCategories(nodeTypes: FrontendNodeType[], searchTerm: string): [string, NodeCategoryDetails][] {
 		const categories = new Map<string, NodeCategoryDetails>();
 
 		nodeTypes.forEach((node) => {
 			let nameIncludesSearchTerm = node.name.toLowerCase().includes(searchTerm.toLowerCase());
+
 			// Quick and dirty hack to alias "Layer" to "Merge" in the search
 			if (node.name === "Merge") {
 				nameIncludesSearchTerm = nameIncludesSearchTerm || "Layer".toLowerCase().includes(searchTerm.toLowerCase());
@@ -73,10 +79,9 @@
 	onMount(() => {
 		setTimeout(() => nodeSearchInput?.focus(), 0);
 	});
-	$: nodeCategories = buildNodeCategories($nodeGraph.nodeTypes, searchTerm);
 </script>
 
-<div class="create-node-menu">
+<div class="node-catalog">
 	<TextInput placeholder="Search Nodes..." value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
 	<div class="list-results" on:wheel|passive|stopPropagation>
 		{#each nodeCategories as nodeCategory}
@@ -95,7 +100,7 @@
 </div>
 
 <style lang="scss" global>
-	.create-node-menu {
+	.node-catalog {
 		max-height: 40vh;
 		min-width: 250px;
 		display: flex;

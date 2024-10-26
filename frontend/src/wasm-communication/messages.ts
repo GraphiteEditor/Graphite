@@ -1116,7 +1116,7 @@ export class NumberInput extends WidgetProps {
 	minWidth!: number;
 }
 
-export class NodeTypeInput extends WidgetProps {
+export class NodeCatalog extends WidgetProps {
 	disabled!: boolean;
 }
 
@@ -1297,7 +1297,7 @@ const widgetSubTypes = [
 	{ value: IconButton, name: "IconButton" },
 	{ value: IconLabel, name: "IconLabel" },
 	{ value: ImageLabel, name: "ImageLabel" },
-	{ value: NodeTypeInput, name: "NodeTypeInput" },
+	{ value: NodeCatalog, name: "NodeCatalog" },
 	{ value: NumberInput, name: "NumberInput" },
 	{ value: ParameterExposeButton, name: "ParameterExposeButton" },
 	{ value: PivotInput, name: "PivotInput" },
