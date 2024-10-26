@@ -9,7 +9,6 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::NodeId;
 use graphene_core::raster::BlendMode;
-use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::brush_stroke::{BrushInputSample, BrushStroke, BrushStyle};
 use graphene_core::Color;
 
@@ -432,7 +431,7 @@ fn new_brush_layer(document: &DocumentMessageHandler, responses: &mut VecDeque<M
 
 	let brush_node = resolve_document_node_type("Brush").expect("Brush node does not exist").default_node_template();
 
-	let id = NodeId(generate_uuid());
+	let id = NodeId::new();
 	responses.add(GraphOperationMessage::NewCustomLayer {
 		id,
 		nodes: vec![(NodeId(0), brush_node)],

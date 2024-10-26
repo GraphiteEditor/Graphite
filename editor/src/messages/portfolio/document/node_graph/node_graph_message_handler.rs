@@ -1,6 +1,5 @@
 use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeWire, WirePath};
 use super::{document_node_definitions, node_properties};
-use crate::application::generate_uuid;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::NodePropertiesContext;
@@ -138,7 +137,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(FrontendMessage::TriggerTextCopy { copy_text });
 			}
 			NodeGraphMessage::CreateNodeFromContextMenu { node_id, node_type, x, y } => {
-				let node_id = node_id.unwrap_or_else(|| NodeId(generate_uuid()));
+				let node_id = node_id.unwrap_or_else(|| NodeId::new());
 
 				let Some(document_node_type) = document_node_definitions::resolve_document_node_type(&node_type) else {
 					responses.add(DialogMessage::DisplayDialogError {
@@ -235,7 +234,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				// Copy the selected nodes
 				let nodes = network_interface.copy_nodes(&copy_ids, selection_network_path).collect::<Vec<_>>();
 
-				let new_ids = nodes.iter().map(|(id, _)| (*id, NodeId(generate_uuid()))).collect::<HashMap<_, _>>();
+				let new_ids = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect::<HashMap<_, _>>();
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::AddNodes { nodes, new_ids: new_ids.clone() });
 				responses.add(NodeGraphMessage::SelectedNodesSet {
@@ -325,7 +324,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				responses.add(DocumentMessage::AddTransaction);
 
-				let new_ids: HashMap<_, _> = data.iter().map(|(id, _)| (*id, NodeId(generate_uuid()))).collect();
+				let new_ids: HashMap<_, _> = data.iter().map(|(id, _)| (*id, NodeId::new())).collect();
 				responses.add(NodeGraphMessage::AddNodes {
 					nodes: data,
 					new_ids: new_ids.clone(),
@@ -1020,11 +1019,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				// 			.join("\r\n");
 				// 		output += "\r\n";
 				// 		output += &format!(
-				// 			"imports_metadata: (NodeId(generate_uuid()), ({}, {}).into()),\r\n",
+				// 			"imports_metadata: (NodeId::new(), ({}, {}).into()),\r\n",
 				// 			network.imports_metadata.1.x, network.imports_metadata.1.y
 				// 		);
 				// 		output += &format!(
-				// 			"exports_metadata: (NodeId(generate_uuid()), ({}, {}).into()),",
+				// 			"exports_metadata: (NodeId::new(), ({}, {}).into()),",
 				// 			network.exports_metadata.1.x, network.exports_metadata.1.y
 				// 		);
 				// 		output += "\r\n\r\n";
