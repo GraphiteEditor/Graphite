@@ -644,9 +644,12 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::DragStop { equidistant }) => {
-				// cleanup for select_anchor toggle
-				tool_data.remove_saved_points();
-				tool_data.select_anchor_toggled = false;
+				if tool_data.select_anchor_toggled {
+					shape_editor.deselect_all_points();
+					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_anchor_select_toggle);
+					tool_data.remove_saved_points();
+					tool_data.select_anchor_toggled = false;
+				}
 
 				let equidistant = input.keyboard.get(equidistant as usize);
 
