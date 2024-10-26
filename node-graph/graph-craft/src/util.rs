@@ -7,9 +7,9 @@ pub fn load_network(document_string: &str) -> NodeNetwork {
 	serde_json::from_value::<NodeNetwork>(document["network_interface"]["network"].clone()).expect("Failed to parse document")
 }
 
-pub fn compile(network: NodeNetwork) -> ProtoNetwork {
+pub fn compile_with_render_config(network: NodeNetwork) -> ProtoNetwork {
 	let compiler = Compiler {};
-	compiler.compile_single(network).unwrap()
+	compiler.compile_single(network, &[concrete!(graphene_core::application_io::RenderConfig)]).unwrap()
 }
 
 pub fn load_from_name(name: &str) -> NodeNetwork {

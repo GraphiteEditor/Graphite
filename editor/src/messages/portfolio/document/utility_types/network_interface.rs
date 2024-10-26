@@ -3421,10 +3421,7 @@ impl NodeNetworkInterface {
 	pub fn create_wire(&mut self, output_connector: &OutputConnector, input_connector: &InputConnector, network_path: &[NodeId]) {
 		let input = match output_connector {
 			OutputConnector::Node { node_id, output_index } => NodeInput::node(*node_id, *output_index),
-			OutputConnector::Import(import_index) => NodeInput::Network {
-				import_type: graph_craft::generic!(T),
-				import_index: *import_index,
-			},
+			OutputConnector::Import(import_index) => NodeInput::Network { import_index: *import_index },
 		};
 
 		self.set_input(input_connector, input, network_path);

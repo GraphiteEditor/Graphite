@@ -2,13 +2,13 @@ use criterion::{measurement::Measurement, BenchmarkGroup};
 use futures::executor::block_on;
 use graph_craft::{
 	proto::ProtoNetwork,
-	util::{compile, load_from_name, DEMO_ART},
+	util::{compile_with_render_config, load_from_name, DEMO_ART},
 };
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 
 pub fn setup_network(name: &str) -> (DynamicExecutor, ProtoNetwork) {
 	let network = load_from_name(name);
-	let proto_network = compile(network);
+	let proto_network = compile_with_render_config(network);
 	let executor = block_on(DynamicExecutor::new(proto_network.clone())).unwrap();
 	(executor, proto_network)
 }

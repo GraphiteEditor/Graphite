@@ -286,7 +286,7 @@ impl DocumentNode {
 		}
 	}
 
-	fn resolve_proto_node(mut self) -> ProtoNode {
+	fn resolve_proto_node(mut self, global_import_types: &[Type]) -> ProtoNode {
 		assert!(!self.inputs.is_empty() || self.manual_composition.is_some(), "Resolving document node {self:#?} with no inputs");
 		let DocumentNodeImplementation::ProtoNode(fqn) = self.implementation else {
 			unreachable!("tried to resolve not flattened node on resolved node {self:?}");
@@ -311,7 +311,10 @@ impl DocumentNode {
 					let node = if lambda { ProtoNodeInput::NodeLambda(node_id) } else { ProtoNodeInput::Node(node_id) };
 					(node, ConstructionArgs::Nodes(vec![]))
 				}
-				NodeInput::Network { import_type, .. } => (ProtoNodeInput::ManualComposition(import_type), ConstructionArgs::Nodes(vec![])),
+				NodeInput::Network { import_index } => {
+					let ty = global_import_types.get(import_index).expect("import index in global_import_types").clone();
+					(ProtoNodeInput::ManualComposition(ty), ConstructionArgs::Nodes(vec![]))
+				}
 				NodeInput::Inline(inline) => (ProtoNodeInput::None, ConstructionArgs::Inline(inline)),
 				NodeInput::Scope(_) => unreachable!("Scope input was not resolved"),
 				NodeInput::Reflection(_) => unreachable!("Reflection input was not resolved"),
@@ -355,9 +358,8 @@ pub enum NodeInput {
 	/// A hardcoded value that can't change after the graph is compiled. Gets converted into a value node during graph compilation.
 	Value { tagged_value: MemoHash<TaggedValue>, exposed: bool },
 
-	// TODO: Remove import_type and get type from parent node input
 	/// Input that is provided by the parent network to this document node, instead of from a hardcoded value or another node within the same network.
-	Network { import_type: Type, import_index: usize },
+	Network { import_index: usize },
 
 	/// Input that is extracted from the parent scopes the node resides in. The string argument is the key.
 	Scope(Cow<'static, str>),
@@ -403,8 +405,8 @@ impl NodeInput {
 		Self::Value { tagged_value, exposed }
 	}
 
-	pub const fn network(import_type: Type, import_index: usize) -> Self {
-		Self::Network { import_type, import_index }
+	pub fn network(_import_type: Type, import_index: usize) -> Self {
+		Self::Network { import_index }
 	}
 
 	pub fn scope(key: impl Into<Cow<'static, str>>) -> Self {
@@ -447,7 +449,7 @@ impl NodeInput {
 		match self {
 			NodeInput::Node { .. } => unreachable!("ty() called on NodeInput::Node"),
 			NodeInput::Value { tagged_value, .. } => tagged_value.ty(),
-			NodeInput::Network { import_type, .. } => import_type.clone(),
+			NodeInput::Network { .. } => unreachable!("ty() called on NodeInput::Network"),
 			NodeInput::Inline(_) => panic!("ty() called on NodeInput::Inline"),
 			NodeInput::Scope(_) => unreachable!("ty() called on NodeInput::Scope"),
 			NodeInput::Reflection(_) => concrete!(Metadata),
@@ -1312,8 +1314,8 @@ impl NodeNetwork {
 	}
 
 	/// Creates a proto network for evaluating each output of this network.
-	pub fn into_proto_networks(self) -> impl Iterator<Item = ProtoNetwork> {
-		let nodes: Vec<_> = self.nodes.into_iter().map(|(id, node)| (id, node.resolve_proto_node())).collect();
+	pub fn into_proto_networks(self, global_import_types: &[Type]) -> impl Iterator<Item = ProtoNetwork> {
+		let nodes: Vec<_> = self.nodes.into_iter().map(|(id, node)| (id, node.resolve_proto_node(global_import_types))).collect();
 
 		// Create a network to evaluate each output
 		if self.exports.len() == 1 {
@@ -1507,7 +1509,7 @@ mod test {
 			..Default::default()
 		};
 
-		let proto_node = document_node.resolve_proto_node();
+		let proto_node = document_node.resolve_proto_node(&[concrete!(u32)]);
 		let reference = ProtoNode {
 			identifier: "graphene_core::structural::ConsNode".into(),
 			input: ProtoNodeInput::ManualComposition(concrete!(u32)),
@@ -1577,7 +1579,7 @@ mod test {
 			.collect(),
 		};
 		let network = flat_network();
-		let mut resolved_network = network.into_proto_networks().collect::<Vec<_>>();
+		let mut resolved_network = network.into_proto_networks(&[concrete!(u32)]).collect::<Vec<_>>();
 		resolved_network[0].nodes.sort_unstable_by_key(|(id, _)| *id);
 
 		println!("{:#?}", resolved_network[0]);

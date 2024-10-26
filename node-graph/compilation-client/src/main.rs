@@ -13,7 +13,8 @@ fn main() {
 
 	let network = add_network();
 	let compiler = graph_craft::graphene_compiler::Compiler {};
-	let proto_network = compiler.compile_single(network).unwrap();
+	let input_types = vec![concrete!(Color), concrete!(Color), concrete!(u32)];
+	let proto_network = compiler.compile_single(network, &input_types).unwrap();
 
 	let io = ShaderIO {
 		inputs: vec![
@@ -25,7 +26,7 @@ fn main() {
 		output: ShaderInput::OutputBuffer((), concrete!(Color)),
 	};
 
-	let compile_request = CompileRequest::new(vec![proto_network], vec![concrete!(Color), concrete!(Color), concrete!(u32)], vec![concrete!(Color)], io);
+	let compile_request = CompileRequest::new(vec![proto_network], input_types, vec![concrete!(Color)], io);
 	let response = client
 		.post("http://localhost:3000/compile/spirv")
 		.timeout(Duration::from_secs(30))

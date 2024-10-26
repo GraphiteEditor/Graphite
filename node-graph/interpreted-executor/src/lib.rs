@@ -44,7 +44,7 @@ mod tests {
 		use graph_craft::graphene_compiler::Compiler;
 
 		let compiler = Compiler {};
-		let protograph = compiler.compile_single(network).expect("Graph should be generated");
+		let protograph = compiler.compile_single(network, &[concrete!(u32)]).expect("Graph should be generated");
 
 		let _exec = block_on(DynamicExecutor::new(protograph)).map(|_e| panic!("The network should not type check ")).unwrap_err();
 	}

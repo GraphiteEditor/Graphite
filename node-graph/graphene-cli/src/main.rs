@@ -1,7 +1,7 @@
-use graph_craft::document::*;
 use graph_craft::graphene_compiler::{Compiler, Executor};
 use graph_craft::util::load_network;
 use graph_craft::wasm_application_io::EditorPreferences;
+use graph_craft::{concrete, document::*};
 use graphene_core::application_io::{ApplicationIo, NodeGraphUpdateSender};
 use graphene_core::text::FontCache;
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
@@ -105,7 +105,7 @@ fn create_executor(document_string: String, editor_api: Arc<WasmEditorApi>) -> R
 
 	let wrapped_network = wrap_network_in_scope(network.clone(), editor_api);
 	let compiler = Compiler {};
-	let protograph = compiler.compile_single(wrapped_network)?;
+	let protograph = compiler.compile_single(wrapped_network, &[concrete!(graphene_core::application_io::RenderConfig)])?;
 	let executor = block_on(DynamicExecutor::new(protograph)).unwrap();
 	Ok(executor)
 }

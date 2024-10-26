@@ -30,6 +30,7 @@
 	// Number presentation
 	export let displayDecimalPlaces = 2;
 	export let unit = "";
+	$: console.info("new unit", unit);
 	export let unitIsHiddenWhenEditing = true;
 
 	// Mode behavior

@@ -18,23 +18,17 @@ use crate::wasm_application_io::WasmApplicationIo;
 
 // TODO: Move to graph-craft
 #[node_macro::node(category("Debug: GPU"))]
-async fn compile_gpu<'a: 'n>(_: (), node: &'a DocumentNode, typing_context: TypingContext, io: ShaderIO) -> Result<compilation_client::Shader, String> {
+async fn compile_gpu<'a: 'n>(_: (), node: &'a DocumentNode, typing_context: TypingContext, input_types: Vec<Type>, io: ShaderIO) -> Result<compilation_client::Shader, String> {
 	let mut typing_context = typing_context;
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let DocumentNodeImplementation::Network(ref network) = node.implementation else { panic!() };
-	let proto_networks: Result<Vec<_>, _> = compiler.compile(network.clone()).collect();
+	let proto_networks: Result<Vec<_>, _> = compiler.compile(network.clone(), &input_types).collect();
 	let proto_networks = proto_networks?;
 
 	for network in proto_networks.iter() {
 		typing_context.update(network).expect("Failed to type check network");
 	}
 	// TODO: do a proper union
-	let input_types = proto_networks[0]
-		.inputs
-		.iter()
-		.map(|id| typing_context.type_of(*id).unwrap())
-		.map(|node_io| node_io.return_value.clone())
-		.collect();
 	let output_types = proto_networks.iter().map(|network| typing_context.type_of(network.output).unwrap().return_value.clone()).collect();
 
 	Ok(compilation_client::compile(proto_networks, input_types, output_types, io).await.unwrap())
@@ -187,11 +181,12 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(node
 		..Default::default()
 	};
 	log::debug!("compiling network");
-	let proto_networks: Result<Vec<_>, _> = compiler.compile(network.clone()).collect();
+	let global_input_types = vec![concrete!(u32), concrete!(Color)];
+	let proto_networks: Result<Vec<_>, _> = compiler.compile(network.clone(), &global_input_types).collect();
 	log::debug!("compiling shader");
 	let shader = compilation_client::compile(
 		proto_networks?,
-		vec![concrete!(u32), concrete!(Color)],
+		global_input_types,
 		vec![concrete!(Color)],
 		ShaderIO {
 			inputs: vec![
@@ -317,7 +312,15 @@ async fn blend_gpu_image(_: (), foreground: ImageFrame<Color>, background: Image
 		..Default::default()
 	};
 	log::debug!("compiling network");
-	let proto_networks: Result<Vec<_>, _> = compiler.compile(network.clone()).collect();
+	let global_input_types = vec![
+		concrete!(u32),
+		concrete!(Color),
+		concrete!(Color),
+		concrete!(u32),
+		concrete_with_name!(Mat2, "Mat2"),
+		concrete_with_name!(Vec2, "Vec2"),
+	];
+	let proto_networks: Result<Vec<_>, _> = compiler.compile(network.clone(), &global_input_types).collect();
 	let Ok(proto_networks_result) = proto_networks else {
 		log::error!("Error compiling network in 'blend_gpu_image()");
 		return ImageFrame::empty();
@@ -327,14 +330,7 @@ async fn blend_gpu_image(_: (), foreground: ImageFrame<Color>, background: Image
 
 	let shader = compilation_client::compile(
 		proto_networks,
-		vec![
-			concrete!(u32),
-			concrete!(Color),
-			concrete!(Color),
-			concrete!(u32),
-			concrete_with_name!(Mat2, "Mat2"),
-			concrete_with_name!(Vec2, "Vec2"),
-		],
+		global_input_types,
 		vec![concrete!(Color)],
 		ShaderIO {
 			inputs: vec![
