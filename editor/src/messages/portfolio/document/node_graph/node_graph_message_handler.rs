@@ -1631,7 +1631,7 @@ impl NodeGraphMessageHandler {
 						Separator::new(SeparatorType::Related).widget_holder(),
 						IconLabel::new("Layer").tooltip("Name of the selected layer").widget_holder(),
 						Separator::new(SeparatorType::Related).widget_holder(),
-						TextInput::new(context.document_name)
+						TextInput::new(context.network_interface.frontend_display_name(&layer, context.selection_network_path))
 							.on_update(move |text_input| {
 								NodeGraphMessage::SetDisplayName {
 									node_id: layer,
