@@ -906,7 +906,7 @@ fn bevel_impl(mut vector_data: VectorData, distance: f64) -> VectorData {
 		}
 	}
 
-	fn update_existing_segments(vector_data: &mut VectorData, distance: f64, mut segments_connected: &mut [u8]) -> Vec<[usize; 2]> {
+	fn update_existing_segments(vector_data: &mut VectorData, distance: f64, segments_connected: &mut [u8]) -> Vec<[usize; 2]> {
 		let mut next_id = vector_data.point_domain.next_id();
 		let mut new_segments = Vec::new();
 
@@ -933,14 +933,14 @@ fn bevel_impl(mut vector_data: VectorData, distance: f64) -> VectorData {
 				length = (length - distance).max(0.);
 				// Update the start position
 				let pos = inverse_transform.transform_point2(bezier.start);
-				create_or_modify_point(&mut vector_data.point_domain, &mut segments_connected, pos, start_point_index, &mut next_id, &mut new_segments);
+				create_or_modify_point(&mut vector_data.point_domain, segments_connected, pos, start_point_index, &mut next_id, &mut new_segments);
 			}
 			if segments_connected[*end_point_index] > 0 {
 				// Apply the bevel to the end
 				bezier = split_distance(bezier.flipped(), distance.min(original_length / 2.), length).flipped();
 				// Update the end position
 				let pos = inverse_transform.transform_point2(bezier.end);
-				create_or_modify_point(&mut vector_data.point_domain, &mut segments_connected, pos, end_point_index, &mut next_id, &mut new_segments);
+				create_or_modify_point(&mut vector_data.point_domain, segments_connected, pos, end_point_index, &mut next_id, &mut new_segments);
 			}
 			// Update the handles
 			*handles = bezier.handles.apply_transformation(|p| inverse_transform.transform_point2(p));
