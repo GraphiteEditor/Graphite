@@ -862,7 +862,7 @@ async fn morph<F: 'n + Send + Copy>(
 	result
 }
 
-fn bevel_impl(mut vector_data: VectorData, distance: f64) -> VectorData {
+fn bevel_algorithm(mut vector_data: VectorData, distance: f64) -> VectorData {
 	// Splits a bézier curve based on a distance measurement
 	fn split_distance(bezier: bezier_rs::Bezier, distance: f64, length: f64) -> bezier_rs::Bezier {
 		const EUCLIDEAN_ERROR: f64 = 0.001;
@@ -937,7 +937,7 @@ fn bevel_impl(mut vector_data: VectorData, distance: f64) -> VectorData {
 			}
 			if segments_connected[*end_point_index] > 0 {
 				// Apply the bevel to the end
-				bezier = split_distance(bezier.flipped(), distance.min(original_length / 2.), length).flipped();
+				bezier = split_distance(bezier.reversed(), distance.min(original_length / 2.), length).reversed();
 				// Update the end position
 				let pos = inverse_transform.transform_point2(bezier.end);
 				create_or_modify_point(&mut vector_data.point_domain, segments_connected, pos, end_point_index, &mut next_id, &mut new_segments);
@@ -976,7 +976,7 @@ async fn bevel<F: 'n + Send + Copy>(
 	source: impl Node<F, Output = VectorData>,
 	#[default(10.)] distance: Length,
 ) -> VectorData {
-	bevel_impl(source.eval(footprint).await, distance)
+	bevel_algorithm(source.eval(footprint).await, distance)
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
@@ -1198,7 +1198,7 @@ mod test {
 	#[track_caller]
 	fn contains_segment(vector: &VectorData, target: bezier_rs::Bezier) {
 		let segments = vector.segment_bezier_iter().map(|x| x.1);
-		let count = segments.filter(|bezier| bezier.abs_diff_eq(&target, 0.01) || bezier.flipped().abs_diff_eq(&target, 0.01)).count();
+		let count = segments.filter(|bezier| bezier.abs_diff_eq(&target, 0.01) || bezier.reversed().abs_diff_eq(&target, 0.01)).count();
 		assert_eq!(count, 1, "Incorrect number of {target:#?} in {:#?}", vector.segment_bezier_iter().collect::<Vec<_>>());
 	}
 

@@ -277,6 +277,7 @@ impl SegmentDomain {
 	pub fn set_start_point(&mut self, segment_index: usize, new: usize) {
 		self.start_point[segment_index] = new;
 	}
+
 	pub fn set_end_point(&mut self, segment_index: usize, new: usize) {
 		self.end_point[segment_index] = new;
 	}
@@ -742,7 +743,7 @@ impl<'a> Iterator for StrokePathIter<'a> {
 
 			let mut handles = self.vector_data.segment_domain.handles()[val.segment_index];
 			if val.start_from_end {
-				handles = handles.flipped();
+				handles = handles.reversed();
 			}
 			let next_point_index = if val.start_from_end {
 				self.vector_data.segment_domain.start_point()[val.segment_index]

@@ -608,11 +608,11 @@ impl Bezier {
 
 	/// Reverses the direction of the bézier.
 	#[must_use]
-	pub fn flipped(self) -> Self {
+	pub fn reversed(self) -> Self {
 		Self {
 			start: self.end,
 			end: self.start,
-			handles: self.handles.flipped(),
+			handles: self.handles.reversed(),
 		}
 	}
 }
