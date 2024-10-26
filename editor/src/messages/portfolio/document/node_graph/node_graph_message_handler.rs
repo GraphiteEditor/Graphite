@@ -1674,7 +1674,6 @@ impl NodeGraphMessageHandler {
 							!context.network_interface.is_layer(node_id, context.selection_network_path)
 						}
 					})
-					.skip(1) // Don't include the layer itself
 					.filter_map(|(_, node_id)| network.nodes.get(&node_id).map(|node| (node, node_id)))
 					.map(|(node, node_id)| node_properties::generate_node_properties(node, node_id, false, context))
 					.collect::<Vec<_>>();
