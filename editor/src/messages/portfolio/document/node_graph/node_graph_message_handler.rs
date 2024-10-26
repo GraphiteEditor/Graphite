@@ -1652,7 +1652,11 @@ impl NodeGraphMessageHandler {
 								})
 								.widget_holder();
 							let popover_layout = vec![LayoutGroup::Row { widgets: vec![node_chooser] }];
-							PopoverButton::new().icon(Some("Node".to_string())).popover_layout(popover_layout).widget_holder()
+							PopoverButton::new()
+								.icon(Some("Node".to_string()))
+								.tooltip("Add an operation to the end of this layer's chain of nodes")
+								.popover_layout(popover_layout)
+								.widget_holder()
 						},
 						Separator::new(SeparatorType::Related).widget_holder(),
 					],

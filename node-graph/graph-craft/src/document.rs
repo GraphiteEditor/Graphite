@@ -1016,7 +1016,7 @@ impl NodeNetwork {
 
 	/// Remove all nodes that contain [`DocumentNodeImplementation::Network`] by moving the nested nodes into the parent network.
 	pub fn flatten(&mut self, node_id: NodeId) {
-		self.flatten_with_fns(node_id, merge_ids, || NodeId::new())
+		self.flatten_with_fns(node_id, merge_ids, NodeId::new)
 	}
 
 	/// Remove all nodes that contain [`DocumentNodeImplementation::Network`] by moving the nested nodes into the parent network.
