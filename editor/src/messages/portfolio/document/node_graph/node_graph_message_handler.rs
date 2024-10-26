@@ -150,7 +150,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			NodeGraphMessage::CreateNodeFromContextMenu { node_id, node_type, x, y } => {
-				let node_id = node_id.unwrap_or_else(|| NodeId::new());
+				let node_id = node_id.unwrap_or_else(NodeId::new);
 
 				let Some(document_node_type) = document_node_definitions::resolve_document_node_type(&node_type) else {
 					responses.add(DialogMessage::DisplayDialogError {
@@ -1573,14 +1573,26 @@ impl NodeGraphMessageHandler {
 			0 => {
 				let selected_nodes = nodes
 					.iter()
-					.filter_map(|node_id| network.nodes.get(node_id).map(|node| node_properties::generate_node_properties(node, *node_id, context)))
+					.filter_map(|node_id| network.nodes.get(node_id).map(|node| node_properties::generate_node_properties(node, *node_id, false, context)))
 					.collect::<Vec<_>>();
 				if !selected_nodes.is_empty() {
 					return selected_nodes;
 				}
 
+				let mut properties = vec![LayoutGroup::Row {
+					widgets: vec![
+						Separator::new(SeparatorType::Related).widget_holder(),
+						IconLabel::new("File").tooltip("Name of the current document").widget_holder(),
+						Separator::new(SeparatorType::Related).widget_holder(),
+						TextInput::new(context.document_name)
+							.on_update(|text_input| DocumentMessage::RenameDocument { new_name: text_input.value.clone() }.into())
+							.widget_holder(),
+						Separator::new(SeparatorType::Related).widget_holder(),
+					],
+				}];
+
 				// And if no nodes are selected, show properties for all pinned nodes
-				network
+				let pinned_node_properties = network
 					.nodes
 					.iter()
 					.filter_map(|(node_id, node)| {
@@ -1592,12 +1604,15 @@ impl NodeGraphMessageHandler {
 						};
 
 						if pinned {
-							Some(node_properties::generate_node_properties(node, *node_id, context))
+							Some(node_properties::generate_node_properties(node, *node_id, true, context))
 						} else {
 							None
 						}
 					})
-					.collect::<Vec<_>>()
+					.collect::<Vec<_>>();
+
+				properties.extend(pinned_node_properties);
+				properties
 			}
 			// If one layer is selected, filter out all selected nodes that are not upstream of it. If there are no nodes left, show properties for the layer. Otherwise, show nothing.
 			1 => {
@@ -1611,8 +1626,40 @@ impl NodeGraphMessageHandler {
 					return Vec::new();
 				}
 
+				let mut layer_properties = vec![LayoutGroup::Row {
+					widgets: vec![
+						Separator::new(SeparatorType::Related).widget_holder(),
+						IconLabel::new("Layer").tooltip("Name of the selected layer").widget_holder(),
+						Separator::new(SeparatorType::Related).widget_holder(),
+						TextInput::new(context.document_name)
+							.on_update(move |text_input| {
+								NodeGraphMessage::SetDisplayName {
+									node_id: layer,
+									alias: text_input.value.clone(),
+								}
+								.into()
+							})
+							.widget_holder(),
+						Separator::new(SeparatorType::Related).widget_holder(),
+						{
+							let node_chooser = NodeTypeInput::new()
+								.on_update(move |node_type| {
+									NodeGraphMessage::CreateNodeInLayerWithTransaction {
+										node_type: node_type.clone(),
+										layer: LayerNodeIdentifier::new_unchecked(layer),
+									}
+									.into()
+								})
+								.widget_holder();
+							let popover_layout = vec![LayoutGroup::Row { widgets: vec![node_chooser] }];
+							PopoverButton::new().icon(Some("Node".to_string())).popover_layout(popover_layout).widget_holder()
+						},
+						Separator::new(SeparatorType::Related).widget_holder(),
+					],
+				}];
+
 				// Iterate through all the upstream nodes, but stop when we reach another layer (since that's a point where we switch from horizontal to vertical flow)
-				let mut properties = context
+				let node_properties = context
 					.network_interface
 					.upstream_flow_back_from_nodes(vec![layer], context.selection_network_path, network_interface::FlowType::HorizontalFlow)
 					.enumerate()
@@ -1623,18 +1670,13 @@ impl NodeGraphMessageHandler {
 							!context.network_interface.is_layer(node_id, context.selection_network_path)
 						}
 					})
+					.skip(1) // Don't include the layer itself
 					.filter_map(|(_, node_id)| network.nodes.get(&node_id).map(|node| (node, node_id)))
-					.map(|(node, node_id)| node_properties::generate_node_properties(node, node_id, context))
+					.map(|(node, node_id)| node_properties::generate_node_properties(node, node_id, false, context))
 					.collect::<Vec<_>>();
 
-				let layer = LayerNodeIdentifier::new_unchecked(layer);
-				let node_chooser = NodeTypeInput::new()
-					.on_update(move |node_type| NodeGraphMessage::CreateNodeInLayerWithTransaction { node_type: node_type.clone(), layer }.into())
-					.widget_holder();
-				let popover_layout = vec![LayoutGroup::Row { widgets: vec![node_chooser] }];
-				let add_node_button = PopoverButton::new().label(Some("Add Node".to_string())).popover_layout(popover_layout).widget_holder();
-				properties.push(LayoutGroup::Row { widgets: vec![add_node_button] });
-				properties
+				layer_properties.extend(node_properties);
+				layer_properties
 			}
 			// If multiple layers and/or nodes are selected, show nothing
 			_ => Vec::new(),

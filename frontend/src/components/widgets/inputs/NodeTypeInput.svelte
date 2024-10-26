@@ -98,7 +98,7 @@
 	.create-node-menu {
 		max-height: 40vh;
 		min-width: 250px;
-		display:flex;
+		display: flex;
 		flex-direction: column;
 		align-items: stretch;
 

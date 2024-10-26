@@ -405,7 +405,6 @@ impl LayoutMessageHandler {
 			LayoutTarget::LayersPanelOptions => FrontendMessage::UpdateLayersPanelOptionsLayout { layout_target, diff },
 			LayoutTarget::MenuBar => unreachable!("Menu bar is not diffed"),
 			LayoutTarget::NodeGraphBar => FrontendMessage::UpdateNodeGraphBarLayout { layout_target, diff },
-			LayoutTarget::PropertiesOptions => FrontendMessage::UpdatePropertyPanelOptionsLayout { layout_target, diff },
 			LayoutTarget::PropertiesSections => FrontendMessage::UpdatePropertyPanelSectionsLayout { layout_target, diff },
 			LayoutTarget::ToolOptions => FrontendMessage::UpdateToolOptionsLayout { layout_target, diff },
 			LayoutTarget::ToolShelf => FrontendMessage::UpdateToolShelfLayout { layout_target, diff },

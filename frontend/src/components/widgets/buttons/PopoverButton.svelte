@@ -4,12 +4,10 @@
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 
 	export let style: PopoverButtonStyle = "DropdownArrow";
 	export let icon: IconName | undefined = undefined;
-	export let label: string | undefined = undefined;
 	export let tooltip: string | undefined = undefined;
 	export let disabled = false;
 	export let popoverMinWidth = 1;
@@ -26,11 +24,7 @@
 </script>
 
 <LayoutRow class="popover-button" classes={{ "has-icon": icon !== undefined }}>
-	{#if label === undefined}
-		<IconButton class="dropdown-icon" classes={{ open }} {disabled} action={() => onClick()} icon={style || "DropdownArrow"} size={16} {tooltip} data-floating-menu-spawner />
-	{:else}
-		<TextButton classes={{ open }} {disabled} action={() => onClick()} {label} icon={style} {tooltip} data-floating-menu-spawner />
-	{/if}
+	<IconButton class="dropdown-icon" classes={{ open }} {disabled} action={() => onClick()} icon={style || "DropdownArrow"} size={16} {tooltip} data-floating-menu-spawner />
 	{#if icon !== undefined}
 		<IconLabel class="descriptive-icon" classes={{ open }} {disabled} {icon} {tooltip} />
 	{/if}
@@ -45,11 +39,7 @@
 		position: relative;
 		width: 16px;
 		height: 24px;
-		flex: 1 0 auto;
-
-		.text-button {
-			flex-grow: 1;
-		}
+		flex: 0 0 auto;
 
 		&.has-icon {
 			width: 36px;

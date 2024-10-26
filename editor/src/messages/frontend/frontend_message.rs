@@ -253,11 +253,6 @@ pub enum FrontendMessage {
 		#[serde(rename = "openDocuments")]
 		open_documents: Vec<FrontendDocumentDetails>,
 	},
-	UpdatePropertyPanelOptionsLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
-		diff: Vec<WidgetDiff>,
-	},
 	UpdatePropertyPanelSectionsLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,

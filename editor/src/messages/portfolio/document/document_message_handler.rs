@@ -228,7 +228,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::PropertiesPanel(message) => {
 				let properties_panel_message_handler_data = PropertiesPanelMessageHandlerData {
 					network_interface: &self.network_interface,
-					selection_path: &self.selection_network_path,
+					selection_network_path: &self.selection_network_path,
 					document_name: self.name.as_str(),
 					executor,
 				};
