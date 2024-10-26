@@ -293,7 +293,7 @@ async fn circular_repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + T
 	)]
 	instance: impl Node<F, Output = I>,
 	angle_offset: Angle,
-	#[default(5)] radius: Length,
+	#[default(5)] radius: f64,
 	#[default(5)] instances: IntegerCount,
 ) -> GraphicGroup {
 	let instance = instance.eval(footprint).await;
@@ -974,7 +974,7 @@ async fn bevel<F: 'n + Send + Copy>(
 		Footprint -> VectorData,
 	)]
 	source: impl Node<F, Output = VectorData>,
-	#[default(10.)] distance: f64,
+	#[default(10.)] distance: Length,
 ) -> VectorData {
 	bevel_impl(source.eval(footprint).await, distance)
 }
