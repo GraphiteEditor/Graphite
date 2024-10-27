@@ -31,7 +31,6 @@ build-camera-data = { path = "build-camera-data" }
 # Required dependencies
 bitstream-io = "2.5.3"
 num_enum = "0.7.3"
-fortuples = "0.9.1"
 thiserror = "1.0.64"
 
 # Optional dependencies (should be dev dependencies, but Cargo currently doesn't allow optional dev dependencies)
