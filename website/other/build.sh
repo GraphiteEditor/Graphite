@@ -1,4 +1,5 @@
 #!/bin/sh
+set -e # Exit with nonzero exit code if any individual command fails throughout the script
 
 echo 📁 Create output directory in 'website/other/dist'
 cd website/other
