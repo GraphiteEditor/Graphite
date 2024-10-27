@@ -1061,6 +1061,16 @@ impl ShapeState {
 		}
 	}
 
+	/// Returns true if atleast one handle is selected
+	pub fn handle_selected(&mut self) -> bool {
+		for point in self.selected_points() {
+			if let Some(_) = point.as_handle() {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	/// Alternate selected handles to mirrors
 	pub fn alternate_selected_handles(&mut self, network_interface: &NodeNetworkInterface) {
 		let mut handles_to_update = Vec::new();
@@ -1071,6 +1081,9 @@ impl ShapeState {
 			};
 
 			for point in self.selected_points() {
+				if let Some(_) = point.as_anchor() {
+					continue;
+				}
 				if let Some(handles) = point.get_handle_pair(&vector_data) {
 					//handle[0] is selected, handle[1] is opposite / mirror handle
 					handles_to_update.push((layer, handles[0].to_manipulator_point(), handles[1].to_manipulator_point()));
