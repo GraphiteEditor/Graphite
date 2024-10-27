@@ -1061,6 +1061,37 @@ impl ShapeState {
 		}
 	}
 
+	/// Alternate selected handles to mirrors
+	pub fn alternate_selected_handles(&mut self, network_interface: &NodeNetworkInterface) {
+		let mut handles_to_update = Vec::new();
+
+		for &layer in self.selected_shape_state.keys() {
+			let Some(vector_data) = network_interface.compute_modified_vector(layer) else {
+				continue;
+			};
+
+			for point in self.selected_points() {
+				if let Some(handles) = point.get_handle_pair(&vector_data) {
+					//handle[0] is selected, handle[1] is opposite / mirror handle
+					handles_to_update.push((layer, handles[0].to_manipulator_point(), handles[1].to_manipulator_point()));
+				}
+			}
+		}
+
+		for (layer, handle_to_deselect, handle_to_select) in handles_to_update {
+			if let Some(state) = self.selected_shape_state.get_mut(&layer) {
+				let points = &state.selected_points;
+				let both_selected = points.contains(&handle_to_deselect) && points.contains(&handle_to_select);
+
+				if both_selected {
+					continue;
+				}
+				state.deselect_point(handle_to_deselect);
+				state.select_point(handle_to_select);
+			}
+		}
+	}
+
 	/// Selects handles and anchor connected to current handle
 	pub fn select_handles_and_anchor_connected_to_current_handle(&mut self, network_interface: &NodeNetworkInterface) {
 		let mut points_to_select: Vec<(LayerNodeIdentifier, Option<PointId>, Option<ManipulatorPointId>)> = Vec::new();

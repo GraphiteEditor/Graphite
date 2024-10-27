@@ -74,6 +74,7 @@ pub enum PathToolMessage {
 	SelectedPointYChanged {
 		new_y: f64,
 	},
+	AlternateSelectedHandles,
 }
 
 impl ToolMetadata for PathTool {
@@ -170,7 +171,16 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		let updating_point = message == ToolMessage::Path(PathToolMessage::SelectedPointUpdated);
 
-		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, true);
+		match message {
+			ToolMessage::Path(PathToolMessage::AlternateSelectedHandles) => {
+				tool_data.shape_editor.alternate_selected_handles(&tool_data.document.network_interface);
+				responses.add(PathToolMessage::SelectedPointUpdated);
+				responses.add(OverlaysMessage::Draw);
+			}
+			_ => {
+				self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, true);
+			}
+		}
 
 		if updating_point {
 			self.send_layout(responses, LayoutTarget::ToolOptions);
@@ -200,6 +210,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				Delete,
 				BreakPath,
 				DeleteAndBreakPath,
+				AlternateSelectedHandles,
 			),
 			PathToolFsmState::DrawingBox => actions!(PathToolMessageDiscriminant;
 				FlipSmoothSharp,
@@ -775,6 +786,9 @@ impl Fsm for PathToolFsmState {
 					HintInfo::keys([Key::Alt], "Toggle Colinear Handles"),
 					// TODO: Switch this to the "Alt" key (since it's equivalent to the "From Center" modifier when drawing a line). And show this only when a handle is being dragged.
 					HintInfo::keys([Key::Shift], "Equidistant Handles"),
+					HintInfo::keys([Key::Tab], "Select Oppposite Handles"), //TODO: only show when handle selected
+					                                                        // TODO: Add "Snap 15°" modifier with the "Shift" key (only when a handle is being dragged).
+					                                                        // TODO: Add "Lock Angle" modifier with the "Ctrl" key (only when a handle is being dragged).
 					// TODO: Add "Snap 15°" modifier with the "Shift" key (only when a handle is being dragged).
 					// TODO: Add "Lock Angle" modifier with the "Ctrl" key (only when a handle is being dragged).
 					HintInfo::keys([Key::Space], "Drag anchor"),
