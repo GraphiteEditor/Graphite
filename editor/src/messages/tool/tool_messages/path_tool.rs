@@ -650,7 +650,6 @@ impl Fsm for PathToolFsmState {
 			}
 			(PathToolFsmState::Dragging, PathToolMessage::Escape | PathToolMessage::RightClick) => {
 				responses.add(DocumentMessage::AbortTransaction);
-				shape_editor.deselect_all_points();
 				tool_data.snap_manager.cleanup(responses);
 				PathToolFsmState::Ready
 			}
