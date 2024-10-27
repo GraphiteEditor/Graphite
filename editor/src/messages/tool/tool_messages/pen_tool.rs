@@ -58,6 +58,7 @@ pub enum PenToolMessage {
 	Redo,
 	Undo,
 	UpdateOptions(PenOptionsUpdate),
+	RecalculateLatestPointsPosition,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -234,6 +235,22 @@ impl PenToolData {
 		self.latest_points.push(point);
 	}
 
+	// When the vector data transform changes, the positions of the points must be recalculated.
+	fn recalculate_latest_points_position(&mut self, document: &DocumentMessageHandler) {
+		if let Some(layer) = self.layer {
+			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
+				return;
+			};
+			for point in &mut self.latest_points {
+				let Some(pos) = vector_data.point_domain.position_from_id(point.id) else {
+					continue;
+				};
+				point.pos = pos;
+				point.handle_start = point.pos;
+			}
+		}
+	}
+
 	/// If the user places the anchor on top of the previous anchor, it becomes sharp and the outgoing handle may be dragged.
 	fn bend_from_previous_point(&mut self, snap_data: SnapData, transform: DAffine2) {
 		self.g1_continuous = true;
@@ -242,7 +259,7 @@ impl PenToolData {
 
 		// Break the control
 		let Some(last_pos) = self.latest_point().map(|point| point.pos) else { return };
-		let transform = transform * document.metadata().document_to_viewport;
+		let transform = document.metadata().document_to_viewport * transform;
 		let on_top = transform.transform_point2(self.next_point).distance_squared(transform.transform_point2(last_pos)) < crate::consts::SNAP_POINT_TOLERANCE.powi(2);
 		if on_top {
 			if let Some(point) = self.latest_point_mut() {
@@ -560,12 +577,17 @@ impl Fsm for PenToolFsmState {
 				// Enter the dragging handle state while the mouse is held down, allowing the user to move the mouse and position the handle
 				PenToolFsmState::DraggingHandle
 			}
+			(state, PenToolMessage::RecalculateLatestPointsPosition) => {
+				tool_data.recalculate_latest_points_position(document);
+				state
+			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart) => {
 				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, None, false);
 				let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
 				// Early return if the buffer was started and this message is being run again after the buffer (so that place_anchor updates the state with the newly merged vector)
 				if tool_data.buffering_merged_vector {
+					tool_data.buffering_merged_vector = false;
 					tool_data.bend_from_previous_point(SnapData::new(document, input), transform);
 					tool_data.place_anchor(SnapData::new(document, input), transform, input.mouse.position, responses);
 					tool_data.buffering_merged_vector = false;
@@ -659,6 +681,7 @@ impl Fsm for PenToolFsmState {
 							});
 							responses.add(NodeGraphMessage::RunDocumentGraph);
 							responses.add(Message::StartBuffer);
+							responses.add(PenToolMessage::RecalculateLatestPointsPosition);
 						}
 					}
 					// Even if no buffer was started, the message still has to be run again in order to call bend_from_previous_point
