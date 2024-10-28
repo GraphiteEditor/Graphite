@@ -1068,15 +1068,15 @@ impl ShapeState {
 			};
 
 			for point in self.selected_points() {
-				if let Some(_) = point.as_anchor() {
+				if point.as_anchor().is_some() {
 					return PointSelectState::Anchor;
 				}
-				if let Some(_) = point.get_handle_pair(&vector_data) {
+				if point.get_handle_pair(&vector_data).is_some() {
 					return PointSelectState::HandleWithPair;
 				}
 			}
 		}
-		return PointSelectState::HandleNoPair;
+		PointSelectState::HandleNoPair
 	}
 
 	/// Returns true if atleast one handle with pair is selected
@@ -1086,15 +1086,15 @@ impl ShapeState {
 				continue;
 			};
 			for point in self.selected_points() {
-				if let Some(_) = point.as_anchor() {
+				if point.as_anchor().is_some() {
 					return false;
 				}
-				if let Some(_) = point.get_handle_pair(&vector_data) {
+				if point.get_handle_pair(&vector_data).is_some() {
 					return true;
 				}
 			}
 		}
-		return false;
+		false
 	}
 
 	/// Alternate selected handles to mirrors
@@ -1107,7 +1107,7 @@ impl ShapeState {
 			};
 
 			for point in self.selected_points() {
-				if let Some(_) = point.as_anchor() {
+				if point.as_anchor().is_some() {
 					continue;
 				}
 				if let Some(handles) = point.get_handle_pair(&vector_data) {
