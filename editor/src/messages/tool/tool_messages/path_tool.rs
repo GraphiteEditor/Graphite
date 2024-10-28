@@ -579,7 +579,7 @@ impl Fsm for PathToolFsmState {
 
 				PathToolFsmState::DrawingBox
 			}
-			(PathToolFsmState::Dragging { .. }, PathToolMessage::PointerMove { alt, shift, move_anchor_and_handles }) => {
+			(PathToolFsmState::Dragging(_), PathToolMessage::PointerMove { alt, shift, move_anchor_and_handles }) => {
 				let anchor_and_handle_toggled = input.keyboard.get(move_anchor_and_handles as usize);
 				let initial_press = anchor_and_handle_toggled && !tool_data.select_anchor_toggled;
 				let released_from_toggle = tool_data.select_anchor_toggled && !anchor_and_handle_toggled;
@@ -809,7 +809,6 @@ impl Fsm for PathToolFsmState {
 			]),
 			PathToolFsmState::Dragging(dragging_state) => {
 				let colinear = dragging_state.colinear;
-				debug!("STATE: {:?}", &dragging_state);
 				let mut dragging_hint_data = HintData(Vec::new());
 				dragging_hint_data
 					.0

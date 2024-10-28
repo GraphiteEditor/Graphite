@@ -1086,6 +1086,9 @@ impl ShapeState {
 				continue;
 			};
 			for point in self.selected_points() {
+				if let Some(_) = point.as_anchor() {
+					return false;
+				}
 				if let Some(_) = point.get_handle_pair(&vector_data) {
 					return true;
 				}
