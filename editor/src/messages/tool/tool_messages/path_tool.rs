@@ -77,24 +77,6 @@ pub enum PathToolMessage {
 	AlternateSelectedHandles,
 }
 
-fn handle_hint_data() -> HintData {
-	return HintData(vec![
-		HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-		HintGroup(vec![
-			// TODO: Switch this to the "S" key. Also, make the hint dynamically say "Make Colinear" or "Make Not Colinear" based on its current state. And only
-			// TODO: show this hint if a handle (not an anchor) is being dragged, and disable that shortcut so it can't be pressed even with the hint not shown.
-			HintInfo::keys([Key::Alt], "Toggle Colinear Handles"),
-			// TODO: Switch this to the "Alt" key (since it's equivalent to the "From Center" modifier when drawing a line). And show this only when a handle is being dragged.
-			HintInfo::keys([Key::Shift], "Equidistant Handles"),
-			HintInfo::keys([Key::Tab], "Select Opposite Handles"), //TODO: only show when handle selected
-			// TODO: Add "Snap 15°" modifier with the "Shift" key (only when a handle is being dragged).
-			// TODO: Add "Lock Angle" modifier with the "Ctrl" key (only when a handle is being dragged).
-			// TODO: Add "Snap 15°" modifier with the "Shift" key (only when a handle is being dragged).
-			// TODO: Add "Lock Angle" modifier with the "Ctrl" key (only when a handle is being dragged).
-			HintInfo::keys([Key::Space], "Drag anchor"),
-		]),
-	]);
-}
 impl ToolMetadata for PathTool {
 	fn icon_name(&self) -> String {
 		"VectorPathTool".into()
@@ -191,7 +173,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 
 		match message {
 			ToolMessage::Path(PathToolMessage::AlternateSelectedHandles) => {
-				if tool_data.shape_editor.handle_selected() {
+				if tool_data.shape_editor.handle_with_pair_selected(&tool_data.document.network_interface) {
 					tool_data.shape_editor.alternate_selected_handles(&tool_data.document.network_interface);
 					responses.add(PathToolMessage::SelectedPointUpdated);
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::None });
@@ -222,7 +204,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				BreakPath,
 				DeleteAndBreakPath,
 			),
-			PathToolFsmState::Dragging => actions!(PathToolMessageDiscriminant;
+			PathToolFsmState::Dragging(_) => actions!(PathToolMessageDiscriminant;
 				Escape,
 				RightClick,
 				FlipSmoothSharp,
@@ -267,12 +249,25 @@ impl ToolTransition for PathTool {
 		}
 	}
 }
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DraggingState {
+	point_select_state: PointSelectState,
+	colinear: bool,
+}
+
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+pub enum PointSelectState {
+	HandleWithPair,
+	#[default]
+	HandleNoPair,
+	Anchor,
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum PathToolFsmState {
 	#[default]
 	Ready,
-	Dragging,
+	Dragging(DraggingState),
 	DrawingBox,
 	InsertPoint,
 }
@@ -298,12 +293,13 @@ struct PathToolData {
 	auto_panning: AutoPanning,
 	saved_points_before_anchor_select_toggle: Vec<ManipulatorPointId>,
 	select_anchor_toggled: bool,
+	dragging_state: DraggingState,
 }
 
 impl PathToolData {
 	fn save_points_before_anchor_toggle(&mut self, points: Vec<ManipulatorPointId>) -> PathToolFsmState {
 		self.saved_points_before_anchor_select_toggle = points;
-		PathToolFsmState::Dragging
+		PathToolFsmState::Dragging(self.dragging_state)
 	}
 
 	fn remove_saved_points(&mut self) {
@@ -380,7 +376,7 @@ impl PathToolData {
 				self.start_dragging_point(selected_points, input, document, shape_editor);
 				responses.add(OverlaysMessage::Draw);
 			}
-			PathToolFsmState::Dragging
+			PathToolFsmState::Dragging(self.dragging_state)
 		}
 		// We didn't find a point nearby, so now we'll try to add a point into the closest path segment
 		else if let Some(closed_segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SELECTION_TOLERANCE) {
@@ -404,7 +400,11 @@ impl PathToolData {
 			shape_editor.select_connected_anchors(document, layer, input.mouse.position);
 
 			responses.add(DocumentMessage::StartTransaction);
-			PathToolFsmState::Dragging
+			PathToolFsmState::Dragging(self.dragging_state)
+			// PathToolFsmState::Dragging {
+			// 	dragging_state: self.dragging_state,
+			// 	colinear: self.colinear,
+			// }
 		}
 		// Start drawing a box
 		else {
@@ -513,7 +513,7 @@ impl Fsm for PathToolFsmState {
 
 						overlay_context.quad(Quad::from_box([tool_data.drag_start_pos, tool_data.previous_mouse_position]), Some(&("#".to_string() + &fill_color)));
 					}
-					Self::Dragging => {
+					Self::Dragging(_) => {
 						tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 					}
 					Self::InsertPoint => {
@@ -579,7 +579,7 @@ impl Fsm for PathToolFsmState {
 
 				PathToolFsmState::DrawingBox
 			}
-			(PathToolFsmState::Dragging, PathToolMessage::PointerMove { alt, shift, move_anchor_and_handles }) => {
+			(PathToolFsmState::Dragging { .. }, PathToolMessage::PointerMove { alt, shift, move_anchor_and_handles }) => {
 				let anchor_and_handle_toggled = input.keyboard.get(move_anchor_and_handles as usize);
 				let initial_press = anchor_and_handle_toggled && !tool_data.select_anchor_toggled;
 				let released_from_toggle = tool_data.select_anchor_toggled && !anchor_and_handle_toggled;
@@ -610,7 +610,7 @@ impl Fsm for PathToolFsmState {
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
-				PathToolFsmState::Dragging
+				PathToolFsmState::Dragging(tool_data.dragging_state)
 			}
 			(PathToolFsmState::DrawingBox, PathToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
@@ -620,14 +620,14 @@ impl Fsm for PathToolFsmState {
 
 				PathToolFsmState::DrawingBox
 			}
-			(PathToolFsmState::Dragging, PathToolMessage::PointerOutsideViewport { shift, .. }) => {
+			(PathToolFsmState::Dragging(dragging_state), PathToolMessage::PointerOutsideViewport { shift, .. }) => {
 				// Auto-panning
 				if tool_data.auto_panning.shift_viewport(input, responses).is_some() {
 					let shift_state = input.keyboard.get(shift as usize);
 					tool_data.drag(shift_state, shape_editor, document, input, responses);
 				}
 
-				PathToolFsmState::Dragging
+				PathToolFsmState::Dragging(dragging_state)
 			}
 			(state, PathToolMessage::PointerOutsideViewport { alt, shift, move_anchor_and_handles }) => {
 				// Auto-panning
@@ -651,7 +651,7 @@ impl Fsm for PathToolFsmState {
 
 				PathToolFsmState::Ready
 			}
-			(PathToolFsmState::Dragging, PathToolMessage::Escape | PathToolMessage::RightClick) => {
+			(PathToolFsmState::Dragging { .. }, PathToolMessage::Escape | PathToolMessage::RightClick) => {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
 				PathToolFsmState::Ready
@@ -760,10 +760,15 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::SelectedPointUpdated) => {
-				if shape_editor.handle_selected() {
-					responses.add(FrontendMessage::UpdateInputHints { hint_data: handle_hint_data() });
-				}
-
+				let colinear = match shape_editor.selected_manipulator_angles(&document.network_interface) {
+					ManipulatorAngle::Colinear => true,
+					ManipulatorAngle::Free => false,
+					ManipulatorAngle::Mixed => true,
+				};
+				tool_data.dragging_state = DraggingState {
+					point_select_state: shape_editor.get_dragging_state(&document.network_interface),
+					colinear,
+				};
 				tool_data.selection_status = get_selection_status(&document.network_interface, shape_editor);
 				self
 			}
@@ -802,22 +807,40 @@ impl Fsm for PathToolFsmState {
 					HintInfo::keys([Key::Shift], "Break Anchor").prepend_plus(),
 				]),
 			]),
-			PathToolFsmState::Dragging => HintData(vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-				HintGroup(vec![
-					// TODO: Switch this to the "S" key. Also, make the hint dynamically say "Make Colinear" or "Make Not Colinear" based on its current state. And only
-					// TODO: show this hint if a handle (not an anchor) is being dragged, and disable that shortcut so it can't be pressed even with the hint not shown.
-					HintInfo::keys([Key::Alt], "Toggle Colinear Handles"),
-					// TODO: Switch this to the "Alt" key (since it's equivalent to the "From Center" modifier when drawing a line). And show this only when a handle is being dragged.
-					HintInfo::keys([Key::Shift], "Equidistant Handles"),
-					// HintInfo::keys([Key::Tab], "Select Opposite Handles"), //TODO: only show when handle selected
-					// TODO: Add "Snap 15°" modifier with the "Shift" key (only when a handle is being dragged).
-					// TODO: Add "Lock Angle" modifier with the "Ctrl" key (only when a handle is being dragged).
-					// TODO: Add "Snap 15°" modifier with the "Shift" key (only when a handle is being dragged).
-					// TODO: Add "Lock Angle" modifier with the "Ctrl" key (only when a handle is being dragged).
-					HintInfo::keys([Key::Space], "Drag anchor"),
-				]),
-			]),
+			PathToolFsmState::Dragging(dragging_state) => {
+				let colinear = dragging_state.colinear;
+				debug!("STATE: {:?}", &dragging_state);
+				let mut dragging_hint_data = HintData(Vec::new());
+				dragging_hint_data
+					.0
+					.push(HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]));
+
+				let point_select_state_hint_group: HintGroup = match dragging_state.point_select_state {
+					PointSelectState::HandleNoPair => HintGroup(vec![HintInfo::keys([Key::Space], "Drag anchor")]),
+					PointSelectState::HandleWithPair => {
+						if colinear {
+							HintGroup(vec![
+								HintInfo::keys([Key::Space], "Drag anchor"),
+								HintInfo::keys([Key::Tab], "Select Opposite Handles"),
+								HintInfo::keys([Key::Shift], "Equidistant Handles"),
+								HintInfo::keys([Key::KeyV], "Disable Colinear Handles"),
+							])
+						} else {
+							HintGroup(vec![HintInfo::keys([Key::Space], "Drag anchor"), HintInfo::keys([Key::KeyV], "Toggle Colinear Handles")])
+						}
+					}
+					PointSelectState::Anchor => HintGroup(vec![]),
+				};
+
+				dragging_hint_data.0.push(point_select_state_hint_group);
+				dragging_hint_data
+
+				// TODO: Switch this to the "Alt" key (since it's equivalent to the "From Center" modifier when drawing a line). And show this only when a handle is being dragged.
+				// TODO: Add "Snap 15°" modifier with the "Shift" key (only when a handle is being dragged).
+				// TODO: Add "Lock Angle" modifier with the "Ctrl" key (only when a handle is being dragged).
+				// TODO: Add "Snap 15°" modifier with the "Shift" key (only when a handle is being dragged).
+				// TODO: Add "Lock Angle" modifier with the "Ctrl" key (only when a handle is being dragged).
+			}
 			PathToolFsmState::DrawingBox => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![

@@ -4,6 +4,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::{Doc
 use crate::messages::portfolio::document::utility_types::misc::{GeometrySnapSource, SnapSource};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
+use crate::messages::tool::tool_messages::path_tool::PointSelectState;
 
 use bezier_rs::{Bezier, BezierHandles, TValue};
 use graphene_core::transform::Transform;
@@ -1060,12 +1061,34 @@ impl ShapeState {
 			_ => self.sorted_selected_layers(network_interface.document_metadata()).find_map(closest_seg),
 		}
 	}
+	pub fn get_dragging_state(&self, network_interface: &NodeNetworkInterface) -> PointSelectState {
+		for &layer in self.selected_shape_state.keys() {
+			let Some(vector_data) = network_interface.compute_modified_vector(layer) else {
+				continue;
+			};
 
-	/// Returns true if atleast one handle is selected
-	pub fn handle_selected(&mut self) -> bool {
-		for point in self.selected_points() {
-			if let Some(_) = point.as_handle() {
-				return true;
+			for point in self.selected_points() {
+				if let Some(_) = point.as_anchor() {
+					return PointSelectState::Anchor;
+				}
+				if let Some(_) = point.get_handle_pair(&vector_data) {
+					return PointSelectState::HandleWithPair;
+				}
+			}
+		}
+		return PointSelectState::HandleNoPair;
+	}
+
+	/// Returns true if atleast one handle with pair is selected
+	pub fn handle_with_pair_selected(&mut self, network_interface: &NodeNetworkInterface) -> bool {
+		for &layer in self.selected_shape_state.keys() {
+			let Some(vector_data) = network_interface.compute_modified_vector(layer) else {
+				continue;
+			};
+			for point in self.selected_points() {
+				if let Some(_) = point.get_handle_pair(&vector_data) {
+					return true;
+				}
 			}
 		}
 		return false;
