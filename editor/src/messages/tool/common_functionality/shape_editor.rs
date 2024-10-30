@@ -13,8 +13,9 @@ use graphene_core::vector::{ManipulatorPointId, PointId, VectorData, VectorModif
 use glam::DVec2;
 use graphene_std::vector::{HandleId, SegmentId};
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone, Default)]
 pub enum ManipulatorAngle {
+	#[default]
 	Colinear,
 	Free,
 	Mixed,
@@ -1063,9 +1064,7 @@ impl ShapeState {
 	}
 	pub fn get_dragging_state(&self, network_interface: &NodeNetworkInterface) -> PointSelectState {
 		for &layer in self.selected_shape_state.keys() {
-			let Some(vector_data) = network_interface.compute_modified_vector(layer) else {
-				continue;
-			};
+			let Some(vector_data) = network_interface.compute_modified_vector(layer) else { continue };
 
 			for point in self.selected_points() {
 				if point.as_anchor().is_some() {
@@ -1079,12 +1078,11 @@ impl ShapeState {
 		PointSelectState::HandleNoPair
 	}
 
-	/// Returns true if atleast one handle with pair is selected
+	/// Returns true if at least one handle with pair is selected
 	pub fn handle_with_pair_selected(&mut self, network_interface: &NodeNetworkInterface) -> bool {
 		for &layer in self.selected_shape_state.keys() {
-			let Some(vector_data) = network_interface.compute_modified_vector(layer) else {
-				continue;
-			};
+			let Some(vector_data) = network_interface.compute_modified_vector(layer) else { continue };
+
 			for point in self.selected_points() {
 				if point.as_anchor().is_some() {
 					return false;
@@ -1094,6 +1092,7 @@ impl ShapeState {
 				}
 			}
 		}
+
 		false
 	}
 
@@ -1102,16 +1101,14 @@ impl ShapeState {
 		let mut handles_to_update = Vec::new();
 
 		for &layer in self.selected_shape_state.keys() {
-			let Some(vector_data) = network_interface.compute_modified_vector(layer) else {
-				continue;
-			};
+			let Some(vector_data) = network_interface.compute_modified_vector(layer) else { continue };
 
 			for point in self.selected_points() {
 				if point.as_anchor().is_some() {
 					continue;
 				}
 				if let Some(handles) = point.get_handle_pair(&vector_data) {
-					//handle[0] is selected, handle[1] is opposite / mirror handle
+					// handle[0] is selected, handle[1] is opposite / mirror handle
 					handles_to_update.push((layer, handles[0].to_manipulator_point(), handles[1].to_manipulator_point()));
 				}
 			}
@@ -1121,10 +1118,10 @@ impl ShapeState {
 			if let Some(state) = self.selected_shape_state.get_mut(&layer) {
 				let points = &state.selected_points;
 				let both_selected = points.contains(&handle_to_deselect) && points.contains(&handle_to_select);
-
 				if both_selected {
 					continue;
 				}
+
 				state.deselect_point(handle_to_deselect);
 				state.select_point(handle_to_select);
 			}
