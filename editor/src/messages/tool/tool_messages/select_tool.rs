@@ -71,7 +71,7 @@ pub enum SelectToolMessage {
 	Overlays(OverlayContext),
 
 	// Tool-specific messages
-	DragStart { add_to_selection: Key, select_deepest: Key },
+	DragStart { extend_selection: Key, select_deepest: Key },
 	DragStop { remove_from_selection: Key },
 	EditLayer,
 	Enter,
@@ -517,7 +517,7 @@ impl Fsm for SelectToolFsmState {
 
 				self
 			}
-			(SelectToolFsmState::Ready { .. }, SelectToolMessage::DragStart { add_to_selection, select_deepest }) => {
+			(SelectToolFsmState::Ready { .. }, SelectToolMessage::DragStart { extend_selection, select_deepest }) => {
 				tool_data.drag_start = input.mouse.position;
 				tool_data.drag_current = input.mouse.position;
 
@@ -647,7 +647,7 @@ impl Fsm for SelectToolFsmState {
 				else {
 					tool_data.layers_dragging = selected;
 
-					if !input.keyboard.key(add_to_selection) {
+					if !input.keyboard.key(extend_selection) {
 						responses.add(DocumentMessage::DeselectAllLayers);
 						tool_data.layers_dragging.clear();
 					}
