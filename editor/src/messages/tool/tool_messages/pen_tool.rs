@@ -679,6 +679,21 @@ impl Fsm for PenToolFsmState {
 								node_id: path_node_id,
 								parent: current_layer,
 							});
+
+							// Add a transform node to ensure correct tooling modifications
+							let transform_node_id = NodeId::new();
+							let transform_node = document_node_definitions::resolve_document_node_type("Transform")
+								.expect("Failed to create transform node")
+								.default_node_template();
+							responses.add(NodeGraphMessage::InsertNode {
+								node_id: transform_node_id,
+								node_template: transform_node,
+							});
+							responses.add(NodeGraphMessage::MoveNodeToChainStart {
+								node_id: transform_node_id,
+								parent: current_layer,
+							});
+
 							responses.add(NodeGraphMessage::RunDocumentGraph);
 							responses.add(Message::StartBuffer);
 							responses.add(PenToolMessage::RecalculateLatestPointsPosition);
