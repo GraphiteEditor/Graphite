@@ -163,9 +163,9 @@ impl ClosestSegment {
 		midpoint
 	}
 
-	pub fn adjusted_insert_and_select(&self, shape_editor: &mut ShapeState, responses: &mut VecDeque<Message>, add_to_selection: bool) {
+	pub fn adjusted_insert_and_select(&self, shape_editor: &mut ShapeState, responses: &mut VecDeque<Message>, extend_selection: bool) {
 		let id = self.adjusted_insert(responses);
-		shape_editor.select_anchor_point_by_id(self.layer, id, add_to_selection)
+		shape_editor.select_anchor_point_by_id(self.layer, id, extend_selection)
 	}
 }
 
@@ -223,7 +223,7 @@ impl ShapeState {
 
 	/// Select/deselect the first point within the selection threshold.
 	/// Returns a tuple of the points if found and the offset, or `None` otherwise.
-	pub fn change_point_selection(&mut self, network_interface: &NodeNetworkInterface, mouse_position: DVec2, select_threshold: f64, add_to_selection: bool) -> Option<Option<SelectedPointsInfo>> {
+	pub fn change_point_selection(&mut self, network_interface: &NodeNetworkInterface, mouse_position: DVec2, select_threshold: f64, extend_selection: bool) -> Option<Option<SelectedPointsInfo>> {
 		if self.selected_shape_state.is_empty() {
 			return None;
 		}
@@ -236,14 +236,14 @@ impl ShapeState {
 			let already_selected = selected_shape_state.is_selected(manipulator_point_id);
 
 			// Should we select or deselect the point?
-			let new_selected = if already_selected { !add_to_selection } else { true };
+			let new_selected = if already_selected { !extend_selection } else { true };
 
 			// Offset to snap the selected point to the cursor
 			let offset = mouse_position - network_interface.document_metadata().transform_to_viewport(layer).transform_point2(point_position);
 
 			// This is selecting the manipulator only for now, next to generalize to points
 			if new_selected {
-				let retain_existing_selection = add_to_selection || already_selected;
+				let retain_existing_selection = extend_selection || already_selected;
 				if !retain_existing_selection {
 					self.deselect_all_points();
 				}
@@ -269,8 +269,8 @@ impl ShapeState {
 		None
 	}
 
-	pub fn select_anchor_point_by_id(&mut self, layer: LayerNodeIdentifier, id: PointId, add_to_selection: bool) {
-		if !add_to_selection {
+	pub fn select_anchor_point_by_id(&mut self, layer: LayerNodeIdentifier, id: PointId, extend_selection: bool) {
+		if !extend_selection {
 			self.deselect_all_points();
 		}
 		let point = ManipulatorPointId::Anchor(id);

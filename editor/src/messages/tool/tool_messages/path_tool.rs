@@ -34,10 +34,10 @@ pub enum PathToolMessage {
 	Delete,
 	DeleteAndBreakPath,
 	DragStop {
-		equidistant: Key,
+		extend_selection: Key,
 	},
 	Enter {
-		add_to_selection: Key,
+		extend_selection: Key,
 	},
 	Escape,
 	FlipSmoothSharp,
@@ -48,8 +48,8 @@ pub enum PathToolMessage {
 	ManipulatorMakeHandlesFree,
 	ManipulatorMakeHandlesColinear,
 	MouseDown {
-		ctrl: Key,
-		shift: Key,
+		direct_insert_without_sliding: Key,
+		extend_selection: Key,
 	},
 	NudgeSelectedPoints {
 		delta_x: f64,
@@ -58,12 +58,12 @@ pub enum PathToolMessage {
 	PointerMove {
 		equidistant: Key,
 		toggle_colinear: Key,
-		move_anchor_and_handles: Key,
+		move_anchor_with_handles: Key,
 	},
 	PointerOutsideViewport {
 		equidistant: Key,
 		toggle_colinear: Key,
-		move_anchor_and_handles: Key,
+		move_anchor_with_handles: Key,
 	},
 	RightClick,
 	SelectAllAnchors,
@@ -274,7 +274,7 @@ enum PathToolFsmState {
 
 enum InsertEndKind {
 	Abort,
-	Add { add_to_selection: bool },
+	Add { extend_selection: bool },
 }
 
 #[derive(Default)]
@@ -336,8 +336,8 @@ impl PathToolData {
 				warn!("Segment was `None` before `end_insertion`")
 			}
 			Some(closed_segment) => {
-				if let InsertEndKind::Add { add_to_selection } = kind {
-					closed_segment.adjusted_insert_and_select(shape_editor, responses, add_to_selection);
+				if let InsertEndKind::Add { extend_selection } = kind {
+					closed_segment.adjusted_insert_and_select(shape_editor, responses, extend_selection);
 					commit_transaction = true;
 				}
 			}
@@ -359,7 +359,7 @@ impl PathToolData {
 		document: &DocumentMessageHandler,
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
-		add_to_selection: bool,
+		extend_selection: bool,
 		direct_insert_without_sliding: bool,
 	) -> PathToolFsmState {
 		self.double_click_handled = false;
@@ -368,7 +368,7 @@ impl PathToolData {
 		self.drag_start_pos = input.mouse.position;
 
 		// Select the first point within the threshold (in pixels)
-		if let Some(selected_points) = shape_editor.change_point_selection(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD, add_to_selection) {
+		if let Some(selected_points) = shape_editor.change_point_selection(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD, extend_selection) {
 			responses.add(DocumentMessage::StartTransaction);
 
 			if let Some(selected_points) = selected_points {
@@ -383,14 +383,14 @@ impl PathToolData {
 			responses.add(DocumentMessage::StartTransaction);
 			if direct_insert_without_sliding {
 				self.start_insertion(responses, closed_segment);
-				self.end_insertion(shape_editor, responses, InsertEndKind::Add { add_to_selection })
+				self.end_insertion(shape_editor, responses, InsertEndKind::Add { extend_selection })
 			} else {
 				self.start_insertion(responses, closed_segment)
 			}
 		}
 		// We didn't find a segment path, so consider selecting the nearest shape instead
 		else if let Some(layer) = document.click(input) {
-			if add_to_selection {
+			if extend_selection {
 				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
 			} else {
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
@@ -531,11 +531,10 @@ impl Fsm for PathToolFsmState {
 			}
 
 			// `Self::InsertPoint` case:
-			(Self::InsertPoint, PathToolMessage::MouseDown { .. } | PathToolMessage::Enter { .. }) => {
+			(Self::InsertPoint, PathToolMessage::MouseDown { extend_selection, .. } | PathToolMessage::Enter { extend_selection }) => {
 				tool_data.double_click_handled = true;
-				// TODO: Don't use `Key::Shift` directly, instead take it as a variable from the input mappings list like in all other places
-				let add_to_selection = input.keyboard.get(Key::Shift as usize);
-				tool_data.end_insertion(shape_editor, responses, InsertEndKind::Add { add_to_selection })
+				let extend_selection = input.keyboard.get(extend_selection as usize);
+				tool_data.end_insertion(shape_editor, responses, InsertEndKind::Add { extend_selection })
 			}
 			(Self::InsertPoint, PathToolMessage::PointerMove { .. }) => {
 				responses.add(OverlaysMessage::Draw);
@@ -558,17 +557,23 @@ impl Fsm for PathToolFsmState {
 				tool_data.end_insertion(shape_editor, responses, InsertEndKind::Abort)
 			}
 			// Mouse down
-			(_, PathToolMessage::MouseDown { ctrl, shift }) => {
-				let add_to_selection = input.keyboard.get(shift as usize);
-				let direct_insert_without_sliding = input.keyboard.get(ctrl as usize);
-				tool_data.mouse_down(shape_editor, document, input, responses, add_to_selection, direct_insert_without_sliding)
+			(
+				_,
+				PathToolMessage::MouseDown {
+					direct_insert_without_sliding,
+					extend_selection,
+				},
+			) => {
+				let extend_selection = input.keyboard.get(extend_selection as usize);
+				let direct_insert_without_sliding = input.keyboard.get(direct_insert_without_sliding as usize);
+				tool_data.mouse_down(shape_editor, document, input, responses, extend_selection, direct_insert_without_sliding)
 			}
 			(
 				PathToolFsmState::DrawingBox,
 				PathToolMessage::PointerMove {
 					equidistant,
 					toggle_colinear,
-					move_anchor_and_handles,
+					move_anchor_with_handles,
 				},
 			) => {
 				tool_data.previous_mouse_position = input.mouse.position;
@@ -579,13 +584,13 @@ impl Fsm for PathToolFsmState {
 					PathToolMessage::PointerOutsideViewport {
 						equidistant,
 						toggle_colinear,
-						move_anchor_and_handles,
+						move_anchor_with_handles,
 					}
 					.into(),
 					PathToolMessage::PointerMove {
 						equidistant,
 						toggle_colinear,
-						move_anchor_and_handles,
+						move_anchor_with_handles,
 					}
 					.into(),
 				];
@@ -598,10 +603,10 @@ impl Fsm for PathToolFsmState {
 				PathToolMessage::PointerMove {
 					equidistant,
 					toggle_colinear,
-					move_anchor_and_handles,
+					move_anchor_with_handles,
 				},
 			) => {
-				let anchor_and_handle_toggled = input.keyboard.get(move_anchor_and_handles as usize);
+				let anchor_and_handle_toggled = input.keyboard.get(move_anchor_with_handles as usize);
 				let initial_press = anchor_and_handle_toggled && !tool_data.select_anchor_toggled;
 				let released_from_toggle = tool_data.select_anchor_toggled && !anchor_and_handle_toggled;
 
@@ -629,13 +634,13 @@ impl Fsm for PathToolFsmState {
 					PathToolMessage::PointerOutsideViewport {
 						toggle_colinear,
 						equidistant,
-						move_anchor_and_handles,
+						move_anchor_with_handles,
 					}
 					.into(),
 					PathToolMessage::PointerMove {
 						toggle_colinear,
 						equidistant,
-						move_anchor_and_handles,
+						move_anchor_with_handles,
 					}
 					.into(),
 				];
@@ -654,8 +659,8 @@ impl Fsm for PathToolFsmState {
 			(PathToolFsmState::Dragging(dragging_state), PathToolMessage::PointerOutsideViewport { equidistant, .. }) => {
 				// Auto-panning
 				if tool_data.auto_panning.shift_viewport(input, responses).is_some() {
-					let shift_state = input.keyboard.get(equidistant as usize);
-					tool_data.drag(shift_state, shape_editor, document, input, responses);
+					let equidistant = input.keyboard.get(equidistant as usize);
+					tool_data.drag(equidistant, shape_editor, document, input, responses);
 				}
 
 				PathToolFsmState::Dragging(dragging_state)
@@ -665,7 +670,7 @@ impl Fsm for PathToolFsmState {
 				PathToolMessage::PointerOutsideViewport {
 					equidistant,
 					toggle_colinear,
-					move_anchor_and_handles,
+					move_anchor_with_handles,
 				},
 			) => {
 				// Auto-panning
@@ -673,13 +678,13 @@ impl Fsm for PathToolFsmState {
 					PathToolMessage::PointerOutsideViewport {
 						equidistant,
 						toggle_colinear,
-						move_anchor_and_handles,
+						move_anchor_with_handles,
 					}
 					.into(),
 					PathToolMessage::PointerMove {
 						equidistant,
 						toggle_colinear,
-						move_anchor_and_handles,
+						move_anchor_with_handles,
 					}
 					.into(),
 				];
@@ -687,13 +692,13 @@ impl Fsm for PathToolFsmState {
 
 				state
 			}
-			(PathToolFsmState::DrawingBox, PathToolMessage::Enter { add_to_selection }) => {
-				let add_to_selection_state = input.keyboard.get(add_to_selection as usize);
+			(PathToolFsmState::DrawingBox, PathToolMessage::Enter { extend_selection }) => {
+				let extend_selection = input.keyboard.get(extend_selection as usize);
 
 				if tool_data.drag_start_pos == tool_data.previous_mouse_position {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				} else {
-					shape_editor.select_all_in_quad(&document.network_interface, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !add_to_selection_state);
+					shape_editor.select_all_in_quad(&document.network_interface, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !extend_selection);
 				}
 				responses.add(OverlaysMessage::Draw);
 
@@ -709,20 +714,20 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			// Mouse up
-			(PathToolFsmState::DrawingBox, PathToolMessage::DragStop { equidistant }) => {
-				let equidistant = input.keyboard.get(equidistant as usize);
+			(PathToolFsmState::DrawingBox, PathToolMessage::DragStop { extend_selection }) => {
+				let extend_selection = input.keyboard.get(extend_selection as usize);
 
 				if tool_data.drag_start_pos == tool_data.previous_mouse_position {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				} else {
-					shape_editor.select_all_in_quad(&document.network_interface, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !equidistant);
+					shape_editor.select_all_in_quad(&document.network_interface, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !extend_selection);
 				}
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PathToolMessage::SelectedPointUpdated);
 
 				PathToolFsmState::Ready
 			}
-			(_, PathToolMessage::DragStop { equidistant }) => {
+			(_, PathToolMessage::DragStop { extend_selection }) => {
 				if tool_data.select_anchor_toggled {
 					shape_editor.deselect_all_points();
 					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_anchor_select_toggle);
@@ -730,12 +735,12 @@ impl Fsm for PathToolFsmState {
 					tool_data.select_anchor_toggled = false;
 				}
 
-				let equidistant = input.keyboard.get(equidistant as usize);
+				let extend_selection = input.keyboard.get(extend_selection as usize);
 
 				let nearest_point = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD);
 
 				if let Some((layer, nearest_point)) = nearest_point {
-					if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD && !equidistant {
+					if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD && !extend_selection {
 						let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == point);
 						if clicked_selected {
 							shape_editor.deselect_all_points();
@@ -863,9 +868,7 @@ impl Fsm for PathToolFsmState {
 					PointSelectState::HandleNoPair => vec![drag_anchor],
 					PointSelectState::HandleWithPair => {
 						let mut hints = vec![drag_anchor];
-						if colinear != ManipulatorAngle::Free {
-							hints.push(HintInfo::keys([Key::Shift], "Equidistant Handles"));
-						}
+						hints.push(HintInfo::keys([Key::Tab], "Swap Selected Handles"));
 						hints.push(HintInfo::keys(
 							[Key::KeyC],
 							if colinear == ManipulatorAngle::Colinear {
@@ -874,7 +877,9 @@ impl Fsm for PathToolFsmState {
 								"Make Handles Colinear"
 							},
 						));
-						hints.push(HintInfo::keys([Key::Tab], "Swap Selected Handles"));
+						if colinear != ManipulatorAngle::Free {
+							hints.push(HintInfo::keys([Key::Alt], "Equidistant Handles"));
+						}
 						hints
 					}
 					PointSelectState::Anchor => Vec::new(),
