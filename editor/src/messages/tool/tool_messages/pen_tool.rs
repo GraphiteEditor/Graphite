@@ -204,7 +204,6 @@ struct LastPoint {
 
 #[derive(Clone, Debug, Default)]
 struct PenToolData {
-	layer: Option<LayerNodeIdentifier>,
 	snap_manager: SnapManager,
 	latest_points: Vec<LastPoint>,
 	point_index: usize,
@@ -237,7 +236,9 @@ impl PenToolData {
 
 	// When the vector data transform changes, the positions of the points must be recalculated.
 	fn recalculate_latest_points_position(&mut self, document: &DocumentMessageHandler) {
-		if let Some(layer) = self.layer {
+		let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+		let mut selected_layers = selected_nodes.selected_layers(document.metadata());
+		if let (Some(layer), None) = (selected_layers.next(), selected_layers.next()) {
 			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
 				return;
 			};
@@ -286,7 +287,9 @@ impl PenToolData {
 
 		// Get close path
 		let mut end = None;
-		let layer = self.layer?;
+		let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+		let mut selected_layers = selected_nodes.selected_layers(document.metadata());
+		let layer = selected_layers.next().filter(|_| selected_layers.next().is_none())?;
 		let vector_data = document.network_interface.compute_modified_vector(layer)?;
 		let start = self.latest_point()?.id;
 		let transform = document.metadata().document_to_viewport * transform;
@@ -446,13 +449,13 @@ impl Fsm for PenToolFsmState {
 			..
 		} = tool_action_data;
 
-		let mut transform = tool_data.layer.map(|layer| document.metadata().transform_to_document(layer)).unwrap_or_default();
+		let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+		let mut selected_layers = selected_nodes.selected_layers(document.metadata());
+		let layer = selected_layers.next().filter(|_| selected_layers.next().is_none());
+		let mut transform = layer.map(|layer| document.metadata().transform_to_document(layer)).unwrap_or_default();
 
 		if !transform.inverse().is_finite() {
-			let parent_transform = tool_data
-				.layer
-				.and_then(|layer| layer.parent(document.metadata()))
-				.map(|layer| document.metadata().transform_to_document(layer));
+			let parent_transform = layer.and_then(|layer| layer.parent(document.metadata())).map(|layer| document.metadata().transform_to_document(layer));
 
 			transform = parent_transform.unwrap_or(DAffine2::IDENTITY);
 		}
@@ -531,20 +534,23 @@ impl Fsm for PenToolFsmState {
 				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, None, false);
 				let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
-
+				let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+				let mut selected_layers = selected_nodes.selected_layers(document.metadata());
 				// Perform extension of an existing path
 				let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
 				if let Some((layer, point, position)) = should_extend(document, viewport, crate::consts::SNAP_POINT_TOLERANCE, selected_nodes.selected_layers(document.metadata())) {
+					log::debug!("Should extend: {:?}", layer);
 					tool_data.add_point(LastPoint {
 						id: point,
 						pos: position,
 						in_segment: None,
 						handle_start: position,
 					});
-					tool_data.layer = Some(layer);
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 					tool_data.next_point = position;
 					tool_data.next_handle_start = position;
-				} else if let Some(layer) = tool_data.layer {
+				} else if let (Some(layer), None) = (selected_layers.next(), selected_layers.next()) {
+					log::debug!("Adding to layer: {:?}", layer);
 					// Add the first point to a new layer
 					// Generate first point
 					let id = PointId::generate();
@@ -560,6 +566,7 @@ impl Fsm for PenToolFsmState {
 					tool_data.next_point = pos;
 					tool_data.next_handle_start = pos;
 				} else {
+					log::debug!("Creating new layer");
 					// New path layer
 					let node_type = resolve_document_node_type("Path").expect("Path node does not exist");
 					let nodes = vec![(NodeId(0), node_type.default_node_template())];
@@ -568,7 +575,7 @@ impl Fsm for PenToolFsmState {
 					let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
 					tool_options.fill.apply_fill(layer, responses);
 					tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
-					tool_data.layer = Some(layer);
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 					responses.add(Message::StartBuffer);
 					responses.add(PenToolMessage::DragStart);
 					return PenToolFsmState::Ready;
@@ -603,7 +610,9 @@ impl Fsm for PenToolFsmState {
 						.descendants(document.metadata())
 						.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
 					if let Some((other_layer, _, _)) = should_extend(document, viewport, crate::consts::SNAP_POINT_TOLERANCE, layers) {
-						if let Some(current_layer) = tool_data.layer.filter(|current_layer| *current_layer != other_layer) {
+						let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+						let mut selected_layers = selected_nodes.selected_layers(document.metadata());
+						if let Some(current_layer) = selected_layers.next().filter(|current_layer| selected_layers.next().is_none() && *current_layer != other_layer) {
 							// Calculate the downstream transforms in order to bring the other vector data into the same layer space
 							let current_transform = document.metadata().downstream_transform_to_document(current_layer);
 							let other_transform = document.metadata().downstream_transform_to_document(other_layer);
@@ -775,7 +784,7 @@ impl Fsm for PenToolFsmState {
 			}
 			(PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor, PenToolMessage::Abort | PenToolMessage::Confirm) => {
 				responses.add(DocumentMessage::EndTransaction);
-				tool_data.layer = None;
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() });
 				tool_data.handle_end = None;
 				tool_data.latest_points.clear();
 				tool_data.point_index = 0;
