@@ -88,6 +88,10 @@ impl DocumentMetadata {
 		self.upstream_transforms.get(&node_id).copied().map(|(_, transform)| transform).unwrap_or(DAffine2::IDENTITY)
 	}
 
+	pub fn downstream_transform_to_document(&self, layer: LayerNodeIdentifier) -> DAffine2 {
+		self.document_to_viewport.inverse() * self.downstream_transform_to_viewport(layer)
+	}
+
 	pub fn downstream_transform_to_viewport(&self, layer: LayerNodeIdentifier) -> DAffine2 {
 		if layer == LayerNodeIdentifier::ROOT_PARENT {
 			return self.transform_to_viewport(layer);
