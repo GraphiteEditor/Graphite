@@ -1,11 +1,6 @@
 use super::utility_types::OverlayProvider;
 use crate::messages::prelude::*;
 
-#[cfg(target_arch = "wasm32")]
-use glam::DVec2;
-#[cfg(target_arch = "wasm32")]
-use web_sys::HtmlCanvasElement;
-
 pub struct OverlaysMessageData<'a> {
 	pub overlays_visible: bool,
 	pub ipp: &'a InputPreprocessorMessageHandler,

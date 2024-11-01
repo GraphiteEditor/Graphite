@@ -37,16 +37,12 @@ impl OverlayContext {
 	}
 
 	pub fn align_to_pixel(&self, coord: DVec2) -> DVec2 {
-		(coord * self.dpr()).round() / self.dpr() - DVec2::splat(0.5 / self.dpr())
-	}
-
-	pub fn size_adjustment_factor(&self) -> f64 {
-		let sqrt_dpr = self.dpr().sqrt();
-		((sqrt_dpr * 10.0).round() / 10.0).max(1.0)
+		(coord * self.dpr()).ceil() / self.dpr() - DVec2::splat(0.5 / self.dpr())
 	}
 
 	pub fn adjusted_size(&self, size: f64) -> f64 {
-		size * self.size_adjustment_factor()
+		let sqrt_dpr = self.dpr().sqrt();
+		size * ((sqrt_dpr * 10.0).ceil() / 10.0).max(1.0)
 	}
 
 	pub fn quad(&mut self, quad: Quad, color_fill: Option<&str>) {
@@ -226,7 +222,7 @@ impl OverlayContext {
 
 	pub fn outline(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
 		self.render_context.begin_path();
-		self.render_context.set_line_width(self.size_adjustment_factor());
+		self.render_context.set_line_width(self.adjusted_size(1.0));
 		for subpath in subpaths {
 			let subpath = subpath.borrow();
 			let mut curves = subpath.iter().peekable();
