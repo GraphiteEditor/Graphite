@@ -11,6 +11,7 @@ use crate::{Color, GraphicElement, GraphicGroup};
 use bezier_rs::{Cap, Join, Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
 use rand::{Rng, SeedableRng};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 /// Implemented for types that can be converted to an iterator of vector data.
 /// Used for the fill and stroke node so they can be used on VectorData or GraphicGroup
@@ -162,7 +163,7 @@ async fn fill<F: 'n + Send, FillTy: Into<Fill> + 'n + Send, TargetTy: VectorIter
 }
 
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
-async fn stroke<F: 'n + Send, ColourTy: Into<Option<Color>> + 'n + Send, TargetTy: VectorIterMut + 'n + Send>(
+async fn stroke<F: 'n + Send, ColorTy: Into<Option<Color>> + 'n + Send, TargetTy: VectorIterMut + 'n + Send>(
 	#[implementations(
 		(),
 		(),
@@ -196,7 +197,7 @@ async fn stroke<F: 'n + Send, ColourTy: Into<Option<Color>> + 'n + Send, TargetT
 		Color,
 	)]
 	#[default(Color::BLACK)]
-	color: ColourTy,
+	color: ColorTy,
 	#[default(2.)] weight: f64,
 	dash_lengths: Vec<f64>,
 	dash_offset: f64,
@@ -609,67 +610,149 @@ async fn sample_points<F: 'n + Send + Copy>(
 	)]
 	subpath_segment_lengths: impl Node<F, Output = Vec<f64>>,
 ) -> VectorData {
+	// Evaluate vector data and subpath segment lengths asynchronously.
 	let vector_data = vector_data.eval(footprint).await;
 	let subpath_segment_lengths = subpath_segment_lengths.eval(footprint).await;
 
+	// Create an iterator over the bezier segments with enumeration and peeking capability.
 	let mut bezier = vector_data.segment_bezier_iter().enumerate().peekable();
 
+	// Initialize the result VectorData with the same transformation as the input.
 	let mut result = VectorData::empty();
 	result.transform = vector_data.transform;
 
-	while let Some((index, (segment, _, _, mut last_end))) = bezier.next() {
-		let mut lengths = vec![(segment, subpath_segment_lengths.get(index).copied().unwrap_or_default())];
+	// Iterate over each segment in the bezier iterator.
+	while let Some((index, (segment_id, _, start_point_index, mut last_end))) = bezier.next() {
+		// Record the start point index of the subpath.
+		let subpath_start_point_index = start_point_index;
 
-		while let Some((index, (segment, _, _, end))) = bezier.peek().is_some_and(|(_, (_, _, start, _))| *start == last_end).then(|| bezier.next()).flatten() {
-			last_end = end;
-			lengths.push((segment, subpath_segment_lengths.get(index).copied().unwrap_or_default()));
+		// Collect connected segments that form a continuous path.
+		let mut lengths = vec![(segment_id, subpath_segment_lengths.get(index).copied().unwrap_or_default())];
+
+		// Continue collecting segments as long as they are connected end-to-start.
+		while let Some(&seg) = bezier.peek() {
+			let (_, (_, _, ref start, _)) = seg;
+			if *start == last_end {
+				// Consume the next element since it continues the path.
+				let (index, (next_segment_id, _, _, end)) = bezier.next().unwrap();
+				last_end = end;
+				lengths.push((next_segment_id, subpath_segment_lengths.get(index).copied().unwrap_or_default()));
+			} else {
+				// The next segment does not continue the path.
+				break;
+			}
 		}
 
+		// Determine if the subpath is closed.
+		let subpath_is_closed = last_end == subpath_start_point_index;
+
+		// Calculate the total length of the collected segments.
 		let total_length: f64 = lengths.iter().map(|(_, len)| *len).sum();
 
+		// Adjust the usable length by subtracting start and stop offsets.
 		let mut used_length = total_length - start_offset - stop_offset;
 		if used_length <= 0. {
 			continue;
 		}
 
-		let count;
-		if adaptive_spacing {
+		// Determine the number of points to generate along the path.
+		let count = if adaptive_spacing {
+			// Calculate point count to evenly distribute points while covering the entire path.
 			// With adaptive spacing, we widen or narrow the points as necessary to ensure the last point is always at the end of the path.
-			count = (used_length / spacing).round();
+			(used_length / spacing).round()
 		} else {
-			// Without adaptive spacing, we just evenly space the points at the exact specified spacing, usually falling short before the end of the path.
-			count = (used_length / spacing + f64::EPSILON).floor();
-			used_length = used_length - used_length % spacing;
-		}
+			// Calculate point count based on exact spacing, which may not cover the entire path.
 
+			// Without adaptive spacing, we just evenly space the points at the exact specified spacing, usually falling short before the end of the path.
+			let c = (used_length / spacing + f64::EPSILON).floor();
+			used_length -= used_length % spacing;
+			c
+		};
+
+		// Skip if there are no points to generate.
 		if count < 1. {
 			continue;
 		}
-		for c in 0..=count as usize {
+
+		// Initialize a vector to store indices of generated points.
+		let mut point_indices = Vec::new();
+
+		// Generate points along the path based on calculated intervals.
+		let max_c = if subpath_is_closed { count as usize - 1 } else { count as usize };
+		for c in 0..=max_c {
 			let fraction = c as f64 / count;
 			let total_distance = fraction * used_length + start_offset;
 
-			let (mut segment, mut length) = lengths[0];
+			// Find the segment corresponding to the current total_distance.
+			let (mut current_segment_id, mut length) = lengths[0];
 			let mut total_length_before = 0.;
-			for &(next_segment, next_length) in lengths.iter().skip(1) {
+			for &(next_segment_id, next_length) in lengths.iter().skip(1) {
 				if total_length_before + length > total_distance {
 					break;
 				}
 
 				total_length_before += length;
-				segment = next_segment;
+				current_segment_id = next_segment_id;
 				length = next_length;
 			}
 
-			let Some(segment) = vector_data.segment_from_id(segment) else { continue };
+			// Retrieve the segment and apply transformation.
+			let Some(segment) = vector_data.segment_from_id(current_segment_id) else { continue };
 			let segment = segment.apply_transformation(|point| vector_data.transform.transform_point2(point));
 
+			// Calculate the position on the segment.
 			let parametric_t = segment.euclidean_to_parametric_with_total_length((total_distance - total_length_before) / length, 0.001, length);
 			let point = segment.evaluate(TValue::Parametric(parametric_t));
-			result.point_domain.push(PointId::generate(), vector_data.transform.inverse().transform_point2(point));
+
+			// Generate a new PointId and add the point to result.point_domain.
+			let point_id = PointId::generate();
+			result.point_domain.push(point_id, vector_data.transform.inverse().transform_point2(point));
+
+			// Store the index of the point.
+			let point_index = result.point_domain.ids().len() - 1;
+			point_indices.push(point_index);
+		}
+
+		// After generating points, create segments between consecutive points.
+		for window in point_indices.windows(2) {
+			if let [start_index, end_index] = *window {
+				// Generate a new SegmentId.
+				let segment_id = SegmentId::generate();
+
+				// Use BezierHandles::Linear for linear segments.
+				let handles = bezier_rs::BezierHandles::Linear;
+
+				// Generate a new StrokeId.
+				let stroke_id = StrokeId::generate();
+
+				// Add the segment to result.segment_domain.
+				result.segment_domain.push(segment_id, start_index, end_index, handles, stroke_id);
+			}
+		}
+
+		// If the subpath is closed, add a closing segment connecting the last point to the first point.
+		if subpath_is_closed {
+			if let (Some(&first_index), Some(&last_index)) = (point_indices.first(), point_indices.last()) {
+				// Generate a new SegmentId.
+				let segment_id = SegmentId::generate();
+
+				// Use BezierHandles::Linear for linear segments.
+				let handles = bezier_rs::BezierHandles::Linear;
+
+				// Generate a new StrokeId.
+				let stroke_id = StrokeId::generate();
+
+				// Add the closing segment to result.segment_domain.
+				result.segment_domain.push(segment_id, last_index, first_index, handles, stroke_id);
+			}
 		}
 	}
 
+	// Transfer the style from the input vector data to the result.
+	result.style = vector_data.style.clone();
+	result.style.set_stroke_transform(vector_data.transform);
+
+	// Return the resulting vector data with newly generated points and segments.
 	result
 }
 
@@ -706,10 +789,28 @@ async fn poisson_disk_points<F: 'n + Send>(
 
 		subpath.apply_transform(vector_data.transform);
 
+		let mut previous_point_index: Option<usize> = None;
+
 		for point in subpath.poisson_disk_points(separation_disk_diameter, || rng.gen::<f64>()) {
-			result.point_domain.push(PointId::generate(), point);
+			let point_id = PointId::generate();
+			result.point_domain.push(point_id, point);
+
+			// Get the index of the newly added point.
+			let point_index = result.point_domain.ids().len() - 1;
+
+			// If there is a previous point, connect it with the current point by adding a segment.
+			if let Some(prev_point_index) = previous_point_index {
+				let segment_id = SegmentId::generate();
+				result.segment_domain.push(segment_id, prev_point_index, point_index, bezier_rs::BezierHandles::Linear, StrokeId::ZERO);
+			}
+
+			previous_point_index = Some(point_index);
 		}
 	}
+
+	// Transfer the style from the input vector data to the result.
+	result.style = vector_data.style.clone();
+	result.style.set_stroke_transform(DAffine2::IDENTITY);
 
 	result
 }
@@ -736,25 +837,139 @@ async fn subpath_segment_lengths<F: 'n + Send>(
 }
 
 #[node_macro::node(name("Splines from Points"), category("Vector"), path(graphene_core::vector))]
-fn splines_from_points(_: (), mut vector_data: VectorData) -> VectorData {
-	let points = &vector_data.point_domain;
+async fn splines_from_points<F: 'n + Send>(
+	#[implementations(
+		(),
+		Footprint,
+	)]
+	footprint: F,
+	#[implementations(
+		() -> VectorData,
+		Footprint -> VectorData,
+	)]
+	vector_data: impl Node<F, Output = VectorData>,
+) -> VectorData {
+	// Evaluate the vector data within the given footprint.
+	let mut vector_data = vector_data.eval(footprint).await;
 
-	vector_data.segment_domain.clear();
-
-	if points.positions().is_empty() {
+	// Exit early if there are no points to generate splines from.
+	if vector_data.point_domain.positions().is_empty() {
 		return vector_data;
 	}
 
-	let first_handles = bezier_rs::solve_spline_first_handle(points.positions());
+	// Extract points and take ownership of the segment domain for processing.
+	let points = &vector_data.point_domain;
+	let segments = std::mem::take(&mut vector_data.segment_domain);
 
-	let stroke_id = StrokeId::ZERO;
+	// Map segment IDs to their indices using BTreeMap for deterministic ordering.
+	let segment_id_to_index = segments.ids().iter().copied().enumerate().map(|(i, id)| (id, i)).collect::<BTreeMap<_, _>>();
 
-	for (start_index, end_index) in (0..(points.positions().len())).zip(1..(points.positions().len())) {
-		let handle_start = first_handles[start_index];
-		let handle_end = points.positions()[end_index] * 2. - first_handles[end_index];
-		let handles = bezier_rs::BezierHandles::Cubic { handle_start, handle_end };
+	// Iterate over all segments to generate splines.
+	let mut visited_segments = BTreeSet::new();
+	for (segment_index, &segment_id) in segments.ids().iter().enumerate() {
+		// Skip segments that have already been visited.
+		if visited_segments.contains(&segment_id) {
+			continue;
+		}
 
-		vector_data.segment_domain.push(SegmentId::generate(), start_index, end_index, handles, stroke_id)
+		let mut current_subpath_segments = Vec::new();
+		let mut queue = VecDeque::new();
+		queue.push_back(segment_index);
+
+		// Traverse the connected segments to form a subpath.
+		while let Some(segment_index) = queue.pop_front() {
+			// Skip segments that have already been visited, otherwise add them to the visited set and the current subpath.
+			let seg_id = segments.ids()[segment_index];
+			if visited_segments.contains(&seg_id) {
+				continue;
+			}
+			visited_segments.insert(seg_id);
+			current_subpath_segments.push(segment_index);
+
+			// Get the start and end points of the segment.
+			let start_point_index = segments.start_point()[segment_index];
+			let end_point_index = segments.end_point()[segment_index];
+
+			// For both start and end points, find and enqueue connected segments.
+			for point_index in [start_point_index, end_point_index] {
+				let mut connected_seg_ids = segments.start_connected(point_index).chain(segments.end_connected(point_index)).collect::<Vec<_>>();
+				connected_seg_ids.sort_unstable(); // Ensure deterministic order
+				for connected_seg_id in connected_seg_ids {
+					let connected_seg_index = *segment_id_to_index.get(&connected_seg_id).unwrap_or(&usize::MAX);
+					if connected_seg_index != usize::MAX && !visited_segments.contains(&connected_seg_id) {
+						queue.push_back(connected_seg_index);
+					}
+				}
+			}
+		}
+
+		// Build a mapping from each point to its connected points using BTreeMap for deterministic ordering.
+		let mut point_connections: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+		for &seg_index in &current_subpath_segments {
+			let start = segments.start_point()[seg_index];
+			let end = segments.end_point()[seg_index];
+			point_connections.entry(start).or_default().push(end);
+			point_connections.entry(end).or_default().push(start);
+		}
+
+		// Sort connected points for deterministic traversal.
+		for neighbors in point_connections.values_mut() {
+			neighbors.sort_unstable();
+		}
+
+		// Identify endpoints.
+		let endpoints = point_connections
+			.iter()
+			.filter(|(_, neighbors)| neighbors.len() == 1)
+			.map(|(&point_index, _)| point_index)
+			.collect::<Vec<_>>();
+
+		let mut ordered_point_indices = Vec::new();
+
+		// Start with the first endpoint or the first point if there are no endpoints because it's a closed subpath.
+		let start_point_index = endpoints.first().copied().unwrap_or_else(|| *point_connections.keys().next().unwrap());
+
+		// Traverse points to order them into a path.
+		let mut visited_points = BTreeSet::new();
+		let mut current_point = start_point_index;
+		loop {
+			ordered_point_indices.push(current_point);
+			visited_points.insert(current_point);
+
+			let Some(neighbors) = point_connections.get(&current_point) else { break };
+			let next_point = neighbors.iter().find(|&pt| !visited_points.contains(pt));
+			let Some(&next_point) = next_point else { break };
+			current_point = next_point;
+		}
+
+		// If it's a closed subpath, close the spline loop by adding the start point at the end.
+		let closed = endpoints.is_empty();
+		if closed {
+			ordered_point_indices.push(start_point_index);
+		}
+
+		// Collect the positions of the ordered points.
+		let positions = ordered_point_indices.iter().map(|&index| points.positions()[index]).collect::<Vec<_>>();
+
+		// Compute control point handles for Bezier spline.
+		// TODO: Make this support wrapping around between start and end points for closed subpaths.
+		let first_handles = bezier_rs::solve_spline_first_handle(&positions);
+
+		let stroke_id = StrokeId::ZERO;
+
+		// Create segments with computed Bezier handles and add them to vector data.
+		for i in 0..(positions.len() - 1) {
+			let next_index = (i + 1) % positions.len();
+
+			let start_index = ordered_point_indices[i];
+			let end_index = ordered_point_indices[next_index];
+
+			let handle_start = first_handles[i];
+			let handle_end = positions[next_index] * 2. - first_handles[next_index];
+			let handles = bezier_rs::BezierHandles::Cubic { handle_start, handle_end };
+
+			vector_data.segment_domain.push(SegmentId::generate(), start_index, end_index, handles, stroke_id);
+		}
 	}
 
 	vector_data
@@ -1179,10 +1394,9 @@ mod test {
 		let lengths = subpath_segment_lengths(Footprint::default(), &vector_node(subpath)).await;
 		assert_eq!(lengths, vec![100.]);
 	}
-	#[test]
-	fn spline() {
-		let subpath = VectorData::from_subpath(Subpath::new_rect(DVec2::ZERO, DVec2::ONE * 100.));
-		let spline = splines_from_points((), subpath);
+	#[tokio::test]
+	async fn spline() {
+		let spline = splines_from_points(Footprint::default(), &vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE * 100.))).await;
 		assert_eq!(spline.stroke_bezier_paths().count(), 1);
 		assert_eq!(spline.point_domain.positions(), &[DVec2::ZERO, DVec2::new(100., 0.), DVec2::new(100., 100.), DVec2::new(0., 100.)]);
 	}
