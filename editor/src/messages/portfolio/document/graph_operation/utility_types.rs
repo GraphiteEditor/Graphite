@@ -5,8 +5,9 @@ use crate::messages::portfolio::document::utility_types::network_interface::{sel
 use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
+use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{generate_uuid, NodeId, NodeInput};
+use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
 use graphene_core::vector::brush_stroke::BrushStroke;
@@ -16,6 +17,7 @@ use graphene_core::{Artboard, Color};
 
 use glam::{DAffine2, DVec2, IVec2};
 use graphene_std::vector::VectorData;
+use graphene_std::GraphicGroup;
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformIn {
@@ -140,7 +142,7 @@ impl<'a> ModifyInputsContext<'a> {
 			Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
 		]);
 
-		let boolean_id = NodeId(generate_uuid());
+		let boolean_id = NodeId::new();
 		self.network_interface.insert_node(boolean_id, boolean, &[]);
 		self.network_interface.move_node_to_chain_start(&boolean_id, layer, &[]);
 	}
@@ -151,27 +153,27 @@ impl<'a> ModifyInputsContext<'a> {
 		let shape = resolve_document_node_type("Path")
 			.expect("Path node does not exist")
 			.node_template_input_override([Some(NodeInput::value(TaggedValue::VectorData(vector_data), false))]);
-		let shape_id = NodeId(generate_uuid());
+		let shape_id = NodeId::new();
 		self.network_interface.insert_node(shape_id, shape, &[]);
 		self.network_interface.move_node_to_chain_start(&shape_id, layer, &[]);
 
 		if include_transform {
 			let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
-			let transform_id = NodeId(generate_uuid());
+			let transform_id = NodeId::new();
 			self.network_interface.insert_node(transform_id, transform, &[]);
 			self.network_interface.move_node_to_chain_start(&transform_id, layer, &[]);
 		}
 
 		if include_fill {
 			let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_node_template();
-			let fill_id = NodeId(generate_uuid());
+			let fill_id = NodeId::new();
 			self.network_interface.insert_node(fill_id, fill, &[]);
 			self.network_interface.move_node_to_chain_start(&fill_id, layer, &[]);
 		}
 
 		if include_stroke {
 			let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_node_template();
-			let stroke_id = NodeId(generate_uuid());
+			let stroke_id = NodeId::new();
 			self.network_interface.insert_node(stroke_id, stroke, &[]);
 			self.network_interface.move_node_to_chain_start(&stroke_id, layer, &[]);
 		}
@@ -190,19 +192,19 @@ impl<'a> ModifyInputsContext<'a> {
 			Some(NodeInput::value(TaggedValue::F64(character_spacing), false)),
 		]);
 
-		let text_id = NodeId(generate_uuid());
+		let text_id = NodeId::new();
 		self.network_interface.insert_node(text_id, text, &[]);
 		self.network_interface.move_node_to_chain_start(&text_id, layer, &[]);
 
-		let transform_id = NodeId(generate_uuid());
+		let transform_id = NodeId::new();
 		self.network_interface.insert_node(transform_id, transform, &[]);
 		self.network_interface.move_node_to_chain_start(&transform_id, layer, &[]);
 
-		let fill_id = NodeId(generate_uuid());
+		let fill_id = NodeId::new();
 		self.network_interface.insert_node(fill_id, fill, &[]);
 		self.network_interface.move_node_to_chain_start(&fill_id, layer, &[]);
 
-		let stroke_id = NodeId(generate_uuid());
+		let stroke_id = NodeId::new();
 		self.network_interface.insert_node(stroke_id, stroke, &[]);
 		self.network_interface.move_node_to_chain_start(&stroke_id, layer, &[]);
 	}
@@ -213,11 +215,11 @@ impl<'a> ModifyInputsContext<'a> {
 			.expect("Image node does not exist")
 			.node_template_input_override([Some(NodeInput::value(TaggedValue::ImageFrame(image_frame), false))]);
 
-		let image_id = NodeId(generate_uuid());
+		let image_id = NodeId::new();
 		self.network_interface.insert_node(image_id, image, &[]);
 		self.network_interface.move_node_to_chain_start(&image_id, layer, &[]);
 
-		let transform_id = NodeId(generate_uuid());
+		let transform_id = NodeId::new();
 		self.network_interface.insert_node(transform_id, transform, &[]);
 		self.network_interface.move_node_to_chain_start(&transform_id, layer, &[]);
 	}
@@ -236,11 +238,13 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 		})
 	}
-	// Gets the node id of a node with a specific reference that is upstream from the layer node, and creates it if it does not exist
+	/// Gets the node id of a node with a specific reference that is upstream from the layer node, and creates it if it does not exist
+	/// The returned node is based on the selection dots in the layer. The right most dot will always insert/access the path that flows directly into the layer
+	/// Each dot after that represents an existing path node
+	/// If there is an existing upstream node, then it will always be returned first.
 	pub fn existing_node_id(&mut self, reference: &'static str) -> Option<NodeId> {
 		// Start from the layer node or export
 		let output_layer = self.get_output_layer()?;
-		let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]).0.nested_type();
 
 		let upstream = self
 			.network_interface
@@ -249,8 +253,6 @@ impl<'a> ModifyInputsContext<'a> {
 		// Take until another layer node is found (but not the first layer node)
 		let mut existing_node_id = None;
 		for upstream_node in upstream.collect::<Vec<_>>() {
-			let upstream_node_input_type = self.network_interface.input_type(&InputConnector::node(upstream_node, 0), &[]).0.nested_type();
-
 			// Check if this is the node we have been searching for.
 			if self.network_interface.reference(&upstream_node, &[]).is_some_and(|node_reference| node_reference == reference) {
 				existing_node_id = Some(upstream_node);
@@ -261,24 +263,40 @@ impl<'a> ModifyInputsContext<'a> {
 				self.layer_node.map(|layer| layer.to_node()) == Some(node_id) || self.network_interface.network(&[]).unwrap().exports.iter().any(|export| export.as_node() == Some(node_id))
 			};
 
-			// If the type changes then break?? This should at least be after checking if the node is correct (otherwise the brush tool breaks.)
-			if !is_traversal_start(upstream_node) && (self.network_interface.is_layer(&upstream_node, &[]) || upstream_node_input_type != layer_input_type) {
+			if !is_traversal_start(upstream_node) && (self.network_interface.is_layer(&upstream_node, &[])) {
 				break;
 			}
 		}
 
 		// Create a new node if the node does not exist and update its inputs
-		existing_node_id.or_else(|| {
-			let output_layer = self.get_output_layer()?;
-			let Some(node_definition) = resolve_document_node_type(reference) else {
-				log::error!("Node type {} does not exist in ModifyInputsContext::existing_node_id", reference);
-				return None;
-			};
-			let node_id = NodeId(generate_uuid());
-			self.network_interface.insert_node(node_id, node_definition.default_node_template(), &[]);
-			self.network_interface.move_node_to_chain_start(&node_id, output_layer, &[]);
-			Some(node_id)
-		})
+		existing_node_id.or_else(|| self.create_node(reference))
+	}
+
+	/// Create a new node inside the layer
+	pub fn create_node(&mut self, reference: &str) -> Option<NodeId> {
+		let output_layer = self.get_output_layer()?;
+		let Some(node_definition) = resolve_document_node_type(reference) else {
+			log::error!("Node type {} does not exist in ModifyInputsContext::existing_node_id", reference);
+			return None;
+		};
+		// If inserting a path node, insert a flatten vector elements if the type is a graphic group.
+		// TODO: Allow the path node to operate on Graphic Group data by utilizing the reference for each vector data in a group.
+		if node_definition.identifier == "Path" {
+			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]).0.nested_type();
+			if layer_input_type == concrete!(GraphicGroup) {
+				let Some(flatten_vector_elements_definition) = resolve_document_node_type("Flatten Vector Elements") else {
+					log::error!("Flatten Vector Elements does not exist in ModifyInputsContext::existing_node_id");
+					return None;
+				};
+				let node_id = NodeId::new();
+				self.network_interface.insert_node(node_id, flatten_vector_elements_definition.default_node_template(), &[]);
+				self.network_interface.move_node_to_chain_start(&node_id, output_layer, &[]);
+			}
+		}
+		let node_id = NodeId::new();
+		self.network_interface.insert_node(node_id, node_definition.default_node_template(), &[]);
+		self.network_interface.move_node_to_chain_start(&node_id, output_layer, &[]);
+		Some(node_id)
 	}
 
 	pub fn fill_set(&mut self, fill: Fill) {

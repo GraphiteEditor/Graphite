@@ -12,7 +12,6 @@ use crate::messages::tool::common_functionality::utility_functions::should_exten
 
 use bezier_rs::{Bezier, BezierHandles};
 use graph_craft::document::NodeId;
-use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::{PointId, VectorModificationType};
 use graphene_core::Color;
 use graphene_std::vector::{HandleId, SegmentId};
@@ -545,7 +544,7 @@ impl Fsm for PenToolFsmState {
 					let nodes = vec![(NodeId(0), node_type.default_node_template())];
 
 					let parent = document.new_layer_parent(true);
-					let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, parent, responses);
+					let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
 					tool_options.fill.apply_fill(layer, responses);
 					tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
 					tool_data.layer = Some(layer);

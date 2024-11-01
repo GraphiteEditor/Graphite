@@ -58,7 +58,7 @@
 
 	let self: FieldInput | undefined;
 	let inputRangeElement: HTMLInputElement | undefined;
-	let text = displayText(value);
+	let text = displayText(value, unit);
 	let editing = false;
 	// Stays in sync with a binding to the actual input range slider element.
 	let rangeSliderValue = value !== undefined ? value : 0;
@@ -78,7 +78,7 @@
 	// Track whether the Ctrl key is currently held down.
 	let ctrlKeyDown = false;
 
-	$: watchValue(value);
+	$: watchValue(value, unit);
 
 	$: sliderStepValue = isInteger ? (step === undefined ? 1 : step) : "any";
 	$: styles = {
@@ -104,7 +104,7 @@
 	// ===============================
 
 	// Called only when `value` is changed from outside this component.
-	function watchValue(value: number | undefined) {
+	function watchValue(value: number | undefined, unit: string) {
 		// Don't update if the slider is currently being dragged (we don't want the backend fighting with the user's drag)
 		if (rangeSliderClickDragState === "Dragging") return;
 
@@ -123,7 +123,7 @@
 		if (typeof min === "number") sanitized = Math.max(sanitized, min);
 		if (typeof max === "number") sanitized = Math.min(sanitized, max);
 
-		text = displayText(sanitized);
+		text = displayText(sanitized, unit);
 	}
 
 	// Called internally to update the value indirectly by informing the parent component of the new value,
@@ -143,7 +143,7 @@
 			rangeSliderValueAsRendered = newValueValidated;
 		}
 
-		text = displayText(newValueValidated);
+		text = displayText(newValueValidated, unit);
 
 		if (newValue !== undefined) dispatch("value", newValueValidated);
 
@@ -156,7 +156,7 @@
 	// ================
 
 	// Calculates the string to display when the field is not being edited.
-	function displayText(displayValue: number | undefined): string {
+	function displayText(displayValue: number | undefined, unit: string): string {
 		if (displayValue === undefined) return "-";
 
 		const roundingPower = 10 ** Math.max(displayDecimalPlaces, 0);

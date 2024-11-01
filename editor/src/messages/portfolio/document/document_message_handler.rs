@@ -228,7 +228,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::PropertiesPanel(message) => {
 				let properties_panel_message_handler_data = PropertiesPanelMessageHandlerData {
 					network_interface: &self.network_interface,
-					selection_path: &self.selection_network_path,
+					selection_network_path: &self.selection_network_path,
 					document_name: self.name.as_str(),
 					executor,
 				};
@@ -322,7 +322,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				};
 				let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), self.network_interface.selected_nodes(&[]).unwrap(), parent);
 
-				let folder_id = NodeId(generate_uuid());
+				let folder_id = NodeId::new();
 				let boolean_operation_layer = LayerNodeIdentifier::new_unchecked(folder_id);
 				responses.add(GraphOperationMessage::NewBooleanOperationLayer {
 					id: folder_id,
@@ -338,7 +338,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(DocumentMessage::MoveSelectedLayersToGroup { parent: boolean_operation_layer });
 			}
 			DocumentMessage::CreateEmptyFolder => {
-				let id = NodeId(generate_uuid());
+				let id = NodeId::new();
 
 				let parent = self
 					.network_interface
@@ -358,6 +358,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::DebugPrintDocument => {
 				info!("{:#?}", self.network_interface);
+			}
+			DocumentMessage::DeleteNode { node_id } => {
+				responses.add(DocumentMessage::StartTransaction);
+
+				responses.add(NodeGraphMessage::DeleteNodes {
+					node_ids: vec![node_id],
+					delete_children: true,
+				});
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SelectedNodesUpdated);
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::DeleteSelectedLayers => {
 				responses.add(NodeGraphMessage::DeleteSelectedNodes { delete_children: true });
@@ -505,7 +516,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				};
 				let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), self.network_interface.selected_nodes(&[]).unwrap(), parent);
 
-				let node_id = NodeId(generate_uuid());
+				let node_id = NodeId::new();
 				let new_group_node = document_node_definitions::resolve_document_node_type("Merge")
 					.expect("Failed to create merge node")
 					.default_node_template();
@@ -740,7 +751,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				let transform = center_in_viewport_layerspace * fit_image_size;
 
-				let layer_node_id = NodeId(generate_uuid());
+				let layer_node_id = NodeId::new();
 				let layer_id = LayerNodeIdentifier::new_unchecked(layer_node_id);
 
 				responses.add(DocumentMessage::AddTransaction);
@@ -785,7 +796,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let viewport_location = mouse.map_or(ipp.viewport_bounds.center() + ipp.viewport_bounds.top_left, |pos| pos.into());
 				let center_in_viewport = DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_location - ipp.viewport_bounds.top_left));
 
-				let layer_node_id = NodeId(generate_uuid());
+				let layer_node_id = NodeId::new();
 				let layer_id = LayerNodeIdentifier::new_unchecked(layer_node_id);
 
 				responses.add(DocumentMessage::AddTransaction);
@@ -1008,6 +1019,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(GraphOperationMessage::BlendModeSet { layer, blend_mode });
 				}
 			}
+			DocumentMessage::SetNodePinned { node_id, pinned } => {
+				responses.add(DocumentMessage::StartTransaction);
+				responses.add(NodeGraphMessage::SetPinned { node_id, pinned });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SelectedNodesUpdated);
+				responses.add(NodeGraphMessage::SendGraph);
+			}
 			DocumentMessage::SetOpacityForSelectedLayers { opacity } => {
 				let opacity = opacity.clamp(0., 1.);
 				for layer in self.network_interface.selected_nodes(&[]).unwrap().selected_layers_except_artboards(&self.network_interface) {
@@ -1026,6 +1044,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				if let Some(closure) = closure {
 					*closure(&mut self.snapping_state) = snapping_state;
 				}
+			}
+			DocumentMessage::SetToNodeOrLayer { node_id, is_layer } => {
+				responses.add(DocumentMessage::StartTransaction);
+				responses.add(NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer });
 			}
 			DocumentMessage::SetViewMode { view_mode } => {
 				self.view_mode = view_mode;
@@ -1231,7 +1253,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let bounds_rounded_dimensions = (bounds[1] - bounds[0]).round();
 
 				// Create an artboard and set its dimensions to the bounding box size and location
-				let node_id = NodeId(generate_uuid());
+				let node_id = NodeId::new();
 				let node_layer_id = LayerNodeIdentifier::new_unchecked(node_id);
 				let new_artboard_node = document_node_definitions::resolve_document_node_type("Artboard")
 					.expect("Failed to create artboard node")

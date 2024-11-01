@@ -27,8 +27,21 @@
 	<button class="header" class:expanded on:click|stopPropagation={() => (expanded = !expanded)} tabindex="0">
 		<div class="expand-arrow" />
 		<TextLabel bold={true}>{widgetData.name}</TextLabel>
+		{#if widgetData.pinned}
+			<IconButton
+				icon={"CheckboxChecked"}
+				tooltip={"Unpin this node so it's no longer shown here without a selection"}
+				size={24}
+				action={(e) => {
+					editor.handle.unpinNode(widgetData.id);
+					e?.stopPropagation();
+				}}
+				class={"show-only-on-hover"}
+			/>
+		{/if}
 		<IconButton
 			icon={"Trash"}
+			tooltip={"Delete this node from the layer chain"}
 			size={24}
 			action={(e) => {
 				editor.handle.deleteNode(widgetData.id);
@@ -39,6 +52,7 @@
 		<IconButton
 			icon={widgetData.visible ? "EyeVisible" : "EyeHidden"}
 			hoverIcon={widgetData.visible ? "EyeHide" : "EyeShow"}
+			tooltip={widgetData.visible ? "Hide this node" : "Show this node"}
 			size={24}
 			action={(e) => {
 				editor.handle.toggleNodeVisibilityLayerPanel(widgetData.id);
@@ -68,10 +82,7 @@
 	.widget-section {
 		flex: 0 0 auto;
 		margin: 0 4px;
-
-		+ .widget-section {
-			margin-top: 4px;
-		}
+		margin-top: 4px;
 
 		.header {
 			text-align: left;

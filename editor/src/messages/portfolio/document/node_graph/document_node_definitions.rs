@@ -35,6 +35,7 @@ pub struct NodePropertiesContext<'a> {
 	pub executor: &'a mut NodeGraphExecutor,
 	pub network_interface: &'a NodeNetworkInterface,
 	pub selection_network_path: &'a [NodeId],
+	pub document_name: &'a str,
 }
 
 /// Acts as a description for a [DocumentNode] before it gets instantiated as one.

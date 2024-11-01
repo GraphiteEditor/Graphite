@@ -38,8 +38,6 @@ pub enum LayoutTarget {
 	MenuBar,
 	/// Bar at the top of the node graph containing the location and the "Preview" and "Hide" buttons.
 	NodeGraphBar,
-	/// The bar at the top of the Properties panel containing the layer name and icon.
-	PropertiesOptions,
 	/// The body of the Properties panel containing many collapsable sections.
 	PropertiesSections,
 	/// The bar directly above the canvas, left-aligned and to the right of the document mode dropdown.
@@ -303,7 +301,7 @@ pub enum LayoutGroup {
 	},
 	// TODO: Move this from being a child of `enum LayoutGroup` to being a child of `enum Layout`
 	#[serde(rename = "section")]
-	Section { name: String, visible: bool, id: u64, layout: SubLayout },
+	Section { name: String, visible: bool, pinned: bool, id: u64, layout: SubLayout },
 }
 
 impl Default for LayoutGroup {
@@ -344,7 +342,7 @@ impl LayoutGroup {
 				Widget::TextInput(x) => &mut x.tooltip,
 				Widget::TextLabel(x) => &mut x.tooltip,
 				Widget::BreadcrumbTrailButtons(x) => &mut x.tooltip,
-				Widget::InvisibleStandinInput(_) | Widget::PivotInput(_) | Widget::RadioInput(_) | Widget::Separator(_) | Widget::WorkingColorsInput(_) => continue,
+				Widget::InvisibleStandinInput(_) | Widget::PivotInput(_) | Widget::RadioInput(_) | Widget::Separator(_) | Widget::WorkingColorsInput(_) | Widget::NodeCatalog(_) => continue,
 			};
 			if val.is_empty() {
 				val.clone_from(&tooltip);
@@ -385,22 +383,25 @@ impl LayoutGroup {
 				Self::Section {
 					name: current_name,
 					visible: current_visible,
+					pinned: current_pinned,
 					id: current_id,
 					layout: current_layout,
 				},
 				Self::Section {
 					name: new_name,
 					visible: new_visible,
+					pinned: new_pinned,
 					id: new_id,
 					layout: new_layout,
 				},
 			) => {
 				// Resend the entire panel if the lengths, names, visibility, or node IDs are different
 				// TODO: Diff insersion and deletion of items
-				if current_layout.len() != new_layout.len() || *current_name != new_name || *current_visible != new_visible || *current_id != new_id {
+				if current_layout.len() != new_layout.len() || *current_name != new_name || *current_visible != new_visible || *current_pinned != new_pinned || *current_id != new_id {
 					// Update self to reflect new changes
 					current_name.clone_from(&new_name);
 					*current_visible = new_visible;
+					*current_pinned = new_pinned;
 					*current_id = new_id;
 					current_layout.clone_from(&new_layout);
 
@@ -408,6 +409,7 @@ impl LayoutGroup {
 					let new_value = DiffUpdate::LayoutGroup(Self::Section {
 						name: new_name,
 						visible: new_visible,
+						pinned: new_pinned,
 						id: new_id,
 						layout: new_layout,
 					});
@@ -504,6 +506,7 @@ pub enum Widget {
 	IconLabel(IconLabel),
 	ImageLabel(ImageLabel),
 	InvisibleStandinInput(InvisibleStandinInput),
+	NodeCatalog(NodeCatalog),
 	NumberInput(NumberInput),
 	ParameterExposeButton(ParameterExposeButton),
 	PivotInput(PivotInput),
@@ -580,6 +583,7 @@ impl DiffUpdate {
 				| Widget::ImageLabel(_)
 				| Widget::CurveInput(_)
 				| Widget::InvisibleStandinInput(_)
+				| Widget::NodeCatalog(_)
 				| Widget::PivotInput(_)
 				| Widget::RadioInput(_)
 				| Widget::Separator(_)

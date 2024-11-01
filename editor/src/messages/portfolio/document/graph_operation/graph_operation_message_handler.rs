@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Inp
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 use crate::messages::prelude::*;
 
-use graph_craft::document::{generate_uuid, NodeId, NodeInput};
+use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::renderer::Quad;
 use graphene_core::text::Font;
 use graphene_core::vector::style::{Fill, Gradient, GradientStops, GradientType, LineCap, LineJoin, Stroke};
@@ -156,7 +156,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 				if !nodes.is_empty() {
 					// Add the nodes to the network
-					let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId(generate_uuid()))).collect();
+					let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
 					// Since all the new nodes are already connected, just connect the input of the layer to first new node
 					let first_new_node_id = new_ids[&NodeId(0)];
 					responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
@@ -259,7 +259,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 	match node {
 		usvg::Node::Group(group) => {
 			for child in group.children() {
-				import_usvg_node(modify_inputs, child, transform, NodeId(generate_uuid()), layer, 0);
+				import_usvg_node(modify_inputs, child, transform, NodeId::new(), layer, 0);
 			}
 			modify_inputs.layer_node = Some(layer);
 		}

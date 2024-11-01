@@ -274,6 +274,21 @@ pub enum NumberInputMode {
 	Range,
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder, specta::Type)]
+#[derivative(Debug, PartialEq, Default)]
+pub struct NodeCatalog {
+	pub disabled: bool,
+
+	// Callbacks
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<String>,
+
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
+}
+
 #[derive(Clone, Default, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq)]
 pub struct RadioInput {
