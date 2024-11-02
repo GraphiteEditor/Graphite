@@ -41,7 +41,7 @@ impl From<Value> for CustomValue {
 			Value::Float(x) => CustomValue::Float(x),
 			Value::Boolean(x) => CustomValue::Boolean(x),
 			Value::Array(x) => CustomValue::Array(x.into_iter().map(|x| x.into()).collect()),
-			_ => panic!("Unsuported data type"),
+			_ => panic!("Unsupported data type"),
 		}
 	}
 }
@@ -71,7 +71,7 @@ pub fn build_camera_data(_: TokenStream) -> TokenStream {
 
 			let mut values: Table = toml::from_str(&fs::read_to_string(model_path).unwrap()).unwrap();
 
-			if let Some(val) = values.get_mut("camera_to_xyz") {
+			if let Some(val) = values.get_mut("xyz_to_camera") {
 				*val = Value::Array(val.as_array().unwrap().iter().map(|x| Value::Integer((x.as_float().unwrap() * 10_000.) as i64)).collect());
 			}
 

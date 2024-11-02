@@ -1116,6 +1116,10 @@ export class NumberInput extends WidgetProps {
 	minWidth!: number;
 }
 
+export class NodeCatalog extends WidgetProps {
+	disabled!: boolean;
+}
+
 export class PopoverButton extends WidgetProps {
 	style!: PopoverButtonStyle | undefined;
 
@@ -1293,6 +1297,7 @@ const widgetSubTypes = [
 	{ value: IconButton, name: "IconButton" },
 	{ value: IconLabel, name: "IconLabel" },
 	{ value: ImageLabel, name: "ImageLabel" },
+	{ value: NodeCatalog, name: "NodeCatalog" },
 	{ value: NumberInput, name: "NumberInput" },
 	{ value: ParameterExposeButton, name: "ParameterExposeButton" },
 	{ value: PivotInput, name: "PivotInput" },
@@ -1425,7 +1430,7 @@ export function isWidgetSpanRow(layoutRow: LayoutGroup): layoutRow is WidgetSpan
 	return Boolean((layoutRow as WidgetSpanRow)?.rowWidgets);
 }
 
-export type WidgetSection = { name: string; visible: boolean; id: bigint; layout: LayoutGroup[] };
+export type WidgetSection = { name: string; visible: boolean; pinned: boolean; id: bigint; layout: LayoutGroup[] };
 export function isWidgetSection(layoutRow: LayoutGroup): layoutRow is WidgetSection {
 	return Boolean((layoutRow as WidgetSection)?.layout);
 }
@@ -1468,6 +1473,7 @@ function createLayoutGroup(layoutGroup: any): LayoutGroup {
 		const result: WidgetSection = {
 			name: layoutGroup.section.name,
 			visible: layoutGroup.section.visible,
+			pinned: layoutGroup.section.pinned,
 			id: layoutGroup.section.id,
 			layout: layoutGroup.section.layout.map(createLayoutGroup),
 		};
@@ -1501,8 +1507,6 @@ export class UpdateMenuBarLayout extends JsMessage {
 }
 
 export class UpdateNodeGraphBarLayout extends WidgetDiffUpdate {}
-
-export class UpdatePropertyPanelOptionsLayout extends WidgetDiffUpdate {}
 
 export class UpdatePropertyPanelSectionsLayout extends WidgetDiffUpdate {}
 
@@ -1594,7 +1598,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateNodeThumbnail,
 	UpdateNodeTypes,
 	UpdateOpenDocumentsList,
-	UpdatePropertyPanelOptionsLayout,
 	UpdatePropertyPanelSectionsLayout,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,

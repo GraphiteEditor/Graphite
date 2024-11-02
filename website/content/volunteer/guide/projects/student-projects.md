@@ -35,10 +35,14 @@ When it comes to writing the proposal, which you will submit to the GSoC applica
 
 In addition to the detailed projects below, here are some loose ideas that may be developed into full project options before the next GSoC application period:
 - Color management for HDR/WCG
-- Sophisticated text layout system
+- Sophisticated text layout and advanced typography features
 - Traditional brush engine
 - [Procedural brush engine](https://github.com/Keavon/Brush-Nodes)
 - Image processing algorithms for photography
+- Snapping system overhaul
+- [Node equivalence rewriting](https://github.com/GraphiteEditor/Graphite/issues/2021)
+<!-- PDF import/export -->
+<!-- ONNX model embedding to run in WebGPU and native (Tauri) and server -->
 
 <!--
 TODO: Add to the completed projects list after successful completion.
@@ -186,9 +190,6 @@ If proposed as part of the project's scope, a runtime component could be added a
 If none of the projects above suit your interests or experience, we are very open to discussing your own project ideas that could benefit Graphite. You may consult our [task board](https://github.com/orgs/GraphiteEditor/projects/1/views/1) and [roadmap](/features#roadmap) to get a feel for what our current priorities are.
 
 As is the case with all projects, please discuss this with us on Discord to flesh out your idea. Unsolicited proposals that have not been discussed with us will almost certainly be rejected.
-
-<!-- ### PDF import/export -->
-<!-- ### ONNX model embedding to run in WebGPU and native (Tauri) and server -->
 
 ## Successful past projects
 
