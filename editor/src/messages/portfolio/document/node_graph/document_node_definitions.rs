@@ -50,6 +50,9 @@ pub struct DocumentNodeDefinition {
 	/// Definition specific data. In order for the editor to access this data, the reference will be used.
 	pub category: &'static str,
 	pub properties: &'static (dyn Fn(&DocumentNode, NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Sync),
+
+	/// Description of the nodes functionality.
+	pub description: Cow<'static, str>,
 }
 
 // We use the once cell for lazy initialization to avoid the overhead of reconstructing the node list every time.
@@ -77,6 +80,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("The identity node simply passes its data through. You can use this to organize your node graph if you want."),
 			properties: &|_document_node, _node_id, _context| node_properties::string_properties("The identity node simply passes its data through"),
 		},
 		// TODO: Auto-generate this from its proto node macro
@@ -97,6 +101,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("The Monitor node is used by the editor to access the data flowing through it"),
 			properties: &|_document_node, _node_id, _context| node_properties::string_properties("The Monitor node is used by the editor to access the data flowing through it"),
 		},
 		DocumentNodeDefinition {
@@ -203,6 +208,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("The Merge node combines graphical data through composition"),
 			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
@@ -313,6 +319,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("Creates a new Artboard which can be used as a working surface"),
 			properties: &node_properties::artboard_properties,
 		},
 		DocumentNodeDefinition {
@@ -393,6 +400,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("Loads an image from a given url."),
 			properties: &node_properties::load_image_properties,
 		},
 		DocumentNodeDefinition {
@@ -457,6 +465,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("Creates a new canvas object."),
 			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
@@ -549,6 +558,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("Draws raster data to a canvas element."),
 			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
@@ -640,6 +650,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("Rasterizes the given vector data"),
 			properties: &node_properties::rasterize_properties,
 		},
 		DocumentNodeDefinition {
@@ -708,6 +719,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("Creates an embedded image with the given transform"),
 			properties: &|_document_node, _node_id, _context| node_properties::string_properties("Creates an embedded image with the given transform"),
 		},
 		DocumentNodeDefinition {
@@ -786,6 +798,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("Generates different noise patters"),
 			properties: &node_properties::noise_pattern_properties,
 		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
@@ -808,6 +821,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("TODO"),
 			properties: &node_properties::mask_properties,
 		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
@@ -831,6 +845,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("TODO"),
 			properties: &node_properties::insert_channel_properties,
 		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
@@ -855,6 +870,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("TODO"),
 			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
@@ -968,6 +984,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("TODO"),
 			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
@@ -1036,6 +1053,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("TODO"),
 			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
@@ -1054,6 +1072,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("TODO"),
 			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
@@ -1072,6 +1091,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("TODO"),
 			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
@@ -1120,6 +1140,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("TODO"),
 			properties: &|_document_node, _node_id, _context| node_properties::string_properties("A bitmap image embedded in this node"),
 		},
 		#[cfg(feature = "gpu")]
@@ -1200,6 +1221,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("TODO"),
 			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
@@ -1278,6 +1300,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("TODO"),
 			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
@@ -1356,6 +1379,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("TODO"),
 			properties: &node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
@@ -1444,6 +1468,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("TODO"),
 			properties: &node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
@@ -1468,6 +1493,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			properties: &node_properties::node_no_properties,
+			description: Cow::Borrowed("TODO"),
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
@@ -1546,6 +1572,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("TODO"),
 			properties: &node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
@@ -1625,6 +1652,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("TODO"),
 			properties: &node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
@@ -1690,6 +1718,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("TODO"),
 			properties: &node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
@@ -1760,6 +1789,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("TODO"),
 			properties: &node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
@@ -1840,6 +1870,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("TODO"),
 			properties: &node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
@@ -1861,6 +1892,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("TODO"),
 			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
@@ -1878,6 +1910,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("TODO"),
 			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
@@ -1903,6 +1936,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("TODO"),
 			properties: &node_properties::brightness_contrast_properties,
 		},
 		// Aims for interoperable compatibility with:
@@ -1926,6 +1960,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("TODO"),
 			properties: &node_properties::curves_properties,
 		},
 		(*IMAGINATE_NODE).clone(),
@@ -1949,6 +1984,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("TODO"),
 			properties: &node_properties::line_properties,
 		},
 		DocumentNodeDefinition {
@@ -1971,6 +2007,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("TODO"),
 			properties: &node_properties::spline_properties,
 		},
 		DocumentNodeDefinition {
@@ -2041,6 +2078,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("TODO"),
 			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
@@ -2076,6 +2114,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("TODO"),
 			properties: &node_properties::text_properties,
 		},
 		DocumentNodeDefinition {
@@ -2163,6 +2202,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			properties: &node_properties::transform_properties,
+			description: Cow::Borrowed("TODO"),
 		},
 		DocumentNodeDefinition {
 			identifier: "Boolean Operation",
@@ -2232,6 +2272,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			properties: &node_properties::boolean_operation_properties,
+			description: Cow::Borrowed("TODO"),
 		},
 		DocumentNodeDefinition {
 			identifier: "Copy to Points",
@@ -2269,6 +2310,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			properties: &node_properties::copy_to_points_properties,
+			description: Cow::Borrowed("TODO"),
 		},
 		DocumentNodeDefinition {
 			identifier: "Sample Points",
@@ -2365,6 +2407,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			properties: &node_properties::sample_points_properties,
+			description: Cow::Borrowed("TODO"),
 		},
 		DocumentNodeDefinition {
 			identifier: "Scatter Points",
@@ -2437,6 +2480,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			properties: &node_properties::poisson_disk_points_properties,
+			description: Cow::Borrowed("TODO"),
 		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
 		DocumentNodeDefinition {
@@ -2455,6 +2499,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			properties: &node_properties::index_properties,
+			description: Cow::Borrowed("TODO"),
 		},
 	];
 
@@ -2505,7 +2550,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			}
 		}
 
-		let NodeMetadata { display_name, category, fields } = metadata;
+		let NodeMetadata {
+			display_name,
+			category,
+			fields,
+			description,
+		} = metadata;
 		let Some(implementations) = &node_registry.get(&id) else { continue };
 		let valid_inputs: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
 		let first_node_io = implementations.first().map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
@@ -2582,6 +2632,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: category.unwrap_or("UNCATEGORIZED"),
+			description: Cow::Borrowed(description),
 			properties,
 		};
 		custom.push(node);
@@ -2708,6 +2759,7 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 		},
 	},
 	properties: &node_properties::imaginate_properties,
+	description: Cow::Borrowed("TODO"),
 });
 
 pub fn resolve_document_node_type(identifier: &str) -> Option<&DocumentNodeDefinition> {
