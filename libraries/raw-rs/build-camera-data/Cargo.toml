@@ -6,7 +6,7 @@ edition = "2021"
 authors = ["Graphite Authors <contact@graphite.rs>"]
 description = "Procedural macro to build the camera data into rust code"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/raw-rs/build-camera-data"
+repository = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/rawkit/build-camera-data"
 
 [lib]
 proc-macro = true

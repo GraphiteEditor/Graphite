@@ -1228,7 +1228,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "raw-rs"
+name = "rawkit"
 version = "0.0.1"
 dependencies = [
  "bitstream-io",
