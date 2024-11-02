@@ -161,13 +161,13 @@ fn random<U: num_traits::float::Float>(
 }
 
 // To u32
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(name("To u32"), category("Math: Numeric"))]
 fn to_u32<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] value: U) -> u32 {
 	value.to_u32().unwrap()
 }
 
 // To u64
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(name("To u64"), category("Math: Numeric"))]
 fn to_u64<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] value: U) -> u64 {
 	value.to_u64().unwrap()
 }
