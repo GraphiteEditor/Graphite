@@ -160,6 +160,18 @@ fn random<U: num_traits::float::Float>(
 	result * (max - min) + min
 }
 
+// To u32
+#[node_macro::node(category("Math: Numeric"))]
+fn to_u32<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] value: U) -> u32 {
+	value.to_u32().unwrap()
+}
+
+// To u64
+#[node_macro::node(category("Math: Numeric"))]
+fn to_u64<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] value: U) -> u64 {
+	value.to_u64().unwrap()
+}
+
 // Round
 #[node_macro::node(category("Math: Numeric"))]
 fn round<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] value: U) -> U {
@@ -199,6 +211,23 @@ fn max<T: core::cmp::PartialOrd>(_: (), #[implementations(f64, &f64, f32, &f32, 
 	match value > other_value {
 		true => value,
 		false => other_value,
+	}
+}
+
+// Clamp
+#[node_macro::node(category("Math: Numeric"))]
+fn clamp<T: core::cmp::PartialOrd>(
+	_: (),
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] min: T,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] max: T,
+) -> T {
+	if value < min {
+		min
+	} else if value > max {
+		max
+	} else {
+		value
 	}
 }
 
