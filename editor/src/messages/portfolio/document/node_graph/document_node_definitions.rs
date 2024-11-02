@@ -2774,6 +2774,13 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 		.collect()
 }
 
+pub fn collect_node_descriptions() -> Vec<(String, String)> {
+	DOCUMENT_NODE_TYPES
+		.iter()
+		.map(|definition| (definition.identifier.to_string(), definition.description.to_string()))
+		.collect()
+}
+
 impl DocumentNodeDefinition {
 	/// Converts the [DocumentNodeDefinition] type to a [NodeTemplate], using the provided `input_override` and falling back to the default inputs.
 	/// `input_override` does not have to be the correct length.

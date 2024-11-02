@@ -39,6 +39,16 @@ pub enum FrontendMessage {
 	},
 	DisplayRemoveEditableTextbox,
 
+	// Send prefix: Send global, static data to the frontend that is never updated
+	SendUIMetadata {
+		#[serde(rename = "inputTypeDescriptions")]
+		input_type_descriptions: Vec<(String, String)>,
+		#[serde(rename = "nodeDescriptions")]
+		node_descriptions: Vec<(String, String)>,
+		#[serde(rename = "nodeTypes")]
+		node_types: Vec<FrontendNodeType>,
+	},
+
 	// Trigger prefix: cause a browser API to do something
 	TriggerAboutGraphiteLocalizedCommitDate {
 		#[serde(rename = "commitDate")]
@@ -244,10 +254,6 @@ pub enum FrontendMessage {
 	UpdateNodeThumbnail {
 		id: NodeId,
 		value: String,
-	},
-	UpdateNodeTypes {
-		#[serde(rename = "nodeTypes")]
-		node_types: Vec<FrontendNodeType>,
 	},
 	UpdateOpenDocumentsList {
 		#[serde(rename = "openDocuments")]

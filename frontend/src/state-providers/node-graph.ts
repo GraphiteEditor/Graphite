@@ -10,6 +10,7 @@ import {
 	type FrontendNodeWire as FrontendNodeWire,
 	type FrontendNodeType,
 	type WirePath,
+	SendUIMetadata,
 	UpdateBox,
 	UpdateClickTargets,
 	UpdateContextMenuInformation,
@@ -19,7 +20,6 @@ import {
 	UpdateNodeGraph,
 	UpdateNodeGraphSelection,
 	UpdateNodeGraphTransform,
-	UpdateNodeTypes,
 	UpdateNodeThumbnail,
 	UpdateWirePathInProgress,
 	UpdateZoomWithScroll,
@@ -38,6 +38,8 @@ export function createNodeGraphState(editor: Editor) {
 		nodes: new Map<bigint, FrontendNode>(),
 		wires: [] as FrontendNodeWire[],
 		wirePathInProgress: undefined as WirePath | undefined,
+		inputTypeDescriptions: new Map<string, string>(),
+		nodeDescriptions: new Map<string, string>(),
 		nodeTypes: [] as FrontendNodeType[],
 		zoomWithScroll: false as boolean,
 		thumbnails: new Map<bigint, string>(),
@@ -47,6 +49,14 @@ export function createNodeGraphState(editor: Editor) {
 	});
 
 	// Set up message subscriptions on creation
+	editor.subscriptions.subscribeJsMessage(SendUIMetadata, (UIMetadata) => {
+		update((state) => {
+			state.inputTypeDescriptions = UIMetadata.inputTypeDescriptions;
+			state.nodeDescriptions = UIMetadata.nodeDescriptions;
+			state.nodeTypes = UIMetadata.nodeTypes;
+			return state;
+		});
+	});
 	editor.subscriptions.subscribeJsMessage(UpdateBox, (updateBox) => {
 		update((state) => {
 			state.box = updateBox.box;
@@ -105,12 +115,6 @@ export function createNodeGraphState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphTransform, (updateNodeGraphTransform) => {
 		update((state) => {
 			state.transform = updateNodeGraphTransform.transform;
-			return state;
-		});
-	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeTypes, (updateNodeTypes) => {
-		update((state) => {
-			state.nodeTypes = updateNodeTypes.nodeTypes;
 			return state;
 		});
 	});

@@ -89,7 +89,14 @@ export class UpdateNodeGraphTransform extends JsMessage {
 	readonly transform!: NodeGraphTransform;
 }
 
-export class UpdateNodeTypes extends JsMessage {
+const InputTypeDescriptions = Transform(({ obj }) => new Map(obj.inputTypeDescriptions));
+const NodeDescriptions = Transform(({ obj }) => new Map(obj.nodeDescriptions));
+
+export class SendUIMetadata extends JsMessage {
+	@InputTypeDescriptions
+	readonly inputTypeDescriptions!: Map<string, string>;
+	@NodeDescriptions
+	readonly nodeDescriptions!: Map<string, string>;
 	@Type(() => FrontendNode)
 	readonly nodeTypes!: FrontendNodeType[];
 }
@@ -1547,6 +1554,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayEditableTextbox,
 	DisplayEditableTextboxTransform,
 	DisplayRemoveEditableTextbox,
+	SendUIMetadata,
 	TriggerAboutGraphiteLocalizedCommitDate,
 	TriggerCopyToClipboardBlobUrl,
 	TriggerDelayedZoomCanvasToFitAll,
@@ -1596,7 +1604,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateNodeGraphSelection,
 	UpdateNodeGraphTransform,
 	UpdateNodeThumbnail,
-	UpdateNodeTypes,
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelSectionsLayout,
 	UpdateToolOptionsLayout,
