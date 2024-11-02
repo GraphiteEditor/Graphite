@@ -5,13 +5,13 @@ use crate::registry::types::{Angle, Fraction, IntegerCount, Length, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::style::LineJoin;
-use crate::vector::PointDomain;
+use crate::vector::{PointDomain, SegmentDomain};
 use crate::{Color, GraphicElement, GraphicGroup};
 
 use bezier_rs::{Cap, Join, Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
 use rand::{Rng, SeedableRng};
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 /// Implemented for types that can be converted to an iterator of vector data.
 /// Used for the fill and stroke node so they can be used on VectorData or GraphicGroup
@@ -973,6 +973,136 @@ async fn splines_from_points<F: 'n + Send>(
 	}
 
 	vector_data
+}
+
+#[node_macro::node(category("Vector"))]
+async fn merge_by_distance<F: 'n + Send>(
+	#[implementations(
+		(),
+		Footprint,
+	)]
+	footprint: F,
+	#[implementations(
+		() -> VectorData,
+		Footprint -> VectorData,
+	)]
+	vector_data: impl Node<F, Output = VectorData>,
+	distance: Length,
+) -> VectorData {
+	// Evaluate the vector data asynchronously.
+	let vector_data = vector_data.eval(footprint).await;
+
+	// TODO: Make this work on shapes that have a non-identity transform (like a star created with the Polygon tool).
+
+	// Exit early if distance is non-positive.
+	if distance <= 0. {
+		return vector_data;
+	}
+
+	// Clone the vector data to create a mutable result.
+	let mut result = vector_data.clone();
+
+	// Apply the transformation to the point positions.
+	let transformed_positions: Vec<_> = result
+		.point_domain
+		.ids()
+		.iter()
+		.zip(result.point_domain.positions())
+		.map(|(&id, &p)| (id, result.transform.transform_point2(p)))
+		.collect();
+
+	// Initialize Union-Find data structure for clusters.
+	let mut parent = (0..transformed_positions.len()).collect::<Vec<_>>();
+
+	// Define Union-Find `find` and `union` functions.
+	fn find(parent: &mut [usize], i: usize) -> usize {
+		if parent[i] != i {
+			parent[i] = find(parent, parent[i]); // Path compression.
+		}
+		parent[i]
+	}
+
+	fn union(parent: &mut [usize], i: usize, j: usize) {
+		let pi = find(parent, i);
+		let pj = find(parent, j);
+		if pi != pj {
+			// Union by assigning one root to another.
+			parent[pj] = pi;
+		}
+	}
+
+	// Merge clusters if points are within the given distance.
+	for i in 0..transformed_positions.len() {
+		for j in (i + 1)..transformed_positions.len() {
+			let pi = find(&mut parent, i);
+			let pj = find(&mut parent, j);
+			if pi != pj {
+				let distance_between_points = (transformed_positions[i].1 - transformed_positions[j].1).length();
+				if distance_between_points <= distance {
+					union(&mut parent, pi, pj);
+				}
+			}
+		}
+	}
+
+	// After merging, collect the clusters based on their root parent.
+	let mut cluster_map: HashMap<usize, Vec<usize>> = HashMap::new();
+	for i in 0..transformed_positions.len() {
+		let p = find(&mut parent, i);
+		cluster_map.entry(p).or_default().push(i);
+	}
+
+	// Create new points by averaging clusters.
+	let mut new_positions = Vec::new();
+	let mut point_mapping = vec![(0, DVec2::ZERO); transformed_positions.len()];
+	for (new_index, cluster_points) in cluster_map.values().enumerate() {
+		let point_id = transformed_positions[cluster_points[0]].0;
+		let avg_position = cluster_points.iter().map(|&i| transformed_positions[i].1).fold(DVec2::ZERO, |acc, p| acc + p) / (cluster_points.len() as f64);
+		let delta = avg_position - transformed_positions[cluster_points[0]].1;
+		new_positions.push((point_id, avg_position));
+		for &old_index in cluster_points {
+			point_mapping[old_index] = (new_index, delta);
+		}
+	}
+
+	// Update the point domain with new positions.
+	result.point_domain.clear();
+	for (point_id, new_point) in new_positions.into_iter().map(|(id, p)| (id, result.transform.inverse().transform_point2(p))) {
+		result.point_domain.push(point_id, new_point);
+	}
+
+	// Update segments to use the new point indices.
+	let mut new_segments = SegmentDomain::default();
+	for index in 0..result.segment_domain.ids().len() {
+		let start_point = result.segment_domain.start_point()[index];
+		let end_point = result.segment_domain.end_point()[index];
+
+		let new_start = point_mapping[start_point];
+		let new_end = point_mapping[end_point];
+
+		if new_start != new_end {
+			let segment_id = result.segment_domain.ids()[index];
+			let stroke_id = result.segment_domain.stroke()[index];
+
+			// TODO: Make the delta (new_start.1 and new_end.1) apply correctly to the handles to make them always offset exactly with the anchor points.
+
+			let handles = match result.segment_domain.handles()[index] {
+				bezier_rs::BezierHandles::Linear => bezier_rs::BezierHandles::Linear,
+				bezier_rs::BezierHandles::Quadratic { handle } => bezier_rs::BezierHandles::Quadratic {
+					handle: result.transform.transform_point2(handle),
+				},
+				bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => bezier_rs::BezierHandles::Cubic {
+					handle_start: result.transform.transform_point2(handle_start),
+					handle_end: result.transform.transform_point2(handle_end),
+				},
+			};
+
+			new_segments.push(segment_id, new_start.0, new_end.0, handles, stroke_id);
+		}
+	}
+	result.segment_domain = new_segments;
+
+	result
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
