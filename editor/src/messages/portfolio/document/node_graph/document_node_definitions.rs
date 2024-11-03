@@ -51,7 +51,7 @@ pub struct DocumentNodeDefinition {
 	pub category: &'static str,
 	pub properties: &'static (dyn Fn(&DocumentNode, NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Sync),
 
-	/// Description of the nodes functionality.
+	/// User-facing description of the node's functionality.
 	pub description: Cow<'static, str>,
 }
 
