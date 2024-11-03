@@ -1,5 +1,6 @@
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::dialog::DialogMessageData;
+use crate::messages::portfolio::document::node_graph::document_node_definitions;
 use crate::messages::prelude::*;
 
 use graphene_core::text::Font;
@@ -137,6 +138,13 @@ impl Dispatcher {
 					// Load the default font
 					let font = Font::new(graphene_core::consts::DEFAULT_FONT_FAMILY.into(), graphene_core::consts::DEFAULT_FONT_STYLE.into());
 					queue.add(FrontendMessage::TriggerFontLoad { font, is_default: true });
+
+					// Send the information for tooltips and categories for each node/input.
+					queue.add(FrontendMessage::SendUIMetadata {
+						input_type_descriptions: Vec::new(),
+						node_descriptions: document_node_definitions::collect_node_descriptions(),
+						node_types: document_node_definitions::collect_node_types(),
+					});
 				}
 				Message::Batched(messages) => {
 					messages.iter().for_each(|message| self.handle_message(message.to_owned()));

@@ -34,6 +34,7 @@ pub struct NodeMetadata {
 	pub display_name: &'static str,
 	pub category: Option<&'static str>,
 	pub fields: Vec<FieldMetadata>,
+	pub description: &'static str,
 }
 
 #[derive(Clone, Debug)]

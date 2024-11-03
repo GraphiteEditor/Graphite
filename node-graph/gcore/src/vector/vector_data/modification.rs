@@ -500,6 +500,7 @@ fn modify_existing() {
 	);
 }
 
+// Do we want to enforce that all serialized/deserialized hashmaps are a vec of tuples?
 // TODO: Eventually remove this (probably starting late 2024)
 use serde::de::{SeqAccess, Visitor};
 use serde::ser::SerializeSeq;

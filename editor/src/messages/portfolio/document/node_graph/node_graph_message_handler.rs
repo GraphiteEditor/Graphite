@@ -1358,9 +1358,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(BroadcastEvent::SelectionChanged);
 
 				responses.add(NodeGraphMessage::SendGraph);
-
-				let node_types = document_node_definitions::collect_node_types();
-				responses.add(FrontendMessage::UpdateNodeTypes { node_types });
 			}
 			NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors } => {
 				for (path, node_type) in resolved_types.add {
@@ -1897,7 +1894,7 @@ impl NodeGraphMessageHandler {
 					.node_metadata(&node_id, breadcrumb_network_path)
 					.is_some_and(|node_metadata| node_metadata.persistent_metadata.is_layer()),
 				can_be_layer: can_be_layer_lookup.contains(&node_id),
-				reference: None,
+				reference: network_interface.reference(&node_id, breadcrumb_network_path),
 				display_name: network_interface.frontend_display_name(&node_id, breadcrumb_network_path),
 				primary_input,
 				exposed_inputs,

@@ -90,7 +90,7 @@
 					<TextLabel>{nodeCategory[0]}</TextLabel>
 				</summary>
 				{#each nodeCategory[1].nodes as nodeType}
-					<TextButton {disabled} label={nodeType.name} action={() => dispatch("selectNodeType", nodeType.name)} />
+					<TextButton {disabled} label={nodeType.name} tooltip={$nodeGraph.nodeDescriptions.get(nodeType.name)} action={() => dispatch("selectNodeType", nodeType.name)} />
 				{/each}
 			</details>
 		{:else}

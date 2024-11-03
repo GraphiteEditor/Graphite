@@ -461,6 +461,7 @@
 			{@const stackDataInput = node.exposedInputs[0]}
 			{@const layerAreaWidth = $nodeGraph.layerWidths.get(node.id) || 8}
 			{@const layerChainWidth = $nodeGraph.chainWidths.get(node.id) || 0}
+			{@const description = (node.reference && $nodeGraph.nodeDescriptions.get(node.reference)) || undefined}
 			<div
 				class="layer"
 				class:selected={$nodeGraph.selected.includes(node.id)}
@@ -474,6 +475,7 @@
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
 				style:--layer-area-width={layerAreaWidth}
 				style:--node-chain-area-left-extension={layerChainWidth !== 0 ? layerChainWidth + 0.5 : 0}
+				title={description + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}` : "")}
 				data-node={node.id}
 				bind:this={nodeElements[nodeIndex]}
 			>
@@ -556,9 +558,7 @@
 				{/if}
 				<div class="details">
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
-					<span title={editor.handle.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined}>
-						{node.displayName}
-					</span>
+					<span>{node.displayName}</span>
 				</div>
 				<div class="solo-drag-grip" title="Drag only this layer without pushing others outside the stack"></div>
 				<IconButton
@@ -604,6 +604,7 @@
 		{#each Array.from($nodeGraph.nodes.values()).flatMap((node, nodeIndex) => (node.isLayer ? [] : [{ node, nodeIndex }])) as { node, nodeIndex } (nodeIndex)}
 			{@const exposedInputsOutputs = [...node.exposedInputs, ...node.exposedOutputs]}
 			{@const clipPathId = String(Math.random()).substring(2)}
+			{@const description = (node.reference && $nodeGraph.nodeDescriptions.get(node.reference)) || undefined}
 			<div
 				class="node"
 				class:selected={$nodeGraph.selected.includes(node.id)}
@@ -614,6 +615,7 @@
 				style:--clip-path-id={`url(#${clipPathId})`}
 				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
+				title={description + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}` : "")}
 				data-node={node.id}
 				bind:this={nodeElements[nodeIndex]}
 			>
@@ -625,7 +627,7 @@
 				<div class="primary" class:in-selected-network={$nodeGraph.inSelectedNetwork} class:no-secondary-section={exposedInputsOutputs.length === 0}>
 					<IconLabel icon={nodeIcon(node.reference)} />
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
-					<TextLabel tooltip={editor.handle.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined}>{node.displayName}</TextLabel>
+					<TextLabel>{node.displayName}</TextLabel>
 				</div>
 				<!-- Secondary rows -->
 				{#if exposedInputsOutputs.length > 0}
