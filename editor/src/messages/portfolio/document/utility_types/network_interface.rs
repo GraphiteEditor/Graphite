@@ -2783,10 +2783,10 @@ impl NodeNetworkInterface {
 		bounding_box_subpath.bounding_box_with_transform(network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport)
 	}
 
-	pub fn collect_layer_widths(&mut self, network_path: &[NodeId]) -> (HashMap<NodeId, u32>, HashMap<NodeId, u32>) {
+	pub fn collect_layer_widths(&mut self, network_path: &[NodeId]) -> (HashMap<NodeId, u32>, HashMap<NodeId, u32>, HashMap<NodeId, bool>) {
 		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in collect_layer_widths");
-			return (HashMap::new(), HashMap::new());
+			return (HashMap::new(), HashMap::new(), HashMap::new());
 		};
 		let nodes = network_metadata
 			.persistent_metadata
@@ -2794,13 +2794,25 @@ impl NodeNetworkInterface {
 			.iter()
 			.filter_map(|(node_id, _)| if self.is_layer(node_id, network_path) { Some(*node_id) } else { None })
 			.collect::<Vec<_>>();
-		(
-			nodes
-				.iter()
-				.filter_map(|node_id| self.layer_width(node_id, network_path).map(|layer_width| (*node_id, layer_width)))
-				.collect::<HashMap<NodeId, u32>>(),
-			nodes.iter().map(|node_id| (*node_id, self.chain_width(node_id, network_path))).collect::<HashMap<NodeId, u32>>(),
-		)
+		let layer_widths = nodes
+			.iter()
+			.filter_map(|node_id| self.layer_width(node_id, network_path).map(|layer_width| (*node_id, layer_width)))
+			.collect::<HashMap<NodeId, u32>>();
+		let chain_widths = nodes.iter().map(|node_id| (*node_id, self.chain_width(node_id, network_path))).collect::<HashMap<NodeId, u32>>();
+		let has_left_input_wire = nodes
+			.iter()
+			.map(|node_id| {
+				(
+					*node_id,
+					!self
+						.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::HorizontalFlow)
+						.skip(1)
+						.all(|node_id| self.is_chain(&node_id, network_path)),
+				)
+			})
+			.collect::<HashMap<NodeId, bool>>();
+
+		(layer_widths, chain_widths, has_left_input_wire)
 	}
 
 	pub fn compute_modified_vector(&self, layer: LayerNodeIdentifier) -> Option<VectorData> {

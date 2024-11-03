@@ -231,7 +231,7 @@
 		return borderMask(boxes, nodeWidth, nodeHeight);
 	}
 
-	function layerBorderMask(nodeWidthFromThumbnail: number, nodeChainAreaLeftExtension: number): string {
+	function layerBorderMask(nodeWidthFromThumbnail: number, nodeChainAreaLeftExtension: number, hasLeftInputWire: boolean): string {
 		const NODE_HEIGHT = 2 * 24;
 		const THUMBNAIL_WIDTH = 72 + 8 * 2;
 		const FUDGE_HEIGHT_BEYOND_LAYER_HEIGHT = 2;
@@ -241,7 +241,7 @@
 		const boxes: { x: number; y: number; width: number; height: number }[] = [];
 
 		// Left input
-		if (nodeChainAreaLeftExtension > 0) {
+		if (hasLeftInputWire && nodeChainAreaLeftExtension > 0) {
 			boxes.push({ x: -8, y: 16, width: 16, height: 16 });
 		}
 
@@ -461,6 +461,7 @@
 			{@const stackDataInput = node.exposedInputs[0]}
 			{@const layerAreaWidth = $nodeGraph.layerWidths.get(node.id) || 8}
 			{@const layerChainWidth = $nodeGraph.chainWidths.get(node.id) || 0}
+			{@const hasLeftInputWire = $nodeGraph.hasLeftInputWire.get(node.id) || false}
 			{@const description = (node.reference && $nodeGraph.nodeDescriptions.get(node.reference)) || undefined}
 			<div
 				class="layer"
@@ -576,7 +577,7 @@
 					<defs>
 						<clipPath id={clipPathId}>
 							<!-- Keep this equation in sync with the equivalent one in the CSS rule for `.layer { width: ... }` below -->
-							<path clip-rule="evenodd" d={layerBorderMask(24 * layerAreaWidth - 12, layerChainWidth ? (0.5 + layerChainWidth) * 24 : 0)} />
+							<path clip-rule="evenodd" d={layerBorderMask(24 * layerAreaWidth - 12, layerChainWidth ? (0.5 + layerChainWidth) * 24 : 0, hasLeftInputWire)} />
 						</clipPath>
 					</defs>
 				</svg>

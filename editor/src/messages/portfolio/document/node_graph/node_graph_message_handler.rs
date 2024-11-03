@@ -1076,12 +1076,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					// TODO: Implement culling of nodes and wires whose bounding boxes are outside of the viewport
 					let wires = Self::collect_wires(network_interface, breadcrumb_network_path);
 					let nodes = self.collect_nodes(network_interface, breadcrumb_network_path);
-					let (layer_widths, chain_widths) = network_interface.collect_layer_widths(breadcrumb_network_path);
+					let (layer_widths, chain_widths, has_left_input_wire) = network_interface.collect_layer_widths(breadcrumb_network_path);
 					let imports = network_interface.frontend_imports(breadcrumb_network_path).unwrap_or_default();
 					let exports = network_interface.frontend_exports(breadcrumb_network_path).unwrap_or_default();
 					responses.add(FrontendMessage::UpdateImportsExports { imports, exports });
 					responses.add(FrontendMessage::UpdateNodeGraph { nodes, wires });
-					responses.add(FrontendMessage::UpdateLayerWidths { layer_widths, chain_widths });
+					responses.add(FrontendMessage::UpdateLayerWidths {
+						layer_widths,
+						chain_widths,
+						has_left_input_wire,
+					});
 					responses.add(NodeGraphMessage::SendSelectedNodes);
 				}
 			}

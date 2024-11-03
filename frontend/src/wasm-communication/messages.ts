@@ -69,12 +69,15 @@ export class UpdateInSelectedNetwork extends JsMessage {
 
 const LayerWidths = Transform(({ obj }) => obj.layerWidths);
 const ChainWidths = Transform(({ obj }) => obj.chainWidths);
+const HasLeftInputWire = Transform(({ obj }) => obj.hasLeftInputWire);
 
 export class UpdateLayerWidths extends JsMessage {
 	@LayerWidths
 	readonly layerWidths!: Map<bigint, number>;
 	@ChainWidths
 	readonly chainWidths!: Map<bigint, number>;
+	@HasLeftInputWire
+	readonly hasLeftInputWire!: Map<bigint, boolean>;
 }
 
 export class UpdateNodeGraph extends JsMessage {

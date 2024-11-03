@@ -158,6 +158,8 @@ pub enum FrontendMessage {
 		layer_widths: HashMap<NodeId, u32>,
 		#[serde(rename = "chainWidths")]
 		chain_widths: HashMap<NodeId, u32>,
+		#[serde(rename = "hasLeftInputWire")]
+		has_left_input_wire: HashMap<NodeId, bool>,
 	},
 	UpdateDialogButtons {
 		#[serde(rename = "layoutTarget")]

@@ -33,6 +33,7 @@ export function createNodeGraphState(editor: Editor) {
 		contextMenuInformation: undefined as ContextMenuInformation | undefined,
 		layerWidths: new Map<bigint, number>(),
 		chainWidths: new Map<bigint, number>(),
+		hasLeftInputWire: new Map<bigint, boolean>(),
 		imports: [] as { outputMetadata: FrontendGraphOutput; position: { x: number; y: number } }[],
 		exports: [] as { inputMetadata: FrontendGraphInput; position: { x: number; y: number } }[],
 		nodes: new Map<bigint, FrontendNode>(),
@@ -92,6 +93,7 @@ export function createNodeGraphState(editor: Editor) {
 		update((state) => {
 			state.layerWidths = updateLayerWidths.layerWidths;
 			state.chainWidths = updateLayerWidths.chainWidths;
+			state.hasLeftInputWire = updateLayerWidths.hasLeftInputWire;
 			return state;
 		});
 	});
