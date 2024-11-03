@@ -1,6 +1,6 @@
 use super::misc::CentroidType;
 use super::style::{Fill, Gradient, GradientStops, Stroke};
-use super::{PointId, SegmentId, StrokeId, VectorData};
+use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
@@ -11,7 +11,6 @@ use crate::{Color, GraphicElement, GraphicGroup};
 use bezier_rs::{Cap, Join, Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
 use rand::{Rng, SeedableRng};
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 /// Implemented for types that can be converted to an iterator of vector data.
 /// Used for the fill and stroke node so they can be used on VectorData or GraphicGroup
@@ -857,99 +856,10 @@ async fn splines_from_points<F: 'n + Send>(
 		return vector_data;
 	}
 
-	// Extract points and take ownership of the segment domain for processing.
-	let points = &vector_data.point_domain;
-	let segments = std::mem::take(&mut vector_data.segment_domain);
-
-	// Map segment IDs to their indices using BTreeMap for deterministic ordering.
-	let segment_id_to_index = segments.ids().iter().copied().enumerate().map(|(i, id)| (id, i)).collect::<BTreeMap<_, _>>();
-
-	// Iterate over all segments to generate splines.
-	let mut visited_segments = BTreeSet::new();
-	for (segment_index, &segment_id) in segments.ids().iter().enumerate() {
-		// Skip segments that have already been visited.
-		if visited_segments.contains(&segment_id) {
-			continue;
-		}
-
-		let mut current_subpath_segments = Vec::new();
-		let mut queue = VecDeque::new();
-		queue.push_back(segment_index);
-
-		// Traverse the connected segments to form a subpath.
-		while let Some(segment_index) = queue.pop_front() {
-			// Skip segments that have already been visited, otherwise add them to the visited set and the current subpath.
-			let seg_id = segments.ids()[segment_index];
-			if visited_segments.contains(&seg_id) {
-				continue;
-			}
-			visited_segments.insert(seg_id);
-			current_subpath_segments.push(segment_index);
-
-			// Get the start and end points of the segment.
-			let start_point_index = segments.start_point()[segment_index];
-			let end_point_index = segments.end_point()[segment_index];
-
-			// For both start and end points, find and enqueue connected segments.
-			for point_index in [start_point_index, end_point_index] {
-				let mut connected_seg_ids = segments.start_connected(point_index).chain(segments.end_connected(point_index)).collect::<Vec<_>>();
-				connected_seg_ids.sort_unstable(); // Ensure deterministic order
-				for connected_seg_id in connected_seg_ids {
-					let connected_seg_index = *segment_id_to_index.get(&connected_seg_id).unwrap_or(&usize::MAX);
-					if connected_seg_index != usize::MAX && !visited_segments.contains(&connected_seg_id) {
-						queue.push_back(connected_seg_index);
-					}
-				}
-			}
-		}
-
-		// Build a mapping from each point to its connected points using BTreeMap for deterministic ordering.
-		let mut point_connections: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
-		for &seg_index in &current_subpath_segments {
-			let start = segments.start_point()[seg_index];
-			let end = segments.end_point()[seg_index];
-			point_connections.entry(start).or_default().push(end);
-			point_connections.entry(end).or_default().push(start);
-		}
-
-		// Sort connected points for deterministic traversal.
-		for neighbors in point_connections.values_mut() {
-			neighbors.sort_unstable();
-		}
-
-		// Identify endpoints.
-		let endpoints = point_connections
-			.iter()
-			.filter(|(_, neighbors)| neighbors.len() == 1)
-			.map(|(&point_index, _)| point_index)
-			.collect::<Vec<_>>();
-
-		let mut ordered_point_indices = Vec::new();
-
-		// Start with the first endpoint or the first point if there are no endpoints because it's a closed subpath.
-		let start_point_index = endpoints.first().copied().unwrap_or_else(|| *point_connections.keys().next().unwrap());
-
-		// Traverse points to order them into a path.
-		let mut visited_points = BTreeSet::new();
-		let mut current_point = start_point_index;
-		loop {
-			ordered_point_indices.push(current_point);
-			visited_points.insert(current_point);
-
-			let Some(neighbors) = point_connections.get(&current_point) else { break };
-			let next_point = neighbors.iter().find(|&pt| !visited_points.contains(pt));
-			let Some(&next_point) = next_point else { break };
-			current_point = next_point;
-		}
-
-		// If it's a closed subpath, close the spline loop by adding the start point at the end.
-		let closed = endpoints.is_empty();
-		if closed {
-			ordered_point_indices.push(start_point_index);
-		}
-
-		// Collect the positions of the ordered points.
-		let positions = ordered_point_indices.iter().map(|&index| points.positions()[index]).collect::<Vec<_>>();
+	let mut segment_domain = SegmentDomain::default();
+	for subpath in vector_data.stroke_bezier_paths() {
+		let positions = subpath.manipulator_groups().iter().map(|group| group.anchor).collect::<Vec<_>>();
+		let _closed = subpath.closed();
 
 		// Compute control point handles for Bezier spline.
 		// TODO: Make this support wrapping around between start and end points for closed subpaths.
@@ -961,16 +871,17 @@ async fn splines_from_points<F: 'n + Send>(
 		for i in 0..(positions.len() - 1) {
 			let next_index = (i + 1) % positions.len();
 
-			let start_index = ordered_point_indices[i];
-			let end_index = ordered_point_indices[next_index];
+			let start_index = vector_data.point_domain.resolve_id(subpath.manipulator_groups()[i].id).unwrap();
+			let end_index = vector_data.point_domain.resolve_id(subpath.manipulator_groups()[next_index].id).unwrap();
 
 			let handle_start = first_handles[i];
 			let handle_end = positions[next_index] * 2. - first_handles[next_index];
 			let handles = bezier_rs::BezierHandles::Cubic { handle_start, handle_end };
 
-			vector_data.segment_domain.push(SegmentId::generate(), start_index, end_index, handles, stroke_id);
+			segment_domain.push(SegmentId::generate(), start_index, end_index, handles, stroke_id);
 		}
 	}
+	vector_data.segment_domain = segment_domain;
 
 	vector_data
 }
