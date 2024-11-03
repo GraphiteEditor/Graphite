@@ -1,10 +1,7 @@
-extern crate proc_macro;
-
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Data, DeriveInput, Fields};
 
-#[proc_macro_derive(Tag)]
 pub fn tag_derive(input: TokenStream) -> TokenStream {
 	let ast: DeriveInput = syn::parse(input).unwrap();
 

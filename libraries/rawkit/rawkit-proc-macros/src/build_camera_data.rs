@@ -1,5 +1,3 @@
-extern crate proc_macro;
-
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 use toml::{Table, Value};
@@ -46,8 +44,7 @@ impl From<Value> for CustomValue {
 	}
 }
 
-#[proc_macro]
-pub fn build_camera_data(_: TokenStream) -> TokenStream {
+pub fn build_camera_data() -> TokenStream {
 	let mut camera_data: Vec<(String, Table)> = Vec::new();
 
 	let mut path = Path::new(&std::env::var("CARGO_MANIFEST_DIR").unwrap()).to_path_buf();

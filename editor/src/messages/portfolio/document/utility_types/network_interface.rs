@@ -4894,6 +4894,32 @@ impl NodeNetworkInterface {
 			self.create_wire(&OutputConnector::node(*node_id, 0), &InputConnector::node(parent.to_node(), 1), network_path);
 			self.set_chain_position(node_id, network_path);
 		} else {
+			// TODO: Implement a more robust horizontal shift system when inserting a node into a chain.
+			// This should be done by breaking the chain and shifting the sole dependents for each node upstream of the insertion.
+			// Before inserting the node, shift the layer right 7 units so that all sole dependents are also shifted
+			// let input_connector = InputConnector::node(parent.to_node(), 0);
+			// let old_upstream = self.upstream_output_connector(&input_connector, network_path);
+			// This also needs to disconnect from the downstream layer
+			// self.disconnect_input(&input_connector, network_path);
+			// let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
+			// 	log::error!("Could not get selected nodes in move_layer_to_stack");
+			// 	return;
+			// };
+			// let old_selected_nodes = selected_nodes.replace_with(vec![parent.to_node()]);
+
+			// for _ in 0..7 {
+			// 	self.shift_selected_nodes(Direction::Left, false, network_path);
+			// }
+			// // Grip drag it back to the right
+			// for _ in 0..7 {
+			// 	self.shift_selected_nodes(Direction::Right, true, network_path);
+			// }
+			// let _ = self.selected_nodes_mut(network_path).unwrap().replace_with(old_selected_nodes);
+			// if let Some(old_upstream) = old_upstream {
+			// 	self.create_wire(&old_upstream, &input_connector, network_path);
+			// }
+
+			// Insert the node in the gap and set the upstream to a chain
 			self.insert_node_between(node_id, &InputConnector::node(parent.to_node(), 1), 0, network_path);
 			self.force_set_upstream_to_chain(node_id, network_path);
 		}

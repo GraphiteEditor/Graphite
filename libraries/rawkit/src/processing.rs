@@ -25,18 +25,18 @@ impl<T: Fn(RawPixel) -> u16> RawPixelTransform for T {
 }
 
 macro_rules! impl_raw_pixel_transform {
-    ($($idx:tt $t:tt),+) => {
-        impl<$($t,)+> RawPixelTransform for ($($t,)+)
-        where
-            $($t: RawPixelTransform,)+
-        {
-            fn apply(&mut self, mut pixel: RawPixel) -> u16 {
-            	$(pixel.value = self.$idx.apply(pixel);)*
+	($($idx:tt $t:tt),+) => {
+		impl<$($t,)+> RawPixelTransform for ($($t,)+)
+		where
+			$($t: RawPixelTransform,)+
+		{
+			fn apply(&mut self, mut pixel: RawPixel) -> u16 {
+				$(pixel.value = self.$idx.apply(pixel);)*
 
 				pixel.value
-            }
-        }
-    };
+			}
+		}
+	};
 }
 
 impl_raw_pixel_transform!(0 A);
@@ -59,18 +59,18 @@ impl<T: Fn(Pixel) -> [u16; CHANNELS_IN_RGB]> PixelTransform for T {
 }
 
 macro_rules! impl_pixel_transform {
-    ($($idx:tt $t:tt),+) => {
-        impl<$($t,)+> PixelTransform for ($($t,)+)
-        where
-            $($t: PixelTransform,)+
-        {
-            fn apply(&mut self, mut pixel: Pixel) -> [u16; CHANNELS_IN_RGB] {
+	($($idx:tt $t:tt),+) => {
+		impl<$($t,)+> PixelTransform for ($($t,)+)
+		where
+			$($t: PixelTransform,)+
+		{
+			fn apply(&mut self, mut pixel: Pixel) -> [u16; CHANNELS_IN_RGB] {
 				$(pixel.values = self.$idx.apply(pixel);)*
 
 				pixel.values
-            }
-        }
-    };
+			}
+		}
+	};
 }
 
 impl_pixel_transform!(0 A);

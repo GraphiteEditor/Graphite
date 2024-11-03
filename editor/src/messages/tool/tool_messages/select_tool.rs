@@ -1061,19 +1061,6 @@ impl Fsm for SelectToolFsmState {
 						false
 					}
 				});
-				if let Some(mut bounding_box_overlays) = tool_data.bounding_box_manager.take() {
-					let mut selected = Selected::new(
-						&mut bounding_box_overlays.original_transforms,
-						&mut bounding_box_overlays.opposite_pivot,
-						&tool_data.layers_dragging,
-						responses,
-						&document.network_interface,
-						None,
-						&ToolType::Select,
-					);
-
-					selected.revert_operation();
-				}
 
 				responses.add(OverlaysMessage::Draw);
 

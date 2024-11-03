@@ -6,14 +6,14 @@ use graphene_std::vector::PointId;
 use glam::DVec2;
 
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
-pub fn should_extend(document: &DocumentMessageHandler, goal: DVec2, tolerance: f64) -> Option<(LayerNodeIdentifier, PointId, DVec2)> {
+pub fn should_extend(document: &DocumentMessageHandler, goal: DVec2, tolerance: f64, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Option<(LayerNodeIdentifier, PointId, DVec2)> {
 	let mut best = None;
 	let mut best_distance_squared = tolerance * tolerance;
-
-	for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
+	for layer in layers {
 		let viewspace = document.metadata().transform_to_viewport(layer);
-
-		let vector_data = document.network_interface.compute_modified_vector(layer)?;
+		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
+			continue;
+		};
 		for id in vector_data.single_connected_points() {
 			let Some(point) = vector_data.point_domain.position_from_id(id) else { continue };
 
