@@ -942,30 +942,43 @@ async fn splines_from_points<F: 'n + Send>(
 			current_point = next_point;
 		}
 
-		// If it's a closed subpath, close the spline loop by adding the start point at the end.
+		let mut nr_output_segments = ordered_point_indices.len();
+		
+		// If it's a closed subpath, close the spline loop by adding the start point at the end, and two additional points for correct Bezier handles for first/last node
 		let closed = endpoints.is_empty();
 		if closed {
 			ordered_point_indices.push(start_point_index);
+			ordered_point_indices.push(ordered_point_indices[1 % nr_output_segments]);
+			ordered_point_indices.push(ordered_point_indices[2 % nr_output_segments]);
+		} else {
+			nr_output_segments -= 1;
 		}
 
 		// Collect the positions of the ordered points.
 		let positions = ordered_point_indices.iter().map(|&index| points.positions()[index]).collect::<Vec<_>>();
 
 		// Compute control point handles for Bezier spline.
-		// TODO: Make this support wrapping around between start and end points for closed subpaths.
 		let first_handles = bezier_rs::solve_spline_first_handle(&positions);
 
 		let stroke_id = StrokeId::ZERO;
 
 		// Create segments with computed Bezier handles and add them to vector data.
-		for i in 0..(positions.len() - 1) {
-			let next_index = (i + 1) % positions.len();
+		for i in 0..nr_output_segments {
+			let next_index = (i + 1) % (nr_output_segments+1);
 
 			let start_index = ordered_point_indices[i];
 			let end_index = ordered_point_indices[next_index];
 
-			let handle_start = first_handles[i];
-			let handle_end = positions[next_index] * 2. - first_handles[next_index];
+			let mut handle_start_idx = i;
+			let mut handle_end_idx = next_index;
+
+			// If is a closed loop, copy the Bezier handles from the last node to the first node for a smooth curve
+			if closed && i==0 {
+				handle_start_idx = ordered_point_indices.len() - 3;
+				handle_end_idx = ordered_point_indices.len() - 2;
+			}
+			let handle_start = first_handles[handle_start_idx];
+			let handle_end = positions[handle_end_idx] * 2. - first_handles[handle_end_idx];
 			let handles = bezier_rs::BezierHandles::Cubic { handle_start, handle_end };
 
 			vector_data.segment_domain.push(SegmentId::generate(), start_index, end_index, handles, stroke_id);
