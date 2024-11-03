@@ -80,13 +80,13 @@ fn test_image(path: &Path) -> bool {
 	println!("{} => Passed", path.display());
 
 	// TODO: Remove this later
-	let mut image = rawkit::process_8bit(raw_image);
+	let mut image = raw_image.process_8bit();
 	store_image(path, "rawkit", &mut image.data, image.width, image.height);
 
 	let processor = Processor::new();
 	let libraw_image = processor.process_8bit(&content).unwrap();
 	let mut data = Vec::from_iter(libraw_image.iter().copied());
-	store_image(path, "libraw-rs", &mut data[..], libraw_image.width() as usize, libraw_image.height() as usize);
+	store_image(path, "libraw_rs", &mut data[..], libraw_image.width() as usize, libraw_image.height() as usize);
 
 	true
 }
@@ -134,7 +134,7 @@ fn test_raw_data(content: &[u8]) -> Result<RawImage, String> {
 	let libraw_raw_image = processor.decode(content).unwrap();
 
 	let mut content = Cursor::new(content);
-	let raw_image = rawkit::decode(&mut content).unwrap();
+	let raw_image = RawImage::decode(&mut content).unwrap();
 
 	if libraw_raw_image.sizes().raw_height as usize != raw_image.height {
 		return Err(format!(
@@ -206,7 +206,7 @@ fn _test_final_image(content: &[u8], raw_image: RawImage) -> Result<(), String> 
 	let processor = libraw::Processor::new();
 	let libraw_image = processor.process_8bit(content).unwrap();
 
-	let image = rawkit::process_8bit(raw_image);
+	let image = raw_image.process_8bit();
 
 	if libraw_image.height() as usize != image.height {
 		return Err(format!("The height of image is {} but the expected value was {}", image.height, libraw_image.height()));

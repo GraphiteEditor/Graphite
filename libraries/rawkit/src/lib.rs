@@ -44,7 +44,7 @@ pub struct RawImage {
 	/// Height of the raw image.
 	pub height: usize,
 
-	/// Bayer CFA pattern used to arrange pixels in `data`.
+	/// Bayer CFA pattern used to arrange pixels in [`RawImage::data`].
 	///
 	/// It encodes Red, Blue and Green as 0, 1, and 2 respectively.
 	pub cfa_pattern: [u8; 4],
@@ -65,22 +65,22 @@ pub struct RawImage {
 
 	/// White balance specified in the metadata of the raw file.
 	///
-	/// It represents the 4 values of CFA Grid which follows the same pattern as `cfa_pattern`
+	/// It represents the 4 values of CFA Grid which follows the same pattern as [`RawImage::cfa_pattern`].
 	pub camera_white_balance: Option<[f64; 4]>,
 
 	/// White balance of the raw image.
 	///
-	/// It is the same as `camera_white_balance` if the raw file contains the metadata.
+	/// It is the same as [`RawImage::camera_white_balance`] if the raw file contains the metadata.
 	/// Otherwise it falls back to calculating the white balance from the color space conversion matrix.
 	///
-	/// It represents the 4 values of CFA Grid which follows the same pattern as `cfa_pattern`
+	/// It represents the 4 values of CFA Grid which follows the same pattern as [`RawImage::cfa_pattern`].
 	pub white_balance: Option<[f64; 4]>,
 
-	/// Color space conversion matrix to convert from camera's color space to Standard RGB.
+	/// Color space conversion matrix to convert from camera's color space to sRGB.
 	pub camera_to_rgb: Option<[[f64; 3]; 3]>,
 }
 
-/// Represents the final RBG Image.
+/// Represents the final RGB Image.
 pub struct Image<T> {
 	/// Pixel data stored in a linear fashion.
 	pub data: Vec<T>,
@@ -97,9 +97,9 @@ pub struct Image<T> {
 	/// See <https://github.com/GraphiteEditor/Graphite/pull/1923#discussion_r1725070342> for more information.
 	pub channels: u8,
 
-	/// The transformation required to orientation the image correctly.
+	/// The transformation required to orient the image correctly.
 	///
-	/// This will be Horizontal after the transform step is applied.
+	/// This will be [`Transform::Horizontal`] after the transform step is applied.
 	pub transform: Transform,
 }
 
@@ -112,64 +112,75 @@ struct ArwIfd {
 	strip_byte_counts: StripByteCounts,
 }
 
-pub fn decode<R: Read + Seek>(reader: &mut R) -> Result<RawImage, DecoderError> {
-	let mut file = TiffRead::new(reader)?;
-	let ifd = Ifd::new_first_ifd(&mut file)?;
+impl RawImage {
+	/// Create a [`RawImage`] from an input stream.
+	///
+	/// Decodes the contents of `reader` and extracts raw pixel data and metadata.
+	pub fn decode<R: Read + Seek>(reader: &mut R) -> Result<RawImage, DecoderError> {
+		let mut file = TiffRead::new(reader)?;
+		let ifd = Ifd::new_first_ifd(&mut file)?;
 
-	let camera_model = metadata::identify::identify_camera_model(&ifd, &mut file).unwrap();
-	let transform = ifd.get_value::<Orientation, _>(&mut file)?;
+		let camera_model = metadata::identify::identify_camera_model(&ifd, &mut file).unwrap();
+		let transform = ifd.get_value::<Orientation, _>(&mut file)?;
 
-	let mut raw_image = if camera_model.model == "DSLR-A100" {
-		decoder::arw1::decode_a100(ifd, &mut file)
-	} else {
-		let sub_ifd = ifd.get_value::<SubIfd, _>(&mut file)?;
-		let arw_ifd = sub_ifd.get_value::<ArwIfd, _>(&mut file)?;
-
-		if arw_ifd.compression == 1 {
-			decoder::uncompressed::decode(sub_ifd, &mut file)
-		} else if arw_ifd.strip_byte_counts[0] == arw_ifd.image_width * arw_ifd.image_height {
-			decoder::arw2::decode(sub_ifd, &mut file)
+		let mut raw_image = if camera_model.model == "DSLR-A100" {
+			decoder::arw1::decode_a100(ifd, &mut file)
 		} else {
-			// TODO: implement for arw 1.
-			todo!()
-		}
-	};
+			let sub_ifd = ifd.get_value::<SubIfd, _>(&mut file)?;
+			let arw_ifd = sub_ifd.get_value::<ArwIfd, _>(&mut file)?;
 
-	raw_image.camera_model = Some(camera_model);
-	raw_image.transform = transform;
+			if arw_ifd.compression == 1 {
+				decoder::uncompressed::decode(sub_ifd, &mut file)
+			} else if arw_ifd.strip_byte_counts[0] == arw_ifd.image_width * arw_ifd.image_height {
+				decoder::arw2::decode(sub_ifd, &mut file)
+			} else {
+				// TODO: implement for arw 1.
+				todo!()
+			}
+		};
 
-	raw_image.calculate_conversion_matrices();
+		raw_image.camera_model = Some(camera_model);
+		raw_image.transform = transform;
 
-	Ok(raw_image)
-}
+		raw_image.calculate_conversion_matrices();
 
-pub fn process_8bit(raw_image: RawImage) -> Image<u8> {
-	let image = process_16bit(raw_image);
-
-	Image {
-		channels: image.channels,
-		data: image.data.iter().map(|x| (x >> 8) as u8).collect(),
-		width: image.width,
-		height: image.height,
-		transform: image.transform,
+		Ok(raw_image)
 	}
-}
 
-pub fn process_16bit(raw_image: RawImage) -> Image<u16> {
-	let subtract_black = raw_image.subtract_black_fn();
-	let scale_white_balance = raw_image.scale_white_balance_fn();
-	let scale_to_16bit = raw_image.scale_to_16bit_fn();
-	let raw_image = raw_image.apply((subtract_black, scale_white_balance, scale_to_16bit));
+	/// Converts the [`RawImage`] to an [`Image`] with 8 bit resolution for each channel.
+	///
+	/// Applies all the processing steps to finally get RGB pixel data.
+	pub fn process_8bit(self) -> Image<u8> {
+		let image = self.process_16bit();
 
-	let convert_to_rgb = raw_image.convert_to_rgb_fn();
-	let mut record_histogram = raw_image.record_histogram_fn();
-	let image = raw_image.demosaic_and_apply((convert_to_rgb, &mut record_histogram));
+		Image {
+			channels: image.channels,
+			data: image.data.iter().map(|x| (x >> 8) as u8).collect(),
+			width: image.width,
+			height: image.height,
+			transform: image.transform,
+		}
+	}
 
-	let gamma_correction = image.gamma_correction_fn(&record_histogram.histogram);
-	if image.transform == Transform::Horizontal {
-		image.apply(gamma_correction)
-	} else {
-		image.transform_and_apply(gamma_correction)
+	/// Converts the [`RawImage`] to an [`Image`] with 16 bit resolution for each channel.
+	///
+	/// Applies all the processing steps to finally get RGB pixel data.
+	pub fn process_16bit(self) -> Image<u16> {
+		let subtract_black = self.subtract_black_fn();
+		let scale_white_balance = self.scale_white_balance_fn();
+		let scale_to_16bit = self.scale_to_16bit_fn();
+		let raw_image = self.apply((subtract_black, scale_white_balance, scale_to_16bit));
+
+		let convert_to_rgb = raw_image.convert_to_rgb_fn();
+		let mut record_histogram = raw_image.record_histogram_fn();
+		let image = raw_image.demosaic_and_apply((convert_to_rgb, &mut record_histogram));
+
+		let gamma_correction = image.gamma_correction_fn(&record_histogram.histogram);
+		if image.transform == Transform::Horizontal {
+			image.apply(gamma_correction)
+		} else {
+			image.transform_and_apply(gamma_correction)
+		}
 	}
 }
 
