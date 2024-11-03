@@ -1,7 +1,7 @@
-// Only compile this file if the feature "raw-rs-tests" is enabled
-#![cfg(feature = "raw-rs-tests")]
+// Only compile this file if the feature "rawkit-tests" is enabled
+#![cfg(feature = "rawkit-tests")]
 
-use raw_rs::RawImage;
+use rawkit::RawImage;
 
 use image::codecs::png::{CompressionType, FilterType, PngEncoder};
 use image::{ColorType, ImageEncoder};
@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 const TEST_FILES: [&str; 3] = ["ILCE-7M3-ARW2.3.5-blossoms.arw", "ILCE-7RM4-ARW2.3.5-kestrel.arw", "ILCE-6000-ARW2.3.1-windsock.arw"];
-const BASE_URL: &str = "https://static.graphite.rs/test-data/libraries/raw-rs/";
+const BASE_URL: &str = "https://static.graphite.rs/test-data/libraries/rawkit/";
 const BASE_PATH: &str = "./tests/images/";
 
 #[test]
@@ -29,7 +29,7 @@ fn test_images_match_with_libraw() {
 		.filter(|path| path.is_file() && path.file_name().map(|file_name| file_name != ".gitkeep").unwrap_or(false))
 		.collect();
 
-	let failed_tests = if std::env::var("RAW_RS_TEST_RUN_SEQUENTIALLY").is_ok() {
+	let failed_tests = if std::env::var("RAWKIT_TEST_RUN_SEQUENTIALLY").is_ok() {
 		let mut failed_tests = 0;
 
 		paths.iter().for_each(|path| {
@@ -80,8 +80,8 @@ fn test_image(path: &Path) -> bool {
 	println!("{} => Passed", path.display());
 
 	// TODO: Remove this later
-	let mut image = raw_rs::process_8bit(raw_image);
-	store_image(path, "raw_rs", &mut image.data, image.width, image.height);
+	let mut image = raw_image.process_8bit();
+	store_image(path, "rawkit", &mut image.data, image.width, image.height);
 
 	let processor = Processor::new();
 	let libraw_image = processor.process_8bit(&content).unwrap();
@@ -134,7 +134,7 @@ fn test_raw_data(content: &[u8]) -> Result<RawImage, String> {
 	let libraw_raw_image = processor.decode(content).unwrap();
 
 	let mut content = Cursor::new(content);
-	let raw_image = raw_rs::decode(&mut content).unwrap();
+	let raw_image = RawImage::decode(&mut content).unwrap();
 
 	if libraw_raw_image.sizes().raw_height as usize != raw_image.height {
 		return Err(format!(
@@ -165,7 +165,7 @@ fn test_raw_data(content: &[u8]) -> Result<RawImage, String> {
 
 		write!(&mut err_msg, "The raw data does not match").unwrap();
 
-		if std::env::var("RAW_RS_TEST_PRINT_HISTOGRAM").is_ok() {
+		if std::env::var("RAWKIT_TEST_PRINT_HISTOGRAM").is_ok() {
 			writeln!(err_msg).unwrap();
 
 			let mut histogram: HashMap<i32, usize> = HashMap::new();
@@ -206,7 +206,7 @@ fn _test_final_image(content: &[u8], raw_image: RawImage) -> Result<(), String> 
 	let processor = libraw::Processor::new();
 	let libraw_image = processor.process_8bit(content).unwrap();
 
-	let image = raw_rs::process_8bit(raw_image);
+	let image = raw_image.process_8bit();
 
 	if libraw_image.height() as usize != image.height {
 		return Err(format!("The height of image is {} but the expected value was {}", image.height, libraw_image.height()));
@@ -225,7 +225,7 @@ fn _test_final_image(content: &[u8], raw_image: RawImage) -> Result<(), String> 
 
 		write!(&mut err_msg, "The final image does not match").unwrap();
 
-		if std::env::var("RAW_RS_TEST_PRINT_HISTOGRAM").is_ok() {
+		if std::env::var("RAWKIT_TEST_PRINT_HISTOGRAM").is_ok() {
 			writeln!(err_msg).unwrap();
 
 			let mut histogram_red: HashMap<i16, usize> = HashMap::new();
@@ -338,10 +338,10 @@ fn extract_data_from_dng_images() {
 }
 
 fn extract_data_from_dng_image(path: &Path) {
-	use raw_rs::tiff::file::TiffRead;
-	use raw_rs::tiff::tags::{ColorMatrix2, Make, Model};
-	use raw_rs::tiff::values::ToFloat;
-	use raw_rs::tiff::Ifd;
+	use rawkit::tiff::file::TiffRead;
+	use rawkit::tiff::tags::{ColorMatrix2, Make, Model};
+	use rawkit::tiff::values::ToFloat;
+	use rawkit::tiff::Ifd;
 	use std::io::{BufReader, Write};
 
 	let reader = BufReader::new(File::open(path).unwrap());
