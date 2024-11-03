@@ -3,8 +3,8 @@ use crate::tiff::tags::{BitsPerSample, BlackLevel, CfaPattern, CfaPatternDim, Co
 use crate::tiff::{Ifd, TiffError};
 use crate::{RawImage, SubtractBlack, Transform};
 
+use rawkit_proc_macros::Tag;
 use std::io::{Read, Seek};
-use tag_derive::Tag;
 
 #[allow(dead_code)]
 #[derive(Tag)]

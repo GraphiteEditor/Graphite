@@ -139,16 +139,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b81e1519b0d82120d2fd469d5bfb2919a9361c48b02d82d04befc1cdd2002452"
 
 [[package]]
-name = "build-camera-data"
-version = "0.0.1"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
- "toml",
-]
-
-[[package]]
 name = "built"
 version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1098,9 +1088,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.88"
+version = "1.0.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c3a7fc5db1e57d5a779a352c8cdb57b29aa4c40cc69c3a68a7fedc815fbf2f9"
+checksum = "f139b0662de085916d1fb67d2b4169d1addddda1919e696f3252b740b629986e"
 dependencies = [
  "unicode-ident",
 ]
@@ -1232,14 +1222,23 @@ name = "rawkit"
 version = "0.1.0"
 dependencies = [
  "bitstream-io",
- "build-camera-data",
  "image",
  "libraw-rs",
  "num_enum",
+ "rawkit-proc-macros",
  "rayon",
  "reqwest",
- "tag-derive",
  "thiserror",
+]
+
+[[package]]
+name = "rawkit-proc-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+ "toml",
 ]
 
 [[package]]
@@ -1595,14 +1594,6 @@ dependencies = [
  "pkg-config",
  "toml",
  "version-compare",
-]
-
-[[package]]
-name = "tag-derive"
-version = "0.0.1"
-dependencies = [
- "quote",
- "syn",
 ]
 
 [[package]]

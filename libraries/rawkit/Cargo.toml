@@ -1,10 +1,10 @@
 [workspace]
-members = ["tag-derive", "build-camera-data"]
+members = ["rawkit-proc-macros"]
 resolver = "2"
 
 [workspace.dependencies]
 quote = "1.0.37"
-syn = "2.0.79"
+syn = "2.0.87"
 
 [package]
 name = "rawkit"
@@ -25,8 +25,7 @@ rawkit-tests = ["dep:image", "dep:libraw-rs", "dep:reqwest", "dep:rayon"]
 
 [dependencies]
 # Local dependencies
-tag-derive = { path = "tag-derive" }
-build-camera-data = { path = "build-camera-data" }
+rawkit-proc-macros = { version = "0.1.0", path = "rawkit-proc-macros" }
 
 # Required dependencies
 bitstream-io = "2.5.3"
