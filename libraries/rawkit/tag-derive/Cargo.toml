@@ -4,7 +4,7 @@ version = "0.0.1"
 publish = false
 edition = "2021"
 authors = ["Graphite Authors <contact@graphite.rs>"]
-description = "Derive macro for the Tag trait in rawkit"
+description = "Derive macro for the Tag trait in Rawkit"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/rawkit/tag-derive"
 
