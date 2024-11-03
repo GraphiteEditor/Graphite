@@ -41,7 +41,15 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 				let window = web_sys::window().expect("no global `window` exists");
 				let device_pixel_ratio = window.device_pixel_ratio();
 
-				context.clear_rect(0., 0., logical_size.x, logical_size.y);
+				// Set the canvas buffer size to match the device pixel ratio
+				let physical_width = logical_size.x * device_pixel_ratio;
+				let physical_height = logical_size.y * device_pixel_ratio;
+				canvas.set_width(physical_width as u32);
+				canvas.set_height(physical_height as u32);
+
+				// Scale the context to maintain correct drawing dimensions
+				context.scale(device_pixel_ratio, device_pixel_ratio).unwrap();
+				context.clear_rect(0., 0., physical_width, physical_height);
 
 				if overlays_visible {
 					responses.add(DocumentMessage::GridOverlays(OverlayContext {
