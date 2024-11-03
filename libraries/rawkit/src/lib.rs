@@ -18,36 +18,88 @@ use tiff::{Ifd, TiffError};
 use std::io::{Read, Seek};
 use thiserror::Error;
 
-pub const CHANNELS_IN_RGB: usize = 3;
-pub type Histogram = [[usize; 0x2000]; CHANNELS_IN_RGB];
+pub(crate) const CHANNELS_IN_RGB: usize = 3;
+pub(crate) type Histogram = [[usize; 0x2000]; CHANNELS_IN_RGB];
 
+/// The amount of black level to be subtracted from Raw Image.
 pub enum SubtractBlack {
+	/// Don't subtract any value.
 	None,
+
+	/// Subtract a singular value for all pixels in Bayer CFA Grid.
 	Value(u16),
+
+	/// Subtract the appropriate value for pixels in Bayer CFA Grid.
 	CfaGrid([u16; 4]),
 }
 
+/// Represents a Raw Image along with its metadata.
 pub struct RawImage {
+	/// Raw pixel data stored in linear fashion.
 	pub data: Vec<u16>,
+
+	/// Width of the raw image.
 	pub width: usize,
+
+	/// Height of the raw image.
 	pub height: usize,
+
+	/// Bayer CFA pattern used to arrange pixels in `data`.
+	///
+	/// It encodes Red, Blue and Green as 0, 1, and 2 respectively.
 	pub cfa_pattern: [u8; 4],
+
+	/// Transformation to be applied to negate the orientation of camera.
 	pub transform: Transform,
+
+	/// The maximum possible value of pixel that the camera sensor could give.
 	pub maximum: u16,
+
+	/// The minimum possible value of pixel that the camera sensor could give.
+	///
+	/// Used to subtract the black level from the raw image.
 	pub black: SubtractBlack,
+
+	/// Information regarding the company and model of the camera.
 	pub camera_model: Option<CameraModel>,
+
+	/// White balance specified in the metadata of the raw file.
+	///
+	/// It represents the 4 values of CFA Grid which follows the same pattern as `cfa_pattern`
 	pub camera_white_balance: Option<[f64; 4]>,
+
+	/// White balance of the raw image.
+	///
+	/// It is the same as `camera_white_balance` if the raw file contains the metadata.
+	/// Otherwise it falls back to calculating the white balance from the color space conversion matrix.
+	///
+	/// It represents the 4 values of CFA Grid which follows the same pattern as `cfa_pattern`
 	pub white_balance: Option<[f64; 4]>,
+
+	/// Color space conversion matrix to convert from camera's color space to Standard RGB.
 	pub camera_to_rgb: Option<[[f64; 3]; 3]>,
 }
 
+/// Represents the final RBG Image.
 pub struct Image<T> {
+	/// Pixel data stored in a linear fashion.
 	pub data: Vec<T>,
+
+	/// Width of the image.
 	pub width: usize,
+
+	/// Height of the image.
 	pub height: usize,
+
+	/// The number of color channels in the image.
+	///
 	/// We can assume this will be 3 for all non-obscure, modern cameras.
 	/// See <https://github.com/GraphiteEditor/Graphite/pull/1923#discussion_r1725070342> for more information.
 	pub channels: u8,
+
+	/// The transformation required to orientation the image correctly.
+	///
+	/// This will be Horizontal after the transform step is applied.
 	pub transform: Transform,
 }
 
