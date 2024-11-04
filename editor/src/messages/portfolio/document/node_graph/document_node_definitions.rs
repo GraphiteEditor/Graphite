@@ -66,6 +66,22 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 	let mut custom = vec![
 		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
+			identifier: "Default Network",
+			category: "General",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::Network(NodeNetwork::default()),
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					network_metadata: Some(NodeNetworkMetadata::default()),
+					..Default::default()
+				},
+			},
+			properties: &node_properties::node_no_properties,
+		},
+		// TODO: Auto-generate this from its proto node macro
+		DocumentNodeDefinition {
 			identifier: "Identity",
 			category: "General",
 			node_template: NodeTemplate {

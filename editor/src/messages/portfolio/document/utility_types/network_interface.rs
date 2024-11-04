@@ -173,7 +173,7 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn chain_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> u32 {
-		if self.number_of_inputs(node_id, network_path) > 1 {
+		if self.number_of_displayed_inputs(node_id, network_path) > 1 {
 			let mut last_chain_node_distance = 0u32;
 			// Iterate upstream from the layer, and get the number of nodes distance to the last node with Position::Chain
 			for (index, node_id) in self
@@ -283,19 +283,31 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	fn number_of_inputs(&self, node_id: &NodeId, network_path: &[NodeId]) -> usize {
+	fn number_of_displayed_inputs(&self, node_id: &NodeId, network_path: &[NodeId]) -> usize {
 		let Some(network) = self.network(network_path) else {
-			log::error!("Could not get network in number_of_input");
+			log::error!("Could not get network in number_of_displayed_inputs");
 			return 0;
 		};
 		let Some(node) = network.nodes.get(node_id) else {
-			log::error!("Could not get node {node_id} in number_of_input");
+			log::error!("Could not get node {node_id} in number_of_displayed_inputs");
 			return 0;
 		};
 		node.inputs.iter().filter(|input| input.is_exposed_to_frontend(network_path.is_empty())).count()
 	}
 
-	fn number_of_outputs(&self, node_id: &NodeId, network_path: &[NodeId]) -> usize {
+	pub fn number_of_inputs(&self, node_id: &NodeId, network_path: &[NodeId]) -> usize {
+		let Some(network) = self.network(network_path) else {
+			log::error!("Could not get network in number_of_inputs");
+			return 0;
+		};
+		let Some(node) = network.nodes.get(node_id) else {
+			log::error!("Could not get node {node_id} in number_of_inputs");
+			return 0;
+		};
+		node.inputs.len()
+	}
+
+	pub fn number_of_outputs(&self, node_id: &NodeId, network_path: &[NodeId]) -> usize {
 		let Some(network) = self.network(network_path) else {
 			log::error!("Could not get network in number_of_outputs");
 			return 0;
@@ -2560,7 +2572,7 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn is_eligible_to_be_layer(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
-		let input_count = self.number_of_inputs(node_id, network_path);
+		let input_count = self.number_of_displayed_inputs(node_id, network_path);
 		let output_count = self.number_of_outputs(node_id, network_path);
 
 		self.node_metadata(node_id, network_path)
@@ -2762,11 +2774,17 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network_metadata in selected_nodes_bounding_box_viewport");
 			return None;
 		};
+		let node_graph_to_viewport = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport;
+		self.selected_nodes_bounding_box(network_path)
+			.map(|[a, b]| [node_graph_to_viewport.transform_point2(a), node_graph_to_viewport.transform_point2(b)])
+	}
+
+	/// Get the combined bounding box of the click targets of the selected nodes in the node graph in layer space
+	pub fn selected_nodes_bounding_box(&mut self, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
 		let Some(selected_nodes) = self.selected_nodes(network_path) else {
 			log::error!("Could not get selected nodes in selected_nodes_bounding_box_viewport");
 			return None;
 		};
-		let node_graph_to_viewport = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport;
 		selected_nodes
 			.selected_nodes()
 			.cloned()
@@ -2774,7 +2792,7 @@ impl NodeNetworkInterface {
 			.iter()
 			.filter_map(|node_id| {
 				self.node_click_targets(node_id, network_path)
-					.and_then(|transient_node_metadata| transient_node_metadata.node_click_target.bounding_box_with_transform(node_graph_to_viewport))
+					.and_then(|transient_node_metadata| transient_node_metadata.node_click_target.bounding_box())
 			})
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
 	}
@@ -3010,10 +3028,11 @@ impl NodeNetworkInterface {
 
 	/// Inserts a new export at insert index. If the insert index is -1 it is inserted at the end. The output_name is used by the encapsulating node.
 	pub fn add_export(&mut self, default_value: TaggedValue, insert_index: isize, output_name: String, network_path: &[NodeId]) {
+		let mut encapsulating_path = network_path.to_vec();
 		// Set the parent node (if it exists) to be a non layer if it is no longer eligible to be a layer
-		if let Some(parent_id) = network_path.last().cloned() {
-			if !self.is_eligible_to_be_layer(&parent_id, network_path) && self.is_layer(&parent_id, network_path) {
-				self.set_to_node_or_layer(&parent_id, network_path, false);
+		if let Some(parent_id) = encapsulating_path.pop() {
+			if !self.is_eligible_to_be_layer(&parent_id, &encapsulating_path) && self.is_layer(&parent_id, &encapsulating_path) {
+				self.set_to_node_or_layer(&parent_id, &encapsulating_path, false);
 			}
 		};
 
@@ -3062,17 +3081,22 @@ impl NodeNetworkInterface {
 	}
 
 	/// Inserts a new input at insert index. If the insert index is -1 it is inserted at the end. The output_name is used by the encapsulating node.
-	pub fn add_input(&mut self, node_id: &NodeId, network_path: &[NodeId], default_value: TaggedValue, exposed: bool, insert_index: isize, input_name: String) {
+	pub fn add_import(&mut self, default_value: TaggedValue, exposed: bool, insert_index: isize, input_name: String, network_path: &[NodeId]) {
+		let mut network_path = network_path.to_vec();
+		let Some(node_id) = network_path.pop() else {
+			log::error!("Cannot add import for document network");
+			return;
+		};
 		// Set the node to be a non layer if it is no longer eligible to be a layer
-		if !self.is_eligible_to_be_layer(node_id, network_path) && self.is_layer(node_id, network_path) {
-			self.set_to_node_or_layer(node_id, network_path, false);
+		if !self.is_eligible_to_be_layer(&node_id, &network_path) && self.is_layer(&node_id, &network_path) {
+			self.set_to_node_or_layer(&node_id, &network_path, false);
 		}
 
-		let Some(network) = self.network_mut(network_path) else {
+		let Some(network) = self.network_mut(&network_path) else {
 			log::error!("Could not get nested network in insert_input");
 			return;
 		};
-		let Some(node) = network.nodes.get_mut(node_id) else {
+		let Some(node) = network.nodes.get_mut(&node_id) else {
 			log::error!("Could not get node in insert_input");
 			return;
 		};
@@ -3086,7 +3110,7 @@ impl NodeNetworkInterface {
 
 		self.transaction_modified();
 
-		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+		let Some(node_metadata) = self.node_metadata_mut(&node_id, &network_path) else {
 			log::error!("Could not get node_metadata in insert_input");
 			return;
 		};
@@ -3103,11 +3127,11 @@ impl NodeNetworkInterface {
 		}
 
 		// Update the click targets for the node
-		self.unload_node_click_targets(node_id, network_path);
+		self.unload_node_click_targets(&node_id, &network_path);
 
 		// Update the transient network metadata bounding box for all nodes and outward wires
-		self.unload_all_nodes_bounding_box(network_path);
-		self.unload_outward_wires(network_path);
+		self.unload_all_nodes_bounding_box(&network_path);
+		self.unload_outward_wires(&network_path);
 
 		// If the input is inserted as the first input, then it may have affected the document metadata structure
 		if network_path.is_empty() && (insert_index == 0 || insert_index == 1) {
@@ -3582,7 +3606,7 @@ impl NodeNetworkInterface {
 				continue;
 			}
 
-			for input_index in 0..self.number_of_inputs(delete_node_id, network_path) {
+			for input_index in 0..self.number_of_displayed_inputs(delete_node_id, network_path) {
 				self.disconnect_input(&InputConnector::node(*delete_node_id, input_index), network_path);
 			}
 
@@ -4200,6 +4224,21 @@ impl NodeNetworkInterface {
 		}
 	}
 
+	pub fn nodes_sorted_top_to_bottom<'a>(&mut self, node_ids: impl Iterator<Item = &'a NodeId>, network_path: &[NodeId]) -> Option<Vec<NodeId>> {
+		let mut node_ids_with_position = node_ids
+			.filter_map(|&node_id| {
+				let Some(position) = self.position(&node_id, network_path) else {
+					log::error!("Could not get position for node {node_id} in shift_selected_nodes");
+					return None;
+				};
+				Some((node_id, position.y))
+			})
+			.collect::<Vec<(NodeId, i32)>>();
+
+		node_ids_with_position.sort_unstable_by(|a, b| a.1.cmp(&b.1));
+		Some(node_ids_with_position.into_iter().map(|(node_id, _)| node_id).collect::<Vec<_>>())
+	}
+
 	/// Used when moving layer by the layer panel, does not run any pushing logic. Moves all sole dependents of the layer as well.
 	/// Ensure that the layer is absolute position.
 	pub fn shift_absolute_node_position(&mut self, layer: &NodeId, shift: IVec2, network_path: &[NodeId]) {
@@ -4287,25 +4326,16 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		let mut node_ids_with_position = node_ids
-			.iter()
-			.filter_map(|&node_id| {
-				let Some(position) = self.position(&node_id, network_path) else {
-					log::error!("Could not get position for node {node_id} in shift_selected_nodes");
-					return None;
-				};
-				Some((node_id, position.y))
-			})
-			.collect::<Vec<(NodeId, i32)>>();
+		let Some(mut sorted_node_ids) = self.nodes_sorted_top_to_bottom(node_ids.iter(), network_path) else {
+			return;
+		};
 
-		if node_ids_with_position.len() != node_ids.len() {
+		if sorted_node_ids.len() != node_ids.len() {
 			log::error!("Could not get position for all nodes in shift_selected_nodes");
 			return;
 		}
 
-		node_ids_with_position.sort_unstable_by(|a, b| a.1.cmp(&b.1));
 		// If shifting down, then the lowest node (greatest y value) should be shifted first
-		let mut sorted_node_ids = node_ids_with_position.into_iter().map(|(node_id, _)| node_id).collect::<Vec<_>>();
 		if direction == Direction::Down {
 			sorted_node_ids.reverse();
 		}
@@ -4884,7 +4914,7 @@ impl NodeNetworkInterface {
 
 	// Insert a node onto a wire. Ensure insert_node_input_index is an exposed input
 	pub fn insert_node_between(&mut self, node_id: &NodeId, input_connector: &InputConnector, insert_node_input_index: usize, network_path: &[NodeId]) {
-		if self.number_of_inputs(node_id, network_path) == 0 {
+		if self.number_of_displayed_inputs(node_id, network_path) == 0 {
 			log::error!("Cannot insert a node onto a wire with no exposed inputs");
 			return;
 		}
