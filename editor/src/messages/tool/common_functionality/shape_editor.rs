@@ -618,7 +618,7 @@ impl ShapeState {
 			let opposing_handles = handle_lengths.as_ref().and_then(|handle_lengths| handle_lengths.get(&layer));
 
 			let transform = document.metadata().transform_to_viewport(layer);
-			let delta = transform.inverse().transform_vector2(delta);
+			let delta = delta;
 
 			for &point in state.selected_points.iter() {
 				let handle = match point {
@@ -652,7 +652,7 @@ impl ShapeState {
 				let new_relative = if equidistant {
 					-(handle_position - anchor_position)
 				} else {
-					let transform = document.metadata().document_to_viewport.inverse() * transform;
+					let transform = document.metadata().document_to_viewport.inverse();
 					let Some(other_position) = other.to_manipulator_point().get_position(&vector_data) else {
 						continue;
 					};
