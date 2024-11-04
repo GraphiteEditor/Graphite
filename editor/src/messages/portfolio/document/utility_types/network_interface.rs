@@ -2254,7 +2254,7 @@ impl NodeNetworkInterface {
 				output_row_count += 1;
 			}
 
-			let height = std::cmp::max(input_row_count, output_row_count) as u32 * crate::consts::GRID_SIZE;
+			let height = input_row_count.max(output_row_count).max(1) as u32 * crate::consts::GRID_SIZE;
 			let width = 5 * crate::consts::GRID_SIZE;
 			let node_click_target_top_left = node_top_left + DVec2::new(0., 12.);
 			let node_click_target_bottom_right = node_click_target_top_left + DVec2::new(width as f64, height as f64);

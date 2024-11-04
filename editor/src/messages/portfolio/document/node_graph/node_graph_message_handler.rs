@@ -359,7 +359,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					.collect::<HashMap<NodeId, NodeId>>();
 
 				let copied_nodes = network_interface.copy_nodes(&new_ids, breadcrumb_network_path).collect::<Vec<_>>();
-				let node_ids = copied_nodes.iter().map(|(node_id, _)| *node_id).collect::<Vec<_>>();
+				let selected_node_ids = copied_nodes.iter().map(|(node_id, _)| *node_id).collect::<HashSet<_>>();
+				let selected_node_ids_vec = copied_nodes.iter().map(|(node_id, _)| *node_id).collect::<Vec<_>>();
 				// Mapping of the encapsulating node inputs/outputs to where it needs to be connected
 				let mut imports = Vec::new();
 				let mut exports = Vec::new();
@@ -372,6 +373,29 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				else {
 					return;
 				};
+				//Ensure that nodes can be grouped by checking if there is an unselected node between selected nodes
+				for selected_node_id in &selected_node_ids {
+					for input_index in 0..network_interface.number_of_inputs(selected_node_id, breadcrumb_network_path) {
+						let input_connector = InputConnector::node(*selected_node_id, input_index);
+						if let Some(upstream_deselected_node_id) = network_interface
+							.upstream_output_connector(&input_connector, breadcrumb_network_path)
+							.and_then(|output_connector| output_connector.node_id())
+							.filter(|node_id| !selected_node_ids.contains(node_id))
+						{
+							for upstream_node_id in
+								network_interface.upstream_flow_back_from_nodes(vec![upstream_deselected_node_id], breadcrumb_network_path, network_interface::FlowType::UpstreamFlow)
+							{
+								if selected_node_ids.contains(&upstream_node_id) {
+									responses.add(DialogMessage::DisplayDialogError {
+										title: "Error Grouping Nodes".to_string(),
+										description: "A discontinuous selection of nodes cannot be grouped.\nEnsure no deselected nodes are between selected nodes".to_string(),
+									});
+									return;
+								}
+							}
+						}
+					}
+				}
 				for node_id in nodes_sorted_top_to_bottom {
 					for input_index in 0..network_interface.number_of_inputs(&node_id, breadcrumb_network_path) {
 						let current_input_connector = InputConnector::node(node_id, input_index);
@@ -380,7 +404,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						};
 						if upstream_connector
 							.node_id()
-							.is_some_and(|upstream_node_id| node_ids.iter().any(|copied_id| *copied_id == upstream_node_id))
+							.is_some_and(|upstream_node_id| selected_node_ids.iter().any(|copied_id| *copied_id == upstream_node_id))
 						{
 							continue;
 						}
@@ -405,7 +429,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						for downstream_connection in downstream_connections {
 							if downstream_connection
 								.node_id()
-								.is_some_and(|downstream_node_id| node_ids.iter().any(|copied_id| *copied_id == downstream_node_id))
+								.is_some_and(|downstream_node_id| selected_node_ids.iter().any(|copied_id| *copied_id == downstream_node_id))
 							{
 								continue;
 							}
@@ -447,7 +471,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(NodeGraphMessage::AddExport);
 				}
 				responses.add(NodeGraphMessage::AddNodes { nodes: copied_nodes, new_ids });
-				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: node_ids.clone() });
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: selected_node_ids_vec.clone() });
 
 				// Shift the nodes back to the origin
 				responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount {
@@ -480,7 +504,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						input_connector,
 					});
 				}
-				responses.add(NodeGraphMessage::DeleteNodes { node_ids, delete_children: false });
+				responses.add(NodeGraphMessage::DeleteNodes {
+					node_ids: selected_node_ids_vec,
+					delete_children: false,
+				});
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![encapsulating_node_id] });
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -2061,18 +2088,18 @@ impl NodeGraphMessageHandler {
 			let exposed_inputs = inputs.flatten().collect();
 
 			let output_types = network_interface.output_types(&node_id, breadcrumb_network_path);
-			let primary_output_type = output_types.first().expect("Primary output should always exist");
-			let frontend_data_type = if let Some((output_type, _)) = primary_output_type {
-				FrontendGraphDataType::with_type(output_type)
+			let primary_output_type = output_types.first().cloned().flatten();
+			let frontend_data_type = if let Some((output_type, _)) = &primary_output_type {
+				FrontendGraphDataType::with_type(&output_type)
 			} else {
 				FrontendGraphDataType::General
 			};
 			let connected_to = outward_wires.get(&OutputConnector::node(node_id, 0)).cloned().unwrap_or_default();
-			let primary_output = if network_interface.has_primary_output(&node_id, breadcrumb_network_path) {
+			let primary_output = if network_interface.has_primary_output(&node_id, breadcrumb_network_path) && output_types.len() > 0 {
 				Some(FrontendGraphOutput {
 					data_type: frontend_data_type,
 					name: "Output 1".to_string(),
-					resolved_type: primary_output_type.clone().map(|(input, type_source)| format!("{input:?} from {type_source:?}")),
+					resolved_type: primary_output_type.map(|(input, type_source)| format!("{input:?} from {type_source:?}")),
 					connected_to,
 				})
 			} else {
