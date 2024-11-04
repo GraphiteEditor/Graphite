@@ -1,7 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::tool_prelude::*;
-use crate::application::generate_uuid;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -320,7 +319,7 @@ impl TextToolData {
 		else if let Some(editing_text) = self.editing_text.as_ref().filter(|_| state == TextToolFsmState::Ready) {
 			responses.add(DocumentMessage::AddTransaction);
 
-			self.layer = LayerNodeIdentifier::new_unchecked(NodeId(generate_uuid()));
+			self.layer = LayerNodeIdentifier::new_unchecked(NodeId::new());
 
 			responses.add(GraphOperationMessage::NewTextLayer {
 				id: self.layer.to_node(),
@@ -496,10 +495,10 @@ impl Fsm for TextToolFsmState {
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Place Text")]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Edit Text")]),
 			]),
-			TextToolFsmState::Editing => HintData(vec![
-				HintGroup(vec![HintInfo::keys([Key::Escape], "Discard Changes")]),
-				HintGroup(vec![HintInfo::keys([Key::Control, Key::Enter], "Commit Changes").add_mac_keys([Key::Command, Key::Enter])]),
-			]),
+			TextToolFsmState::Editing => HintData(vec![HintGroup(vec![
+				HintInfo::keys([Key::Control, Key::Enter], "").add_mac_keys([Key::Command, Key::Enter]),
+				HintInfo::keys([Key::Escape], "Commit Changes").prepend_slash(),
+			])]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });

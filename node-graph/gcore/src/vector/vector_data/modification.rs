@@ -178,11 +178,11 @@ impl SegmentModification {
 			let Some(&stroke) = self.stroke.get(&add_id) else { continue };
 
 			let Some(start_index) = point_domain.resolve_id(start) else {
-				warn!("invalid start id");
+				warn!("invalid start id: {:#?}", start);
 				continue;
 			};
 			let Some(end_index) = point_domain.resolve_id(end) else {
-				warn!("invalid end id");
+				warn!("invalid end id: {:#?}", end);
 				continue;
 			};
 
@@ -500,6 +500,7 @@ fn modify_existing() {
 	);
 }
 
+// Do we want to enforce that all serialized/deserialized hashmaps are a vec of tuples?
 // TODO: Eventually remove this (probably starting late 2024)
 use serde::de::{SeqAccess, Visitor};
 use serde::ser::SerializeSeq;

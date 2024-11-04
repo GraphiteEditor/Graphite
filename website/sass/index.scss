@@ -445,6 +445,10 @@
 		-webkit-box-orient: vertical;
 		-webkit-line-clamp: 6;
 
+		code {
+			text-justify: auto;
+		}
+
 		// Safari workaround: https://stackoverflow.com/a/72170897/775283
 		// But there remains an issue where the ellipsis is rendered inside the text. There doesn't appear to be a fix, or even a way to disable the ellipsis in Safari.
 		p {

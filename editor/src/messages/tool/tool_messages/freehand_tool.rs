@@ -9,7 +9,6 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::utility_functions::should_extend;
 
 use graph_craft::document::NodeId;
-use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::VectorModificationType;
 use graphene_core::Color;
 use graphene_std::vector::{PointId, SegmentId};
@@ -212,7 +211,8 @@ impl Fsm for FreehandToolFsmState {
 				tool_data.weight = tool_options.line_weight;
 
 				// Extend an endpoint of the selected path
-				if let Some((layer, point, position)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE) {
+				let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+				if let Some((layer, point, position)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE, selected_nodes.selected_layers(document.metadata())) {
 					tool_data.layer = Some(layer);
 					tool_data.end_point = Some((position, point));
 
@@ -229,7 +229,7 @@ impl Fsm for FreehandToolFsmState {
 				let node = node_type.default_node_template();
 				let nodes = vec![(NodeId(0), node)];
 
-				let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, parent, responses);
+				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
 				responses.add(Message::StartBuffer);
 				tool_options.fill.apply_fill(layer, responses);
 				tool_options.stroke.apply_stroke(tool_data.weight, layer, responses);

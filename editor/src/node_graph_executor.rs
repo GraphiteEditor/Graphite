@@ -15,7 +15,7 @@ use graphene_core::renderer::{RenderSvgSegmentList, SvgSegment};
 use graphene_core::text::FontCache;
 use graphene_core::transform::Footprint;
 use graphene_core::vector::style::ViewMode;
-use graphene_std::renderer::format_transform_matrix;
+use graphene_std::renderer::{format_transform_matrix, RenderMetadata};
 use graphene_std::vector::VectorData;
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
@@ -488,7 +488,7 @@ impl NodeGraphExecutor {
 
 		let render_config = RenderConfig {
 			viewport: Footprint {
-				transform: transform * DAffine2::from_scale(DVec2::splat(export_config.scale_factor)),
+				transform: DAffine2::from_scale(DVec2::splat(export_config.scale_factor)) * transform,
 				resolution: (size * export_config.scale_factor).as_uvec2(),
 				..Default::default()
 			},
@@ -630,6 +630,7 @@ impl NodeGraphExecutor {
 	}
 
 	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, transform: DAffine2, responses: &mut VecDeque<Message>) -> Result<(), String> {
+		let mut render_output_metadata = RenderMetadata::default();
 		match node_graph_output {
 			TaggedValue::RenderOutput(render_output) => {
 				match render_output.data {
@@ -651,10 +652,7 @@ impl NodeGraphExecutor {
 					}
 				}
 
-				responses.add(Message::EndBuffer(render_output.metadata));
-				responses.add(DocumentMessage::RenderScrollbars);
-				responses.add(DocumentMessage::RenderRulers);
-				responses.add(OverlaysMessage::Draw);
+				render_output_metadata = render_output.metadata;
 			}
 			TaggedValue::Bool(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::String(render_object) => Self::debug_render(render_object, transform, responses),
@@ -669,6 +667,10 @@ impl NodeGraphExecutor {
 				return Err(format!("Invalid node graph output type: {node_graph_output:#?}"));
 			}
 		};
+		responses.add(Message::EndBuffer(render_output_metadata));
+		responses.add(DocumentMessage::RenderScrollbars);
+		responses.add(DocumentMessage::RenderRulers);
+		responses.add(OverlaysMessage::Draw);
 		Ok(())
 	}
 }

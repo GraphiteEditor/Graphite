@@ -25,6 +25,7 @@ macro_rules! tagged_value {
 		/// A type that is known, allowing serialization (serde::Deserialize is not object safe)
 		#[derive(Clone, Debug, PartialEq)]
 		#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+		#[allow(clippy::large_enum_variant)] // TODO(TrueDoctor): Properly solve this disparity between the size of the largest and next largest variants
 		pub enum TaggedValue {
 			None,
 			$( $(#[$meta] ) *$identifier( $ty ), )*

@@ -73,7 +73,6 @@ mod uuid_generation {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize, specta::Type, DynAny)]
 pub struct NodeId(pub u64);
 
-// TODO: Find and replace all `NodeId(generate_uuid())` with `NodeId::new()`.
 impl NodeId {
 	pub fn new() -> Self {
 		Self(generate_uuid())

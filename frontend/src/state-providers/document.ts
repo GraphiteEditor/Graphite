@@ -11,8 +11,9 @@ import {
 	UpdateToolShelfLayout,
 	UpdateWorkingColorsLayout,
 	UpdateNodeGraphBarLayout,
-	TriggerGraphViewOverlay,
+	UpdateGraphViewOverlay,
 	TriggerDelayedZoomCanvasToFitAll,
+	UpdateGraphFadeArtwork,
 } from "@graphite/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -27,10 +28,17 @@ export function createDocumentState(editor: Editor) {
 		nodeGraphBarLayout: defaultWidgetLayout(),
 		// Graph view overlay
 		graphViewOverlayOpen: false,
+		fadeArtwork: 100,
 	});
 	const { subscribe, update } = state;
 
 	// Update layouts
+	editor.subscriptions.subscribeJsMessage(UpdateGraphFadeArtwork, (updateGraphFadeArtwork) => {
+		update((state) => {
+			state.fadeArtwork = updateGraphFadeArtwork.percentage;
+			return state;
+		});
+	});
 	editor.subscriptions.subscribeJsMessage(UpdateDocumentModeLayout, async (updateDocumentModeLayout) => {
 		await tick();
 
@@ -84,9 +92,9 @@ export function createDocumentState(editor: Editor) {
 	});
 
 	// Show or hide the graph view overlay
-	editor.subscriptions.subscribeJsMessage(TriggerGraphViewOverlay, (triggerGraphViewOverlay) => {
+	editor.subscriptions.subscribeJsMessage(UpdateGraphViewOverlay, (updateGraphViewOverlay) => {
 		update((state) => {
-			state.graphViewOverlayOpen = triggerGraphViewOverlay.open;
+			state.graphViewOverlayOpen = updateGraphViewOverlay.open;
 			return state;
 		});
 	});

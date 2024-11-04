@@ -1,7 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::tool_prelude::*;
-use crate::application::generate_uuid;
 use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
@@ -72,7 +71,7 @@ pub enum SelectToolMessage {
 	Overlays(OverlayContext),
 
 	// Tool-specific messages
-	DragStart { add_to_selection: Key, select_deepest: Key },
+	DragStart { extend_selection: Key, select_deepest: Key },
 	DragStop { remove_from_selection: Key },
 	EditLayer,
 	Enter,
@@ -343,7 +342,7 @@ impl SelectToolData {
 
 			let insert_index = DocumentMessageHandler::get_calculated_insert_index(document.metadata(), document.network_interface.selected_nodes(&[]).unwrap(), parent);
 
-			let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId(generate_uuid()))).collect();
+			let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
 
 			let layer_id = *new_ids.get(&NodeId(0)).expect("Node Id 0 should be a layer");
 			let layer = LayerNodeIdentifier::new_unchecked(layer_id);
@@ -518,7 +517,7 @@ impl Fsm for SelectToolFsmState {
 
 				self
 			}
-			(SelectToolFsmState::Ready { .. }, SelectToolMessage::DragStart { add_to_selection, select_deepest }) => {
+			(SelectToolFsmState::Ready { .. }, SelectToolMessage::DragStart { extend_selection, select_deepest }) => {
 				tool_data.drag_start = input.mouse.position;
 				tool_data.drag_current = input.mouse.position;
 
@@ -648,7 +647,7 @@ impl Fsm for SelectToolFsmState {
 				else {
 					tool_data.layers_dragging = selected;
 
-					if !input.keyboard.key(add_to_selection) {
+					if !input.keyboard.key(extend_selection) {
 						responses.add(DocumentMessage::DeselectAllLayers);
 						tool_data.layers_dragging.clear();
 					}
@@ -1062,19 +1061,6 @@ impl Fsm for SelectToolFsmState {
 						false
 					}
 				});
-				if let Some(mut bounding_box_overlays) = tool_data.bounding_box_manager.take() {
-					let mut selected = Selected::new(
-						&mut bounding_box_overlays.original_transforms,
-						&mut bounding_box_overlays.opposite_pivot,
-						&tool_data.layers_dragging,
-						responses,
-						&document.network_interface,
-						None,
-						&ToolType::Select,
-					);
-
-					selected.revert_operation();
-				}
 
 				responses.add(OverlaysMessage::Draw);
 

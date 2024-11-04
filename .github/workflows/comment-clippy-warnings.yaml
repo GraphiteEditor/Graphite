@@ -32,8 +32,15 @@ jobs:
       - name: Run Clippy
         id: clippy
         run: |
-          # Run Clippy and filter output
+          # Run Clippy and filter output for the root workspace
           CLIPPY_OUTPUT=$(cargo clippy --all-targets --all-features -- -W clippy::all 2>&1 | grep -vE "^(\s*Updating|\s*Download|\s*Compiling|\s*Checking|Finished)")
+
+          # Run Clippy and filter output for /libraries/rawkit
+          cd libraries/rawkit
+          CLIPPY_OUTPUT+=$'\n\n'
+          CLIPPY_OUTPUT+=$(cargo clippy --all-targets --all-features -- -W clippy::all 2>&1 | grep -vE "^(\s*Updating|\s*Download|\s*Compiling|\s*Checking|Finished)")
+          cd ../..
+
           # Escape special characters for JSON
           ESCAPED_OUTPUT=$(echo "$CLIPPY_OUTPUT" | jq -sR .)
           echo "CLIPPY_OUTPUT=$ESCAPED_OUTPUT" >> $GITHUB_OUTPUT

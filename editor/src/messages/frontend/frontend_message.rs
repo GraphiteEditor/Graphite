@@ -39,6 +39,16 @@ pub enum FrontendMessage {
 	},
 	DisplayRemoveEditableTextbox,
 
+	// Send prefix: Send global, static data to the frontend that is never updated
+	SendUIMetadata {
+		#[serde(rename = "inputTypeDescriptions")]
+		input_type_descriptions: Vec<(String, String)>,
+		#[serde(rename = "nodeDescriptions")]
+		node_descriptions: Vec<(String, String)>,
+		#[serde(rename = "nodeTypes")]
+		node_types: Vec<FrontendNodeType>,
+	},
+
 	// Trigger prefix: cause a browser API to do something
 	TriggerAboutGraphiteLocalizedCommitDate {
 		#[serde(rename = "commitDate")]
@@ -73,9 +83,6 @@ pub enum FrontendMessage {
 		font: Font,
 		#[serde(rename = "isDefault")]
 		is_default: bool,
-	},
-	TriggerGraphViewOverlay {
-		open: bool,
 	},
 	TriggerImport,
 	TriggerIndexedDbRemoveDocument {
@@ -143,11 +150,16 @@ pub enum FrontendMessage {
 		#[serde(rename = "clickTargets")]
 		click_targets: Option<FrontendClickTargets>,
 	},
+	UpdateGraphViewOverlay {
+		open: bool,
+	},
 	UpdateLayerWidths {
 		#[serde(rename = "layerWidths")]
 		layer_widths: HashMap<NodeId, u32>,
 		#[serde(rename = "chainWidths")]
 		chain_widths: HashMap<NodeId, u32>,
+		#[serde(rename = "hasLeftInputWire")]
+		has_left_input_wire: HashMap<NodeId, bool>,
 	},
 	UpdateDialogButtons {
 		#[serde(rename = "layoutTarget")]
@@ -209,6 +221,9 @@ pub enum FrontendMessage {
 		#[serde(rename = "setColorChoice")]
 		set_color_choice: Option<String>,
 	},
+	UpdateGraphFadeArtwork {
+		percentage: f64,
+	},
 	UpdateInputHints {
 		#[serde(rename = "hintData")]
 		hint_data: HintData,
@@ -245,18 +260,9 @@ pub enum FrontendMessage {
 		id: NodeId,
 		value: String,
 	},
-	UpdateNodeTypes {
-		#[serde(rename = "nodeTypes")]
-		node_types: Vec<FrontendNodeType>,
-	},
 	UpdateOpenDocumentsList {
 		#[serde(rename = "openDocuments")]
 		open_documents: Vec<FrontendDocumentDetails>,
-	},
-	UpdatePropertyPanelOptionsLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
-		diff: Vec<WidgetDiff>,
 	},
 	UpdatePropertyPanelSectionsLayout {
 		#[serde(rename = "layoutTarget")]

@@ -62,28 +62,20 @@ impl AlignmentSnapper {
 		let document = snap_data.document;
 		let tolerance = snap_tolerance(document);
 
-		let mut consider_x = true;
-		let mut consider_y = true;
-		if let SnapConstraint::Line { direction, .. } = constraint {
-			let direction = direction.normalize_or_zero();
-			if direction.x.abs() < 1e-5 {
-				consider_y = false;
-			} else if direction.y.abs() < 1e-5 {
-				consider_x = false;
-			}
-		}
-
 		let mut snap_x: Option<SnappedPoint> = None;
 		let mut snap_y: Option<SnappedPoint> = None;
 
 		for target_point in self.bounding_box_points.iter().chain(unselected_geometry) {
 			let target_position = target_point.document_point;
 
-			let point_on_x = DVec2::new(point.document_point.x, target_position.y);
-			let dist_x = (target_position.y - point.document_point.y).abs();
-
-			let point_on_y = DVec2::new(target_position.x, point.document_point.y);
-			let dist_y = (target_position.x - point.document_point.x).abs();
+			let [point_on_x, point_on_y] = if let SnapConstraint::Line { origin, direction } = constraint {
+				[
+					Quad::intersect_rays(target_point.document_point, DVec2::Y, origin, direction),
+					Quad::intersect_rays(target_point.document_point, DVec2::X, origin, direction),
+				]
+			} else {
+				[DVec2::new(point.document_point.x, target_position.y), DVec2::new(target_position.x, point.document_point.y)].map(Some)
+			};
 
 			let target_geometry = matches!(target_point.target, SnapTarget::Geometry(_));
 			let updated_target = if target_geometry {
@@ -92,38 +84,48 @@ impl AlignmentSnapper {
 				target_point.target
 			};
 
-			if consider_x && dist_x < tolerance && snap_x.as_ref().map_or(true, |point| dist_y < point.distance_to_align_target) {
-				snap_x = Some(SnappedPoint {
-					snapped_point_document: point_on_x,
-					source: point.source, //ToDo map source
-					target: updated_target,
-					target_bounds: target_point.quad,
-					distance: dist_x,
-					tolerance,
-					distance_to_align_target: dist_y,
-					alignment_target_x: Some(target_position),
-					fully_constrained: true,
-					..Default::default()
-				});
+			if let Some(point_on_x) = point_on_x {
+				let distance_to_snapped = point.document_point.distance(point_on_x);
+				let distance_to_align_target = point_on_x.distance(target_position);
+				if distance_to_snapped < tolerance && snap_x.as_ref().map_or(true, |point| distance_to_align_target < point.distance_to_align_target) {
+					snap_x = Some(SnappedPoint {
+						snapped_point_document: point_on_x,
+						source: point.source, //ToDo map source
+						target: updated_target,
+						target_bounds: target_point.quad,
+						distance: distance_to_snapped,
+						tolerance,
+						distance_to_align_target,
+						alignment_target_x: Some(target_position),
+						fully_constrained: true,
+						at_intersection: matches!(constraint, SnapConstraint::Line { .. }),
+						..Default::default()
+					});
+				}
 			}
-			if consider_y && dist_y < tolerance && snap_y.as_ref().map_or(true, |point| dist_x < point.distance_to_align_target) {
-				snap_y = Some(SnappedPoint {
-					snapped_point_document: point_on_y,
-					source: point.source, //ToDo map source
-					target: updated_target,
-					target_bounds: target_point.quad,
-					distance: dist_y,
-					tolerance,
-					distance_to_align_target: dist_x,
-					alignment_target_y: Some(target_position),
-					fully_constrained: true,
-					..Default::default()
-				});
+			if let Some(point_on_y) = point_on_y {
+				let distance_to_snapped = point.document_point.distance(point_on_y);
+				let distance_to_align_target = point_on_y.distance(target_position);
+				if distance_to_snapped < tolerance && snap_y.as_ref().map_or(true, |point| distance_to_align_target < point.distance_to_align_target) {
+					snap_y = Some(SnappedPoint {
+						snapped_point_document: point_on_y,
+						source: point.source, //ToDo map source
+						target: updated_target,
+						target_bounds: target_point.quad,
+						distance: distance_to_snapped,
+						tolerance,
+						distance_to_align_target,
+						alignment_target_y: Some(target_position),
+						fully_constrained: true,
+						at_intersection: matches!(constraint, SnapConstraint::Line { .. }),
+						..Default::default()
+					});
+				}
 			}
 		}
 
 		match (snap_x, snap_y) {
-			(Some(snap_x), Some(snap_y)) => {
+			(Some(snap_x), Some(snap_y)) if !matches!(constraint, SnapConstraint::Line { .. }) => {
 				let intersection = DVec2::new(snap_y.snapped_point_document.x, snap_x.snapped_point_document.y);
 				let distance = intersection.distance(point.document_point);
 
@@ -142,12 +144,14 @@ impl AlignmentSnapper {
 					alignment_target_x: snap_x.alignment_target_x,
 					alignment_target_y: snap_y.alignment_target_y,
 					constrained: true,
+					at_intersection: true,
 					..Default::default()
 				});
 			}
-			(Some(snap_x), None) => snap_results.points.push(snap_x),
-			(None, Some(snap_y)) => snap_results.points.push(snap_y),
-			(None, None) => {}
+			(Some(snap_x), Some(snap_y)) => snap_results.points.push(if snap_x.distance < snap_y.distance { snap_x } else { snap_y }),
+			(Some(snap_x), _) => snap_results.points.push(snap_x),
+			(_, Some(snap_y)) => snap_results.points.push(snap_y),
+			_ => {}
 		}
 	}
 	pub fn free_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults) {

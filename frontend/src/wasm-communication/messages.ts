@@ -69,12 +69,15 @@ export class UpdateInSelectedNetwork extends JsMessage {
 
 const LayerWidths = Transform(({ obj }) => obj.layerWidths);
 const ChainWidths = Transform(({ obj }) => obj.chainWidths);
+const HasLeftInputWire = Transform(({ obj }) => obj.hasLeftInputWire);
 
 export class UpdateLayerWidths extends JsMessage {
 	@LayerWidths
 	readonly layerWidths!: Map<bigint, number>;
 	@ChainWidths
 	readonly chainWidths!: Map<bigint, number>;
+	@HasLeftInputWire
+	readonly hasLeftInputWire!: Map<bigint, boolean>;
 }
 
 export class UpdateNodeGraph extends JsMessage {
@@ -89,7 +92,14 @@ export class UpdateNodeGraphTransform extends JsMessage {
 	readonly transform!: NodeGraphTransform;
 }
 
-export class UpdateNodeTypes extends JsMessage {
+const InputTypeDescriptions = Transform(({ obj }) => new Map(obj.inputTypeDescriptions));
+const NodeDescriptions = Transform(({ obj }) => new Map(obj.nodeDescriptions));
+
+export class SendUIMetadata extends JsMessage {
+	@InputTypeDescriptions
+	readonly inputTypeDescriptions!: Map<string, string>;
+	@NodeDescriptions
+	readonly nodeDescriptions!: Map<string, string>;
 	@Type(() => FrontendNode)
 	readonly nodeTypes!: FrontendNodeType[];
 }
@@ -732,6 +742,14 @@ const mouseCursorIconCSSNames = {
 export type MouseCursor = keyof typeof mouseCursorIconCSSNames;
 export type MouseCursorIcon = (typeof mouseCursorIconCSSNames)[MouseCursor];
 
+export class UpdateGraphViewOverlay extends JsMessage {
+	open!: boolean;
+}
+
+export class UpdateGraphFadeArtwork extends JsMessage {
+	readonly percentage!: number;
+}
+
 export class UpdateMouseCursor extends JsMessage {
 	@Transform(({ value }: { value: MouseCursor }) => mouseCursorIconCSSNames[value] || "alias")
 	readonly cursor!: MouseCursorIcon;
@@ -876,10 +894,6 @@ export class TriggerFontLoad extends JsMessage {
 	font!: Font;
 
 	isDefault!: boolean;
-}
-
-export class TriggerGraphViewOverlay extends JsMessage {
-	open!: boolean;
 }
 
 export class TriggerVisitLink extends JsMessage {
@@ -1116,6 +1130,10 @@ export class NumberInput extends WidgetProps {
 	minWidth!: number;
 }
 
+export class NodeCatalog extends WidgetProps {
+	disabled!: boolean;
+}
+
 export class PopoverButton extends WidgetProps {
 	style!: PopoverButtonStyle | undefined;
 
@@ -1293,6 +1311,7 @@ const widgetSubTypes = [
 	{ value: IconButton, name: "IconButton" },
 	{ value: IconLabel, name: "IconLabel" },
 	{ value: ImageLabel, name: "ImageLabel" },
+	{ value: NodeCatalog, name: "NodeCatalog" },
 	{ value: NumberInput, name: "NumberInput" },
 	{ value: ParameterExposeButton, name: "ParameterExposeButton" },
 	{ value: PivotInput, name: "PivotInput" },
@@ -1425,7 +1444,7 @@ export function isWidgetSpanRow(layoutRow: LayoutGroup): layoutRow is WidgetSpan
 	return Boolean((layoutRow as WidgetSpanRow)?.rowWidgets);
 }
 
-export type WidgetSection = { name: string; visible: boolean; id: bigint; layout: LayoutGroup[] };
+export type WidgetSection = { name: string; visible: boolean; pinned: boolean; id: bigint; layout: LayoutGroup[] };
 export function isWidgetSection(layoutRow: LayoutGroup): layoutRow is WidgetSection {
 	return Boolean((layoutRow as WidgetSection)?.layout);
 }
@@ -1468,6 +1487,7 @@ function createLayoutGroup(layoutGroup: any): LayoutGroup {
 		const result: WidgetSection = {
 			name: layoutGroup.section.name,
 			visible: layoutGroup.section.visible,
+			pinned: layoutGroup.section.pinned,
 			id: layoutGroup.section.id,
 			layout: layoutGroup.section.layout.map(createLayoutGroup),
 		};
@@ -1501,8 +1521,6 @@ export class UpdateMenuBarLayout extends JsMessage {
 }
 
 export class UpdateNodeGraphBarLayout extends WidgetDiffUpdate {}
-
-export class UpdatePropertyPanelOptionsLayout extends WidgetDiffUpdate {}
 
 export class UpdatePropertyPanelSectionsLayout extends WidgetDiffUpdate {}
 
@@ -1543,15 +1561,15 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayEditableTextbox,
 	DisplayEditableTextboxTransform,
 	DisplayRemoveEditableTextbox,
+	SendUIMetadata,
 	TriggerAboutGraphiteLocalizedCommitDate,
 	TriggerCopyToClipboardBlobUrl,
 	TriggerDelayedZoomCanvasToFitAll,
-	TriggerFetchAndOpenDocument,
 	TriggerDownloadBlobUrl,
 	TriggerDownloadImage,
 	TriggerDownloadTextFile,
+	TriggerFetchAndOpenDocument,
 	TriggerFontLoad,
-	TriggerGraphViewOverlay,
 	TriggerImport,
 	TriggerIndexedDbRemoveDocument,
 	TriggerIndexedDbWriteDocument,
@@ -1569,9 +1587,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateBox,
 	UpdateClickTargets,
 	UpdateContextMenuInformation,
-	UpdateInSelectedNetwork,
-	UpdateImportsExports,
-	UpdateLayerWidths,
 	UpdateDialogButtons,
 	UpdateDialogColumn1,
 	UpdateDialogColumn2,
@@ -1583,8 +1598,13 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentRulers,
 	UpdateDocumentScrollbars,
 	UpdateEyedropperSamplingState,
+	UpdateGraphFadeArtwork,
+	UpdateGraphViewOverlay,
+	UpdateImportsExports,
 	UpdateInputHints,
+	UpdateInSelectedNetwork,
 	UpdateLayersPanelOptionsLayout,
+	UpdateLayerWidths,
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
 	UpdateNodeGraph,
@@ -1592,14 +1612,12 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateNodeGraphSelection,
 	UpdateNodeGraphTransform,
 	UpdateNodeThumbnail,
-	UpdateNodeTypes,
 	UpdateOpenDocumentsList,
-	UpdatePropertyPanelOptionsLayout,
 	UpdatePropertyPanelSectionsLayout,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
-	UpdateWorkingColorsLayout,
 	UpdateWirePathInProgress,
+	UpdateWorkingColorsLayout,
 	UpdateZoomWithScroll,
 } as const;
 export type JsMessageType = keyof typeof messageMakers;

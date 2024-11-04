@@ -315,6 +315,48 @@ async fn to_group<F: 'n + Send, Data: Into<GraphicGroup> + 'n>(
 	element.eval(footprint).await.into()
 }
 
+#[node_macro::node(category("General"))]
+async fn flatten_group<F: 'n + Send>(
+	#[implementations(
+		(),
+		Footprint,
+	)]
+	footprint: F,
+	#[implementations(
+		() -> GraphicGroup,
+		Footprint -> GraphicGroup,
+	)]
+	group: impl Node<F, Output = GraphicGroup>,
+	fully_flatten: bool,
+) -> GraphicGroup {
+	let nested_group = group.eval(footprint).await;
+	let mut flat_group = GraphicGroup::EMPTY;
+	fn flatten_group(result_group: &mut GraphicGroup, current_group: GraphicGroup, fully_flatten: bool) {
+		let mut collection_group = GraphicGroup::EMPTY;
+		for (element, reference) in current_group.elements {
+			if let GraphicElement::GraphicGroup(mut nested_group) = element {
+				nested_group.transform *= current_group.transform;
+				let mut sub_group = GraphicGroup::EMPTY;
+				if fully_flatten {
+					flatten_group(&mut sub_group, nested_group, fully_flatten);
+				} else {
+					for (collection_element, _) in &mut nested_group.elements {
+						*collection_element.transform_mut() = nested_group.transform * collection_element.transform();
+					}
+					sub_group = nested_group;
+				}
+				collection_group.append(&mut sub_group.elements);
+			} else {
+				collection_group.push((element, reference));
+			}
+		}
+
+		result_group.append(&mut collection_group.elements);
+	}
+	flatten_group(&mut flat_group, nested_group, fully_flatten);
+	flat_group
+}
+
 #[node_macro::node(category(""))]
 async fn to_artboard<F: 'n + Send + ApplyTransform, Data: Into<GraphicGroup> + 'n>(
 	#[implementations(

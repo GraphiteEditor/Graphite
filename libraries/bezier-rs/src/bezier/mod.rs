@@ -102,7 +102,7 @@ impl BezierHandles {
 	}
 
 	#[must_use]
-	pub fn flipped(self) -> Self {
+	pub fn reversed(self) -> Self {
 		match self {
 			BezierHandles::Cubic { handle_start, handle_end } => Self::Cubic {
 				handle_start: handle_end,
