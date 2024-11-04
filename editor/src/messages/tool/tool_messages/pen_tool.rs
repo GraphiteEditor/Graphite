@@ -539,7 +539,6 @@ impl Fsm for PenToolFsmState {
 				// Perform extension of an existing path
 				let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
 				if let Some((layer, point, position)) = should_extend(document, viewport, crate::consts::SNAP_POINT_TOLERANCE, selected_nodes.selected_layers(document.metadata())) {
-					log::debug!("Should extend: {:?}", layer);
 					tool_data.add_point(LastPoint {
 						id: point,
 						pos: position,
@@ -550,7 +549,6 @@ impl Fsm for PenToolFsmState {
 					tool_data.next_point = position;
 					tool_data.next_handle_start = position;
 				} else if let (Some(layer), None) = (selected_layers.next(), selected_layers.next()) {
-					log::debug!("Adding to layer: {:?}", layer);
 					// Add the first point to a new layer
 					// Generate first point
 					let id = PointId::generate();
@@ -566,7 +564,6 @@ impl Fsm for PenToolFsmState {
 					tool_data.next_point = pos;
 					tool_data.next_handle_start = pos;
 				} else {
-					log::debug!("Creating new layer");
 					// New path layer
 					let node_type = resolve_document_node_type("Path").expect("Path node does not exist");
 					let nodes = vec![(NodeId(0), node_type.default_node_template())];

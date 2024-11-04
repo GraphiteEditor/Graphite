@@ -30,8 +30,7 @@ pub enum NodeGraphMessage {
 	CreateNodeFromContextMenu {
 		node_id: Option<NodeId>,
 		node_type: String,
-		x: i32,
-		y: i32,
+		xy: Option<(i32, i32)>,
 	},
 	CreateWire {
 		output_connector: OutputConnector,
@@ -182,6 +181,7 @@ pub enum NodeGraphMessage {
 		node_graph_errors: GraphErrors,
 	},
 	UpdateActionButtons,
+	UpdateGraphBarRight,
 	UpdateInSelectedNetwork,
 	SendSelectedNodes,
 }

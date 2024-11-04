@@ -989,7 +989,7 @@
 			}
 
 			&.disabled {
-				background: var(--color-3-darkgray);
+				background: rgba(var(--color-4-dimgray-rgb), 0.33);
 				color: var(--color-a-softgray);
 
 				.icon-label {
@@ -1041,10 +1041,10 @@
 			}
 
 			&.selected {
-				background: rgba(var(--color-5-dullgray-rgb), 0.5);
+				background: rgba(var(--color-5-dullgray-rgb), 0.33);
 
 				&.in-selected-network {
-					background: rgba(var(--color-6-lowergray-rgb), 0.5);
+					background: rgba(var(--color-6-lowergray-rgb), 0.33);
 				}
 			}
 

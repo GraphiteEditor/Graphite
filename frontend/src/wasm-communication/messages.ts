@@ -742,6 +742,14 @@ const mouseCursorIconCSSNames = {
 export type MouseCursor = keyof typeof mouseCursorIconCSSNames;
 export type MouseCursorIcon = (typeof mouseCursorIconCSSNames)[MouseCursor];
 
+export class UpdateGraphViewOverlay extends JsMessage {
+	open!: boolean;
+}
+
+export class UpdateGraphFadeArtwork extends JsMessage {
+	readonly percentage!: number;
+}
+
 export class UpdateMouseCursor extends JsMessage {
 	@Transform(({ value }: { value: MouseCursor }) => mouseCursorIconCSSNames[value] || "alias")
 	readonly cursor!: MouseCursorIcon;
@@ -886,10 +894,6 @@ export class TriggerFontLoad extends JsMessage {
 	font!: Font;
 
 	isDefault!: boolean;
-}
-
-export class TriggerGraphViewOverlay extends JsMessage {
-	open!: boolean;
 }
 
 export class TriggerVisitLink extends JsMessage {
@@ -1561,12 +1565,11 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerAboutGraphiteLocalizedCommitDate,
 	TriggerCopyToClipboardBlobUrl,
 	TriggerDelayedZoomCanvasToFitAll,
-	TriggerFetchAndOpenDocument,
 	TriggerDownloadBlobUrl,
 	TriggerDownloadImage,
 	TriggerDownloadTextFile,
+	TriggerFetchAndOpenDocument,
 	TriggerFontLoad,
-	TriggerGraphViewOverlay,
 	TriggerImport,
 	TriggerIndexedDbRemoveDocument,
 	TriggerIndexedDbWriteDocument,
@@ -1584,9 +1587,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateBox,
 	UpdateClickTargets,
 	UpdateContextMenuInformation,
-	UpdateInSelectedNetwork,
-	UpdateImportsExports,
-	UpdateLayerWidths,
 	UpdateDialogButtons,
 	UpdateDialogColumn1,
 	UpdateDialogColumn2,
@@ -1598,8 +1598,13 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentRulers,
 	UpdateDocumentScrollbars,
 	UpdateEyedropperSamplingState,
+	UpdateGraphFadeArtwork,
+	UpdateGraphViewOverlay,
+	UpdateImportsExports,
 	UpdateInputHints,
+	UpdateInSelectedNetwork,
 	UpdateLayersPanelOptionsLayout,
+	UpdateLayerWidths,
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
 	UpdateNodeGraph,
@@ -1611,8 +1616,8 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdatePropertyPanelSectionsLayout,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
-	UpdateWorkingColorsLayout,
 	UpdateWirePathInProgress,
+	UpdateWorkingColorsLayout,
 	UpdateZoomWithScroll,
 } as const;
 export type JsMessageType = keyof typeof messageMakers;

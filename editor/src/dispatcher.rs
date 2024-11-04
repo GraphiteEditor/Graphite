@@ -199,10 +199,11 @@ impl Dispatcher {
 				Message::Portfolio(message) => {
 					let ipp = &self.message_handlers.input_preprocessor_message_handler;
 					let preferences = &self.message_handlers.preferences_message_handler;
+					let current_tool = &self.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type;
 
 					self.message_handlers
 						.portfolio_message_handler
-						.process_message(message, &mut queue, PortfolioMessageData { ipp, preferences });
+						.process_message(message, &mut queue, PortfolioMessageData { ipp, preferences, current_tool });
 				}
 				Message::Preferences(message) => {
 					self.message_handlers.preferences_message_handler.process_message(message, &mut queue, ());
@@ -244,8 +245,10 @@ impl Dispatcher {
 		list.extend(self.message_handlers.input_preprocessor_message_handler.actions());
 		list.extend(self.message_handlers.key_mapping_message_handler.actions());
 		list.extend(self.message_handlers.debug_message_handler.actions());
-		if self.message_handlers.portfolio_message_handler.active_document().is_some() {
-			list.extend(self.message_handlers.tool_message_handler.actions());
+		if let Some(document) = self.message_handlers.portfolio_message_handler.active_document() {
+			if !document.graph_view_overlay_open {
+				list.extend(self.message_handlers.tool_message_handler.actions());
+			}
 		}
 		list.extend(self.message_handlers.portfolio_message_handler.actions());
 		list
