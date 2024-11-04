@@ -3,6 +3,7 @@ use super::{document_node_definitions, node_properties};
 use crate::consts::GRID_SIZE;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::document_message_handler::navigation_controls;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::NodePropertiesContext;
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType};
@@ -1613,7 +1614,7 @@ impl NodeGraphMessageHandler {
 			return;
 		};
 
-		let widgets = vec![
+		let mut widgets = vec![
 			NumberInput::new(Some(graph_fade_artwork_percentage))
 				.percentage()
 				.display_decimal_places(0)
@@ -1627,63 +1628,9 @@ impl NodeGraphMessageHandler {
 				})
 				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			IconButton::new("ZoomIn", 24)
-				.tooltip("Zoom In")
-				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasZoomIncrease))
-				.on_update(|_| NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }.into())
-				.widget_holder(),
-			IconButton::new("ZoomOut", 24)
-				.tooltip("Zoom Out")
-				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasZoomDecrease))
-				.on_update(|_| NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }.into())
-				.widget_holder(),
-			IconButton::new("ZoomReset", 24)
-				.tooltip("Reset Tilt and Zoom to 100%")
-				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasTiltResetAndZoomTo100Percent))
-				.on_update(|_| NavigationMessage::CanvasTiltResetAndZoomTo100Percent.into())
-				.disabled((node_graph_ptz.zoom() - 1.).abs() < 1e-4)
-				.widget_holder(),
-			PopoverButton::new()
-				.popover_layout(vec![
-					LayoutGroup::Row {
-						widgets: vec![TextLabel::new("Node Graph Navigation").bold(true).widget_holder()],
-					},
-					LayoutGroup::Row {
-						widgets: vec![TextLabel::new(
-							"
-								Interactive controls in this\n\
-								menu are coming soon.\n\
-								\n\
-								Pan:\n\
-								• Middle Click Drag\n\
-								\n\
-								Zoom:\n\
-								• Shift + Middle Click Drag\n\
-								• Ctrl + Scroll Wheel Roll
-							"
-							.trim(),
-						)
-						.multiline(true)
-						.widget_holder()],
-					},
-				])
-				.widget_holder(),
-			Separator::new(SeparatorType::Related).widget_holder(),
-			NumberInput::new(Some(navigation_handler.snapped_zoom(node_graph_ptz.zoom()) * 100.))
-				.unit("%")
-				.min(0.000001)
-				.max(1000000.)
-				.tooltip("Node graph zoom")
-				.on_update(|number_input: &NumberInput| {
-					NavigationMessage::CanvasZoomSet {
-						zoom_factor: number_input.value.unwrap() / 100.,
-					}
-					.into()
-				})
-				.increment_behavior(NumberInputIncrementBehavior::Callback)
-				.increment_callback_decrease(|_| NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }.into())
-				.increment_callback_increase(|_| NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }.into())
-				.widget_holder(),
+		];
+		widgets.extend(navigation_controls(node_graph_ptz, navigation_handler, "Node Graph"));
+		widgets.extend([
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			TextButton::new("Node Graph")
 				.icon(Some("GraphViewOpen".into()))
@@ -1692,7 +1639,7 @@ impl NodeGraphMessageHandler {
 				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GraphViewOverlayToggle))
 				.on_update(move |_| DocumentMessage::GraphViewOverlayToggle.into())
 				.widget_holder(),
-		];
+		]);
 
 		self.widgets[1] = LayoutGroup::Row { widgets };
 	}

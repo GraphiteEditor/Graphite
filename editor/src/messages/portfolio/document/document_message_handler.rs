@@ -1810,67 +1810,9 @@ impl DocumentMessageHandler {
 				])
 				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			IconButton::new("ZoomIn", 24)
-				.tooltip("Zoom In")
-				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasZoomIncrease))
-				.on_update(|_| NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }.into())
-				.widget_holder(),
-			IconButton::new("ZoomOut", 24)
-				.tooltip("Zoom Out")
-				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasZoomDecrease))
-				.on_update(|_| NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }.into())
-				.widget_holder(),
-			IconButton::new("ZoomReset", 24)
-				.tooltip("Reset Tilt and Zoom to 100%")
-				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasTiltResetAndZoomTo100Percent))
-				.on_update(|_| NavigationMessage::CanvasTiltResetAndZoomTo100Percent.into())
-				.disabled(self.document_ptz.tilt.abs() < 1e-4 && (self.document_ptz.zoom() - 1.).abs() < 1e-4)
-				.widget_holder(),
-			PopoverButton::new()
-				.popover_layout(vec![
-					LayoutGroup::Row {
-						widgets: vec![TextLabel::new("Canvas Navigation").bold(true).widget_holder()],
-					},
-					LayoutGroup::Row {
-						widgets: vec![TextLabel::new(
-							"
-								Interactive controls in this\n\
-								menu are coming soon.\n\
-								\n\
-								Pan:\n\
-								• Middle Click Drag\n\
-								\n\
-								Tilt:\n\
-								• Alt + Middle Click Drag\n\
-								\n\
-								Zoom:\n\
-								• Shift + Middle Click Drag\n\
-								• Ctrl + Scroll Wheel Roll
-							"
-							.trim(),
-						)
-						.multiline(true)
-						.widget_holder()],
-					},
-				])
-				.widget_holder(),
-			Separator::new(SeparatorType::Related).widget_holder(),
-			NumberInput::new(Some(self.navigation_handler.snapped_zoom(self.document_ptz.zoom()) * 100.))
-				.unit("%")
-				.min(0.000001)
-				.max(1000000.)
-				.tooltip("Document zoom within the viewport")
-				.on_update(|number_input: &NumberInput| {
-					NavigationMessage::CanvasZoomSet {
-						zoom_factor: number_input.value.unwrap() / 100.,
-					}
-					.into()
-				})
-				.increment_behavior(NumberInputIncrementBehavior::Callback)
-				.increment_callback_decrease(|_| NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }.into())
-				.increment_callback_increase(|_| NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }.into())
-				.widget_holder(),
 		];
+
+		widgets.extend(navigation_controls(&self.document_ptz, &self.navigation_handler, "Canvas"));
 
 		let tilt_value = self.navigation_handler.snapped_tilt(self.document_ptz.tilt) / (std::f64::consts::PI / 180.);
 		if tilt_value.abs() > 0.00001 {
@@ -2218,6 +2160,71 @@ impl<'a> ClickXRayIter<'a> {
 			XRayTarget::Path(path) => self.check_layer_area_target(click_targets, clip, layer, path.clone(), transform),
 		}
 	}
+}
+
+pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHandler, tooltip_name: &str) -> [WidgetHolder; 6] {
+	[
+		IconButton::new("ZoomIn", 24)
+			.tooltip("Zoom In")
+			.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasZoomIncrease))
+			.on_update(|_| NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }.into())
+			.widget_holder(),
+		IconButton::new("ZoomOut", 24)
+			.tooltip("Zoom Out")
+			.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasZoomDecrease))
+			.on_update(|_| NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }.into())
+			.widget_holder(),
+		IconButton::new("ZoomReset", 24)
+			.tooltip("Reset Tilt and Zoom to 100%")
+			.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasTiltResetAndZoomTo100Percent))
+			.on_update(|_| NavigationMessage::CanvasTiltResetAndZoomTo100Percent.into())
+			.disabled(ptz.tilt.abs() < 1e-4 && (ptz.zoom() - 1.).abs() < 1e-4)
+			.widget_holder(),
+		PopoverButton::new()
+			.popover_layout(vec![
+				LayoutGroup::Row {
+					widgets: vec![TextLabel::new(format!("{tooltip_name} Navigation")).bold(true).widget_holder()],
+				},
+				LayoutGroup::Row {
+					widgets: vec![TextLabel::new({
+						let tilt = if tooltip_name == "Canvas" { "Tilt:\n• Alt + Middle Click Drag\n\n" } else { "" };
+						format!(
+							"
+							Interactive controls in this\n\
+							menu are coming soon.\n\
+							\n\
+							Pan:\n\
+							• Middle Click Drag\n\
+							\n\
+							{tilt}Zoom:\n\
+							• Shift + Middle Click Drag\n\
+							• Ctrl + Scroll Wheel Roll
+							"
+						)
+						.trim()
+					})
+					.multiline(true)
+					.widget_holder()],
+				},
+			])
+			.widget_holder(),
+		Separator::new(SeparatorType::Related).widget_holder(),
+		NumberInput::new(Some(navigation_handler.snapped_zoom(ptz.zoom()) * 100.))
+			.unit("%")
+			.min(0.000001)
+			.max(1000000.)
+			.tooltip(format!("{tooltip_name} Zoom"))
+			.on_update(|number_input: &NumberInput| {
+				NavigationMessage::CanvasZoomSet {
+					zoom_factor: number_input.value.unwrap() / 100.,
+				}
+				.into()
+			})
+			.increment_behavior(NumberInputIncrementBehavior::Callback)
+			.increment_callback_decrease(|_| NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }.into())
+			.increment_callback_increase(|_| NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }.into())
+			.widget_holder(),
+	]
 }
 
 impl<'a> Iterator for ClickXRayIter<'a> {
