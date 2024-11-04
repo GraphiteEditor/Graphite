@@ -10,7 +10,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use crate::messages::portfolio::document::DocumentMessageData;
 use crate::messages::prelude::*;
-use crate::messages::tool::utility_types::{HintData, HintGroup};
+use crate::messages::tool::utility_types::{HintData, HintGroup, ToolType};
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 
 use graph_craft::document::value::TaggedValue;
@@ -25,6 +25,7 @@ use std::vec;
 pub struct PortfolioMessageData<'a> {
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
+	pub current_tool: &'a ToolType,
 }
 
 #[derive(Debug, Default)]
@@ -41,7 +42,7 @@ pub struct PortfolioMessageHandler {
 
 impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMessageHandler {
 	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, data: PortfolioMessageData) {
-		let PortfolioMessageData { ipp, preferences } = data;
+		let PortfolioMessageData { ipp, preferences, current_tool } = data;
 
 		match message {
 			// Sub-messages
@@ -73,6 +74,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							ipp,
 							persistent_data: &self.persistent_data,
 							executor: &mut self.executor,
+							current_tool,
 						};
 						document.process_message(message, responses, document_inputs)
 					}
@@ -87,6 +89,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						ipp,
 						persistent_data: &self.persistent_data,
 						executor: &mut self.executor,
+						current_tool,
 					};
 					document.process_message(message, responses, document_inputs)
 				}

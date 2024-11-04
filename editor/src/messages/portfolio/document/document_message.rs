@@ -131,6 +131,9 @@ pub enum DocumentMessage {
 	SetBlendModeForSelectedLayers {
 		blend_mode: BlendMode,
 	},
+	SetGraphFadeArtwork {
+		percentage: f64,
+	},
 	SetNodePinned {
 		node_id: NodeId,
 		pinned: bool,

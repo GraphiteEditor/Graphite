@@ -52,6 +52,7 @@ pub fn input_mappings() -> Mapping {
 		//
 		// Hack to prevent Left Click + Accel + Z combo (this effectively blocks you from making a double undo with AbortTransaction)
 		entry!(KeyDown(KeyZ); modifiers=[Accel, MouseLeft], action_dispatch=DocumentMessage::Noop),
+		//
 		// NodeGraphMessage
 		entry!(KeyDown(MouseLeft); action_dispatch=NodeGraphMessage::PointerDown {shift_click: false, control_click: false, alt_click: false, right_click: false}),
 		entry!(KeyDown(MouseLeft); modifiers=[Shift], action_dispatch=NodeGraphMessage::PointerDown {shift_click: true, control_click: false, alt_click: false, right_click: false}),
@@ -69,6 +70,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=NodeGraphMessage::Cut),
 		entry!(KeyDown(KeyC); modifiers=[Accel], action_dispatch=NodeGraphMessage::Copy),
 		entry!(KeyDown(KeyD); modifiers=[Accel], action_dispatch=NodeGraphMessage::DuplicateSelectedNodes),
+		entry!(KeyDown(KeyH); modifiers=[Accel], action_dispatch=NodeGraphMessage::ToggleSelectedVisibility),
 		entry!(KeyDown(KeyL); modifiers=[Alt], action_dispatch=NodeGraphMessage::ToggleSelectedAsLayersOrNodes),
 		entry!(KeyDown(KeyC); modifiers=[Shift], action_dispatch=NodeGraphMessage::PrintSelectedNodeCoordinates),
 		entry!(KeyDown(KeyC); modifiers=[Alt], action_dispatch=NodeGraphMessage::SendClickTargets),

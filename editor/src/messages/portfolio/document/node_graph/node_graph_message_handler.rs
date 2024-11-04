@@ -28,6 +28,7 @@ pub struct NodeGraphHandlerData<'a> {
 	pub collapsed: &'a mut CollapsedLayers,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub graph_view_overlay_open: bool,
+	pub graph_fade_artwork_percentage: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -76,8 +77,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			breadcrumb_network_path,
 			document_id,
 			collapsed,
-			graph_view_overlay_open,
 			ipp,
+			graph_view_overlay_open,
+			graph_fade_artwork_percentage,
 		} = data;
 
 		match message {
@@ -1374,8 +1376,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::UpdateActionButtons => {
 				if selection_network_path == breadcrumb_network_path {
-					self.update_selection_action_buttons(network_interface, breadcrumb_network_path, responses);
+					self.update_graph_bar_left(network_interface, breadcrumb_network_path, responses);
+					self.send_node_bar_layout(responses);
 				}
+			}
+			NodeGraphMessage::UpdateGraphBarRight => {
+				self.update_graph_bar_right(graph_fade_artwork_percentage);
+				self.send_node_bar_layout(responses);
 			}
 			NodeGraphMessage::UpdateInSelectedNetwork => responses.add(FrontendMessage::UpdateInSelectedNetwork {
 				in_selected_network: selection_network_path == breadcrumb_network_path,
@@ -1435,7 +1442,7 @@ impl NodeGraphMessageHandler {
 	}
 
 	/// Updates the buttons for visibility, locked, and preview
-	fn update_selection_action_buttons(&mut self, network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId], responses: &mut VecDeque<Message>) {
+	fn update_graph_bar_left(&mut self, network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId], responses: &mut VecDeque<Message>) {
 		let Some(subgraph_path_names) = Self::collect_subgraph_names(network_interface, breadcrumb_network_path) else {
 			// If a node in a nested network could not be found, exit the nested network
 			let breadcrumb_network_path_len = breadcrumb_network_path.len();
@@ -1550,7 +1557,36 @@ impl NodeGraphMessageHandler {
 		}
 
 		self.widgets[0] = LayoutGroup::Row { widgets };
-		self.send_node_bar_layout(responses);
+	}
+
+	fn update_graph_bar_right(&mut self, graph_fade_artwork_percentage: f64) {
+		let widgets = vec![
+			// TODO: Replace this with an "Add Node" button, also next to an "Add Layer" button
+			TextLabel::new("Right Click in Graph to Add Nodes").italic(true).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			NumberInput::new(Some(graph_fade_artwork_percentage))
+				.percentage()
+				.display_decimal_places(0)
+				.label("Fade Artwork")
+				.tooltip("Opacity of the graph background that covers the artwork")
+				.on_update(move |number_input: &NumberInput| {
+					DocumentMessage::SetGraphFadeArtwork {
+						percentage: number_input.value.unwrap_or(graph_fade_artwork_percentage),
+					}
+					.into()
+				})
+				.widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			TextButton::new("Node Graph")
+				.icon(Some("GraphViewOpen".into()))
+				.hover_icon(Some("GraphViewClosed".into()))
+				.tooltip("Hide Node Graph")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GraphViewOverlayToggle))
+				.on_update(move |_| DocumentMessage::GraphViewOverlayToggle.into())
+				.widget_holder(),
+		];
+
+		self.widgets[1] = LayoutGroup::Row { widgets };
 	}
 
 	/// Collate the properties panel sections for a node graph
@@ -2125,7 +2161,7 @@ fn frontend_inputs_lookup(breadcrumb_network_path: &[NodeId], network_interface:
 			// Skip not exposed inputs for efficiency
 			let Some(value) = value else { continue };
 
-			// Resolve the type (done in a seperate loop because it requires a mutable reference to the `network_interface`)
+			// Resolve the type (done in a separate loop because it requires a mutable reference to the `network_interface`)
 			let (ty, type_source) = network_interface.input_type(&InputConnector::node(node_id, index), breadcrumb_network_path);
 			value.ty = ty;
 			value.type_source = type_source;
@@ -2136,24 +2172,11 @@ fn frontend_inputs_lookup(breadcrumb_network_path: &[NodeId], network_interface:
 
 impl Default for NodeGraphMessageHandler {
 	fn default() -> Self {
-		let right_side_widgets = vec![
-			// TODO: Replace this with an "Add Node" button, also next to an "Add Layer" button
-			TextLabel::new("Right Click in Graph to Add Nodes").italic(true).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			TextButton::new("Node Graph")
-				.icon(Some("GraphViewOpen".into()))
-				.hover_icon(Some("GraphViewClosed".into()))
-				.tooltip("Hide Node Graph")
-				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GraphViewOverlayToggle))
-				.on_update(move |_| DocumentMessage::GraphViewOverlayToggle.into())
-				.widget_holder(),
-		];
-
 		Self {
 			network: Vec::new(),
 			node_graph_errors: Vec::new(),
 			has_selection: false,
-			widgets: [LayoutGroup::Row { widgets: Vec::new() }, LayoutGroup::Row { widgets: right_side_widgets }],
+			widgets: [LayoutGroup::Row { widgets: Vec::new() }, LayoutGroup::Row { widgets: Vec::new() }],
 			drag_start: None,
 			begin_dragging: false,
 			drag_occurred: false,

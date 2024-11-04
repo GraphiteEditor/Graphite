@@ -84,9 +84,6 @@ pub enum FrontendMessage {
 		#[serde(rename = "isDefault")]
 		is_default: bool,
 	},
-	TriggerGraphViewOverlay {
-		open: bool,
-	},
 	TriggerImport,
 	TriggerIndexedDbRemoveDocument {
 		#[serde(rename = "documentId")]
@@ -152,6 +149,9 @@ pub enum FrontendMessage {
 	UpdateClickTargets {
 		#[serde(rename = "clickTargets")]
 		click_targets: Option<FrontendClickTargets>,
+	},
+	UpdateGraphViewOverlay {
+		open: bool,
 	},
 	UpdateLayerWidths {
 		#[serde(rename = "layerWidths")]
@@ -220,6 +220,9 @@ pub enum FrontendMessage {
 		secondary_color: String,
 		#[serde(rename = "setColorChoice")]
 		set_color_choice: Option<String>,
+	},
+	UpdateGraphFadeArtwork {
+		percentage: f64,
 	},
 	UpdateInputHints {
 		#[serde(rename = "hintData")]
