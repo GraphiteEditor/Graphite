@@ -610,16 +610,30 @@ impl ShapeState {
 	}
 
 	/// Move the selected points by dragging the mouse.
-	pub fn move_selected_points(&self, handle_lengths: Option<OpposingHandleLengths>, document: &DocumentMessageHandler, delta: DVec2, equidistant: bool, responses: &mut VecDeque<Message>) {
+	pub fn move_selected_points(
+		&self,
+		handle_lengths: Option<OpposingHandleLengths>,
+		document: &DocumentMessageHandler,
+		delta: DVec2,
+		equidistant: bool,
+		responses: &mut VecDeque<Message>,
+		keyboard: bool, //reference = 1 means keyboard input
+	) {
 		for (&layer, state) in &self.selected_shape_state {
 			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
 				continue;
 			};
 			let opposing_handles = handle_lengths.as_ref().and_then(|handle_lengths| handle_lengths.get(&layer));
-
-		
-			let delta = delta;
-
+			
+			
+			
+			let transform = document.metadata().transform_to_viewport(layer);
+			let delta_for_keyboard = delta.clone();
+			let delta_for_mouse = transform.inverse().transform_vector2(delta);
+			
+			let delta = if keyboard { delta_for_keyboard} else {delta_for_mouse};
+			
+	
 			for &point in state.selected_points.iter() {
 				let handle = match point {
 					ManipulatorPointId::Anchor(point) => {
@@ -629,26 +643,26 @@ impl ShapeState {
 					ManipulatorPointId::PrimaryHandle(segment) => HandleId::primary(segment),
 					ManipulatorPointId::EndHandle(segment) => HandleId::end(segment),
 				};
-
+	
 				let Some(anchor_id) = point.get_anchor(&vector_data) else { continue };
 				if state.is_selected(ManipulatorPointId::Anchor(anchor_id)) {
 					continue;
 				}
-
+	
 				let Some(anchor_position) = vector_data.point_domain.position_from_id(anchor_id) else { continue };
-
+	
 				let Some(handle_position) = point.get_position(&vector_data) else { continue };
 				let handle_position = handle_position + delta;
-
+	
 				let modification_type = handle.set_relative_position(handle_position - anchor_position);
-
+	
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
-
+	
 				let Some(other) = vector_data.other_colinear_handle(handle) else { continue };
 				if state.is_selected(other.to_manipulator_point()) {
 					continue;
 				}
-
+	
 				let new_relative = if equidistant {
 					-(handle_position - anchor_position)
 				} else {
@@ -662,11 +676,12 @@ impl ShapeState {
 					direction.map_or(other_position - anchor_position, |direction| transform.inverse().transform_vector2(-direction * length))
 				};
 				let modification_type = other.set_relative_position(new_relative);
-
+	
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
 			}
 		}
 	}
+	
 
 	/// The opposing handle lengths.
 	pub fn opposing_handle_lengths(&self, document: &DocumentMessageHandler) -> OpposingHandleLengths {
