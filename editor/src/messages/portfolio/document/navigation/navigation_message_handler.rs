@@ -181,7 +181,11 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				};
 				ptz.tilt = 0.;
 				ptz.set_zoom(1.);
-				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				if graph_view_overlay_open {
+					responses.add(NodeGraphMessage::UpdateGraphBarRight);
+				} else {
+					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				}
 				responses.add(DocumentMessage::PTZUpdate);
 				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 			}
@@ -192,6 +196,9 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				};
 				ptz.tilt = angle_radians;
 				responses.add(DocumentMessage::PTZUpdate);
+				if !graph_view_overlay_open {
+					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				}
 			}
 			NavigationMessage::CanvasZoomDecrease { center_on_mouse } => {
 				let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
@@ -252,7 +259,11 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				let zoom = zoom_factor.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 				let zoom = zoom * Self::clamp_zoom(zoom, document_bounds, old_zoom, ipp);
 				ptz.set_zoom(zoom);
-				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				if graph_view_overlay_open {
+					responses.add(NodeGraphMessage::UpdateGraphBarRight);
+				} else {
+					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				}
 				responses.add(DocumentMessage::PTZUpdate);
 				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 			}
@@ -281,6 +292,11 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				ptz.tilt = self.snapped_tilt(ptz.tilt);
 				ptz.set_zoom(self.snapped_zoom(ptz.zoom()));
 				responses.add(DocumentMessage::PTZUpdate);
+				if graph_view_overlay_open {
+					responses.add(NodeGraphMessage::UpdateGraphBarRight);
+				} else {
+					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				}
 				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 				// Reset the navigation operation now that it's done
 				self.navigation_operation = NavigationOperation::None;
@@ -336,7 +352,11 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 					ptz.set_zoom(1.);
 				}
 
-				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				if graph_view_overlay_open {
+					responses.add(NodeGraphMessage::UpdateGraphBarRight);
+				} else {
+					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				}
 				responses.add(DocumentMessage::PTZUpdate);
 				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 			}
@@ -478,11 +498,7 @@ impl NavigationMessageHandler {
 	}
 
 	pub fn snapped_zoom(&self, zoom: f64) -> f64 {
-		if matches!(self.navigation_operation, NavigationOperation::Zoom { snap: true, .. }) {
-			*VIEWPORT_ZOOM_LEVELS.iter().min_by(|a, b| (**a - zoom).abs().partial_cmp(&(**b - zoom).abs()).unwrap()).unwrap_or(&zoom)
-		} else {
-			zoom
-		}
+		snapped_zoom(&self.navigation_operation, zoom)
 	}
 
 	pub fn calculate_offset_transform(&self, viewport_center: DVec2, ptz: &PTZ) -> DAffine2 {
@@ -521,5 +537,13 @@ impl NavigationMessageHandler {
 		}
 
 		VIEWPORT_ZOOM_MIN_FRACTION_COVER / scale_factor
+	}
+}
+
+pub fn snapped_zoom(navigation_operation: &NavigationOperation, zoom: f64) -> f64 {
+	if matches!(navigation_operation, NavigationOperation::Zoom { snap: true, .. }) {
+		*VIEWPORT_ZOOM_LEVELS.iter().min_by(|a, b| (**a - zoom).abs().partial_cmp(&(**b - zoom).abs()).unwrap()).unwrap_or(&zoom)
+	} else {
+		zoom
 	}
 }

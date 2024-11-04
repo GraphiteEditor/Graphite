@@ -7,7 +7,6 @@
 use crate::helpers::translate_key;
 use crate::{Error, EDITOR, EDITOR_HANDLE, EDITOR_HAS_CRASHED};
 
-use editor::application::generate_uuid;
 use editor::application::Editor;
 use editor::consts::FILE_SAVE_SUFFIX;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
@@ -574,12 +573,11 @@ impl EditorHandle {
 	/// Creates a new document node in the node graph
 	#[wasm_bindgen(js_name = createNode)]
 	pub fn create_node(&self, node_type: String, x: i32, y: i32) {
-		let id = NodeId(generate_uuid());
+		let id = NodeId::new();
 		let message = NodeGraphMessage::CreateNodeFromContextMenu {
 			node_id: Some(id),
 			node_type,
-			x: x / 24,
-			y: y / 24,
+			xy: Some((x / 24, y / 24)),
 		};
 		self.dispatch(message);
 	}
@@ -653,20 +651,16 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Pin or unpin a node given its node ID
+	#[wasm_bindgen(js_name = setNodePinned)]
+	pub fn set_node_pinned(&self, id: u64, pinned: bool) {
+		self.dispatch(DocumentMessage::SetNodePinned { node_id: NodeId(id), pinned });
+	}
+
 	/// Delete a layer or node given its node ID
 	#[wasm_bindgen(js_name = deleteNode)]
 	pub fn delete_node(&self, id: u64) {
-		let message = DocumentMessage::StartTransaction;
-		self.dispatch(message);
-
-		let id = NodeId(id);
-		self.dispatch(NodeGraphMessage::DeleteNodes {
-			node_ids: vec![id],
-			delete_children: true,
-		});
-		self.dispatch(NodeGraphMessage::RunDocumentGraph);
-		self.dispatch(NodeGraphMessage::SelectedNodesUpdated);
-		self.dispatch(NodeGraphMessage::SendGraph);
+		self.dispatch(DocumentMessage::DeleteNode { node_id: NodeId(id) });
 	}
 
 	/// Toggle lock state of a layer from the layer list
@@ -694,11 +688,7 @@ impl EditorHandle {
 	/// Toggle display type for a layer
 	#[wasm_bindgen(js_name = setToNodeOrLayer)]
 	pub fn set_to_node_or_layer(&self, id: u64, is_layer: bool) {
-		let node_id = NodeId(id);
-		let message = DocumentMessage::StartTransaction;
-		self.dispatch(message);
-		let message = NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer };
-		self.dispatch(message);
+		self.dispatch(DocumentMessage::SetToNodeOrLayer { node_id: NodeId(id), is_layer });
 	}
 
 	#[wasm_bindgen(js_name = injectImaginatePollServerStatus)]

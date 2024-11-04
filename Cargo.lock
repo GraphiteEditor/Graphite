@@ -596,12 +596,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bitstream-io"
-version = "2.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b81e1519b0d82120d2fd469d5bfb2919a9361c48b02d82d04befc1cdd2002452"
-
-[[package]]
 name = "block"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -686,16 +680,6 @@ checksum = "40723b8fb387abc38f4f4a37c09073622e41dd12327033091ef8950659e6dc0c"
 dependencies = [
  "memchr",
  "serde",
-]
-
-[[package]]
-name = "build-camera-data"
-version = "0.0.1"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.79",
- "toml 0.8.19",
 ]
 
 [[package]]
@@ -3423,25 +3407,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ec2a862134d2a7d32d7983ddcdd1c4923530833c9f2ea1a44fc5fa473989058"
 
 [[package]]
-name = "libraw-rs"
-version = "0.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "24ec60aab878560c299c6e70a0c6dc2278a2159ac6fe09650917266b8985387f"
-dependencies = [
- "libraw-rs-sys",
-]
-
-[[package]]
-name = "libraw-rs-sys"
-version = "0.0.4+libraw-0.20.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba094a3b8b04cc42fdeafaff06f81d3b13a7d01cc7a8eae55b943dae1b65c3cc"
-dependencies = [
- "cc",
- "libc",
-]
-
-[[package]]
 name = "libredox"
 version = "0.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4911,21 +4876,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c8a99fddc9f0ba0a85884b8d14e3592853e787d581ca1816c91349b10e4eeab"
 
 [[package]]
-name = "raw-rs"
-version = "0.0.1"
-dependencies = [
- "bitstream-io",
- "build-camera-data",
- "image 0.25.2",
- "libraw-rs",
- "num_enum 0.7.3",
- "rayon",
- "reqwest 0.12.8",
- "tag-derive",
- "thiserror",
-]
-
-[[package]]
 name = "raw-window-handle"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6072,14 +6022,6 @@ dependencies = [
  "pkg-config",
  "toml 0.8.19",
  "version-compare 0.2.0",
-]
-
-[[package]]
-name = "tag-derive"
-version = "0.0.1"
-dependencies = [
- "quote",
- "syn 2.0.79",
 ]
 
 [[package]]

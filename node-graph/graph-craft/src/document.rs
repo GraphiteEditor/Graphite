@@ -747,11 +747,11 @@ fn migrate_layer_to_merge<'de, D: serde::Deserializer<'de>>(deserializer: D) -> 
 }
 // TODO: Eventually remove this (probably starting late 2024)
 fn default_import_metadata() -> (NodeId, IVec2) {
-	(NodeId(generate_uuid()), IVec2::new(-25, -4))
+	(NodeId::new(), IVec2::new(-25, -4))
 }
 // TODO: Eventually remove this (probably starting late 2024)
 fn default_export_metadata() -> (NodeId, IVec2) {
-	(NodeId(generate_uuid()), IVec2::new(8, -4))
+	(NodeId::new(), IVec2::new(8, -4))
 }
 
 #[derive(Clone, Default, Debug, DynAny)]
@@ -1016,7 +1016,7 @@ impl NodeNetwork {
 
 	/// Remove all nodes that contain [`DocumentNodeImplementation::Network`] by moving the nested nodes into the parent network.
 	pub fn flatten(&mut self, node_id: NodeId) {
-		self.flatten_with_fns(node_id, merge_ids, || NodeId(generate_uuid()))
+		self.flatten_with_fns(node_id, merge_ids, NodeId::new)
 	}
 
 	/// Remove all nodes that contain [`DocumentNodeImplementation::Network`] by moving the nested nodes into the parent network.
@@ -1025,7 +1025,6 @@ impl NodeNetwork {
 			warn!("The node which was supposed to be flattened does not exist in the network, id {node_id} network {self:#?}");
 			return;
 		};
-
 		// If the node is hidden, replace it with an identity node
 		let identity_node = DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into());
 		if !node.visible && node.implementation != identity_node {
@@ -1033,8 +1032,8 @@ impl NodeNetwork {
 
 			// Connect layer node to the graphic group below
 			node.inputs.drain(1..);
+			node.manual_composition = None;
 			self.nodes.insert(id, node);
-
 			return;
 		}
 

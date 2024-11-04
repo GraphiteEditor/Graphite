@@ -5,25 +5,35 @@ use crate::registry::types::{Angle, Fraction, IntegerCount, Length, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::style::LineJoin;
-use crate::{Color, GraphicGroup};
+use crate::vector::PointDomain;
+use crate::{Color, GraphicElement, GraphicGroup};
 
 use bezier_rs::{Cap, Join, Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
 use rand::{Rng, SeedableRng};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
+/// Implemented for types that can be converted to an iterator of vector data.
+/// Used for the fill and stroke node so they can be used on VectorData or GraphicGroup
 trait VectorIterMut {
-	fn vector_iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut VectorData>;
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = (&mut VectorData, DAffine2)>;
 }
 
 impl VectorIterMut for GraphicGroup {
-	fn vector_iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut VectorData> {
-		self.iter_mut().filter_map(|(element, _)| element.as_vector_data_mut()).collect::<Vec<_>>().into_iter()
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = (&mut VectorData, DAffine2)> {
+		let parent_transform = self.transform;
+		// Grab only the direct children (perhaps unintuitive?)
+		self.iter_mut().filter_map(|(element, _)| element.as_vector_data_mut()).map(move |vector| {
+			let transform = parent_transform * vector.transform;
+			(vector, transform)
+		})
 	}
 }
 
 impl VectorIterMut for VectorData {
-	fn vector_iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut VectorData> {
-		std::iter::once(self)
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = (&mut VectorData, DAffine2)> {
+		let transform = self.transform;
+		std::iter::once((self, transform))
 	}
 }
 
@@ -51,13 +61,12 @@ async fn assign_colors<F: 'n + Send, T: VectorIterMut>(
 	repeat_every: u32,
 ) -> T {
 	let mut input = vector_group.eval(footprint).await;
-	let vector_data = input.vector_iter_mut();
-	let length = vector_data.len();
+	let length = input.vector_iter_mut().count();
 	let gradient = if reverse { gradient.reversed() } else { gradient };
 
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 
-	for (i, vector_data) in vector_data.enumerate() {
+	for (i, (vector_data, _)) in input.vector_iter_mut().enumerate() {
 		let factor = match randomize {
 			true => rng.gen::<f64>(),
 			false => match repeat_every {
@@ -82,12 +91,23 @@ async fn assign_colors<F: 'n + Send, T: VectorIterMut>(
 }
 
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
-async fn fill<F: 'n + Send, T: Into<Fill> + 'n + Send>(
+async fn fill<F: 'n + Send, FillTy: Into<Fill> + 'n + Send, TargetTy: VectorIterMut + 'n + Send>(
 	#[implementations(
 		(),
 		(),
 		(),
 		(),
+		(),
+		(),
+		(),
+		(),
+		Footprint,
+		Footprint,
+		Footprint,
+		Footprint,
+		Footprint,
+		Footprint,
+		Footprint,
 		Footprint,
 	)]
 	footprint: F,
@@ -96,10 +116,29 @@ async fn fill<F: 'n + Send, T: Into<Fill> + 'n + Send>(
 		() -> VectorData,
 		() -> VectorData,
 		() -> VectorData,
+		() -> GraphicGroup,
+		() -> GraphicGroup,
+		() -> GraphicGroup,
+		() -> GraphicGroup,
 		Footprint -> VectorData,
+		Footprint -> VectorData,
+		Footprint -> VectorData,
+		Footprint -> VectorData,
+		Footprint -> GraphicGroup,
+		Footprint -> GraphicGroup,
+		Footprint -> GraphicGroup,
+		Footprint -> GraphicGroup,
 	)]
-	vector_data: impl Node<F, Output = VectorData>,
+	vector_data: impl Node<F, Output = TargetTy>,
 	#[implementations(
+		Fill,
+		Option<Color>,
+		Color,
+		Gradient,
+		Fill,
+		Option<Color>,
+		Color,
+		Gradient,
 		Fill,
 		Option<Color>,
 		Color,
@@ -110,47 +149,64 @@ async fn fill<F: 'n + Send, T: Into<Fill> + 'n + Send>(
 		Gradient,
 	)]
 	#[default(Color::BLACK)]
-	fill: T,
+	fill: FillTy,
 	_backup_color: Option<Color>,
 	_backup_gradient: Gradient,
-) -> VectorData {
-	let mut vector_data = vector_data.eval(footprint).await;
-	vector_data.style.set_fill(fill.into());
+) -> TargetTy {
+	let mut target = vector_data.eval(footprint).await;
+	let fill: Fill = fill.into();
+	for (target, _transform) in target.vector_iter_mut() {
+		target.style.set_fill(fill.clone());
+	}
 
-	vector_data
+	target
 }
 
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
-async fn stroke<F: 'n + Send, T: Into<Option<Color>> + 'n + Send>(
+async fn stroke<F: 'n + Send, ColorTy: Into<Option<Color>> + 'n + Send, TargetTy: VectorIterMut + 'n + Send>(
 	#[implementations(
 		(),
 		(),
+		(),
+		(),
+		Footprint,
+		Footprint,
+		Footprint,
 		Footprint,
 	)]
 	footprint: F,
 	#[implementations(
 		() -> VectorData,
 		() -> VectorData,
+		() -> GraphicGroup,
+		() -> GraphicGroup,
 		Footprint -> VectorData,
+		Footprint -> VectorData,
+		Footprint -> GraphicGroup,
+		Footprint -> GraphicGroup,
 	)]
-	vector_data: impl Node<F, Output = VectorData>,
+	vector_data: impl Node<F, Output = TargetTy>,
 	#[implementations(
+		Option<Color>,
+		Color,
+		Option<Color>,
+		Color,
 		Option<Color>,
 		Color,
 		Option<Color>,
 		Color,
 	)]
 	#[default(Color::BLACK)]
-	color: T,
+	color: ColorTy,
 	#[default(2.)] weight: f64,
 	dash_lengths: Vec<f64>,
 	dash_offset: f64,
 	line_cap: crate::vector::style::LineCap,
 	line_join: LineJoin,
 	#[default(4.)] miter_limit: f64,
-) -> VectorData {
-	let mut vector_data = vector_data.eval(footprint).await;
-	vector_data.style.set_stroke(Stroke {
+) -> TargetTy {
+	let mut target = vector_data.eval(footprint).await;
+	let stroke = Stroke {
 		color: color.into(),
 		weight,
 		dash_lengths,
@@ -158,100 +214,197 @@ async fn stroke<F: 'n + Send, T: Into<Option<Color>> + 'n + Send>(
 		line_cap,
 		line_join,
 		line_join_miter_limit: miter_limit,
-		transform: vector_data.transform,
-	});
-	vector_data
+		transform: DAffine2::IDENTITY,
+	};
+	for (target, transform) in target.vector_iter_mut() {
+		target.style.set_stroke(Stroke { transform, ..stroke.clone() });
+	}
+
+	target
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn repeat<F: 'n + Send>(
+async fn repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + Transform + TransformMut + Send>(
 	#[implementations(
 		(),
+		(),
+		Footprint,
 		Footprint,
 	)]
 	footprint: F,
+	// TODO: Implement other GraphicElementRendered types.
 	#[implementations(
 		() -> VectorData,
+		() -> GraphicGroup,
 		Footprint -> VectorData,
+		Footprint -> GraphicGroup,
 	)]
-	instance: impl Node<F, Output = VectorData>,
+	instance: impl Node<F, Output = I>,
 	#[default(100., 100.)]
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
 	direction: DVec2,
 	angle: Angle,
 	#[default(4)] instances: IntegerCount,
-) -> VectorData {
+) -> GraphicGroup {
 	let instance = instance.eval(footprint).await;
+	let first_vector_transform = instance.transform();
+
 	let angle = angle.to_radians();
 	let instances = instances.max(1);
 	let total = (instances - 1) as f64;
 
-	if instances == 1 {
-		return instance;
-	}
+	let mut result = GraphicGroup::EMPTY;
 
-	// Repeat the vector data
-	let mut result = VectorData::empty();
-
-	let Some(bounding_box) = instance.bounding_box_with_transform(instance.transform) else {
-		return instance;
+	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY) else {
+		return result;
 	};
+
 	let center = (bounding_box[0] + bounding_box[1]) / 2.;
 
 	for i in 0..instances {
 		let translation = i as f64 * direction / total;
 		let angle = i as f64 * angle / total;
+		let mut new_instance = result.last().map(|(element, _)| element.clone()).unwrap_or(instance.to_graphic_element());
+		new_instance.new_ids_from_hash(None);
+		let modification = DAffine2::from_translation(center) * DAffine2::from_angle(angle) * DAffine2::from_translation(translation) * DAffine2::from_translation(-center);
 
-		let transform = DAffine2::from_translation(center) * DAffine2::from_angle(angle) * DAffine2::from_translation(translation) * DAffine2::from_translation(-center);
-
-		result.concat(&instance, transform);
+		let data_transform = new_instance.transform_mut();
+		*data_transform = modification * first_vector_transform;
+		result.push((new_instance, None));
 	}
-
-	result.style.set_stroke_transform(DAffine2::IDENTITY);
 
 	result
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn circular_repeat<F: 'n + Send>(
+async fn circular_repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + Transform + TransformMut + Send>(
 	#[implementations(
+		(),
+		(),
+		Footprint,
+		Footprint,
+	)]
+	footprint: F,
+	// TODO: Implement other GraphicElementRendered types.
+	#[implementations(
+		() -> VectorData,
+		() -> GraphicGroup,
+		Footprint -> VectorData,
+		Footprint -> GraphicGroup,
+	)]
+	instance: impl Node<F, Output = I>,
+	angle_offset: Angle,
+	#[default(5)] radius: f64,
+	#[default(5)] instances: IntegerCount,
+) -> GraphicGroup {
+	let instance = instance.eval(footprint).await;
+	let first_vector_transform = instance.transform();
+	let instances = instances.max(1);
+
+	let mut result = GraphicGroup::EMPTY;
+
+	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY) else {
+		return result;
+	};
+
+	let center = (bounding_box[0] + bounding_box[1]) / 2.;
+	let base_transform = DVec2::new(0., radius) - center;
+
+	for i in 0..instances {
+		let angle = (std::f64::consts::TAU / instances as f64) * i as f64 + angle_offset.to_radians();
+		let rotation = DAffine2::from_angle(angle);
+		let modification = DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform);
+		let mut new_instance = result.last().map(|(element, _)| element.clone()).unwrap_or(instance.to_graphic_element());
+		new_instance.new_ids_from_hash(None);
+
+		let data_transform = new_instance.transform_mut();
+		*data_transform = modification * first_vector_transform;
+		result.push((new_instance, None));
+	}
+
+	result
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn copy_to_points<F: 'n + Send + Copy, I: GraphicElementRendered + ConcatElement + TransformMut + Send + 'n>(
+	#[implementations(
+		(),
 		(),
 		Footprint,
 	)]
 	footprint: F,
 	#[implementations(
 		() -> VectorData,
+		() -> VectorData,
 		Footprint -> VectorData,
 	)]
-	instance: impl Node<F, Output = VectorData>,
-	angle_offset: Angle,
-	#[default(5)] radius: Length,
-	#[default(5)] instances: IntegerCount,
-) -> VectorData {
+	points: impl Node<F, Output = VectorData>,
+	#[expose]
+	#[implementations(
+		() -> VectorData,
+		() -> GraphicGroup,
+		Footprint -> VectorData,
+		Footprint -> GraphicGroup,
+	)]
+	instance: impl Node<F, Output = I>,
+	#[default(1)] random_scale_min: f64,
+	#[default(1)] random_scale_max: f64,
+	random_scale_bias: f64,
+	random_scale_seed: SeedValue,
+	random_rotation: Angle,
+	random_rotation_seed: SeedValue,
+) -> GraphicGroup {
+	let points = points.eval(footprint).await;
 	let instance = instance.eval(footprint).await;
-	let instances = instances.max(1);
+	let instance_transform = instance.transform();
 
-	if instances == 1 {
-		return instance;
+	let random_scale_difference = random_scale_max - random_scale_min;
+
+	let points_list = points.point_domain.positions();
+
+	let instance_bounding_box = instance.bounding_box(DAffine2::IDENTITY).unwrap_or_default();
+	let instance_center = -0.5 * (instance_bounding_box[0] + instance_bounding_box[1]);
+
+	let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed.into());
+	let mut rotation_rng = rand::rngs::StdRng::seed_from_u64(random_rotation_seed.into());
+
+	let do_scale = random_scale_difference.abs() > 1e-6;
+	let do_rotation = random_rotation.abs() > 1e-6;
+
+	let mut result = GraphicGroup::default();
+	for &point in points_list {
+		let center_transform = DAffine2::from_translation(instance_center);
+
+		let translation = points.transform.transform_point2(point);
+
+		let rotation = if do_rotation {
+			let degrees = (rotation_rng.gen::<f64>() - 0.5) * random_rotation;
+			degrees / 360. * std::f64::consts::TAU
+		} else {
+			0.
+		};
+
+		let scale = if do_scale {
+			if random_scale_bias.abs() < 1e-6 {
+				// Linear
+				random_scale_min + scale_rng.gen::<f64>() * random_scale_difference
+			} else {
+				// Weighted (see <https://www.desmos.com/calculator/gmavd3m9bd>)
+				let horizontal_scale_factor = 1. - 2_f64.powf(random_scale_bias);
+				let scale_factor = (1. - scale_rng.gen::<f64>() * horizontal_scale_factor).log2() / random_scale_bias;
+				random_scale_min + scale_factor * random_scale_difference
+			}
+		} else {
+			random_scale_min
+		};
+
+		let mut new_instance = result.last().map(|(element, _)| element.clone()).unwrap_or(instance.to_graphic_element());
+		new_instance.new_ids_from_hash(None);
+
+		let data_transform = new_instance.transform_mut();
+		*data_transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation) * center_transform * instance_transform;
+		result.push((new_instance, None));
 	}
-
-	let mut result = VectorData::empty();
-
-	let Some(bounding_box) = instance.bounding_box_with_transform(instance.transform) else {
-		return instance;
-	};
-	let center = (bounding_box[0] + bounding_box[1]) / 2.;
-
-	let base_transform = DVec2::new(0., radius) - center;
-
-	for i in 0..instances {
-		let angle = (std::f64::consts::TAU / instances as f64) * i as f64 + angle_offset.to_radians();
-		let rotation = DAffine2::from_angle(angle);
-		let transform = DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform);
-		result.concat(&instance, transform);
-	}
-
-	result.style.set_stroke_transform(DAffine2::IDENTITY);
 
 	result
 }
@@ -381,12 +534,51 @@ async fn solidify_stroke<F: 'n + Send>(
 	result
 }
 
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn flatten_vector_elements<F: 'n + Send>(
+	#[implementations(
+		(),
+		Footprint,
+	)]
+	footprint: F,
+	#[implementations(
+		() -> GraphicGroup,
+		Footprint -> GraphicGroup,
+	)]
+	graphic_group_input: impl Node<F, Output = GraphicGroup>,
+) -> VectorData {
+	let graphic_group = graphic_group_input.eval(footprint).await;
+	// A node based solution to support passing through vector data could be a network node with a cache node connected to
+	// a flatten vector elements connected to an if else node, another connection from the cache directly
+	// To the if else node, and another connection from the cache to a matches type node connected to the if else node.
+	fn concat_group(graphic_group: &GraphicGroup, current_transform: DAffine2, result: &mut VectorData) {
+		for (element, reference) in graphic_group.iter() {
+			match element {
+				GraphicElement::VectorData(vector_data) => {
+					result.concat(vector_data, current_transform, reference.map(|node_id| node_id.0).unwrap_or_default());
+				}
+				GraphicElement::GraphicGroup(graphic_group) => {
+					concat_group(graphic_group, current_transform * graphic_group.transform, result);
+				}
+				_ => {}
+			}
+		}
+	}
+
+	let mut result = VectorData::empty();
+	concat_group(&graphic_group, DAffine2::IDENTITY, &mut result);
+	// TODO: This leads to incorrect stroke widths when flattening groups with different transforms.
+	result.style.set_stroke_transform(DAffine2::IDENTITY);
+
+	result
+}
+
 pub trait ConcatElement {
-	fn concat(&mut self, other: &Self, transform: DAffine2);
+	fn concat(&mut self, other: &Self, transform: DAffine2, node_id: u64);
 }
 
 impl ConcatElement for GraphicGroup {
-	fn concat(&mut self, other: &Self, transform: DAffine2) {
+	fn concat(&mut self, other: &Self, transform: DAffine2, _node_id: u64) {
 		// TODO: Decide if we want to keep this behavior whereby the layers are flattened
 		for (mut element, footprint_mapping) in other.iter().cloned() {
 			*element.transform_mut() = transform * element.transform() * other.transform();
@@ -394,84 +586,6 @@ impl ConcatElement for GraphicGroup {
 		}
 		self.alpha_blending = other.alpha_blending;
 	}
-}
-
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn copy_to_points<F: 'n + Send + Copy, I: GraphicElementRendered + Default + ConcatElement + TransformMut + Send>(
-	#[implementations(
-		(),
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> VectorData,
-		() -> VectorData,
-		Footprint -> VectorData,
-	)]
-	points: impl Node<F, Output = VectorData>,
-	#[expose]
-	#[implementations(
-		() -> VectorData,
-		() -> GraphicGroup,
-		Footprint -> VectorData,
-		Footprint -> GraphicGroup,
-	)]
-	instance: impl Node<F, Output = I>,
-	#[default(1)] random_scale_min: f64,
-	#[default(1)] random_scale_max: f64,
-	random_scale_bias: f64,
-	random_scale_seed: SeedValue,
-	random_rotation: Angle,
-	random_rotation_seed: SeedValue,
-) -> I {
-	let points = points.eval(footprint).await;
-	let instance = instance.eval(footprint).await;
-
-	let random_scale_difference = random_scale_max - random_scale_min;
-
-	let points_list = points.point_domain.positions();
-
-	let instance_bounding_box = instance.bounding_box(DAffine2::IDENTITY).unwrap_or_default();
-	let instance_center = -0.5 * (instance_bounding_box[0] + instance_bounding_box[1]);
-
-	let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed.into());
-	let mut rotation_rng = rand::rngs::StdRng::seed_from_u64(random_rotation_seed.into());
-
-	let do_scale = random_scale_difference.abs() > 1e-6;
-	let do_rotation = random_rotation.abs() > 1e-6;
-
-	let mut result = I::default();
-	for &point in points_list {
-		let center_transform = DAffine2::from_translation(instance_center);
-
-		let translation = points.transform.transform_point2(point);
-
-		let rotation = if do_rotation {
-			let degrees = (rotation_rng.gen::<f64>() - 0.5) * random_rotation;
-			degrees / 360. * std::f64::consts::TAU
-		} else {
-			0.
-		};
-
-		let scale = if do_scale {
-			if random_scale_bias.abs() < 1e-6 {
-				// Linear
-				random_scale_min + scale_rng.gen::<f64>() * random_scale_difference
-			} else {
-				// Weighted (see <https://www.desmos.com/calculator/gmavd3m9bd>)
-				let horizontal_scale_factor = 1. - 2_f64.powf(random_scale_bias);
-				let scale_factor = (1. - scale_rng.gen::<f64>() * horizontal_scale_factor).log2() / random_scale_bias;
-				random_scale_min + scale_factor * random_scale_difference
-			}
-		} else {
-			random_scale_min
-		};
-
-		result.concat(&instance, DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation) * center_transform);
-	}
-
-	result
 }
 
 #[node_macro::node(category(""))]
@@ -496,67 +610,149 @@ async fn sample_points<F: 'n + Send + Copy>(
 	)]
 	subpath_segment_lengths: impl Node<F, Output = Vec<f64>>,
 ) -> VectorData {
+	// Evaluate vector data and subpath segment lengths asynchronously.
 	let vector_data = vector_data.eval(footprint).await;
 	let subpath_segment_lengths = subpath_segment_lengths.eval(footprint).await;
 
+	// Create an iterator over the bezier segments with enumeration and peeking capability.
 	let mut bezier = vector_data.segment_bezier_iter().enumerate().peekable();
 
+	// Initialize the result VectorData with the same transformation as the input.
 	let mut result = VectorData::empty();
 	result.transform = vector_data.transform;
 
-	while let Some((index, (segment, _, _, mut last_end))) = bezier.next() {
-		let mut lengths = vec![(segment, subpath_segment_lengths.get(index).copied().unwrap_or_default())];
+	// Iterate over each segment in the bezier iterator.
+	while let Some((index, (segment_id, _, start_point_index, mut last_end))) = bezier.next() {
+		// Record the start point index of the subpath.
+		let subpath_start_point_index = start_point_index;
 
-		while let Some((index, (segment, _, _, end))) = bezier.peek().is_some_and(|(_, (_, _, start, _))| *start == last_end).then(|| bezier.next()).flatten() {
-			last_end = end;
-			lengths.push((segment, subpath_segment_lengths.get(index).copied().unwrap_or_default()));
+		// Collect connected segments that form a continuous path.
+		let mut lengths = vec![(segment_id, subpath_segment_lengths.get(index).copied().unwrap_or_default())];
+
+		// Continue collecting segments as long as they are connected end-to-start.
+		while let Some(&seg) = bezier.peek() {
+			let (_, (_, _, ref start, _)) = seg;
+			if *start == last_end {
+				// Consume the next element since it continues the path.
+				let (index, (next_segment_id, _, _, end)) = bezier.next().unwrap();
+				last_end = end;
+				lengths.push((next_segment_id, subpath_segment_lengths.get(index).copied().unwrap_or_default()));
+			} else {
+				// The next segment does not continue the path.
+				break;
+			}
 		}
 
+		// Determine if the subpath is closed.
+		let subpath_is_closed = last_end == subpath_start_point_index;
+
+		// Calculate the total length of the collected segments.
 		let total_length: f64 = lengths.iter().map(|(_, len)| *len).sum();
 
+		// Adjust the usable length by subtracting start and stop offsets.
 		let mut used_length = total_length - start_offset - stop_offset;
 		if used_length <= 0. {
 			continue;
 		}
 
-		let count;
-		if adaptive_spacing {
+		// Determine the number of points to generate along the path.
+		let count = if adaptive_spacing {
+			// Calculate point count to evenly distribute points while covering the entire path.
 			// With adaptive spacing, we widen or narrow the points as necessary to ensure the last point is always at the end of the path.
-			count = (used_length / spacing).round();
+			(used_length / spacing).round()
 		} else {
-			// Without adaptive spacing, we just evenly space the points at the exact specified spacing, usually falling short before the end of the path.
-			count = (used_length / spacing + f64::EPSILON).floor();
-			used_length = used_length - used_length % spacing;
-		}
+			// Calculate point count based on exact spacing, which may not cover the entire path.
 
+			// Without adaptive spacing, we just evenly space the points at the exact specified spacing, usually falling short before the end of the path.
+			let c = (used_length / spacing + f64::EPSILON).floor();
+			used_length -= used_length % spacing;
+			c
+		};
+
+		// Skip if there are no points to generate.
 		if count < 1. {
 			continue;
 		}
-		for c in 0..=count as usize {
+
+		// Initialize a vector to store indices of generated points.
+		let mut point_indices = Vec::new();
+
+		// Generate points along the path based on calculated intervals.
+		let max_c = if subpath_is_closed { count as usize - 1 } else { count as usize };
+		for c in 0..=max_c {
 			let fraction = c as f64 / count;
 			let total_distance = fraction * used_length + start_offset;
 
-			let (mut segment, mut length) = lengths[0];
+			// Find the segment corresponding to the current total_distance.
+			let (mut current_segment_id, mut length) = lengths[0];
 			let mut total_length_before = 0.;
-			for &(next_segment, next_length) in lengths.iter().skip(1) {
+			for &(next_segment_id, next_length) in lengths.iter().skip(1) {
 				if total_length_before + length > total_distance {
 					break;
 				}
 
 				total_length_before += length;
-				segment = next_segment;
+				current_segment_id = next_segment_id;
 				length = next_length;
 			}
 
-			let Some(segment) = vector_data.segment_from_id(segment) else { continue };
+			// Retrieve the segment and apply transformation.
+			let Some(segment) = vector_data.segment_from_id(current_segment_id) else { continue };
 			let segment = segment.apply_transformation(|point| vector_data.transform.transform_point2(point));
 
+			// Calculate the position on the segment.
 			let parametric_t = segment.euclidean_to_parametric_with_total_length((total_distance - total_length_before) / length, 0.001, length);
 			let point = segment.evaluate(TValue::Parametric(parametric_t));
-			result.point_domain.push(PointId::generate(), vector_data.transform.inverse().transform_point2(point));
+
+			// Generate a new PointId and add the point to result.point_domain.
+			let point_id = PointId::generate();
+			result.point_domain.push(point_id, vector_data.transform.inverse().transform_point2(point));
+
+			// Store the index of the point.
+			let point_index = result.point_domain.ids().len() - 1;
+			point_indices.push(point_index);
+		}
+
+		// After generating points, create segments between consecutive points.
+		for window in point_indices.windows(2) {
+			if let [start_index, end_index] = *window {
+				// Generate a new SegmentId.
+				let segment_id = SegmentId::generate();
+
+				// Use BezierHandles::Linear for linear segments.
+				let handles = bezier_rs::BezierHandles::Linear;
+
+				// Generate a new StrokeId.
+				let stroke_id = StrokeId::generate();
+
+				// Add the segment to result.segment_domain.
+				result.segment_domain.push(segment_id, start_index, end_index, handles, stroke_id);
+			}
+		}
+
+		// If the subpath is closed, add a closing segment connecting the last point to the first point.
+		if subpath_is_closed {
+			if let (Some(&first_index), Some(&last_index)) = (point_indices.first(), point_indices.last()) {
+				// Generate a new SegmentId.
+				let segment_id = SegmentId::generate();
+
+				// Use BezierHandles::Linear for linear segments.
+				let handles = bezier_rs::BezierHandles::Linear;
+
+				// Generate a new StrokeId.
+				let stroke_id = StrokeId::generate();
+
+				// Add the closing segment to result.segment_domain.
+				result.segment_domain.push(segment_id, last_index, first_index, handles, stroke_id);
+			}
 		}
 	}
 
+	// Transfer the style from the input vector data to the result.
+	result.style = vector_data.style.clone();
+	result.style.set_stroke_transform(vector_data.transform);
+
+	// Return the resulting vector data with newly generated points and segments.
 	result
 }
 
@@ -593,10 +789,28 @@ async fn poisson_disk_points<F: 'n + Send>(
 
 		subpath.apply_transform(vector_data.transform);
 
+		let mut previous_point_index: Option<usize> = None;
+
 		for point in subpath.poisson_disk_points(separation_disk_diameter, || rng.gen::<f64>()) {
-			result.point_domain.push(PointId::generate(), point);
+			let point_id = PointId::generate();
+			result.point_domain.push(point_id, point);
+
+			// Get the index of the newly added point.
+			let point_index = result.point_domain.ids().len() - 1;
+
+			// If there is a previous point, connect it with the current point by adding a segment.
+			if let Some(prev_point_index) = previous_point_index {
+				let segment_id = SegmentId::generate();
+				result.segment_domain.push(segment_id, prev_point_index, point_index, bezier_rs::BezierHandles::Linear, StrokeId::ZERO);
+			}
+
+			previous_point_index = Some(point_index);
 		}
 	}
+
+	// Transfer the style from the input vector data to the result.
+	result.style = vector_data.style.clone();
+	result.style.set_stroke_transform(DAffine2::IDENTITY);
 
 	result
 }
@@ -622,27 +836,203 @@ async fn subpath_segment_lengths<F: 'n + Send>(
 		.collect()
 }
 
-#[node_macro::node(name("Splines from Points"), category(""), path(graphene_core::vector))]
-fn splines_from_points(_: (), mut vector_data: VectorData) -> VectorData {
-	let points = &vector_data.point_domain;
+#[node_macro::node(name("Splines from Points"), category("Vector"), path(graphene_core::vector))]
+async fn splines_from_points<F: 'n + Send>(
+	#[implementations(
+		(),
+		Footprint,
+	)]
+	footprint: F,
+	#[implementations(
+		() -> VectorData,
+		Footprint -> VectorData,
+	)]
+	vector_data: impl Node<F, Output = VectorData>,
+) -> VectorData {
+	// Evaluate the vector data within the given footprint.
+	let mut vector_data = vector_data.eval(footprint).await;
 
-	vector_data.segment_domain.clear();
-
-	if points.positions().is_empty() {
+	// Exit early if there are no points to generate splines from.
+	if vector_data.point_domain.positions().is_empty() {
 		return vector_data;
 	}
 
-	let first_handles = bezier_rs::solve_spline_first_handle(points.positions());
+	// Extract points and take ownership of the segment domain for processing.
+	let points = &vector_data.point_domain;
+	let segments = std::mem::take(&mut vector_data.segment_domain);
 
-	let stroke_id = StrokeId::ZERO;
+	// Map segment IDs to their indices using BTreeMap for deterministic ordering.
+	let segment_id_to_index = segments.ids().iter().copied().enumerate().map(|(i, id)| (id, i)).collect::<BTreeMap<_, _>>();
 
-	for (start_index, end_index) in (0..(points.positions().len())).zip(1..(points.positions().len())) {
-		let handle_start = first_handles[start_index];
-		let handle_end = points.positions()[end_index] * 2. - first_handles[end_index];
-		let handles = bezier_rs::BezierHandles::Cubic { handle_start, handle_end };
+	// Iterate over all segments to generate splines.
+	let mut visited_segments = BTreeSet::new();
+	for (segment_index, &segment_id) in segments.ids().iter().enumerate() {
+		// Skip segments that have already been visited.
+		if visited_segments.contains(&segment_id) {
+			continue;
+		}
 
-		vector_data.segment_domain.push(SegmentId::generate(), start_index, end_index, handles, stroke_id)
+		let mut current_subpath_segments = Vec::new();
+		let mut queue = VecDeque::new();
+		queue.push_back(segment_index);
+
+		// Traverse the connected segments to form a subpath.
+		while let Some(segment_index) = queue.pop_front() {
+			// Skip segments that have already been visited, otherwise add them to the visited set and the current subpath.
+			let seg_id = segments.ids()[segment_index];
+			if visited_segments.contains(&seg_id) {
+				continue;
+			}
+			visited_segments.insert(seg_id);
+			current_subpath_segments.push(segment_index);
+
+			// Get the start and end points of the segment.
+			let start_point_index = segments.start_point()[segment_index];
+			let end_point_index = segments.end_point()[segment_index];
+
+			// For both start and end points, find and enqueue connected segments.
+			for point_index in [start_point_index, end_point_index] {
+				let mut connected_seg_ids = segments.start_connected(point_index).chain(segments.end_connected(point_index)).collect::<Vec<_>>();
+				connected_seg_ids.sort_unstable(); // Ensure deterministic order
+				for connected_seg_id in connected_seg_ids {
+					let connected_seg_index = *segment_id_to_index.get(&connected_seg_id).unwrap_or(&usize::MAX);
+					if connected_seg_index != usize::MAX && !visited_segments.contains(&connected_seg_id) {
+						queue.push_back(connected_seg_index);
+					}
+				}
+			}
+		}
+
+		// Build a mapping from each point to its connected points using BTreeMap for deterministic ordering.
+		let mut point_connections: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+		for &seg_index in &current_subpath_segments {
+			let start = segments.start_point()[seg_index];
+			let end = segments.end_point()[seg_index];
+			point_connections.entry(start).or_default().push(end);
+			point_connections.entry(end).or_default().push(start);
+		}
+
+		// Sort connected points for deterministic traversal.
+		for neighbors in point_connections.values_mut() {
+			neighbors.sort_unstable();
+		}
+
+		// Identify endpoints.
+		let endpoints = point_connections
+			.iter()
+			.filter(|(_, neighbors)| neighbors.len() == 1)
+			.map(|(&point_index, _)| point_index)
+			.collect::<Vec<_>>();
+
+		let mut ordered_point_indices = Vec::new();
+
+		// Start with the first endpoint or the first point if there are no endpoints because it's a closed subpath.
+		let start_point_index = endpoints.first().copied().unwrap_or_else(|| *point_connections.keys().next().unwrap());
+
+		// Traverse points to order them into a path.
+		let mut visited_points = BTreeSet::new();
+		let mut current_point = start_point_index;
+		loop {
+			ordered_point_indices.push(current_point);
+			visited_points.insert(current_point);
+
+			let Some(neighbors) = point_connections.get(&current_point) else { break };
+			let next_point = neighbors.iter().find(|&pt| !visited_points.contains(pt));
+			let Some(&next_point) = next_point else { break };
+			current_point = next_point;
+		}
+
+		// If it's a closed subpath, close the spline loop by adding the start point at the end.
+		let closed = endpoints.is_empty();
+		if closed {
+			ordered_point_indices.push(start_point_index);
+		}
+
+		// Collect the positions of the ordered points.
+		let positions = ordered_point_indices.iter().map(|&index| points.positions()[index]).collect::<Vec<_>>();
+
+		// Compute control point handles for Bezier spline.
+		// TODO: Make this support wrapping around between start and end points for closed subpaths.
+		let first_handles = bezier_rs::solve_spline_first_handle(&positions);
+
+		let stroke_id = StrokeId::ZERO;
+
+		// Create segments with computed Bezier handles and add them to vector data.
+		for i in 0..(positions.len() - 1) {
+			let next_index = (i + 1) % positions.len();
+
+			let start_index = ordered_point_indices[i];
+			let end_index = ordered_point_indices[next_index];
+
+			let handle_start = first_handles[i];
+			let handle_end = positions[next_index] * 2. - first_handles[next_index];
+			let handles = bezier_rs::BezierHandles::Cubic { handle_start, handle_end };
+
+			vector_data.segment_domain.push(SegmentId::generate(), start_index, end_index, handles, stroke_id);
+		}
 	}
+
+	vector_data
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn jitter_points<F: 'n + Send>(
+	#[implementations(
+		(),
+		Footprint,
+	)]
+	footprint: F,
+	#[implementations(
+		() -> VectorData,
+		Footprint -> VectorData,
+	)]
+	vector_data: impl Node<F, Output = VectorData>,
+	#[default(5.)] amount: f64,
+	seed: SeedValue,
+) -> VectorData {
+	let mut vector_data = vector_data.eval(footprint).await;
+
+	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
+
+	let deltas = (0..vector_data.point_domain.positions().len())
+		.map(|_| {
+			let angle = rng.gen::<f64>() * std::f64::consts::TAU;
+			DVec2::from_angle(angle) * rng.gen::<f64>() * amount
+		})
+		.collect::<Vec<_>>();
+	let mut already_applied = vec![false; vector_data.point_domain.positions().len()];
+
+	for (handles, start, end) in vector_data.segment_domain.handles_and_points_mut() {
+		let start_delta = deltas[*start];
+		let end_delta = deltas[*end];
+
+		if !already_applied[*start] {
+			let start_position = vector_data.point_domain.positions()[*start];
+			let start_position = vector_data.transform.transform_point2(start_position);
+			vector_data.point_domain.set_position(*start, start_position + start_delta);
+			already_applied[*start] = true;
+		}
+		if !already_applied[*end] {
+			let end_position = vector_data.point_domain.positions()[*end];
+			let end_position = vector_data.transform.transform_point2(end_position);
+			vector_data.point_domain.set_position(*end, end_position + end_delta);
+			already_applied[*end] = true;
+		}
+
+		match handles {
+			bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
+				*handle_start = vector_data.transform.transform_point2(*handle_start) + start_delta;
+				*handle_end += vector_data.transform.transform_point2(*handle_end) + end_delta;
+			}
+			bezier_rs::BezierHandles::Quadratic { handle } => {
+				*handle += vector_data.transform.transform_point2(*handle) + (start_delta + end_delta) / 2.;
+			}
+			bezier_rs::BezierHandles::Linear => {}
+		}
+	}
+
+	vector_data.transform = DAffine2::IDENTITY;
+	vector_data.style.set_stroke_transform(DAffine2::IDENTITY);
 
 	vector_data
 }
@@ -751,6 +1141,123 @@ async fn morph<F: 'n + Send + Copy>(
 	result
 }
 
+fn bevel_algorithm(mut vector_data: VectorData, distance: f64) -> VectorData {
+	// Splits a bézier curve based on a distance measurement
+	fn split_distance(bezier: bezier_rs::Bezier, distance: f64, length: f64) -> bezier_rs::Bezier {
+		const EUCLIDEAN_ERROR: f64 = 0.001;
+		let parametric = bezier.euclidean_to_parametric_with_total_length(distance / length, EUCLIDEAN_ERROR, length);
+		bezier.split(bezier_rs::TValue::Parametric(parametric))[1]
+	}
+
+	/// Produces a list that correspons with the point id. The value is how many segments are connected.
+	fn segments_connected_count(vector_data: &VectorData) -> Vec<u8> {
+		// Count the number of segments connectign to each point.
+		let mut segments_connected_count = vec![0; vector_data.point_domain.ids().len()];
+		for &point_index in vector_data.segment_domain.start_point().iter().chain(vector_data.segment_domain.end_point()) {
+			segments_connected_count[point_index] += 1;
+		}
+
+		// Zero out points without exactly two connectors. These are ignored
+		for count in &mut segments_connected_count {
+			if *count != 2 {
+				*count = 0;
+			}
+		}
+		segments_connected_count
+	}
+
+	/// Updates the index so that it points at a point with the position. If nobody else will look at the index, the original point is updated. Otherwise a new point is created.
+	fn create_or_modify_point(point_domain: &mut PointDomain, segments_connected_count: &mut [u8], pos: DVec2, index: &mut usize, next_id: &mut PointId, new_segments: &mut Vec<[usize; 2]>) {
+		segments_connected_count[*index] -= 1;
+		if segments_connected_count[*index] == 0 {
+			// If nobody else is going to look at this point, we're alright to modify it
+			point_domain.set_position(*index, pos);
+		} else {
+			let new_index = point_domain.ids().len();
+			let original_index = *index;
+
+			// Create a new point (since someone will wish to look at the point in the original position in future)
+			*index = new_index;
+			point_domain.push(next_id.next_id(), pos);
+
+			// Add a new segment to be created later
+			new_segments.push([new_index, original_index])
+		}
+	}
+
+	fn update_existing_segments(vector_data: &mut VectorData, distance: f64, segments_connected: &mut [u8]) -> Vec<[usize; 2]> {
+		let mut next_id = vector_data.point_domain.next_id();
+		let mut new_segments = Vec::new();
+
+		for (handles, start_point_index, end_point_index) in vector_data.segment_domain.handles_and_points_mut() {
+			// Convert the original segment to a bezier
+			let mut bezier = bezier_rs::Bezier {
+				start: vector_data.point_domain.positions()[*start_point_index],
+				end: vector_data.point_domain.positions()[*end_point_index],
+				handles: *handles,
+			};
+
+			if bezier.is_linear() {
+				bezier.handles = bezier_rs::BezierHandles::Linear;
+			}
+			bezier = bezier.apply_transformation(|p| vector_data.transform.transform_point2(p));
+			let inverse_transform = (vector_data.transform.matrix2.determinant() != 0.).then(|| vector_data.transform.inverse()).unwrap_or_default();
+
+			let original_length = bezier.length(None);
+			let mut length = original_length;
+
+			if segments_connected[*start_point_index] > 0 {
+				// Apply the bevel to the start
+				bezier = split_distance(bezier, distance.min(original_length / 2.), length);
+				length = (length - distance).max(0.);
+				// Update the start position
+				let pos = inverse_transform.transform_point2(bezier.start);
+				create_or_modify_point(&mut vector_data.point_domain, segments_connected, pos, start_point_index, &mut next_id, &mut new_segments);
+			}
+			if segments_connected[*end_point_index] > 0 {
+				// Apply the bevel to the end
+				bezier = split_distance(bezier.reversed(), distance.min(original_length / 2.), length).reversed();
+				// Update the end position
+				let pos = inverse_transform.transform_point2(bezier.end);
+				create_or_modify_point(&mut vector_data.point_domain, segments_connected, pos, end_point_index, &mut next_id, &mut new_segments);
+			}
+			// Update the handles
+			*handles = bezier.handles.apply_transformation(|p| inverse_transform.transform_point2(p));
+		}
+		new_segments
+	}
+
+	fn insert_new_segments(vector_data: &mut VectorData, new_segments: &[[usize; 2]]) {
+		let mut next_id = vector_data.segment_domain.next_id();
+		for &[start, end] in new_segments {
+			vector_data.segment_domain.push(next_id.next_id(), start, end, bezier_rs::BezierHandles::Linear, StrokeId::ZERO);
+		}
+	}
+
+	let mut segments_connected = segments_connected_count(&vector_data);
+	let new_segments = update_existing_segments(&mut vector_data, distance, &mut segments_connected);
+	insert_new_segments(&mut vector_data, &new_segments);
+
+	vector_data
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn bevel<F: 'n + Send + Copy>(
+	#[implementations(
+		(),
+		Footprint,
+	)]
+	footprint: F,
+	#[implementations(
+		() -> VectorData,
+		Footprint -> VectorData,
+	)]
+	source: impl Node<F, Output = VectorData>,
+	#[default(10.)] distance: Length,
+) -> VectorData {
+	bevel_algorithm(source.eval(footprint).await, distance)
+}
+
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn area(_: (), vector_data: impl Node<Footprint, Output = VectorData>) -> f64 {
 	let vector_data = vector_data.eval(Footprint::default()).await;
@@ -838,8 +1345,9 @@ mod test {
 		let direction = DVec2::X * 1.5;
 		let instances = 3;
 		let repeated = super::repeat(Footprint::default(), &vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
-		assert_eq!(repeated.region_bezier_paths().count(), 3);
-		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
+		let vector_data = super::flatten_vector_elements(Footprint::default(), &FutureWrapperNode(repeated)).await;
+		assert_eq!(vector_data.region_bezier_paths().count(), 3);
+		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
 			assert!((subpath.manipulator_groups()[0].anchor - direction * index as f64 / (instances - 1) as f64).length() < 1e-5);
 		}
 	}
@@ -848,16 +1356,18 @@ mod test {
 		let direction = DVec2::new(12., 10.);
 		let instances = 8;
 		let repeated = super::repeat(Footprint::default(), &vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
-		assert_eq!(repeated.region_bezier_paths().count(), 8);
-		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
+		let vector_data = super::flatten_vector_elements(Footprint::default(), &FutureWrapperNode(repeated)).await;
+		assert_eq!(vector_data.region_bezier_paths().count(), 8);
+		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
 			assert!((subpath.manipulator_groups()[0].anchor - direction * index as f64 / (instances - 1) as f64).length() < 1e-5);
 		}
 	}
 	#[tokio::test]
 	async fn circle_repeat() {
 		let repeated = super::circular_repeat(Footprint::default(), &vector_node(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE)), 45., 4., 8).await;
-		assert_eq!(repeated.region_bezier_paths().count(), 8);
-		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
+		let vector_data = super::flatten_vector_elements(Footprint::default(), &FutureWrapperNode(repeated)).await;
+		assert_eq!(vector_data.region_bezier_paths().count(), 8);
+		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
 			let expected_angle = (index as f64 + 1.) * 45.;
 			let center = (subpath.manipulator_groups()[0].anchor + subpath.manipulator_groups()[2].anchor) / 2.;
 			let actual_angle = DVec2::Y.angle_to(center).to_degrees();
@@ -893,9 +1403,10 @@ mod test {
 		let points = Subpath::new_rect(DVec2::NEG_ONE * 10., DVec2::ONE * 10.);
 		let instance = Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE);
 		let expected_points = VectorData::from_subpath(points.clone()).point_domain.positions().to_vec();
-		let bounding_box = super::copy_to_points(Footprint::default(), &vector_node(points), &vector_node(instance), 1., 1., 0., 0, 0., 0).await;
-		assert_eq!(bounding_box.region_bezier_paths().count(), expected_points.len());
-		for (index, (_, subpath)) in bounding_box.region_bezier_paths().enumerate() {
+		let copy_to_points = super::copy_to_points(Footprint::default(), &vector_node(points), &vector_node(instance), 1., 1., 0., 0, 0., 0).await;
+		let flattened_copy_to_points = super::flatten_vector_elements(Footprint::default(), &FutureWrapperNode(copy_to_points)).await;
+		assert_eq!(flattened_copy_to_points.region_bezier_paths().count(), expected_points.len());
+		for (index, (_, subpath)) in flattened_copy_to_points.region_bezier_paths().enumerate() {
 			let offset = expected_points[index];
 			assert_eq!(
 				&subpath.anchors()[..4],
@@ -945,10 +1456,9 @@ mod test {
 		let lengths = subpath_segment_lengths(Footprint::default(), &vector_node(subpath)).await;
 		assert_eq!(lengths, vec![100.]);
 	}
-	#[test]
-	fn spline() {
-		let subpath = VectorData::from_subpath(Subpath::new_rect(DVec2::ZERO, DVec2::ONE * 100.));
-		let spline = splines_from_points((), subpath);
+	#[tokio::test]
+	async fn spline() {
+		let spline = splines_from_points(Footprint::default(), &vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE * 100.))).await;
 		assert_eq!(spline.stroke_bezier_paths().count(), 1);
 		assert_eq!(spline.point_domain.positions(), &[DVec2::ZERO, DVec2::new(100., 0.), DVec2::new(100., 100.), DVec2::new(0., 100.)]);
 	}
@@ -961,5 +1471,89 @@ mod test {
 			&sample_points.point_domain.positions()[..4],
 			vec![DVec2::new(-25., -50.), DVec2::new(50., -25.), DVec2::new(25., 50.), DVec2::new(-50., 25.)]
 		);
+	}
+
+	#[track_caller]
+	fn contains_segment(vector: &VectorData, target: bezier_rs::Bezier) {
+		let segments = vector.segment_bezier_iter().map(|x| x.1);
+		let count = segments.filter(|bezier| bezier.abs_diff_eq(&target, 0.01) || bezier.reversed().abs_diff_eq(&target, 0.01)).count();
+		assert_eq!(count, 1, "Incorrect number of {target:#?} in {:#?}", vector.segment_bezier_iter().collect::<Vec<_>>());
+	}
+
+	#[tokio::test]
+	async fn bevel_rect() {
+		let source = Subpath::new_rect(DVec2::ZERO, DVec2::ONE * 100.);
+		let beveled = super::bevel(Footprint::default(), &vector_node(source), 5.).await;
+		assert_eq!(beveled.point_domain.positions().len(), 8);
+		assert_eq!(beveled.segment_domain.ids().len(), 8);
+
+		// Segments
+		contains_segment(&beveled, bezier_rs::Bezier::from_linear_dvec2(DVec2::new(5., 0.), DVec2::new(95., 0.)));
+		contains_segment(&beveled, bezier_rs::Bezier::from_linear_dvec2(DVec2::new(5., 100.), DVec2::new(95., 100.)));
+		contains_segment(&beveled, bezier_rs::Bezier::from_linear_dvec2(DVec2::new(0., 5.), DVec2::new(0., 95.)));
+		contains_segment(&beveled, bezier_rs::Bezier::from_linear_dvec2(DVec2::new(100., 5.), DVec2::new(100., 95.)));
+
+		// Joins
+		contains_segment(&beveled, bezier_rs::Bezier::from_linear_dvec2(DVec2::new(5., 0.), DVec2::new(0., 5.)));
+		contains_segment(&beveled, bezier_rs::Bezier::from_linear_dvec2(DVec2::new(95., 0.), DVec2::new(100., 5.)));
+		contains_segment(&beveled, bezier_rs::Bezier::from_linear_dvec2(DVec2::new(100., 95.), DVec2::new(95., 100.)));
+		contains_segment(&beveled, bezier_rs::Bezier::from_linear_dvec2(DVec2::new(5., 100.), DVec2::new(0., 95.)));
+	}
+
+	#[tokio::test]
+	async fn bevel_open_curve() {
+		let curve = Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::new(10., 0.), DVec2::new(10., 100.), DVec2::X * 100.);
+		let source = Subpath::from_beziers(&[Bezier::from_linear_dvec2(DVec2::X * -100., DVec2::ZERO), curve], false);
+		let beveled = super::bevel(Footprint::default(), &vector_node(source), 5.).await;
+
+		assert_eq!(beveled.point_domain.positions().len(), 4);
+		assert_eq!(beveled.segment_domain.ids().len(), 3);
+
+		// Segments
+		contains_segment(&beveled, bezier_rs::Bezier::from_linear_dvec2(DVec2::new(-5., 0.), DVec2::new(-100., 0.)));
+		let trimmed = curve.trim(bezier_rs::TValue::Euclidean(5. / curve.length(Some(0.00001))), bezier_rs::TValue::Parametric(1.));
+		contains_segment(&beveled, trimmed);
+
+		// Join
+		contains_segment(&beveled, bezier_rs::Bezier::from_linear_dvec2(DVec2::new(-5., 0.), trimmed.start));
+	}
+
+	#[tokio::test]
+	async fn bevel_with_transform() {
+		let curve = Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::new(1., 0.), DVec2::new(1., 10.), DVec2::X * 10.);
+		let source = Subpath::<PointId>::from_beziers(&[Bezier::from_linear_dvec2(DVec2::X * -10., DVec2::ZERO), curve], false);
+		let mut vector_data = VectorData::from_subpath(source);
+		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(10.), 1., DVec2::new(99., 77.));
+		vector_data.transform = transform;
+		let beveled = super::bevel(Footprint::default(), &FutureWrapperNode(vector_data), 5.).await;
+
+		assert_eq!(beveled.point_domain.positions().len(), 4);
+		assert_eq!(beveled.segment_domain.ids().len(), 3);
+		assert_eq!(beveled.transform, transform);
+
+		// Segments
+		contains_segment(&beveled, bezier_rs::Bezier::from_linear_dvec2(DVec2::new(-0.5, 0.), DVec2::new(-10., 0.)));
+		let trimmed = curve.trim(bezier_rs::TValue::Euclidean(0.5 / curve.length(Some(0.00001))), bezier_rs::TValue::Parametric(1.));
+		contains_segment(&beveled, trimmed);
+
+		// Join
+		contains_segment(&beveled, bezier_rs::Bezier::from_linear_dvec2(DVec2::new(-0.5, 0.), trimmed.start));
+	}
+
+	#[tokio::test]
+	async fn bevel_too_high() {
+		let source = Subpath::from_anchors([DVec2::ZERO, DVec2::new(100., 0.), DVec2::new(100., 100.), DVec2::new(0., 100.)], false);
+		let beveled = super::bevel(Footprint::default(), &vector_node(source), 999.).await;
+		assert_eq!(beveled.point_domain.positions().len(), 6);
+		assert_eq!(beveled.segment_domain.ids().len(), 5);
+
+		// Segments
+		contains_segment(&beveled, bezier_rs::Bezier::from_linear_dvec2(DVec2::new(0., 0.), DVec2::new(50., 0.)));
+		contains_segment(&beveled, bezier_rs::Bezier::from_linear_dvec2(DVec2::new(100., 50.), DVec2::new(100., 50.)));
+		contains_segment(&beveled, bezier_rs::Bezier::from_linear_dvec2(DVec2::new(100., 50.), DVec2::new(50., 100.)));
+
+		// Joins
+		contains_segment(&beveled, bezier_rs::Bezier::from_linear_dvec2(DVec2::new(50., 0.), DVec2::new(100., 50.)));
+		contains_segment(&beveled, bezier_rs::Bezier::from_linear_dvec2(DVec2::new(100., 50.), DVec2::new(50., 100.)));
 	}
 }

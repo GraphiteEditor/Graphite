@@ -10,7 +10,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use crate::messages::portfolio::document::DocumentMessageData;
 use crate::messages::prelude::*;
-use crate::messages::tool::utility_types::{HintData, HintGroup};
+use crate::messages::tool::utility_types::{HintData, HintGroup, ToolType};
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 
 use graph_craft::document::value::TaggedValue;
@@ -25,6 +25,7 @@ use std::vec;
 pub struct PortfolioMessageData<'a> {
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
+	pub current_tool: &'a ToolType,
 }
 
 #[derive(Debug, Default)]
@@ -41,7 +42,7 @@ pub struct PortfolioMessageHandler {
 
 impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMessageHandler {
 	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, data: PortfolioMessageData) {
-		let PortfolioMessageData { ipp, preferences } = data;
+		let PortfolioMessageData { ipp, preferences, current_tool } = data;
 
 		match message {
 			// Sub-messages
@@ -73,6 +74,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							ipp,
 							persistent_data: &self.persistent_data,
 							executor: &mut self.executor,
+							current_tool,
 						};
 						document.process_message(message, responses, document_inputs)
 					}
@@ -87,6 +89,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						ipp,
 						persistent_data: &self.persistent_data,
 						executor: &mut self.executor,
+						current_tool,
 					};
 					document.process_message(message, responses, document_inputs)
 				}
@@ -618,7 +621,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					if self.active_document().is_some() {
 						trace!("Pasting into folder {parent:?} as index: {insert_index}");
 						let nodes = entry.clone().nodes;
-						let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId(generate_uuid()))).collect();
+						let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
 						let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
 						responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
 						responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index });
@@ -646,7 +649,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 								added_nodes = true;
 							}
 							document.load_layer_resources(responses);
-							let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(id, _)| (*id, NodeId(generate_uuid()))).collect();
+							let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
 							let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
 							responses.add(NodeGraphMessage::AddNodes { nodes: entry.nodes, new_ids });
 							responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index: 0 });
@@ -749,13 +752,19 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				responses.add(FrontendMessage::UpdateActiveDocument { document_id });
+				responses.add(ToolMessage::InitTools);
+				responses.add(NodeGraphMessage::Init);
 				responses.add(OverlaysMessage::Draw);
 				responses.add(BroadcastEvent::ToolAbort);
 				responses.add(BroadcastEvent::SelectionChanged);
-				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(DocumentMessage::GraphViewOverlay { open: node_graph_open });
+				if node_graph_open {
+					responses.add(NodeGraphMessage::UpdateGraphBarRight);
+				} else {
+					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				}
 			}
 			PortfolioMessage::SubmitDocumentExport {
 				file_name,
@@ -963,6 +972,7 @@ impl PortfolioMessageHandler {
 				/text>"#
 				// It's a mystery why the `/text>` tag above needs to be missing its `<`, but when it exists it prints the `<` character in the text. However this works with it removed.
 				.to_string();
+			responses.add(Message::EndBuffer(graphene_std::renderer::RenderMetadata::default()));
 			responses.add(FrontendMessage::UpdateDocumentArtwork { svg: error });
 		}
 		result

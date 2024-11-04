@@ -810,9 +810,8 @@ impl Adjust<Color> for Color {
 }
 impl Adjust<Color> for Option<Color> {
 	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-		match self {
-			Some(ref mut v) => *v = map_fn(v),
-			None => (),
+		if let Some(ref mut v) = self {
+			*v = map_fn(v)
 		}
 	}
 }

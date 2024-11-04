@@ -4,6 +4,7 @@ use dyn_any::DynAny;
 
 use glam::{DAffine2, DVec2};
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 
 /// A simple macro for creating strongly typed ids (to avoid confusion when passing around ids).
 macro_rules! create_ids {
@@ -20,6 +21,14 @@ macro_rules! create_ids {
 				/// Generate a new random id
 				pub fn generate() -> Self {
 					Self(crate::uuid::generate_uuid())
+				}
+
+				pub fn generate_from_hash(self, node_id: u64) -> Self {
+					let mut hasher = std::hash::DefaultHasher::new();
+					node_id.hash(&mut hasher);
+					self.hash(&mut hasher);
+					let hash_value = hasher.finish();
+					Self(hash_value)
 				}
 
 				/// Gets the inner raw value.
@@ -135,6 +144,10 @@ impl PointDomain {
 		self.id.iter().copied().zip(self.positions.iter_mut())
 	}
 
+	pub fn set_position(&mut self, index: usize, position: DVec2) {
+		self.positions[index] = position;
+	}
+
 	pub fn ids(&self) -> &[PointId] {
 		&self.id
 	}
@@ -159,6 +172,10 @@ impl PointDomain {
 	fn concat(&mut self, other: &Self, transform: DAffine2, id_map: &IdMap) {
 		self.id.extend(other.id.iter().map(|id| *id_map.point_map.get(id).unwrap_or(id)));
 		self.positions.extend(other.positions.iter().map(|&pos| transform.transform_point2(pos)));
+	}
+
+	fn map_ids(&mut self, id_map: &IdMap) {
+		self.id.iter_mut().for_each(|id| *id = *id_map.point_map.get(id).unwrap_or(id));
 	}
 
 	fn transform(&mut self, transform: DAffine2) {
@@ -257,6 +274,14 @@ impl SegmentDomain {
 		&self.end_point
 	}
 
+	pub fn set_start_point(&mut self, segment_index: usize, new: usize) {
+		self.start_point[segment_index] = new;
+	}
+
+	pub fn set_end_point(&mut self, segment_index: usize, new: usize) {
+		self.end_point[segment_index] = new;
+	}
+
 	pub fn handles(&self) -> &[bezier_rs::BezierHandles] {
 		&self.handles
 	}
@@ -295,6 +320,11 @@ impl SegmentDomain {
 	pub(crate) fn handles_mut(&mut self) -> impl Iterator<Item = (SegmentId, &mut bezier_rs::BezierHandles, usize, usize)> {
 		let nested = self.ids.iter().zip(&mut self.handles).zip(&self.start_point).zip(&self.end_point);
 		nested.map(|(((&a, b), &c), &d)| (a, b, c, d))
+	}
+
+	pub(crate) fn handles_and_points_mut(&mut self) -> impl Iterator<Item = (&mut bezier_rs::BezierHandles, &mut usize, &mut usize)> {
+		let nested = self.handles.iter_mut().zip(&mut self.start_point).zip(&mut self.end_point);
+		nested.map(|((a, b), c)| (a, b, c))
 	}
 
 	pub fn stroke_mut(&mut self) -> impl Iterator<Item = (SegmentId, &mut StrokeId)> {
@@ -351,6 +381,10 @@ impl SegmentDomain {
 		self.end_point.extend(other.end_point.iter().map(|&index| id_map.point_offset + index));
 		self.handles.extend(other.handles.iter().map(|handles| handles.apply_transformation(|p| transform.transform_point2(p))));
 		self.stroke.extend(&other.stroke);
+	}
+
+	fn map_ids(&mut self, id_map: &IdMap) {
+		self.ids.iter_mut().for_each(|id| *id = *id_map.segment_map.get(id).unwrap_or(id));
 	}
 
 	fn transform(&mut self, transform: DAffine2) {
@@ -460,6 +494,13 @@ impl RegionDomain {
 		);
 		self.fill.extend(&other.fill);
 	}
+
+	fn map_ids(&mut self, id_map: &IdMap) {
+		self.ids.iter_mut().for_each(|id| *id = *id_map.region_map.get(id).unwrap_or(id));
+		self.segment_range
+			.iter_mut()
+			.for_each(|range| *range = *id_map.segment_map.get(range.start()).unwrap_or(range.start())..=*id_map.segment_map.get(range.end()).unwrap_or(range.end()));
+	}
 }
 
 impl super::VectorData {
@@ -477,12 +518,16 @@ impl super::VectorData {
 
 	/// Tries to convert a segment with the specified id to the start and end points and a [`bezier_rs::Bezier`], returning None if the id is invalid.
 	pub fn segment_points_from_id(&self, id: SegmentId) -> Option<(PointId, PointId, bezier_rs::Bezier)> {
-		let index: usize = self.segment_domain.id_to_index(id)?;
+		Some(self.segment_points_from_index(self.segment_domain.id_to_index(id)?))
+	}
+
+	/// Tries to convert a segment with the specified index to the start and end points and a [`bezier_rs::Bezier`].
+	pub fn segment_points_from_index(&self, index: usize) -> (PointId, PointId, bezier_rs::Bezier) {
 		let start = self.segment_domain.start_point[index];
 		let end = self.segment_domain.end_point[index];
 		let start_id = self.point_domain.ids()[start];
 		let end_id = self.point_domain.ids()[end];
-		Some((start_id, end_id, self.segment_to_bezier_with_index(start, end, self.segment_domain.handles[index])))
+		(start_id, end_id, self.segment_to_bezier_with_index(start, end, self.segment_domain.handles[index]))
 	}
 
 	/// Iterator over all of the [`bezier_rs::Bezier`] following the order that they are stored in the segment domain, skipping invalid segments.
@@ -590,6 +635,23 @@ impl super::VectorData {
 		self.point_domain.transform(transform);
 		self.segment_domain.transform(transform);
 	}
+
+	pub fn vector_new_ids_from_hash(&mut self, node_id: u64) {
+		let point_map = self.point_domain.ids().iter().map(|&old| (old, old.generate_from_hash(node_id))).collect::<HashMap<_, _>>();
+		let segment_map = self.segment_domain.ids().iter().map(|&old| (old, old.generate_from_hash(node_id))).collect::<HashMap<_, _>>();
+		let region_map = self.region_domain.ids().iter().map(|&old| (old, old.generate_from_hash(node_id))).collect::<HashMap<_, _>>();
+
+		let id_map = IdMap {
+			point_offset: self.point_domain.ids().len(),
+			point_map,
+			segment_map,
+			region_map,
+		};
+
+		self.point_domain.map_ids(&id_map);
+		self.segment_domain.map_ids(&id_map);
+		self.region_domain.map_ids(&id_map);
+	}
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -681,7 +743,7 @@ impl<'a> Iterator for StrokePathIter<'a> {
 
 			let mut handles = self.vector_data.segment_domain.handles()[val.segment_index];
 			if val.start_from_end {
-				handles = handles.flipped();
+				handles = handles.reversed();
 			}
 			let next_point_index = if val.start_from_end {
 				self.vector_data.segment_domain.start_point()[val.segment_index]
@@ -717,17 +779,27 @@ impl bezier_rs::Identifier for PointId {
 }
 
 impl crate::vector::ConcatElement for super::VectorData {
-	fn concat(&mut self, other: &Self, transform: glam::DAffine2) {
-		let new_ids = other.point_domain.id.iter().filter(|id| self.point_domain.id.contains(id)).map(|&old| (old, PointId::generate()));
+	fn concat(&mut self, other: &Self, transform: glam::DAffine2, node_id: u64) {
+		let new_ids = other
+			.point_domain
+			.id
+			.iter()
+			.filter(|id| self.point_domain.id.contains(id))
+			.map(|&old| (old, old.generate_from_hash(node_id)));
 		let point_map = new_ids.collect::<HashMap<_, _>>();
 		let new_ids = other
 			.segment_domain
 			.ids
 			.iter()
 			.filter(|id| self.segment_domain.ids.contains(id))
-			.map(|&old| (old, SegmentId::generate()));
+			.map(|&old| (old, old.generate_from_hash(node_id)));
 		let segment_map = new_ids.collect::<HashMap<_, _>>();
-		let new_ids = other.region_domain.ids.iter().filter(|id| self.region_domain.ids.contains(id)).map(|&old| (old, RegionId::generate()));
+		let new_ids = other
+			.region_domain
+			.ids
+			.iter()
+			.filter(|id| self.region_domain.ids.contains(id))
+			.map(|&old| (old, old.generate_from_hash(node_id)));
 		let region_map = new_ids.collect::<HashMap<_, _>>();
 		let id_map = IdMap {
 			point_offset: self.point_domain.ids().len(),

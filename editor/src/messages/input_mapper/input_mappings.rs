@@ -52,6 +52,7 @@ pub fn input_mappings() -> Mapping {
 		//
 		// Hack to prevent Left Click + Accel + Z combo (this effectively blocks you from making a double undo with AbortTransaction)
 		entry!(KeyDown(KeyZ); modifiers=[Accel, MouseLeft], action_dispatch=DocumentMessage::Noop),
+		//
 		// NodeGraphMessage
 		entry!(KeyDown(MouseLeft); action_dispatch=NodeGraphMessage::PointerDown {shift_click: false, control_click: false, alt_click: false, right_click: false}),
 		entry!(KeyDown(MouseLeft); modifiers=[Shift], action_dispatch=NodeGraphMessage::PointerDown {shift_click: true, control_click: false, alt_click: false, right_click: false}),
@@ -95,7 +96,7 @@ pub fn input_mappings() -> Mapping {
 		//
 		// SelectToolMessage
 		entry!(PointerMove; refresh_keys=[Control, Alt, Shift], action_dispatch=SelectToolMessage::PointerMove(SelectToolPointerKeys { axis_align: Shift, snap_angle: Control, center: Alt, duplicate: Alt })),
-		entry!(KeyDown(MouseLeft); action_dispatch=SelectToolMessage::DragStart { add_to_selection: Shift, select_deepest: Accel }),
+		entry!(KeyDown(MouseLeft); action_dispatch=SelectToolMessage::DragStart { extend_selection: Shift, select_deepest: Accel }),
 		entry!(KeyUp(MouseLeft); action_dispatch=SelectToolMessage::DragStop { remove_from_selection: Shift }),
 		entry!(KeyDown(Enter); action_dispatch=SelectToolMessage::Enter),
 		entry!(DoubleClick(MouseButton::Left); action_dispatch=SelectToolMessage::EditLayer),
@@ -153,7 +154,7 @@ pub fn input_mappings() -> Mapping {
 		//
 		// TextToolMessage
 		entry!(KeyUp(MouseLeft); action_dispatch=TextToolMessage::Interact),
-		entry!(KeyDown(Escape); action_dispatch=TextToolMessage::Abort),
+		entry!(KeyDown(Escape); action_dispatch=TextToolMessage::CommitText),
 		entry!(KeyDown(Enter); modifiers=[Accel], action_dispatch=TextToolMessage::CommitText),
 		//
 		// GradientToolMessage
@@ -206,19 +207,20 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Backspace); modifiers=[Accel], action_dispatch=PathToolMessage::DeleteAndBreakPath),
 		entry!(KeyDown(Delete); modifiers=[Accel, Shift], action_dispatch=PathToolMessage::BreakPath),
 		entry!(KeyDown(Backspace); modifiers=[Accel, Shift], action_dispatch=PathToolMessage::BreakPath),
-		entry!(KeyDown(MouseLeft); action_dispatch=PathToolMessage::MouseDown { ctrl: Control, shift: Shift }),
+		entry!(KeyDown(Tab); action_dispatch=PathToolMessage::SwapSelectedHandles),
+		entry!(KeyDown(MouseLeft); action_dispatch=PathToolMessage::MouseDown { direct_insert_without_sliding: Control, extend_selection: Shift }),
 		entry!(KeyDown(MouseRight); action_dispatch=PathToolMessage::RightClick),
 		entry!(KeyDown(Escape); action_dispatch=PathToolMessage::Escape),
 		entry!(KeyDown(KeyG); action_dispatch=PathToolMessage::GRS { key: KeyG }),
 		entry!(KeyDown(KeyR); action_dispatch=PathToolMessage::GRS { key: KeyR }),
 		entry!(KeyDown(KeyS); action_dispatch=PathToolMessage::GRS { key: KeyS }),
-		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=PathToolMessage::PointerMove { alt: Alt, shift: Shift }),
+		entry!(PointerMove; refresh_keys=[KeyC, Shift, Alt, Space], action_dispatch=PathToolMessage::PointerMove { toggle_colinear: KeyC, equidistant: Alt, move_anchor_with_handles: Space}),
 		entry!(KeyDown(Delete); action_dispatch=PathToolMessage::Delete),
 		entry!(KeyDown(KeyA); modifiers=[Accel], action_dispatch=PathToolMessage::SelectAllAnchors),
 		entry!(KeyDown(KeyA); modifiers=[Accel, Shift], action_dispatch=PathToolMessage::DeselectAllPoints),
 		entry!(KeyDown(Backspace); action_dispatch=PathToolMessage::Delete),
-		entry!(KeyUp(MouseLeft); action_dispatch=PathToolMessage::DragStop { equidistant: Shift }),
-		entry!(KeyDown(Enter); action_dispatch=PathToolMessage::Enter { add_to_selection: Shift }),
+		entry!(KeyUp(MouseLeft); action_dispatch=PathToolMessage::DragStop { extend_selection: Shift }),
+		entry!(KeyDown(Enter); action_dispatch=PathToolMessage::Enter { extend_selection: Shift }),
 		entry!(DoubleClick(MouseButton::Left); action_dispatch=PathToolMessage::FlipSmoothSharp),
 		entry!(KeyDown(ArrowRight); action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_AMOUNT, delta_y: 0. }),
 		entry!(KeyDown(ArrowRight); modifiers=[Shift], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: BIG_NUDGE_AMOUNT, delta_y: 0. }),
@@ -311,6 +313,8 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyP); modifiers=[Alt], action_dispatch=DocumentMessage::DebugPrintDocument),
 		entry!(KeyDown(KeyO); modifiers=[Alt], action_dispatch=DocumentMessage::ToggleOverlaysVisibility),
 		entry!(KeyDown(KeyS); modifiers=[Alt], action_dispatch=DocumentMessage::ToggleSnapping),
+		entry!(KeyDown(KeyH); modifiers=[Accel], action_dispatch=DocumentMessage::ToggleSelectedVisibility),
+		entry!(KeyDown(KeyL); modifiers=[Accel], action_dispatch=DocumentMessage::ToggleSelectedLocked),
 		entry!(KeyDown(KeyG); modifiers=[Alt], action_dispatch=DocumentMessage::ToggleGridVisibility),
 		entry!(KeyDown(KeyZ); modifiers=[Accel, Shift], action_dispatch=DocumentMessage::Redo),
 		entry!(KeyDown(KeyY); modifiers=[Accel], action_dispatch=DocumentMessage::Redo),

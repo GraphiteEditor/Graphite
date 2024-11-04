@@ -28,7 +28,18 @@
 		<div class="expand-arrow" />
 		<TextLabel bold={true}>{widgetData.name}</TextLabel>
 		<IconButton
+			icon={widgetData.pinned ? "CheckboxChecked" : "CheckboxUnchecked"}
+			tooltip={widgetData.pinned ? "Unpin this node so it's no longer shown here when nothing is selected" : "Pin this node so it's shown here when nothing is selected"}
+			size={24}
+			action={(e) => {
+				editor.handle.setNodePinned(widgetData.id, !widgetData.pinned);
+				e?.stopPropagation();
+			}}
+			class={"show-only-on-hover"}
+		/>
+		<IconButton
 			icon={"Trash"}
+			tooltip={"Delete this node from the layer chain"}
 			size={24}
 			action={(e) => {
 				editor.handle.deleteNode(widgetData.id);
@@ -39,6 +50,7 @@
 		<IconButton
 			icon={widgetData.visible ? "EyeVisible" : "EyeHidden"}
 			hoverIcon={widgetData.visible ? "EyeHide" : "EyeShow"}
+			tooltip={widgetData.visible ? "Hide this node" : "Show this node"}
 			size={24}
 			action={(e) => {
 				editor.handle.toggleNodeVisibilityLayerPanel(widgetData.id);
@@ -68,10 +80,7 @@
 	.widget-section {
 		flex: 0 0 auto;
 		margin: 0 4px;
-
-		+ .widget-section {
-			margin-top: 4px;
-		}
+		margin-top: 4px;
 
 		.header {
 			text-align: left;

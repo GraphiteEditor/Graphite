@@ -214,6 +214,17 @@ impl LayoutMessageHandler {
 
 				responses.add(callback_message);
 			}
+			Widget::NodeCatalog(node_type_input) => match action {
+				WidgetValueAction::Commit => {
+					let callback_message = (node_type_input.on_commit.callback)(&());
+					responses.add(callback_message);
+				}
+				WidgetValueAction::Update => {
+					let value = value.as_str().expect("NodeCatalog update was not of type String").to_string();
+					let callback_message = (node_type_input.on_update.callback)(&value);
+					responses.add(callback_message);
+				}
+			},
 			Widget::NumberInput(number_input) => match action {
 				WidgetValueAction::Commit => {
 					let callback_message = (number_input.on_commit.callback)(&());
@@ -394,7 +405,6 @@ impl LayoutMessageHandler {
 			LayoutTarget::LayersPanelOptions => FrontendMessage::UpdateLayersPanelOptionsLayout { layout_target, diff },
 			LayoutTarget::MenuBar => unreachable!("Menu bar is not diffed"),
 			LayoutTarget::NodeGraphBar => FrontendMessage::UpdateNodeGraphBarLayout { layout_target, diff },
-			LayoutTarget::PropertiesOptions => FrontendMessage::UpdatePropertyPanelOptionsLayout { layout_target, diff },
 			LayoutTarget::PropertiesSections => FrontendMessage::UpdatePropertyPanelSectionsLayout { layout_target, diff },
 			LayoutTarget::ToolOptions => FrontendMessage::UpdateToolOptionsLayout { layout_target, diff },
 			LayoutTarget::ToolShelf => FrontendMessage::UpdateToolShelfLayout { layout_target, diff },

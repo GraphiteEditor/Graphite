@@ -19,7 +19,7 @@ pub fn init() {
 		log::set_logger(&LOGGER).expect("Failed to set logger");
 		log::set_max_level(log::LevelFilter::Trace);
 
-		fn panic_hook(info: &std::panic::PanicInfo<'_>) {
+		fn panic_hook(info: &std::panic::PanicHookInfo<'_>) {
 			// Skip if we have already panicked
 			if HAS_CRASHED.with(|cell| cell.replace(true)) {
 				return;

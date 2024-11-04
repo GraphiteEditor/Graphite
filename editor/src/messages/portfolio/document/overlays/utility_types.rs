@@ -247,52 +247,41 @@ impl OverlayContext {
 		self.render_context.stroke();
 	}
 
-	pub fn text(&self, text: &str, font_color: &str, background_color: Option<&str>, pos: DVec2) {
+	pub fn text(&self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {
 		let metrics = self.render_context.measure_text(text).expect("Failed to measure the text dimensions");
-		let local_position = pos.round();
-
-		self.draw_text(background_color, local_position, metrics, font_color, text);
-	}
-
-	pub fn text_with_transform(&self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, origin: Pivot) {
-		let [a, b, c, d, e, f] = transform.to_cols_array();
-		self.render_context.set_transform(a, b, c, d, e, f).expect("Failed to rotate the render context to the specified angle");
-
-		let metrics = self.render_context.measure_text(text).expect("Failed to measure the text dimensions");
-		let local_position = match origin {
-			Pivot::CenterLeft => DVec2::new(0., (metrics.actual_bounding_box_ascent() + metrics.actual_bounding_box_descent()) / 2.),
-			Pivot::TopCenter => DVec2::new(-(metrics.actual_bounding_box_right() + metrics.actual_bounding_box_left()) / 2., metrics.font_bounding_box_ascent()),
-			Pivot::BottomLeft => DVec2::ZERO,
+		let x = match pivot[0] {
+			Pivot::Start => padding,
+			Pivot::Middle => -(metrics.actual_bounding_box_right() + metrics.actual_bounding_box_left()) / 2.,
+			Pivot::End => -padding - metrics.actual_bounding_box_right() + metrics.actual_bounding_box_left(),
+		};
+		let y = match pivot[1] {
+			Pivot::Start => padding + metrics.font_bounding_box_ascent() - metrics.font_bounding_box_descent(),
+			Pivot::Middle => (metrics.font_bounding_box_ascent() + metrics.font_bounding_box_descent()) / 2.,
+			Pivot::End => -padding,
 		};
 
-		self.draw_text(background_color, local_position, metrics, font_color, text);
+		let [a, b, c, d, e, f] = (transform * DAffine2::from_translation(DVec2::new(x, y))).to_cols_array();
+		self.render_context.set_transform(a, b, c, d, e, f).expect("Failed to rotate the render context to the specified angle");
 
-		self.render_context.reset_transform().expect("Failed to reset the render context transform");
-	}
-
-	fn draw_text(&self, background_color: Option<&str>, local_position: DVec2, metrics: web_sys::TextMetrics, font_color: &str, text: &str) {
-		// Render background
 		if let Some(background) = background_color {
 			self.render_context.set_fill_style_str(background);
 			self.render_context.fill_rect(
-				local_position.x + metrics.actual_bounding_box_left(),
-				local_position.y - metrics.font_bounding_box_ascent() - metrics.font_bounding_box_descent(),
-				metrics.actual_bounding_box_right() - metrics.actual_bounding_box_left(),
-				metrics.font_bounding_box_ascent() + metrics.font_bounding_box_descent(),
+				-padding,
+				padding,
+				metrics.actual_bounding_box_right() - metrics.actual_bounding_box_left() + padding * 2.,
+				metrics.font_bounding_box_descent() - metrics.font_bounding_box_ascent() - padding * 2.,
 			);
 		}
 
-		// Render text
 		self.render_context.set_font("12px Source Sans Pro, Arial, sans-serif");
 		self.render_context.set_fill_style_str(font_color);
-		self.render_context
-			.fill_text(text, local_position.x, local_position.y - metrics.font_bounding_box_descent())
-			.expect("Failed to draw the text on the canvas");
+		self.render_context.fill_text(text, 0., 0.).expect("Failed to draw the text at the calculated position");
+		self.render_context.reset_transform().expect("Failed to reset the render context transform");
 	}
 }
 
 pub enum Pivot {
-	TopCenter,
-	CenterLeft,
-	BottomLeft,
+	Start,
+	Middle,
+	End,
 }

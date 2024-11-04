@@ -2,23 +2,16 @@
 	import { getContext, onMount } from "svelte";
 
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import { defaultWidgetLayout, patchWidgetLayout, UpdatePropertyPanelOptionsLayout, UpdatePropertyPanelSectionsLayout } from "@graphite/wasm-communication/messages";
+	import { defaultWidgetLayout, patchWidgetLayout, UpdatePropertyPanelSectionsLayout } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
 	const editor = getContext<Editor>("editor");
 
-	let propertiesOptionsLayout = defaultWidgetLayout();
 	let propertiesSectionsLayout = defaultWidgetLayout();
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdatePropertyPanelOptionsLayout, (updatePropertyPanelOptionsLayout) => {
-			patchWidgetLayout(propertiesOptionsLayout, updatePropertyPanelOptionsLayout);
-			propertiesOptionsLayout = propertiesOptionsLayout;
-		});
-
 		editor.subscriptions.subscribeJsMessage(UpdatePropertyPanelSectionsLayout, (updatePropertyPanelSectionsLayout) => {
 			patchWidgetLayout(propertiesSectionsLayout, updatePropertyPanelSectionsLayout);
 			propertiesSectionsLayout = propertiesSectionsLayout;
@@ -27,9 +20,6 @@
 </script>
 
 <LayoutCol class="properties">
-	<LayoutRow class="options-bar">
-		<WidgetLayout layout={propertiesOptionsLayout} />
-	</LayoutRow>
 	<LayoutCol class="sections" scrollableY={true}>
 		<WidgetLayout layout={propertiesSectionsLayout} />
 	</LayoutCol>

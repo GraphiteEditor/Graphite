@@ -2253,7 +2253,7 @@ pub(crate) fn index_properties(document_node: &DocumentNode, node_id: NodeId, _c
 	vec![LayoutGroup::Row { widgets: index }]
 }
 
-pub(crate) fn generate_node_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> LayoutGroup {
+pub(crate) fn generate_node_properties(document_node: &DocumentNode, node_id: NodeId, pinned: bool, context: &mut NodePropertiesContext) -> LayoutGroup {
 	let reference = context.network_interface.reference(&node_id, context.selection_network_path).clone();
 	let layout = if let Some(ref reference) = reference {
 		match super::document_node_definitions::resolve_document_node_type(reference) {
@@ -2267,6 +2267,7 @@ pub(crate) fn generate_node_properties(document_node: &DocumentNode, node_id: No
 	LayoutGroup::Section {
 		name: reference.unwrap_or_default(),
 		visible: document_node.visible,
+		pinned,
 		id: node_id.0,
 		layout,
 	}

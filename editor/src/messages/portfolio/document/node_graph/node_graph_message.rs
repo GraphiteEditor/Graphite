@@ -19,14 +19,25 @@ pub enum NodeGraphMessage {
 	Init,
 	SelectedNodesUpdated,
 	Copy,
+	CreateNodeInLayerNoTransaction {
+		node_type: String,
+		layer: LayerNodeIdentifier,
+	},
+	CreateNodeInLayerWithTransaction {
+		node_type: String,
+		layer: LayerNodeIdentifier,
+	},
 	CreateNodeFromContextMenu {
 		node_id: Option<NodeId>,
 		node_type: String,
-		x: i32,
-		y: i32,
+		xy: Option<(i32, i32)>,
 	},
 	CreateWire {
 		output_connector: OutputConnector,
+		input_connector: InputConnector,
+	},
+	ConnectUpstreamOutputToInput {
+		downstream_input: InputConnector,
 		input_connector: InputConnector,
 	},
 	Cut,
@@ -61,6 +72,10 @@ pub enum NodeGraphMessage {
 		layer: LayerNodeIdentifier,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
+	},
+	MoveNodeToChainStart {
+		node_id: NodeId,
+		parent: LayerNodeIdentifier,
 	},
 	PasteNodes {
 		serialized_nodes: String,
@@ -166,6 +181,7 @@ pub enum NodeGraphMessage {
 		node_graph_errors: GraphErrors,
 	},
 	UpdateActionButtons,
+	UpdateGraphBarRight,
 	UpdateInSelectedNetwork,
 	SendSelectedNodes,
 }

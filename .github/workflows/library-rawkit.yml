@@ -1,0 +1,61 @@
+name: "Library: Rawkit"
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "libraries/rawkit/**"
+  pull_request:
+    branches:
+      - master
+    paths:
+      - "libraries/rawkit/**"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+      CARGO_INCREMENTAL: 0
+      SCCACHE_DIR: /var/lib/github-actions/.cache
+
+    steps:
+      - name: 📥 Clone and checkout repository
+        uses: actions/checkout@v3
+
+      - name: 🦀 Install the latest Rust
+        run: |
+          echo "Initial system version:"
+          rustc --version
+          rustup update stable
+          echo "Latest updated version:"
+          rustc --version
+
+      - name: 📦 Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
+      - name: 🔬 Check Rust formatting
+        run: |
+          cd libraries/rawkit
+          cargo fmt --all -- --check
+
+      - name: 🦀 Build Rust code
+        run: |
+          cd libraries/rawkit
+          cargo build --release --all-features
+
+      - name: 🧪 Run Rust tests
+        run: |
+          cd libraries/rawkit
+          cargo test --release --all-features
+
+      - name: 📈 Run sccache stat for check
+        shell: bash
+        run: sccache --show-stats
