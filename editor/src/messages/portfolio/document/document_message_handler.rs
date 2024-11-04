@@ -215,6 +215,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						ipp,
 						graph_view_overlay_open: self.graph_view_overlay_open,
 						graph_fade_artwork_percentage: self.graph_fade_artwork_percentage,
+						navigation_handler: &self.navigation_handler,
 					},
 				);
 			}
@@ -2043,15 +2044,15 @@ impl DocumentMessageHandler {
 				IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
 					.hover_icon(Some((if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" }).into()))
 					.tooltip(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
-					.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleSelectedLocked))
+					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleSelectedLocked))
 					.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
 					.disabled(!has_selection)
 					.widget_holder(),
 				IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)
 					.hover_icon(Some((if selection_all_visible { "EyeHide" } else { "EyeShow" }).into()))
 					.tooltip(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
-					.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleSelectedVisibility))
-					.on_update(|_| NodeGraphMessage::ToggleSelectedVisibility.into())
+					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleSelectedVisibility))
+					.on_update(|_| DocumentMessage::ToggleSelectedVisibility.into())
 					.disabled(!has_selection)
 					.widget_holder(),
 			],

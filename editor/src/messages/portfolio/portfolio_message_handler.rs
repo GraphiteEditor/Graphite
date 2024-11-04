@@ -757,10 +757,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				responses.add(OverlaysMessage::Draw);
 				responses.add(BroadcastEvent::ToolAbort);
 				responses.add(BroadcastEvent::SelectionChanged);
-				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(DocumentMessage::GraphViewOverlay { open: node_graph_open });
+				if node_graph_open {
+					responses.add(NodeGraphMessage::UpdateGraphBarRight);
+				} else {
+					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				}
 			}
 			PortfolioMessage::SubmitDocumentExport {
 				file_name,

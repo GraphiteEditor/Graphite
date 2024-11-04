@@ -2569,6 +2569,14 @@ impl NodeNetworkInterface {
 			&& (input_count <= 2)
 	}
 
+	pub fn node_graph_ptz(&self, network_path: &[NodeId]) -> Option<&PTZ> {
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in node_graph_ptz_mut");
+			return None;
+		};
+		Some(&network_metadata.persistent_metadata.navigation_metadata.node_graph_ptz)
+	}
+
 	pub fn node_graph_ptz_mut(&mut self, network_path: &[NodeId]) -> Option<&mut PTZ> {
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in node_graph_ptz_mut");
