@@ -666,7 +666,7 @@ impl ShapeState {
 				let new_relative = if equidistant {
 					-(handle_position - anchor_position)
 				} else {
-					let transform = document.metadata().document_to_viewport.inverse();
+					let transform = document.metadata().document_to_viewport.inverse() * transform;
 					let Some(other_position) = other.to_manipulator_point().get_position(&vector_data) else {
 						continue;
 					};
