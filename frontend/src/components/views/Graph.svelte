@@ -602,6 +602,7 @@
 		</div>
 
 		<!-- Nodes -->
+		{console.log($nodeGraph.nodes)}
 		{#each Array.from($nodeGraph.nodes.values()).flatMap((node, nodeIndex) => (node.isLayer ? [] : [{ node, nodeIndex }])) as { node, nodeIndex } (nodeIndex)}
 			{@const exposedInputsOutputs = [...node.exposedInputs, ...node.exposedOutputs]}
 			{@const clipPathId = String(Math.random()).substring(2)}

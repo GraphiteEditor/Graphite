@@ -326,7 +326,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
 			}
 			DocumentMessage::DebugPrintDocument => {
-				info!("{:#?}", self.network_interface);
+				info!("{:?}", self.network_interface);
 			}
 			DocumentMessage::DeleteNode { node_id } => {
 				responses.add(DocumentMessage::StartTransaction);
@@ -1128,6 +1128,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				// TODO: Allow non layer nodes to have click targets
 				let layer_click_targets = click_targets
 					.into_iter()
+					.filter(|(node_id, _)|
+						// Ensure that the layer is in the document network to prevent logging an error
+						self.network_interface.network(&[]).unwrap().nodes.contains_key(node_id))
 					.filter_map(|(node_id, click_targets)| {
 						self.network_interface.is_layer(&node_id, &[]).then(|| {
 							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface, &[]);

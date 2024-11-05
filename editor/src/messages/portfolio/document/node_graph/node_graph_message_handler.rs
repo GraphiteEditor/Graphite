@@ -362,11 +362,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let selected_node_ids = copied_nodes.iter().map(|(node_id, _)| *node_id).collect::<HashSet<_>>();
 				let selected_node_ids_vec = copied_nodes.iter().map(|(node_id, _)| *node_id).collect::<Vec<_>>();
 				// Mapping of the encapsulating node inputs/outputs to where it needs to be connected
-				let mut imports = Vec::new();
-				let mut exports = Vec::new();
+				let mut input_connections = Vec::new();
+				let mut output_connections = Vec::new();
 				// Mapping of the inner nodes that need to be connected to the imports/exports
-				let mut copied_node_import_connections = Vec::new();
-				let mut copied_node_export_connections = Vec::new();
+				let mut import_connections = Vec::new();
+				let mut export_connections = Vec::new();
 				// Scan current nodes top to bottom and find all inputs/outputs connected to nodes that are not in the copied nodes. These will represent the new imports and exports.
 				let Some(nodes_sorted_top_to_bottom) =
 					network_interface.nodes_sorted_top_to_bottom(network_interface.selected_nodes(breadcrumb_network_path).unwrap().selected_nodes(), breadcrumb_network_path)
@@ -408,12 +408,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						{
 							continue;
 						}
+
 						// If the upstream connection is not part of the copied nodes, then connect it to the new imports, or add it if it has not already been added.
-						let import_index = imports.iter().position(|old_connection| old_connection == &upstream_connector).unwrap_or_else(|| {
-							imports.push(upstream_connector);
-							imports.len() - 1
+						let import_index = input_connections.iter().position(|old_connection| old_connection == &upstream_connector).unwrap_or_else(|| {
+							input_connections.push(upstream_connector);
+							input_connections.len() - 1
 						});
-						copied_node_import_connections.push((current_input_connector, import_index));
+						import_connections.push((current_input_connector, import_index));
 					}
 					for output_index in 0..network_interface.number_of_outputs(&node_id, breadcrumb_network_path) {
 						let current_output_connector = OutputConnector::node(node_id, output_index);
@@ -426,18 +427,18 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							continue;
 						};
 
+						// The output gets connected to all the previous inputs the node was connected to
+						let mut connect_output_to = Vec::new();
 						for downstream_connection in downstream_connections {
-							if downstream_connection
-								.node_id()
-								.is_some_and(|downstream_node_id| selected_node_ids.iter().any(|copied_id| *copied_id == downstream_node_id))
-							{
+							if downstream_connection.node_id().is_some_and(|downstream_node_id| selected_node_ids.contains(&downstream_node_id)) {
 								continue;
 							}
-							let export_index = exports.iter().position(|old_connection| old_connection == &downstream_connection).unwrap_or_else(|| {
-								exports.push(downstream_connection);
-								exports.len() - 1
-							});
-							copied_node_export_connections.push((current_output_connector, export_index));
+							connect_output_to.push(downstream_connection);
+						}
+						if !connect_output_to.is_empty() {
+							// Every output connected to some non selected node forms a new export
+							export_connections.push(current_output_connector);
+							output_connections.push(connect_output_to);
 						}
 					}
 				}
@@ -464,10 +465,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				});
 
 				responses.add(DocumentMessage::EnterNestedNetwork { node_id: encapsulating_node_id });
-				for _ in 0..imports.len() {
+				for _ in 0..input_connections.len() {
 					responses.add(NodeGraphMessage::AddImport);
 				}
-				for _ in 0..exports.len() {
+				for _ in 0..output_connections.len() {
 					responses.add(NodeGraphMessage::AddExport);
 				}
 				responses.add(NodeGraphMessage::AddNodes { nodes: copied_nodes, new_ids });
@@ -479,30 +480,32 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					rubber_band: false,
 				});
 
-				for (input_connector, import_index) in copied_node_import_connections {
+				for (input_connector, import_index) in import_connections {
 					responses.add(NodeGraphMessage::CreateWire {
 						output_connector: OutputConnector::Import(import_index),
 						input_connector,
 					});
 				}
-				for (output_connector, export_index) in copied_node_export_connections {
+				for (export_index, output_connector) in export_connections.into_iter().enumerate() {
 					responses.add(NodeGraphMessage::CreateWire {
 						output_connector,
 						input_connector: InputConnector::Export(export_index),
 					});
 				}
 				responses.add(DocumentMessage::ExitNestedNetwork { steps_back: 1 });
-				for (input_index, output_connector) in imports.into_iter().enumerate() {
+				for (input_index, output_connector) in input_connections.into_iter().enumerate() {
 					responses.add(NodeGraphMessage::CreateWire {
 						output_connector,
 						input_connector: InputConnector::node(encapsulating_node_id, input_index),
 					});
 				}
-				for (output_index, input_connector) in exports.into_iter().enumerate() {
-					responses.add(NodeGraphMessage::CreateWire {
-						output_connector: OutputConnector::node(encapsulating_node_id, output_index),
-						input_connector,
-					});
+				for (output_index, input_connectors) in output_connections.into_iter().enumerate() {
+					for input_connector in input_connectors {
+						responses.add(NodeGraphMessage::CreateWire {
+							output_connector: OutputConnector::node(encapsulating_node_id, output_index),
+							input_connector,
+						});
+					}
 				}
 				responses.add(NodeGraphMessage::DeleteNodes {
 					node_ids: selected_node_ids_vec,
@@ -2365,7 +2368,6 @@ fn frontend_inputs_lookup(breadcrumb_network_path: &[NodeId], network_interface:
 	let network_metadata = network_interface.network_metadata(breadcrumb_network_path);
 	let mut frontend_inputs_lookup = HashMap::new();
 	for (&node_id, node) in network.nodes.iter() {
-		let node_metadata = network_metadata.and_then(|network_metadata| network_metadata.persistent_metadata.node_metadata.get(&node_id));
 		let mut inputs = Vec::with_capacity(node.inputs.len());
 		for (index, input) in node.inputs.iter().enumerate() {
 			let is_exposed = input.is_exposed_to_frontend(breadcrumb_network_path.is_empty());
@@ -2377,7 +2379,7 @@ fn frontend_inputs_lookup(breadcrumb_network_path: &[NodeId], network_interface:
 			}
 
 			// Get the name from the metadata here (since it also requires a reference to the `network_interface`)
-			let name = node_metadata.and_then(|node_metadata| node_metadata.persistent_metadata.input_names.get(index)).cloned();
+			let name = network_interface.input_name(&node_id, index, breadcrumb_network_path);
 
 			// Get the output connector that feeds into this input (done here as well for simplicity)
 			let connector = OutputConnector::from_input(input);

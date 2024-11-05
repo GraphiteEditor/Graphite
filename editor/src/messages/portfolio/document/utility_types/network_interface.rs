@@ -1035,7 +1035,16 @@ impl NodeNetworkInterface {
 			.and_then(|node_metadata| node_metadata.persistent_metadata.reference.as_ref().map(|reference| reference.to_string()))
 	}
 
-	pub fn display_name(&self, node_id: &NodeId, network_path: &[NodeId]) -> String {
+	// None means that the type will be used
+	pub fn input_name(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> Option<String> {
+		self.node_metadata(node_id, network_path)
+			.and_then(|node_metadata| node_metadata.persistent_metadata.input_names.get(index))
+			.cloned()
+			.filter(|s| !s.is_empty())
+	}
+
+	// Use frontend display name instead
+	fn display_name(&self, node_id: &NodeId, network_path: &[NodeId]) -> String {
 		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
 			log::error!("Could not get node_metadata in display_name");
 			return "".to_string();
@@ -2051,6 +2060,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network in load_outward_wires");
 			return;
 		};
+		log::debug!("network: {network:?}");
 		// Initialize all output connectors for nodes
 		for (node_id, _) in network.nodes.iter() {
 			let number_of_outputs = self.number_of_outputs(node_id, network_path);
@@ -2062,28 +2072,41 @@ impl NodeNetworkInterface {
 		for import_index in 0..self.number_of_imports(network_path) {
 			outward_wires.insert(OutputConnector::Import(import_index), Vec::new());
 		}
+		log::debug!("Initialized outward_wires: {:?}", outward_wires);
 		// Collect wires between all nodes and the Imports
 		for (current_node_id, node) in network.nodes.iter() {
+			log::debug!("node: {node:?}, id: {current_node_id:?}");
 			for (input_index, input) in node.inputs.iter().enumerate() {
+				log::debug!("input: {input:?}");
 				if let NodeInput::Node { node_id, output_index, .. } = input {
-					let outward_wires_entry = outward_wires
-						.get_mut(&OutputConnector::node(*node_id, *output_index))
-						.expect("All output connectors should be initialized");
+					// If this errors then there is an input to a node that does not exist
+					let outward_wires_entry = outward_wires.get_mut(&OutputConnector::node(*node_id, *output_index)).expect(&format!(
+						"Output connector {:?} should be initialized for each node output from a node",
+						OutputConnector::node(*node_id, *output_index)
+					));
 					outward_wires_entry.push(InputConnector::node(*current_node_id, input_index));
 				} else if let NodeInput::Network { import_index, .. } = input {
-					let outward_wires_entry = outward_wires.get_mut(&OutputConnector::Import(*import_index)).expect("All output connectors should be initialized");
+					let outward_wires_entry = outward_wires.get_mut(&OutputConnector::Import(*import_index)).expect(&format!(
+						"Output connector {:?} should be initialized for each import from a node",
+						OutputConnector::Import(*import_index)
+					));
 					outward_wires_entry.push(InputConnector::node(*current_node_id, input_index));
 				}
 			}
 		}
 		for (export_index, export) in network.exports.iter().enumerate() {
+			log::debug!("export: {export:?}");
 			if let NodeInput::Node { node_id, output_index, .. } = export {
-				let outward_wires_entry = outward_wires
-					.get_mut(&OutputConnector::node(*node_id, *output_index))
-					.expect("All output connectors should be initialized");
+				let outward_wires_entry = outward_wires.get_mut(&OutputConnector::node(*node_id, *output_index)).expect(&format!(
+					"Output connector {:?} should be initialized for each node input from exports",
+					OutputConnector::node(*node_id, *output_index)
+				));
 				outward_wires_entry.push(InputConnector::Export(export_index));
 			} else if let NodeInput::Network { import_index, .. } = export {
-				let outward_wires_entry = outward_wires.get_mut(&OutputConnector::Import(*import_index)).expect("All output connectors should be initialized");
+				let outward_wires_entry = outward_wires.get_mut(&OutputConnector::Import(*import_index)).expect(&format!(
+					"Output connector {:?} should be initialized between imports and exports",
+					OutputConnector::Import(*import_index)
+				));
 				outward_wires_entry.push(InputConnector::Export(export_index));
 			}
 		}
@@ -5398,7 +5421,8 @@ pub struct DocumentNodePersistentMetadata {
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the reference name is displayed to the user in italics.
 	#[serde(default)]
 	pub display_name: String,
-	/// TODO: Should input/output names always be the same length as the inputs/outputs of the DocumentNode?
+	/// Input/Output names may not be the same length as the number of inputs/outputs. They are the same as the nested networks Imports/Exports.
+	/// If the string is empty/DNE, then it uses the type.
 	pub input_names: Vec<String>,
 	pub output_names: Vec<String>,
 	/// Indicates to the UI if a primary output should be drawn for this node.
