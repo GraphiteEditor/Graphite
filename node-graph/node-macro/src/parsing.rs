@@ -5,7 +5,7 @@ use quote::{format_ident, ToTokens};
 use syn::parse::{Parse, ParseStream, Parser};
 use syn::punctuated::Punctuated;
 use syn::token::{Comma, RArrow};
-use syn::{Attribute, Error, ExprTuple, FnArg, GenericParam, Ident, ItemFn, LitFloat, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, Type, WhereClause};
+use syn::{AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, Type, WhereClause};
 
 use crate::codegen::generate_node_code;
 
@@ -30,6 +30,7 @@ pub(crate) struct ParsedNodeFn {
 	pub(crate) fields: Vec<ParsedField>,
 	pub(crate) body: TokenStream2,
 	pub(crate) crate_name: proc_macro_crate::FoundCrate,
+	pub(crate) description: String,
 }
 
 #[derive(Debug, Default)]
@@ -208,6 +209,22 @@ fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNo
 			format!("Failed to find location of graphene_core. Make sure it is imported as a dependency: {}", e),
 		)
 	})?;
+	let description = input_fn
+		.attrs
+		.iter()
+		.filter_map(|a| {
+			if a.style != AttrStyle::Outer {
+				return None;
+			}
+			let Meta::NameValue(name_val) = &a.meta else { return None };
+			if name_val.path.get_ident().map(|x| x.to_string()) != Some("doc".into()) {
+				return None;
+			}
+			let Expr::Lit(expr_lit) = &name_val.value else { return None };
+			let Lit::Str(ref text) = expr_lit.lit else { return None };
+			Some(text.value().trim().to_string())
+		})
+		.fold(String::new(), |acc, b| acc + &b + "\n");
 
 	Ok(ParsedNodeFn {
 		attributes,
@@ -222,6 +239,7 @@ fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNo
 		where_clause,
 		body,
 		crate_name,
+		description,
 	})
 }
 
@@ -490,6 +508,7 @@ mod tests {
 		assert_eq!(parsed.attributes.path, expected.attributes.path);
 		assert_eq!(parsed.attributes.skip_impl, expected.attributes.skip_impl);
 		assert_eq!(parsed.fields.len(), expected.fields.len());
+		assert_eq!(parsed.description, expected.description);
 
 		for (parsed_field, expected_field) in parsed.fields.iter().zip(expected.fields.iter()) {
 			match (parsed_field, expected_field) {
@@ -550,6 +569,8 @@ mod tests {
 	fn test_basic_node() {
 		let attr = quote!(category("Math: Arithmetic"), path(graphene_core::TestNode), skip_impl);
 		let input = quote!(
+			/// Multi
+			/// Line
 			fn add(a: f64, b: f64) -> f64 {
 				a + b
 			}
@@ -588,6 +609,7 @@ mod tests {
 			}],
 			body: TokenStream2::new(),
 			crate_name: FoundCrate::Itself,
+			description: String::from("Multi\nLine\n"),
 		};
 
 		assert_parsed_node_fn(&parsed, &expected);
@@ -597,6 +619,10 @@ mod tests {
 	fn test_node_with_impl_node() {
 		let attr = quote!(category("General"));
 		let input = quote!(
+			/**
+				Hello
+				World
+			*/
 			fn transform<T: 'static>(footprint: Footprint, transform_target: impl Node<Footprint, Output = T>, translate: DVec2) -> T {
 				// Implementation details...
 			}
@@ -644,6 +670,7 @@ mod tests {
 			],
 			body: TokenStream2::new(),
 			crate_name: FoundCrate::Itself,
+			description: String::from("Hello\n\t\t\t\tWorld\n"),
 		};
 
 		assert_parsed_node_fn(&parsed, &expected);
@@ -653,6 +680,7 @@ mod tests {
 	fn test_node_with_default_values() {
 		let attr = quote!(category("Vector: Shape"));
 		let input = quote!(
+			/// Test
 			fn circle(_: (), #[default(50.)] radius: f64) -> VectorData {
 				// Implementation details...
 			}
@@ -691,6 +719,7 @@ mod tests {
 			}],
 			body: TokenStream2::new(),
 			crate_name: FoundCrate::Itself,
+			description: "Test\n".into(),
 		};
 
 		assert_parsed_node_fn(&parsed, &expected);
@@ -743,6 +772,7 @@ mod tests {
 			}],
 			body: TokenStream2::new(),
 			crate_name: FoundCrate::Itself,
+			description: String::new(),
 		};
 
 		assert_parsed_node_fn(&parsed, &expected);
@@ -796,6 +826,7 @@ mod tests {
 			}],
 			body: TokenStream2::new(),
 			crate_name: FoundCrate::Itself,
+			description: String::new(),
 		};
 
 		assert_parsed_node_fn(&parsed, &expected);
@@ -843,6 +874,7 @@ mod tests {
 			}],
 			body: TokenStream2::new(),
 			crate_name: FoundCrate::Itself,
+			description: String::new(),
 		};
 
 		assert_parsed_node_fn(&parsed, &expected);
@@ -880,6 +912,7 @@ mod tests {
 			fields: vec![],
 			body: TokenStream2::new(),
 			crate_name: FoundCrate::Itself,
+			description: String::new(),
 		};
 
 		assert_parsed_node_fn(&parsed, &expected);
