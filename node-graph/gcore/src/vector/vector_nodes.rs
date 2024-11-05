@@ -943,13 +943,16 @@ async fn splines_from_points<F: 'n + Send>(
 		}
 
 		let mut nr_output_segments = ordered_point_indices.len();
+		let nr_overshoot_segments = 9; // Seems good enough, at least > 6 should be enough
 		
 		// If it's a closed subpath, close the spline loop by adding the start point at the end, and two additional points for correct Bezier handles for first/last node
 		let closed = endpoints.is_empty();
 		if closed {
 			ordered_point_indices.push(start_point_index);
-			ordered_point_indices.push(ordered_point_indices[1 % nr_output_segments]);
-			ordered_point_indices.push(ordered_point_indices[2 % nr_output_segments]);
+			// Overshoot by a fixed number of segments, at least to cover the 3 starting and ending segments
+			for i in 0..nr_overshoot_segments {
+				ordered_point_indices.push(ordered_point_indices[(i + 1) % nr_output_segments]);
+			}
 		} else {
 			nr_output_segments -= 1;
 		}
@@ -972,10 +975,10 @@ async fn splines_from_points<F: 'n + Send>(
 			let mut handle_start_idx = i;
 			let mut handle_end_idx = next_index;
 
-			// If is a closed loop, copy the Bezier handles from the last node to the first node for a smooth curve
-			if closed && i==0 {
-				handle_start_idx = ordered_point_indices.len() - 3;
-				handle_end_idx = ordered_point_indices.len() - 2;
+			// If is a closed loop, copy the Bezier handles from the overshooting nodes to the first nodes for a smooth curve
+			if closed && i < (nr_overshoot_segments - 1) {
+				handle_start_idx = ordered_point_indices.len() - (nr_overshoot_segments + 1) + i;
+				handle_end_idx = ordered_point_indices.len() - nr_overshoot_segments + i;
 			}
 			let handle_start = first_handles[handle_start_idx];
 			let handle_end = positions[handle_end_idx] * 2. - first_handles[handle_end_idx];
