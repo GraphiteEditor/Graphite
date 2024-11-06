@@ -622,13 +622,14 @@ impl ShapeState {
 		in_viewport_space: bool,
 	) {
 		for (&layer, state) in &self.selected_shape_state {
-			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
-				continue;
-			};
+			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
+
 			let opposing_handles = handle_lengths.as_ref().and_then(|handle_lengths| handle_lengths.get(&layer));
 
-			let transform = document.metadata().transform_to_viewport(layer);
-			let delta = if in_viewport_space { transform.inverse().transform_vector2(delta) } else { delta };
+			let transform_to_viewport_space = document.metadata().transform_to_viewport(layer);
+			let transform_to_document_space = document.metadata().transform_to_document(layer);
+			let delta_transform = if in_viewport_space { transform_to_viewport_space } else { transform_to_document_space };
+			let delta = delta_transform.inverse().transform_vector2(delta);
 
 			for &point in state.selected_points.iter() {
 				let handle = match point {
@@ -662,7 +663,8 @@ impl ShapeState {
 				let new_relative = if equidistant {
 					-(handle_position - anchor_position)
 				} else {
-					let transform = document.metadata().document_to_viewport.inverse() * transform;
+					// TODO: Is this equivalent to `transform_to_document_space`? If changed, the before and after should be tested.
+					let transform = document.metadata().document_to_viewport.inverse() * transform_to_viewport_space;
 					let Some(other_position) = other.to_manipulator_point().get_position(&vector_data) else {
 						continue;
 					};
