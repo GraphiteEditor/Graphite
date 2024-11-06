@@ -577,8 +577,7 @@ impl EditorHandle {
 		let message = NodeGraphMessage::CreateNodeFromContextMenu {
 			node_id: Some(id),
 			node_type,
-			x: x / 24,
-			y: y / 24,
+			xy: Some((x / 24, y / 24)),
 		};
 		self.dispatch(message);
 	}
@@ -652,10 +651,10 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Unpin a node given its node ID
-	#[wasm_bindgen(js_name = unpinNode)]
-	pub fn unpin_node(&self, id: u64) {
-		self.dispatch(DocumentMessage::SetNodePinned { node_id: NodeId(id), pinned: false });
+	/// Pin or unpin a node given its node ID
+	#[wasm_bindgen(js_name = setNodePinned)]
+	pub fn set_node_pinned(&self, id: u64, pinned: bool) {
+		self.dispatch(DocumentMessage::SetNodePinned { node_id: NodeId(id), pinned });
 	}
 
 	/// Delete a layer or node given its node ID

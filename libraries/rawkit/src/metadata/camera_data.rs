@@ -1,5 +1,5 @@
 use crate::RawImage;
-use build_camera_data::build_camera_data;
+use rawkit_proc_macros::build_camera_data;
 
 pub struct CameraData {
 	pub black: u16,

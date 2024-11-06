@@ -4,8 +4,8 @@ use crate::tiff::values::CurveLookupTable;
 use crate::tiff::{Ifd, TiffError};
 use crate::{RawImage, SubtractBlack, Transform};
 
+use rawkit_proc_macros::Tag;
 use std::io::{Read, Seek};
-use tag_derive::Tag;
 
 #[allow(dead_code)]
 #[derive(Tag)]

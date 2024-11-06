@@ -35,8 +35,8 @@ jobs:
           # Run Clippy and filter output for the root workspace
           CLIPPY_OUTPUT=$(cargo clippy --all-targets --all-features -- -W clippy::all 2>&1 | grep -vE "^(\s*Updating|\s*Download|\s*Compiling|\s*Checking|Finished)")
 
-          # Run Clippy and filter output for /libraries/raw-rs
-          cd libraries/raw-rs
+          # Run Clippy and filter output for /libraries/rawkit
+          cd libraries/rawkit
           CLIPPY_OUTPUT+=$'\n\n'
           CLIPPY_OUTPUT+=$(cargo clippy --all-targets --all-features -- -W clippy::all 2>&1 | grep -vE "^(\s*Updating|\s*Download|\s*Compiling|\s*Checking|Finished)")
           cd ../..

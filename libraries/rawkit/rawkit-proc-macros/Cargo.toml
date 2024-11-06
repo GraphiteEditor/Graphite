@@ -1,0 +1,23 @@
+[package]
+name = "rawkit-proc-macros"
+version = "0.1.0"
+edition = "2021"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+description = "Procedural macros for Rawkit"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+homepage = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/rawkit/rawkit-proc-macros"
+repository = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/rawkit/rawkit-proc-macros"
+documentation = "https://docs.rs/rawkit-proc-macros"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+# Workspace dependencies
+quote = { workspace = true }
+syn = { workspace = true }
+
+# Required dependencies
+toml = "0.8.19"
+proc-macro2 = "1.0.89"

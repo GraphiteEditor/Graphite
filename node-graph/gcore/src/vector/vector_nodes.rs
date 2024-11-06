@@ -976,6 +976,68 @@ async fn splines_from_points<F: 'n + Send>(
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn jitter_points<F: 'n + Send>(
+	#[implementations(
+		(),
+		Footprint,
+	)]
+	footprint: F,
+	#[implementations(
+		() -> VectorData,
+		Footprint -> VectorData,
+	)]
+	vector_data: impl Node<F, Output = VectorData>,
+	#[default(5.)] amount: f64,
+	seed: SeedValue,
+) -> VectorData {
+	let mut vector_data = vector_data.eval(footprint).await;
+
+	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
+
+	let deltas = (0..vector_data.point_domain.positions().len())
+		.map(|_| {
+			let angle = rng.gen::<f64>() * std::f64::consts::TAU;
+			DVec2::from_angle(angle) * rng.gen::<f64>() * amount
+		})
+		.collect::<Vec<_>>();
+	let mut already_applied = vec![false; vector_data.point_domain.positions().len()];
+
+	for (handles, start, end) in vector_data.segment_domain.handles_and_points_mut() {
+		let start_delta = deltas[*start];
+		let end_delta = deltas[*end];
+
+		if !already_applied[*start] {
+			let start_position = vector_data.point_domain.positions()[*start];
+			let start_position = vector_data.transform.transform_point2(start_position);
+			vector_data.point_domain.set_position(*start, start_position + start_delta);
+			already_applied[*start] = true;
+		}
+		if !already_applied[*end] {
+			let end_position = vector_data.point_domain.positions()[*end];
+			let end_position = vector_data.transform.transform_point2(end_position);
+			vector_data.point_domain.set_position(*end, end_position + end_delta);
+			already_applied[*end] = true;
+		}
+
+		match handles {
+			bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
+				*handle_start = vector_data.transform.transform_point2(*handle_start) + start_delta;
+				*handle_end += vector_data.transform.transform_point2(*handle_end) + end_delta;
+			}
+			bezier_rs::BezierHandles::Quadratic { handle } => {
+				*handle += vector_data.transform.transform_point2(*handle) + (start_delta + end_delta) / 2.;
+			}
+			bezier_rs::BezierHandles::Linear => {}
+		}
+	}
+
+	vector_data.transform = DAffine2::IDENTITY;
+	vector_data.style.set_stroke_transform(DAffine2::IDENTITY);
+
+	vector_data
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn morph<F: 'n + Send + Copy>(
 	#[implementations(
 		(),

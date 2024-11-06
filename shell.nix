@@ -66,7 +66,7 @@ in
       libsoup
       webkitgtk
 
-      # For Raw-rs tests
+      # For Rawkit tests
       libraw
 
       # Use Mold as a linker

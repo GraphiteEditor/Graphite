@@ -27,18 +27,16 @@
 	<button class="header" class:expanded on:click|stopPropagation={() => (expanded = !expanded)} tabindex="0">
 		<div class="expand-arrow" />
 		<TextLabel bold={true}>{widgetData.name}</TextLabel>
-		{#if widgetData.pinned}
-			<IconButton
-				icon={"CheckboxChecked"}
-				tooltip={"Unpin this node so it's no longer shown here without a selection"}
-				size={24}
-				action={(e) => {
-					editor.handle.unpinNode(widgetData.id);
-					e?.stopPropagation();
-				}}
-				class={"show-only-on-hover"}
-			/>
-		{/if}
+		<IconButton
+			icon={widgetData.pinned ? "CheckboxChecked" : "CheckboxUnchecked"}
+			tooltip={widgetData.pinned ? "Unpin this node so it's no longer shown here when nothing is selected" : "Pin this node so it's shown here when nothing is selected"}
+			size={24}
+			action={(e) => {
+				editor.handle.setNodePinned(widgetData.id, !widgetData.pinned);
+				e?.stopPropagation();
+			}}
+			class={"show-only-on-hover"}
+		/>
 		<IconButton
 			icon={"Trash"}
 			tooltip={"Delete this node from the layer chain"}
