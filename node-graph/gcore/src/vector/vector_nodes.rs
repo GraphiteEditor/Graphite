@@ -859,16 +859,19 @@ async fn splines_from_points<F: 'n + Send>(
 	let mut segment_domain = SegmentDomain::default();
 	for subpath in vector_data.stroke_bezier_paths() {
 		let positions = subpath.manipulator_groups().iter().map(|group| group.anchor).collect::<Vec<_>>();
-		let _closed = subpath.closed();
+		let closed = subpath.closed();
 
 		// Compute control point handles for Bezier spline.
-		// TODO: Make this support wrapping around between start and end points for closed subpaths.
-		let first_handles = bezier_rs::solve_spline_first_handle(&positions);
+		let first_handles = if closed {
+			bezier_rs::solve_spline_first_handle_closed(&positions)
+		} else {
+			bezier_rs::solve_spline_first_handle(&positions)
+		};
 
 		let stroke_id = StrokeId::ZERO;
 
 		// Create segments with computed Bezier handles and add them to vector data.
-		for i in 0..(positions.len() - 1) {
+		for i in 0..(positions.len() - if closed { 0 } else { 1 }) {
 			let next_index = (i + 1) % positions.len();
 
 			let start_index = vector_data.point_domain.resolve_id(subpath.manipulator_groups()[i].id).unwrap();

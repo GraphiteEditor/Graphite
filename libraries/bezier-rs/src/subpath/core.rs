@@ -417,3 +417,107 @@ pub fn solve_spline_first_handle(points: &[DVec2]) -> Vec<DVec2> {
 
 	d
 }
+
+pub fn solve_spline_first_handle_closed(points: &[DVec2]) -> Vec<DVec2> {
+	let len_points = points.len();
+	if len_points < 3 {
+		return Vec::new();
+	}
+
+	// Matrix coefficients a, b and c (see https://mathworld.wolfram.com/CubicSpline.html).
+	// We don't really need to allocate them but it keeps the maths understandable
+	let a = vec![DVec2::splat(1.); len_points];
+	let b = vec![DVec2::splat(4.); len_points];
+	let c = vec![DVec2::splat(1.); len_points];
+
+	let mut cmod = vec![DVec2::ZERO; len_points];
+	let mut u = vec![DVec2::ZERO; len_points];
+
+	// X is initially the output of the matrix multiplication, but is converted to the second value.
+	let mut x = vec![DVec2::ZERO; len_points];
+
+	for i in 0..points.len() {
+		let previous_i = i.checked_sub(1).unwrap_or(len_points - 1);
+		let next_i = (i + 1) % len_points;
+		x[i] = 3. * (points[next_i] - points[previous_i]);
+	}
+
+	// Solve using https://en.wikipedia.org/wiki/Tridiagonal_matrix_algorithm#Variants (the variant using periodic boundry conditions)
+	// This code below is based on the reference C implementation provided.
+	let alpha = a[0];
+	let beta = c[len_points - 1];
+
+	// Choosen arbitrary, but chosen such that division by zero is avoided
+	let gamma = -b[0];
+
+	cmod[0] = alpha / (b[0] - gamma);
+	u[0] = gamma / (b[0] - gamma);
+	x[0] /= b[0] - gamma;
+
+	// Handle from from 1 to len_points - 2 inclusive
+	for ix in 1..=(len_points - 2) {
+		let m = 1.0 / (b[ix] - a[ix] * cmod[ix - 1]);
+		cmod[ix] = c[ix] * m;
+		u[ix] = (0.0 - a[ix] * u[ix - 1]) * m;
+		x[ix] = (x[ix] - a[ix] * x[ix - 1]) * m;
+	}
+
+	// Handle len_points - 1
+	let m = 1.0 / (b[len_points - 1] - alpha * beta / gamma - beta * cmod[len_points - 2]);
+	u[len_points - 1] = (alpha - a[len_points - 1] * u[len_points - 2]) * m;
+	x[len_points - 1] = (x[len_points - 1] - a[len_points - 1] * x[len_points - 2]) * m;
+
+	// loop from len_points - 2 to 0 inclusive
+	for ix in (0..=(len_points - 2)).rev() {
+		u[ix] = u[ix] - cmod[ix] * u[ix + 1];
+		x[ix] = x[ix] - cmod[ix] * x[ix + 1];
+	}
+
+	let fact = (x[0] + x[len_points - 1] * beta / gamma) / (1.0 + u[0] + u[len_points - 1] * beta / gamma);
+
+	for ix in 0..(len_points) {
+		x[ix] -= fact * u[ix];
+	}
+
+	let mut real = vec![DVec2::ZERO; len_points];
+	for i in 0..len_points {
+		let previous = i.checked_sub(1).unwrap_or(len_points - 1);
+		let next = (i + 1) % len_points;
+		real[i] = x[previous] * a[next] + x[i] * b[i] + x[next] * c[i];
+	}
+
+	// The matrix is now solved.
+
+	// Since we have computed the derivitive, work back to find the start handle.
+	for i in 0..len_points {
+		x[i] = (x[i] / 3.) + points[i];
+	}
+
+	x
+}
+
+#[test]
+fn closed_spline() {
+	// These points are just choosen arbitrary
+	let points = [DVec2::new(0., 0.), DVec2::new(0., 0.), DVec2::new(6., 5.), DVec2::new(7., 9.), DVec2::new(2., 3.)];
+
+	let out_handles = solve_spline_first_handle_closed(&points);
+
+	// Construct the Subpath
+	let mut manipulator_groups = Vec::new();
+	for i in 0..out_handles.len() {
+		manipulator_groups.push(ManipulatorGroup::<EmptyId>::new(points[i], Some(2. * points[i] - out_handles[i]), Some(out_handles[i])));
+	}
+	let subpath = Subpath::new(manipulator_groups, true);
+
+	// For each pair of bézier curves, ensure that the second derivative is continous
+	for (bézier_a, bézier_b) in subpath.iter().zip(subpath.iter().skip(1).chain(subpath.iter().take(1))) {
+		let derivative2_end_a = bézier_a.derivative().unwrap().derivative().unwrap().evaluate(crate::TValue::Parametric(1.));
+		let derivative2_start_b = bézier_b.derivative().unwrap().derivative().unwrap().evaluate(crate::TValue::Parametric(0.));
+
+		assert!(
+			derivative2_end_a.abs_diff_eq(derivative2_start_b, 1e-10),
+			"second derivative at the end of a {derivative2_end_a} is equal to the second derivative at the start of b {derivative2_start_b}"
+		);
+	}
+}
