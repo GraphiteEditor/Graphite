@@ -2535,7 +2535,6 @@ dependencies = [
  "js-sys",
  "log",
  "math-parser",
- "meval",
  "ron",
  "serde",
  "serde-wasm-bindgen",
@@ -3541,6 +3540,7 @@ version = "0.0.0"
 dependencies = [
  "lazy_static",
  "log",
+ "num-complex",
  "pest",
  "pest_derive",
  "thiserror",
@@ -3602,15 +3602,6 @@ dependencies = [
  "log",
  "objc",
  "paste",
-]
-
-[[package]]
-name = "meval"
-version = "0.2.0"
-source = "git+https://github.com/Titaniumtown/meval-rs#6bf579fd402928745cf4f24e5c975bece3285179"
-dependencies = [
- "fnv",
- "nom",
 ]
 
 [[package]]
