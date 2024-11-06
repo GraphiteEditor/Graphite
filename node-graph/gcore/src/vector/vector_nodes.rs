@@ -1145,7 +1145,7 @@ fn bevel_algorithm(mut vector_data: VectorData, distance: f64) -> VectorData {
 	// Splits a bézier curve based on a distance measurement
 	fn split_distance(bezier: bezier_rs::Bezier, distance: f64, length: f64) -> bezier_rs::Bezier {
 		const EUCLIDEAN_ERROR: f64 = 0.001;
-		let parametric = bezier.euclidean_to_parametric_with_total_length(distance / length, EUCLIDEAN_ERROR, length);
+		let parametric = bezier.euclidean_to_parametric_with_total_length((distance / length).clamp(0., 1.), EUCLIDEAN_ERROR, length);
 		bezier.split(bezier_rs::TValue::Parametric(parametric))[1]
 	}
 
@@ -1206,17 +1206,24 @@ fn bevel_algorithm(mut vector_data: VectorData, distance: f64) -> VectorData {
 			let original_length = bezier.length(None);
 			let mut length = original_length;
 
-			if segments_connected[*start_point_index] > 0 {
+			// Only split if the length is big enough to make it worthwhile
+			let valid_length = length > 1e-10;
+			if segments_connected[*start_point_index] > 0 && valid_length {
 				// Apply the bevel to the start
-				bezier = split_distance(bezier, distance.min(original_length / 2.), length);
+				let distance = distance.min(original_length / 2.);
+				bezier = split_distance(bezier, distance, length);
 				length = (length - distance).max(0.);
 				// Update the start position
 				let pos = inverse_transform.transform_point2(bezier.start);
 				create_or_modify_point(&mut vector_data.point_domain, segments_connected, pos, start_point_index, &mut next_id, &mut new_segments);
 			}
-			if segments_connected[*end_point_index] > 0 {
+
+			// Only split if the length is big enough to make it worthwhile
+			let valid_length = length > 1e-10;
+			if segments_connected[*end_point_index] > 0 && valid_length {
 				// Apply the bevel to the end
-				bezier = split_distance(bezier.reversed(), distance.min(original_length / 2.), length).reversed();
+				let distance = distance.min(original_length / 2.);
+				bezier = split_distance(bezier.reversed(), distance, length).reversed();
 				// Update the end position
 				let pos = inverse_transform.transform_point2(bezier.end);
 				create_or_modify_point(&mut vector_data.point_domain, segments_connected, pos, end_point_index, &mut next_id, &mut new_segments);
@@ -1555,5 +1562,24 @@ mod test {
 		// Joins
 		contains_segment(&beveled, bezier_rs::Bezier::from_linear_dvec2(DVec2::new(50., 0.), DVec2::new(100., 50.)));
 		contains_segment(&beveled, bezier_rs::Bezier::from_linear_dvec2(DVec2::new(100., 50.), DVec2::new(50., 100.)));
+	}
+
+	#[tokio::test]
+	async fn bevel_repeated_point() {
+		let curve = Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::new(10., 0.), DVec2::new(10., 100.), DVec2::X * 100.);
+		let point = Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::ZERO, DVec2::ZERO);
+		let source = Subpath::from_beziers(&[Bezier::from_linear_dvec2(DVec2::X * -100., DVec2::ZERO), point, curve], false);
+		let beveled = super::bevel(Footprint::default(), &vector_node(source), 5.).await;
+
+		assert_eq!(beveled.point_domain.positions().len(), 6);
+		assert_eq!(beveled.segment_domain.ids().len(), 5);
+
+		// Segments
+		contains_segment(&beveled, bezier_rs::Bezier::from_linear_dvec2(DVec2::new(-100., 0.), DVec2::new(-5., 0.)));
+		contains_segment(&beveled, bezier_rs::Bezier::from_linear_dvec2(DVec2::new(-5., 0.), DVec2::new(0., 0.)));
+		contains_segment(&beveled, point);
+		let [start, end] = curve.split(bezier_rs::TValue::Euclidean(5. / curve.length(Some(0.00001))));
+		contains_segment(&beveled, bezier_rs::Bezier::from_linear_dvec2(start.start, start.end));
+		contains_segment(&beveled, end);
 	}
 }
