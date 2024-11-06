@@ -612,15 +612,26 @@ impl ShapeState {
 	}
 
 	/// Move the selected points by dragging the mouse.
-	pub fn move_selected_points(&self, handle_lengths: Option<OpposingHandleLengths>, document: &DocumentMessageHandler, delta: DVec2, equidistant: bool, responses: &mut VecDeque<Message>) {
+	pub fn move_selected_points(
+		&self,
+		handle_lengths: Option<OpposingHandleLengths>,
+		document: &DocumentMessageHandler,
+		delta: DVec2,
+		equidistant: bool,
+		responses: &mut VecDeque<Message>,
+		keyboard: bool,
+	) {
 		for (&layer, state) in &self.selected_shape_state {
 			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
 				continue;
 			};
 			let opposing_handles = handle_lengths.as_ref().and_then(|handle_lengths| handle_lengths.get(&layer));
 
+			let delta_keyboard = delta.clone();
 			let transform = document.metadata().transform_to_viewport(layer);
-			let delta = transform.inverse().transform_vector2(delta);
+			let delta_mouse = transform.inverse().transform_vector2(delta);
+
+			let delta = if keyboard { delta_keyboard } else { delta_mouse };
 
 			for &point in state.selected_points.iter() {
 				let handle = match point {
