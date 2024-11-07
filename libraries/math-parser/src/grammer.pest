@@ -21,10 +21,10 @@ sqrt          =  { "sqrt" }
 postfix       =  _{ fac }
 fac           =  { "!" }    // Factorial
 
-primary       =  _{ fn_call | ("(" ~ expr ~ ")") | lit | constant | var }
-fn_call       =  { var ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
-var           =  @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
-lit           =  { float | int ~ unit? }
+primary       =  _{ fn_call | ("(" ~ expr ~ ")") | lit | constant | ident }
+fn_call       =  { ident ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
+ident           =  @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+lit           =  { unit | (float | int ~ unit?) }
 
 float         =  @{ int ~ "." ~ int? ~ exp? | int ~ exp }
 exp           =  _{ ^"e" ~ ("+" | "-")? ~ int }

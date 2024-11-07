@@ -126,6 +126,10 @@ fn parse_lit(mut pairs: Pairs<Rule>) -> Result<(Literal, Unit), ParseError> {
 				let value = lit.as_str().parse::<f64>()?;
 				Literal::Float(value)
 			}
+			Rule::unit => {
+				let (unit, scale) = parse_unit(lit.into_inner())?;
+				return Ok((Literal::Float(scale), unit));
+			}
 			rule => unreachable!("unexpected rule: {:?}", rule),
 		},
 		None => unreachable!("expected rule"), // No literal found
@@ -173,7 +177,7 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 
 					(Node::Lit(lit), NodeMetadata::new(Unit::BASE_UNIT))
 				}
-				Rule::var => {
+				Rule::ident => {
 					let name = primary.as_str().to_string();
 
 					(Node::Var(name), NodeMetadata::new(Unit::BASE_UNIT))
