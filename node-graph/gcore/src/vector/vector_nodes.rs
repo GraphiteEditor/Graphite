@@ -865,7 +865,7 @@ async fn splines_from_points<F: 'n + Send>(
 		let first_handles = if closed {
 			bezier_rs::solve_spline_first_handle_closed(&positions)
 		} else {
-			bezier_rs::solve_spline_first_handle(&positions)
+			bezier_rs::solve_spline_first_handle_open(&positions)
 		};
 
 		let stroke_id = StrokeId::ZERO;

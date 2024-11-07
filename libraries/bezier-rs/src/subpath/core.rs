@@ -325,7 +325,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		// Number of points = number of points to find handles for
 		let len_points = points.len();
 
-		let out_handles = solve_spline_first_handle(&points);
+		let out_handles = solve_spline_first_handle_open(&points);
 
 		let mut subpath = Subpath::new(Vec::new(), false);
 
@@ -366,14 +366,14 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	}
 }
 
-pub fn solve_spline_first_handle(points: &[DVec2]) -> Vec<DVec2> {
+pub fn solve_spline_first_handle_open(points: &[DVec2]) -> Vec<DVec2> {
 	let len_points = points.len();
 	if len_points == 0 {
 		return Vec::new();
 	}
 
 	// Matrix coefficients a, b and c (see https://mathworld.wolfram.com/CubicSpline.html).
-	// Because the 'a' coefficients are all 1, they need not be stored.
+	// Because the `a` coefficients are all 1, they need not be stored.
 	// This algorithm does a variation of the above algorithm.
 	// Instead of using the traditional cubic (a + bt + ct^2 + dt^3), we use the bezier cubic.
 
@@ -424,8 +424,8 @@ pub fn solve_spline_first_handle_closed(points: &[DVec2]) -> Vec<DVec2> {
 		return Vec::new();
 	}
 
-	// Matrix coefficients a, b and c (see https://mathworld.wolfram.com/CubicSpline.html).
-	// We don't really need to allocate them but it keeps the maths understandable
+	// Matrix coefficients `a`, `b` and `c` (see https://mathworld.wolfram.com/CubicSpline.html).
+	// We don't really need to allocate them but it keeps the maths understandable.
 	let a = vec![DVec2::splat(1.); len_points];
 	let b = vec![DVec2::splat(4.); len_points];
 	let c = vec![DVec2::splat(1.); len_points];
@@ -433,28 +433,28 @@ pub fn solve_spline_first_handle_closed(points: &[DVec2]) -> Vec<DVec2> {
 	let mut cmod = vec![DVec2::ZERO; len_points];
 	let mut u = vec![DVec2::ZERO; len_points];
 
-	// X is initially the output of the matrix multiplication, but is converted to the second value.
+	// `x` is initially the output of the matrix multiplication, but is converted to the second value.
 	let mut x = vec![DVec2::ZERO; len_points];
 
-	for i in 0..points.len() {
+	for (i, point) in x.iter_mut().enumerate() {
 		let previous_i = i.checked_sub(1).unwrap_or(len_points - 1);
 		let next_i = (i + 1) % len_points;
-		x[i] = 3. * (points[next_i] - points[previous_i]);
+		*point = 3. * (points[next_i] - points[previous_i]);
 	}
 
-	// Solve using https://en.wikipedia.org/wiki/Tridiagonal_matrix_algorithm#Variants (the variant using periodic boundry conditions)
-	// This code below is based on the reference C implementation provided.
+	// Solve using https://en.wikipedia.org/wiki/Tridiagonal_matrix_algorithm#Variants (the variant using periodic boundary conditions).
+	// This code below is based on the reference C language implementation provided in that section of the article.
 	let alpha = a[0];
 	let beta = c[len_points - 1];
 
-	// Choosen arbitrary, but chosen such that division by zero is avoided
+	// Arbitrary, but chosen such that division by zero is avoided.
 	let gamma = -b[0];
 
 	cmod[0] = alpha / (b[0] - gamma);
 	u[0] = gamma / (b[0] - gamma);
 	x[0] /= b[0] - gamma;
 
-	// Handle from from 1 to len_points - 2 inclusive
+	// Handle from from `1` to `len_points - 2` (inclusive).
 	for ix in 1..=(len_points - 2) {
 		let m = 1.0 / (b[ix] - a[ix] * cmod[ix - 1]);
 		cmod[ix] = c[ix] * m;
@@ -462,12 +462,12 @@ pub fn solve_spline_first_handle_closed(points: &[DVec2]) -> Vec<DVec2> {
 		x[ix] = (x[ix] - a[ix] * x[ix - 1]) * m;
 	}
 
-	// Handle len_points - 1
+	// Handle `len_points - 1`.
 	let m = 1.0 / (b[len_points - 1] - alpha * beta / gamma - beta * cmod[len_points - 2]);
 	u[len_points - 1] = (alpha - a[len_points - 1] * u[len_points - 2]) * m;
 	x[len_points - 1] = (x[len_points - 1] - a[len_points - 1] * x[len_points - 2]) * m;
 
-	// loop from len_points - 2 to 0 inclusive
+	// Loop from `len_points - 2` to `0` (inclusive).
 	for ix in (0..=(len_points - 2)).rev() {
 		u[ix] = u[ix] - cmod[ix] * u[ix + 1];
 		x[ix] = x[ix] - cmod[ix] * x[ix + 1];
@@ -488,7 +488,7 @@ pub fn solve_spline_first_handle_closed(points: &[DVec2]) -> Vec<DVec2> {
 
 	// The matrix is now solved.
 
-	// Since we have computed the derivitive, work back to find the start handle.
+	// Since we have computed the derivative, work back to find the start handle.
 	for i in 0..len_points {
 		x[i] = (x[i] / 3.) + points[i];
 	}
@@ -498,7 +498,7 @@ pub fn solve_spline_first_handle_closed(points: &[DVec2]) -> Vec<DVec2> {
 
 #[test]
 fn closed_spline() {
-	// These points are just choosen arbitrary
+	// These points are just chosen arbitrary
 	let points = [DVec2::new(0., 0.), DVec2::new(0., 0.), DVec2::new(6., 5.), DVec2::new(7., 9.), DVec2::new(2., 3.)];
 
 	let out_handles = solve_spline_first_handle_closed(&points);
@@ -510,7 +510,7 @@ fn closed_spline() {
 	}
 	let subpath = Subpath::new(manipulator_groups, true);
 
-	// For each pair of bézier curves, ensure that the second derivative is continous
+	// For each pair of bézier curves, ensure that the second derivative is continuous
 	for (bézier_a, bézier_b) in subpath.iter().zip(subpath.iter().skip(1).chain(subpath.iter().take(1))) {
 		let derivative2_end_a = bézier_a.derivative().unwrap().derivative().unwrap().evaluate(crate::TValue::Parametric(1.));
 		let derivative2_start_b = bézier_b.derivative().unwrap().derivative().unwrap().evaluate(crate::TValue::Parametric(0.));
