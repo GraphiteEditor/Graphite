@@ -231,7 +231,7 @@
 		return borderMask(boxes, nodeWidth, nodeHeight);
 	}
 
-	function layerBorderMask(nodeWidthFromThumbnail: number, nodeChainAreaLeftExtension: number): string {
+	function layerBorderMask(nodeWidthFromThumbnail: number, nodeChainAreaLeftExtension: number, hasLeftInputWire: boolean): string {
 		const NODE_HEIGHT = 2 * 24;
 		const THUMBNAIL_WIDTH = 72 + 8 * 2;
 		const FUDGE_HEIGHT_BEYOND_LAYER_HEIGHT = 2;
@@ -241,7 +241,7 @@
 		const boxes: { x: number; y: number; width: number; height: number }[] = [];
 
 		// Left input
-		if (nodeChainAreaLeftExtension > 0) {
+		if (hasLeftInputWire && nodeChainAreaLeftExtension > 0) {
 			boxes.push({ x: -8, y: 16, width: 16, height: 16 });
 		}
 
@@ -461,6 +461,8 @@
 			{@const stackDataInput = node.exposedInputs[0]}
 			{@const layerAreaWidth = $nodeGraph.layerWidths.get(node.id) || 8}
 			{@const layerChainWidth = $nodeGraph.chainWidths.get(node.id) || 0}
+			{@const hasLeftInputWire = $nodeGraph.hasLeftInputWire.get(node.id) || false}
+			{@const description = (node.reference && $nodeGraph.nodeDescriptions.get(node.reference)) || undefined}
 			<div
 				class="layer"
 				class:selected={$nodeGraph.selected.includes(node.id)}
@@ -474,6 +476,7 @@
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
 				style:--layer-area-width={layerAreaWidth}
 				style:--node-chain-area-left-extension={layerChainWidth !== 0 ? layerChainWidth + 0.5 : 0}
+				title={description + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}` : "")}
 				data-node={node.id}
 				bind:this={nodeElements[nodeIndex]}
 			>
@@ -556,9 +559,7 @@
 				{/if}
 				<div class="details">
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
-					<span title={editor.handle.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined}>
-						{node.displayName}
-					</span>
+					<span>{node.displayName}</span>
 				</div>
 				<div class="solo-drag-grip" title="Drag only this layer without pushing others outside the stack"></div>
 				<IconButton
@@ -576,7 +577,7 @@
 					<defs>
 						<clipPath id={clipPathId}>
 							<!-- Keep this equation in sync with the equivalent one in the CSS rule for `.layer { width: ... }` below -->
-							<path clip-rule="evenodd" d={layerBorderMask(24 * layerAreaWidth - 12, layerChainWidth ? (0.5 + layerChainWidth) * 24 : 0)} />
+							<path clip-rule="evenodd" d={layerBorderMask(24 * layerAreaWidth - 12, layerChainWidth ? (0.5 + layerChainWidth) * 24 : 0, hasLeftInputWire)} />
 						</clipPath>
 					</defs>
 				</svg>
@@ -604,6 +605,7 @@
 		{#each Array.from($nodeGraph.nodes.values()).flatMap((node, nodeIndex) => (node.isLayer ? [] : [{ node, nodeIndex }])) as { node, nodeIndex } (nodeIndex)}
 			{@const exposedInputsOutputs = [...node.exposedInputs, ...node.exposedOutputs]}
 			{@const clipPathId = String(Math.random()).substring(2)}
+			{@const description = (node.reference && $nodeGraph.nodeDescriptions.get(node.reference)) || undefined}
 			<div
 				class="node"
 				class:selected={$nodeGraph.selected.includes(node.id)}
@@ -614,6 +616,7 @@
 				style:--clip-path-id={`url(#${clipPathId})`}
 				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
+				title={description + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}` : "")}
 				data-node={node.id}
 				bind:this={nodeElements[nodeIndex]}
 			>
@@ -625,7 +628,7 @@
 				<div class="primary" class:in-selected-network={$nodeGraph.inSelectedNetwork} class:no-secondary-section={exposedInputsOutputs.length === 0}>
 					<IconLabel icon={nodeIcon(node.reference)} />
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
-					<TextLabel tooltip={editor.handle.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined}>{node.displayName}</TextLabel>
+					<TextLabel>{node.displayName}</TextLabel>
 				</div>
 				<!-- Secondary rows -->
 				{#if exposedInputsOutputs.length > 0}
@@ -986,7 +989,7 @@
 			}
 
 			&.disabled {
-				background: var(--color-3-darkgray);
+				background: rgba(var(--color-4-dimgray-rgb), 0.33);
 				color: var(--color-a-softgray);
 
 				.icon-label {
@@ -1038,10 +1041,10 @@
 			}
 
 			&.selected {
-				background: rgba(var(--color-5-dullgray-rgb), 0.5);
+				background: rgba(var(--color-5-dullgray-rgb), 0.33);
 
 				&.in-selected-network {
-					background: rgba(var(--color-6-lowergray-rgb), 0.5);
+					background: rgba(var(--color-6-lowergray-rgb), 0.33);
 				}
 			}
 

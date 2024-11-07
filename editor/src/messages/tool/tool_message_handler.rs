@@ -25,6 +25,7 @@ pub struct ToolMessageHandler {
 	pub tool_state: ToolFsmState,
 	pub transform_layer_handler: TransformLayerMessageHandler,
 	pub shape_editor: ShapeState,
+	pub tool_is_active: bool,
 }
 
 impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
@@ -69,9 +70,10 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 				let old_tool = tool_data.active_tool_type;
 
 				// Do nothing if switching to the same tool
-				if tool_type == old_tool {
+				if self.tool_is_active && tool_type == old_tool {
 					return;
 				}
+				self.tool_is_active = true;
 
 				// Send the old and new tools a transition to their FSM Abort states
 				let mut send_abort_to_tool = |tool_type, update_hints_and_cursor: bool| {
@@ -85,6 +87,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 							shape_editor: &mut self.shape_editor,
 							node_graph,
 						};
+
 						if let Some(tool_abort_message) = tool.event_to_message_map().tool_abort {
 							tool.process_message(tool_abort_message, responses, &mut data);
 						}
@@ -133,6 +136,11 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 				responses.add(BroadcastMessage::UnsubscribeEvent { message, on });
 
 				responses.add(OverlaysMessage::RemoveProvider(ARTBOARD_OVERLAY_PROVIDER));
+
+				responses.add(FrontendMessage::UpdateInputHints { hint_data: Default::default() });
+				responses.add(FrontendMessage::UpdateMouseCursor { cursor: Default::default() });
+
+				self.tool_is_active = false;
 			}
 			ToolMessage::InitTools => {
 				// Subscribe the transform layer to selection change events
@@ -140,6 +148,8 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 					on: BroadcastEvent::SelectionChanged,
 					send: Box::new(TransformLayerMessage::SelectionChanged.into()),
 				});
+
+				self.tool_is_active = true;
 
 				let tool_data = &mut self.tool_state.tool_data;
 				let document_data = &self.tool_state.document_tool_data;

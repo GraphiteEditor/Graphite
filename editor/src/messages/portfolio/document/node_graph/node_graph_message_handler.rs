@@ -1,7 +1,9 @@
 use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeWire, WirePath};
 use super::{document_node_definitions, node_properties};
+use crate::consts::GRID_SIZE;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::document_message_handler::navigation_controls;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::NodePropertiesContext;
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType};
@@ -28,6 +30,8 @@ pub struct NodeGraphHandlerData<'a> {
 	pub collapsed: &'a mut CollapsedLayers,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub graph_view_overlay_open: bool,
+	pub graph_fade_artwork_percentage: f64,
+	pub navigation_handler: &'a NavigationMessageHandler,
 }
 
 #[derive(Debug, Clone)]
@@ -76,8 +80,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			breadcrumb_network_path,
 			document_id,
 			collapsed,
-			graph_view_overlay_open,
 			ipp,
+			graph_view_overlay_open,
+			graph_fade_artwork_percentage,
+			navigation_handler,
 		} = data;
 
 		match message {
@@ -149,7 +155,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(PropertiesPanelMessage::Refresh);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
-			NodeGraphMessage::CreateNodeFromContextMenu { node_id, node_type, x, y } => {
+			NodeGraphMessage::CreateNodeFromContextMenu { node_id, node_type, xy } => {
+				let (x, y) = if let Some((x, y)) = xy {
+					(x, y)
+				} else if let Some(node_graph_ptz) = network_interface.node_graph_ptz(breadcrumb_network_path) {
+					((-node_graph_ptz.pan.x / GRID_SIZE as f64) as i32, (-node_graph_ptz.pan.y / GRID_SIZE as f64) as i32)
+				} else {
+					(0, 0)
+				};
+
 				let node_id = node_id.unwrap_or_else(NodeId::new);
 
 				let Some(document_node_type) = document_node_definitions::resolve_document_node_type(&node_type) else {
@@ -1076,12 +1090,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					// TODO: Implement culling of nodes and wires whose bounding boxes are outside of the viewport
 					let wires = Self::collect_wires(network_interface, breadcrumb_network_path);
 					let nodes = self.collect_nodes(network_interface, breadcrumb_network_path);
-					let (layer_widths, chain_widths) = network_interface.collect_layer_widths(breadcrumb_network_path);
+					let (layer_widths, chain_widths, has_left_input_wire) = network_interface.collect_layer_widths(breadcrumb_network_path);
 					let imports = network_interface.frontend_imports(breadcrumb_network_path).unwrap_or_default();
 					let exports = network_interface.frontend_exports(breadcrumb_network_path).unwrap_or_default();
 					responses.add(FrontendMessage::UpdateImportsExports { imports, exports });
 					responses.add(FrontendMessage::UpdateNodeGraph { nodes, wires });
-					responses.add(FrontendMessage::UpdateLayerWidths { layer_widths, chain_widths });
+					responses.add(FrontendMessage::UpdateLayerWidths {
+						layer_widths,
+						chain_widths,
+						has_left_input_wire,
+					});
 					responses.add(NodeGraphMessage::SendSelectedNodes);
 				}
 			}
@@ -1358,9 +1376,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(BroadcastEvent::SelectionChanged);
 
 				responses.add(NodeGraphMessage::SendGraph);
-
-				let node_types = document_node_definitions::collect_node_types();
-				responses.add(FrontendMessage::UpdateNodeTypes { node_types });
 			}
 			NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors } => {
 				for (path, node_type) in resolved_types.add {
@@ -1373,8 +1388,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::UpdateActionButtons => {
 				if selection_network_path == breadcrumb_network_path {
-					self.update_selection_action_buttons(network_interface, breadcrumb_network_path, responses);
+					self.update_graph_bar_left(network_interface, breadcrumb_network_path, responses);
+					self.send_node_bar_layout(responses);
 				}
+			}
+			NodeGraphMessage::UpdateGraphBarRight => {
+				self.update_graph_bar_right(graph_fade_artwork_percentage, network_interface, breadcrumb_network_path, navigation_handler);
+				self.send_node_bar_layout(responses);
 			}
 			NodeGraphMessage::UpdateInSelectedNetwork => responses.add(FrontendMessage::UpdateInSelectedNetwork {
 				in_selected_network: selection_network_path == breadcrumb_network_path,
@@ -1434,7 +1454,7 @@ impl NodeGraphMessageHandler {
 	}
 
 	/// Updates the buttons for visibility, locked, and preview
-	fn update_selection_action_buttons(&mut self, network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId], responses: &mut VecDeque<Message>) {
+	fn update_graph_bar_left(&mut self, network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId], responses: &mut VecDeque<Message>) {
 		let Some(subgraph_path_names) = Self::collect_subgraph_names(network_interface, breadcrumb_network_path) else {
 			// If a node in a nested network could not be found, exit the nested network
 			let breadcrumb_network_path_len = breadcrumb_network_path.len();
@@ -1456,100 +1476,172 @@ impl NodeGraphMessageHandler {
 			return;
 		};
 
-		let subgraph_path_names_length = subgraph_path_names.len();
-
-		let breadcrumb_trail = BreadcrumbTrailButtons::new(subgraph_path_names).on_update(move |index| {
-			DocumentMessage::ExitNestedNetwork {
-				steps_back: subgraph_path_names_length - (*index as usize) - 1,
+		let has_selection = selected_nodes.has_selected_nodes();
+		let selection_includes_layers = network_interface.selected_nodes(&[]).unwrap().selected_layers(network_interface.document_metadata()).count() > 0;
+		let selection_all_locked = network_interface.selected_nodes(&[]).unwrap().selected_unlocked_layers(network_interface).count() == 0;
+		let selection_all_visible = selected_nodes.selected_nodes().all(|id| {
+			if let Some(node) = network.nodes.get(id) {
+				node.visible
+			} else {
+				error!("Could not get node {id} in update_selection_action_buttons");
+				true
 			}
-			.into()
 		});
 
-		let mut widgets = if subgraph_path_names_length >= 2 {
-			vec![breadcrumb_trail.widget_holder(), Separator::new(SeparatorType::Unrelated).widget_holder()]
+		let mut widgets = vec![
+			PopoverButton::new()
+				.icon(Some("Node".to_string()))
+				.tooltip("Add a new node")
+				.popover_layout({
+					let node_chooser = NodeCatalog::new()
+						.on_update(move |node_type| {
+							let node_id = NodeId::new();
+
+							Message::Batched(Box::new([
+								NodeGraphMessage::CreateNodeFromContextMenu {
+									node_id: Some(node_id),
+									node_type: node_type.clone(),
+									xy: None,
+								}
+								.into(),
+								NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] }.into(),
+							]))
+						})
+						.widget_holder();
+					vec![LayoutGroup::Row { widgets: vec![node_chooser] }]
+				})
+				.widget_holder(),
+			//
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			//
+			IconButton::new("NewLayer", 24)
+				.tooltip("New Layer")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
+				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
+				.widget_holder(),
+			IconButton::new("Folder", 24)
+				.tooltip("Group Selected")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
+				.on_update(|_| DocumentMessage::GroupSelectedLayers.into())
+				.disabled(!has_selection)
+				.widget_holder(),
+			IconButton::new("Trash", 24)
+				.tooltip("Delete Selected")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers))
+				.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
+				.disabled(!has_selection)
+				.widget_holder(),
+			//
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			//
+			IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
+				.hover_icon(Some((if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" }).into()))
+				.tooltip(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
+				.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleSelectedLocked))
+				.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
+				.disabled(!has_selection || !selection_includes_layers)
+				.widget_holder(),
+			IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)
+				.hover_icon(Some((if selection_all_visible { "EyeHide" } else { "EyeShow" }).into()))
+				.tooltip(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
+				.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleSelectedVisibility))
+				.on_update(|_| NodeGraphMessage::ToggleSelectedVisibility.into())
+				.disabled(!has_selection)
+				.widget_holder(),
+		];
+
+		let mut selection = selected_nodes.selected_nodes();
+		let (selection, no_other_selections) = (selection.next(), selection.count() == 0);
+		let previewing = if matches!(network_interface.previewing(breadcrumb_network_path), Previewing::Yes { .. }) {
+			network.exports.iter().find_map(|export| {
+				let NodeInput::Node { node_id, .. } = export else { return None };
+				Some(*node_id)
+			})
 		} else {
-			Vec::new()
+			None
 		};
 
-		let mut selection = selected_nodes.selected_nodes();
-		// If there is at least one selected node then show the hide or show button
-		if selection.next().is_some() {
-			// Check if any of the selected nodes are disabled
-			let all_visible = selected_nodes.selected_nodes().all(|id| {
-				if let Some(node) = network.nodes.get(id) {
-					node.visible
-				} else {
-					error!("Could not get node {id} in update_selection_action_buttons");
-					true
-				}
-			});
-
-			// Check if multiple nodes are selected
-			let multiple_nodes = selection.next().is_some();
-
-			// Generate the visible/hidden button accordingly
-			let (hide_show_label, hide_show_icon) = if all_visible { ("Make Hidden", "EyeVisible") } else { ("Make Visible", "EyeHidden") };
-			let hide_button = TextButton::new(hide_show_label)
-				.icon(Some(hide_show_icon.to_string()))
-				.tooltip(if all_visible { "Hide" } else { "Show" }.to_string() + " selected " + if multiple_nodes { "nodes/layers" } else { "node/layer" })
-				.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleSelectedVisibility))
-				.on_update(move |_| NodeGraphMessage::ToggleSelectedVisibility.into())
-				.widget_holder();
-			widgets.push(hide_button);
-
-			widgets.push(Separator::new(SeparatorType::Related).widget_holder());
-		}
-
-		let mut selection = selected_nodes.selected_nodes();
-		// If there is at least one selected node then show the pin or unpin button
-		if selection.next().is_some() {
-			// Check if any of the selected nodes are pinned
-			let all_unpinned = !selected_nodes.selected_nodes().all(|id| {
-				if let Some(node) = network_interface.node_metadata(id, breadcrumb_network_path) {
-					node.persistent_metadata.pinned
-				} else {
-					error!("Could not get node {id} in update_selection_action_buttons");
-					false
-				}
-			});
-
-			// Check if multiple nodes are selected
-			let multiple_nodes = selection.next().is_some();
-
-			// Generate the visible/hidden button accordingly
-			let (pin_unpin_label, pin_unpin_icon) = if all_unpinned { ("Pin", "CheckboxUnchecked") } else { ("Unpin", "CheckboxChecked") };
-			let pin_button = TextButton::new(pin_unpin_label)
-				.icon(Some(pin_unpin_icon.to_string()))
-				.tooltip(
-					if all_unpinned { "Pin" } else { "Unpin" }.to_string()
-						+ " selected " + if multiple_nodes { "nodes/layers" } else { "node/layer" }
-						+ " in the Properties panel when nothing is selected",
-				)
-				.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleSelectedIsPinned))
-				.on_update(move |_| NodeGraphMessage::ToggleSelectedIsPinned.into())
-				.widget_holder();
-			widgets.push(pin_button);
-
-			widgets.push(Separator::new(SeparatorType::Related).widget_holder());
-		}
-
-		let mut selection = selected_nodes.selected_nodes();
 		// If only one node is selected then show the preview or stop previewing button
-		if let (Some(&node_id), None) = (selection.next(), selection.next()) {
-			// Is this node the current output
-			let is_output = network.outputs_contain(node_id);
-			let is_previewing = matches!(network_interface.previewing(breadcrumb_network_path), Previewing::Yes { .. });
-
-			let output_button = TextButton::new(if is_output && is_previewing { "End Preview" } else { "Preview" })
+		if let Some(node_id) = previewing {
+			let button = TextButton::new("End Preview")
 				.icon(Some("Rescale".to_string()))
-				.tooltip(if is_output { "Restore preview to the graph output" } else { "Preview selected node/layer" }.to_string() + " (Shortcut: Alt-click node/layer)")
+				.tooltip("Restore preview to the graph output")
 				.on_update(move |_| NodeGraphMessage::TogglePreview { node_id }.into())
 				.widget_holder();
-			widgets.push(output_button);
+			widgets.extend([Separator::new(SeparatorType::Unrelated).widget_holder(), button]);
+		} else if let Some(&node_id) = selection {
+			let selection_is_not_already_the_output = !network
+				.exports
+				.iter()
+				.any(|export| matches!(export, NodeInput::Node { node_id: export_node_id, .. } if *export_node_id == node_id));
+			if selection_is_not_already_the_output && no_other_selections {
+				let button = TextButton::new("Preview")
+					.icon(Some("Rescale".to_string()))
+					.tooltip("Preview selected node/layer (Shortcut: Alt-click node/layer)")
+					.on_update(move |_| NodeGraphMessage::TogglePreview { node_id }.into())
+					.widget_holder();
+				widgets.extend([Separator::new(SeparatorType::Unrelated).widget_holder(), button]);
+			}
+		}
+
+		let subgraph_path_names_length = subgraph_path_names.len();
+		if subgraph_path_names_length >= 2 {
+			widgets.extend([
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
+				BreadcrumbTrailButtons::new(subgraph_path_names)
+					.on_update(move |index| {
+						DocumentMessage::ExitNestedNetwork {
+							steps_back: subgraph_path_names_length - (*index as usize) - 1,
+						}
+						.into()
+					})
+					.widget_holder(),
+			]);
 		}
 
 		self.widgets[0] = LayoutGroup::Row { widgets };
-		self.send_node_bar_layout(responses);
+	}
+
+	fn update_graph_bar_right(
+		&mut self,
+		graph_fade_artwork_percentage: f64,
+		network_interface: &NodeNetworkInterface,
+		breadcrumb_network_path: &[NodeId],
+		navigation_handler: &NavigationMessageHandler,
+	) {
+		let Some(node_graph_ptz) = network_interface.node_graph_ptz(breadcrumb_network_path) else {
+			log::error!("Could not get node graph PTZ");
+			return;
+		};
+
+		let mut widgets = vec![
+			NumberInput::new(Some(graph_fade_artwork_percentage))
+				.percentage()
+				.display_decimal_places(0)
+				.label("Fade Artwork")
+				.tooltip("Opacity of the graph background that covers the artwork")
+				.on_update(move |number_input: &NumberInput| {
+					DocumentMessage::SetGraphFadeArtwork {
+						percentage: number_input.value.unwrap_or(graph_fade_artwork_percentage),
+					}
+					.into()
+				})
+				.widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+		];
+		widgets.extend(navigation_controls(node_graph_ptz, navigation_handler, "Node Graph"));
+		widgets.extend([
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			TextButton::new("Node Graph")
+				.icon(Some("GraphViewOpen".into()))
+				.hover_icon(Some("GraphViewClosed".into()))
+				.tooltip("Hide Node Graph")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GraphViewOverlayToggle))
+				.on_update(move |_| DocumentMessage::GraphViewOverlayToggle.into())
+				.widget_holder(),
+		]);
+
+		self.widgets[1] = LayoutGroup::Row { widgets };
 	}
 
 	/// Collate the properties panel sections for a node graph
@@ -1586,7 +1678,18 @@ impl NodeGraphMessageHandler {
 			0 => {
 				let selected_nodes = nodes
 					.iter()
-					.filter_map(|node_id| network.nodes.get(node_id).map(|node| node_properties::generate_node_properties(node, *node_id, false, context)))
+					.filter_map(|node_id| {
+						network.nodes.get(node_id).map(|node| {
+							let pinned = if let Some(node) = context.network_interface.node_metadata(node_id, context.selection_network_path) {
+								node.persistent_metadata.pinned
+							} else {
+								error!("Could not get node {node_id} in collate_properties");
+								false
+							};
+
+							node_properties::generate_node_properties(node, *node_id, pinned, context)
+						})
+					})
 					.collect::<Vec<_>>();
 				if !selected_nodes.is_empty() {
 					return selected_nodes;
@@ -1617,7 +1720,7 @@ impl NodeGraphMessageHandler {
 						};
 
 						if pinned {
-							Some(node_properties::generate_node_properties(node, *node_id, true, context))
+							Some(node_properties::generate_node_properties(node, *node_id, pinned, context))
 						} else {
 							None
 						}
@@ -1654,23 +1757,22 @@ impl NodeGraphMessageHandler {
 							})
 							.widget_holder(),
 						Separator::new(SeparatorType::Related).widget_holder(),
-						{
-							let node_chooser = NodeCatalog::new()
-								.on_update(move |node_type| {
-									NodeGraphMessage::CreateNodeInLayerWithTransaction {
-										node_type: node_type.clone(),
-										layer: LayerNodeIdentifier::new_unchecked(layer),
-									}
-									.into()
-								})
-								.widget_holder();
-							let popover_layout = vec![LayoutGroup::Row { widgets: vec![node_chooser] }];
-							PopoverButton::new()
-								.icon(Some("Node".to_string()))
-								.tooltip("Add an operation to the end of this layer's chain of nodes")
-								.popover_layout(popover_layout)
-								.widget_holder()
-						},
+						PopoverButton::new()
+							.icon(Some("Node".to_string()))
+							.tooltip("Add an operation to the end of this layer's chain of nodes")
+							.popover_layout({
+								let node_chooser = NodeCatalog::new()
+									.on_update(move |node_type| {
+										NodeGraphMessage::CreateNodeInLayerWithTransaction {
+											node_type: node_type.clone(),
+											layer: LayerNodeIdentifier::new_unchecked(layer),
+										}
+										.into()
+									})
+									.widget_holder();
+								vec![LayoutGroup::Row { widgets: vec![node_chooser] }]
+							})
+							.widget_holder(),
 						Separator::new(SeparatorType::Related).widget_holder(),
 					],
 				}];
@@ -1688,7 +1790,16 @@ impl NodeGraphMessageHandler {
 						}
 					})
 					.filter_map(|(_, node_id)| network.nodes.get(&node_id).map(|node| (node, node_id)))
-					.map(|(node, node_id)| node_properties::generate_node_properties(node, node_id, false, context))
+					.map(|(node, node_id)| {
+						let pinned = if let Some(node) = context.network_interface.node_metadata(&node_id, context.selection_network_path) {
+							node.persistent_metadata.pinned
+						} else {
+							error!("Could not get node {node_id} in collate_properties");
+							false
+						};
+
+						node_properties::generate_node_properties(node, node_id, pinned, context)
+					})
 					.collect::<Vec<_>>();
 
 				layer_properties.extend(node_properties);
@@ -1897,7 +2008,7 @@ impl NodeGraphMessageHandler {
 					.node_metadata(&node_id, breadcrumb_network_path)
 					.is_some_and(|node_metadata| node_metadata.persistent_metadata.is_layer()),
 				can_be_layer: can_be_layer_lookup.contains(&node_id),
-				reference: None,
+				reference: network_interface.reference(&node_id, breadcrumb_network_path),
 				display_name: network_interface.frontend_display_name(&node_id, breadcrumb_network_path),
 				primary_input,
 				exposed_inputs,
@@ -2124,7 +2235,7 @@ fn frontend_inputs_lookup(breadcrumb_network_path: &[NodeId], network_interface:
 			// Skip not exposed inputs for efficiency
 			let Some(value) = value else { continue };
 
-			// Resolve the type (done in a seperate loop because it requires a mutable reference to the `network_interface`)
+			// Resolve the type (done in a separate loop because it requires a mutable reference to the `network_interface`)
 			let (ty, type_source) = network_interface.input_type(&InputConnector::node(node_id, index), breadcrumb_network_path);
 			value.ty = ty;
 			value.type_source = type_source;
@@ -2135,24 +2246,11 @@ fn frontend_inputs_lookup(breadcrumb_network_path: &[NodeId], network_interface:
 
 impl Default for NodeGraphMessageHandler {
 	fn default() -> Self {
-		let right_side_widgets = vec![
-			// TODO: Replace this with an "Add Node" button, also next to an "Add Layer" button
-			TextLabel::new("Right Click in Graph to Add Nodes").italic(true).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			TextButton::new("Node Graph")
-				.icon(Some("GraphViewOpen".into()))
-				.hover_icon(Some("GraphViewClosed".into()))
-				.tooltip("Hide Node Graph")
-				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GraphViewOverlayToggle))
-				.on_update(move |_| DocumentMessage::GraphViewOverlayToggle.into())
-				.widget_holder(),
-		];
-
 		Self {
 			network: Vec::new(),
 			node_graph_errors: Vec::new(),
 			has_selection: false,
-			widgets: [LayoutGroup::Row { widgets: Vec::new() }, LayoutGroup::Row { widgets: right_side_widgets }],
+			widgets: [LayoutGroup::Row { widgets: Vec::new() }, LayoutGroup::Row { widgets: Vec::new() }],
 			drag_start: None,
 			begin_dragging: false,
 			drag_occurred: false,

@@ -22,6 +22,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		fields,
 		body,
 		crate_name: graphene_core_crate,
+		description,
 		..
 	} = parsed;
 
@@ -257,6 +258,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 				let metadata = NodeMetadata {
 					display_name: #display_name,
 					category: #category,
+					description: #description,
 					fields: vec![
 						#(
 							FieldMetadata {
