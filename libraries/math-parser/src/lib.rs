@@ -77,7 +77,7 @@ mod tests {
 	#[test]
 	fn simple_infix() {
 		end_to_end("5 + 5", 10., Unit::BASE_UNIT);
-		end_to_end("5 - 3", 2., Unit::BASE_UNIT);
+		end_to_end("5m/s - 3m/s", 2., Unit::VELOCITY);
 		end_to_end("4*4", 16., Unit::BASE_UNIT);
 		end_to_end("8/2", 4., Unit::BASE_UNIT);
 	}
