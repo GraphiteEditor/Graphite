@@ -444,8 +444,11 @@ impl fmt::Display for SnappingOptions {
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct PTZ {
+	/// Offset distance.
 	pub pan: DVec2,
-	pub tilt: f64,
+	/// Angle in radians.
+	tilt: f64,
+	/// Scale factor.
 	zoom: f64,
 }
 
@@ -456,10 +459,22 @@ impl Default for PTZ {
 }
 
 impl PTZ {
+	/// Get the tilt angle between -180° and 180° in radians.
+	pub fn tilt(&self) -> f64 {
+		(((self.tilt + std::f64::consts::PI) % std::f64::consts::TAU) + std::f64::consts::TAU) % std::f64::consts::TAU - std::f64::consts::PI
+	}
+
+	/// Set a new tilt angle in radians.
+	pub fn set_tilt(&mut self, tilt: f64) {
+		self.tilt = tilt;
+	}
+
+	/// Get the scale factor.
 	pub fn zoom(&self) -> f64 {
 		self.zoom
 	}
 
+	/// Set a new scale factor.
 	pub fn set_zoom(&mut self, zoom: f64) {
 		self.zoom = zoom.clamp(crate::consts::VIEWPORT_ZOOM_SCALE_MIN, crate::consts::VIEWPORT_ZOOM_SCALE_MAX)
 	}

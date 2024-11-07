@@ -651,7 +651,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(DocumentMessage::AddTransaction);
 
 				let opposite_corner = ipp.keyboard.key(resize_opposite_corner);
-				let delta = DVec2::new(delta_x, delta_y);
 				let network_interface = &self.network_interface;
 				let can_move = move |layer| {
 					network_interface
@@ -662,6 +661,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				match ipp.keyboard.key(resize) {
 					// Nudge translation
 					false => {
+						let delta = DVec2::from_angle(-self.document_ptz.tilt()).rotate(DVec2::new(delta_x, delta_y));
+
 						for layer in self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer)) {
 							responses.add(GraphOperationMessage::TransformChange {
 								layer,
@@ -673,6 +674,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					}
 					// Nudge resize
 					true => {
+						let delta = DVec2::new(delta_x, delta_y);
+
 						let selected_bounding_box = self.network_interface.selected_bounds_document_space(false, &[]);
 						let Some([existing_top_left, existing_bottom_right]) = selected_bounding_box else { return };
 
@@ -1814,7 +1817,7 @@ impl DocumentMessageHandler {
 
 		widgets.extend(navigation_controls(&self.document_ptz, &self.navigation_handler, "Canvas"));
 
-		let tilt_value = self.navigation_handler.snapped_tilt(self.document_ptz.tilt) / (std::f64::consts::PI / 180.);
+		let tilt_value = self.navigation_handler.snapped_tilt(self.document_ptz.tilt()) / (std::f64::consts::PI / 180.);
 		if tilt_value.abs() > 0.00001 {
 			widgets.extend([
 				Separator::new(SeparatorType::Related).widget_holder(),
@@ -2178,7 +2181,7 @@ pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHand
 			.tooltip("Reset Tilt and Zoom to 100%")
 			.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasTiltResetAndZoomTo100Percent))
 			.on_update(|_| NavigationMessage::CanvasTiltResetAndZoomTo100Percent.into())
-			.disabled(ptz.tilt.abs() < 1e-4 && (ptz.zoom() - 1.).abs() < 1e-4)
+			.disabled(ptz.tilt().abs() < 1e-4 && (ptz.zoom() - 1.).abs() < 1e-4)
 			.widget_holder(),
 		PopoverButton::new()
 			.popover_layout(vec![

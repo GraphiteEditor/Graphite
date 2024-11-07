@@ -470,9 +470,11 @@ impl Fsm for ArtboardToolFsmState {
 					if tool_data.selected_artboard.unwrap() == LayerNodeIdentifier::ROOT_PARENT {
 						log::error!("Selected artboard cannot be ROOT_PARENT");
 					} else {
+						let delta = DVec2::from_angle(-document.document_ptz.tilt()).rotate(DVec2::new(delta_x, delta_y));
+
 						responses.add(GraphOperationMessage::ResizeArtboard {
 							layer: tool_data.selected_artboard.unwrap(),
-							location: DVec2::new(bounds.bounds[0].x + delta_x, bounds.bounds[0].y + delta_y).round().as_ivec2(),
+							location: DVec2::new(bounds.bounds[0].x + delta.x, bounds.bounds[0].y + delta.y).round().as_ivec2(),
 							dimensions: (bounds.bounds[1] - bounds.bounds[0]).round().as_ivec2(),
 						});
 					}
