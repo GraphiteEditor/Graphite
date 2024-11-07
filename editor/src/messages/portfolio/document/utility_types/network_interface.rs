@@ -256,6 +256,7 @@ impl NodeNetworkInterface {
 			encapsulating_node.inputs.len()
 		} else {
 			// There is one(?) import to the document network, but the imports are not displayed
+			// I think this is zero now that the scope system has been added
 			1
 		}
 	}
@@ -1896,6 +1897,109 @@ impl NodeNetworkInterface {
 		network_metadata.transient_metadata.import_export_ports.unload();
 	}
 
+	pub fn modify_import_export(&mut self, network_path: &[NodeId]) -> Option<&ModifyImportExportClickTarget> {
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in modify_import_export");
+			return None;
+		};
+		if !network_metadata.transient_metadata.modify_import_export.is_loaded() {
+			self.load_modify_import_export(network_path);
+		}
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in modify_import_export");
+			return None;
+		};
+		let TransientMetadata::Loaded(click_targets) = &network_metadata.transient_metadata.modify_import_export else {
+			log::error!("could not load modify import export ports");
+			return None;
+		};
+		Some(click_targets)
+	}
+
+	pub fn load_modify_import_export(&mut self, network_path: &[NodeId]) {
+		let Some(all_nodes_bounding_box) = self.all_nodes_bounding_box(network_path).cloned() else {
+			log::error!("Could not get all nodes bounding box in load_export_ports");
+			return;
+		};
+		let Some(rounded_network_edge_distance) = self.rounded_network_edge_distance(network_path).cloned() else {
+			log::error!("Could not get rounded_network_edge_distance in load_export_ports");
+			return;
+		};
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in load_export_ports");
+			return;
+		};
+		let Some(network) = self.network(network_path) else {
+			log::error!("Could not get current network in load_export_ports");
+			return;
+		};
+
+		let viewport_top_right = network_metadata
+			.persistent_metadata
+			.navigation_metadata
+			.node_graph_to_viewport
+			.inverse()
+			.transform_point2(rounded_network_edge_distance.exports_to_edge_distance);
+		let offset_from_top_right = if network
+			.exports
+			.first()
+			.is_some_and(|export| export.as_node().is_some_and(|export_node| self.is_layer(&export_node, network_path)))
+		{
+			DVec2::new(2. * GRID_SIZE as f64, -2. * GRID_SIZE as f64)
+		} else {
+			DVec2::new(4. * GRID_SIZE as f64, 0.)
+		};
+
+		let bounding_box_top_right = DVec2::new((all_nodes_bounding_box[1].x / 24. + 0.5).floor() * 24., (all_nodes_bounding_box[0].y / 24. + 0.5).floor() * 24.) + offset_from_top_right;
+		let export_top_right = DVec2::new(viewport_top_right.x.max(bounding_box_top_right.x), viewport_top_right.y.min(bounding_box_top_right.y));
+		let add_export_center = export_top_right + DVec2::new(0., network.exports.len() as f64 * 24.);
+		let add_export = ClickTarget::new(Subpath::new_ellipse(add_export_center - DVec2::new(8., 8.), add_export_center + DVec2::new(8., 8.)), 0.);
+
+		let viewport_top_left = network_metadata
+			.persistent_metadata
+			.navigation_metadata
+			.node_graph_to_viewport
+			.inverse()
+			.transform_point2(rounded_network_edge_distance.imports_to_edge_distance);
+
+		let offset_from_top_left = if network
+			.exports
+			.first()
+			.is_some_and(|export| export.as_node().is_some_and(|export_node| self.is_layer(&export_node, network_path)))
+		{
+			DVec2::new(-4. * GRID_SIZE as f64, -2. * GRID_SIZE as f64)
+		} else {
+			DVec2::new(-4. * GRID_SIZE as f64, 0.)
+		};
+
+		let bounding_box_top_left = DVec2::new((all_nodes_bounding_box[0].x / 24. + 0.5).floor() * 24., (all_nodes_bounding_box[0].y / 24. + 0.5).floor() * 24.) + offset_from_top_left;
+		let import_top_left = DVec2::new(viewport_top_left.x.min(bounding_box_top_left.x), viewport_top_left.y.min(bounding_box_top_left.y));
+		let add_import_center = import_top_left + DVec2::new(0., self.number_of_displayed_imports(network_path) as f64 * 24.);
+		let add_import = ClickTarget::new(Subpath::new_ellipse(add_import_center - DVec2::new(8., 8.), add_import_center + DVec2::new(8., 8.)), 0.);
+
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+			log::error!("Could not get current network in load_modify_import_export");
+			return;
+		};
+
+		network_metadata.transient_metadata.modify_import_export = TransientMetadata::Loaded(ModifyImportExportClickTarget {
+			add_export,
+			add_import,
+			remove_imports: Vec::new(),
+			remove_exports: Vec::new(),
+			move_import: Vec::new(),
+			move_export: Vec::new(),
+		});
+	}
+
+	fn unload_modify_import_export(&mut self, network_path: &[NodeId]) {
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+			log::error!("Could not get nested network_metadata in unload_export_ports");
+			return;
+		};
+		network_metadata.transient_metadata.modify_import_export.unload();
+	}
+
 	pub fn rounded_network_edge_distance(&mut self, network_path: &[NodeId]) -> Option<&NetworkEdgeDistance> {
 		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in rounded_network_edge_distance");
@@ -3001,6 +3105,7 @@ impl NodeNetworkInterface {
 		};
 		network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport = transform;
 		self.unload_import_export_ports(network_path);
+		self.unload_modify_import_export(network_path);
 	}
 
 	// This should be run whenever the pan ends, a zoom occurs, or the network is opened
@@ -3012,6 +3117,7 @@ impl NodeNetworkInterface {
 		network_metadata.persistent_metadata.navigation_metadata.node_graph_top_right = node_graph_top_right;
 		self.unload_rounded_network_edge_distance(network_path);
 		self.unload_import_export_ports(network_path);
+		self.unload_modify_import_export(network_path);
 	}
 
 	pub fn vector_modify(&mut self, node_id: &NodeId, modification_type: VectorModificationType) {
@@ -3065,6 +3171,7 @@ impl NodeNetworkInterface {
 
 		// Update the export ports and outward wires for the current network
 		self.unload_import_export_ports(network_path);
+		self.unload_modify_import_export(network_path);
 		self.unload_outward_wires(network_path);
 
 		// Update the outward wires and bounding box for all nodes in the encapsulating network
@@ -3086,17 +3193,17 @@ impl NodeNetworkInterface {
 
 	/// Inserts a new input at insert index. If the insert index is -1 it is inserted at the end. The output_name is used by the encapsulating node.
 	pub fn add_import(&mut self, default_value: TaggedValue, exposed: bool, insert_index: isize, input_name: String, network_path: &[NodeId]) {
-		let mut network_path = network_path.to_vec();
-		let Some(node_id) = network_path.pop() else {
+		let mut encapsulating_network_path = network_path.to_vec();
+		let Some(node_id) = encapsulating_network_path.pop() else {
 			log::error!("Cannot add import for document network");
 			return;
 		};
 		// Set the node to be a non layer if it is no longer eligible to be a layer
-		if !self.is_eligible_to_be_layer(&node_id, &network_path) && self.is_layer(&node_id, &network_path) {
-			self.set_to_node_or_layer(&node_id, &network_path, false);
+		if !self.is_eligible_to_be_layer(&node_id, &encapsulating_network_path) && self.is_layer(&node_id, &encapsulating_network_path) {
+			self.set_to_node_or_layer(&node_id, &encapsulating_network_path, false);
 		}
 
-		let Some(network) = self.network_mut(&network_path) else {
+		let Some(network) = self.network_mut(&encapsulating_network_path) else {
 			log::error!("Could not get nested network in insert_input");
 			return;
 		};
@@ -3114,7 +3221,7 @@ impl NodeNetworkInterface {
 
 		self.transaction_modified();
 
-		let Some(node_metadata) = self.node_metadata_mut(&node_id, &network_path) else {
+		let Some(node_metadata) = self.node_metadata_mut(&node_id, &encapsulating_network_path) else {
 			log::error!("Could not get node_metadata in insert_input");
 			return;
 		};
@@ -3131,14 +3238,18 @@ impl NodeNetworkInterface {
 		}
 
 		// Update the click targets for the node
-		self.unload_node_click_targets(&node_id, &network_path);
+		self.unload_node_click_targets(&node_id, &encapsulating_network_path);
 
 		// Update the transient network metadata bounding box for all nodes and outward wires
-		self.unload_all_nodes_bounding_box(&network_path);
-		self.unload_outward_wires(&network_path);
+		self.unload_all_nodes_bounding_box(&encapsulating_network_path);
+
+		// Unload the metadata for the nested network
+		self.unload_outward_wires(network_path);
+		self.unload_import_export_ports(network_path);
+		self.unload_modify_import_export(network_path);
 
 		// If the input is inserted as the first input, then it may have affected the document metadata structure
-		if network_path.is_empty() && (insert_index == 0 || insert_index == 1) {
+		if encapsulating_network_path.is_empty() && (insert_index == 0 || insert_index == 1) {
 			self.load_structure();
 		}
 	}
@@ -3935,6 +4046,7 @@ impl NodeNetworkInterface {
 		self.unload_upstream_node_click_targets(vec![*node_id], network_path);
 		self.unload_all_nodes_bounding_box(network_path);
 		self.unload_import_export_ports(network_path);
+		self.unload_modify_import_export(network_path);
 		self.load_structure();
 	}
 
@@ -5361,8 +5473,23 @@ pub struct NodeNetworkTransientMetadata {
 	// pub wire_paths: Vec<WirePath>
 	/// All export connector click targets
 	pub import_export_ports: TransientMetadata<Ports>,
+	/// Click targets for adding, removing, and moving import/export ports
+	pub modify_import_export: TransientMetadata<ModifyImportExportClickTarget>,
 	// Distance to the edges of the network, where the import/export ports are displayed. Rounded to nearest grid space when the panning ends.
 	pub rounded_network_edge_distance: TransientMetadata<NetworkEdgeDistance>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ModifyImportExportClickTarget {
+	// Plus icon that appears below all imports/exports
+	pub add_import: ClickTarget,
+	pub add_export: ClickTarget,
+	// Subtract icon that appears when hovering over an import/export
+	pub remove_imports: Vec<ClickTarget>,
+	pub remove_exports: Vec<ClickTarget>,
+	// Grip drag icon that appears when hovering over an import/export
+	pub move_import: Vec<ClickTarget>,
+	pub move_export: Vec<ClickTarget>,
 }
 
 #[derive(Debug, Clone)]

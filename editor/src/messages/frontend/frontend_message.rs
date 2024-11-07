@@ -131,6 +131,10 @@ pub enum FrontendMessage {
 	UpdateImportsExports {
 		imports: Vec<(FrontendGraphOutput, i32, i32)>,
 		exports: Vec<(FrontendGraphInput, i32, i32)>,
+		#[serde(rename = "addImport")]
+		add_import: (i32, i32),
+		#[serde(rename = "addExport")]
+		add_export: (i32, i32),
 	},
 	UpdateInSelectedNetwork {
 		#[serde(rename = "inSelectedNetwork")]

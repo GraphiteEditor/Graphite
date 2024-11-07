@@ -560,6 +560,23 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				let node_graph_point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
 
+				let Some(modify_import_export) = network_interface.modify_import_export(selection_network_path) else {
+					log::error!("Could not get modify import export in PointerDown");
+					return;
+				};
+
+				if modify_import_export.add_export.intersect_point_no_stroke(node_graph_point) {
+					responses.add(DocumentMessage::AddTransaction);
+					responses.add(NodeGraphMessage::AddExport);
+					responses.add(NodeGraphMessage::SendGraph);
+					return;
+				} else if modify_import_export.add_import.intersect_point_no_stroke(node_graph_point) {
+					responses.add(DocumentMessage::AddTransaction);
+					responses.add(NodeGraphMessage::AddImport);
+					responses.add(NodeGraphMessage::SendGraph);
+					return;
+				}
+
 				if network_interface
 					.layer_click_target_from_click(click, network_interface::LayerClickTargetTypes::Grip, selection_network_path)
 					.is_some()
@@ -1216,7 +1233,30 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					let (layer_widths, chain_widths, has_left_input_wire) = network_interface.collect_layer_widths(breadcrumb_network_path);
 					let imports = network_interface.frontend_imports(breadcrumb_network_path).unwrap_or_default();
 					let exports = network_interface.frontend_exports(breadcrumb_network_path).unwrap_or_default();
-					responses.add(FrontendMessage::UpdateImportsExports { imports, exports });
+					let add_import = network_interface
+						.modify_import_export(breadcrumb_network_path)
+						.and_then(|modify_import_export_click_target| {
+							modify_import_export_click_target
+								.add_import
+								.bounding_box()
+								.map(|bounding_box| (bounding_box[0].x as i32, bounding_box[0].y as i32))
+						})
+						.unwrap_or((0, 0));
+					let add_export = network_interface
+						.modify_import_export(breadcrumb_network_path)
+						.and_then(|modify_import_export_click_target| {
+							modify_import_export_click_target
+								.add_export
+								.bounding_box()
+								.map(|bounding_box| (bounding_box[0].x as i32, bounding_box[0].y as i32))
+						})
+						.unwrap_or((0, 0));
+					responses.add(FrontendMessage::UpdateImportsExports {
+						imports,
+						exports,
+						add_import,
+						add_export,
+					});
 					responses.add(FrontendMessage::UpdateNodeGraph { nodes, wires });
 					responses.add(FrontendMessage::UpdateLayerWidths {
 						layer_widths,
@@ -1232,7 +1272,30 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					// Send the new edges to the frontend
 					let imports = network_interface.frontend_imports(breadcrumb_network_path).unwrap_or_default();
 					let exports = network_interface.frontend_exports(breadcrumb_network_path).unwrap_or_default();
-					responses.add(FrontendMessage::UpdateImportsExports { imports, exports });
+					let add_import = network_interface
+						.modify_import_export(breadcrumb_network_path)
+						.and_then(|modify_import_export_click_target| {
+							modify_import_export_click_target
+								.add_import
+								.bounding_box()
+								.map(|bounding_box| (bounding_box[0].x as i32, bounding_box[0].y as i32))
+						})
+						.unwrap_or((0, 0));
+					let add_export = network_interface
+						.modify_import_export(breadcrumb_network_path)
+						.and_then(|modify_import_export_click_target| {
+							modify_import_export_click_target
+								.add_export
+								.bounding_box()
+								.map(|bounding_box| (bounding_box[0].x as i32, bounding_box[0].y as i32))
+						})
+						.unwrap_or((0, 0));
+					responses.add(FrontendMessage::UpdateImportsExports {
+						imports,
+						exports,
+						add_import,
+						add_export,
+					});
 				}
 			}
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
