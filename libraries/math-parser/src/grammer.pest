@@ -30,13 +30,13 @@ float         =  @{ int ~ "." ~ int? ~ exp? | int ~ exp }
 exp           =  _{ ^"e" ~ ("+" | "-")? ~ int }
 int           =  @{ ASCII_DIGIT+ }
 
-unit          =  @{ (base_unit ~ WHITESPACE) | (scale ~ base_unit) }
-base_unit     =  { meter | second | gram }
+unit          =  ${ scale? ~ base_unit }
+base_unit     =  _{ meter | second | gram }
 meter         =  { "m" }
 second        =  { "s" }
 gram          =  { "g" }
 
-scale         =  { nano | micro | milli | centi | deci | deca | hecto | kilo | mega | giga | tera }
+scale         =  _{ nano | micro | milli | centi | deci | deca | hecto | kilo | mega | giga | tera }
 nano          =  { "n" }
 micro         =  { "µ" | "u" }
 milli         =  { "m" }

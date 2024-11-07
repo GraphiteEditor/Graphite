@@ -10,8 +10,23 @@ pub struct Unit {
 	pub time: i32,
 }
 
+impl Default for Unit {
+	fn default() -> Self {
+		Self::BASE_UNIT
+	}
+}
+
 impl Unit {
 	pub const BASE_UNIT: Unit = Unit { length: 0, mass: 0, time: 0 };
+
+	pub const LENGTH: Unit = Unit { length: 1, mass: 0, time: 0 };
+	pub const MASS: Unit = Unit { length: 0, mass: 1, time: 0 };
+	pub const TIME: Unit = Unit { length: 0, mass: 0, time: 1 };
+
+	pub const VELOCITY: Unit = Unit { length: 1, mass: 0, time: -1 };
+	pub const ACCELERATION: Unit = Unit { length: 1, mass: 0, time: -2 };
+
+	pub const FORCE: Unit = Unit { length: 1, mass: 1, time: -2 };
 
 	pub fn base_unit() -> Self {
 		Self::BASE_UNIT

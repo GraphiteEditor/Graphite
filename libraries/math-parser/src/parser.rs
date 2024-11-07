@@ -56,9 +56,10 @@ pub enum ParseError {
 }
 
 impl Node {
-	pub fn from_str(s: &str) -> Result<Node, ParseError> {
+	pub fn from_str(s: &str) -> Result<(Node, Unit), ParseError> {
 		let pairs = ExprParser::parse(Rule::program, s).map_err(Box::new)?;
-		Ok(parse_expr(pairs)?.0)
+		let (node, metadata) = parse_expr(pairs)?;
+		Ok((node, metadata.unit))
 	}
 }
 
@@ -79,6 +80,7 @@ fn parse_unit(pairs: Pairs<Rule>) -> Result<(Unit, f64), ParseError> {
 	let mut time = 0;
 
 	for pair in pairs {
+		println!("found rule: {:?}", pair.as_rule());
 		match pair.as_rule() {
 			Rule::nano => scale *= 1e-9,
 			Rule::micro => scale *= 1e-6,
@@ -138,6 +140,8 @@ fn parse_lit(mut pairs: Pairs<Rule>) -> Result<(Literal, Unit), ParseError> {
 	if let Some(unit_pair) = pairs.next() {
 		let unit_pairs = unit_pair.into_inner(); // Get the inner pairs for the unit
 		let (unit, scale) = parse_unit(unit_pairs)?;
+
+		println!("found unit: {:?}", unit);
 
 		Ok((
 			match literal {
@@ -292,11 +296,11 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 							return Err(ParseError::Type(TypeError::InvalidBinaryOp(lhs_unit, op, Unit::BASE_UNIT)));
 						}
 					}
-					_ => Unit::BASE_UNIT,
+					_ => lhs_unit,
 				},
 				(false, true) => match op {
 					BinaryOp::Add | BinaryOp::Sub | BinaryOp::Pow => return Err(ParseError::Type(TypeError::InvalidBinaryOp(Unit::BASE_UNIT, op, rhs_unit))),
-					_ => Unit::BASE_UNIT,
+					_ => rhs_unit,
 				},
 				(false, false) => Unit::BASE_UNIT,
 			};
@@ -322,7 +326,7 @@ mod tests {
 				#[test]
 				fn $name() {
 					let result = Node::from_str($input).unwrap();
-					assert_eq!(result, $expected);
+					assert_eq!(result.0, $expected);
 				}
 			)*
 		};
