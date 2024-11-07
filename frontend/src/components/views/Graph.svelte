@@ -2,6 +2,10 @@
 	import { getContext, onMount, tick } from "svelte";
 	import { fade } from "svelte/transition";
 
+	import TextButton from "../widgets/buttons/TextButton.svelte";
+
+	import Separator from "../widgets/labels/Separator.svelte";
+
 	import { FADE_TRANSITION } from "@graphite/consts";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
@@ -309,6 +313,15 @@
 		});
 		return connectedNode?.isLayer || false;
 	}
+
+	function zipWithUndefined(arr1: FrontendGraphInput[], arr2: FrontendGraphOutput[]) {
+		const maxLength = Math.max(arr1.length, arr2.length);
+		const result = [];
+		for (let i = 0; i < maxLength; i++) {
+			result.push([arr1[i], arr2[i]]);
+		}
+		return result;
+	}
 </script>
 
 <div
@@ -356,6 +369,10 @@
 						]}
 						disabled={!canBeToggledBetweenNodeAndLayer(contextMenuData.nodeId)}
 					/>
+				</LayoutRow>
+				<Separator type="Section" direction="Vertical" />
+				<LayoutRow class="merge-selected-nodes">
+					<TextButton label="Merge Selected Nodes" action={() => editor.handle.mergeSelectedNodes()} />
 				</LayoutRow>
 			{/if}
 		</LayoutCol>
@@ -602,9 +619,8 @@
 		</div>
 
 		<!-- Nodes -->
-		{console.log($nodeGraph.nodes)}
 		{#each Array.from($nodeGraph.nodes.values()).flatMap((node, nodeIndex) => (node.isLayer ? [] : [{ node, nodeIndex }])) as { node, nodeIndex } (nodeIndex)}
-			{@const exposedInputsOutputs = [...node.exposedInputs, ...node.exposedOutputs]}
+			{@const exposedInputsOutputs = zipWithUndefined(node.exposedInputs, node.exposedOutputs)}
 			{@const clipPathId = String(Math.random()).substring(2)}
 			{@const description = (node.reference && $nodeGraph.nodeDescriptions.get(node.reference)) || undefined}
 			<div
@@ -634,9 +650,11 @@
 				<!-- Secondary rows -->
 				{#if exposedInputsOutputs.length > 0}
 					<div class="secondary" class:in-selected-network={$nodeGraph.inSelectedNetwork}>
-						{#each exposedInputsOutputs as secondary, index}
-							<div class={`secondary-row expanded ${index < node.exposedInputs.length ? "input" : "output"}`}>
-								<TextLabel tooltip={secondary.name}>{secondary.name}</TextLabel>
+						{#each exposedInputsOutputs as [input, output]}
+							<div class={`secondary-row expanded ${input !== undefined ? "input" : "output"}`}>
+								<TextLabel tooltip={input !== undefined ? input.name : output.name}>
+									{input !== undefined ? input.name : output.name}
+								</TextLabel>
 							</div>
 						{/each}
 					</div>
@@ -796,6 +814,10 @@
 			.toggle-layer-or-node .text-label {
 				line-height: 24px;
 				margin-right: 8px;
+			}
+
+			.merge-selected-nodes {
+				justify-content: center;
 			}
 		}
 

@@ -569,6 +569,13 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Merge a group of nodes into a subnetwork
+	#[wasm_bindgen(js_name = mergeSelectedNodes)]
+	pub fn merge_nodes(&self) {
+		let message = NodeGraphMessage::MergeSelectedNodes;
+		self.dispatch(message);
+	}
+
 	/// Creates a new document node in the node graph
 	#[wasm_bindgen(js_name = createNode)]
 	pub fn create_node(&self, node_type: String, x: i32, y: i32) {
@@ -763,9 +770,7 @@ impl EditorHandle {
 					document
 						.network_interface
 						.replace_implementation(&node_id, &[], DocumentNodeImplementation::proto("graphene_core::ToArtboardNode"));
-					document
-						.network_interface
-						.add_import(TaggedValue::IVec2(glam::IVec2::default()), false, 2, "".to_string(), &[node_id]);
+					document.network_interface.add_import(TaggedValue::IVec2(glam::IVec2::default()), false, 2, "".to_string(), &[node_id]);
 				}
 			}
 		}

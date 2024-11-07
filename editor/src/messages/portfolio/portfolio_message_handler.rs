@@ -465,17 +465,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					let Some(ref reference) = node_metadata.persistent_metadata.reference.clone() else {
 						continue;
 					};
-					if let Some(node_definition) = resolve_document_node_type(reference) {
-						let document_node = node_definition.default_node_template().document_node;
-						document.network_interface.set_manual_compostion(node_id, &[], document_node.manual_composition);
-						// if ["Fill", "Stroke", "Splines from Points", "Sample Subpaths", "Sample Points", "Copy to Points", "Path", "Scatter Points"].contains(&reference.as_str()) {
-						// 	document.network_interface.set_implementation(node_id, &[], document_node.implementation);
-						// }
-						document.network_interface.replace_implementation(node_id, &[], document_node.implementation);
-						document
-							.network_interface
-							.replace_implementation_metadata(node_id, &[], node_definition.default_node_template().persistent_node_metadata);
-					}
+
 					let Some(node) = document.network_interface.network(&[]).unwrap().nodes.get(node_id) else {
 						log::error!("could not get node in deserialize_document");
 						continue;

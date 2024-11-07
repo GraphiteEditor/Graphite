@@ -2128,7 +2128,8 @@ impl NodeGraphMessageHandler {
 					.output_names
 					.get(index)
 					.map(|output_name| output_name.to_string())
-					.unwrap_or(format!("Output {}", index + 1));
+					.filter(|output_name| !output_name.is_empty())
+					.unwrap_or_else(|| exposed_output.clone().map(|(output_type, _)| output_type.nested_type().to_string()).unwrap_or_default());
 
 				let connected_to = outward_wires.get(&OutputConnector::node(node_id, index)).cloned().unwrap_or_default();
 				exposed_outputs.push(FrontendGraphOutput {
@@ -2365,7 +2366,6 @@ fn frontend_inputs_lookup(breadcrumb_network_path: &[NodeId], network_interface:
 	let Some(network) = network_interface.network(breadcrumb_network_path) else {
 		return Default::default();
 	};
-	let network_metadata = network_interface.network_metadata(breadcrumb_network_path);
 	let mut frontend_inputs_lookup = HashMap::new();
 	for (&node_id, node) in network.nodes.iter() {
 		let mut inputs = Vec::with_capacity(node.inputs.len());
