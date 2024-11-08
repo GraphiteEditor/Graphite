@@ -14,3 +14,10 @@ thiserror = "1"
 lazy_static = "1.5"
 num-complex = "0.4"
 log = { workspace = true }
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "bench"
+harness = false
