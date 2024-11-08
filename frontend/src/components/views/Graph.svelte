@@ -441,9 +441,19 @@
 			</svg>
 			<p class="import-text" style:--offset-left={position.x / 24} style:--offset-top={position.y / 24}>{outputMetadata.name}</p>
 		{/each}
-		<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" class="plus" style:--offset-left={$nodeGraph.addImport.x / 24} style:--offset-top={$nodeGraph.addImport.y / 24}>
-			<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="green" />
-		</svg>
+		{#if $nodeGraph.addImport !== undefined}
+			<div class="plus" style:--offset-left={$nodeGraph.addImport.x / 24} style:--offset-top={$nodeGraph.addImport.y / 24}>
+				<IconButton
+					class={"visibility"}
+					data-visibility-button
+					size={24}
+					icon={"Add"}
+					action={() => {
+						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+					}}
+				/>
+			</div>
+		{/if}
 		{#each $nodeGraph.exports as { inputMetadata, position }, index}
 			<svg
 				xmlns="http://www.w3.org/2000/svg"
@@ -466,9 +476,19 @@
 			</svg>
 			<p class="export-text" style:--offset-left={position.x / 24} style:--offset-top={position.y / 24}>{inputMetadata.name}</p>
 		{/each}
-		<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" class="plus" style:--offset-left={$nodeGraph.addExport.x / 24} style:--offset-top={$nodeGraph.addExport.y / 24}>
-			<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="green" />
-		</svg>
+		{#if $nodeGraph.addExport !== undefined}
+			<div class="plus" style:--offset-left={$nodeGraph.addExport.x / 24} style:--offset-top={$nodeGraph.addExport.y / 24}>
+				<IconButton
+					class={"visibility"}
+					data-visibility-button
+					size={24}
+					icon={"Add"}
+					action={() => {
+						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+					}}
+				/>
+			</div>
+		{/if}
 	</div>
 
 	<!-- Layers and nodes -->
@@ -899,11 +919,9 @@
 			}
 
 			.plus {
+				margin-top: -4px;
+				margin-left: -4px;
 				position: absolute;
-				width: 8px;
-				height: 8px;
-				margin-top: 4px;
-				margin-left: 5px;
 				top: calc(var(--offset-top) * 24px);
 				left: calc(var(--offset-left) * 24px);
 			}

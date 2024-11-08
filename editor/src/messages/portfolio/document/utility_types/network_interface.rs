@@ -837,6 +837,32 @@ impl NodeNetworkInterface {
 		})
 	}
 
+	pub fn frontend_import_modify(&mut self, network_path: &[NodeId]) -> Option<(i32, i32)> {
+		(!network_path.is_empty())
+			.then(|| {
+				self.modify_import_export(network_path).and_then(|modify_import_export_click_target| {
+					modify_import_export_click_target
+						.add_export
+						.bounding_box()
+						.map(|bounding_box| (bounding_box[0].x as i32, bounding_box[0].y as i32))
+				})
+			})
+			.flatten()
+	}
+
+	pub fn frontend_export_modify(&mut self, network_path: &[NodeId]) -> Option<(i32, i32)> {
+		(!network_path.is_empty())
+			.then(|| {
+				self.modify_import_export(network_path).and_then(|modify_import_export_click_target| {
+					modify_import_export_click_target
+						.add_import
+						.bounding_box()
+						.map(|bounding_box| (bounding_box[0].x as i32, bounding_box[0].y as i32))
+				})
+			})
+			.flatten()
+	}
+
 	pub fn height_from_click_target(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<u32> {
 		let mut node_height: Option<u32> = self
 			.node_click_targets(node_id, network_path)
@@ -3138,14 +3164,6 @@ impl NodeNetworkInterface {
 
 	/// Inserts a new export at insert index. If the insert index is -1 it is inserted at the end. The output_name is used by the encapsulating node.
 	pub fn add_export(&mut self, default_value: TaggedValue, insert_index: isize, output_name: String, network_path: &[NodeId]) {
-		let mut encapsulating_path = network_path.to_vec();
-		// Set the parent node (if it exists) to be a non layer if it is no longer eligible to be a layer
-		if let Some(parent_id) = encapsulating_path.pop() {
-			if !self.is_eligible_to_be_layer(&parent_id, &encapsulating_path) && self.is_layer(&parent_id, &encapsulating_path) {
-				self.set_to_node_or_layer(&parent_id, &encapsulating_path, false);
-			}
-		};
-
 		let Some(network) = self.network_mut(network_path) else {
 			log::error!("Could not get nested network in add_export");
 			return;
@@ -3159,6 +3177,14 @@ impl NodeNetworkInterface {
 		}
 
 		self.transaction_modified();
+
+		let mut encapsulating_path = network_path.to_vec();
+		// Set the parent node (if it exists) to be a non layer if it is no longer eligible to be a layer
+		if let Some(parent_id) = encapsulating_path.pop() {
+			if !self.is_eligible_to_be_layer(&parent_id, &encapsulating_path) && self.is_layer(&parent_id, &encapsulating_path) {
+				self.set_to_node_or_layer(&parent_id, &encapsulating_path, false);
+			}
+		};
 
 		// There will not be an encapsulating node if the network is the document network
 		if let Some(encapsulating_node_metadata) = self.encapsulating_node_metadata_mut(network_path) {

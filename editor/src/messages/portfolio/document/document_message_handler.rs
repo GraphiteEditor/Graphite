@@ -1226,26 +1226,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					self.network_interface.set_transform(transform, &self.breadcrumb_network_path);
 					let imports = self.network_interface.frontend_imports(&self.breadcrumb_network_path).unwrap_or_default();
 					let exports = self.network_interface.frontend_exports(&self.breadcrumb_network_path).unwrap_or_default();
-					let add_import = self
-						.network_interface
-						.modify_import_export(&self.breadcrumb_network_path)
-						.and_then(|modify_import_export_click_target| {
-							modify_import_export_click_target
-								.add_import
-								.bounding_box()
-								.map(|bounding_box| (bounding_box[0].x as i32, bounding_box[0].y as i32))
-						})
-						.unwrap_or((0, 0));
-					let add_export = self
-						.network_interface
-						.modify_import_export(&self.breadcrumb_network_path)
-						.and_then(|modify_import_export_click_target| {
-							modify_import_export_click_target
-								.add_export
-								.bounding_box()
-								.map(|bounding_box| (bounding_box[0].x as i32, bounding_box[0].y as i32))
-						})
-						.unwrap_or((0, 0));
+					let add_import = self.network_interface.frontend_import_modify(&self.breadcrumb_network_path);
+					let add_export = self.network_interface.frontend_export_modify(&self.breadcrumb_network_path);
+
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(DocumentMessage::RenderScrollbars);
 					responses.add(NodeGraphMessage::UpdateEdges);

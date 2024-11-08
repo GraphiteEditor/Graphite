@@ -78,6 +78,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
+			description: Cow::Borrowed("A default node network you can use to create your own custom nodes."),
 			properties: &node_properties::node_no_properties,
 		},
 		// TODO: Auto-generate this from its proto node macro
@@ -96,7 +97,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			description: Cow::Borrowed("The identity node simply passes its data through. You can use this to organize your node graph if you want."),
+			description: Cow::Borrowed("The identity node passes its data through. You can use this to organize your node graph."),
 			properties: &|_document_node, _node_id, _context| node_properties::string_properties("The identity node simply passes its data through"),
 		},
 		// TODO: Auto-generate this from its proto node macro
@@ -117,7 +118,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			description: Cow::Borrowed("The Monitor node is used by the editor to access the data flowing through it"),
+			description: Cow::Borrowed("The Monitor node is used by the editor to access the data flowing through it."),
 			properties: &|_document_node, _node_id, _context| node_properties::string_properties("The Monitor node is used by the editor to access the data flowing through it"),
 		},
 		DocumentNodeDefinition {
@@ -224,7 +225,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			description: Cow::Borrowed("The Merge node combines graphical data through composition"),
+			description: Cow::Borrowed("The Merge node combines graphical data through composition."),
 			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
@@ -335,7 +336,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			description: Cow::Borrowed("Creates a new Artboard which can be used as a working surface"),
+			description: Cow::Borrowed("Creates a new Artboard which can be used as a working surface."),
 			properties: &node_properties::artboard_properties,
 		},
 		DocumentNodeDefinition {
@@ -735,7 +736,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			description: Cow::Borrowed("Creates an embedded image with the given transform"),
+			description: Cow::Borrowed("Creates an embedded image with the given transform."),
 			properties: &|_document_node, _node_id, _context| node_properties::string_properties("Creates an embedded image with the given transform"),
 		},
 		DocumentNodeDefinition {
@@ -814,7 +815,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			description: Cow::Borrowed("Generates different noise patters"),
+			description: Cow::Borrowed("Generates different noise patterns."),
 			properties: &node_properties::noise_pattern_properties,
 		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.

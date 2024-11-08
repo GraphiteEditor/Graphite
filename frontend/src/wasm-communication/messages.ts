@@ -63,10 +63,10 @@ export class UpdateImportsExports extends JsMessage {
 	readonly exports!: { inputMetadata: FrontendGraphInput; position: XY }[];
 
 	@TupleToVec2
-	readonly addImport!: XY;
+	readonly addImport!: XY | undefined;
 
 	@TupleToVec2
-	readonly addExport!: XY;
+	readonly addExport!: XY | undefined;
 }
 
 export class UpdateInSelectedNetwork extends JsMessage {
