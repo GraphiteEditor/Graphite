@@ -909,6 +909,7 @@ pub fn evaluate_math_expression(expression: &str) -> Option<f64> {
 	let value = math_parser::evaluate(expression)
 		.inspect_err(|err| error!("Math parser error on \"{expression}\": {err}"))
 		.ok()?
+		.0
 		.inspect_err(|err| error!("Math evaluate error on \"{expression}\": {err} "))
 		.ok()?;
 	let Some(real) = value.as_real() else {
