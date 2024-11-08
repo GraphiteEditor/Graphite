@@ -650,65 +650,77 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			} => {
 				responses.add(DocumentMessage::AddTransaction);
 
-				let opposite_corner = ipp.keyboard.key(resize_opposite_corner);
-				let network_interface = &self.network_interface;
-				let can_move = move |layer| {
-					network_interface
+				let resize = ipp.keyboard.key(resize);
+				let resize_opposite_corner = ipp.keyboard.key(resize_opposite_corner);
+
+				let can_move = |layer| {
+					self.network_interface
 						.selected_nodes(&[])
-						.is_some_and(|selected| selected.layer_visible(layer, network_interface) && !selected.layer_locked(layer, network_interface))
+						.is_some_and(|selected| selected.layer_visible(layer, &self.network_interface) && !selected.layer_locked(layer, &self.network_interface))
 				};
 
-				match ipp.keyboard.key(resize) {
-					// Nudge translation
-					false => {
-						let delta = DVec2::from_angle(-self.document_ptz.tilt()).rotate(DVec2::new(delta_x, delta_y));
+				// Nudge translation without resizing
+				if !resize {
+					let transform = DAffine2::from_translation(DVec2::from_angle(-self.document_ptz.tilt()).rotate(DVec2::new(delta_x, delta_y)));
 
-						for layer in self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer)) {
-							responses.add(GraphOperationMessage::TransformChange {
-								layer,
-								transform: DAffine2::from_translation(delta),
-								transform_in: TransformIn::Local,
-								skip_rerender: false,
-							});
-						}
+					for layer in self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer)) {
+						responses.add(GraphOperationMessage::TransformChange {
+							layer,
+							transform,
+							transform_in: TransformIn::Local,
+							skip_rerender: false,
+						});
 					}
-					// Nudge resize
-					true => {
-						let delta = DVec2::new(delta_x, delta_y);
 
-						let selected_bounding_box = self.network_interface.selected_bounds_document_space(false, &[]);
-						let Some([existing_top_left, existing_bottom_right]) = selected_bounding_box else { return };
+					return;
+				}
 
-						let size = existing_bottom_right - existing_top_left;
-						let new_size = size + if opposite_corner { -delta } else { delta };
-						let enlargement_factor = new_size / size;
+				let selected_bounding_box = self.network_interface.selected_bounds_document_space(false, &[]);
+				let Some([existing_top_left, existing_bottom_right]) = selected_bounding_box else { return };
 
-						let position = existing_top_left + if opposite_corner { delta } else { DVec2::ZERO };
-						let mut pivot = (existing_top_left * enlargement_factor - position) / (enlargement_factor - DVec2::splat(1.));
-						if !pivot.x.is_finite() {
-							pivot.x = 0.;
-						}
-						if !pivot.y.is_finite() {
-							pivot.y = 0.;
-						}
+				// Swap and negate coordinates as needed to match the resize direction that's closest to the current tilt angle
+				let tilt = (self.document_ptz.tilt() + std::f64::consts::TAU) % std::f64::consts::TAU;
+				let (delta_x, delta_y, opposite_x, opposite_y) = match ((tilt + std::f64::consts::FRAC_PI_4) / std::f64::consts::FRAC_PI_2).floor() as i32 % 4 {
+					0 => (delta_x, delta_y, false, false),
+					1 => (delta_y, -delta_x, false, true),
+					2 => (-delta_x, -delta_y, true, true),
+					3 => (-delta_y, delta_x, true, false),
+					_ => unreachable!(),
+				};
 
-						let scale = DAffine2::from_scale(enlargement_factor);
-						let pivot = DAffine2::from_translation(pivot);
-						let transformation = pivot * scale * pivot.inverse();
-						let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
+				let size = existing_bottom_right - existing_top_left;
+				let enlargement = DVec2::new(
+					if resize_opposite_corner != opposite_x { -delta_x } else { delta_x },
+					if resize_opposite_corner != opposite_y { -delta_y } else { delta_y },
+				);
+				let enlargement_factor = (enlargement + size) / size;
 
-						for layer in self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer)) {
-							let to = document_to_viewport.inverse() * self.metadata().downstream_transform_to_viewport(layer);
-							let original_transform = self.metadata().upstream_transform(layer.to_node());
-							let new = to.inverse() * transformation * to * original_transform;
-							responses.add(GraphOperationMessage::TransformSet {
-								layer,
-								transform: new,
-								transform_in: TransformIn::Local,
-								skip_rerender: false,
-							});
-						}
-					}
+				let position = DVec2::new(
+					existing_top_left.x + if resize_opposite_corner != opposite_x { delta_x } else { 0. },
+					existing_top_left.y + if resize_opposite_corner != opposite_y { delta_y } else { 0. },
+				);
+				let mut pivot = (existing_top_left * enlargement_factor - position) / (enlargement_factor - DVec2::ONE);
+				if !pivot.x.is_finite() {
+					pivot.x = 0.;
+				}
+				if !pivot.y.is_finite() {
+					pivot.y = 0.;
+				}
+				let scale = DAffine2::from_scale(enlargement_factor);
+				let pivot = DAffine2::from_translation(pivot);
+				let transformation = pivot * scale * pivot.inverse();
+				let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
+
+				for layer in self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer)) {
+					let to = document_to_viewport.inverse() * self.metadata().downstream_transform_to_viewport(layer);
+					let original_transform = self.metadata().upstream_transform(layer.to_node());
+					let new = to.inverse() * transformation * to * original_transform;
+					responses.add(GraphOperationMessage::TransformSet {
+						layer,
+						transform: new,
+						transform_in: TransformIn::Local,
+						skip_rerender: false,
+					});
 				}
 			}
 			DocumentMessage::PasteImage {
@@ -1838,7 +1850,7 @@ impl DocumentMessageHandler {
 						}
 						.into()
 					})
-					.tooltip("Document tilt within the viewport")
+					.tooltip("Canvas Tilt")
 					.on_update(|number_input: &NumberInput| {
 						NavigationMessage::CanvasTiltSet {
 							angle_radians: number_input.value.unwrap().to_radians(),

@@ -189,7 +189,7 @@ impl SelectedEdges {
 		if !enlargement_factor.y.is_finite() || old_size.y.abs() < f64::EPSILON * 1000. {
 			enlargement_factor.y = 1.;
 		}
-		let mut pivot = (self.bounds[0] * enlargement_factor - position) / (enlargement_factor - DVec2::splat(1.));
+		let mut pivot = (self.bounds[0] * enlargement_factor - position) / (enlargement_factor - DVec2::ONE);
 		if !pivot.x.is_finite() {
 			pivot.x = 0.;
 		}

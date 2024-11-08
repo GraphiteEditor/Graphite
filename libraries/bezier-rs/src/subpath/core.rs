@@ -426,9 +426,9 @@ pub fn solve_spline_first_handle_closed(points: &[DVec2]) -> Vec<DVec2> {
 
 	// Matrix coefficients `a`, `b` and `c` (see https://mathworld.wolfram.com/CubicSpline.html).
 	// We don't really need to allocate them but it keeps the maths understandable.
-	let a = vec![DVec2::splat(1.); len_points];
+	let a = vec![DVec2::ONE; len_points];
 	let b = vec![DVec2::splat(4.); len_points];
-	let c = vec![DVec2::splat(1.); len_points];
+	let c = vec![DVec2::ONE; len_points];
 
 	let mut cmod = vec![DVec2::ZERO; len_points];
 	let mut u = vec![DVec2::ZERO; len_points];
