@@ -322,11 +322,17 @@ impl SnapManager {
 		let layer_bounds = document.metadata().transform_to_document(layer) * Quad::from_box(bounds);
 		let screen_bounds = document.metadata().document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, snap_data.input.viewport_bounds.size()]);
 		if screen_bounds.intersects(layer_bounds) {
-			if !self.alignment_candidates.as_ref().is_some_and(|candidates| candidates.len() > 100) {
-				self.alignment_candidates.get_or_insert_with(Vec::new).push(layer);
-			}
-			if quad.intersects(layer_bounds) && !self.candidates.as_ref().is_some_and(|candidates| candidates.len() > 10) {
-				self.candidates.get_or_insert_with(Vec::new).push(layer);
+			let center = layer_bounds.center();
+			let distance = quad.center().distance(center);
+			let max_distance = snap_tolerance(document) * 10.0;
+
+			if distance <= max_distance {
+				if !self.alignment_candidates.as_ref().is_some_and(|candidates| candidates.len() > 100) {
+					self.alignment_candidates.get_or_insert_with(Vec::new).push(layer);
+				}
+				if quad.intersects(layer_bounds) && !self.candidates.as_ref().is_some_and(|candidates| candidates.len() > 10) {
+					self.candidates.get_or_insert_with(Vec::new).push(layer);
+				}
 			}
 		}
 	}
@@ -338,8 +344,27 @@ impl SnapManager {
 
 		self.candidates = None;
 		self.alignment_candidates = None;
-		for layer in LayerNodeIdentifier::ROOT_PARENT.children(document.metadata()) {
+
+		let screen_bounds = document.metadata().document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, snap_data.input.viewport_bounds.size()]);
+
+		let visible_layers: Vec<_> = LayerNodeIdentifier::ROOT_PARENT
+			.children(document.metadata())
+			.filter(|&layer| {
+				if let Some(bounds) = document.metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY) {
+					let layer_bounds = document.metadata().transform_to_document(layer) * Quad::from_box(bounds);
+					screen_bounds.intersects(layer_bounds)
+				} else {
+					false
+				}
+			})
+			.collect();
+
+		for layer in visible_layers {
 			self.add_candidates(layer, snap_data, quad);
+
+			if self.alignment_candidates.as_ref().is_some_and(|candidates| candidates.len() >= 100) && self.candidates.as_ref().is_some_and(|candidates| candidates.len() >= 10) {
+				break;
+			}
 		}
 
 		if self.alignment_candidates.as_ref().is_some_and(|candidates| candidates.len() > 100) {
@@ -440,6 +465,7 @@ impl SnapManager {
 
 	pub fn draw_overlays(&mut self, snap_data: SnapData, overlay_context: &mut OverlayContext) {
 		let to_viewport = snap_data.document.metadata().document_to_viewport;
+		overlay_context.render_context.scale(overlay_context.device_pixel_ratio, overlay_context.device_pixel_ratio).unwrap();
 		if let Some(ind) = &self.indicator {
 			for curve in &ind.curves {
 				let Some(curve) = curve else { continue };

@@ -48,8 +48,8 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 				canvas.set_height(physical_height as u32);
 
 				// Scale the context to maintain correct drawing dimensions
-				context.scale(device_pixel_ratio, device_pixel_ratio).unwrap();
-				context.clear_rect(0., 0., physical_width, physical_height);
+				// context.scale(device_pixel_ratio, device_pixel_ratio).unwrap();
+				context.clear_rect(0., 0., logical_size.x, logical_size.y);
 
 				if overlays_visible {
 					responses.add(DocumentMessage::GridOverlays(OverlayContext {
