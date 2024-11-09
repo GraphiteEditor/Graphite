@@ -50,11 +50,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				let mut has_active_document = false;
 				let mut rulers_visible = false;
 				let mut node_graph_open = false;
+				let mut has_selected_nodes = false;
+				let mut has_selected_layers = false;
 
 				if let Some(document) = self.active_document_id.and_then(|document_id| self.documents.get_mut(&document_id)) {
 					has_active_document = true;
 					rulers_visible = document.rulers_visible;
 					node_graph_open = document.is_graph_overlay_open();
+					let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+					has_selected_nodes = selected_nodes.selected_nodes().next().is_some();
+					has_selected_layers = selected_nodes.selected_visible_layers(&document.network_interface).next().is_some();
 				}
 				self.menu_bar_message_handler.process_message(
 					message,
@@ -63,6 +68,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						has_active_document,
 						rulers_visible,
 						node_graph_open,
+						has_selected_nodes,
+						has_selected_layers,
 					},
 				);
 			}

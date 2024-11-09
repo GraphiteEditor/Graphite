@@ -116,6 +116,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						new_layer: selected_layers.first().cloned(),
 					});
 				}
+				responses.add(MenuBarMessage::SendLayout);
 				responses.add(NodeGraphMessage::UpdateLayerPanel);
 				responses.add(NodeGraphMessage::SendSelectedNodes);
 				responses.add(ArtboardToolMessage::UpdateSelectedArtboard);
@@ -1701,6 +1702,7 @@ impl NodeGraphMessageHandler {
 						IconLabel::new("File").tooltip("Name of the current document").widget_holder(),
 						Separator::new(SeparatorType::Related).widget_holder(),
 						TextInput::new(context.document_name)
+							.tooltip("Name of the current document")
 							.on_update(|text_input| DocumentMessage::RenameDocument { new_name: text_input.value.clone() }.into())
 							.widget_holder(),
 						Separator::new(SeparatorType::Related).widget_holder(),
@@ -1748,6 +1750,7 @@ impl NodeGraphMessageHandler {
 						IconLabel::new("Layer").tooltip("Name of the selected layer").widget_holder(),
 						Separator::new(SeparatorType::Related).widget_holder(),
 						TextInput::new(context.network_interface.frontend_display_name(&layer, context.selection_network_path))
+							.tooltip("Name of the selected layer")
 							.on_update(move |text_input| {
 								NodeGraphMessage::SetDisplayName {
 									node_id: layer,

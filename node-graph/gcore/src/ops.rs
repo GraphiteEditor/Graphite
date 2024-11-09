@@ -163,12 +163,14 @@ fn random<U: num_traits::float::Float>(
 // To u32
 #[node_macro::node(name("To u32"), category("Math: Numeric"))]
 fn to_u32<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] value: U) -> u32 {
+	let value = U::clamp(value, U::from(0.).unwrap(), U::from(u32::MAX as f64).unwrap());
 	value.to_u32().unwrap()
 }
 
 // To u64
 #[node_macro::node(name("To u64"), category("Math: Numeric"))]
 fn to_u64<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] value: U) -> u64 {
+	let value = U::clamp(value, U::from(0.).unwrap(), U::from(u64::MAX as f64).unwrap());
 	value.to_u64().unwrap()
 }
 
