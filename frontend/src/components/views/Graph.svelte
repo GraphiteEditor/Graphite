@@ -2,10 +2,6 @@
 	import { getContext, onMount, tick } from "svelte";
 	import { fade } from "svelte/transition";
 
-	import TextButton from "../widgets/buttons/TextButton.svelte";
-
-	import Separator from "../widgets/labels/Separator.svelte";
-
 	import { FADE_TRANSITION } from "@graphite/consts";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
@@ -17,8 +13,10 @@
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
+	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import RadioInput from "@graphite/components/widgets/inputs/RadioInput.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	const GRID_COLLAPSE_SPACING = 10;
 	const GRID_SIZE = 24;

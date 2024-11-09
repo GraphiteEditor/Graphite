@@ -2192,32 +2192,34 @@ impl NodeNetworkInterface {
 			for (input_index, input) in node.inputs.iter().enumerate() {
 				if let NodeInput::Node { node_id, output_index, .. } = input {
 					// If this errors then there is an input to a node that does not exist
-					let outward_wires_entry = outward_wires.get_mut(&OutputConnector::node(*node_id, *output_index)).expect(&format!(
-						"Output connector {:?} should be initialized for each node output from a node",
-						OutputConnector::node(*node_id, *output_index)
-					));
+					let outward_wires_entry = outward_wires.get_mut(&OutputConnector::node(*node_id, *output_index)).unwrap_or_else(|| {
+						panic!(
+							"Output connector {:?} should be initialized for each node output from a node",
+							OutputConnector::node(*node_id, *output_index)
+						)
+					});
 					outward_wires_entry.push(InputConnector::node(*current_node_id, input_index));
 				} else if let NodeInput::Network { import_index, .. } = input {
-					let outward_wires_entry = outward_wires.get_mut(&OutputConnector::Import(*import_index)).expect(&format!(
-						"Output connector {:?} should be initialized for each import from a node",
-						OutputConnector::Import(*import_index)
-					));
+					let outward_wires_entry = outward_wires
+						.get_mut(&OutputConnector::Import(*import_index))
+						.unwrap_or_else(|| panic!("Output connector {:?} should be initialized for each import from a node", OutputConnector::Import(*import_index)));
 					outward_wires_entry.push(InputConnector::node(*current_node_id, input_index));
 				}
 			}
 		}
 		for (export_index, export) in network.exports.iter().enumerate() {
 			if let NodeInput::Node { node_id, output_index, .. } = export {
-				let outward_wires_entry = outward_wires.get_mut(&OutputConnector::node(*node_id, *output_index)).expect(&format!(
-					"Output connector {:?} should be initialized for each node input from exports",
-					OutputConnector::node(*node_id, *output_index)
-				));
+				let outward_wires_entry = outward_wires.get_mut(&OutputConnector::node(*node_id, *output_index)).unwrap_or_else(|| {
+					panic!(
+						"Output connector {:?} should be initialized for each node input from exports",
+						OutputConnector::node(*node_id, *output_index)
+					)
+				});
 				outward_wires_entry.push(InputConnector::Export(export_index));
 			} else if let NodeInput::Network { import_index, .. } = export {
-				let outward_wires_entry = outward_wires.get_mut(&OutputConnector::Import(*import_index)).expect(&format!(
-					"Output connector {:?} should be initialized between imports and exports",
-					OutputConnector::Import(*import_index)
-				));
+				let outward_wires_entry = outward_wires
+					.get_mut(&OutputConnector::Import(*import_index))
+					.unwrap_or_else(|| panic!("Output connector {:?} should be initialized between imports and exports", OutputConnector::Import(*import_index)));
 				outward_wires_entry.push(InputConnector::Export(export_index));
 			}
 		}
@@ -4298,7 +4300,7 @@ impl NodeNetworkInterface {
 		let valid_upstream_chain_nodes = self.valid_upstream_chain_nodes(input_connector, network_path);
 
 		for node_id in &valid_upstream_chain_nodes {
-			self.set_chain_position(&node_id, network_path);
+			self.set_chain_position(node_id, network_path);
 		}
 		// Reload click target of the layer which used to encapsulate the node
 		if !valid_upstream_chain_nodes.is_empty() {

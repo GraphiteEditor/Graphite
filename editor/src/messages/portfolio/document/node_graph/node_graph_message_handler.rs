@@ -354,7 +354,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					.selected_nodes(breadcrumb_network_path)
 					.unwrap()
 					.selected_nodes()
-					.into_iter()
 					.map(|id| (*id, *id))
 					.collect::<HashMap<NodeId, NodeId>>();
 
@@ -461,7 +460,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				});
 				responses.add(NodeGraphMessage::SetDisplayNameImpl {
 					node_id: encapsulating_node_id,
-					alias: "New node group".to_string(),
+					alias: "Untitled Node".to_string(),
 				});
 
 				responses.add(DocumentMessage::EnterNestedNetwork { node_id: encapsulating_node_id });
@@ -2124,12 +2123,12 @@ impl NodeGraphMessageHandler {
 			let output_types = network_interface.output_types(&node_id, breadcrumb_network_path);
 			let primary_output_type = output_types.first().cloned().flatten();
 			let frontend_data_type = if let Some((output_type, _)) = &primary_output_type {
-				FrontendGraphDataType::with_type(&output_type)
+				FrontendGraphDataType::with_type(output_type)
 			} else {
 				FrontendGraphDataType::General
 			};
 			let connected_to = outward_wires.get(&OutputConnector::node(node_id, 0)).cloned().unwrap_or_default();
-			let primary_output = if network_interface.has_primary_output(&node_id, breadcrumb_network_path) && output_types.len() > 0 {
+			let primary_output = if network_interface.has_primary_output(&node_id, breadcrumb_network_path) && !output_types.is_empty() {
 				Some(FrontendGraphOutput {
 					data_type: frontend_data_type,
 					name: "Output 1".to_string(),
