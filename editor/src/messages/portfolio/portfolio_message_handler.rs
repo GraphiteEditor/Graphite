@@ -278,11 +278,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				font_style,
 				preview_url,
 				data,
-				is_default,
 			} => {
 				let font = Font::new(font_family, font_style);
 
-				self.persistent_data.font_cache.insert(font, preview_url, data, is_default);
+				self.persistent_data.font_cache.insert(font, preview_url, data);
 				self.executor.update_font_cache(self.persistent_data.font_cache.clone());
 				for document_id in self.document_ids.iter() {
 					let _ = self.executor.submit_node_graph_evaluation(
@@ -334,9 +333,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					document.load_layer_resources(responses);
 				}
 			}
-			PortfolioMessage::LoadFont { font, is_default } => {
+			PortfolioMessage::LoadFont { font } => {
 				if !self.persistent_data.font_cache.loaded_font(&font) {
-					responses.add_front(FrontendMessage::TriggerFontLoad { font, is_default });
+					responses.add_front(FrontendMessage::TriggerFontLoad { font });
 				}
 			}
 			PortfolioMessage::NewDocumentWithName { name } => {
@@ -939,6 +938,10 @@ impl PortfolioMessageHandler {
 		if self.active_document().is_some() {
 			responses.add(BroadcastEvent::ToolAbort);
 			responses.add(ToolMessage::DeactivateTools);
+		} else {
+			// Load the default font upon creating the first document
+			let font = Font::new(graphene_core::consts::DEFAULT_FONT_FAMILY.into(), graphene_core::consts::DEFAULT_FONT_STYLE.into());
+			responses.add(FrontendMessage::TriggerFontLoad { font });
 		}
 
 		// TODO: Remove this and find a way to fix the issue where creating a new document when the node graph is open causes the transform in the new document to be incorrect

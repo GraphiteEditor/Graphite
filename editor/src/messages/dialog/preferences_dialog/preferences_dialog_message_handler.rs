@@ -61,34 +61,34 @@ impl PreferencesDialogMessageHandler {
 				.widget_holder(),
 		];
 
-		let imaginate_server_hostname = vec![
-			TextLabel::new("Imaginate").min_width(60).italic(true).widget_holder(),
-			TextLabel::new("Server Hostname").table_align(true).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			TextInput::new(&preferences.imaginate_server_hostname)
-				.min_width(200)
-				.on_update(|text_input: &TextInput| PreferencesMessage::ImaginateServerHostname { hostname: text_input.value.clone() }.into())
-				.widget_holder(),
-		];
-
-		let imaginate_refresh_frequency = vec![
-			TextLabel::new("").min_width(60).widget_holder(),
-			TextLabel::new("Refresh Frequency").table_align(true).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			NumberInput::new(Some(preferences.imaginate_refresh_frequency))
-				.unit(" seconds")
-				.min(0.)
-				.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
-				.min_width(200)
-				.on_update(|number_input: &NumberInput| PreferencesMessage::ImaginateRefreshFrequency { seconds: number_input.value.unwrap() }.into())
-				.widget_holder(),
-		];
+		// TODO: Reenable when Imaginate is restored
+		// let imaginate_server_hostname = vec![
+		// 	TextLabel::new("Imaginate").min_width(60).italic(true).widget_holder(),
+		// 	TextLabel::new("Server Hostname").table_align(true).widget_holder(),
+		// 	Separator::new(SeparatorType::Unrelated).widget_holder(),
+		// 	TextInput::new(&preferences.imaginate_server_hostname)
+		// 		.min_width(200)
+		// 		.on_update(|text_input: &TextInput| PreferencesMessage::ImaginateServerHostname { hostname: text_input.value.clone() }.into())
+		// 		.widget_holder(),
+		// ];
+		// let imaginate_refresh_frequency = vec![
+		// 	TextLabel::new("").min_width(60).widget_holder(),
+		// 	TextLabel::new("Refresh Frequency").table_align(true).widget_holder(),
+		// 	Separator::new(SeparatorType::Unrelated).widget_holder(),
+		// 	NumberInput::new(Some(preferences.imaginate_refresh_frequency))
+		// 		.unit(" seconds")
+		// 		.min(0.)
+		// 		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
+		// 		.min_width(200)
+		// 		.on_update(|number_input: &NumberInput| PreferencesMessage::ImaginateRefreshFrequency { seconds: number_input.value.unwrap() }.into())
+		// 		.widget_holder(),
+		// ];
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![
 			LayoutGroup::Row { widgets: zoom_with_scroll },
 			LayoutGroup::Row { widgets: use_vello },
-			LayoutGroup::Row { widgets: imaginate_server_hostname },
-			LayoutGroup::Row { widgets: imaginate_refresh_frequency },
+			// LayoutGroup::Row { widgets: imaginate_server_hostname },
+			// LayoutGroup::Row { widgets: imaginate_refresh_frequency },
 		]))
 	}
 

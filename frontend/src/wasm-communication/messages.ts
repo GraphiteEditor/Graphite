@@ -892,8 +892,6 @@ export class Font {
 export class TriggerFontLoad extends JsMessage {
 	@Type(() => Font)
 	font!: Font;
-
-	isDefault!: boolean;
 }
 
 export class TriggerVisitLink extends JsMessage {

@@ -1676,7 +1676,7 @@ impl DocumentMessageHandler {
 			}
 		}
 		for font in fonts {
-			responses.add_front(FrontendMessage::TriggerFontLoad { font, is_default: false });
+			responses.add_front(FrontendMessage::TriggerFontLoad { font });
 		}
 	}
 

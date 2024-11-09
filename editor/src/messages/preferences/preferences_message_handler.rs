@@ -45,8 +45,10 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				if let Ok(deserialized_preferences) = serde_json::from_str::<PreferencesMessageHandler>(&preferences) {
 					*self = deserialized_preferences;
 
-					responses.add(PortfolioMessage::ImaginateServerHostname);
-					responses.add(PortfolioMessage::ImaginateCheckServerStatus);
+					// TODO: Reenable when Imaginate is restored
+					// responses.add(PortfolioMessage::ImaginateServerHostname);
+					// responses.add(PortfolioMessage::ImaginateCheckServerStatus);
+
 					responses.add(PortfolioMessage::EditorPreferences);
 					responses.add(PortfolioMessage::UpdateVelloPreference);
 					responses.add(PreferencesMessage::ModifyLayout {

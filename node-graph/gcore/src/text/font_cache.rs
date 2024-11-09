@@ -27,16 +27,16 @@ pub struct FontCache {
 	font_file_data: HashMap<Font, Vec<u8>>,
 	/// Web font preview URLs used for showing fonts when live editing
 	preview_urls: HashMap<Font, String>,
-	/// The default font (used as a fallback)
-	default_font: Option<Font>,
 }
 impl FontCache {
-	/// Returns the font family name if the font is cached, otherwise returns the default font family name if that is cached
+	/// Returns the font family name if the font is cached, otherwise returns the fallback font family name if that is cached
 	pub fn resolve_font<'a>(&'a self, font: &'a Font) -> Option<&'a Font> {
-		if self.loaded_font(font) {
+		if self.font_file_data.contains_key(font) {
 			Some(font)
 		} else {
-			self.default_font.as_ref().filter(|font| self.loaded_font(font))
+			self.font_file_data
+				.keys()
+				.find(|font| font.font_family == crate::consts::DEFAULT_FONT_FAMILY && font.font_style == crate::consts::DEFAULT_FONT_STYLE)
 		}
 	}
 
@@ -51,17 +51,9 @@ impl FontCache {
 	}
 
 	/// Insert a new font into the cache
-	pub fn insert(&mut self, font: Font, perview_url: String, data: Vec<u8>, is_default: bool) {
-		if is_default {
-			self.default_font = Some(font.clone());
-		}
+	pub fn insert(&mut self, font: Font, perview_url: String, data: Vec<u8>) {
 		self.font_file_data.insert(font.clone(), data);
 		self.preview_urls.insert(font, perview_url);
-	}
-
-	/// Checks if the font cache has a default font
-	pub fn has_default(&self) -> bool {
-		self.default_font.is_some()
 	}
 
 	/// Gets the preview URL for showing in text field when live editing

@@ -442,13 +442,12 @@ impl EditorHandle {
 
 	/// A font has been downloaded
 	#[wasm_bindgen(js_name = onFontLoad)]
-	pub fn on_font_load(&self, font_family: String, font_style: String, preview_url: String, data: Vec<u8>, is_default: bool) -> Result<(), JsValue> {
+	pub fn on_font_load(&self, font_family: String, font_style: String, preview_url: String, data: Vec<u8>) -> Result<(), JsValue> {
 		let message = PortfolioMessage::FontLoaded {
 			font_family,
 			font_style,
 			preview_url,
 			data,
-			is_default,
 		};
 		self.dispatch(message);
 

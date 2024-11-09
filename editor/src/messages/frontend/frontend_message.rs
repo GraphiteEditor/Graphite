@@ -81,8 +81,6 @@ pub enum FrontendMessage {
 	},
 	TriggerFontLoad {
 		font: Font,
-		#[serde(rename = "isDefault")]
-		is_default: bool,
 	},
 	TriggerImport,
 	TriggerIndexedDbRemoveDocument {
