@@ -198,6 +198,7 @@
 		flex: 0 0 auto;
 		display: flex;
 		min-height: 32px;
+		justify-content: space-between;
 
 		> * {
 			--widget-height: 24px;
