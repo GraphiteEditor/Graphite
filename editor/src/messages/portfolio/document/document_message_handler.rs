@@ -338,6 +338,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
 				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(DocumentMessage::EndTransaction);
 			}
 			DocumentMessage::DeleteSelectedLayers => {
 				responses.add(NodeGraphMessage::DeleteSelectedNodes { delete_children: true });
