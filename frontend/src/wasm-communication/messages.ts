@@ -174,6 +174,7 @@ export type FrontendClickTargets = {
 	readonly iconClickTargets: string[];
 	readonly allNodesBoundingBox: string;
 	readonly importExportsBoundingBox: string;
+	readonly modifyImportExport: string[];
 };
 
 export type ContextMenuInformation = {

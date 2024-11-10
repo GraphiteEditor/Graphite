@@ -98,6 +98,8 @@ pub enum NodeGraphMessage {
 		shift: Key,
 	},
 	PrintSelectedNodeCoordinates,
+	RemoveImport { import_index: usize },
+	RemoveExport { export_index: usize },
 	RunDocumentGraph,
 	ForceRunDocumentGraph,
 	SelectedNodesAdd {
@@ -180,6 +182,7 @@ pub enum NodeGraphMessage {
 	},
 	UpdateEdges,
 	UpdateBoxSelection,
+	UpdateImportsExports,
 	UpdateLayerPanel,
 	UpdateNewNodeGraph,
 	UpdateTypes {

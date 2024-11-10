@@ -564,14 +564,24 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				};
 
-				if modify_import_export.add_export.intersect_point_no_stroke(node_graph_point) {
+				if modify_import_export.add_import_export.clicked_input_port_from_point(node_graph_point).is_some() {
 					responses.add(DocumentMessage::AddTransaction);
 					responses.add(NodeGraphMessage::AddExport);
 					responses.add(NodeGraphMessage::SendGraph);
 					return;
-				} else if modify_import_export.add_import.intersect_point_no_stroke(node_graph_point) {
+				} else if modify_import_export.add_import_export.clicked_output_port_from_point(node_graph_point).is_some() {
 					responses.add(DocumentMessage::AddTransaction);
 					responses.add(NodeGraphMessage::AddImport);
+					responses.add(NodeGraphMessage::SendGraph);
+					return;
+				} else if let Some(remove_import_index) = modify_import_export.remove_imports_exports.clicked_output_port_from_point(node_graph_point) {
+					responses.add(DocumentMessage::AddTransaction);
+					responses.add(NodeGraphMessage::RemoveImport { import_index: remove_import_index });
+					responses.add(NodeGraphMessage::SendGraph);
+					return;
+				} else if let Some(remove_export_index) = modify_import_export.remove_imports_exports.clicked_input_port_from_point(node_graph_point) {
+					responses.add(DocumentMessage::AddTransaction);
+					responses.add(NodeGraphMessage::RemoveExport { export_index: remove_export_index });
 					responses.add(NodeGraphMessage::SendGraph);
 					return;
 				}
@@ -1186,6 +1196,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				// 	}
 				// }
 			}
+			NodeGraphMessage::RemoveImport { import_index: usize } => {
+				network_interface.remove_import(usize, selection_network_path);
+			}
+			NodeGraphMessage::RemoveExport { export_index: usize } => {
+				network_interface.remove_export(usize, selection_network_path);
+			}
 			NodeGraphMessage::RunDocumentGraph => {
 				responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false });
 			}
@@ -1230,16 +1246,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					let wires = Self::collect_wires(network_interface, breadcrumb_network_path);
 					let nodes = self.collect_nodes(network_interface, breadcrumb_network_path);
 					let (layer_widths, chain_widths, has_left_input_wire) = network_interface.collect_layer_widths(breadcrumb_network_path);
-					let imports = network_interface.frontend_imports(breadcrumb_network_path).unwrap_or_default();
-					let exports = network_interface.frontend_exports(breadcrumb_network_path).unwrap_or_default();
-					let add_import = network_interface.frontend_import_modify(breadcrumb_network_path);
-					let add_export = network_interface.frontend_export_modify(breadcrumb_network_path);
-					responses.add(FrontendMessage::UpdateImportsExports {
-						imports,
-						exports,
-						add_import,
-						add_export,
-					});
+					responses.add(NodeGraphMessage::UpdateImportsExports);
 					responses.add(FrontendMessage::UpdateNodeGraph { nodes, wires });
 					responses.add(FrontendMessage::UpdateLayerWidths {
 						layer_widths,
@@ -1253,16 +1260,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if graph_view_overlay_open {
 					network_interface.set_grid_aligned_edges(DVec2::new(ipp.viewport_bounds.bottom_right.x - ipp.viewport_bounds.top_left.x, 0.), breadcrumb_network_path);
 					// Send the new edges to the frontend
-					let imports = network_interface.frontend_imports(breadcrumb_network_path).unwrap_or_default();
-					let exports = network_interface.frontend_exports(breadcrumb_network_path).unwrap_or_default();
-					let add_import = network_interface.frontend_import_modify(breadcrumb_network_path);
-					let add_export = network_interface.frontend_export_modify(breadcrumb_network_path);
-					responses.add(FrontendMessage::UpdateImportsExports {
-						imports,
-						exports,
-						add_import,
-						add_export,
-					});
+					responses.add(NodeGraphMessage::UpdateImportsExports);
 				}
 			}
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
@@ -1552,6 +1550,39 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(FrontendMessage::UpdateBox { box_selection })
 				}
 			}
+			NodeGraphMessage::UpdateImportsExports => {
+				let imports = network_interface.frontend_imports(breadcrumb_network_path).unwrap_or_default();
+				let exports = network_interface.frontend_exports(breadcrumb_network_path).unwrap_or_default();
+				let add_import = network_interface
+					.frontend_import_export_modify(
+						|modify_import_export_click_target| modify_import_export_click_target.add_import_export.output_ports().collect::<Vec<_>>(),
+						breadcrumb_network_path,
+					)
+					.into_iter()
+					.next();
+				let add_export = network_interface
+					.frontend_import_export_modify(
+						|modify_import_export_click_target| modify_import_export_click_target.add_import_export.input_ports().collect::<Vec<_>>(),
+						breadcrumb_network_path,
+					)
+					.into_iter()
+					.next();
+				// let remove_imports = network_interface.frontend_import_export_modify(
+				// 	|modify_import_export_click_target| modify_import_export_click_target.remove_imports_exports.output_ports().collect::<Vec<_>>(),
+				// 	breadcrumb_network_path,
+				// );
+				// let remove_exports = network_interface.frontend_import_export_modify(
+				// 	|modify_import_export_click_target| modify_import_export_click_target.remove_imports_exports.input_ports().collect::<Vec<_>>(),
+				// 	breadcrumb_network_path,
+				// );
+				responses.add(FrontendMessage::UpdateImportsExports {
+					imports,
+					exports,
+					add_import,
+					add_export,
+				});
+			}
+
 			NodeGraphMessage::UpdateLayerPanel => {
 				Self::update_layer_panel(network_interface, selection_network_path, collapsed, responses);
 			}

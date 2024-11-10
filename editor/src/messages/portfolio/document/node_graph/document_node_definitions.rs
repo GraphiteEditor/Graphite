@@ -64,7 +64,6 @@ static DOCUMENT_NODE_TYPES: once_cell::sync::Lazy<Vec<DocumentNodeDefinition>> =
 /// The [`DocumentNode`] is the instance while these [`DocumentNodeDefinition`]s are the "classes" or "blueprints" from which the instances are built.
 fn static_nodes() -> Vec<DocumentNodeDefinition> {
 	let mut custom = vec![
-		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
 			identifier: "Default Network",
 			category: "General",

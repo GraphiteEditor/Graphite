@@ -394,6 +394,9 @@
 				{/each}
 				<path class="all-nodes-bounding-box" d={$nodeGraph.clickTargets.allNodesBoundingBox} />
 				<path class="all-nodes-bounding-box" d={$nodeGraph.clickTargets.importExportsBoundingBox} />
+				{#each $nodeGraph.clickTargets.modifyImportExport as pathString}
+					<path class="modify-import-export" d={pathString} />
+				{/each}
 			</svg>
 		</div>
 	{/if}
@@ -437,15 +440,22 @@
 					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
 				{/if}
 			</svg>
-			<p class="import-text" style:--offset-left={position.x / 24} style:--offset-top={position.y / 24}>{outputMetadata.name}</p>
+			<div class="plus" style:--offset-left={(position.x - 16) / 24} style:--offset-top={position.y / 24}>
+				<IconButton
+					size={16}
+					icon={"Remove"}
+					action={() => {
+						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+					}}
+				/>
+			</div>
+			<p class="import-text" style:--offset-left={(position.x - 16) / 24} style:--offset-top={position.y / 24}>{outputMetadata.name}</p>
 		{/each}
 		{#if $nodeGraph.addImport !== undefined}
 			<div class="plus" style:--offset-left={$nodeGraph.addImport.x / 24} style:--offset-top={$nodeGraph.addImport.y / 24}>
 				<IconButton
-					class={"visibility"}
-					data-visibility-button
 					size={24}
-					icon={"Add"}
+					icon="Add"
 					action={() => {
 						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 					}}
@@ -472,13 +482,20 @@
 					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
 				{/if}
 			</svg>
-			<p class="export-text" style:--offset-left={position.x / 24} style:--offset-top={position.y / 24}>{inputMetadata.name}</p>
+			<div class="plus" style:--offset-left={(position.x + 16) / 24} style:--offset-top={position.y / 24}>
+				<IconButton
+					size={16}
+					icon={"Remove"}
+					action={() => {
+						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+					}}
+				/>
+			</div>
+			<p class="export-text" style:--offset-left={(position.x + 16) / 24} style:--offset-top={position.y / 24}>{inputMetadata.name}</p>
 		{/each}
 		{#if $nodeGraph.addExport !== undefined}
 			<div class="plus" style:--offset-left={$nodeGraph.addExport.x / 24} style:--offset-top={$nodeGraph.addExport.y / 24}>
 				<IconButton
-					class={"visibility"}
-					data-visibility-button
 					size={24}
 					icon={"Add"}
 					action={() => {
@@ -878,6 +895,10 @@
 				.all-nodes-bounding-box {
 					stroke: purple;
 				}
+
+				.modify-import-export {
+					stroke: orange;
+				}
 			}
 		}
 
@@ -917,8 +938,6 @@
 			}
 
 			.plus {
-				margin-top: -4px;
-				margin-left: -4px;
 				position: absolute;
 				top: calc(var(--offset-top) * 24px);
 				left: calc(var(--offset-left) * 24px);
