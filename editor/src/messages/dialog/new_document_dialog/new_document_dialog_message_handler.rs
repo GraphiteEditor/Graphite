@@ -25,17 +25,16 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 
 				let create_artboard = !self.infinite && self.dimensions.x > 0 && self.dimensions.y > 0;
 				if create_artboard {
+					responses.add(Message::StartBuffer);
 					responses.add(GraphOperationMessage::NewArtboard {
 						id: NodeId::new(),
 						artboard: graphene_core::Artboard::new(IVec2::ZERO, self.dimensions.as_ivec2()),
 					});
 				}
 
-				responses.add(NodeGraphMessage::RunDocumentGraph);
-				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
-
+				// It is necessary to use `FrontendMessage::TriggerDelayedZoomCanvasToFitAll` rather than `DocumentMessage::ZoomCanvasToFitAll`because the size of the viewport is not yet populated
 				responses.add(Message::StartBuffer);
-				responses.add(DocumentMessage::ZoomCanvasToFitAll);
+				responses.add(FrontendMessage::TriggerDelayedZoomCanvasToFitAll);
 			}
 		}
 

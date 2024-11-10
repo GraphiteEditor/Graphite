@@ -1297,6 +1297,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				if let Some(bounds) = bounds {
 					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
 					responses.add(NavigationMessage::FitViewportToBounds { bounds, prevent_zoom_past_100: true });
+				} else {
+					warn!("Cannot zoom due to no bounds")
 				}
 			}
 			DocumentMessage::Noop => (),
