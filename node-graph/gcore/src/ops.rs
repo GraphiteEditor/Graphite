@@ -1,4 +1,3 @@
-use crate::raster::adjustments::RedGreenBlue;
 use crate::raster::BlendMode;
 use crate::raster::ImageFrame;
 use crate::registry::types::Percentage;
@@ -14,7 +13,7 @@ use rand::{Rng, SeedableRng};
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
 
-// Add
+/// The addition operation (+) calculates the sum of two numbers.
 #[node_macro::node(category("Math: Arithmetic"))]
 fn add<U: Add<T>, T>(
 	_: (),
@@ -24,7 +23,7 @@ fn add<U: Add<T>, T>(
 	augend + addend
 }
 
-// Subtract
+/// The subtraction operation (-) calculates the difference between two numbers.
 #[node_macro::node(category("Math: Arithmetic"))]
 fn subtract<U: Sub<T>, T>(
 	_: (),
@@ -34,7 +33,7 @@ fn subtract<U: Sub<T>, T>(
 	minuend - subtrahend
 }
 
-// Multiply
+/// The multiplication operation (×) calculates the product of two numbers.
 #[node_macro::node(category("Math: Arithmetic"))]
 fn multiply<U: Mul<T>, T>(
 	_: (),
@@ -46,7 +45,7 @@ fn multiply<U: Mul<T>, T>(
 	multiplier * multiplicand
 }
 
-// Divide
+/// The division operation (÷) calculates the quotient of two numbers.
 #[node_macro::node(category("Math: Arithmetic"))]
 fn divide<U: Div<T>, T>(
 	_: (),
@@ -58,19 +57,24 @@ fn divide<U: Div<T>, T>(
 	numerator / denominator
 }
 
-// Modulo
+/// The modulo operation (%) calculates the remainder from the division of two numbers. The sign of the result shares the sign of the numerator unless "Always Positive" is enabled.
 #[node_macro::node(category("Math: Arithmetic"))]
-fn modulo<U: Rem<T>, T>(
+fn modulo<U: Rem<T, Output: Add<T, Output: Rem<T, Output = U::Output>>>, T: Copy>(
 	_: (),
 	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, DVec2, DVec2, f64)] numerator: U,
 	#[default(2.)]
 	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, DVec2, f64, DVec2)]
 	modulus: T,
+	always_positive: bool,
 ) -> <U as Rem<T>>::Output {
-	numerator % modulus
+	if always_positive {
+		(numerator % modulus + modulus) % modulus
+	} else {
+		numerator % modulus
+	}
 }
 
-// Exponent
+/// The exponent operation (^) calculates the result of raising a number to a power.
 #[node_macro::node(category("Math: Arithmetic"))]
 fn exponent<U: Pow<T>, T>(
 	_: (),
@@ -82,7 +86,7 @@ fn exponent<U: Pow<T>, T>(
 	base.pow(power)
 }
 
-// Root
+/// The square root operation (√) calculates the nth root of a number, equivalent to raising the number to the power of 1/n.
 #[node_macro::node(category("Math: Arithmetic"))]
 fn root<U: num_traits::float::Float>(
 	_: (),
@@ -102,7 +106,7 @@ fn root<U: num_traits::float::Float>(
 	}
 }
 
-// Logarithm
+/// The logarithmic function (log) calculates the logarithm of a number with a specified base. If the natural logarithm function (ln) is desired, set the base to "e".
 #[node_macro::node(category("Math: Arithmetic"))]
 fn logarithm<U: num_traits::float::Float>(
 	_: (),
@@ -122,25 +126,84 @@ fn logarithm<U: num_traits::float::Float>(
 	}
 }
 
-// Sine
+/// The sine trigonometric function (sin) calculates the ratio of the angle's opposite side length to its hypotenuse length.
 #[node_macro::node(category("Math: Trig"))]
-fn sine<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] theta: U) -> U {
-	theta.sin()
+fn sine<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] theta: U, radians: bool) -> U {
+	if radians {
+		theta.sin()
+	} else {
+		theta.to_radians().sin()
+	}
 }
 
-// Cosine
+/// The cosine trigonometric function (cos) calculates the ratio of the angle's adjacent side length to its hypotenuse length.
 #[node_macro::node(category("Math: Trig"))]
-fn cosine<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] theta: U) -> U {
-	theta.cos()
+fn cosine<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] theta: U, radians: bool) -> U {
+	if radians {
+		theta.cos()
+	} else {
+		theta.to_radians().cos()
+	}
 }
 
-// Tangent
+/// The tangent trigonometric function (tan) calculates the ratio of the angle's opposite side length to its adjacent side length.
 #[node_macro::node(category("Math: Trig"))]
-fn tangent<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] theta: U) -> U {
-	theta.tan()
+fn tangent<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] theta: U, radians: bool) -> U {
+	if radians {
+		theta.tan()
+	} else {
+		theta.to_radians().tan()
+	}
 }
 
-// Random
+/// The inverse sine trigonometric function (asin) calculates the angle whose sine is the specified value.
+#[node_macro::node(category("Math: Trig"))]
+fn sine_inverse<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] value: U, radians: bool) -> U {
+	if radians {
+		value.asin()
+	} else {
+		value.asin().to_degrees()
+	}
+}
+
+/// The inverse cosine trigonometric function (acos) calculates the angle whose cosine is the specified value.
+#[node_macro::node(category("Math: Trig"))]
+fn cosine_inverse<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] value: U, radians: bool) -> U {
+	if radians {
+		value.acos()
+	} else {
+		value.acos().to_degrees()
+	}
+}
+
+/// The inverse tangent trigonometric function (atan) calculates the angle whose tangent is the specified value.
+#[node_macro::node(category("Math: Trig"))]
+fn tangent_inverse<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] value: U, radians: bool) -> U {
+	if radians {
+		value.atan()
+	} else {
+		value.atan().to_degrees()
+	}
+}
+
+/// The inverse tangent trigonometric function (atan2) calculates the angle whose tangent is the ratio of the two specified values.
+#[node_macro::node(name("Tangent Inverse 2-Argument"), category("Math: Trig"))]
+fn tangent_inverse_2_argument<U: num_traits::float::Float>(
+	_: (),
+	#[implementations(f64, f32)] y: U,
+	#[expose]
+	#[implementations(f64, f32)]
+	x: U,
+	radians: bool,
+) -> U {
+	if radians {
+		y.atan2(x)
+	} else {
+		y.atan2(x).to_degrees()
+	}
+}
+
+/// The random function (rand) converts a seed into a random number within the specified range, inclusive of the minimum and exclusive of the maximum. The minimum and maximum values are automatically swapped if they are reversed.
 #[node_macro::node(category("Math: Numeric"))]
 fn random<U: num_traits::float::Float>(
 	_: (),
@@ -160,45 +223,45 @@ fn random<U: num_traits::float::Float>(
 	result * (max - min) + min
 }
 
-// To u32
+/// Convert a number to an integer of the type u32, which may be the required type for certain node inputs. This will be removed in the future when automatic type conversion is implemented.
 #[node_macro::node(name("To u32"), category("Math: Numeric"))]
 fn to_u32<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] value: U) -> u32 {
 	let value = U::clamp(value, U::from(0.).unwrap(), U::from(u32::MAX as f64).unwrap());
 	value.to_u32().unwrap()
 }
 
-// To u64
+/// Convert a number to an integer of the type u64, which may be the required type for certain node inputs. This will be removed in the future when automatic type conversion is implemented.
 #[node_macro::node(name("To u64"), category("Math: Numeric"))]
 fn to_u64<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] value: U) -> u64 {
 	let value = U::clamp(value, U::from(0.).unwrap(), U::from(u64::MAX as f64).unwrap());
 	value.to_u64().unwrap()
 }
 
-// Round
+/// The rounding function (round) maps an input value to its nearest whole number. Halfway values are rounded away from zero.
 #[node_macro::node(category("Math: Numeric"))]
 fn round<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] value: U) -> U {
 	value.round()
 }
 
-// Floor
+/// The floor function (floor) reduces an input value to its nearest larger whole number, unless the input number is already whole.
 #[node_macro::node(category("Math: Numeric"))]
 fn floor<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] value: U) -> U {
 	value.floor()
 }
 
-// Ceiling
+/// The ceiling function (ceil) increases an input value to its nearest smaller whole number, unless the input number is already whole.
 #[node_macro::node(category("Math: Numeric"))]
 fn ceiling<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] value: U) -> U {
 	value.ceil()
 }
 
-// Absolute Value
+/// The absolute value function (abs) removes the negative sign from an input value, if present.
 #[node_macro::node(category("Math: Numeric"))]
 fn absolute_value<U: num_traits::float::Float>(_: (), #[implementations(f64, f32)] value: U) -> U {
 	value.abs()
 }
 
-// Min
+/// The minimum function (min) picks the smaller of two numbers.
 #[node_macro::node(category("Math: Numeric"))]
 fn min<T: core::cmp::PartialOrd>(_: (), #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] other_value: T) -> T {
 	match value < other_value {
@@ -207,7 +270,7 @@ fn min<T: core::cmp::PartialOrd>(_: (), #[implementations(f64, &f64, f32, &f32, 
 	}
 }
 
-// Max
+/// The maximum function (max) picks the larger of two numbers.
 #[node_macro::node(category("Math: Numeric"))]
 fn max<T: core::cmp::PartialOrd>(_: (), #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] other_value: T) -> T {
 	match value > other_value {
@@ -216,7 +279,7 @@ fn max<T: core::cmp::PartialOrd>(_: (), #[implementations(f64, &f64, f32, &f32, 
 	}
 }
 
-// Clamp
+/// The clamp function (clamp) restricts a number to a specified range between a minimum and maximum value. The minimum and maximum values are automatically swapped if they are reversed.
 #[node_macro::node(category("Math: Numeric"))]
 fn clamp<T: core::cmp::PartialOrd>(
 	_: (),
@@ -224,6 +287,7 @@ fn clamp<T: core::cmp::PartialOrd>(
 	#[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] min: T,
 	#[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] max: T,
 ) -> T {
+	let (min, max) = if min < max { (min, max) } else { (max, min) };
 	if value < min {
 		min
 	} else if value > max {
@@ -233,7 +297,7 @@ fn clamp<T: core::cmp::PartialOrd>(
 	}
 }
 
-// Equals
+/// The equality operation (==) compares two values and returns true if they are equal, or false if they are not.
 #[node_macro::node(category("Math: Logic"))]
 fn equals<U: core::cmp::PartialEq<T>, T>(
 	_: (),
@@ -246,112 +310,113 @@ fn equals<U: core::cmp::PartialEq<T>, T>(
 	other_value == value
 }
 
-// Logical Or
+/// The inequality operation (!=) compares two values and returns true if they are not equal, or false if they are.
+#[node_macro::node(category("Math: Logic"))]
+fn not_equals<U: core::cmp::PartialEq<T>, T>(
+	_: (),
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] value: T,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)]
+	#[min(100.)]
+	#[max(200.)]
+	other_value: U,
+) -> bool {
+	other_value != value
+}
+
+/// The logical or operation (||) returns true if either of the two inputs are true, or false if both are false.
 #[node_macro::node(category("Math: Logic"))]
 fn logical_or(_: (), value: bool, other_value: bool) -> bool {
 	value || other_value
 }
 
-// Logical And
+/// The logical and operation (&&) returns true if both of the two inputs are true, or false if any are false.
 #[node_macro::node(category("Math: Logic"))]
 fn logical_and(_: (), value: bool, other_value: bool) -> bool {
 	value && other_value
 }
 
-// Logical Xor
-#[node_macro::node(category("Math: Logic"))]
-fn logical_xor(_: (), value: bool, other_value: bool) -> bool {
-	value ^ other_value
-}
-
-// Logical Not
+/// The logical not operation (!) reverses true and false value of the input.
 #[node_macro::node(category("Math: Logic"))]
 fn logical_not(_: (), input: bool) -> bool {
 	!input
 }
 
-// Bool Value
+/// Constructs a bool value which may be set to true or false.
 #[node_macro::node(category("Value"))]
 fn bool_value(_: (), _primary: (), #[name("Bool")] bool_value: bool) -> bool {
 	bool_value
 }
 
-// Number Value
+/// Constructs a number value which may be set to any real number.
 #[node_macro::node(category("Value"))]
 fn number_value(_: (), _primary: (), number: f64) -> f64 {
 	number
 }
 
-// Percentage Value
+/// Constructs a number value which may be set to any value from 0% to 100% by dragging the slider.
 #[node_macro::node(category("Value"))]
 fn percentage_value(_: (), _primary: (), percentage: Percentage) -> f64 {
 	percentage
 }
 
-// Vector2 Value
+/// Constructs a two-dimensional vector value which may be set to any XY coordinate.
 #[node_macro::node(category("Value"))]
 fn vector2_value(_: (), _primary: (), x: f64, y: f64) -> DVec2 {
 	DVec2::new(x, y)
 }
 
-// Color Value
+/// Constructs a color value which may be set to any color, or no color.
 #[node_macro::node(category("Value"))]
 fn color_value(_: (), _primary: (), #[default(Color::BLACK)] color: Option<Color>) -> Option<Color> {
 	color
 }
 
-// Gradient Value
+/// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
 #[node_macro::node(category("Value"))]
 fn gradient_value(_: (), _primary: (), gradient: GradientStops) -> GradientStops {
 	gradient
 }
 
-// Color Channel Value
-#[node_macro::node(category("Value"))]
-fn color_channel_value(_: (), _primary: (), color_channel: RedGreenBlue) -> RedGreenBlue {
-	color_channel
-}
-
-// Blend Mode Value
+/// Constructs a blend mode choice value which may be set to any of the available blend modes in order to tell another node which blending operation to use.
 #[node_macro::node(category("Value"))]
 fn blend_mode_value(_: (), _primary: (), blend_mode: BlendMode) -> BlendMode {
 	blend_mode
 }
 
-// Size Of
+/// Meant for debugging purposes, not general use. Returns the size of the input type in bytes.
 #[cfg(feature = "std")]
 #[node_macro::node(category("Debug"))]
 fn size_of(_: (), ty: crate::Type) -> Option<usize> {
 	ty.size()
 }
 
-// Some
+/// Meant for debugging purposes, not general use. Wraps the input value in the Some variant of an Option.
 #[node_macro::node(category("Debug"))]
 fn some<T>(_: (), #[implementations(f64, f32, u32, u64, String, Color)] input: T) -> Option<T> {
 	Some(input)
 }
 
-// Unwrap
+/// Meant for debugging purposes, not general use. Unwraps the input value from an Option, returning the default value if the input is None.
 #[node_macro::node(category("Debug"))]
 fn unwrap<T: Default>(_: (), #[implementations(Option<f64>, Option<f32>, Option<u32>, Option<u64>, Option<String>, Option<Color>)] input: Option<T>) -> T {
 	input.unwrap_or_default()
 }
 
-// Clone
+/// Meant for debugging purposes, not general use. Clones the input value.
 #[node_macro::node(category("Debug"))]
 fn clone<'i, T: Clone + 'i>(_: (), #[implementations(&ImageFrame<Color>)] value: &'i T) -> T {
 	value.clone()
 }
 
-// Identity
 // TODO: Rename to "Passthrough"
-/// The identity function returns the input argument unchanged.
+/// Passes-through the input value without changing it. This is useful for rerouting wires for organization purposes.
 #[node_macro::node(skip_impl)]
 fn identity<'i, T: 'i>(value: T) -> T {
 	value
 }
 
 // Type
+// TODO: Document this
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct TypeNode<N: for<'a> Node<'a, I>, I, O>(pub N, pub PhantomData<(I, O)>);
 impl<'i, N, I: 'i, O: 'i> Node<'i, I> for TypeNode<N, I, O>

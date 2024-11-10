@@ -559,6 +559,21 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							.set_input(&InputConnector::node(*node_id, 5), NodeInput::value(TaggedValue::F64(1.), false), &[]);
 					}
 
+					// Upgrade Sine, Cosine, and Tangent nodes to include a boolean input for whether the output should be in radians, which was previously the only option but is now not the default
+					// Also upgrade the Modulo node to include a boolean input for whether the output should be always positive, which was previously not an option
+					if (reference == "Sine" || reference == "Cosine" || reference == "Tangent" || reference == "Modulo") && inputs_count == 1 {
+						let node_definition = resolve_document_node_type(reference).unwrap();
+						let document_node = node_definition.default_node_template().document_node;
+						document.network_interface.replace_implementation(node_id, &[], document_node.implementation.clone());
+
+						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), &[]);
+
+						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), &[]);
+						document
+							.network_interface
+							.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::Bool(reference != "Modulo"), false), &[]);
+					}
+
 					// Upgrade layer implementation from https://github.com/GraphiteEditor/Graphite/pull/1946
 					if reference == "Merge" || reference == "Artboard" {
 						let node_definition = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type(reference).unwrap();
