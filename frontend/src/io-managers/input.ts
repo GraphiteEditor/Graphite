@@ -4,10 +4,10 @@ import { type DialogState } from "@graphite/state-providers/dialog";
 import { type DocumentState } from "@graphite/state-providers/document";
 import { type FullscreenState } from "@graphite/state-providers/fullscreen";
 import { type PortfolioState } from "@graphite/state-providers/portfolio";
+import { extractContent } from "@graphite/utility-functions/files";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "@graphite/utility-functions/keyboard-entry";
 import { platformIsMac } from "@graphite/utility-functions/platform";
 import { extractPixelData } from "@graphite/utility-functions/rasterization";
-import { extractContent } from "@graphite/utility-functions/files"
 import { stripIndents } from "@graphite/utility-functions/strip-indents";
 import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
 import { type Editor } from "@graphite/wasm-communication/editor";

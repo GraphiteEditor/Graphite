@@ -3,9 +3,9 @@
 
 	import { beginDraggingElement } from "@graphite/io-managers/drag";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
+	import { extractContent } from "@graphite/utility-functions/files";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 	import { extractPixelData } from "@graphite/utility-functions/rasterization";
-	import { extractContent } from "@graphite/utility-functions/files";
 	import type { Editor } from "@graphite/wasm-communication/editor";
 	import { defaultWidgetLayout, patchWidgetLayout, UpdateDocumentLayerDetails, UpdateDocumentLayerStructureJs, UpdateLayersPanelOptionsLayout } from "@graphite/wasm-communication/messages";
 	import type { DataBuffer, LayerPanelEntry } from "@graphite/wasm-communication/messages";

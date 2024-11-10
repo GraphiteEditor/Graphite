@@ -2,9 +2,9 @@
 	import { getContext, onMount, tick } from "svelte";
 
 	import type { DocumentState } from "@graphite/state-providers/document";
+	import { extractContent } from "@graphite/utility-functions/files";
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
 	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
-	import { extractContent } from "@graphite/utility-functions/files";
 	import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
 	import type { Editor } from "@graphite/wasm-communication/editor";
 	import {

@@ -14,10 +14,9 @@
 <script lang="ts">
 	import { getContext, tick } from "svelte";
 
-	import { platformIsMac, isEventSupported } from "@graphite/utility-functions/platform";
-
-	import { extractPixelData } from "@graphite/utility-functions/rasterization";
 	import { extractContent } from "@graphite/utility-functions/files";
+	import { platformIsMac, isEventSupported } from "@graphite/utility-functions/platform";
+	import { extractPixelData } from "@graphite/utility-functions/rasterization";
 	import type { Editor } from "@graphite/wasm-communication/editor";
 	import { type LayoutKeysGroup, type Key } from "@graphite/wasm-communication/messages";
 
