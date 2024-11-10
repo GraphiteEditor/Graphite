@@ -17,6 +17,7 @@
 	import { platformIsMac, isEventSupported } from "@graphite/utility-functions/platform";
 
 	import { extractPixelData } from "@graphite/utility-functions/rasterization";
+	import { extractContent } from "@graphite/utility-functions/files";
 	import type { Editor } from "@graphite/wasm-communication/editor";
 	import { type LayoutKeysGroup, type Key } from "@graphite/wasm-communication/messages";
 
@@ -67,9 +68,12 @@
 			}
 
 			if (file.type.startsWith("image")) {
-				const imageData = await extractPixelData(file);
-				editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height);
-				return;
+				if (file.type === "image/x-sony-arw") {
+					editor.handle.pasteRawImage(file.name, await extractContent(file));
+				} else {
+					const imageData = await extractPixelData(file);
+					editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height);
+				}
 			}
 
 			if (file.name.endsWith(".graphite")) {

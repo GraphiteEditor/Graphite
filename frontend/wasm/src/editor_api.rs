@@ -19,9 +19,11 @@ use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
 use graphene_core::raster::color::Color;
 
+use rawkit::RawImage;
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
 use std::cell::RefCell;
+use std::io::Cursor;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use wasm_bindgen::prelude::*;
@@ -619,6 +621,18 @@ impl EditorHandle {
 			parent_and_insert_index,
 		};
 		self.dispatch(message);
+	}
+
+	/// Pastes a Raw Image
+	#[wasm_bindgen(js_name = pasteRawImage)]
+	pub fn paste_raw_image(&self, name: Option<String>, file_data: Vec<u8>, mouse_x: Option<f64>, mouse_y: Option<f64>, insert_parent_id: Option<u64>, insert_index: Option<usize>) {
+		let mut content = Cursor::new(&file_data);
+		let raw_image = RawImage::decode(&mut content).unwrap();
+		let image = raw_image.process_8bit();
+
+		let data = image.data.chunks(image.channels as usize).flat_map(|pixel| [pixel[0], pixel[1], pixel[2], u8::MAX]).collect();
+
+		self.paste_image(name, data, image.width as u32, image.height as u32, mouse_x, mouse_y, insert_parent_id, insert_index)
 	}
 
 	#[wasm_bindgen(js_name = pasteSvg)]

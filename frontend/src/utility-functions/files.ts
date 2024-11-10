@@ -88,3 +88,13 @@ export async function replaceBlobURLsWithBase64(svg: string): Promise<string> {
 	});
 	return substituted.join("");
 }
+
+/// Extract the contents of a file or blob and return an Uint8Array
+export async function extractContent(blob: Blob): Promise<Uint8Array> {
+	return new Promise((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onload = () => resolve(new Uint8Array(reader.result));
+		reader.onerror = () => reject(new Error('Error reading the blob.'));
+		reader.readAsArrayBuffer(blob);
+	});
+}

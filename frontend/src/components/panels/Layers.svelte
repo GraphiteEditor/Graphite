@@ -5,6 +5,7 @@
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 	import { extractPixelData } from "@graphite/utility-functions/rasterization";
+	import { extractContent } from "@graphite/utility-functions/files";
 	import type { Editor } from "@graphite/wasm-communication/editor";
 	import { defaultWidgetLayout, patchWidgetLayout, UpdateDocumentLayerDetails, UpdateDocumentLayerStructureJs, UpdateLayersPanelOptionsLayout } from "@graphite/wasm-communication/messages";
 	import type { DataBuffer, LayerPanelEntry } from "@graphite/wasm-communication/messages";
@@ -342,8 +343,12 @@
 					}
 
 					if (file.type.startsWith("image")) {
-						const imageData = await extractPixelData(file);
-						editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height, undefined, undefined, insertParentId, insertIndex);
+						if (file.type === "image/x-sony-arw") {
+							editor.handle.pasteRawImage(file.name, await extractContent(file), undefined, undefined, insertParentId, insertIndex);
+						} else {
+							const imageData = await extractPixelData(file);
+							editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height, undefined, undefined, insertParentId, insertIndex);
+						}
 						return;
 					}
 

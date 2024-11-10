@@ -4,6 +4,7 @@
 	import type { DocumentState } from "@graphite/state-providers/document";
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
 	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
+	import { extractContent } from "@graphite/utility-functions/files";
 	import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
 	import type { Editor } from "@graphite/wasm-communication/editor";
 	import {
@@ -136,8 +137,12 @@
 			}
 
 			if (file.type.startsWith("image")) {
-				const imageData = await extractPixelData(file);
-				editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height, x, y);
+				if (file.type === "image/x-sony-arw") {
+					editor.handle.pasteRawImage(file.name, await extractContent(file), x, y);
+				} else {
+					const imageData = await extractPixelData(file);
+					editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height, x, y);
+				}
 				return;
 			}
 

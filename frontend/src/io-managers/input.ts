@@ -7,6 +7,7 @@ import { type PortfolioState } from "@graphite/state-providers/portfolio";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "@graphite/utility-functions/keyboard-entry";
 import { platformIsMac } from "@graphite/utility-functions/platform";
 import { extractPixelData } from "@graphite/utility-functions/rasterization";
+import { extractContent } from "@graphite/utility-functions/files"
 import { stripIndents } from "@graphite/utility-functions/strip-indents";
 import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
 import { type Editor } from "@graphite/wasm-communication/editor";
@@ -293,8 +294,12 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 			}
 
 			if (file.type.startsWith("image")) {
-				const imageData = await extractPixelData(file);
-				editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height);
+				if (file.type === "image/x-sony-arw") {
+					editor.handle.pasteRawImage(file.name, await extractContent(file));
+				} else {
+					const imageData = await extractPixelData(file);
+					editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height);
+				}
 			}
 
 			if (file.name.endsWith(".graphite")) {
@@ -359,8 +364,12 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 						const reader = new FileReader();
 						reader.onload = async () => {
 							if (reader.result instanceof ArrayBuffer) {
-								const imageData = await extractPixelData(new Blob([reader.result], { type: imageType }));
-								editor.handle.pasteImage(undefined, new Uint8Array(imageData.data), imageData.width, imageData.height);
+								if (imageType === "image/x-sony-arw") {
+									editor.handle.pasteRawImage(undefined, new Uint8Array(reader.result));
+								} else {
+									const imageData = await extractPixelData(new Blob([reader.result], { type: imageType }));
+									editor.handle.pasteImage(undefined, new Uint8Array(imageData.data), imageData.width, imageData.height);
+								}
 							}
 						};
 						reader.readAsArrayBuffer(blob);
