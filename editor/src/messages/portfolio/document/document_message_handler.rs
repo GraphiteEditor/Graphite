@@ -1279,7 +1279,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					layer: node_layer_id,
 					transform: DAffine2::from_translation(bounds_rounded_dimensions / 2.),
 					transform_in: TransformIn::Local,
-					skip_rerender: true,
+					skip_rerender: false,
 				});
 			}
 			DocumentMessage::ZoomCanvasTo100Percent => {

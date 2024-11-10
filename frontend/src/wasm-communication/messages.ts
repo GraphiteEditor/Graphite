@@ -775,8 +775,6 @@ export class TriggerCopyToClipboardBlobUrl extends JsMessage {
 	readonly blobUrl!: string;
 }
 
-export class TriggerDelayedZoomCanvasToFitAll extends JsMessage {}
-
 export class TriggerDownloadBlobUrl extends JsMessage {
 	readonly layerName!: string;
 
@@ -1562,7 +1560,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	SendUIMetadata,
 	TriggerAboutGraphiteLocalizedCommitDate,
 	TriggerCopyToClipboardBlobUrl,
-	TriggerDelayedZoomCanvasToFitAll,
 	TriggerDownloadBlobUrl,
 	TriggerDownloadImage,
 	TriggerDownloadTextFile,

@@ -34,9 +34,8 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 
-				// TODO: Figure out how to get StartBuffer to work here so we can delete this and use `DocumentMessage::ZoomCanvasToFitAll` instead
 				responses.add(Message::StartBuffer);
-				responses.add(FrontendMessage::TriggerDelayedZoomCanvasToFitAll);
+				responses.add(DocumentMessage::ZoomCanvasToFitAll);
 			}
 		}
 

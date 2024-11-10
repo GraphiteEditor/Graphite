@@ -705,9 +705,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					responses.add(Message::StartBuffer);
 					responses.add(DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true });
 
-					// TODO: Figure out how to get StartBuffer to work here so we can delete this and use `DocumentMessage::ZoomCanvasToFitAll` instead
 					responses.add(Message::StartBuffer);
-					responses.add(FrontendMessage::TriggerDelayedZoomCanvasToFitAll);
+					responses.add(DocumentMessage::ZoomCanvasToFitAll);
 				}
 			}
 			PortfolioMessage::PasteSvg {
@@ -736,9 +735,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					responses.add(Message::StartBuffer);
 					responses.add(DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true });
 
-					// TODO: Figure out how to get StartBuffer to work here so we can delete this and use `DocumentMessage::ZoomCanvasToFitAll` instead
 					responses.add(Message::StartBuffer);
-					responses.add(FrontendMessage::TriggerDelayedZoomCanvasToFitAll);
+					responses.add(DocumentMessage::ZoomCanvasToFitAll);
 				}
 			}
 			PortfolioMessage::PrevDocument => {

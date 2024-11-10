@@ -12,7 +12,6 @@ import {
 	UpdateWorkingColorsLayout,
 	UpdateNodeGraphBarLayout,
 	UpdateGraphViewOverlay,
-	TriggerDelayedZoomCanvasToFitAll,
 	UpdateGraphFadeArtwork,
 } from "@graphite/wasm-communication/messages";
 
@@ -96,12 +95,6 @@ export function createDocumentState(editor: Editor) {
 		update((state) => {
 			state.graphViewOverlayOpen = updateGraphViewOverlay.open;
 			return state;
-		});
-	});
-	editor.subscriptions.subscribeJsMessage(TriggerDelayedZoomCanvasToFitAll, () => {
-		// TODO: This is horribly hacky
-		[0, 1, 10, 50, 100, 200, 300, 400, 500].forEach((delay) => {
-			setTimeout(() => editor.handle.zoomCanvasToFitAll(), delay);
 		});
 	});
 

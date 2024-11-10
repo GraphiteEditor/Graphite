@@ -58,7 +58,6 @@ pub enum FrontendMessage {
 		#[serde(rename = "blobUrl")]
 		blob_url: String,
 	},
-	TriggerDelayedZoomCanvasToFitAll,
 	TriggerDownloadBlobUrl {
 		#[serde(rename = "layerName")]
 		layer_name: String,

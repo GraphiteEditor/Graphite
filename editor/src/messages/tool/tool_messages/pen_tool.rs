@@ -50,6 +50,9 @@ pub enum PenToolMessage {
 	Overlays(OverlayContext),
 
 	// Tool-specific messages
+
+	// It is necessary to defer this until the transform of the layer can be accuratly computed (quite hacky)
+	AddPointLayerPosition { layer: LayerNodeIdentifier, viewport: DVec2 },
 	Confirm,
 	DragStart { append_to_selected: Key },
 	DragStop,
@@ -458,24 +461,33 @@ impl PenToolData {
 			return;
 		}
 
-		let mut selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&document.network_interface);
-		let layer = match (selected_layers_except_artboards.next(), selected_layers_except_artboards.next()) {
-			// Add to existing layer
-			(Some(layer), None) if append => layer,
-			_ => {
-				// New path layer
-				let node_type = resolve_document_node_type("Path").expect("Path node does not exist");
-				let nodes = vec![(NodeId(0), node_type.default_node_template())];
-
-				let parent = document.new_layer_parent(true);
-				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
-				tool_options.fill.apply_fill(layer, responses);
-				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
-				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
-				layer
+		if append {
+			let mut selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&document.network_interface);
+			let existing_layer = selected_layers_except_artboards.next().filter(|_| selected_layers_except_artboards.next().is_none());
+			if let Some(layer) = existing_layer {
+				// Add point to existing layer
+				responses.add(PenToolMessage::AddPointLayerPosition { layer, viewport });
+				return;
 			}
-		};
+		}
 
+		// New path layer
+		let node_type = resolve_document_node_type("Path").expect("Path node does not exist");
+		let nodes = vec![(NodeId(0), node_type.default_node_template())];
+
+		let parent = document.new_layer_parent(true);
+		let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
+		tool_options.fill.apply_fill(layer, responses);
+		tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
+		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
+
+		// This causes the following message to be run only after the next graph evaluation runs and the transforms are updated
+		responses.add(Message::StartBuffer);
+		// It is necessary to defer this until the transform of the layer can be accuratly computed (quite hacky)
+		responses.add(PenToolMessage::AddPointLayerPosition { layer, viewport });
+	}
+
+	fn add_point_layer_position(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, viewport: DVec2) {
 		// Add the first point
 		let id = PointId::generate();
 		let pos = document.metadata().transform_to_viewport(layer).inverse().transform_point2(viewport);
@@ -489,6 +501,7 @@ impl PenToolData {
 		});
 		self.next_point = pos;
 		self.next_handle_start = pos;
+		self.handle_end = None;
 	}
 }
 
@@ -591,6 +604,11 @@ impl Fsm for PenToolFsmState {
 
 				// Enter the dragging handle state while the mouse is held down, allowing the user to move the mouse and position the handle
 				PenToolFsmState::DraggingHandle
+			}
+			(_, PenToolMessage::AddPointLayerPosition { layer, viewport }) => {
+				tool_data.add_point_layer_position(document, responses, layer, viewport);
+
+				self
 			}
 			(state, PenToolMessage::RecalculateLatestPointsPosition) => {
 				tool_data.recalculate_latest_points_position(document);
