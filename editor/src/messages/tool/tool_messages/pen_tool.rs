@@ -757,6 +757,7 @@ impl Fsm for PenToolFsmState {
 		let hint_data = match self {
 			PenToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::Lmb, "Draw Path"),
+				// TODO: Only show this if a single layer is selected and it's of a valid type (e.g. a vector path but not raster or artboard)
 				HintInfo::keys([Key::Shift], "Append to Selected Layer").prepend_plus(),
 			])]),
 			PenToolFsmState::PlacingAnchor => HintData(vec![

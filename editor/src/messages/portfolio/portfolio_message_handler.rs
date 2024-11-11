@@ -705,7 +705,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					responses.add(Message::StartBuffer);
 					responses.add(DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true });
 
-					// It is necessary to use `FrontendMessage::TriggerDelayedZoomCanvasToFitAll` rather than `DocumentMessage::ZoomCanvasToFitAll`because the size of the viewport is not yet populated
+					// TODO: Figure out how to get StartBuffer to work here so we can delete this and use `DocumentMessage::ZoomCanvasToFitAll` instead
+					// Currently, it is necessary to use `FrontendMessage::TriggerDelayedZoomCanvasToFitAll` rather than `DocumentMessage::ZoomCanvasToFitAll` because the size of the viewport is not yet populated
 					responses.add(Message::StartBuffer);
 					responses.add(FrontendMessage::TriggerDelayedZoomCanvasToFitAll);
 				}
@@ -736,7 +737,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					responses.add(Message::StartBuffer);
 					responses.add(DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true });
 
-					// It is necessary to use `FrontendMessage::TriggerDelayedZoomCanvasToFitAll` rather than `DocumentMessage::ZoomCanvasToFitAll`because the size of the viewport is not yet populated
+					// TODO: Figure out how to get StartBuffer to work here so we can delete this and use `DocumentMessage::ZoomCanvasToFitAll` instead
+					// Currently, it is necessary to use `FrontendMessage::TriggerDelayedZoomCanvasToFitAll` rather than `DocumentMessage::ZoomCanvasToFitAll` because the size of the viewport is not yet populated
 					responses.add(Message::StartBuffer);
 					responses.add(FrontendMessage::TriggerDelayedZoomCanvasToFitAll);
 				}

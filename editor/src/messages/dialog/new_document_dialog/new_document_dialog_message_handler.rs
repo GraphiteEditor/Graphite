@@ -32,9 +32,11 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 					});
 				}
 
-				// It is necessary to use `FrontendMessage::TriggerDelayedZoomCanvasToFitAll` rather than `DocumentMessage::ZoomCanvasToFitAll`because the size of the viewport is not yet populated
+				// TODO: Figure out how to get StartBuffer to work here so we can delete this and use `DocumentMessage::ZoomCanvasToFitAll` instead
+				// Currently, it is necessary to use `FrontendMessage::TriggerDelayedZoomCanvasToFitAll` rather than `DocumentMessage::ZoomCanvasToFitAll` because the size of the viewport is not yet populated
 				responses.add(Message::StartBuffer);
 				responses.add(FrontendMessage::TriggerDelayedZoomCanvasToFitAll);
+				responses.add(DocumentMessage::DeselectAllLayers);
 			}
 		}
 
