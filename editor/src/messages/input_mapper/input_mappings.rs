@@ -249,7 +249,7 @@ pub fn input_mappings() -> Mapping {
 		//
 		// PenToolMessage
 		entry!(PointerMove; refresh_keys=[Control, Alt, Shift], action_dispatch=PenToolMessage::PointerMove { snap_angle: Shift, break_handle: Alt, lock_angle: Control}),
-		entry!(KeyDown(MouseLeft); action_dispatch=PenToolMessage::DragStart),
+		entry!(KeyDown(MouseLeft); action_dispatch=PenToolMessage::DragStart { append_to_selected: Shift }),
 		entry!(KeyUp(MouseLeft); action_dispatch=PenToolMessage::DragStop),
 		entry!(KeyDown(MouseRight); action_dispatch=PenToolMessage::Confirm),
 		entry!(KeyDown(Escape); action_dispatch=PenToolMessage::Confirm),

@@ -321,6 +321,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				let diagonal = pos2 - pos1;
 
 				if diagonal.length() < f64::EPSILON * 1000. || ipp.viewport_bounds.size() == DVec2::ZERO {
+					warn!("Cannot center since the viewport size is 0");
 					return;
 				}
 

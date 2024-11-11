@@ -338,6 +338,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
 				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(DocumentMessage::EndTransaction);
 			}
 			DocumentMessage::DeleteSelectedLayers => {
 				responses.add(NodeGraphMessage::DeleteSelectedNodes { delete_children: true });
@@ -1279,7 +1280,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					layer: node_layer_id,
 					transform: DAffine2::from_translation(bounds_rounded_dimensions / 2.),
 					transform_in: TransformIn::Local,
-					skip_rerender: true,
+					skip_rerender: false,
 				});
 			}
 			DocumentMessage::ZoomCanvasTo100Percent => {
@@ -1297,6 +1298,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				if let Some(bounds) = bounds {
 					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
 					responses.add(NavigationMessage::FitViewportToBounds { bounds, prevent_zoom_past_100: true });
+				} else {
+					warn!("Cannot zoom due to no bounds")
 				}
 			}
 			DocumentMessage::Noop => (),
