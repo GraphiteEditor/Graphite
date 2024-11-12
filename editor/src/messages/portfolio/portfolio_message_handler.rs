@@ -465,17 +465,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					let Some(ref reference) = node_metadata.persistent_metadata.reference.clone() else {
 						continue;
 					};
-					if let Some(node_definition) = resolve_document_node_type(reference) {
-						let document_node = node_definition.default_node_template().document_node;
-						document.network_interface.set_manual_compostion(node_id, &[], document_node.manual_composition);
-						// if ["Fill", "Stroke", "Splines from Points", "Sample Subpaths", "Sample Points", "Copy to Points", "Path", "Scatter Points"].contains(&reference.as_str()) {
-						// 	document.network_interface.set_implementation(node_id, &[], document_node.implementation);
-						// }
-						document.network_interface.replace_implementation(node_id, &[], document_node.implementation);
-						document
-							.network_interface
-							.replace_implementation_metadata(node_id, &[], node_definition.default_node_template().persistent_node_metadata);
-					}
+
 					let Some(node) = document.network_interface.network(&[]).unwrap().nodes.get(node_id) else {
 						log::error!("could not get node in deserialize_document");
 						continue;
@@ -597,7 +587,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 					// Upgrade artboard name being passed as hidden value input to "To Artboard"
 					if reference == "Artboard" {
-						let label = document.network_interface.display_name(node_id, &[]);
+						let label = document.network_interface.frontend_display_name(node_id, &[]);
 						document
 							.network_interface
 							.set_input(&InputConnector::node(NodeId(0), 1), NodeInput::value(TaggedValue::String(label), false), &[*node_id]);

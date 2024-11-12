@@ -36,6 +36,8 @@ export function createNodeGraphState(editor: Editor) {
 		hasLeftInputWire: new Map<bigint, boolean>(),
 		imports: [] as { outputMetadata: FrontendGraphOutput; position: { x: number; y: number } }[],
 		exports: [] as { inputMetadata: FrontendGraphInput; position: { x: number; y: number } }[],
+		addImport: undefined as { x: number; y: number } | undefined,
+		addExport: undefined as { x: number; y: number } | undefined,
 		nodes: new Map<bigint, FrontendNode>(),
 		wires: [] as FrontendNodeWire[],
 		wirePathInProgress: undefined as WirePath | undefined,
@@ -80,6 +82,8 @@ export function createNodeGraphState(editor: Editor) {
 		update((state) => {
 			state.imports = updateImportsExports.imports;
 			state.exports = updateImportsExports.exports;
+			state.addImport = updateImportsExports.addImport;
+			state.addExport = updateImportsExports.addExport;
 			return state;
 		});
 	});

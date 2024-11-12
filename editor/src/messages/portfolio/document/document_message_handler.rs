@@ -326,7 +326,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
 			}
 			DocumentMessage::DebugPrintDocument => {
-				info!("{:#?}", self.network_interface);
+				info!("{:?}", self.network_interface);
 			}
 			DocumentMessage::DeleteNode { node_id } => {
 				responses.add(DocumentMessage::StartTransaction);
@@ -1128,6 +1128,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				// TODO: Allow non layer nodes to have click targets
 				let layer_click_targets = click_targets
 					.into_iter()
+					.filter(|(node_id, _)|
+						// Ensure that the layer is in the document network to prevent logging an error
+						self.network_interface.network(&[]).unwrap().nodes.contains_key(node_id))
 					.filter_map(|(node_id, click_targets)| {
 						self.network_interface.is_layer(&node_id, &[]).then(|| {
 							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface, &[]);
@@ -1223,11 +1226,19 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					self.network_interface.set_transform(transform, &self.breadcrumb_network_path);
 					let imports = self.network_interface.frontend_imports(&self.breadcrumb_network_path).unwrap_or_default();
 					let exports = self.network_interface.frontend_exports(&self.breadcrumb_network_path).unwrap_or_default();
+					let add_import = self.network_interface.frontend_import_modify(&self.breadcrumb_network_path);
+					let add_export = self.network_interface.frontend_export_modify(&self.breadcrumb_network_path);
+
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(DocumentMessage::RenderScrollbars);
 					responses.add(NodeGraphMessage::UpdateEdges);
 					responses.add(NodeGraphMessage::UpdateBoxSelection);
-					responses.add(FrontendMessage::UpdateImportsExports { imports, exports });
+					responses.add(FrontendMessage::UpdateImportsExports {
+						imports,
+						exports,
+						add_import,
+						add_export,
+					});
 					responses.add(FrontendMessage::UpdateNodeGraphTransform {
 						transform: Transform {
 							scale: transform.matrix2.x_axis.x,
