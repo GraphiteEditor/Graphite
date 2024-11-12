@@ -359,8 +359,24 @@ impl PenToolData {
 	}
 
 	fn place_anchor(&mut self, snap_data: SnapData, transform: DAffine2, mouse: DVec2, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
+		let document = snap_data.document;
+
 		let relative = self.latest_point().map(|point| point.pos);
 		self.next_point = self.compute_snapped_angle(snap_data, transform, false, mouse, relative, true);
+
+		let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+		let mut selected_layers = selected_nodes.selected_layers(document.metadata());
+		let layer = selected_layers.next().filter(|_| selected_layers.next().is_none())?;
+		let vector_data = document.network_interface.compute_modified_vector(layer)?;
+		let transform = document.metadata().document_to_viewport * transform;
+		for point in vector_data.single_connected_points() {
+			let Some(pos) = vector_data.point_domain.position_from_id(point) else { continue };
+			let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(self.next_point));
+			let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
+			if transformed_distance_between_squared < snap_point_tolerance_squared {
+				self.next_point = pos;
+			}
+		}
 		if let Some(handle_end) = self.handle_end.as_mut() {
 			*handle_end = self.next_point;
 			self.next_handle_start = self.next_point;
