@@ -560,8 +560,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					}
 
 					// Upgrade Sine, Cosine, and Tangent nodes to include a boolean input for whether the output should be in radians, which was previously the only option but is now not the default
-					// Also upgrade the Modulo node to include a boolean input for whether the output should be always positive, which was previously not an option
-					if (reference == "Sine" || reference == "Cosine" || reference == "Tangent" || reference == "Modulo") && inputs_count == 1 {
+					if (reference == "Sine" || reference == "Cosine" || reference == "Tangent") && inputs_count == 1 {
 						let node_definition = resolve_document_node_type(reference).unwrap();
 						let document_node = node_definition.default_node_template().document_node;
 						document.network_interface.replace_implementation(node_id, &[], document_node.implementation.clone());
@@ -571,7 +570,22 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), &[]);
 						document
 							.network_interface
-							.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::Bool(reference != "Modulo"), false), &[]);
+							.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::Bool(true), false), &[]);
+					}
+
+					// Upgrade the Modulo node to include a boolean input for whether the output should be always positive, which was previously not an option
+					if reference == "Modulo" && inputs_count == 2 {
+						let node_definition = resolve_document_node_type(reference).unwrap();
+						let document_node = node_definition.default_node_template().document_node;
+						document.network_interface.replace_implementation(node_id, &[], document_node.implementation.clone());
+
+						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), &[]);
+
+						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), &[]);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), &[]);
+						document
+							.network_interface
+							.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::Bool(false), false), &[]);
 					}
 
 					// Upgrade layer implementation from https://github.com/GraphiteEditor/Graphite/pull/1946
