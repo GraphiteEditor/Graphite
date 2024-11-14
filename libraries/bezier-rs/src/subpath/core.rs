@@ -227,7 +227,39 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 
 	/// Constructs a rectangle with `corner1` and `corner2` as the two corners.
 	pub fn new_rect(corner1: DVec2, corner2: DVec2) -> Self {
-		Self::from_anchors([corner1, DVec2::new(corner2.x, corner1.y), corner2, DVec2::new(corner1.x, corner2.y)], true)
+		let bottom_left = DVec2::new(corner1.x, corner2.y);
+		let top_right = DVec2::new(corner2.x, corner1.y);
+
+		// Create a new `Subpath` with linear segments for the rectangle
+		Subpath::new(
+			vec![
+				ManipulatorGroup {
+					anchor: corner1,
+					in_handle: None,
+					out_handle: None,
+					id: PointId::new(),
+				},
+				ManipulatorGroup {
+					anchor: top_right,
+					in_handle: None,
+					out_handle: None,
+					id: PointId::new(),
+				},
+				ManipulatorGroup {
+					anchor: corner2,
+					in_handle: None,
+					out_handle: None,
+					id: PointId::new(),
+				},
+				ManipulatorGroup {
+					anchor: bottom_left,
+					in_handle: None,
+					out_handle: None,
+					id: PointId::new(),
+				},
+			],
+			true,
+		)
 	}
 
 	/// Constructs a rounded rectangle with `corner1` and `corner2` as the two corners and `corner_radii` as the radii of the corners: `[top_left, top_right, bottom_right, bottom_left]`.
