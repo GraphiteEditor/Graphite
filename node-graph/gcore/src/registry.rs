@@ -29,6 +29,7 @@ pub mod types {
 	pub type Resolution = glam::UVec2;
 }
 
+// Translation struct between macro and definition
 #[derive(Clone)]
 pub struct NodeMetadata {
 	pub display_name: &'static str,
@@ -37,6 +38,7 @@ pub struct NodeMetadata {
 	pub description: &'static str,
 }
 
+// Translation struct between macro and definition
 #[derive(Clone, Debug)]
 pub struct FieldMetadata {
 	pub name: &'static str,

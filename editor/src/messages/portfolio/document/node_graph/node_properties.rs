@@ -3,6 +3,7 @@
 use super::document_node_definitions::{NodePropertiesContext, IMAGINATE_NODE};
 use super::utility_types::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::*;
 
 use graph_craft::document::value::TaggedValue;
@@ -87,16 +88,30 @@ fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	widgets
 }
 
-pub(crate) fn property_from_type(
-	document_node: &DocumentNode,
-	node_id: NodeId,
-	index: usize,
-	name: &str,
-	ty: &Type,
-	_context: &mut NodePropertiesContext,
-	number_options: (Option<f64>, Option<f64>, Option<(f64, f64)>),
-) -> Vec<LayoutGroup> {
-	let (mut number_min, mut number_max, range) = number_options;
+pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let Some(input_properties_row) = context.network_interface.input_properties_row(&node_id, index, context.selection_network_path) else {
+		log::warn!("A widget failed to be built for node {node_id}, index {index} because the input connector could not be determined");
+		return vec![];
+	};
+
+	// Early return if input is hidden
+	if input_properties_row.hidden {
+		return vec![];
+	}
+
+	let name = &input_properties_row.input_name;
+
+	let Some(network) = context.network_interface.network(context.selection_network_path) else {
+		log::warn!("A widget failed to be built for node {node_id}, index {index} because the network could not be determined");
+		return vec![];
+	};
+
+	let Some(document_node) = network.nodes.get(&node_id) else {
+		log::warn!("A widget failed to be built for node {node_id}, index {index} because the document node does not exist");
+		return vec![];
+	};
+
+	let (mut number_min, mut number_max, range) = (None, None, None);
 	let mut number_input = NumberInput::default();
 	if let Some((range_start, range_end)) = range {
 		number_min = Some(range_start);
@@ -232,7 +247,7 @@ pub(crate) fn property_from_type(
 			}
 		}
 		Type::Generic(_) => vec![TextLabel::new("Generic type (not supported)").widget_holder()].into(),
-		Type::Fn(_, out) => return property_from_type(document_node, node_id, index, name, out, _context, number_options),
+		Type::Fn(_, out) => return property_from_type(node_id, index, out, context),
 		Type::Future(_) => vec![TextLabel::new("Future type (not supported)").widget_holder()].into(),
 	};
 	extra_widgets.push(widgets);
@@ -2239,7 +2254,7 @@ fn unknown_node_properties(reference: &String) -> Vec<LayoutGroup> {
 	string_properties(format!("Node '{}' cannot be found in library", reference))
 }
 
-pub(crate) fn node_no_properties(_document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn node_no_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	string_properties(if context.network_interface.is_layer(&node_id, context.selection_network_path) {
 		"Layer has no properties"
 	} else {
@@ -2253,20 +2268,27 @@ pub(crate) fn index_properties(document_node: &DocumentNode, node_id: NodeId, _c
 	vec![LayoutGroup::Row { widgets: index }]
 }
 
-pub(crate) fn generate_node_properties(document_node: &DocumentNode, node_id: NodeId, pinned: bool, context: &mut NodePropertiesContext) -> LayoutGroup {
-	let reference = context.network_interface.reference(&node_id, context.selection_network_path).clone();
-	let layout = if let Some(ref reference) = reference {
-		match super::document_node_definitions::resolve_document_node_type(reference) {
-			Some(document_node_type) => (document_node_type.properties)(document_node, node_id, context),
-			None => unknown_node_properties(reference),
-		}
-	} else {
-		node_no_properties(document_node, node_id, context)
-	};
+pub(crate) fn generate_node_properties(node_id: NodeId, pinned: bool, context: &mut NodePropertiesContext) -> LayoutGroup {
+	let mut layout = Vec::new();
 
+	if let Some(custom_properties) = context.network_interface.custom_properties(&node_id, context.selection_network_path) {
+		layout = custom_properties(node_id, context);
+	} else {
+		let number_of_inputs = context.network_interface.number_of_inputs(&node_id, context.selection_network_path);
+		for input_index in 0..number_of_inputs {
+			let input_type = context.network_interface.input_type(&InputConnector::node(node_id, input_index), context.selection_network_path);
+			let row = property_from_type(node_id, input_index, &input_type.0, context);
+			layout.extend(row);
+		}
+		if layout.is_empty() {
+			layout = node_no_properties(node_id, context);
+		}
+	}
+	let name = context.network_interface.reference(&node_id, context.selection_network_path).clone().unwrap_or_default();
+	let visible = context.network_interface.is_visible(&node_id, context.selection_network_path);
 	LayoutGroup::Section {
-		name: reference.unwrap_or_default(),
-		visible: document_node.visible,
+		name,
+		visible,
 		pinned,
 		id: node_id.0,
 		layout,

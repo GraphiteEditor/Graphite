@@ -3,9 +3,10 @@ use super::misc::PTZ;
 use super::nodes::SelectedNodes;
 use crate::consts::{EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP};
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::{resolve_document_node_type, DocumentNodeDefinition};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{resolve_document_node_type, DocumentNodeDefinition, NodePropertiesContext};
 use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
 use crate::messages::tool::common_functionality::graph_modification_utils;
+use crate::messages::tool::tool_messages::tool_prelude::LayoutGroup;
 
 use bezier_rs::Subpath;
 use graph_craft::document::{value::TaggedValue, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
@@ -1036,14 +1037,15 @@ impl NodeNetworkInterface {
 			.and_then(|node_metadata| node_metadata.persistent_metadata.reference.as_ref().map(|reference| reference.to_string()))
 	}
 
-	// None means that the type will be used
-	pub fn input_name(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> Option<String> {
+	pub fn input_properties_row(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> Option<&PropertiesRow> {
 		self.node_metadata(node_id, network_path)
-			.and_then(|node_metadata| node_metadata.persistent_metadata.input_names.get(index))
-			.cloned()
-			.filter(|s| !s.is_empty())
+			.and_then(|node_metadata| node_metadata.persistent_metadata.input_properties.get(index))
 	}
 
+	pub fn custom_properties(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&'static (dyn Fn(NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Sync)> {
+		self.node_metadata(node_id, network_path)
+			.and_then(|node_metadata| node_metadata.persistent_metadata.custom_properties)
+	}
 	// Use frontend display name instead
 	fn display_name(&self, node_id: &NodeId, network_path: &[NodeId]) -> String {
 		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
@@ -2073,7 +2075,7 @@ impl NodeNetworkInterface {
 		let node_graph_to_viewport = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport;
 		// TODO: Eventually replace node graph top right with the footprint when trying to get the network edge distance
 		let node_graph_top_right = network_metadata.persistent_metadata.navigation_metadata.node_graph_top_right;
-
+		log::debug!("Node graph top right is {node_graph_top_right:?}");
 		let target_exports_distance = node_graph_to_viewport.inverse().transform_point2(DVec2::new(
 			node_graph_top_right.x - EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP as f64,
 			node_graph_top_right.y + EXPORTS_TO_TOP_EDGE_PIXEL_GAP as f64,
@@ -2097,6 +2099,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get current network in load_export_ports");
 			return;
 		};
+		log::debug!("Setting rounded network edge distance to {network_edge_distance:?}");
 		network_metadata.transient_metadata.rounded_network_edge_distance = TransientMetadata::Loaded(network_edge_distance);
 	}
 
@@ -2156,7 +2159,6 @@ impl NodeNetworkInterface {
 			.unwrap_or([DVec2::new(0., 0.), DVec2::new(0., 0.)]);
 
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else { return };
-
 		network_metadata.transient_metadata.all_nodes_bounding_box = TransientMetadata::Loaded(all_nodes_bounding_box);
 	}
 
@@ -5718,6 +5720,33 @@ impl PartialEq for DocumentNodeMetadata {
 	}
 }
 
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+pub enum WidgetOverride {
+	Vector2(Vector2Override),
+	Text(TextOverride),
+}
+
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct PropertiesRow {
+	/// Input/Output names may not be the same length as the number of inputs/outputs. They are the same as the nested networks Imports/Exports.
+	/// If the string is empty/DNE, then it uses the type.
+	pub input_name: String,
+	/// Hide the properties row for this input for all types
+	pub hidden: bool,
+	// An input can override multiple widgets for different types
+	pub widget_override: Vec<WidgetOverride>,
+}
+
+impl From<String> for PropertiesRow {
+	fn from(name: String) -> Self {
+		PropertiesRow {
+			name,
+			hidden: false,
+			widget_override: Vec::new(),
+		}
+	}
+}
+
 /// Persistent metadata for each node in the network, which must be included when creating, serializing, and deserializing saving a node.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocumentNodePersistentMetadata {
@@ -5727,9 +5756,10 @@ pub struct DocumentNodePersistentMetadata {
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the reference name is displayed to the user in italics.
 	#[serde(default)]
 	pub display_name: String,
-	/// Input/Output names may not be the same length as the number of inputs/outputs. They are the same as the nested networks Imports/Exports.
-	/// If the string is empty/DNE, then it uses the type.
-	pub input_names: Vec<String>,
+	/// Stores metadata to display custom properties in the properties panel for each input, which are generated automatically based on the type
+	pub input_properties: Vec<PropertiesRow>,
+	/// A node can have a fully custom properties panel. For example to display a single string, or if interdependent properties are needed
+	pub custom_properties: Option<&'static (dyn Fn(NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Sync)>,
 	pub output_names: Vec<String>,
 	/// Indicates to the UI if a primary output should be drawn for this node.
 	/// True for most nodes, but the Split Channels node is an example of a node that has multiple secondary outputs but no primary output.
@@ -5753,7 +5783,8 @@ impl Default for DocumentNodePersistentMetadata {
 		DocumentNodePersistentMetadata {
 			reference: None,
 			display_name: String::new(),
-			input_names: Vec::new(),
+			input_properties: Vec::new(),
+			custom_properties: None,
 			output_names: Vec::new(),
 			has_primary_output: true,
 			pinned: false,

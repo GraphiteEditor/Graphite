@@ -9,7 +9,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{
-	self, InputConnector, NodeNetworkInterface, NodeTemplate, NodeTypePersistentMetadata, OutputConnector, Previewing, TypeSource,
+	self, InputConnector, NodeNetworkInterface, NodeTemplate, NodeTypePersistentMetadata, OutputConnector, Previewing, PropertiesRow, TypeSource
 };
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
 use crate::messages::prelude::*;
@@ -99,8 +99,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![new_layer_id] });
 			}
-			NodeGraphMessage::AddImport => network_interface.add_import(graph_craft::document::value::TaggedValue::None, true, -1, String::new(), breadcrumb_network_path),
-			NodeGraphMessage::AddExport => network_interface.add_export(graph_craft::document::value::TaggedValue::None, -1, String::new(), breadcrumb_network_path),
+			NodeGraphMessage::AddImport => {
+				network_interface.add_import(graph_craft::document::value::TaggedValue::None, true, -1, String::new(), breadcrumb_network_path);
+				responses.add(NodeGraphMessage::SendGraph);
+			}
+			NodeGraphMessage::AddExport => {
+				network_interface.add_export(graph_craft::document::value::TaggedValue::None, -1, String::new(), breadcrumb_network_path);
+				responses.add(NodeGraphMessage::SendGraph);
+			}
 			NodeGraphMessage::Init => {
 				responses.add(BroadcastMessage::SubscribeEvent {
 					on: BroadcastEvent::SelectionChanged,
@@ -567,22 +573,18 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if modify_import_export.add_import_export.clicked_input_port_from_point(node_graph_point).is_some() {
 					responses.add(DocumentMessage::AddTransaction);
 					responses.add(NodeGraphMessage::AddExport);
-					responses.add(NodeGraphMessage::SendGraph);
 					return;
 				} else if modify_import_export.add_import_export.clicked_output_port_from_point(node_graph_point).is_some() {
 					responses.add(DocumentMessage::AddTransaction);
 					responses.add(NodeGraphMessage::AddImport);
-					responses.add(NodeGraphMessage::SendGraph);
 					return;
 				} else if let Some(remove_import_index) = modify_import_export.remove_imports_exports.clicked_output_port_from_point(node_graph_point) {
 					responses.add(DocumentMessage::AddTransaction);
 					responses.add(NodeGraphMessage::RemoveImport { import_index: remove_import_index });
-					responses.add(NodeGraphMessage::SendGraph);
 					return;
 				} else if let Some(remove_export_index) = modify_import_export.remove_imports_exports.clicked_input_port_from_point(node_graph_point) {
 					responses.add(DocumentMessage::AddTransaction);
 					responses.add(NodeGraphMessage::RemoveExport { export_index: remove_export_index });
-					responses.add(NodeGraphMessage::SendGraph);
 					return;
 				}
 
@@ -1198,9 +1200,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::RemoveImport { import_index: usize } => {
 				network_interface.remove_import(usize, selection_network_path);
+				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			NodeGraphMessage::RemoveExport { export_index: usize } => {
 				network_interface.remove_export(usize, selection_network_path);
+				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			NodeGraphMessage::RunDocumentGraph => {
 				responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false });
@@ -1870,10 +1876,6 @@ impl NodeGraphMessageHandler {
 	/// Collate the properties panel sections for a node graph
 	pub fn collate_properties(context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 		// If the selected nodes are in the document network, use the document network. Otherwise, use the nested network
-		let Some(network) = context.network_interface.network(context.selection_network_path) else {
-			warn!("No network in collate_properties");
-			return Vec::new();
-		};
 		let Some(selected_nodes) = context.network_interface.selected_nodes(context.selection_network_path) else {
 			warn!("No selected nodes in collate_properties");
 			return Vec::new();
@@ -1901,17 +1903,15 @@ impl NodeGraphMessageHandler {
 			0 => {
 				let selected_nodes = nodes
 					.iter()
-					.filter_map(|node_id| {
-						network.nodes.get(node_id).map(|node| {
-							let pinned = if let Some(node) = context.network_interface.node_metadata(node_id, context.selection_network_path) {
-								node.persistent_metadata.pinned
-							} else {
-								error!("Could not get node {node_id} in collate_properties");
-								false
-							};
+					.map(|node_id| {
+						let pinned = if let Some(node) = context.network_interface.node_metadata(node_id, context.selection_network_path) {
+							node.persistent_metadata.pinned
+						} else {
+							error!("Could not get node {node_id} in collate_properties");
+							false
+						};
 
-							node_properties::generate_node_properties(node, *node_id, pinned, context)
-						})
+						node_properties::generate_node_properties(*node_id, pinned, context)
 					})
 					.collect::<Vec<_>>();
 				if !selected_nodes.is_empty() {
@@ -1931,11 +1931,18 @@ impl NodeGraphMessageHandler {
 					],
 				}];
 
+				let Some(network) = context.network_interface.network(context.selection_network_path) else {
+					warn!("No network in collate_properties");
+					return Vec::new();
+				};
 				// And if no nodes are selected, show properties for all pinned nodes
 				let pinned_node_properties = network
 					.nodes
+					.keys()
+					.cloned()
+					.collect::<Vec<_>>()
 					.iter()
-					.filter_map(|(node_id, node)| {
+					.filter_map(|node_id| {
 						let pinned = if let Some(node) = context.network_interface.node_metadata(node_id, context.selection_network_path) {
 							node.persistent_metadata.pinned
 						} else {
@@ -1944,7 +1951,7 @@ impl NodeGraphMessageHandler {
 						};
 
 						if pinned {
-							Some(node_properties::generate_node_properties(node, *node_id, pinned, context))
+							Some(node_properties::generate_node_properties(*node_id, pinned, context))
 						} else {
 							None
 						}
@@ -2014,8 +2021,9 @@ impl NodeGraphMessageHandler {
 							!context.network_interface.is_layer(node_id, context.selection_network_path)
 						}
 					})
-					.filter_map(|(_, node_id)| network.nodes.get(&node_id).map(|node| (node, node_id)))
-					.map(|(node, node_id)| {
+					.collect::<Vec<_>>()
+					.iter()
+					.map(|(_, node_id)| {
 						let pinned = if let Some(node) = context.network_interface.node_metadata(&node_id, context.selection_network_path) {
 							node.persistent_metadata.pinned
 						} else {
@@ -2023,7 +2031,7 @@ impl NodeGraphMessageHandler {
 							false
 						};
 
-						node_properties::generate_node_properties(node, node_id, pinned, context)
+						node_properties::generate_node_properties(*node_id, pinned, context)
 					})
 					.collect::<Vec<_>>();
 
@@ -2440,8 +2448,7 @@ fn frontend_inputs_lookup(breadcrumb_network_path: &[NodeId], network_interface:
 			}
 
 			// Get the name from the metadata here (since it also requires a reference to the `network_interface`)
-			let name = network_interface.input_name(&node_id, index, breadcrumb_network_path);
-
+			let name = network_interface.input_properties_row(&node_id, index, breadcrumb_network_path).cloned().map(|properties_row|properties_row.input_name).filter(|s| !s.is_empty());
 			// Get the output connector that feeds into this input (done here as well for simplicity)
 			let connector = OutputConnector::from_input(input);
 
