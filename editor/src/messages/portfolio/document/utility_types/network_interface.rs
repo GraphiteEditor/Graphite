@@ -1608,7 +1608,12 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		if let Some(selection_state) = network_metadata.persistent_metadata.selection_undo_history.pop_back() {
+		let mut non_empty_selections:VecDeque<SelectedNodes>  = network_metadata.persistent_metadata.selection_redo_history.iter().
+		filter(|selected_nodes| selected_nodes.has_selected_nodes()).
+		cloned().
+		collect();
+
+		if let Some(selection_state) = non_empty_selections.pop_back() {
 			network_metadata.persistent_metadata.selection_redo_history.push_front(selection_state);
 		}
 	}
@@ -1619,7 +1624,12 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		if let Some(selection_state) = network_metadata.persistent_metadata.selection_redo_history.pop_front() {
+		let mut non_empty_selections:VecDeque<SelectedNodes> = network_metadata.persistent_metadata.selection_redo_history.iter().
+		filter(|selected_nodes| selected_nodes.has_selected_nodes()).
+		cloned().
+		collect();
+
+		if let Some(selection_state) = non_empty_selections.pop_front() {
 			network_metadata.persistent_metadata.selection_undo_history.push_back(selection_state);
 		}
 	}
