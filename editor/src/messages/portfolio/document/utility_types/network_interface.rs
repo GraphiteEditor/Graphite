@@ -3,7 +3,8 @@ use super::misc::PTZ;
 use super::nodes::SelectedNodes;
 use crate::consts::{EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP};
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::{resolve_document_node_type, DocumentNodeDefinition, NodePropertiesContext};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{self, resolve_document_node_type, DocumentNodeDefinition, NodePropertiesContext};
+use crate::messages::portfolio::document::node_graph::node_properties;
 use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::tool_messages::tool_prelude::LayoutGroup;
@@ -717,9 +718,9 @@ impl NodeNetworkInterface {
 				.filter_map(|(import_index, click_target)| {
 					// Get import name from parent node metadata input, which must match the number of imports.
 					// Empty string means to use type, or "Import + index" if type can't be determined
-					let import_name = self
+					let properties_row = self
 						.encapsulating_node_metadata(network_path)
-						.and_then(|encapsulating_metadata| encapsulating_metadata.persistent_metadata.input_names.get(*import_index).cloned())
+						.and_then(|encapsulating_metadata| encapsulating_metadata.persistent_metadata.input_properties.get(*import_index).cloned())
 						.unwrap_or_default();
 
 					let mut import_metadata = None;
@@ -731,7 +732,11 @@ impl NodeNetworkInterface {
 						let (input_type, type_source) = self.input_type(&InputConnector::node(encapsulating_node_id, *import_index), &encapsulating_path);
 						let data_type = FrontendGraphDataType::with_type(&input_type);
 
-						let import_name = if import_name.is_empty() { input_type.clone().nested_type().to_string() } else { import_name };
+						let import_name = if properties_row.input_name.is_empty() {
+							input_type.clone().nested_type().to_string()
+						} else {
+							properties_row.input_name
+						};
 
 						let connected_to = self
 							.outward_wires(network_path)
@@ -1042,10 +1047,16 @@ impl NodeNetworkInterface {
 			.and_then(|node_metadata| node_metadata.persistent_metadata.input_properties.get(index))
 	}
 
-	pub fn custom_properties(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&'static (dyn Fn(NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Sync)> {
-		self.node_metadata(node_id, network_path)
-			.and_then(|node_metadata| node_metadata.persistent_metadata.custom_properties)
+	pub fn input_properties_row_mut(&mut self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> Option<&mut PropertiesRow> {
+		self.node_metadata_mut(node_id, network_path)
+			.and_then(|node_metadata| node_metadata.persistent_metadata.input_properties.get_mut(index))
 	}
+
+	pub fn widget_override(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> Option<&mut WidgetOverride> {
+		self.input_properties_row_mut(node_id, index, network_path)
+			.and_then(|node_metadata| node_metadata.widget_override.as_mut())
+	}
+
 	// Use frontend display name instead
 	fn display_name(&self, node_id: &NodeId, network_path: &[NodeId]) -> String {
 		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
@@ -3290,9 +3301,9 @@ impl NodeNetworkInterface {
 			return;
 		};
 		if insert_index == -1 {
-			node_metadata.persistent_metadata.input_names.push(input_name);
+			node_metadata.persistent_metadata.input_properties.push(input_name.into());
 		} else {
-			node_metadata.persistent_metadata.input_names.insert(insert_index as usize, input_name);
+			node_metadata.persistent_metadata.input_properties.insert(insert_index as usize, input_name.into());
 		}
 
 		// Update the metadata for the encapsulating node
@@ -3406,7 +3417,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get encapsulating node metadata in remove_export");
 			return;
 		};
-		encapsulating_node_metadata.persistent_metadata.input_names.remove(import_index);
+		encapsulating_node_metadata.persistent_metadata.input_properties.remove(import_index);
 
 		// Update the metadata for the encapsulating node
 		self.unload_outward_wires(&encapsulating_network_path);
@@ -5720,29 +5731,80 @@ impl PartialEq for DocumentNodeMetadata {
 	}
 }
 
-#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
-pub enum WidgetOverride {
-	Vector2(Vector2Override),
-	Text(TextOverride),
+pub trait CloneableFn: Fn(NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Send + Sync {
+	fn clone_box(&self) -> Box<dyn CloneableFn>;
 }
 
-#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+impl<T> CloneableFn for T
+where
+	T: Fn(NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Clone + Send + Sync + 'static,
+{
+	fn clone_box(&self) -> Box<dyn CloneableFn> {
+		Box::new(self.clone())
+	}
+}
+
+use std::fmt;
+
+// TODO: Store the lambdas as enums which can then be mapped into lambdas when serializing/deserializing/cloning
+pub trait CloneableFn: Fn(NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Send + Sync {
+	fn clone_box(&self) -> Box<dyn CloneableFn>;
+}
+
+impl fmt::Debug for dyn CloneableFn {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "CloneableFn")
+	}
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct WidgetOverride(pub Box<dyn CloneableFn>);
+
+impl Clone for WidgetOverride {
+	fn clone(&self) -> Self {
+		WidgetOverride(self.0.clone_box())
+	}
+}
+
+impl WidgetOverride {
+	pub fn hidden() -> Self {
+		WidgetOverride(Box::new(|_node_id: NodeId, _context| Vec::new()))
+	}
+
+	pub fn string(string: &'static str) -> Self {
+		WidgetOverride(Box::new(|_node_id: NodeId, _context| node_properties::string_properties(string)))
+	}
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PropertiesRow {
 	/// Input/Output names may not be the same length as the number of inputs/outputs. They are the same as the nested networks Imports/Exports.
 	/// If the string is empty/DNE, then it uses the type.
 	pub input_name: String,
-	/// Hide the properties row for this input for all types
-	pub hidden: bool,
-	// An input can override multiple widgets for different types
-	pub widget_override: Vec<WidgetOverride>,
+	// An input can override a widget, which would otherwise be automatically generated from the type
+	pub widget_override: Option<WidgetOverride>,
 }
 
-impl From<String> for PropertiesRow {
-	fn from(name: String) -> Self {
+impl PartialEq for PropertiesRow {
+	fn eq(&self, other: &Self) -> bool {
+		self.input_name == other.input_name
+	}
+}
+
+impl From<&str> for PropertiesRow {
+	fn from(input_name: &str) -> Self {
 		PropertiesRow {
-			name,
-			hidden: false,
-			widget_override: Vec::new(),
+			input_name: input_name.to_string(),
+			widget_override: None,
+		}
+	}
+}
+
+impl PropertiesRow {
+	pub fn with_override(input_name: &str, widget_override: WidgetOverride) -> Self {
+		PropertiesRow {
+			input_name: input_name.to_string(),
+			widget_override: Some(widget_override),
 		}
 	}
 }
@@ -5756,10 +5818,9 @@ pub struct DocumentNodePersistentMetadata {
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the reference name is displayed to the user in italics.
 	#[serde(default)]
 	pub display_name: String,
-	/// Stores metadata to display custom properties in the properties panel for each input, which are generated automatically based on the type
+	/// Stores metadata to override the properties in the properties panel for each input. These can either be generated automatically based on the type, or with a custom function.
 	pub input_properties: Vec<PropertiesRow>,
 	/// A node can have a fully custom properties panel. For example to display a single string, or if interdependent properties are needed
-	pub custom_properties: Option<&'static (dyn Fn(NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Sync)>,
 	pub output_names: Vec<String>,
 	/// Indicates to the UI if a primary output should be drawn for this node.
 	/// True for most nodes, but the Split Channels node is an example of a node that has multiple secondary outputs but no primary output.
@@ -5784,7 +5845,6 @@ impl Default for DocumentNodePersistentMetadata {
 			reference: None,
 			display_name: String::new(),
 			input_properties: Vec::new(),
-			custom_properties: None,
 			output_names: Vec::new(),
 			has_primary_output: true,
 			pinned: false,

@@ -3,6 +3,7 @@ use super::utility_types::FrontendNodeType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::{
 	DocumentNodeMetadata, DocumentNodePersistentMetadata, NodeNetworkInterface, NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodeTemplate, NodeTypePersistentMetadata, PropertiesRow,
+	WidgetOverride,
 };
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
@@ -88,8 +89,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec!["In".to_string().into()],
-					custom_properties: &|_node_id, _context| node_properties::string_properties("The identity node simply passes its data through"),
+					input_properties: vec![PropertiesRow::with_override("In", WidgetOverride::string("The identity node simply passes its data through."))],
 					output_names: vec!["Out".to_string()],
 					..Default::default()
 				},
@@ -110,8 +110,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec!["In".to_string().into()],
-					custom_properties: &|_node_id, _context| node_properties::string_properties("The Monitor node is used by the editor to access the data flowing through it."),
+					input_properties: vec![PropertiesRow::with_override(
+						"In",
+						WidgetOverride::string("The Monitor node is used by the editor to access the data flowing through it."),
+					)],
 					output_names: vec!["Out".to_string()],
 					..Default::default()
 				},
@@ -172,7 +174,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Graphical Data".to_string(), "Over".to_string()],
+					input_properties: vec!["Graphical Data".into(), "Over".into()],
 					output_names: vec!["Out".to_string()],
 					node_type_metadata: NodeTypePersistentMetadata::layer(IVec2::new(0, 0)),
 					network_metadata: Some(NodeNetworkMetadata {
@@ -283,14 +285,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec![
-						"Artboards".to_string(),
-						"Contents".to_string(),
-						"Location".to_string(),
-						"Dimensions".to_string(),
-						"Background".to_string(),
-						"Clip".to_string(),
-					],
+					input_properties: vec!["Artboards".into(), "Contents".into(), "Location".into(), "Dimensions".into(), "Background".into(), "Clip".into()],
 					output_names: vec!["Out".to_string()],
 					node_type_metadata: NodeTypePersistentMetadata::layer(IVec2::new(0, 0)),
 					network_metadata: Some(NodeNetworkMetadata {
@@ -371,7 +366,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["api".to_string(), "path".to_string()],
+					input_properties: vec!["api".into(), "path".into()],
 					output_names: vec!["Image Frame".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -519,7 +514,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["In".to_string()],
+					input_properties: vec!["In".into()],
 					output_names: vec!["Canvas".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -618,7 +613,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Artwork".to_string(), "Footprint".to_string()],
+					input_properties: vec!["Artwork".into(), "Footprint".into()],
 					output_names: vec!["Canvas".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -694,8 +689,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec!["Image".to_string().into(), "Transform".to_string().into()],
-					custom_properties: Some(&|_node_id, _context| node_properties::string_properties("Creates an embedded image with the given transform")),
+					input_properties: vec![PropertiesRow::with_override("Image", WidgetOverride::string("Creates an embedded image with the given transform."))],
 					output_names: vec!["Image".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -757,22 +751,22 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec![
-						"Clip".to_string(),
-						"Seed".to_string(),
-						"Scale".to_string(),
-						"Noise Type".to_string(),
-						"Domain Warp Type".to_string(),
-						"Domain Warp Amplitude".to_string(),
-						"Fractal Type".to_string(),
-						"Fractal Octaves".to_string(),
-						"Fractal Lacunarity".to_string(),
-						"Fractal Gain".to_string(),
-						"Fractal Weighted Strength".to_string(),
-						"Fractal Ping Pong Strength".to_string(),
-						"Cellular Distance Function".to_string(),
-						"Cellular Return Type".to_string(),
-						"Cellular Jitter".to_string(),
+					input_properties: vec![
+						"Clip".into(),
+						"Seed".into(),
+						"Scale".into(),
+						"Noise Type".into(),
+						"Domain Warp Type".into(),
+						"Domain Warp Amplitude".into(),
+						"Fractal Type".into(),
+						"Fractal Octaves".into(),
+						"Fractal Lacunarity".into(),
+						"Fractal Gain".into(),
+						"Fractal Weighted Strength".into(),
+						"Fractal Ping Pong Strength".into(),
+						"Cellular Distance Function".into(),
+						"Cellular Return Type".into(),
+						"Cellular Jitter".into(),
 					],
 					output_names: vec!["Image".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
@@ -823,7 +817,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Stencil".to_string()],
+					input_properties: vec!["Image".into(), "Stencil".into()],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
@@ -846,7 +840,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Insertion".to_string(), "Replace".to_string()],
+					input_properties: vec!["Image".into(), "Insertion".into(), "Replace".into()],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
@@ -870,7 +864,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["None".to_string(), "Red".to_string(), "Green".to_string(), "Blue".to_string(), "Alpha".to_string()],
+					input_properties: vec!["None".into(), "Red".into(), "Green".into(), "Blue".into(), "Alpha".into()],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
@@ -938,7 +932,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string()],
+					input_properties: vec!["Image".into()],
 					output_names: vec!["Red".to_string(), "Green".to_string(), "Blue".to_string(), "Alpha".to_string()],
 					has_primary_output: false,
 					network_metadata: Some(NodeNetworkMetadata {
@@ -1023,7 +1017,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Background".to_string(), "Bounds".to_string(), "Trace".to_string(), "Cache".to_string()],
+					input_properties: vec!["Background".into(), "Bounds".into(), "Trace".into(), "Cache".into()],
 					output_names: vec!["Image".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1069,7 +1063,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string()],
+					input_properties: vec!["Image".into()],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
@@ -1087,7 +1081,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string()],
+					input_properties: vec!["Image".into()],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
@@ -1117,8 +1111,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec!["Image".to_string()],
-					custom_properties: Some(&|_node_id, _context| node_properties::string_properties("A bitmap image is embedded in this node")),
+					input_properties: vec![PropertiesRow::with_override("Image", WidgetOverride::string("A bitmap image is embedded in this node"))],
 					output_names: vec!["Image".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1180,7 +1173,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["In".to_string()],
+					input_properties: vec!["In".into()],
 					output_names: vec!["Uniform".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1258,7 +1251,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["In".to_string()],
+					input_properties: vec!["In".into()],
 					output_names: vec!["Storage".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1336,7 +1329,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["In".to_string(), "In".to_string()],
+					input_properties: vec!["In".into(), "In".into()],
 					output_names: vec!["Output Buffer".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1424,7 +1417,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["In".to_string(), "In".to_string(), "In".to_string()],
+					input_properties: vec!["In".into(), "In".into(), "In".into()],
 					output_names: vec!["Command Buffer".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1483,7 +1476,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Shader Handle".to_string(), "String".to_string(), "Bindgroup".to_string(), "Arc Shader Input".to_string()],
+					input_properties: vec!["Shader Handle".into(), "String".into(), "Bindgroup".into(), "Arc Shader Input".into()],
 					output_names: vec!["Pipeline Layout".to_string()],
 					..Default::default()
 				},
@@ -1527,7 +1520,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["In".to_string()],
+					input_properties: vec!["In".into()],
 					output_names: vec!["Pipeline Result".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1606,7 +1599,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["In".to_string()],
+					input_properties: vec!["In".into()],
 					output_names: vec!["Buffer".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1749,7 +1742,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Texture".to_string(), "Surface".to_string()],
+					input_properties: vec!["Texture".into(), "Surface".into()],
 					output_names: vec!["Rendered Texture".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1821,7 +1814,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["In".to_string()],
+					input_properties: vec!["In".into()],
 					output_names: vec!["Texture".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1878,7 +1871,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Node".to_string()],
+					input_properties: vec!["Image".into(), "Node".into()],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
@@ -1895,7 +1888,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Node".to_string()],
+					input_properties: vec!["Node".into()],
 					output_names: vec!["Document Node".to_string()],
 					..Default::default()
 				},
@@ -1920,7 +1913,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Brightness".to_string(), "Contrast".to_string(), "Use Classic".to_string()],
+					input_properties: vec!["Image".into(), "Brightness".into(), "Contrast".into(), "Use Classic".into()],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
@@ -1943,7 +1936,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Curve".to_string()],
+					input_properties: vec!["Image".into(), "Curve".into()],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
@@ -1966,7 +1959,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["None".to_string(), "Start".to_string(), "End".to_string()],
+					input_properties: vec!["None".into(), "Start".into(), "End".into()],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
@@ -1988,7 +1981,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["None".to_string(), "Points".to_string()],
+					input_properties: vec!["None".into(), "Points".into()],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
@@ -2030,7 +2023,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Vector Data".to_string(), "Modification".to_string()],
+					input_properties: vec!["Vector Data".into(), "Modification".into()],
 					output_names: vec!["Vector Data".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -2086,14 +2079,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec![
-						"Editor API".to_string(),
-						"Text".to_string(),
-						"Font".to_string(),
-						"Size".to_string(),
-						"Line Height".to_string(),
-						"Character Spacing".to_string(),
-					],
+					input_properties: vec!["Editor API".into(), "Text".into(), "Font".into(), "Size".into(), "Line Height".into(), "Character Spacing".into()],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
@@ -2172,14 +2158,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 						..Default::default()
 					}),
-					input_names: vec![
-						"Vector Data".to_string(),
-						"Translation".to_string(),
-						"Rotation".to_string(),
-						"Scale".to_string(),
-						"Skew".to_string(),
-						"Pivot".to_string(),
-					],
+					input_properties: vec!["Vector Data".into(), "Translation".into(), "Rotation".into(), "Scale".into(), "Skew".into(), "Pivot".into()],
 					output_names: vec!["Data".to_string()],
 					..Default::default()
 				},
@@ -2249,7 +2228,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 						..Default::default()
 					}),
-					input_names: vec!["Group of Paths".to_string(), "Operation".to_string()],
+					input_properties: vec!["Group of Paths".into(), "Operation".into()],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
@@ -2278,15 +2257,15 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec![
-						"Points".to_string(),
-						"Instance".to_string(),
-						"Random Scale Min".to_string(),
-						"Random Scale Max".to_string(),
-						"Random Scale Bias".to_string(),
-						"Random Scale Seed".to_string(),
-						"Random Rotation".to_string(),
-						"Random Rotation Seed".to_string(),
+					input_properties: vec![
+						"Points".into(),
+						"Instance".into(),
+						"Random Scale Min".into(),
+						"Random Scale Max".into(),
+						"Random Scale Bias".into(),
+						"Random Scale Seed".into(),
+						"Random Rotation".into(),
+						"Random Rotation Seed".into(),
 					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
@@ -2378,13 +2357,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 						..Default::default()
 					}),
-					input_names: vec![
-						"Vector Data".to_string(),
-						"Spacing".to_string(),
-						"Start Offset".to_string(),
-						"Stop Offset".to_string(),
-						"Adaptive Spacing".to_string(),
-					],
+					input_properties: vec!["Vector Data".into(), "Spacing".into(), "Start Offset".into(), "Stop Offset".into(), "Adaptive Spacing".into()],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
@@ -2457,7 +2430,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 						..Default::default()
 					}),
-					input_names: vec!["Vector Data".to_string(), "Separation Disk Diameter".to_string(), "Seed".to_string()],
+					input_properties: vec!["Vector Data".into(), "Separation Disk Diameter".into(), "Seed".into()],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
@@ -2476,7 +2449,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Segmentation".to_string(), "Index".to_string()],
+					input_properties: vec!["Segmentation".into(), "Index".into()],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
@@ -2563,7 +2536,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: fields.iter().map(|f| f.name.to_string().into()).collect(),
+					input_properties: fields.iter().map(|f| f.name.into()).collect(),
 					output_names: vec![output_type.to_string()],
 					has_primary_output: true,
 					locked: false,
@@ -2673,24 +2646,24 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 				},
 				..Default::default()
 			}),
-			input_names: vec![
-				"Input Image".to_string(),
-				"Editor Api".to_string(),
-				"Controller".to_string(),
-				"Seed".to_string(),
-				"Resolution".to_string(),
-				"Samples".to_string(),
-				"Sampling Method".to_string(),
-				"Prompt Guidance".to_string(),
-				"Prompt".to_string(),
-				"Negative Prompt".to_string(),
-				"Adapt Input Image".to_string(),
-				"Image Creativity".to_string(),
-				"Inpaint".to_string(),
-				"Mask Blur".to_string(),
-				"Mask Starting Fill".to_string(),
-				"Improve Faces".to_string(),
-				"Tiling".to_string(),
+			input_properties: vec![
+				"Input Image".into(),
+				"Editor Api".into(),
+				"Controller".into(),
+				"Seed".into(),
+				"Resolution".into(),
+				"Samples".into(),
+				"Sampling Method".into(),
+				"Prompt Guidance".into(),
+				"Prompt".into(),
+				"Negative Prompt".into(),
+				"Adapt Input Image".into(),
+				"Image Creativity".into(),
+				"Inpaint".into(),
+				"Mask Blur".into(),
+				"Mask Starting Fill".into(),
+				"Improve Faces".into(),
+				"Tiling".into(),
 			],
 			output_names: vec!["Image".to_string()],
 			..Default::default()

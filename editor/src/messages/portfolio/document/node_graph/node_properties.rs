@@ -3,7 +3,7 @@
 use super::document_node_definitions::{NodePropertiesContext, IMAGINATE_NODE};
 use super::utility_types::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
+use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, WidgetOverride};
 use crate::messages::prelude::*;
 
 use graph_craft::document::value::TaggedValue;
@@ -93,11 +93,6 @@ pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, conte
 		log::warn!("A widget failed to be built for node {node_id}, index {index} because the input connector could not be determined");
 		return vec![];
 	};
-
-	// Early return if input is hidden
-	if input_properties_row.hidden {
-		return vec![];
-	}
 
 	let name = &input_properties_row.input_name;
 
@@ -1767,9 +1762,9 @@ pub(crate) fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId
 		IMAGINATE_NODE
 			.default_node_template()
 			.persistent_node_metadata
-			.input_names
+			.input_properties
 			.iter()
-			.position(|input| input == name)
+			.position(|row| row.input_name == name)
 			.unwrap_or_else(|| panic!("Input {name} not found"))
 	};
 	let seed_index = resolve_input("Seed");
@@ -2271,18 +2266,23 @@ pub(crate) fn index_properties(document_node: &DocumentNode, node_id: NodeId, _c
 pub(crate) fn generate_node_properties(node_id: NodeId, pinned: bool, context: &mut NodePropertiesContext) -> LayoutGroup {
 	let mut layout = Vec::new();
 
-	if let Some(custom_properties) = context.network_interface.custom_properties(&node_id, context.selection_network_path) {
-		layout = custom_properties(node_id, context);
-	} else {
-		let number_of_inputs = context.network_interface.number_of_inputs(&node_id, context.selection_network_path);
-		for input_index in 0..number_of_inputs {
+	let number_of_inputs = context.network_interface.number_of_inputs(&node_id, context.selection_network_path);
+	for input_index in 0..number_of_inputs {
+		if let Some(widget_override) = context.network_interface.widget_override(&node_id, input_index, context.selection_network_path) {
+			let mut widget_override = std::mem::replace(&mut WidgetOverride(Box::new()));
+			layout.extend(widget_override.0(node_id, context));
+			let empty_widget_override = context
+				.network_interface
+				.widget_override(&node_id, input_index, context.selection_network_path)
+				.replace(&mut widget_override);
+		} else {
 			let input_type = context.network_interface.input_type(&InputConnector::node(node_id, input_index), context.selection_network_path);
 			let row = property_from_type(node_id, input_index, &input_type.0, context);
 			layout.extend(row);
 		}
-		if layout.is_empty() {
-			layout = node_no_properties(node_id, context);
-		}
+	}
+	if layout.is_empty() {
+		layout = node_no_properties(node_id, context);
 	}
 	let name = context.network_interface.reference(&node_id, context.selection_network_path).clone().unwrap_or_default();
 	let visible = context.network_interface.is_visible(&node_id, context.selection_network_path);
