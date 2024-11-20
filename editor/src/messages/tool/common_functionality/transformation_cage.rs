@@ -3,6 +3,7 @@ use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::transformation::OriginalTransforms;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration;
 
 use graphene_core::renderer::Quad;
 
@@ -124,7 +125,15 @@ impl SelectedEdges {
 			let mut best_snap = SnappedPoint::infinite_snap(pivot);
 			let mut best_scale_factor = DVec2::ONE;
 			let tolerance = snapping::snap_tolerance(snap_data.document);
-			for point in points {
+
+			let bbox = Some(Rect::from_box((bounds_to_doc * Quad::from_box([min, max])).bounding_box()));
+			for (index, point) in points.iter_mut().enumerate() {
+				let config = SnapTypeConfiguration {
+					bbox,
+					use_existing_candidates: index != 0,
+					..Default::default()
+				};
+
 				let old_position = point.document_point;
 				let bounds_space = bounds_to_doc.inverse().transform_point2(point.document_point);
 				let normalized = (bounds_space - self.bounds[0]) / (self.bounds[1] - self.bounds[0]);
@@ -135,16 +144,16 @@ impl SelectedEdges {
 						origin: point.document_point,
 						direction: (point.document_point - bounds_to_doc.transform_point2(pivot)).normalize_or_zero(),
 					};
-					manager.constrained_snap(&snap_data, point, constraint, None)
+					manager.constrained_snap(&snap_data, point, constraint, config)
 				} else if !(self.top || self.bottom) || !(self.left || self.right) {
 					let axis = if !(self.top || self.bottom) { DVec2::X } else { DVec2::Y };
 					let constraint = SnapConstraint::Line {
 						origin: point.document_point,
 						direction: bounds_to_doc.transform_vector2(axis),
 					};
-					manager.constrained_snap(&snap_data, point, constraint, None)
+					manager.constrained_snap(&snap_data, point, constraint, config)
 				} else {
-					manager.free_snap(&snap_data, point, None, false)
+					manager.free_snap(&snap_data, point, config)
 				};
 				point.document_point = old_position;
 
@@ -228,22 +237,25 @@ pub fn snap_drag(start: DVec2, current: DVec2, axis_align: bool, snap_data: Snap
 
 	let bbox = Rect::point_iter(candidates.iter().map(|candidate| candidate.document_point + total_mouse_delta_document));
 
-	for point in candidates {
+	for (index, point) in candidates.iter().enumerate() {
+		let config = SnapTypeConfiguration {
+			bbox,
+			accept_distribution: true,
+			use_existing_candidates: index != 0,
+			..Default::default()
+		};
+
 		let mut point = point.clone();
 		point.document_point += total_mouse_delta_document;
 
 		let snapped = if axis_align {
-			snap_manager.constrained_snap(
-				&snap_data,
-				&point,
-				SnapConstraint::Line {
-					origin: point.document_point,
-					direction: total_mouse_delta_document.try_normalize().unwrap_or(DVec2::X),
-				},
-				bbox,
-			)
+			let constraint = SnapConstraint::Line {
+				origin: point.document_point,
+				direction: total_mouse_delta_document.try_normalize().unwrap_or(DVec2::X),
+			};
+			snap_manager.constrained_snap(&snap_data, &point, constraint, config)
 		} else {
-			snap_manager.free_snap(&snap_data, &point, bbox, false)
+			snap_manager.free_snap(&snap_data, &point, config)
 		};
 
 		if best_snap.other_snap_better(&snapped) {

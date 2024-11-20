@@ -30,6 +30,9 @@ pub const DRAG_BEYOND_VIEWPORT_SPEED_FACTOR: f64 = 20.;
 
 // Snapping point
 pub const SNAP_POINT_TOLERANCE: f64 = 5.;
+pub const MAX_ALIGNMENT_CANDIDATES: usize = 100; // These are layers whose bounding boxes are used for alignment.
+pub const MAX_SNAP_CANDIDATES: usize = 10; // These are layers that are used for the layer snapper
+pub const MAX_LAYER_SNAP_POINTS: usize = 100; // These are points (anchors and bounding box corners etc.) in the layer snapper
 
 pub const DRAG_THRESHOLD: f64 = 1.;
 
