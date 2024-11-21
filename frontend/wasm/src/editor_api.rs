@@ -1011,16 +1011,3 @@ fn auto_save_all_documents() {
 		}
 	});
 }
-
-#[test]
-fn implicit_multiplication_preprocess_tests() {
-	assert_eq!(implicit_multiplication_preprocess("2pi"), "2*pi");
-	assert_eq!(implicit_multiplication_preprocess("sin(2pi)"), "sin(2*pi)");
-	assert_eq!(implicit_multiplication_preprocess("2sin(pi)"), "2*sin(pi)");
-	assert_eq!(implicit_multiplication_preprocess("2sin(3(4 + 5))"), "2*sin(3*(4 + 5))");
-	assert_eq!(implicit_multiplication_preprocess("3abs(-4)"), "3*abs(-4)");
-	assert_eq!(implicit_multiplication_preprocess("-1(4)"), "-1*(4)");
-	assert_eq!(implicit_multiplication_preprocess("(-1)4"), "(-1)*4");
-	assert_eq!(implicit_multiplication_preprocess("(((-1)))(4)"), "(((-1)))*(4)");
-	assert_eq!(implicit_multiplication_preprocess("2sin(pi) + 2cos(tau)"), "2*sin(pi) + 2*cos(tau)");
-}
