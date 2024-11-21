@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use crate::{
 	ast::{Literal, Node},
-	constants::default_functions,
+	constants::DEFAULT_FUNCTIONS,
 	context::{EvalContext, FunctionProvider, ValueProvider},
 	value::{Number, Value},
 };
@@ -14,6 +14,8 @@ pub enum EvalError {
 
 	#[error("Missing function: {0}")]
 	MissingFunction(String),
+	#[error("Wrong type for function call")]
+	TypeError,
 }
 
 impl Node {
@@ -33,8 +35,8 @@ impl Node {
 			Node::Var(name) => context.get_value(name).ok_or_else(|| EvalError::MissingValue(name.clone())),
 			Node::FnCall { name, expr } => {
 				let values = expr.iter().map(|expr| expr.eval(context)).collect::<Result<Vec<Value>, EvalError>>()?;
-				if let Some(val) = default_functions(name, &values) {
-					Ok(val)
+				if let Some(function) = DEFAULT_FUNCTIONS.get(&name.as_str()) {
+					function(&values).ok_or(EvalError::TypeError)
 				} else if let Some(val) = context.run_function(name, &values) {
 					Ok(val)
 				} else {

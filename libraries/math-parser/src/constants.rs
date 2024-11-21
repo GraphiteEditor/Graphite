@@ -1,51 +1,121 @@
-use std::f64::consts::PI;
+use std::{collections::HashMap, f64::consts::PI};
 
+use lazy_static::lazy_static;
 use num_complex::{Complex, ComplexFloat};
 
 use crate::value::{Number, Value};
+lazy_static! {
+	pub static ref DEFAULT_FUNCTIONS: HashMap<&'static str, Box<dyn Fn(&[Value]) -> Option<Value> + Send + Sync>> = {
+		let mut map: HashMap<&'static str, Box<dyn Fn(&[Value]) -> Option<Value> + Send + Sync>> = HashMap::new();
 
-pub fn default_functions(name: &str, values: &[Value]) -> Option<Value> {
-	if values.len() != 1 {
-		return None; // We expect exactly one value as input
-	}
+		map.insert(
+			"sin",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.sin()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.sin()))),
+				_ => None,
+			}),
+		);
 
-	match &values[0] {
-		Value::Number(Number::Real(real)) => match name {
-			"sin" => Some(Value::Number(Number::Real(real.sin()))),
-			"cos" => Some(Value::Number(Number::Real(real.cos()))),
-			"tan" => Some(Value::Number(Number::Real(real.tan()))),
-			"csc" => Some(Value::Number(Number::Real(real.sin().recip()))),
-			"sec" => Some(Value::Number(Number::Real(real.cos().recip()))),
-			"cot" => Some(Value::Number(Number::Real(real.tan().recip()))),
+		map.insert(
+			"cos",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.cos()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.cos()))),
+				_ => None,
+			}),
+		);
 
-			"invsin" => Some(Value::Number(Number::Real(real.asin()))),
-			"invcos" => Some(Value::Number(Number::Real(real.acos()))),
-			"invtan" => Some(Value::Number(Number::Real(real.atan()))),
-			"invcsc" => Some(Value::Number(Number::Real(real.recip().asin()))),
-			"invsec" => Some(Value::Number(Number::Real(real.recip().acos()))),
-			"invcot" => Some(Value::Number(Number::Real((PI / 2.0 - real).atan()))),
+		map.insert(
+			"tan",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.tan()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.tan()))),
+				_ => None,
+			}),
+		);
 
-			_ => None, // Handle unknown function names
-		},
+		map.insert(
+			"csc",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.sin().recip()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.sin().recip()))),
+				_ => None,
+			}),
+		);
 
-		Value::Number(Number::Complex(complex)) => match name {
-			"sin" => Some(Value::Number(Number::Complex(complex.sin()))),
-			"cos" => Some(Value::Number(Number::Complex(complex.cos()))),
-			"tan" => Some(Value::Number(Number::Complex(complex.tan()))),
-			"csc" => Some(Value::Number(Number::Complex(complex.sin().recip()))),
-			"sec" => Some(Value::Number(Number::Complex(complex.cos().recip()))),
-			"cot" => Some(Value::Number(Number::Complex(complex.tan().recip()))),
+		map.insert(
+			"sec",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.cos().recip()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.cos().recip()))),
+				_ => None,
+			}),
+		);
 
-			"invsin" => Some(Value::Number(Number::Complex(complex.asin()))),
-			"invcos" => Some(Value::Number(Number::Complex(complex.acos()))),
-			"invtan" => Some(Value::Number(Number::Complex(complex.atan()))),
-			"invcsc" => Some(Value::Number(Number::Complex(complex.recip().asin()))),
-			"invsec" => Some(Value::Number(Number::Complex(complex.recip().acos()))),
-			"invcot" => Some(Value::Number(Number::Complex((Complex::new(PI / 2.0, 0.0) - complex).atan()))),
+		map.insert(
+			"cot",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.tan().recip()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.tan().recip()))),
+				_ => None,
+			}),
+		);
 
-			_ => None, // Handle unknown function names
-		},
+		map.insert(
+			"invsin",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.asin()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.asin()))),
+				_ => None,
+			}),
+		);
 
-		_ => None, // Handle cases where the value is not a number
-	}
+		map.insert(
+			"invcos",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.acos()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.acos()))),
+				_ => None,
+			}),
+		);
+
+		map.insert(
+			"invtan",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.atan()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.atan()))),
+				_ => None,
+			}),
+		);
+
+		map.insert(
+			"invcsc",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.recip().asin()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.recip().asin()))),
+				_ => None,
+			}),
+		);
+
+		map.insert(
+			"invsec",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.recip().acos()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.recip().acos()))),
+				_ => None,
+			}),
+		);
+
+		map.insert(
+			"invcot",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real((PI / 2.0 - real).atan()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex((Complex::new(PI / 2.0, 0.0) - complex).atan()))),
+				_ => None,
+			}),
+		);
+
+		map
+	};
 }
