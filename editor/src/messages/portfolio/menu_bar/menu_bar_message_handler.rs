@@ -7,6 +7,8 @@ pub struct MenuBarMessageData {
 	pub has_active_document: bool,
 	pub rulers_visible: bool,
 	pub node_graph_open: bool,
+	pub has_selected_nodes: bool,
+	pub has_selected_layers: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -14,6 +16,8 @@ pub struct MenuBarMessageHandler {
 	has_active_document: bool,
 	rulers_visible: bool,
 	node_graph_open: bool,
+	has_selected_nodes: bool,
+	has_selected_layers: bool,
 }
 
 impl MessageHandler<MenuBarMessage, MenuBarMessageData> for MenuBarMessageHandler {
@@ -22,10 +26,14 @@ impl MessageHandler<MenuBarMessage, MenuBarMessageData> for MenuBarMessageHandle
 			has_active_document,
 			rulers_visible,
 			node_graph_open,
+			has_selected_nodes,
+			has_selected_layers,
 		} = data;
 		self.has_active_document = has_active_document;
 		self.rulers_visible = rulers_visible;
 		self.node_graph_open = node_graph_open;
+		self.has_selected_nodes = has_selected_nodes;
+		self.has_selected_layers = has_selected_layers;
 
 		match message {
 			MenuBarMessage::SendLayout => self.send_layout(responses, LayoutTarget::MenuBar),
@@ -41,6 +49,8 @@ impl LayoutHolder for MenuBarMessageHandler {
 	fn layout(&self) -> Layout {
 		let no_active_document = !self.has_active_document;
 		let node_graph_open = self.node_graph_open;
+		let has_selected_nodes = self.has_selected_nodes;
+		let has_selected_layers = self.has_selected_layers;
 
 		let menu_bar_entries = vec![
 			MenuBarEntry {
@@ -147,7 +157,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							label: "Cut".into(),
 							shortcut: action_keys!(PortfolioMessageDiscriminant::Cut),
 							action: MenuBarEntry::create_action(|_| PortfolioMessage::Cut { clipboard: Clipboard::Device }.into()),
-							disabled: no_active_document,
+							disabled: no_active_document || !has_selected_layers,
 							..MenuBarEntry::default()
 						},
 						MenuBarEntry {
@@ -155,7 +165,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							icon: Some("Copy".into()),
 							shortcut: action_keys!(PortfolioMessageDiscriminant::Copy),
 							action: MenuBarEntry::create_action(|_| PortfolioMessage::Copy { clipboard: Clipboard::Device }.into()),
-							disabled: no_active_document,
+							disabled: no_active_document || !has_selected_layers,
 							..MenuBarEntry::default()
 						},
 						MenuBarEntry {
@@ -185,7 +195,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							label: "Deselect All".into(),
 							shortcut: action_keys!(DocumentMessageDiscriminant::DeselectAllLayers),
 							action: MenuBarEntry::create_action(|_| DocumentMessage::DeselectAllLayers.into()),
-							disabled: no_active_document,
+							disabled: no_active_document || !has_selected_nodes,
 							..MenuBarEntry::default()
 						},
 					],
@@ -208,7 +218,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 						icon: Some("Trash".into()),
 						shortcut: action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers),
 						action: MenuBarEntry::create_action(|_| DocumentMessage::DeleteSelectedLayers.into()),
-						disabled: no_active_document,
+						disabled: no_active_document || !has_selected_nodes,
 						..MenuBarEntry::default()
 					}],
 					vec![
@@ -216,55 +226,55 @@ impl LayoutHolder for MenuBarMessageHandler {
 							label: "Grab Selected".into(),
 							shortcut: action_keys!(TransformLayerMessageDiscriminant::BeginGrab),
 							action: MenuBarEntry::create_action(|_| TransformLayerMessage::BeginGrab.into()),
-							disabled: no_active_document,
+							disabled: no_active_document || !has_selected_layers,
 							..MenuBarEntry::default()
 						},
 						MenuBarEntry {
 							label: "Rotate Selected".into(),
 							shortcut: action_keys!(TransformLayerMessageDiscriminant::BeginRotate),
 							action: MenuBarEntry::create_action(|_| TransformLayerMessage::BeginRotate.into()),
-							disabled: no_active_document,
+							disabled: no_active_document || !has_selected_layers,
 							..MenuBarEntry::default()
 						},
 						MenuBarEntry {
 							label: "Scale Selected".into(),
 							shortcut: action_keys!(TransformLayerMessageDiscriminant::BeginScale),
 							action: MenuBarEntry::create_action(|_| TransformLayerMessage::BeginScale.into()),
-							disabled: no_active_document,
+							disabled: no_active_document || !has_selected_layers,
 							..MenuBarEntry::default()
 						},
 					],
 					vec![MenuBarEntry {
 						label: "Order".into(),
 						action: MenuBarEntry::no_action(),
-						disabled: no_active_document,
+						disabled: no_active_document || !has_selected_layers,
 						children: MenuBarEntryChildren(vec![vec![
 							MenuBarEntry {
 								label: "Raise To Front".into(),
 								shortcut: action_keys!(DocumentMessageDiscriminant::SelectedLayersRaiseToFront),
 								action: MenuBarEntry::create_action(|_| DocumentMessage::SelectedLayersRaiseToFront.into()),
-								disabled: no_active_document,
+								disabled: no_active_document || !has_selected_layers,
 								..MenuBarEntry::default()
 							},
 							MenuBarEntry {
 								label: "Raise".into(),
 								shortcut: action_keys!(DocumentMessageDiscriminant::SelectedLayersRaise),
 								action: MenuBarEntry::create_action(|_| DocumentMessage::SelectedLayersRaise.into()),
-								disabled: no_active_document,
+								disabled: no_active_document || !has_selected_layers,
 								..MenuBarEntry::default()
 							},
 							MenuBarEntry {
 								label: "Lower".into(),
 								shortcut: action_keys!(DocumentMessageDiscriminant::SelectedLayersLower),
 								action: MenuBarEntry::create_action(|_| DocumentMessage::SelectedLayersLower.into()),
-								disabled: no_active_document,
+								disabled: no_active_document || !has_selected_layers,
 								..MenuBarEntry::default()
 							},
 							MenuBarEntry {
 								label: "Lower to Back".into(),
 								shortcut: action_keys!(DocumentMessageDiscriminant::SelectedLayersLowerToBack),
 								action: MenuBarEntry::create_action(|_| DocumentMessage::SelectedLayersLowerToBack.into()),
-								disabled: no_active_document,
+								disabled: no_active_document || !has_selected_layers,
 								..MenuBarEntry::default()
 							},
 						]]),
@@ -325,7 +335,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							label: "Zoom to Fit Selection".into(),
 							shortcut: action_keys!(NavigationMessageDiscriminant::FitViewportToSelection),
 							action: MenuBarEntry::create_action(|_| NavigationMessage::FitViewportToSelection.into()),
-							disabled: no_active_document,
+							disabled: no_active_document || !has_selected_layers,
 							..MenuBarEntry::default()
 						},
 						MenuBarEntry {

@@ -225,9 +225,13 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		Self::new(anchor_positions.into_iter().map(|anchor| ManipulatorGroup::new_anchor(anchor)).collect(), closed)
 	}
 
+	pub fn from_anchors_linear(anchor_positions: impl IntoIterator<Item = DVec2>, closed: bool) -> Self {
+		Self::new(anchor_positions.into_iter().map(|anchor| ManipulatorGroup::new_anchor_linear(anchor)).collect(), closed)
+	}
+
 	/// Constructs a rectangle with `corner1` and `corner2` as the two corners.
 	pub fn new_rect(corner1: DVec2, corner2: DVec2) -> Self {
-		Self::from_anchors([corner1, DVec2::new(corner2.x, corner1.y), corner2, DVec2::new(corner1.x, corner2.y)], true)
+		Self::from_anchors_linear([corner1, DVec2::new(corner2.x, corner1.y), corner2, DVec2::new(corner1.x, corner2.y)], true)
 	}
 
 	/// Constructs a rounded rectangle with `corner1` and `corner2` as the two corners and `corner_radii` as the radii of the corners: `[top_left, top_right, bottom_right, bottom_left]`.
@@ -366,10 +370,14 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	}
 }
 
+/// Solve for the first handle of an open spline. (The opposite handle can be found by mirroring the result about the anchor.)
 pub fn solve_spline_first_handle_open(points: &[DVec2]) -> Vec<DVec2> {
 	let len_points = points.len();
 	if len_points == 0 {
 		return Vec::new();
+	}
+	if len_points == 1 {
+		return vec![points[0]];
 	}
 
 	// Matrix coefficients a, b and c (see https://mathworld.wolfram.com/CubicSpline.html).
@@ -418,6 +426,8 @@ pub fn solve_spline_first_handle_open(points: &[DVec2]) -> Vec<DVec2> {
 	d
 }
 
+/// Solve for the first handle of a closed spline. (The opposite handle can be found by mirroring the result about the anchor.)
+/// If called with fewer than 3 points, this function will return an empty result.
 pub fn solve_spline_first_handle_closed(points: &[DVec2]) -> Vec<DVec2> {
 	let len_points = points.len();
 	if len_points < 3 {
@@ -426,9 +436,9 @@ pub fn solve_spline_first_handle_closed(points: &[DVec2]) -> Vec<DVec2> {
 
 	// Matrix coefficients `a`, `b` and `c` (see https://mathworld.wolfram.com/CubicSpline.html).
 	// We don't really need to allocate them but it keeps the maths understandable.
-	let a = vec![DVec2::splat(1.); len_points];
+	let a = vec![DVec2::ONE; len_points];
 	let b = vec![DVec2::splat(4.); len_points];
-	let c = vec![DVec2::splat(1.); len_points];
+	let c = vec![DVec2::ONE; len_points];
 
 	let mut cmod = vec![DVec2::ZERO; len_points];
 	let mut u = vec![DVec2::ZERO; len_points];

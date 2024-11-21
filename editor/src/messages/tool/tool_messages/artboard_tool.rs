@@ -29,7 +29,7 @@ pub enum ArtboardToolMessage {
 	// Tool-specific messages
 	UpdateSelectedArtboard,
 	DeleteSelected,
-	NudgeSelected { delta_x: f64, delta_y: f64 },
+	NudgeSelected { delta_x: f64, delta_y: f64, resize: Key, resize_opposite_corner: Key },
 	PointerDown,
 	PointerMove { constrain_axis_or_aspect: Key, center: Key },
 	PointerOutsideViewport { constrain_axis_or_aspect: Key, center: Key },
@@ -465,18 +465,84 @@ impl Fsm for ArtboardToolFsmState {
 
 				ArtboardToolFsmState::Ready { hovered }
 			}
-			(_, ArtboardToolMessage::NudgeSelected { delta_x, delta_y }) => {
-				if let Some(bounds) = &mut tool_data.bounding_box_manager {
-					if tool_data.selected_artboard.unwrap() == LayerNodeIdentifier::ROOT_PARENT {
-						log::error!("Selected artboard cannot be ROOT_PARENT");
-					} else {
-						responses.add(GraphOperationMessage::ResizeArtboard {
-							layer: tool_data.selected_artboard.unwrap(),
-							location: DVec2::new(bounds.bounds[0].x + delta_x, bounds.bounds[0].y + delta_y).round().as_ivec2(),
-							dimensions: (bounds.bounds[1] - bounds.bounds[0]).round().as_ivec2(),
-						});
-					}
+			(
+				_,
+				ArtboardToolMessage::NudgeSelected {
+					delta_x,
+					delta_y,
+					resize,
+					resize_opposite_corner,
+				},
+			) => {
+				let Some(bounds) = &mut tool_data.bounding_box_manager else {
+					return ArtboardToolFsmState::Ready { hovered };
+				};
+				let Some(selected_artboard) = tool_data.selected_artboard else {
+					return ArtboardToolFsmState::Ready { hovered };
+				};
+				if selected_artboard == LayerNodeIdentifier::ROOT_PARENT {
+					log::error!("Selected artboard cannot be ROOT_PARENT");
+					return ArtboardToolFsmState::Ready { hovered };
 				}
+
+				let resize = input.keyboard.key(resize);
+				let resize_opposite_corner = input.keyboard.key(resize_opposite_corner);
+				let [existing_top_left, existing_bottom_right] = bounds.bounds;
+
+				// Nudge translation without resizing
+				if !resize {
+					let delta = DVec2::from_angle(-document.document_ptz.tilt()).rotate(DVec2::new(delta_x, delta_y));
+
+					responses.add(GraphOperationMessage::ResizeArtboard {
+						layer: selected_artboard,
+						location: DVec2::new(existing_top_left.x + delta.x, existing_top_left.y + delta.y).round().as_ivec2(),
+						dimensions: (existing_bottom_right - existing_top_left).round().as_ivec2(),
+					});
+
+					return ArtboardToolFsmState::Ready { hovered };
+				}
+
+				// Swap and negate coordinates as needed to match the resize direction that's closest to the current tilt angle
+				let tilt = (document.document_ptz.tilt() + std::f64::consts::TAU) % std::f64::consts::TAU;
+				let (delta_x, delta_y, opposite_x, opposite_y) = match ((tilt + std::f64::consts::FRAC_PI_4) / std::f64::consts::FRAC_PI_2).floor() as i32 % 4 {
+					0 => (delta_x, delta_y, false, false),
+					1 => (delta_y, -delta_x, false, true),
+					2 => (-delta_x, -delta_y, true, true),
+					3 => (-delta_y, delta_x, true, false),
+					_ => unreachable!(),
+				};
+
+				let size = existing_bottom_right - existing_top_left;
+				let enlargement = DVec2::new(
+					if resize_opposite_corner != opposite_x { -delta_x } else { delta_x },
+					if resize_opposite_corner != opposite_y { -delta_y } else { delta_y },
+				);
+				let enlargement_factor = (enlargement + size) / size;
+
+				let position = DVec2::new(
+					existing_top_left.x + if resize_opposite_corner != opposite_x { delta_x } else { 0. },
+					existing_top_left.y + if resize_opposite_corner != opposite_y { delta_y } else { 0. },
+				);
+				let mut pivot = (existing_top_left * enlargement_factor - position) / (enlargement_factor - DVec2::ONE);
+				if !pivot.x.is_finite() {
+					pivot.x = 0.;
+				}
+				if !pivot.y.is_finite() {
+					pivot.y = 0.;
+				}
+				let scale = DAffine2::from_scale(enlargement_factor);
+				let pivot = DAffine2::from_translation(pivot);
+				let transformation = pivot * scale * pivot.inverse();
+				let document_to_viewport = document.navigation_handler.calculate_offset_transform(input.viewport_bounds.center(), &document.document_ptz);
+				let to = document_to_viewport.inverse() * document.metadata().downstream_transform_to_viewport(selected_artboard);
+				let original_transform = document.metadata().upstream_transform(selected_artboard.to_node());
+				let new = to.inverse() * transformation * to * original_transform;
+
+				responses.add(GraphOperationMessage::ResizeArtboard {
+					layer: selected_artboard,
+					location: position.round().as_ivec2(),
+					dimensions: new.transform_vector2(existing_bottom_right - existing_top_left).round().as_ivec2(),
+				});
 
 				ArtboardToolFsmState::Ready { hovered }
 			}

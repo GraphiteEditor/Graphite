@@ -8,25 +8,33 @@ export function createFontsState(editor: Editor) {
 	// TODO: Do some code cleanup to remove the need for this empty store
 	const { subscribe } = writable({});
 
-	function createURL(font: string): URL {
+	function createURL(font: string, weight: string): URL {
 		const url = new URL("https://fonts.googleapis.com/css2");
 		url.searchParams.set("display", "swap");
-		url.searchParams.set("family", font);
+		url.searchParams.set("family", `${font}:wght@${weight}`);
 		url.searchParams.set("text", font);
+
 		return url;
 	}
 
 	async function fontNames(): Promise<{ name: string; url: URL | undefined }[]> {
-		return (await fontList).map((font) => ({ name: font.family, url: createURL(font.family) }));
+		const pickPreviewWeight = (variants: string[]) => {
+			const weights = variants.map((variant) => Number(variant.match(/.* \((\d+)\)/)?.[1] || "NaN"));
+			const weightGoal = 400;
+			const sorted = weights.map((weight) => [weight, Math.abs(weightGoal - weight - 1)]);
+			sorted.sort(([_, a], [__, b]) => a - b);
+			return sorted[0][0].toString();
+		};
+		return (await loadFontList()).map((font) => ({ name: font.family, url: createURL(font.family, pickPreviewWeight(font.variants)) }));
 	}
 
 	async function getFontStyles(fontFamily: string): Promise<{ name: string; url: URL | undefined }[]> {
-		const font = (await fontList).find((value) => value.family === fontFamily);
+		const font = (await loadFontList()).find((value) => value.family === fontFamily);
 		return font?.variants.map((variant) => ({ name: variant, url: undefined })) || [];
 	}
 
 	async function getFontFileUrl(fontFamily: string, fontStyle: string): Promise<string | undefined> {
-		const font = (await fontList).find((value) => value.family === fontFamily);
+		const font = (await loadFontList()).find((value) => value.family === fontFamily);
 		const fontFileUrl = font?.files.get(fontStyle);
 		return fontFileUrl?.replace("http://", "https://");
 	}
@@ -47,31 +55,39 @@ export function createFontsState(editor: Editor) {
 		return `${weightName}${isItalic ? " Italic" : ""} (${weight})`;
 	}
 
+	let fontList: Promise<{ family: string; variants: string[]; files: Map<string, string> }[]> | undefined;
+
+	async function loadFontList(): Promise<{ family: string; variants: string[]; files: Map<string, string> }[]> {
+		if (fontList) return fontList;
+
+		fontList = new Promise<{ family: string; variants: string[]; files: Map<string, string> }[]>((resolve) => {
+			fetch(fontListAPI)
+				.then((response) => response.json())
+				.then((fontListResponse) => {
+					const fontListData = fontListResponse.items as { family: string; variants: string[]; files: Record<string, string> }[];
+					const result = fontListData.map((font) => {
+						const { family } = font;
+						const variants = font.variants.map(formatFontStyleName);
+						const files = new Map(font.variants.map((x) => [formatFontStyleName(x), font.files[x]]));
+						return { family, variants, files };
+					});
+
+					resolve(result);
+				});
+		});
+
+		return fontList;
+	}
+
 	// Subscribe to process backend events
 	editor.subscriptions.subscribeJsMessage(TriggerFontLoad, async (triggerFontLoad) => {
 		const url = await getFontFileUrl(triggerFontLoad.font.fontFamily, triggerFontLoad.font.fontStyle);
 		if (url) {
 			const response = await (await fetch(url)).arrayBuffer();
-			editor.handle.onFontLoad(triggerFontLoad.font.fontFamily, triggerFontLoad.font.fontStyle, url, new Uint8Array(response), triggerFontLoad.isDefault);
+			editor.handle.onFontLoad(triggerFontLoad.font.fontFamily, triggerFontLoad.font.fontStyle, url, new Uint8Array(response));
 		} else {
 			editor.handle.errorDialog("Failed to load font", `The font ${triggerFontLoad.font.fontFamily} with style ${triggerFontLoad.font.fontStyle} does not exist`);
 		}
-	});
-
-	const fontList = new Promise<{ family: string; variants: string[]; files: Map<string, string> }[]>((resolve) => {
-		fetch(fontListAPI)
-			.then((response) => response.json())
-			.then((fontListResponse) => {
-				const fontListData = fontListResponse.items as { family: string; variants: string[]; files: Record<string, string> }[];
-				const result = fontListData.map((font) => {
-					const { family } = font;
-					const variants = font.variants.map(formatFontStyleName);
-					const files = new Map(font.variants.map((x) => [formatFontStyleName(x), font.files[x]]));
-					return { family, variants, files };
-				});
-
-				resolve(result);
-			});
 	});
 
 	return {

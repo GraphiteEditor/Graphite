@@ -50,11 +50,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				let mut has_active_document = false;
 				let mut rulers_visible = false;
 				let mut node_graph_open = false;
+				let mut has_selected_nodes = false;
+				let mut has_selected_layers = false;
 
 				if let Some(document) = self.active_document_id.and_then(|document_id| self.documents.get_mut(&document_id)) {
 					has_active_document = true;
 					rulers_visible = document.rulers_visible;
 					node_graph_open = document.is_graph_overlay_open();
+					let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+					has_selected_nodes = selected_nodes.selected_nodes().next().is_some();
+					has_selected_layers = selected_nodes.selected_visible_layers(&document.network_interface).next().is_some();
 				}
 				self.menu_bar_message_handler.process_message(
 					message,
@@ -63,6 +68,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						has_active_document,
 						rulers_visible,
 						node_graph_open,
+						has_selected_nodes,
+						has_selected_layers,
 					},
 				);
 			}
@@ -271,11 +278,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				font_style,
 				preview_url,
 				data,
-				is_default,
 			} => {
 				let font = Font::new(font_family, font_style);
 
-				self.persistent_data.font_cache.insert(font, preview_url, data, is_default);
+				self.persistent_data.font_cache.insert(font, preview_url, data);
 				self.executor.update_font_cache(self.persistent_data.font_cache.clone());
 				for document_id in self.document_ids.iter() {
 					let _ = self.executor.submit_node_graph_evaluation(
@@ -327,9 +333,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					document.load_layer_resources(responses);
 				}
 			}
-			PortfolioMessage::LoadFont { font, is_default } => {
+			PortfolioMessage::LoadFont { font } => {
 				if !self.persistent_data.font_cache.loaded_font(&font) {
-					responses.add_front(FrontendMessage::TriggerFontLoad { font, is_default });
+					responses.add_front(FrontendMessage::TriggerFontLoad { font });
 				}
 			}
 			PortfolioMessage::NewDocumentWithName { name } => {
@@ -459,17 +465,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					let Some(ref reference) = node_metadata.persistent_metadata.reference.clone() else {
 						continue;
 					};
-					if let Some(node_definition) = resolve_document_node_type(reference) {
-						let document_node = node_definition.default_node_template().document_node;
-						document.network_interface.set_manual_compostion(node_id, &[], document_node.manual_composition);
-						// if ["Fill", "Stroke", "Splines from Points", "Sample Subpaths", "Sample Points", "Copy to Points", "Path", "Scatter Points"].contains(&reference.as_str()) {
-						// 	document.network_interface.set_implementation(node_id, &[], document_node.implementation);
-						// }
-						document.network_interface.replace_implementation(node_id, &[], document_node.implementation);
-						document
-							.network_interface
-							.replace_implementation_metadata(node_id, &[], node_definition.default_node_template().persistent_node_metadata);
-					}
+
 					let Some(node) = document.network_interface.network(&[]).unwrap().nodes.get(node_id) else {
 						log::error!("could not get node in deserialize_document");
 						continue;
@@ -553,6 +549,35 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							.set_input(&InputConnector::node(*node_id, 5), NodeInput::value(TaggedValue::F64(1.), false), &[]);
 					}
 
+					// Upgrade Sine, Cosine, and Tangent nodes to include a boolean input for whether the output should be in radians, which was previously the only option but is now not the default
+					if (reference == "Sine" || reference == "Cosine" || reference == "Tangent") && inputs_count == 1 {
+						let node_definition = resolve_document_node_type(reference).unwrap();
+						let document_node = node_definition.default_node_template().document_node;
+						document.network_interface.replace_implementation(node_id, &[], document_node.implementation.clone());
+
+						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), &[]);
+
+						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), &[]);
+						document
+							.network_interface
+							.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::Bool(true), false), &[]);
+					}
+
+					// Upgrade the Modulo node to include a boolean input for whether the output should be always positive, which was previously not an option
+					if reference == "Modulo" && inputs_count == 2 {
+						let node_definition = resolve_document_node_type(reference).unwrap();
+						let document_node = node_definition.default_node_template().document_node;
+						document.network_interface.replace_implementation(node_id, &[], document_node.implementation.clone());
+
+						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), &[]);
+
+						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), &[]);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), &[]);
+						document
+							.network_interface
+							.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::Bool(false), false), &[]);
+					}
+
 					// Upgrade layer implementation from https://github.com/GraphiteEditor/Graphite/pull/1946
 					if reference == "Merge" || reference == "Artboard" {
 						let node_definition = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type(reference).unwrap();
@@ -562,7 +587,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 					// Upgrade artboard name being passed as hidden value input to "To Artboard"
 					if reference == "Artboard" {
-						let label = document.network_interface.display_name(node_id, &[]);
+						let label = document.network_interface.frontend_display_name(node_id, &[]);
 						document
 							.network_interface
 							.set_input(&InputConnector::node(NodeId(0), 1), NodeInput::value(TaggedValue::String(label), false), &[*node_id]);
@@ -685,6 +710,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					responses.add(DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true });
 
 					// TODO: Figure out how to get StartBuffer to work here so we can delete this and use `DocumentMessage::ZoomCanvasToFitAll` instead
+					// Currently, it is necessary to use `FrontendMessage::TriggerDelayedZoomCanvasToFitAll` rather than `DocumentMessage::ZoomCanvasToFitAll` because the size of the viewport is not yet populated
 					responses.add(Message::StartBuffer);
 					responses.add(FrontendMessage::TriggerDelayedZoomCanvasToFitAll);
 				}
@@ -716,6 +742,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					responses.add(DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true });
 
 					// TODO: Figure out how to get StartBuffer to work here so we can delete this and use `DocumentMessage::ZoomCanvasToFitAll` instead
+					// Currently, it is necessary to use `FrontendMessage::TriggerDelayedZoomCanvasToFitAll` rather than `DocumentMessage::ZoomCanvasToFitAll` because the size of the viewport is not yet populated
 					responses.add(Message::StartBuffer);
 					responses.add(FrontendMessage::TriggerDelayedZoomCanvasToFitAll);
 				}
@@ -932,6 +959,10 @@ impl PortfolioMessageHandler {
 		if self.active_document().is_some() {
 			responses.add(BroadcastEvent::ToolAbort);
 			responses.add(ToolMessage::DeactivateTools);
+		} else {
+			// Load the default font upon creating the first document
+			let font = Font::new(graphene_core::consts::DEFAULT_FONT_FAMILY.into(), graphene_core::consts::DEFAULT_FONT_STYLE.into());
+			responses.add(FrontendMessage::TriggerFontLoad { font });
 		}
 
 		// TODO: Remove this and find a way to fix the issue where creating a new document when the node graph is open causes the transform in the new document to be incorrect

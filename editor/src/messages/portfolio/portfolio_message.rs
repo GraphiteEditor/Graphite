@@ -51,7 +51,6 @@ pub enum PortfolioMessage {
 		font_style: String,
 		preview_url: String,
 		data: Vec<u8>,
-		is_default: bool,
 	},
 	ImaginateCheckServerStatus,
 	ImaginatePollServerStatus,
@@ -63,7 +62,6 @@ pub enum PortfolioMessage {
 	},
 	LoadFont {
 		font: Font,
-		is_default: bool,
 	},
 	NewDocumentWithName {
 		name: String,

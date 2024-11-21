@@ -442,13 +442,12 @@ impl EditorHandle {
 
 	/// A font has been downloaded
 	#[wasm_bindgen(js_name = onFontLoad)]
-	pub fn on_font_load(&self, font_family: String, font_style: String, preview_url: String, data: Vec<u8>, is_default: bool) -> Result<(), JsValue> {
+	pub fn on_font_load(&self, font_family: String, font_style: String, preview_url: String, data: Vec<u8>) -> Result<(), JsValue> {
 		let message = PortfolioMessage::FontLoaded {
 			font_family,
 			font_style,
 			preview_url,
 			data,
-			is_default,
 		};
 		self.dispatch(message);
 
@@ -567,6 +566,13 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = setGridAlignedEdges)]
 	pub fn set_grid_aligned_edges(&self) {
 		let message = NodeGraphMessage::SetGridAlignedEdges;
+		self.dispatch(message);
+	}
+
+	/// Merge a group of nodes into a subnetwork
+	#[wasm_bindgen(js_name = mergeSelectedNodes)]
+	pub fn merge_nodes(&self) {
+		let message = NodeGraphMessage::MergeSelectedNodes;
 		self.dispatch(message);
 	}
 
@@ -764,9 +770,7 @@ impl EditorHandle {
 					document
 						.network_interface
 						.replace_implementation(&node_id, &[], DocumentNodeImplementation::proto("graphene_core::ToArtboardNode"));
-					document
-						.network_interface
-						.add_input(&node_id, &[], TaggedValue::IVec2(glam::IVec2::default()), false, 2, "".to_string());
+					document.network_interface.add_import(TaggedValue::IVec2(glam::IVec2::default()), false, 2, "".to_string(), &[node_id]);
 				}
 			}
 		}

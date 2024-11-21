@@ -3,8 +3,6 @@ use crate::messages::dialog::DialogMessageData;
 use crate::messages::portfolio::document::node_graph::document_node_definitions;
 use crate::messages::prelude::*;
 
-use graphene_core::text::Font;
-
 #[derive(Debug, Default)]
 pub struct Dispatcher {
 	buffered_queue: Option<Vec<VecDeque<Message>>>,
@@ -134,10 +132,6 @@ impl Dispatcher {
 
 					// Display the menu bar at the top of the window
 					queue.add(MenuBarMessage::SendLayout);
-
-					// Load the default font
-					let font = Font::new(graphene_core::consts::DEFAULT_FONT_FAMILY.into(), graphene_core::consts::DEFAULT_FONT_STYLE.into());
-					queue.add(FrontendMessage::TriggerFontLoad { font, is_default: true });
 
 					// Send the information for tooltips and categories for each node/input.
 					queue.add(FrontendMessage::SendUIMetadata {

@@ -13,8 +13,10 @@
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
+	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import RadioInput from "@graphite/components/widgets/inputs/RadioInput.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	const GRID_COLLAPSE_SPACING = 10;
 	const GRID_SIZE = 24;
@@ -309,6 +311,15 @@
 		});
 		return connectedNode?.isLayer || false;
 	}
+
+	function zipWithUndefined(arr1: FrontendGraphInput[], arr2: FrontendGraphOutput[]) {
+		const maxLength = Math.max(arr1.length, arr2.length);
+		const result = [];
+		for (let i = 0; i < maxLength; i++) {
+			result.push([arr1[i], arr2[i]]);
+		}
+		return result;
+	}
 </script>
 
 <div
@@ -356,6 +367,10 @@
 						]}
 						disabled={!canBeToggledBetweenNodeAndLayer(contextMenuData.nodeId)}
 					/>
+				</LayoutRow>
+				<Separator type="Section" direction="Vertical" />
+				<LayoutRow class="merge-selected-nodes">
+					<TextButton label="Merge Selected Nodes" action={() => editor.handle.mergeSelectedNodes()} />
 				</LayoutRow>
 			{/if}
 		</LayoutCol>
@@ -424,6 +439,19 @@
 			</svg>
 			<p class="import-text" style:--offset-left={position.x / 24} style:--offset-top={position.y / 24}>{outputMetadata.name}</p>
 		{/each}
+		{#if $nodeGraph.addImport !== undefined}
+			<div class="plus" style:--offset-left={$nodeGraph.addImport.x / 24} style:--offset-top={$nodeGraph.addImport.y / 24}>
+				<IconButton
+					class={"visibility"}
+					data-visibility-button
+					size={24}
+					icon={"Add"}
+					action={() => {
+						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+					}}
+				/>
+			</div>
+		{/if}
 		{#each $nodeGraph.exports as { inputMetadata, position }, index}
 			<svg
 				xmlns="http://www.w3.org/2000/svg"
@@ -446,6 +474,19 @@
 			</svg>
 			<p class="export-text" style:--offset-left={position.x / 24} style:--offset-top={position.y / 24}>{inputMetadata.name}</p>
 		{/each}
+		{#if $nodeGraph.addExport !== undefined}
+			<div class="plus" style:--offset-left={$nodeGraph.addExport.x / 24} style:--offset-top={$nodeGraph.addExport.y / 24}>
+				<IconButton
+					class={"visibility"}
+					data-visibility-button
+					size={24}
+					icon={"Add"}
+					action={() => {
+						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+					}}
+				/>
+			</div>
+		{/if}
 	</div>
 
 	<!-- Layers and nodes -->
@@ -476,7 +517,7 @@
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
 				style:--layer-area-width={layerAreaWidth}
 				style:--node-chain-area-left-extension={layerChainWidth !== 0 ? layerChainWidth + 0.5 : 0}
-				title={description + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}` : "")}
+				title={`${node.displayName}\n\n${description || ""}`.trim() + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}` : "")}
 				data-node={node.id}
 				bind:this={nodeElements[nodeIndex]}
 			>
@@ -603,7 +644,7 @@
 
 		<!-- Nodes -->
 		{#each Array.from($nodeGraph.nodes.values()).flatMap((node, nodeIndex) => (node.isLayer ? [] : [{ node, nodeIndex }])) as { node, nodeIndex } (nodeIndex)}
-			{@const exposedInputsOutputs = [...node.exposedInputs, ...node.exposedOutputs]}
+			{@const exposedInputsOutputs = zipWithUndefined(node.exposedInputs, node.exposedOutputs)}
 			{@const clipPathId = String(Math.random()).substring(2)}
 			{@const description = (node.reference && $nodeGraph.nodeDescriptions.get(node.reference)) || undefined}
 			<div
@@ -616,7 +657,7 @@
 				style:--clip-path-id={`url(#${clipPathId})`}
 				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
-				title={description + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}` : "")}
+				title={`${node.displayName}\n\n${description || ""}`.trim() + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}` : "")}
 				data-node={node.id}
 				bind:this={nodeElements[nodeIndex]}
 			>
@@ -633,9 +674,11 @@
 				<!-- Secondary rows -->
 				{#if exposedInputsOutputs.length > 0}
 					<div class="secondary" class:in-selected-network={$nodeGraph.inSelectedNetwork}>
-						{#each exposedInputsOutputs as secondary, index}
-							<div class={`secondary-row expanded ${index < node.exposedInputs.length ? "input" : "output"}`}>
-								<TextLabel tooltip={secondary.name}>{secondary.name}</TextLabel>
+						{#each exposedInputsOutputs as [input, output]}
+							<div class={`secondary-row expanded ${input !== undefined ? "input" : "output"}`}>
+								<TextLabel tooltip={input !== undefined ? input.name : output.name}>
+									{input !== undefined ? input.name : output.name}
+								</TextLabel>
 							</div>
 						{/each}
 					</div>
@@ -796,6 +839,10 @@
 				line-height: 24px;
 				margin-right: 8px;
 			}
+
+			.merge-selected-nodes {
+				justify-content: center;
+			}
 		}
 
 		.click-targets {
@@ -865,6 +912,14 @@
 				height: 8px;
 				margin-top: 4px;
 				margin-left: 5px;
+				top: calc(var(--offset-top) * 24px);
+				left: calc(var(--offset-left) * 24px);
+			}
+
+			.plus {
+				margin-top: -4px;
+				margin-left: -4px;
+				position: absolute;
 				top: calc(var(--offset-top) * 24px);
 				left: calc(var(--offset-left) * 24px);
 			}

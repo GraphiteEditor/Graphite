@@ -189,7 +189,6 @@ impl LayoutMessageHandler {
 
 						responses.add(PortfolioMessage::LoadFont {
 							font: Font::new(font_family.into(), font_style.into()),
-							is_default: false,
 						});
 						(font_input.on_update.callback)(font_input)
 					}

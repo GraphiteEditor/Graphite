@@ -61,6 +61,12 @@ export class UpdateImportsExports extends JsMessage {
 
 	@ExportsToVec2Array
 	readonly exports!: { inputMetadata: FrontendGraphInput; position: XY }[];
+
+	@TupleToVec2
+	readonly addImport!: XY | undefined;
+
+	@TupleToVec2
+	readonly addExport!: XY | undefined;
 }
 
 export class UpdateInSelectedNetwork extends JsMessage {
@@ -892,8 +898,6 @@ export class Font {
 export class TriggerFontLoad extends JsMessage {
 	@Type(() => Font)
 	font!: Font;
-
-	isDefault!: boolean;
 }
 
 export class TriggerVisitLink extends JsMessage {

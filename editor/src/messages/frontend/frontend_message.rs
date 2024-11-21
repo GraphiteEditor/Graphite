@@ -81,8 +81,6 @@ pub enum FrontendMessage {
 	},
 	TriggerFontLoad {
 		font: Font,
-		#[serde(rename = "isDefault")]
-		is_default: bool,
 	},
 	TriggerImport,
 	TriggerIndexedDbRemoveDocument {
@@ -133,6 +131,10 @@ pub enum FrontendMessage {
 	UpdateImportsExports {
 		imports: Vec<(FrontendGraphOutput, i32, i32)>,
 		exports: Vec<(FrontendGraphInput, i32, i32)>,
+		#[serde(rename = "addImport")]
+		add_import: Option<(i32, i32)>,
+		#[serde(rename = "addExport")]
+		add_export: Option<(i32, i32)>,
 	},
 	UpdateInSelectedNetwork {
 		#[serde(rename = "inSelectedNetwork")]

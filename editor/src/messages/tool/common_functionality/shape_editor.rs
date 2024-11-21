@@ -10,7 +10,7 @@ use bezier_rs::{Bezier, BezierHandles, TValue};
 use graphene_core::transform::Transform;
 use graphene_core::vector::{ManipulatorPointId, PointId, VectorData, VectorModificationType};
 
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
 use graphene_std::vector::{HandleId, SegmentId};
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, Default)]
@@ -628,7 +628,11 @@ impl ShapeState {
 
 			let transform_to_viewport_space = document.metadata().transform_to_viewport(layer);
 			let transform_to_document_space = document.metadata().transform_to_document(layer);
-			let delta_transform = if in_viewport_space { transform_to_viewport_space } else { transform_to_document_space };
+			let delta_transform = if in_viewport_space {
+				transform_to_viewport_space
+			} else {
+				DAffine2::from_angle(document.document_ptz.tilt()) * transform_to_document_space
+			};
 			let delta = delta_transform.inverse().transform_vector2(delta);
 
 			for &point in state.selected_points.iter() {
