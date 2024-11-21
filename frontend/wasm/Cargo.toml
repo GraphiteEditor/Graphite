@@ -36,6 +36,7 @@ serde-wasm-bindgen = { workspace = true }
 js-sys = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 bezier-rs = { workspace = true }
+rawkit = { workspace = true }
 glam = { workspace = true }
 meval = { workspace = true }
 wgpu = { workspace = true, features = [

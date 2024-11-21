@@ -79,6 +79,11 @@ export function createPortfolioState(editor: Editor) {
 			return;
 		}
 
+		if (data.type === "image/x-sony-arw") {
+			editor.handle.pasteRawImage(data.filename, data.content.data);
+			return;
+		}
+
 		const imageData = await extractPixelData(new Blob([data.content.data], { type: data.type }));
 		editor.handle.pasteImage(data.filename, new Uint8Array(imageData.data), imageData.width, imageData.height);
 	});

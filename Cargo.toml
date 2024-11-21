@@ -93,6 +93,7 @@ syn = { version = "2.0", default-features = false, features = [
 	"derive",
 ] }
 kurbo = { version = "0.11.0", features = ["serde"] }
+rawkit = "0.1.0"
 
 [patch.crates-io]
 meval = { git = "https://github.com/Titaniumtown/meval-rs" }
