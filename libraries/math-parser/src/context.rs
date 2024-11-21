@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::{
+	collections::HashMap,
+	ops::{Deref, DerefMut},
+};
 
 use crate::value::Value;
 
@@ -33,21 +36,15 @@ impl ValueProvider for ValueMap {
 	}
 }
 
-impl ValueMap {
-	pub fn new() -> Self {
-		ValueMap(HashMap::new())
+impl Deref for ValueMap {
+	type Target = HashMap<String, Value>;
+	fn deref(&self) -> &Self::Target {
+		&self.0
 	}
-
-	pub fn insert(&mut self, name: String, value: Value) {
-		self.0.insert(name, value);
-	}
-
-	pub fn contains(&self, name: &str) -> bool {
-		self.0.contains_key(name)
-	}
-
-	pub fn remove(&mut self, name: &str) -> Option<Value> {
-		self.0.remove(name)
+}
+impl DerefMut for ValueMap {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.0
 	}
 }
 
