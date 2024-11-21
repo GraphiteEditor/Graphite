@@ -227,7 +227,7 @@ pub fn axis_align_drag(axis_align: bool, position: DVec2, start: DVec2) -> DVec2
 }
 
 /// Snaps a dragging event from the artboard or select tool
-pub fn snap_drag(start: DVec2, current: DVec2, axis_align: bool, snap_data: SnapData, snap_manager: &mut SnapManager, candidates: &Vec<SnapCandidatePoint>) -> DVec2 {
+pub fn snap_drag(start: DVec2, current: DVec2, axis_align: bool, snap_data: SnapData, snap_manager: &mut SnapManager, candidates: &[SnapCandidatePoint]) -> DVec2 {
 	let mouse_position = axis_align_drag(axis_align, snap_data.input.mouse.position, start);
 	let document = snap_data.document;
 	let total_mouse_delta_document = document.metadata().document_to_viewport.inverse().transform_vector2(mouse_position - start);
