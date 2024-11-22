@@ -1233,7 +1233,7 @@ fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, network_interface
 	if is_layer_fed_by_node_of_name(layer, network_interface, "Text") {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 		responses.add(TextToolMessage::EditSelected);
-	} else if is_layer_fed_by_node_of_name(layer, network_interface, "Path") {
-		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path });
+	} else if is_layer_fed_by_node_of_name(layer, network_interface, "Select") {
+		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Select });
 	}
 }
