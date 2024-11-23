@@ -1607,9 +1607,9 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		network_metadata.persistent_metadata.selection_redo_history.retain(|selected_nodes| selected_nodes.has_selected_nodes());
+		network_metadata.persistent_metadata.selection_undo_history.retain(|selected_nodes| selected_nodes.has_selected_nodes());
 
-		if let Some(selection_state) = network_metadata.persistent_metadata.selection_redo_history.pop_back() {
+		if let Some(selection_state) = network_metadata.persistent_metadata.selection_undo_history.pop_back() {
 			network_metadata.persistent_metadata.selection_redo_history.push_front(selection_state);
 		}
 	}
