@@ -38,6 +38,30 @@ pub struct NodePropertiesContext<'a> {
 	pub document_name: &'a str,
 }
 
+impl NodePropertiesContext<'_> {
+	pub fn call_widget_override(&mut self, node_id: &NodeId, index: usize) -> Option<Vec<LayoutGroup>> {
+		//let current_override = //Get mutable reference from transient metadata
+		//let mut widget_override = std::mem::replace(&mut WidgetOverrideLambda(Box::new()), current_override);
+		// let layout = widget_override.0(node_id, context);
+		//let current_override = //Get mutable reference from transient metadata (now empty)
+		//let empty_widget_override = std::mem::replace(&mut widget_override, current_override) // Put back the taken override
+		// Some(layout)
+		let Some(input_properties_row) = self.network_interface.input_properties_row(node_id, index, self.selection_network_path) else {
+			log::error!("Could not get input properties row in call_widget_override");
+			return None;
+		};
+		let Some(widget_override_lambda) = input_properties_row.widget_override.as_ref().and_then(|widget_override| INPUT_OVERRIDES.get(widget_override)) else {
+			log::error!("Could not get widget override lambda in call_widget_override");
+			return None;
+		};
+		widget_override_lambda(*node_id, index, self)
+			.map_err(|error| {
+				log::error!("Error in widget override lambda: {}", error);
+			})
+			.ok()
+	}
+}
+
 /// Acts as a description for a [DocumentNode] before it gets instantiated as one.
 #[derive(Clone)]
 pub struct DocumentNodeDefinition {
@@ -89,7 +113,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![PropertiesRow::with_override("In", WidgetOverride::string("The identity node simply passes its data through."))],
+					input_properties: vec![PropertiesRow::with_override(
+						"In",
+						WidgetOverride::String("The identity node simply passes its data through.".to_string()),
+					)],
 					output_names: vec!["Out".to_string()],
 					..Default::default()
 				},
@@ -112,7 +139,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				persistent_node_metadata: DocumentNodePersistentMetadata {
 					input_properties: vec![PropertiesRow::with_override(
 						"In",
-						WidgetOverride::string("The Monitor node is used by the editor to access the data flowing through it."),
+						WidgetOverride::String("The Monitor node is used by the editor to access the data flowing through it.".to_string()),
 					)],
 					output_names: vec!["Out".to_string()],
 					..Default::default()
@@ -285,7 +312,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec!["Artboards".into(), "Contents".into(), "Location".into(), "Dimensions".into(), "Background".into(), "Clip".into()],
+					input_properties: vec![
+						PropertiesRow::with_override("Artboards", WidgetOverride::Hidden),
+						PropertiesRow::with_override("Contents", WidgetOverride::Hidden),
+						"Location".into(),
+						"Dimensions".into(),
+						"Background".into(),
+						"Clip".into(),
+					],
 					output_names: vec!["Out".to_string()],
 					node_type_metadata: NodeTypePersistentMetadata::layer(IVec2::new(0, 0)),
 					network_metadata: Some(NodeNetworkMetadata {
@@ -366,7 +400,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec!["api".into(), "path".into()],
+					input_properties: vec![PropertiesRow::with_override("api", WidgetOverride::Hidden), "path".into()],
 					output_names: vec!["Image Frame".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -689,7 +723,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![PropertiesRow::with_override("Image", WidgetOverride::string("Creates an embedded image with the given transform."))],
+					input_properties: vec![PropertiesRow::with_override(
+						"Image",
+						WidgetOverride::String("Creates an embedded image with the given transform.".to_string()),
+					)],
 					output_names: vec!["Image".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -754,7 +791,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					input_properties: vec![
 						"Clip".into(),
 						"Seed".into(),
-						"Scale".into(),
+						PropertiesRow::with_override("Scale", WidgetOverride::Custom("noise_properties_scale".to_string())),
 						"Noise Type".into(),
 						"Domain Warp Type".into(),
 						"Domain Warp Amplitude".into(),
@@ -817,7 +854,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec!["Image".into(), "Stencil".into()],
+					input_properties: vec![PropertiesRow::with_override("Image", WidgetOverride::Hidden), "Stencil".into()],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
@@ -840,7 +877,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec!["Image".into(), "Insertion".into(), "Replace".into()],
+					input_properties: vec![
+						PropertiesRow::with_override("Image", WidgetOverride::Hidden),
+						PropertiesRow::with_override("Insertion", WidgetOverride::Hidden),
+						"Replace".into(),
+					],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
@@ -1111,7 +1152,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![PropertiesRow::with_override("Image", WidgetOverride::string("A bitmap image is embedded in this node"))],
+					input_properties: vec![PropertiesRow::with_override("Image", WidgetOverride::String("A bitmap image is embedded in this node".to_string()))],
 					output_names: vec!["Image".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -2672,6 +2713,47 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 
 	description: Cow::Borrowed("TODO"),
 });
+
+static INPUT_OVERRIDES: once_cell::sync::Lazy<HashMap<String, Box<dyn Fn(NodeId, usize, &mut NodePropertiesContext) -> Result<Vec<LayoutGroup>, String> + Send + Sync>>> =
+	once_cell::sync::Lazy::new(static_input_properties);
+
+/// Defines the logic for inputs to display a custom properties panel widget.
+fn static_input_properties() -> HashMap<String, Box<dyn Fn(NodeId, usize, &mut NodePropertiesContext) -> Result<Vec<LayoutGroup>, String> + Send + Sync>> {
+	let mut map: HashMap<String, Box<dyn Fn(NodeId, usize, &mut NodePropertiesContext) -> Result<Vec<LayoutGroup>, String> + Send + Sync>> = HashMap::new();
+	map.insert("hidden".to_string(), Box::new(|_node_id, _index, _context| Ok(Vec::new())));
+	map.insert(
+		"string".to_string(),
+		Box::new(|node_id, index, context| {
+			let Some(value) = context.network_interface.input_metadata(&node_id, index, "string_properties", context.selection_network_path) else {
+				return Err(format!("Could not get string properties for node {}", node_id));
+			};
+			let Some(string) = value.as_str() else {
+				return Err(format!("Could not downcast string properties for node {}", node_id));
+			};
+			Ok(node_properties::string_properties(string.to_string()))
+		}),
+	);
+	map.insert(
+		"noise_properties_scale".to_string(),
+		Box::new(|node_id, index, context| {
+			let network = context.network_interface.network(context.selection_network_path).ok_or("network not found in noise_properties_scale")?;
+			let document_node = network.nodes.get(&node_id).ok_or("node not found in noise_properties_scale")?;
+			let current_noise_type = document_node.inputs.iter().find_map(|input| match input.as_value() {
+				Some(&TaggedValue::NoiseType(noise_type)) => Some(noise_type),
+				_ => None,
+			});
+			let coherent_noise_active = current_noise_type != Some(NoiseType::WhiteNoise);
+			let input_name = context
+				.network_interface
+				.input_name(&node_id, index, context.selection_network_path)
+				.ok_or("input name not found in noise_properties_scale")?;
+
+			let scale = node_properties::number_widget(document_node, node_id, 2, input_name, NumberInput::default().min(0.).disabled(!coherent_noise_active), true);
+			Ok(vec![scale.into()])
+		}),
+	);
+	map
+}
 
 pub fn resolve_document_node_type(identifier: &str) -> Option<&DocumentNodeDefinition> {
 	DOCUMENT_NODE_TYPES.iter().find(|definition| definition.identifier == identifier)

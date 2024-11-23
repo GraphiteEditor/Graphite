@@ -3,11 +3,9 @@ use super::misc::PTZ;
 use super::nodes::SelectedNodes;
 use crate::consts::{EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP};
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::{self, resolve_document_node_type, DocumentNodeDefinition, NodePropertiesContext};
-use crate::messages::portfolio::document::node_graph::node_properties;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{resolve_document_node_type, DocumentNodeDefinition};
 use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::tool_messages::tool_prelude::LayoutGroup;
 
 use bezier_rs::Subpath;
 use graph_craft::document::{value::TaggedValue, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
@@ -16,6 +14,7 @@ use graphene_std::renderer::{ClickTarget, Quad};
 use graphene_std::transform::Footprint;
 use graphene_std::vector::{PointId, VectorData, VectorModificationType};
 use interpreted_executor::{dynamic_executor::ResolvedDocumentNodeTypes, node_registry::NODE_REGISTRY};
+use serde_json::Value;
 
 use glam::{DAffine2, DVec2, IVec2};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -732,10 +731,14 @@ impl NodeNetworkInterface {
 						let (input_type, type_source) = self.input_type(&InputConnector::node(encapsulating_node_id, *import_index), &encapsulating_path);
 						let data_type = FrontendGraphDataType::with_type(&input_type);
 
-						let import_name = if properties_row.input_name.is_empty() {
+						let Some(input_name) = properties_row.input_data.get("input_name").and_then(|input_name| input_name.as_str()) else {
+							log::error!("Could not get input_name in frontend_imports");
+							return None;
+						};
+						let import_name = if input_name.is_empty() {
 							input_type.clone().nested_type().to_string()
 						} else {
-							properties_row.input_name
+							input_name.to_string()
 						};
 
 						let connected_to = self
@@ -1042,19 +1045,25 @@ impl NodeNetworkInterface {
 			.and_then(|node_metadata| node_metadata.persistent_metadata.reference.as_ref().map(|reference| reference.to_string()))
 	}
 
+	pub fn input_name(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> Option<&str> {
+		let Some(value) = self.input_metadata(node_id, index, "input_name", network_path) else {
+			log::error!("Could not get input_name for node {node_id} index {index}");
+			return None;
+		};
+		value.as_str()
+	}
+
 	pub fn input_properties_row(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> Option<&PropertiesRow> {
 		self.node_metadata(node_id, network_path)
 			.and_then(|node_metadata| node_metadata.persistent_metadata.input_properties.get(index))
 	}
 
-	pub fn input_properties_row_mut(&mut self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> Option<&mut PropertiesRow> {
-		self.node_metadata_mut(node_id, network_path)
-			.and_then(|node_metadata| node_metadata.persistent_metadata.input_properties.get_mut(index))
-	}
-
-	pub fn widget_override(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> Option<&mut WidgetOverride> {
-		self.input_properties_row_mut(node_id, index, network_path)
-			.and_then(|node_metadata| node_metadata.widget_override.as_mut())
+	pub fn input_metadata(&self, node_id: &NodeId, index: usize, field: &str, network_path: &[NodeId]) -> Option<&Value> {
+		let Some(input_row) = self.input_properties_row(node_id, index, network_path) else {
+			log::error!("Could not get node_metadata in get_input_metadata");
+			return None;
+		};
+		input_row.input_data.get(field)
 	}
 
 	// Use frontend display name instead
@@ -3211,7 +3220,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Inserts a new export at insert index. If the insert index is -1 it is inserted at the end. The output_name is used by the encapsulating node.
-	pub fn add_export(&mut self, default_value: TaggedValue, insert_index: isize, output_name: String, network_path: &[NodeId]) {
+	pub fn add_export(&mut self, default_value: TaggedValue, insert_index: isize, output_name: &str, network_path: &[NodeId]) {
 		let Some(network) = self.network_mut(network_path) else {
 			log::error!("Could not get nested network in add_export");
 			return;
@@ -3237,9 +3246,9 @@ impl NodeNetworkInterface {
 		// There will not be an encapsulating node if the network is the document network
 		if let Some(encapsulating_node_metadata) = self.encapsulating_node_metadata_mut(network_path) {
 			if insert_index == -1 {
-				encapsulating_node_metadata.persistent_metadata.output_names.push(output_name);
+				encapsulating_node_metadata.persistent_metadata.output_names.push(output_name.to_string());
 			} else {
-				encapsulating_node_metadata.persistent_metadata.output_names.insert(insert_index as usize, output_name);
+				encapsulating_node_metadata.persistent_metadata.output_names.insert(insert_index as usize, output_name.to_string());
 			}
 		};
 
@@ -3266,7 +3275,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Inserts a new input at insert index. If the insert index is -1 it is inserted at the end. The output_name is used by the encapsulating node.
-	pub fn add_import(&mut self, default_value: TaggedValue, exposed: bool, insert_index: isize, input_name: String, network_path: &[NodeId]) {
+	pub fn add_import(&mut self, default_value: TaggedValue, exposed: bool, insert_index: isize, input_name: &str, network_path: &[NodeId]) {
 		let mut encapsulating_network_path = network_path.to_vec();
 		let Some(node_id) = encapsulating_network_path.pop() else {
 			log::error!("Cannot add import for document network");
@@ -5731,80 +5740,65 @@ impl PartialEq for DocumentNodeMetadata {
 	}
 }
 
-pub trait CloneableFn: Fn(NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Send + Sync {
-	fn clone_box(&self) -> Box<dyn CloneableFn>;
-}
-
-impl<T> CloneableFn for T
-where
-	T: Fn(NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Clone + Send + Sync + 'static,
-{
-	fn clone_box(&self) -> Box<dyn CloneableFn> {
-		Box::new(self.clone())
-	}
-}
-
-use std::fmt;
-
-// TODO: Store the lambdas as enums which can then be mapped into lambdas when serializing/deserializing/cloning
-pub trait CloneableFn: Fn(NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Send + Sync {
-	fn clone_box(&self) -> Box<dyn CloneableFn>;
-}
-
-impl fmt::Debug for dyn CloneableFn {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "CloneableFn")
-	}
-}
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct WidgetOverride(pub Box<dyn CloneableFn>);
-
-impl Clone for WidgetOverride {
-	fn clone(&self) -> Self {
-		WidgetOverride(self.0.clone_box())
-	}
-}
-
-impl WidgetOverride {
-	pub fn hidden() -> Self {
-		WidgetOverride(Box::new(|_node_id: NodeId, _context| Vec::new()))
-	}
-
-	pub fn string(string: &'static str) -> Self {
-		WidgetOverride(Box::new(|_node_id: NodeId, _context| node_properties::string_properties(string)))
-	}
-}
-
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum WidgetOverride {
+	None,
+	Hidden,
+	String(String),
+	Custom(String),
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct PropertiesRow {
 	/// Input/Output names may not be the same length as the number of inputs/outputs. They are the same as the nested networks Imports/Exports.
 	/// If the string is empty/DNE, then it uses the type.
-	pub input_name: String,
+	// pub input_name: String,
+	/// A general datastore than can store key value pairs of any types for any input
+	pub input_data: HashMap<String, Value>,
 	// An input can override a widget, which would otherwise be automatically generated from the type
-	pub widget_override: Option<WidgetOverride>,
+	// The string is the identifier to the widget override function stored in INPUT_OVERRIDES
+	pub widget_override: Option<String>,
 }
 
 impl PartialEq for PropertiesRow {
 	fn eq(&self, other: &Self) -> bool {
-		self.input_name == other.input_name
+		self.input_data == other.input_data && self.widget_override == other.widget_override
 	}
 }
 
 impl From<&str> for PropertiesRow {
 	fn from(input_name: &str) -> Self {
-		PropertiesRow {
-			input_name: input_name.to_string(),
-			widget_override: None,
-		}
+		PropertiesRow::with_override(input_name, WidgetOverride::None)
 	}
 }
 
+// impl From<String> for PropertiesRow {
+// 	fn from(input_name: String) -> Self {
+// 		PropertiesRow::with_override(&input_name, with_override)
+// 	}
+// }
+
 impl PropertiesRow {
 	pub fn with_override(input_name: &str, widget_override: WidgetOverride) -> Self {
-		PropertiesRow {
-			input_name: input_name.to_string(),
-			widget_override: Some(widget_override),
+		let mut input_data = HashMap::new();
+		input_data.insert("input_name".to_string(), Value::String(input_name.to_string()));
+		match widget_override {
+			WidgetOverride::None => PropertiesRow { input_data, widget_override: None },
+			WidgetOverride::Hidden => PropertiesRow {
+				input_data,
+				widget_override: Some("hidden".to_string()),
+			},
+			WidgetOverride::String(string_properties) => {
+				input_data.insert("string_properties".to_string(), Value::String(string_properties));
+				PropertiesRow {
+					input_data,
+					widget_override: Some("string".to_string()),
+				}
+			}
+			WidgetOverride::Custom(lambda_name) => PropertiesRow {
+				input_data,
+				widget_override: Some(lambda_name),
+			},
 		}
 	}
 }

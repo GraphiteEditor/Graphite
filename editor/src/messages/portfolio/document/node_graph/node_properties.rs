@@ -3,7 +3,7 @@
 use super::document_node_definitions::{NodePropertiesContext, IMAGINATE_NODE};
 use super::utility_types::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, WidgetOverride};
+use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::*;
 
 use graph_craft::document::value::TaggedValue;
@@ -26,7 +26,7 @@ use graphene_std::transform::Footprint;
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::VectorData;
 
-pub(crate) fn string_properties(text: impl Into<String>) -> Vec<LayoutGroup> {
+pub(crate) fn string_properties(text: String) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_holder();
 	vec![LayoutGroup::Row { widgets: vec![widget] }]
 }
@@ -89,12 +89,10 @@ fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 }
 
 pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let Some(input_properties_row) = context.network_interface.input_properties_row(&node_id, index, context.selection_network_path) else {
-		log::warn!("A widget failed to be built for node {node_id}, index {index} because the input connector could not be determined");
+	let Some(name) = context.network_interface.input_name(&node_id, index, context.selection_network_path) else {
+		log::warn!("A widget failed to be built for node {node_id}, index {index} because the input name could not be determined");
 		return vec![];
 	};
-
-	let name = &input_properties_row.input_name;
 
 	let Some(network) = context.network_interface.network(context.selection_network_path) else {
 		log::warn!("A widget failed to be built for node {node_id}, index {index} because the network could not be determined");
@@ -134,109 +132,109 @@ pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, conte
 
 				// For all other types, use TypeId-based matching
 				_ => {
-					if let Some(internal_id) = concrete_type.id {
-						use std::any::TypeId;
-						match internal_id {
-							x if x == TypeId::of::<bool>() => bool_widget(document_node, node_id, index, name, CheckboxInput::default(), true).into(),
-							x if x == TypeId::of::<f64>() => number_widget(document_node, node_id, index, name, number_input.min(min(f64::NEG_INFINITY)).max(max(f64::INFINITY)), true).into(),
-							x if x == TypeId::of::<u32>() => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)).max(max(f64::from(u32::MAX))), true).into(),
-							x if x == TypeId::of::<u64>() => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)), true).into(),
-							x if x == TypeId::of::<String>() => text_widget(document_node, node_id, index, name, true).into(),
-							x if x == TypeId::of::<Color>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(false), true),
-							x if x == TypeId::of::<Option<Color>>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(true), true),
-							x if x == TypeId::of::<DVec2>() => vec2_widget(document_node, node_id, index, name, "X", "Y", "", None, add_blank_assist),
-							x if x == TypeId::of::<UVec2>() => vec2_widget(document_node, node_id, index, name, "X", "Y", "", Some(0.), add_blank_assist),
-							x if x == TypeId::of::<IVec2>() => vec2_widget(document_node, node_id, index, name, "X", "Y", "", None, add_blank_assist),
-							x if x == TypeId::of::<Vec<f64>>() => vec_f64_input(document_node, node_id, index, name, TextInput::default(), true).into(),
-							x if x == TypeId::of::<Vec<DVec2>>() => vec_dvec2_input(document_node, node_id, index, name, TextInput::default(), true).into(),
-							x if x == TypeId::of::<Font>() => {
-								let (font_widgets, style_widgets) = font_inputs(document_node, node_id, index, name, false);
-								font_widgets.into_iter().chain(style_widgets.unwrap_or_default()).collect::<Vec<_>>().into()
-							}
-							x if x == TypeId::of::<Curve>() => curves_widget(document_node, node_id, index, name, true),
-							x if x == TypeId::of::<GradientStops>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(false), true),
-							x if x == TypeId::of::<VectorData>() => vector_widget(document_node, node_id, index, name, true).into(),
-							x if x == TypeId::of::<Footprint>() => {
-								let widgets = footprint_widget(document_node, node_id, index);
-								let (last, rest) = widgets.split_last().expect("Footprint widget should return multiple rows");
-								extra_widgets = rest.to_vec();
-								last.clone()
-							}
-							x if x == TypeId::of::<BlendMode>() => blend_mode(document_node, node_id, index, name, true),
-							x if x == TypeId::of::<RedGreenBlue>() => color_channel(document_node, node_id, index, name, true),
-							x if x == TypeId::of::<RedGreenBlueAlpha>() => rgba_channel(document_node, node_id, index, name, true),
-							x if x == TypeId::of::<NoiseType>() => noise_type(document_node, node_id, index, name, true),
-							x if x == TypeId::of::<FractalType>() => fractal_type(document_node, node_id, index, name, true, false),
-							x if x == TypeId::of::<CellularDistanceFunction>() => cellular_distance_function(document_node, node_id, index, name, true, false),
-							x if x == TypeId::of::<CellularReturnType>() => cellular_return_type(document_node, node_id, index, name, true, false),
-							x if x == TypeId::of::<DomainWarpType>() => domain_warp_type(document_node, node_id, index, name, true, false),
-							x if x == TypeId::of::<RelativeAbsolute>() => vec![DropdownInput::new(vec![vec![
-								MenuListEntry::new("Relative")
-									.label("Relative")
-									.on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Relative), node_id, index)),
-								MenuListEntry::new("Absolute")
-									.label("Absolute")
-									.on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Absolute), node_id, index)),
-							]])
-							.widget_holder()]
-							.into(),
-							x if x == TypeId::of::<LineCap>() => line_cap_widget(document_node, node_id, index, name, true),
-							x if x == TypeId::of::<LineJoin>() => line_join_widget(document_node, node_id, index, name, true),
-							x if x == TypeId::of::<FillType>() => vec![DropdownInput::new(vec![vec![
-								MenuListEntry::new("Solid")
-									.label("Solid")
-									.on_update(update_value(|_| TaggedValue::FillType(FillType::Solid), node_id, index)),
-								MenuListEntry::new("Gradient")
-									.label("Gradient")
-									.on_update(update_value(|_| TaggedValue::FillType(FillType::Gradient), node_id, index)),
-							]])
-							.widget_holder()]
-							.into(),
-							x if x == TypeId::of::<GradientType>() => vec![DropdownInput::new(vec![vec![
-								MenuListEntry::new("Linear")
-									.label("Linear")
-									.on_update(update_value(|_| TaggedValue::GradientType(GradientType::Linear), node_id, index)),
-								MenuListEntry::new("Radial")
-									.label("Radial")
-									.on_update(update_value(|_| TaggedValue::GradientType(GradientType::Radial), node_id, index)),
-							]])
-							.widget_holder()]
-							.into(),
-							x if x == TypeId::of::<BooleanOperation>() => boolean_operation_radio_buttons(document_node, node_id, index, name, true),
-							x if x == TypeId::of::<CentroidType>() => centroid_widget(document_node, node_id, index),
-							x if x == TypeId::of::<LuminanceCalculation>() => luminance_calculation(document_node, node_id, index, name, true),
-							x if x == TypeId::of::<ImaginateSamplingMethod>() => vec![DropdownInput::new(
-								ImaginateSamplingMethod::list()
-									.into_iter()
-									.map(|method| {
-										vec![MenuListEntry::new(format!("{:?}", method)).label(method.to_string()).on_update(update_value(
-											move |_| TaggedValue::ImaginateSamplingMethod(method),
-											node_id,
-											index,
-										))]
-									})
-									.collect(),
-							)
-							.widget_holder()]
-							.into(),
-							x if x == TypeId::of::<ImaginateMaskStartingFill>() => vec![DropdownInput::new(
-								ImaginateMaskStartingFill::list()
-									.into_iter()
-									.map(|fill| {
-										vec![MenuListEntry::new(format!("{:?}", fill)).label(fill.to_string()).on_update(update_value(
-											move |_| TaggedValue::ImaginateMaskStartingFill(fill),
-											node_id,
-											index,
-										))]
-									})
-									.collect(),
-							)
-							.widget_holder()]
-							.into(),
-							_ => vec![TextLabel::new(format!("Unsupported type: {}", concrete_type.name)).widget_holder()].into(),
+					use std::any::TypeId;
+					match concrete_type.id {
+						Some(x) if x == TypeId::of::<bool>() => bool_widget(document_node, node_id, index, name, CheckboxInput::default(), true).into(),
+						Some(x) if x == TypeId::of::<f64>() => number_widget(document_node, node_id, index, name, number_input.min(min(f64::NEG_INFINITY)).max(max(f64::INFINITY)), true).into(),
+						Some(x) if x == TypeId::of::<u32>() => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)).max(max(f64::from(u32::MAX))), true).into(),
+						Some(x) if x == TypeId::of::<u64>() => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)), true).into(),
+						Some(x) if x == TypeId::of::<String>() => text_widget(document_node, node_id, index, name, true).into(),
+						Some(x) if x == TypeId::of::<Color>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(false), true),
+						Some(x) if x == TypeId::of::<Option<Color>>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(true), true),
+						Some(x) if x == TypeId::of::<DVec2>() => vec2_widget(document_node, node_id, index, name, "X", "Y", "", None, add_blank_assist),
+						Some(x) if x == TypeId::of::<UVec2>() => vec2_widget(document_node, node_id, index, name, "X", "Y", "", Some(0.), add_blank_assist),
+						Some(x) if x == TypeId::of::<IVec2>() => vec2_widget(document_node, node_id, index, name, "X", "Y", "", None, add_blank_assist),
+						Some(x) if x == TypeId::of::<Vec<f64>>() => vec_f64_input(document_node, node_id, index, name, TextInput::default(), true).into(),
+						Some(x) if x == TypeId::of::<Vec<DVec2>>() => vec_dvec2_input(document_node, node_id, index, name, TextInput::default(), true).into(),
+						Some(x) if x == TypeId::of::<Font>() => {
+							let (font_widgets, style_widgets) = font_inputs(document_node, node_id, index, name, false);
+							font_widgets.into_iter().chain(style_widgets.unwrap_or_default()).collect::<Vec<_>>().into()
 						}
-					} else {
-						vec![TextLabel::new(format!("Unsupported type: {}", concrete_type.name)).widget_holder()].into()
+						Some(x) if x == TypeId::of::<Curve>() => curves_widget(document_node, node_id, index, name, true),
+						Some(x) if x == TypeId::of::<GradientStops>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(false), true),
+						Some(x) if x == TypeId::of::<VectorData>() => vector_widget(document_node, node_id, index, name, true).into(),
+						Some(x) if x == TypeId::of::<Footprint>() => {
+							let widgets = footprint_widget(document_node, node_id, index);
+							let (last, rest) = widgets.split_last().expect("Footprint widget should return multiple rows");
+							extra_widgets = rest.to_vec();
+							last.clone()
+						}
+						Some(x) if x == TypeId::of::<BlendMode>() => blend_mode(document_node, node_id, index, name, true),
+						Some(x) if x == TypeId::of::<RedGreenBlue>() => color_channel(document_node, node_id, index, name, true),
+						Some(x) if x == TypeId::of::<RedGreenBlueAlpha>() => rgba_channel(document_node, node_id, index, name, true),
+						Some(x) if x == TypeId::of::<NoiseType>() => noise_type(document_node, node_id, index, name, true),
+						Some(x) if x == TypeId::of::<FractalType>() => fractal_type(document_node, node_id, index, name, true, false),
+						Some(x) if x == TypeId::of::<CellularDistanceFunction>() => cellular_distance_function(document_node, node_id, index, name, true, false),
+						Some(x) if x == TypeId::of::<CellularReturnType>() => cellular_return_type(document_node, node_id, index, name, true, false),
+						Some(x) if x == TypeId::of::<DomainWarpType>() => domain_warp_type(document_node, node_id, index, name, true, false),
+						Some(x) if x == TypeId::of::<RelativeAbsolute>() => vec![DropdownInput::new(vec![vec![
+							MenuListEntry::new("Relative")
+								.label("Relative")
+								.on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Relative), node_id, index)),
+							MenuListEntry::new("Absolute")
+								.label("Absolute")
+								.on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Absolute), node_id, index)),
+						]])
+						.widget_holder()]
+						.into(),
+						Some(x) if x == TypeId::of::<LineCap>() => line_cap_widget(document_node, node_id, index, name, true),
+						Some(x) if x == TypeId::of::<LineJoin>() => line_join_widget(document_node, node_id, index, name, true),
+						Some(x) if x == TypeId::of::<FillType>() => vec![DropdownInput::new(vec![vec![
+							MenuListEntry::new("Solid")
+								.label("Solid")
+								.on_update(update_value(|_| TaggedValue::FillType(FillType::Solid), node_id, index)),
+							MenuListEntry::new("Gradient")
+								.label("Gradient")
+								.on_update(update_value(|_| TaggedValue::FillType(FillType::Gradient), node_id, index)),
+						]])
+						.widget_holder()]
+						.into(),
+						Some(x) if x == TypeId::of::<GradientType>() => vec![DropdownInput::new(vec![vec![
+							MenuListEntry::new("Linear")
+								.label("Linear")
+								.on_update(update_value(|_| TaggedValue::GradientType(GradientType::Linear), node_id, index)),
+							MenuListEntry::new("Radial")
+								.label("Radial")
+								.on_update(update_value(|_| TaggedValue::GradientType(GradientType::Radial), node_id, index)),
+						]])
+						.widget_holder()]
+						.into(),
+						Some(x) if x == TypeId::of::<BooleanOperation>() => boolean_operation_radio_buttons(document_node, node_id, index, name, true),
+						Some(x) if x == TypeId::of::<CentroidType>() => centroid_widget(document_node, node_id, index),
+						Some(x) if x == TypeId::of::<LuminanceCalculation>() => luminance_calculation(document_node, node_id, index, name, true),
+						Some(x) if x == TypeId::of::<ImaginateSamplingMethod>() => vec![DropdownInput::new(
+							ImaginateSamplingMethod::list()
+								.into_iter()
+								.map(|method| {
+									vec![MenuListEntry::new(format!("{:?}", method)).label(method.to_string()).on_update(update_value(
+										move |_| TaggedValue::ImaginateSamplingMethod(method),
+										node_id,
+										index,
+									))]
+								})
+								.collect(),
+						)
+						.widget_holder()]
+						.into(),
+						Some(x) if x == TypeId::of::<ImaginateMaskStartingFill>() => vec![DropdownInput::new(
+							ImaginateMaskStartingFill::list()
+								.into_iter()
+								.map(|fill| {
+									vec![MenuListEntry::new(format!("{:?}", fill)).label(fill.to_string()).on_update(update_value(
+										move |_| TaggedValue::ImaginateMaskStartingFill(fill),
+										node_id,
+										index,
+									))]
+								})
+								.collect(),
+						)
+						.widget_holder()]
+						.into(),
+						_ => {
+							let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, false);
+							widgets.extend_from_slice(&[TextLabel::new(format!("Unsupported type: {}", concrete_type.name)).widget_holder()]);
+							widgets.into()
+						}
 					}
 				}
 			}
@@ -639,7 +637,7 @@ fn vector_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	widgets
 }
 
-fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, number_props: NumberInput, blank_assist: bool) -> Vec<WidgetHolder> {
+pub fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, number_props: NumberInput, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, blank_assist);
 
 	let Some(input) = document_node.inputs.get(index) else {
@@ -1764,7 +1762,7 @@ pub(crate) fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId
 			.persistent_node_metadata
 			.input_properties
 			.iter()
-			.position(|row| row.input_name == name)
+			.position(|row| row.input_data.get("input_name").and_then(|v| v.as_str()) == Some(name))
 			.unwrap_or_else(|| panic!("Input {name} not found"))
 	};
 	let seed_index = resolve_input("Seed");
@@ -2245,15 +2243,11 @@ pub(crate) fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId
 	layout
 }
 
-fn unknown_node_properties(reference: &String) -> Vec<LayoutGroup> {
-	string_properties(format!("Node '{}' cannot be found in library", reference))
-}
-
 pub(crate) fn node_no_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	string_properties(if context.network_interface.is_layer(&node_id, context.selection_network_path) {
-		"Layer has no properties"
+		"Layer has no properties".to_string()
 	} else {
-		"Node has no properties"
+		"Node has no properties".to_string()
 	})
 }
 
@@ -2268,18 +2262,11 @@ pub(crate) fn generate_node_properties(node_id: NodeId, pinned: bool, context: &
 
 	let number_of_inputs = context.network_interface.number_of_inputs(&node_id, context.selection_network_path);
 	for input_index in 0..number_of_inputs {
-		if let Some(widget_override) = context.network_interface.widget_override(&node_id, input_index, context.selection_network_path) {
-			let mut widget_override = std::mem::replace(&mut WidgetOverride(Box::new()));
-			layout.extend(widget_override.0(node_id, context));
-			let empty_widget_override = context
-				.network_interface
-				.widget_override(&node_id, input_index, context.selection_network_path)
-				.replace(&mut widget_override);
-		} else {
+		let row = context.call_widget_override(&node_id, input_index).unwrap_or_else(|| {
 			let input_type = context.network_interface.input_type(&InputConnector::node(node_id, input_index), context.selection_network_path);
-			let row = property_from_type(node_id, input_index, &input_type.0, context);
-			layout.extend(row);
-		}
+			property_from_type(node_id, input_index, &input_type.0, context)
+		});
+		layout.extend(row);
 	}
 	if layout.is_empty() {
 		layout = node_no_properties(node_id, context);

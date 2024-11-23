@@ -9,7 +9,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{
-	self, InputConnector, NodeNetworkInterface, NodeTemplate, NodeTypePersistentMetadata, OutputConnector, Previewing, PropertiesRow, TypeSource
+	self, InputConnector, NodeNetworkInterface, NodeTemplate, NodeTypePersistentMetadata, OutputConnector, Previewing, TypeSource,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
 use crate::messages::prelude::*;
@@ -100,11 +100,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![new_layer_id] });
 			}
 			NodeGraphMessage::AddImport => {
-				network_interface.add_import(graph_craft::document::value::TaggedValue::None, true, -1, String::new(), breadcrumb_network_path);
+				network_interface.add_import(graph_craft::document::value::TaggedValue::None, true, -1, "", breadcrumb_network_path);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::AddExport => {
-				network_interface.add_export(graph_craft::document::value::TaggedValue::None, -1, String::new(), breadcrumb_network_path);
+				network_interface.add_export(graph_craft::document::value::TaggedValue::None, -1, "", breadcrumb_network_path);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::Init => {
@@ -2448,7 +2448,10 @@ fn frontend_inputs_lookup(breadcrumb_network_path: &[NodeId], network_interface:
 			}
 
 			// Get the name from the metadata here (since it also requires a reference to the `network_interface`)
-			let name = network_interface.input_properties_row(&node_id, index, breadcrumb_network_path).cloned().map(|properties_row|properties_row.input_name).filter(|s| !s.is_empty());
+			let name = network_interface
+				.input_name(&node_id, index, breadcrumb_network_path)
+				.filter(|s| !s.is_empty())
+				.map(|name| name.to_string());
 			// Get the output connector that feeds into this input (done here as well for simplicity)
 			let connector = OutputConnector::from_input(input);
 
