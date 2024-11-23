@@ -1,0 +1,23 @@
+[package]
+name = "math-parser"
+version = "0.0.0"
+rust-version = "1.79"
+edition = "2021"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+description = "Parser for Graphite style mathematics expressions"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+pest = "2.7"
+pest_derive = "2.7.11"
+thiserror = "1"
+lazy_static = "1.5"
+num-complex = "0.4"
+log = { workspace = true }
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "bench"
+harness = false

@@ -50,8 +50,8 @@ impl AlignmentSnapper {
 		}
 	}
 
-	pub fn snap_bbox_points(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint) {
-		self.collect_bounding_box_points(snap_data, point.source_index == 0);
+	pub fn snap_bbox_points(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint, config: SnapTypeConfiguration) {
+		self.collect_bounding_box_points(snap_data, !config.use_existing_candidates);
 		let unselected_geometry = if snap_data.document.snapping_state.target_enabled(SnapTarget::Alignment(AlignmentSnapTarget::Handle)) {
 			snap_data.node_snap_cache.map(|cache| cache.unselected.as_slice()).unwrap_or(&[])
 		} else {
@@ -154,23 +154,23 @@ impl AlignmentSnapper {
 			_ => {}
 		}
 	}
-	pub fn free_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults) {
+	pub fn free_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, config: SnapTypeConfiguration) {
 		let is_bbox = matches!(point.source, SnapSource::BoundingBox(_));
 		let is_geometry = matches!(point.source, SnapSource::Geometry(_));
 		let geometry_selected = snap_data.has_manipulators();
 
 		if is_bbox || (is_geometry && geometry_selected) || (is_geometry && point.alignment) {
-			self.snap_bbox_points(snap_data, point, snap_results, SnapConstraint::None);
+			self.snap_bbox_points(snap_data, point, snap_results, SnapConstraint::None, config);
 		}
 	}
 
-	pub fn constrained_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint) {
+	pub fn constrained_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint, config: SnapTypeConfiguration) {
 		let is_bbox = matches!(point.source, SnapSource::BoundingBox(_));
 		let is_geometry = matches!(point.source, SnapSource::Geometry(_));
 		let geometry_selected = snap_data.has_manipulators();
 
 		if is_bbox || (is_geometry && geometry_selected) || (is_geometry && point.alignment) {
-			self.snap_bbox_points(snap_data, point, snap_results, constraint);
+			self.snap_bbox_points(snap_data, point, snap_results, constraint, config);
 		}
 	}
 }

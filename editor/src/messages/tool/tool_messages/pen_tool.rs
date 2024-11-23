@@ -8,7 +8,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Inpu
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
+use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use crate::messages::tool::common_functionality::utility_functions::should_extend;
 
 use bezier_rs::{Bezier, BezierHandles};
@@ -395,6 +395,7 @@ impl PenToolData {
 
 		let neighbors = relative.filter(|_| neighbor).map_or(Vec::new(), |neighbor| vec![neighbor]);
 
+		let config = SnapTypeConfiguration::default();
 		if let Some(relative) = relative
 			.map(|layer| transform.transform_point2(layer))
 			.filter(|&relative| (snap_angle || lock_angle) && (relative - document_pos).length_squared() > f64::EPSILON * 100.)
@@ -417,8 +418,8 @@ impl PenToolData {
 			let near_point = SnapCandidatePoint::handle_neighbors(document_pos, neighbors.clone());
 			let far_point = SnapCandidatePoint::handle_neighbors(2. * relative - document_pos, neighbors);
 			if colinear {
-				let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, None);
-				let snapped_far = snap.constrained_snap(&snap_data, &far_point, constraint, None);
+				let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, config);
+				let snapped_far = snap.constrained_snap(&snap_data, &far_point, constraint, config);
 				document_pos = if snapped_far.other_snap_better(&snapped) {
 					snapped.snapped_point_document
 				} else {
@@ -426,13 +427,13 @@ impl PenToolData {
 				};
 				snap.update_indicator(if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far });
 			} else {
-				let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, None);
+				let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, config);
 				document_pos = snapped.snapped_point_document;
 				snap.update_indicator(snapped);
 			}
 		} else if let Some(relative) = relative.map(|layer| transform.transform_point2(layer)).filter(|_| colinear) {
-			let snapped = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbors(document_pos, neighbors.clone()), None, false);
-			let snapped_far = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbors(2. * relative - document_pos, neighbors), None, false);
+			let snapped = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbors(document_pos, neighbors.clone()), config);
+			let snapped_far = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbors(2. * relative - document_pos, neighbors), config);
 			document_pos = if snapped_far.other_snap_better(&snapped) {
 				snapped.snapped_point_document
 			} else {
@@ -440,7 +441,7 @@ impl PenToolData {
 			};
 			snap.update_indicator(if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far });
 		} else {
-			let snapped = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbors(document_pos, neighbors), None, false);
+			let snapped = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbors(document_pos, neighbors), config);
 			document_pos = snapped.snapped_point_document;
 			snap.update_indicator(snapped);
 		}
@@ -456,7 +457,7 @@ impl PenToolData {
 
 	fn create_initial_point(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>, tool_options: &PenOptions, append: bool) {
 		let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
-		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input), &point, None, false);
+		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
 		let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
 
 		let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
@@ -632,7 +633,7 @@ impl Fsm for PenToolFsmState {
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart { append_to_selected }) => {
 				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
-				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, None, false);
+				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
 				let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
 				// Early return if the buffer was started and this message is being run again after the buffer (so that place_anchor updates the state with the newly merged vector)
 				if tool_data.buffering_merged_vector {
