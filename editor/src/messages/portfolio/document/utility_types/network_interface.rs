@@ -2763,13 +2763,23 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn is_eligible_to_be_layer(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
-		let input_count = self.number_of_displayed_inputs(node_id, network_path);
+		let Some(network) = self.network(network_path) else {
+			log::error!("Could not get network in is_eligible_to_be_layer");
+			return false;
+		};
+		let Some(node) = network.nodes.get(node_id) else {
+			log::error!("Could not get node {node_id} in is_eligible_to_be_layer");
+			return false;
+		};
+		let input_count = node.inputs.iter().take(2).filter(|input| input.is_exposed_to_frontend(network_path.is_empty())).count();
+		let parameters_hidden = node.inputs.iter().skip(2).all(|input| !input.is_exposed_to_frontend(network_path.is_empty()));
 		let output_count = self.number_of_outputs(node_id, network_path);
 
 		self.node_metadata(node_id, network_path)
 			.is_some_and(|node_metadata| node_metadata.persistent_metadata.has_primary_output)
 			&& output_count == 1
 			&& (input_count <= 2)
+			&& parameters_hidden
 	}
 
 	pub fn node_graph_ptz(&self, network_path: &[NodeId]) -> Option<&PTZ> {

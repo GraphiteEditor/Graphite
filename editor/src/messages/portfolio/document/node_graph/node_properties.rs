@@ -49,7 +49,7 @@ fn commit_value<T>(_: &T) -> Message {
 	DocumentMessage::AddTransaction.into()
 }
 
-fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphDataType, exposed: bool) -> WidgetHolder {
+pub fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphDataType, exposed: bool) -> WidgetHolder {
 	ParameterExposeButton::new()
 		.exposed(exposed)
 		.data_type(data_type)
@@ -66,7 +66,7 @@ fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphDataType
 }
 
 // TODO: Remove this when we have proper entry row formatting that includes room for Assists.
-fn add_blank_assist(widgets: &mut Vec<WidgetHolder>) {
+pub fn add_blank_assist(widgets: &mut Vec<WidgetHolder>) {
 	widgets.extend_from_slice(&[
 		// Custom CSS specific to the Properties panel converts this Section separator into the width of an assist (24px).
 		Separator::new(SeparatorType::Section).widget_holder(),
@@ -75,7 +75,7 @@ fn add_blank_assist(widgets: &mut Vec<WidgetHolder>) {
 	]);
 }
 
-fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, data_type: FrontendGraphDataType, blank_assist: bool) -> Vec<WidgetHolder> {
+pub fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, data_type: FrontendGraphDataType, blank_assist: bool) -> Vec<WidgetHolder> {
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
@@ -247,7 +247,7 @@ pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, conte
 	extra_widgets
 }
 
-fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
+pub fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 
 	let Some(input) = document_node.inputs.get(index) else {
@@ -266,7 +266,7 @@ fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 	widgets
 }
 
-fn text_area_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
+pub fn text_area_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 
 	let Some(input) = document_node.inputs.get(index) else {
@@ -285,7 +285,7 @@ fn text_area_widget(document_node: &DocumentNode, node_id: NodeId, index: usize,
 	widgets
 }
 
-fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, checkbox_input: CheckboxInput, blank_assist: bool) -> Vec<WidgetHolder> {
+pub fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, checkbox_input: CheckboxInput, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 
 	let Some(input) = document_node.inputs.get(index) else {
@@ -305,7 +305,7 @@ fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 	widgets
 }
 
-fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize) -> Vec<LayoutGroup> {
+pub fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize) -> Vec<LayoutGroup> {
 	let mut location_widgets = start_widgets(document_node, node_id, index, "Footprint", FrontendGraphDataType::General, true);
 	location_widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
@@ -446,7 +446,17 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 	]
 }
 
-fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, x: &str, y: &str, unit: &str, min: Option<f64>, mut assist: impl FnMut(&mut Vec<WidgetHolder>)) -> LayoutGroup {
+pub fn vec2_widget(
+	document_node: &DocumentNode,
+	node_id: NodeId,
+	index: usize,
+	name: &str,
+	x: &str,
+	y: &str,
+	unit: &str,
+	min: Option<f64>,
+	mut assist: impl FnMut(&mut Vec<WidgetHolder>),
+) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, false);
 
 	assist(&mut widgets);
@@ -536,7 +546,7 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 	LayoutGroup::Row { widgets }
 }
 
-fn vec_f64_input(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, text_input: TextInput, blank_assist: bool) -> Vec<WidgetHolder> {
+pub fn vec_f64_input(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, text_input: TextInput, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, blank_assist);
 
 	let from_string = |string: &str| {
@@ -565,7 +575,7 @@ fn vec_f64_input(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	widgets
 }
 
-fn vec_dvec2_input(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, text_props: TextInput, blank_assist: bool) -> Vec<WidgetHolder> {
+pub fn vec_dvec2_input(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, text_props: TextInput, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, blank_assist);
 
 	let from_string = |string: &str| {
@@ -594,7 +604,7 @@ fn vec_dvec2_input(document_node: &DocumentNode, node_id: NodeId, index: usize, 
 	widgets
 }
 
-fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> (Vec<WidgetHolder>, Option<Vec<WidgetHolder>>) {
+pub fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> (Vec<WidgetHolder>, Option<Vec<WidgetHolder>>) {
 	let mut first_widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let mut second_widgets = None;
 
@@ -628,7 +638,7 @@ fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 	(first_widgets, second_widgets)
 }
 
-fn vector_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
+pub fn vector_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::VectorData, blank_assist);
 
 	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -676,7 +686,7 @@ pub fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
-fn color_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+pub fn color_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -703,7 +713,7 @@ fn color_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	LayoutGroup::Row { widgets }.with_tooltip("Color Channel")
 }
 
-fn rgba_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+pub fn rgba_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -731,7 +741,7 @@ fn rgba_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, nam
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
-fn noise_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+pub fn noise_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -757,7 +767,7 @@ fn noise_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name:
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
-fn fractal_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
+pub fn fractal_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -783,7 +793,7 @@ fn fractal_type(document_node: &DocumentNode, node_id: NodeId, index: usize, nam
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
-fn cellular_distance_function(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
+pub fn cellular_distance_function(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -812,7 +822,7 @@ fn cellular_distance_function(document_node: &DocumentNode, node_id: NodeId, ind
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
-fn cellular_return_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
+pub fn cellular_return_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -838,7 +848,7 @@ fn cellular_return_type(document_node: &DocumentNode, node_id: NodeId, index: us
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
-fn domain_warp_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
+pub fn domain_warp_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -864,7 +874,7 @@ fn domain_warp_type(document_node: &DocumentNode, node_id: NodeId, index: usize,
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
-fn blend_mode(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+pub fn blend_mode(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -897,7 +907,7 @@ fn blend_mode(document_node: &DocumentNode, node_id: NodeId, index: usize, name:
 }
 
 // TODO: Generalize this for all dropdowns (also see blend_mode and channel_extration)
-fn luminance_calculation(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+pub fn luminance_calculation(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -924,7 +934,7 @@ fn luminance_calculation(document_node: &DocumentNode, node_id: NodeId, index: u
 	LayoutGroup::Row { widgets }.with_tooltip("Formula used to calculate the luminance of a pixel")
 }
 
-fn boolean_operation_radio_buttons(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+pub fn boolean_operation_radio_buttons(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 
 	let Some(input) = document_node.inputs.get(index) else {
@@ -954,7 +964,7 @@ fn boolean_operation_radio_buttons(document_node: &DocumentNode, node_id: NodeId
 	LayoutGroup::Row { widgets }
 }
 
-fn line_cap_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+pub fn line_cap_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -979,7 +989,7 @@ fn line_cap_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, 
 	LayoutGroup::Row { widgets }
 }
 
-fn line_join_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+pub fn line_join_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -1004,7 +1014,7 @@ fn line_join_widget(document_node: &DocumentNode, node_id: NodeId, index: usize,
 	LayoutGroup::Row { widgets }
 }
 
-fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, color_button: ColorButton, blank_assist: bool) -> LayoutGroup {
+pub fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, color_button: ColorButton, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 
 	// Return early with just the label if the input is exposed to the graph, meaning we don't want to show the color picker widget in the Properties panel
@@ -1049,7 +1059,7 @@ fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, nam
 	LayoutGroup::Row { widgets }
 }
 
-fn curves_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+pub fn curves_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 
 	let Some(input) = document_node.inputs.get(index) else {
@@ -1068,7 +1078,7 @@ fn curves_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	LayoutGroup::Row { widgets }
 }
 
-fn centroid_widget(document_node: &DocumentNode, node_id: NodeId, index: usize) -> LayoutGroup {
+pub fn centroid_widget(document_node: &DocumentNode, node_id: NodeId, index: usize) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, "Centroid Type", FrontendGraphDataType::General, true);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -1119,22 +1129,37 @@ pub(crate) fn insert_channel_properties(document_node: &DocumentNode, node_id: N
 	vec![color_channel]
 }
 
-// Noise Type is commented out for now as there is only one type of noise (White Noise).
-// As soon as there are more types of noise, this should be uncommented.
-pub(crate) fn noise_pattern_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	// Get the current values of the inputs of interest so they can set whether certain inputs are disabled based on various conditions.
-	let current_noise_type = match &document_node.inputs[3].as_value() {
+pub fn query_node_and_input_name<'a>(node_id: NodeId, input_index: usize, context: &'a NodePropertiesContext<'a>) -> Result<(&'a DocumentNode, &'a str), String> {
+	let network = context
+		.network_interface
+		.network(context.selection_network_path)
+		.ok_or("network not found in query_node_and_input_name")?;
+	let document_node = network.nodes.get(&node_id).ok_or("node not found in query_node_and_input_name")?;
+	let input_name = context
+		.network_interface
+		.input_name(&node_id, input_index, context.selection_network_path)
+		.ok_or("input name not found in noise_properties_scale")?;
+	Ok((document_node, input_name))
+}
+
+pub fn query_noise_pattern_state(node_id: NodeId, context: &NodePropertiesContext) -> Result<(bool, bool, bool, bool, bool, bool), String> {
+	let network = context
+		.network_interface
+		.network(context.selection_network_path)
+		.ok_or("network not found in query_noise_pattern_state")?;
+	let document_node = network.nodes.get(&node_id).ok_or("node not found in query_noise_pattern_state")?;
+	let current_noise_type = document_node.inputs.iter().find_map(|input| match input.as_value() {
 		Some(&TaggedValue::NoiseType(noise_type)) => Some(noise_type),
 		_ => None,
-	};
-	let current_domain_warp_type = match &document_node.inputs[4].as_value() {
-		Some(&TaggedValue::DomainWarpType(domain_warp_type)) => Some(domain_warp_type),
-		_ => None,
-	};
-	let current_fractal_type = match &document_node.inputs[6].as_value() {
+	});
+	let current_fractal_type = document_node.inputs.iter().find_map(|input| match input.as_value() {
 		Some(&TaggedValue::FractalType(fractal_type)) => Some(fractal_type),
 		_ => None,
-	};
+	});
+	let current_domain_warp_type = document_node.inputs.iter().find_map(|input| match input.as_value() {
+		Some(&TaggedValue::DomainWarpType(domain_warp_type)) => Some(domain_warp_type),
+		_ => None,
+	});
 	let fractal_active = current_fractal_type != Some(FractalType::None);
 	let coherent_noise_active = current_noise_type != Some(NoiseType::WhiteNoise);
 	let cellular_noise_active = current_noise_type == Some(NoiseType::Cellular);
@@ -1143,130 +1168,14 @@ pub(crate) fn noise_pattern_properties(document_node: &DocumentNode, node_id: No
 	let domain_warp_only_fractal_type_wrongly_active =
 		!domain_warp_active && (current_fractal_type == Some(FractalType::DomainWarpIndependent) || current_fractal_type == Some(FractalType::DomainWarpProgressive));
 
-	// All
-	let clip = LayoutGroup::Row {
-		widgets: bool_widget(document_node, node_id, 0, "Clip", CheckboxInput::default(), true),
-	};
-	let seed = number_widget(document_node, node_id, 1, "Seed", NumberInput::default().min(0.).is_integer(true), true);
-	let scale = number_widget(document_node, node_id, 2, "Scale", NumberInput::default().min(0.).disabled(!coherent_noise_active), true);
-	let noise_type_row = noise_type(document_node, node_id, 3, "Noise Type", true);
-
-	// Domain Warp
-	let domain_warp_type_row = domain_warp_type(document_node, node_id, 4, "Domain Warp Type", true, !coherent_noise_active);
-	let domain_warp_amplitude = number_widget(
-		document_node,
-		node_id,
-		5,
-		"Domain Warp Amplitude",
-		NumberInput::default().min(0.).disabled(!coherent_noise_active || !domain_warp_active),
-		true,
-	);
-
-	// Fractal
-	let fractal_type_row = fractal_type(document_node, node_id, 6, "Fractal Type", true, !coherent_noise_active);
-	let fractal_octaves = number_widget(
-		document_node,
-		node_id,
-		7,
-		"Fractal Octaves",
-		NumberInput::default()
-			.mode_range()
-			.min(1.)
-			.max(10.)
-			.range_max(Some(4.))
-			.is_integer(true)
-			.disabled(!coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
-		true,
-	);
-	let fractal_lacunarity = number_widget(
-		document_node,
-		node_id,
-		8,
-		"Fractal Lacunarity",
-		NumberInput::default()
-			.mode_range()
-			.min(0.)
-			.range_max(Some(10.))
-			.disabled(!coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
-		true,
-	);
-	let fractal_gain = number_widget(
-		document_node,
-		node_id,
-		9,
-		"Fractal Gain",
-		NumberInput::default()
-			.mode_range()
-			.min(0.)
-			.range_max(Some(10.))
-			.disabled(!coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
-		true,
-	);
-	let fractal_weighted_strength = number_widget(
-		document_node,
-		node_id,
-		10,
-		"Fractal Weighted Strength",
-		NumberInput::default()
-			.mode_range()
-			.min(0.)
-			.max(1.) // Defined for the 0-1 range
-			.disabled(!coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
-		true,
-	);
-	let fractal_ping_pong_strength = number_widget(
-		document_node,
-		node_id,
-		11,
-		"Fractal Ping Pong Strength",
-		NumberInput::default()
-			.mode_range()
-			.min(0.)
-			.range_max(Some(10.))
-			.disabled(!ping_pong_active || !coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
-		true,
-	);
-
-	// Cellular
-	let cellular_distance_function_row = cellular_distance_function(document_node, node_id, 12, "Cellular Distance Function", true, !coherent_noise_active || !cellular_noise_active);
-	let cellular_return_type = cellular_return_type(document_node, node_id, 13, "Cellular Return Type", true, !coherent_noise_active || !cellular_noise_active);
-	let cellular_jitter = number_widget(
-		document_node,
-		node_id,
-		14,
-		"Cellular Jitter",
-		NumberInput::default()
-			.mode_range()
-			.range_min(Some(0.))
-			.range_max(Some(1.))
-			.disabled(!coherent_noise_active || !cellular_noise_active),
-		true,
-	);
-
-	vec![
-		// All
-		clip,
-		LayoutGroup::Row { widgets: seed },
-		LayoutGroup::Row { widgets: scale },
-		noise_type_row,
-		LayoutGroup::Row { widgets: Vec::new() },
-		// Domain Warp
-		domain_warp_type_row,
-		LayoutGroup::Row { widgets: domain_warp_amplitude },
-		LayoutGroup::Row { widgets: Vec::new() },
-		// Fractal
-		fractal_type_row,
-		LayoutGroup::Row { widgets: fractal_octaves },
-		LayoutGroup::Row { widgets: fractal_lacunarity },
-		LayoutGroup::Row { widgets: fractal_gain },
-		LayoutGroup::Row { widgets: fractal_weighted_strength },
-		LayoutGroup::Row { widgets: fractal_ping_pong_strength },
-		LayoutGroup::Row { widgets: Vec::new() },
-		// Cellular
-		cellular_distance_function_row,
-		cellular_return_type,
-		LayoutGroup::Row { widgets: cellular_jitter },
-	]
+	Ok((
+		fractal_active,
+		coherent_noise_active,
+		cellular_noise_active,
+		ping_pong_active,
+		domain_warp_active,
+		domain_warp_only_fractal_type_wrongly_active,
+	))
 }
 
 pub(crate) fn brightness_contrast_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

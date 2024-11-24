@@ -792,18 +792,18 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						"Clip".into(),
 						"Seed".into(),
 						PropertiesRow::with_override("Scale", WidgetOverride::Custom("noise_properties_scale".to_string())),
-						"Noise Type".into(),
-						"Domain Warp Type".into(),
-						"Domain Warp Amplitude".into(),
-						"Fractal Type".into(),
-						"Fractal Octaves".into(),
-						"Fractal Lacunarity".into(),
-						"Fractal Gain".into(),
-						"Fractal Weighted Strength".into(),
-						"Fractal Ping Pong Strength".into(),
-						"Cellular Distance Function".into(),
-						"Cellular Return Type".into(),
-						"Cellular Jitter".into(),
+						PropertiesRow::with_override("Noise Type", WidgetOverride::Custom("noise_properties_noise_type".to_string())),
+						PropertiesRow::with_override("Domain Warp Type", WidgetOverride::Custom("noise_properties_domain_warp_type".to_string())),
+						PropertiesRow::with_override("Domain Warp Amplitude", WidgetOverride::Custom("noise_properties_domain_warp_amplitude".to_string())),
+						PropertiesRow::with_override("Fractal Type", WidgetOverride::Custom("noise_properties_fractal_type".to_string())),
+						PropertiesRow::with_override("Fractal Octaves", WidgetOverride::Custom("noise_properties_fractal_octaves".to_string())),
+						PropertiesRow::with_override("Fractal Lacunarity", WidgetOverride::Custom("noise_properties_fractal_lacunarity".to_string())),
+						PropertiesRow::with_override("Fractal Gain", WidgetOverride::Custom("noise_properties_fractal_gain".to_string())),
+						PropertiesRow::with_override("Fractal Weighted Strength", WidgetOverride::Custom("noise_properties_fractal_weighted_strength".to_string())),
+						PropertiesRow::with_override("Fractal Ping Pong Strength", WidgetOverride::Custom("noise_properties_ping_pong_strength".to_string())),
+						PropertiesRow::with_override("Cellular Distance Function", WidgetOverride::Custom("noise_properties_cellular_distance_function".to_string())),
+						PropertiesRow::with_override("Cellular Return Type", WidgetOverride::Custom("noise_properties_cellular_return_type".to_string())),
+						PropertiesRow::with_override("Cellular Jitter", WidgetOverride::Custom("noise_properties_cellular_jitter".to_string())),
 					],
 					output_names: vec!["Image".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
@@ -2736,22 +2736,196 @@ fn static_input_properties() -> HashMap<String, Box<dyn Fn(NodeId, usize, &mut N
 	map.insert(
 		"noise_properties_scale".to_string(),
 		Box::new(|node_id, index, context| {
-			let network = context.network_interface.network(context.selection_network_path).ok_or("network not found in noise_properties_scale")?;
-			let document_node = network.nodes.get(&node_id).ok_or("node not found in noise_properties_scale")?;
-			let current_noise_type = document_node.inputs.iter().find_map(|input| match input.as_value() {
-				Some(&TaggedValue::NoiseType(noise_type)) => Some(noise_type),
-				_ => None,
-			});
-			let coherent_noise_active = current_noise_type != Some(NoiseType::WhiteNoise);
-			let input_name = context
-				.network_interface
-				.input_name(&node_id, index, context.selection_network_path)
-				.ok_or("input name not found in noise_properties_scale")?;
-
-			let scale = node_properties::number_widget(document_node, node_id, 2, input_name, NumberInput::default().min(0.).disabled(!coherent_noise_active), true);
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let scale = node_properties::number_widget(document_node, node_id, index, input_name, NumberInput::default().min(0.).disabled(!coherent_noise_active), true);
 			Ok(vec![scale.into()])
 		}),
 	);
+	map.insert(
+		"noise_properties_noise_type".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let noise_type_row = node_properties::noise_type(document_node, node_id, index, input_name, true);
+			Ok(vec![noise_type_row, LayoutGroup::Row { widgets: Vec::new() }])
+		}),
+	);
+	map.insert(
+		"noise_properties_domain_warp_type".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let domain_warp_type = node_properties::domain_warp_type(document_node, node_id, index, input_name, true, !coherent_noise_active);
+			Ok(vec![domain_warp_type.into()])
+		}),
+	);
+	map.insert(
+		"noise_properties_domain_warp_amplitude".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (_, coherent_noise_active, _, _, domain_warp_active, _) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let domain_warp_amplitude = node_properties::number_widget(
+				document_node,
+				node_id,
+				index,
+				input_name,
+				NumberInput::default().min(0.).disabled(!coherent_noise_active || !domain_warp_active),
+				true,
+			);
+			Ok(vec![domain_warp_amplitude.into(), LayoutGroup::Row { widgets: Vec::new() }])
+		}),
+	);
+	map.insert(
+		"noise_properties_fractal_type".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let fractal_type_row = node_properties::fractal_type(document_node, node_id, index, input_name, true, !coherent_noise_active);
+			Ok(vec![fractal_type_row.into()])
+		}),
+	);
+	map.insert(
+		"noise_properties_fractal_octaves".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let fractal_octaves = node_properties::number_widget(
+				document_node,
+				node_id,
+				index,
+				input_name,
+				NumberInput::default()
+					.mode_range()
+					.min(1.)
+					.max(10.)
+					.range_max(Some(4.))
+					.is_integer(true)
+					.disabled(!coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
+				true,
+			);
+			Ok(vec![fractal_octaves.into()])
+		}),
+	);
+	map.insert(
+		"noise_properties_fractal_lacunarity".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let fractal_lacunarity = node_properties::number_widget(
+				document_node,
+				node_id,
+				index,
+				input_name,
+				NumberInput::default()
+					.mode_range()
+					.min(0.)
+					.range_max(Some(10.))
+					.disabled(!coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
+				true,
+			);
+			Ok(vec![fractal_lacunarity.into()])
+		}),
+	);
+	map.insert(
+		"noise_properties_fractal_gain".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let fractal_gain = node_properties::number_widget(
+				document_node,
+				node_id,
+				index,
+				input_name,
+				NumberInput::default()
+					.mode_range()
+					.min(0.)
+					.range_max(Some(10.))
+					.disabled(!coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
+				true,
+			);
+			Ok(vec![fractal_gain.into()])
+		}),
+	);
+	map.insert(
+		"noise_properties_fractal_weighted_strength".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let fractal_weighted_strength = node_properties::number_widget(
+				document_node,
+				node_id,
+				index,
+				input_name,
+				NumberInput::default()
+					.mode_range()
+					.min(0.)
+					.max(1.) // Defined for the 0-1 range
+					.disabled(!coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
+				true,
+			);
+			Ok(vec![fractal_weighted_strength.into()])
+		}),
+	);
+	map.insert(
+		"noise_properties_ping_pong_strength".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (fractal_active, coherent_noise_active, _, ping_pong_active, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let fractal_ping_pong_strength = node_properties::number_widget(
+				document_node,
+				node_id,
+				index,
+				input_name,
+				NumberInput::default()
+					.mode_range()
+					.min(0.)
+					.range_max(Some(10.))
+					.disabled(!ping_pong_active || !coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
+				true,
+			);
+			Ok(vec![fractal_ping_pong_strength.into(), LayoutGroup::Row { widgets: Vec::new() }])
+		}),
+	);
+	map.insert(
+		"noise_properties_cellular_distance_function".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let cellular_distance_function_row = node_properties::cellular_distance_function(document_node, node_id, index, input_name, true, !coherent_noise_active || !cellular_noise_active);
+			Ok(vec![cellular_distance_function_row.into()])
+		}),
+	);
+	map.insert(
+		"noise_properties_cellular_return_type".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let cellular_return_type = node_properties::cellular_return_type(document_node, node_id, index, input_name, true, !coherent_noise_active || !cellular_noise_active);
+			Ok(vec![cellular_return_type.into()])
+		}),
+	);
+	map.insert(
+		"noise_properties_cellular_jitter".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let cellular_jitter = node_properties::number_widget(
+				document_node,
+				node_id,
+				index,
+				input_name,
+				NumberInput::default()
+					.mode_range()
+					.range_min(Some(0.))
+					.range_max(Some(1.))
+					.disabled(!coherent_noise_active || !cellular_noise_active),
+				true,
+			);
+			Ok(vec![cellular_jitter.into()])
+		}),
+	);
+
 	map
 }
 
