@@ -26,6 +26,7 @@ pub struct TextOptions {
 	font_size: f64,
 	line_height_ratio: f64,
 	character_spacing: f64,
+	line_width: Option<f64>,
 	font_name: String,
 	font_style: String,
 	fill: ToolColorOptions,
@@ -36,6 +37,7 @@ impl Default for TextOptions {
 		Self {
 			font_size: 24.,
 			line_height_ratio: 1.2,
+			line_width: None,
 			character_spacing: 1.,
 			font_name: graphene_core::consts::DEFAULT_FONT_FAMILY.into(),
 			font_style: graphene_core::consts::DEFAULT_FONT_STYLE.into(),
@@ -54,8 +56,12 @@ pub enum TextToolMessage {
 
 	// Tool-specific messages
 	CommitText,
+	DragStart,
+	DragStop,
 	EditSelected,
 	Interact,
+	PointerMove { center: Key, lock_ratio: Key },
+	PointerOutsideViewport { center: Key, lock_ratio: Key },
 	TextChange { new_text: String },
 	UpdateBounds { new_text: String },
 	UpdateOptions(TextOptionsUpdate),
@@ -69,6 +75,7 @@ pub enum TextOptionsUpdate {
 	FontSize(f64),
 	LineHeightRatio(f64),
 	CharacterSpacing(f64),
+	LineWidth(Option<f64>),
 	WorkingColors(Option<Color>, Option<Color>),
 }
 
@@ -121,6 +128,14 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 		.step(0.1)
 		.on_update(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::LineHeightRatio(number_input.value.unwrap())).into())
 		.widget_holder();
+	let line_width = NumberInput::new(Some(tool.options.line_width.unwrap_or(0.)))
+		.unit(" px")
+		.label("Line Width")
+		.int()
+		.min(0.)
+		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
+		.on_update(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::LineWidth(number_input.value)).into())
+		.widget_holder();
 	let character_spacing = NumberInput::new(Some(tool.options.character_spacing))
 		.label("Character Spacing")
 		.int()
@@ -137,6 +152,8 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 		size,
 		Separator::new(SeparatorType::Related).widget_holder(),
 		line_height_ratio,
+		Separator::new(SeparatorType::Related).widget_holder(),
+		line_width,
 		Separator::new(SeparatorType::Related).widget_holder(),
 		character_spacing,
 	]
@@ -175,6 +192,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for TextToo
 			}
 			TextOptionsUpdate::FontSize(font_size) => self.options.font_size = font_size,
 			TextOptionsUpdate::LineHeightRatio(line_height_ratio) => self.options.line_height_ratio = line_height_ratio,
+			TextOptionsUpdate::LineWidth(line_width) => self.options.line_width = line_width,
 			TextOptionsUpdate::CharacterSpacing(character_spacing) => self.options.character_spacing = character_spacing,
 			TextOptionsUpdate::FillColor(color) => {
 				self.options.fill.custom_color = color;
@@ -194,11 +212,17 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for TextToo
 		match self.fsm_state {
 			TextToolFsmState::Ready => actions!(TextToolMessageDiscriminant;
 				Interact,
+				DragStart,
 			),
 			TextToolFsmState::Editing => actions!(TextToolMessageDiscriminant;
 				Interact,
 				Abort,
 				CommitText,
+			),
+			TextToolFsmState::Dragging => actions!(TextToolMessageDiscriminant;
+				DragStop,
+				Abort,
+				PointerMove,
 			),
 		}
 	}
@@ -221,6 +245,7 @@ enum TextToolFsmState {
 	#[default]
 	Ready,
 	Editing,
+	Dragging,
 }
 #[derive(Clone, Debug)]
 pub struct EditingText {
@@ -228,6 +253,7 @@ pub struct EditingText {
 	font: Font,
 	font_size: f64,
 	line_height_ratio: f64,
+	line_width: Option<f64>,
 	character_spacing: f64,
 	color: Option<Color>,
 	transform: DAffine2,
@@ -262,12 +288,13 @@ impl TextToolData {
 	fn load_layer_text_node(&mut self, document: &DocumentMessageHandler) -> Option<()> {
 		let transform = document.metadata().transform_to_viewport(self.layer);
 		let color = graph_modification_utils::get_fill_color(self.layer, &document.network_interface).unwrap_or(Color::BLACK);
-		let (text, font, font_size, line_height_ratio, character_spacing) = graph_modification_utils::get_text(self.layer, &document.network_interface)?;
+		let (text, font, font_size, line_height_ratio, character_spacing, line_width) = graph_modification_utils::get_text(self.layer, &document.network_interface)?;
 		self.editing_text = Some(EditingText {
 			text: text.clone(),
 			font: font.clone(),
 			font_size,
 			line_height_ratio,
+			line_width: Some(line_width),
 			character_spacing,
 			color: Some(color),
 			transform,
@@ -403,7 +430,7 @@ impl Fsm for TextToolFsmState {
 						editing_text.font_size,
 						editing_text.line_height_ratio,
 						editing_text.character_spacing,
-						None,
+						editing_text.line_width,
 					);
 					if far.x != 0. && far.y != 0. {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
@@ -416,11 +443,11 @@ impl Fsm for TextToolFsmState {
 			}
 			(_, TextToolMessage::Overlays(mut overlay_context)) => {
 				for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
-					let Some((text, font, font_size, line_height_ratio, character_spacing)) = graph_modification_utils::get_text(layer, &document.network_interface) else {
+					let Some((text, font, font_size, line_height_ratio, character_spacing, line_width)) = graph_modification_utils::get_text(layer, &document.network_interface) else {
 						continue;
 					};
 					let buzz_face = font_cache.get(font).map(|data| load_face(data));
-					let far = graphene_core::text::bounding_box(text, buzz_face, font_size, line_height_ratio, character_spacing, None);
+					let far = graphene_core::text::bounding_box(text, buzz_face, font_size, line_height_ratio, character_spacing, Some(line_width));
 					let quad = Quad::from_box([DVec2::ZERO, far]);
 					let multiplied = document.metadata().transform_to_viewport(layer) * quad;
 					overlay_context.quad(multiplied, None);
@@ -434,6 +461,7 @@ impl Fsm for TextToolFsmState {
 					transform: DAffine2::from_translation(input.mouse.position),
 					font_size: tool_options.font_size,
 					line_height_ratio: tool_options.line_height_ratio,
+					line_width: tool_options.line_width,
 					character_spacing: tool_options.character_spacing,
 					font: Font::new(tool_options.font_name.clone(), tool_options.font_style.clone()),
 					color: tool_options.fill.active_color(),
@@ -494,17 +522,31 @@ impl Fsm for TextToolFsmState {
 			TextToolFsmState::Ready => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Place Text")]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Edit Text")]),
+				HintGroup(vec![
+					HintInfo::mouse(MouseMotion::LmbDrag, "Create Textbox"),
+					HintInfo::keys([Key::Shift], "Constrain Square").prepend_plus(),
+					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+				]),
 			]),
 			TextToolFsmState::Editing => HintData(vec![HintGroup(vec![
 				HintInfo::keys([Key::Control, Key::Enter], "").add_mac_keys([Key::Command, Key::Enter]),
 				HintInfo::keys([Key::Escape], "Commit Changes").prepend_slash(),
 			])]),
+			TextToolFsmState::Dragging => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
+			]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Text });
+		let cursor = match self {
+			TextToolFsmState::Ready => MouseCursorIcon::Text,
+			TextToolFsmState::Editing => MouseCursorIcon::Text,
+			TextToolFsmState::Dragging => MouseCursorIcon::Crosshair,
+		};
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 	}
 }
