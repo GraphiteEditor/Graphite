@@ -203,7 +203,7 @@ impl Fsm for SplineToolFsmState {
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(DocumentMessage::DeselectAllLayers);
 
-				let parent = document.new_layer_parent(true);
+				let parent = document.new_layer_bounding_artboard(input);
 
 				tool_data.weight = tool_options.line_weight;
 
