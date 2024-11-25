@@ -328,7 +328,7 @@ impl TextToolData {
 				size: editing_text.font_size,
 				line_height_ratio: editing_text.line_height_ratio,
 				character_spacing: editing_text.character_spacing,
-				parent: document.new_layer_bounding_artboard(input.mouse.position),
+				parent: document.new_layer_bounding_artboard(input),
 				insert_index: 0,
 			});
 			responses.add(Message::StartBuffer);

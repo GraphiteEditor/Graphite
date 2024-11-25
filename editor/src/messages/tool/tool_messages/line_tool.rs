@@ -186,8 +186,7 @@ impl Fsm for LineToolFsmState {
 				]);
 				let nodes = vec![(NodeId(0), node)];
 
-				let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
-				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_bounding_artboard(viewport), responses);
+				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_bounding_artboard(input), responses);
 				responses.add(Message::StartBuffer);
 				responses.add(GraphOperationMessage::TransformSet {
 					layer,

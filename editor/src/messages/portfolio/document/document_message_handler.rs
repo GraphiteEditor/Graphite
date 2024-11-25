@@ -1653,15 +1653,10 @@ impl DocumentMessageHandler {
 	}
 
 	/// Finds the artboard that bounds the point in viewport space and be the container of any newly added layers.
-	pub fn new_layer_bounding_artboard(&self, point: DVec2) -> LayerNodeIdentifier {
-		self.network_interface
-			.all_artboards()
-			.iter()
-			.find(|&artboard| {
-				let bounds = self.metadata().bounding_box_viewport(*artboard).unwrap();
-				bounds[0].x <= point.x && point.x <= bounds[1].x && bounds[0].y <= point.y && point.y <= bounds[1].y
-			})
-			.copied()
+	pub fn new_layer_bounding_artboard(&self, ipp: &InputPreprocessorMessageHandler) -> LayerNodeIdentifier {
+		self.click_xray(ipp)
+			.filter(|layer| self.network_interface.is_artboard(&layer.to_node(), &[]))
+			.next()
 			.unwrap_or(LayerNodeIdentifier::ROOT_PARENT)
 	}
 
