@@ -92,8 +92,8 @@ impl LayerSnapper {
 			}
 		}
 	}
-	pub fn free_snap_paths(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults) {
-		self.collect_paths(snap_data, point.source_index == 0);
+	pub fn free_snap_paths(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, config: SnapTypeConfiguration) {
+		self.collect_paths(snap_data, !config.use_existing_candidates);
 
 		let document = snap_data.document;
 		let normals = document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Normal));
@@ -131,9 +131,9 @@ impl LayerSnapper {
 		}
 	}
 
-	pub fn snap_paths_constrained(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint) {
+	pub fn snap_paths_constrained(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint, config: SnapTypeConfiguration) {
 		let document = snap_data.document;
-		self.collect_paths(snap_data, point.source_index == 0);
+		self.collect_paths(snap_data, !config.use_existing_candidates);
 
 		let tolerance = snap_tolerance(document);
 		let constraint_path = if let SnapConstraint::Circle { center, radius } = constraint {
@@ -182,6 +182,10 @@ impl LayerSnapper {
 			if !document.network_interface.is_artboard(&layer.to_node(), &[]) || snap_data.ignore.contains(&layer) {
 				continue;
 			}
+			if self.points_to_snap.len() >= crate::consts::MAX_LAYER_SNAP_POINTS {
+				warn!("Snap point overflow; skipping.");
+				return;
+			}
 
 			if document.snapping_state.target_enabled(SnapTarget::Artboard(ArtboardSnapTarget::Corner)) {
 				let Some(bounds) = document
@@ -201,6 +205,10 @@ impl LayerSnapper {
 			if snap_data.ignore_bounds(layer) {
 				continue;
 			}
+			if self.points_to_snap.len() >= crate::consts::MAX_LAYER_SNAP_POINTS {
+				warn!("Snap point overflow; skipping.");
+				return;
+			}
 			let Some(bounds) = document.metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
 				continue;
 			};
@@ -210,7 +218,6 @@ impl LayerSnapper {
 		}
 	}
 	pub fn snap_anchors(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, c: SnapConstraint, constrained_point: DVec2) {
-		self.collect_anchors(snap_data, point.source_index == 0);
 		let mut best = None;
 		for candidate in &self.points_to_snap {
 			// Candidate is not on constraint
@@ -244,14 +251,16 @@ impl LayerSnapper {
 			snap_results.points.push(result);
 		}
 	}
-	pub fn free_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults) {
+	pub fn free_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, config: SnapTypeConfiguration) {
+		self.collect_anchors(snap_data, !config.use_existing_candidates);
 		self.snap_anchors(snap_data, point, snap_results, SnapConstraint::None, point.document_point);
-		self.free_snap_paths(snap_data, point, snap_results);
+		self.free_snap_paths(snap_data, point, snap_results, config);
 	}
 
-	pub fn constrained_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint) {
+	pub fn constrained_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint, config: SnapTypeConfiguration) {
+		self.collect_anchors(snap_data, !config.use_existing_candidates);
 		self.snap_anchors(snap_data, point, snap_results, constraint, constraint.projection(point.document_point));
-		self.snap_paths_constrained(snap_data, point, snap_results, constraint);
+		self.snap_paths_constrained(snap_data, point, snap_results, constraint, config);
 	}
 }
 
@@ -313,7 +322,6 @@ pub struct SnapCandidatePoint {
 	pub document_point: DVec2,
 	pub source: SnapSource,
 	pub target: SnapTarget,
-	pub source_index: usize,
 	pub quad: Option<Quad>,
 	pub neighbors: Vec<DVec2>,
 	pub alignment: bool,
@@ -417,6 +425,9 @@ fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<Poin
 			if snap_data.ignore_manipulator(layer, subpath.manipulator_groups()[index].id) || snap_data.ignore_manipulator(layer, subpath.manipulator_groups()[(index + 1) % subpath.len()].id) {
 				continue;
 			}
+			if points.len() >= crate::consts::MAX_LAYER_SNAP_POINTS {
+				return;
+			}
 
 			let in_handle = curve.handle_start().map(|handle| handle - curve.start).filter(handle_not_under(to_document));
 			let out_handle = curve.handle_end().map(|handle| handle - curve.end).filter(handle_not_under(to_document));
@@ -433,6 +444,10 @@ fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<Poin
 	for (index, group) in subpath.manipulator_groups().iter().enumerate() {
 		if snap_data.ignore_manipulator(layer, group.id) {
 			continue;
+		}
+
+		if points.len() >= crate::consts::MAX_LAYER_SNAP_POINTS {
+			return;
 		}
 
 		let colinear = are_manipulator_handles_colinear(group, to_document, subpath, index);
@@ -469,6 +484,9 @@ pub fn get_layer_snap_points(layer: LayerNodeIdentifier, snap_data: &SnapData, p
 	let document = snap_data.document;
 
 	if document.network_interface.is_artboard(&layer.to_node(), &[]) {
+		return;
+	}
+	if points.len() >= crate::consts::MAX_LAYER_SNAP_POINTS {
 		return;
 	}
 

@@ -76,6 +76,10 @@ impl<PointId: crate::Identifier> ManipulatorGroup<PointId> {
 		Self::new(anchor, Some(anchor), Some(anchor))
 	}
 
+	pub fn new_anchor_linear(anchor: DVec2) -> Self {
+		Self::new(anchor, None, None)
+	}
+
 	/// Construct a new manipulator group from an anchor, in handle, out handle and an id
 	pub fn new_with_id(anchor: DVec2, in_handle: Option<DVec2>, out_handle: Option<DVec2>, id: PointId) -> Self {
 		Self { anchor, in_handle, out_handle, id }

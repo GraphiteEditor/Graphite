@@ -5,7 +5,7 @@ use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::{input_mapper::utility_types::input_keyboard::Key, portfolio::document::graph_operation::utility_types::TransformIn};
 use glam::{DAffine2, DVec2, Vec2Swizzles};
 
-use super::snapping::{SnapCandidatePoint, SnapConstraint, SnapData};
+use super::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapTypeConfiguration};
 
 #[derive(Clone, Debug, Default)]
 pub struct Resize {
@@ -19,7 +19,7 @@ impl Resize {
 	pub fn start(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {
 		let root_transform = document.metadata().document_to_viewport;
 		let point = SnapCandidatePoint::handle(root_transform.inverse().transform_point2(input.mouse.position));
-		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input), &point, None, false);
+		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
 		self.drag_start = snapped.snapped_point_document;
 	}
 
@@ -51,6 +51,7 @@ impl Resize {
 		let ratio = input.keyboard.get(lock_ratio as usize);
 		let center = input.keyboard.get(center as usize);
 		let snap_data = SnapData::ignore(document, input, &ignore);
+		let config = SnapTypeConfiguration::default();
 		if ratio {
 			let size = points_viewport[1] - points_viewport[0];
 			let size = size.abs().max(size.abs().yx()) * size.signum();
@@ -61,27 +62,28 @@ impl Resize {
 				direction: end_document - self.drag_start,
 			};
 			if center {
-				let snapped = self.snap_manager.constrained_snap(&snap_data, &SnapCandidatePoint::handle(end_document), constraint, None);
+				let snapped = self.snap_manager.constrained_snap(&snap_data, &SnapCandidatePoint::handle(end_document), constraint, config);
 				let far = SnapCandidatePoint::handle(2. * self.drag_start - end_document);
-				let snapped_far = self.snap_manager.constrained_snap(&snap_data, &far, constraint, None);
+				let snapped_far = self.snap_manager.constrained_snap(&snap_data, &far, constraint, config);
 				let best = if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far };
 				points_viewport[0] = document_to_viewport.transform_point2(best.snapped_point_document);
 				points_viewport[1] = document_to_viewport.transform_point2(self.drag_start * 2. - best.snapped_point_document);
 				self.snap_manager.update_indicator(best);
 			} else {
-				let snapped = self.snap_manager.constrained_snap(&snap_data, &SnapCandidatePoint::handle(end_document), constraint, None);
+				let snapped = self.snap_manager.constrained_snap(&snap_data, &SnapCandidatePoint::handle(end_document), constraint, config);
 				points_viewport[1] = document_to_viewport.transform_point2(snapped.snapped_point_document);
 				self.snap_manager.update_indicator(snapped);
 			}
 		} else if center {
-			let snapped = self.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), None, false);
-			let snapped_far = self.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(2. * self.drag_start - document_mouse), None, false);
+			let snapped = self.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), config);
+			let opposite = 2. * self.drag_start - document_mouse;
+			let snapped_far = self.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(opposite), config);
 			let best = if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far };
 			points_viewport[0] = document_to_viewport.transform_point2(best.snapped_point_document);
 			points_viewport[1] = document_to_viewport.transform_point2(self.drag_start * 2. - best.snapped_point_document);
 			self.snap_manager.update_indicator(best);
 		} else {
-			let snapped = self.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), None, false);
+			let snapped = self.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), config);
 			points_viewport[1] = document_to_viewport.transform_point2(snapped.snapped_point_document);
 			self.snap_manager.update_indicator(snapped);
 		}

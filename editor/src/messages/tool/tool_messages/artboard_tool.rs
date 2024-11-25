@@ -6,6 +6,7 @@ use crate::messages::tool::common_functionality::snapping;
 use crate::messages::tool::common_functionality::snapping::SnapCandidatePoint;
 use crate::messages::tool::common_functionality::snapping::SnapData;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
+use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration;
 use crate::messages::tool::common_functionality::transformation_cage::*;
 
 use graph_craft::document::NodeId;
@@ -260,7 +261,7 @@ impl Fsm for ArtboardToolFsmState {
 
 					let point = SnapCandidatePoint::handle(to_document.transform_point2(input.mouse.position));
 
-					let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, None, false);
+					let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
 
 					tool_data.drag_start = snapped.snapped_point_document;
 					tool_data.drag_current = snapped.snapped_point_document;
@@ -330,7 +331,8 @@ impl Fsm for ArtboardToolFsmState {
 
 				let document_mouse = to_viewport.inverse().transform_point2(input.mouse.position);
 
-				let snapped = tool_data.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), None, false);
+				let config = SnapTypeConfiguration::default();
+				let snapped = tool_data.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), config);
 				let snapped_mouse_position = to_viewport.transform_point2(snapped.snapped_point_document);
 
 				tool_data.snap_manager.update_indicator(snapped);

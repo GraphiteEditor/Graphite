@@ -18,6 +18,7 @@ members = [
 	"libraries/dyn-any",
 	"libraries/path-bool",
 	"libraries/bezier-rs",
+	"libraries/math-parser",
 	"website/other/bezier-rs-demos/wasm",
 ]
 exclude = ["node-graph/gpu-compiler"]
@@ -31,6 +32,7 @@ graph-craft = { path = "node-graph/graph-craft", features = ["serde"] }
 wgpu-executor = { path = "node-graph/wgpu-executor" }
 bezier-rs = { path = "libraries/bezier-rs", features = ["dyn-any"] }
 path-bool = { path = "libraries/path-bool", default-features = false }
+math-parser = { path = "libraries/math-parser" }
 node-macro = { path = "node-graph/node-macro" }
 
 # Workspace dependencies
@@ -77,7 +79,6 @@ glam = { version = "0.28", default-features = false, features = ["serde"] }
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png"] }
 rustybuzz = "0.17"
-meval = "0.2"
 spirv = "0.3"
 fern = { version = "0.6", features = ["colored"] }
 num_enum = "0.7"
@@ -93,9 +94,6 @@ syn = { version = "2.0", default-features = false, features = [
 	"derive",
 ] }
 kurbo = { version = "0.11.0", features = ["serde"] }
-
-[patch.crates-io]
-meval = { git = "https://github.com/Titaniumtown/meval-rs" }
 
 [profile.dev]
 opt-level = 1

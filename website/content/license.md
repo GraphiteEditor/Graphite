@@ -13,7 +13,7 @@ Graphite is open source software built by the community. The application is free
 
 The source code [available on GitHub](https://github.com/GraphiteEditor/Graphite) (including the Graphite editor application, libraries, and other software materials) is provided under the Apache 2.0 license posted below, unless otherwise noted within the repository.
 
-Visual assets, including but not limited to logos, icons, SVG code, branding imagery, and sample artwork are excluded from this license and held under copyright by their respective owners. Learn about the [Graphite brand](/logo) for more information.
+Visual assets, including but not limited to brand graphics, logos, fonts, icon sets, SVG data, and sample artworks are excluded from this code license and held under copyright by their respective owners. Derivative works must substitute these assets before distributing modified releases of the software. This protects the integrity of the [brand](/logo) and encourages the community to [contribute](/volunteer) back to the official project instead of fragmenting the ecosystem.
 
 ---
 
