@@ -1208,11 +1208,6 @@ fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<La
 }
 
 fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
-	if document.network_interface.selected_nodes(&[]).unwrap().selected_layers_contains(layer, document.metadata()) {
-		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path });
-		return;
-	}
-
 	let Some(new_selected) = layer.ancestors(document.metadata()).filter(not_artboard(document)).find(|ancestor| {
 		ancestor
 			.parent(document.metadata())
@@ -1233,7 +1228,5 @@ fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, network_interface
 	if is_layer_fed_by_node_of_name(layer, network_interface, "Text") {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 		responses.add(TextToolMessage::EditSelected);
-	} else if is_layer_fed_by_node_of_name(layer, network_interface, "Path") {
-		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path });
 	}
 }
