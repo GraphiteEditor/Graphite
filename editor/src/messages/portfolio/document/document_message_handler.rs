@@ -2144,7 +2144,7 @@ impl<'a> ClickXRayIter<'a> {
 		};
 		let get_clip = || path.iter().map(segment);
 
-		let intersects = click_targets.map_or(false, |targets| targets.iter().any(|target| target.intersect_path(get_clip, transform)));
+		let intersects = click_targets.is_some_and(|targets| targets.iter().any(|target| target.intersect_path(get_clip, transform)));
 		let clicked = intersects;
 		let mut use_children = !clip || intersects;
 
@@ -2179,7 +2179,7 @@ impl<'a> ClickXRayIter<'a> {
 		match target {
 			// Single points are much cheaper than paths so have their own special case
 			XRayTarget::Point(point) => {
-				let intersects = click_targets.map_or(false, |targets| targets.iter().any(|target| target.intersect_point(*point, transform)));
+				let intersects = click_targets.is_some_and(|targets| targets.iter().any(|target| target.intersect_point(*point, transform)));
 				XRayResult {
 					clicked: intersects,
 					use_children: !clip || intersects,
@@ -2256,7 +2256,7 @@ pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHand
 	]
 }
 
-impl<'a> Iterator for ClickXRayIter<'a> {
+impl Iterator for ClickXRayIter<'_> {
 	type Item = LayerNodeIdentifier;
 
 	fn next(&mut self) -> Option<Self::Item> {

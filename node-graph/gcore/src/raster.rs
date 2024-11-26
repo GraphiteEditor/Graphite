@@ -213,7 +213,7 @@ pub trait Sample {
 	fn sample(&self, pos: DVec2, area: DVec2) -> Option<Self::Pixel>;
 }
 
-impl<'i, T: Sample> Sample for &'i T {
+impl<T: Sample> Sample for &T {
 	type Pixel = T::Pixel;
 
 	#[inline(always)]
@@ -229,7 +229,7 @@ pub trait Bitmap {
 	fn get_pixel(&self, x: u32, y: u32) -> Option<Self::Pixel>;
 }
 
-impl<'i, T: Bitmap> Bitmap for &'i T {
+impl<T: Bitmap> Bitmap for &T {
 	type Pixel = T::Pixel;
 
 	fn width(&self) -> u32 {
@@ -245,7 +245,7 @@ impl<'i, T: Bitmap> Bitmap for &'i T {
 	}
 }
 
-impl<'i, T: Bitmap> Bitmap for &'i mut T {
+impl<T: Bitmap> Bitmap for &mut T {
 	type Pixel = T::Pixel;
 
 	fn width(&self) -> u32 {
@@ -276,7 +276,7 @@ pub trait BitmapMut: Bitmap {
 	}
 }
 
-impl<'i, T: BitmapMut + Bitmap> BitmapMut for &'i mut T {
+impl<T: BitmapMut + Bitmap> BitmapMut for &mut T {
 	fn get_pixel_mut(&mut self, x: u32, y: u32) -> Option<&mut Self::Pixel> {
 		(*self).get_pixel_mut(x, y)
 	}

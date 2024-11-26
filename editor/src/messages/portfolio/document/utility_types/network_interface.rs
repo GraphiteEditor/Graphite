@@ -1534,7 +1534,7 @@ impl NodeNetworkInterface {
 		Some(parent_metadata)
 	}
 
-	/// Mutably get the node which encapsulates the currently viewed network. Will always be None in the document network.
+	// /// Mutably get the node which encapsulates the currently viewed network. Will always be None in the document network.
 	// fn encapsulating_node_mut(&mut self, network_path: &[NodeId]) -> Option<&mut DocumentNode> {
 	// 	let mut encapsulating_path = network_path.to_vec();
 	// 	let encapsulating_node_id = encapsulating_path.pop()?;
@@ -3887,7 +3887,7 @@ impl NodeNetworkInterface {
 		network_metadata.persistent_metadata.previewing = Previewing::No;
 	}
 
-	/// Sets the root node only if a node is being previewed
+	// /// Sets the root node only if a node is being previewed
 	// pub fn update_root_node(&mut self, node_id: NodeId, output_index: usize) {
 	// 	if let Previewing::Yes { root_node_to_restore } = self.previewing {
 	// 		// Only continue previewing if the new root node is not the same as the primary export. If it is the same, end the preview
@@ -5148,14 +5148,13 @@ pub enum FlowType {
 /// - [`FlowType::PrimaryFlow`]: iterates along the horizontal inputs of nodes, so in the case of a node chain `a -> b -> c`, this would yield `c, b, a` if we started from `c`.
 /// - [`FlowType::HorizontalFlow`]: iterates over the secondary input for layer nodes and primary input for non layer nodes.
 /// - [`FlowType::LayerChildrenUpstreamFlow`]: iterates over all upstream nodes from the secondary input of the node.
-
 struct FlowIter<'a> {
 	stack: Vec<NodeId>,
 	network: &'a NodeNetwork,
 	network_metadata: &'a NodeNetworkMetadata,
 	flow_type: FlowType,
 }
-impl<'a> Iterator for FlowIter<'a> {
+impl Iterator for FlowIter<'_> {
 	type Item = NodeId;
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {

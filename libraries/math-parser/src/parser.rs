@@ -56,7 +56,7 @@ pub enum ParseError {
 }
 
 impl Node {
-	pub fn from_str(s: &str) -> Result<(Node, Unit), ParseError> {
+	pub fn try_parse_from_str(s: &str) -> Result<(Node, Unit), ParseError> {
 		let pairs = ExprParser::parse(Rule::program, s).map_err(Box::new)?;
 		let (node, metadata) = parse_expr(pairs)?;
 		Ok((node, metadata.unit))
@@ -325,7 +325,7 @@ mod tests {
 			$(
 				#[test]
 				fn $name() {
-					let result = Node::from_str($input).unwrap();
+					let result = Node::try_parse_from_str($input).unwrap();
 					assert_eq!(result.0, $expected);
 				}
 			)*
@@ -334,7 +334,7 @@ mod tests {
 
 	test_parser! {
 		test_parse_int_literal: "42" => Node::Lit(Literal::Float(42.0)),
-		test_parse_float_literal: "3.14" => Node::Lit(Literal::Float(3.14)),
+		test_parse_float_literal: "3.14" => Node::Lit(Literal::Float(#[allow(clippy::approx_constant)] 3.14)),
 		test_parse_ident: "x" => Node::Var("x".to_string()),
 		test_parse_unary_neg: "-42" => Node::UnaryOp {
 			expr: Box::new(Node::Lit(Literal::Float(42.0))),
