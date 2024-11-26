@@ -11,7 +11,8 @@ fn text<'i: 'n>(
 	#[default(24.)] font_size: f64,
 	#[default(1.2)] line_height_ratio: f64,
 	#[default(1.)] character_spacing: f64,
+	#[default(None)] line_width: Option<f64>,
 ) -> crate::vector::VectorData {
 	let buzz_face = editor.font_cache.get(&font_name).map(|data| load_face(data));
-	crate::vector::VectorData::from_subpaths(to_path(&text, buzz_face, font_size, line_height_ratio, character_spacing, None), false)
+	crate::vector::VectorData::from_subpaths(to_path(&text, buzz_face, font_size, line_height_ratio, character_spacing, line_width), false)
 }
