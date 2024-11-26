@@ -1734,6 +1734,7 @@ pub(crate) fn text_properties(document_node: &DocumentNode, node_id: NodeId, _co
 	let size = number_widget(document_node, node_id, 3, "Size", NumberInput::default().unit(" px").min(1.), true);
 	let line_height_ratio = number_widget(document_node, node_id, 4, "Line Height", NumberInput::default().min(0.).step(0.1), true);
 	let character_spacing = number_widget(document_node, node_id, 5, "Character Spacing", NumberInput::default().min(0.).step(0.1), true);
+	let line_width = number_widget(document_node, node_id, 6, "Line Width", NumberInput::default().min(1.), true);
 
 	let mut result = vec![LayoutGroup::Row { widgets: text }, LayoutGroup::Row { widgets: font }];
 	if let Some(style) = style {
@@ -1742,6 +1743,7 @@ pub(crate) fn text_properties(document_node: &DocumentNode, node_id: NodeId, _co
 	result.push(LayoutGroup::Row { widgets: size });
 	result.push(LayoutGroup::Row { widgets: line_height_ratio });
 	result.push(LayoutGroup::Row { widgets: character_spacing });
+	result.push(LayoutGroup::Row { widgets: line_width });
 	result
 }
 

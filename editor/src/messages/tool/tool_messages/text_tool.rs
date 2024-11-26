@@ -128,7 +128,7 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 		.step(0.1)
 		.on_update(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::LineHeightRatio(number_input.value.unwrap())).into())
 		.widget_holder();
-	let line_width = NumberInput::new(Some(tool.options.line_width.unwrap_or(0.)))
+	let line_width = NumberInput::new(tool.options.line_width)
 		.unit(" px")
 		.label("Line Width")
 		.int()
@@ -272,7 +272,7 @@ impl TextToolData {
 		if let Some(editing_text) = self.editing_text.as_ref().filter(|_| editable) {
 			responses.add(FrontendMessage::DisplayEditableTextbox {
 				text: editing_text.text.clone(),
-				line_width: None,
+				line_width: editing_text.line_width,
 				font_size: editing_text.font_size,
 				color: editing_text.color.unwrap_or(Color::BLACK),
 				url: font_cache.get_preview_url(&editing_text.font).cloned().unwrap_or_default(),
@@ -294,7 +294,7 @@ impl TextToolData {
 			font: font.clone(),
 			font_size,
 			line_height_ratio,
-			line_width: Some(line_width),
+			line_width: line_width,
 			character_spacing,
 			color: Some(color),
 			transform,
@@ -354,6 +354,7 @@ impl TextToolData {
 				font: editing_text.font.clone(),
 				size: editing_text.font_size,
 				line_height_ratio: editing_text.line_height_ratio,
+				line_width: editing_text.line_width,
 				character_spacing: editing_text.character_spacing,
 				parent: document.new_layer_parent(true),
 				insert_index: 0,
@@ -447,7 +448,7 @@ impl Fsm for TextToolFsmState {
 						continue;
 					};
 					let buzz_face = font_cache.get(font).map(|data| load_face(data));
-					let far = graphene_core::text::bounding_box(text, buzz_face, font_size, line_height_ratio, character_spacing, Some(line_width));
+					let far = graphene_core::text::bounding_box(text, buzz_face, font_size, line_height_ratio, character_spacing, line_width);
 					let quad = Quad::from_box([DVec2::ZERO, far]);
 					let multiplied = document.metadata().transform_to_viewport(layer) * quad;
 					overlay_context.quad(multiplied, None);
