@@ -189,8 +189,8 @@ impl<'a> ModifyInputsContext<'a> {
 			Some(NodeInput::value(TaggedValue::Font(font), false)),
 			Some(NodeInput::value(TaggedValue::F64(size), false)),
 			Some(NodeInput::value(TaggedValue::F64(line_height_ratio), false)),
-			Some(NodeInput::value(TaggedValue::OptionalF64(line_width), false)),
 			Some(NodeInput::value(TaggedValue::F64(character_spacing), false)),
+			Some(NodeInput::value(TaggedValue::OptionalF64(line_width), false)),
 		]);
 
 		let text_id = NodeId::new();
