@@ -73,6 +73,14 @@ export class UpdateInSelectedNetwork extends JsMessage {
 	readonly inSelectedNetwork!: boolean;
 }
 
+export class UpdateImportReorderIndex extends JsMessage {
+	readonly importIndex!: number | undefined;
+}
+
+export class UpdateExportReorderIndex extends JsMessage {
+	readonly exportIndex!: number | undefined;
+}
+
 const LayerWidths = Transform(({ obj }) => obj.layerWidths);
 const ChainWidths = Transform(({ obj }) => obj.chainWidths);
 const HasLeftInputWire = Transform(({ obj }) => obj.hasLeftInputWire);
@@ -1608,6 +1616,8 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateImportsExports,
 	UpdateInputHints,
 	UpdateInSelectedNetwork,
+	UpdateExportReorderIndex,
+	UpdateImportReorderIndex,
 	UpdateLayersPanelOptionsLayout,
 	UpdateLayerWidths,
 	UpdateMenuBarLayout,

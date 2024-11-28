@@ -100,6 +100,8 @@ pub enum NodeGraphMessage {
 	PrintSelectedNodeCoordinates,
 	RemoveImport { import_index: usize },
 	RemoveExport { export_index: usize },
+	ReorderImport { start_index: usize, end_index: usize },
+	ReorderExport { start_index: usize, end_index: usize },
 	RunDocumentGraph,
 	ForceRunDocumentGraph,
 	SelectedNodesAdd {

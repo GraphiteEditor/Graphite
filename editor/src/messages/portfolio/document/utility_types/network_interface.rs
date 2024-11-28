@@ -1102,6 +1102,14 @@ impl NodeNetworkInterface {
 		node_metadata.persistent_metadata.locked
 	}
 
+	pub fn is_pinned(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
+		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
+			log::error!("Could not get persistent node metadata in is_pinned for node {node_id}");
+			return false;
+		};
+		node_metadata.persistent_metadata.pinned
+	}
+
 	pub fn is_visible(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
 		let Some(network) = self.network(network_path) else {
 			log::error!("Could not get nested network_metadata in is_visible");
@@ -1970,6 +1978,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 
+		let mut reorder_imports_exports = Ports::new();
 		let mut add_import_export = Ports::new();
 		let mut remove_imports_exports = Ports::new();
 
@@ -2030,20 +2039,34 @@ impl NodeNetworkInterface {
 				return;
 			};
 
-			for (export_index, export_click_target) in import_exports.input_ports() {
-				let Some(export_bounding_box) = export_click_target.bounding_box() else {
-					log::error!("Could not get export bounding box in load_modify_import_export");
-					continue;
-				};
-				remove_imports_exports.insert_input_port_at_center(*export_index, (export_bounding_box[0] + export_bounding_box[1]) / 2. + DVec2::new(16., 0.));
-			}
-
 			for (import_index, import_click_target) in import_exports.output_ports() {
 				let Some(import_bounding_box) = import_click_target.bounding_box() else {
 					log::error!("Could not get export bounding box in load_modify_import_export");
 					continue;
 				};
-				remove_imports_exports.insert_output_port_at_center(*import_index, (import_bounding_box[0] + import_bounding_box[1]) / 2. + DVec2::new(-16., 0.));
+				let reorder_import_center = (import_bounding_box[0] + import_bounding_box[1]) / 2. + DVec2::new(-12., 0.);
+				let remove_import_center = reorder_import_center + DVec2::new(-12., 0.);
+
+				let reorder_import = ClickTarget::new(Subpath::new_rect(reorder_import_center - DVec2::new(3., 4.), reorder_import_center + DVec2::new(3., 4.)), 0.);
+				let remove_import = ClickTarget::new(Subpath::new_rect(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
+
+				reorder_imports_exports.insert_custom_output_port(*import_index, reorder_import);
+				remove_imports_exports.insert_custom_output_port(*import_index, remove_import);
+			}
+
+			for (export_index, export_click_target) in import_exports.input_ports() {
+				let Some(export_bounding_box) = export_click_target.bounding_box() else {
+					log::error!("Could not get export bounding box in load_modify_import_export");
+					continue;
+				};
+				let reorder_export_center = (export_bounding_box[0] + export_bounding_box[1]) / 2. + DVec2::new(12., 0.);
+				let remove_export_center = reorder_export_center + DVec2::new(12., 0.);
+
+				let reorder_export = ClickTarget::new(Subpath::new_rect(reorder_export_center - DVec2::new(3., 4.), reorder_export_center + DVec2::new(3., 4.)), 0.);
+				let remove_export = ClickTarget::new(Subpath::new_rect(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
+
+				reorder_imports_exports.insert_custom_input_port(*export_index, reorder_export);
+				remove_imports_exports.insert_custom_input_port(*export_index, remove_export);
 			}
 		}
 
@@ -2055,7 +2078,7 @@ impl NodeNetworkInterface {
 		network_metadata.transient_metadata.modify_import_export = TransientMetadata::Loaded(ModifyImportExportClickTarget {
 			add_import_export,
 			remove_imports_exports,
-			move_imports_exports: Ports::new(),
+			reorder_imports_exports,
 		});
 	}
 
@@ -2095,7 +2118,6 @@ impl NodeNetworkInterface {
 		let node_graph_to_viewport = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport;
 		// TODO: Eventually replace node graph top right with the footprint when trying to get the network edge distance
 		let node_graph_top_right = network_metadata.persistent_metadata.navigation_metadata.node_graph_top_right;
-		log::debug!("Node graph top right is {node_graph_top_right:?}");
 		let target_exports_distance = node_graph_to_viewport.inverse().transform_point2(DVec2::new(
 			node_graph_top_right.x - EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP as f64,
 			node_graph_top_right.y + EXPORTS_TO_TOP_EDGE_PIXEL_GAP as f64,
@@ -2119,7 +2141,6 @@ impl NodeNetworkInterface {
 			log::error!("Could not get current network in load_export_ports");
 			return;
 		};
-		log::debug!("Setting rounded network edge distance to {network_edge_distance:?}");
 		network_metadata.transient_metadata.rounded_network_edge_distance = TransientMetadata::Loaded(network_edge_distance);
 	}
 
@@ -2740,7 +2761,7 @@ impl NodeNetworkInterface {
 				.add_import_export
 				.click_targets()
 				.chain(modify_import_export_click_targets.remove_imports_exports.click_targets())
-				.chain(modify_import_export_click_targets.move_imports_exports.click_targets())
+				.chain(modify_import_export_click_targets.reorder_imports_exports.click_targets())
 			{
 				let mut remove_string = String::new();
 				let _ = click_target.subpath().subpath_to_svg(&mut remove_string, DAffine2::IDENTITY);
@@ -3346,18 +3367,34 @@ impl NodeNetworkInterface {
 			return;
 		};
 
+		// Disconnect the removed export, and handle connections to the node which had its output removed
 		self.disconnect_input(&InputConnector::Export(export_index), network_path);
+		let number_of_outputs = self.number_of_outputs(&parent_id, &encapsulating_network_path);
+		for shifted_export in export_index..number_of_outputs {
+			let Some(encapsulating_outward_wires) = self.outward_wires(&encapsulating_network_path) else {
+				log::error!("Could not get outward wires in remove_export");
+				return;
+			};
+			let Some(downstream_connections_for_shifted_export) = encapsulating_outward_wires.get(&OutputConnector::node(parent_id, shifted_export)).cloned() else {
+				log::error!("Could not get downstream connections for shifted export in remove_export");
+				return;
+			};
+			for downstream_connection in downstream_connections_for_shifted_export {
+				self.disconnect_input(&downstream_connection, &encapsulating_network_path);
+				if shifted_export != export_index {
+					self.create_wire(&OutputConnector::node(parent_id, shifted_export - 1), &downstream_connection, &encapsulating_network_path);
+				}
+			}
+		}
 
 		let Some(network) = self.network_mut(network_path) else {
 			log::error!("Could not get nested network in add_export");
 			return;
 		};
-
 		network.exports.remove(export_index);
 
 		self.transaction_modified();
 
-		// There will not be an encapsulating node if the network is the document network
 		let Some(encapsulating_node_metadata) = self.node_metadata_mut(&parent_id, &encapsulating_network_path) else {
 			log::error!("Could not get encapsulating node metadata in remove_export");
 			return;
@@ -3453,6 +3490,51 @@ impl NodeNetworkInterface {
 		self.unload_outward_wires(network_path);
 		self.unload_import_export_ports(network_path);
 		self.unload_modify_import_export(network_path);
+	}
+
+	/// The end index is before the export is removed, so moving to the end is the length of the current exports
+	pub fn reorder_export(&mut self, start_index: usize, mut end_index: usize, network_path: &[NodeId]) {
+		let mut encapsulating_network_path = network_path.to_vec();
+		let Some(parent_id) = encapsulating_network_path.pop() else {
+			log::error!("Could not reorder export for document network");
+			return;
+		};
+
+		let Some(network) = self.network_mut(network_path) else {
+			log::error!("Could not get nested network in reorder_export");
+			return;
+		};
+		if end_index > start_index {
+			end_index -= 1;
+		}
+		let export = network.exports.remove(start_index);
+		network.exports.insert(end_index, export);
+
+		self.transaction_modified();
+
+		let Some(encapsulating_node_metadata) = self.node_metadata_mut(&parent_id, &encapsulating_network_path) else {
+			log::error!("Could not get encapsulating network_metadata in reorder_export");
+			return;
+		};
+
+		let name = encapsulating_node_metadata.persistent_metadata.output_names.remove(start_index);
+		encapsulating_node_metadata.persistent_metadata.output_names.insert(end_index, name);
+
+		// TODO: Reorder the wires to the node output in the encapsulating network
+
+		// Update the metadata for the encapsulating network
+		self.unload_outward_wires(&encapsulating_network_path);
+
+		// Update the metadata for the current network
+		self.unload_outward_wires(network_path);
+		self.unload_import_export_ports(network_path);
+		self.unload_modify_import_export(network_path);
+		self.unload_stack_dependents(network_path);
+	}
+
+	/// The end index is before the import is removed, so moving to the end is the length of the current imports
+	pub fn reorder_import(&mut self, start_index: usize, mut end_index: usize, network_path: &[NodeId]) {
+		log::debug!("Reordering import from {start_index} to {end_index}");
 	}
 
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
@@ -5703,7 +5785,7 @@ pub struct ModifyImportExportClickTarget {
 	// Subtract icon that appears when hovering over an import/export
 	pub remove_imports_exports: Ports,
 	// Grip drag icon that appears when hovering over an import/export
-	pub move_imports_exports: Ports,
+	pub reorder_imports_exports: Ports,
 }
 
 #[derive(Debug, Clone)]

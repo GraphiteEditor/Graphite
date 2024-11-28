@@ -2166,7 +2166,7 @@ pub(crate) fn index_properties(document_node: &DocumentNode, node_id: NodeId, _c
 	vec![LayoutGroup::Row { widgets: index }]
 }
 
-pub(crate) fn generate_node_properties(node_id: NodeId, pinned: bool, context: &mut NodePropertiesContext) -> LayoutGroup {
+pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> LayoutGroup {
 	let mut layout = Vec::new();
 
 	let number_of_inputs = context.network_interface.number_of_inputs(&node_id, context.selection_network_path);
@@ -2182,6 +2182,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, pinned: bool, context: &
 	}
 	let name = context.network_interface.reference(&node_id, context.selection_network_path).clone().unwrap_or_default();
 	let visible = context.network_interface.is_visible(&node_id, context.selection_network_path);
+	let pinned = context.network_interface.is_pinned(&node_id, context.selection_network_path);
 	LayoutGroup::Section {
 		name,
 		visible,

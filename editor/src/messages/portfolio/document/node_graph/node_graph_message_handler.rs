@@ -11,7 +11,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{
 	self, InputConnector, NodeNetworkInterface, NodeTemplate, NodeTypePersistentMetadata, OutputConnector, Previewing, TypeSource,
 };
-use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
+use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry, SelectedNodes};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 
@@ -71,6 +71,12 @@ pub struct NodeGraphMessageHandler {
 	auto_panning: AutoPanning,
 	/// The node to preview on mouse up if alt-clicked
 	preview_on_mouse_up: Option<NodeId>,
+	// The index of the import that is being moved
+	reordering_import: Option<usize>,
+	// The index of the export that is being moved
+	reordering_export: Option<usize>,
+	// The end index of the moved port
+	end_index: Option<usize>,
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
@@ -565,29 +571,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				let node_graph_point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
 
-				let Some(modify_import_export) = network_interface.modify_import_export(selection_network_path) else {
-					log::error!("Could not get modify import export in PointerDown");
-					return;
-				};
-
-				if modify_import_export.add_import_export.clicked_input_port_from_point(node_graph_point).is_some() {
-					responses.add(DocumentMessage::AddTransaction);
-					responses.add(NodeGraphMessage::AddExport);
-					return;
-				} else if modify_import_export.add_import_export.clicked_output_port_from_point(node_graph_point).is_some() {
-					responses.add(DocumentMessage::AddTransaction);
-					responses.add(NodeGraphMessage::AddImport);
-					return;
-				} else if let Some(remove_import_index) = modify_import_export.remove_imports_exports.clicked_output_port_from_point(node_graph_point) {
-					responses.add(DocumentMessage::AddTransaction);
-					responses.add(NodeGraphMessage::RemoveImport { import_index: remove_import_index });
-					return;
-				} else if let Some(remove_export_index) = modify_import_export.remove_imports_exports.clicked_input_port_from_point(node_graph_point) {
-					responses.add(DocumentMessage::AddTransaction);
-					responses.add(NodeGraphMessage::RemoveExport { export_index: remove_export_index });
-					return;
-				}
-
 				if network_interface
 					.layer_click_target_from_click(click, network_interface::LayerClickTargetTypes::Grip, selection_network_path)
 					.is_some()
@@ -660,6 +643,37 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						context_menu_information: self.context_menu.clone(),
 					});
 
+					return;
+				}
+
+				let Some(modify_import_export) = network_interface.modify_import_export(selection_network_path) else {
+					log::error!("Could not get modify import export in PointerDown");
+					return;
+				};
+
+				if modify_import_export.add_import_export.clicked_input_port_from_point(node_graph_point).is_some() {
+					responses.add(DocumentMessage::AddTransaction);
+					responses.add(NodeGraphMessage::AddExport);
+					return;
+				} else if modify_import_export.add_import_export.clicked_output_port_from_point(node_graph_point).is_some() {
+					responses.add(DocumentMessage::AddTransaction);
+					responses.add(NodeGraphMessage::AddImport);
+					return;
+				} else if let Some(remove_import_index) = modify_import_export.remove_imports_exports.clicked_output_port_from_point(node_graph_point) {
+					responses.add(DocumentMessage::AddTransaction);
+					responses.add(NodeGraphMessage::RemoveImport { import_index: remove_import_index });
+					return;
+				} else if let Some(remove_export_index) = modify_import_export.remove_imports_exports.clicked_input_port_from_point(node_graph_point) {
+					responses.add(DocumentMessage::AddTransaction);
+					responses.add(NodeGraphMessage::RemoveExport { export_index: remove_export_index });
+					return;
+				} else if let Some(move_import_index) = modify_import_export.reorder_imports_exports.clicked_output_port_from_point(node_graph_point) {
+					responses.add(DocumentMessage::StartTransaction);
+					self.reordering_import = Some(move_import_index);
+					return;
+				} else if let Some(move_export_index) = modify_import_export.reorder_imports_exports.clicked_input_port_from_point(node_graph_point) {
+					responses.add(DocumentMessage::StartTransaction);
+					self.reordering_export = Some(move_export_index);
 					return;
 				}
 
@@ -893,6 +907,46 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount { graph_delta, rubber_band: true });
 				} else if self.box_selection_start.is_some() {
 					responses.add(NodeGraphMessage::UpdateBoxSelection);
+				} else if self.reordering_import.is_some() {
+					let Some(modify_import_export) = network_interface.modify_import_export(selection_network_path) else {
+						log::error!("Could not get modify import export in PointerUp");
+						return;
+					};
+					// Find the first import that is below the mouse position
+					self.end_index = Some(
+						modify_import_export
+							.reorder_imports_exports
+							.output_ports()
+							.find_map(|(index, click_target)| {
+								let Some(position) = click_target.bounding_box().map(|bbox| (bbox[0].y + bbox[1].y) / 2.) else {
+									log::error!("Could not get bounding box for import: {index}");
+									return None;
+								};
+								(position > point.y).then_some(*index)
+							})
+							.unwrap_or(modify_import_export.reorder_imports_exports.output_ports().count()),
+					);
+					responses.add(FrontendMessage::UpdateImportReorderIndex { index: self.end_index });
+				} else if self.reordering_export.is_some() {
+					let Some(modify_import_export) = network_interface.modify_import_export(selection_network_path) else {
+						log::error!("Could not get modify import export in PointerUp");
+						return;
+					};
+					// Find the first export that is below the mouse position
+					self.end_index = Some(
+						modify_import_export
+							.reorder_imports_exports
+							.input_ports()
+							.find_map(|(index, click_target)| {
+								let Some(position) = click_target.bounding_box().map(|bbox| (bbox[0].y + bbox[1].y) / 2.) else {
+									log::error!("Could not get bounding box for export: {index}");
+									return None;
+								};
+								(position > point.y).then_some(*index)
+							})
+							.unwrap_or(modify_import_export.reorder_imports_exports.input_ports().count()),
+					);
+					responses.add(FrontendMessage::UpdateExportReorderIndex { index: self.end_index });
 				}
 			}
 			NodeGraphMessage::PointerUp => {
@@ -1141,15 +1195,34 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 					self.select_if_not_dragged = None;
 				}
-
+				// End of reordering an import
+				else if let (Some(moving_import), Some(end_index)) = (self.reordering_import, self.end_index) {
+					responses.add(NodeGraphMessage::ReorderImport {
+						start_index: moving_import,
+						end_index,
+					});
+					responses.add(DocumentMessage::EndTransaction);
+				}
+				// End of reordering an export
+				else if let (Some(moving_export), Some(end_index)) = (self.reordering_export, self.end_index) {
+					responses.add(NodeGraphMessage::ReorderExport {
+						start_index: moving_export,
+						end_index,
+					});
+					responses.add(DocumentMessage::EndTransaction);
+				}
 				self.drag_start = None;
 				self.begin_dragging = false;
 				self.box_selection_start = None;
 				self.wire_in_progress_from_connector = None;
 				self.wire_in_progress_to_connector = None;
+				self.reordering_export = None;
+				self.reordering_import = None;
 				responses.add(DocumentMessage::EndTransaction);
 				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
-				responses.add(FrontendMessage::UpdateBox { box_selection: None })
+				responses.add(FrontendMessage::UpdateBox { box_selection: None });
+				responses.add(FrontendMessage::UpdateImportReorderIndex { index: None });
+				responses.add(FrontendMessage::UpdateExportReorderIndex { index: None });
 			}
 			NodeGraphMessage::PointerOutsideViewport { shift } => {
 				if self.drag_start.is_some() || self.box_selection_start.is_some() {
@@ -1205,6 +1278,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::RemoveExport { export_index: usize } => {
 				network_interface.remove_export(usize, selection_network_path);
+				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
+			NodeGraphMessage::ReorderImport { start_index, end_index } => {
+				network_interface.reorder_import(start_index, end_index, selection_network_path);
+				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
+			NodeGraphMessage::ReorderExport { start_index, end_index } => {
+				network_interface.reorder_export(start_index, end_index, selection_network_path);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
@@ -1431,13 +1514,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let node_ids = selected_nodes.selected_nodes().cloned().collect::<Vec<_>>();
 
 				// If any of the selected nodes are pinned, unpin them all. Otherwise, pin them all.
-				let pinned = !node_ids.iter().all(|node_id| {
-					if let Some(node) = network_interface.node_metadata(node_id, breadcrumb_network_path) {
-						node.persistent_metadata.pinned
-					} else {
-						false
-					}
-				});
+				let pinned = !node_ids.iter().all(|node_id| network_interface.is_pinned(node_id, breadcrumb_network_path));
 
 				responses.add(DocumentMessage::AddTransaction);
 				for node_id in &node_ids {
@@ -1901,23 +1978,13 @@ impl NodeGraphMessageHandler {
 		match layers.len() {
 			// If no layers are selected, show properties for all selected nodes
 			0 => {
-				let selected_nodes = nodes
-					.iter()
-					.map(|node_id| {
-						let pinned = if let Some(node) = context.network_interface.node_metadata(node_id, context.selection_network_path) {
-							node.persistent_metadata.pinned
-						} else {
-							error!("Could not get node {node_id} in collate_properties");
-							false
-						};
-
-						node_properties::generate_node_properties(*node_id, pinned, context)
-					})
-					.collect::<Vec<_>>();
+				let selected_nodes = nodes.iter().map(|node_id| node_properties::generate_node_properties(*node_id, context)).collect::<Vec<_>>();
 				if !selected_nodes.is_empty() {
 					return selected_nodes;
 				}
 
+				// TODO: Display properties for encapsulating node when no nodes are selected in a nested network
+				// This may require store a separate path for the properties panel
 				let mut properties = vec![LayoutGroup::Row {
 					widgets: vec![
 						Separator::new(SeparatorType::Related).widget_holder(),
@@ -1943,18 +2010,10 @@ impl NodeGraphMessageHandler {
 					.collect::<Vec<_>>()
 					.iter()
 					.filter_map(|node_id| {
-						let pinned = if let Some(node) = context.network_interface.node_metadata(node_id, context.selection_network_path) {
-							node.persistent_metadata.pinned
-						} else {
-							error!("Could not get node {node_id} in collate_properties");
-							false
-						};
-
-						if pinned {
-							Some(node_properties::generate_node_properties(*node_id, pinned, context))
-						} else {
-							None
-						}
+						context
+							.network_interface
+							.is_pinned(node_id, context.selection_network_path)
+							.then(|| node_properties::generate_node_properties(*node_id, context))
 					})
 					.collect::<Vec<_>>();
 
@@ -2023,16 +2082,7 @@ impl NodeGraphMessageHandler {
 					})
 					.collect::<Vec<_>>()
 					.iter()
-					.map(|(_, node_id)| {
-						let pinned = if let Some(node) = context.network_interface.node_metadata(&node_id, context.selection_network_path) {
-							node.persistent_metadata.pinned
-						} else {
-							error!("Could not get node {node_id} in collate_properties");
-							false
-						};
-
-						node_properties::generate_node_properties(*node_id, pinned, context)
-					})
+					.map(|(_, node_id)| node_properties::generate_node_properties(*node_id, context))
 					.collect::<Vec<_>>();
 
 				layer_properties.extend(node_properties);
@@ -2500,6 +2550,9 @@ impl Default for NodeGraphMessageHandler {
 			deselect_on_pointer_up: None,
 			auto_panning: Default::default(),
 			preview_on_mouse_up: None,
+			reordering_export: None,
+			reordering_import: None,
+			end_index: None,
 		}
 	}
 }

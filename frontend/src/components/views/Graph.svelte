@@ -440,7 +440,7 @@
 					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
 				{/if}
 			</svg>
-			<div class="plus" style:--offset-left={(position.x - 16) / 24} style:--offset-top={position.y / 24}>
+			<div class="plus" style:--offset-left={(position.x - 24) / 24} style:--offset-top={position.y / 24}>
 				<IconButton
 					size={16}
 					icon={"Remove"}
@@ -448,9 +448,17 @@
 						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 					}}
 				/>
+				<div class="reorder-drag-grip" title="Drag only this layer without pushing others outside the stack"></div>
 			</div>
-			<p class="import-text" style:--offset-left={(position.x - 16) / 24} style:--offset-top={position.y / 24}>{outputMetadata.name}</p>
+			<p class="import-text" style:--offset-left={(position.x - 24) / 24} style:--offset-top={position.y / 24}>{outputMetadata.name}</p>
 		{/each}
+		{#if $nodeGraph.reorderImportIndex}
+			{@const position = {
+				x: Number($nodeGraph.imports[0].position.x),
+				y: Number($nodeGraph.imports[0].position.y) + Number($nodeGraph.reorderImportIndex) * 24,
+			}}
+			<div class="reorder-bar" style:--offset-left={(position.x - 48) / 24} style:--offset-top={(position.y - 8) / 24} />
+		{/if}
 		{#if $nodeGraph.addImport !== undefined}
 			<div class="plus" style:--offset-left={$nodeGraph.addImport.x / 24} style:--offset-top={$nodeGraph.addImport.y / 24}>
 				<IconButton
@@ -483,6 +491,7 @@
 				{/if}
 			</svg>
 			<div class="plus" style:--offset-left={(position.x + 16) / 24} style:--offset-top={position.y / 24}>
+				<div class="reorder-drag-grip" title="Drag only this layer without pushing others outside the stack"></div>
 				<IconButton
 					size={16}
 					icon={"Remove"}
@@ -491,8 +500,16 @@
 					}}
 				/>
 			</div>
-			<p class="export-text" style:--offset-left={(position.x + 16) / 24} style:--offset-top={position.y / 24}>{inputMetadata.name}</p>
+			<p class="export-text" style:--offset-left={(position.x + 24) / 24} style:--offset-top={position.y / 24}>{inputMetadata.name}</p>
 		{/each}
+		{#if $nodeGraph.reorderExportIndex !== undefined}
+			{@const position = {
+				x: Number($nodeGraph.exports[0].position.x),
+				y: Number($nodeGraph.exports[0].position.y) + Number($nodeGraph.reorderExportIndex) * 24,
+			}}
+			{console.log("position:", position)}
+			<div class="reorder-bar" style:--offset-left={position.x / 24} style:--offset-top={(position.y - 4) / 24} />
+		{/if}
 		{#if $nodeGraph.addExport !== undefined}
 			<div class="plus" style:--offset-left={$nodeGraph.addExport.x / 24} style:--offset-top={$nodeGraph.addExport.y / 24}>
 				<IconButton
@@ -937,10 +954,28 @@
 				left: calc(var(--offset-left) * 24px);
 			}
 
+			.reorder-bar {
+				position: absolute;
+				top: calc(var(--offset-top) * 24px);
+				left: calc(var(--offset-left) * 24px);
+				width: 50px;
+				height: 2px;
+				background-color: white;
+			}
 			.plus {
 				position: absolute;
 				top: calc(var(--offset-top) * 24px);
 				left: calc(var(--offset-left) * 24px);
+				display: flex;
+				align-items: center;
+				.reorder-drag-grip {
+					width: 8px;
+					height: 24px;
+					background-position: 2px 8px;
+					border-radius: 2px;
+					margin: -6px 0;
+					background-image: var(--icon-drag-grip-hover);
+				}
 			}
 
 			.export-text {
