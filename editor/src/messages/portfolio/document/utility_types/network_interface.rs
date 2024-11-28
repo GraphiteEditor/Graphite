@@ -308,6 +308,7 @@ impl NodeNetworkInterface {
 			DocumentNodeImplementation::ProtoNode(_) => 1,
 			DocumentNodeImplementation::Network(nested_network) => nested_network.exports.len(),
 			DocumentNodeImplementation::Extract => 1,
+			DocumentNodeImplementation::Expression { .. } => 1,
 		}
 	}
 
@@ -519,6 +520,11 @@ impl NodeNetworkInterface {
 					.map(|node_types| (node_types, TypeSource::Compiled))
 			}
 			DocumentNodeImplementation::Extract => None,
+			DocumentNodeImplementation::Expression { .. } => {
+				// Expression nodes currently don't accept any inputs
+				// Once variadic inputs are implemented, this will need to be updated
+				None
+			}
 		}
 	}
 
@@ -684,6 +690,9 @@ impl NodeNetworkInterface {
 			}
 			graph_craft::document::DocumentNodeImplementation::Extract => {
 				output_types.push(Some((concrete!(()), TypeSource::Error("extract node"))));
+			}
+			graph_craft::document::DocumentNodeImplementation::Expression { .. } => {
+				output_types.push(Some((concrete!(f64), TypeSource::Compiled)));
 			}
 		}
 		output_types
