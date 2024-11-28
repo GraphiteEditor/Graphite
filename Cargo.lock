@@ -2330,6 +2330,7 @@ dependencies = [
  "iai-callgrind",
  "js-sys",
  "log",
+ "math-parser",
  "num-traits",
  "reqwest 0.12.9",
  "rustc-hash 2.1.0",
