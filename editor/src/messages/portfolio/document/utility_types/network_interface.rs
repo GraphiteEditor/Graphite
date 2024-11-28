@@ -584,6 +584,13 @@ impl NodeNetworkInterface {
 				// Input is disconnected
 				(concrete!(()), TypeSource::Error("disconnected network input"))
 			}
+			DocumentNodeImplementation::Expression { .. } => {
+				if input_index == 0 {
+					(concrete!(String), TypeSource::Compiled)
+				} else {
+					(concrete!(()), TypeSource::Error("expression node only accepts one input"))
+				}
+			}
 			_ => (concrete!(()), TypeSource::Error("implementation is not network or protonode")),
 		}
 	}
