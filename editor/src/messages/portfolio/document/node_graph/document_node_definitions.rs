@@ -2518,6 +2518,24 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: &node_properties::index_properties,
 			description: Cow::Borrowed("TODO"),
 		},
+		DocumentNodeDefinition {
+			identifier: "Expression",
+			category: "Math",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::proto("graph_craft::expression::ExpressionNode"),
+					inputs: vec![NodeInput::value(TaggedValue::String("".to_string()), true)],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_names: vec!["Expression".to_string()],
+					output_names: vec!["Result".to_string()],
+					..Default::default()
+				},
+			},
+			description: Cow::Borrowed("Evaluates a mathematical expression at runtime."),
+			properties: &|_document_node, _node_id, _context| node_properties::string_properties("Enter a mathematical expression to evaluate"),
+		},
 	];
 
 	type PropertiesLayout = &'static (dyn Fn(&DocumentNode, NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Sync);
