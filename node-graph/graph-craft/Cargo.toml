@@ -35,6 +35,7 @@ rustc-hash = { workspace = true }
 url = { workspace = true }
 reqwest = { workspace = true }
 wgpu-executor = { workspace = true }
+math-parser = { path = "../../libraries/math-parser" }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }

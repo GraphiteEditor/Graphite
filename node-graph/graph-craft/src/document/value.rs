@@ -19,6 +19,7 @@ use std::marker::PhantomData;
 use std::str::FromStr;
 pub use std::sync::Arc;
 
+
 /// Macro to generate the tagged value enum.
 macro_rules! tagged_value {
 	($ ($( #[$meta:meta] )* $identifier:ident ($ty:ty) ),* $(,)?) => {
@@ -290,6 +291,11 @@ impl Display for TaggedValue {
 			_ => panic!("Cannot convert to string"),
 		}
 	}
+}
+
+// Implement StaticType for TaggedValue
+unsafe impl StaticType for TaggedValue {
+    type Static = TaggedValue;
 }
 
 pub struct UpcastNode {
