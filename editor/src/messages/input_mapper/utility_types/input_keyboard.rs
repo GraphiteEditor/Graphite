@@ -468,7 +468,7 @@ struct BitVectorIter<'a, const LENGTH: usize> {
 	iter_index: usize,
 }
 
-impl<'a, const LENGTH: usize> Iterator for BitVectorIter<'a, LENGTH> {
+impl<const LENGTH: usize> Iterator for BitVectorIter<'_, LENGTH> {
 	type Item = usize;
 
 	fn next(&mut self) -> Option<Self::Item> {

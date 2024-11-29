@@ -1103,7 +1103,7 @@ impl RenderSvgSegmentList for Vec<SvgSegment> {
 
 pub struct SvgRenderAttrs<'a>(&'a mut SvgRender);
 
-impl<'a> SvgRenderAttrs<'a> {
+impl SvgRenderAttrs<'_> {
 	pub fn push_complex(&mut self, name: impl Into<SvgSegment>, value: impl FnOnce(&mut SvgRender)) {
 		self.0.svg.push(" ".into());
 		self.0.svg.push(name.into());

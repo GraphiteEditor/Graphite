@@ -463,7 +463,7 @@ impl ShapeState {
 			.selected_shape_state
 			.iter()
 			.map(|(&layer, selection_state)| (network_interface.compute_modified_vector(layer), selection_state))
-			.flat_map(|(data, selection_state)| selection_state.selected_points.iter().map(move |&point| data.as_ref().map_or(false, |data| data.colinear(point))));
+			.flat_map(|(data, selection_state)| selection_state.selected_points.iter().map(move |&point| data.as_ref().is_some_and(|data| data.colinear(point))));
 
 		let Some(first_is_colinear) = points_colinear_status.next() else { return ManipulatorAngle::Mixed };
 		if points_colinear_status.any(|point| first_is_colinear != point) {

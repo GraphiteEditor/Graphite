@@ -4,9 +4,10 @@ use lazy_static::lazy_static;
 use num_complex::{Complex, ComplexFloat};
 
 use crate::value::{Number, Value};
+type FunctionImplementation = Box<dyn Fn(&[Value]) -> Option<Value> + Send + Sync>;
 lazy_static! {
-	pub static ref DEFAULT_FUNCTIONS: HashMap<&'static str, Box<dyn Fn(&[Value]) -> Option<Value> + Send + Sync>> = {
-		let mut map: HashMap<&'static str, Box<dyn Fn(&[Value]) -> Option<Value> + Send + Sync>> = HashMap::new();
+	pub static ref DEFAULT_FUNCTIONS: HashMap<&'static str, FunctionImplementation> = {
+		let mut map: HashMap<&'static str, FunctionImplementation> = HashMap::new();
 
 		map.insert(
 			"sin",

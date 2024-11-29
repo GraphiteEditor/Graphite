@@ -145,7 +145,7 @@ macro_rules! impl_type {
 }
 
 #[cfg(feature = "alloc")]
-unsafe impl<'a, T: StaticTypeClone + Clone> StaticType for Cow<'a, T> {
+unsafe impl<T: StaticTypeClone + Clone> StaticType for Cow<'_, T> {
 	type Static = Cow<'static, <T as StaticTypeClone>::Static>;
 }
 unsafe impl<T: StaticTypeSized> StaticType for *const [T] {
@@ -173,11 +173,11 @@ mod slice {
 }
 
 #[cfg(feature = "alloc")]
-unsafe impl<'a, T: StaticTypeSized> StaticType for Box<dyn Iterator<Item = T> + 'a + Send + Sync> {
+unsafe impl<T: StaticTypeSized> StaticType for Box<dyn Iterator<Item = T> + '_ + Send + Sync> {
 	type Static = Box<dyn Iterator<Item = <T as StaticTypeSized>::Static> + Send + Sync>;
 }
 
-unsafe impl<'a> StaticType for &'a str {
+unsafe impl StaticType for &str {
 	type Static = &'static str;
 }
 unsafe impl StaticType for () {
