@@ -662,12 +662,11 @@ impl ShapeState {
 
 				let Some(other) = vector_data.other_colinear_handle(handle) else { continue };
 				if state.is_selected(other.to_manipulator_point()) {
-					if let Some(handles) = point.get_handle_pair(&vector_data) {
-						let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
-						responses.add(GraphOperationMessage::Vector { layer, modification_type });
-					} else {
-						continue;
-					}
+					// If two colinear handles are being dragged at the same time but not the anchor, it is necessary to break the colinear state.
+					let handles = [handle, other];
+					let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+					continue;
 				}
 
 				let new_relative = if equidistant {
