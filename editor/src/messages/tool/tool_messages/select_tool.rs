@@ -4,6 +4,7 @@ use super::tool_prelude::*;
 use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::node_graph::utility_types::Direction;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
@@ -19,6 +20,7 @@ use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;
 use graphene_std::renderer::Rect;
 use graphene_std::vector::misc::BooleanOperation;
+// use web_sys::console;
 
 use std::fmt;
 
@@ -37,6 +39,12 @@ pub struct SelectOptions {
 #[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum SelectOptionsUpdate {
 	NestedSelectionBehavior(NestedSelectionBehavior),
+}
+
+enum SelectionDirection {
+	LeftWards,
+	Rightwards,
+	None,
 }
 
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -299,6 +307,17 @@ impl SelectToolData {
 	fn selection_quad(&self) -> Quad {
 		let bbox = self.selection_box();
 		Quad::from_box(bbox)
+	}
+
+	fn calculate_direction(&self) -> SelectionDirection {
+		let bbox: [DVec2; 2] = self.selection_box();
+		if bbox[1].x > bbox[0].x {
+			SelectionDirection::Rightwards
+		} else if bbox[1].x < bbox[0].x {
+			SelectionDirection::LeftWards
+		} else {
+			SelectionDirection::None
+		}
 	}
 
 	fn selection_box(&self) -> [DVec2; 2] {
@@ -913,6 +932,7 @@ impl Fsm for SelectToolFsmState {
 
 				if !tool_data.has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
 					let quad = tool_data.selection_quad();
+
 					let intersection = document.intersect_quad_no_artboards(quad, input);
 
 					if let Some(path) = intersection.last() {
@@ -1006,7 +1026,13 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::DrawingBox { .. }, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
 				let quad = tool_data.selection_quad();
-				let new_selected: HashSet<_> = document.intersect_quad_no_artboards(quad, input).collect();
+				let direction = tool_data.calculate_direction();
+				// let new_selected: HashSet<_> = document.intersect_quad_no_artboards(quad, input).collect();
+				let new_selected: HashSet<_> = match direction {
+					SelectionDirection::Rightwards => HashSet::new(),
+					SelectionDirection::LeftWards => document.intersect_quad_no_artboards(quad, input).collect(),
+					SelectionDirection::None => HashSet::new(),
+				};
 				let current_selected: HashSet<_> = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
 				if new_selected != current_selected {
 					tool_data.layers_dragging = new_selected.into_iter().collect();
