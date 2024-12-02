@@ -409,7 +409,7 @@ impl Fsm for SelectToolFsmState {
 		};
 		match (self, event) {
 			(_, SelectToolMessage::Overlays(mut overlay_context)) => {
-				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
+				// tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 
 				let selected_layers_count = document.network_interface.selected_nodes(&[]).unwrap().selected_unlocked_layers(&document.network_interface).count();
 				tool_data.selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
@@ -467,7 +467,6 @@ impl Fsm for SelectToolFsmState {
 				// Check if the tool is in box selection mode
 				if matches!(self, Self::DrawingBox { .. }) {
 					// Get the updated selection box bounds
-					debug!("Select tool drag recogged");
 					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
 
 					// Draw outline visualizations on the layers to be selected

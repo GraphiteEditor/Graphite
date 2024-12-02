@@ -214,11 +214,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for TextToo
 	fn actions(&self) -> ActionList {
 		match self.fsm_state {
 			TextToolFsmState::Ready => actions!(TextToolMessageDiscriminant;
-				Interact,
 				DragStart,
 			),
 			TextToolFsmState::Editing => actions!(TextToolMessageDiscriminant;
-				Interact,
+				DragStart,
 				Abort,
 				CommitText,
 			),
@@ -445,7 +444,11 @@ impl Fsm for TextToolFsmState {
 					if far.x != 0. && far.y != 0. {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
 						let transformed_quad = document.metadata().transform_to_viewport(tool_data.layer) * quad;
-						overlay_context.quad(transformed_quad, None);
+						let fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+							.unwrap()
+							.with_alpha(0.05)
+							.rgba_hex();
+						overlay_context.quad(transformed_quad, Some(&("#".to_string() + &fill_color)));
 					}
 				}
 
@@ -454,7 +457,6 @@ impl Fsm for TextToolFsmState {
 			(_, TextToolMessage::Overlays(mut overlay_context)) => {
 				if matches!(self, Self::Dragging) {
 					// Get the updated selection box bounds
-					debug!("Dragging");
 					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
 
 					// Draw outline visualizations on the layers to be selected
@@ -508,6 +510,8 @@ impl Fsm for TextToolFsmState {
 				tool_data.drag_current = input.mouse.position;
 				tool_data.dragged = true;
 
+				responses.add(OverlaysMessage::Draw);
+
 				// Auto-panning
 				let messages = [
 					TextToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
@@ -550,8 +554,6 @@ impl Fsm for TextToolFsmState {
 
 					line_width = Some(tool_data.drag_current.x - tool_data.drag_start.x);
 					transformation_point = tool_data.drag_start;
-
-					debug!("{}", line_width.unwrap());
 
 					tool_data.new_text = String::new();
 				} else {
