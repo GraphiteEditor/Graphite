@@ -409,7 +409,7 @@ impl Fsm for SelectToolFsmState {
 		};
 		match (self, event) {
 			(_, SelectToolMessage::Overlays(mut overlay_context)) => {
-				// tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
+				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 
 				let selected_layers_count = document.network_interface.selected_nodes(&[]).unwrap().selected_unlocked_layers(&document.network_interface).count();
 				tool_data.selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
