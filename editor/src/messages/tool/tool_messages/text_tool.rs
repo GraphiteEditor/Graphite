@@ -1,12 +1,15 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::tool_prelude::*;
+use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
+use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name};
+use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
@@ -247,6 +250,7 @@ enum TextToolFsmState {
 	Editing,
 	Dragging,
 }
+
 #[derive(Clone, Debug)]
 pub struct EditingText {
 	text: String,
@@ -264,6 +268,11 @@ struct TextToolData {
 	layer: LayerNodeIdentifier,
 	editing_text: Option<EditingText>,
 	new_text: String,
+	drag_start: ViewportPosition,
+	drag_current: ViewportPosition,
+	dragged: bool,
+	snap_manager: SnapManager,
+	auto_panning: AutoPanning,
 }
 
 impl TextToolData {
@@ -343,7 +352,7 @@ impl TextToolData {
 			TextToolFsmState::Editing
 		}
 		// Create new text
-		else if let Some(editing_text) = self.editing_text.as_ref().filter(|_| state == TextToolFsmState::Ready) {
+		else if let Some(editing_text) = self.editing_text.as_ref().filter(|_| state == TextToolFsmState::Ready || state == TextToolFsmState::Dragging) {
 			responses.add(DocumentMessage::AddTransaction);
 
 			self.layer = LayerNodeIdentifier::new_unchecked(NodeId::new());
@@ -443,33 +452,36 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Editing
 			}
 			(_, TextToolMessage::Overlays(mut overlay_context)) => {
-				for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
-					let Some((text, font, font_size, line_height_ratio, character_spacing, line_width)) = graph_modification_utils::get_text(layer, &document.network_interface) else {
-						continue;
-					};
-					let buzz_face = font_cache.get(font).map(|data| load_face(data));
-					let far = graphene_core::text::bounding_box(text, buzz_face, font_size, line_height_ratio, character_spacing, line_width);
-					let quad = Quad::from_box([DVec2::ZERO, far]);
-					let multiplied = document.metadata().transform_to_viewport(layer) * quad;
-					overlay_context.quad(multiplied, None);
+				if matches!(self, Self::Dragging) {
+					// Get the updated selection box bounds
+					debug!("Dragging");
+					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
+
+					// Draw outline visualizations on the layers to be selected
+					for layer in document.intersect_quad_no_artboards(quad, input) {
+						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+					}
+
+					// Update the selection box
+					let fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+						.unwrap()
+						.with_alpha(0.05)
+						.rgba_hex();
+					overlay_context.quad(quad, Some(&("#".to_string() + &fill_color)));
+				} else {
+					for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
+						let Some((text, font, font_size, line_height_ratio, character_spacing, line_width)) = graph_modification_utils::get_text(layer, &document.network_interface) else {
+							continue;
+						};
+						let buzz_face = font_cache.get(font).map(|data| load_face(data));
+						let far = graphene_core::text::bounding_box(text, buzz_face, font_size, line_height_ratio, character_spacing, line_width);
+						let quad = Quad::from_box([DVec2::ZERO, far]);
+						let multiplied = document.metadata().transform_to_viewport(layer) * quad;
+						overlay_context.quad(multiplied, None);
+					}
 				}
 
 				self
-			}
-			(state, TextToolMessage::Interact) => {
-				tool_data.editing_text = Some(EditingText {
-					text: String::new(),
-					transform: DAffine2::from_translation(input.mouse.position),
-					font_size: tool_options.font_size,
-					line_height_ratio: tool_options.line_height_ratio,
-					line_width: tool_options.line_width,
-					character_spacing: tool_options.character_spacing,
-					font: Font::new(tool_options.font_name.clone(), tool_options.font_style.clone()),
-					color: tool_options.fill.active_color(),
-				});
-				tool_data.new_text = String::new();
-
-				tool_data.interact(state, input, document, font_cache, responses)
 			}
 			(state, TextToolMessage::EditSelected) => {
 				if let Some(layer) = can_edit_selected(document) {
@@ -485,6 +497,81 @@ impl Fsm for TextToolFsmState {
 				}
 
 				TextToolFsmState::Ready
+			}
+			(TextToolFsmState::Ready, TextToolMessage::DragStart) => {
+				tool_data.drag_start = input.mouse.position;
+				tool_data.drag_current = input.mouse.position;
+
+				TextToolFsmState::Dragging
+			}
+			(TextToolFsmState::Dragging, TextToolMessage::PointerMove { center, lock_ratio }) => {
+				tool_data.drag_current = input.mouse.position;
+				tool_data.dragged = true;
+
+				// Auto-panning
+				let messages = [
+					TextToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
+					TextToolMessage::PointerMove { center, lock_ratio }.into(),
+				];
+				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
+
+				self
+			}
+			(_, TextToolMessage::PointerMove { .. }) => {
+				// TODO: Take care of snapping
+				responses.add(OverlaysMessage::Draw);
+
+				self
+			}
+			(TextToolFsmState::Dragging, TextToolMessage::PointerOutsideViewport { .. }) => {
+				// Auto-panning setup
+				let _ = tool_data.auto_panning.shift_viewport(input, responses);
+
+				TextToolFsmState::Dragging
+			}
+			(state, TextToolMessage::PointerOutsideViewport { center, lock_ratio }) => {
+				// Auto-panning stop
+				let messages = [
+					TextToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
+					TextToolMessage::PointerMove { center, lock_ratio }.into(),
+				];
+				tool_data.auto_panning.stop(&messages, responses);
+
+				state
+			}
+			(TextToolFsmState::Dragging, TextToolMessage::DragStop) => {
+				let line_width: Option<f64>;
+				let transformation_point: DVec2;
+
+				if tool_data.dragged {
+					input
+						.mouse
+						.finish_transaction(document.metadata().document_to_viewport.transform_point2(tool_data.drag_start), responses);
+
+					line_width = Some(tool_data.drag_current.x - tool_data.drag_start.x);
+					transformation_point = tool_data.drag_start;
+
+					debug!("{}", line_width.unwrap());
+
+					tool_data.new_text = String::new();
+				} else {
+					line_width = tool_options.line_width;
+					transformation_point = tool_data.drag_current;
+				}
+
+				tool_data.editing_text = Some(EditingText {
+					text: String::new(),
+					transform: DAffine2::from_translation(transformation_point),
+					font_size: tool_options.font_size,
+					line_height_ratio: tool_options.line_height_ratio,
+					line_width,
+					character_spacing: tool_options.character_spacing,
+					font: Font::new(tool_options.font_name.clone(), tool_options.font_style.clone()),
+					color: tool_options.fill.active_color(),
+				});
+				tool_data.new_text = String::new();
+				tool_data.dragged = false;
+				tool_data.interact(TextToolFsmState::Dragging, input, document, font_cache, responses)
 			}
 			(TextToolFsmState::Editing, TextToolMessage::CommitText) => {
 				responses.add(FrontendMessage::TriggerTextCommit);
@@ -544,9 +631,8 @@ impl Fsm for TextToolFsmState {
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		let cursor = match self {
-			TextToolFsmState::Ready => MouseCursorIcon::Text,
-			TextToolFsmState::Editing => MouseCursorIcon::Text,
 			TextToolFsmState::Dragging => MouseCursorIcon::Crosshair,
+			_ => MouseCursorIcon::Text,
 		};
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 	}

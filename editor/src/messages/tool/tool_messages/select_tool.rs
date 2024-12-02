@@ -467,6 +467,7 @@ impl Fsm for SelectToolFsmState {
 				// Check if the tool is in box selection mode
 				if matches!(self, Self::DrawingBox { .. }) {
 					// Get the updated selection box bounds
+					debug!("Select tool drag recogged");
 					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
 
 					// Draw outline visualizations on the layers to be selected
