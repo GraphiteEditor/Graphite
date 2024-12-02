@@ -1178,51 +1178,6 @@ pub fn query_noise_pattern_state(node_id: NodeId, context: &NodePropertiesContex
 	))
 }
 
-pub(crate) fn brightness_contrast_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let is_use_classic = match &document_node.inputs[3].as_value() {
-		Some(&TaggedValue::Bool(value)) => value,
-		_ => false,
-	};
-	let ((b_min, b_max), (c_min, c_max)) = if is_use_classic { ((-100., 100.), (-100., 100.)) } else { ((-100., 150.), (-50., 100.)) };
-
-	let brightness = number_widget(
-		document_node,
-		node_id,
-		1,
-		"Brightness",
-		NumberInput::default().mode_range().range_min(Some(b_min)).range_max(Some(b_max)).unit("%").display_decimal_places(2),
-		true,
-	);
-	let contrast = number_widget(
-		document_node,
-		node_id,
-		2,
-		"Contrast",
-		NumberInput::default().mode_range().range_min(Some(c_min)).range_max(Some(c_max)).unit("%").display_decimal_places(2),
-		true,
-	);
-	let use_classic = bool_widget(document_node, node_id, 3, "Use Classic", CheckboxInput::default(), true);
-
-	vec![
-		LayoutGroup::Row { widgets: brightness },
-		LayoutGroup::Row { widgets: contrast },
-		LayoutGroup::Row { widgets: use_classic },
-	]
-}
-
-pub(crate) fn curves_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let curves = curves_widget(document_node, node_id, 1, "Curve", true);
-
-	vec![curves]
-}
-
-pub(crate) fn _blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let radius = number_widget(document_node, node_id, 1, "Radius", NumberInput::default().min(0.).max(20.).int(), true);
-	let sigma = number_widget(document_node, node_id, 2, "Sigma", NumberInput::default().min(0.).max(10000.), true);
-
-	vec![LayoutGroup::Row { widgets: radius }, LayoutGroup::Row { widgets: sigma }]
-}
-
 pub(crate) fn assign_colors_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let fill_index = 1;
 	let stroke_index = 2;

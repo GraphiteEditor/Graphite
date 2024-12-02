@@ -1954,7 +1954,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec!["Image".into(), "Brightness".into(), "Contrast".into(), "Use Classic".into()],
+					input_properties: vec![
+						PropertiesRow::with_override("Image", WidgetOverride::Hidden),
+						PropertiesRow::with_override("Brightness", WidgetOverride::Custom("brightness".to_string())),
+						PropertiesRow::with_override("Brightness", WidgetOverride::Custom("contrast".to_string())),
+						"Use Classic".into(),
+					],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
@@ -1977,7 +1982,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec!["Image".into(), "Curve".into()],
+					input_properties: vec![PropertiesRow::with_override("Image", WidgetOverride::Hidden), "Curve".into()],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
@@ -2577,6 +2582,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
+					// TODO: Store information for input overrides in the node macro
 					input_properties: fields.iter().map(|f| f.name.into()).collect(),
 					output_names: vec![output_type.to_string()],
 					has_primary_output: true,
@@ -2925,7 +2931,54 @@ fn static_input_properties() -> HashMap<String, Box<dyn Fn(NodeId, usize, &mut N
 			Ok(vec![cellular_jitter.into()])
 		}),
 	);
-
+	map.insert(
+		"brightness".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let is_use_classic = document_node
+				.inputs
+				.iter()
+				.find_map(|input| match input.as_value() {
+					Some(&TaggedValue::Bool(use_classic)) => Some(use_classic),
+					_ => None,
+				})
+				.unwrap_or(false);
+			let (b_min, b_max) = if is_use_classic { (-100., 100.) } else { (-100., 150.) };
+			let brightness = node_properties::number_widget(
+				document_node,
+				node_id,
+				index,
+				input_name,
+				NumberInput::default().mode_range().range_min(Some(b_min)).range_max(Some(b_max)).unit("%").display_decimal_places(2),
+				true,
+			);
+			Ok(vec![brightness.into()])
+		}),
+	);
+	map.insert(
+		"contrast".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let is_use_classic = document_node
+				.inputs
+				.iter()
+				.find_map(|input| match input.as_value() {
+					Some(&TaggedValue::Bool(use_classic)) => Some(use_classic),
+					_ => None,
+				})
+				.unwrap_or(false);
+			let (c_min, c_max) = if is_use_classic { (-100., 100.) } else { (-50., 100.) };
+			let contrast = node_properties::number_widget(
+				document_node,
+				node_id,
+				index,
+				input_name,
+				NumberInput::default().mode_range().range_min(Some(c_min)).range_max(Some(c_max)).unit("%").display_decimal_places(2),
+				true,
+			);
+			Ok(vec![contrast.into()])
+		}),
+	);
 	map
 }
 
