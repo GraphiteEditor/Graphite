@@ -721,6 +721,10 @@
 							}
 						}
 
+						.text-input {
+							word-break: break-all;
+						}
+
 						.text-input div {
 							cursor: text;
 							background: none;
