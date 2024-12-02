@@ -119,6 +119,8 @@ impl Dispatcher {
 				Message::EndBuffer(render_metadata) => {
 					// Assign the message queue to the currently buffered queue
 					if let Some(buffered_queue) = self.buffered_queue.take() {
+						self.cleanup_queues(false);
+						assert!(self.message_queues.is_empty(), "message queues are always empty when ending a buffer");
 						self.message_queues = buffered_queue;
 					};
 
@@ -131,8 +133,8 @@ impl Dispatcher {
 					// Run these update state messages immediately
 					let messages = [
 						DocumentMessage::UpdateUpstreamTransforms { upstream_transforms: footprints },
-						DocumentMessage::UpdateClickTargets { click_targets }.into(),
-						DocumentMessage::UpdateClipTargets { clip_targets }.into(),
+						DocumentMessage::UpdateClickTargets { click_targets },
+						DocumentMessage::UpdateClipTargets { clip_targets },
 					];
 					Self::schedule_execution(&mut self.message_queues, false, messages.map(Message::from));
 				}
