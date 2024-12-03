@@ -16,7 +16,7 @@ impl Editor {
 	}
 
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T) -> Vec<FrontendMessage> {
-		self.dispatcher.handle_message(message);
+		self.dispatcher.handle_message(message, true);
 
 		std::mem::take(&mut self.dispatcher.responses)
 	}
