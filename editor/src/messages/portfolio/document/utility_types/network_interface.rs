@@ -5887,7 +5887,8 @@ pub enum WidgetOverride {
 	Custom(String),
 }
 
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+// TODO: Custom deserialization/serialization to ensure number of properties row matches number of node inputs
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PropertiesRow {
 	/// Input/Output names may not be the same length as the number of inputs/outputs. They are the same as the nested networks Imports/Exports.
 	/// If the string is empty/DNE, then it uses the type.
@@ -5897,6 +5898,12 @@ pub struct PropertiesRow {
 	// An input can override a widget, which would otherwise be automatically generated from the type
 	// The string is the identifier to the widget override function stored in INPUT_OVERRIDES
 	pub widget_override: Option<String>,
+}
+
+impl Default for PropertiesRow {
+	fn default() -> Self {
+		"".into()
+	}
 }
 
 impl PartialEq for PropertiesRow {
@@ -5952,6 +5959,7 @@ pub struct DocumentNodePersistentMetadata {
 	#[serde(default)]
 	pub display_name: String,
 	/// Stores metadata to override the properties in the properties panel for each input. These can either be generated automatically based on the type, or with a custom function.
+	/// Must match the length of node inputs
 	pub input_properties: Vec<PropertiesRow>,
 	/// A node can have a fully custom properties panel. For example to display a single string, or if interdependent properties are needed
 	pub output_names: Vec<String>,

@@ -50,15 +50,19 @@ impl NodePropertiesContext<'_> {
 			log::error!("Could not get input properties row in call_widget_override");
 			return None;
 		};
-		let Some(widget_override_lambda) = input_properties_row.widget_override.as_ref().and_then(|widget_override| INPUT_OVERRIDES.get(widget_override)) else {
-			log::error!("Could not get widget override lambda in call_widget_override");
-			return None;
-		};
-		widget_override_lambda(*node_id, index, self)
-			.map_err(|error| {
-				log::error!("Error in widget override lambda: {}", error);
-			})
-			.ok()
+		if let Some(widget_override) = &input_properties_row.widget_override {
+			let Some(widget_override_lambda) = INPUT_OVERRIDES.get(widget_override) else {
+				log::error!("Could not get widget override lambda in call_widget_override");
+				return None;
+			};
+			widget_override_lambda(*node_id, index, self)
+				.map_err(|error| {
+					log::error!("Error in widget override lambda: {}", error);
+				})
+				.ok()
+		} else {
+			None
+		}
 	}
 }
 
@@ -3013,6 +3017,62 @@ impl DocumentNodeDefinition {
 				template.document_node.inputs[index] = input_override;
 			}
 		});
+
+		//Ensure that the input properties are initialized for every Document Node input for every node
+		fn populate_input_properties(node_template: &mut NodeTemplate, mut path: Vec<NodeId>) {
+			if let Some(current_node) = path.pop() {
+				let DocumentNodeImplementation::Network(template_network) = &node_template.document_node.implementation else {
+					log::error!("Template network should always exist");
+					return;
+				};
+				let Some(nested_network) = template_network.nested_network(&path) else {
+					log::error!("Nested network should exist for path");
+					return;
+				};
+				let Some(input_length) = nested_network.nodes.get(&current_node).map(|node| node.inputs.len()) else {
+					log::error!("Could not get current node in nested network");
+					return;
+				};
+				let Some(template_network_metadata) = &mut node_template.persistent_node_metadata.network_metadata else {
+					log::error!("Template should have metadata if it has network implementation");
+					return;
+				};
+				let Some(nested_network_metadata) = template_network_metadata.nested_metadata_mut(&path) else {
+					log::error!("Path is not valid for network");
+					return;
+				};
+				let Some(nested_node_metadata) = nested_network_metadata.persistent_metadata.node_metadata.get_mut(&current_node) else {
+					log::error!("Path is not valid for network");
+					return;
+				};
+				nested_node_metadata.persistent_metadata.input_properties.resize_with(input_length, PropertiesRow::default);
+
+				//Recurse over all sub nodes if the current node is a network implementation
+				let mut current_path = path.clone();
+				current_path.push(current_node);
+				let DocumentNodeImplementation::Network(template_network) = &node_template.document_node.implementation else {
+					log::error!("Template network should always exist");
+					return;
+				};
+				if let Some(current_nested_network) = template_network.nested_network(&current_path) {
+					for sub_node_id in current_nested_network.nodes.keys().cloned().collect::<Vec<_>>() {
+						let mut sub_path = current_path.clone();
+						sub_path.push(sub_node_id);
+						populate_input_properties(node_template, sub_path);
+					}
+				};
+			} else {
+				// Base case
+				let input_len = node_template.document_node.inputs.len();
+				node_template.persistent_node_metadata.input_properties.resize_with(input_len, PropertiesRow::default);
+				if let DocumentNodeImplementation::Network(node_template_network) = &node_template.document_node.implementation {
+					for sub_node_id in node_template_network.nodes.keys().cloned().collect::<Vec<_>>() {
+						populate_input_properties(node_template, vec![sub_node_id]);
+					}
+				}
+			}
+		}
+		populate_input_properties(&mut template, Vec::new());
 
 		// Set the reference to the node definition
 		template.persistent_node_metadata.reference = Some(self.identifier.to_string());
