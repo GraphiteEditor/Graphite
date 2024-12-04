@@ -3520,10 +3520,57 @@ impl NodeNetworkInterface {
 		let name = encapsulating_node_metadata.persistent_metadata.output_names.remove(start_index);
 		encapsulating_node_metadata.persistent_metadata.output_names.insert(end_index, name);
 
-		// TODO: Reorder the wires to the node output in the encapsulating network
-
 		// Update the metadata for the encapsulating network
 		self.unload_outward_wires(&encapsulating_network_path);
+
+		// Node input at the start index is now at the end index
+		let Some(move_to_end_index) = self
+			.outward_wires(&encapsulating_network_path)
+			.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(parent_id, start_index)))
+			.cloned()
+		else {
+			log::error!("Could not get outward wires in reorder_export");
+			return;
+		};
+		// Node inputs above the start index should be shifted down one
+		let last_output_index = self.number_of_outputs(&parent_id, &encapsulating_network_path) - 1;
+		for shift_output_down in (start_index + 1)..=last_output_index {
+			let Some(outward_wires) = self
+				.outward_wires(&encapsulating_network_path)
+				.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(parent_id, shift_output_down)))
+				.cloned()
+			else {
+				log::error!("Could not get outward wires in reorder_export");
+				return;
+			};
+			for downstream_connection in &outward_wires {
+				log::debug!("Shifting downstream_connection {downstream_connection:?} down to {}", shift_output_down - 1);
+				self.disconnect_input(downstream_connection, &encapsulating_network_path);
+				self.create_wire(&OutputConnector::node(parent_id, shift_output_down - 1), downstream_connection, &encapsulating_network_path);
+			}
+		}
+		// Node inputs at or above the end index should be shifted up one
+		for shift_output_up in end_index..=last_output_index {
+			let Some(outward_wires) = self
+				.outward_wires(&encapsulating_network_path)
+				.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(parent_id, shift_output_up)))
+				.cloned()
+			else {
+				log::error!("Could not get outward wires in reorder_export");
+				return;
+			};
+			for downstream_connection in &outward_wires {
+				log::debug!("Shifting downstream_connection {downstream_connection:?} up to {}", shift_output_up + 1);
+				self.disconnect_input(downstream_connection, &encapsulating_network_path);
+				self.create_wire(&OutputConnector::node(parent_id, shift_output_up + 1), downstream_connection, &encapsulating_network_path);
+			}
+		}
+
+		// Move the connections to the moved export after all other ones have been shifted
+		for downstream_connection in &move_to_end_index {
+			self.disconnect_input(downstream_connection, &encapsulating_network_path);
+			self.create_wire(&OutputConnector::node(parent_id, end_index), downstream_connection, &encapsulating_network_path);
+		}
 
 		// Update the metadata for the current network
 		self.unload_outward_wires(network_path);

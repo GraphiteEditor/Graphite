@@ -507,7 +507,6 @@
 				x: Number($nodeGraph.exports[0].position.x),
 				y: Number($nodeGraph.exports[0].position.y) + Number($nodeGraph.reorderExportIndex) * 24,
 			}}
-			{console.log("position:", position)}
 			<div class="reorder-bar" style:--offset-left={position.x / 24} style:--offset-top={(position.y - 4) / 24} />
 		{/if}
 		{#if $nodeGraph.addExport !== undefined}
