@@ -29,7 +29,8 @@ pub struct TextOptions {
 	font_size: f64,
 	line_height_ratio: f64,
 	character_spacing: f64,
-	line_width: Option<f64>,
+	line_wrap_enabled: bool,
+	line_width: f64,
 	font_name: String,
 	font_style: String,
 	fill: ToolColorOptions,
@@ -40,7 +41,8 @@ impl Default for TextOptions {
 		Self {
 			font_size: 24.,
 			line_height_ratio: 1.2,
-			line_width: None,
+			line_wrap_enabled: false,
+			line_width: 100.,
 			character_spacing: 1.,
 			font_name: graphene_core::consts::DEFAULT_FONT_FAMILY.into(),
 			font_style: graphene_core::consts::DEFAULT_FONT_STYLE.into(),
@@ -78,6 +80,7 @@ pub enum TextOptionsUpdate {
 	FontSize(f64),
 	LineHeightRatio(f64),
 	CharacterSpacing(f64),
+	LineWrapEnabled(bool),
 	LineWidth(Option<f64>),
 	WorkingColors(Option<Color>, Option<Color>),
 }
@@ -131,12 +134,17 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 		.step(0.1)
 		.on_update(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::LineHeightRatio(number_input.value.unwrap())).into())
 		.widget_holder();
-	let line_width = NumberInput::new(tool.options.line_width)
+	let line_wrap_enabled = CheckboxInput::new(tool.options.line_wrap_enabled)
+		.icon("Edit12px")
+		.on_update(|checkbox: &CheckboxInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::LineWrapEnabled(checkbox.checked)).into())
+		.widget_holder();
+	let line_width = NumberInput::new(tool.options.line_wrap_enabled.then_some(tool.options.line_width))
 		.unit(" px")
 		.label("Line Width")
 		.int()
 		.min(0.)
 		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
+		.disabled(!tool.options.line_wrap_enabled)
 		.on_update(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::LineWidth(number_input.value)).into())
 		.widget_holder();
 	let character_spacing = NumberInput::new(Some(tool.options.character_spacing))
@@ -156,6 +164,7 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 		Separator::new(SeparatorType::Related).widget_holder(),
 		line_height_ratio,
 		Separator::new(SeparatorType::Related).widget_holder(),
+		line_wrap_enabled,
 		line_width,
 		Separator::new(SeparatorType::Related).widget_holder(),
 		character_spacing,
@@ -195,7 +204,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for TextToo
 			}
 			TextOptionsUpdate::FontSize(font_size) => self.options.font_size = font_size,
 			TextOptionsUpdate::LineHeightRatio(line_height_ratio) => self.options.line_height_ratio = line_height_ratio,
-			TextOptionsUpdate::LineWidth(line_width) => self.options.line_width = line_width,
+			TextOptionsUpdate::LineWrapEnabled(line_wrap_enabled) => self.options.line_wrap_enabled = line_wrap_enabled,
+			TextOptionsUpdate::LineWidth(line_width) => self.options.line_width = line_width.unwrap_or(self.options.line_width),
 			TextOptionsUpdate::CharacterSpacing(character_spacing) => self.options.character_spacing = character_spacing,
 			TextOptionsUpdate::FillColor(color) => {
 				self.options.fill.custom_color = color;
@@ -558,7 +568,7 @@ impl Fsm for TextToolFsmState {
 
 					tool_data.new_text = String::new();
 				} else {
-					line_width = tool_options.line_width;
+					line_width = tool_options.line_wrap_enabled.then_some(tool_options.line_width);
 					transformation_point = tool_data.drag_current;
 				}
 
