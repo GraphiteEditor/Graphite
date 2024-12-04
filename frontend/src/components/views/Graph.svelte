@@ -448,16 +448,16 @@
 						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 					}}
 				/>
-				<div class="reorder-drag-grip" title="Drag only this layer without pushing others outside the stack"></div>
+				<div class="reorder-drag-grip" title="Reorder this import"></div>
 			</div>
 			<p class="import-text" style:--offset-left={(position.x - 24) / 24} style:--offset-top={position.y / 24}>{outputMetadata.name}</p>
 		{/each}
-		{#if $nodeGraph.reorderImportIndex}
+		{#if $nodeGraph.reorderImportIndex !== undefined}
 			{@const position = {
 				x: Number($nodeGraph.imports[0].position.x),
 				y: Number($nodeGraph.imports[0].position.y) + Number($nodeGraph.reorderImportIndex) * 24,
 			}}
-			<div class="reorder-bar" style:--offset-left={(position.x - 48) / 24} style:--offset-top={(position.y - 8) / 24} />
+			<div class="reorder-bar" style:--offset-left={(position.x - 48) / 24} style:--offset-top={(position.y - 4) / 24} />
 		{/if}
 		{#if $nodeGraph.addImport !== undefined}
 			<div class="plus" style:--offset-left={$nodeGraph.addImport.x / 24} style:--offset-top={$nodeGraph.addImport.y / 24}>
@@ -490,16 +490,18 @@
 					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
 				{/if}
 			</svg>
-			<div class="plus" style:--offset-left={(position.x + 16) / 24} style:--offset-top={position.y / 24}>
-				<div class="reorder-drag-grip" title="Drag only this layer without pushing others outside the stack"></div>
-				<IconButton
-					size={16}
-					icon={"Remove"}
-					action={() => {
-						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
-					}}
-				/>
-			</div>
+			{#if $nodeGraph.addExport !== undefined}
+				<div class="plus" style:--offset-left={(position.x + 16) / 24} style:--offset-top={position.y / 24}>
+					<div class="reorder-drag-grip" title="Reorder this import"></div>
+					<IconButton
+						size={16}
+						icon={"Remove"}
+						action={() => {
+							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+						}}
+					/>
+				</div>
+			{/if}
 			<p class="export-text" style:--offset-left={(position.x + 24) / 24} style:--offset-top={position.y / 24}>{inputMetadata.name}</p>
 		{/each}
 		{#if $nodeGraph.reorderExportIndex !== undefined}

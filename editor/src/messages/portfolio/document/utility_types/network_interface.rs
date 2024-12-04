@@ -3522,6 +3522,7 @@ impl NodeNetworkInterface {
 
 		// Update the metadata for the encapsulating network
 		self.unload_outward_wires(&encapsulating_network_path);
+		self.unload_stack_dependents(&encapsulating_network_path);
 
 		// Node input at the start index is now at the end index
 		let Some(move_to_end_index) = self
@@ -3544,13 +3545,12 @@ impl NodeNetworkInterface {
 				return;
 			};
 			for downstream_connection in &outward_wires {
-				log::debug!("Shifting downstream_connection {downstream_connection:?} down to {}", shift_output_down - 1);
 				self.disconnect_input(downstream_connection, &encapsulating_network_path);
 				self.create_wire(&OutputConnector::node(parent_id, shift_output_down - 1), downstream_connection, &encapsulating_network_path);
 			}
 		}
 		// Node inputs at or above the end index should be shifted up one
-		for shift_output_up in end_index..=last_output_index {
+		for shift_output_up in (end_index..last_output_index).rev() {
 			let Some(outward_wires) = self
 				.outward_wires(&encapsulating_network_path)
 				.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(parent_id, shift_output_up)))
@@ -3560,7 +3560,6 @@ impl NodeNetworkInterface {
 				return;
 			};
 			for downstream_connection in &outward_wires {
-				log::debug!("Shifting downstream_connection {downstream_connection:?} up to {}", shift_output_up + 1);
 				self.disconnect_input(downstream_connection, &encapsulating_network_path);
 				self.create_wire(&OutputConnector::node(parent_id, shift_output_up + 1), downstream_connection, &encapsulating_network_path);
 			}
@@ -3581,7 +3580,93 @@ impl NodeNetworkInterface {
 
 	/// The end index is before the import is removed, so moving to the end is the length of the current imports
 	pub fn reorder_import(&mut self, start_index: usize, mut end_index: usize, network_path: &[NodeId]) {
-		log::debug!("Reordering import from {start_index} to {end_index}");
+		let mut encapsulating_network_path = network_path.to_vec();
+		let Some(parent_id) = encapsulating_network_path.pop() else {
+			log::error!("Could not reorder import for document network");
+			return;
+		};
+
+		let Some(encapsulating_network) = self.network_mut(&encapsulating_network_path) else {
+			log::error!("Could not get nested network in reorder_import");
+			return;
+		};
+		let Some(encapsulating_node) = encapsulating_network.nodes.get_mut(&parent_id) else {
+			log::error!("Could not get encapsulating node in reorder_import");
+			return;
+		};
+
+		if end_index > start_index {
+			end_index -= 1;
+		}
+		let import = encapsulating_node.inputs.remove(start_index);
+		encapsulating_node.inputs.insert(end_index, import);
+
+		self.transaction_modified();
+
+		let Some(encapsulating_node_metadata) = self.node_metadata_mut(&parent_id, &encapsulating_network_path) else {
+			log::error!("Could not get encapsulating network_metadata in reorder_import");
+			return;
+		};
+
+		let properties_row = encapsulating_node_metadata.persistent_metadata.input_properties.remove(start_index);
+		encapsulating_node_metadata.persistent_metadata.input_properties.insert(end_index, properties_row);
+
+		// Update the metadata for the outer network
+		self.unload_outward_wires(&encapsulating_network_path);
+		self.unload_stack_dependents(&encapsulating_network_path);
+
+		// Node input at the start index is now at the end index
+		let Some(move_to_end_index) = self
+			.outward_wires(network_path)
+			.and_then(|outward_wires| outward_wires.get(&OutputConnector::Import(start_index)))
+			.cloned()
+		else {
+			log::error!("Could not get outward wires in reorder_import");
+			return;
+		};
+		// Node inputs above the start index should be shifted down one
+		let last_import_index = self.number_of_imports(network_path) - 1;
+		for shift_output_down in (start_index + 1)..=last_import_index {
+			let Some(outward_wires) = self
+				.outward_wires(network_path)
+				.and_then(|outward_wires| outward_wires.get(&OutputConnector::Import(shift_output_down)))
+				.cloned()
+			else {
+				log::error!("Could not get outward wires in reorder_import");
+				return;
+			};
+			for downstream_connection in &outward_wires {
+				self.disconnect_input(downstream_connection, &network_path);
+				self.create_wire(&OutputConnector::Import(shift_output_down - 1), downstream_connection, &network_path);
+			}
+		}
+		// Node inputs at or above the end index should be shifted up one
+		for shift_output_up in (end_index..last_import_index).rev() {
+			let Some(outward_wires) = self
+				.outward_wires(&network_path)
+				.and_then(|outward_wires| outward_wires.get(&OutputConnector::Import(shift_output_up)))
+				.cloned()
+			else {
+				log::error!("Could not get outward wires in reorder_import");
+				return;
+			};
+			for downstream_connection in &outward_wires {
+				self.disconnect_input(downstream_connection, &network_path);
+				self.create_wire(&OutputConnector::Import(shift_output_up + 1), downstream_connection, &network_path);
+			}
+		}
+
+		// Move the connections to the moved export after all other ones have been shifted
+		for downstream_connection in &move_to_end_index {
+			self.disconnect_input(downstream_connection, &network_path);
+			self.create_wire(&OutputConnector::Import(end_index), downstream_connection, &network_path);
+		}
+
+		// Update the metadata for the current network
+		self.unload_outward_wires(network_path);
+		self.unload_import_export_ports(network_path);
+		self.unload_modify_import_export(network_path);
+		self.unload_stack_dependents(network_path);
 	}
 
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
