@@ -281,6 +281,7 @@ impl TextToolData {
 			responses.add(FrontendMessage::DisplayEditableTextbox {
 				text: editing_text.text.clone(),
 				line_width: editing_text.line_width,
+				line_height_ratio: editing_text.line_height_ratio,
 				font_size: editing_text.font_size,
 				color: editing_text.color.unwrap_or(Color::BLACK),
 				url: font_cache.get_preview_url(&editing_text.font).cloned().unwrap_or_default(),
