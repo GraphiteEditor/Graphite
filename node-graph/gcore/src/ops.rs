@@ -407,6 +407,7 @@ fn unwrap<T: Default>(_: (), #[implementations(Option<f64>, Option<f32>, Option<
 fn clone<'i, T: Clone + 'i>(_: (), #[implementations(&ImageFrame<Color>)] value: &'i T) -> T {
 	value.clone()
 }
+
 #[node_macro::node(category("Math: Vector"))]
 fn dot_product(#[implementations(DVec2)] vector_a: glam::DVec2, #[implementations(DVec2)] vector_b: glam::DVec2) -> f64 {
 	vector_a.dot(vector_b)
@@ -416,6 +417,7 @@ fn dot_product(#[implementations(DVec2)] vector_a: glam::DVec2, #[implementation
 fn cross_product(#[implementations(DVec2)] vector_a: glam::DVec2, #[implementations(DVec2)] vector_b: glam::DVec2) -> f64 {
 	vector_a.perp_dot(vector_b)
 }
+
 // TODO: Rename to "Passthrough"
 /// Passes-through the input value without changing it. This is useful for rerouting wires for organization purposes.
 #[node_macro::node(skip_impl)]
@@ -479,6 +481,7 @@ mod test {
 		let value = ValueNode(4u32).then(IdentityNode::new());
 		assert_eq!(value.eval(()), &4);
 	}
+
 	#[test]
 	pub fn foo() {
 		let fnn = FnNode::new(|(a, b)| (b, a));
@@ -489,8 +492,9 @@ mod test {
 	pub fn dot_product_function() {
 		let vector_a = glam::DVec2::new(1., 2.);
 		let vector_b = glam::DVec2::new(3., 4.);
-		assert_eq!(dot_product(vector_a, vector_b), 11.); // (1 * 3) + (2 * 4) = 11
+		assert_eq!(dot_product(vector_a, vector_b), 11.);
 	}
+
 	#[test]
 	pub fn cross_product_function() {
 		let vector_a = glam::DVec2::new(1., 2.);
