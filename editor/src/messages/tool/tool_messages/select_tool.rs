@@ -912,6 +912,7 @@ impl Fsm for SelectToolFsmState {
 				responses.add(DocumentMessage::EndTransaction);
 
 				if !tool_data.has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
+					// When you click on the layer with remove from selection key (shift) pressed, we deselect all nodes that are children.
 					let quad = tool_data.selection_quad();
 					let intersection = document.intersect_quad_no_artboards(quad, input);
 
@@ -942,6 +943,7 @@ impl Fsm for SelectToolFsmState {
 						});
 					}
 				} else if let Some(selecting_layer) = tool_data.select_single_layer.take() {
+					// Previously, we may have had many layers selected. If the user clicks without dragging, we should just select the one layer that has been clicked.
 					if !tool_data.has_dragged {
 						if selecting_layer == LayerNodeIdentifier::ROOT_PARENT {
 							log::error!("selecting_layer should not be ROOT_PARENT");
@@ -1207,12 +1209,10 @@ fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<La
 	});
 }
 
+/// Called when you double click on the layer of the shallowest layer.
+/// If possible, the direct sibling of an old selected layer is the new selected layer.
+/// Otherwise, the first non-parent ancestor is selected.
 fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
-	if document.network_interface.selected_nodes(&[]).unwrap().selected_layers_contains(layer, document.metadata()) {
-		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path });
-		return;
-	}
-
 	let Some(new_selected) = layer.ancestors(document.metadata()).filter(not_artboard(document)).find(|ancestor| {
 		ancestor
 			.parent(document.metadata())
@@ -1229,11 +1229,11 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: 
 	responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![new_selected.to_node()] });
 }
 
+/// Called when a double click on a layer in deep select mode.
+/// If the layer is text, the text tool is selected.
 fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, responses: &mut VecDeque<Message>) {
 	if is_layer_fed_by_node_of_name(layer, network_interface, "Text") {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 		responses.add(TextToolMessage::EditSelected);
-	} else if is_layer_fed_by_node_of_name(layer, network_interface, "Path") {
-		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path });
 	}
 }

@@ -830,6 +830,8 @@ export class DisplayEditableTextbox extends JsMessage {
 
 	readonly lineWidth!: undefined | number;
 
+	readonly lineHeightRatio!: number;
+
 	readonly fontSize!: number;
 
 	@Type(() => Color)

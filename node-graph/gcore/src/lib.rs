@@ -125,21 +125,21 @@ where
 {
 }
 
-impl<'i, 's: 'i, I: 'i, N: Node<'i, I> + ?Sized> Node<'i, I> for &'i N {
+impl<'i, I: 'i, N: Node<'i, I> + ?Sized> Node<'i, I> for &'i N {
 	type Output = N::Output;
 	fn eval(&'i self, input: I) -> N::Output {
 		(*self).eval(input)
 	}
 }
 #[cfg(feature = "alloc")]
-impl<'i, 's: 'i, I: 'i, O: 'i, N: Node<'i, I, Output = O> + ?Sized> Node<'i, I> for Box<N> {
+impl<'i, I: 'i, O: 'i, N: Node<'i, I, Output = O> + ?Sized> Node<'i, I> for Box<N> {
 	type Output = O;
 	fn eval(&'i self, input: I) -> O {
 		(**self).eval(input)
 	}
 }
 #[cfg(feature = "alloc")]
-impl<'i, 's: 'i, I: 'i, O: 'i, N: Node<'i, I, Output = O> + ?Sized> Node<'i, I> for alloc::sync::Arc<N> {
+impl<'i, I: 'i, O: 'i, N: Node<'i, I, Output = O> + ?Sized> Node<'i, I> for alloc::sync::Arc<N> {
 	type Output = O;
 	fn eval(&'i self, input: I) -> O {
 		(**self).eval(input)

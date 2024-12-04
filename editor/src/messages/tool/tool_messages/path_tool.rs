@@ -446,7 +446,7 @@ impl PathToolData {
 		// Check if the toggle_colinear key has just been pressed
 		if toggle_colinear && !self.toggle_colinear_debounce {
 			self.opposing_handle_lengths = None;
-			let colinear = self.selection_status.angle().map_or(false, |angle| match angle {
+			let colinear = self.selection_status.angle().is_some_and(|angle| match angle {
 				ManipulatorAngle::Colinear => true,
 				ManipulatorAngle::Free => false,
 				ManipulatorAngle::Mixed => false,

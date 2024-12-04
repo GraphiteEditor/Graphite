@@ -75,3 +75,6 @@ wasm-opt = ["-Os", "-g"]
 debug-js-glue = true
 demangle-name-section = true
 dwarf-debug-info = true
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(wasm_bindgen_unstable_test_coverage)'] }

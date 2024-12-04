@@ -60,17 +60,16 @@ fn font_properties(buzz_face: &rustybuzz::Face, font_size: f64, line_height_rati
 	(scale, line_height, buffer)
 }
 
-fn push_str(buffer: &mut UnicodeBuffer, word: &str, trailing_space: bool) {
+fn push_str(buffer: &mut UnicodeBuffer, word: &str) {
 	buffer.push_str(word);
-
-	if trailing_space {
-		buffer.push_str(" ");
-	}
 }
 
-fn wrap_word(line_width: Option<f64>, glyph_buffer: &GlyphBuffer, font_size: f64, character_spacing: f64, x_pos: f64) -> bool {
+fn wrap_word(line_width: Option<f64>, glyph_buffer: &GlyphBuffer, font_size: f64, character_spacing: f64, x_pos: f64, space_glyph: Option<GlyphId>) -> bool {
 	if let Some(line_width) = line_width {
-		let word_length: f64 = glyph_buffer.glyph_positions().iter().map(|pos| pos.x_advance as f64 * character_spacing).sum();
+		// We don't word wrap spaces (to match the browser)
+		let all_glyphs = glyph_buffer.glyph_positions().iter().zip(glyph_buffer.glyph_infos());
+		let non_space_glyphs = all_glyphs.take_while(|(_, info)| space_glyph != Some(GlyphId(info.glyph_id as u16)));
+		let word_length: f64 = non_space_glyphs.map(|(pos, _)| pos.x_advance as f64 * character_spacing).sum();
 		let scaled_word_length = word_length * font_size;
 
 		if scaled_word_length + x_pos > line_width {
@@ -86,6 +85,7 @@ pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f64, li
 		// Show blank layer if font has not loaded
 		None => return vec![],
 	};
+	let space_glyph = buzz_face.glyph_index(' ');
 
 	let (scale, line_height, mut buffer) = font_properties(&buzz_face, font_size, line_height_ratio);
 
@@ -100,23 +100,24 @@ pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f64, li
 	};
 
 	for line in str.split('\n') {
-		let length = line.split(' ').count();
-		for (index, word) in line.split(' ').enumerate() {
-			push_str(&mut buffer, word, index != length - 1);
+		for (index, word) in SplitWordsIncludingSpaces::new(line).enumerate() {
+			push_str(&mut buffer, word);
 			let glyph_buffer = rustybuzz::shape(&buzz_face, &[], buffer);
 
-			if wrap_word(line_width, &glyph_buffer, scale, character_spacing, builder.pos.x) {
+			// Don't wrap the first word
+			if index != 0 && wrap_word(line_width, &glyph_buffer, scale, character_spacing, builder.pos.x, space_glyph) {
 				builder.pos = DVec2::new(0., builder.pos.y + line_height);
 			}
 
 			for (glyph_position, glyph_info) in glyph_buffer.glyph_positions().iter().zip(glyph_buffer.glyph_infos()) {
+				let glyph_id = GlyphId(glyph_info.glyph_id as u16);
 				if let Some(line_width) = line_width {
-					if builder.pos.x + (glyph_position.x_advance as f64 * builder.scale * character_spacing) >= line_width {
+					if space_glyph != Some(glyph_id) && builder.pos.x + (glyph_position.x_advance as f64 * builder.scale * character_spacing) >= line_width {
 						builder.pos = DVec2::new(0., builder.pos.y + line_height);
 					}
 				}
 				builder.offset = DVec2::new(glyph_position.x_offset as f64, glyph_position.y_offset as f64) * builder.scale;
-				buzz_face.outline_glyph(GlyphId(glyph_info.glyph_id as u16), &mut builder);
+				buzz_face.outline_glyph(glyph_id, &mut builder);
 				if !builder.current_subpath.is_empty() {
 					builder.other_subpaths.push(core::mem::replace(&mut builder.current_subpath, Subpath::new(Vec::new(), false)));
 				}
@@ -137,6 +138,7 @@ pub fn bounding_box(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f6
 		// Show blank layer if font has not loaded
 		None => return DVec2::ZERO,
 	};
+	let space_glyph = buzz_face.glyph_index(' ');
 
 	let (scale, line_height, mut buffer) = font_properties(&buzz_face, font_size, line_height_ratio);
 
@@ -144,29 +146,35 @@ pub fn bounding_box(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f6
 	let mut bounds = DVec2::ZERO;
 
 	for line in str.split('\n') {
-		let length = line.split(' ').count();
-		for (index, word) in line.split(' ').enumerate() {
-			push_str(&mut buffer, word, index != length - 1);
+		for (index, word) in SplitWordsIncludingSpaces::new(line).enumerate() {
+			push_str(&mut buffer, word);
 
 			let glyph_buffer = rustybuzz::shape(&buzz_face, &[], buffer);
 
-			if wrap_word(line_width, &glyph_buffer, scale, character_spacing, pos.x) {
+			// Don't wrap the first word
+			if index != 0 && wrap_word(line_width, &glyph_buffer, scale, character_spacing, pos.x, space_glyph) {
 				pos = DVec2::new(0., pos.y + line_height);
 			}
 
-			for glyph_position in glyph_buffer.glyph_positions() {
+			for (glyph_position, glyph_info) in glyph_buffer.glyph_positions().iter().zip(glyph_buffer.glyph_infos()) {
+				let glyph_id = GlyphId(glyph_info.glyph_id as u16);
 				if let Some(line_width) = line_width {
-					if pos.x + (glyph_position.x_advance as f64 * scale * character_spacing) >= line_width {
+					if space_glyph != Some(glyph_id) && pos.x + (glyph_position.x_advance as f64 * scale * character_spacing) >= line_width {
 						pos = DVec2::new(0., pos.y + line_height);
 					}
 				}
 				pos += DVec2::new(glyph_position.x_advance as f64 * character_spacing, glyph_position.y_advance as f64) * scale;
+				bounds = bounds.max(pos + DVec2::new(0., line_height));
 			}
-			bounds = bounds.max(pos + DVec2::new(0., line_height));
 
 			buffer = glyph_buffer.clear();
 		}
 		pos = DVec2::new(0., pos.y + line_height);
+		bounds = bounds.max(pos);
+	}
+
+	if let Some(line_width) = line_width {
+		bounds.x = line_width;
 	}
 
 	bounds
@@ -174,4 +182,38 @@ pub fn bounding_box(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f6
 
 pub fn load_face(data: &[u8]) -> rustybuzz::Face {
 	rustybuzz::Face::from_slice(data, 0).expect("Loading font failed")
+}
+
+struct SplitWordsIncludingSpaces<'a> {
+	text: &'a str,
+	start_byte: usize,
+}
+
+impl<'a> SplitWordsIncludingSpaces<'a> {
+	pub fn new(text: &'a str) -> Self {
+		Self { text, start_byte: 0 }
+	}
+}
+
+impl<'a> Iterator for SplitWordsIncludingSpaces<'a> {
+	type Item = &'a str;
+	fn next(&mut self) -> Option<Self::Item> {
+		let mut eaten_chars = self.text[self.start_byte..].char_indices().skip_while(|(_, c)| *c != ' ').skip_while(|(_, c)| *c == ' ');
+		let start_byte = self.start_byte;
+		self.start_byte = eaten_chars.next().map_or(self.text.len(), |(offset, _)| self.start_byte + offset);
+		if self.start_byte > start_byte {
+			self.text.get(start_byte..self.start_byte)
+		} else {
+			None
+		}
+	}
+}
+
+#[test]
+fn split_words_including_spaces() {
+	let mut split_words = SplitWordsIncludingSpaces::new("hello  world     .");
+	assert_eq!(split_words.next(), Some("hello  "));
+	assert_eq!(split_words.next(), Some("world     "));
+	assert_eq!(split_words.next(), Some("."));
+	assert_eq!(split_words.next(), None);
 }
