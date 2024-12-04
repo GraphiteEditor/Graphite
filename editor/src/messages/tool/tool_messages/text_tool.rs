@@ -9,7 +9,6 @@ use crate::messages::portfolio::document::utility_types::network_interface::Inpu
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name};
-use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
@@ -280,7 +279,6 @@ struct TextToolData {
 	drag_start: ViewportPosition,
 	drag_current: ViewportPosition,
 	dragged: bool,
-	snap_manager: SnapManager,
 	auto_panning: AutoPanning,
 }
 
@@ -533,7 +531,6 @@ impl Fsm for TextToolFsmState {
 				self
 			}
 			(_, TextToolMessage::PointerMove { .. }) => {
-				// TODO: Take care of snapping
 				responses.add(OverlaysMessage::Draw);
 
 				self
@@ -563,87 +560,12 @@ impl Fsm for TextToolFsmState {
 						.mouse
 						.finish_transaction(document.metadata().document_to_viewport.transform_point2(tool_data.drag_start), responses);
 
-					line_width = Some(tool_data.drag_current.x - tool_data.drag_start.x);
+					line_width = Some((tool_data.drag_current.x - tool_data.drag_start.x).abs());
 					transformation_point = tool_data.drag_start;
 
 					tool_data.new_text = String::new();
 				} else {
-					line_width = tool_options.line_wrap_enabled.then_some(tool_options.line_width);
-					transformation_point = tool_data.drag_current;
-				}
-
-				tool_data.editing_text = Some(EditingText {
-					text: String::new(),
-					transform: DAffine2::from_translation(transformation_point),
-					font_size: tool_options.font_size,
-					line_height_ratio: tool_options.line_height_ratio,
-					line_width,
-					character_spacing: tool_options.character_spacing,
-					font: Font::new(tool_options.font_name.clone(), tool_options.font_style.clone()),
-					color: tool_options.fill.active_color(),
-				});
-				tool_data.new_text = String::new();
-				tool_data.dragged = false;
-				tool_data.interact(TextToolFsmState::Dragging, input, document, font_cache, responses)
-			}
-			(TextToolFsmState::Ready, TextToolMessage::DragStart) => {
-				tool_data.drag_start = input.mouse.position;
-				tool_data.drag_current = input.mouse.position;
-
-				TextToolFsmState::Dragging
-			}
-			(TextToolFsmState::Dragging, TextToolMessage::PointerMove { center, lock_ratio }) => {
-				tool_data.drag_current = input.mouse.position;
-				tool_data.dragged = true;
-
-				responses.add(OverlaysMessage::Draw);
-
-				// Auto-panning
-				let messages = [
-					TextToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
-					TextToolMessage::PointerMove { center, lock_ratio }.into(),
-				];
-				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
-
-				self
-			}
-			(_, TextToolMessage::PointerMove { .. }) => {
-				// TODO: Take care of snapping
-				responses.add(OverlaysMessage::Draw);
-
-				self
-			}
-			(TextToolFsmState::Dragging, TextToolMessage::PointerOutsideViewport { .. }) => {
-				// Auto-panning setup
-				let _ = tool_data.auto_panning.shift_viewport(input, responses);
-
-				TextToolFsmState::Dragging
-			}
-			(state, TextToolMessage::PointerOutsideViewport { center, lock_ratio }) => {
-				// Auto-panning stop
-				let messages = [
-					TextToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
-					TextToolMessage::PointerMove { center, lock_ratio }.into(),
-				];
-				tool_data.auto_panning.stop(&messages, responses);
-
-				state
-			}
-			(TextToolFsmState::Dragging, TextToolMessage::DragStop) => {
-				let line_width: Option<f64>;
-				let transformation_point: DVec2;
-
-				if tool_data.dragged {
-					input
-						.mouse
-						.finish_transaction(document.metadata().document_to_viewport.transform_point2(tool_data.drag_start), responses);
-
-					line_width = Some(tool_data.drag_current.x - tool_data.drag_start.x);
-					transformation_point = tool_data.drag_start;
-
-					tool_data.new_text = String::new();
-				} else {
-					line_width = tool_options.line_width;
+					line_width = Some(tool_options.line_width);
 					transformation_point = tool_data.drag_current;
 				}
 
