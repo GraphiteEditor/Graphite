@@ -496,7 +496,7 @@ mod test {
 	}
 
 	#[test]
-	pub fn prep_dot_product_function() {
+	pub fn perp_dot_product_function() {
 		let vector_a = glam::DVec2::new(1., 2.);
 		let vector_b = glam::DVec2::new(3., 4.);
 		assert_eq!(cross_product(vector_a, vector_b), -2.);
