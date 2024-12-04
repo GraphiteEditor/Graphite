@@ -414,7 +414,7 @@ fn dot_product(#[implementations(DVec2)] vector_a: glam::DVec2, #[implementation
 }
 
 #[node_macro::node(category("Math: Vector"))]
-fn cross_product(#[implementations(DVec2)] vector_a: glam::DVec2, #[implementations(DVec2)] vector_b: glam::DVec2) -> f64 {
+fn perp_dot_product(#[implementations(DVec2)] vector_a: glam::DVec2, #[implementations(DVec2)] vector_b: glam::DVec2) -> f64 {
 	vector_a.perp_dot(vector_b)
 }
 
@@ -496,7 +496,7 @@ mod test {
 	}
 
 	#[test]
-	pub fn cross_product_function() {
+	pub fn prep_dot_product_function() {
 		let vector_a = glam::DVec2::new(1., 2.);
 		let vector_b = glam::DVec2::new(3., 4.);
 		assert_eq!(cross_product(vector_a, vector_b), -2.);
