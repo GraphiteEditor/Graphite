@@ -3,6 +3,7 @@
 use super::document_node_definitions::{NodePropertiesContext, IMAGINATE_NODE};
 use super::utility_types::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::*;
 
 use graph_craft::document::value::TaggedValue;
@@ -25,7 +26,7 @@ use graphene_std::transform::Footprint;
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::VectorData;
 
-pub(crate) fn string_properties(text: impl Into<String>) -> Vec<LayoutGroup> {
+pub(crate) fn string_properties(text: String) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_holder();
 	vec![LayoutGroup::Row { widgets: vec![widget] }]
 }
@@ -48,7 +49,7 @@ fn commit_value<T>(_: &T) -> Message {
 	DocumentMessage::AddTransaction.into()
 }
 
-fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphDataType, exposed: bool) -> WidgetHolder {
+pub fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphDataType, exposed: bool) -> WidgetHolder {
 	ParameterExposeButton::new()
 		.exposed(exposed)
 		.data_type(data_type)
@@ -65,7 +66,7 @@ fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphDataType
 }
 
 // TODO: Remove this when we have proper entry row formatting that includes room for Assists.
-fn add_blank_assist(widgets: &mut Vec<WidgetHolder>) {
+pub fn add_blank_assist(widgets: &mut Vec<WidgetHolder>) {
 	widgets.extend_from_slice(&[
 		// Custom CSS specific to the Properties panel converts this Section separator into the width of an assist (24px).
 		Separator::new(SeparatorType::Section).widget_holder(),
@@ -74,7 +75,7 @@ fn add_blank_assist(widgets: &mut Vec<WidgetHolder>) {
 	]);
 }
 
-fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, data_type: FrontendGraphDataType, blank_assist: bool) -> Vec<WidgetHolder> {
+pub fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, data_type: FrontendGraphDataType, blank_assist: bool) -> Vec<WidgetHolder> {
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
@@ -87,16 +88,23 @@ fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	widgets
 }
 
-pub(crate) fn property_from_type(
-	document_node: &DocumentNode,
-	node_id: NodeId,
-	index: usize,
-	name: &str,
-	ty: &Type,
-	_context: &mut NodePropertiesContext,
-	number_options: (Option<f64>, Option<f64>, Option<(f64, f64)>),
-) -> Vec<LayoutGroup> {
-	let (mut number_min, mut number_max, range) = number_options;
+pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let Some(name) = context.network_interface.input_name(&node_id, index, context.selection_network_path) else {
+		log::warn!("A widget failed to be built for node {node_id}, index {index} because the input name could not be determined");
+		return vec![];
+	};
+
+	let Some(network) = context.network_interface.network(context.selection_network_path) else {
+		log::warn!("A widget failed to be built for node {node_id}, index {index} because the network could not be determined");
+		return vec![];
+	};
+
+	let Some(document_node) = network.nodes.get(&node_id) else {
+		log::warn!("A widget failed to be built for node {node_id}, index {index} because the document node does not exist");
+		return vec![];
+	};
+
+	let (mut number_min, mut number_max, range) = (None, None, None);
 	let mut number_input = NumberInput::default();
 	if let Some((range_start, range_end)) = range {
 		number_min = Some(range_start);
@@ -124,122 +132,122 @@ pub(crate) fn property_from_type(
 
 				// For all other types, use TypeId-based matching
 				_ => {
-					if let Some(internal_id) = concrete_type.id {
-						use std::any::TypeId;
-						match internal_id {
-							x if x == TypeId::of::<bool>() => bool_widget(document_node, node_id, index, name, CheckboxInput::default(), true).into(),
-							x if x == TypeId::of::<f64>() => number_widget(document_node, node_id, index, name, number_input.min(min(f64::NEG_INFINITY)).max(max(f64::INFINITY)), true).into(),
-							x if x == TypeId::of::<u32>() => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)).max(max(f64::from(u32::MAX))), true).into(),
-							x if x == TypeId::of::<u64>() => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)), true).into(),
-							x if x == TypeId::of::<String>() => text_widget(document_node, node_id, index, name, true).into(),
-							x if x == TypeId::of::<Color>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(false), true),
-							x if x == TypeId::of::<Option<Color>>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(true), true),
-							x if x == TypeId::of::<DVec2>() => vec2_widget(document_node, node_id, index, name, "X", "Y", "", None, add_blank_assist),
-							x if x == TypeId::of::<UVec2>() => vec2_widget(document_node, node_id, index, name, "X", "Y", "", Some(0.), add_blank_assist),
-							x if x == TypeId::of::<IVec2>() => vec2_widget(document_node, node_id, index, name, "X", "Y", "", None, add_blank_assist),
-							x if x == TypeId::of::<Vec<f64>>() => vec_f64_input(document_node, node_id, index, name, TextInput::default(), true).into(),
-							x if x == TypeId::of::<Vec<DVec2>>() => vec_dvec2_input(document_node, node_id, index, name, TextInput::default(), true).into(),
-							x if x == TypeId::of::<Font>() => {
-								let (font_widgets, style_widgets) = font_inputs(document_node, node_id, index, name, false);
-								font_widgets.into_iter().chain(style_widgets.unwrap_or_default()).collect::<Vec<_>>().into()
-							}
-							x if x == TypeId::of::<Curve>() => curves_widget(document_node, node_id, index, name, true),
-							x if x == TypeId::of::<GradientStops>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(false), true),
-							x if x == TypeId::of::<VectorData>() => vector_widget(document_node, node_id, index, name, true).into(),
-							x if x == TypeId::of::<Footprint>() => {
-								let widgets = footprint_widget(document_node, node_id, index);
-								let (last, rest) = widgets.split_last().expect("Footprint widget should return multiple rows");
-								extra_widgets = rest.to_vec();
-								last.clone()
-							}
-							x if x == TypeId::of::<BlendMode>() => blend_mode(document_node, node_id, index, name, true),
-							x if x == TypeId::of::<RedGreenBlue>() => color_channel(document_node, node_id, index, name, true),
-							x if x == TypeId::of::<RedGreenBlueAlpha>() => rgba_channel(document_node, node_id, index, name, true),
-							x if x == TypeId::of::<NoiseType>() => noise_type(document_node, node_id, index, name, true),
-							x if x == TypeId::of::<FractalType>() => fractal_type(document_node, node_id, index, name, true, false),
-							x if x == TypeId::of::<CellularDistanceFunction>() => cellular_distance_function(document_node, node_id, index, name, true, false),
-							x if x == TypeId::of::<CellularReturnType>() => cellular_return_type(document_node, node_id, index, name, true, false),
-							x if x == TypeId::of::<DomainWarpType>() => domain_warp_type(document_node, node_id, index, name, true, false),
-							x if x == TypeId::of::<RelativeAbsolute>() => vec![DropdownInput::new(vec![vec![
-								MenuListEntry::new("Relative")
-									.label("Relative")
-									.on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Relative), node_id, index)),
-								MenuListEntry::new("Absolute")
-									.label("Absolute")
-									.on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Absolute), node_id, index)),
-							]])
-							.widget_holder()]
-							.into(),
-							x if x == TypeId::of::<LineCap>() => line_cap_widget(document_node, node_id, index, name, true),
-							x if x == TypeId::of::<LineJoin>() => line_join_widget(document_node, node_id, index, name, true),
-							x if x == TypeId::of::<FillType>() => vec![DropdownInput::new(vec![vec![
-								MenuListEntry::new("Solid")
-									.label("Solid")
-									.on_update(update_value(|_| TaggedValue::FillType(FillType::Solid), node_id, index)),
-								MenuListEntry::new("Gradient")
-									.label("Gradient")
-									.on_update(update_value(|_| TaggedValue::FillType(FillType::Gradient), node_id, index)),
-							]])
-							.widget_holder()]
-							.into(),
-							x if x == TypeId::of::<GradientType>() => vec![DropdownInput::new(vec![vec![
-								MenuListEntry::new("Linear")
-									.label("Linear")
-									.on_update(update_value(|_| TaggedValue::GradientType(GradientType::Linear), node_id, index)),
-								MenuListEntry::new("Radial")
-									.label("Radial")
-									.on_update(update_value(|_| TaggedValue::GradientType(GradientType::Radial), node_id, index)),
-							]])
-							.widget_holder()]
-							.into(),
-							x if x == TypeId::of::<BooleanOperation>() => boolean_operation_radio_buttons(document_node, node_id, index, name, true),
-							x if x == TypeId::of::<CentroidType>() => centroid_widget(document_node, node_id, index),
-							x if x == TypeId::of::<LuminanceCalculation>() => luminance_calculation(document_node, node_id, index, name, true),
-							x if x == TypeId::of::<ImaginateSamplingMethod>() => vec![DropdownInput::new(
-								ImaginateSamplingMethod::list()
-									.into_iter()
-									.map(|method| {
-										vec![MenuListEntry::new(format!("{:?}", method)).label(method.to_string()).on_update(update_value(
-											move |_| TaggedValue::ImaginateSamplingMethod(method),
-											node_id,
-											index,
-										))]
-									})
-									.collect(),
-							)
-							.widget_holder()]
-							.into(),
-							x if x == TypeId::of::<ImaginateMaskStartingFill>() => vec![DropdownInput::new(
-								ImaginateMaskStartingFill::list()
-									.into_iter()
-									.map(|fill| {
-										vec![MenuListEntry::new(format!("{:?}", fill)).label(fill.to_string()).on_update(update_value(
-											move |_| TaggedValue::ImaginateMaskStartingFill(fill),
-											node_id,
-											index,
-										))]
-									})
-									.collect(),
-							)
-							.widget_holder()]
-							.into(),
-							_ => vec![TextLabel::new(format!("Unsupported type: {}", concrete_type.name)).widget_holder()].into(),
+					use std::any::TypeId;
+					match concrete_type.id {
+						Some(x) if x == TypeId::of::<bool>() => bool_widget(document_node, node_id, index, name, CheckboxInput::default(), true).into(),
+						Some(x) if x == TypeId::of::<f64>() => number_widget(document_node, node_id, index, name, number_input.min(min(f64::NEG_INFINITY)).max(max(f64::INFINITY)), true).into(),
+						Some(x) if x == TypeId::of::<u32>() => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)).max(max(f64::from(u32::MAX))), true).into(),
+						Some(x) if x == TypeId::of::<u64>() => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)), true).into(),
+						Some(x) if x == TypeId::of::<String>() => text_widget(document_node, node_id, index, name, true).into(),
+						Some(x) if x == TypeId::of::<Color>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(false), true),
+						Some(x) if x == TypeId::of::<Option<Color>>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(true), true),
+						Some(x) if x == TypeId::of::<DVec2>() => vec2_widget(document_node, node_id, index, name, "X", "Y", "", None, add_blank_assist),
+						Some(x) if x == TypeId::of::<UVec2>() => vec2_widget(document_node, node_id, index, name, "X", "Y", "", Some(0.), add_blank_assist),
+						Some(x) if x == TypeId::of::<IVec2>() => vec2_widget(document_node, node_id, index, name, "X", "Y", "", None, add_blank_assist),
+						Some(x) if x == TypeId::of::<Vec<f64>>() => vec_f64_input(document_node, node_id, index, name, TextInput::default(), true).into(),
+						Some(x) if x == TypeId::of::<Vec<DVec2>>() => vec_dvec2_input(document_node, node_id, index, name, TextInput::default(), true).into(),
+						Some(x) if x == TypeId::of::<Font>() => {
+							let (font_widgets, style_widgets) = font_inputs(document_node, node_id, index, name, false);
+							font_widgets.into_iter().chain(style_widgets.unwrap_or_default()).collect::<Vec<_>>().into()
 						}
-					} else {
-						vec![TextLabel::new(format!("Unsupported type: {}", concrete_type.name)).widget_holder()].into()
+						Some(x) if x == TypeId::of::<Curve>() => curves_widget(document_node, node_id, index, name, true),
+						Some(x) if x == TypeId::of::<GradientStops>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(false), true),
+						Some(x) if x == TypeId::of::<VectorData>() => vector_widget(document_node, node_id, index, name, true).into(),
+						Some(x) if x == TypeId::of::<Footprint>() => {
+							let widgets = footprint_widget(document_node, node_id, index);
+							let (last, rest) = widgets.split_last().expect("Footprint widget should return multiple rows");
+							extra_widgets = rest.to_vec();
+							last.clone()
+						}
+						Some(x) if x == TypeId::of::<BlendMode>() => blend_mode(document_node, node_id, index, name, true),
+						Some(x) if x == TypeId::of::<RedGreenBlue>() => color_channel(document_node, node_id, index, name, true),
+						Some(x) if x == TypeId::of::<RedGreenBlueAlpha>() => rgba_channel(document_node, node_id, index, name, true),
+						Some(x) if x == TypeId::of::<NoiseType>() => noise_type(document_node, node_id, index, name, true),
+						Some(x) if x == TypeId::of::<FractalType>() => fractal_type(document_node, node_id, index, name, true, false),
+						Some(x) if x == TypeId::of::<CellularDistanceFunction>() => cellular_distance_function(document_node, node_id, index, name, true, false),
+						Some(x) if x == TypeId::of::<CellularReturnType>() => cellular_return_type(document_node, node_id, index, name, true, false),
+						Some(x) if x == TypeId::of::<DomainWarpType>() => domain_warp_type(document_node, node_id, index, name, true, false),
+						Some(x) if x == TypeId::of::<RelativeAbsolute>() => vec![DropdownInput::new(vec![vec![
+							MenuListEntry::new("Relative")
+								.label("Relative")
+								.on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Relative), node_id, index)),
+							MenuListEntry::new("Absolute")
+								.label("Absolute")
+								.on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Absolute), node_id, index)),
+						]])
+						.widget_holder()]
+						.into(),
+						Some(x) if x == TypeId::of::<LineCap>() => line_cap_widget(document_node, node_id, index, name, true),
+						Some(x) if x == TypeId::of::<LineJoin>() => line_join_widget(document_node, node_id, index, name, true),
+						Some(x) if x == TypeId::of::<FillType>() => vec![DropdownInput::new(vec![vec![
+							MenuListEntry::new("Solid")
+								.label("Solid")
+								.on_update(update_value(|_| TaggedValue::FillType(FillType::Solid), node_id, index)),
+							MenuListEntry::new("Gradient")
+								.label("Gradient")
+								.on_update(update_value(|_| TaggedValue::FillType(FillType::Gradient), node_id, index)),
+						]])
+						.widget_holder()]
+						.into(),
+						Some(x) if x == TypeId::of::<GradientType>() => vec![DropdownInput::new(vec![vec![
+							MenuListEntry::new("Linear")
+								.label("Linear")
+								.on_update(update_value(|_| TaggedValue::GradientType(GradientType::Linear), node_id, index)),
+							MenuListEntry::new("Radial")
+								.label("Radial")
+								.on_update(update_value(|_| TaggedValue::GradientType(GradientType::Radial), node_id, index)),
+						]])
+						.widget_holder()]
+						.into(),
+						Some(x) if x == TypeId::of::<BooleanOperation>() => boolean_operation_radio_buttons(document_node, node_id, index, name, true),
+						Some(x) if x == TypeId::of::<CentroidType>() => centroid_widget(document_node, node_id, index),
+						Some(x) if x == TypeId::of::<LuminanceCalculation>() => luminance_calculation(document_node, node_id, index, name, true),
+						Some(x) if x == TypeId::of::<ImaginateSamplingMethod>() => vec![DropdownInput::new(
+							ImaginateSamplingMethod::list()
+								.into_iter()
+								.map(|method| {
+									vec![MenuListEntry::new(format!("{:?}", method)).label(method.to_string()).on_update(update_value(
+										move |_| TaggedValue::ImaginateSamplingMethod(method),
+										node_id,
+										index,
+									))]
+								})
+								.collect(),
+						)
+						.widget_holder()]
+						.into(),
+						Some(x) if x == TypeId::of::<ImaginateMaskStartingFill>() => vec![DropdownInput::new(
+							ImaginateMaskStartingFill::list()
+								.into_iter()
+								.map(|fill| {
+									vec![MenuListEntry::new(format!("{:?}", fill)).label(fill.to_string()).on_update(update_value(
+										move |_| TaggedValue::ImaginateMaskStartingFill(fill),
+										node_id,
+										index,
+									))]
+								})
+								.collect(),
+						)
+						.widget_holder()]
+						.into(),
+						_ => {
+							let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, false);
+							widgets.extend_from_slice(&[TextLabel::new(format!("Unsupported type: {}", concrete_type.name)).widget_holder()]);
+							widgets.into()
+						}
 					}
 				}
 			}
 		}
 		Type::Generic(_) => vec![TextLabel::new("Generic type (not supported)").widget_holder()].into(),
-		Type::Fn(_, out) => return property_from_type(document_node, node_id, index, name, out, _context, number_options),
+		Type::Fn(_, out) => return property_from_type(node_id, index, out, context),
 		Type::Future(_) => vec![TextLabel::new("Future type (not supported)").widget_holder()].into(),
 	};
 	extra_widgets.push(widgets);
 	extra_widgets
 }
 
-fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
+pub fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 
 	let Some(input) = document_node.inputs.get(index) else {
@@ -258,7 +266,7 @@ fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 	widgets
 }
 
-fn text_area_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
+pub fn text_area_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 
 	let Some(input) = document_node.inputs.get(index) else {
@@ -277,7 +285,7 @@ fn text_area_widget(document_node: &DocumentNode, node_id: NodeId, index: usize,
 	widgets
 }
 
-fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, checkbox_input: CheckboxInput, blank_assist: bool) -> Vec<WidgetHolder> {
+pub fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, checkbox_input: CheckboxInput, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 
 	let Some(input) = document_node.inputs.get(index) else {
@@ -297,7 +305,7 @@ fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 	widgets
 }
 
-fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize) -> Vec<LayoutGroup> {
+pub fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize) -> Vec<LayoutGroup> {
 	let mut location_widgets = start_widgets(document_node, node_id, index, "Footprint", FrontendGraphDataType::General, true);
 	location_widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
@@ -438,7 +446,17 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 	]
 }
 
-fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, x: &str, y: &str, unit: &str, min: Option<f64>, mut assist: impl FnMut(&mut Vec<WidgetHolder>)) -> LayoutGroup {
+pub fn vec2_widget(
+	document_node: &DocumentNode,
+	node_id: NodeId,
+	index: usize,
+	name: &str,
+	x: &str,
+	y: &str,
+	unit: &str,
+	min: Option<f64>,
+	mut assist: impl FnMut(&mut Vec<WidgetHolder>),
+) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, false);
 
 	assist(&mut widgets);
@@ -528,7 +546,7 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 	LayoutGroup::Row { widgets }
 }
 
-fn vec_f64_input(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, text_input: TextInput, blank_assist: bool) -> Vec<WidgetHolder> {
+pub fn vec_f64_input(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, text_input: TextInput, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, blank_assist);
 
 	let from_string = |string: &str| {
@@ -557,7 +575,7 @@ fn vec_f64_input(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	widgets
 }
 
-fn vec_dvec2_input(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, text_props: TextInput, blank_assist: bool) -> Vec<WidgetHolder> {
+pub fn vec_dvec2_input(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, text_props: TextInput, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, blank_assist);
 
 	let from_string = |string: &str| {
@@ -586,7 +604,7 @@ fn vec_dvec2_input(document_node: &DocumentNode, node_id: NodeId, index: usize, 
 	widgets
 }
 
-fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> (Vec<WidgetHolder>, Option<Vec<WidgetHolder>>) {
+pub fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> (Vec<WidgetHolder>, Option<Vec<WidgetHolder>>) {
 	let mut first_widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let mut second_widgets = None;
 
@@ -620,7 +638,7 @@ fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 	(first_widgets, second_widgets)
 }
 
-fn vector_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
+pub fn vector_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::VectorData, blank_assist);
 
 	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -629,7 +647,7 @@ fn vector_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	widgets
 }
 
-fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, number_props: NumberInput, blank_assist: bool) -> Vec<WidgetHolder> {
+pub fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, number_props: NumberInput, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, blank_assist);
 
 	let Some(input) = document_node.inputs.get(index) else {
@@ -668,7 +686,7 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
-fn color_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+pub fn color_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -695,7 +713,7 @@ fn color_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	LayoutGroup::Row { widgets }.with_tooltip("Color Channel")
 }
 
-fn rgba_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+pub fn rgba_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -723,7 +741,7 @@ fn rgba_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, nam
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
-fn noise_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+pub fn noise_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -749,7 +767,7 @@ fn noise_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name:
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
-fn fractal_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
+pub fn fractal_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -775,7 +793,7 @@ fn fractal_type(document_node: &DocumentNode, node_id: NodeId, index: usize, nam
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
-fn cellular_distance_function(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
+pub fn cellular_distance_function(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -804,7 +822,7 @@ fn cellular_distance_function(document_node: &DocumentNode, node_id: NodeId, ind
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
-fn cellular_return_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
+pub fn cellular_return_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -830,7 +848,7 @@ fn cellular_return_type(document_node: &DocumentNode, node_id: NodeId, index: us
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
-fn domain_warp_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
+pub fn domain_warp_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -856,7 +874,7 @@ fn domain_warp_type(document_node: &DocumentNode, node_id: NodeId, index: usize,
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
-fn blend_mode(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+pub fn blend_mode(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -889,7 +907,7 @@ fn blend_mode(document_node: &DocumentNode, node_id: NodeId, index: usize, name:
 }
 
 // TODO: Generalize this for all dropdowns (also see blend_mode and channel_extration)
-fn luminance_calculation(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+pub fn luminance_calculation(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -916,7 +934,7 @@ fn luminance_calculation(document_node: &DocumentNode, node_id: NodeId, index: u
 	LayoutGroup::Row { widgets }.with_tooltip("Formula used to calculate the luminance of a pixel")
 }
 
-fn boolean_operation_radio_buttons(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+pub fn boolean_operation_radio_buttons(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 
 	let Some(input) = document_node.inputs.get(index) else {
@@ -946,7 +964,7 @@ fn boolean_operation_radio_buttons(document_node: &DocumentNode, node_id: NodeId
 	LayoutGroup::Row { widgets }
 }
 
-fn line_cap_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+pub fn line_cap_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -971,7 +989,7 @@ fn line_cap_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, 
 	LayoutGroup::Row { widgets }
 }
 
-fn line_join_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+pub fn line_join_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -996,7 +1014,7 @@ fn line_join_widget(document_node: &DocumentNode, node_id: NodeId, index: usize,
 	LayoutGroup::Row { widgets }
 }
 
-fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, color_button: ColorButton, blank_assist: bool) -> LayoutGroup {
+pub fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, color_button: ColorButton, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 
 	// Return early with just the label if the input is exposed to the graph, meaning we don't want to show the color picker widget in the Properties panel
@@ -1041,7 +1059,7 @@ fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, nam
 	LayoutGroup::Row { widgets }
 }
 
-fn curves_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+pub fn curves_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 
 	let Some(input) = document_node.inputs.get(index) else {
@@ -1060,7 +1078,7 @@ fn curves_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	LayoutGroup::Row { widgets }
 }
 
-fn centroid_widget(document_node: &DocumentNode, node_id: NodeId, index: usize) -> LayoutGroup {
+pub fn centroid_widget(document_node: &DocumentNode, node_id: NodeId, index: usize) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, "Centroid Type", FrontendGraphDataType::General, true);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -1111,22 +1129,37 @@ pub(crate) fn insert_channel_properties(document_node: &DocumentNode, node_id: N
 	vec![color_channel]
 }
 
-// Noise Type is commented out for now as there is only one type of noise (White Noise).
-// As soon as there are more types of noise, this should be uncommented.
-pub(crate) fn noise_pattern_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	// Get the current values of the inputs of interest so they can set whether certain inputs are disabled based on various conditions.
-	let current_noise_type = match &document_node.inputs[3].as_value() {
+pub fn query_node_and_input_name<'a>(node_id: NodeId, input_index: usize, context: &'a NodePropertiesContext<'a>) -> Result<(&'a DocumentNode, &'a str), String> {
+	let network = context
+		.network_interface
+		.network(context.selection_network_path)
+		.ok_or("network not found in query_node_and_input_name")?;
+	let document_node = network.nodes.get(&node_id).ok_or("node not found in query_node_and_input_name")?;
+	let input_name = context
+		.network_interface
+		.input_name(&node_id, input_index, context.selection_network_path)
+		.ok_or("input name not found in noise_properties_scale")?;
+	Ok((document_node, input_name))
+}
+
+pub fn query_noise_pattern_state(node_id: NodeId, context: &NodePropertiesContext) -> Result<(bool, bool, bool, bool, bool, bool), String> {
+	let network = context
+		.network_interface
+		.network(context.selection_network_path)
+		.ok_or("network not found in query_noise_pattern_state")?;
+	let document_node = network.nodes.get(&node_id).ok_or("node not found in query_noise_pattern_state")?;
+	let current_noise_type = document_node.inputs.iter().find_map(|input| match input.as_value() {
 		Some(&TaggedValue::NoiseType(noise_type)) => Some(noise_type),
 		_ => None,
-	};
-	let current_domain_warp_type = match &document_node.inputs[4].as_value() {
-		Some(&TaggedValue::DomainWarpType(domain_warp_type)) => Some(domain_warp_type),
-		_ => None,
-	};
-	let current_fractal_type = match &document_node.inputs[6].as_value() {
+	});
+	let current_fractal_type = document_node.inputs.iter().find_map(|input| match input.as_value() {
 		Some(&TaggedValue::FractalType(fractal_type)) => Some(fractal_type),
 		_ => None,
-	};
+	});
+	let current_domain_warp_type = document_node.inputs.iter().find_map(|input| match input.as_value() {
+		Some(&TaggedValue::DomainWarpType(domain_warp_type)) => Some(domain_warp_type),
+		_ => None,
+	});
 	let fractal_active = current_fractal_type != Some(FractalType::None);
 	let coherent_noise_active = current_noise_type != Some(NoiseType::WhiteNoise);
 	let cellular_noise_active = current_noise_type == Some(NoiseType::Cellular);
@@ -1135,175 +1168,14 @@ pub(crate) fn noise_pattern_properties(document_node: &DocumentNode, node_id: No
 	let domain_warp_only_fractal_type_wrongly_active =
 		!domain_warp_active && (current_fractal_type == Some(FractalType::DomainWarpIndependent) || current_fractal_type == Some(FractalType::DomainWarpProgressive));
 
-	// All
-	let clip = LayoutGroup::Row {
-		widgets: bool_widget(document_node, node_id, 0, "Clip", CheckboxInput::default(), true),
-	};
-	let seed = number_widget(document_node, node_id, 1, "Seed", NumberInput::default().min(0.).is_integer(true), true);
-	let scale = number_widget(document_node, node_id, 2, "Scale", NumberInput::default().min(0.).disabled(!coherent_noise_active), true);
-	let noise_type_row = noise_type(document_node, node_id, 3, "Noise Type", true);
-
-	// Domain Warp
-	let domain_warp_type_row = domain_warp_type(document_node, node_id, 4, "Domain Warp Type", true, !coherent_noise_active);
-	let domain_warp_amplitude = number_widget(
-		document_node,
-		node_id,
-		5,
-		"Domain Warp Amplitude",
-		NumberInput::default().min(0.).disabled(!coherent_noise_active || !domain_warp_active),
-		true,
-	);
-
-	// Fractal
-	let fractal_type_row = fractal_type(document_node, node_id, 6, "Fractal Type", true, !coherent_noise_active);
-	let fractal_octaves = number_widget(
-		document_node,
-		node_id,
-		7,
-		"Fractal Octaves",
-		NumberInput::default()
-			.mode_range()
-			.min(1.)
-			.max(10.)
-			.range_max(Some(4.))
-			.is_integer(true)
-			.disabled(!coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
-		true,
-	);
-	let fractal_lacunarity = number_widget(
-		document_node,
-		node_id,
-		8,
-		"Fractal Lacunarity",
-		NumberInput::default()
-			.mode_range()
-			.min(0.)
-			.range_max(Some(10.))
-			.disabled(!coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
-		true,
-	);
-	let fractal_gain = number_widget(
-		document_node,
-		node_id,
-		9,
-		"Fractal Gain",
-		NumberInput::default()
-			.mode_range()
-			.min(0.)
-			.range_max(Some(10.))
-			.disabled(!coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
-		true,
-	);
-	let fractal_weighted_strength = number_widget(
-		document_node,
-		node_id,
-		10,
-		"Fractal Weighted Strength",
-		NumberInput::default()
-			.mode_range()
-			.min(0.)
-			.max(1.) // Defined for the 0-1 range
-			.disabled(!coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
-		true,
-	);
-	let fractal_ping_pong_strength = number_widget(
-		document_node,
-		node_id,
-		11,
-		"Fractal Ping Pong Strength",
-		NumberInput::default()
-			.mode_range()
-			.min(0.)
-			.range_max(Some(10.))
-			.disabled(!ping_pong_active || !coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
-		true,
-	);
-
-	// Cellular
-	let cellular_distance_function_row = cellular_distance_function(document_node, node_id, 12, "Cellular Distance Function", true, !coherent_noise_active || !cellular_noise_active);
-	let cellular_return_type = cellular_return_type(document_node, node_id, 13, "Cellular Return Type", true, !coherent_noise_active || !cellular_noise_active);
-	let cellular_jitter = number_widget(
-		document_node,
-		node_id,
-		14,
-		"Cellular Jitter",
-		NumberInput::default()
-			.mode_range()
-			.range_min(Some(0.))
-			.range_max(Some(1.))
-			.disabled(!coherent_noise_active || !cellular_noise_active),
-		true,
-	);
-
-	vec![
-		// All
-		clip,
-		LayoutGroup::Row { widgets: seed },
-		LayoutGroup::Row { widgets: scale },
-		noise_type_row,
-		LayoutGroup::Row { widgets: Vec::new() },
-		// Domain Warp
-		domain_warp_type_row,
-		LayoutGroup::Row { widgets: domain_warp_amplitude },
-		LayoutGroup::Row { widgets: Vec::new() },
-		// Fractal
-		fractal_type_row,
-		LayoutGroup::Row { widgets: fractal_octaves },
-		LayoutGroup::Row { widgets: fractal_lacunarity },
-		LayoutGroup::Row { widgets: fractal_gain },
-		LayoutGroup::Row { widgets: fractal_weighted_strength },
-		LayoutGroup::Row { widgets: fractal_ping_pong_strength },
-		LayoutGroup::Row { widgets: Vec::new() },
-		// Cellular
-		cellular_distance_function_row,
-		cellular_return_type,
-		LayoutGroup::Row { widgets: cellular_jitter },
-	]
-}
-
-pub(crate) fn brightness_contrast_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let is_use_classic = match &document_node.inputs[3].as_value() {
-		Some(&TaggedValue::Bool(value)) => value,
-		_ => false,
-	};
-	let ((b_min, b_max), (c_min, c_max)) = if is_use_classic { ((-100., 100.), (-100., 100.)) } else { ((-100., 150.), (-50., 100.)) };
-
-	let brightness = number_widget(
-		document_node,
-		node_id,
-		1,
-		"Brightness",
-		NumberInput::default().mode_range().range_min(Some(b_min)).range_max(Some(b_max)).unit("%").display_decimal_places(2),
-		true,
-	);
-	let contrast = number_widget(
-		document_node,
-		node_id,
-		2,
-		"Contrast",
-		NumberInput::default().mode_range().range_min(Some(c_min)).range_max(Some(c_max)).unit("%").display_decimal_places(2),
-		true,
-	);
-	let use_classic = bool_widget(document_node, node_id, 3, "Use Classic", CheckboxInput::default(), true);
-
-	vec![
-		LayoutGroup::Row { widgets: brightness },
-		LayoutGroup::Row { widgets: contrast },
-		LayoutGroup::Row { widgets: use_classic },
-	]
-}
-
-pub(crate) fn curves_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let curves = curves_widget(document_node, node_id, 1, "Curve", true);
-
-	vec![curves]
-}
-
-pub(crate) fn _blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let radius = number_widget(document_node, node_id, 1, "Radius", NumberInput::default().min(0.).max(20.).int(), true);
-	let sigma = number_widget(document_node, node_id, 2, "Sigma", NumberInput::default().min(0.).max(10000.), true);
-
-	vec![LayoutGroup::Row { widgets: radius }, LayoutGroup::Row { widgets: sigma }]
+	Ok((
+		fractal_active,
+		coherent_noise_active,
+		cellular_noise_active,
+		ping_pong_active,
+		domain_warp_active,
+		domain_warp_only_fractal_type_wrongly_active,
+	))
 }
 
 pub(crate) fn assign_colors_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -1752,9 +1624,9 @@ pub(crate) fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId
 		IMAGINATE_NODE
 			.default_node_template()
 			.persistent_node_metadata
-			.input_names
+			.input_properties
 			.iter()
-			.position(|input| input == name)
+			.position(|row| row.input_data.get("input_name").and_then(|v| v.as_str()) == Some(name))
 			.unwrap_or_else(|| panic!("Input {name} not found"))
 	};
 	let seed_index = resolve_input("Seed");
@@ -2235,15 +2107,11 @@ pub(crate) fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId
 	layout
 }
 
-fn unknown_node_properties(reference: &String) -> Vec<LayoutGroup> {
-	string_properties(format!("Node '{}' cannot be found in library", reference))
-}
-
-pub(crate) fn node_no_properties(_document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn node_no_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	string_properties(if context.network_interface.is_layer(&node_id, context.selection_network_path) {
-		"Layer has no properties"
+		"Layer has no properties".to_string()
 	} else {
-		"Node has no properties"
+		"Node has no properties".to_string()
 	})
 }
 
@@ -2253,20 +2121,26 @@ pub(crate) fn index_properties(document_node: &DocumentNode, node_id: NodeId, _c
 	vec![LayoutGroup::Row { widgets: index }]
 }
 
-pub(crate) fn generate_node_properties(document_node: &DocumentNode, node_id: NodeId, pinned: bool, context: &mut NodePropertiesContext) -> LayoutGroup {
-	let reference = context.network_interface.reference(&node_id, context.selection_network_path).clone();
-	let layout = if let Some(ref reference) = reference {
-		match super::document_node_definitions::resolve_document_node_type(reference) {
-			Some(document_node_type) => (document_node_type.properties)(document_node, node_id, context),
-			None => unknown_node_properties(reference),
-		}
-	} else {
-		node_no_properties(document_node, node_id, context)
-	};
+pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> LayoutGroup {
+	let mut layout = Vec::new();
 
+	let number_of_inputs = context.network_interface.number_of_inputs(&node_id, context.selection_network_path);
+	for input_index in 0..number_of_inputs {
+		let row = context.call_widget_override(&node_id, input_index).unwrap_or_else(|| {
+			let input_type = context.network_interface.input_type(&InputConnector::node(node_id, input_index), context.selection_network_path);
+			property_from_type(node_id, input_index, &input_type.0, context)
+		});
+		layout.extend(row);
+	}
+	if layout.is_empty() {
+		layout = node_no_properties(node_id, context);
+	}
+	let name = context.network_interface.reference(&node_id, context.selection_network_path).clone().unwrap_or_default();
+	let visible = context.network_interface.is_visible(&node_id, context.selection_network_path);
+	let pinned = context.network_interface.is_pinned(&node_id, context.selection_network_path);
 	LayoutGroup::Section {
-		name: reference.unwrap_or_default(),
-		visible: document_node.visible,
+		name,
+		visible,
 		pinned,
 		id: node_id.0,
 		layout,

@@ -180,6 +180,8 @@ pub struct FrontendClickTargets {
 	pub all_nodes_bounding_box: String,
 	#[serde(rename = "importExportsBoundingBox")]
 	pub import_exports_bounding_box: String,
+	#[serde(rename = "modifyImportExport")]
+	pub modify_import_export: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]

@@ -50,6 +50,7 @@ async fn assign_colors<F: 'n + Send, T: VectorIterMut>(
 		Footprint -> GraphicGroup,
 		Footprint -> VectorData,
 	)]
+	#[widget(ParsedWidgetOverride::Hidden)]
 	vector_group: impl Node<F, Output = T>,
 	#[default(true)] fill: bool,
 	stroke: bool,
