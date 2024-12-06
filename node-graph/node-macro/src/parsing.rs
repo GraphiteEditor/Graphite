@@ -43,11 +43,53 @@ pub(crate) struct NodeFnAttributes {
 }
 
 #[derive(Debug, Default)]
-pub enum ValueSource {
+pub enum ParsedValueSource {
 	#[default]
 	None,
 	Default(TokenStream2),
 	Scope(LitStr),
+}
+
+// #[widget(Hidden)]
+// #[widget(String = "Some string")]
+// #[widget(Custom = "Custom string")]
+
+#[derive(Debug, Default)]
+pub enum ParsedWidgetOverride {
+	#[default]
+	None,
+	Hidden,
+	String(LitStr),
+	Custom(LitStr),
+}
+
+impl Parse for ParsedWidgetOverride {
+	fn parse(input: ParseStream) -> syn::Result<Self> {
+		// Parse the full path (e.g., ParsedWidgetOverride::Hidden)
+		let path: Path = input.parse()?;
+
+		// Ensure the path starts with `ParsedWidgetOverride`
+		if path.segments.len() == 2 && path.segments[0].ident == "ParsedWidgetOverride" {
+			let variant = &path.segments[1].ident;
+
+			match variant.to_string().as_str() {
+				"Hidden" => Ok(ParsedWidgetOverride::Hidden),
+				"String" => {
+					input.parse::<syn::Token![=]>()?;
+					let lit: LitStr = input.parse()?;
+					Ok(ParsedWidgetOverride::String(lit))
+				}
+				"Custom" => {
+					input.parse::<syn::Token![=]>()?;
+					let lit: LitStr = input.parse()?;
+					Ok(ParsedWidgetOverride::Custom(lit))
+				}
+				_ => Err(syn::Error::new(variant.span(), "Unknown ParsedWidgetOverride variant")),
+			}
+		} else {
+			Err(syn::Error::new(input.span(), "Expected ParsedWidgetOverride::<variant>"))
+		}
+	}
 }
 
 #[derive(Debug)]
@@ -55,9 +97,10 @@ pub(crate) enum ParsedField {
 	Regular {
 		pat_ident: PatIdent,
 		name: Option<LitStr>,
+		widget_override: ParsedWidgetOverride,
 		ty: Type,
 		exposed: bool,
-		value_source: ValueSource,
+		value_source: ParsedValueSource,
 		number_min: Option<LitFloat>,
 		number_max: Option<LitFloat>,
 		number_mode_range: Option<ExprTuple>,
@@ -66,6 +109,7 @@ pub(crate) enum ParsedField {
 	Node {
 		pat_ident: PatIdent,
 		name: Option<LitStr>,
+		widget_override: ParsedWidgetOverride,
 		input_type: Type,
 		output_type: Type,
 		implementations: Punctuated<Implementation, Comma>,
@@ -341,13 +385,21 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		.map(|attr| attr.parse_args().map_err(|e| Error::new_spanned(attr, format!("Invalid `name` value for argument '{}': {}", ident, e))))
 		.transpose()?;
 
+	let widget_override = extract_attribute(attrs, "widget")
+		.map(|attr| {
+			attr.parse_args()
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid `widget override` value for argument '{}': {}", ident, e)))
+		})
+		.transpose()?
+		.unwrap_or_default();
+
 	let exposed = extract_attribute(attrs, "expose").is_some();
 
 	let value_source = match (default_value, scope) {
 		(Some(_), Some(_)) => return Err(Error::new_spanned(&pat_ident, "Cannot have both `default` and `scope` attributes")),
-		(Some(default_value), _) => ValueSource::Default(default_value),
-		(_, Some(scope)) => ValueSource::Scope(scope),
-		_ => ValueSource::None,
+		(Some(default_value), _) => ParsedValueSource::Default(default_value),
+		(_, Some(scope)) => ParsedValueSource::Scope(scope),
+		_ => ParsedValueSource::None,
 	};
 
 	let number_min = extract_attribute(attrs, "min")
@@ -388,7 +440,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		let (input_type, output_type) = node_input_type
 			.zip(node_output_type)
 			.ok_or_else(|| Error::new_spanned(&ty, "Invalid Node type. Expected `impl Node<Input, Output = OutputType>`"))?;
-		if !matches!(&value_source, ValueSource::None) {
+		if !matches!(&value_source, ParsedValueSource::None) {
 			return Err(Error::new_spanned(&ty, "No default values for `impl Node` allowed"));
 		}
 		let implementations = extract_attribute(attrs, "implementations")
@@ -399,6 +451,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		Ok(ParsedField::Node {
 			pat_ident,
 			name,
+			widget_override,
 			input_type,
 			output_type,
 			implementations,
@@ -411,6 +464,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		Ok(ParsedField::Regular {
 			pat_ident,
 			name,
+			widget_override,
 			exposed,
 			number_min,
 			number_max,
@@ -531,11 +585,11 @@ mod tests {
 					assert_eq!(p_name, e_name);
 					assert_eq!(p_exp, e_exp);
 					match (p_default, e_default) {
-						(ValueSource::None, ValueSource::None) => {}
-						(ValueSource::Default(p), ValueSource::Default(e)) => {
+						(ParsedValueSource::None, ParsedValueSource::None) => {}
+						(ParsedValueSource::Default(p), ParsedValueSource::Default(e)) => {
 							assert_eq!(p.to_token_stream().to_string(), e.to_token_stream().to_string());
 						}
-						(ValueSource::Scope(p), ValueSource::Scope(e)) => {
+						(ParsedValueSource::Scope(p), ParsedValueSource::Scope(e)) => {
 							assert_eq!(p.value(), e.value());
 						}
 						_ => panic!("Mismatched default values"),
@@ -601,7 +655,7 @@ mod tests {
 				name: None,
 				ty: parse_quote!(f64),
 				exposed: false,
-				value_source: ValueSource::None,
+				value_source: ParsedValueSource::None,
 				number_min: None,
 				number_max: None,
 				number_mode_range: None,
@@ -661,7 +715,7 @@ mod tests {
 					name: None,
 					ty: parse_quote!(DVec2),
 					exposed: false,
-					value_source: ValueSource::None,
+					value_source: ParsedValueSource::None,
 					number_min: None,
 					number_max: None,
 					number_mode_range: None,
@@ -711,7 +765,7 @@ mod tests {
 				name: None,
 				ty: parse_quote!(f64),
 				exposed: false,
-				value_source: ValueSource::Default(quote!(50.)),
+				value_source: ParsedValueSource::Default(quote!(50.)),
 				number_min: None,
 				number_max: None,
 				number_mode_range: None,
@@ -759,7 +813,7 @@ mod tests {
 				name: None,
 				ty: parse_quote!(f64),
 				exposed: false,
-				value_source: ValueSource::None,
+				value_source: ParsedValueSource::None,
 				number_min: None,
 				number_max: None,
 				number_mode_range: None,
@@ -818,7 +872,7 @@ mod tests {
 				name: None,
 				ty: parse_quote!(f64),
 				exposed: false,
-				value_source: ValueSource::None,
+				value_source: ParsedValueSource::None,
 				number_min: Some(parse_quote!(-500.)),
 				number_max: Some(parse_quote!(500.)),
 				number_mode_range: Some(parse_quote!((0., 100.))),
@@ -866,7 +920,7 @@ mod tests {
 				name: None,
 				ty: parse_quote!(String),
 				exposed: true,
-				value_source: ValueSource::None,
+				value_source: ParsedValueSource::None,
 				number_min: None,
 				number_max: None,
 				number_mode_range: None,

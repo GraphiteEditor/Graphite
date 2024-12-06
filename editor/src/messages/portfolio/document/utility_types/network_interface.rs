@@ -5975,9 +5975,6 @@ pub enum WidgetOverride {
 // TODO: Custom deserialization/serialization to ensure number of properties row matches number of node inputs
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PropertiesRow {
-	/// Input/Output names may not be the same length as the number of inputs/outputs. They are the same as the nested networks Imports/Exports.
-	/// If the string is empty/DNE, then it uses the type.
-	// pub input_name: String,
 	/// A general datastore than can store key value pairs of any types for any input
 	pub input_data: HashMap<String, Value>,
 	// An input can override a widget, which would otherwise be automatically generated from the type

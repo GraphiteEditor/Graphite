@@ -2562,9 +2562,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				let exposed = if index == 0 { *ty != fn_type!(()) } else { field.exposed };
 
 				match field.value_source {
-					ValueSource::None => {}
-					ValueSource::Default(data) => return NodeInput::value(TaggedValue::from_primitive_string(data, ty).unwrap_or(TaggedValue::None), exposed),
-					ValueSource::Scope(data) => return NodeInput::scope(Cow::Borrowed(data)),
+					RegistryValueSource::None => {}
+					RegistryValueSource::Default(data) => return NodeInput::value(TaggedValue::from_primitive_string(data, ty).unwrap_or(TaggedValue::None), exposed),
+					RegistryValueSource::Scope(data) => return NodeInput::scope(Cow::Borrowed(data)),
 				};
 
 				if let Some(type_default) = TaggedValue::from_type(ty) {
@@ -2587,7 +2587,15 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
 					// TODO: Store information for input overrides in the node macro
-					input_properties: fields.iter().map(|f| f.name.into()).collect(),
+					input_properties: fields
+						.iter()
+						.map(|f| match f.widget_override {
+							RegistryWidgetOverride::None => f.name.into(),
+							RegistryWidgetOverride::Hidden => PropertiesRow::with_override(f.name, WidgetOverride::Hidden),
+							RegistryWidgetOverride::String(str) => PropertiesRow::with_override(f.name, WidgetOverride::String(str.to_string())),
+							RegistryWidgetOverride::Custom(str) => PropertiesRow::with_override(f.name, WidgetOverride::Custom(str.to_string())),
+						})
+						.collect(),
 					output_names: vec![output_type.to_string()],
 					has_primary_output: true,
 					locked: false,

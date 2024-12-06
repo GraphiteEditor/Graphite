@@ -42,15 +42,24 @@ pub struct NodeMetadata {
 #[derive(Clone, Debug)]
 pub struct FieldMetadata {
 	pub name: &'static str,
+	pub widget_override: RegistryWidgetOverride,
 	pub exposed: bool,
-	pub value_source: ValueSource,
+	pub value_source: RegistryValueSource,
 	pub number_min: Option<f64>,
 	pub number_max: Option<f64>,
 	pub number_mode_range: Option<(f64, f64)>,
 }
 
 #[derive(Clone, Debug)]
-pub enum ValueSource {
+pub enum RegistryWidgetOverride {
+	None,
+	Hidden,
+	String(&'static str),
+	Custom(&'static str),
+}
+
+#[derive(Clone, Debug)]
+pub enum RegistryValueSource {
 	None,
 	Default(&'static str),
 	Scope(&'static str),
