@@ -40,7 +40,7 @@ impl TransformLayerMessageHandler {
 }
 
 type TransformData<'a> = (&'a DocumentMessageHandler, &'a InputPreprocessorMessageHandler, &'a ToolData, &'a mut ShapeState);
-impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformLayerMessageHandler {
+impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayerMessageHandler {
 	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (document, input, tool_data, shape_editor): TransformData) {
 		let using_path_tool = tool_data.active_tool_type == ToolType::Path;
 

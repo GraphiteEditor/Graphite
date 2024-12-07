@@ -30,7 +30,7 @@ pub struct ComposeNode<First, Second, I> {
 	phantom: PhantomData<I>,
 }
 
-impl<'i, 'f: 'i, 's: 'i, Input: 'i, First, Second> Node<'i, Input> for ComposeNode<First, Second, Input>
+impl<'i, Input: 'i, First, Second> Node<'i, Input> for ComposeNode<First, Second, Input>
 where
 	First: Node<'i, Input>,
 	Second: Node<'i, <First as Node<'i, Input>>::Output> + 'i,
@@ -43,7 +43,7 @@ where
 	}
 }
 
-impl<'i, First, Second, Input: 'i> ComposeNode<First, Second, Input> {
+impl<First, Second, Input> ComposeNode<First, Second, Input> {
 	pub const fn new(first: First, second: Second) -> Self {
 		ComposeNode::<First, Second, Input> { first, second, phantom: PhantomData }
 	}
@@ -57,7 +57,7 @@ pub struct AsyncComposeNode<First, Second, I> {
 }
 
 #[cfg(feature = "alloc")]
-impl<'i, 'f: 'i, 's: 'i, Input: 'static, First, Second> Node<'i, Input> for AsyncComposeNode<First, Second, Input>
+impl<'i, Input: 'static, First, Second> Node<'i, Input> for AsyncComposeNode<First, Second, Input>
 where
 	First: Node<'i, Input>,
 	First::Output: core::future::Future,

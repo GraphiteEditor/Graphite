@@ -14,7 +14,7 @@ use parser::ParseError;
 use value::Value;
 
 pub fn evaluate(expression: &str) -> Result<(Result<Value, EvalError>, Unit), ParseError> {
-	let expr = ast::Node::from_str(expression);
+	let expr = ast::Node::try_parse_from_str(expression);
 	let context = EvalContext::default();
 	expr.map(|(node, unit)| (node.eval(&context), unit))
 }
@@ -37,7 +37,7 @@ mod tests {
 					let expected_value = $expected_value;
 					let expected_unit = $expected_unit;
 
-					let expr = ast::Node::from_str($input);
+					let expr = ast::Node::try_parse_from_str($input);
 					let context = EvalContext::default();
 
 					let (actual_value, actual_unit) = expr.map(|(node, unit)| (node.eval(&context), unit)).unwrap();

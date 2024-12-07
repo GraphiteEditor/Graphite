@@ -7,7 +7,7 @@ use crate::messages::prelude::*;
 #[derive(Debug, Clone, Default)]
 pub struct PropertiesPanelMessageHandler {}
 
-impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPanelMessageHandlerData<'a>)> for PropertiesPanelMessageHandler {
+impl MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPanelMessageHandlerData<'_>)> for PropertiesPanelMessageHandler {
 	fn process_message(&mut self, message: PropertiesPanelMessage, responses: &mut VecDeque<Message>, (persistent_data, data): (&PersistentData, PropertiesPanelMessageHandlerData)) {
 		let PropertiesPanelMessageHandlerData {
 			network_interface,

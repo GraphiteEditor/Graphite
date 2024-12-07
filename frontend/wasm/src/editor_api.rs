@@ -26,8 +26,8 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use wasm_bindgen::prelude::*;
 
-/// We directly interface with the updateImage JS function for massively increased performance over serializing and deserializing.
-/// This avoids creating a json with a list millions of numbers long.
+// /// We directly interface with the updateImage JS function for massively increased performance over serializing and deserializing.
+// /// This avoids creating a json with a list millions of numbers long.
 // #[wasm_bindgen(module = "/../src/wasm-communication/editor.ts")]
 // extern "C" {
 // 	// fn dispatchTauri(message: String) -> String;

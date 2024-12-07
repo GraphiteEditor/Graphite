@@ -396,7 +396,7 @@ pub struct AxisIter<'a> {
 	pub metadata: &'a DocumentMetadata,
 }
 
-impl<'a> Iterator for AxisIter<'a> {
+impl Iterator for AxisIter<'_> {
 	type Item = LayerNodeIdentifier;
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -417,7 +417,7 @@ pub struct DescendantsIter<'a> {
 	metadata: &'a DocumentMetadata,
 }
 
-impl<'a> Iterator for DescendantsIter<'a> {
+impl Iterator for DescendantsIter<'_> {
 	type Item = LayerNodeIdentifier;
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -435,7 +435,7 @@ impl<'a> Iterator for DescendantsIter<'a> {
 		}
 	}
 }
-impl<'a> DoubleEndedIterator for DescendantsIter<'a> {
+impl DoubleEndedIterator for DescendantsIter<'_> {
 	fn next_back(&mut self) -> Option<Self::Item> {
 		if self.front == self.back {
 			self.front = None;

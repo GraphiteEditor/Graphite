@@ -708,7 +708,7 @@ pub struct StrokePathIter<'a> {
 	done_one: bool,
 }
 
-impl<'a> Iterator for StrokePathIter<'a> {
+impl Iterator for StrokePathIter<'_> {
 	type Item = bezier_rs::Subpath<PointId>;
 
 	fn next(&mut self) -> Option<Self::Item> {

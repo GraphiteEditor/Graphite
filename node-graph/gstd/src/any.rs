@@ -26,7 +26,7 @@ pub struct ComposeTypeErased {
 	second: SharedNodeContainer,
 }
 
-impl<'i, 'a: 'i> Node<'i, Any<'i>> for ComposeTypeErased {
+impl<'i> Node<'i, Any<'i>> for ComposeTypeErased {
 	type Output = DynFuture<'i, Any<'i>>;
 	fn eval(&'i self, input: Any<'i>) -> Self::Output {
 		Box::pin(async move {

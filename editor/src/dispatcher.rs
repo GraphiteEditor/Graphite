@@ -63,20 +63,33 @@ impl Dispatcher {
 		}
 	}
 
-	pub fn handle_message<T: Into<Message>>(&mut self, message: T) {
-		self.message_queues.push(VecDeque::from_iter([message.into()]));
-		while let Some(message) = self.message_queues.last_mut().and_then(VecDeque::pop_front) {
-			// Do not buffer the EndBuffer message
-			if !matches!(message, Message::EndBuffer(_)) {
-				if let Some(buffered_queue) = &mut self.buffered_queue {
-					// Store each message in a deque so that its children are added before future messages
-					let mut message_deque = VecDeque::new();
-					message_deque.push_back(message);
-					buffered_queue.push(message_deque);
-					continue;
-				}
-			}
+	/// Add a message to a queue so that it can be executed.
+	/// If `process_after_all_current` is set, all currently queued messages (including children) will be processed first.
+	/// If not set, it (and its children) will be processed as soon as possible.
+	pub fn schedule_execution(message_queues: &mut Vec<VecDeque<Message>>, process_after_all_current: bool, messages: impl IntoIterator<Item = Message>) {
+		match message_queues.first_mut() {
+			// If there are currently messages being processed and we are processing after them, add to the end of the first queue
+			Some(queue) if process_after_all_current => queue.extend(messages),
+			// In all other cases, make a new inner queue and add our message there
+			_ => message_queues.push(VecDeque::from_iter(messages)),
+		}
+	}
 
+	pub fn handle_message<T: Into<Message>>(&mut self, message: T, process_after_all_current: bool) {
+		let message = message.into();
+		// Add all aditional messages to the buffer if it exists (except from the end buffer message)
+		if !matches!(message, Message::EndBuffer(_)) {
+			if let Some(buffered_queue) = &mut self.buffered_queue {
+				Self::schedule_execution(buffered_queue, true, [message]);
+
+				return;
+			}
+		}
+
+		// If we are not maintaining the buffer, simply add to the current queue
+		Self::schedule_execution(&mut self.message_queues, process_after_all_current, [message]);
+
+		while let Some(message) = self.message_queues.last_mut().and_then(VecDeque::pop_front) {
 			// Skip processing of this message if it will be processed later (at the end of the shallowest level queue)
 			if SIDE_EFFECT_FREE_MESSAGES.contains(&message.to_discriminant()) {
 				let already_in_queue = self.message_queues.first().filter(|queue| queue.contains(&message)).is_some();
@@ -92,7 +105,7 @@ impl Dispatcher {
 				}
 			}
 
-			// Print the message at a verbosity level of `log`
+			// Print the message at a verbosity level of `info`
 			self.log_message(&message, &self.message_queues, self.message_handlers.debug_message_handler.message_logging_verbosity);
 
 			// Create a new queue for the child messages
@@ -104,9 +117,11 @@ impl Dispatcher {
 					self.buffered_queue = Some(std::mem::take(&mut self.message_queues));
 				}
 				Message::EndBuffer(render_metadata) => {
-					// The buffered vec is added before the metadata messages, because the end of the vec is processed first
+					// Assign the message queue to the currently buffered queue
 					if let Some(buffered_queue) = self.buffered_queue.take() {
-						self.message_queues.extend(buffered_queue);
+						self.cleanup_queues(false);
+						assert!(self.message_queues.is_empty(), "message queues are always empty when ending a buffer");
+						self.message_queues = buffered_queue;
 					};
 
 					let graphene_std::renderer::RenderMetadata {
@@ -115,14 +130,13 @@ impl Dispatcher {
 						clip_targets,
 					} = render_metadata;
 
-					let mut update_upstream_transform = VecDeque::new();
-					update_upstream_transform.push_back(DocumentMessage::UpdateUpstreamTransforms { upstream_transforms: footprints }.into());
-					self.message_queues.push(update_upstream_transform);
-
-					let mut update_click_targets = VecDeque::new();
-					update_click_targets.push_back(DocumentMessage::UpdateClickTargets { click_targets }.into());
-					update_click_targets.push_back(DocumentMessage::UpdateClipTargets { clip_targets }.into());
-					self.message_queues.push(update_click_targets);
+					// Run these update state messages immediately
+					let messages = [
+						DocumentMessage::UpdateUpstreamTransforms { upstream_transforms: footprints },
+						DocumentMessage::UpdateClickTargets { click_targets },
+						DocumentMessage::UpdateClipTargets { clip_targets },
+					];
+					Self::schedule_execution(&mut self.message_queues, false, messages.map(Message::from));
 				}
 				Message::NoOp => {}
 				Message::Init => {
@@ -141,7 +155,7 @@ impl Dispatcher {
 					});
 				}
 				Message::Batched(messages) => {
-					messages.iter().for_each(|message| self.handle_message(message.to_owned()));
+					messages.iter().for_each(|message| self.handle_message(message.to_owned(), false));
 				}
 				Message::Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
 				Message::Debug(message) => {
