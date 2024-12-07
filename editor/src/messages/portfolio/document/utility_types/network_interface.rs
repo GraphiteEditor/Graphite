@@ -308,8 +308,7 @@ impl NodeNetworkInterface {
 			DocumentNodeImplementation::ProtoNode(_) => 1,
 			DocumentNodeImplementation::Network(nested_network) => nested_network.exports.len(),
 			DocumentNodeImplementation::Extract => 1,
-			DocumentNodeImplementation::Expression { .. } => 1,
-		}
+			}
 	}
 
 	/// Creates a copy for each node by disconnecting nodes which are not connected to other copied nodes.
@@ -520,11 +519,6 @@ impl NodeNetworkInterface {
 					.map(|node_types| (node_types, TypeSource::Compiled))
 			}
 			DocumentNodeImplementation::Extract => None,
-			DocumentNodeImplementation::Expression { .. } => {
-				// Expression nodes currently don't accept any inputs
-				// Once variadic inputs are implemented, this will need to be updated
-				None
-			}
 		}
 	}
 
@@ -583,13 +577,6 @@ impl NodeNetworkInterface {
 
 				// Input is disconnected
 				(concrete!(()), TypeSource::Error("disconnected network input"))
-			}
-			DocumentNodeImplementation::Expression { .. } => {
-				if input_index == 0 {
-					(concrete!(String), TypeSource::Compiled)
-				} else {
-					(concrete!(()), TypeSource::Error("expression node only accepts one input"))
-				}
 			}
 			_ => (concrete!(()), TypeSource::Error("implementation is not network or protonode")),
 		}
@@ -697,9 +684,6 @@ impl NodeNetworkInterface {
 			}
 			graph_craft::document::DocumentNodeImplementation::Extract => {
 				output_types.push(Some((concrete!(()), TypeSource::Error("extract node"))));
-			}
-			graph_craft::document::DocumentNodeImplementation::Expression { .. } => {
-				output_types.push(Some((concrete!(f64), TypeSource::Compiled)));
 			}
 		}
 		output_types

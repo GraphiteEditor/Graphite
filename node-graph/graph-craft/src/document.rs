@@ -553,10 +553,6 @@ pub enum DocumentNodeImplementation {
 	/// `DocumentNode`s with a `DocumentNodeImplementation::Extract` are converted into a `ClonedNode` that returns the `DocumentNode` specified by the single `NodeInput::Node`. The referenced node
 	/// (specified by the single `NodeInput::Node`) is removed from the network, and any `NodeInput::Node`s used by the referenced node are replaced with a generically typed network input.
 	Extract,
-    Expression {
-        /// The mathematical expression to be evaluated
-        expression: String,
-    },
 }
 
 impl Default for DocumentNodeImplementation {
