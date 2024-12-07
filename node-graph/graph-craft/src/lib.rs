@@ -15,5 +15,3 @@ pub mod wasm_application_io;
 
 #[cfg(feature = "loading")]
 pub mod util;
-
-pub mod expression;

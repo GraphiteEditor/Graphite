@@ -172,3 +172,5 @@ pub type WasmSurfaceHandle = application_io::SurfaceHandle<web_sys::HtmlCanvasEl
 pub type WasmSurfaceHandleFrame = application_io::SurfaceHandleFrame<web_sys::HtmlCanvasElement>;
 
 pub use dyn_any::{WasmNotSend, WasmNotSync};
+
+pub mod expression;
