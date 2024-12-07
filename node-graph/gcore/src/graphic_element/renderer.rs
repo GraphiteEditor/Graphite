@@ -525,7 +525,7 @@ impl GraphicElementRendered for VectorData {
 
 		match self.style.fill() {
 			Fill::Solid(color) => {
-				let fill = peniko::Brush::Solid(peniko::Color::rgba(color.r() as f64, color.g() as f64, color.b() as f64, color.a() as f64));
+				let fill = peniko::Brush::Solid(peniko::Color::new([color.r(), color.g(), color.b(), color.a()]));
 				scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, &path);
 			}
 			Fill::Gradient(gradient) => {
@@ -533,7 +533,7 @@ impl GraphicElementRendered for VectorData {
 				for &(offset, color) in &gradient.stops.0 {
 					stops.push(peniko::ColorStop {
 						offset: offset as f32,
-						color: peniko::Color::rgba(color.r() as f64, color.g() as f64, color.b() as f64, color.a() as f64),
+						color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])),
 					});
 				}
 				// Compute bounding box of the shape to determine the gradient start and end points
@@ -576,7 +576,7 @@ impl GraphicElementRendered for VectorData {
 
 		if let Some(stroke) = self.style.stroke() {
 			let color = match stroke.color {
-				Some(color) => peniko::Color::rgba(color.r() as f64, color.g() as f64, color.b() as f64, color.a() as f64),
+				Some(color) => peniko::Color::new([color.r(), color.g(), color.b(), color.a()]),
 				None => peniko::Color::TRANSPARENT,
 			};
 			use crate::vector::style::{LineCap, LineJoin};
@@ -701,7 +701,7 @@ impl GraphicElementRendered for Artboard {
 		use vello::peniko;
 
 		// Render background
-		let color = peniko::Color::rgba(self.background.r() as f64, self.background.g() as f64, self.background.b() as f64, self.background.a() as f64);
+		let color = peniko::Color::new([self.background.r(), self.background.g(), self.background.b(), self.background.a()]);
 		let [a, b] = [self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()];
 		let rect = kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
 		let blend_mode = peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcOver);

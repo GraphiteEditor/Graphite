@@ -156,7 +156,7 @@ impl WgpuExecutor {
 		let render_params = RenderParams {
 			// We are using an explicit opaque color here to eliminate the alpha premulitplication step
 			// which would be required to support a transparent webgpu canvas
-			base_color: vello::peniko::Color::rgb8(0x22, 0x22, 0x22),
+			base_color: vello::peniko::Color::from_rgba8(0x22, 0x22, 0x22, 0xff),
 			width,
 			height,
 			antialiasing_method: AaConfig::Msaa8,
