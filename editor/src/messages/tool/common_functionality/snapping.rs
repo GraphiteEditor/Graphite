@@ -20,6 +20,15 @@ use glam::{DAffine2, DVec2};
 use graphene_std::vector::NoHashBuilder;
 use std::cmp::Ordering;
 
+/// Configuration for the relevant snap type
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SnapTypeConfiguration {
+	pub only_geometry: bool,
+	pub use_existing_candidates: bool,
+	pub accept_distribution: bool,
+	pub bbox: Option<Rect>,
+}
+
 /// Handles snapping and snap overlays
 #[derive(Debug, Clone, Default)]
 pub struct SnapManager {
@@ -242,7 +251,7 @@ impl SnapManager {
 	}
 	pub fn preview_draw(&mut self, snap_data: &SnapData, mouse: DVec2) {
 		let point = SnapCandidatePoint::handle(snap_data.document.metadata().document_to_viewport.inverse().transform_point2(mouse));
-		let snapped = self.free_snap(snap_data, &point, None, false);
+		let snapped = self.free_snap(snap_data, &point, SnapTypeConfiguration::default());
 		self.update_indicator(snapped);
 	}
 
@@ -342,64 +351,64 @@ impl SnapManager {
 			self.add_candidates(layer, snap_data, quad);
 		}
 
-		if self.alignment_candidates.as_ref().is_some_and(|candidates| candidates.len() > 100) {
+		if self.alignment_candidates.as_ref().is_some_and(|candidates| candidates.len() > crate::consts::MAX_ALIGNMENT_CANDIDATES) {
 			warn!("Alignment candidate overflow");
 		}
-		if self.candidates.as_ref().is_some_and(|candidates| candidates.len() > 10) {
+		if self.candidates.as_ref().is_some_and(|candidates| candidates.len() > crate::consts::MAX_SNAP_CANDIDATES) {
 			warn!("Snap candidate overflow");
 		}
 	}
 
-	pub fn free_snap(&mut self, snap_data: &SnapData, point: &SnapCandidatePoint, bbox: Option<Rect>, to_paths: bool) -> SnappedPoint {
+	pub fn free_snap(&mut self, snap_data: &SnapData, point: &SnapCandidatePoint, config: SnapTypeConfiguration) -> SnappedPoint {
 		if !point.document_point.is_finite() {
 			warn!("Snapping non-finite position");
 			return SnappedPoint::infinite_snap(DVec2::ZERO);
 		}
 
 		let mut snap_results = SnapResults::default();
-		if point.source_index == 0 {
+		if !config.use_existing_candidates {
 			self.candidates = None;
 		}
 
 		let mut snap_data = snap_data.clone();
 		if snap_data.candidates.is_none() {
-			self.find_candidates(&snap_data, point, bbox);
+			self.find_candidates(&snap_data, point, config.bbox);
 		}
 		snap_data.candidates = self.candidates.as_ref();
 		snap_data.alignment_candidates = self.alignment_candidates.as_ref();
 
-		self.layer_snapper.free_snap(&mut snap_data, point, &mut snap_results);
+		self.layer_snapper.free_snap(&mut snap_data, point, &mut snap_results, config);
 		self.grid_snapper.free_snap(&mut snap_data, point, &mut snap_results);
-		self.alignment_snapper.free_snap(&mut snap_data, point, &mut snap_results);
-		self.distribution_snapper.free_snap(&mut snap_data, point, &mut snap_results, bbox);
+		self.alignment_snapper.free_snap(&mut snap_data, point, &mut snap_results, config);
+		self.distribution_snapper.free_snap(&mut snap_data, point, &mut snap_results, config);
 
-		Self::find_best_snap(&mut snap_data, point, snap_results, false, false, to_paths)
+		Self::find_best_snap(&mut snap_data, point, snap_results, false, false, config.only_geometry)
 	}
 
-	pub fn constrained_snap(&mut self, snap_data: &SnapData, point: &SnapCandidatePoint, constraint: SnapConstraint, bbox: Option<Rect>) -> SnappedPoint {
+	pub fn constrained_snap(&mut self, snap_data: &SnapData, point: &SnapCandidatePoint, constraint: SnapConstraint, config: SnapTypeConfiguration) -> SnappedPoint {
 		if !point.document_point.is_finite() {
 			warn!("Snapping non-finite position");
 			return SnappedPoint::infinite_snap(DVec2::ZERO);
 		}
 
 		let mut snap_results = SnapResults::default();
-		if point.source_index == 0 {
+		if !config.use_existing_candidates {
 			self.candidates = None;
 		}
 
 		let mut snap_data = snap_data.clone();
 		if snap_data.candidates.is_none() {
-			self.find_candidates(&snap_data, point, bbox);
+			self.find_candidates(&snap_data, point, config.bbox);
 		}
 		snap_data.candidates = self.candidates.as_ref();
 		snap_data.alignment_candidates = self.alignment_candidates.as_ref();
 
-		self.layer_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint);
+		self.layer_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint, config);
 		self.grid_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint);
-		self.alignment_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint);
-		self.distribution_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint, bbox);
+		self.alignment_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint, config);
+		self.distribution_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint, config);
 
-		Self::find_best_snap(&mut snap_data, point, snap_results, true, false, false)
+		Self::find_best_snap(&mut snap_data, point, snap_results, true, false, config.only_geometry)
 	}
 
 	fn alignment_x_overlay(boxes: &VecDeque<Rect>, transform: DAffine2, overlay_context: &mut OverlayContext) {

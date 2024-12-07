@@ -801,8 +801,8 @@ impl GraphicElementRendered for ImageFrame<Color> {
 	}
 
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		let transform = self.transform * transform;
-		(transform.matrix2 != glam::DMat2::ZERO).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
+		let transform = transform * self.transform;
+		(transform.matrix2.determinant() != 0.).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
@@ -876,8 +876,8 @@ impl GraphicElementRendered for Raster {
 	}
 
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		let transform = self.transform() * transform;
-		(transform.matrix2 != glam::DMat2::ZERO).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
+		let transform = transform * self.transform();
+		(transform.matrix2.determinant() != 0.).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
@@ -1103,7 +1103,7 @@ impl RenderSvgSegmentList for Vec<SvgSegment> {
 
 pub struct SvgRenderAttrs<'a>(&'a mut SvgRender);
 
-impl<'a> SvgRenderAttrs<'a> {
+impl SvgRenderAttrs<'_> {
 	pub fn push_complex(&mut self, name: impl Into<SvgSegment>, value: impl FnOnce(&mut SvgRender)) {
 		self.0.svg.push(" ".into());
 		self.0.svg.push(name.into());
