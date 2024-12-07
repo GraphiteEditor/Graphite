@@ -153,7 +153,7 @@ impl SvgRender {
 	pub fn wrap_with_transform(&mut self, transform: DAffine2, size: Option<DVec2>) {
 		let defs = &self.svg_defs;
 		let view_box = size
-			.map(|size| format!("viewbox=\"0 0 {} {}\" width=\"{}\" height=\"{}\"", size.x, size.y, size.x, size.y))
+			.map(|size| format!("viewBox=\"0 0 {} {}\" width=\"{}\" height=\"{}\"", size.x, size.y, size.x, size.y))
 			.unwrap_or_default();
 
 		let matrix = format_transform_matrix(transform);
