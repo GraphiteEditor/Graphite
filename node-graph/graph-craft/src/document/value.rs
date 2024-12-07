@@ -293,11 +293,6 @@ impl Display for TaggedValue {
 	}
 }
 
-// Implement StaticType for TaggedValue
-unsafe impl StaticType for TaggedValue {
-    type Static = TaggedValue;
-}
-
 pub struct UpcastNode {
 	value: MemoHash<TaggedValue>,
 }
