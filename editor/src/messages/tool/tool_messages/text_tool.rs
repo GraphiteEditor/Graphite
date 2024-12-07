@@ -565,7 +565,7 @@ impl Fsm for TextToolFsmState {
 
 					tool_data.new_text = String::new();
 				} else {
-					line_width = Some(tool_options.line_width);
+					line_width = tool_options.line_wrap_enabled.then_some(tool_options.line_width);
 					transformation_point = tool_data.drag_current;
 				}
 
