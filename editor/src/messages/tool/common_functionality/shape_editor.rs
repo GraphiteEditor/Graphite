@@ -667,6 +667,12 @@ impl ShapeState {
 					let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
 					responses.add(GraphOperationMessage::Vector { layer, modification_type });
 					continue;
+					if let Some(handles) = point.get_handle_pair(&vector_data) {
+						let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
+						responses.add(GraphOperationMessage::Vector { layer, modification_type });
+					} else {
+						continue;
+					}
 				}
 
 				let new_relative = if equidistant {
