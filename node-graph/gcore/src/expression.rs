@@ -5,10 +5,9 @@ use math_parser::value::{Number, Value};
 #[node_macro::node(category("Math"))]
 fn expression_node(
     _: (),
-    #[implementations(f64, f64)]
     input: f64,
-    #[implementations(String, String)]
-    #[default("0")]
+    #[expose]
+    // #[default("2 + 2".to_string())]
     expression: String,
 ) -> f64 {
     match evaluate(&expression) {
@@ -22,7 +21,6 @@ fn expression_node(
         _ => input
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
