@@ -19,6 +19,7 @@ use std::marker::PhantomData;
 use std::str::FromStr;
 pub use std::sync::Arc;
 
+
 /// Macro to generate the tagged value enum.
 macro_rules! tagged_value {
 	($ ($( #[$meta:meta] )* $identifier:ident ($ty:ty) ),* $(,)?) => {
