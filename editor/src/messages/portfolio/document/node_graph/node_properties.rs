@@ -1129,12 +1129,13 @@ pub(crate) fn insert_channel_properties(document_node: &DocumentNode, node_id: N
 	vec![color_channel]
 }
 
+pub fn get_document_node<'a>(node_id: NodeId, context: &'a NodePropertiesContext<'a>) -> Result<&'a DocumentNode, String> {
+	let network = context.network_interface.network(context.selection_network_path).ok_or("network not found in get_document_node")?;
+	network.nodes.get(&node_id).ok_or(format!("node {node_id} not found in get_document_node"))
+}
+
 pub fn query_node_and_input_name<'a>(node_id: NodeId, input_index: usize, context: &'a NodePropertiesContext<'a>) -> Result<(&'a DocumentNode, &'a str), String> {
-	let network = context
-		.network_interface
-		.network(context.selection_network_path)
-		.ok_or("network not found in query_node_and_input_name")?;
-	let document_node = network.nodes.get(&node_id).ok_or("node not found in query_node_and_input_name")?;
+	let document_node = get_document_node(node_id, context)?;
 	let input_name = context
 		.network_interface
 		.input_name(&node_id, input_index, context.selection_network_path)
@@ -1143,11 +1144,7 @@ pub fn query_node_and_input_name<'a>(node_id: NodeId, input_index: usize, contex
 }
 
 pub fn query_noise_pattern_state(node_id: NodeId, context: &NodePropertiesContext) -> Result<(bool, bool, bool, bool, bool, bool), String> {
-	let network = context
-		.network_interface
-		.network(context.selection_network_path)
-		.ok_or("network not found in query_noise_pattern_state")?;
-	let document_node = network.nodes.get(&node_id).ok_or("node not found in query_noise_pattern_state")?;
+	let document_node = get_document_node(node_id, context)?;
 	let current_noise_type = document_node.inputs.iter().find_map(|input| match input.as_value() {
 		Some(&TaggedValue::NoiseType(noise_type)) => Some(noise_type),
 		_ => None,
@@ -1178,44 +1175,17 @@ pub fn query_noise_pattern_state(node_id: NodeId, context: &NodePropertiesContex
 	))
 }
 
-pub(crate) fn assign_colors_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let fill_index = 1;
-	let stroke_index = 2;
-	let gradient_index = 3;
-	let reverse_index = 4;
+pub fn query_assign_colors_randomize(node_id: NodeId, context: &NodePropertiesContext) -> Result<bool, String> {
+	let document_node = get_document_node(node_id, context)?;
+	// This is safe since the node is a proto node and the implementation cannot be changed.
 	let randomize_index = 5;
-	let seed_index = 6;
-	let repeat_every_index = 7;
-
-	let fill_row = bool_widget(document_node, node_id, fill_index, "Fill", CheckboxInput::default(), true);
-	let stroke_row = bool_widget(document_node, node_id, stroke_index, "Stroke", CheckboxInput::default(), true);
-	let gradient_row = color_widget(document_node, node_id, gradient_index, "Gradient", ColorButton::default().allow_none(false), true);
-	let reverse_row = bool_widget(document_node, node_id, reverse_index, "Reverse", CheckboxInput::default(), true);
-	let randomize_enabled = if let Some(&TaggedValue::Bool(randomize_enabled)) = &document_node.inputs[randomize_index].as_value() {
-		randomize_enabled
-	} else {
-		false
-	};
-	let randomize_row = bool_widget(document_node, node_id, randomize_index, "Randomize", CheckboxInput::default(), true);
-	let seed_row = number_widget(document_node, node_id, seed_index, "Seed", NumberInput::default().min(0.).int().disabled(!randomize_enabled), true);
-	let repeat_every_row = number_widget(
-		document_node,
-		node_id,
-		repeat_every_index,
-		"Repeat Every",
-		NumberInput::default().min(0.).int().disabled(randomize_enabled),
-		true,
-	);
-
-	vec![
-		LayoutGroup::Row { widgets: fill_row },
-		LayoutGroup::Row { widgets: stroke_row },
-		gradient_row,
-		LayoutGroup::Row { widgets: reverse_row },
-		LayoutGroup::Row { widgets: randomize_row },
-		LayoutGroup::Row { widgets: seed_row },
-		LayoutGroup::Row { widgets: repeat_every_row },
-	]
+	Ok(
+		if let Some(&TaggedValue::Bool(randomize_enabled)) = &document_node.inputs.get(randomize_index).and_then(|input| input.as_value()) {
+			randomize_enabled
+		} else {
+			false
+		},
+	)
 }
 
 pub(crate) fn channel_mixer_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -2124,6 +2094,7 @@ pub(crate) fn index_properties(document_node: &DocumentNode, node_id: NodeId, _c
 pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> LayoutGroup {
 	let mut layout = Vec::new();
 
+	// TODO: Allow fully custom properties for nodes (should only be done for proto nodes where the number of inputs is known)
 	let number_of_inputs = context.network_interface.number_of_inputs(&node_id, context.selection_network_path);
 	for input_index in 0..number_of_inputs {
 		let row = context.call_widget_override(&node_id, input_index).unwrap_or_else(|| {

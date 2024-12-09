@@ -40,12 +40,6 @@ pub struct NodePropertiesContext<'a> {
 
 impl NodePropertiesContext<'_> {
 	pub fn call_widget_override(&mut self, node_id: &NodeId, index: usize) -> Option<Vec<LayoutGroup>> {
-		//let current_override = //Get mutable reference from transient metadata
-		//let mut widget_override = std::mem::replace(&mut WidgetOverrideLambda(Box::new()), current_override);
-		// let layout = widget_override.0(node_id, context);
-		//let current_override = //Get mutable reference from transient metadata (now empty)
-		//let empty_widget_override = std::mem::replace(&mut widget_override, current_override) // Put back the taken override
-		// Some(layout)
 		let Some(input_properties_row) = self.network_interface.input_properties_row(node_id, index, self.selection_network_path) else {
 			log::error!("Could not get input properties row in call_widget_override");
 			return None;
@@ -2989,6 +2983,32 @@ fn static_input_properties() -> HashMap<String, Box<dyn Fn(NodeId, usize, &mut N
 				true,
 			);
 			Ok(vec![contrast.into()])
+		}),
+	);
+	map.insert(
+		"assign_colors_gradient".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let gradient_row = node_properties::color_widget(document_node, node_id, index, input_name, ColorButton::default().allow_none(false), true);
+			Ok(vec![gradient_row])
+		}),
+	);
+	map.insert(
+		"assign_colors_seed".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let randomize_enabled = node_properties::query_assign_colors_randomize(node_id, context)?;
+			let seed_row = node_properties::number_widget(document_node, node_id, index, input_name, NumberInput::default().min(0.).int().disabled(!randomize_enabled), true);
+			Ok(vec![seed_row.into()])
+		}),
+	);
+	map.insert(
+		"assign_colors_repeat_every_row".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let randomize_enabled = node_properties::query_assign_colors_randomize(node_id, context)?;
+			let repeat_every_row = node_properties::number_widget(document_node, node_id, index, input_name, NumberInput::default().min(0.).int().disabled(randomize_enabled), true);
+			Ok(vec![repeat_every_row.into()])
 		}),
 	);
 	map

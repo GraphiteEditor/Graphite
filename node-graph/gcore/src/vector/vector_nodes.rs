@@ -54,11 +54,11 @@ async fn assign_colors<F: 'n + Send, T: VectorIterMut>(
 	vector_group: impl Node<F, Output = T>,
 	#[default(true)] fill: bool,
 	stroke: bool,
-	gradient: GradientStops,
+	#[widget(ParsedWidgetOverride::Custom = "assign_colors_gradient")] gradient: GradientStops,
 	reverse: bool,
-	randomize: bool,
-	seed: SeedValue,
-	repeat_every: u32,
+	#[widget(ParsedWidgetOverride::Custom = "assign_colors_randomize")] randomize: bool,
+	#[widget(ParsedWidgetOverride::Custom = "assign_colors_seed")] seed: SeedValue,
+	#[widget(ParsedWidgetOverride::Custom = "assign_colors_repeat_every_row")] repeat_every: u32,
 ) -> T {
 	let mut input = vector_group.eval(footprint).await;
 	let length = input.vector_iter_mut().count();
