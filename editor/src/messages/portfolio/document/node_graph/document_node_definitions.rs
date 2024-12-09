@@ -1,9 +1,9 @@
 use super::node_properties;
 use super::utility_types::FrontendNodeType;
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::node_graph::node_properties::node_no_properties;
 use crate::messages::portfolio::document::utility_types::network_interface::{
-	DocumentNodeMetadata, DocumentNodePersistentMetadata, NodeNetworkInterface, NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodeTemplate, NodeTypePersistentMetadata,
+	DocumentNodeMetadata, DocumentNodePersistentMetadata, NodeNetworkInterface, NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodeTemplate, NodeTypePersistentMetadata, PropertiesRow,
+	WidgetOverride,
 };
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
@@ -33,9 +33,31 @@ pub struct NodePropertiesContext<'a> {
 	pub persistent_data: &'a PersistentData,
 	pub responses: &'a mut VecDeque<Message>,
 	pub executor: &'a mut NodeGraphExecutor,
-	pub network_interface: &'a NodeNetworkInterface,
+	pub network_interface: &'a mut NodeNetworkInterface,
 	pub selection_network_path: &'a [NodeId],
 	pub document_name: &'a str,
+}
+
+impl NodePropertiesContext<'_> {
+	pub fn call_widget_override(&mut self, node_id: &NodeId, index: usize) -> Option<Vec<LayoutGroup>> {
+		let Some(input_properties_row) = self.network_interface.input_properties_row(node_id, index, self.selection_network_path) else {
+			log::error!("Could not get input properties row in call_widget_override");
+			return None;
+		};
+		if let Some(widget_override) = &input_properties_row.widget_override {
+			let Some(widget_override_lambda) = INPUT_OVERRIDES.get(widget_override) else {
+				log::error!("Could not get widget override lambda in call_widget_override");
+				return None;
+			};
+			widget_override_lambda(*node_id, index, self)
+				.map_err(|error| {
+					log::error!("Error in widget override lambda: {}", error);
+				})
+				.ok()
+		} else {
+			None
+		}
+	}
 }
 
 /// Acts as a description for a [DocumentNode] before it gets instantiated as one.
@@ -49,7 +71,6 @@ pub struct DocumentNodeDefinition {
 
 	/// Definition specific data. In order for the editor to access this data, the reference will be used.
 	pub category: &'static str,
-	pub properties: &'static (dyn Fn(&DocumentNode, NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Sync),
 
 	/// User-facing description of the node's functionality.
 	pub description: Cow<'static, str>,
@@ -64,7 +85,6 @@ static DOCUMENT_NODE_TYPES: once_cell::sync::Lazy<Vec<DocumentNodeDefinition>> =
 /// The [`DocumentNode`] is the instance while these [`DocumentNodeDefinition`]s are the "classes" or "blueprints" from which the instances are built.
 fn static_nodes() -> Vec<DocumentNodeDefinition> {
 	let mut custom = vec![
-		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
 			identifier: "Default Network",
 			category: "General",
@@ -79,7 +99,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("A default node network you can use to create your own custom nodes."),
-			properties: &node_properties::node_no_properties,
 		},
 		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
@@ -92,13 +111,16 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["In".to_string()],
+					input_properties: vec![PropertiesRow::with_override(
+						"In",
+						WidgetOverride::String("The identity node simply passes its data through.".to_string()),
+					)],
 					output_names: vec!["Out".to_string()],
 					..Default::default()
 				},
 			},
+
 			description: Cow::Borrowed("The identity node passes its data through. You can use this to organize your node graph."),
-			properties: &|_document_node, _node_id, _context| node_properties::string_properties("The identity node simply passes its data through"),
 		},
 		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
@@ -113,13 +135,15 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["In".to_string()],
+					input_properties: vec![PropertiesRow::with_override(
+						"In",
+						WidgetOverride::String("The Monitor node is used by the editor to access the data flowing through it.".to_string()),
+					)],
 					output_names: vec!["Out".to_string()],
 					..Default::default()
 				},
 			},
 			description: Cow::Borrowed("The Monitor node is used by the editor to access the data flowing through it."),
-			properties: &|_document_node, _node_id, _context| node_properties::string_properties("The Monitor node is used by the editor to access the data flowing through it"),
 		},
 		DocumentNodeDefinition {
 			identifier: "Merge",
@@ -175,7 +199,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Graphical Data".to_string(), "Over".to_string()],
+					input_properties: vec!["Graphical Data".into(), "Over".into()],
 					output_names: vec!["Out".to_string()],
 					node_type_metadata: NodeTypePersistentMetadata::layer(IVec2::new(0, 0)),
 					network_metadata: Some(NodeNetworkMetadata {
@@ -226,7 +250,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("The Merge node combines graphical data through composition."),
-			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Artboard",
@@ -287,13 +310,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec![
-						"Artboards".to_string(),
-						"Contents".to_string(),
-						"Location".to_string(),
-						"Dimensions".to_string(),
-						"Background".to_string(),
-						"Clip".to_string(),
+					input_properties: vec![
+						PropertiesRow::with_override("Artboards", WidgetOverride::Hidden),
+						PropertiesRow::with_override("Contents", WidgetOverride::Hidden),
+						"Location".into(),
+						"Dimensions".into(),
+						"Background".into(),
+						"Clip".into(),
 					],
 					output_names: vec!["Out".to_string()],
 					node_type_metadata: NodeTypePersistentMetadata::layer(IVec2::new(0, 0)),
@@ -337,7 +360,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("Creates a new Artboard which can be used as a working surface."),
-			properties: &node_properties::artboard_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Load Image",
@@ -376,7 +398,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["api".to_string(), "path".to_string()],
+					input_properties: vec![PropertiesRow::with_override("api", WidgetOverride::Hidden), "path".into()],
 					output_names: vec!["Image Frame".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -418,7 +440,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("Loads an image from a given url."),
-			properties: &node_properties::load_image_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Create Canvas",
@@ -483,7 +504,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("Creates a new canvas object."),
-			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Draw Canvas",
@@ -526,7 +546,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["In".to_string()],
+					input_properties: vec!["In".into()],
 					output_names: vec!["Canvas".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -576,7 +596,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("Draws raster data to a canvas element."),
-			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Rasterize",
@@ -626,7 +645,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Artwork".to_string(), "Footprint".to_string()],
+					input_properties: vec!["Artwork".into(), "Footprint".into()],
 					output_names: vec!["Canvas".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -668,7 +687,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("Rasterizes the given vector data"),
-			properties: &node_properties::rasterize_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Image Frame",
@@ -703,7 +721,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Transform".to_string()],
+					input_properties: vec![PropertiesRow::with_override(
+						"Image",
+						WidgetOverride::String("Creates an embedded image with the given transform.".to_string()),
+					)],
 					output_names: vec!["Image".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -737,7 +758,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("Creates an embedded image with the given transform."),
-			properties: &|_document_node, _node_id, _context| node_properties::string_properties("Creates an embedded image with the given transform"),
 		},
 		DocumentNodeDefinition {
 			identifier: "Noise Pattern",
@@ -766,22 +786,22 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec![
-						"Clip".to_string(),
-						"Seed".to_string(),
-						"Scale".to_string(),
-						"Noise Type".to_string(),
-						"Domain Warp Type".to_string(),
-						"Domain Warp Amplitude".to_string(),
-						"Fractal Type".to_string(),
-						"Fractal Octaves".to_string(),
-						"Fractal Lacunarity".to_string(),
-						"Fractal Gain".to_string(),
-						"Fractal Weighted Strength".to_string(),
-						"Fractal Ping Pong Strength".to_string(),
-						"Cellular Distance Function".to_string(),
-						"Cellular Return Type".to_string(),
-						"Cellular Jitter".to_string(),
+					input_properties: vec![
+						"Clip".into(),
+						"Seed".into(),
+						PropertiesRow::with_override("Scale", WidgetOverride::Custom("noise_properties_scale".to_string())),
+						PropertiesRow::with_override("Noise Type", WidgetOverride::Custom("noise_properties_noise_type".to_string())),
+						PropertiesRow::with_override("Domain Warp Type", WidgetOverride::Custom("noise_properties_domain_warp_type".to_string())),
+						PropertiesRow::with_override("Domain Warp Amplitude", WidgetOverride::Custom("noise_properties_domain_warp_amplitude".to_string())),
+						PropertiesRow::with_override("Fractal Type", WidgetOverride::Custom("noise_properties_fractal_type".to_string())),
+						PropertiesRow::with_override("Fractal Octaves", WidgetOverride::Custom("noise_properties_fractal_octaves".to_string())),
+						PropertiesRow::with_override("Fractal Lacunarity", WidgetOverride::Custom("noise_properties_fractal_lacunarity".to_string())),
+						PropertiesRow::with_override("Fractal Gain", WidgetOverride::Custom("noise_properties_fractal_gain".to_string())),
+						PropertiesRow::with_override("Fractal Weighted Strength", WidgetOverride::Custom("noise_properties_fractal_weighted_strength".to_string())),
+						PropertiesRow::with_override("Fractal Ping Pong Strength", WidgetOverride::Custom("noise_properties_ping_pong_strength".to_string())),
+						PropertiesRow::with_override("Cellular Distance Function", WidgetOverride::Custom("noise_properties_cellular_distance_function".to_string())),
+						PropertiesRow::with_override("Cellular Return Type", WidgetOverride::Custom("noise_properties_cellular_return_type".to_string())),
+						PropertiesRow::with_override("Cellular Jitter", WidgetOverride::Custom("noise_properties_cellular_jitter".to_string())),
 					],
 					output_names: vec!["Image".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
@@ -816,7 +836,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("Generates different noise patterns."),
-			properties: &node_properties::noise_pattern_properties,
 		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
 		// TODO: Auto-generate this from its proto node macro
@@ -833,13 +852,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Stencil".to_string()],
+					input_properties: vec![PropertiesRow::with_override("Image", WidgetOverride::Hidden), "Stencil".into()],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: &node_properties::mask_properties,
 		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
 		// TODO: Auto-generate this from its proto node macro
@@ -857,13 +875,16 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Insertion".to_string(), "Replace".to_string()],
+					input_properties: vec![
+						PropertiesRow::with_override("Image", WidgetOverride::Hidden),
+						PropertiesRow::with_override("Insertion", WidgetOverride::Hidden),
+						"Replace".into(),
+					],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: &node_properties::insert_channel_properties,
 		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
 		DocumentNodeDefinition {
@@ -882,13 +903,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["None".to_string(), "Red".to_string(), "Green".to_string(), "Blue".to_string(), "Alpha".to_string()],
+					input_properties: vec!["None".into(), "Red".into(), "Green".into(), "Blue".into(), "Alpha".into()],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Split Channels",
@@ -951,7 +971,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string()],
+					input_properties: vec!["Image".into()],
 					output_names: vec!["Red".to_string(), "Green".to_string(), "Blue".to_string(), "Alpha".to_string()],
 					has_primary_output: false,
 					network_metadata: Some(NodeNetworkMetadata {
@@ -1002,7 +1022,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Brush",
@@ -1037,7 +1056,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Background".to_string(), "Bounds".to_string(), "Trace".to_string(), "Cache".to_string()],
+					input_properties: vec!["Background".into(), "Bounds".into(), "Trace".into(), "Cache".into()],
 					output_names: vec!["Image".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1071,7 +1090,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Memoize",
@@ -1084,13 +1102,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string()],
+					input_properties: vec!["Image".into()],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Memoize Impure",
@@ -1103,13 +1120,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string()],
+					input_properties: vec!["Image".into()],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Image",
@@ -1134,7 +1150,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string()],
+					input_properties: vec![PropertiesRow::with_override("Image", WidgetOverride::String("A bitmap image is embedded in this node".to_string()))],
 					output_names: vec!["Image".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1158,7 +1174,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: &|_document_node, _node_id, _context| node_properties::string_properties("A bitmap image embedded in this node"),
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
@@ -1197,7 +1212,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["In".to_string()],
+					input_properties: vec!["In".into()],
 					output_names: vec!["Uniform".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1239,7 +1254,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Storage",
@@ -1276,7 +1290,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["In".to_string()],
+					input_properties: vec!["In".into()],
 					output_names: vec!["Storage".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1318,7 +1332,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Create Output Buffer",
@@ -1355,7 +1368,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["In".to_string(), "In".to_string()],
+					input_properties: vec!["In".into(), "In".into()],
 					output_names: vec!["Output Buffer".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1397,7 +1410,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: &node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
@@ -1444,7 +1456,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["In".to_string(), "In".to_string(), "In".to_string()],
+					input_properties: vec!["In".into(), "In".into(), "In".into()],
 					output_names: vec!["Command Buffer".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1486,7 +1498,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: &node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
@@ -1504,12 +1515,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Shader Handle".to_string(), "String".to_string(), "Bindgroup".to_string(), "Arc Shader Input".to_string()],
+					input_properties: vec!["Shader Handle".into(), "String".into(), "Bindgroup".into(), "Arc Shader Input".into()],
 					output_names: vec!["Pipeline Layout".to_string()],
 					..Default::default()
 				},
 			},
-			properties: &node_properties::node_no_properties,
+
 			description: Cow::Borrowed("TODO"),
 		},
 		#[cfg(feature = "gpu")]
@@ -1548,7 +1559,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["In".to_string()],
+					input_properties: vec!["In".into()],
 					output_names: vec!["Pipeline Result".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1590,7 +1601,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: &node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
@@ -1628,7 +1638,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["In".to_string()],
+					input_properties: vec!["In".into()],
 					output_names: vec!["Buffer".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1670,7 +1680,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: &node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
@@ -1736,7 +1745,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: &node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
@@ -1773,7 +1781,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Texture".to_string(), "Surface".to_string()],
+					input_properties: vec!["Texture".into(), "Surface".into()],
 					output_names: vec!["Rendered Texture".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1807,7 +1815,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: &node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
@@ -1846,7 +1853,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["In".to_string()],
+					input_properties: vec!["In".into()],
 					output_names: vec!["Texture".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1888,7 +1895,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: &node_properties::node_no_properties,
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
@@ -1904,13 +1910,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Node".to_string()],
+					input_properties: vec!["Image".into(), "Node".into()],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Extract",
@@ -1922,13 +1927,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Node".to_string()],
+					input_properties: vec!["Node".into()],
 					output_names: vec!["Document Node".to_string()],
 					..Default::default()
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			// Aims for interoperable compatibility with:
@@ -1948,13 +1952,17 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Brightness".to_string(), "Contrast".to_string(), "Use Classic".to_string()],
+					input_properties: vec![
+						PropertiesRow::with_override("Image", WidgetOverride::Hidden),
+						PropertiesRow::with_override("Brightness", WidgetOverride::Custom("brightness".to_string())),
+						PropertiesRow::with_override("Brightness", WidgetOverride::Custom("contrast".to_string())),
+						"Use Classic".into(),
+					],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: &node_properties::brightness_contrast_properties,
 		},
 		// Aims for interoperable compatibility with:
 		// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=levl%27%20%3D%20Levels-,%27curv%27%20%3D%20Curves,-%27expA%27%20%3D%20Exposure
@@ -1972,13 +1980,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Image".to_string(), "Curve".to_string()],
+					input_properties: vec![PropertiesRow::with_override("Image", WidgetOverride::Hidden), "Curve".into()],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: &node_properties::curves_properties,
 		},
 		(*IMAGINATE_NODE).clone(),
 		DocumentNodeDefinition {
@@ -1996,13 +2003,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["None".to_string(), "Start".to_string(), "End".to_string()],
+					input_properties: vec!["None".into(), "Start".into(), "End".into()],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: &node_properties::line_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Spline",
@@ -2019,13 +2025,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["None".to_string(), "Points".to_string()],
+					input_properties: vec!["None".into(), "Points".into()],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: &node_properties::spline_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Path",
@@ -2062,7 +2067,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Vector Data".to_string(), "Modification".to_string()],
+					input_properties: vec!["Vector Data".into(), "Modification".into()],
 					output_names: vec!["Vector Data".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -2096,7 +2101,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: &node_properties::node_no_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Text",
@@ -2119,20 +2123,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec![
-						"Editor API".to_string(),
-						"Text".to_string(),
-						"Font".to_string(),
-						"Size".to_string(),
-						"Line Height".to_string(),
-						"Character Spacing".to_string(),
-					],
+					input_properties: vec!["Editor API".into(), "Text".into(), "Font".into(), "Size".into(), "Line Height".into(), "Character Spacing".into()],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: &node_properties::text_properties,
 		},
 		DocumentNodeDefinition {
 			identifier: "Transform",
@@ -2206,19 +2202,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 						..Default::default()
 					}),
-					input_names: vec![
-						"Vector Data".to_string(),
-						"Translation".to_string(),
-						"Rotation".to_string(),
-						"Scale".to_string(),
-						"Skew".to_string(),
-						"Pivot".to_string(),
-					],
+					input_properties: vec!["Vector Data".into(), "Translation".into(), "Rotation".into(), "Scale".into(), "Skew".into(), "Pivot".into()],
 					output_names: vec!["Data".to_string()],
 					..Default::default()
 				},
 			},
-			properties: &node_properties::transform_properties,
+
 			description: Cow::Borrowed("TODO"),
 		},
 		DocumentNodeDefinition {
@@ -2283,12 +2272,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 						..Default::default()
 					}),
-					input_names: vec!["Group of Paths".to_string(), "Operation".to_string()],
+					input_properties: vec!["Group of Paths".into(), "Operation".into()],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
 			},
-			properties: &node_properties::boolean_operation_properties,
+
 			description: Cow::Borrowed("TODO"),
 		},
 		DocumentNodeDefinition {
@@ -2312,21 +2301,21 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec![
-						"Points".to_string(),
-						"Instance".to_string(),
-						"Random Scale Min".to_string(),
-						"Random Scale Max".to_string(),
-						"Random Scale Bias".to_string(),
-						"Random Scale Seed".to_string(),
-						"Random Rotation".to_string(),
-						"Random Rotation Seed".to_string(),
+					input_properties: vec![
+						"Points".into(),
+						"Instance".into(),
+						"Random Scale Min".into(),
+						"Random Scale Max".into(),
+						"Random Scale Bias".into(),
+						"Random Scale Seed".into(),
+						"Random Rotation".into(),
+						"Random Rotation Seed".into(),
 					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
 			},
-			properties: &node_properties::copy_to_points_properties,
+
 			description: Cow::Borrowed("TODO"),
 		},
 		DocumentNodeDefinition {
@@ -2412,18 +2401,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 						..Default::default()
 					}),
-					input_names: vec![
-						"Vector Data".to_string(),
-						"Spacing".to_string(),
-						"Start Offset".to_string(),
-						"Stop Offset".to_string(),
-						"Adaptive Spacing".to_string(),
-					],
+					input_properties: vec!["Vector Data".into(), "Spacing".into(), "Start Offset".into(), "Stop Offset".into(), "Adaptive Spacing".into()],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
 			},
-			properties: &node_properties::sample_points_properties,
+
 			description: Cow::Borrowed("TODO"),
 		},
 		DocumentNodeDefinition {
@@ -2491,12 +2474,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 						..Default::default()
 					}),
-					input_names: vec!["Vector Data".to_string(), "Separation Disk Diameter".to_string(), "Seed".to_string()],
+					input_properties: vec!["Vector Data".into(), "Separation Disk Diameter".into(), "Seed".into()],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
 			},
-			properties: &node_properties::poisson_disk_points_properties,
+
 			description: Cow::Borrowed("TODO"),
 		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
@@ -2510,32 +2493,15 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["Segmentation".to_string(), "Index".to_string()],
+					input_properties: vec!["Segmentation".into(), "Index".into()],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
 			},
-			properties: &node_properties::index_properties,
+
 			description: Cow::Borrowed("TODO"),
 		},
 	];
-
-	type PropertiesLayout = &'static (dyn Fn(&DocumentNode, NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Sync);
-	let properties_overrides = [
-		("graphene_core::raster::adjustments::ChannelMixerNode", &node_properties::channel_mixer_properties as PropertiesLayout),
-		("graphene_core::vector::FillNode", &node_properties::fill_properties as PropertiesLayout),
-		("graphene_core::vector::StrokeNode", &node_properties::stroke_properties as PropertiesLayout),
-		("graphene_core::vector::OffsetPathNode", &node_properties::offset_path_properties as PropertiesLayout),
-		(
-			"graphene_core::raster::adjustments::SelectiveColorNode",
-			&node_properties::selective_color_properties as PropertiesLayout,
-		),
-		("graphene_core::raster::ExposureNode", &node_properties::exposure_properties as PropertiesLayout),
-		("graphene_core::vector::generator_nodes::RectangleNode", &node_properties::rectangle_properties as PropertiesLayout),
-		("graphene_core::vector::AssignColorsNode", &node_properties::assign_colors_properties as PropertiesLayout),
-	]
-	.into_iter()
-	.collect::<HashMap<_, _>>();
 
 	// Remove struct generics
 	for DocumentNodeDefinition { node_template, .. } in custom.iter_mut() {
@@ -2590,9 +2556,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				let exposed = if index == 0 { *ty != fn_type!(()) } else { field.exposed };
 
 				match field.value_source {
-					ValueSource::None => {}
-					ValueSource::Default(data) => return NodeInput::value(TaggedValue::from_primitive_string(data, ty).unwrap_or(TaggedValue::None), exposed),
-					ValueSource::Scope(data) => return NodeInput::scope(Cow::Borrowed(data)),
+					RegistryValueSource::None => {}
+					RegistryValueSource::Default(data) => return NodeInput::value(TaggedValue::from_primitive_string(data, ty).unwrap_or(TaggedValue::None), exposed),
+					RegistryValueSource::Scope(data) => return NodeInput::scope(Cow::Borrowed(data)),
 				};
 
 				if let Some(type_default) = TaggedValue::from_type(ty) {
@@ -2601,33 +2567,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				NodeInput::value(TaggedValue::None, true)
 			})
 			.collect();
-
-		let properties = match properties_overrides.get(id.as_str()) {
-			Some(properties_function) => *properties_function,
-			None => {
-				let field_types: Vec<_> = fields.iter().zip(first_node_io.inputs.iter()).map(|(field, ty)| (field.clone(), ty.clone())).collect();
-				let properties = move |document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext| {
-					let rows: Vec<_> = field_types
-						.iter()
-						.enumerate()
-						.skip(1)
-						.filter(|(_, (field, _))| !matches!(&field.value_source, ValueSource::Scope(_)))
-						.flat_map(|(index, (field, ty))| {
-							let number_options = (field.number_min, field.number_max, field.number_mode_range);
-
-							node_properties::property_from_type(document_node, node_id, index, field.name, ty, context, number_options)
-						})
-						.collect();
-
-					if rows.is_empty() {
-						return node_no_properties(document_node, node_id, context);
-					}
-
-					rows
-				};
-				Box::leak(Box::new(properties)) as PropertiesLayout
-			}
-		};
 
 		let node = DocumentNodeDefinition {
 			identifier: display_name,
@@ -2641,7 +2580,16 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: fields.iter().map(|f| f.name.to_string()).collect(),
+					// TODO: Store information for input overrides in the node macro
+					input_properties: fields
+						.iter()
+						.map(|f| match f.widget_override {
+							RegistryWidgetOverride::None => f.name.into(),
+							RegistryWidgetOverride::Hidden => PropertiesRow::with_override(f.name, WidgetOverride::Hidden),
+							RegistryWidgetOverride::String(str) => PropertiesRow::with_override(f.name, WidgetOverride::String(str.to_string())),
+							RegistryWidgetOverride::Custom(str) => PropertiesRow::with_override(f.name, WidgetOverride::Custom(str.to_string())),
+						})
+						.collect(),
 					output_names: vec![output_type.to_string()],
 					has_primary_output: true,
 					locked: false,
@@ -2650,7 +2598,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: category.unwrap_or("UNCATEGORIZED"),
 			description: Cow::Borrowed(description),
-			properties,
 		};
 		custom.push(node);
 	}
@@ -2752,32 +2699,320 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 				},
 				..Default::default()
 			}),
-			input_names: vec![
-				"Input Image".to_string(),
-				"Editor Api".to_string(),
-				"Controller".to_string(),
-				"Seed".to_string(),
-				"Resolution".to_string(),
-				"Samples".to_string(),
-				"Sampling Method".to_string(),
-				"Prompt Guidance".to_string(),
-				"Prompt".to_string(),
-				"Negative Prompt".to_string(),
-				"Adapt Input Image".to_string(),
-				"Image Creativity".to_string(),
-				"Inpaint".to_string(),
-				"Mask Blur".to_string(),
-				"Mask Starting Fill".to_string(),
-				"Improve Faces".to_string(),
-				"Tiling".to_string(),
+			input_properties: vec![
+				"Input Image".into(),
+				"Editor Api".into(),
+				"Controller".into(),
+				"Seed".into(),
+				"Resolution".into(),
+				"Samples".into(),
+				"Sampling Method".into(),
+				"Prompt Guidance".into(),
+				"Prompt".into(),
+				"Negative Prompt".into(),
+				"Adapt Input Image".into(),
+				"Image Creativity".into(),
+				"Inpaint".into(),
+				"Mask Blur".into(),
+				"Mask Starting Fill".into(),
+				"Improve Faces".into(),
+				"Tiling".into(),
 			],
 			output_names: vec!["Image".to_string()],
 			..Default::default()
 		},
 	},
-	properties: &node_properties::imaginate_properties,
+
 	description: Cow::Borrowed("TODO"),
 });
+
+static INPUT_OVERRIDES: once_cell::sync::Lazy<HashMap<String, Box<dyn Fn(NodeId, usize, &mut NodePropertiesContext) -> Result<Vec<LayoutGroup>, String> + Send + Sync>>> =
+	once_cell::sync::Lazy::new(static_input_properties);
+
+/// Defines the logic for inputs to display a custom properties panel widget.
+fn static_input_properties() -> HashMap<String, Box<dyn Fn(NodeId, usize, &mut NodePropertiesContext) -> Result<Vec<LayoutGroup>, String> + Send + Sync>> {
+	let mut map: HashMap<String, Box<dyn Fn(NodeId, usize, &mut NodePropertiesContext) -> Result<Vec<LayoutGroup>, String> + Send + Sync>> = HashMap::new();
+	map.insert("hidden".to_string(), Box::new(|_node_id, _index, _context| Ok(Vec::new())));
+	map.insert(
+		"string".to_string(),
+		Box::new(|node_id, index, context| {
+			let Some(value) = context.network_interface.input_metadata(&node_id, index, "string_properties", context.selection_network_path) else {
+				return Err(format!("Could not get string properties for node {}", node_id));
+			};
+			let Some(string) = value.as_str() else {
+				return Err(format!("Could not downcast string properties for node {}", node_id));
+			};
+			Ok(node_properties::string_properties(string.to_string()))
+		}),
+	);
+	map.insert(
+		"noise_properties_scale".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let scale = node_properties::number_widget(document_node, node_id, index, input_name, NumberInput::default().min(0.).disabled(!coherent_noise_active), true);
+			Ok(vec![scale.into()])
+		}),
+	);
+	map.insert(
+		"noise_properties_noise_type".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let noise_type_row = node_properties::noise_type(document_node, node_id, index, input_name, true);
+			Ok(vec![noise_type_row, LayoutGroup::Row { widgets: Vec::new() }])
+		}),
+	);
+	map.insert(
+		"noise_properties_domain_warp_type".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let domain_warp_type = node_properties::domain_warp_type(document_node, node_id, index, input_name, true, !coherent_noise_active);
+			Ok(vec![domain_warp_type.into()])
+		}),
+	);
+	map.insert(
+		"noise_properties_domain_warp_amplitude".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (_, coherent_noise_active, _, _, domain_warp_active, _) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let domain_warp_amplitude = node_properties::number_widget(
+				document_node,
+				node_id,
+				index,
+				input_name,
+				NumberInput::default().min(0.).disabled(!coherent_noise_active || !domain_warp_active),
+				true,
+			);
+			Ok(vec![domain_warp_amplitude.into(), LayoutGroup::Row { widgets: Vec::new() }])
+		}),
+	);
+	map.insert(
+		"noise_properties_fractal_type".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let fractal_type_row = node_properties::fractal_type(document_node, node_id, index, input_name, true, !coherent_noise_active);
+			Ok(vec![fractal_type_row.into()])
+		}),
+	);
+	map.insert(
+		"noise_properties_fractal_octaves".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let fractal_octaves = node_properties::number_widget(
+				document_node,
+				node_id,
+				index,
+				input_name,
+				NumberInput::default()
+					.mode_range()
+					.min(1.)
+					.max(10.)
+					.range_max(Some(4.))
+					.is_integer(true)
+					.disabled(!coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
+				true,
+			);
+			Ok(vec![fractal_octaves.into()])
+		}),
+	);
+	map.insert(
+		"noise_properties_fractal_lacunarity".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let fractal_lacunarity = node_properties::number_widget(
+				document_node,
+				node_id,
+				index,
+				input_name,
+				NumberInput::default()
+					.mode_range()
+					.min(0.)
+					.range_max(Some(10.))
+					.disabled(!coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
+				true,
+			);
+			Ok(vec![fractal_lacunarity.into()])
+		}),
+	);
+	map.insert(
+		"noise_properties_fractal_gain".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let fractal_gain = node_properties::number_widget(
+				document_node,
+				node_id,
+				index,
+				input_name,
+				NumberInput::default()
+					.mode_range()
+					.min(0.)
+					.range_max(Some(10.))
+					.disabled(!coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
+				true,
+			);
+			Ok(vec![fractal_gain.into()])
+		}),
+	);
+	map.insert(
+		"noise_properties_fractal_weighted_strength".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let fractal_weighted_strength = node_properties::number_widget(
+				document_node,
+				node_id,
+				index,
+				input_name,
+				NumberInput::default()
+					.mode_range()
+					.min(0.)
+					.max(1.) // Defined for the 0-1 range
+					.disabled(!coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
+				true,
+			);
+			Ok(vec![fractal_weighted_strength.into()])
+		}),
+	);
+	map.insert(
+		"noise_properties_ping_pong_strength".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (fractal_active, coherent_noise_active, _, ping_pong_active, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let fractal_ping_pong_strength = node_properties::number_widget(
+				document_node,
+				node_id,
+				index,
+				input_name,
+				NumberInput::default()
+					.mode_range()
+					.min(0.)
+					.range_max(Some(10.))
+					.disabled(!ping_pong_active || !coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
+				true,
+			);
+			Ok(vec![fractal_ping_pong_strength.into(), LayoutGroup::Row { widgets: Vec::new() }])
+		}),
+	);
+	map.insert(
+		"noise_properties_cellular_distance_function".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let cellular_distance_function_row = node_properties::cellular_distance_function(document_node, node_id, index, input_name, true, !coherent_noise_active || !cellular_noise_active);
+			Ok(vec![cellular_distance_function_row.into()])
+		}),
+	);
+	map.insert(
+		"noise_properties_cellular_return_type".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let cellular_return_type = node_properties::cellular_return_type(document_node, node_id, index, input_name, true, !coherent_noise_active || !cellular_noise_active);
+			Ok(vec![cellular_return_type.into()])
+		}),
+	);
+	map.insert(
+		"noise_properties_cellular_jitter".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
+			let cellular_jitter = node_properties::number_widget(
+				document_node,
+				node_id,
+				index,
+				input_name,
+				NumberInput::default()
+					.mode_range()
+					.range_min(Some(0.))
+					.range_max(Some(1.))
+					.disabled(!coherent_noise_active || !cellular_noise_active),
+				true,
+			);
+			Ok(vec![cellular_jitter.into()])
+		}),
+	);
+	map.insert(
+		"brightness".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let is_use_classic = document_node
+				.inputs
+				.iter()
+				.find_map(|input| match input.as_value() {
+					Some(&TaggedValue::Bool(use_classic)) => Some(use_classic),
+					_ => None,
+				})
+				.unwrap_or(false);
+			let (b_min, b_max) = if is_use_classic { (-100., 100.) } else { (-100., 150.) };
+			let brightness = node_properties::number_widget(
+				document_node,
+				node_id,
+				index,
+				input_name,
+				NumberInput::default().mode_range().range_min(Some(b_min)).range_max(Some(b_max)).unit("%").display_decimal_places(2),
+				true,
+			);
+			Ok(vec![brightness.into()])
+		}),
+	);
+	map.insert(
+		"contrast".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let is_use_classic = document_node
+				.inputs
+				.iter()
+				.find_map(|input| match input.as_value() {
+					Some(&TaggedValue::Bool(use_classic)) => Some(use_classic),
+					_ => None,
+				})
+				.unwrap_or(false);
+			let (c_min, c_max) = if is_use_classic { (-100., 100.) } else { (-50., 100.) };
+			let contrast = node_properties::number_widget(
+				document_node,
+				node_id,
+				index,
+				input_name,
+				NumberInput::default().mode_range().range_min(Some(c_min)).range_max(Some(c_max)).unit("%").display_decimal_places(2),
+				true,
+			);
+			Ok(vec![contrast.into()])
+		}),
+	);
+	map.insert(
+		"assign_colors_gradient".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let gradient_row = node_properties::color_widget(document_node, node_id, index, input_name, ColorButton::default().allow_none(false), true);
+			Ok(vec![gradient_row])
+		}),
+	);
+	map.insert(
+		"assign_colors_seed".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let randomize_enabled = node_properties::query_assign_colors_randomize(node_id, context)?;
+			let seed_row = node_properties::number_widget(document_node, node_id, index, input_name, NumberInput::default().min(0.).int().disabled(!randomize_enabled), true);
+			Ok(vec![seed_row.into()])
+		}),
+	);
+	map.insert(
+		"assign_colors_repeat_every_row".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let randomize_enabled = node_properties::query_assign_colors_randomize(node_id, context)?;
+			let repeat_every_row = node_properties::number_widget(document_node, node_id, index, input_name, NumberInput::default().min(0.).int().disabled(randomize_enabled), true);
+			Ok(vec![repeat_every_row.into()])
+		}),
+	);
+	map
+}
 
 pub fn resolve_document_node_type(identifier: &str) -> Option<&DocumentNodeDefinition> {
 	DOCUMENT_NODE_TYPES.iter().find(|definition| definition.identifier == identifier)
@@ -2810,6 +3045,62 @@ impl DocumentNodeDefinition {
 				template.document_node.inputs[index] = input_override;
 			}
 		});
+
+		//Ensure that the input properties are initialized for every Document Node input for every node
+		fn populate_input_properties(node_template: &mut NodeTemplate, mut path: Vec<NodeId>) {
+			if let Some(current_node) = path.pop() {
+				let DocumentNodeImplementation::Network(template_network) = &node_template.document_node.implementation else {
+					log::error!("Template network should always exist");
+					return;
+				};
+				let Some(nested_network) = template_network.nested_network(&path) else {
+					log::error!("Nested network should exist for path");
+					return;
+				};
+				let Some(input_length) = nested_network.nodes.get(&current_node).map(|node| node.inputs.len()) else {
+					log::error!("Could not get current node in nested network");
+					return;
+				};
+				let Some(template_network_metadata) = &mut node_template.persistent_node_metadata.network_metadata else {
+					log::error!("Template should have metadata if it has network implementation");
+					return;
+				};
+				let Some(nested_network_metadata) = template_network_metadata.nested_metadata_mut(&path) else {
+					log::error!("Path is not valid for network");
+					return;
+				};
+				let Some(nested_node_metadata) = nested_network_metadata.persistent_metadata.node_metadata.get_mut(&current_node) else {
+					log::error!("Path is not valid for network");
+					return;
+				};
+				nested_node_metadata.persistent_metadata.input_properties.resize_with(input_length, PropertiesRow::default);
+
+				//Recurse over all sub nodes if the current node is a network implementation
+				let mut current_path = path.clone();
+				current_path.push(current_node);
+				let DocumentNodeImplementation::Network(template_network) = &node_template.document_node.implementation else {
+					log::error!("Template network should always exist");
+					return;
+				};
+				if let Some(current_nested_network) = template_network.nested_network(&current_path) {
+					for sub_node_id in current_nested_network.nodes.keys().cloned().collect::<Vec<_>>() {
+						let mut sub_path = current_path.clone();
+						sub_path.push(sub_node_id);
+						populate_input_properties(node_template, sub_path);
+					}
+				};
+			} else {
+				// Base case
+				let input_len = node_template.document_node.inputs.len();
+				node_template.persistent_node_metadata.input_properties.resize_with(input_len, PropertiesRow::default);
+				if let DocumentNodeImplementation::Network(node_template_network) = &node_template.document_node.implementation {
+					for sub_node_id in node_template_network.nodes.keys().cloned().collect::<Vec<_>>() {
+						populate_input_properties(node_template, vec![sub_node_id]);
+					}
+				}
+			}
+		}
+		populate_input_properties(&mut template, Vec::new());
 
 		// Set the reference to the node definition
 		template.persistent_node_metadata.reference = Some(self.identifier.to_string());
