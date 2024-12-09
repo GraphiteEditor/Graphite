@@ -78,6 +78,7 @@ web-sys = { workspace = true, optional = true, features = [
 image = { workspace = true, optional = true, default-features = false, features = [
 	"png",
 ] }
+math-parser = { path = "../../libraries/math-parser" }
 
 [dev-dependencies]
 # Workspace dependencies
