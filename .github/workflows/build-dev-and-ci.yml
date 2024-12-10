@@ -109,23 +109,23 @@ jobs:
         uses: actions/checkout@v3
 
       - name: 🔒 Check crate security advisories for root workspace
-        uses: EmbarkStudios/cargo-deny-action@v1
+        uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check advisories
 
       - name: 🔒 Check crate security advisories for /libraries/rawkit
-        uses: EmbarkStudios/cargo-deny-action@v1
+        uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check advisories
           manifest-path: libraries/rawkit/Cargo.toml
 
       - name: 📜 Check crate license compatibility for root workspace
-        uses: EmbarkStudios/cargo-deny-action@v1
+        uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check bans licenses sources
 
       - name: 📜 Check crate license compatibility for /libraries/rawkit
-        uses: EmbarkStudios/cargo-deny-action@v1
+        uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check bans licenses sources
           manifest-path: libraries/rawkit/Cargo.toml

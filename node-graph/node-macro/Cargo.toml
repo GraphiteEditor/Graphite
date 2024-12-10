@@ -22,7 +22,7 @@ convert_case = { workspace = true }
 
 indoc = "2.0.5"
 proc-macro-crate = "3.1.0"
-proc-macro-error = "1.0"
+proc-macro-error2 = "2"
 
 [dev-dependencies]
 graphene-core = { workspace = true }
