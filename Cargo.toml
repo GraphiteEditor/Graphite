@@ -51,7 +51,7 @@ ctor = "0.2"
 convert_case = "0.6"
 derivative = "2.2"
 tempfile = "3.6"
-thiserror = "1.0"
+thiserror = "2"
 anyhow = "1.0"
 proc-macro2 = "1"
 quote = "1.0"
@@ -59,32 +59,32 @@ axum = "0.7"
 chrono = "0.4"
 ron = "0.8"
 fastnoise-lite = "1.1"
-spirv-std = { git = "https://github.com/GraphiteEditor/rust-gpu.git" }
-wgpu-types = "22"
-wgpu = { git = "https://github.com/gfx-rs/wgpu.git", features = ["strict_asserts"] } # TODO switch back to stable when a release is made
+spirv-std = { git = "https://github.com/Rust-GPU/rust-gpu.git" }
+wgpu-types = "23"
+wgpu = "23"
 once_cell = "1.13" # Remove when `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) is stabilized in Rust 1.80 and we bump our MSRV
-wasm-bindgen = "=0.2.95" # NOTICE: ensure this stays in sync with the `wasm-bindgen-cli` version in `website/content/volunteer/guide/getting-started/_index.md`. We pin this version because wasm-bindgen upgrades may break various things.
+wasm-bindgen = "=0.2.99" # NOTICE: ensure this stays in sync with the `wasm-bindgen-cli` version in `website/content/volunteer/guide/getting-started/_index.md`. We pin this version because wasm-bindgen upgrades may break various things.
 wasm-bindgen-futures = "0.4"
-js-sys = "=0.3.72"
-web-sys = "=0.3.72"
+js-sys = "=0.3.76"
+web-sys = "=0.3.76"
 winit = "0.29"
 url = "2.5"
 tokio = { version = "1.29", features = ["fs", "io-std"] }
-vello = { git = "https://github.com/0hypercube/vello", branch = "latest-wgpu" } # TODO switch back to stable when a release is made
-resvg = "0.42"
-usvg = "0.42"
+vello = { git = "https://github.com/linebender/vello.git", rev = "3275ec8" } # TODO switch back to stable when a release is made
+resvg = "0.44"
+usvg = "0.44"
 rand = { version = "0.8", default-features = false }
 rand_chacha = "0.3"
-glam = { version = "0.28", default-features = false, features = ["serde"] }
+glam = { version = "0.29", default-features = false, features = ["serde"] }
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png"] }
-rustybuzz = "0.17"
+rustybuzz = "0.20"
 spirv = "0.3"
 fern = { version = "0.6", features = ["colored"] }
 num_enum = "0.7"
 num-derive = "0.4"
 num-traits = { version = "0.2", default-features = false, features = ["i128"] }
-specta = { git = "https://github.com/oscartbeaumont/specta.git", features = [
+specta = { git = "https://github.com/0hypercube/specta.git", features = [
 	"glam",
 	"derive",
 	# "typescript",
