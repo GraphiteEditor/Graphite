@@ -1608,8 +1608,6 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		network_metadata.persistent_metadata.selection_undo_history.retain(|selected_nodes| selected_nodes.has_selected_nodes());
-
 		if let Some(selection_state) = network_metadata.persistent_metadata.selection_undo_history.pop_back() {
 			network_metadata.persistent_metadata.selection_redo_history.push_front(selection_state);
 		}
@@ -1620,8 +1618,6 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network_metadata in selection_step_forward");
 			return;
 		};
-
-		network_metadata.persistent_metadata.selection_redo_history.retain(|selected_nodes| selected_nodes.has_selected_nodes());
 
 		if let Some(selection_state) = network_metadata.persistent_metadata.selection_redo_history.pop_front() {
 			network_metadata.persistent_metadata.selection_undo_history.push_back(selection_state);
