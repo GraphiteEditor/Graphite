@@ -72,7 +72,7 @@ fn grid_overlay_rectangular_dot(document: &DocumentMessageHandler, overlay_conte
 	primary_end = (primary_end / spacing.x).floor() * spacing.x + origin.x % spacing.x;
 
 	// Round to avoid floating point errors
-	let total_dots = ((primary_end - primary_start) / spacing.x).round();
+	let total_dots = ((primary_end - primary_start) / spacing.x * overlay_context.dpr()).round();
 
 	for line_index in 0..=((max - min) / spacing.y).ceil() as i32 {
 		let secondary_pos = (((min - origin.y) / spacing.y).ceil() + line_index as f64) * spacing.y + origin.y;
@@ -82,10 +82,9 @@ fn grid_overlay_rectangular_dot(document: &DocumentMessageHandler, overlay_conte
 		let x_per_dot = (end.x - start.x) / total_dots;
 		for dot_index in 0..=total_dots as usize {
 			let exact_x = x_per_dot * dot_index as f64;
-			overlay_context.pixel(
-				document_to_viewport.transform_point2(DVec2::new(start.x + exact_x, start.y)).round(),
-				Some(&("#".to_string() + &grid_color.rgba_hex())),
-			)
+			let dot_position = document_to_viewport.transform_point2(DVec2::new(start.x + exact_x, start.y));
+
+			overlay_context.pixel(dot_position, Some(&("#".to_string() + &grid_color.rgba_hex())))
 		}
 	}
 }
@@ -95,6 +94,7 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 	let cmp = |a: &f64, b: &f64| a.partial_cmp(b).unwrap();
 	let origin = document.snapping_state.grid.origin;
 	let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size / 2., &document.document_ptz);
+	let dpr = overlay_context.dpr();
 
 	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
 	let tan_a = angle_a.to_radians().tan();
@@ -110,8 +110,9 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 	let min_y = bounds.0.iter().map(|&corner| corner.y).min_by(cmp).unwrap_or_default();
 	let max_y = bounds.0.iter().map(|&corner| corner.y).max_by(cmp).unwrap_or_default();
 	let spacing = isometric_spacing.x;
-	for line_index in 0..=((max_x - min_x) / spacing).ceil() as i32 {
-		let x_pos = (((min_x - origin.x) / spacing).ceil() + line_index as f64) * spacing + origin.x;
+
+	for line_index in 0..=((max_x - min_x) / spacing * dpr).ceil() as i32 {
+		let x_pos = (((min_x - origin.x) / spacing).ceil() + line_index as f64 / dpr) * spacing + origin.x;
 		let start = DVec2::new(x_pos, min_y);
 		let end = DVec2::new(x_pos, max_y);
 		overlay_context.line(
@@ -146,6 +147,7 @@ fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context
 	let cmp = |a: &f64, b: &f64| a.partial_cmp(b).unwrap();
 	let origin = document.snapping_state.grid.origin;
 	let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size / 2., &document.document_ptz);
+	let dpr = overlay_context.dpr();
 
 	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
 	let tan_a = angle_a.to_radians().tan();
@@ -166,16 +168,18 @@ fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context
 	let min_y = bounds.0.into_iter().min_by(|a, b| inverse_project(a).partial_cmp(&inverse_project(b)).unwrap()).unwrap_or_default();
 	let max_y = bounds.0.into_iter().max_by(|a, b| inverse_project(a).partial_cmp(&inverse_project(b)).unwrap()).unwrap_or_default();
 	let spacing_y = isometric_spacing.y;
-	let lines = ((inverse_project(&max_y) - inverse_project(&min_y)) / spacing_y).ceil() as i32;
+	let lines = ((inverse_project(&max_y) - inverse_project(&min_y)) / spacing_y * dpr).ceil() as i32;
 
 	let cos_a = angle_a.to_radians().cos();
 	// If cos_a is 0 then there will be no intersections and thus no dots should be drawn
 	if cos_a.abs() <= 0.00001 {
 		return;
 	}
+
+	let dash_length = (spacing_x / cos_a) * document_to_viewport.matrix2.x_axis.length() * dpr;
 	let x_offset = (((min_x - origin.x) / spacing_x).ceil()) * spacing_x + origin.x - min_x;
 	for line_index in 0..=lines {
-		let y_pos = (((inverse_project(&min_y) - origin.y) / spacing_y).ceil() + line_index as f64) * spacing_y + origin.y;
+		let y_pos = (((inverse_project(&min_y) - origin.y) / spacing_y).ceil() + line_index as f64 / dpr) * spacing_y + origin.y;
 		let start = DVec2::new(min_x + x_offset, project(&DVec2::new(min_x + x_offset, y_pos)));
 		let end = DVec2::new(max_x + x_offset, project(&DVec2::new(max_x + x_offset, y_pos)));
 
@@ -183,7 +187,7 @@ fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context
 			document_to_viewport.transform_point2(start),
 			document_to_viewport.transform_point2(end),
 			Some(&("#".to_string() + &grid_color.rgba_hex())),
-			Some((spacing_x / cos_a) * document_to_viewport.matrix2.x_axis.length()),
+			Some(dash_length),
 		);
 	}
 }
