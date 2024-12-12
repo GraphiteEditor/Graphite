@@ -308,7 +308,7 @@ impl NodeNetworkInterface {
 			DocumentNodeImplementation::ProtoNode(_) => 1,
 			DocumentNodeImplementation::Network(nested_network) => nested_network.exports.len(),
 			DocumentNodeImplementation::Extract => 1,
-			}
+		}
 	}
 
 	/// Creates a copy for each node by disconnecting nodes which are not connected to other copied nodes.
