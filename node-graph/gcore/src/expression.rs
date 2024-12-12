@@ -3,7 +3,7 @@ use math_parser::value::{Number, Value};
 
 /// A node that evaluates mathematical expressions during graph runtime.
 #[node_macro::node(category("Math"))]
-fn expression_node(_: (), _input: f64, #[expose] expression: String) -> f64 {
+fn expression_node(_: (), _primary: (), #[default(1 + 1)] expression: String) -> f64 {
 	match evaluate(&expression) {
 		Ok((Ok(value), _)) => {
 			let Value::Number(num) = value;
@@ -29,26 +29,25 @@ mod tests {
 
 	#[test]
 	fn test_basic_expression() {
-		let result = expression_node((), 0.0, "2 + 2".to_string());
+		let result = expression_node((), (), "2 + 2".to_string());
 		assert_eq!(result, 4.0);
 	}
 
 	#[test]
 	fn test_complex_expression() {
-		let result = expression_node((), 0.0, "(5 * 3) + (10 / 2)".to_string());
+		let result = expression_node((), (), "(5 * 3) + (10 / 2)".to_string());
 		assert_eq!(result, 20.0);
 	}
 
 	#[test]
 	fn test_default_expression() {
-		let result = expression_node((), 5.0, "0".to_string());
+		let result = expression_node((), (), "0".to_string());
 		assert_eq!(result, 0.0);
 	}
 
 	#[test]
 	fn test_invalid_expression() {
-		let input = 5.0;
-		let result = expression_node((), input, "invalid".to_string());
+		let result = expression_node((), (), "invalid".to_string());
 		assert_eq!(result, 0.0);
 	}
 }
