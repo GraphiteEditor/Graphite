@@ -1011,7 +1011,7 @@ impl Fsm for SelectToolFsmState {
 				let new_selected: HashSet<_> = document.intersect_quad_no_artboards(quad, input).collect();
 				let current_selected: HashSet<_> = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
 
-				if new_selected != current_selected && !new_selected.is_empty() {
+				if new_selected != current_selected {
 					tool_data.layers_dragging = new_selected.into_iter().collect();
 					responses.add(NodeGraphMessage::SelectedNodesSet {
 						nodes: tool_data

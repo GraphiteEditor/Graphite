@@ -1585,12 +1585,32 @@ impl NodeNetworkInterface {
 	/// Mutably get the selected nodes for the network at the network_path. Every time they are mutated, the transient metadata for the top of the stack gets unloaded.
 	pub fn selected_nodes_mut(&mut self, network_path: &[NodeId]) -> Option<&mut SelectedNodes> {
 		self.unload_stack_dependents(network_path);
+
+		let last_selection_state = {
+			let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+				log::error!("Could not get nested network_metadata in selected_nodes");
+				return None;
+			};
+
+			network_metadata.persistent_metadata.selection_undo_history.back().cloned().unwrap_or_default()
+		};
+
+		let layers_except_artboards: Vec<_> = last_selection_state.selected_layers_except_artboards(self).collect();
+
+		// If the selection is empty or contains only artboards, skip the undo history update.
+		if layers_except_artboards.is_empty() {
+			let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+				log::error!("Could not get nested network_metadata in selected_nodes");
+				return None;
+			};
+
+			return network_metadata.persistent_metadata.selection_undo_history.back_mut();
+		}
+
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in selected_nodes");
 			return None;
 		};
-
-		let last_selection_state = network_metadata.persistent_metadata.selection_undo_history.back().cloned().unwrap_or_default();
 
 		network_metadata.persistent_metadata.selection_undo_history.push_back(last_selection_state);
 		network_metadata.persistent_metadata.selection_redo_history.clear();
@@ -1598,9 +1618,9 @@ impl NodeNetworkInterface {
 		if network_metadata.persistent_metadata.selection_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			network_metadata.persistent_metadata.selection_undo_history.pop_front();
 		}
+
 		network_metadata.persistent_metadata.selection_undo_history.back_mut()
 	}
-
 	pub fn selection_step_back(&mut self, network_path: &[NodeId]) {
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in selection_step_back");
