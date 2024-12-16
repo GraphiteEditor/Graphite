@@ -409,7 +409,7 @@ fn clone<'i, T: Clone + 'i>(_: (), #[implementations(&ImageFrame<Color>)] value:
 }
 
 #[node_macro::node(category("Math: Vector"))]
-fn dot_product(#[implementations(DVec2)] vector_a: glam::DVec2, #[implementations(DVec2)] vector_b: glam::DVec2) -> f64 {
+fn dot_product(vector_a: DVec2, vector_b: DVec2) -> f64 {
 	vector_a.dot(vector_b)
 }
 
