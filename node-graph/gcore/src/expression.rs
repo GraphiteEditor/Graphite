@@ -1,25 +1,50 @@
-use math_parser::evaluate;
+use math_parser::ast;
+use math_parser::context::{EvalContext, NothingMap, ValueProvider};
 use math_parser::value::{Number, Value};
+
+/// The struct that stores the context for the maths parser.
+/// This is currently just limited to supplying `a` and `b` until we add better node graph support and UI for variadic inputs.
+struct ExpressionNodeContext {
+	a: f64,
+	b: f64,
+}
+
+impl ValueProvider for ExpressionNodeContext {
+	fn get_value(&self, name: &str) -> Option<Value> {
+		if name.eq_ignore_ascii_case("a") {
+			Some(Value::from_f64(self.a))
+		} else if name.eq_ignore_ascii_case("b") {
+			Some(Value::from_f64(self.b))
+		} else {
+			None
+		}
+	}
+}
 
 /// A node that evaluates mathematical expressions during graph runtime.
 #[node_macro::node(category("Math"))]
-fn expression_node(_: (), _primary: (), #[default(1 + 1)] expression: String) -> f64 {
-	match evaluate(&expression) {
-		Ok((Ok(value), _)) => {
-			let Value::Number(num) = value;
-			match num {
-				Number::Real(val) => val,
-				Number::Complex(c) => c.re,
-			}
-		}
+fn expression_node(_: (), _primary: (), #[default(1 + 1)] expression: String, #[expose] a: f64, #[expose] b: f64) -> f64 {
+	let (node, _unit) = match ast::Node::try_parse_from_str(&expression) {
+		Ok(expr) => expr,
 		Err(e) => {
-			warn!("Expression evaluation error: {:?}", e);
-			0.0
+			warn!("Invalid expression: `{expression}`\n{e:?}");
+			return 0.;
 		}
-		_ => {
-			warn!("Invalid expression: `{}`", expression);
-			0.0
+	};
+	let context = EvalContext::new(ExpressionNodeContext { a, b }, NothingMap);
+
+	let value = match node.eval(&context) {
+		Ok(value) => value,
+		Err(e) => {
+			warn!("Expression evaluation error: {e:?}");
+			return 0.;
 		}
+	};
+
+	let Value::Number(num) = value;
+	match num {
+		Number::Real(val) => val,
+		Number::Complex(c) => c.re,
 	}
 }
 
