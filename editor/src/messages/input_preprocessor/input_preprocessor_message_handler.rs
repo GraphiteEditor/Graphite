@@ -6,6 +6,8 @@ use crate::messages::prelude::*;
 
 use glam::DVec2;
 
+use super::PenMoveState;
+
 pub struct InputPreprocessorMessageData {
 	pub keyboard_platform: KeyboardPlatformLayout,
 }
@@ -16,6 +18,7 @@ pub struct InputPreprocessorMessageHandler {
 	pub keyboard: KeyStates,
 	pub mouse: MouseState,
 	pub viewport_bounds: ViewportBounds,
+	pub pen: Option<PenMoveState>,
 }
 
 impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageData> for InputPreprocessorMessageHandler {
@@ -75,11 +78,16 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageData> for 
 
 				self.translate_mouse_event(mouse_state, true, responses);
 			}
-			InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys } => {
+			InputPreprocessorMessage::PointerMove {
+				editor_mouse_state,
+				modifier_keys,
+				pen_data,
+			} => {
 				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);
 
 				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
 				self.mouse.position = mouse_state.position;
+				self.pen = pen_data;
 
 				responses.add(InputMapperMessage::PointerMove);
 
@@ -105,6 +113,12 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageData> for 
 				self.mouse.scroll_delta = mouse_state.scroll_delta;
 
 				responses.add(InputMapperMessage::WheelScroll);
+			}
+			InputPreprocessorMessage::PinchMove { center, scale, translation } => {
+				//TODO
+				//responses.add(NavigationMessage::CanvasZoomSet { zoom_factor: scale });
+				log::debug!("PinchMove: {:?}", (center, scale, translation));
+				responses.add(NavigationMessage::CanvasPan { delta: translation.into() });
 			}
 		};
 	}
