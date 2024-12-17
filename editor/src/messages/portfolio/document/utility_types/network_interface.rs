@@ -1599,9 +1599,9 @@ impl NodeNetworkInterface {
 		if network_metadata.persistent_metadata.selection_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			network_metadata.persistent_metadata.selection_undo_history.pop_front();
 		}
-
 		network_metadata.persistent_metadata.selection_undo_history.back_mut()
 	}
+
 	pub fn selection_step_back(&mut self, network_path: &[NodeId]) {
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in selection_step_back");
