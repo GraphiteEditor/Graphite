@@ -27,7 +27,7 @@ mod tests {
 
 	use super::*;
 
-	const EPSILON: f64 = 1e10_f64;
+	const EPSILON: f64 = 1e-10_f64;
 
 	macro_rules! test_end_to_end{
 		($($name:ident: $input:expr => ($expected_value:expr, $expected_unit:expr)),* $(,)?) => {
