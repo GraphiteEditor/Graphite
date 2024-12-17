@@ -19,7 +19,6 @@ use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;
 use graphene_std::renderer::Rect;
 use graphene_std::vector::misc::BooleanOperation;
-use usvg::roxmltree::Document;
 
 use std::fmt;
 
@@ -898,8 +897,6 @@ impl Fsm for SelectToolFsmState {
 				state
 			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::Enter) => {
-				log::info!("check2");
-
 				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
 					true => DocumentMessage::AbortTransaction,
 					false => DocumentMessage::EndTransaction,
@@ -911,8 +908,6 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::DragStop { remove_from_selection }) => {
-				log::info!("check3");
-
 				// Deselect layer if not snap dragging
 				responses.add(DocumentMessage::EndTransaction);
 
@@ -1053,7 +1048,6 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::Abort) => {
-				log::info!("check1");
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
 				responses.add(OverlaysMessage::Draw);
