@@ -51,7 +51,7 @@ pub enum PenToolMessage {
 
 	// Tool-specific messages
 
-	// It is necessary to defer this until the transform of the layer can be accuratly computed (quite hacky)
+	// It is necessary to defer this until the transform of the layer can be accurately computed (quite hacky)
 	AddPointLayerPosition { layer: LayerNodeIdentifier, viewport: DVec2 },
 	Confirm,
 	DragStart { append_to_selected: Key },
@@ -500,7 +500,7 @@ impl PenToolData {
 
 		// This causes the following message to be run only after the next graph evaluation runs and the transforms are updated
 		responses.add(Message::StartBuffer);
-		// It is necessary to defer this until the transform of the layer can be accuratly computed (quite hacky)
+		// It is necessary to defer this until the transform of the layer can be accurately computed (quite hacky)
 		responses.add(PenToolMessage::AddPointLayerPosition { layer, viewport });
 	}
 
