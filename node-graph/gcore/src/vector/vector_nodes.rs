@@ -1,6 +1,7 @@
 use super::misc::CentroidType;
 use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData};
+use crate::raster::Bitmap;
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
@@ -901,24 +902,41 @@ async fn jitter_points<F: 'n + Send>(
 		Footprint -> VectorData,
 	)]
 	vector_data: impl Node<F, Output = VectorData>,
+	// TODO: Make amount per-axis
 	#[default(5.)] amount: f64,
 	seed: SeedValue,
+	#[implementations(
+		Footprint -> crate::raster::ImageFrame<Color>,
+	)]
+	image: impl Node<Footprint, Output = crate::raster::ImageFrame<Color>>,
 ) -> VectorData {
 	let mut vector_data = vector_data.eval(footprint).await;
 
-	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
+	// let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 
-	let deltas = (0..vector_data.point_domain.positions().len())
-		.map(|_| {
-			let angle = rng.gen::<f64>() * std::f64::consts::TAU;
-			DVec2::from_angle(angle) * rng.gen::<f64>() * amount
-		})
-		.collect::<Vec<_>>();
+	// let deltas = (0..vector_data.point_domain.positions().len())
+	// 	.map(|_| {
+	// 		let angle = rng.gen::<f64>() * std::f64::consts::TAU;
+	// 		DVec2::from_angle(angle) * rng.gen::<f64>() * amount
+	// 	})
+	// 	.collect::<Vec<_>>();
 	let mut already_applied = vec![false; vector_data.point_domain.positions().len()];
 
 	for (handles, start, end) in vector_data.segment_domain.handles_and_points_mut() {
-		let start_delta = deltas[*start];
-		let end_delta = deltas[*end];
+		let sample_start = image
+			.eval(Footprint::from_point(vector_data.point_domain.positions()[*start]))
+			.await
+			.image
+			.get_pixel(0, 0)
+			.expect("Broke at A");
+		let start_delta = DVec2::new((sample_start.r() as f64 - 0.5) * amount, (sample_start.g() as f64 - 0.5) * amount);
+		let sample_end = image
+			.eval(Footprint::from_point(vector_data.point_domain.positions()[*end]))
+			.await
+			.image
+			.get_pixel(0, 0)
+			.expect("Broke at A");
+		let end_delta = DVec2::new((sample_end.r() as f64 - 0.5) * amount, (sample_end.g() as f64 - 0.5) * amount);
 
 		if !already_applied[*start] {
 			let start_position = vector_data.point_domain.positions()[*start];

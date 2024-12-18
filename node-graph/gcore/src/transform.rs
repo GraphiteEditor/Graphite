@@ -168,6 +168,15 @@ impl Footprint {
 	pub fn offset(&self) -> DVec2 {
 		self.transform.transform_point2(DVec2::ZERO)
 	}
+
+	pub fn from_point(point: DVec2) -> Self {
+		Self {
+			// TODO: Make the scale 0?
+			transform: DAffine2::from_translation(point),
+			resolution: glam::UVec2::ONE,
+			..Default::default()
+		}
+	}
 }
 
 impl From<()> for Footprint {
