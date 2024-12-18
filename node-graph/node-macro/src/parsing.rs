@@ -39,6 +39,7 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) display_name: Option<LitStr>,
 	pub(crate) path: Option<Path>,
 	pub(crate) skip_impl: bool,
+	pub(crate) properties_string: Option<LitStr>,
 	// Add more attributes as needed
 }
 
@@ -168,6 +169,7 @@ impl Parse for NodeFnAttributes {
 		let mut display_name = None;
 		let mut path = None;
 		let mut skip_impl = false;
+		let mut properties_string = None;
 
 		let content = input;
 		// let content;
@@ -207,6 +209,16 @@ impl Parse for NodeFnAttributes {
 					}
 					skip_impl = true;
 				}
+				Meta::List(meta) if meta.path.is_ident("properties") => {
+					if properties_string.is_some() {
+						return Err(Error::new_spanned(path, "Multiple 'properties_string' attributes are not allowed"));
+					}
+					let parsed_properties_string: LitStr = meta
+						.parse_args()
+						.map_err(|_| Error::new_spanned(meta, "Expected a string for 'properties', e.g., name(\"channel_mixer_properties\")"))?;
+
+					properties_string = Some(parsed_properties_string);
+				}
 				_ => {
 					return Err(Error::new_spanned(
 						meta,
@@ -229,6 +241,7 @@ impl Parse for NodeFnAttributes {
 			display_name,
 			path,
 			skip_impl,
+			properties_string,
 		})
 	}
 }
@@ -637,6 +650,7 @@ mod tests {
 				display_name: None,
 				path: Some(parse_quote!(graphene_core::TestNode)),
 				skip_impl: true,
+				properties_string: None,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -689,6 +703,7 @@ mod tests {
 				display_name: None,
 				path: None,
 				skip_impl: false,
+				properties_string: None,
 			},
 			fn_name: Ident::new("transform", Span::call_site()),
 			struct_name: Ident::new("Transform", Span::call_site()),
@@ -747,6 +762,7 @@ mod tests {
 				display_name: None,
 				path: None,
 				skip_impl: false,
+				properties_string: None,
 			},
 			fn_name: Ident::new("circle", Span::call_site()),
 			struct_name: Ident::new("Circle", Span::call_site()),
@@ -795,6 +811,7 @@ mod tests {
 				display_name: None,
 				path: None,
 				skip_impl: false,
+				properties_string: None,
 			},
 			fn_name: Ident::new("levels", Span::call_site()),
 			struct_name: Ident::new("Levels", Span::call_site()),
@@ -854,6 +871,7 @@ mod tests {
 				display_name: None,
 				path: Some(parse_quote!(graphene_core::TestNode)),
 				skip_impl: false,
+				properties_string: None,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -902,6 +920,7 @@ mod tests {
 				display_name: None,
 				path: None,
 				skip_impl: false,
+				properties_string: None,
 			},
 			fn_name: Ident::new("load_image", Span::call_site()),
 			struct_name: Ident::new("LoadImage", Span::call_site()),
@@ -950,6 +969,7 @@ mod tests {
 				display_name: Some(parse_quote!("CustomNode2")),
 				path: None,
 				skip_impl: false,
+				properties_string: None,
 			},
 			fn_name: Ident::new("custom_node", Span::call_site()),
 			struct_name: Ident::new("CustomNode", Span::call_site()),

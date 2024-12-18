@@ -1,6 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
-use super::document_node_definitions::{NodePropertiesContext, IMAGINATE_NODE};
+use super::document_node_definitions::{DocumentNodeDefinition, NodePropertiesContext, IMAGINATE_NODE};
 use super::utility_types::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
@@ -1188,7 +1188,9 @@ pub fn query_assign_colors_randomize(node_id: NodeId, context: &NodePropertiesCo
 	)
 }
 
-pub(crate) fn channel_mixer_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn channel_mixer_properties(node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	// TODO: Get node
+	let document_node = &DocumentNode::default();
 	// Monochrome
 	let monochrome_index = 1;
 	let monochrome = bool_widget(document_node, node_id, monochrome_index, "Monochrome", CheckboxInput::default(), true);
@@ -2094,19 +2096,27 @@ pub(crate) fn index_properties(document_node: &DocumentNode, node_id: NodeId, _c
 pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> LayoutGroup {
 	let mut layout = Vec::new();
 
-	// TODO: Allow fully custom properties for nodes (should only be done for proto nodes where the number of inputs is known)
-	let number_of_inputs = context.network_interface.number_of_inputs(&node_id, context.selection_network_path);
-	for input_index in 0..number_of_inputs {
-		let row = context.call_widget_override(&node_id, input_index).unwrap_or_else(|| {
-			let input_type = context.network_interface.input_type(&InputConnector::node(node_id, input_index), context.selection_network_path);
-			property_from_type(node_id, input_index, &input_type.0, context)
-		});
-		layout.extend(row);
+	if let Some(properties_override) = context
+		.network_interface
+		.reference(&node_id, context.selection_network_path)
+		.and_then(|reference| super::document_node_definitions::resolve_document_node_type(&reference))
+		.and_then(|definition| definition.properties)
+	{
+		layout = properties_override(node_id, context);
+	} else {
+		let number_of_inputs = context.network_interface.number_of_inputs(&node_id, context.selection_network_path);
+		for input_index in 0..number_of_inputs {
+			let row = context.call_widget_override(&node_id, input_index).unwrap_or_else(|| {
+				let input_type = context.network_interface.input_type(&InputConnector::node(node_id, input_index), context.selection_network_path);
+				property_from_type(node_id, input_index, &input_type.0, context)
+			});
+			layout.extend(row);
+		}
 	}
 	if layout.is_empty() {
 		layout = node_no_properties(node_id, context);
 	}
-	let name = context.network_interface.reference(&node_id, context.selection_network_path).clone().unwrap_or_default();
+	let name = context.network_interface.reference(&node_id, context.selection_network_path).cloned().unwrap_or_default();
 	let visible = context.network_interface.is_visible(&node_id, context.selection_network_path);
 	let pinned = context.network_interface.is_pinned(&node_id, context.selection_network_path);
 	LayoutGroup::Section {

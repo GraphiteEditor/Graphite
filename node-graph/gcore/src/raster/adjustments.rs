@@ -1185,7 +1185,7 @@ impl DomainWarpType {
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27mixr%27%20%3D%20Channel%20Mixer
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Lab%20color%20only-,Channel%20Mixer,-Key%20is%20%27mixr
-#[node_macro::node(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"), properties("channel_mixer_properties"))]
 async fn channel_mixer<F: 'n + Send, T: Adjust<Color>>(
 	#[implementations(
 		(),

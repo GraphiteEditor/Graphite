@@ -36,6 +36,7 @@ pub struct NodeMetadata {
 	pub category: Option<&'static str>,
 	pub fields: Vec<FieldMetadata>,
 	pub description: &'static str,
+	pub properties: Option<&'static str>,
 }
 
 // Translation struct between macro and definition

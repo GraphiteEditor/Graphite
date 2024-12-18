@@ -2292,7 +2292,7 @@ impl NodeGraphMessageHandler {
 					.node_metadata(&node_id, breadcrumb_network_path)
 					.is_some_and(|node_metadata| node_metadata.persistent_metadata.is_layer()),
 				can_be_layer: can_be_layer_lookup.contains(&node_id),
-				reference: network_interface.reference(&node_id, breadcrumb_network_path),
+				reference: network_interface.reference(&node_id, breadcrumb_network_path).cloned(),
 				display_name: network_interface.frontend_display_name(&node_id, breadcrumb_network_path),
 				primary_input,
 				exposed_inputs,

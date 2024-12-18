@@ -221,6 +221,8 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	let register_node_impl = generate_register_node_impl(parsed, &field_names, &struct_name, &identifier)?;
 	let import_name = format_ident!("_IMPORT_STUB_{}", mod_name.to_string().to_case(Case::UpperSnake));
 
+	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
+
 	Ok(quote! {
 		/// Underlying implementation for [#struct_name]
 		#[inline]
@@ -274,6 +276,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 					display_name: #display_name,
 					category: #category,
 					description: #description,
+					properties: #properties,
 					fields: vec![
 						#(
 							FieldMetadata {

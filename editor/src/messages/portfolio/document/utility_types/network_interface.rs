@@ -1040,9 +1040,8 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub fn reference(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<String> {
-		self.node_metadata(node_id, network_path)
-			.and_then(|node_metadata| node_metadata.persistent_metadata.reference.as_ref().map(|reference| reference.to_string()))
+	pub fn reference(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&String> {
+		self.node_metadata(node_id, network_path).and_then(|node_metadata| node_metadata.persistent_metadata.reference.as_ref())
 	}
 
 	pub fn input_name(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> Option<&str> {
@@ -1082,12 +1081,12 @@ impl NodeNetworkInterface {
 			.persistent_metadata
 			.is_layer();
 		let reference = self.reference(node_id, network_path);
-		let is_merge_node = reference.as_ref().is_some_and(|reference| reference == "Merge");
+		let is_merge_node = reference.as_ref().is_some_and(|reference| *reference == "Merge");
 		if self.display_name(node_id, network_path).is_empty() {
 			if is_layer && is_merge_node {
 				"Untitled Layer".to_string()
 			} else {
-				reference.unwrap_or("Untitled node".to_string())
+				reference.cloned().unwrap_or("Untitled node".to_string())
 			}
 		} else {
 			self.display_name(node_id, network_path)
@@ -1174,7 +1173,7 @@ impl NodeNetworkInterface {
 	pub fn is_artboard(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
 		self.reference(node_id, network_path)
 			.as_ref()
-			.is_some_and(|reference| reference == "Artboard" && self.connected_to_output(node_id, &[]))
+			.is_some_and(|reference| *reference == "Artboard" && self.connected_to_output(node_id, &[]))
 	}
 
 	pub fn all_artboards(&self) -> HashSet<LayerNodeIdentifier> {
@@ -6036,6 +6035,8 @@ impl PropertiesRow {
 pub struct DocumentNodePersistentMetadata {
 	/// The name of the node definition, as originally set by [`DocumentNodeDefinition`], used to display in the UI and to display the appropriate properties if no display name is set.
 	/// Used during serialization/deserialization to prevent storing implementation or inputs (and possible other fields) if they are the same as the definition.
+	/// TODO: The reference is removed once the node is modified, since the node now stores its own implementation and inputs.
+	/// TODO: Implement node versioning so that references to old nodes can be updated to the new node definition.
 	pub reference: Option<String>,
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the reference name is displayed to the user in italics.
 	#[serde(default)]
