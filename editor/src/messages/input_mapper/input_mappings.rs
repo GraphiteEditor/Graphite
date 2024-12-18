@@ -258,7 +258,7 @@ pub fn input_mappings() -> Mapping {
 		//
 		// FreehandToolMessage
 		entry!(PointerMove; action_dispatch=FreehandToolMessage::PointerMove),
-		entry!(KeyDown(MouseLeft); action_dispatch=FreehandToolMessage::DragStart),
+		entry!(KeyDown(MouseLeft); action_dispatch=FreehandToolMessage::DragStart { append_to_selected: Shift }),
 		entry!(KeyUp(MouseLeft); action_dispatch=FreehandToolMessage::DragStop),
 		entry!(KeyDown(MouseRight); action_dispatch=FreehandToolMessage::Abort),
 		entry!(KeyDown(Escape); action_dispatch=FreehandToolMessage::Abort),
