@@ -1051,6 +1051,7 @@ impl Fsm for SelectToolFsmState {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
 				responses.add(OverlaysMessage::Draw);
+				responses.add(DocumentMessage::SelectionStepBack);
 
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
