@@ -1584,37 +1584,30 @@ impl NodeNetworkInterface {
 
 	/// Mutably get the selected nodes for the network at the network_path. Every time they are mutated, the transient metadata for the top of the stack gets unloaded.
 	pub fn selected_nodes_mut(&mut self, network_path: &[NodeId]) -> Option<&mut SelectedNodes> {
-		self.unload_stack_dependents(network_path);
-
-		let last_selection_state = {
-			let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-				log::error!("Could not get nested network_metadata in selected_nodes");
-				return None;
-			};
-			network_metadata.persistent_metadata.selection_undo_history.back().cloned().unwrap_or_default()
+		let (last_selection_state, prev_state, is_selection_empty) = {
+			let network_metadata = self.network_metadata(network_path)?;
+			let history = &network_metadata.persistent_metadata.selection_undo_history;
+			let current = history.back().cloned().unwrap_or_default();
+			let previous = history.iter().rev().nth(1).cloned();
+			let empty = current.selected_layers_except_artboards(self).next().is_none();
+			(current, previous, empty)
 		};
 
-		// skip history update when selection is non-empty/contains artboards only
-		if last_selection_state.selected_layers_except_artboards(self).next().is_none() {
-			let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-				log::error!("Could not get nested network_metadata in selected_nodes");
-				return None;
-			};
-			return network_metadata.persistent_metadata.selection_undo_history.back_mut();
-		}
+		self.unload_stack_dependents(network_path);
 
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in selected_nodes");
 			return None;
 		};
 
-		if network_metadata.persistent_metadata.selection_undo_history.iter().rev().nth(1) != Some(&last_selection_state) {
+		// Update history only if selection is non-empty/does not contain only artboards
+		if !is_selection_empty && prev_state.as_ref() != Some(&last_selection_state) {
 			network_metadata.persistent_metadata.selection_undo_history.push_back(last_selection_state);
 			network_metadata.persistent_metadata.selection_redo_history.clear();
-		}
 
-		if network_metadata.persistent_metadata.selection_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
-			network_metadata.persistent_metadata.selection_undo_history.pop_front();
+			if network_metadata.persistent_metadata.selection_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
+				network_metadata.persistent_metadata.selection_undo_history.pop_front();
+			}
 		}
 
 		network_metadata.persistent_metadata.selection_undo_history.back_mut()
