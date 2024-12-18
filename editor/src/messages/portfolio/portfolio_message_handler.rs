@@ -547,6 +547,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						document
 							.network_interface
 							.set_input(&InputConnector::node(*node_id, 5), NodeInput::value(TaggedValue::F64(1.), false), &[]);
+						document
+							.network_interface
+							.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::OptionalF64(None), false), &[]);
 					}
 
 					// Upgrade Sine, Cosine, and Tangent nodes to include a boolean input for whether the output should be in radians, which was previously the only option but is now not the default
