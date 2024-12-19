@@ -1209,13 +1209,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(BroadcastEvent::SelectionChanged);
 			}
 			NodeGraphMessage::SelectedNodesSet { nodes } => {
-				let Some(selected_nodes) = network_interface.selected_nodes_mut(selection_network_path) else {
-					log::error!("Could not get selected nodes in NodeGraphMessage::SelectedNodesSet");
-					return;
-				};
-				selected_nodes.set_selected_nodes(nodes);
-				responses.add(BroadcastEvent::SelectionChanged);
-				responses.add(PropertiesPanelMessage::Refresh);
+				if !nodes.is_empty() {
+					let Some(selected_nodes) = network_interface.selected_nodes_mut(selection_network_path) else {
+						log::error!("Could not get selected nodes in NodeGraphMessage::SelectedNodesSet");
+						return;
+					};
+					selected_nodes.set_selected_nodes(nodes);
+					responses.add(BroadcastEvent::SelectionChanged);
+					responses.add(PropertiesPanelMessage::Refresh);
+				}
 			}
 			NodeGraphMessage::SendClickTargets => responses.add(FrontendMessage::UpdateClickTargets {
 				click_targets: Some(network_interface.collect_frontend_click_targets(breadcrumb_network_path)),
