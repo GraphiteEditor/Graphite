@@ -1592,13 +1592,17 @@ impl NodeNetworkInterface {
 			let empty = current.selected_layers_except_artboards(self).next().is_none();
 			(current, previous, empty)
 		};
-
 		self.unload_stack_dependents(network_path);
 
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in selected_nodes");
 			return None;
 		};
+
+		// Initialize default value if selection_undo_history is empty
+		if network_metadata.persistent_metadata.selection_undo_history.is_empty() {
+			network_metadata.persistent_metadata.selection_undo_history.push_back(SelectedNodes::default());
+		}
 
 		// Update history only if selection is non-empty/does not contain only artboards
 		if !is_selection_empty && prev_state.as_ref() != Some(&last_selection_state) {
