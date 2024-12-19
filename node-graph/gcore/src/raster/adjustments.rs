@@ -1555,7 +1555,7 @@ async fn posterize<F: 'n + Send, T: Adjust<Color>>(
 //
 // Algorithm based on:
 // https://geraldbakker.nl/psnumbers/exposure.html
-#[node_macro::node(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"), properties("exposure_properties"))]
 async fn exposure<F: 'n + Send, T: Adjust<Color>>(
 	#[implementations(
 		(),

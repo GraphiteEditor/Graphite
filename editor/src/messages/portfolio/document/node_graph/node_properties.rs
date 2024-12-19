@@ -1188,9 +1188,15 @@ pub fn query_assign_colors_randomize(node_id: NodeId, context: &NodePropertiesCo
 	)
 }
 
-pub(crate) fn channel_mixer_properties(node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	// TODO: Get node
-	let document_node = &DocumentNode::default();
+pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let document_node = match get_document_node(node_id, context) {
+		Ok(document_node) => document_node,
+		Err(err) => {
+			log::error!("Could not get document node in channel_mixer_properties: {err}");
+			return Vec::new();
+		}
+	};
+
 	// Monochrome
 	let monochrome_index = 1;
 	let monochrome = bool_widget(document_node, node_id, monochrome_index, "Monochrome", CheckboxInput::default(), true);
@@ -1290,7 +1296,14 @@ pub(crate) fn channel_mixer_properties(node_id: NodeId, _context: &mut NodePrope
 	layout
 }
 
-pub(crate) fn selective_color_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let document_node = match get_document_node(node_id, context) {
+		Ok(document_node) => document_node,
+		Err(err) => {
+			log::error!("Could not get document node in selective_color_properties: {err}");
+			return Vec::new();
+		}
+	};
 	// Colors choice
 	let colors_index = 38;
 	let mut colors = vec![TextLabel::new("Colors").widget_holder(), Separator::new(SeparatorType::Unrelated).widget_holder()];
@@ -1386,7 +1399,14 @@ pub(crate) fn _gpu_map_properties(document_node: &DocumentNode, node_id: NodeId,
 	vec![LayoutGroup::Row { widgets: map }]
 }
 
-pub(crate) fn exposure_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn exposure_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let document_node = match get_document_node(node_id, context) {
+		Ok(document_node) => document_node,
+		Err(err) => {
+			log::error!("Could not get document node in exposure_properties: {err}");
+			return Vec::new();
+		}
+	};
 	let exposure = number_widget(document_node, node_id, 1, "Exposure", NumberInput::default().min(-20.).max(20.), true);
 	let offset = number_widget(document_node, node_id, 2, "Offset", NumberInput::default().min(-0.5).max(0.5), true);
 	let gamma_input = NumberInput::default().min(0.01).max(9.99).increment_step(0.1);
@@ -1399,7 +1419,14 @@ pub(crate) fn exposure_properties(document_node: &DocumentNode, node_id: NodeId,
 	]
 }
 
-pub(crate) fn rectangle_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let document_node = match get_document_node(node_id, context) {
+		Ok(document_node) => document_node,
+		Err(err) => {
+			log::error!("Could not get document node in rectangle_properties: {err}");
+			return Vec::new();
+		}
+	};
 	let size_x_index = 1;
 	let size_y_index = 2;
 	let corner_rounding_type_index = 3;
@@ -2227,7 +2254,14 @@ pub(crate) fn poisson_disk_points_properties(document_node: &DocumentNode, node_
 }
 
 /// Fill Node Widgets LayoutGroup
-pub(crate) fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let document_node = match get_document_node(node_id, context) {
+		Ok(document_node) => document_node,
+		Err(err) => {
+			log::error!("Could not get document node in fill_properties: {err}");
+			return Vec::new();
+		}
+	};
 	let fill_index = 1;
 	let backup_color_index = 2;
 	let backup_gradient_index = 3;
@@ -2402,7 +2436,14 @@ pub(crate) fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _co
 	widgets
 }
 
-pub fn stroke_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let document_node = match get_document_node(node_id, context) {
+		Ok(document_node) => document_node,
+		Err(err) => {
+			log::error!("Could not get document node in fill_properties: {err}");
+			return Vec::new();
+		}
+	};
 	let color_index = 1;
 	let weight_index = 2;
 	let dash_lengths_index = 3;
@@ -2441,7 +2482,14 @@ pub fn stroke_properties(document_node: &DocumentNode, node_id: NodeId, _context
 	]
 }
 
-pub fn offset_path_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn offset_path_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let document_node = match get_document_node(node_id, context) {
+		Ok(document_node) => document_node,
+		Err(err) => {
+			log::error!("Could not get document node in offset_path_properties: {err}");
+			return Vec::new();
+		}
+	};
 	let distance_index = 1;
 	let line_join_index = 2;
 	let miter_limit_index = 3;

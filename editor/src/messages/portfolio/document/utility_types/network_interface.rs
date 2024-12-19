@@ -3280,6 +3280,8 @@ impl NodeNetworkInterface {
 			} else {
 				encapsulating_node_metadata.persistent_metadata.output_names.insert(insert_index as usize, output_name.to_string());
 			}
+			// Clear the reference to the nodes definition
+			encapsulating_node_metadata.persistent_metadata.reference = None;
 		};
 
 		// Update the export ports and outward wires for the current network
@@ -3345,6 +3347,9 @@ impl NodeNetworkInterface {
 			node_metadata.persistent_metadata.input_properties.insert(insert_index as usize, input_name.into());
 		}
 
+		// Clear the reference to the nodes definition
+		node_metadata.persistent_metadata.reference = None;
+
 		// Update the metadata for the encapsulating node
 		self.unload_node_click_targets(&node_id, &encapsulating_network_path);
 		self.unload_all_nodes_bounding_box(&encapsulating_network_path);
@@ -3399,6 +3404,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 		encapsulating_node_metadata.persistent_metadata.output_names.remove(export_index);
+		encapsulating_node_metadata.persistent_metadata.reference = None;
 
 		// Update the metadata for the encapsulating node
 		self.unload_outward_wires(&encapsulating_network_path);
@@ -3473,6 +3479,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 		encapsulating_node_metadata.persistent_metadata.input_properties.remove(import_index);
+		encapsulating_node_metadata.persistent_metadata.reference = None;
 
 		// Update the metadata for the encapsulating node
 		self.unload_outward_wires(&encapsulating_network_path);
@@ -3518,6 +3525,7 @@ impl NodeNetworkInterface {
 
 		let name = encapsulating_node_metadata.persistent_metadata.output_names.remove(start_index);
 		encapsulating_node_metadata.persistent_metadata.output_names.insert(end_index, name);
+		encapsulating_node_metadata.persistent_metadata.reference = None;
 
 		// Update the metadata for the encapsulating network
 		self.unload_outward_wires(&encapsulating_network_path);
@@ -3609,6 +3617,7 @@ impl NodeNetworkInterface {
 
 		let properties_row = encapsulating_node_metadata.persistent_metadata.input_properties.remove(start_index);
 		encapsulating_node_metadata.persistent_metadata.input_properties.insert(end_index, properties_row);
+		encapsulating_node_metadata.persistent_metadata.reference = None;
 
 		// Update the metadata for the outer network
 		self.unload_outward_wires(&encapsulating_network_path);
@@ -6044,7 +6053,6 @@ pub struct DocumentNodePersistentMetadata {
 	/// Stores metadata to override the properties in the properties panel for each input. These can either be generated automatically based on the type, or with a custom function.
 	/// Must match the length of node inputs
 	pub input_properties: Vec<PropertiesRow>,
-	/// A node can have a fully custom properties panel. For example to display a single string, or if interdependent properties are needed
 	pub output_names: Vec<String>,
 	/// Indicates to the UI if a primary output should be drawn for this node.
 	/// True for most nodes, but the Split Channels node is an example of a node that has multiple secondary outputs but no primary output.

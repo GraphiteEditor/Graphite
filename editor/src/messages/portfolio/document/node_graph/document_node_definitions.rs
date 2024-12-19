@@ -2780,6 +2780,12 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 fn name_to_properties(properties_string: &str) -> &'static (dyn Fn(NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Sync) {
 	match properties_string {
 		"channel_mixer_properties" => &node_properties::channel_mixer_properties,
+		"fill_properties" => &node_properties::fill_properties,
+		"stroke_properties" => &node_properties::stroke_properties,
+		"offset_path_properties" => &node_properties::offset_path_properties,
+		"selective_color_properties" => &node_properties::selective_color_properties,
+		"exposure_properties" => &node_properties::exposure_properties,
+		"rectangle_properties" => &node_properties::rectangle_properties,
 		_ => {
 			log::error!("Node properties not found for {properties_string}");
 			&node_properties::node_no_properties
