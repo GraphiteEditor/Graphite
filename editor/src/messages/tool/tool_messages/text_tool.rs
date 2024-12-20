@@ -354,7 +354,7 @@ impl TextToolData {
 			}) {
 			self.start_editing_layer(clicked_text_layer_path, state, document, font_cache, responses);
 
-			return TextToolFsmState::Editing;
+			TextToolFsmState::Editing
 		}
 		// Create new text
 		else if let Some(editing_text) = self.editing_text.as_ref().filter(|_| state == TextToolFsmState::Ready) {
