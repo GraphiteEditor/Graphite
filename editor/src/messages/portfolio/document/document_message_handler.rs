@@ -144,7 +144,6 @@ impl Default for DocumentMessageHandler {
 			graph_view_overlay_open: false,
 			snapping_state: SnappingState::default(),
 			graph_fade_artwork_percentage: 80.,
-
 			// =============================================
 			// Fields omitted from the saved document format
 			// =============================================
