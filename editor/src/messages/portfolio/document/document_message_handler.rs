@@ -17,7 +17,6 @@ use crate::messages::portfolio::document::properties_panel::utility_types::Prope
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
-use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_opacity};
@@ -91,8 +90,6 @@ pub struct DocumentMessageHandler {
 	pub graph_view_overlay_open: bool,
 	/// The current opacity of the faded node graph background that covers up the artwork.
 	pub graph_fade_artwork_percentage: f64,
-	/// Tracks the currently active panel in the application interface.
-	pub active_panel: PanelType,
 
 	// =============================================
 	// Fields omitted from the saved document format
@@ -147,7 +144,7 @@ impl Default for DocumentMessageHandler {
 			graph_view_overlay_open: false,
 			snapping_state: SnappingState::default(),
 			graph_fade_artwork_percentage: 80.,
-			active_panel: PanelType::Document,
+
 			// =============================================
 			// Fields omitted from the saved document format
 			// =============================================
@@ -998,7 +995,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::SetActivePanel { active_panel: panel } => {
 				use crate::messages::portfolio::utility_types::PanelType;
-				self.active_panel = panel;
 				match panel {
 					PanelType::Document => {
 						if self.graph_view_overlay_open {
@@ -1381,10 +1377,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 }
 
 impl DocumentMessageHandler {
-	/// Returns the currently active panel in the application interface.
-	pub fn get_active_panel(&self) -> PanelType {
-		self.active_panel
-	}
 	/// Runs an intersection test with all layers and a viewport space quad
 	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);

@@ -5,7 +5,6 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Transf
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
-use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name};
 
@@ -243,7 +242,7 @@ struct TextToolData {
 
 impl TextToolData {
 	/// Set the editing state of the currently modifying layer
-	fn set_editing(&self, document: &DocumentMessageHandler, editable: bool, font_cache: &FontCache, responses: &mut VecDeque<Message>) {
+	fn set_editing(&self, editable: bool, font_cache: &FontCache, responses: &mut VecDeque<Message>) {
 		if let Some(editing_text) = self.editing_text.as_ref().filter(|_| editable) {
 			responses.add(FrontendMessage::DisplayEditableTextbox {
 				text: editing_text.text.clone(),
@@ -254,18 +253,12 @@ impl TextToolData {
 				transform: editing_text.transform.to_cols_array(),
 			});
 		} else {
+			// Check if DisplayRemoveEditableTextbox is already in the responses queue
+			let has_remove_textbox = responses.iter().any(|msg| matches!(msg, Message::Frontend(FrontendMessage::DisplayRemoveEditableTextbox)));
 			responses.add(FrontendMessage::DisplayRemoveEditableTextbox);
-			let panel_type = document.get_active_panel();
-			match panel_type {
-				// If Properties panel is clicked, keep the nodes selected
-				PanelType::Properties => {
-					// Do nothing, keep current selection
-				}
-				// For other panels, clear selected nodes
-				_ => {
-					// Clear all selected nodes when no longer editing
-					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() });
-				}
+
+			if has_remove_textbox {
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() });
 			}
 		}
 	}
@@ -293,14 +286,14 @@ impl TextToolData {
 		}
 
 		if tool_state == TextToolFsmState::Editing {
-			self.set_editing(document, false, font_cache, responses);
+			self.set_editing(false, font_cache, responses);
 		}
 
 		self.layer = layer;
 		if self.load_layer_text_node(document).is_some() {
 			responses.add(DocumentMessage::AddTransaction);
 
-			self.set_editing(document, true, font_cache, responses);
+			self.set_editing(true, font_cache, responses);
 
 			responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![self.layer.to_node()] });
 			// Make the rendered text invisible while editing
@@ -370,7 +363,7 @@ impl TextToolData {
 				skip_rerender: true,
 			});
 
-			self.set_editing(document, true, font_cache, responses);
+			self.set_editing(true, font_cache, responses);
 
 			responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![self.layer.to_node()] });
 
@@ -378,7 +371,7 @@ impl TextToolData {
 			TextToolFsmState::Editing
 		} else {
 			// Removing old text as editable
-			self.set_editing(document, false, font_cache, responses);
+			self.set_editing(false, font_cache, responses);
 
 			TextToolFsmState::Ready
 		}
@@ -479,7 +472,7 @@ impl Fsm for TextToolFsmState {
 			}
 			(state, TextToolMessage::Abort) => {
 				if state == TextToolFsmState::Editing {
-					tool_data.set_editing(document, false, font_cache, responses);
+					tool_data.set_editing(false, font_cache, responses);
 				}
 
 				TextToolFsmState::Ready
@@ -490,7 +483,7 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text }) => {
-				tool_data.set_editing(document, false, font_cache, responses);
+				tool_data.set_editing(false, font_cache, responses);
 
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface).unwrap(), 1),
