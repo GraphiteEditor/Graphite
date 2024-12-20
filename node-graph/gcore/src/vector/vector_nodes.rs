@@ -951,31 +951,7 @@ async fn jitter_points<F: 'n + Send>(
 	vector_data
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn morph<F: 'n + Send + Copy>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> VectorData,
-		Footprint -> VectorData,
-	)]
-	source: impl Node<F, Output = VectorData>,
-	#[expose]
-	#[implementations(
-		() -> VectorData,
-		Footprint -> VectorData,
-	)]
-	target: impl Node<F, Output = VectorData>,
-	#[range((0., 1.))]
-	#[default(0.5)]
-	time: Fraction,
-	#[min(0.)] start_index: IntegerCount,
-) -> VectorData {
-	let source = source.eval(footprint).await;
-	let target = target.eval(footprint).await;
+fn morph_vector_data(source: VectorData, target: VectorData, time: Fraction, start_index: IntegerCount) -> VectorData {
 	let mut result = VectorData::empty();
 
 	// Lerp styles
@@ -984,6 +960,7 @@ async fn morph<F: 'n + Send + Copy>(
 
 	let mut source_paths = source.stroke_bezier_paths();
 	let mut target_paths = target.stroke_bezier_paths();
+
 	for (mut source_path, mut target_path) in (&mut source_paths).zip(&mut target_paths) {
 		// Deal with mismatched transforms
 		source_path.apply_transform(source.transform);
@@ -1005,22 +982,14 @@ async fn morph<F: 'n + Send + Copy>(
 			target_path.push_manipulator_group(target_path.manipulator_groups()[0].flip());
 		}
 
-		// Mismatched subpath items
-		'outer: loop {
-			for segment_index in (0..(source_path.len() - 1)).rev() {
-				if target_path.len() <= source_path.len() {
-					break 'outer;
-				}
-				source_path.insert(SubpathTValue::Parametric { segment_index, t: 0.5 })
-			}
+		// Equalize number of manipulator groups
+		while source_path.len() < target_path.len() {
+			let segment_index = (0..(source_path.len() - 1)).rev().next().unwrap_or(0);
+			source_path.insert(SubpathTValue::Parametric { segment_index, t: 0.5 });
 		}
-		'outer: loop {
-			for segment_index in (0..(target_path.len() - 1)).rev() {
-				if source_path.len() <= target_path.len() {
-					break 'outer;
-				}
-				target_path.insert(SubpathTValue::Parametric { segment_index, t: 0.5 })
-			}
+		while target_path.len() < source_path.len() {
+			let segment_index = (0..(target_path.len() - 1)).rev().next().unwrap_or(0);
+			target_path.insert(SubpathTValue::Parametric { segment_index, t: 0.5 });
 		}
 
 		// Lerp points
@@ -1032,15 +1001,17 @@ async fn morph<F: 'n + Send + Copy>(
 
 		result.append_subpath(source_path, true);
 	}
-	// Mismatched subpath count
+
+	// Handle mismatched subpath counts
 	for mut source_path in source_paths {
 		source_path.apply_transform(source.transform);
 		let end = source_path.manipulator_groups().first().map(|group| group.anchor).unwrap_or_default();
 		for group in source_path.manipulator_groups_mut() {
 			group.anchor = group.anchor.lerp(end, time);
 			group.in_handle = group.in_handle.map(|handle| handle.lerp(end, time));
-			group.out_handle = group.in_handle.map(|handle| handle.lerp(end, time));
+			group.out_handle = group.out_handle.map(|handle| handle.lerp(end, time));
 		}
+		result.append_subpath(source_path, true);
 	}
 	for mut target_path in target_paths {
 		target_path.apply_transform(target.transform);
@@ -1048,11 +1019,95 @@ async fn morph<F: 'n + Send + Copy>(
 		for group in target_path.manipulator_groups_mut() {
 			group.anchor = start.lerp(group.anchor, time);
 			group.in_handle = group.in_handle.map(|handle| start.lerp(handle, time));
-			group.out_handle = group.in_handle.map(|handle| start.lerp(handle, time));
+			group.out_handle = group.out_handle.map(|handle| start.lerp(handle, time));
 		}
+		result.append_subpath(target_path, true);
 	}
 
 	result
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn morph<F: 'n + Send + Copy>(
+	#[implementations(
+		(),
+		Footprint,
+	)]
+	footprint: F,
+	#[implementations(
+		() -> VectorData,
+		Footprint -> VectorData,
+	)]
+	source: impl Node<F, Output = VectorData>,
+	#[expose]
+	#[implementations(
+		() -> VectorData,
+		Footprint -> VectorData,
+	)]
+	target: impl Node<F, Output = VectorData>,
+	// TODO: Rename to "progress"
+	#[range((0., 1.))]
+	#[default(0.5)]
+	time: Fraction,
+	#[min(0.)] start_index: IntegerCount,
+) -> VectorData {
+	let source = source.eval(footprint).await;
+	let target = target.eval(footprint).await;
+	morph_vector_data(source, target, time, start_index)
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn multi_morph<F: 'n + Send + Copy>(
+	#[implementations(
+		(),
+		Footprint,
+	)]
+	footprint: F,
+	#[implementations(
+		() -> VectorData,
+		Footprint -> VectorData,
+	)]
+	source0: impl Node<F, Output = VectorData>,
+	#[implementations(
+		() -> VectorData,
+		Footprint -> VectorData,
+	)]
+	source1: impl Node<F, Output = VectorData>,
+	#[implementations(
+		() -> VectorData,
+		Footprint -> VectorData,
+	)]
+	source2: impl Node<F, Output = VectorData>,
+	#[implementations(
+		() -> VectorData,
+		Footprint -> VectorData,
+	)]
+	source3: impl Node<F, Output = VectorData>,
+	#[implementations(
+		() -> VectorData,
+		Footprint -> VectorData,
+	)]
+	source4: impl Node<F, Output = VectorData>,
+	// TODO: Rename to "progress"
+	#[range((0., 1.))]
+	#[default(0.5)]
+	time: Fraction,
+	#[min(0.)] start_index: IntegerCount,
+) -> VectorData {
+	let sources = [
+		source0.eval(footprint).await,
+		source1.eval(footprint).await,
+		source2.eval(footprint).await,
+		source3.eval(footprint).await,
+		source4.eval(footprint).await,
+	];
+	let num_segments = sources.len() - 1;
+	let segment_time = time * num_segments as f64;
+	let index = segment_time.floor() as usize;
+	let local_time = segment_time - index as f64;
+	let source = sources[index].clone();
+	let target = sources[(index + 1).min(num_segments)].clone();
+	morph_vector_data(source, target, local_time, start_index)
 }
 
 fn bevel_algorithm(mut vector_data: VectorData, distance: f64) -> VectorData {
