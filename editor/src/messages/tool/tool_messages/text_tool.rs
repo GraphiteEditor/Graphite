@@ -309,7 +309,54 @@ impl TextToolData {
 		font_cache: &FontCache,
 		responses: &mut VecDeque<Message>,
 	) -> TextToolFsmState {
-		// Check if the user has selected an existing text layer
+		fn is_point_in_triangle(p: DVec2, a: DVec2, b: DVec2, c: DVec2) -> bool {
+			let v0 = c - a;
+			let v1 = b - a;
+			let v2 = p - a;
+
+			let dot00 = v0.dot(v0);
+			let dot01 = v0.dot(v1);
+			let dot02 = v0.dot(v2);
+			let dot11 = v1.dot(v1);
+			let dot12 = v1.dot(v2);
+
+			let denom = dot00 * dot11 - dot01 * dot01;
+			if denom == 0.0 {
+				return false; // Degenerate triangle
+			}
+			let inv_denom = 1.0 / denom;
+
+			let u = (dot11 * dot02 - dot01 * dot12) * inv_denom;
+			let v = (dot00 * dot12 - dot01 * dot02) * inv_denom;
+
+			u >= 0.0 && v >= 0.0 && (u + v) <= 1.0
+		}
+
+		// Check if the user has selected an existing text layerQ
+		if let Some(clicked_text_layer_path) = document
+			.metadata()
+			.all_layers()
+			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text"))
+			.find(|&layer| {
+				let (text, font, font_size, line_height_ratio, character_spacing) = graph_modification_utils::get_text(layer, &document.network_interface).unwrap();
+				let buzz_face = font_cache.get(font).map(|data| load_face(data));
+				let far = graphene_core::text::bounding_box(text, buzz_face, font_size, line_height_ratio, character_spacing, None);
+				let quad = Quad::from_box([DVec2::ZERO, far]);
+				let transformed_quad = document.metadata().transform_to_viewport(layer) * quad;
+				let mouse = DVec2::new(input.mouse.position.x, input.mouse.position.y);
+
+				if is_point_in_triangle(mouse, transformed_quad.0[0], transformed_quad.0[1], transformed_quad.0[2])
+					|| is_point_in_triangle(mouse, transformed_quad.0[0], transformed_quad.0[2], transformed_quad.0[3])
+				{
+					return true;
+				}
+				false
+			}) {
+			self.start_editing_layer(clicked_text_layer_path, state, document, font_cache, responses);
+
+			return TextToolFsmState::Editing;
+		}
+
 		if let Some(clicked_text_layer_path) = document.click(input).filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text")) {
 			self.start_editing_layer(clicked_text_layer_path, state, document, font_cache, responses);
 
