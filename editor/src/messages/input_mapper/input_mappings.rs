@@ -260,7 +260,7 @@ pub fn input_mappings() -> Mapping {
 		//
 		// FreehandToolMessage
 		entry!(PointerMove; action_dispatch=FreehandToolMessage::PointerMove),
-		entry!(KeyDown(MouseLeft); action_dispatch=FreehandToolMessage::DragStart),
+		entry!(KeyDown(MouseLeft); action_dispatch=FreehandToolMessage::DragStart { append_to_selected: Shift }),
 		entry!(KeyUp(MouseLeft); action_dispatch=FreehandToolMessage::DragStop),
 		entry!(KeyDown(MouseRight); action_dispatch=FreehandToolMessage::Abort),
 		entry!(KeyDown(Escape); action_dispatch=FreehandToolMessage::Abort),
@@ -403,6 +403,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Tab); modifiers=[Control], action_dispatch=PortfolioMessage::NextDocument),
 		entry!(KeyDown(Tab); modifiers=[Control, Shift], action_dispatch=PortfolioMessage::PrevDocument),
 		entry!(KeyDown(KeyW); modifiers=[Accel], action_dispatch=PortfolioMessage::CloseActiveDocumentWithConfirmation),
+		entry!(KeyDown(KeyW); modifiers=[Accel,Alt], action_dispatch=PortfolioMessage::CloseAllDocumentsWithConfirmation),
 		entry!(KeyDown(KeyO); modifiers=[Accel], action_dispatch=PortfolioMessage::OpenDocument),
 		entry!(KeyDown(KeyI); modifiers=[Accel], action_dispatch=PortfolioMessage::Import),
 		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=PortfolioMessage::Cut { clipboard: Clipboard::Device }),
@@ -413,7 +414,6 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyV); modifiers=[Accel], action_dispatch=FrontendMessage::TriggerPaste),
 		//
 		// DialogMessage
-		entry!(KeyDown(KeyW); modifiers=[Accel, Alt], action_dispatch=DialogMessage::CloseAllDocumentsWithConfirmation),
 		entry!(KeyDown(KeyE); modifiers=[Accel], action_dispatch=DialogMessage::RequestExportDialog),
 		entry!(KeyDown(KeyN); modifiers=[Accel], action_dispatch=DialogMessage::RequestNewDocumentDialog),
 		entry!(KeyDown(Comma); modifiers=[Accel], action_dispatch=DialogMessage::RequestPreferencesDialog),

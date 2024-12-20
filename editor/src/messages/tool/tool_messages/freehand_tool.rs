@@ -47,7 +47,7 @@ pub enum FreehandToolMessage {
 	WorkingColorChanged,
 
 	// Tool-specific messages
-	DragStart,
+	DragStart { append_to_selected: Key },
 	DragStop,
 	PointerMove,
 	UpdateOptions(FreehandOptionsUpdate),
@@ -203,7 +203,7 @@ impl Fsm for FreehandToolFsmState {
 
 				self
 			}
-			(FreehandToolFsmState::Ready, FreehandToolMessage::DragStart) => {
+			(FreehandToolFsmState::Ready, FreehandToolMessage::DragStart { append_to_selected }) => {
 				responses.add(DocumentMessage::StartTransaction);
 
 				tool_data.dragged = false;
@@ -216,9 +216,24 @@ impl Fsm for FreehandToolFsmState {
 					tool_data.layer = Some(layer);
 					tool_data.end_point = Some((position, point));
 
-					extend_path_with_next_segment(tool_data, position, responses);
+					extend_path_with_next_segment(tool_data, position, true, responses);
 
 					return FreehandToolFsmState::Drawing;
+				}
+
+				if input.keyboard.key(append_to_selected) {
+					let mut selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&document.network_interface);
+					let existing_layer = selected_layers_except_artboards.next().filter(|_| selected_layers_except_artboards.next().is_none());
+					if let Some(layer) = existing_layer {
+						tool_data.layer = Some(layer);
+
+						let transform = document.metadata().transform_to_viewport(layer);
+						let position = transform.inverse().transform_point2(input.mouse.position);
+
+						extend_path_with_next_segment(tool_data, position, false, responses);
+
+						return FreehandToolFsmState::Drawing;
+					}
 				}
 
 				responses.add(DocumentMessage::DeselectAllLayers);
@@ -242,7 +257,7 @@ impl Fsm for FreehandToolFsmState {
 					let transform = document.metadata().transform_to_viewport(layer);
 					let position = transform.inverse().transform_point2(input.mouse.position);
 
-					extend_path_with_next_segment(tool_data, position, responses);
+					extend_path_with_next_segment(tool_data, position, true, responses);
 				}
 
 				FreehandToolFsmState::Drawing
@@ -279,7 +294,11 @@ impl Fsm for FreehandToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			FreehandToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw Polyline")])]),
+			FreehandToolFsmState::Ready => HintData(vec![HintGroup(vec![
+				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Polyline"),
+				// TODO: Only show this if a single layer is selected and it's of a valid type (e.g. a vector path but not raster or artboard)
+				HintInfo::keys([Key::Shift], "Append to Selected Layer").prepend_plus(),
+			])]),
 			FreehandToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 		};
 
@@ -291,7 +310,7 @@ impl Fsm for FreehandToolFsmState {
 	}
 }
 
-fn extend_path_with_next_segment(tool_data: &mut FreehandToolData, position: DVec2, responses: &mut VecDeque<Message>) {
+fn extend_path_with_next_segment(tool_data: &mut FreehandToolData, position: DVec2, extend: bool, responses: &mut VecDeque<Message>) {
 	if !tool_data.end_point.map_or(true, |(last_pos, _)| position != last_pos) || !position.is_finite() {
 		return;
 	}
@@ -304,18 +323,20 @@ fn extend_path_with_next_segment(tool_data: &mut FreehandToolData, position: DVe
 		modification_type: VectorModificationType::InsertPoint { id, position },
 	});
 
-	if let Some((_, previous_position)) = tool_data.end_point {
-		let next_id = SegmentId::generate();
-		let points = [previous_position, id];
+	if extend {
+		if let Some((_, previous_position)) = tool_data.end_point {
+			let next_id = SegmentId::generate();
+			let points = [previous_position, id];
 
-		responses.add(GraphOperationMessage::Vector {
-			layer,
-			modification_type: VectorModificationType::InsertSegment {
-				id: next_id,
-				points,
-				handles: [None, None],
-			},
-		});
+			responses.add(GraphOperationMessage::Vector {
+				layer,
+				modification_type: VectorModificationType::InsertSegment {
+					id: next_id,
+					points,
+					handles: [None, None],
+				},
+			});
+		}
 	}
 
 	tool_data.dragged = true;

@@ -2532,6 +2532,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			"graphene_core::raster::adjustments::SelectiveColorNode",
 			&node_properties::selective_color_properties as PropertiesLayout,
 		),
+		("graphene_core::ops::MathNode", &node_properties::math_properties as PropertiesLayout),
 		("graphene_core::raster::ExposureNode", &node_properties::exposure_properties as PropertiesLayout),
 		("graphene_core::vector::generator_nodes::RectangleNode", &node_properties::rectangle_properties as PropertiesLayout),
 		("graphene_core::vector::AssignColorsNode", &node_properties::assign_colors_properties as PropertiesLayout),
