@@ -356,12 +356,6 @@ impl TextToolData {
 
 			return TextToolFsmState::Editing;
 		}
-
-		if let Some(clicked_text_layer_path) = document.click(input).filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text")) {
-			self.start_editing_layer(clicked_text_layer_path, state, document, font_cache, responses);
-
-			TextToolFsmState::Editing
-		}
 		// Create new text
 		else if let Some(editing_text) = self.editing_text.as_ref().filter(|_| state == TextToolFsmState::Ready) {
 			responses.add(DocumentMessage::AddTransaction);
