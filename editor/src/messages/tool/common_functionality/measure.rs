@@ -39,7 +39,7 @@ fn draw_zero_axis_crossings(selected_bounds: Rect, hovered_bounds: Rect, transfo
 	let min_viewport = transform.transform_point2(line_start);
 	let max_viewport = transform.transform_point2(line_end);
 
-	overlay_context.dashed_line(min_viewport, max_viewport, None, Some(2.0), Some(2.0));
+	overlay_context.dashed_line(min_viewport, max_viewport, None, Some(2.0), Some(3.0));
 
 	let min_viewport_y_selected = transform.transform_point2(DVec2::new(selected_x, selected_y));
 	let max_viewport_y_selected = transform.transform_point2(DVec2::new(selected_x, hovered_y));
@@ -56,7 +56,7 @@ fn draw_zero_axis_crossings(selected_bounds: Rect, hovered_bounds: Rect, transfo
 
 	let min_viewport_y_hovered = transform.transform_point2(DVec2::new(hovered_x, selected_y));
 	let max_viewport_y_hovered = transform.transform_point2(DVec2::new(hovered_x, hovered_y));
-	overlay_context.dashed_line(min_viewport_y_hovered, max_viewport_y_hovered, None, Some(2.0), Some(2.0));
+	overlay_context.dashed_line(min_viewport_y_hovered, max_viewport_y_hovered, None, Some(2.0), Some(3.0));
 }
 fn draw_single_axis_zero_crossings(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2, document_to_viewport: DAffine2, overlay_context: &mut OverlayContext) {
 	let transform_to_document = document_to_viewport.inverse() * transform;
@@ -123,7 +123,7 @@ fn draw_single_axis_zero_crossings(selected_bounds: Rect, hovered_bounds: Rect, 
 		let min_viewport = transform.transform_point2(dashed_line_start);
 		let max_viewport = transform.transform_point2(dashed_line_end);
 
-		overlay_context.dashed_line(min_viewport, max_viewport, None, Some(2.0), Some(2.0));
+		overlay_context.dashed_line(min_viewport, max_viewport, None, Some(2.0), Some(3.0));
 	} else if overlap_x {
 		let selected_facing_edge = if hovered_bounds.max().x < selected_bounds.min().x {
 			selected_bounds.min().x
@@ -182,7 +182,7 @@ fn draw_single_axis_zero_crossings(selected_bounds: Rect, hovered_bounds: Rect, 
 		let min_viewport = transform.transform_point2(dashed_line_start);
 		let max_viewport = transform.transform_point2(dashed_line_end);
 
-		overlay_context.dashed_line(min_viewport, max_viewport, None, Some(2.0), Some(2.0));
+		overlay_context.dashed_line(min_viewport, max_viewport, None, Some(2.0), Some(3.0));
 	}
 }
 fn draw_single_axis_one_crossings(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2, document_to_viewport: DAffine2, overlay_context: &mut OverlayContext) {
