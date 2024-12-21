@@ -5,63 +5,46 @@ use crate::messages::tool::tool_messages::tool_prelude::*;
 use graphene_std::renderer::Rect;
 
 fn draw_zero_axis_crossings(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2, document_to_viewport: DAffine2, overlay_context: &mut OverlayContext) {
-	// Calculate the center points and transform for length calculations
-	let selected_center = selected_bounds.center();
-	let hovered_center = hovered_bounds.center();
 	let transform_to_document = document_to_viewport.inverse() * transform;
 
 	// Determine if the selected object is on the right or left of the hovered object
 	let selected_on_right = selected_bounds.min().x > hovered_bounds.max().x;
 	let selected_on_bottom = selected_bounds.min().y > hovered_bounds.max().y;
 
-	// Horizontal line from the left or right edge of selected to hovered's center Y
-	let selected_horizontal_x = if selected_on_right {
-		selected_bounds.min().x // Left edge of selected if it's on the right
-	} else {
-		selected_bounds.max().x // Right edge of selected if it's on the left
-	};
-	let min_viewport_x_selected = transform.transform_point2(DVec2::new(selected_horizontal_x, selected_center.y));
-	let max_viewport_x_selected = transform.transform_point2(DVec2::new(hovered_center.x, selected_center.y));
-	overlay_context.line(min_viewport_x_selected, max_viewport_x_selected, None);
-	let length_x_selected = format!("{:.2}", transform_to_document.transform_vector2(DVec2::X * (hovered_center.x - selected_horizontal_x)).length());
+	// Horizontal lines
+
+	let selected_y = if selected_on_bottom { selected_bounds.min().y } else { selected_bounds.max().y };
+	let hovered_y = if selected_on_bottom { hovered_bounds.max().y } else { hovered_bounds.min().y };
+	let selected_x = if selected_on_right { selected_bounds.min().x } else { selected_bounds.max().x };
+	let hovered_x = if selected_on_right { hovered_bounds.max().x } else { hovered_bounds.min().x };
+
+	let line_start = DVec2::new(selected_x, selected_y);
+	let line_end = DVec2::new(hovered_x, selected_y);
+	let min_viewport = transform.transform_point2(line_start);
+	let max_viewport = transform.transform_point2(line_end);
+
+	overlay_context.line(min_viewport, max_viewport, None);
+	let length = format!("{:.2}", transform_to_document.transform_vector2(line_end - line_start).length());
 	overlay_context.text(
-		&length_x_selected,
+		&length,
 		COLOR_OVERLAY_BLUE,
 		None,
-		DAffine2::from_translation((min_viewport_x_selected + max_viewport_x_selected) / 2.),
+		DAffine2::from_translation((min_viewport + max_viewport) / 2.),
 		5.,
 		[Pivot::Middle, Pivot::Start],
 	);
 
-	// Horizontal line from the left or right edge of hovered to selected's center Y
-	let hovered_horizontal_x = if selected_on_right {
-		hovered_bounds.max().x // Right edge of hovered if selected is on the right
-	} else {
-		hovered_bounds.min().x // Left edge of hovered if selected is on the left
-	};
-	let min_viewport_x_hovered = transform.transform_point2(DVec2::new(hovered_horizontal_x, hovered_center.y));
-	let max_viewport_x_hovered = transform.transform_point2(DVec2::new(selected_center.x, hovered_center.y));
-	overlay_context.line(min_viewport_x_hovered, max_viewport_x_hovered, None);
-	let length_x_hovered = format!("{:.2}", transform_to_document.transform_vector2(DVec2::X * (selected_center.x - hovered_horizontal_x)).length());
-	overlay_context.text(
-		&length_x_hovered,
-		COLOR_OVERLAY_BLUE,
-		None,
-		DAffine2::from_translation((min_viewport_x_hovered + max_viewport_x_hovered) / 2.),
-		5.,
-		[Pivot::Middle, Pivot::Start],
-	);
+	let line_start = DVec2::new(selected_x, hovered_y);
+	let line_end = DVec2::new(hovered_x, hovered_y);
+	let min_viewport = transform.transform_point2(line_start);
+	let max_viewport = transform.transform_point2(line_end);
 
-	// Vertical line from the top or bottom edge of selected to hovered's center X
-	let selected_vertical_y = if selected_on_bottom {
-		selected_bounds.min().y // Top edge if selected is below hovered
-	} else {
-		selected_bounds.max().y // Bottom edge if selected is above hovered
-	};
-	let min_viewport_y_selected = transform.transform_point2(DVec2::new(selected_center.x, selected_vertical_y));
-	let max_viewport_y_selected = transform.transform_point2(DVec2::new(selected_center.x, hovered_center.y));
+	overlay_context.dashed_line(min_viewport, max_viewport, None, Some(8.0));
+
+	let min_viewport_y_selected = transform.transform_point2(DVec2::new(selected_x, selected_y));
+	let max_viewport_y_selected = transform.transform_point2(DVec2::new(selected_x, hovered_y));
 	overlay_context.line(min_viewport_y_selected, max_viewport_y_selected, None);
-	let length_y_selected = format!("{:.2}", transform_to_document.transform_vector2(DVec2::Y * (hovered_center.y - selected_vertical_y)).length());
+	let length_y_selected = format!("{:.2}", transform_to_document.transform_vector2(DVec2::Y * (hovered_y - selected_y)).length());
 	overlay_context.text(
 		&length_y_selected,
 		COLOR_OVERLAY_BLUE,
@@ -71,24 +54,9 @@ fn draw_zero_axis_crossings(selected_bounds: Rect, hovered_bounds: Rect, transfo
 		[Pivot::Start, Pivot::Middle],
 	);
 
-	// Vertical line from the top or bottom edge of hovered to selected's center X
-	let hovered_vertical_y = if selected_on_bottom {
-		hovered_bounds.max().y // Bottom edge if selected is below hovered
-	} else {
-		hovered_bounds.min().y // Top edge if selected is above hovered
-	};
-	let min_viewport_y_hovered = transform.transform_point2(DVec2::new(hovered_center.x, hovered_vertical_y));
-	let max_viewport_y_hovered = transform.transform_point2(DVec2::new(hovered_center.x, selected_center.y));
-	overlay_context.line(min_viewport_y_hovered, max_viewport_y_hovered, None);
-	let length_y_hovered = format!("{:.2}", transform_to_document.transform_vector2(DVec2::Y * (selected_center.y - hovered_vertical_y)).length());
-	overlay_context.text(
-		&length_y_hovered,
-		COLOR_OVERLAY_BLUE,
-		None,
-		DAffine2::from_translation((min_viewport_y_hovered + max_viewport_y_hovered) / 2.),
-		5.,
-		[Pivot::Start, Pivot::Middle],
-	);
+	let min_viewport_y_hovered = transform.transform_point2(DVec2::new(hovered_x, selected_y));
+	let max_viewport_y_hovered = transform.transform_point2(DVec2::new(hovered_x, hovered_y));
+	overlay_context.dashed_line(min_viewport_y_hovered, max_viewport_y_hovered, None, Some(8.0));
 }
 fn draw_single_axis_zero_crossings(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2, document_to_viewport: DAffine2, overlay_context: &mut OverlayContext) {
 	let transform_to_document = document_to_viewport.inverse() * transform;
@@ -122,7 +90,7 @@ fn draw_single_axis_zero_crossings(selected_bounds: Rect, hovered_bounds: Rect, 
 		let line_end = DVec2::new(f64::max(hovered_bounds.min().x, selected_bounds.min().x), selected_facing_edge);
 		let min_viewport = transform.transform_point2(line_start);
 		let max_viewport = transform.transform_point2(line_end);
-		overlay_context.dashed_line(min_viewport, max_viewport, Some(COLOR_OVERLAY_GREEN), Some(2.0));
+		overlay_context.line(min_viewport, max_viewport, None);
 		let length = format!("{:.2}", transform_to_document.transform_vector2(line_end - line_start).length());
 		overlay_context.text(
 			&length,
@@ -155,7 +123,7 @@ fn draw_single_axis_zero_crossings(selected_bounds: Rect, hovered_bounds: Rect, 
 		let min_viewport = transform.transform_point2(dashed_line_start);
 		let max_viewport = transform.transform_point2(dashed_line_end);
 
-		overlay_context.dashed_line(min_viewport, max_viewport, None, Some(2.0));
+		overlay_context.dashed_line(min_viewport, max_viewport, None, Some(8.0));
 	} else if overlap_x {
 		let selected_facing_edge = if hovered_bounds.max().x < selected_bounds.min().x {
 			selected_bounds.min().x
@@ -181,7 +149,7 @@ fn draw_single_axis_zero_crossings(selected_bounds: Rect, hovered_bounds: Rect, 
 		let line_end = DVec2::new(selected_facing_edge, f64::max(hovered_bounds.min().y, selected_bounds.min().y));
 		let min_viewport = transform.transform_point2(line_start);
 		let max_viewport = transform.transform_point2(line_end);
-		overlay_context.dashed_line(min_viewport, max_viewport, Some(COLOR_OVERLAY_GREEN), Some(2.0));
+		overlay_context.line(min_viewport, max_viewport, None);
 		let length = format!("{:.2}", transform_to_document.transform_vector2(line_end - line_start).length());
 		overlay_context.text(
 			&length,
@@ -214,7 +182,7 @@ fn draw_single_axis_zero_crossings(selected_bounds: Rect, hovered_bounds: Rect, 
 		let min_viewport = transform.transform_point2(dashed_line_start);
 		let max_viewport = transform.transform_point2(dashed_line_end);
 
-		overlay_context.dashed_line(min_viewport, max_viewport, None, Some(2.0));
+		overlay_context.dashed_line(min_viewport, max_viewport, None, Some(8.0));
 	}
 }
 fn draw_single_axis_one_crossings(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2, document_to_viewport: DAffine2, overlay_context: &mut OverlayContext) {
