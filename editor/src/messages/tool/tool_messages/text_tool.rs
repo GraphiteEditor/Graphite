@@ -253,9 +253,13 @@ impl TextToolData {
 				transform: editing_text.transform.to_cols_array(),
 			});
 		} else {
+			// Check if DisplayRemoveEditableTextbox is already in the responses queue
+			let has_remove_textbox = responses.iter().any(|msg| matches!(msg, Message::Frontend(FrontendMessage::DisplayRemoveEditableTextbox)));
 			responses.add(FrontendMessage::DisplayRemoveEditableTextbox);
-			// Clear all selected nodes when no longer editing
-			responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() });
+
+			if has_remove_textbox {
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() });
+			}
 		}
 	}
 
@@ -458,8 +462,21 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Ready
 			}
 			(TextToolFsmState::Editing, TextToolMessage::CommitText) => {
-				responses.add(FrontendMessage::TriggerTextCommit);
+				if tool_data.new_text.is_empty() {
+					// Remove the editable textbox UI first
+					tool_data.set_editing(false, font_cache, responses);
 
+					// Delete the empty text layer and update the graph
+					responses.add(NodeGraphMessage::DeleteNodes {
+						node_ids: vec![tool_data.layer.to_node()],
+						delete_children: true,
+					});
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+
+					return TextToolFsmState::Ready;
+				}
+
+				responses.add(FrontendMessage::TriggerTextCommit);
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text }) => {
