@@ -478,8 +478,21 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Ready
 			}
 			(TextToolFsmState::Editing, TextToolMessage::CommitText) => {
-				responses.add(FrontendMessage::TriggerTextCommit);
+				if tool_data.new_text.is_empty() {
+					// Remove the editable textbox UI first
+					tool_data.set_editing(false, font_cache, responses);
 
+					// Delete the empty text layer and update the graph
+					responses.add(NodeGraphMessage::DeleteNodes {
+						node_ids: vec![tool_data.layer.to_node()],
+						delete_children: true,
+					});
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+
+					return TextToolFsmState::Ready;
+				}
+
+				responses.add(FrontendMessage::TriggerTextCommit);
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text }) => {
