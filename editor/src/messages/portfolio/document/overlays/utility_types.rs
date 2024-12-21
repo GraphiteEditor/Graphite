@@ -72,6 +72,8 @@ impl OverlayContext {
 		self.render_context.line_to(end.x, end.y);
 		self.render_context.set_stroke_style_str(color.unwrap_or(COLOR_OVERLAY_BLUE));
 		self.render_context.stroke();
+
+		// Reset the dash pattern after drawing
 		self.render_context
 			.set_line_dash(&JsValue::from(js_sys::Array::new()))
 			.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
