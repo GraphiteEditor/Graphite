@@ -1,10 +1,12 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::tool_prelude::*;
+use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
+use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name};
 
@@ -54,8 +56,12 @@ pub enum TextToolMessage {
 
 	// Tool-specific messages
 	CommitText,
+	DragStart,
+	DragStop,
 	EditSelected,
 	Interact,
+	PointerMove { center: Key, lock_ratio: Key },
+	PointerOutsideViewport { center: Key, lock_ratio: Key },
 	TextChange { new_text: String },
 	UpdateBounds { new_text: String },
 	UpdateOptions(TextOptionsUpdate),
@@ -122,7 +128,7 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 		.on_update(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::LineHeightRatio(number_input.value.unwrap())).into())
 		.widget_holder();
 	let character_spacing = NumberInput::new(Some(tool.options.character_spacing))
-		.label("Character Spacing")
+		.label("Char. Spacing")
 		.int()
 		.min(0.)
 		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
@@ -193,12 +199,17 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for TextToo
 	fn actions(&self) -> ActionList {
 		match self.fsm_state {
 			TextToolFsmState::Ready => actions!(TextToolMessageDiscriminant;
-				Interact,
+				DragStart,
 			),
 			TextToolFsmState::Editing => actions!(TextToolMessageDiscriminant;
-				Interact,
+				DragStart,
 				Abort,
 				CommitText,
+			),
+			TextToolFsmState::Dragging => actions!(TextToolMessageDiscriminant;
+				DragStop,
+				Abort,
+				PointerMove,
 			),
 		}
 	}
@@ -221,13 +232,16 @@ enum TextToolFsmState {
 	#[default]
 	Ready,
 	Editing,
+	Dragging,
 }
+
 #[derive(Clone, Debug)]
 pub struct EditingText {
 	text: String,
 	font: Font,
 	font_size: f64,
 	line_height_ratio: f64,
+	line_width: Option<f64>,
 	character_spacing: f64,
 	color: Option<Color>,
 	transform: DAffine2,
@@ -238,6 +252,10 @@ struct TextToolData {
 	layer: LayerNodeIdentifier,
 	editing_text: Option<EditingText>,
 	new_text: String,
+	drag_start: ViewportPosition,
+	drag_current: ViewportPosition,
+	dragged: bool,
+	auto_panning: AutoPanning,
 }
 
 impl TextToolData {
@@ -246,7 +264,8 @@ impl TextToolData {
 		if let Some(editing_text) = self.editing_text.as_ref().filter(|_| editable) {
 			responses.add(FrontendMessage::DisplayEditableTextbox {
 				text: editing_text.text.clone(),
-				line_width: None,
+				line_width: editing_text.line_width,
+				line_height_ratio: editing_text.line_height_ratio,
 				font_size: editing_text.font_size,
 				color: editing_text.color.unwrap_or(Color::BLACK),
 				url: font_cache.get_preview_url(&editing_text.font).cloned().unwrap_or_default(),
@@ -262,12 +281,13 @@ impl TextToolData {
 	fn load_layer_text_node(&mut self, document: &DocumentMessageHandler) -> Option<()> {
 		let transform = document.metadata().transform_to_viewport(self.layer);
 		let color = graph_modification_utils::get_fill_color(self.layer, &document.network_interface).unwrap_or(Color::BLACK);
-		let (text, font, font_size, line_height_ratio, character_spacing) = graph_modification_utils::get_text(self.layer, &document.network_interface)?;
+		let (text, font, font_size, line_height_ratio, character_spacing, line_width) = graph_modification_utils::get_text(self.layer, &document.network_interface)?;
 		self.editing_text = Some(EditingText {
 			text: text.clone(),
 			font: font.clone(),
 			font_size,
 			line_height_ratio,
+			line_width,
 			character_spacing,
 			color: Some(color),
 			transform,
@@ -316,7 +336,7 @@ impl TextToolData {
 			TextToolFsmState::Editing
 		}
 		// Create new text
-		else if let Some(editing_text) = self.editing_text.as_ref().filter(|_| state == TextToolFsmState::Ready) {
+		else if let Some(editing_text) = self.editing_text.as_ref().filter(|_| state == TextToolFsmState::Ready || state == TextToolFsmState::Dragging) {
 			responses.add(DocumentMessage::AddTransaction);
 
 			self.layer = LayerNodeIdentifier::new_unchecked(NodeId::new());
@@ -327,6 +347,7 @@ impl TextToolData {
 				font: editing_text.font.clone(),
 				size: editing_text.font_size,
 				line_height_ratio: editing_text.line_height_ratio,
+				line_width: editing_text.line_width,
 				character_spacing: editing_text.character_spacing,
 				parent: document.new_layer_parent(true),
 				insert_index: 0,
@@ -403,44 +424,51 @@ impl Fsm for TextToolFsmState {
 						editing_text.font_size,
 						editing_text.line_height_ratio,
 						editing_text.character_spacing,
-						None,
+						editing_text.line_width,
 					);
 					if far.x != 0. && far.y != 0. {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
 						let transformed_quad = document.metadata().transform_to_viewport(tool_data.layer) * quad;
-						overlay_context.quad(transformed_quad, None);
+						let fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+							.unwrap()
+							.with_alpha(0.05)
+							.rgba_hex();
+						overlay_context.quad(transformed_quad, Some(&("#".to_string() + &fill_color)));
 					}
 				}
 
 				TextToolFsmState::Editing
 			}
 			(_, TextToolMessage::Overlays(mut overlay_context)) => {
-				for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
-					let Some((text, font, font_size, line_height_ratio, character_spacing)) = graph_modification_utils::get_text(layer, &document.network_interface) else {
-						continue;
-					};
-					let buzz_face = font_cache.get(font).map(|data| load_face(data));
-					let far = graphene_core::text::bounding_box(text, buzz_face, font_size, line_height_ratio, character_spacing, None);
-					let quad = Quad::from_box([DVec2::ZERO, far]);
-					let multiplied = document.metadata().transform_to_viewport(layer) * quad;
-					overlay_context.quad(multiplied, None);
+				if matches!(self, Self::Dragging) {
+					// Get the updated selection box bounds
+					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
+
+					// Draw outline visualizations on the layers to be selected
+					for layer in document.intersect_quad_no_artboards(quad, input) {
+						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+					}
+
+					// Update the selection box
+					let fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+						.unwrap()
+						.with_alpha(0.05)
+						.rgba_hex();
+					overlay_context.quad(quad, Some(&("#".to_string() + &fill_color)));
+				} else {
+					for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
+						let Some((text, font, font_size, line_height_ratio, character_spacing, line_width)) = graph_modification_utils::get_text(layer, &document.network_interface) else {
+							continue;
+						};
+						let buzz_face = font_cache.get(font).map(|data| load_face(data));
+						let far = graphene_core::text::bounding_box(text, buzz_face, font_size, line_height_ratio, character_spacing, line_width);
+						let quad = Quad::from_box([DVec2::ZERO, far]);
+						let multiplied = document.metadata().transform_to_viewport(layer) * quad;
+						overlay_context.quad(multiplied, None);
+					}
 				}
 
 				self
-			}
-			(state, TextToolMessage::Interact) => {
-				tool_data.editing_text = Some(EditingText {
-					text: String::new(),
-					transform: DAffine2::from_translation(input.mouse.position),
-					font_size: tool_options.font_size,
-					line_height_ratio: tool_options.line_height_ratio,
-					character_spacing: tool_options.character_spacing,
-					font: Font::new(tool_options.font_name.clone(), tool_options.font_style.clone()),
-					color: tool_options.fill.active_color(),
-				});
-				tool_data.new_text = String::new();
-
-				tool_data.interact(state, input, document, font_cache, responses)
 			}
 			(state, TextToolMessage::EditSelected) => {
 				if let Some(layer) = can_edit_selected(document) {
@@ -456,6 +484,79 @@ impl Fsm for TextToolFsmState {
 				}
 
 				TextToolFsmState::Ready
+			}
+			(TextToolFsmState::Ready, TextToolMessage::DragStart) => {
+				tool_data.drag_start = input.mouse.position;
+				tool_data.drag_current = input.mouse.position;
+
+				TextToolFsmState::Dragging
+			}
+			(TextToolFsmState::Dragging, TextToolMessage::PointerMove { center, lock_ratio }) => {
+				tool_data.drag_current = input.mouse.position;
+				tool_data.dragged = true;
+
+				responses.add(OverlaysMessage::Draw);
+
+				// Auto-panning
+				let messages = [
+					TextToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
+					TextToolMessage::PointerMove { center, lock_ratio }.into(),
+				];
+				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
+
+				self
+			}
+			(_, TextToolMessage::PointerMove { .. }) => {
+				responses.add(OverlaysMessage::Draw);
+
+				self
+			}
+			(TextToolFsmState::Dragging, TextToolMessage::PointerOutsideViewport { .. }) => {
+				// Auto-panning setup
+				let _ = tool_data.auto_panning.shift_viewport(input, responses);
+
+				TextToolFsmState::Dragging
+			}
+			(state, TextToolMessage::PointerOutsideViewport { center, lock_ratio }) => {
+				// Auto-panning stop
+				let messages = [
+					TextToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
+					TextToolMessage::PointerMove { center, lock_ratio }.into(),
+				];
+				tool_data.auto_panning.stop(&messages, responses);
+
+				state
+			}
+			(TextToolFsmState::Dragging, TextToolMessage::DragStop) => {
+				let mut line_width: Option<f64> = None;
+				let transformation_point: DVec2;
+
+				if tool_data.dragged {
+					input
+						.mouse
+						.finish_transaction(document.metadata().document_to_viewport.transform_point2(tool_data.drag_start), responses);
+
+					line_width = Some((tool_data.drag_current.x - tool_data.drag_start.x).abs());
+					transformation_point = tool_data.drag_start;
+
+					tool_data.new_text = String::new();
+				} else {
+					transformation_point = tool_data.drag_current;
+				}
+
+				tool_data.editing_text = Some(EditingText {
+					text: String::new(),
+					transform: DAffine2::from_translation(transformation_point),
+					font_size: tool_options.font_size,
+					line_height_ratio: tool_options.line_height_ratio,
+					line_width,
+					character_spacing: tool_options.character_spacing,
+					font: Font::new(tool_options.font_name.clone(), tool_options.font_style.clone()),
+					color: tool_options.fill.active_color(),
+				});
+				tool_data.new_text = String::new();
+				tool_data.dragged = false;
+				tool_data.interact(TextToolFsmState::Dragging, input, document, font_cache, responses)
 			}
 			(TextToolFsmState::Editing, TextToolMessage::CommitText) => {
 				responses.add(FrontendMessage::TriggerTextCommit);
@@ -493,18 +594,31 @@ impl Fsm for TextToolFsmState {
 		let hint_data = match self {
 			TextToolFsmState::Ready => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Place Text")]),
+				HintGroup(vec![
+					HintInfo::mouse(MouseMotion::LmbDrag, "Place Text Box"),
+					HintInfo::keys([Key::Shift], "Constrain Square").prepend_plus(),
+					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+				]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Edit Text")]),
 			]),
 			TextToolFsmState::Editing => HintData(vec![HintGroup(vec![
 				HintInfo::keys([Key::Control, Key::Enter], "").add_mac_keys([Key::Command, Key::Enter]),
 				HintInfo::keys([Key::Escape], "Commit Changes").prepend_slash(),
 			])]),
+			TextToolFsmState::Dragging => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
+			]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Text });
+		let cursor = match self {
+			TextToolFsmState::Dragging => MouseCursorIcon::Crosshair,
+			_ => MouseCursorIcon::Text,
+		};
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 	}
 }
