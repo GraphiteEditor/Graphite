@@ -184,6 +184,7 @@ fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context
 			document_to_viewport.transform_point2(end),
 			Some(&("#".to_string() + &grid_color.rgba_hex())),
 			Some((spacing_x / cos_a) * document_to_viewport.matrix2.x_axis.length()),
+			None,
 		);
 	}
 }
