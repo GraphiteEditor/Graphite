@@ -726,7 +726,7 @@ fn draw_two_axis_two_zero_two_zero(selected_bounds: Rect, hovered_bounds: Rect, 
 	);
 }
 
-fn handle_two_axis_overlap(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2, document_to_viewport: DAffine2, overlay_context: &mut OverlayContext) -> () {
+fn handle_two_axis_overlap(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2, document_to_viewport: DAffine2, overlay_context: &mut OverlayContext) {
 	// X-axis edge crossings
 	let selected_x_crosses = (selected_bounds.min().y >= hovered_bounds.min().y && selected_bounds.min().y <= hovered_bounds.max().y) as u8
 		+ (selected_bounds.max().y >= hovered_bounds.min().y && selected_bounds.max().y <= hovered_bounds.max().y) as u8;
