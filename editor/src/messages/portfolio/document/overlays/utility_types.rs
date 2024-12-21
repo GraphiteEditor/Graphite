@@ -46,16 +46,17 @@ impl OverlayContext {
 	}
 
 	pub fn line(&mut self, start: DVec2, end: DVec2, color: Option<&str>) {
-		self.dashed_line(start, end, color, None)
+		self.dashed_line(start, end, color, None, None)
 	}
 
-	pub fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, dash_width: Option<f64>) {
+	pub fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, dash_width: Option<f64>, gap_width: Option<f64>) {
 		let start = start.round() - DVec2::splat(0.5);
 		let end = end.round() - DVec2::splat(0.5);
 		if let Some(dash_width) = dash_width {
+			let gap_width = gap_width.unwrap_or(1.0);
 			let array = js_sys::Array::new();
-			array.push(&JsValue::from(1));
 			array.push(&JsValue::from(dash_width - 1.));
+			array.push(&JsValue::from(gap_width));
 			self.render_context
 				.set_line_dash(&JsValue::from(array))
 				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
@@ -77,32 +78,6 @@ impl OverlayContext {
 		self.render_context
 			.set_line_dash(&JsValue::from(js_sys::Array::new()))
 			.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
-			.ok();
-	}
-
-	pub fn dashed_line_with_pattern(&mut self, start: DVec2, end: DVec2, color: Option<&str>, dash_width: f64, gap_width: f64) {
-		let start = start.round() - DVec2::splat(0.5);
-		let end = end.round() - DVec2::splat(0.5);
-
-		// Set the dash and gap pattern
-		let array = js_sys::Array::new();
-		array.push(&JsValue::from(dash_width));
-		array.push(&JsValue::from(gap_width));
-		self.render_context
-			.set_line_dash(&JsValue::from(array))
-			.map_err(|error| log::warn!("Error setting line dash: {:?}", error))
-			.ok();
-
-		self.render_context.begin_path();
-		self.render_context.move_to(start.x, start.y);
-		self.render_context.line_to(end.x, end.y);
-		self.render_context.set_stroke_style_str(color.unwrap_or(COLOR_OVERLAY_BLUE));
-		self.render_context.stroke();
-
-		// Reset the dash pattern after drawing
-		self.render_context
-			.set_line_dash(&JsValue::from(js_sys::Array::new()))
-			.map_err(|error| log::warn!("Error resetting line dash: {:?}", error))
 			.ok();
 	}
 
