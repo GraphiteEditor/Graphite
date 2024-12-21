@@ -373,11 +373,359 @@ fn draw_two_axis_one_one_crossing(selected_bounds: Rect, hovered_bounds: Rect, t
 		[Pivot::Middle, Pivot::Start],
 	);
 }
-fn draw_two_axis_one_one_two_zero_crossing(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2, document_to_viewport: DAffine2, overlay_context: &mut OverlayContext) {
+fn draw_two_axis_one_one_two_zero_crossing(
+	selected_bounds: Rect,
+	hovered_bounds: Rect,
+	transform: DAffine2,
+	document_to_viewport: DAffine2,
+	overlay_context: &mut OverlayContext,
+	two_vertical_edge_intersect: bool,
+) {
 	// selected has 2 edge lines crossing hovered
-
 	let transform_to_document = document_to_viewport.inverse() * transform;
+	if two_vertical_edge_intersect {
+		let selected_bound_edge = if selected_bounds.center().y >= hovered_bounds.center().y {
+			selected_bounds.max().y
+		} else {
+			selected_bounds.min().y
+		};
+		let hovered_bound_edge = if selected_bounds.center().y >= hovered_bounds.center().y {
+			hovered_bounds.max().y
+		} else {
+			hovered_bounds.min().y
+		};
+		//  vertical lines
+		let y_start_left = DVec2::new(hovered_bounds.min().x, f64::min(selected_bound_edge, hovered_bound_edge));
+		let y_end_left = DVec2::new(hovered_bounds.min().x, f64::max(selected_bound_edge, hovered_bound_edge));
+		let min_y_viewport = transform.transform_point2(y_start_left);
+		let max_y_viewport = transform.transform_point2(y_end_left);
+		overlay_context.line(min_y_viewport, max_y_viewport, None);
+		let length = format!("{:.2}", transform_to_document.transform_vector2(y_end_left - y_start_left).length());
+		overlay_context.text(
+			&length,
+			COLOR_OVERLAY_BLUE,
+			None,
+			DAffine2::from_translation((min_y_viewport + max_y_viewport) / 2.),
+			5.,
+			[Pivot::Middle, Pivot::Start],
+		);
+		let y_start_right = DVec2::new(hovered_bounds.max().x, f64::min(selected_bound_edge, hovered_bound_edge));
+		let y_end_right = DVec2::new(hovered_bounds.max().x, f64::max(selected_bound_edge, hovered_bound_edge));
+		let min_y_viewport = transform.transform_point2(y_start_right);
+		let max_y_viewport = transform.transform_point2(y_end_right);
+		overlay_context.line(min_y_viewport, max_y_viewport, None);
+		let length = format!("{:.2}", transform_to_document.transform_vector2(y_end_right - y_start_right).length());
+		overlay_context.text(
+			&length,
+			COLOR_OVERLAY_BLUE,
+			None,
+			DAffine2::from_translation((min_y_viewport + max_y_viewport) / 2.),
+			5.,
+			[Pivot::Middle, Pivot::Start],
+		);
+
+		// horizontal lines
+		let horizontal_line_y_bound = if selected_bounds.center().y >= hovered_bounds.center().y {
+			f64::max(selected_bound_edge, hovered_bound_edge)
+		} else {
+			f64::min(selected_bound_edge, hovered_bound_edge)
+		};
+
+		// horizontal lines
+		let x_start_left = DVec2::new(hovered_bounds.min().x, horizontal_line_y_bound);
+		let x_end_left = DVec2::new(selected_bounds.min().x, horizontal_line_y_bound);
+		let min_x_viewport = transform.transform_point2(x_start_left);
+		let max_x_viewport = transform.transform_point2(x_end_left);
+		overlay_context.line(min_x_viewport, max_x_viewport, None);
+		let length = format!("{:.2}", transform_to_document.transform_vector2(x_end_left - x_start_left).length());
+		overlay_context.text(
+			&length,
+			COLOR_OVERLAY_BLUE,
+			None,
+			DAffine2::from_translation((min_x_viewport + max_x_viewport) / 2.),
+			5.,
+			[Pivot::Middle, Pivot::Start],
+		);
+
+		let x_start_right = DVec2::new(hovered_bounds.max().x, horizontal_line_y_bound);
+		let x_end_right = DVec2::new(selected_bounds.max().x, horizontal_line_y_bound);
+		let min_x_viewport = transform.transform_point2(x_start_right);
+		let max_x_viewport = transform.transform_point2(x_end_right);
+		overlay_context.line(min_x_viewport, max_x_viewport, None);
+		let length = format!("{:.2}", transform_to_document.transform_vector2(x_end_right - x_start_right).length());
+		overlay_context.text(
+			&length,
+			COLOR_OVERLAY_BLUE,
+			None,
+			DAffine2::from_translation((min_x_viewport + max_x_viewport) / 2.),
+			5.,
+			[Pivot::Middle, Pivot::Start],
+		);
+	} else {
+		// horizontal intersections
+		let selected_bound_edge = if selected_bounds.center().x >= hovered_bounds.center().x {
+			selected_bounds.max().x
+		} else {
+			selected_bounds.min().x
+		};
+		let hovered_bound_edge = if selected_bounds.center().x >= hovered_bounds.center().x {
+			hovered_bounds.max().x
+		} else {
+			hovered_bounds.min().x
+		};
+		//  vertical lines
+		// outermost x position
+		let vertical_line_x = if selected_bounds.center().x >= hovered_bounds.center().x {
+			f64::max(selected_bound_edge, hovered_bound_edge)
+		} else {
+			f64::min(selected_bound_edge, hovered_bound_edge)
+		};
+
+		let y_start_up = DVec2::new(vertical_line_x, selected_bounds.min().y);
+		let y_end_up = DVec2::new(vertical_line_x, hovered_bounds.min().y);
+		let min_y_viewport = transform.transform_point2(y_start_up);
+		let max_y_viewport = transform.transform_point2(y_end_up);
+		overlay_context.line(min_y_viewport, max_y_viewport, None);
+		let length = format!("{:.2}", transform_to_document.transform_vector2(y_end_up - y_start_up).length());
+		overlay_context.text(
+			&length,
+			COLOR_OVERLAY_BLUE,
+			None,
+			DAffine2::from_translation((min_y_viewport + max_y_viewport) / 2.),
+			5.,
+			[Pivot::Middle, Pivot::Start],
+		);
+		let y_start_down = DVec2::new(vertical_line_x, selected_bounds.max().y);
+		let y_end_down = DVec2::new(vertical_line_x, hovered_bounds.max().y);
+		let min_y_viewport = transform.transform_point2(y_start_down);
+		let max_y_viewport = transform.transform_point2(y_end_down);
+		overlay_context.line(min_y_viewport, max_y_viewport, None);
+		let length = format!("{:.2}", transform_to_document.transform_vector2(y_end_down - y_start_down).length());
+		overlay_context.text(
+			&length,
+			COLOR_OVERLAY_BLUE,
+			None,
+			DAffine2::from_translation((min_y_viewport + max_y_viewport) / 2.),
+			5.,
+			[Pivot::Middle, Pivot::Start],
+		);
+
+		// horizontal lines
+		let horizontal_line_inner_x = if selected_bounds.center().x >= hovered_bounds.center().x {
+			f64::min(selected_bound_edge, hovered_bound_edge)
+		} else {
+			f64::max(selected_bound_edge, hovered_bound_edge)
+		};
+		let x_start_up = DVec2::new(vertical_line_x, f64::min(selected_bounds.min().y, hovered_bounds.min().y));
+		let x_end_up = DVec2::new(horizontal_line_inner_x, f64::min(selected_bounds.min().y, hovered_bounds.min().y));
+		let min_x_viewport = transform.transform_point2(x_start_up);
+		let max_x_viewport = transform.transform_point2(x_end_up);
+		overlay_context.line(min_x_viewport, max_x_viewport, None);
+		let length = format!("{:.2}", transform_to_document.transform_vector2(x_end_up - x_start_up).length());
+		overlay_context.text(
+			&length,
+			COLOR_OVERLAY_BLUE,
+			None,
+			DAffine2::from_translation((min_x_viewport + max_x_viewport) / 2.),
+			5.,
+			[Pivot::Middle, Pivot::Start],
+		);
+		let x_start_down = DVec2::new(vertical_line_x, f64::max(selected_bounds.max().y, hovered_bounds.max().y));
+		let x_end_down = DVec2::new(horizontal_line_inner_x, f64::max(selected_bounds.max().y, hovered_bounds.max().y));
+		let min_x_viewport = transform.transform_point2(x_start_down);
+		let max_x_viewport = transform.transform_point2(x_end_down);
+		overlay_context.line(min_x_viewport, max_x_viewport, None);
+		let length = format!("{:.2}", transform_to_document.transform_vector2(x_end_down - x_start_down).length());
+		overlay_context.text(
+			&length,
+			COLOR_OVERLAY_BLUE,
+			None,
+			DAffine2::from_translation((min_x_viewport + max_x_viewport) / 2.),
+			5.,
+			[Pivot::Middle, Pivot::Start],
+		);
+	}
 }
+fn draw_two_axis_two_zero_zero_two(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2, document_to_viewport: DAffine2, overlay_context: &mut OverlayContext) {
+	let transform_to_document = document_to_viewport.inverse() * transform;
+	//  vertical lines
+	let y_start_left_top = DVec2::new(f64::min(hovered_bounds.min().x, selected_bounds.min().x), f64::min(hovered_bounds.min().y, selected_bounds.min().y));
+	let y_end_left_top = DVec2::new(f64::min(hovered_bounds.min().x, selected_bounds.min().x), f64::max(hovered_bounds.min().y, selected_bounds.min().y));
+	let min_y_viewport = transform.transform_point2(y_start_left_top);
+	let max_y_viewport = transform.transform_point2(y_end_left_top);
+	overlay_context.line(min_y_viewport, max_y_viewport, None);
+	let length = format!("{:.2}", transform_to_document.transform_vector2(y_end_left_top - y_start_left_top).length());
+	overlay_context.text(
+		&length,
+		COLOR_OVERLAY_BLUE,
+		None,
+		DAffine2::from_translation((min_y_viewport + max_y_viewport) / 2.),
+		5.,
+		[Pivot::Middle, Pivot::Start],
+	);
+	let y_start_left_bottom = DVec2::new(f64::min(hovered_bounds.min().x, selected_bounds.min().x), f64::min(hovered_bounds.max().y, selected_bounds.max().y));
+	let y_end_left_bottom = DVec2::new(f64::min(hovered_bounds.min().x, selected_bounds.min().x), f64::max(hovered_bounds.max().y, selected_bounds.max().y));
+	let min_y_viewport = transform.transform_point2(y_start_left_bottom);
+	let max_y_viewport = transform.transform_point2(y_end_left_bottom);
+	overlay_context.line(min_y_viewport, max_y_viewport, None);
+	let length = format!("{:.2}", transform_to_document.transform_vector2(y_end_left_bottom - y_start_left_bottom).length());
+	overlay_context.text(
+		&length,
+		COLOR_OVERLAY_BLUE,
+		None,
+		DAffine2::from_translation((min_y_viewport + max_y_viewport) / 2.),
+		5.,
+		[Pivot::Middle, Pivot::Start],
+	);
+	let y_start_right_top = DVec2::new(f64::max(hovered_bounds.max().x, selected_bounds.max().x), f64::min(hovered_bounds.min().y, selected_bounds.min().y));
+	let y_end_right_top = DVec2::new(f64::max(hovered_bounds.max().x, selected_bounds.max().x), f64::max(hovered_bounds.min().y, selected_bounds.min().y));
+	let min_y_viewport = transform.transform_point2(y_start_right_top);
+	let max_y_viewport = transform.transform_point2(y_end_right_top);
+	overlay_context.line(min_y_viewport, max_y_viewport, None);
+	let length = format!("{:.2}", transform_to_document.transform_vector2(y_end_right_top - y_start_right_top).length());
+	overlay_context.text(
+		&length,
+		COLOR_OVERLAY_BLUE,
+		None,
+		DAffine2::from_translation((min_y_viewport + max_y_viewport) / 2.),
+		5.,
+		[Pivot::Middle, Pivot::Start],
+	);
+	let y_start_right_bottom = DVec2::new(f64::max(hovered_bounds.max().x, selected_bounds.max().x), f64::min(hovered_bounds.max().y, selected_bounds.max().y));
+	let y_end_right_bottom = DVec2::new(f64::max(hovered_bounds.max().x, selected_bounds.max().x), f64::max(hovered_bounds.max().y, selected_bounds.max().y));
+	let min_y_viewport = transform.transform_point2(y_start_right_bottom);
+	let max_y_viewport = transform.transform_point2(y_end_right_bottom);
+	overlay_context.line(min_y_viewport, max_y_viewport, None);
+	let length = format!("{:.2}", transform_to_document.transform_vector2(y_end_right_bottom - y_start_right_bottom).length());
+	overlay_context.text(
+		&length,
+		COLOR_OVERLAY_BLUE,
+		None,
+		DAffine2::from_translation((min_y_viewport + max_y_viewport) / 2.),
+		5.,
+		[Pivot::Middle, Pivot::Start],
+	);
+	// horizontal lines
+	let x_start_left_top = DVec2::new(f64::min(hovered_bounds.min().x, selected_bounds.min().x), f64::min(hovered_bounds.min().y, selected_bounds.min().y));
+	let x_end_left_top = DVec2::new(f64::max(hovered_bounds.min().x, selected_bounds.min().x), f64::min(hovered_bounds.min().y, selected_bounds.min().y));
+	let min_x_viewport = transform.transform_point2(x_start_left_top);
+	let max_x_viewport = transform.transform_point2(x_end_left_top);
+	overlay_context.line(min_x_viewport, max_x_viewport, None);
+	let length = format!("{:.2}", transform_to_document.transform_vector2(x_end_left_top - x_start_left_top).length());
+	overlay_context.text(
+		&length,
+		COLOR_OVERLAY_BLUE,
+		None,
+		DAffine2::from_translation((min_x_viewport + max_x_viewport) / 2.),
+		5.,
+		[Pivot::Middle, Pivot::Start],
+	);
+	let x_start_right_top = DVec2::new(f64::min(hovered_bounds.max().x, selected_bounds.max().x), f64::min(hovered_bounds.min().y, selected_bounds.min().y));
+	let x_end_right_top = DVec2::new(f64::max(hovered_bounds.max().x, selected_bounds.max().x), f64::min(hovered_bounds.min().y, selected_bounds.min().y));
+	let min_x_viewport = transform.transform_point2(x_start_right_top);
+	let max_x_viewport = transform.transform_point2(x_end_right_top);
+	overlay_context.line(min_x_viewport, max_x_viewport, None);
+	let length = format!("{:.2}", transform_to_document.transform_vector2(x_end_right_top - x_start_right_top).length());
+	overlay_context.text(
+		&length,
+		COLOR_OVERLAY_BLUE,
+		None,
+		DAffine2::from_translation((min_x_viewport + max_x_viewport) / 2.),
+		5.,
+		[Pivot::Middle, Pivot::Start],
+	);
+	let x_start_left_bottom = DVec2::new(f64::min(hovered_bounds.min().x, selected_bounds.min().x), f64::max(hovered_bounds.max().y, selected_bounds.max().y));
+	let x_end_left_bottom = DVec2::new(f64::max(hovered_bounds.min().x, selected_bounds.min().x), f64::max(hovered_bounds.max().y, selected_bounds.max().y));
+	let min_x_viewport = transform.transform_point2(x_start_left_bottom);
+	let max_x_viewport = transform.transform_point2(x_end_left_bottom);
+	overlay_context.line(min_x_viewport, max_x_viewport, None);
+	let length = format!("{:.2}", transform_to_document.transform_vector2(x_end_left_bottom - x_start_left_bottom).length());
+	overlay_context.text(
+		&length,
+		COLOR_OVERLAY_BLUE,
+		None,
+		DAffine2::from_translation((min_x_viewport + max_x_viewport) / 2.),
+		5.,
+		[Pivot::Middle, Pivot::Start],
+	);
+	let x_start_right_bottom = DVec2::new(f64::min(hovered_bounds.max().x, selected_bounds.max().x), f64::max(hovered_bounds.max().y, selected_bounds.max().y));
+	let x_end_right_bottom = DVec2::new(f64::max(hovered_bounds.max().x, selected_bounds.max().x), f64::max(hovered_bounds.max().y, selected_bounds.max().y));
+	let min_x_viewport = transform.transform_point2(x_start_right_bottom);
+	let max_x_viewport = transform.transform_point2(x_end_right_bottom);
+	overlay_context.line(min_x_viewport, max_x_viewport, None);
+	let length = format!("{:.2}", transform_to_document.transform_vector2(x_end_right_bottom - x_start_right_bottom).length());
+	overlay_context.text(
+		&length,
+		COLOR_OVERLAY_BLUE,
+		None,
+		DAffine2::from_translation((min_x_viewport + max_x_viewport) / 2.),
+		5.,
+		[Pivot::Middle, Pivot::Start],
+	);
+}
+fn draw_two_axis_two_zero_two_zero(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2, document_to_viewport: DAffine2, overlay_context: &mut OverlayContext) {
+	let transform_to_document = document_to_viewport.inverse() * transform;
+	// horizontal lines
+	let x_start_left = DVec2::new(f64::max(hovered_bounds.min().x, selected_bounds.min().x), selected_bounds.center().y);
+	let x_end_left = DVec2::new(f64::min(hovered_bounds.min().x, selected_bounds.min().x), selected_bounds.center().y);
+	let min_x_viewport = transform.transform_point2(x_start_left);
+	let max_x_viewport = transform.transform_point2(x_end_left);
+	overlay_context.line(min_x_viewport, max_x_viewport, None);
+	let length = format!("{:.2}", transform_to_document.transform_vector2(x_end_left - x_start_left).length());
+	overlay_context.text(
+		&length,
+		COLOR_OVERLAY_BLUE,
+		None,
+		DAffine2::from_translation((min_x_viewport + max_x_viewport) / 2.),
+		5.,
+		[Pivot::Middle, Pivot::Start],
+	);
+	let x_start_right = DVec2::new(f64::min(hovered_bounds.max().x, selected_bounds.max().x), selected_bounds.center().y);
+	let x_end_right = DVec2::new(f64::max(hovered_bounds.max().x, selected_bounds.max().x), selected_bounds.center().y);
+	let min_x_viewport = transform.transform_point2(x_start_right);
+	let max_x_viewport = transform.transform_point2(x_end_right);
+	overlay_context.line(min_x_viewport, max_x_viewport, None);
+	let length = format!("{:.2}", transform_to_document.transform_vector2(x_end_right - x_start_right).length());
+	overlay_context.text(
+		&length,
+		COLOR_OVERLAY_BLUE,
+		None,
+		DAffine2::from_translation((min_x_viewport + max_x_viewport) / 2.),
+		5.,
+		[Pivot::Middle, Pivot::Start],
+	);
+
+	//vertical lines
+	let y_start_top = DVec2::new(selected_bounds.center().x, f64::max(hovered_bounds.min().y, selected_bounds.min().y));
+	let y_end_top = DVec2::new(selected_bounds.center().x, f64::min(hovered_bounds.min().y, selected_bounds.min().y));
+	let min_y_viewport = transform.transform_point2(y_start_top);
+	let max_y_viewport = transform.transform_point2(y_end_top);
+	overlay_context.line(min_y_viewport, max_y_viewport, None);
+	let length = format!("{:.2}", transform_to_document.transform_vector2(y_end_top - y_start_top).length());
+	overlay_context.text(
+		&length,
+		COLOR_OVERLAY_BLUE,
+		None,
+		DAffine2::from_translation((min_y_viewport + max_y_viewport) / 2.),
+		5.,
+		[Pivot::Middle, Pivot::Start],
+	);
+	let y_start_bottom = DVec2::new(selected_bounds.center().x, f64::min(hovered_bounds.max().y, selected_bounds.max().y));
+	let y_end_bottom = DVec2::new(selected_bounds.center().x, f64::max(hovered_bounds.max().y, selected_bounds.max().y));
+	let min_y_viewport = transform.transform_point2(y_start_bottom);
+	let max_y_viewport = transform.transform_point2(y_end_bottom);
+	overlay_context.line(min_y_viewport, max_y_viewport, None);
+	let length = format!("{:.2}", transform_to_document.transform_vector2(y_end_bottom - y_start_bottom).length());
+	overlay_context.text(
+		&length,
+		COLOR_OVERLAY_BLUE,
+		None,
+		DAffine2::from_translation((min_y_viewport + max_y_viewport) / 2.),
+		5.,
+		[Pivot::Middle, Pivot::Start],
+	);
+}
+
 fn handle_two_axis_overlap(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2, document_to_viewport: DAffine2, overlay_context: &mut OverlayContext) -> () {
 	// X-axis edge crossings
 	let selected_x_crosses = (selected_bounds.min().y >= hovered_bounds.min().y && selected_bounds.min().y <= hovered_bounds.max().y) as u8
@@ -393,17 +741,21 @@ fn handle_two_axis_overlap(selected_bounds: Rect, hovered_bounds: Rect, transfor
 	// Identify the case based on edge crossings along each axis
 	match ((selected_x_crosses, hovered_x_crosses), (selected_y_crosses, hovered_y_crosses)) {
 		((1, 1), (1, 1)) => draw_two_axis_one_one_crossing(selected_bounds, hovered_bounds, transform, document_to_viewport, overlay_context),
-		((1, 1), (2, 0)) => draw_two_axis_one_one_two_zero_crossing(selected_bounds, hovered_bounds, transform, document_to_viewport, overlay_context),
-		((1, 1), (0, 2)) => draw_two_axis_one_one_two_zero_crossing(hovered_bounds, selected_bounds, transform, document_to_viewport, overlay_context),
-		((2, 0), (1, 1)) => draw_two_axis_one_one_two_zero_crossing(selected_bounds, hovered_bounds, transform, document_to_viewport, overlay_context),
-		((0, 2), (1, 1)) => draw_two_axis_one_one_two_zero_crossing(hovered_bounds, selected_bounds, transform, document_to_viewport, overlay_context),
-		((2, 0), (0, 2)) => (),
-		((2, 0), (2, 0)) => (),
+		((1, 1), (2, 0)) => draw_two_axis_one_one_two_zero_crossing(selected_bounds, hovered_bounds, transform, document_to_viewport, overlay_context, true),
+		((1, 1), (0, 2)) => draw_two_axis_one_one_two_zero_crossing(hovered_bounds, selected_bounds, transform, document_to_viewport, overlay_context, true),
+		((2, 0), (1, 1)) => draw_two_axis_one_one_two_zero_crossing(selected_bounds, hovered_bounds, transform, document_to_viewport, overlay_context, false),
+		((0, 2), (1, 1)) => draw_two_axis_one_one_two_zero_crossing(hovered_bounds, selected_bounds, transform, document_to_viewport, overlay_context, false),
+		((2, 0), (0, 2)) => draw_two_axis_two_zero_zero_two(selected_bounds, hovered_bounds, transform, document_to_viewport, overlay_context),
+		((0, 2), (2, 0)) => draw_two_axis_two_zero_zero_two(selected_bounds, hovered_bounds, transform, document_to_viewport, overlay_context),
+		((2, 0), (2, 0)) => draw_two_axis_two_zero_two_zero(selected_bounds, hovered_bounds, transform, document_to_viewport, overlay_context),
+		((0, 2), (0, 2)) => draw_two_axis_two_zero_two_zero(selected_bounds, hovered_bounds, transform, document_to_viewport, overlay_context),
 		_ => (),
 	}
 }
 
 pub fn overlay(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2, document_to_viewport: DAffine2, overlay_context: &mut OverlayContext) {
+	// TODO: for all cases apply object rotation to bounds before drawing lines
+
 	// check axis overlaps
 	let overlap_x = selected_bounds.min().x <= hovered_bounds.max().x && selected_bounds.max().x >= hovered_bounds.min().x;
 	let overlap_y = selected_bounds.min().y <= hovered_bounds.max().y && selected_bounds.max().y >= hovered_bounds.min().y;
@@ -434,36 +786,4 @@ pub fn overlay(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2,
 		// Fallback case, should not typically happen.
 		_ => (),
 	}
-
-	// let transform_to_document = document_to_viewport.inverse() * transform;
-	// if selected_bounds.intersects(hovered_bounds) {
-	// 	// TODO: Figure out what to do here
-	// 	return;
-	// }
-
-	// // Always do horizontal then vertical from the selected
-	// let turn_x = selected_bounds.center().x.clamp(hovered_bounds.min().x, hovered_bounds.max().x);
-	// let turn_y = hovered_bounds.center().y.clamp(selected_bounds.min().y, selected_bounds.max().y);
-
-	// let selected_x = turn_x.clamp(selected_bounds.min().x, selected_bounds.max().x);
-	// let hovered_y = turn_y.clamp(hovered_bounds.min().y, hovered_bounds.max().y);
-
-	// if turn_x != selected_x {
-	// 	let min_viewport = transform.transform_point2(DVec2::new(turn_x.min(selected_x), turn_y));
-	// 	let max_viewport = transform.transform_point2(DVec2::new(turn_x.max(selected_x), turn_y));
-	// 	overlay_context.line(min_viewport, max_viewport, None);
-	// 	let length = format!("{:.2}", transform_to_document.transform_vector2(DVec2::X * (turn_x - selected_x)).length());
-	// 	let direction = -(min_viewport - max_viewport).normalize_or_zero();
-	// 	let transform = DAffine2::from_translation((min_viewport + max_viewport) / 2.) * DAffine2::from_angle(-direction.angle_to(DVec2::X));
-	// 	overlay_context.text(&length, COLOR_OVERLAY_BLUE, None, transform, 5., [Pivot::Middle, Pivot::Start]);
-	// }
-	// if turn_y != hovered_y {
-	// 	let min_viewport = transform.transform_point2(DVec2::new(turn_x, turn_y.min(hovered_y)));
-	// 	let max_viewport = transform.transform_point2(DVec2::new(turn_x, turn_y.max(hovered_y)));
-	// 	overlay_context.line(min_viewport, max_viewport, None);
-	// 	let length = format!("{:.2}", transform_to_document.transform_vector2(DVec2::Y * (turn_y - hovered_y)).length());
-	// 	let direction = (min_viewport - max_viewport).normalize_or_zero().perp();
-	// 	let transform = DAffine2::from_translation((min_viewport + max_viewport) / 2.) * DAffine2::from_angle(-direction.angle_to(DVec2::X));
-	// 	overlay_context.text(&length, COLOR_OVERLAY_BLUE, None, transform, 5., [Pivot::Start, Pivot::Middle]);
-	// }
 }
