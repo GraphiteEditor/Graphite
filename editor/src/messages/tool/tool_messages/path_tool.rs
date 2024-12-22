@@ -787,7 +787,7 @@ impl Fsm for PathToolFsmState {
 				let nearest_point = shape_editor.find_nearest_point_indices(&document.network_interface, current_mouse, SELECTION_THRESHOLD);
 
 				if let Some((_layer, _)) = nearest_point {
-					if !tool_data.double_click_handled {
+					if !tool_data.double_click_handled && tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD {
 						shape_editor.flip_smooth_sharp(&document.network_interface, current_mouse, SELECTION_TOLERANCE, responses);
 						responses.add(PathToolMessage::SelectedPointUpdated);
 					}
