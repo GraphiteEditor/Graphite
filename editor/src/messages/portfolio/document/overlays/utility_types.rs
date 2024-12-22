@@ -53,7 +53,7 @@ impl OverlayContext {
 		let start = start.round() - DVec2::splat(0.5);
 		let end = end.round() - DVec2::splat(0.5);
 		if let Some(dash_width) = dash_width {
-			let gap_width = gap_width.unwrap_or(1.0);
+			let gap_width = gap_width.unwrap_or(1.);
 			let array = js_sys::Array::new();
 			array.push(&JsValue::from(dash_width - 1.));
 			array.push(&JsValue::from(gap_width));
@@ -74,7 +74,7 @@ impl OverlayContext {
 		self.render_context.set_stroke_style_str(color.unwrap_or(COLOR_OVERLAY_BLUE));
 		self.render_context.stroke();
 
-		// Reset the dash pattern after drawing
+		// Reset the dash pattern to solid after drawing
 		self.render_context
 			.set_line_dash(&JsValue::from(js_sys::Array::new()))
 			.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))

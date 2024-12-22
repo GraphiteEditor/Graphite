@@ -4,15 +4,16 @@ use crate::messages::tool::tool_messages::tool_prelude::*;
 
 use graphene_std::renderer::Rect;
 
+/// Draws measurements between `selected_bounds` and `hovered_bounds` when both X and Y axes are involved.
 fn draw_zero_axis_crossings(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2, document_to_viewport: DAffine2, overlay_context: &mut OverlayContext) {
 	let transform_to_document = document_to_viewport.inverse() * transform;
 
-	// Determine if the selected object is on the right or left of the hovered object
+	// Determine if the selected object is on the right or left of the hovered object.
 	let selected_on_right = selected_bounds.min().x > hovered_bounds.max().x;
+	// Determine if the selected object is on the bottom or top of the hovered object.
 	let selected_on_bottom = selected_bounds.min().y > hovered_bounds.max().y;
 
 	// Horizontal lines
-
 	let selected_y = if selected_on_bottom { selected_bounds.min().y } else { selected_bounds.max().y };
 	let hovered_y = if selected_on_bottom { hovered_bounds.max().y } else { hovered_bounds.min().y };
 	let selected_x = if selected_on_right { selected_bounds.min().x } else { selected_bounds.max().x };
@@ -39,7 +40,7 @@ fn draw_zero_axis_crossings(selected_bounds: Rect, hovered_bounds: Rect, transfo
 	let min_viewport = transform.transform_point2(line_start);
 	let max_viewport = transform.transform_point2(line_end);
 
-	overlay_context.dashed_line(min_viewport, max_viewport, None, Some(2.0), Some(3.0));
+	overlay_context.dashed_line(min_viewport, max_viewport, None, Some(2.), Some(3.));
 
 	let min_viewport_y_selected = transform.transform_point2(DVec2::new(selected_x, selected_y));
 	let max_viewport_y_selected = transform.transform_point2(DVec2::new(selected_x, hovered_y));
@@ -56,8 +57,10 @@ fn draw_zero_axis_crossings(selected_bounds: Rect, hovered_bounds: Rect, transfo
 
 	let min_viewport_y_hovered = transform.transform_point2(DVec2::new(hovered_x, selected_y));
 	let max_viewport_y_hovered = transform.transform_point2(DVec2::new(hovered_x, hovered_y));
-	overlay_context.dashed_line(min_viewport_y_hovered, max_viewport_y_hovered, None, Some(2.0), Some(3.0));
+	overlay_context.dashed_line(min_viewport_y_hovered, max_viewport_y_hovered, None, Some(2.), Some(3.));
 }
+
+/// Draws measurements between `selected_bounds` and `hovered_bounds` when only one axis is involved at a time.
 fn draw_single_axis_zero_crossings(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2, document_to_viewport: DAffine2, overlay_context: &mut OverlayContext) {
 	let transform_to_document = document_to_viewport.inverse() * transform;
 
@@ -86,6 +89,7 @@ fn draw_single_axis_zero_crossings(selected_bounds: Rect, hovered_bounds: Rect, 
 		} else {
 			hovered_bounds.max().x
 		};
+
 		let line_start = DVec2::new(f64::min(hovered_bounds.max().x, selected_bounds.max().x), selected_facing_edge);
 		let line_end = DVec2::new(f64::max(hovered_bounds.min().x, selected_bounds.min().x), selected_facing_edge);
 		let min_viewport = transform.transform_point2(line_start);
@@ -123,7 +127,7 @@ fn draw_single_axis_zero_crossings(selected_bounds: Rect, hovered_bounds: Rect, 
 		let min_viewport = transform.transform_point2(dashed_line_start);
 		let max_viewport = transform.transform_point2(dashed_line_end);
 
-		overlay_context.dashed_line(min_viewport, max_viewport, None, Some(2.0), Some(3.0));
+		overlay_context.dashed_line(min_viewport, max_viewport, None, Some(2.), Some(3.));
 	} else if overlap_x {
 		let selected_facing_edge = if hovered_bounds.max().x < selected_bounds.min().x {
 			selected_bounds.min().x
@@ -145,6 +149,7 @@ fn draw_single_axis_zero_crossings(selected_bounds: Rect, hovered_bounds: Rect, 
 		} else {
 			hovered_bounds.max().y
 		};
+
 		let line_start = DVec2::new(selected_facing_edge, f64::min(hovered_bounds.max().y, selected_bounds.max().y));
 		let line_end = DVec2::new(selected_facing_edge, f64::max(hovered_bounds.min().y, selected_bounds.min().y));
 		let min_viewport = transform.transform_point2(line_start);
@@ -182,15 +187,17 @@ fn draw_single_axis_zero_crossings(selected_bounds: Rect, hovered_bounds: Rect, 
 		let min_viewport = transform.transform_point2(dashed_line_start);
 		let max_viewport = transform.transform_point2(dashed_line_end);
 
-		overlay_context.dashed_line(min_viewport, max_viewport, None, Some(2.0), Some(3.0));
+		overlay_context.dashed_line(min_viewport, max_viewport, None, Some(2.), Some(3.));
 	}
 }
+
+/// Draws measurements when only one axis is involved at a time for overlaps between two bounding boxes.
 fn draw_single_axis_one_crossings(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2, document_to_viewport: DAffine2, overlay_context: &mut OverlayContext) {
 	let selected_center = selected_bounds.center();
 	let hovered_center = hovered_bounds.center();
 	let transform_to_document = document_to_viewport.inverse() * transform;
 
-	// Check for overlaps on both X and Y axes
+	// Check for overlaps on both the X and Y axes
 	let overlap_y = selected_bounds.min().x < hovered_bounds.max().x && selected_bounds.max().x > hovered_bounds.min().x;
 	let overlap_x = selected_bounds.min().y < hovered_bounds.max().y && selected_bounds.max().y > hovered_bounds.min().y;
 
@@ -260,26 +267,25 @@ fn draw_single_axis_one_crossings(selected_bounds: Rect, hovered_bounds: Rect, t
 		);
 	}
 }
+
+/// Draws measurements for partial overlaps where lines cross on both the X and Y axes, handling two diagonal cases.
 fn draw_two_axis_one_one_crossing(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2, document_to_viewport: DAffine2, overlay_context: &mut OverlayContext) {
-	//  pairs of equivalent cases across the two diagonals
-	// intersection at top left and bottom right are equivalent
-	// intersection at top right and bottom left are equivalent
 	let transform_to_document = document_to_viewport.inverse() * transform;
 
-	// handling intersections at top left and bottom right by default
+	// Handle intersections at top-left & bottom-right, or top-right & bottom-left
 	let mut top_y_bound = f64::min(selected_bounds.min().y, hovered_bounds.min().y);
-	let mut bottom_y_bound: f64 = f64::max(selected_bounds.max().y, hovered_bounds.max().y);
+	let mut bottom_y_bound = f64::max(selected_bounds.max().y, hovered_bounds.max().y);
 	let mut top_x_bound = f64::max(selected_bounds.max().x, hovered_bounds.max().x);
 	let mut bottom_x_bound = f64::min(selected_bounds.min().x, hovered_bounds.min().x);
 	if (hovered_bounds.center().x > selected_bounds.center().x && hovered_bounds.center().y < selected_bounds.center().y)
 		|| (hovered_bounds.center().x < selected_bounds.center().x && hovered_bounds.center().y > selected_bounds.center().y)
 	{
-		// switch horizontal lines y values for top right and bottom left intersections
+		// Switch horizontal lines Y values for top-right and bottom-left intersection
 		std::mem::swap(&mut top_y_bound, &mut bottom_y_bound);
 		std::mem::swap(&mut top_x_bound, &mut bottom_x_bound);
 	}
 
-	// horizontal lines
+	// Horizontal lines
 	let top_x_start = DVec2::new(f64::min(selected_bounds.max().x, hovered_bounds.max().x), top_y_bound);
 	let top_x_end = DVec2::new(f64::max(selected_bounds.max().x, hovered_bounds.max().x), top_y_bound);
 	let min_top_x_viewport = transform.transform_point2(top_x_start);
@@ -310,7 +316,7 @@ fn draw_two_axis_one_one_crossing(selected_bounds: Rect, hovered_bounds: Rect, t
 		[Pivot::Middle, Pivot::Start],
 	);
 
-	//  vertical lines
+	// Vertical lines
 	let top_y_start = DVec2::new(top_x_bound, f64::min(selected_bounds.min().y, hovered_bounds.min().y));
 	let top_y_end = DVec2::new(top_x_bound, f64::max(selected_bounds.min().y, hovered_bounds.min().y));
 	let min_top_y_viewport = transform.transform_point2(top_y_start);
@@ -341,6 +347,8 @@ fn draw_two_axis_one_one_crossing(selected_bounds: Rect, hovered_bounds: Rect, t
 		[Pivot::Middle, Pivot::Start],
 	);
 }
+
+/// Draws measurements where the selected bounding box has two vertical edges that cross the hovered box (or vice versa).
 fn draw_two_axis_one_one_two_zero_crossing(
 	selected_bounds: Rect,
 	hovered_bounds: Rect,
@@ -349,8 +357,8 @@ fn draw_two_axis_one_one_two_zero_crossing(
 	overlay_context: &mut OverlayContext,
 	two_vertical_edge_intersect: bool,
 ) {
-	// selected has 2 edge lines crossing hovered
 	let transform_to_document = document_to_viewport.inverse() * transform;
+
 	if two_vertical_edge_intersect {
 		let selected_bound_edge = if selected_bounds.center().y >= hovered_bounds.center().y {
 			selected_bounds.max().y
@@ -362,7 +370,8 @@ fn draw_two_axis_one_one_two_zero_crossing(
 		} else {
 			hovered_bounds.min().y
 		};
-		//  vertical lines
+
+		// Vertical lines
 		let y_start_left = DVec2::new(hovered_bounds.min().x, f64::min(selected_bound_edge, hovered_bound_edge));
 		let y_end_left = DVec2::new(hovered_bounds.min().x, f64::max(selected_bound_edge, hovered_bound_edge));
 		let min_y_viewport = transform.transform_point2(y_start_left);
@@ -377,6 +386,7 @@ fn draw_two_axis_one_one_two_zero_crossing(
 			5.,
 			[Pivot::Middle, Pivot::Start],
 		);
+
 		let y_start_right = DVec2::new(hovered_bounds.max().x, f64::min(selected_bound_edge, hovered_bound_edge));
 		let y_end_right = DVec2::new(hovered_bounds.max().x, f64::max(selected_bound_edge, hovered_bound_edge));
 		let min_y_viewport = transform.transform_point2(y_start_right);
@@ -392,14 +402,13 @@ fn draw_two_axis_one_one_two_zero_crossing(
 			[Pivot::Middle, Pivot::Start],
 		);
 
-		// horizontal lines
+		// Horizontal lines
 		let horizontal_line_y_bound = if selected_bounds.center().y >= hovered_bounds.center().y {
 			f64::max(selected_bound_edge, hovered_bound_edge)
 		} else {
 			f64::min(selected_bound_edge, hovered_bound_edge)
 		};
 
-		// horizontal lines
 		let x_start_left = DVec2::new(hovered_bounds.min().x, horizontal_line_y_bound);
 		let x_end_left = DVec2::new(selected_bounds.min().x, horizontal_line_y_bound);
 		let min_x_viewport = transform.transform_point2(x_start_left);
@@ -430,7 +439,7 @@ fn draw_two_axis_one_one_two_zero_crossing(
 			[Pivot::Middle, Pivot::Start],
 		);
 	} else {
-		// horizontal intersections
+		// Horizontal intersections
 		let selected_bound_edge = if selected_bounds.center().x >= hovered_bounds.center().x {
 			selected_bounds.max().x
 		} else {
@@ -441,8 +450,8 @@ fn draw_two_axis_one_one_two_zero_crossing(
 		} else {
 			hovered_bounds.min().x
 		};
-		//  vertical lines
-		// outermost x position
+
+		// Outermost X position
 		let vertical_line_x = if selected_bounds.center().x >= hovered_bounds.center().x {
 			f64::max(selected_bound_edge, hovered_bound_edge)
 		} else {
@@ -463,6 +472,7 @@ fn draw_two_axis_one_one_two_zero_crossing(
 			5.,
 			[Pivot::Middle, Pivot::Start],
 		);
+
 		let y_start_down = DVec2::new(vertical_line_x, selected_bounds.max().y);
 		let y_end_down = DVec2::new(vertical_line_x, hovered_bounds.max().y);
 		let min_y_viewport = transform.transform_point2(y_start_down);
@@ -478,7 +488,7 @@ fn draw_two_axis_one_one_two_zero_crossing(
 			[Pivot::Middle, Pivot::Start],
 		);
 
-		// horizontal lines
+		// Horizontal lines
 		let horizontal_line_inner_x = if selected_bounds.center().x >= hovered_bounds.center().x {
 			f64::min(selected_bound_edge, hovered_bound_edge)
 		} else {
@@ -498,6 +508,7 @@ fn draw_two_axis_one_one_two_zero_crossing(
 			5.,
 			[Pivot::Middle, Pivot::Start],
 		);
+
 		let x_start_down = DVec2::new(vertical_line_x, f64::max(selected_bounds.max().y, hovered_bounds.max().y));
 		let x_end_down = DVec2::new(horizontal_line_inner_x, f64::max(selected_bounds.max().y, hovered_bounds.max().y));
 		let min_x_viewport = transform.transform_point2(x_start_down);
@@ -514,9 +525,11 @@ fn draw_two_axis_one_one_two_zero_crossing(
 		);
 	}
 }
+
 fn draw_two_axis_two_zero_zero_two(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2, document_to_viewport: DAffine2, overlay_context: &mut OverlayContext) {
 	let transform_to_document = document_to_viewport.inverse() * transform;
-	//  vertical lines
+
+	// Vertical lines
 	let y_start_left_top = DVec2::new(f64::min(hovered_bounds.min().x, selected_bounds.min().x), f64::min(hovered_bounds.min().y, selected_bounds.min().y));
 	let y_end_left_top = DVec2::new(f64::min(hovered_bounds.min().x, selected_bounds.min().x), f64::max(hovered_bounds.min().y, selected_bounds.min().y));
 	let min_y_viewport = transform.transform_point2(y_start_left_top);
@@ -531,6 +544,7 @@ fn draw_two_axis_two_zero_zero_two(selected_bounds: Rect, hovered_bounds: Rect, 
 		5.,
 		[Pivot::Middle, Pivot::Start],
 	);
+
 	let y_start_left_bottom = DVec2::new(f64::min(hovered_bounds.min().x, selected_bounds.min().x), f64::min(hovered_bounds.max().y, selected_bounds.max().y));
 	let y_end_left_bottom = DVec2::new(f64::min(hovered_bounds.min().x, selected_bounds.min().x), f64::max(hovered_bounds.max().y, selected_bounds.max().y));
 	let min_y_viewport = transform.transform_point2(y_start_left_bottom);
@@ -545,6 +559,7 @@ fn draw_two_axis_two_zero_zero_two(selected_bounds: Rect, hovered_bounds: Rect, 
 		5.,
 		[Pivot::Middle, Pivot::Start],
 	);
+
 	let y_start_right_top = DVec2::new(f64::max(hovered_bounds.max().x, selected_bounds.max().x), f64::min(hovered_bounds.min().y, selected_bounds.min().y));
 	let y_end_right_top = DVec2::new(f64::max(hovered_bounds.max().x, selected_bounds.max().x), f64::max(hovered_bounds.min().y, selected_bounds.min().y));
 	let min_y_viewport = transform.transform_point2(y_start_right_top);
@@ -559,6 +574,7 @@ fn draw_two_axis_two_zero_zero_two(selected_bounds: Rect, hovered_bounds: Rect, 
 		5.,
 		[Pivot::Middle, Pivot::Start],
 	);
+
 	let y_start_right_bottom = DVec2::new(f64::max(hovered_bounds.max().x, selected_bounds.max().x), f64::min(hovered_bounds.max().y, selected_bounds.max().y));
 	let y_end_right_bottom = DVec2::new(f64::max(hovered_bounds.max().x, selected_bounds.max().x), f64::max(hovered_bounds.max().y, selected_bounds.max().y));
 	let min_y_viewport = transform.transform_point2(y_start_right_bottom);
@@ -573,7 +589,8 @@ fn draw_two_axis_two_zero_zero_two(selected_bounds: Rect, hovered_bounds: Rect, 
 		5.,
 		[Pivot::Middle, Pivot::Start],
 	);
-	// horizontal lines
+
+	// Horizontal lines
 	let x_start_left_top = DVec2::new(f64::min(hovered_bounds.min().x, selected_bounds.min().x), f64::min(hovered_bounds.min().y, selected_bounds.min().y));
 	let x_end_left_top = DVec2::new(f64::max(hovered_bounds.min().x, selected_bounds.min().x), f64::min(hovered_bounds.min().y, selected_bounds.min().y));
 	let min_x_viewport = transform.transform_point2(x_start_left_top);
@@ -588,6 +605,7 @@ fn draw_two_axis_two_zero_zero_two(selected_bounds: Rect, hovered_bounds: Rect, 
 		5.,
 		[Pivot::Middle, Pivot::Start],
 	);
+
 	let x_start_right_top = DVec2::new(f64::min(hovered_bounds.max().x, selected_bounds.max().x), f64::min(hovered_bounds.min().y, selected_bounds.min().y));
 	let x_end_right_top = DVec2::new(f64::max(hovered_bounds.max().x, selected_bounds.max().x), f64::min(hovered_bounds.min().y, selected_bounds.min().y));
 	let min_x_viewport = transform.transform_point2(x_start_right_top);
@@ -602,6 +620,7 @@ fn draw_two_axis_two_zero_zero_two(selected_bounds: Rect, hovered_bounds: Rect, 
 		5.,
 		[Pivot::Middle, Pivot::Start],
 	);
+
 	let x_start_left_bottom = DVec2::new(f64::min(hovered_bounds.min().x, selected_bounds.min().x), f64::max(hovered_bounds.max().y, selected_bounds.max().y));
 	let x_end_left_bottom = DVec2::new(f64::max(hovered_bounds.min().x, selected_bounds.min().x), f64::max(hovered_bounds.max().y, selected_bounds.max().y));
 	let min_x_viewport = transform.transform_point2(x_start_left_bottom);
@@ -616,6 +635,7 @@ fn draw_two_axis_two_zero_zero_two(selected_bounds: Rect, hovered_bounds: Rect, 
 		5.,
 		[Pivot::Middle, Pivot::Start],
 	);
+
 	let x_start_right_bottom = DVec2::new(f64::min(hovered_bounds.max().x, selected_bounds.max().x), f64::max(hovered_bounds.max().y, selected_bounds.max().y));
 	let x_end_right_bottom = DVec2::new(f64::max(hovered_bounds.max().x, selected_bounds.max().x), f64::max(hovered_bounds.max().y, selected_bounds.max().y));
 	let min_x_viewport = transform.transform_point2(x_start_right_bottom);
@@ -631,9 +651,11 @@ fn draw_two_axis_two_zero_zero_two(selected_bounds: Rect, hovered_bounds: Rect, 
 		[Pivot::Middle, Pivot::Start],
 	);
 }
+
 fn draw_two_axis_two_zero_two_zero(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2, document_to_viewport: DAffine2, overlay_context: &mut OverlayContext) {
 	let transform_to_document = document_to_viewport.inverse() * transform;
-	// horizontal lines
+
+	// Horizontal lines
 	let x_start_left = DVec2::new(f64::max(hovered_bounds.min().x, selected_bounds.min().x), selected_bounds.center().y);
 	let x_end_left = DVec2::new(f64::min(hovered_bounds.min().x, selected_bounds.min().x), selected_bounds.center().y);
 	let min_x_viewport = transform.transform_point2(x_start_left);
@@ -648,6 +670,7 @@ fn draw_two_axis_two_zero_two_zero(selected_bounds: Rect, hovered_bounds: Rect, 
 		5.,
 		[Pivot::Middle, Pivot::Start],
 	);
+
 	let x_start_right = DVec2::new(f64::min(hovered_bounds.max().x, selected_bounds.max().x), selected_bounds.center().y);
 	let x_end_right = DVec2::new(f64::max(hovered_bounds.max().x, selected_bounds.max().x), selected_bounds.center().y);
 	let min_x_viewport = transform.transform_point2(x_start_right);
@@ -663,7 +686,7 @@ fn draw_two_axis_two_zero_two_zero(selected_bounds: Rect, hovered_bounds: Rect, 
 		[Pivot::Middle, Pivot::Start],
 	);
 
-	//vertical lines
+	// Vertical lines
 	let y_start_top = DVec2::new(selected_bounds.center().x, f64::max(hovered_bounds.min().y, selected_bounds.min().y));
 	let y_end_top = DVec2::new(selected_bounds.center().x, f64::min(hovered_bounds.min().y, selected_bounds.min().y));
 	let min_y_viewport = transform.transform_point2(y_start_top);
@@ -678,6 +701,7 @@ fn draw_two_axis_two_zero_two_zero(selected_bounds: Rect, hovered_bounds: Rect, 
 		5.,
 		[Pivot::Middle, Pivot::Start],
 	);
+
 	let y_start_bottom = DVec2::new(selected_bounds.center().x, f64::min(hovered_bounds.max().y, selected_bounds.max().y));
 	let y_end_bottom = DVec2::new(selected_bounds.center().x, f64::max(hovered_bounds.max().y, selected_bounds.max().y));
 	let min_y_viewport = transform.transform_point2(y_start_bottom);
@@ -706,6 +730,7 @@ fn handle_two_axis_overlap(selected_bounds: Rect, hovered_bounds: Rect, transfor
 		+ (selected_bounds.max().x >= hovered_bounds.min().x && selected_bounds.max().x <= hovered_bounds.max().x) as u8;
 	let hovered_y_crosses = (hovered_bounds.min().x >= selected_bounds.min().x && hovered_bounds.min().x <= selected_bounds.max().x) as u8
 		+ (hovered_bounds.max().x >= selected_bounds.min().x && hovered_bounds.max().x <= selected_bounds.max().x) as u8;
+
 	// Identify the case based on edge crossings along each axis
 	match ((selected_x_crosses, hovered_x_crosses), (selected_y_crosses, hovered_y_crosses)) {
 		((1, 1), (1, 1)) => draw_two_axis_one_one_crossing(selected_bounds, hovered_bounds, transform, document_to_viewport, overlay_context),
@@ -722,9 +747,9 @@ fn handle_two_axis_overlap(selected_bounds: Rect, hovered_bounds: Rect, transfor
 }
 
 pub fn overlay(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2, document_to_viewport: DAffine2, overlay_context: &mut OverlayContext) {
-	// TODO: for all cases apply object rotation to bounds before drawing lines
+	// TODO: For all cases, apply object rotation to bounds before drawing lines.
 
-	// check axis overlaps
+	// Check axis overlaps
 	let overlap_x = selected_bounds.min().x <= hovered_bounds.max().x && selected_bounds.max().x >= hovered_bounds.min().x;
 	let overlap_y = selected_bounds.min().y <= hovered_bounds.max().y && selected_bounds.max().y >= hovered_bounds.min().y;
 	let overlap_axes = match (overlap_x, overlap_y) {
@@ -732,6 +757,7 @@ pub fn overlay(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2,
 		(true, false) | (false, true) => 1,
 		_ => 0,
 	};
+
 	// Check centerline crossings
 	let center_x_intersects = (selected_bounds.center().y >= hovered_bounds.min().y && selected_bounds.center().y <= hovered_bounds.max().y)
 		|| (hovered_bounds.center().y >= selected_bounds.min().y && hovered_bounds.center().y <= selected_bounds.max().y);
@@ -742,6 +768,7 @@ pub fn overlay(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2,
 		(true, false) | (false, true) => 1,
 		_ => 0,
 	};
+
 	// Handle each case based on overlap axes and centerline crossings
 	match (overlap_axes, centerline_crosses) {
 		(0, _) => draw_zero_axis_crossings(selected_bounds, hovered_bounds, transform, document_to_viewport, overlay_context),
