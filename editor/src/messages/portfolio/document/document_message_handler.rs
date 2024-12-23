@@ -1655,8 +1655,7 @@ impl DocumentMessageHandler {
 	/// Finds the artboard that bounds the point in viewport space and be the container of any newly added layers.
 	pub fn new_layer_bounding_artboard(&self, ipp: &InputPreprocessorMessageHandler) -> LayerNodeIdentifier {
 		self.click_xray(ipp)
-			.filter(|layer| self.network_interface.is_artboard(&layer.to_node(), &[]))
-			.next()
+			.find(|layer| self.network_interface.is_artboard(&layer.to_node(), &[]))
 			.unwrap_or(LayerNodeIdentifier::ROOT_PARENT)
 	}
 
