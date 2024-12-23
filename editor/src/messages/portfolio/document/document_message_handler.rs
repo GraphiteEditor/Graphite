@@ -1395,11 +1395,7 @@ impl DocumentMessageHandler {
 			// Check if the bounding box is fully within the selection quad
 			let [top_left, bottom_right] = bounding_box;
 
-			// info!("bounding box = {:?}", bounding_box);
-
-			// info!("Quad input: {:?}", quad);
 			let quad_bbox = quad.bounding_box();
-			// info!("quad box = {:?}", quad_bbox);
 
 			let quad_left = quad_bbox[0].x;
 			let quad_right = quad_bbox[1].x;
@@ -1413,11 +1409,6 @@ impl DocumentMessageHandler {
 			let layer_bottom = top_left.y;
 
 			let is_fully_contained = layer_left >= quad_left && layer_right <= quad_right && layer_top <= quad_top && layer_bottom >= quad_bottom;
-
-			// // Debug logging
-			// log::info!("Layer Bounds: left = {}, right = {}, top = {}, bottom = {}", layer_left, layer_right, layer_top, layer_bottom);
-			// log::info!("Quad Bounds: left = {}, right = {}, top = {}, bottom = {}", quad_left, quad_right, quad_top, quad_bottom);
-			// log::info!("Layer is fully contained: {}", is_fully_contained);
 
 			is_fully_contained
 		} else {
