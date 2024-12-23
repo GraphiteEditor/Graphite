@@ -300,7 +300,7 @@
 	export function triggerTextCommit() {
 		if (!textInput) return;
 		const textCleaned = textInputCleanup(textInput.innerText);
-		editor.handle.onChangeText(textCleaned);
+		editor.handle.onChangeText(textCleaned, false);
 	}
 
 	export async function displayEditableTextbox(displayEditableTextbox: DisplayEditableTextbox) {
