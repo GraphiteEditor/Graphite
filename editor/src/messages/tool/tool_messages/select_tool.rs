@@ -6,7 +6,7 @@ use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::utility_types::Direction;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
-use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::document_metadata::{self, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
@@ -1029,7 +1029,7 @@ impl Fsm for SelectToolFsmState {
 				let direction = tool_data.calculate_direction();
 				// let new_selected: HashSet<_> = document.intersect_quad_no_artboards(quad, input).collect();
 				let new_selected: HashSet<_> = match direction {
-					SelectionDirection::Rightwards => HashSet::new(),
+					SelectionDirection::Rightwards => document.intersect_quad_no_artboards(quad, input).filter(|layer| document.is_layer_fully_inside(layer, quad)).collect(),
 					SelectionDirection::LeftWards => document.intersect_quad_no_artboards(quad, input).collect(),
 					SelectionDirection::None => HashSet::new(),
 				};
