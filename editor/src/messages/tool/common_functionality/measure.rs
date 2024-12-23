@@ -23,21 +23,6 @@ fn draw_line_with_length(
 	text_on_left: Option<bool>,
 	text_on_top: Option<bool>,
 ) {
-	// Preprocess line_start and line_end
-	let (line_start, line_end) = if let Some(true) = is_vertical_line {
-		if line_start.y > line_end.y {
-			(line_end, line_start) // Swap to ensure line_start is the top
-		} else {
-			(line_start, line_end)
-		}
-	} else {
-		if line_start.x > line_end.x {
-			(line_end, line_start) // Swap to ensure line_start is the left
-		} else {
-			(line_start, line_end)
-		}
-	};
-
 	let transform_to_document = document_to_viewport.inverse() * transform;
 	let min_viewport = transform.transform_point2(line_start);
 	let max_viewport = transform.transform_point2(line_end);
@@ -50,23 +35,15 @@ fn draw_line_with_length(
 	let midpoint = (min_viewport + max_viewport) / 2.;
 
 	// Adjust text position based on line orientation and flags
-	if let Some(true) = is_vertical_line {
-		if let Some(true) = text_on_left {
-			// Shift left of the vertical line
-			overlay_context.text(&length, COLOR_OVERLAY_BLUE, None, DAffine2::from_translation(midpoint), text_padding, [Pivot::End, Pivot::Middle]);
-		} else {
-			// Shift right of the vertical line
-			overlay_context.text(&length, COLOR_OVERLAY_BLUE, None, DAffine2::from_translation(midpoint), text_padding, [Pivot::Start, Pivot::Middle]);
-		}
-	} else {
-		if let Some(true) = text_on_top {
-			// Shift above the horizontal line
-			overlay_context.text(&length, COLOR_OVERLAY_BLUE, None, DAffine2::from_translation(midpoint), text_padding, [Pivot::Middle, Pivot::End]);
-		} else {
-			// Shift below the horizontal line
-			overlay_context.text(&length, COLOR_OVERLAY_BLUE, None, DAffine2::from_translation(midpoint), text_padding, [Pivot::Middle, Pivot::Start]);
-		}
+	// Determine text position based on line orientation and flags
+	let (pivot_x, pivot_y) = match (is_vertical_line, text_on_left, text_on_top) {
+		(Some(true), Some(true), _) => (Pivot::End, Pivot::Middle),     // Vertical line, text on the left
+		(Some(true), Some(false), _) => (Pivot::Start, Pivot::Middle),  // Vertical line, text on the right
+		(Some(false), _, Some(true)) => (Pivot::Middle, Pivot::End),    // Horizontal line, text on top
+		(Some(false), _, Some(false)) => (Pivot::Middle, Pivot::Start), // Horizontal line, text on bottom
+		_ => (Pivot::Middle, Pivot::Middle),                            // Handle the case where `is_vertical_line` or the others are None or not true
 	};
+	overlay_context.text(&length, COLOR_OVERLAY_BLUE, None, DAffine2::from_translation(midpoint), text_padding, [pivot_x, pivot_y]);
 }
 
 /// Checks if the selected bounds overlap with the hovered bounds on the Y-axis.
