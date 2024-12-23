@@ -1683,7 +1683,13 @@ mod index_node {
 	use crate::raster::{Color, ImageFrame};
 
 	#[node_macro::node(category(""))]
-	pub fn index<T: Default + Clone>(_: (), #[implementations(Vec<ImageFrame<Color>>, Vec<Color>)] input: Vec<T>, index: u32) -> T {
+	pub fn index<T: Default + Clone>(
+		_: (),
+		#[implementations(Vec<ImageFrame<Color>>, Vec<Color>)]
+		#[widget(ParsedWidgetOverride::Hidden)]
+		input: Vec<T>,
+		index: u32,
+	) -> T {
 		if (index as usize) < input.len() {
 			input[index as usize].clone()
 		} else {

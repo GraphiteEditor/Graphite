@@ -1,6 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
-use super::document_node_definitions::{DocumentNodeDefinition, NodePropertiesContext, IMAGINATE_NODE};
+use super::document_node_definitions::{NodePropertiesContext, IMAGINATE_NODE};
 use super::utility_types::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
@@ -41,11 +41,11 @@ fn optionally_update_value<T>(value: impl Fn(&T) -> Option<TaggedValue> + 'stati
 	}
 }
 
-fn update_value<T>(value: impl Fn(&T) -> TaggedValue + 'static + Send + Sync, node_id: NodeId, input_index: usize) -> impl Fn(&T) -> Message + 'static + Send + Sync {
+pub fn update_value<T>(value: impl Fn(&T) -> TaggedValue + 'static + Send + Sync, node_id: NodeId, input_index: usize) -> impl Fn(&T) -> Message + 'static + Send + Sync {
 	optionally_update_value(move |v| Some(value(v)), node_id, input_index)
 }
 
-fn commit_value<T>(_: &T) -> Message {
+pub fn commit_value<T>(_: &T) -> Message {
 	DocumentMessage::AddTransaction.into()
 }
 
@@ -1023,7 +1023,6 @@ pub fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize,
 	};
 
 	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-
 	match &**tagged_value {
 		TaggedValue::Color(color) => widgets.push(
 			color_button
@@ -1109,24 +1108,6 @@ pub fn centroid_widget(document_node: &DocumentNode, node_id: NodeId, index: usi
 		]);
 	}
 	LayoutGroup::Row { widgets }
-}
-
-pub(crate) fn load_image_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let url = text_widget(document_node, node_id, 1, "URL", true);
-
-	vec![LayoutGroup::Row { widgets: url }]
-}
-
-pub(crate) fn mask_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let mask = color_widget(document_node, node_id, 1, "Stencil", ColorButton::default(), true);
-
-	vec![mask]
-}
-
-pub(crate) fn insert_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let color_channel = color_channel(document_node, node_id, 2, "Into", true);
-
-	vec![color_channel]
 }
 
 pub fn get_document_node<'a>(node_id: NodeId, context: &'a NodePropertiesContext<'a>) -> Result<&'a DocumentNode, String> {
@@ -1549,71 +1530,6 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 		LayoutGroup::Row { widgets: corner_radius_row_2 },
 		LayoutGroup::Row { widgets: clamped },
 	]
-}
-
-pub(crate) fn line_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| vec2_widget(document_node, node_id, index, name, "X", "Y", " px", None, add_blank_assist);
-	vec![operand("Start", 1), operand("End", 2)]
-}
-
-pub(crate) fn spline_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	vec![LayoutGroup::Row {
-		widgets: vec_dvec2_input(document_node, node_id, 1, "Points", TextInput::default().centered(true), true),
-	}]
-}
-
-pub(crate) fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let translation = vec2_widget(document_node, node_id, 1, "Translation", "X", "Y", " px", None, add_blank_assist);
-
-	let rotation = {
-		let index = 2;
-
-		let mut widgets = start_widgets(document_node, node_id, index, "Rotation", FrontendGraphDataType::Number, true);
-
-		let Some(input) = document_node.inputs.get(index) else {
-			log::warn!("A widget failed to be built because its node's input index is invalid.");
-			return vec![];
-		};
-		if let Some(&TaggedValue::F64(val)) = input.as_non_exposed_value() {
-			widgets.extend_from_slice(&[
-				Separator::new(SeparatorType::Unrelated).widget_holder(),
-				NumberInput::new(Some(val.to_degrees()))
-					.unit("°")
-					.mode(NumberInputMode::Range)
-					.range_min(Some(-180.))
-					.range_max(Some(180.))
-					.on_update(update_value(|number_input: &NumberInput| TaggedValue::F64(number_input.value.unwrap().to_radians()), node_id, index))
-					.on_commit(commit_value)
-					.widget_holder(),
-			]);
-		}
-
-		LayoutGroup::Row { widgets }
-	};
-
-	let scale = vec2_widget(document_node, node_id, 3, "Scale", "W", "H", "x", None, add_blank_assist);
-
-	vec![translation, rotation, scale]
-}
-pub(crate) fn rasterize_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	footprint_widget(document_node, node_id, 1)
-}
-
-pub(crate) fn text_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let text = text_area_widget(document_node, node_id, 1, "Text", true);
-	let (font, style) = font_inputs(document_node, node_id, 2, "Font", true);
-	let size = number_widget(document_node, node_id, 3, "Size", NumberInput::default().unit(" px").min(1.), true);
-	let line_height_ratio = number_widget(document_node, node_id, 4, "Line Height", NumberInput::default().min(0.).step(0.1), true);
-	let character_spacing = number_widget(document_node, node_id, 5, "Character Spacing", NumberInput::default().min(0.).step(0.1), true);
-
-	let mut result = vec![LayoutGroup::Row { widgets: text }, LayoutGroup::Row { widgets: font }];
-	if let Some(style) = style {
-		result.push(LayoutGroup::Row { widgets: style });
-	}
-	result.push(LayoutGroup::Row { widgets: size });
-	result.push(LayoutGroup::Row { widgets: line_height_ratio });
-	result.push(LayoutGroup::Row { widgets: character_spacing });
-	result
 }
 
 pub(crate) fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -2114,12 +2030,6 @@ pub(crate) fn node_no_properties(node_id: NodeId, context: &mut NodePropertiesCo
 	})
 }
 
-pub(crate) fn index_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let index = number_widget(document_node, node_id, 1, "Index", NumberInput::default().min(0.), true);
-
-	vec![LayoutGroup::Row { widgets: index }]
-}
-
 pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> LayoutGroup {
 	let mut layout = Vec::new();
 
@@ -2153,104 +2063,6 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 		id: node_id.0,
 		layout,
 	}
-}
-
-pub(crate) fn boolean_operation_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operation_index = 1;
-	let operation = boolean_operation_radio_buttons(document_node, node_id, operation_index, "Operation", true);
-
-	vec![operation]
-}
-
-pub(crate) fn copy_to_points_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let instance_index = 1;
-	let random_scale_min_index = 2;
-	let random_scale_max_index = 3;
-	let random_scale_bias_index = 4;
-	let random_scale_seed_index = 5;
-	let random_rotation_index = 6;
-	let random_rotation_seed_index = 7;
-
-	let instance = vector_widget(document_node, node_id, instance_index, "Instance", true);
-
-	let random_scale_min = number_widget(
-		document_node,
-		node_id,
-		random_scale_min_index,
-		"Random Scale Min",
-		NumberInput::default().min(0.).mode_range().range_min(Some(0.)).range_max(Some(2.)).unit("x"),
-		true,
-	);
-	let random_scale_max = number_widget(
-		document_node,
-		node_id,
-		random_scale_max_index,
-		"Random Scale Max",
-		NumberInput::default().min(0.).mode_range().range_min(Some(0.)).range_max(Some(2.)).unit("x"),
-		true,
-	);
-	let random_scale_bias = number_widget(
-		document_node,
-		node_id,
-		random_scale_bias_index,
-		"Random Scale Bias",
-		NumberInput::default().mode_range().range_min(Some(-50.)).range_max(Some(50.)),
-		true,
-	);
-	let random_scale_seed = number_widget(document_node, node_id, random_scale_seed_index, "Random Scale Seed", NumberInput::default().int().min(0.), true);
-
-	let random_rotation = number_widget(
-		document_node,
-		node_id,
-		random_rotation_index,
-		"Random Rotation",
-		NumberInput::default().min(0.).max(360.).mode_range().unit("°"),
-		true,
-	);
-	let random_rotation_seed = number_widget(document_node, node_id, random_rotation_seed_index, "Random Rotation Seed", NumberInput::default().int().min(0.), true);
-
-	vec![
-		LayoutGroup::Row { widgets: instance }.with_tooltip("Artwork to be copied and placed at each point"),
-		LayoutGroup::Row { widgets: random_scale_min }.with_tooltip("Minimum range of randomized sizes given to each instance"),
-		LayoutGroup::Row { widgets: random_scale_max }.with_tooltip("Maximum range of randomized sizes given to each instance"),
-		LayoutGroup::Row { widgets: random_scale_bias }
-			.with_tooltip("Bias for the probability distribution of randomized sizes (0 is uniform, negatives favor more of small sizes, positives favor more of large sizes)"),
-		LayoutGroup::Row { widgets: random_scale_seed }.with_tooltip("Seed to determine unique variations on all the randomized instance sizes"),
-		LayoutGroup::Row { widgets: random_rotation }.with_tooltip("Range of randomized angles given to each instance, in degrees ranging from furthest clockwise to counterclockwise"),
-		LayoutGroup::Row { widgets: random_rotation_seed }.with_tooltip("Seed to determine unique variations on all the randomized instance angles"),
-	]
-}
-
-pub(crate) fn sample_points_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let spacing = number_widget(document_node, node_id, 1, "Spacing", NumberInput::default().min(1.).unit(" px"), true);
-	let start_offset = number_widget(document_node, node_id, 2, "Start Offset", NumberInput::default().min(0.).unit(" px"), true);
-	let stop_offset = number_widget(document_node, node_id, 3, "Stop Offset", NumberInput::default().min(0.).unit(" px"), true);
-	let adaptive_spacing = bool_widget(document_node, node_id, 4, "Adaptive Spacing", CheckboxInput::default(), true);
-
-	vec![
-		LayoutGroup::Row { widgets: spacing }.with_tooltip("Distance between each instance (exact if 'Adaptive Spacing' is disabled, approximate if enabled)"),
-		LayoutGroup::Row { widgets: start_offset }.with_tooltip("Exclude some distance from the start of the path before the first instance"),
-		LayoutGroup::Row { widgets: stop_offset }.with_tooltip("Exclude some distance from the end of the path after the last instance"),
-		LayoutGroup::Row { widgets: adaptive_spacing }.with_tooltip("Round 'Spacing' to a nearby value that divides into the path length evenly"),
-	]
-}
-
-pub(crate) fn poisson_disk_points_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let separation_disk_diameter_index = 1;
-	let seed_index = 2;
-
-	let spacing = number_widget(
-		document_node,
-		node_id,
-		separation_disk_diameter_index,
-		"Separation Disk Diameter",
-		NumberInput::default().min(0.01).mode_range().range_min(Some(1.)).range_max(Some(100.)),
-		true,
-	);
-
-	let seed = number_widget(document_node, node_id, seed_index, "Seed", NumberInput::default().int().min(0.), true);
-
-	vec![LayoutGroup::Row { widgets: spacing }, LayoutGroup::Row { widgets: seed }]
 }
 
 /// Fill Node Widgets LayoutGroup
@@ -2507,15 +2319,4 @@ pub fn offset_path_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	let miter_limit = number_widget(document_node, node_id, miter_limit_index, "Miter Limit", number_input, true);
 
 	vec![LayoutGroup::Row { widgets: distance }, line_join, LayoutGroup::Row { widgets: miter_limit }]
-}
-
-pub(crate) fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let location = vec2_widget(document_node, node_id, 2, "Location", "X", "Y", " px", None, add_blank_assist);
-	let dimensions = vec2_widget(document_node, node_id, 3, "Dimensions", "W", "H", " px", None, add_blank_assist);
-	let background = color_widget(document_node, node_id, 4, "Background", ColorButton::default().allow_none(false), true);
-	let clip = bool_widget(document_node, node_id, 5, "Clip", CheckboxInput::default(), true);
-
-	let clip_row = LayoutGroup::Row { widgets: clip };
-
-	vec![location, dimensions, background, clip_row]
 }

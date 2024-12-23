@@ -2,8 +2,8 @@ use super::node_properties;
 use super::utility_types::FrontendNodeType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::{
-	DocumentNodeMetadata, DocumentNodePersistentMetadata, NodeNetworkInterface, NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodeTemplate, NodeTypePersistentMetadata, PropertiesRow,
-	WidgetOverride,
+	DocumentNodeMetadata, DocumentNodePersistentMetadata, NodeNetworkInterface, NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodeTemplate, NodeTypePersistentMetadata, NumberInputSettings,
+	PropertiesRow, Vec2InputSettings, WidgetOverride,
 };
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
@@ -50,6 +50,17 @@ impl NodePropertiesContext<'_> {
 				return None;
 			};
 			widget_override_lambda(*node_id, index, self)
+				.map(|layout_group| {
+					let Some(input_properties_row) = self.network_interface.input_properties_row(node_id, index, self.selection_network_path) else {
+						log::error!("Could not get input properties row in call_widget_override");
+						return Vec::new();
+					};
+					if let Some(tooltip) = &input_properties_row.tooltip {
+						layout_group.into_iter().map(|widget| widget.with_tooltip(tooltip)).collect::<Vec<_>>()
+					} else {
+						layout_group
+					}
+				})
 				.map_err(|error| {
 					log::error!("Error in widget override lambda: {}", error);
 				})
@@ -322,9 +333,25 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					input_properties: vec![
 						PropertiesRow::with_override("Artboards", WidgetOverride::Hidden),
 						PropertiesRow::with_override("Contents", WidgetOverride::Hidden),
-						"Location".into(),
-						"Dimensions".into(),
-						"Background".into(),
+						PropertiesRow::with_override(
+							"Location",
+							WidgetOverride::Vec2(Vec2InputSettings {
+								x: "X".to_string(),
+								y: "Y".to_string(),
+								unit: " px".to_string(),
+								..Default::default()
+							}),
+						),
+						PropertiesRow::with_override(
+							"Dimensions",
+							WidgetOverride::Vec2(Vec2InputSettings {
+								x: "W".to_string(),
+								y: "H".to_string(),
+								unit: " px".to_string(),
+								..Default::default()
+							}),
+						),
+						PropertiesRow::with_override("Background", WidgetOverride::Custom("artboard_background".to_string())),
 						"Clip".into(),
 					],
 					output_names: vec!["Out".to_string()],
@@ -408,7 +435,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![PropertiesRow::with_override("api", WidgetOverride::Hidden), "path".into()],
+					input_properties: vec![PropertiesRow::with_override("api", WidgetOverride::Hidden), "URL".into()],
 					output_names: vec!["Image Frame".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -658,7 +685,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec!["Artwork".into(), "Footprint".into()],
+					input_properties: vec![PropertiesRow::with_override("Artwork", WidgetOverride::Hidden), "Footprint".into()],
 					output_names: vec!["Canvas".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -868,7 +895,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![PropertiesRow::with_override("Image", WidgetOverride::Hidden), "Stencil".into()],
+					input_properties: vec![
+						PropertiesRow::with_override("Image", WidgetOverride::Hidden),
+						PropertiesRow::with_override("Stencil", WidgetOverride::Custom("mask_stencil".to_string())),
+					],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
@@ -895,7 +925,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					input_properties: vec![
 						PropertiesRow::with_override("Image", WidgetOverride::Hidden),
 						PropertiesRow::with_override("Insertion", WidgetOverride::Hidden),
-						"Replace".into(),
+						"Into".into(),
 					],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
@@ -2041,7 +2071,27 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec!["None".into(), "Start".into(), "End".into()],
+					input_properties: vec![
+						PropertiesRow::with_override("None", WidgetOverride::Hidden),
+						PropertiesRow::with_override(
+							"Start",
+							WidgetOverride::Vec2(Vec2InputSettings {
+								x: "X".to_string(),
+								y: "Y".to_string(),
+								unit: " px".to_string(),
+								..Default::default()
+							}),
+						),
+						PropertiesRow::with_override(
+							"End",
+							WidgetOverride::Vec2(Vec2InputSettings {
+								x: "X".to_string(),
+								y: "Y".to_string(),
+								unit: " px".to_string(),
+								..Default::default()
+							}),
+						),
+					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
@@ -2064,7 +2114,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec!["None".into(), "Points".into()],
+					input_properties: vec![
+						PropertiesRow::with_override("None", WidgetOverride::Hidden),
+						PropertiesRow::with_override("Points", WidgetOverride::Custom("spline_input".to_string())),
+					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
@@ -2164,7 +2217,35 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec!["Editor API".into(), "Text".into(), "Font".into(), "Size".into(), "Line Height".into(), "Character Spacing".into()],
+					input_properties: vec![
+						PropertiesRow::with_override("Editor API", WidgetOverride::Hidden),
+						PropertiesRow::with_override("Text", WidgetOverride::Custom("text_area".to_string())),
+						PropertiesRow::with_override("Font", WidgetOverride::Custom("text_font".to_string())),
+						PropertiesRow::with_override(
+							"Size",
+							WidgetOverride::Number(NumberInputSettings {
+								unit: Some(" px".to_string()),
+								min: Some(1.),
+								..Default::default()
+							}),
+						),
+						PropertiesRow::with_override(
+							"Line Height",
+							WidgetOverride::Number(NumberInputSettings {
+								min: Some(0.),
+								step: Some(0.1),
+								..Default::default()
+							}),
+						),
+						PropertiesRow::with_override(
+							"Character Spacing",
+							WidgetOverride::Number(NumberInputSettings {
+								min: Some(0.),
+								step: Some(0.1),
+								..Default::default()
+							}),
+						),
+					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
@@ -2244,7 +2325,30 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 						..Default::default()
 					}),
-					input_properties: vec!["Vector Data".into(), "Translation".into(), "Rotation".into(), "Scale".into(), "Skew".into(), "Pivot".into()],
+					input_properties: vec![
+						PropertiesRow::with_override("Vector Data", WidgetOverride::Hidden),
+						PropertiesRow::with_override(
+							"Translation",
+							WidgetOverride::Vec2(Vec2InputSettings {
+								x: "X".to_string(),
+								y: "Y".to_string(),
+								unit: " px".to_string(),
+								..Default::default()
+							}),
+						),
+						PropertiesRow::with_override("Rotation", WidgetOverride::Custom("transform_rotation".to_string())),
+						PropertiesRow::with_override(
+							"Scale",
+							WidgetOverride::Vec2(Vec2InputSettings {
+								x: "W".to_string(),
+								y: "H".to_string(),
+								unit: "x".to_string(),
+								..Default::default()
+							}),
+						),
+						PropertiesRow::with_override("Skew", WidgetOverride::Hidden),
+						PropertiesRow::with_override("Pivot", WidgetOverride::Hidden),
+					],
 					output_names: vec!["Data".to_string()],
 					..Default::default()
 				},
@@ -2315,7 +2419,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 						..Default::default()
 					}),
-					input_properties: vec!["Group of Paths".into(), "Operation".into()],
+					input_properties: vec![PropertiesRow::with_override("Group of Paths", WidgetOverride::Hidden), "Operation".into()],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
@@ -2346,14 +2450,72 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
 					input_properties: vec![
-						"Points".into(),
-						"Instance".into(),
-						"Random Scale Min".into(),
-						"Random Scale Max".into(),
-						"Random Scale Bias".into(),
-						"Random Scale Seed".into(),
-						"Random Rotation".into(),
-						"Random Rotation Seed".into(),
+						PropertiesRow::with_override("Points", WidgetOverride::Hidden),
+						Into::<PropertiesRow>::into("Instance").with_tooltip("Artwork to be copied and placed at each point"),
+						PropertiesRow::with_override(
+							"Random Scale Min",
+							WidgetOverride::Number(NumberInputSettings {
+								min: Some(0.),
+								mode: NumberInputMode::Range,
+								range_min: Some(0.),
+								range_max: Some(2.),
+								unit: Some("x".to_string()),
+								..Default::default()
+							}),
+						)
+						.with_tooltip("Minimum range of randomized sizes given to each instance"),
+						PropertiesRow::with_override(
+							"Random Scale Max",
+							WidgetOverride::Number(NumberInputSettings {
+								min: Some(0.),
+								mode: NumberInputMode::Range,
+								range_min: Some(0.),
+								range_max: Some(2.),
+								unit: Some("x".to_string()),
+								..Default::default()
+							}),
+						)
+						.with_tooltip("Minimum range of randomized sizes given to each instance"),
+						PropertiesRow::with_override(
+							"Random Scale Bias",
+							WidgetOverride::Number(NumberInputSettings {
+								min: Some(0.),
+								mode: NumberInputMode::Range,
+								range_min: Some(-50.),
+								range_max: Some(50.),
+								..Default::default()
+							}),
+						)
+						.with_tooltip("Bias for the probability distribution of randomized sizes (0 is uniform, negatives favor more of small sizes, positives favor more of large sizes)"),
+						PropertiesRow::with_override(
+							"Random Scale Seed",
+							WidgetOverride::Number(NumberInputSettings {
+								min: Some(0.),
+								is_integer: true,
+								..Default::default()
+							}),
+						)
+						.with_tooltip("Seed to determine unique variations on all the randomized instance sizes"),
+						PropertiesRow::with_override(
+							"Random Rotation",
+							WidgetOverride::Number(NumberInputSettings {
+								min: Some(0.),
+								max: Some(360.),
+								mode: NumberInputMode::Range,
+								unit: Some("°".to_string()),
+								..Default::default()
+							}),
+						)
+						.with_tooltip("Range of randomized angles given to each instance, in degrees ranging from furthest clockwise to counterclockwise"),
+						PropertiesRow::with_override(
+							"Random Rotation Seed",
+							WidgetOverride::Number(NumberInputSettings {
+								min: Some(0.),
+								is_integer: true,
+								..Default::default()
+							}),
+						)
+						.with_tooltip("Seed to determine unique variations on all the randomized instance angles"),
 					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
@@ -2446,7 +2608,37 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 						..Default::default()
 					}),
-					input_properties: vec!["Vector Data".into(), "Spacing".into(), "Start Offset".into(), "Stop Offset".into(), "Adaptive Spacing".into()],
+					input_properties: vec![
+						PropertiesRow::with_override("Vector Data", WidgetOverride::Hidden),
+						PropertiesRow::with_override(
+							"Spacing",
+							WidgetOverride::Number(NumberInputSettings {
+								min: Some(1.),
+								unit: Some(" px".to_string()),
+								..Default::default()
+							}),
+						)
+						.with_tooltip("Distance between each instance (exact if 'Adaptive Spacing' is disabled, approximate if enabled)"),
+						PropertiesRow::with_override(
+							"Start Offset",
+							WidgetOverride::Number(NumberInputSettings {
+								min: Some(0.),
+								unit: Some(" px".to_string()),
+								..Default::default()
+							}),
+						)
+						.with_tooltip("Exclude some distance from the start of the path before the first instance"),
+						PropertiesRow::with_override(
+							"Stop Offset",
+							WidgetOverride::Number(NumberInputSettings {
+								min: Some(0.),
+								unit: Some(" px".to_string()),
+								..Default::default()
+							}),
+						)
+						.with_tooltip("Exclude some distance from the end of the path after the last instance"),
+						Into::<PropertiesRow>::into("Adaptive Spacing").with_tooltip("Round 'Spacing' to a nearby value that divides into the path length evenly"),
+					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
@@ -2520,7 +2712,27 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 						..Default::default()
 					}),
-					input_properties: vec!["Vector Data".into(), "Separation Disk Diameter".into(), "Seed".into()],
+					input_properties: vec![
+						PropertiesRow::with_override("Vector Data", WidgetOverride::Hidden),
+						PropertiesRow::with_override(
+							"Separation Disk Diameter",
+							WidgetOverride::Number(NumberInputSettings {
+								min: Some(0.01),
+								mode: NumberInputMode::Range,
+								range_min: Some(1.),
+								range_max: Some(100.),
+								..Default::default()
+							}),
+						),
+						PropertiesRow::with_override(
+							"Seed",
+							WidgetOverride::Number(NumberInputSettings {
+								min: Some(0.),
+								is_integer: true,
+								..Default::default()
+							}),
+						),
+					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
@@ -2540,7 +2752,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec!["Segmentation".into(), "Index".into()],
+					input_properties: vec![
+						PropertiesRow::with_override("Segmentation", WidgetOverride::Hidden),
+						PropertiesRow::with_override("Index", WidgetOverride::Number(NumberInputSettings { min: Some(0.), ..Default::default() })),
+					],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
@@ -2813,6 +3028,104 @@ fn static_input_properties() -> HashMap<String, Box<dyn Fn(NodeId, usize, &mut N
 		}),
 	);
 	map.insert(
+		"number".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let mut number_input = NumberInput::default();
+			if let Some(unit) = context
+				.network_interface
+				.input_metadata(&node_id, index, "unit", context.selection_network_path)
+				.and_then(|value| value.as_str())
+			{
+				number_input = number_input.unit(unit);
+			}
+			if let Some(min) = context
+				.network_interface
+				.input_metadata(&node_id, index, "min", context.selection_network_path)
+				.and_then(|value| value.as_f64())
+			{
+				number_input = number_input.min(min);
+			}
+			if let Some(max) = context
+				.network_interface
+				.input_metadata(&node_id, index, "max", context.selection_network_path)
+				.and_then(|value| value.as_f64())
+			{
+				number_input = number_input.max(max);
+			}
+			if let Some(step) = context
+				.network_interface
+				.input_metadata(&node_id, index, "step", context.selection_network_path)
+				.and_then(|value| value.as_f64())
+			{
+				number_input = number_input.step(step);
+			}
+			if let Some(mode) = context.network_interface.input_metadata(&node_id, index, "mode", context.selection_network_path).map(|value| {
+				let mode: NumberInputMode = serde_json::from_value(value.clone()).unwrap();
+				mode
+			}) {
+				number_input = number_input.mode(mode);
+			}
+			let blank_assist = context
+				.network_interface
+				.input_metadata(&node_id, index, "blank_assist", context.selection_network_path)
+				.and_then(|value| value.as_bool())
+				.unwrap_or_else(|| {
+					log::error!("Could not get blank assist when displaying number input for node {node_id}, index {index}");
+					true
+				});
+			Ok(vec![LayoutGroup::Row {
+				widgets: node_properties::number_widget(document_node, node_id, index, input_name, number_input, blank_assist),
+			}])
+		}),
+	);
+	map.insert(
+		"vec2".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let x = context
+				.network_interface
+				.input_metadata(&node_id, index, "x", context.selection_network_path)
+				.and_then(|value| value.as_str())
+				.unwrap_or_else(|| {
+					log::error!("Could not get x for vec2 input");
+					""
+				});
+			let y = context
+				.network_interface
+				.input_metadata(&node_id, index, "y", context.selection_network_path)
+				.and_then(|value| value.as_str())
+				.unwrap_or_else(|| {
+					log::error!("Could not get y for vec2 input");
+					""
+				});
+			let unit = context
+				.network_interface
+				.input_metadata(&node_id, index, "unit", context.selection_network_path)
+				.and_then(|value| value.as_str())
+				.unwrap_or_else(|| {
+					log::error!("Could not get unit for vec2 input");
+					""
+				});
+			let min = context
+				.network_interface
+				.input_metadata(&node_id, index, "min", context.selection_network_path)
+				.and_then(|value| value.as_f64());
+
+			Ok(vec![node_properties::vec2_widget(
+				document_node,
+				node_id,
+				index,
+				input_name,
+				x,
+				y,
+				unit,
+				min,
+				node_properties::add_blank_assist,
+			)])
+		}),
+	);
+	map.insert(
 		"noise_properties_scale".to_string(),
 		Box::new(|node_id, index, context| {
 			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
@@ -2825,7 +3138,6 @@ fn static_input_properties() -> HashMap<String, Box<dyn Fn(NodeId, usize, &mut N
 		"noise_properties_noise_type".to_string(),
 		Box::new(|node_id, index, context| {
 			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
-			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
 			let noise_type_row = node_properties::noise_type(document_node, node_id, index, input_name, true);
 			Ok(vec![noise_type_row, LayoutGroup::Row { widgets: Vec::new() }])
 		}),
@@ -3076,6 +3388,89 @@ fn static_input_properties() -> HashMap<String, Box<dyn Fn(NodeId, usize, &mut N
 			let randomize_enabled = node_properties::query_assign_colors_randomize(node_id, context)?;
 			let repeat_every_row = node_properties::number_widget(document_node, node_id, index, input_name, NumberInput::default().min(0.).int().disabled(randomize_enabled), true);
 			Ok(vec![repeat_every_row.into()])
+		}),
+	);
+	map.insert(
+		"mask_stencil".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let mask = node_properties::color_widget(document_node, node_id, index, input_name, ColorButton::default(), true);
+			Ok(vec![mask])
+		}),
+	);
+	map.insert(
+		"spline_input".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			Ok(vec![LayoutGroup::Row {
+				widgets: node_properties::vec_dvec2_input(document_node, node_id, index, input_name, TextInput::default().centered(true), true),
+			}])
+		}),
+	);
+	map.insert(
+		"transform_rotation".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+
+			let mut widgets = node_properties::start_widgets(document_node, node_id, index, input_name, super::utility_types::FrontendGraphDataType::Number, true);
+
+			let Some(input) = document_node.inputs.get(index) else {
+				return Err("Input not found in transform rotation input override".to_string());
+			};
+			if let Some(&TaggedValue::F64(val)) = input.as_non_exposed_value() {
+				widgets.extend_from_slice(&[
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
+					NumberInput::new(Some(val.to_degrees()))
+						.unit("°")
+						.mode(NumberInputMode::Range)
+						.range_min(Some(-180.))
+						.range_max(Some(180.))
+						.on_update(node_properties::update_value(
+							|number_input: &NumberInput| TaggedValue::F64(number_input.value.unwrap().to_radians()),
+							node_id,
+							index,
+						))
+						.on_commit(node_properties::commit_value)
+						.widget_holder(),
+				]);
+			}
+
+			Ok(vec![LayoutGroup::Row { widgets }])
+		}),
+	);
+	map.insert(
+		"text_area".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			Ok(vec![LayoutGroup::Row {
+				widgets: node_properties::text_area_widget(document_node, node_id, index, input_name, true),
+			}])
+		}),
+	);
+	map.insert(
+		"text_font".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			let (font, style) = node_properties::font_inputs(document_node, node_id, index, input_name, true);
+			let mut result = vec![LayoutGroup::Row { widgets: font }];
+			if let Some(style) = style {
+				result.push(LayoutGroup::Row { widgets: style });
+			}
+			Ok(result)
+		}),
+	);
+	map.insert(
+		"artboard_background".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+			Ok(vec![node_properties::color_widget(
+				document_node,
+				node_id,
+				index,
+				input_name,
+				ColorButton::default().allow_none(false),
+				true,
+			)])
 		}),
 	);
 	map

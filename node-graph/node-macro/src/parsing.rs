@@ -51,10 +51,9 @@ pub enum ParsedValueSource {
 	Scope(LitStr),
 }
 
-// #[widget(Hidden)]
-// #[widget(String = "Some string")]
-// #[widget(Custom = "Custom string")]
-
+// #[widget(ParsedWidgetOverride::Hidden)]
+// #[widget(ParsedWidgetOverride::String = "Some string")]
+// #[widget(ParsedWidgetOverride::Custom = "Custom string")]
 #[derive(Debug, Default)]
 pub enum ParsedWidgetOverride {
 	#[default]

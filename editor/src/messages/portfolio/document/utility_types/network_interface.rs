@@ -6,6 +6,7 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Modify
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{resolve_document_node_type, DocumentNodeDefinition};
 use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
 use crate::messages::tool::common_functionality::graph_modification_utils;
+use crate::messages::tool::tool_messages::tool_prelude::NumberInputMode;
 
 use bezier_rs::Subpath;
 use graph_craft::document::{value::TaggedValue, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
@@ -14,7 +15,7 @@ use graphene_std::renderer::{ClickTarget, Quad};
 use graphene_std::transform::Footprint;
 use graphene_std::vector::{PointId, VectorData, VectorModificationType};
 use interpreted_executor::{dynamic_executor::ResolvedDocumentNodeTypes, node_registry::NODE_REGISTRY};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use glam::{DAffine2, DVec2, IVec2};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -5973,10 +5974,49 @@ impl PartialEq for DocumentNodeMetadata {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct NumberInputSettings {
+	pub unit: Option<String>,
+	pub min: Option<f64>,
+	pub max: Option<f64>,
+	pub step: Option<f64>,
+	pub mode: NumberInputMode,
+	pub range_min: Option<f64>,
+	pub range_max: Option<f64>,
+	pub is_integer: bool,
+	pub blank_assist: bool,
+}
+
+impl Default for NumberInputSettings {
+	fn default() -> Self {
+		NumberInputSettings {
+			unit: None,
+			min: None,
+			max: None,
+			step: None,
+			mode: NumberInputMode::default(),
+			range_min: None,
+			range_max: None,
+			is_integer: false,
+			blank_assist: true,
+		}
+	}
+}
+
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Vec2InputSettings {
+	pub x: String,
+	pub y: String,
+	pub unit: String,
+	pub min: Option<f64>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum WidgetOverride {
 	None,
 	Hidden,
 	String(String),
+	Number(NumberInputSettings),
+	Vec2(Vec2InputSettings),
 	Custom(String),
 }
 
@@ -5984,10 +6024,13 @@ pub enum WidgetOverride {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PropertiesRow {
 	/// A general datastore than can store key value pairs of any types for any input
+	/// TODO: This could be simplified to just Value, and key value pairs could be stored as the Object variant
 	pub input_data: HashMap<String, Value>,
 	// An input can override a widget, which would otherwise be automatically generated from the type
 	// The string is the identifier to the widget override function stored in INPUT_OVERRIDES
 	pub widget_override: Option<String>,
+	// Tool tip when hovering over any widgets created by the properties row
+	pub tooltip: Option<String>,
 }
 
 impl Default for PropertiesRow {
@@ -6019,23 +6062,76 @@ impl PropertiesRow {
 		let mut input_data = HashMap::new();
 		input_data.insert("input_name".to_string(), Value::String(input_name.to_string()));
 		match widget_override {
-			WidgetOverride::None => PropertiesRow { input_data, widget_override: None },
+			WidgetOverride::None => PropertiesRow {
+				input_data,
+				widget_override: None,
+				tooltip: None,
+			},
 			WidgetOverride::Hidden => PropertiesRow {
 				input_data,
 				widget_override: Some("hidden".to_string()),
+				tooltip: None,
 			},
 			WidgetOverride::String(string_properties) => {
 				input_data.insert("string_properties".to_string(), Value::String(string_properties));
 				PropertiesRow {
 					input_data,
 					widget_override: Some("string".to_string()),
+					tooltip: None,
+				}
+			}
+			WidgetOverride::Number(mut number_properties) => {
+				if let Some(unit) = number_properties.unit.take() {
+					input_data.insert("unit".to_string(), json!(unit));
+				}
+				if let Some(min) = number_properties.min.take() {
+					input_data.insert("min".to_string(), json!(min));
+				}
+				if let Some(max) = number_properties.max.take() {
+					input_data.insert("max".to_string(), json!(max));
+				}
+				if let Some(step) = number_properties.step.take() {
+					input_data.insert("step".to_string(), json!(step));
+				}
+				if let Some(range_min) = number_properties.range_min.take() {
+					input_data.insert("range_min".to_string(), json!(range_min));
+				}
+				if let Some(range_max) = number_properties.range_max.take() {
+					input_data.insert("range_max".to_string(), json!(range_max));
+				}
+				input_data.insert("mode".to_string(), json!(number_properties.mode));
+				input_data.insert("is_integer".to_string(), Value::Bool(number_properties.is_integer));
+				input_data.insert("blank_assist".to_string(), Value::Bool(number_properties.blank_assist));
+				PropertiesRow {
+					input_data,
+					widget_override: Some("number".to_string()),
+					tooltip: None,
+				}
+			}
+			WidgetOverride::Vec2(vec2_properties) => {
+				input_data.insert("x".to_string(), json!(vec2_properties.x));
+				input_data.insert("y".to_string(), json!(vec2_properties.y));
+				input_data.insert("unit".to_string(), json!(vec2_properties.unit));
+				if let Some(min) = vec2_properties.min {
+					input_data.insert("min".to_string(), json!(min));
+				}
+				PropertiesRow {
+					input_data,
+					widget_override: Some("vec2".to_string()),
+					tooltip: None,
 				}
 			}
 			WidgetOverride::Custom(lambda_name) => PropertiesRow {
 				input_data,
 				widget_override: Some(lambda_name),
+				tooltip: None,
 			},
 		}
+	}
+
+	pub fn with_tooltip(mut self, tooltip: &str) -> Self {
+		self.tooltip = Some(tooltip.to_string());
+		self
 	}
 }
 
