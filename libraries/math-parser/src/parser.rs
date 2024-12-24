@@ -11,7 +11,7 @@ use std::num::{ParseFloatError, ParseIntError};
 use thiserror::Error;
 
 #[derive(Parser)]
-#[grammar = "./grammer.pest"] // Point to the grammar file
+#[grammar = "./grammer.pest"]
 struct ExprParser;
 
 lazy_static! {
@@ -20,7 +20,8 @@ lazy_static! {
 			.op(Op::infix(Rule::add, Assoc::Left) | Op::infix(Rule::sub, Assoc::Left))
 			.op(Op::infix(Rule::mul, Assoc::Left) | Op::infix(Rule::div, Assoc::Left) | Op::infix(Rule::paren, Assoc::Left))
 			.op(Op::infix(Rule::pow, Assoc::Right))
-			.op(Op::postfix(Rule::fac) | Op::postfix(Rule::EOI))
+			.op(Op::infix(Rule::geq, Assoc::Left) | Op::infix(Rule::leq, Assoc::Left) | Op::infix(Rule::eq, Assoc::Left))
+			.op(Op::postfix(Rule::EOI))
 			.op(Op::prefix(Rule::sqrt))
 			.op(Op::prefix(Rule::neg))
 	};
@@ -185,6 +186,22 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 					let value = primary.as_str().parse::<f64>()?;
 					(Node::Lit(Literal::Float(value)), NodeMetadata::new(Unit::BASE_UNIT))
 				}
+				Rule::conditional => {
+					let mut inner = primary.into_inner();
+
+					let condition = parse_expr(inner.next().expect("expected conditional to have condition").into_inner())?;
+					let if_block = parse_expr(inner.next().expect("expected conditional to have if block").into_inner())?;
+					let else_block = parse_expr(inner.next().expect("expected conditional to have else block").into_inner())?;
+
+					(
+						Node::Conditional {
+							condition: Box::new(condition.0),
+							if_block: Box::new(if_block.0),
+							else_block: Box::new(else_block.0),
+						},
+						if_block.1,
+					)
+				}
 				rule => unreachable!("unexpected rule: {:?}", rule),
 			})
 		})
@@ -217,19 +234,10 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 			Ok((node, NodeMetadata::new(unit)))
 		})
 		.map_postfix(|lhs, op| {
-			let (lhs_node, lhs_metadata) = lhs?;
-
 			let op = match op.as_rule() {
-				Rule::EOI => return Ok((lhs_node, lhs_metadata)),
-				Rule::fac => UnaryOp::Fac,
+				Rule::EOI => return lhs,
 				rule => unreachable!("unexpected rule: {:?}", rule),
 			};
-
-			if !lhs_metadata.unit.is_base() {
-				return Err(ParseError::Type(TypeError::InvalidUnaryOp(lhs_metadata.unit, op)));
-			}
-
-			Ok((Node::UnaryOp { expr: Box::new(lhs_node), op }, lhs_metadata))
 		})
 		.map_infix(|lhs, op, rhs| {
 			let (lhs, lhs_metadata) = lhs?;
@@ -242,6 +250,9 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 				Rule::div => BinaryOp::Div,
 				Rule::pow => BinaryOp::Pow,
 				Rule::paren => BinaryOp::Mul,
+				Rule::leq => BinaryOp::Leq,
+				Rule::geq => BinaryOp::Geq,
+				Rule::eq => BinaryOp::Eq,
 				rule => unreachable!("unexpected rule: {:?}", rule),
 			};
 
@@ -269,18 +280,25 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 					BinaryOp::Pow => {
 						return Err(ParseError::Type(TypeError::InvalidBinaryOp(lhs_unit, op, rhs_unit)));
 					}
+					BinaryOp::Eq | BinaryOp::Leq | BinaryOp::Geq => {
+						if lhs_unit == rhs_unit {
+							Unit::base_unit()
+						} else {
+							return Err(ParseError::Type(TypeError::InvalidBinaryOp(lhs_unit, op, rhs_unit)));
+						}
+					}
 				},
 
 				(true, false) => match op {
 					BinaryOp::Add | BinaryOp::Sub => return Err(ParseError::Type(TypeError::InvalidBinaryOp(lhs_unit, op, Unit::BASE_UNIT))),
 					BinaryOp::Pow => {
 						//TODO: improve error type
-						//TODO: support 1 / int
+						//TODO: support fractions
 						if let Ok(Value::Number(Number::Real(val))) = rhs.eval(&EvalContext::default()) {
 							if (val - val as i32 as f64).abs() <= f64::EPSILON {
 								Unit {
-									length: lhs_unit.length * val as i32,
-									mass: lhs_unit.mass * val as i32,
+									length: lhs_unit.length * val.round() as i32,
+									mass: lhs_unit.mass * val.round() as i32,
 									time: lhs_unit.time * val as i32,
 								}
 							} else {
@@ -374,6 +392,15 @@ mod tests {
 				op: BinaryOp::Pow,
 				rhs: Box::new(Node::Lit(Literal::Float(2.0))),
 			}),
+		},
+		test_conditional_expr: "if (x+3) {0} else {1}" => Node::Conditional{
+			condition: Box::new(Node::BinOp{
+				lhs: Box::new(Node::Var("x".to_string())),
+				op: BinaryOp::Add,
+				rhs: Box::new(Node::Lit(Literal::Float(3.0))),
+			}),
+			if_block: Box::new(Node::Lit(Literal::Float(0.0))),
+			else_block: Box::new(Node::Lit(Literal::Float(1.0))),
 		}
 	}
 }

@@ -145,5 +145,49 @@ mod tests {
 		trig_tan_pi_div_four: "tan(pi/4)" => (1.0, Unit::BASE_UNIT),
 		trig_sin_tau: "sin(tau)" => (0.0, Unit::BASE_UNIT),
 		trig_cos_tau_div_two: "cos(tau/2)" => (-1.0, Unit::BASE_UNIT),
+
+		// Basic if statements
+		if_true_condition: "if(1){5} else {3}" => (5., Unit::BASE_UNIT),
+		if_false_condition: "if(0){5} else {3}" => (3., Unit::BASE_UNIT),
+
+		// Arithmetic conditions
+		if_arithmetic_true: "if(2+2-4){1} else {0}" => (0., Unit::BASE_UNIT),
+		if_arithmetic_false: "if(3*2-5){1} else {0}" => (1., Unit::BASE_UNIT),
+
+		// Nested arithmetic
+		if_complex_arithmetic: "if((5+3)*(2-1)){10} else {20}" => (10., Unit::BASE_UNIT),
+		if_with_division: "if(8/4-2){15} else {25}" => (15., Unit::BASE_UNIT),
+
+		// Constants in conditions
+		if_with_pi: "if(pi > 3){1} else {0}" => (1., Unit::BASE_UNIT),
+		if_with_e: "if(e < 3){1} else {0}" => (0., Unit::BASE_UNIT),
+
+		// Functions in conditions
+		if_with_sqrt: "if(sqrt(16) == 4){1} else {0}" => (1., Unit::BASE_UNIT),
+		if_with_sin: "if(sin(pi)){1} else {0}" => (0., Unit::BASE_UNIT),
+
+		// Nested if statements
+		nested_if: "if(1){if(0){1} else {2}} else {3}" => (2., Unit::BASE_UNIT),
+		nested_if_complex: "if(2-2){if(1){5} else {6}} else {if(1){7} else {8}}" => (7., Unit::BASE_UNIT),
+
+		// If statements with variables
+		if_with_var: "if(x > 0){1} else {0}" => (1., Unit::BASE_UNIT),
+		if_var_arithmetic: "if(x + 3 > 5){1} else {0}" => (0., Unit::BASE_UNIT),
+
+		// Mixed operations in conditions and blocks
+		if_complex_condition: "if(sqrt(16) + sin(pi) < 5){2*pi} else {3*e}" => (2. * std::f64::consts::PI, Unit::BASE_UNIT),
+		if_complex_blocks: "if(1){2*sqrt(16) + sin(pi/2)} else {3*cos(0) + 4}" => (8., Unit::BASE_UNIT),
+
+		// Edge cases
+		if_zero: "if(0.0){1} else {2}" => (2., Unit::BASE_UNIT),
+		if_negative: "if(-1){1} else {2}" => (1., Unit::BASE_UNIT),
+		if_infinity: "if(inf){1} else {2}" => (1., Unit::BASE_UNIT),
+
+		// Units in if statements
+		if_with_units: "if(5m > 3m){10s} else {20s}" => (10., Unit::TIME),
+		if_mixed_units: "if(2km/h > 1m/s){5kg} else {10kg}" => (10., Unit::MASS),
+
+		// Complex nested expressions
+		if_nested_expr: "if((sqrt(16) + 2) * (sin(pi) + 1)){3 + 4 * 2} else {5 - 2 / 1}" => (11., Unit::BASE_UNIT),
 	}
 }

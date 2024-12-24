@@ -56,6 +56,9 @@ pub enum BinaryOp {
 	Mul,
 	Div,
 	Pow,
+	Leq,
+	Geq,
+	Eq,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -72,4 +75,5 @@ pub enum Node {
 	FnCall { name: String, expr: Vec<Node> },
 	BinOp { lhs: Box<Node>, op: BinaryOp, rhs: Box<Node> },
 	UnaryOp { expr: Box<Node>, op: UnaryOp },
+	Conditional { condition: Box<Node>, if_block: Box<Node>, else_block: Box<Node> },
 }
