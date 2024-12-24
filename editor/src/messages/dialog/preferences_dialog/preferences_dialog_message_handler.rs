@@ -64,6 +64,7 @@ impl PreferencesDialogMessageHandler {
 		];
 
 		let selection_mode_tooltip = "Choose the selection mode for objects in the editor";
+
 		let selection_mode_checkboxes = vec![
 			CheckboxInput::new(matches!(preferences.selection_mode, SelectionMode::Touched))
 				.tooltip("Select objects that are touched by the selection area")
