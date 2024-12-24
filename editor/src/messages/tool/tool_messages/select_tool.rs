@@ -42,7 +42,7 @@ pub enum SelectOptionsUpdate {
 }
 
 enum SelectionDirection {
-	LeftWards,
+	Leftwards,
 	Rightwards,
 	None,
 }
