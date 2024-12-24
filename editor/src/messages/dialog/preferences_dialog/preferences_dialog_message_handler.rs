@@ -1,4 +1,5 @@
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 
 pub struct PreferencesDialogMessageData<'a> {
@@ -62,6 +63,42 @@ impl PreferencesDialogMessageHandler {
 				.widget_holder(),
 		];
 
+		let selection_mode_tooltip = "Choose the selection mode for objects in the editor";
+		let selection_mode_checkboxes = vec![
+			CheckboxInput::new(matches!(preferences.selection_mode, SelectionMode::Touched))
+				.tooltip("Select objects that are touched by the selection area")
+				.on_update(|_| {
+					PreferencesMessage::SelectionMode {
+						selection_mode: SelectionMode::Touched,
+					}
+					.into()
+				})
+				.widget_holder(),
+			TextLabel::new("Touched").table_align(true).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			CheckboxInput::new(matches!(preferences.selection_mode, SelectionMode::Contained))
+				.tooltip("Select objects that are fully contained within the selection area")
+				.on_update(|_| {
+					PreferencesMessage::SelectionMode {
+						selection_mode: SelectionMode::Contained,
+					}
+					.into()
+				})
+				.widget_holder(),
+			TextLabel::new("Contained").table_align(true).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			CheckboxInput::new(matches!(preferences.selection_mode, SelectionMode::ByDragDirection))
+				.tooltip("Select objects based on the drag direction of the selection area")
+				.on_update(|_| {
+					PreferencesMessage::SelectionMode {
+						selection_mode: SelectionMode::ByDragDirection,
+					}
+					.into()
+				})
+				.widget_holder(),
+			TextLabel::new("By Drag Direction").table_align(true).widget_holder(),
+		];
+
 		// TODO: Reenable when Imaginate is restored
 		// let imaginate_server_hostname = vec![
 		// 	TextLabel::new("Imaginate").min_width(60).italic(true).widget_holder(),
@@ -90,6 +127,10 @@ impl PreferencesDialogMessageHandler {
 			LayoutGroup::Row { widgets: zoom_with_scroll },
 			LayoutGroup::Row { widgets: renderer_section },
 			LayoutGroup::Row { widgets: use_vello },
+			LayoutGroup::Row {
+				widgets: vec![TextLabel::new("Selection Mode").italic(true).widget_holder()],
+			},
+			LayoutGroup::Row { widgets: selection_mode_checkboxes },
 			// LayoutGroup::Row { widgets: imaginate_server_hostname },
 			// LayoutGroup::Row { widgets: imaginate_refresh_frequency },
 		]))

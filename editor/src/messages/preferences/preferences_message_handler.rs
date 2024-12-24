@@ -1,4 +1,5 @@
 use crate::messages::input_mapper::key_mapping::MappingVariant;
+use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use graph_craft::wasm_application_io::EditorPreferences;
 
@@ -8,6 +9,7 @@ pub struct PreferencesMessageHandler {
 	pub imaginate_refresh_frequency: f64,
 	pub zoom_with_scroll: bool,
 	pub use_vello: bool,
+	pub selection_mode: SelectionMode,
 }
 
 impl PreferencesMessageHandler {
@@ -34,6 +36,7 @@ impl Default for PreferencesMessageHandler {
 			imaginate_refresh_frequency: 1.,
 			zoom_with_scroll: matches!(MappingVariant::default(), MappingVariant::ZoomWithScroll),
 			use_vello,
+			selection_mode: SelectionMode::Touched,
 		}
 	}
 }
@@ -98,6 +101,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				responses.add(KeyMappingMessage::ModifyMapping(variant));
 				responses.add(FrontendMessage::UpdateZoomWithScroll { zoom_with_scroll });
 			}
+			PreferencesMessage::SelectionMode { selection_mode } => todo!(),
 		}
 
 		responses.add(FrontendMessage::TriggerSavePreferences { preferences: self.clone() });
