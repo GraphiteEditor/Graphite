@@ -665,12 +665,7 @@ impl Fsm for SelectToolFsmState {
 						responses.add(DocumentMessage::StartTransaction);
 						SelectToolFsmState::Dragging
 					} else {
-						// Deselect all layers if using shallowest selection behavior
-						// Necessary since for shallowest mode, we need to know the current selected layers to determine the next
-						if tool_data.nested_selection_behavior == NestedSelectionBehavior::Shallowest {
-							responses.add(DocumentMessage::DeselectAllLayers);
-							tool_data.layers_dragging.clear();
-						}
+						//Make a Selection box,keeping previously selected layers
 						let selection = tool_data.nested_selection_behavior;
 						SelectToolFsmState::DrawingBox { selection }
 					}
@@ -1011,7 +1006,15 @@ impl Fsm for SelectToolFsmState {
 				let new_selected: HashSet<_> = document.intersect_quad_no_artboards(quad, input).collect();
 				let current_selected: HashSet<_> = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
 				if new_selected != current_selected {
-					tool_data.layers_dragging = new_selected.into_iter().collect();
+					let parent_selected: HashSet<_> = new_selected
+						.into_iter()
+						.map(|layer| {
+							// Find the  parent node
+							layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(layer)
+						})
+						.collect();
+
+					tool_data.layers_dragging.extend(parent_selected.iter().copied());
 					responses.add(NodeGraphMessage::SelectedNodesSet {
 						nodes: tool_data
 							.layers_dragging
