@@ -215,7 +215,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyG); action_dispatch=PathToolMessage::GRS { key: KeyG }),
 		entry!(KeyDown(KeyR); action_dispatch=PathToolMessage::GRS { key: KeyR }),
 		entry!(KeyDown(KeyS); action_dispatch=PathToolMessage::GRS { key: KeyS }),
-		entry!(PointerMove; refresh_keys=[KeyC, Shift, Alt, Space], action_dispatch=PathToolMessage::PointerMove { toggle_colinear: KeyC, equidistant: Alt, move_anchor_with_handles: Space}),
+		entry!(PointerMove; refresh_keys=[KeyC, Shift, Alt, Control, Space], action_dispatch=PathToolMessage::PointerMove { toggle_colinear: KeyC, equidistant: Alt, move_anchor_with_handles: Space, snap_angle: Shift, lock_angle: Control}),
 		entry!(KeyDown(Delete); action_dispatch=PathToolMessage::Delete),
 		entry!(KeyDown(KeyA); modifiers=[Accel], action_dispatch=PathToolMessage::SelectAllAnchors),
 		entry!(KeyDown(KeyA); modifiers=[Accel, Shift], action_dispatch=PathToolMessage::DeselectAllPoints),
