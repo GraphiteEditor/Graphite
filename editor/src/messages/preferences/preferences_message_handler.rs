@@ -101,9 +101,11 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				responses.add(KeyMappingMessage::ModifyMapping(variant));
 				responses.add(FrontendMessage::UpdateZoomWithScroll { zoom_with_scroll });
 			}
-			PreferencesMessage::SelectionMode { selection_mode } => todo!(),
+			PreferencesMessage::SelectionMode { selection_mode } => {
+				log::info!("Setting selection mode: {:?}", selection_mode);
+				self.selection_mode = selection_mode;
+			}
 		}
-
 		responses.add(FrontendMessage::TriggerSavePreferences { preferences: self.clone() });
 	}
 
