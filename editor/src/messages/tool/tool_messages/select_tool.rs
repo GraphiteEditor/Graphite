@@ -314,7 +314,7 @@ impl SelectToolData {
 		if bbox[1].x > bbox[0].x {
 			SelectionDirection::Rightwards
 		} else if bbox[1].x < bbox[0].x {
-			SelectionDirection::LeftWards
+			SelectionDirection::Leftwards
 		} else {
 			SelectionDirection::None
 		}
@@ -1030,7 +1030,7 @@ impl Fsm for SelectToolFsmState {
 				// let new_selected: HashSet<_> = document.intersect_quad_no_artboards(quad, input).collect();
 				let new_selected: HashSet<_> = match direction {
 					SelectionDirection::Rightwards => document.intersect_quad_no_artboards(quad, input).filter(|layer| document.is_layer_fully_inside(layer, quad)).collect(),
-					SelectionDirection::LeftWards => document.intersect_quad_no_artboards(quad, input).collect(),
+					SelectionDirection::Leftwards => document.intersect_quad_no_artboards(quad, input).collect(),
 					SelectionDirection::None => HashSet::new(),
 				};
 				let current_selected: HashSet<_> = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
