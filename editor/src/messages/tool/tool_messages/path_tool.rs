@@ -299,7 +299,6 @@ struct PathToolData {
 	select_anchor_toggled: bool,
 	dragging_state: DraggingState,
 	angle: f64,
-	angle_locked: bool,
 }
 
 impl PathToolData {
@@ -472,12 +471,16 @@ impl PathToolData {
 		false
 	}
 
-	fn get_selected_positions(&self, shape_editor: &ShapeState, document: &DocumentMessageHandler) -> Option<(DVec2, DVec2)> {
-		let selected_point = shape_editor.selected_points().next()?;
-		let (layer, _) = shape_editor.selected_shape_state.iter().next()?;
+	/// Attempts to get a single selected handle. Also retrieves the position of the anchor it is connected to. Used for the purpose of snapping the angle.
+	fn try_get_selected_handle_and_anchor(&self, shape_editor: &ShapeState, document: &DocumentMessageHandler) -> Option<(DVec2, DVec2)> {
+		let (layer, selection) = shape_editor.selected_shape_state.iter().next()?; // Only count selections of a single layer
+		if selection.selected_points_count() != 1 {
+			return None; // Do not allow selections of multiple points to count.
+		}
+		let selected_handle = selection.selected().next()?.as_handle()?; // Only count selected handles
 		let vector_data = document.network_interface.compute_modified_vector(*layer)?;
-		let handle_position = selected_point.get_position(&vector_data)?;
-		let anchor_id = selected_point.get_anchor(&vector_data)?;
+		let handle_position = selected_handle.to_manipulator_point().get_position(&vector_data)?;
+		let anchor_id = selected_handle.to_manipulator_point().get_anchor(&vector_data)?;
 		let anchor_position = vector_data.point_domain.position_from_id(anchor_id)?;
 
 		Some((handle_position, anchor_position))
@@ -487,19 +490,17 @@ impl PathToolData {
 		let mut handle_angle = -handle_vector.angle_to(DVec2::X);
 
 		if lock_angle {
-			if !self.angle_locked {
-				self.angle = handle_angle;
-				self.angle_locked = true;
-			}
-			handle_angle = self.angle;
-		} else {
-			self.angle_locked = false;
-			if snap_angle {
-				let snap_resolution = HANDLE_ROTATE_SNAP_ANGLE.to_radians();
-				handle_angle = (handle_angle / snap_resolution).round() * snap_resolution;
-				self.angle = handle_angle;
-			}
+			// When the angle is locked we use the old angle
+			handle_angle = self.angle
 		}
+
+		if snap_angle {
+			// Round the angle to the closest increment
+			let snap_resolution = HANDLE_ROTATE_SNAP_ANGLE.to_radians();
+			handle_angle = (handle_angle / snap_resolution).round() * snap_resolution;
+		}
+
+		self.angle = handle_angle; // Cache the old handle angle for the lock angle.
 		handle_angle
 	}
 
@@ -546,26 +547,17 @@ impl PathToolData {
 		let current_mouse = input.mouse.position;
 		let raw_delta = document_to_viewport.inverse().transform_vector2(current_mouse - previous_mouse);
 
-		let snapped_delta = if lock_angle || snap_angle {
-			if let Some((handle_pos, anchor_pos)) = self.get_selected_positions(shape_editor, document) {
-				let current_vector = handle_pos - anchor_pos;
-				let cursor_pos = handle_pos + raw_delta;
+		let snapped_delta = if let Some((handle_pos, anchor_pos)) = self.try_get_selected_handle_and_anchor(shape_editor, document) {
+			let cursor_pos = handle_pos + raw_delta;
 
-				let handle_angle = if lock_angle {
-					self.calculate_handle_angle(current_vector, lock_angle, snap_angle)
-				} else {
-					self.calculate_handle_angle(cursor_pos - anchor_pos, lock_angle, snap_angle)
-				};
+			let handle_angle = self.calculate_handle_angle(cursor_pos - anchor_pos, lock_angle, snap_angle);
 
-				let constrained_direction = DVec2::new(handle_angle.cos(), handle_angle.sin());
-				let projected_length = (cursor_pos - anchor_pos).dot(constrained_direction);
-				let constrained_target = anchor_pos + constrained_direction * projected_length;
-				let constrained_delta = constrained_target - handle_pos;
+			let constrained_direction = DVec2::new(handle_angle.cos(), handle_angle.sin());
+			let projected_length = (cursor_pos - anchor_pos).dot(constrained_direction);
+			let constrained_target = anchor_pos + constrained_direction * projected_length;
+			let constrained_delta = constrained_target - handle_pos;
 
-				self.apply_snapping(constrained_direction, handle_pos + constrained_delta, anchor_pos, true, handle_pos, document, input)
-			} else {
-				raw_delta
-			}
+			self.apply_snapping(constrained_direction, handle_pos + constrained_delta, anchor_pos, true, handle_pos, document, input)
 		} else {
 			shape_editor.snap(&mut self.snap_manager, &self.snap_cache, document, input, previous_mouse)
 		};
