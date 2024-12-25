@@ -1157,10 +1157,10 @@ impl Fsm for SelectToolFsmState {
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
 			SelectToolFsmState::DrawingBox { .. } => {
-				// TODO: Re-select deselected layers during drag when Shift is pressed, and re-deselect if Shift is released before drag ends.
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Control, Key::Shift], "Remove from Selection").add_mac_keys([Key::Command, Key::Shift])]),
+					// TODO: Re-select deselected layers during drag when Shift is pressed, and re-deselect if Shift is released before drag ends.(https://discord.com/channels/731730685944922173/1216976541947531264/1321360311298818048)
 					// HintGroup(vec![HintInfo::keys([Key::Shift], "Extend Selection")])
 				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
