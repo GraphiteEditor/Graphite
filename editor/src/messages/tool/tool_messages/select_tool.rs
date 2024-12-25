@@ -665,7 +665,7 @@ impl Fsm for SelectToolFsmState {
 						responses.add(DocumentMessage::StartTransaction);
 						SelectToolFsmState::Dragging
 					} else {
-						//Make a Selection box,keeping previously selected layers
+						// Make a box selection, preserving previously selected layers
 						let selection = tool_data.nested_selection_behavior;
 						SelectToolFsmState::DrawingBox { selection }
 					}
@@ -1009,7 +1009,7 @@ impl Fsm for SelectToolFsmState {
 					let parent_selected: HashSet<_> = new_selected
 						.into_iter()
 						.map(|layer| {
-							// Find the  parent node
+							// Find the parent node
 							layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(layer)
 						})
 						.collect();
