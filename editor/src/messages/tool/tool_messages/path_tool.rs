@@ -547,16 +547,22 @@ impl PathToolData {
 		let raw_delta = document_to_viewport.inverse().transform_vector2(current_mouse - previous_mouse);
 
 		let snapped_delta = if lock_angle || snap_angle {
-			if let Some((handle_position, anchor_position)) = self.get_selected_positions(shape_editor, document) {
-				let cursor_position = handle_position + raw_delta;
-				let target_vector = cursor_position - anchor_position;
-				let handle_angle = self.calculate_handle_angle(target_vector, lock_angle, snap_angle);
-				let constrained_direction = DVec2::new(handle_angle.cos(), handle_angle.sin());
-				let projected_length = (cursor_position - anchor_position).dot(constrained_direction);
-				let constrained_target = anchor_position + constrained_direction * projected_length;
-				let constrained_delta = constrained_target - handle_position;
+			if let Some((handle_pos, anchor_pos)) = self.get_selected_positions(shape_editor, document) {
+				let current_vector = handle_pos - anchor_pos;
+				let cursor_pos = handle_pos + raw_delta;
 
-				self.apply_snapping(constrained_direction, handle_position + constrained_delta, anchor_position, true, handle_position, document, input)
+				let handle_angle = if lock_angle {
+					self.calculate_handle_angle(current_vector, lock_angle, snap_angle)
+				} else {
+					self.calculate_handle_angle(cursor_pos - anchor_pos, lock_angle, snap_angle)
+				};
+
+				let constrained_direction = DVec2::new(handle_angle.cos(), handle_angle.sin());
+				let projected_length = (cursor_pos - anchor_pos).dot(constrained_direction);
+				let constrained_target = anchor_pos + constrained_direction * projected_length;
+				let constrained_delta = constrained_target - handle_pos;
+
+				self.apply_snapping(constrained_direction, handle_pos + constrained_delta, anchor_pos, true, handle_pos, document, input)
 			} else {
 				raw_delta
 			}
