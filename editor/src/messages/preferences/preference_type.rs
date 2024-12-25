@@ -16,3 +16,9 @@ impl fmt::Display for SelectionMode {
 		}
 	}
 }
+
+impl Default for SelectionMode {
+	fn default() -> Self {
+		SelectionMode::Touched
+	}
+}

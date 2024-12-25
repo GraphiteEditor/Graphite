@@ -10,6 +10,8 @@ use crate::messages::portfolio::document::utility_types::document_metadata::{sel
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
+use crate::messages::preferences::PreferencesMessageHandler;
+use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapManager};
@@ -77,7 +79,6 @@ pub enum SelectToolMessage {
 	// Standard messages
 	Abort,
 	Overlays(OverlayContext),
-
 	// Tool-specific messages
 	DragStart { extend_selection: Key, select_deepest: Key },
 	DragStop { remove_from_selection: Key },
@@ -87,6 +88,7 @@ pub enum SelectToolMessage {
 	PointerOutsideViewport(SelectToolPointerKeys),
 	SelectOptions(SelectOptionsUpdate),
 	SetPivot { position: PivotPosition },
+	UpdateSelectionMode { selection_mode: SelectionMode },
 }
 
 impl ToolMetadata for SelectTool {
@@ -263,6 +265,7 @@ enum SelectToolFsmState {
 	RotatingBounds,
 	DraggingPivot,
 }
+
 impl Default for SelectToolFsmState {
 	fn default() -> Self {
 		let selection = NestedSelectionBehavior::Deepest;
@@ -288,6 +291,7 @@ struct SelectToolData {
 	selected_layers_changed: bool,
 	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
+	selection_mode: SelectionMode,
 }
 
 impl SelectToolData {
@@ -304,12 +308,12 @@ impl SelectToolData {
 		}
 	}
 
-	fn selection_quad(&self) -> Quad {
+	pub fn selection_quad(&self) -> Quad {
 		let bbox = self.selection_box();
 		Quad::from_box(bbox)
 	}
 
-	fn calculate_direction(&self) -> SelectionDirection {
+	pub fn calculate_direction(&self) -> SelectionDirection {
 		let bbox: [DVec2; 2] = self.selection_box();
 		if bbox[1].x > bbox[0].x {
 			SelectionDirection::Rightwards
@@ -320,7 +324,7 @@ impl SelectToolData {
 		}
 	}
 
-	fn selection_box(&self) -> [DVec2; 2] {
+	pub fn selection_box(&self) -> [DVec2; 2] {
 		if self.drag_current == self.drag_start {
 			let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 			[self.drag_start - tolerance, self.drag_start + tolerance]
@@ -1025,14 +1029,23 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::DrawingBox { .. }, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
+				let mut preferences_handler = PreferencesMessageHandler::default();
+				tool_data.selection_mode = preferences_handler.selection_mode.clone();
+				info!("Setting selection mode to: {:?}", tool_data.selection_mode);
 				let quad = tool_data.selection_quad();
 				let direction = tool_data.calculate_direction();
+				info!("Using SelectionMode: {:?}", tool_data.selection_mode);
 				// let new_selected: HashSet<_> = document.intersect_quad_no_artboards(quad, input).collect();
-				let new_selected: HashSet<_> = match direction {
-					SelectionDirection::Rightwards => document.intersect_quad_no_artboards(quad, input).filter(|layer| document.is_layer_fully_inside(layer, quad)).collect(),
-					SelectionDirection::Leftwards => document.intersect_quad_no_artboards(quad, input).collect(),
-					SelectionDirection::None => HashSet::new(),
+				let new_selected: HashSet<_> = match tool_data.selection_mode {
+					SelectionMode::Touched => document.intersect_quad_no_artboards(quad, input).collect(),
+					SelectionMode::Contained => document.intersect_quad_no_artboards(quad, input).filter(|layer| document.is_layer_fully_inside(layer, quad)).collect(),
+					SelectionMode::ByDragDirection => match direction {
+						SelectionDirection::Rightwards => document.intersect_quad_no_artboards(quad, input).filter(|layer| document.is_layer_fully_inside(layer, quad)).collect(),
+						SelectionDirection::Leftwards => document.intersect_quad_no_artboards(quad, input).collect(),
+						SelectionDirection::None => HashSet::new(),
+					},
 				};
+
 				let current_selected: HashSet<_> = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
 				if new_selected != current_selected {
 					tool_data.layers_dragging = new_selected.into_iter().collect();

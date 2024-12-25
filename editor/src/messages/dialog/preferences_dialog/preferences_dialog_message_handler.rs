@@ -95,9 +95,11 @@ impl PreferencesDialogMessageHandler {
 					.into()
 				}),
 		])
-		.selected_index(Some(
-			(preferences.selection_mode == SelectionMode::ByDragDirection) as u32, // Accessing selection_mode correctly
-		))
+		.selected_index(Some(match preferences.selection_mode {
+			SelectionMode::Touched => 0,
+			SelectionMode::Contained => 1,
+			SelectionMode::ByDragDirection => 2,
+		}))
 		.widget_holder();
 
 		// TODO: Reenable when Imaginate is restored

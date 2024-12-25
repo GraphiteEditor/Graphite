@@ -1,6 +1,10 @@
 use crate::messages::input_mapper::key_mapping::MappingVariant;
+use crate::messages::portfolio::document::DocumentMessageHandler;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
+use crate::messages::tool::tool_messages::select_tool::SelectTool;
+use crate::messages::tool::ToolMessageData;
+use graph_craft::document;
 use graph_craft::wasm_application_io::EditorPreferences;
 
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -102,7 +106,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				responses.add(FrontendMessage::UpdateZoomWithScroll { zoom_with_scroll });
 			}
 			PreferencesMessage::SelectionMode { selection_mode } => {
-				log::info!("Setting selection mode: {:?}", selection_mode);
+				info!("Setting selection mode to: {:?}", selection_mode);
 				self.selection_mode = selection_mode;
 			}
 		}
