@@ -427,6 +427,7 @@
 					on:click={() => !entry.disabled && onEntryClick(entry)}
 					on:pointerenter={() => !entry.disabled && onEntryPointerEnter(entry)}
 					on:pointerleave={() => !entry.disabled && onEntryPointerLeave(entry)}
+					on:mouseup={() => !entry.disabled && onEntryClick(entry)}
 				>
 					{#if entry.icon && drawIcon}
 						<IconLabel icon={entry.icon} class="entry-icon" />

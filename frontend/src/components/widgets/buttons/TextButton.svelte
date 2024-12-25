@@ -28,7 +28,7 @@
 	$: menuListChildrenExists = (menuListChildren?.length ?? 0) > 0;
 
 	// Handles either a button click or, if applicable, the opening of the menu list floating menu
-	function onClick(e: MouseEvent) {
+	function onMouseDown(e: MouseEvent) {
 		// If there's no menu to open, trigger the action
 		if ((menuListChildren?.length ?? 0) === 0) {
 			// Call the action
@@ -44,6 +44,10 @@
 		// Open the menu list floating menu
 		if (self) self.open = true;
 		else throw new Error("The menu bar floating menu has no reference to `self`");
+	}
+
+	function onMouseUp() {
+		if (self) self.open = false; // Close menu after selection
 	}
 </script>
 
@@ -62,7 +66,8 @@
 		data-text-button
 		tabindex={disabled ? -1 : 0}
 		data-floating-menu-spawner={menuListChildrenExists ? "" : "no-hover-transfer"}
-		on:click={onClick}
+		on:mousedown={onMouseDown}
+		on:mouseup={onMouseUp}
 	>
 		{#if icon}
 			<IconLabel {icon} />
