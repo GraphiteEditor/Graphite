@@ -476,16 +476,15 @@ impl PathToolData {
 		let selected_point = shape_editor.selected_points().next()?;
 		let (layer, _) = shape_editor.selected_shape_state.iter().next()?;
 		let vector_data = document.network_interface.compute_modified_vector(*layer)?;
-		let handle_pos = selected_point.get_position(&vector_data)?;
+		let handle_position = selected_point.get_position(&vector_data)?;
 		let anchor_id = selected_point.get_anchor(&vector_data)?;
-		let anchor_pos = vector_data.point_domain.position_from_id(anchor_id)?;
+		let anchor_position = vector_data.point_domain.position_from_id(anchor_id)?;
 
-		Some((handle_pos, anchor_pos))
+		Some((handle_position, anchor_position))
 	}
 
 	fn calculate_handle_angle(&mut self, handle_vector: DVec2, lock_angle: bool, snap_angle: bool) -> f64 {
 		let mut handle_angle = -handle_vector.angle_to(DVec2::X);
-		let mut angle_modified = false;
 
 		if lock_angle {
 			if !self.angle_locked {
@@ -493,21 +492,14 @@ impl PathToolData {
 				self.angle_locked = true;
 			}
 			handle_angle = self.angle;
-			angle_modified = true;
 		} else {
 			self.angle_locked = false;
+			if snap_angle {
+				let snap_resolution = HANDLE_ROTATE_SNAP_ANGLE.to_radians();
+				handle_angle = (handle_angle / snap_resolution).round() * snap_resolution;
+				self.angle = handle_angle;
+			}
 		}
-
-		if snap_angle && !self.angle_locked {
-			let snap_resolution = HANDLE_ROTATE_SNAP_ANGLE.to_radians();
-			handle_angle = (handle_angle / snap_resolution).round() * snap_resolution;
-			angle_modified = true;
-		}
-
-		if angle_modified && !self.angle_locked {
-			self.angle = handle_angle;
-		}
-
 		handle_angle
 	}
 
@@ -521,26 +513,21 @@ impl PathToolData {
 		document: &DocumentMessageHandler,
 		input: &InputPreprocessorMessageHandler,
 	) -> DVec2 {
+		let snap_point = SnapCandidatePoint::handle_neighbors(new_handle_position, [anchor_position]);
+
 		if using_angle_constraints {
-			let snap_constraint = SnapConstraint::Line {
-				origin: anchor_position,
-				direction: handle_direction.normalize_or_zero(),
-			};
-			let snap_point = SnapCandidatePoint::handle_neighbors(new_handle_position, [anchor_position]);
-			let snap_config = SnapTypeConfiguration::default();
-			let snap_result = self.snap_manager.constrained_snap(&SnapData::new(document, input), &snap_point, snap_constraint, snap_config);
-			self.snap_manager.update_indicator(snap_result.clone());
-			let snapped_handle_pos = snap_result.snapped_point_document;
+			let direction = handle_direction.normalize_or_zero();
+			let snap_constraint = SnapConstraint::Line { origin: anchor_position, direction };
+			let snap_result = self
+				.snap_manager
+				.constrained_snap(&SnapData::new(document, input), &snap_point, snap_constraint, SnapTypeConfiguration::default());
 
-			snapped_handle_pos - handle_position
+			self.snap_manager.update_indicator(snap_result.clone());
+			snap_result.snapped_point_document - handle_position
 		} else {
-			let snap_point = SnapCandidatePoint::handle_neighbors(new_handle_position, [anchor_position]);
-			let snap_config = SnapTypeConfiguration::default();
-			let snap_result = self.snap_manager.free_snap(&SnapData::new(document, input), &snap_point, snap_config);
+			let snap_result = self.snap_manager.free_snap(&SnapData::new(document, input), &snap_point, SnapTypeConfiguration::default());
 			self.snap_manager.update_indicator(snap_result.clone());
-			let snapped_handle_pos = snap_result.snapped_point_document;
-
-			snapped_handle_pos - handle_position
+			snap_result.snapped_point_document - handle_position
 		}
 	}
 
@@ -555,22 +542,31 @@ impl PathToolData {
 		responses: &mut VecDeque<Message>,
 	) {
 		let document_to_viewport = document.metadata().document_to_viewport;
-		let current_position = document_to_viewport.inverse().transform_point2(input.mouse.position);
+		let previous_mouse = document_to_viewport.transform_point2(self.previous_mouse_position);
+		let current_mouse = input.mouse.position;
+		let raw_delta = document_to_viewport.inverse().transform_vector2(current_mouse - previous_mouse);
 
-		let (handle_position, anchor_position) = match self.get_selected_positions(shape_editor, document) {
-			Some(pos) => pos,
-			None => return,
+		let snapped_delta = if lock_angle || snap_angle {
+			if let Some((handle_position, anchor_position)) = self.get_selected_positions(shape_editor, document) {
+				let cursor_position = handle_position + raw_delta;
+				let target_vector = cursor_position - anchor_position;
+				let handle_angle = self.calculate_handle_angle(target_vector, lock_angle, snap_angle);
+				let constrained_direction = DVec2::new(handle_angle.cos(), handle_angle.sin());
+				let projected_length = (cursor_position - anchor_position).dot(constrained_direction);
+				let constrained_target = anchor_position + constrained_direction * projected_length;
+				let constrained_delta = constrained_target - handle_position;
+
+				self.apply_snapping(constrained_direction, handle_position + constrained_delta, anchor_position, true, handle_position, document, input)
+			} else {
+				raw_delta
+			}
+		} else {
+			shape_editor.snap(&mut self.snap_manager, &self.snap_cache, document, input, previous_mouse)
 		};
-		let handle_vector = current_position - anchor_position;
-		let handle_angle = self.calculate_handle_angle(handle_vector, lock_angle, snap_angle);
-		let new_handle_direction = DVec2::new(handle_angle.cos(), handle_angle.sin());
-		let handle_length = if self.angle_locked { handle_vector.dot(new_handle_direction) } else { handle_vector.length() };
-		let new_handle_position = anchor_position + handle_length * new_handle_direction;
-		let using_angle_constraints = lock_angle || snap_angle;
-		let snapped_delta = self.apply_snapping(new_handle_direction, new_handle_position, anchor_position, using_angle_constraints, handle_position, document, input);
+
 		let handle_lengths = if equidistant { None } else { self.opposing_handle_lengths.take() };
 		shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, responses, true);
-		self.previous_mouse_position = current_position;
+		self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(snapped_delta);
 	}
 }
 
