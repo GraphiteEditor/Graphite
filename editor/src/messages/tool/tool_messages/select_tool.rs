@@ -665,7 +665,7 @@ impl Fsm for SelectToolFsmState {
 						responses.add(DocumentMessage::StartTransaction);
 						SelectToolFsmState::Dragging
 					} else {
-						//Make a Selection box,keeping previously selected layers
+						// Make a box selection, preserving previously selected layers
 						let selection = tool_data.nested_selection_behavior;
 						SelectToolFsmState::DrawingBox { selection }
 					}
