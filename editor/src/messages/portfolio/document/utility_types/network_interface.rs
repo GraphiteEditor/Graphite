@@ -4338,6 +4338,32 @@ impl NodeNetworkInterface {
 		self.unload_node_click_targets(node_id, network_path);
 	}
 
+	pub fn set_import_export_name(&mut self, name: String, index: ImportOrExport, network_path: &[NodeId]) {
+		let Some(encapsulating_node) = self.encapsulating_node_metadata_mut(network_path) else {
+			log::error!("Could not get nested network in set_import_export_name");
+			return;
+		};
+
+		match index {
+			ImportOrExport::Import(import_index) => {
+				let Some(input_properties) = encapsulating_node.persistent_metadata.input_properties.get_mut(import_index) else {
+					log::error!("Could not get input properties in set_import_export_name");
+					return;
+				};
+				input_properties.input_data.insert("input_name".to_string(), json!(name));
+			}
+			ImportOrExport::Export(export_index) => {
+				let Some(export_name) = encapsulating_node.persistent_metadata.output_names.get_mut(export_index) else {
+					log::error!("Could not get export_name in set_import_export_name");
+					return;
+				};
+				*export_name = name;
+			}
+		}
+
+		self.transaction_modified();
+	}
+
 	pub fn set_pinned(&mut self, node_id: &NodeId, network_path: &[NodeId], pinned: bool) {
 		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
 			log::error!("Could not get node {node_id} in set_pinned");
@@ -5596,6 +5622,12 @@ impl Default for TypeSource {
 	fn default() -> Self {
 		Self::Error("no source")
 	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum ImportOrExport {
+	Import(usize),
+	Export(usize),
 }
 
 /// Represents an input connector with index based on the [`DocumentNode::inputs`] index, not the visible input index

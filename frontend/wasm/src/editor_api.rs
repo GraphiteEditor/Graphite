@@ -12,7 +12,7 @@ use editor::consts::FILE_SAVE_SUFFIX;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use editor::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
+use editor::messages::portfolio::document::utility_types::network_interface::{ImportOrExport, NodeTemplate};
 use editor::messages::portfolio::utility_types::Platform;
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
@@ -695,6 +695,26 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = setToNodeOrLayer)]
 	pub fn set_to_node_or_layer(&self, id: u64, is_layer: bool) {
 		self.dispatch(DocumentMessage::SetToNodeOrLayer { node_id: NodeId(id), is_layer });
+	}
+
+	/// Set the name of an import or export
+	#[wasm_bindgen(js_name = setImportName)]
+	pub fn set_import_name(&self, index: usize, name: String) {
+		let message = NodeGraphMessage::SetImportExportName {
+			name,
+			index: ImportOrExport::Import(index),
+		};
+		self.dispatch(message);
+	}
+
+	/// Set the name of an export
+	#[wasm_bindgen(js_name = setExportName)]
+	pub fn set_export_name(&self, index: usize, name: String) {
+		let message = NodeGraphMessage::SetImportExportName {
+			name,
+			index: ImportOrExport::Export(index),
+		};
+		self.dispatch(message);
 	}
 
 	#[wasm_bindgen(js_name = injectImaginatePollServerStatus)]

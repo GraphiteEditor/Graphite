@@ -45,6 +45,35 @@
 
 	$: wirePaths = createWirePaths($nodeGraph.wirePathInProgress, nodeWirePaths);
 
+	let editingNameImportIndex: number | undefined = undefined;
+	let editingNameExportIndex: number | undefined = undefined;
+	let editingNameText = "";
+
+	function setEditingImportNameIndex(index: number, currentName: string) {
+		editingNameText = currentName;
+		editingNameImportIndex = index;
+	}
+	function setEditingExportNameIndex(index: number, currentName: string) {
+		editingNameText = currentName;
+		editingNameExportIndex = index;
+	}
+
+	function setEditingImportName(event: any) {
+		if (editingNameImportIndex !== undefined) {
+			let text = event.target.value;
+			editor.handle.setImportName(editingNameImportIndex, text);
+			editingNameImportIndex = undefined;
+		}
+	}
+
+	function setEditingExportName(event: any) {
+		if (editingNameExportIndex !== undefined) {
+			let text = event.target.value;
+			editor.handle.setExportName(editingNameExportIndex, text);
+			editingNameExportIndex = undefined;
+		}
+	}
+
 	function calculateGridSpacing(scale: number): number {
 		const dense = scale * GRID_SIZE;
 		let sparse = dense;
@@ -450,7 +479,21 @@
 				/>
 				<div class="reorder-drag-grip" title="Reorder this import"></div>
 			</div>
-			<p class="import-text" style:--offset-left={(position.x - 24) / 24} style:--offset-top={position.y / 24}>{outputMetadata.name}</p>
+
+			<div class="import-text-div" on:dblclick={() => setEditingImportNameIndex(index, outputMetadata.name)} style:--offset-left={(position.x - 24) / 24} style:--offset-top={position.y / 24}>
+				{#if editingNameImportIndex == index}
+					<input
+						class="import-text-input"
+						type="text"
+						bind:value={editingNameText}
+						on:blur={setEditingImportName}
+						on:keydown={(e) => e.key === "Enter" && setEditingImportName(e)}
+						autofocus
+					/>
+				{:else}
+					<p class="import-text">{outputMetadata.name}</p>
+				{/if}
+			</div>
 		{/each}
 		{#if $nodeGraph.reorderImportIndex !== undefined}
 			{@const position = {
@@ -502,7 +545,20 @@
 					/>
 				</div>
 			{/if}
-			<p class="export-text" style:--offset-left={(position.x + 24) / 24} style:--offset-top={position.y / 24}>{inputMetadata.name}</p>
+			<div class="export-text-div" on:dblclick={() => setEditingExportNameIndex(index, inputMetadata.name)} style:--offset-left={(position.x + 24) / 24} style:--offset-top={position.y / 24}>
+				{#if editingNameExportIndex == index}
+					<input
+						class="export-text-input"
+						type="text"
+						bind:value={editingNameText}
+						on:blur={setEditingExportName}
+						on:keydown={(e) => e.key === "Enter" && setEditingExportName(e)}
+						autofocus
+					/>
+				{:else}
+					<p class="export-text">{inputMetadata.name}</p>
+				{/if}
+			</div>
 		{/each}
 		{#if $nodeGraph.reorderExportIndex !== undefined}
 			{@const position = {
@@ -979,22 +1035,40 @@
 				}
 			}
 
-			.export-text {
+			.export-text-div {
 				position: absolute;
-				margin-top: 0;
-				margin-left: 20px;
+				display: flex;
+				justify-content: flex-end;
+				align-items: center;
 				top: calc(var(--offset-top) * 24px);
 				left: calc(var(--offset-left) * 24px);
+				height: 24px;
+				margin-top: -5px;
+				margin-left: 20px;
+				.export-text {
+				}
+				.export-text-input {
+				}
 			}
 
-			.import-text {
+			.import-text-div {
 				position: absolute;
-				text-align: right;
+				display: flex;
+				justify-content: flex-end;
+				align-items: center;
 				top: calc(var(--offset-top) * 24px);
-				left: calc(var(--offset-left) * 24px);
-				margin-top: 0;
-				margin-left: calc(-100px - 2px);
-				width: 100px;
+				left: calc(var(--offset-left) * 24px - 90px);
+				margin-top: -5px;
+				height: 24px;
+				//margin-left: calc(-80px - 2px);
+				width: 90px;
+				.import-text {
+					direction: rtl;
+					text-align: right;
+				}
+				.import-text-input {
+					text-align: right;
+				}
 			}
 		}
 
