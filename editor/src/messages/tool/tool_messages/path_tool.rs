@@ -287,6 +287,8 @@ struct PathToolData {
 	drag_start_pos: DVec2,
 	previous_mouse_position: DVec2,
 	toggle_colinear_debounce: bool,
+	equidistant_colinear_debounce: bool,
+	original_handle_colinear: bool,
 	opposing_handle_lengths: Option<OpposingHandleLengths>,
 	/// Describes information about the selected point(s), if any, across one or multiple shapes and manipulator point types (anchor or handle).
 	/// The available information varies depending on whether `None`, `One`, or `Multiple` points are currently selected.
@@ -471,6 +473,28 @@ impl PathToolData {
 		false
 	}
 
+	/// Temporarily converts selected handles to colinear if they are not already colinear.
+	fn update_equidistant_handle_collinearity(&mut self, equidistant: bool, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		match (equidistant, self.equidistant_colinear_debounce) {
+			(true, false) => {
+				let current_angle = shape_editor.selected_manipulator_angles(&document.network_interface);
+				self.original_handle_colinear = current_angle == ManipulatorAngle::Colinear;
+
+				if !self.original_handle_colinear {
+					shape_editor.convert_selected_manipulators_to_colinear_handles(responses, document);
+				}
+				self.equidistant_colinear_debounce = true;
+			}
+			(false, true) => {
+				if !self.original_handle_colinear {
+					shape_editor.disable_colinear_handles_state_on_selected(&document.network_interface, responses);
+				}
+				self.equidistant_colinear_debounce = false;
+			}
+			_ => {}
+		}
+	}
+
 	/// Attempts to get a single selected handle. Also retrieves the position of the anchor it is connected to. Used for the purpose of snapping the angle.
 	fn try_get_selected_handle_and_anchor(&self, shape_editor: &ShapeState, document: &DocumentMessageHandler) -> Option<(DVec2, DVec2)> {
 		let (layer, selection) = shape_editor.selected_shape_state.iter().next()?; // Only count selections of a single layer
@@ -566,6 +590,8 @@ impl PathToolData {
 		} else {
 			shape_editor.snap(&mut self.snap_manager, &self.snap_cache, document, input, previous_mouse)
 		};
+
+		self.update_equidistant_handle_collinearity(equidistant, shape_editor, document, responses);
 
 		let handle_lengths = if equidistant { None } else { self.opposing_handle_lengths.take() };
 		shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, responses, true);
