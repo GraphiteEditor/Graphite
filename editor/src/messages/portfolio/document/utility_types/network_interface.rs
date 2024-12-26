@@ -1552,7 +1552,7 @@ impl NodeNetworkInterface {
 		Some(parent_metadata)
 	}
 
-	/// Mutably get the node which encapsulates the currently viewed network. Will always be None in the document network.
+	// /// Mutably get the node which encapsulates the currently viewed network. Will always be None in the document network.
 	// fn encapsulating_node_mut(&mut self, network_path: &[NodeId]) -> Option<&mut DocumentNode> {
 	// 	let mut encapsulating_path = network_path.to_vec();
 	// 	let encapsulating_node_id = encapsulating_path.pop()?;
@@ -1602,20 +1602,36 @@ impl NodeNetworkInterface {
 
 	/// Mutably get the selected nodes for the network at the network_path. Every time they are mutated, the transient metadata for the top of the stack gets unloaded.
 	pub fn selected_nodes_mut(&mut self, network_path: &[NodeId]) -> Option<&mut SelectedNodes> {
+		let (last_selection_state, prev_state, is_selection_empty) = {
+			let network_metadata = self.network_metadata(network_path)?;
+			let history = &network_metadata.persistent_metadata.selection_undo_history;
+			let current = history.back().cloned().unwrap_or_default();
+			let previous = history.iter().rev().nth(1).cloned();
+			let empty = current.selected_layers_except_artboards(self).next().is_none();
+			(current, previous, empty)
+		};
 		self.unload_stack_dependents(network_path);
+
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in selected_nodes");
 			return None;
 		};
 
-		let last_selection_state = network_metadata.persistent_metadata.selection_undo_history.back().cloned().unwrap_or_default();
-
-		network_metadata.persistent_metadata.selection_undo_history.push_back(last_selection_state);
-		network_metadata.persistent_metadata.selection_redo_history.clear();
-
-		if network_metadata.persistent_metadata.selection_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
-			network_metadata.persistent_metadata.selection_undo_history.pop_front();
+		// Initialize default value if selection_undo_history is empty
+		if network_metadata.persistent_metadata.selection_undo_history.is_empty() {
+			network_metadata.persistent_metadata.selection_undo_history.push_back(SelectedNodes::default());
 		}
+
+		// Update history only if selection is non-empty/does not contain only artboards
+		if !is_selection_empty && prev_state.as_ref() != Some(&last_selection_state) {
+			network_metadata.persistent_metadata.selection_undo_history.push_back(last_selection_state);
+			network_metadata.persistent_metadata.selection_redo_history.clear();
+
+			if network_metadata.persistent_metadata.selection_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
+				network_metadata.persistent_metadata.selection_undo_history.pop_front();
+			}
+		}
+
 		network_metadata.persistent_metadata.selection_undo_history.back_mut()
 	}
 
@@ -4283,7 +4299,7 @@ impl NodeNetworkInterface {
 		network_metadata.persistent_metadata.previewing = Previewing::No;
 	}
 
-	/// Sets the root node only if a node is being previewed
+	// /// Sets the root node only if a node is being previewed
 	// pub fn update_root_node(&mut self, node_id: NodeId, output_index: usize) {
 	// 	if let Previewing::Yes { root_node_to_restore } = self.previewing {
 	// 		// Only continue previewing if the new root node is not the same as the primary export. If it is the same, end the preview
@@ -5570,14 +5586,13 @@ pub enum FlowType {
 /// - [`FlowType::PrimaryFlow`]: iterates along the horizontal inputs of nodes, so in the case of a node chain `a -> b -> c`, this would yield `c, b, a` if we started from `c`.
 /// - [`FlowType::HorizontalFlow`]: iterates over the secondary input for layer nodes and primary input for non layer nodes.
 /// - [`FlowType::LayerChildrenUpstreamFlow`]: iterates over all upstream nodes from the secondary input of the node.
-
 struct FlowIter<'a> {
 	stack: Vec<NodeId>,
 	network: &'a NodeNetwork,
 	network_metadata: &'a NodeNetworkMetadata,
 	flow_type: FlowType,
 }
-impl<'a> Iterator for FlowIter<'a> {
+impl Iterator for FlowIter<'_> {
 	type Item = NodeId;
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {

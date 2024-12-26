@@ -870,6 +870,8 @@ export class LayerPanelEntry {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 
+	inSelectedNetwork!: boolean;
+
 	childrenAllowed!: boolean;
 
 	childrenPresent!: boolean;
@@ -891,9 +893,9 @@ export class LayerPanelEntry {
 
 	selected!: boolean;
 
-	inSelectedNetwork!: boolean;
+	ancestorOfSelected!: boolean;
 
-	selectedParent!: boolean;
+	descendantOfSelected!: boolean;
 }
 
 export class DisplayDialogDismiss extends JsMessage {}

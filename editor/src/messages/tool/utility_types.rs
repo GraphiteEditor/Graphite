@@ -250,14 +250,13 @@ impl LayoutHolder for ToolData {
 			.iter()
 			.map(|tool_group| tool_group.iter().map(|tool_availability| {
 				match tool_availability {
-					ToolAvailability::Available(tool) => ToolEntry::new( tool.tool_type(),  tool.icon_name())
-						.tooltip( tool.tooltip())
-						.tooltip_shortcut(action_keys!(tool_type_to_activate_tool_message(tool.tool_type())))
-
-					,
+					ToolAvailability::Available(tool) => ToolEntry::new(tool.tool_type(), tool.icon_name())
+						.tooltip(tool.tooltip())
+						.tooltip_shortcut(action_keys!(tool_type_to_activate_tool_message(tool.tool_type()))),
 					ToolAvailability::ComingSoon(tool) => tool.clone(),
 				}
-			}).collect::<Vec<_>>())
+			})
+			.collect::<Vec<_>>())
 			.flat_map(|group| {
 				let separator = std::iter::once(Separator::new(SeparatorType::Section).direction(SeparatorDirection::Vertical).widget_holder());
 				let buttons = group.into_iter().map(|ToolEntry { tooltip, tooltip_shortcut, tool_type, icon_name }| {
@@ -397,16 +396,14 @@ fn list_tools_in_groups() -> Vec<Vec<ToolAvailability>> {
 		],
 		vec![
 			// Raster tool group
-			// ToolAvailability::Available(Box::<imaginate_tool::ImaginateTool>::default()), // TODO: Fix and reenable ASAP
-			ToolAvailability::ComingSoon(
-				ToolEntry::new(ToolType::Heal, "RasterImaginateTool").tooltip("Coming Soon: Imaginate Tool - Temporarily disabled, please use Imaginate node directly from graph"),
-			),
 			ToolAvailability::Available(Box::<brush_tool::BrushTool>::default()),
 			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Heal, "RasterHealTool").tooltip("Coming Soon: Heal Tool (J)")),
 			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Clone, "RasterCloneTool").tooltip("Coming Soon: Clone Tool (C)")),
 			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Patch, "RasterPatchTool").tooltip("Coming Soon: Patch Tool")),
 			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Detail, "RasterDetailTool").tooltip("Coming Soon: Detail Tool (D)")),
 			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Relight, "RasterRelightTool").tooltip("Coming Soon: Relight Tool (O)")),
+			// ToolAvailability::Available(Box::<imaginate_tool::ImaginateTool>::default()), // TODO: Fix and reenable
+			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Heal, "RasterImaginateTool").tooltip("Coming Soon: Imaginate Tool")),
 		],
 	]
 }

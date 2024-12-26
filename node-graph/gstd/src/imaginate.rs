@@ -333,7 +333,7 @@ pub async fn imaginate<'a, P: Pixel>(
 
 #[cfg(all(feature = "imaginate", feature = "serde"))]
 #[allow(clippy::too_many_arguments)]
-async fn imaginate_maybe_fail<'a, P: Pixel, F: Fn(ImaginateStatus)>(
+async fn imaginate_maybe_fail<P: Pixel, F: Fn(ImaginateStatus)>(
 	image: Image<P>,
 	host_name: &str,
 	set_progress: F,

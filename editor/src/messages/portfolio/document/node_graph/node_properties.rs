@@ -2320,3 +2320,63 @@ pub fn offset_path_properties(node_id: NodeId, context: &mut NodePropertiesConte
 
 	vec![LayoutGroup::Row { widgets: distance }, line_join, LayoutGroup::Row { widgets: miter_limit }]
 }
+
+pub(crate) fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let location = vec2_widget(document_node, node_id, 2, "Location", "X", "Y", " px", None, add_blank_assist);
+	let dimensions = vec2_widget(document_node, node_id, 3, "Dimensions", "W", "H", " px", None, add_blank_assist);
+	let background = color_widget(document_node, node_id, 4, "Background", ColorButton::default().allow_none(false), true);
+	let clip = bool_widget(document_node, node_id, 5, "Clip", CheckboxInput::default(), true);
+
+	let clip_row = LayoutGroup::Row { widgets: clip };
+
+	vec![location, dimensions, background, clip_row]
+}
+
+pub fn math_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let expression_index = 1;
+	let operation_b_index = 2;
+
+	let expression = (|| {
+		let mut widgets = start_widgets(document_node, node_id, expression_index, "Expression", FrontendGraphDataType::General, true);
+
+		let Some(input) = document_node.inputs.get(expression_index) else {
+			log::warn!("A widget failed to be built because its node's input index is invalid.");
+			return vec![];
+		};
+		if let Some(TaggedValue::String(x)) = &input.as_non_exposed_value() {
+			widgets.extend_from_slice(&[
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
+				TextInput::new(x.clone())
+					.centered(true)
+					.on_update(update_value(
+						|x: &TextInput| {
+							TaggedValue::String({
+								let mut expression = x.value.trim().to_string();
+
+								if ["+", "-", "*", "/", "^", "%"].iter().any(|&infix| infix == expression) {
+									expression = format!("A {} B", expression);
+								} else if expression == "^" {
+									expression = String::from("A^B");
+								}
+
+								expression
+							})
+						},
+						node_id,
+						expression_index,
+					))
+					.on_commit(commit_value)
+					.widget_holder(),
+			])
+		}
+		widgets
+	})();
+	let operand_b = number_widget(document_node, node_id, operation_b_index, "Operand B", NumberInput::default(), true);
+	let operand_a_hint = vec![TextLabel::new("(Operand A is the primary input)").widget_holder()];
+
+	vec![
+		LayoutGroup::Row { widgets: expression }.with_tooltip(r#"A math expression that may incorporate "A" and/or "B", such as "sqrt(A + B) - B^2""#),
+		LayoutGroup::Row { widgets: operand_b }.with_tooltip(r#"The value of "B" when calculating the expression"#),
+		LayoutGroup::Row { widgets: operand_a_hint }.with_tooltip(r#""A" is fed by the value from the previous node in the primary data flow, or it is 0 if disconnected"#),
+	]
+}

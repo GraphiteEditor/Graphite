@@ -651,12 +651,12 @@
 		&.increment {
 			// Widen the label and input margins from the edges by an extra 8px to make room for the increment arrows
 			label {
-				margin-left: 16px;
+				margin-left: 8px;
 			}
 
 			// Keep the right-aligned input element from overlapping the increment arrow on the right
 			input[type="text"]:not(:focus).has-label {
-				margin-right: 16px;
+				margin-right: 8px;
 			}
 
 			// Hide the increment arrows when entering text, disabled, or not hovered
@@ -680,7 +680,7 @@
 				padding: 9px 0;
 				border: none;
 				border-radius: 2px;
-				background: none;
+				background: rgba(var(--color-1-nearblack-rgb), 0.5);
 
 				&:hover {
 					background: var(--color-4-dimgray);

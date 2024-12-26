@@ -2346,12 +2346,16 @@ impl NodeGraphMessageHandler {
 			.map(|layer| layer.to_node())
 			.collect::<HashSet<_>>();
 
-		let mut selected_parents = HashSet::new();
+		let mut ancestors_of_selected = HashSet::new();
+		let mut descendants_of_selected = HashSet::new();
 		for selected_layer in &selected_layers {
 			for ancestor in LayerNodeIdentifier::new(*selected_layer, network_interface, &[]).ancestors(network_interface.document_metadata()) {
-				if ancestor != LayerNodeIdentifier::ROOT_PARENT && !selected_layers.contains(&ancestor.to_node()) {
-					selected_parents.insert(ancestor.to_node());
+				if ancestor != LayerNodeIdentifier::ROOT_PARENT && ancestor.to_node() != *selected_layer {
+					ancestors_of_selected.insert(ancestor.to_node());
 				}
+			}
+			for descendant in LayerNodeIdentifier::new(*selected_layer, network_interface, &[]).descendants(network_interface.document_metadata()) {
+				descendants_of_selected.insert(descendant.to_node());
 			}
 		}
 
@@ -2390,26 +2394,25 @@ impl NodeGraphMessageHandler {
 					}
 				});
 
-				let is_selected_parent = selected_parents.contains(&node_id);
-
 				let data = LayerPanelEntry {
 					id: node_id,
+					alias: network_interface.frontend_display_name(&node_id, &[]),
+					tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}") } else { "".into() },
+					in_selected_network: selection_network_path.is_empty(),
 					children_allowed,
 					children_present: layer.has_children(network_interface.document_metadata()),
 					expanded: layer.has_children(network_interface.document_metadata()) && !collapsed.0.contains(&layer),
 					depth: layer.ancestors(network_interface.document_metadata()).count() - 1,
-					parent_id: layer
-						.parent(network_interface.document_metadata())
-						.and_then(|parent| if parent != LayerNodeIdentifier::ROOT_PARENT { Some(parent.to_node()) } else { None }),
-					alias: network_interface.frontend_display_name(&node_id, &[]),
-					tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}") } else { "".into() },
 					visible: network_interface.is_visible(&node_id, &[]),
 					parents_visible,
 					unlocked: !network_interface.is_locked(&node_id, &[]),
 					parents_unlocked,
-					selected: selected_layers.contains(&node_id) || is_selected_parent,
-					in_selected_network: selection_network_path.is_empty(),
-					selected_parent: is_selected_parent,
+					parent_id: layer
+						.parent(network_interface.document_metadata())
+						.and_then(|parent| if parent != LayerNodeIdentifier::ROOT_PARENT { Some(parent.to_node()) } else { None }),
+					selected: selected_layers.contains(&node_id),
+					ancestor_of_selected: ancestors_of_selected.contains(&node_id),
+					descendant_of_selected: descendants_of_selected.contains(&node_id),
 				};
 				responses.add(FrontendMessage::UpdateDocumentLayerDetails { data });
 			}

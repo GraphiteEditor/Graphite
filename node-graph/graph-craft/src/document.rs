@@ -1190,7 +1190,7 @@ impl NodeNetwork {
 		}
 	}
 
-	/// Locate the export that is a [`NodeInput::Network`] at index `offset` and replace it with a [`NodeInput::Node`].
+	// /// Locate the export that is a [`NodeInput::Network`] at index `offset` and replace it with a [`NodeInput::Node`].
 	// fn populate_first_network_export(&mut self, node: &mut DocumentNode, node_id: NodeId, output_index: usize, lambda: bool, export_index: usize, source: impl Iterator<Item = Source>, skip: usize) {
 	// 	self.exports[export_index] = NodeInput::Node { node_id, output_index, lambda };
 	// 	let input_source = &mut node.original_location.inputs_source;

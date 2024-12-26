@@ -492,7 +492,7 @@ fn parse_node_type(ty: &Type) -> (bool, Option<Type>, Option<Type>) {
 	if let Type::ImplTrait(impl_trait) = ty {
 		for bound in &impl_trait.bounds {
 			if let syn::TypeParamBound::Trait(trait_bound) = bound {
-				if trait_bound.path.segments.last().map_or(false, |seg| seg.ident == "Node") {
+				if trait_bound.path.segments.last().is_some_and(|seg| seg.ident == "Node") {
 					if let syn::PathArguments::AngleBracketed(args) = &trait_bound.path.segments.last().unwrap().arguments {
 						let input_type = args.args.iter().find_map(|arg| if let syn::GenericArgument::Type(ty) = arg { Some(ty.clone()) } else { None });
 						let output_type = args.args.iter().find_map(|arg| {

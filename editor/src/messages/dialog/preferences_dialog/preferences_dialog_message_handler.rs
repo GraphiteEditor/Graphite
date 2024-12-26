@@ -31,12 +31,11 @@ impl PreferencesDialogMessageHandler {
 	const TITLE: &'static str = "Editor Preferences";
 
 	fn layout(&self, preferences: &PreferencesMessageHandler) -> Layout {
+		let zoom_with_scroll_tooltip = "Use the scroll wheel for zooming instead of vertically panning (not recommended for trackpads)";
+		let input_section = vec![TextLabel::new("Input").italic(true).widget_holder()];
 		let zoom_with_scroll = vec![
-			TextLabel::new("Input").min_width(60).italic(true).widget_holder(),
-			TextLabel::new("Zoom with Scroll").table_align(true).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(preferences.zoom_with_scroll)
-				.tooltip("Use the scroll wheel for zooming instead of vertically panning (not recommended for trackpads)")
+				.tooltip(zoom_with_scroll_tooltip)
 				.on_update(|checkbox_input: &CheckboxInput| {
 					PreferencesMessage::ModifyLayout {
 						zoom_with_scroll: checkbox_input.checked,
@@ -44,20 +43,22 @@ impl PreferencesDialogMessageHandler {
 					.into()
 				})
 				.widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			TextLabel::new("Zoom with Scroll").table_align(true).tooltip(zoom_with_scroll_tooltip).widget_holder(),
 		];
 		let vello_tooltip = "Use the experimental Vello renderer (your browser must support WebGPU)";
+		let renderer_section = vec![TextLabel::new("Renderer").italic(true).widget_holder()];
 		let use_vello = vec![
-			TextLabel::new("Renderer").min_width(60).italic(true).widget_holder(),
-			TextLabel::new("Vello (Experimental)")
-				.table_align(true)
-				.tooltip(vello_tooltip)
-				.disabled(!preferences.supports_wgpu())
-				.widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(preferences.use_vello && preferences.supports_wgpu())
 				.tooltip(vello_tooltip)
 				.disabled(!preferences.supports_wgpu())
 				.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::UseVello { use_vello: checkbox_input.checked }.into())
+				.widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			TextLabel::new("Vello (Experimental)")
+				.table_align(true)
+				.tooltip(vello_tooltip)
+				.disabled(!preferences.supports_wgpu())
 				.widget_holder(),
 		];
 
@@ -85,7 +86,9 @@ impl PreferencesDialogMessageHandler {
 		// ];
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![
+			LayoutGroup::Row { widgets: input_section },
 			LayoutGroup::Row { widgets: zoom_with_scroll },
+			LayoutGroup::Row { widgets: renderer_section },
 			LayoutGroup::Row { widgets: use_vello },
 			// LayoutGroup::Row { widgets: imaginate_server_hostname },
 			// LayoutGroup::Row { widgets: imaginate_refresh_frequency },

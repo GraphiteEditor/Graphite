@@ -34,7 +34,6 @@ use syn::{parse_macro_input, DeriveInput, GenericParam, Lifetime, LifetimeParam,
 /// // }
 ///
 /// ```
-
 #[proc_macro_derive(DynAny, attributes(dyn_any_derive))]
 pub fn system_desc_derive(input: TokenStream) -> TokenStream {
 	let ast = parse_macro_input!(input as DeriveInput);
