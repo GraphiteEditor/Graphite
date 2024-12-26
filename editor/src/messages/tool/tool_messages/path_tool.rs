@@ -478,12 +478,17 @@ impl PathToolData {
 			return None; // Do not allow selections of multiple points to count.
 		}
 		let selected_handle = selection.selected().next()?.as_handle()?; // Only count selected handles
+		let layer_to_document = document.metadata().transform_to_document(*layer);
 		let vector_data = document.network_interface.compute_modified_vector(*layer)?;
-		let handle_position = selected_handle.to_manipulator_point().get_position(&vector_data)?;
-		let anchor_id = selected_handle.to_manipulator_point().get_anchor(&vector_data)?;
-		let anchor_position = vector_data.point_domain.position_from_id(anchor_id)?;
 
-		Some((handle_position, anchor_position))
+		let handle_position_local = selected_handle.to_manipulator_point().get_position(&vector_data)?;
+		let anchor_id = selected_handle.to_manipulator_point().get_anchor(&vector_data)?;
+		let anchor_position_local = vector_data.point_domain.position_from_id(anchor_id)?;
+
+		let handle_position_document = layer_to_document.transform_point2(handle_position_local);
+		let anchor_position_document = layer_to_document.transform_point2(anchor_position_local);
+
+		Some((handle_position_document, anchor_position_document))
 	}
 
 	fn calculate_handle_angle(&mut self, handle_vector: DVec2, lock_angle: bool, snap_angle: bool) -> f64 {
@@ -516,7 +521,7 @@ impl PathToolData {
 	) -> DVec2 {
 		let snap_point = SnapCandidatePoint::handle_neighbors(new_handle_position, [anchor_position]);
 
-		if using_angle_constraints {
+		document.metadata().document_to_viewport.transform_vector2(if using_angle_constraints {
 			let direction = handle_direction.normalize_or_zero();
 			let snap_constraint = SnapConstraint::Line { origin: anchor_position, direction };
 			let snap_result = self
@@ -529,7 +534,7 @@ impl PathToolData {
 			let snap_result = self.snap_manager.free_snap(&SnapData::new(document, input), &snap_point, SnapTypeConfiguration::default());
 			self.snap_manager.update_indicator(snap_result.clone());
 			snap_result.snapped_point_document - handle_position
-		}
+		})
 	}
 
 	fn drag(
@@ -557,7 +562,7 @@ impl PathToolData {
 			let constrained_target = anchor_pos + constrained_direction * projected_length;
 			let constrained_delta = constrained_target - handle_pos;
 
-			self.apply_snapping(constrained_direction, handle_pos + constrained_delta, anchor_pos, true, handle_pos, document, input)
+			self.apply_snapping(constrained_direction, handle_pos + constrained_delta, anchor_pos, lock_angle || snap_angle, handle_pos, document, input)
 		} else {
 			shape_editor.snap(&mut self.snap_manager, &self.snap_cache, document, input, previous_mouse)
 		};
