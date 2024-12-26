@@ -9,6 +9,8 @@ use crate::messages::portfolio::document::utility_types::network_interface::Inpu
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name};
+use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
+use glam::Vec2Swizzles;
 
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
@@ -257,6 +259,7 @@ struct TextToolData {
 	drag_current: ViewportPosition,
 	dragged: bool,
 	auto_panning: AutoPanning,
+	snap_manager: SnapManager,
 }
 
 impl TextToolData {
@@ -381,6 +384,75 @@ impl TextToolData {
 			TextToolFsmState::Ready
 		}
 	}
+
+	fn start(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) -> DVec2 {
+		let root_transform = document.metadata().document_to_viewport;
+		let point = SnapCandidatePoint::handle(root_transform.inverse().transform_point2(input.mouse.position));
+		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
+		snapped.snapped_point_document
+	}
+
+	pub fn viewport_drag_start(&self, document: &DocumentMessageHandler) -> DVec2 {
+		let root_transform = document.metadata().document_to_viewport;
+		root_transform.transform_point2(self.drag_start)
+	}
+
+	fn calculate_points(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, center: Key, lock_ratio: Key) -> Option<[DVec2; 2]> {
+		let layer = self.layer;
+
+		if layer == LayerNodeIdentifier::ROOT_PARENT {
+			log::error!("Resize layer cannot be ROOT_PARENT");
+			return None;
+		}
+
+		let start = self.viewport_drag_start(document);
+		let mouse = input.mouse.position;
+		let document_to_viewport = document.navigation_handler.calculate_offset_transform(input.viewport_bounds.center(), &document.document_ptz);
+		let document_mouse = document_to_viewport.inverse().transform_point2(mouse);
+		let mut points_viewport = [start, mouse];
+		let ignore = vec![layer];
+		let ratio = input.keyboard.get(lock_ratio as usize);
+		let center = input.keyboard.get(center as usize);
+		let snap_data = SnapData::ignore(document, input, &ignore);
+		let config = SnapTypeConfiguration::default();
+		if ratio {
+			let size = points_viewport[1] - points_viewport[0];
+			let size = size.abs().max(size.abs().yx()) * size.signum();
+			points_viewport[1] = points_viewport[0] + size;
+			let end_document = document_to_viewport.inverse().transform_point2(points_viewport[1]);
+			let constraint = SnapConstraint::Line {
+				origin: self.drag_start,
+				direction: end_document - self.drag_start,
+			};
+			if center {
+				let snapped = self.snap_manager.constrained_snap(&snap_data, &SnapCandidatePoint::handle(end_document), constraint, config);
+				let far = SnapCandidatePoint::handle(2. * self.drag_start - end_document);
+				let snapped_far = self.snap_manager.constrained_snap(&snap_data, &far, constraint, config);
+				let best = if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far };
+				points_viewport[0] = document_to_viewport.transform_point2(best.snapped_point_document);
+				points_viewport[1] = document_to_viewport.transform_point2(self.drag_start * 2. - best.snapped_point_document);
+				self.snap_manager.update_indicator(best);
+			} else {
+				let snapped = self.snap_manager.constrained_snap(&snap_data, &SnapCandidatePoint::handle(end_document), constraint, config);
+				points_viewport[1] = document_to_viewport.transform_point2(snapped.snapped_point_document);
+				self.snap_manager.update_indicator(snapped);
+			}
+		} else if center {
+			let snapped = self.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), config);
+			let opposite = 2. * self.drag_start - document_mouse;
+			let snapped_far = self.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(opposite), config);
+			let best = if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far };
+			points_viewport[0] = document_to_viewport.transform_point2(best.snapped_point_document);
+			points_viewport[1] = document_to_viewport.transform_point2(self.drag_start * 2. - best.snapped_point_document);
+			self.snap_manager.update_indicator(best);
+		} else {
+			let snapped = self.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), config);
+			points_viewport[1] = document_to_viewport.transform_point2(snapped.snapped_point_document);
+			self.snap_manager.update_indicator(snapped);
+		}
+
+		Some(points_viewport)
+	}
 }
 
 fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdentifier> {
@@ -448,7 +520,7 @@ impl Fsm for TextToolFsmState {
 					// Get the updated selection box bounds
 					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
 
-					// Draw outline visualizations on the layers to be selected
+					// Draw a bounding box on the layers to be selected
 					for layer in document.intersect_quad_no_artboards(quad, input) {
 						overlay_context.quad(
 							Quad::from_box(document.metadata().bounding_box_viewport(layer).unwrap_or([DVec2::ZERO; 2])),
@@ -456,11 +528,6 @@ impl Fsm for TextToolFsmState {
 						);
 					}
 
-					// // Update the selection box
-					// let fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
-					// 	.unwrap()
-					// 	.with_alpha(0.05)
-					// 	.rgba_hex();
 					overlay_context.quad(quad, Some(&("#".to_string() + &fill_color)));
 				} else {
 					for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
@@ -478,6 +545,7 @@ impl Fsm for TextToolFsmState {
 						overlay_context.quad(multiplied, None);
 					}
 				}
+				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 
 				self
 			}
@@ -490,7 +558,9 @@ impl Fsm for TextToolFsmState {
 				state
 			}
 			(state, TextToolMessage::Abort) => {
-				responses.add(DocumentMessage::AbortTransaction);
+				input.mouse.finish_transaction(tool_data.viewport_drag_start(document), responses);
+				tool_data.snap_manager.cleanup(responses);
+
 				if state == TextToolFsmState::Editing {
 					tool_data.set_editing(false, font_cache, responses);
 				}
@@ -498,14 +568,16 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Ready
 			}
 			(TextToolFsmState::Ready, TextToolMessage::DragStart) => {
-				tool_data.drag_start = input.mouse.position;
-				tool_data.drag_current = input.mouse.position;
+				tool_data.drag_start = tool_data.start(document, input);
 
 				TextToolFsmState::Dragging
 			}
 			(TextToolFsmState::Dragging, TextToolMessage::PointerMove { center, lock_ratio }) => {
-				tool_data.drag_current = input.mouse.position;
 				tool_data.dragged = true;
+				if let Some([start, end]) = tool_data.calculate_points(document, input, center, lock_ratio) {
+					tool_data.drag_start = start;
+					tool_data.drag_current = end;
+				}
 
 				responses.add(OverlaysMessage::Draw);
 
@@ -519,6 +591,7 @@ impl Fsm for TextToolFsmState {
 				self
 			}
 			(_, TextToolMessage::PointerMove { .. }) => {
+				tool_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
 				responses.add(OverlaysMessage::Draw);
 
 				self
