@@ -179,7 +179,7 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 	}
 
-	pub fn insert_text(&mut self, text: String, font: Font, size: f64, line_height_ratio: f64, line_width: Option<f64>, character_spacing: f64, layer: LayerNodeIdentifier) {
+	pub fn insert_text(&mut self, text: String, font: Font, size: f64, line_height_ratio: f64, line_width: Option<f64>, height: Option<f64>, character_spacing: f64, layer: LayerNodeIdentifier) {
 		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_node_template();
 		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_node_template();
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
@@ -191,6 +191,7 @@ impl<'a> ModifyInputsContext<'a> {
 			Some(NodeInput::value(TaggedValue::F64(line_height_ratio), false)),
 			Some(NodeInput::value(TaggedValue::F64(character_spacing), false)),
 			Some(NodeInput::value(TaggedValue::OptionalF64(line_width), false)),
+			Some(NodeInput::value(TaggedValue::OptionalF64(height), false)),
 		]);
 
 		let text_id = NodeId::new();

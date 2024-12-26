@@ -2116,6 +2116,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::F64(1.2), false),
 						NodeInput::value(TaggedValue::F64(1.), false),
 						NodeInput::value(TaggedValue::OptionalF64(None), false),
+						NodeInput::value(TaggedValue::OptionalF64(None), false),
 					],
 					..Default::default()
 				},
@@ -2128,6 +2129,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						"Line Height".to_string(),
 						"Character Spacing".to_string(),
 						"Line Width".to_string(),
+						"Textbox Height".to_string(),
 					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()

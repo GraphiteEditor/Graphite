@@ -35,6 +35,7 @@ pub enum FrontendMessage {
 		color: Color,
 		url: String,
 		transform: [f64; 6],
+		height: Option<f64>,
 	},
 	DisplayEditableTextboxTransform {
 		transform: [f64; 6],

@@ -245,6 +245,7 @@ pub struct EditingText {
 	character_spacing: f64,
 	color: Option<Color>,
 	transform: DAffine2,
+	height: Option<f64>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -270,6 +271,7 @@ impl TextToolData {
 				color: editing_text.color.unwrap_or(Color::BLACK),
 				url: font_cache.get_preview_url(&editing_text.font).cloned().unwrap_or_default(),
 				transform: editing_text.transform.to_cols_array(),
+				height: editing_text.height,
 			});
 		} else {
 			responses.add(FrontendMessage::DisplayRemoveEditableTextbox);
@@ -281,7 +283,7 @@ impl TextToolData {
 	fn load_layer_text_node(&mut self, document: &DocumentMessageHandler) -> Option<()> {
 		let transform = document.metadata().transform_to_viewport(self.layer);
 		let color = graph_modification_utils::get_fill_color(self.layer, &document.network_interface).unwrap_or(Color::BLACK);
-		let (text, font, font_size, line_height_ratio, character_spacing, line_width) = graph_modification_utils::get_text(self.layer, &document.network_interface)?;
+		let (text, font, font_size, line_height_ratio, character_spacing, line_width, height) = graph_modification_utils::get_text(self.layer, &document.network_interface)?;
 		self.editing_text = Some(EditingText {
 			text: text.clone(),
 			font: font.clone(),
@@ -291,6 +293,7 @@ impl TextToolData {
 			character_spacing,
 			color: Some(color),
 			transform,
+			height,
 		});
 		self.new_text.clone_from(text);
 		Some(())
@@ -348,6 +351,7 @@ impl TextToolData {
 				size: editing_text.font_size,
 				line_height_ratio: editing_text.line_height_ratio,
 				line_width: editing_text.line_width,
+				height: editing_text.height,
 				character_spacing: editing_text.character_spacing,
 				parent: document.new_layer_parent(true),
 				insert_index: 0,
@@ -411,6 +415,10 @@ impl Fsm for TextToolFsmState {
 		let ToolMessage::Text(event) = event else {
 			return self;
 		};
+		let fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+			.unwrap()
+			.with_alpha(0.05)
+			.rgba_hex();
 		match (self, event) {
 			(TextToolFsmState::Editing, TextToolMessage::Overlays(mut overlay_context)) => {
 				responses.add(FrontendMessage::DisplayEditableTextboxTransform {
@@ -429,10 +437,6 @@ impl Fsm for TextToolFsmState {
 					if far.x != 0. && far.y != 0. {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
 						let transformed_quad = document.metadata().transform_to_viewport(tool_data.layer) * quad;
-						let fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
-							.unwrap()
-							.with_alpha(0.05)
-							.rgba_hex();
 						overlay_context.quad(transformed_quad, Some(&("#".to_string() + &fill_color)));
 					}
 				}
@@ -446,22 +450,29 @@ impl Fsm for TextToolFsmState {
 
 					// Draw outline visualizations on the layers to be selected
 					for layer in document.intersect_quad_no_artboards(quad, input) {
-						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+						overlay_context.quad(
+							Quad::from_box(document.metadata().bounding_box_viewport(layer).unwrap_or([DVec2::ZERO; 2])),
+							Some(&("#".to_string() + &fill_color)),
+						);
 					}
 
-					// Update the selection box
-					let fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
-						.unwrap()
-						.with_alpha(0.05)
-						.rgba_hex();
+					// // Update the selection box
+					// let fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+					// 	.unwrap()
+					// 	.with_alpha(0.05)
+					// 	.rgba_hex();
 					overlay_context.quad(quad, Some(&("#".to_string() + &fill_color)));
 				} else {
 					for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
-						let Some((text, font, font_size, line_height_ratio, character_spacing, line_width)) = graph_modification_utils::get_text(layer, &document.network_interface) else {
+						let Some((text, font, font_size, line_height_ratio, character_spacing, line_width, height)) = graph_modification_utils::get_text(layer, &document.network_interface) else {
 							continue;
 						};
 						let buzz_face = font_cache.get(font).map(|data| load_face(data));
-						let far = graphene_core::text::bounding_box(text, buzz_face, font_size, line_height_ratio, character_spacing, line_width);
+
+						let mut far = graphene_core::text::bounding_box(text, buzz_face, font_size, line_height_ratio, character_spacing, line_width);
+						if let Some(height) = height {
+							far = DVec2::new(far.x, height);
+						}
 						let quad = Quad::from_box([DVec2::ZERO, far]);
 						let multiplied = document.metadata().transform_to_viewport(layer) * quad;
 						overlay_context.quad(multiplied, None);
@@ -479,6 +490,7 @@ impl Fsm for TextToolFsmState {
 				state
 			}
 			(state, TextToolMessage::Abort) => {
+				responses.add(DocumentMessage::AbortTransaction);
 				if state == TextToolFsmState::Editing {
 					tool_data.set_editing(false, font_cache, responses);
 				}
@@ -529,6 +541,7 @@ impl Fsm for TextToolFsmState {
 			}
 			(TextToolFsmState::Dragging, TextToolMessage::DragStop) => {
 				let mut line_width: Option<f64> = None;
+				let mut height: Option<f64> = None;
 				let transformation_point: DVec2;
 
 				if tool_data.dragged {
@@ -537,6 +550,8 @@ impl Fsm for TextToolFsmState {
 						.finish_transaction(document.metadata().document_to_viewport.transform_point2(tool_data.drag_start), responses);
 
 					line_width = Some((tool_data.drag_current.x - tool_data.drag_start.x).abs());
+					height = Some((tool_data.drag_current.y - tool_data.drag_start.y).abs());
+
 					transformation_point = tool_data.drag_start;
 
 					tool_data.new_text = String::new();
@@ -553,6 +568,7 @@ impl Fsm for TextToolFsmState {
 					character_spacing: tool_options.character_spacing,
 					font: Font::new(tool_options.font_name.clone(), tool_options.font_style.clone()),
 					color: tool_options.fill.active_color(),
+					height,
 				});
 				tool_data.new_text = String::new();
 				tool_data.dragged = false;

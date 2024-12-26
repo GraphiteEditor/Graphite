@@ -319,7 +319,7 @@
 		textInput.style.transformOrigin = "0 0";
 		textInput.style.width = displayEditableTextbox.lineWidth ? `${displayEditableTextbox.lineWidth}px` : "max-content";
 		textInput.style.lineHeight = `${displayEditableTextbox.lineHeightRatio}`;
-		textInput.style.height = "auto";
+		textInput.style.height = `${displayEditableTextbox.height}`;
 		textInput.style.fontSize = `${displayEditableTextbox.fontSize}px`;
 		textInput.style.color = displayEditableTextbox.color.toHexOptionalAlpha() || "transparent";
 
@@ -732,7 +732,8 @@
 							border: none;
 							margin: 0;
 							padding: 0;
-							overflow: visible;
+							overflow-x: visible;
+							overflow-y: hidden;
 							white-space: pre-wrap;
 							overflow-wrap: anywhere;
 							word-break: normal;

@@ -840,6 +840,8 @@ export class DisplayEditableTextbox extends JsMessage {
 	readonly url!: string;
 
 	readonly transform!: number[];
+
+	readonly height!: undefined | number;
 }
 
 export class DisplayEditableTextboxTransform extends JsMessage {
