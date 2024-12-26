@@ -3,13 +3,15 @@
 use super::tool_prelude::*;
 use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
-use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::graph_operation::utility_types::{self, TransformIn};
 use crate::messages::portfolio::document::node_graph::utility_types::Direction;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{self, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
+use crate::messages::portfolio::utility_types::PersistentData;
+use crate::messages::portfolio::PortfolioMessageData;
 use crate::messages::preferences::PreferencesMessageHandler;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
@@ -88,7 +90,6 @@ pub enum SelectToolMessage {
 	PointerOutsideViewport(SelectToolPointerKeys),
 	SelectOptions(SelectOptionsUpdate),
 	SetPivot { position: PivotPosition },
-	UpdateSelectionMode { selection_mode: SelectionMode },
 }
 
 impl ToolMetadata for SelectTool {
@@ -218,6 +219,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 		if let ToolMessage::Select(SelectToolMessage::SelectOptions(SelectOptionsUpdate::NestedSelectionBehavior(nested_selection_behavior))) = message {
 			self.tool_data.nested_selection_behavior = nested_selection_behavior;
 			responses.add(ToolMessage::UpdateHints);
+		}
+		if let ToolMessage::UpdateSelectionMode { selection_mode } = message {
+			self.tool_data.selection_mode = selection_mode;
+			info!("Selection mode updated in SelectTool: {:?}", selection_mode);
 		}
 
 		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, false);
@@ -426,14 +431,13 @@ impl Fsm for SelectToolFsmState {
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
 		let ToolActionHandlerData { document, input, .. } = tool_action_data;
-
+		info!("Current selection mode during transition: {:?}", tool_data.selection_mode);
 		let ToolMessage::Select(event) = event else {
 			return self;
 		};
 		match (self, event) {
 			(_, SelectToolMessage::Overlays(mut overlay_context)) => {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
-
 				let selected_layers_count = document.network_interface.selected_nodes(&[]).unwrap().selected_unlocked_layers(&document.network_interface).count();
 				tool_data.selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
 				tool_data.selected_layers_count = selected_layers_count;
@@ -1028,13 +1032,11 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
+
 			(SelectToolFsmState::DrawingBox { .. }, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
-				let mut preferences_handler = PreferencesMessageHandler::default();
-				tool_data.selection_mode = preferences_handler.selection_mode.clone();
-				info!("Setting selection mode to: {:?}", tool_data.selection_mode);
 				let quad = tool_data.selection_quad();
 				let direction = tool_data.calculate_direction();
-				info!("Using SelectionMode: {:?}", tool_data.selection_mode);
+				info!("mode under select is {:?}", tool_data.selection_mode);
 				// let new_selected: HashSet<_> = document.intersect_quad_no_artboards(quad, input).collect();
 				let new_selected: HashSet<_> = match tool_data.selection_mode {
 					SelectionMode::Touched => document.intersect_quad_no_artboards(quad, input).collect(),

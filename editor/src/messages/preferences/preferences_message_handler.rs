@@ -97,7 +97,6 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			}
 			PreferencesMessage::ModifyLayout { zoom_with_scroll } => {
 				self.zoom_with_scroll = zoom_with_scroll;
-
 				let variant = match zoom_with_scroll {
 					false => MappingVariant::Default,
 					true => MappingVariant::ZoomWithScroll,
@@ -108,6 +107,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			PreferencesMessage::SelectionMode { selection_mode } => {
 				info!("Setting selection mode to: {:?}", selection_mode);
 				self.selection_mode = selection_mode;
+				responses.add(PortfolioMessage::UpdateSelectionMode { selection_mode });
 			}
 		}
 		responses.add(FrontendMessage::TriggerSavePreferences { preferences: self.clone() });

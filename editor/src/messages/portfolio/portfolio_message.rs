@@ -2,6 +2,7 @@ use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::utility_types::PanelType;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
+use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 
 use graphene_core::raster::Image;
@@ -121,4 +122,7 @@ pub enum PortfolioMessage {
 	UpdateDocumentWidgets,
 	UpdateOpenDocumentsList,
 	UpdateVelloPreference,
+	UpdateSelectionMode {
+		selection_mode: SelectionMode,
+	},
 }
