@@ -29,7 +29,12 @@ fn draw_line_with_length(
 
 	overlay_context.line(min_viewport, max_viewport, None);
 
-	let length = format!("{}", transform_to_document.transform_vector2(line_end - line_start).length().round() as i32);
+	// Remove trailing zeros from the formatted string
+	let length = format!("{:.2}", transform_to_document.transform_vector2(line_end - line_start).length())
+		.trim_end_matches('0')
+		.trim_end_matches('.')
+		.to_string();
+
 	let text_padding = 5.;
 	// Calculate midpoint of the line
 	let midpoint = (min_viewport + max_viewport) / 2.;
@@ -128,12 +133,12 @@ fn draw_single_axis_zero_crossings(selected_bounds: Rect, hovered_bounds: Rect, 
 		// Draw vertical solid line with length
 		let line_start = DVec2::new(selected_facing_edge, f64::min(hovered_max.y, selected_max.y));
 		let line_end = DVec2::new(selected_facing_edge, f64::max(hovered_min.y, selected_min.y));
-		draw_line_with_length(line_start, line_end, transform, document_to_viewport, overlay_context, false, false, selected_on_bottom);
+		draw_line_with_length(line_start, line_end, transform, document_to_viewport, overlay_context, true, selected_on_right, false);
 
 		// Draw horizontal solid line with length
 		let line_start = DVec2::new(selected_facing_edge, horizontal_line_start_y);
 		let line_end = DVec2::new(hovered_facing_edge, horizontal_line_start_y);
-		draw_line_with_length(line_start, line_end, transform, document_to_viewport, overlay_context, true, !selected_on_right, false);
+		draw_line_with_length(line_start, line_end, transform, document_to_viewport, overlay_context, false, false, !selected_on_bottom);
 
 		// Draw horizontal dashed line
 		let dashed_line_start = DVec2::new(selected_facing_edge, dashed_horizontal_line_start_y);
@@ -310,6 +315,7 @@ fn draw_two_axis_two_zero_zero_two(selected_bounds: Rect, hovered_bounds: Rect, 
 	// Draw vertical solid lines with length
 	let y_start_left_top = DVec2::new(f64::min(hovered_min.x, selected_min.x), f64::min(hovered_min.y, selected_min.y));
 	let y_end_left_top = DVec2::new(f64::min(hovered_min.x, selected_min.x), f64::max(hovered_min.y, selected_min.y));
+	draw_line_with_length(y_start_left_top, y_end_left_top, transform, document_to_viewport, overlay_context, true, true, false);
 	draw_line_with_length(y_start_left_top, y_end_left_top, transform, document_to_viewport, overlay_context, true, true, false);
 
 	let y_start_left_bottom = DVec2::new(f64::min(hovered_min.x, selected_min.x), f64::min(hovered_max.y, selected_max.y));
