@@ -319,7 +319,7 @@
 		textInput.style.transformOrigin = "0 0";
 		textInput.style.width = displayEditableTextbox.lineWidth ? `${displayEditableTextbox.lineWidth}px` : "max-content";
 		textInput.style.lineHeight = `${displayEditableTextbox.lineHeightRatio}`;
-		textInput.style.height = `${displayEditableTextbox.height}`;
+		textInput.style.height = displayEditableTextbox.height ? `${displayEditableTextbox.height}px` : "auto";
 		textInput.style.fontSize = `${displayEditableTextbox.fontSize}px`;
 		textInput.style.color = displayEditableTextbox.color.toHexOptionalAlpha() || "transparent";
 
