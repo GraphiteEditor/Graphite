@@ -2989,7 +2989,7 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 	},
 
 	description: Cow::Borrowed("TODO"),
-	properties: None,
+	properties: Some(&node_properties::imaginate_properties),
 });
 
 fn name_to_properties(properties_string: &str) -> &'static (dyn Fn(NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Sync) {
@@ -3000,6 +3000,7 @@ fn name_to_properties(properties_string: &str) -> &'static (dyn Fn(NodeId, &mut 
 		"offset_path_properties" => &node_properties::offset_path_properties,
 		"selective_color_properties" => &node_properties::selective_color_properties,
 		"exposure_properties" => &node_properties::exposure_properties,
+		"math_properties" => &node_properties::math_properties,
 		"rectangle_properties" => &node_properties::rectangle_properties,
 		_ => {
 			log::error!("Node properties not found for {properties_string}");

@@ -1532,7 +1532,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 	]
 }
 
-pub(crate) fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn imaginate_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let imaginate_node = [context.selection_network_path, &[node_id]].concat();
 
 	let resolve_input = |name: &str| {
@@ -1560,6 +1560,13 @@ pub(crate) fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId
 	let faces_index = resolve_input("Improve Faces");
 	let tiling_index = resolve_input("Tiling");
 
+	let document_node = match get_document_node(node_id, context) {
+		Ok(document_node) => document_node,
+		Err(err) => {
+			log::error!("Could not get document node in imaginate_properties: {err}");
+			return Vec::new();
+		}
+	};
 	let controller = &document_node.inputs[resolve_input("Controller")];
 
 	let server_status = {
@@ -1770,13 +1777,19 @@ pub(crate) fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId
 		)
 		.unwrap_or_default();
 
-	let resolution = {
-		use graphene_std::imaginate::pick_safe_imaginate_resolution;
+	let document_node = match get_document_node(node_id, context) {
+		Ok(document_node) => document_node,
+		Err(err) => {
+			log::error!("Could not get document node in imaginate_properties: {err}");
+			return Vec::new();
+		}
+	};
 
+	let resolution = {
 		let mut widgets = start_widgets(document_node, node_id, resolution_index, "Resolution", FrontendGraphDataType::Number, false);
 
 		let round = |size: DVec2| {
-			let (x, y) = pick_safe_imaginate_resolution(size.into());
+			let (x, y) = graphene_std::imaginate::pick_safe_imaginate_resolution(size.into());
 			DVec2::new(x as f64, y as f64)
 		};
 
@@ -2321,18 +2334,15 @@ pub fn offset_path_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	vec![LayoutGroup::Row { widgets: distance }, line_join, LayoutGroup::Row { widgets: miter_limit }]
 }
 
-pub(crate) fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let location = vec2_widget(document_node, node_id, 2, "Location", "X", "Y", " px", None, add_blank_assist);
-	let dimensions = vec2_widget(document_node, node_id, 3, "Dimensions", "W", "H", " px", None, add_blank_assist);
-	let background = color_widget(document_node, node_id, 4, "Background", ColorButton::default().allow_none(false), true);
-	let clip = bool_widget(document_node, node_id, 5, "Clip", CheckboxInput::default(), true);
+pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let document_node = match get_document_node(node_id, context) {
+		Ok(document_node) => document_node,
+		Err(err) => {
+			log::error!("Could not get document node in offset_path_properties: {err}");
+			return Vec::new();
+		}
+	};
 
-	let clip_row = LayoutGroup::Row { widgets: clip };
-
-	vec![location, dimensions, background, clip_row]
-}
-
-pub fn math_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let expression_index = 1;
 	let operation_b_index = 2;
 

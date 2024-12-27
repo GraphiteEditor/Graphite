@@ -4356,28 +4356,39 @@ impl NodeNetworkInterface {
 
 	pub fn set_import_export_name(&mut self, name: String, index: ImportOrExport, network_path: &[NodeId]) {
 		let Some(encapsulating_node) = self.encapsulating_node_metadata_mut(network_path) else {
-			log::error!("Could not get nested network in set_import_export_name");
+			log::error!("Could not get encapsulating network in set_import_export_name");
 			return;
 		};
 
-		match index {
+		let name_changed = match index {
 			ImportOrExport::Import(import_index) => {
 				let Some(input_properties) = encapsulating_node.persistent_metadata.input_properties.get_mut(import_index) else {
 					log::error!("Could not get input properties in set_import_export_name");
 					return;
 				};
-				input_properties.input_data.insert("input_name".to_string(), json!(name));
+				// Only return true if the previous value is the same as the current value
+				input_properties
+					.input_data
+					.insert("input_name".to_string(), json!(name))
+					.filter(|val| val.as_str().is_some_and(|old_name| *old_name == name))
+					.is_none()
 			}
 			ImportOrExport::Export(export_index) => {
 				let Some(export_name) = encapsulating_node.persistent_metadata.output_names.get_mut(export_index) else {
 					log::error!("Could not get export_name in set_import_export_name");
 					return;
 				};
-				*export_name = name;
+				if *export_name == name {
+					false
+				} else {
+					*export_name = name;
+					true
+				}
 			}
+		};
+		if name_changed {
+			self.transaction_modified();
 		}
-
-		self.transaction_modified();
 	}
 
 	pub fn set_pinned(&mut self, node_id: &NodeId, network_path: &[NodeId], pinned: bool) {

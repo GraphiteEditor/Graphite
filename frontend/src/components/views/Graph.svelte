@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getContext, onMount, tick } from "svelte";
-	import { fade } from "svelte/transition";
+	import { fade, slide } from "svelte/transition";
 
 	import { FADE_TRANSITION } from "@graphite/consts";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
@@ -45,30 +45,65 @@
 
 	$: wirePaths = createWirePaths($nodeGraph.wirePathInProgress, nodeWirePaths);
 
+	let inputElement: HTMLInputElement;
+	let hoveringImportIndex: number | undefined = undefined;
+	let hoveringExportIndex: number | undefined = undefined;
+
 	let editingNameImportIndex: number | undefined = undefined;
 	let editingNameExportIndex: number | undefined = undefined;
 	let editingNameText = "";
 
+	function exportsToEdgeTextInputWidth() {
+		let exportTextDivs = document.querySelectorAll(`[data-export-text-edge]`);
+		console.log("exportTextDivs", exportTextDivs);
+		let exportTextDiv = Array.from(exportTextDivs).find((div) => {
+			return div.getAttribute("data-index") === String(editingNameExportIndex);
+		});
+		if (!graph || !exportTextDiv) return "50px";
+		let distance = graph.getBoundingClientRect().right - exportTextDiv.getBoundingClientRect().right;
+		console.log(distance);
+		return distance - 15 + "px";
+	}
+
+	function importsToEdgeTextInputWidth() {
+		let importTextDivs = document.querySelectorAll(`[data-import-text-edge]`);
+		let importTextDiv = Array.from(importTextDivs).find((div) => {
+			return div.getAttribute("data-index") === String(editingNameImportIndex);
+		});
+		if (!graph || !importTextDiv) return "50px";
+		let distance = importTextDiv.getBoundingClientRect().left - graph.getBoundingClientRect().left;
+		return distance - 15 + "px";
+	}
+
 	function setEditingImportNameIndex(index: number, currentName: string) {
-		editingNameText = currentName;
+		focusInput(currentName);
 		editingNameImportIndex = index;
 	}
 	function setEditingExportNameIndex(index: number, currentName: string) {
-		editingNameText = currentName;
+		focusInput(currentName);
 		editingNameExportIndex = index;
 	}
 
-	function setEditingImportName(event: any) {
+	function focusInput(currentName: string) {
+		editingNameText = currentName;
+		setTimeout(() => {
+			if (inputElement) {
+				inputElement.focus();
+			}
+		}, 0);
+	}
+
+	function setEditingImportName(event: Event) {
 		if (editingNameImportIndex !== undefined) {
-			let text = event.target.value;
+			let text = (event.target as HTMLInputElement)?.value;
 			editor.handle.setImportName(editingNameImportIndex, text);
 			editingNameImportIndex = undefined;
 		}
 	}
 
-	function setEditingExportName(event: any) {
+	function setEditingExportName(event: Event) {
 		if (editingNameExportIndex !== undefined) {
-			let text = event.target.value;
+			let text = (event.target as HTMLInputElement)?.value;
 			editor.handle.setExportName(editingNameExportIndex, text);
 			editingNameExportIndex = undefined;
 		}
@@ -469,29 +504,40 @@
 					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
 				{/if}
 			</svg>
-			<div class="plus" style:--offset-left={(position.x - 24) / 24} style:--offset-top={position.y / 24}>
-				<IconButton
-					size={16}
-					icon={"Remove"}
-					action={() => {
-						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
-					}}
-				/>
-				<div class="reorder-drag-grip" title="Reorder this import"></div>
-			</div>
 
-			<div class="import-text-div" on:dblclick={() => setEditingImportNameIndex(index, outputMetadata.name)} style:--offset-left={(position.x - 24) / 24} style:--offset-top={position.y / 24}>
+			<div
+				class="edit-import-export"
+				on:pointerenter={() => (hoveringImportIndex = index)}
+				on:pointerleave={() => (hoveringImportIndex = undefined)}
+				style:--offset-left={position.x / 24}
+				style:--offset-top={position.y / 24}
+				style="right: calc(100% - var(--offset-left) * 24px);"
+			>
 				{#if editingNameImportIndex == index}
 					<input
 						class="import-text-input"
 						type="text"
+						style="width: {importsToEdgeTextInputWidth()}"
+						bind:this={inputElement}
 						bind:value={editingNameText}
 						on:blur={setEditingImportName}
 						on:keydown={(e) => e.key === "Enter" && setEditingImportName(e)}
-						autofocus
 					/>
 				{:else}
-					<p class="import-text">{outputMetadata.name}</p>
+					<p class="import-text" on:dblclick={() => setEditingImportNameIndex(index, outputMetadata.name)}>{outputMetadata.name}</p>
+				{/if}
+				{#if hoveringImportIndex === index || editingNameImportIndex === index}
+					<IconButton
+						size={16}
+						icon={"Remove"}
+						class="remove-button-import"
+						data-index={index}
+						data-import-text-edge
+						action={() => {
+							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+						}}
+					/>
+					<div class="reorder-drag-grip" title="Reorder this import"></div>
 				{/if}
 			</div>
 		{/each}
@@ -533,30 +579,39 @@
 					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
 				{/if}
 			</svg>
-			{#if $nodeGraph.addExport !== undefined}
-				<div class="plus" style:--offset-left={(position.x + 16) / 24} style:--offset-top={position.y / 24}>
-					<div class="reorder-drag-grip" title="Reorder this import"></div>
+			<div
+				class="edit-import-export"
+				on:pointerenter={() => (hoveringExportIndex = index)}
+				on:pointerleave={() => (hoveringExportIndex = undefined)}
+				style:--offset-left={position.x / 24}
+				style:--offset-top={position.y / 24}
+				style="left: calc(var(--offset-left) * 24px + 17px);"
+			>
+				{#if hoveringExportIndex === index || editingNameExportIndex === index}
+					<div class="reorder-drag-grip" title="Reorder this export"></div>
 					<IconButton
 						size={16}
 						icon={"Remove"}
+						class="remove-button-export"
+						data-index={index}
+						data-export-text-edge
 						action={() => {
 							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 						}}
 					/>
-				</div>
-			{/if}
-			<div class="export-text-div" on:dblclick={() => setEditingExportNameIndex(index, inputMetadata.name)} style:--offset-left={(position.x + 24) / 24} style:--offset-top={position.y / 24}>
-				{#if editingNameExportIndex == index}
+				{/if}
+				{#if editingNameExportIndex === index}
 					<input
 						class="export-text-input"
 						type="text"
+						style="width: {exportsToEdgeTextInputWidth()}"
+						bind:this={inputElement}
 						bind:value={editingNameText}
 						on:blur={setEditingExportName}
 						on:keydown={(e) => e.key === "Enter" && setEditingExportName(e)}
-						autofocus
 					/>
 				{:else}
-					<p class="export-text">{inputMetadata.name}</p>
+					<p class="export-text" on:dblclick={() => setEditingExportNameIndex(index, inputMetadata.name)}>{inputMetadata.name}</p>
 				{/if}
 			</div>
 		{/each}
@@ -1019,12 +1074,34 @@
 				height: 2px;
 				background-color: white;
 			}
+
 			.plus {
 				position: absolute;
 				top: calc(var(--offset-top) * 24px);
 				left: calc(var(--offset-left) * 24px);
+			}
+
+			.edit-import-export {
+				position: absolute;
 				display: flex;
 				align-items: center;
+				top: calc(var(--offset-top) * 24px);
+
+				margin-top: -5px;
+				height: 24px;
+				.import-text {
+					direction: rtl;
+					text-align: right;
+				}
+				.import-text-input {
+					text-align: right;
+				}
+				.remove-button-import {
+					margin-left: 3px;
+				}
+				.remove-button-export {
+					margin-right: 3px;
+				}
 				.reorder-drag-grip {
 					width: 8px;
 					height: 24px;
@@ -1032,42 +1109,6 @@
 					border-radius: 2px;
 					margin: -6px 0;
 					background-image: var(--icon-drag-grip-hover);
-				}
-			}
-
-			.export-text-div {
-				position: absolute;
-				display: flex;
-				justify-content: flex-end;
-				align-items: center;
-				top: calc(var(--offset-top) * 24px);
-				left: calc(var(--offset-left) * 24px);
-				height: 24px;
-				margin-top: -5px;
-				margin-left: 20px;
-				.export-text {
-				}
-				.export-text-input {
-				}
-			}
-
-			.import-text-div {
-				position: absolute;
-				display: flex;
-				justify-content: flex-end;
-				align-items: center;
-				top: calc(var(--offset-top) * 24px);
-				left: calc(var(--offset-left) * 24px - 90px);
-				margin-top: -5px;
-				height: 24px;
-				//margin-left: calc(-80px - 2px);
-				width: 90px;
-				.import-text {
-					direction: rtl;
-					text-align: right;
-				}
-				.import-text-input {
-					text-align: right;
 				}
 			}
 		}
