@@ -108,7 +108,7 @@ pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: Types
 		id: PointId::ZERO,
 	};
 
-	for line in str.split('\n') {
+	'lines: for line in str.split('\n') {
 		for (index, word) in SplitWordsIncludingSpaces::new(line).enumerate() {
 			push_str(&mut buffer, word);
 			let glyph_buffer = rustybuzz::shape(&buzz_face, &[], buffer);
@@ -125,6 +125,11 @@ pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: Types
 						builder.pos = DVec2::new(0., builder.pos.y + line_height);
 					}
 				}
+				// Clip when the height is exceeded
+				if typesetting.maximum_height.is_some_and(|maximum_height| builder.pos.y > maximum_height) {
+					break 'lines;
+				}
+
 				builder.offset = DVec2::new(glyph_position.x_offset as f64, glyph_position.y_offset as f64) * builder.scale;
 				buzz_face.outline_glyph(glyph_id, &mut builder);
 				if !builder.current_subpath.is_empty() {
@@ -138,6 +143,7 @@ pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: Types
 		}
 		builder.pos = DVec2::new(0., builder.pos.y + line_height);
 	}
+	info!("Maximum height {:?} height {}", typesetting.maximum_height, builder.pos.y);
 	builder.other_subpaths
 }
 
