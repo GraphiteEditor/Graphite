@@ -164,9 +164,8 @@
 					margin: calc(calc(18px - 12px) / 2) 0;
 				}
 
-				& + .input-key::before {
-					line-height: 18px;
-					content: "+";
+				& + .input-key {
+					margin-left: 4px;
 				}
 			}
 		}
