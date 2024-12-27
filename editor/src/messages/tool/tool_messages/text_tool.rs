@@ -1,16 +1,15 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::tool_prelude::*;
-use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
+use crate::consts::DRAG_THRESHOLD;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
-use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name};
-use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
-use glam::Vec2Swizzles;
+use crate::messages::tool::common_functionality::snapping::SnapData;
+use crate::messages::tool::common_functionality::{auto_panning::AutoPanning, resize::Resize};
 
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
@@ -202,6 +201,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for TextToo
 		match self.fsm_state {
 			TextToolFsmState::Ready => actions!(TextToolMessageDiscriminant;
 				DragStart,
+				PointerMove,
 			),
 			TextToolFsmState::Editing => actions!(TextToolMessageDiscriminant;
 				DragStart,
@@ -255,11 +255,9 @@ struct TextToolData {
 	layer: LayerNodeIdentifier,
 	editing_text: Option<EditingText>,
 	new_text: String,
-	drag_start: ViewportPosition,
-	drag_current: ViewportPosition,
-	dragged: bool,
+	resize: Resize,
 	auto_panning: AutoPanning,
-	snap_manager: SnapManager,
+	cached_resize_bounds: [DVec2; 2], // Since the overlays must be drawn without knowledge of the inputs
 }
 
 impl TextToolData {
@@ -327,131 +325,43 @@ impl TextToolData {
 		};
 	}
 
-	fn interact(
-		&mut self,
-		state: TextToolFsmState,
-		input: &InputPreprocessorMessageHandler,
-		document: &DocumentMessageHandler,
-		font_cache: &FontCache,
-		responses: &mut VecDeque<Message>,
-	) -> TextToolFsmState {
-		// Check if the user has selected an existing text layer
-		if let Some(clicked_text_layer_path) = document.click(input).filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text")) {
-			self.start_editing_layer(clicked_text_layer_path, state, document, font_cache, responses);
-
-			TextToolFsmState::Editing
-		}
+	fn new_text(&mut self, document: &DocumentMessageHandler, editing_text: EditingText, font_cache: &FontCache, responses: &mut VecDeque<Message>) {
 		// Create new text
-		else if let Some(editing_text) = self.editing_text.as_ref().filter(|_| state == TextToolFsmState::Ready || state == TextToolFsmState::Dragging) {
-			responses.add(DocumentMessage::AddTransaction);
+		self.new_text = String::new();
+		responses.add(DocumentMessage::AddTransaction);
 
-			self.layer = LayerNodeIdentifier::new_unchecked(NodeId::new());
+		self.layer = LayerNodeIdentifier::new_unchecked(NodeId::new());
 
-			responses.add(GraphOperationMessage::NewTextLayer {
-				id: self.layer.to_node(),
-				text: String::new(),
-				font: editing_text.font.clone(),
-				size: editing_text.font_size,
-				line_height_ratio: editing_text.line_height_ratio,
-				line_width: editing_text.line_width,
-				height: editing_text.height,
-				character_spacing: editing_text.character_spacing,
-				parent: document.new_layer_parent(true),
-				insert_index: 0,
-			});
-			responses.add(Message::StartBuffer);
-			responses.add(GraphOperationMessage::FillSet {
-				layer: self.layer,
-				fill: if editing_text.color.is_some() { Fill::Solid(editing_text.color.unwrap()) } else { Fill::None },
-			});
-			responses.add(GraphOperationMessage::TransformSet {
-				layer: self.layer,
-				transform: editing_text.transform,
-				transform_in: TransformIn::Viewport,
-				skip_rerender: true,
-			});
+		responses.add(GraphOperationMessage::NewTextLayer {
+			id: self.layer.to_node(),
+			text: String::new(),
+			font: editing_text.font.clone(),
+			size: editing_text.font_size,
+			line_height_ratio: editing_text.line_height_ratio,
+			line_width: editing_text.line_width,
+			height: editing_text.height,
+			character_spacing: editing_text.character_spacing,
+			parent: document.new_layer_parent(true),
+			insert_index: 0,
+		});
+		responses.add(Message::StartBuffer);
+		responses.add(GraphOperationMessage::FillSet {
+			layer: self.layer,
+			fill: if editing_text.color.is_some() { Fill::Solid(editing_text.color.unwrap()) } else { Fill::None },
+		});
+		responses.add(GraphOperationMessage::TransformSet {
+			layer: self.layer,
+			transform: editing_text.transform,
+			transform_in: TransformIn::Viewport,
+			skip_rerender: true,
+		});
+		self.editing_text = Some(editing_text);
 
-			self.set_editing(true, font_cache, responses);
+		self.set_editing(true, font_cache, responses);
 
-			responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![self.layer.to_node()] });
+		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![self.layer.to_node()] });
 
-			responses.add(NodeGraphMessage::RunDocumentGraph);
-			TextToolFsmState::Editing
-		} else {
-			// Removing old text as editable
-			self.set_editing(false, font_cache, responses);
-
-			TextToolFsmState::Ready
-		}
-	}
-
-	fn start(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) -> DVec2 {
-		let root_transform = document.metadata().document_to_viewport;
-		let point = SnapCandidatePoint::handle(root_transform.inverse().transform_point2(input.mouse.position));
-		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
-		snapped.snapped_point_document
-	}
-
-	pub fn viewport_drag_start(&self, document: &DocumentMessageHandler) -> DVec2 {
-		let root_transform = document.metadata().document_to_viewport;
-		root_transform.transform_point2(self.drag_start)
-	}
-
-	fn calculate_points(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, center: Key, lock_ratio: Key) -> Option<[DVec2; 2]> {
-		let layer = self.layer;
-
-		if layer == LayerNodeIdentifier::ROOT_PARENT {
-			log::error!("Resize layer cannot be ROOT_PARENT");
-			return None;
-		}
-
-		let start = self.viewport_drag_start(document);
-		let mouse = input.mouse.position;
-		let document_to_viewport = document.navigation_handler.calculate_offset_transform(input.viewport_bounds.center(), &document.document_ptz);
-		let document_mouse = document_to_viewport.inverse().transform_point2(mouse);
-		let mut points_viewport = [start, mouse];
-		let ignore = vec![layer];
-		let ratio = input.keyboard.get(lock_ratio as usize);
-		let center = input.keyboard.get(center as usize);
-		let snap_data = SnapData::ignore(document, input, &ignore);
-		let config = SnapTypeConfiguration::default();
-		if ratio {
-			let size = points_viewport[1] - points_viewport[0];
-			let size = size.abs().max(size.abs().yx()) * size.signum();
-			points_viewport[1] = points_viewport[0] + size;
-			let end_document = document_to_viewport.inverse().transform_point2(points_viewport[1]);
-			let constraint = SnapConstraint::Line {
-				origin: self.drag_start,
-				direction: end_document - self.drag_start,
-			};
-			if center {
-				let snapped = self.snap_manager.constrained_snap(&snap_data, &SnapCandidatePoint::handle(end_document), constraint, config);
-				let far = SnapCandidatePoint::handle(2. * self.drag_start - end_document);
-				let snapped_far = self.snap_manager.constrained_snap(&snap_data, &far, constraint, config);
-				let best = if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far };
-				points_viewport[0] = document_to_viewport.transform_point2(best.snapped_point_document);
-				points_viewport[1] = document_to_viewport.transform_point2(self.drag_start * 2. - best.snapped_point_document);
-				self.snap_manager.update_indicator(best);
-			} else {
-				let snapped = self.snap_manager.constrained_snap(&snap_data, &SnapCandidatePoint::handle(end_document), constraint, config);
-				points_viewport[1] = document_to_viewport.transform_point2(snapped.snapped_point_document);
-				self.snap_manager.update_indicator(snapped);
-			}
-		} else if center {
-			let snapped = self.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), config);
-			let opposite = 2. * self.drag_start - document_mouse;
-			let snapped_far = self.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(opposite), config);
-			let best = if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far };
-			points_viewport[0] = document_to_viewport.transform_point2(best.snapped_point_document);
-			points_viewport[1] = document_to_viewport.transform_point2(self.drag_start * 2. - best.snapped_point_document);
-			self.snap_manager.update_indicator(best);
-		} else {
-			let snapped = self.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), config);
-			points_viewport[1] = document_to_viewport.transform_point2(snapped.snapped_point_document);
-			self.snap_manager.update_indicator(snapped);
-		}
-
-		Some(points_viewport)
+		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 }
 
@@ -518,7 +428,7 @@ impl Fsm for TextToolFsmState {
 			(_, TextToolMessage::Overlays(mut overlay_context)) => {
 				if matches!(self, Self::Dragging) {
 					// Get the updated selection box bounds
-					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
+					let quad = Quad::from_box(tool_data.cached_resize_bounds);
 
 					// Draw a bounding box on the layers to be selected
 					for layer in document.intersect_quad_no_artboards(quad, input) {
@@ -545,7 +455,7 @@ impl Fsm for TextToolFsmState {
 						overlay_context.quad(multiplied, None);
 					}
 				}
-				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
+				tool_data.resize.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 
 				self
 			}
@@ -558,8 +468,8 @@ impl Fsm for TextToolFsmState {
 				state
 			}
 			(state, TextToolMessage::Abort) => {
-				input.mouse.finish_transaction(tool_data.viewport_drag_start(document), responses);
-				tool_data.snap_manager.cleanup(responses);
+				input.mouse.finish_transaction(tool_data.resize.viewport_drag_start(document), responses);
+				tool_data.resize.cleanup(responses);
 
 				if state == TextToolFsmState::Editing {
 					tool_data.set_editing(false, font_cache, responses);
@@ -568,16 +478,13 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Ready
 			}
 			(TextToolFsmState::Ready, TextToolMessage::DragStart) => {
-				tool_data.drag_start = tool_data.start(document, input);
+				tool_data.resize.start(document, input);
+				tool_data.cached_resize_bounds = [tool_data.resize.viewport_drag_start(document); 2];
 
 				TextToolFsmState::Dragging
 			}
 			(TextToolFsmState::Dragging, TextToolMessage::PointerMove { center, lock_ratio }) => {
-				tool_data.dragged = true;
-				if let Some([start, end]) = tool_data.calculate_points(document, input, center, lock_ratio) {
-					tool_data.drag_start = start;
-					tool_data.drag_current = end;
-				}
+				tool_data.cached_resize_bounds = tool_data.resize.calculate_points_ignore_layer(document, input, center, lock_ratio);
 
 				responses.add(OverlaysMessage::Draw);
 
@@ -591,7 +498,7 @@ impl Fsm for TextToolFsmState {
 				self
 			}
 			(_, TextToolMessage::PointerMove { .. }) => {
-				tool_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
+				tool_data.resize.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
 				responses.add(OverlaysMessage::Draw);
 
 				self
@@ -613,39 +520,32 @@ impl Fsm for TextToolFsmState {
 				state
 			}
 			(TextToolFsmState::Dragging, TextToolMessage::DragStop) => {
-				let mut line_width: Option<f64> = None;
-				let mut height: Option<f64> = None;
-				let transformation_point: DVec2;
+				let [start, end] = tool_data.cached_resize_bounds;
+				let has_dragged = (start - end).length_squared() > DRAG_THRESHOLD * DRAG_THRESHOLD;
 
-				if tool_data.dragged {
-					input
-						.mouse
-						.finish_transaction(document.metadata().document_to_viewport.transform_point2(tool_data.drag_start), responses);
-
-					line_width = Some((tool_data.drag_current.x - tool_data.drag_start.x).abs());
-					height = Some((tool_data.drag_current.y - tool_data.drag_start.y).abs());
-
-					transformation_point = tool_data.drag_start;
-
-					tool_data.new_text = String::new();
-				} else {
-					transformation_point = tool_data.drag_current;
+				// Check if the user has clicked (no dragging) on some existing text
+				if !has_dragged {
+					if let Some(clicked_text_layer_path) = document.click(input).filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text")) {
+						tool_data.start_editing_layer(clicked_text_layer_path, TextToolFsmState::Dragging, document, font_cache, responses);
+						return TextToolFsmState::Editing;
+					}
 				}
 
-				tool_data.editing_text = Some(EditingText {
+				// Otherwise create some new text
+				let constraint_size = has_dragged.then_some((start - end).abs());
+				let editing_text = EditingText {
 					text: String::new(),
-					transform: DAffine2::from_translation(transformation_point),
+					transform: DAffine2::from_translation(start),
 					font_size: tool_options.font_size,
 					line_height_ratio: tool_options.line_height_ratio,
-					line_width,
+					line_width: constraint_size.map(|size| size.x),
 					character_spacing: tool_options.character_spacing,
 					font: Font::new(tool_options.font_name.clone(), tool_options.font_style.clone()),
 					color: tool_options.fill.active_color(),
-					height,
-				});
-				tool_data.new_text = String::new();
-				tool_data.dragged = false;
-				tool_data.interact(TextToolFsmState::Dragging, input, document, font_cache, responses)
+					height: constraint_size.map(|size| size.y),
+				};
+				tool_data.new_text(document, editing_text, font_cache, responses);
+				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, TextToolMessage::CommitText) => {
 				responses.add(FrontendMessage::TriggerTextCommit);

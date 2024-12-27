@@ -1,4 +1,3 @@
-use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
@@ -7,7 +6,8 @@ use glam::{DAffine2, DVec2, Vec2Swizzles};
 
 #[derive(Clone, Debug, Default)]
 pub struct Resize {
-	drag_start: ViewportPosition,
+	/// Stored as a document position so the start doesn't move if the canvas is panned.
+	drag_start: DVec2,
 	pub layer: Option<LayerNodeIdentifier>,
 	pub snap_manager: SnapManager,
 }
@@ -27,6 +27,8 @@ impl Resize {
 		root_transform.transform_point2(self.drag_start)
 	}
 
+	/// Compute the drag start and end based on the current mouse position. If the layer doesn't exist, returns None.
+	/// If you want to draw even without a layer, use [`Resize::calculate_points_ignore_layer`].
 	pub fn calculate_points(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, center: Key, lock_ratio: Key) -> Option<[DVec2; 2]> {
 		let layer = self.layer?;
 
@@ -39,7 +41,12 @@ impl Resize {
 			self.layer.take();
 			return None;
 		}
+		Some(self.calculate_points_ignore_layer(document, input, center, lock_ratio))
+	}
 
+	/// Compute the drag start and end based on the current mouse position. Ignores the state of the layer.
+	/// If you want to only draw whilst a layer exists, use [`Resize::calculate_points`].
+	pub fn calculate_points_ignore_layer(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, center: Key, lock_ratio: Key) -> [DVec2; 2] {
 		let start = self.viewport_drag_start(document);
 		let mouse = input.mouse.position;
 		let document_to_viewport = document.navigation_handler.calculate_offset_transform(input.viewport_bounds.center(), &document.document_ptz);
@@ -86,7 +93,7 @@ impl Resize {
 			self.snap_manager.update_indicator(snapped);
 		}
 
-		Some(points_viewport)
+		points_viewport
 	}
 
 	pub fn calculate_transform(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, center: Key, lock_ratio: Key, skip_rerender: bool) -> Option<Message> {
