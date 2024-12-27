@@ -7,7 +7,7 @@ use crate::messages::prelude::*;
 
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::renderer::Quad;
-use graphene_core::text::Font;
+use graphene_core::text::{Font, TypesettingConfiguration};
 use graphene_core::vector::style::{Fill, Gradient, GradientStops, GradientType, LineCap, LineJoin, Stroke};
 use graphene_core::Color;
 use graphene_std::vector::convert_usvg_path;
@@ -174,17 +174,13 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				id,
 				text,
 				font,
-				size,
-				line_height_ratio,
-				line_width,
-				height,
-				character_spacing,
+				typesetting,
 				parent,
 				insert_index,
 			} => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(id);
-				modify_inputs.insert_text(text, font, size, line_height_ratio, line_width, height, character_spacing, layer);
+				modify_inputs.insert_text(text, font, typesetting, layer);
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 				responses.add(GraphOperationMessage::StrokeSet { layer, stroke: Stroke::default() });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -281,7 +277,14 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 		}
 		usvg::Node::Text(text) => {
 			let font = Font::new(graphene_core::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_core::consts::DEFAULT_FONT_STYLE.to_string());
-			modify_inputs.insert_text(text.chunks().iter().map(|chunk| chunk.text()).collect(), font, 24., 1.2, None, None, 1., layer);
+			let typesetting = TypesettingConfiguration {
+				font_size: 24.,
+				line_height_ratio: 1.2,
+				line_width: None,
+				maximum_height: None,
+				character_spacing: 1.,
+			};
+			modify_inputs.insert_text(text.chunks().iter().map(|chunk| chunk.text()).collect(), font, typesetting, layer);
 			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
 		}
 	}

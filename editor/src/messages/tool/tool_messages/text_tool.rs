@@ -14,7 +14,7 @@ use crate::messages::tool::common_functionality::{auto_panning::AutoPanning, res
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::renderer::Quad;
-use graphene_core::text::{load_face, Font, FontCache};
+use graphene_core::text::{load_face, Font, FontCache, TypesettingConfiguration};
 use graphene_core::vector::style::Fill;
 use graphene_core::Color;
 
@@ -241,13 +241,9 @@ enum TextToolFsmState {
 pub struct EditingText {
 	text: String,
 	font: Font,
-	font_size: f64,
-	line_height_ratio: f64,
-	line_width: Option<f64>,
-	character_spacing: f64,
+	typesetting: TypesettingConfiguration,
 	color: Option<Color>,
 	transform: DAffine2,
-	height: Option<f64>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -266,13 +262,13 @@ impl TextToolData {
 		if let Some(editing_text) = self.editing_text.as_ref().filter(|_| editable) {
 			responses.add(FrontendMessage::DisplayEditableTextbox {
 				text: editing_text.text.clone(),
-				line_width: editing_text.line_width,
-				line_height_ratio: editing_text.line_height_ratio,
-				font_size: editing_text.font_size,
+				line_width: editing_text.typesetting.line_width,
+				line_height_ratio: editing_text.typesetting.line_height_ratio,
+				font_size: editing_text.typesetting.font_size,
 				color: editing_text.color.unwrap_or(Color::BLACK),
 				url: font_cache.get_preview_url(&editing_text.font).cloned().unwrap_or_default(),
 				transform: editing_text.transform.to_cols_array(),
-				height: editing_text.height,
+				height: editing_text.typesetting.maximum_height,
 			});
 		} else {
 			responses.add(FrontendMessage::DisplayRemoveEditableTextbox);
@@ -284,17 +280,13 @@ impl TextToolData {
 	fn load_layer_text_node(&mut self, document: &DocumentMessageHandler) -> Option<()> {
 		let transform = document.metadata().transform_to_viewport(self.layer);
 		let color = graph_modification_utils::get_fill_color(self.layer, &document.network_interface).unwrap_or(Color::BLACK);
-		let (text, font, font_size, line_height_ratio, character_spacing, line_width, height) = graph_modification_utils::get_text(self.layer, &document.network_interface)?;
+		let (text, font, typesetting) = graph_modification_utils::get_text(self.layer, &document.network_interface)?;
 		self.editing_text = Some(EditingText {
 			text: text.clone(),
 			font: font.clone(),
-			font_size,
-			line_height_ratio,
-			line_width,
-			character_spacing,
+			typesetting,
 			color: Some(color),
 			transform,
-			height,
 		});
 		self.new_text.clone_from(text);
 		Some(())
@@ -336,11 +328,7 @@ impl TextToolData {
 			id: self.layer.to_node(),
 			text: String::new(),
 			font: editing_text.font.clone(),
-			size: editing_text.font_size,
-			line_height_ratio: editing_text.line_height_ratio,
-			line_width: editing_text.line_width,
-			height: editing_text.height,
-			character_spacing: editing_text.character_spacing,
+			typesetting: editing_text.typesetting,
 			parent: document.new_layer_parent(true),
 			insert_index: 0,
 		});
@@ -408,14 +396,7 @@ impl Fsm for TextToolFsmState {
 				});
 				if let Some(editing_text) = tool_data.editing_text.as_ref() {
 					let buzz_face = font_cache.get(&editing_text.font).map(|data| load_face(data));
-					let far = graphene_core::text::bounding_box(
-						&tool_data.new_text,
-						buzz_face,
-						editing_text.font_size,
-						editing_text.line_height_ratio,
-						editing_text.character_spacing,
-						editing_text.line_width,
-					);
+					let far = graphene_core::text::bounding_box(&tool_data.new_text, buzz_face, editing_text.typesetting);
 					if far.x != 0. && far.y != 0. {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
 						let transformed_quad = document.metadata().transform_to_viewport(tool_data.layer) * quad;
@@ -441,15 +422,12 @@ impl Fsm for TextToolFsmState {
 					overlay_context.quad(quad, Some(&("#".to_string() + &fill_color)));
 				} else {
 					for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
-						let Some((text, font, font_size, line_height_ratio, character_spacing, line_width, height)) = graph_modification_utils::get_text(layer, &document.network_interface) else {
+						let Some((text, font, typesetting)) = graph_modification_utils::get_text(layer, &document.network_interface) else {
 							continue;
 						};
 						let buzz_face = font_cache.get(font).map(|data| load_face(data));
 
-						let mut far = graphene_core::text::bounding_box(text, buzz_face, font_size, line_height_ratio, character_spacing, line_width);
-						if let Some(height) = height {
-							far = DVec2::new(far.x, height);
-						}
+						let far = graphene_core::text::bounding_box(text, buzz_face, typesetting);
 						let quad = Quad::from_box([DVec2::ZERO, far]);
 						let multiplied = document.metadata().transform_to_viewport(layer) * quad;
 						overlay_context.quad(multiplied, None);
@@ -536,13 +514,15 @@ impl Fsm for TextToolFsmState {
 				let editing_text = EditingText {
 					text: String::new(),
 					transform: DAffine2::from_translation(start),
-					font_size: tool_options.font_size,
-					line_height_ratio: tool_options.line_height_ratio,
-					line_width: constraint_size.map(|size| size.x),
-					character_spacing: tool_options.character_spacing,
+					typesetting: TypesettingConfiguration {
+						font_size: tool_options.font_size,
+						line_height_ratio: tool_options.line_height_ratio,
+						line_width: constraint_size.map(|size| size.x),
+						character_spacing: tool_options.character_spacing,
+						maximum_height: constraint_size.map(|size| size.y),
+					},
 					font: Font::new(tool_options.font_name.clone(), tool_options.font_style.clone()),
 					color: tool_options.fill.active_color(),
-					height: constraint_size.map(|size| size.y),
 				};
 				tool_data.new_text(document, editing_text, font_cache, responses);
 				TextToolFsmState::Editing

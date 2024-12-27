@@ -9,7 +9,7 @@ use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::raster::{BlendMode, ImageFrame};
-use graphene_core::text::Font;
+use graphene_core::text::{Font, TypesettingConfiguration};
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::{PointId, VectorModificationType};
@@ -179,7 +179,7 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 	}
 
-	pub fn insert_text(&mut self, text: String, font: Font, size: f64, line_height_ratio: f64, line_width: Option<f64>, height: Option<f64>, character_spacing: f64, layer: LayerNodeIdentifier) {
+	pub fn insert_text(&mut self, text: String, font: Font, typesetting: TypesettingConfiguration, layer: LayerNodeIdentifier) {
 		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_node_template();
 		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_node_template();
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
@@ -187,11 +187,11 @@ impl<'a> ModifyInputsContext<'a> {
 			Some(NodeInput::scope("editor-api")),
 			Some(NodeInput::value(TaggedValue::String(text), false)),
 			Some(NodeInput::value(TaggedValue::Font(font), false)),
-			Some(NodeInput::value(TaggedValue::F64(size), false)),
-			Some(NodeInput::value(TaggedValue::F64(line_height_ratio), false)),
-			Some(NodeInput::value(TaggedValue::F64(character_spacing), false)),
-			Some(NodeInput::value(TaggedValue::OptionalF64(line_width), false)),
-			Some(NodeInput::value(TaggedValue::OptionalF64(height), false)),
+			Some(NodeInput::value(TaggedValue::F64(typesetting.font_size), false)),
+			Some(NodeInput::value(TaggedValue::F64(typesetting.line_height_ratio), false)),
+			Some(NodeInput::value(TaggedValue::F64(typesetting.character_spacing), false)),
+			Some(NodeInput::value(TaggedValue::OptionalF64(typesetting.line_width), false)),
+			Some(NodeInput::value(TaggedValue::OptionalF64(typesetting.maximum_height), false)),
 		]);
 
 		let text_id = NodeId::new();
