@@ -44,6 +44,8 @@ pub struct FrontendGraphInput {
 	pub name: String,
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: Option<String>,
+	#[serde(rename = "validTypes")]
+	pub valid_types: Vec<String>,
 	#[serde(rename = "connectedTo")]
 	pub connected_to: Option<OutputConnector>,
 }

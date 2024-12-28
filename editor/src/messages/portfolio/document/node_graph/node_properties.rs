@@ -2049,7 +2049,10 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 	if let Some(properties_override) = context
 		.network_interface
 		.reference(&node_id, context.selection_network_path)
-		.and_then(|reference| super::document_node_definitions::resolve_document_node_type(&reference))
+		.cloned()
+		.unwrap_or_default()
+		.as_ref()
+		.and_then(|reference| super::document_node_definitions::resolve_document_node_type(reference))
 		.and_then(|definition| definition.properties)
 	{
 		layout = properties_override(node_id, context);
@@ -2066,7 +2069,12 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 	if layout.is_empty() {
 		layout = node_no_properties(node_id, context);
 	}
-	let name = context.network_interface.reference(&node_id, context.selection_network_path).cloned().unwrap_or_default();
+	let name = context
+		.network_interface
+		.reference(&node_id, context.selection_network_path)
+		.cloned()
+		.unwrap_or_default()
+		.unwrap_or_default();
 	let visible = context.network_interface.is_visible(&node_id, context.selection_network_path);
 	let pinned = context.network_interface.is_pinned(&node_id, context.selection_network_path);
 	LayoutGroup::Section {

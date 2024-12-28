@@ -310,26 +310,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				{
 					return;
 				};
-				let Some(network) = network_interface.network(selection_network_path) else {
-					log::error!("Could not get network in EnterNestedNetwork");
-					return;
-				};
-
-				let Some(node) = network.nodes.get(&node_id) else { return };
-				if let DocumentNodeImplementation::Network(_) = node.implementation {
+				if let Some(DocumentNodeImplementation::Network(_)) = network_interface.implementation(&node_id, selection_network_path) {
 					responses.add(DocumentMessage::EnterNestedNetwork { node_id });
 				}
 			}
 			NodeGraphMessage::ExposeInput { node_id, input_index, new_exposed } => {
-				let Some(network) = network_interface.network(selection_network_path) else {
-					return;
-				};
-
-				let Some(node) = network.nodes.get(&node_id) else {
+				let Some(node) = network_interface.document_node(&node_id, selection_network_path) else {
 					log::error!("Could not find node {node_id} in NodeGraphMessage::ExposeInput");
 					return;
 				};
-
 				let Some(mut input) = node.inputs.get(input_index).cloned() else {
 					log::error!("Could not find input {input_index} in NodeGraphMessage::ExposeInput");
 					return;
@@ -1359,7 +1348,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					input,
 				});
 				responses.add(PropertiesPanelMessage::Refresh);
-				if (!network_interface.reference(&node_id, selection_network_path).is_some_and(|reference| reference == "Imaginate") || input_index == 0)
+				if (!network_interface
+					.reference(&node_id, selection_network_path)
+					.is_some_and(|reference| *reference == Some("Imaginate".to_string()))
+					|| input_index == 0)
 					&& network_interface.connected_to_output(&node_id, selection_network_path)
 				{
 					responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -1530,9 +1522,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids });
 			}
 			NodeGraphMessage::ToggleSelectedVisibility => {
-				let Some(network) = network_interface.network(selection_network_path) else {
-					return;
-				};
 				let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else {
 					log::error!("Could not get selected nodes in NodeGraphMessage::ToggleSelectedLocked");
 					return;
@@ -1540,7 +1529,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let node_ids = selected_nodes.selected_nodes().cloned().collect::<Vec<_>>();
 
 				// If any of the selected nodes are hidden, show them all. Otherwise, hide them all.
-				let visible = !node_ids.iter().all(|node_id| network.nodes.get(node_id).is_some_and(|node| node.visible));
+				let visible = !node_ids.iter().all(|node_id| network_interface.is_visible(node_id, selection_network_path));
 
 				responses.add(DocumentMessage::AddTransaction);
 				for node_id in &node_ids {
@@ -1549,16 +1538,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids });
 			}
 			NodeGraphMessage::ToggleVisibility { node_id } => {
-				let Some(network) = network_interface.network(selection_network_path) else {
-					return;
-				};
-
-				let Some(node) = network.nodes.get(&node_id) else {
-					log::error!("Cannot get node {node_id} in NodeGraphMessage::ToggleVisibility");
-					return;
-				};
-
-				let visible = !node.visible;
+				let visible = !network_interface.is_visible(&node_id, selection_network_path);
 
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::SetVisibility { node_id, visible });
@@ -1792,14 +1772,7 @@ impl NodeGraphMessageHandler {
 		let has_selection = selected_nodes.has_selected_nodes();
 		let selection_includes_layers = network_interface.selected_nodes(&[]).unwrap().selected_layers(network_interface.document_metadata()).count() > 0;
 		let selection_all_locked = network_interface.selected_nodes(&[]).unwrap().selected_unlocked_layers(network_interface).count() == 0;
-		let selection_all_visible = selected_nodes.selected_nodes().all(|id| {
-			if let Some(node) = network.nodes.get(id) {
-				node.visible
-			} else {
-				error!("Could not get node {id} in update_selection_action_buttons");
-				true
-			}
-		});
+		let selection_all_visible = selected_nodes.selected_nodes().all(|node_id| network_interface.is_visible(node_id, breadcrumb_network_path));
 
 		let mut widgets = vec![
 			PopoverButton::new()
@@ -2208,6 +2181,7 @@ impl NodeGraphMessageHandler {
 				input.map(|input| FrontendGraphInput {
 					data_type: FrontendGraphDataType::with_type(&input.ty),
 					resolved_type: Some(format!("{:?} from {:?}", &input.ty, input.type_source)),
+					valid_types: input.valid_types.iter().map(|ty| ty.to_string()).collect(),
 					name: input.name.unwrap_or_else(|| input.ty.nested_type().to_string()),
 					connected_to: input.output_connector,
 				})
@@ -2299,7 +2273,7 @@ impl NodeGraphMessageHandler {
 					.node_metadata(&node_id, breadcrumb_network_path)
 					.is_some_and(|node_metadata| node_metadata.persistent_metadata.is_layer()),
 				can_be_layer: can_be_layer_lookup.contains(&node_id),
-				reference: network_interface.reference(&node_id, breadcrumb_network_path).cloned(),
+				reference: network_interface.reference(&node_id, breadcrumb_network_path).cloned().unwrap_or_default(),
 				display_name: network_interface.frontend_display_name(&node_id, breadcrumb_network_path),
 				primary_input,
 				exposed_inputs,
@@ -2369,7 +2343,7 @@ impl NodeGraphMessageHandler {
 						|| (
 							// Check if the last node in the chain has an exposed left input
 							network_interface.upstream_flow_back_from_nodes(vec![node_id], &[], network_interface::FlowType::HorizontalFlow).last().is_some_and(|node_id|
-								network_interface.network(&[]).unwrap().nodes.get(&node_id).map_or_else(||{log::error!("Could not get node {node_id} in update_layer_panel"); false}, |node| {
+								network_interface.document_node(&node_id, &[]).map_or_else(||{log::error!("Could not get node {node_id} in update_layer_panel"); false}, |node| {
 									if network_interface.is_layer(&node_id, &[]) {
 										node.inputs.iter().filter(|input| input.is_exposed_to_frontend(true)).nth(1).is_some_and(|input| input.as_value().is_some())
 									} else {
@@ -2380,7 +2354,7 @@ impl NodeGraphMessageHandler {
 
 				let parents_visible = layer.ancestors(network_interface.document_metadata()).filter(|&ancestor| ancestor != layer).all(|layer| {
 					if layer != LayerNodeIdentifier::ROOT_PARENT {
-						network_interface.network(&[]).unwrap().nodes.get(&layer.to_node()).map(|node| node.visible).unwrap_or_default()
+						network_interface.document_node(&layer.to_node(), &[]).map(|node| node.visible).unwrap_or_default()
 					} else {
 						true
 					}
@@ -2485,6 +2459,7 @@ struct InputLookup {
 	name: Option<String>,
 	ty: Type,
 	type_source: TypeSource,
+	valid_types: Vec<Type>,
 	output_connector: Option<OutputConnector>,
 }
 
@@ -2528,11 +2503,19 @@ fn frontend_inputs_lookup(breadcrumb_network_path: &[NodeId], network_interface:
 		for (index, value) in value.iter_mut().enumerate() {
 			// Skip not exposed inputs for efficiency
 			let Some(value) = value else { continue };
-
 			// Resolve the type (done in a separate loop because it requires a mutable reference to the `network_interface`)
 			let (ty, type_source) = network_interface.input_type(&InputConnector::node(node_id, index), breadcrumb_network_path);
 			value.ty = ty;
 			value.type_source = type_source;
+		}
+	}
+
+	for (&node_id, value) in frontend_inputs_lookup.iter_mut() {
+		for (index, value) in value.iter_mut().enumerate() {
+			// Skip not exposed inputs for efficiency
+			let Some(value) = value else { continue };
+			// Resolve the type (done in a separate loop because it requires a mutable reference to the `network_interface`)
+			value.valid_types = network_interface.valid_input_types(&InputConnector::node(node_id, index), breadcrumb_network_path);
 		}
 	}
 	frontend_inputs_lookup

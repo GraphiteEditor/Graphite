@@ -774,7 +774,10 @@ impl EditorHandle {
 			if let Some(network) = document_node.implementation.get_network() {
 				let mut nodes_to_upgrade = Vec::new();
 				for (node_id, _) in network.nodes.iter().collect::<Vec<_>>() {
-					if document.network_interface.reference(node_id, &[]).is_some_and(|reference| reference == "To Artboard")
+					if document
+						.network_interface
+						.reference(node_id, &[])
+						.is_some_and(|reference| *reference == Some("To Artboard".to_string()))
 						&& document
 							.network_interface
 							.network(&[])

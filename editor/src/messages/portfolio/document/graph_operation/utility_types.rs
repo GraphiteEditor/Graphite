@@ -254,7 +254,11 @@ impl<'a> ModifyInputsContext<'a> {
 		let mut existing_node_id = None;
 		for upstream_node in upstream.collect::<Vec<_>>() {
 			// Check if this is the node we have been searching for.
-			if self.network_interface.reference(&upstream_node, &[]).is_some_and(|node_reference| node_reference == reference) {
+			if self
+				.network_interface
+				.reference(&upstream_node, &[])
+				.is_some_and(|node_reference| *node_reference == Some(reference.to_string()))
+			{
 				existing_node_id = Some(upstream_node);
 				break;
 			}

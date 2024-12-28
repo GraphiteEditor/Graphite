@@ -223,6 +223,8 @@ export class FrontendGraphInput {
 
 	readonly resolvedType!: string | undefined;
 
+	readonly validTypes!: string[];
+
 	@CreateOutputConnectorOptional
 	connectedTo!: Node | undefined;
 }
