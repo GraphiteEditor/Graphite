@@ -15,7 +15,7 @@ pub struct MemoNode<T, CachedNode> {
 	cache: Arc<Mutex<Option<(u64, T)>>>,
 	node: CachedNode,
 }
-impl<'i, 'o: 'i, I: Hash + 'i, T: 'i + Clone + 'o + WasmNotSend, CachedNode: 'i> Node<'i, I> for MemoNode<T, CachedNode>
+impl<'i, I: Hash + 'i, T: 'i + Clone + WasmNotSend, CachedNode: 'i> Node<'i, I> for MemoNode<T, CachedNode>
 where
 	CachedNode: for<'any_input> Node<'any_input, I>,
 	for<'a> <CachedNode as Node<'a, I>>::Output: core::future::Future<Output = T> + WasmNotSend,
@@ -62,7 +62,7 @@ pub struct ImpureMemoNode<I, T, CachedNode> {
 	_phantom: std::marker::PhantomData<I>,
 }
 
-impl<'i, 'o: 'i, I: 'i, T: 'i + Clone + 'o + WasmNotSend, CachedNode: 'i> Node<'i, I> for ImpureMemoNode<I, T, CachedNode>
+impl<'i, I: 'i, T: 'i + Clone + WasmNotSend, CachedNode: 'i> Node<'i, I> for ImpureMemoNode<I, T, CachedNode>
 where
 	CachedNode: for<'any_input> Node<'any_input, I>,
 	for<'a> <CachedNode as Node<'a, I>>::Output: core::future::Future<Output = T> + WasmNotSend,
@@ -224,14 +224,14 @@ pub struct MemoHashGuard<'a, T: Hash> {
 	inner: &'a mut MemoHash<T>,
 }
 
-impl<'a, T: Hash> core::ops::Drop for MemoHashGuard<'a, T> {
+impl<T: Hash> core::ops::Drop for MemoHashGuard<'_, T> {
 	fn drop(&mut self) {
 		let hash = MemoHash::<T>::calc_hash(&self.inner.value);
 		self.inner.hash = hash;
 	}
 }
 
-impl<'a, T: Hash> core::ops::Deref for MemoHashGuard<'a, T> {
+impl<T: Hash> core::ops::Deref for MemoHashGuard<'_, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -239,7 +239,7 @@ impl<'a, T: Hash> core::ops::Deref for MemoHashGuard<'a, T> {
 	}
 }
 
-impl<'a, T: Hash> core::ops::DerefMut for MemoHashGuard<'a, T> {
+impl<T: Hash> core::ops::DerefMut for MemoHashGuard<'_, T> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		&mut self.inner.value
 	}

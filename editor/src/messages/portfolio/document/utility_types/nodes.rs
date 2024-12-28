@@ -36,6 +36,8 @@ pub struct LayerPanelEntry {
 	pub id: NodeId,
 	pub alias: String,
 	pub tooltip: String,
+	#[serde(rename = "inSelectedNetwork")]
+	pub in_selected_network: bool,
 	#[serde(rename = "childrenAllowed")]
 	pub children_allowed: bool,
 	#[serde(rename = "childrenPresent")]
@@ -51,10 +53,10 @@ pub struct LayerPanelEntry {
 	#[serde(rename = "parentId")]
 	pub parent_id: Option<NodeId>,
 	pub selected: bool,
-	#[serde(rename = "inSelectedNetwork")]
-	pub in_selected_network: bool,
-	#[serde(rename = "selectedParent")]
-	pub selected_parent: bool,
+	#[serde(rename = "ancestorOfSelected")]
+	pub ancestor_of_selected: bool,
+	#[serde(rename = "descendantOfSelected")]
+	pub descendant_of_selected: bool,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]

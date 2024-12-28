@@ -4,6 +4,10 @@ use crate::registry::types::Percentage;
 use crate::vector::style::GradientStops;
 use crate::{Color, Node};
 
+use math_parser::ast;
+use math_parser::context::{EvalContext, NothingMap, ValueProvider};
+use math_parser::value::{Number, Value};
+
 use core::marker::PhantomData;
 use core::ops::{Add, Div, Mul, Rem, Sub};
 use glam::DVec2;
@@ -12,6 +16,70 @@ use rand::{Rng, SeedableRng};
 
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
+
+/// The struct that stores the context for the maths parser.
+/// This is currently just limited to supplying `a` and `b` until we add better node graph support and UI for variadic inputs.
+struct MathNodeContext {
+	a: f64,
+	b: f64,
+}
+
+impl ValueProvider for MathNodeContext {
+	fn get_value(&self, name: &str) -> Option<Value> {
+		if name.eq_ignore_ascii_case("a") {
+			Some(Value::from_f64(self.a))
+		} else if name.eq_ignore_ascii_case("b") {
+			Some(Value::from_f64(self.b))
+		} else {
+			None
+		}
+	}
+}
+
+/// Calculates a mathematical expression with input values "A" and "B"
+#[node_macro::node(category("Math"))]
+fn math<U: num_traits::float::Float>(
+	_: (),
+	/// The value of "A" when calculating the expression
+	#[implementations(f64, f32)]
+	operand_a: U,
+	/// A math expression that may incorporate "A" and/or "B", such as "sqrt(A + B) - B^2"
+	#[default(A + B)]
+	expression: String,
+	/// The value of "B" when calculating the expression
+	#[implementations(f64, f32)]
+	#[default(1.)]
+	operand_b: U,
+) -> U {
+	let (node, _unit) = match ast::Node::try_parse_from_str(&expression) {
+		Ok(expr) => expr,
+		Err(e) => {
+			warn!("Invalid expression: `{expression}`\n{e:?}");
+			return U::from(0.).unwrap();
+		}
+	};
+	let context = EvalContext::new(
+		MathNodeContext {
+			a: operand_a.to_f64().unwrap(),
+			b: operand_b.to_f64().unwrap(),
+		},
+		NothingMap,
+	);
+
+	let value = match node.eval(&context) {
+		Ok(value) => value,
+		Err(e) => {
+			warn!("Expression evaluation error: {e:?}");
+			return U::from(0.).unwrap();
+		}
+	};
+
+	let Value::Number(num) = value;
+	match num {
+		Number::Real(val) => U::from(val).unwrap(),
+		Number::Complex(c) => U::from(c.re).unwrap(),
+	}
+}
 
 /// The addition operation (+) calculates the sum of two numbers.
 #[node_macro::node(category("Math: Arithmetic"))]
@@ -408,6 +476,11 @@ fn clone<'i, T: Clone + 'i>(_: (), #[implementations(&ImageFrame<Color>)] value:
 	value.clone()
 }
 
+#[node_macro::node(category("Math: Vector"))]
+fn dot_product(vector_a: DVec2, vector_b: DVec2) -> f64 {
+	vector_a.dot(vector_b)
+}
+
 // TODO: Rename to "Passthrough"
 /// Passes-through the input value without changing it. This is useful for rerouting wires for organization purposes.
 #[node_macro::node(skip_impl)]
@@ -467,10 +540,42 @@ mod test {
 	use crate::{generic::*, structural::*, value::*};
 
 	#[test]
+	pub fn dot_product_function() {
+		let vector_a = glam::DVec2::new(1., 2.);
+		let vector_b = glam::DVec2::new(3., 4.);
+		assert_eq!(dot_product(vector_a, vector_b), 11.);
+	}
+
+	#[test]
+	fn test_basic_expression() {
+		let result = math((), 0., "2 + 2".to_string(), 0.);
+		assert_eq!(result, 4.);
+	}
+
+	#[test]
+	fn test_complex_expression() {
+		let result = math((), 0., "(5 * 3) + (10 / 2)".to_string(), 0.);
+		assert_eq!(result, 20.);
+	}
+
+	#[test]
+	fn test_default_expression() {
+		let result = math((), 0., "0".to_string(), 0.);
+		assert_eq!(result, 0.);
+	}
+
+	#[test]
+	fn test_invalid_expression() {
+		let result = math((), 0., "invalid".to_string(), 0.);
+		assert_eq!(result, 0.);
+	}
+
+	#[test]
 	pub fn identity_node() {
 		let value = ValueNode(4u32).then(IdentityNode::new());
 		assert_eq!(value.eval(()), &4);
 	}
+
 	#[test]
 	pub fn foo() {
 		let fnn = FnNode::new(|(a, b)| (b, a));

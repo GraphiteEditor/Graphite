@@ -53,7 +53,7 @@ pub use raster::Color;
 pub use types::Cow;
 
 // pub trait Node: for<'n> NodeIO<'n> {
-/// The node trait allows for defining any node. Nodes can only take one input, however they can store references to other nodes inside the struct.
+/// The node trait allows for defining any node. Nodes can only take one call argument input, however they can store references to other nodes inside the struct.
 /// See `node-graph/README.md` for information on how to define a new node.
 pub trait Node<'i, Input: 'i>: 'i {
 	type Output: 'i;
@@ -125,21 +125,21 @@ where
 {
 }
 
-impl<'i, 's: 'i, I: 'i, N: Node<'i, I> + ?Sized> Node<'i, I> for &'i N {
+impl<'i, I: 'i, N: Node<'i, I> + ?Sized> Node<'i, I> for &'i N {
 	type Output = N::Output;
 	fn eval(&'i self, input: I) -> N::Output {
 		(*self).eval(input)
 	}
 }
 #[cfg(feature = "alloc")]
-impl<'i, 's: 'i, I: 'i, O: 'i, N: Node<'i, I, Output = O> + ?Sized> Node<'i, I> for Box<N> {
+impl<'i, I: 'i, O: 'i, N: Node<'i, I, Output = O> + ?Sized> Node<'i, I> for Box<N> {
 	type Output = O;
 	fn eval(&'i self, input: I) -> O {
 		(**self).eval(input)
 	}
 }
 #[cfg(feature = "alloc")]
-impl<'i, 's: 'i, I: 'i, O: 'i, N: Node<'i, I, Output = O> + ?Sized> Node<'i, I> for alloc::sync::Arc<N> {
+impl<'i, I: 'i, O: 'i, N: Node<'i, I, Output = O> + ?Sized> Node<'i, I> for alloc::sync::Arc<N> {
 	type Output = O;
 	fn eval(&'i self, input: I) -> O {
 		(**self).eval(input)
