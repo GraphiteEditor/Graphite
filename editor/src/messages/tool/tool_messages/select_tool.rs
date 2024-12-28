@@ -1023,7 +1023,7 @@ impl Fsm for SelectToolFsmState {
 						let parent_selected: HashSet<_> = new_selected
 							.into_iter()
 							.map(|layer| {
-								// Find the  parent node
+								// Find the parent node
 								layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(layer)
 							})
 							.collect();
@@ -1160,7 +1160,8 @@ impl Fsm for SelectToolFsmState {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Control, Key::Shift], "Remove from Selection").add_mac_keys([Key::Command, Key::Shift])]),
-					// TODO: Re-select deselected layers during drag when Shift is pressed, and re-deselect if Shift is released before drag ends.(https://discord.com/channels/731730685944922173/1216976541947531264/1321360311298818048)
+					// TODO: Re-select deselected layers during drag when Shift is pressed, and re-deselect if Shift is released before drag ends.
+					// TODO: (See https://discord.com/channels/731730685944922173/1216976541947531264/1321360311298818048)
 					// HintGroup(vec![HintInfo::keys([Key::Shift], "Extend Selection")])
 				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
