@@ -290,6 +290,11 @@ impl fmt::Display for Key {
 				KeyboardPlatformLayout::Standard => "Ctrl",
 				KeyboardPlatformLayout::Mac => "⌘",
 			},
+			Self::MouseLeft => "LMB",
+			Self::MouseRight => "RMB",
+			Self::MouseMiddle => "MMB",
+			Self::MouseBack => "Mouse Back",
+			Self::MouseForward => "Mouse Fwd",
 
 			_ => key_name.as_str(),
 		};
