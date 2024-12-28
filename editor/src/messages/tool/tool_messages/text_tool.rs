@@ -310,7 +310,23 @@ impl TextToolData {
 		responses: &mut VecDeque<Message>,
 	) -> TextToolFsmState {
 		// Check if the user has selected an existing text layer
-		if let Some(clicked_text_layer_path) = document.click(input).filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text")) {
+		if let Some(clicked_text_layer_path) = document
+			.metadata()
+			.all_layers()
+			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text"))
+			.find(|&layer| {
+				let (text, font, font_size, line_height_ratio, character_spacing) =
+					graph_modification_utils::get_text(layer, &document.network_interface).expect("Text layer should have text when interacting with the Text tool in `interact()`");
+
+				let buzz_face = font_cache.get(font).map(|data| load_face(data));
+				let far = graphene_core::text::bounding_box(text, buzz_face, font_size, line_height_ratio, character_spacing, None);
+				let quad = Quad::from_box([DVec2::ZERO, far]);
+				let transformed_quad = document.metadata().transform_to_viewport(layer) * quad;
+
+				let mouse = DVec2::new(input.mouse.position.x, input.mouse.position.y);
+
+				transformed_quad.contains(mouse)
+			}) {
 			self.start_editing_layer(clicked_text_layer_path, state, document, font_cache, responses);
 
 			TextToolFsmState::Editing
