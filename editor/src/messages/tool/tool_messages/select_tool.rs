@@ -72,7 +72,7 @@ pub enum SelectToolMessage {
 
 	// Tool-specific messages
 	DragStart { extend_selection: Key, select_deepest: Key },
-	DragStop { remove_from_selection: Key },
+	DragStop { remove_from_selection: Key, negative_box_selection: Key },
 	EditLayer,
 	Enter,
 	PointerMove(SelectToolPointerKeys),
@@ -902,7 +902,7 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
-			(SelectToolFsmState::Dragging, SelectToolMessage::DragStop { remove_from_selection }) => {
+			(SelectToolFsmState::Dragging, SelectToolMessage::DragStop { remove_from_selection, .. }) => {
 				// Deselect layer if not snap dragging
 				responses.add(DocumentMessage::EndTransaction);
 
@@ -1001,20 +1001,34 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
-			(SelectToolFsmState::DrawingBox { .. }, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
+			(
+				SelectToolFsmState::DrawingBox { .. },
+				SelectToolMessage::DragStop {
+					remove_from_selection,
+					negative_box_selection,
+				},
+			) => {
 				let quad = tool_data.selection_quad();
 				let new_selected: HashSet<_> = document.intersect_quad_no_artboards(quad, input).collect();
 				let current_selected: HashSet<_> = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
 				if new_selected != current_selected {
-					let parent_selected: HashSet<_> = new_selected
-						.into_iter()
-						.map(|layer| {
-							// Find the parent node
-							layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(layer)
-						})
-						.collect();
-
-					tool_data.layers_dragging.extend(parent_selected.iter().copied());
+					// Negative selection when both Shift and Ctrl are pressed
+					if input.keyboard.key(remove_from_selection) && input.keyboard.key(negative_box_selection) {
+						let updated_selection = current_selected
+							.into_iter()
+							.filter(|layer| !new_selected.iter().any(|selected| layer.starts_with(*selected, document.metadata())))
+							.collect();
+						tool_data.layers_dragging = updated_selection;
+					} else {
+						let parent_selected: HashSet<_> = new_selected
+							.into_iter()
+							.map(|layer| {
+								// Find the parent node
+								layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(layer)
+							})
+							.collect();
+						tool_data.layers_dragging.extend(parent_selected.iter().copied());
+					}
 					responses.add(NodeGraphMessage::SelectedNodesSet {
 						nodes: tool_data
 							.layers_dragging
@@ -1143,9 +1157,13 @@ impl Fsm for SelectToolFsmState {
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
 			SelectToolFsmState::DrawingBox { .. } => {
-				// TODO: Add hint and implement functionality for holding Shift to extend the selection, thus preventing the prior selection from being cleared
-				// TODO: Also fix the current functionality so canceling the box select doesn't clear the prior selection
-				let hint_data = HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]);
+				let hint_data = HintData(vec![
+					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+					HintGroup(vec![HintInfo::keys([Key::Control, Key::Shift], "Remove from Selection").add_mac_keys([Key::Command, Key::Shift])]),
+					// TODO: Re-select deselected layers during drag when Shift is pressed, and re-deselect if Shift is released before drag ends.
+					// TODO: (See https://discord.com/channels/731730685944922173/1216976541947531264/1321360311298818048)
+					// HintGroup(vec![HintInfo::keys([Key::Shift], "Extend Selection")])
+				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
 			_ => {}
