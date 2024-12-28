@@ -44,6 +44,8 @@ pub struct FrontendGraphInput {
 	pub name: String,
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: Option<String>,
+	#[serde(rename = "validTypes")]
+	pub valid_types: Vec<String>,
 	#[serde(rename = "connectedTo")]
 	pub connected_to: Option<OutputConnector>,
 }
@@ -180,6 +182,8 @@ pub struct FrontendClickTargets {
 	pub all_nodes_bounding_box: String,
 	#[serde(rename = "importExportsBoundingBox")]
 	pub import_exports_bounding_box: String,
+	#[serde(rename = "modifyImportExport")]
+	pub modify_import_export: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]

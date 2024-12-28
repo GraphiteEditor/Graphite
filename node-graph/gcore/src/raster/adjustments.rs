@@ -1185,7 +1185,7 @@ impl DomainWarpType {
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27mixr%27%20%3D%20Channel%20Mixer
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Lab%20color%20only-,Channel%20Mixer,-Key%20is%20%27mixr
-#[node_macro::node(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"), properties("channel_mixer_properties"))]
 async fn channel_mixer<F: 'n + Send, T: Adjust<Color>>(
 	#[implementations(
 		(),
@@ -1555,7 +1555,7 @@ async fn posterize<F: 'n + Send, T: Adjust<Color>>(
 //
 // Algorithm based on:
 // https://geraldbakker.nl/psnumbers/exposure.html
-#[node_macro::node(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"), properties("exposure_properties"))]
 async fn exposure<F: 'n + Send, T: Adjust<Color>>(
 	#[implementations(
 		(),
@@ -1683,7 +1683,13 @@ mod index_node {
 	use crate::raster::{Color, ImageFrame};
 
 	#[node_macro::node(category(""))]
-	pub fn index<T: Default + Clone>(_: (), #[implementations(Vec<ImageFrame<Color>>, Vec<Color>)] input: Vec<T>, index: u32) -> T {
+	pub fn index<T: Default + Clone>(
+		_: (),
+		#[implementations(Vec<ImageFrame<Color>>, Vec<Color>)]
+		#[widget(ParsedWidgetOverride::Hidden)]
+		input: Vec<T>,
+		index: u32,
+	) -> T {
 		if (index as usize) < input.len() {
 			input[index as usize].clone()
 		} else {
