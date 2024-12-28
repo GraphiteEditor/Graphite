@@ -4,21 +4,6 @@ use crate::messages::tool::tool_messages::tool_prelude::*;
 
 use graphene_std::renderer::Rect;
 
-struct LabelAlignment {
-	is_vertical_line: bool,
-	text_on_left: bool,
-	text_on_top: bool,
-}
-impl LabelAlignment {
-	fn new(is_vertical_line: bool, text_on_left: bool, text_on_top: bool) -> Self {
-		Self {
-			is_vertical_line,
-			text_on_left,
-			text_on_top,
-		}
-	}
-}
-
 /// Draws a dashed line between two points transformed by the given affine transformation.
 fn draw_dashed_line(line_start: DVec2, line_end: DVec2, transform: DAffine2, overlay_context: &mut OverlayContext) {
 	let min_viewport = transform.transform_point2(line_start);
@@ -81,14 +66,8 @@ fn draw_zero_axis_crossings(selected_bounds: Rect, hovered_bounds: Rect, transfo
 	// Draw horizontal solid line with length
 	let line_start = DVec2::new(selected_x, selected_y);
 	let line_end = DVec2::new(hovered_x, selected_y);
-	draw_line_with_length(
-		line_start,
-		line_end,
-		transform,
-		document_to_viewport,
-		overlay_context,
-		LabelAlignment::new(false, false, !selected_on_bottom),
-	);
+	let label_alignment = LabelAlignment::new(false, false, !selected_on_bottom);
+	draw_line_with_length(line_start, line_end, transform, document_to_viewport, overlay_context, label_alignment);
 
 	// Draw horizontal dashed line
 	let line_start = DVec2::new(selected_x, hovered_y);
@@ -98,14 +77,8 @@ fn draw_zero_axis_crossings(selected_bounds: Rect, hovered_bounds: Rect, transfo
 	// Draw vertical solid line with length
 	let line_start = DVec2::new(selected_x, selected_y);
 	let line_end = DVec2::new(selected_x, hovered_y);
-	draw_line_with_length(
-		line_start,
-		line_end,
-		transform,
-		document_to_viewport,
-		overlay_context,
-		LabelAlignment::new(true, !selected_on_right, false),
-	);
+	let label_alignment = LabelAlignment::new(true, !selected_on_right, false);
+	draw_line_with_length(line_start, line_end, transform, document_to_viewport, overlay_context, label_alignment);
 
 	// Draw vertical dashed line
 	let line_start = DVec2::new(hovered_x, selected_y);
@@ -132,26 +105,14 @@ fn draw_single_axis_zero_crossings(selected_bounds: Rect, hovered_bounds: Rect, 
 		// Draw horizontal solid line with length
 		let line_start = DVec2::new(f64::min(hovered_max.x, selected_max.x), selected_facing_edge);
 		let line_end = DVec2::new(f64::max(hovered_min.x, selected_min.x), selected_facing_edge);
-		draw_line_with_length(
-			line_start,
-			line_end,
-			transform,
-			document_to_viewport,
-			overlay_context,
-			LabelAlignment::new(false, false, selected_on_bottom),
-		);
+		let label_alignment = LabelAlignment::new(false, false, selected_on_bottom);
+		draw_line_with_length(line_start, line_end, transform, document_to_viewport, overlay_context, label_alignment);
 
 		// Draw vertical solid line with length
 		let line_start = DVec2::new(vertical_line_start_x, selected_facing_edge);
 		let line_end = DVec2::new(vertical_line_start_x, hovered_facing_edge);
-		draw_line_with_length(
-			line_start,
-			line_end,
-			transform,
-			document_to_viewport,
-			overlay_context,
-			LabelAlignment::new(true, !selected_on_right, false),
-		);
+		let label_alignment = LabelAlignment::new(true, !selected_on_right, false);
+		draw_line_with_length(line_start, line_end, transform, document_to_viewport, overlay_context, label_alignment);
 
 		// Draw vertical dashed line
 		let dashed_line_start = DVec2::new(dashed_vertical_line_start_x, selected_facing_edge);
@@ -166,26 +127,14 @@ fn draw_single_axis_zero_crossings(selected_bounds: Rect, hovered_bounds: Rect, 
 		// Draw vertical solid line with length
 		let line_start = DVec2::new(selected_facing_edge, f64::min(hovered_max.y, selected_max.y));
 		let line_end = DVec2::new(selected_facing_edge, f64::max(hovered_min.y, selected_min.y));
-		draw_line_with_length(
-			line_start,
-			line_end,
-			transform,
-			document_to_viewport,
-			overlay_context,
-			LabelAlignment::new(true, selected_on_right, false),
-		);
+		let label_alignment = LabelAlignment::new(true, selected_on_right, false);
+		draw_line_with_length(line_start, line_end, transform, document_to_viewport, overlay_context, label_alignment);
 
 		// Draw horizontal solid line with length
 		let line_start = DVec2::new(selected_facing_edge, horizontal_line_start_y);
 		let line_end = DVec2::new(hovered_facing_edge, horizontal_line_start_y);
-		draw_line_with_length(
-			line_start,
-			line_end,
-			transform,
-			document_to_viewport,
-			overlay_context,
-			LabelAlignment::new(false, false, !selected_on_bottom),
-		);
+		let label_alignment = LabelAlignment::new(false, false, !selected_on_bottom);
+		draw_line_with_length(line_start, line_end, transform, document_to_viewport, overlay_context, label_alignment);
 
 		// Draw horizontal dashed line
 		let dashed_line_start = DVec2::new(selected_facing_edge, dashed_horizontal_line_start_y);
@@ -217,7 +166,8 @@ fn draw_single_axis_one_crossings(selected_bounds: Rect, hovered_bounds: Rect, t
 		// Draw vertical solid line with length
 		let line_start = DVec2::new(vertical_line_start, selected_facing_edge);
 		let line_end = DVec2::new(vertical_line_start, hovered_facing_edge);
-		draw_line_with_length(line_start, line_end, transform, document_to_viewport, overlay_context, LabelAlignment::new(true, true, false));
+		let label_alignment = LabelAlignment::new(true, true, false);
+		draw_line_with_length(line_start, line_end, transform, document_to_viewport, overlay_context, label_alignment);
 	} else if overlap_x {
 		let selected_facing_edge = if hovered_max.x < selected_min.x { selected_min.x } else { selected_max.x };
 		let hovered_facing_edge = if hovered_max.x < selected_min.x { hovered_max.x } else { hovered_min.x };
@@ -230,7 +180,8 @@ fn draw_single_axis_one_crossings(selected_bounds: Rect, hovered_bounds: Rect, t
 		// Draw horizontal solid line with length
 		let line_start = DVec2::new(selected_facing_edge, horizontal_line_start_y);
 		let line_end = DVec2::new(hovered_facing_edge, horizontal_line_start_y);
-		draw_line_with_length(line_start, line_end, transform, document_to_viewport, overlay_context, LabelAlignment::new(false, false, true));
+		let label_alignment = LabelAlignment::new(false, false, true);
+		draw_line_with_length(line_start, line_end, transform, document_to_viewport, overlay_context, label_alignment);
 	}
 }
 
@@ -255,20 +206,24 @@ fn draw_two_axis_one_one_crossing(selected_bounds: Rect, hovered_bounds: Rect, t
 	// Draw horizontal solid lines with length
 	let top_x_start = DVec2::new(f64::min(selected_max.x, hovered_max.x), top_y_bound);
 	let top_x_end = DVec2::new(f64::max(selected_max.x, hovered_max.x), top_y_bound);
-	draw_line_with_length(top_x_start, top_x_end, transform, document_to_viewport, overlay_context, LabelAlignment::new(false, false, true));
+	let label_alignment = LabelAlignment::new(false, false, true);
+	draw_line_with_length(top_x_start, top_x_end, transform, document_to_viewport, overlay_context, label_alignment);
 
 	let bottom_x_start = DVec2::new(f64::min(selected_min.x, hovered_min.x), bottom_y_bound);
 	let bottom_x_end = DVec2::new(f64::max(selected_min.x, hovered_min.x), bottom_y_bound);
-	draw_line_with_length(bottom_x_start, bottom_x_end, transform, document_to_viewport, overlay_context, LabelAlignment::new(false, false, false));
+	let label_alignment = LabelAlignment::new(false, false, false);
+	draw_line_with_length(bottom_x_start, bottom_x_end, transform, document_to_viewport, overlay_context, label_alignment);
 
 	// Draw vertical solid lines with length
 	let top_y_start = DVec2::new(top_x_bound, f64::min(selected_min.y, hovered_min.y));
 	let top_y_end = DVec2::new(top_x_bound, f64::max(selected_min.y, hovered_min.y));
-	draw_line_with_length(top_y_start, top_y_end, transform, document_to_viewport, overlay_context, LabelAlignment::new(true, false, false));
+	let label_alignment = LabelAlignment::new(true, false, false);
+	draw_line_with_length(top_y_start, top_y_end, transform, document_to_viewport, overlay_context, label_alignment);
 
 	let bottom_y_start = DVec2::new(bottom_x_bound, f64::min(selected_max.y, hovered_max.y));
 	let bottom_y_end = DVec2::new(bottom_x_bound, f64::max(selected_max.y, hovered_max.y));
-	draw_line_with_length(bottom_y_start, bottom_y_end, transform, document_to_viewport, overlay_context, LabelAlignment::new(true, true, false));
+	let label_alignment = LabelAlignment::new(true, true, false);
+	draw_line_with_length(bottom_y_start, bottom_y_end, transform, document_to_viewport, overlay_context, label_alignment);
 }
 
 /// Draws measurements for partial overlaps with two vertical or horizontal edge intersections.
@@ -294,11 +249,13 @@ fn draw_two_axis_one_one_two_zero_crossing(
 		// Draw vertical solid lines with length
 		let y_start_left = DVec2::new(hovered_min.x, f64::min(selected_bound_edge, hovered_bound_edge));
 		let y_end_left = DVec2::new(hovered_min.x, f64::max(selected_bound_edge, hovered_bound_edge));
-		draw_line_with_length(y_start_left, y_end_left, transform, document_to_viewport, overlay_context, LabelAlignment::new(true, true, false));
+		let label_alignment = LabelAlignment::new(true, true, false);
+		draw_line_with_length(y_start_left, y_end_left, transform, document_to_viewport, overlay_context, label_alignment);
 
 		let y_start_right = DVec2::new(hovered_max.x, f64::min(selected_bound_edge, hovered_bound_edge));
 		let y_end_right = DVec2::new(hovered_max.x, f64::max(selected_bound_edge, hovered_bound_edge));
-		draw_line_with_length(y_start_right, y_end_right, transform, document_to_viewport, overlay_context, LabelAlignment::new(true, false, false));
+		let label_alignment = LabelAlignment::new(true, false, false);
+		draw_line_with_length(y_start_right, y_end_right, transform, document_to_viewport, overlay_context, label_alignment);
 
 		// Draw horizontal solid lines with length
 		let horizontal_line_y_bound = if selected_bounds.center().y >= hovered_bounds.center().y {
@@ -309,11 +266,13 @@ fn draw_two_axis_one_one_two_zero_crossing(
 
 		let x_start_left = DVec2::new(hovered_min.x, horizontal_line_y_bound);
 		let x_end_left = DVec2::new(selected_min.x, horizontal_line_y_bound);
-		draw_line_with_length(x_start_left, x_end_left, transform, document_to_viewport, overlay_context, LabelAlignment::new(false, false, false));
+		let label_alignment = LabelAlignment::new(false, false, false);
+		draw_line_with_length(x_start_left, x_end_left, transform, document_to_viewport, overlay_context, label_alignment);
 
 		let x_start_right = DVec2::new(hovered_max.x, horizontal_line_y_bound);
 		let x_end_right = DVec2::new(selected_max.x, horizontal_line_y_bound);
-		draw_line_with_length(x_start_right, x_end_right, transform, document_to_viewport, overlay_context, LabelAlignment::new(false, false, false));
+		let label_alignment = LabelAlignment::new(false, false, false);
+		draw_line_with_length(x_start_right, x_end_right, transform, document_to_viewport, overlay_context, label_alignment);
 	} else {
 		let selected_bound_edge = if selected_bounds.center().x >= hovered_bounds.center().x {
 			selected_max.x
@@ -332,11 +291,13 @@ fn draw_two_axis_one_one_two_zero_crossing(
 		// Draw vertical solid lines with length
 		let y_start_up = DVec2::new(vertical_line_x, selected_min.y);
 		let y_end_up = DVec2::new(vertical_line_x, hovered_min.y);
-		draw_line_with_length(y_start_up, y_end_up, transform, document_to_viewport, overlay_context, LabelAlignment::new(true, false, false));
+		let label_alignment = LabelAlignment::new(true, false, false);
+		draw_line_with_length(y_start_up, y_end_up, transform, document_to_viewport, overlay_context, label_alignment);
 
 		let y_start_down = DVec2::new(vertical_line_x, selected_max.y);
 		let y_end_down = DVec2::new(vertical_line_x, hovered_max.y);
-		draw_line_with_length(y_start_down, y_end_down, transform, document_to_viewport, overlay_context, LabelAlignment::new(true, false, false));
+		let label_alignment = LabelAlignment::new(true, false, false);
+		draw_line_with_length(y_start_down, y_end_down, transform, document_to_viewport, overlay_context, label_alignment);
 
 		// Draw horizontal solid lines with length
 		let horizontal_line_inner_x = if selected_bounds.center().x >= hovered_bounds.center().x {
@@ -346,11 +307,13 @@ fn draw_two_axis_one_one_two_zero_crossing(
 		};
 		let x_start_up = DVec2::new(vertical_line_x, f64::min(selected_min.y, hovered_min.y));
 		let x_end_up = DVec2::new(horizontal_line_inner_x, f64::min(selected_min.y, hovered_min.y));
-		draw_line_with_length(x_start_up, x_end_up, transform, document_to_viewport, overlay_context, LabelAlignment::new(false, false, true));
+		let label_alignment = LabelAlignment::new(false, false, true);
+		draw_line_with_length(x_start_up, x_end_up, transform, document_to_viewport, overlay_context, label_alignment);
 
 		let x_start_down = DVec2::new(vertical_line_x, f64::max(selected_max.y, hovered_max.y));
 		let x_end_down = DVec2::new(horizontal_line_inner_x, f64::max(selected_max.y, hovered_max.y));
-		draw_line_with_length(x_start_down, x_end_down, transform, document_to_viewport, overlay_context, LabelAlignment::new(false, false, false));
+		let label_alignment = LabelAlignment::new(false, false, false);
+		draw_line_with_length(x_start_down, x_end_down, transform, document_to_viewport, overlay_context, label_alignment);
 	}
 }
 
@@ -362,100 +325,46 @@ fn draw_two_axis_two_zero_zero_two(selected_bounds: Rect, hovered_bounds: Rect, 
 	// Draw vertical solid lines with length
 	let y_start_left_top = DVec2::new(f64::min(hovered_min.x, selected_min.x), f64::min(hovered_min.y, selected_min.y));
 	let y_end_left_top = DVec2::new(f64::min(hovered_min.x, selected_min.x), f64::max(hovered_min.y, selected_min.y));
-	draw_line_with_length(
-		y_start_left_top,
-		y_end_left_top,
-		transform,
-		document_to_viewport,
-		overlay_context,
-		LabelAlignment::new(true, true, false),
-	);
-	draw_line_with_length(
-		y_start_left_top,
-		y_end_left_top,
-		transform,
-		document_to_viewport,
-		overlay_context,
-		LabelAlignment::new(true, true, false),
-	);
+	let label_alignment = LabelAlignment::new(true, true, false);
+	draw_line_with_length(y_start_left_top, y_end_left_top, transform, document_to_viewport, overlay_context, label_alignment);
+	let label_alignment = LabelAlignment::new(true, true, false);
+	draw_line_with_length(y_start_left_top, y_end_left_top, transform, document_to_viewport, overlay_context, label_alignment);
 
 	let y_start_left_bottom = DVec2::new(f64::min(hovered_min.x, selected_min.x), f64::min(hovered_max.y, selected_max.y));
 	let y_end_left_bottom = DVec2::new(f64::min(hovered_min.x, selected_min.x), f64::max(hovered_max.y, selected_max.y));
-	draw_line_with_length(
-		y_start_left_bottom,
-		y_end_left_bottom,
-		transform,
-		document_to_viewport,
-		overlay_context,
-		LabelAlignment::new(true, true, false),
-	);
+	let label_alignment = LabelAlignment::new(true, true, false);
+	draw_line_with_length(y_start_left_bottom, y_end_left_bottom, transform, document_to_viewport, overlay_context, label_alignment);
 
 	let y_start_right_top = DVec2::new(f64::max(hovered_max.x, selected_max.x), f64::min(hovered_min.y, selected_min.y));
 	let y_end_right_top = DVec2::new(f64::max(hovered_max.x, selected_max.x), f64::max(hovered_min.y, selected_min.y));
-	draw_line_with_length(
-		y_start_right_top,
-		y_end_right_top,
-		transform,
-		document_to_viewport,
-		overlay_context,
-		LabelAlignment::new(true, false, false),
-	);
+	let label_alignment = LabelAlignment::new(true, false, false);
+	draw_line_with_length(y_start_right_top, y_end_right_top, transform, document_to_viewport, overlay_context, label_alignment);
 
 	let y_start_right_bottom = DVec2::new(f64::max(hovered_max.x, selected_max.x), f64::min(hovered_max.y, selected_max.y));
 	let y_end_right_bottom = DVec2::new(f64::max(hovered_max.x, selected_max.x), f64::max(hovered_max.y, selected_max.y));
-	draw_line_with_length(
-		y_start_right_bottom,
-		y_end_right_bottom,
-		transform,
-		document_to_viewport,
-		overlay_context,
-		LabelAlignment::new(true, false, false),
-	);
+	let label_alignment = LabelAlignment::new(true, false, false);
+	draw_line_with_length(y_start_right_bottom, y_end_right_bottom, transform, document_to_viewport, overlay_context, label_alignment);
 
 	// Draw horizontal solid lines with length
 	let x_start_left_top = DVec2::new(f64::min(hovered_min.x, selected_min.x), f64::min(hovered_min.y, selected_min.y));
 	let x_end_left_top = DVec2::new(f64::max(hovered_min.x, selected_min.x), f64::min(hovered_min.y, selected_min.y));
-	draw_line_with_length(
-		x_start_left_top,
-		x_end_left_top,
-		transform,
-		document_to_viewport,
-		overlay_context,
-		LabelAlignment::new(false, false, true),
-	);
+	let label_alignment = LabelAlignment::new(false, false, true);
+	draw_line_with_length(x_start_left_top, x_end_left_top, transform, document_to_viewport, overlay_context, label_alignment);
 
 	let x_start_right_top = DVec2::new(f64::min(hovered_max.x, selected_max.x), f64::min(hovered_min.y, selected_min.y));
 	let x_end_right_top = DVec2::new(f64::max(hovered_max.x, selected_max.x), f64::min(hovered_min.y, selected_min.y));
-	draw_line_with_length(
-		x_start_right_top,
-		x_end_right_top,
-		transform,
-		document_to_viewport,
-		overlay_context,
-		LabelAlignment::new(false, false, true),
-	);
+	let label_alignment = LabelAlignment::new(false, false, true);
+	draw_line_with_length(x_start_right_top, x_end_right_top, transform, document_to_viewport, overlay_context, label_alignment);
 
 	let x_start_left_bottom = DVec2::new(f64::min(hovered_min.x, selected_min.x), f64::max(hovered_max.y, selected_max.y));
 	let x_end_left_bottom = DVec2::new(f64::max(hovered_min.x, selected_min.x), f64::max(hovered_max.y, selected_max.y));
-	draw_line_with_length(
-		x_start_left_bottom,
-		x_end_left_bottom,
-		transform,
-		document_to_viewport,
-		overlay_context,
-		LabelAlignment::new(false, false, false),
-	);
+	let label_alignment = LabelAlignment::new(false, false, false);
+	draw_line_with_length(x_start_left_bottom, x_end_left_bottom, transform, document_to_viewport, overlay_context, label_alignment);
 
 	let x_start_right_bottom = DVec2::new(f64::min(hovered_max.x, selected_max.x), f64::max(hovered_max.y, selected_max.y));
 	let x_end_right_bottom = DVec2::new(f64::max(hovered_max.x, selected_max.x), f64::max(hovered_max.y, selected_max.y));
-	draw_line_with_length(
-		x_start_right_bottom,
-		x_end_right_bottom,
-		transform,
-		document_to_viewport,
-		overlay_context,
-		LabelAlignment::new(false, false, false),
-	);
+	let label_alignment = LabelAlignment::new(false, false, false);
+	draw_line_with_length(x_start_right_bottom, x_end_right_bottom, transform, document_to_viewport, overlay_context, label_alignment);
 }
 
 /// Draws measurements where selected and hovered bounds have two vertical edges crossing each other.
@@ -466,20 +375,24 @@ fn draw_two_axis_two_zero_two_zero(selected_bounds: Rect, hovered_bounds: Rect, 
 	// Draw horizontal solid lines with length
 	let x_start_left = DVec2::new(f64::max(hovered_min.x, selected_min.x), selected_bounds.center().y);
 	let x_end_left = DVec2::new(f64::min(hovered_min.x, selected_min.x), selected_bounds.center().y);
-	draw_line_with_length(x_start_left, x_end_left, transform, document_to_viewport, overlay_context, LabelAlignment::new(false, false, true));
+	let label_alignment = LabelAlignment::new(false, false, true);
+	draw_line_with_length(x_start_left, x_end_left, transform, document_to_viewport, overlay_context, label_alignment);
 
 	let x_start_right = DVec2::new(f64::min(hovered_max.x, selected_max.x), selected_bounds.center().y);
 	let x_end_right = DVec2::new(f64::max(hovered_max.x, selected_max.x), selected_bounds.center().y);
-	draw_line_with_length(x_start_right, x_end_right, transform, document_to_viewport, overlay_context, LabelAlignment::new(false, false, true));
+	let label_alignment = LabelAlignment::new(false, false, true);
+	draw_line_with_length(x_start_right, x_end_right, transform, document_to_viewport, overlay_context, label_alignment);
 
 	// Draw vertical solid lines with length
 	let y_start_top = DVec2::new(selected_bounds.center().x, f64::max(hovered_min.y, selected_min.y));
 	let y_end_top = DVec2::new(selected_bounds.center().x, f64::min(hovered_min.y, selected_min.y));
-	draw_line_with_length(y_start_top, y_end_top, transform, document_to_viewport, overlay_context, LabelAlignment::new(true, false, false));
+	let label_alignment = LabelAlignment::new(true, false, false);
+	draw_line_with_length(y_start_top, y_end_top, transform, document_to_viewport, overlay_context, label_alignment);
 
 	let y_start_bottom = DVec2::new(selected_bounds.center().x, f64::min(hovered_max.y, selected_max.y));
 	let y_end_bottom = DVec2::new(selected_bounds.center().x, f64::max(hovered_max.y, selected_max.y));
-	draw_line_with_length(y_start_bottom, y_end_bottom, transform, document_to_viewport, overlay_context, LabelAlignment::new(true, false, false));
+	let label_alignment = LabelAlignment::new(true, false, false);
+	draw_line_with_length(y_start_bottom, y_end_bottom, transform, document_to_viewport, overlay_context, label_alignment);
 }
 
 /// Handles overlapping scenarios involving two axes between selected and hovered bounds.
@@ -542,5 +455,21 @@ pub fn overlay(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2,
 		(1, 1) | (1, 2) => draw_single_axis_one_crossings(selected_bounds, hovered_bounds, transform, document_to_viewport, overlay_context),
 		(2, _) => handle_two_axis_overlap(selected_bounds, hovered_bounds, transform, document_to_viewport, overlay_context),
 		_ => (), // Fallback case, should not typically happen
+	}
+}
+
+struct LabelAlignment {
+	is_vertical_line: bool,
+	text_on_left: bool,
+	text_on_top: bool,
+}
+
+impl LabelAlignment {
+	fn new(is_vertical_line: bool, text_on_left: bool, text_on_top: bool) -> Self {
+		Self {
+			is_vertical_line,
+			text_on_left,
+			text_on_top,
+		}
 	}
 }
