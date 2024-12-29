@@ -1,4 +1,5 @@
 use super::tool_prelude::*;
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -134,7 +135,24 @@ impl ArtboardToolData {
 
 		Some(edges)
 	}
-
+	pub fn get_child_layers_of_selected_artboard(&self, document: &DocumentMessageHandler) -> Vec<LayerNodeIdentifier> {
+		let Some(artboard_id) = self.selected_artboard else {
+			return Vec::new();
+		};
+		let structure = document.metadata().structure.clone();
+		let child_layers = structure
+			.iter()
+			.filter_map(|(layer_id, node_relations)| {
+				if let Some(parent_id) = node_relations.parent {
+					if parent_id == artboard_id {
+						return Some(*layer_id);
+					}
+				}
+				None
+			})
+			.collect::<Vec<LayerNodeIdentifier>>();
+		child_layers
+	}
 	fn start_resizing(&mut self, _selected_edges: (bool, bool, bool, bool), _document: &DocumentMessageHandler, _input: &InputPreprocessorMessageHandler) {
 		if let Some(bounds) = &mut self.bounding_box_manager {
 			bounds.center_of_transformation = bounds.transform.transform_point2((bounds.bounds[0] + bounds.bounds[1]) / 2.);
@@ -197,6 +215,39 @@ impl ArtboardToolData {
 			dimensions: size.round().as_ivec2(),
 		});
 
+		let top_edge_resized = bounds.selected_edges.as_ref().map_or(false, |edges| edges.top);
+		let left_edge_resized = bounds.selected_edges.as_ref().map_or(false, |edges| edges.left);
+		let original_left_edge_x = bounds.bounds[0].x;
+		let original_top_edge_y = bounds.bounds[0].y;
+
+		let translation_x = if left_edge_resized {
+			let delta_x = min.x.round() - original_left_edge_x.round();
+			delta_x
+		} else {
+			0.0
+		};
+
+		let translation_y = if top_edge_resized {
+			let deltay_y = min.y.round() - original_top_edge_y.round();
+			deltay_y
+		} else {
+			0.0
+		};
+
+		let translation = DVec2::new(translation_x, translation_y);
+		let reverse_translation = DVec2::new(
+			if left_edge_resized { -translation.x } else { translation.x },
+			if top_edge_resized { -translation.y } else { translation.y },
+		);
+		let child_layers = self.get_child_layers_of_selected_artboard(document);
+		for layer in child_layers {
+			responses.add(GraphOperationMessage::TransformChange {
+				layer,
+				transform: DAffine2::from_translation((reverse_translation).into()),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			});
+		}
 		// TODO: Resize artboard children when resizing left/top edges so that they stay in the same viewport space
 		// let old_top_left = bounds.bounds[0].round().as_ivec2();
 		// let new_top_left = position.round().as_ivec2();
