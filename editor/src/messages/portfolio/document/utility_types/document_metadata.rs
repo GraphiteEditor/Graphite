@@ -460,7 +460,7 @@ impl DoubleEndedIterator for DescendantsIter<'_> {
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct NodeRelations {
-	pub parent: Option<LayerNodeIdentifier>,
+	parent: Option<LayerNodeIdentifier>,
 	previous_sibling: Option<LayerNodeIdentifier>,
 	next_sibling: Option<LayerNodeIdentifier>,
 	first_child: Option<LayerNodeIdentifier>,
