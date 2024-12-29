@@ -360,11 +360,9 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	/// The intersections of segments of the subpath are joined using the method specified by the `join` argument.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/libraries/bezier-rs#subpath/offset/solo" title="Offset Demo"></iframe>
 	pub fn offset(&self, distance: f64, join: Join) -> Subpath<PointId> {
-		assert!(self.len_segments() > 1, "Cannot offset an empty Subpath.");
-
 		// An offset at a distance 0 from the curve is simply the same curve
 		// An offset of a single point is not defined
-		if distance == 0. || self.len() == 1 {
+		if distance == 0. || self.len() <= 1 || self.len_segments() < 1 {
 			return self.clone();
 		}
 

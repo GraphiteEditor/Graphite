@@ -397,7 +397,6 @@ impl PathToolData {
 			}
 			self.drag_start_pos = input.mouse.position;
 			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
-			shape_editor.select_connected_anchors(document, layer, input.mouse.position);
 
 			responses.add(DocumentMessage::StartTransaction);
 
@@ -566,6 +565,7 @@ impl Fsm for PathToolFsmState {
 			) => {
 				let extend_selection = input.keyboard.get(extend_selection as usize);
 				let direct_insert_without_sliding = input.keyboard.get(direct_insert_without_sliding as usize);
+
 				tool_data.mouse_down(shape_editor, document, input, responses, extend_selection, direct_insert_without_sliding)
 			}
 			(
@@ -606,6 +606,12 @@ impl Fsm for PathToolFsmState {
 					move_anchor_with_handles,
 				},
 			) => {
+				if tool_data.selection_status.is_none() {
+					if let Some(layer) = document.click(input) {
+						shape_editor.select_all_anchors_in_layer(document, layer);
+					}
+				}
+
 				let anchor_and_handle_toggled = input.keyboard.get(move_anchor_with_handles as usize);
 				let initial_press = anchor_and_handle_toggled && !tool_data.select_anchor_toggled;
 				let released_from_toggle = tool_data.select_anchor_toggled && !anchor_and_handle_toggled;
@@ -749,10 +755,15 @@ impl Fsm for PathToolFsmState {
 						}
 					}
 				}
+				// Deselect all points if the user clicks the filled region of the shape
+				else if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD {
+					shape_editor.deselect_all_points();
+				}
 
 				responses.add(DocumentMessage::EndTransaction);
 				responses.add(PathToolMessage::SelectedPointUpdated);
 				tool_data.snap_manager.cleanup(responses);
+
 				PathToolFsmState::Ready
 			}
 
@@ -774,11 +785,25 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::FlipSmoothSharp) => {
-				if !tool_data.double_click_handled {
-					shape_editor.flip_smooth_sharp(&document.network_interface, input.mouse.position, SELECTION_TOLERANCE, responses);
-					responses.add(PathToolMessage::SelectedPointUpdated);
+				// Double-clicked on a point
+				let nearest_point = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD);
+				if nearest_point.is_some() {
+					// Flip the selected point between smooth and sharp
+					if !tool_data.double_click_handled && tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD {
+						shape_editor.flip_smooth_sharp(&document.network_interface, input.mouse.position, SELECTION_TOLERANCE, responses);
+						responses.add(PathToolMessage::SelectedPointUpdated);
+					}
+
+					return PathToolFsmState::Ready;
 				}
-				self
+
+				// Double-clicked on a filled region
+				if let Some(layer) = document.click(input) {
+					// Select all points in the layer
+					shape_editor.select_connected_anchors(document, layer, input.mouse.position);
+				}
+
+				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::Abort) => {
 				responses.add(OverlaysMessage::Draw);
