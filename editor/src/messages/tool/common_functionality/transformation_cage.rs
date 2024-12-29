@@ -20,11 +20,11 @@ pub struct SizeSnapData<'a> {
 /// Contains the edges that are being dragged along with the original bounds.
 #[derive(Clone, Debug, Default)]
 pub struct SelectedEdges {
-	bounds: [DVec2; 2],
-	top: bool,
-	bottom: bool,
-	left: bool,
-	right: bool,
+	pub bounds: [DVec2; 2],
+	pub top: bool,
+	pub bottom: bool,
+	pub left: bool,
+	pub right: bool,
 	// Aspect ratio in the form of width/height, so x:1 = width:height
 	aspect_ratio: f64,
 }

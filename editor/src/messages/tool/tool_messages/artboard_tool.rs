@@ -1,4 +1,5 @@
 use super::tool_prelude::*;
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -110,17 +111,36 @@ struct ArtboardToolData {
 	drag_current: DVec2,
 	auto_panning: AutoPanning,
 	snap_candidates: Vec<SnapCandidatePoint>,
+	// child_layers: Vec<LayerNodeIdentifier>,
 }
 
 impl ArtboardToolData {
 	fn get_snap_candidates(&mut self, document: &DocumentMessageHandler, _input: &InputPreprocessorMessageHandler) {
 		self.snap_candidates.clear();
-
 		let Some(layer) = self.selected_artboard else { return };
 
 		if let Some(bounds) = document.metadata().bounding_box_with_transform(layer, document.metadata().transform_to_document(layer)) {
 			snapping::get_bbox_points(Quad::from_box(bounds), &mut self.snap_candidates, snapping::BBoxSnapValues::ARTBOARD, document);
 		}
+	}
+
+	pub fn get_child_layers_of_selected_artboard(&self, document: &DocumentMessageHandler) -> Vec<LayerNodeIdentifier> {
+		let Some(artboard_id) = self.selected_artboard else {
+			return Vec::new();
+		};
+		let structure = document.metadata().structure.clone();
+		let child_layers = structure
+			.iter()
+			.filter_map(|(layer_id, node_relations)| {
+				if let Some(parent_id) = node_relations.parent {
+					if parent_id == artboard_id {
+						return Some(*layer_id);
+					}
+				}
+				None
+			})
+			.collect::<Vec<LayerNodeIdentifier>>();
+		child_layers
 	}
 
 	fn check_dragging_bounds(&mut self, cursor: DVec2) -> Option<(bool, bool, bool, bool)> {
@@ -195,19 +215,44 @@ impl ArtboardToolData {
 			location: position.round().as_ivec2(),
 			dimensions: size.round().as_ivec2(),
 		});
+		let artboard_bounds_viewport = document.metadata().bounding_box_viewport(self.selected_artboard.unwrap());
 
-		// TODO: Resize artboard children when resizing left/top edges so that they stay in the same viewport space
-		// let old_top_left = bounds.bounds[0].round().as_ivec2();
-		// let new_top_left = position.round().as_ivec2();
-		// let top_left_delta = new_top_left - old_top_left;
-		// if top_left_delta != IVec2::ZERO {
-		// 	responses.add(GraphOperationMessage::TransformChange {
-		// 		layer: self.selected_artboard.unwrap(),
-		// 		transform: DAffine2::from_translation((-top_left_delta).into()),
-		// 		transform_in: TransformIn::Local,
-		// 		skip_rerender: false,
-		// 	});
-		// }
+		let top_edge_resized = bounds.selected_edges.as_ref().map_or(false, |edges| edges.top);
+		let left_edge_resized = bounds.selected_edges.as_ref().map_or(false, |edges| edges.left);
+		let original_left_edge_x = bounds.bounds[0].x;
+		let original_top_edge_y = bounds.bounds[0].y;
+
+		let translation_x = if left_edge_resized {
+			let delta_x = min.x.round() - original_left_edge_x.round();
+			info!("mix.x :{},original_left_edge_x:{}", min.x.round(), original_left_edge_x);
+			delta_x
+		} else {
+			0.0
+		};
+
+		let translation_y = if top_edge_resized {
+			let deltay_y = min.y.round() - original_top_edge_y.round();
+			deltay_y
+		} else {
+			0.0
+		};
+
+		let translation = DVec2::new(translation_x, translation_y);
+		let reverse_translation = DVec2::new(
+			if left_edge_resized { -translation.x } else { translation.x },
+			if top_edge_resized { -translation.y } else { translation.y },
+		);
+		info!("Translation: {:?}, Reverse Translation: {:?}", translation, reverse_translation);
+
+		let child_layers = self.get_child_layers_of_selected_artboard(document);
+		for layer in child_layers {
+			responses.add(GraphOperationMessage::TransformChange {
+				layer,
+				transform: DAffine2::from_translation((reverse_translation).into()),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			});
+		}
 	}
 }
 
