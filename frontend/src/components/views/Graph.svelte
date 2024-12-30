@@ -330,7 +330,7 @@
 	}
 
 	function validTypesText(value: FrontendGraphInput): string {
-		return "Valid Types: " + value.validTypes.join(",\n ");
+		return "Valid Types: \n" + value.validTypes.join(",\n ");
 	}
 
 	function outputConnectedToText(output: FrontendGraphOutput): string {

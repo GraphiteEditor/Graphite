@@ -602,10 +602,32 @@ impl NodeNetworkInterface {
 			return Vec::new();
 		};
 		match implementation {
-			DocumentNodeImplementation::Network(node_network) => {
-				// TODO
-				Vec::new()
+			DocumentNodeImplementation::Network(nested_network) => {
+				let nested_path = [network_path, &[*node_id]].concat();
+				let number_of_imports = self.number_of_inputs(node_id, network_path);
+				let Some(outward_wires) = self.outward_wires(&nested_path) else {
+					log::error!("Could not get outward wires in valid_input_types");
+					return Vec::new();
+				};
+				let Some(inputs_from_import) = outward_wires.get(&OutputConnector::Import(*input_index)) else {
+					log::error!("Could not get inputs from import in valid_input_types");
+					return Vec::new();
+				};
+
+				let intersection: HashSet<Type> = inputs_from_import
+					.clone()
+					.iter()
+					.map(|input_connector| self.valid_input_types(input_connector, &nested_path))
+					.map(|vec| vec.into_iter().collect::<HashSet<_>>())
+					.fold(None, |acc: Option<HashSet<Type>>, set| match acc {
+						Some(acc_set) => Some(acc_set.intersection(&set).cloned().collect()),
+						None => Some(set),
+					})
+					.unwrap_or_default();
+
+				intersection.into_iter().collect::<Vec<_>>()
 			}
+
 			DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
 				let Some(implementations) = NODE_REGISTRY.get(proto_node_identifier) else {
 					log::error!("Protonode {proto_node_identifier:?} not found in registry");
