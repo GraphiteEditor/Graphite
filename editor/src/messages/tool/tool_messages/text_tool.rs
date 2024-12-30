@@ -351,6 +351,26 @@ impl TextToolData {
 
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
+
+	fn check_click(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, font_cache: &FontCache) -> Option<LayerNodeIdentifier> {
+		document
+			.metadata()
+			.all_layers()
+			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text"))
+			.find(|&layer| {
+				let (text, font, typesetting) =
+					graph_modification_utils::get_text(layer, &document.network_interface).expect("Text layer should have text when interacting with the Text tool in `interact()`");
+
+				let buzz_face = font_cache.get(font).map(|data| load_face(data));
+				let far = graphene_core::text::bounding_box(text, buzz_face, typesetting);
+				let quad = Quad::from_box([DVec2::ZERO, far]);
+				let transformed_quad = document.metadata().transform_to_viewport(layer) * quad;
+
+				let mouse = DVec2::new(input.mouse.position.x, input.mouse.position.y);
+
+				transformed_quad.contains(mouse)
+			})
+	}
 }
 
 fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdentifier> {
@@ -503,8 +523,8 @@ impl Fsm for TextToolFsmState {
 
 				// Check if the user has clicked (no dragging) on some existing text
 				if !has_dragged {
-					if let Some(clicked_text_layer_path) = document.click(input).filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text")) {
-						tool_data.start_editing_layer(clicked_text_layer_path, TextToolFsmState::Dragging, document, font_cache, responses);
+					if let Some(clicked_text_layer_path) = TextToolData::check_click(document, input, font_cache) {
+						tool_data.start_editing_layer(clicked_text_layer_path, self, document, font_cache, responses);
 						return TextToolFsmState::Editing;
 					}
 				}
