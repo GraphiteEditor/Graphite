@@ -46,16 +46,17 @@ impl OverlayContext {
 	}
 
 	pub fn line(&mut self, start: DVec2, end: DVec2, color: Option<&str>) {
-		self.dashed_line(start, end, color, None)
+		self.dashed_line(start, end, color, None, None)
 	}
 
-	pub fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, dash_width: Option<f64>) {
+	pub fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, dash_width: Option<f64>, gap_width: Option<f64>) {
 		let start = start.round() - DVec2::splat(0.5);
 		let end = end.round() - DVec2::splat(0.5);
 		if let Some(dash_width) = dash_width {
+			let gap_width = gap_width.unwrap_or(1.);
 			let array = js_sys::Array::new();
-			array.push(&JsValue::from(1));
 			array.push(&JsValue::from(dash_width - 1.));
+			array.push(&JsValue::from(gap_width));
 			self.render_context
 				.set_line_dash(&JsValue::from(array))
 				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
@@ -72,6 +73,12 @@ impl OverlayContext {
 		self.render_context.line_to(end.x, end.y);
 		self.render_context.set_stroke_style_str(color.unwrap_or(COLOR_OVERLAY_BLUE));
 		self.render_context.stroke();
+
+		// Reset the dash pattern to solid after drawing
+		self.render_context
+			.set_line_dash(&JsValue::from(js_sys::Array::new()))
+			.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
+			.ok();
 	}
 
 	pub fn manipulator_handle(&mut self, position: DVec2, selected: bool) {
