@@ -6,7 +6,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::shape_editor::{ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedPointsInfo, ShapeState};
-use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
+use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 
 use graphene_core::renderer::Quad;
 use graphene_core::vector::ManipulatorPointId;
@@ -473,11 +473,17 @@ impl PathToolData {
 
 	/// Attempts to get a single selected handle. Also retrieves the position of the anchor it is connected to. Used for the purpose of snapping the angle.
 	fn try_get_selected_handle_and_anchor(&self, shape_editor: &ShapeState, document: &DocumentMessageHandler) -> Option<(DVec2, DVec2)> {
-		let (layer, selection) = shape_editor.selected_shape_state.iter().next()?; // Only count selections of a single layer
+		// Only count selections of a single layer
+		let (layer, selection) = shape_editor.selected_shape_state.iter().next()?;
+
+		// Do not allow selections of multiple points to count
 		if selection.selected_points_count() != 1 {
-			return None; // Do not allow selections of multiple points to count.
+			return None;
 		}
-		let selected_handle = selection.selected().next()?.as_handle()?; // Only count selected handles
+
+		// Only count selected handles
+		let selected_handle = selection.selected().next()?.as_handle()?;
+
 		let layer_to_document = document.metadata().transform_to_document(*layer);
 		let vector_data = document.network_interface.compute_modified_vector(*layer)?;
 
@@ -494,18 +500,20 @@ impl PathToolData {
 	fn calculate_handle_angle(&mut self, handle_vector: DVec2, lock_angle: bool, snap_angle: bool) -> f64 {
 		let mut handle_angle = -handle_vector.angle_to(DVec2::X);
 
+		// When the angle is locked we use the old angle
 		if lock_angle {
-			// When the angle is locked we use the old angle
 			handle_angle = self.angle
 		}
 
+		// Round the angle to the closest increment
 		if snap_angle {
-			// Round the angle to the closest increment
 			let snap_resolution = HANDLE_ROTATE_SNAP_ANGLE.to_radians();
 			handle_angle = (handle_angle / snap_resolution).round() * snap_resolution;
 		}
 
-		self.angle = handle_angle; // Cache the old handle angle for the lock angle.
+		// Cache the old handle angle for the lock angle.
+		self.angle = handle_angle;
+
 		handle_angle
 	}
 
@@ -519,22 +527,23 @@ impl PathToolData {
 		document: &DocumentMessageHandler,
 		input: &InputPreprocessorMessageHandler,
 	) -> DVec2 {
+		let snap_data = SnapData::new(document, input);
 		let snap_point = SnapCandidatePoint::handle_neighbors(new_handle_position, [anchor_position]);
 
-		document.metadata().document_to_viewport.transform_vector2(if using_angle_constraints {
-			let direction = handle_direction.normalize_or_zero();
-			let snap_constraint = SnapConstraint::Line { origin: anchor_position, direction };
-			let snap_result = self
-				.snap_manager
-				.constrained_snap(&SnapData::new(document, input), &snap_point, snap_constraint, SnapTypeConfiguration::default());
+		let snap_result = match using_angle_constraints {
+			true => {
+				let snap_constraint = SnapConstraint::Line {
+					origin: anchor_position,
+					direction: handle_direction.normalize_or_zero(),
+				};
+				self.snap_manager.constrained_snap(&snap_data, &snap_point, snap_constraint, Default::default())
+			}
+			false => self.snap_manager.free_snap(&snap_data, &snap_point, Default::default()),
+		};
 
-			self.snap_manager.update_indicator(snap_result.clone());
-			snap_result.snapped_point_document - handle_position
-		} else {
-			let snap_result = self.snap_manager.free_snap(&SnapData::new(document, input), &snap_point, SnapTypeConfiguration::default());
-			self.snap_manager.update_indicator(snap_result.clone());
-			snap_result.snapped_point_document - handle_position
-		})
+		self.snap_manager.update_indicator(snap_result.clone());
+
+		document.metadata().document_to_viewport.transform_vector2(snap_result.snapped_point_document - handle_position)
 	}
 
 	fn drag(
