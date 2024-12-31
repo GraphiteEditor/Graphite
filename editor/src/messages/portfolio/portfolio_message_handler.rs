@@ -9,6 +9,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use crate::messages::portfolio::document::DocumentMessageData;
+use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, ToolType};
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
@@ -38,6 +39,7 @@ pub struct PortfolioMessageHandler {
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	pub persistent_data: PersistentData,
 	pub executor: NodeGraphExecutor,
+	pub selection_mode: SelectionMode,
 }
 
 impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMessageHandler {
@@ -864,6 +866,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			PortfolioMessage::UpdateVelloPreference => {
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				self.persistent_data.use_vello = preferences.use_vello;
+			}
+
+			PortfolioMessage::UpdateSelectionMode { selection_mode } => {
+				self.selection_mode = selection_mode;
+				info!("Selection mode updated to: {:?}", selection_mode);
+				responses.add(Message::Frontend(FrontendMessage::UpdateSelectionMode { selection_mode }));
 			}
 		}
 	}

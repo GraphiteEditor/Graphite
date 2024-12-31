@@ -1,4 +1,7 @@
-use crate::messages::layout::utility_types::widget_prelude::*;
+use std::sync::Arc;
+
+use crate::messages::layout::utility_types::{layout_widget, widget_prelude::*};
+use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 
 pub struct PreferencesDialogMessageData<'a> {
@@ -62,6 +65,43 @@ impl PreferencesDialogMessageHandler {
 				.widget_holder(),
 		];
 
+		let selection_section = vec![TextLabel::new("Selection Mode").italic(true).widget_holder()];
+		let selection_mode = RadioInput::new(vec![
+			RadioEntryData::new("touched")
+				.label("Touched")
+				.tooltip("Select objects that are touched by the selection area")
+				.on_update(move |_| {
+					PreferencesMessage::SelectionMode {
+						selection_mode: SelectionMode::Touched,
+					}
+					.into()
+				}),
+			RadioEntryData::new("contained")
+				.label("Contained")
+				.tooltip("Select objects that are fully contained within the selection area")
+				.on_update(move |_| {
+					PreferencesMessage::SelectionMode {
+						selection_mode: SelectionMode::Contained,
+					}
+					.into()
+				}),
+			RadioEntryData::new("by_drag_direction")
+				.label("By Drag Direction")
+				.tooltip("Select objects based on the drag direction of the selection area")
+				.on_update(move |_| {
+					PreferencesMessage::SelectionMode {
+						selection_mode: SelectionMode::ByDragDirection,
+					}
+					.into()
+				}),
+		])
+		.selected_index(Some(match preferences.selection_mode {
+			SelectionMode::Touched => 0,
+			SelectionMode::Contained => 1,
+			SelectionMode::ByDragDirection => 2,
+		}))
+		.widget_holder();
+
 		// TODO: Reenable when Imaginate is restored
 		// let imaginate_server_hostname = vec![
 		// 	TextLabel::new("Imaginate").min_width(60).italic(true).widget_holder(),
@@ -90,6 +130,8 @@ impl PreferencesDialogMessageHandler {
 			LayoutGroup::Row { widgets: zoom_with_scroll },
 			LayoutGroup::Row { widgets: renderer_section },
 			LayoutGroup::Row { widgets: use_vello },
+			LayoutGroup::Row { widgets: selection_section },
+			LayoutGroup::Row { widgets: vec![selection_mode] },
 			// LayoutGroup::Row { widgets: imaginate_server_hostname },
 			// LayoutGroup::Row { widgets: imaginate_refresh_frequency },
 		]))

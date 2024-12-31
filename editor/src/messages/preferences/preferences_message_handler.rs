@@ -1,5 +1,10 @@
 use crate::messages::input_mapper::key_mapping::MappingVariant;
+use crate::messages::portfolio::document::DocumentMessageHandler;
+use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
+use crate::messages::tool::tool_messages::select_tool::SelectTool;
+use crate::messages::tool::ToolMessageData;
+use graph_craft::document;
 use graph_craft::wasm_application_io::EditorPreferences;
 
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -8,6 +13,7 @@ pub struct PreferencesMessageHandler {
 	pub imaginate_refresh_frequency: f64,
 	pub zoom_with_scroll: bool,
 	pub use_vello: bool,
+	pub selection_mode: SelectionMode,
 }
 
 impl PreferencesMessageHandler {
@@ -34,6 +40,7 @@ impl Default for PreferencesMessageHandler {
 			imaginate_refresh_frequency: 1.,
 			zoom_with_scroll: matches!(MappingVariant::default(), MappingVariant::ZoomWithScroll),
 			use_vello,
+			selection_mode: SelectionMode::Touched,
 		}
 	}
 }
@@ -90,7 +97,6 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			}
 			PreferencesMessage::ModifyLayout { zoom_with_scroll } => {
 				self.zoom_with_scroll = zoom_with_scroll;
-
 				let variant = match zoom_with_scroll {
 					false => MappingVariant::Default,
 					true => MappingVariant::ZoomWithScroll,
@@ -98,8 +104,12 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				responses.add(KeyMappingMessage::ModifyMapping(variant));
 				responses.add(FrontendMessage::UpdateZoomWithScroll { zoom_with_scroll });
 			}
+			PreferencesMessage::SelectionMode { selection_mode } => {
+				info!("Setting selection mode to: {:?}", selection_mode);
+				self.selection_mode = selection_mode;
+				responses.add(PortfolioMessage::UpdateSelectionMode { selection_mode });
+			}
 		}
-
 		responses.add(FrontendMessage::TriggerSavePreferences { preferences: self.clone() });
 	}
 

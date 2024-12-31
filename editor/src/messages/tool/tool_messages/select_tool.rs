@@ -3,12 +3,17 @@
 use super::tool_prelude::*;
 use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
-use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::graph_operation::utility_types::{self, TransformIn};
+use crate::messages::portfolio::document::node_graph::utility_types::Direction;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
-use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::document_metadata::{self, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
+use crate::messages::portfolio::utility_types::PersistentData;
+use crate::messages::portfolio::PortfolioMessageData;
+use crate::messages::preferences::PreferencesMessageHandler;
+use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapManager};
@@ -19,6 +24,7 @@ use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;
 use graphene_std::renderer::Rect;
 use graphene_std::vector::misc::BooleanOperation;
+// use web_sys::console;
 
 use std::fmt;
 
@@ -37,6 +43,12 @@ pub struct SelectOptions {
 #[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum SelectOptionsUpdate {
 	NestedSelectionBehavior(NestedSelectionBehavior),
+}
+
+enum SelectionDirection {
+	Leftwards,
+	Rightwards,
+	None,
 }
 
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -69,7 +81,6 @@ pub enum SelectToolMessage {
 	// Standard messages
 	Abort,
 	Overlays(OverlayContext),
-
 	// Tool-specific messages
 	DragStart { extend_selection: Key, select_deepest: Key },
 	DragStop { remove_from_selection: Key, negative_box_selection: Key },
@@ -209,6 +220,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 			self.tool_data.nested_selection_behavior = nested_selection_behavior;
 			responses.add(ToolMessage::UpdateHints);
 		}
+		if let ToolMessage::UpdateSelectionMode { selection_mode } = message {
+			self.tool_data.selection_mode = selection_mode;
+			info!("Selection mode updated in SelectTool: {:?}", selection_mode);
+		}
 
 		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, false);
 
@@ -255,6 +270,7 @@ enum SelectToolFsmState {
 	RotatingBounds,
 	DraggingPivot,
 }
+
 impl Default for SelectToolFsmState {
 	fn default() -> Self {
 		let selection = NestedSelectionBehavior::Deepest;
@@ -280,6 +296,7 @@ struct SelectToolData {
 	selected_layers_changed: bool,
 	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
+	selection_mode: SelectionMode,
 }
 
 impl SelectToolData {
@@ -296,12 +313,23 @@ impl SelectToolData {
 		}
 	}
 
-	fn selection_quad(&self) -> Quad {
+	pub fn selection_quad(&self) -> Quad {
 		let bbox = self.selection_box();
 		Quad::from_box(bbox)
 	}
 
-	fn selection_box(&self) -> [DVec2; 2] {
+	pub fn calculate_direction(&self) -> SelectionDirection {
+		let bbox: [DVec2; 2] = self.selection_box();
+		if bbox[1].x > bbox[0].x {
+			SelectionDirection::Rightwards
+		} else if bbox[1].x < bbox[0].x {
+			SelectionDirection::Leftwards
+		} else {
+			SelectionDirection::None
+		}
+	}
+
+	pub fn selection_box(&self) -> [DVec2; 2] {
 		if self.drag_current == self.drag_start {
 			let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 			[self.drag_start - tolerance, self.drag_start + tolerance]
@@ -403,14 +431,13 @@ impl Fsm for SelectToolFsmState {
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
 		let ToolActionHandlerData { document, input, .. } = tool_action_data;
-
+		info!("Current selection mode during transition: {:?}", tool_data.selection_mode);
 		let ToolMessage::Select(event) = event else {
 			return self;
 		};
 		match (self, event) {
 			(_, SelectToolMessage::Overlays(mut overlay_context)) => {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
-
 				let selected_layers_count = document.network_interface.selected_nodes(&[]).unwrap().selected_unlocked_layers(&document.network_interface).count();
 				tool_data.selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
 				tool_data.selected_layers_count = selected_layers_count;
@@ -909,6 +936,7 @@ impl Fsm for SelectToolFsmState {
 				if !tool_data.has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
 					// When you click on the layer with remove from selection key (shift) pressed, we deselect all nodes that are children.
 					let quad = tool_data.selection_quad();
+
 					let intersection = document.intersect_quad_no_artboards(quad, input);
 
 					if let Some(path) = intersection.last() {
@@ -1001,15 +1029,23 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
-			(
-				SelectToolFsmState::DrawingBox { .. },
-				SelectToolMessage::DragStop {
-					remove_from_selection,
-					negative_box_selection,
-				},
-			) => {
+
+			(SelectToolFsmState::DrawingBox { .. }, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
+
 				let quad = tool_data.selection_quad();
-				let new_selected: HashSet<_> = document.intersect_quad_no_artboards(quad, input).collect();
+				let direction = tool_data.calculate_direction();
+				info!("mode under select is {:?}", tool_data.selection_mode);
+				// let new_selected: HashSet<_> = document.intersect_quad_no_artboards(quad, input).collect();
+				let new_selected: HashSet<_> = match tool_data.selection_mode {
+					SelectionMode::Touched => document.intersect_quad_no_artboards(quad, input).collect(),
+					SelectionMode::Contained => document.intersect_quad_no_artboards(quad, input).filter(|layer| document.is_layer_fully_inside(layer, quad)).collect(),
+					SelectionMode::ByDragDirection => match direction {
+						SelectionDirection::Rightwards => document.intersect_quad_no_artboards(quad, input).filter(|layer| document.is_layer_fully_inside(layer, quad)).collect(),
+						SelectionDirection::Leftwards => document.intersect_quad_no_artboards(quad, input).collect(),
+						SelectionDirection::None => HashSet::new(),
+					},
+				};
+
 				let current_selected: HashSet<_> = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
 				if new_selected != current_selected {
 					// Negative selection when both Shift and Ctrl are pressed
