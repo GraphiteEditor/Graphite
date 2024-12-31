@@ -1,4 +1,5 @@
 use super::tool_prelude::*;
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -111,6 +112,7 @@ struct ArtboardToolData {
 	drag_current: DVec2,
 	auto_panning: AutoPanning,
 	snap_candidates: Vec<SnapCandidatePoint>,
+	dragging_current_artboad_location: IVec2,
 }
 
 impl ArtboardToolData {
@@ -138,6 +140,7 @@ impl ArtboardToolData {
 	fn start_resizing(&mut self, _selected_edges: (bool, bool, bool, bool), _document: &DocumentMessageHandler, _input: &InputPreprocessorMessageHandler) {
 		if let Some(bounds) = &mut self.bounding_box_manager {
 			bounds.center_of_transformation = bounds.transform.transform_point2((bounds.bounds[0] + bounds.bounds[1]) / 2.);
+			self.dragging_current_artboad_location = bounds.bounds[0].round().as_ivec2();
 		}
 	}
 
@@ -197,18 +200,17 @@ impl ArtboardToolData {
 			dimensions: size.round().as_ivec2(),
 		});
 
-		// TODO: Resize artboard children when resizing left/top edges so that they stay in the same viewport space
-		// let old_top_left = bounds.bounds[0].round().as_ivec2();
-		// let new_top_left = position.round().as_ivec2();
-		// let top_left_delta = new_top_left - old_top_left;
-		// if top_left_delta != IVec2::ZERO {
-		// 	responses.add(GraphOperationMessage::TransformChange {
-		// 		layer: self.selected_artboard.unwrap(),
-		// 		transform: DAffine2::from_translation((-top_left_delta).into()),
-		// 		transform_in: TransformIn::Local,
-		// 		skip_rerender: false,
-		// 	});
-		// }
+		let translation = position.round().as_ivec2() - self.dragging_current_artboad_location;
+		self.dragging_current_artboad_location = position.round().as_ivec2();
+		for child in self.selected_artboard.unwrap().children(&document.metadata()) {
+			let local_translation = document.metadata().downstream_transform_to_document(child).inverse().transform_vector2(-translation.as_dvec2());
+			responses.add(GraphOperationMessage::TransformChange {
+				layer: child,
+				transform: DAffine2::from_translation(local_translation),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			});
+		}
 	}
 }
 
