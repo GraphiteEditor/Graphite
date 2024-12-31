@@ -828,8 +828,6 @@ export class UpdateDocumentLayerStructureJs extends JsMessage {
 export class DisplayEditableTextbox extends JsMessage {
 	readonly text!: string;
 
-	readonly lineWidth!: undefined | number;
-
 	readonly lineHeightRatio!: number;
 
 	readonly fontSize!: number;
@@ -841,7 +839,9 @@ export class DisplayEditableTextbox extends JsMessage {
 
 	readonly transform!: number[];
 
-	readonly height!: undefined | number;
+	readonly maxWidth!: undefined | number;
+
+	readonly maxHeight!: undefined | number;
 }
 
 export class DisplayEditableTextboxTransform extends JsMessage {

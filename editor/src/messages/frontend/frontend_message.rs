@@ -26,8 +26,6 @@ pub enum FrontendMessage {
 	},
 	DisplayEditableTextbox {
 		text: String,
-		#[serde(rename = "lineWidth")]
-		max_width: Option<f64>,
 		#[serde(rename = "lineHeightRatio")]
 		line_height_ratio: f64,
 		#[serde(rename = "fontSize")]
@@ -35,6 +33,9 @@ pub enum FrontendMessage {
 		color: Color,
 		url: String,
 		transform: [f64; 6],
+		#[serde(rename = "maxWidth")]
+		max_width: Option<f64>,
+		#[serde(rename = "maxHeight")]
 		max_height: Option<f64>,
 	},
 	DisplayEditableTextboxTransform {

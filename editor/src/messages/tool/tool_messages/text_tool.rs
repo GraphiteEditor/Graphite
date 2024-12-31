@@ -262,12 +262,12 @@ impl TextToolData {
 		if let Some(editing_text) = self.editing_text.as_ref().filter(|_| editable) {
 			responses.add(FrontendMessage::DisplayEditableTextbox {
 				text: editing_text.text.clone(),
-				max_width: editing_text.typesetting.max_width,
 				line_height_ratio: editing_text.typesetting.line_height_ratio,
 				font_size: editing_text.typesetting.font_size,
 				color: editing_text.color.unwrap_or(Color::BLACK),
 				url: font_cache.get_preview_url(&editing_text.font).cloned().unwrap_or_default(),
 				transform: editing_text.transform.to_cols_array(),
+				max_width: editing_text.typesetting.max_width,
 				max_height: editing_text.typesetting.max_height,
 			});
 		} else {
