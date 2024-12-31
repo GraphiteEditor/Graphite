@@ -106,50 +106,7 @@
 }
 // ▙ QUICK LINKS ▟
 
-// ▛ HEXAGONS ▜
-.hexagons {
-	max-width: var(--max-width);
-	margin: auto;
-	position: relative;
-	bottom: calc(-80 * var(--variable-px));
-
-	div {
-		position: absolute;
-		top: 0;
-		right: 10%;
-
-		svg {
-			position: absolute;
-			margin: auto;
-			top: 0;
-			right: 0;
-			bottom: 0;
-			left: 0;
-			transform: translate(-50%) rotate(347deg);
-			opacity: 0.25;
-			--hexagon-max-size: 1100;
-			--mexagon-min-size: 900;
-			--hexagon-shrink-start-viewport-width: 1640;
-			width: Max(
-				Min(
-					calc(var(--hexagon-max-size) * 1px),
-					calc(var(--hexagon-max-size) / var(--hexagon-shrink-start-viewport-width) * 100vw)
-				),
-				calc(var(--mexagon-min-size) * 1px)
-			);
-			height: auto;
-
-			polygon {
-				fill: none;
-				stroke: #aaa;
-				stroke-width: 1px;
-			}
-		}
-	}
-}
-// ▙ HEXAGONS ▟
-
-// ▙ SCREENSHOTS ▟
+// ▛ SCREENSHOTS ▜
 // ▙ SCREENSHOTS ▟
 
 // ▛ OVERVIEW ▜
@@ -305,6 +262,7 @@
 
 					&.submit {
 						flex: 1 0 auto;
+						min-width: 100%;
 
 						.button {
 							text-align: center;

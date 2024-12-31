@@ -323,22 +323,23 @@ impl DistributionSnapper {
 		}
 	}
 
-	pub fn free_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, bounds: Option<Rect>) {
-		let Some(bounds) = bounds else { return };
+	pub fn free_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, config: SnapTypeConfiguration) {
+		let Some(bounds) = config.bbox else { return };
 		if point.source != SnapSource::BoundingBox(BoundingBoxSnapSource::Center) || !snap_data.document.snapping_state.bounds.distribute {
 			return;
 		}
 
-		self.collect_bounding_box_points(snap_data, point.source_index == 0, bounds);
+		self.collect_bounding_box_points(snap_data, config.accept_distribution, bounds);
 		self.snap_bbox_points(snap_tolerance(snap_data.document), point, snap_results, SnapConstraint::None, bounds);
 	}
 
-	pub fn constrained_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint, bounds: Option<Rect>) {
-		let Some(bounds) = bounds else { return };
+	pub fn constrained_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint, config: SnapTypeConfiguration) {
+		let Some(bounds) = config.bbox else { return };
 		if point.source != SnapSource::BoundingBox(BoundingBoxSnapSource::Center) || !snap_data.document.snapping_state.bounds.distribute {
 			return;
 		}
-		self.collect_bounding_box_points(snap_data, point.source_index == 0, bounds);
+
+		self.collect_bounding_box_points(snap_data, config.accept_distribution, bounds);
 		self.snap_bbox_points(snap_tolerance(snap_data.document), point, snap_results, constraint, bounds);
 	}
 }

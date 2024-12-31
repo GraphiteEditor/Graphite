@@ -1679,6 +1679,13 @@ impl DocumentMessageHandler {
 		}
 	}
 
+	/// Finds the artboard that bounds the point in viewport space and be the container of any newly added layers.
+	pub fn new_layer_bounding_artboard(&self, ipp: &InputPreprocessorMessageHandler) -> LayerNodeIdentifier {
+		self.click_xray(ipp)
+			.find(|layer| self.network_interface.is_artboard(&layer.to_node(), &[]))
+			.unwrap_or(LayerNodeIdentifier::ROOT_PARENT)
+	}
+
 	/// Finds the parent folder which, based on the current selections, should be the container of any newly added layers.
 	pub fn new_layer_parent(&self, include_self: bool) -> LayerNodeIdentifier {
 		self.network_interface
@@ -1726,25 +1733,25 @@ impl DocumentMessageHandler {
 
 		let document_mode_layout = WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
-				DropdownInput::new(
-					vec![vec![
-						MenuListEntry::new(format!("{:?}", DocumentMode::DesignMode))
-							.label(DocumentMode::DesignMode.to_string())
-							.icon(DocumentMode::DesignMode.icon_name()),
-						MenuListEntry::new(format!("{:?}", DocumentMode::SelectMode))
-							.label(DocumentMode::SelectMode.to_string())
-							.icon(DocumentMode::SelectMode.icon_name())
-							.on_commit(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
-						MenuListEntry::new(format!("{:?}", DocumentMode::GuideMode))
-							.label(DocumentMode::GuideMode.to_string())
-							.icon(DocumentMode::GuideMode.icon_name())
-							.on_commit(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
-					]])
-					.selected_index(Some(self.document_mode as u32))
-					.draw_icon(true)
-					.interactive(false) // TODO: set to true when dialogs are not spawned
-					.widget_holder(),
-				Separator::new(SeparatorType::Section).widget_holder(),
+				// DropdownInput::new(
+				// 	vec![vec![
+				// 		MenuListEntry::new(format!("{:?}", DocumentMode::DesignMode))
+				// 			.label(DocumentMode::DesignMode.to_string())
+				// 			.icon(DocumentMode::DesignMode.icon_name()),
+				// 		MenuListEntry::new(format!("{:?}", DocumentMode::SelectMode))
+				// 			.label(DocumentMode::SelectMode.to_string())
+				// 			.icon(DocumentMode::SelectMode.icon_name())
+				// 			.on_commit(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
+				// 		MenuListEntry::new(format!("{:?}", DocumentMode::GuideMode))
+				// 			.label(DocumentMode::GuideMode.to_string())
+				// 			.icon(DocumentMode::GuideMode.icon_name())
+				// 			.on_commit(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
+				// 	]])
+				// 	.selected_index(Some(self.document_mode as u32))
+				// 	.draw_icon(true)
+				// 	.interactive(false) // TODO: set to true when dialogs are not spawned
+				// 	.widget_holder(),
+				// Separator::new(SeparatorType::Section).widget_holder(),
 			],
 		}]);
 
@@ -1771,7 +1778,7 @@ impl DocumentMessageHandler {
 						widgets: vec![TextLabel::new("Overlays").bold(true).widget_holder()],
 					},
 					LayoutGroup::Row {
-						widgets: vec![TextLabel::new("Coming soon").widget_holder()],
+						widgets: vec![TextLabel::new("Granular settings in this menu are coming soon").widget_holder()],
 					},
 				])
 				.widget_holder(),
@@ -1855,16 +1862,16 @@ impl DocumentMessageHandler {
 				_ => Some(1),
 			})
 			.widget_holder(),
-			PopoverButton::new()
-				.popover_layout(vec![
-					LayoutGroup::Row {
-						widgets: vec![TextLabel::new("View Mode").bold(true).widget_holder()],
-					},
-					LayoutGroup::Row {
-						widgets: vec![TextLabel::new("Coming soon").widget_holder()],
-					},
-				])
-				.widget_holder(),
+			// PopoverButton::new()
+			// 	.popover_layout(vec![
+			// 		LayoutGroup::Row {
+			// 			widgets: vec![TextLabel::new("View Mode").bold(true).widget_holder()],
+			// 		},
+			// 		LayoutGroup::Row {
+			// 			widgets: vec![TextLabel::new("Coming soon").widget_holder()],
+			// 		},
+			// 	])
+			// 	.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 		];
 
@@ -2171,7 +2178,7 @@ impl<'a> ClickXRayIter<'a> {
 		};
 		let get_clip = || path.iter().map(segment);
 
-		let intersects = click_targets.map_or(false, |targets| targets.iter().any(|target| target.intersect_path(get_clip, transform)));
+		let intersects = click_targets.is_some_and(|targets| targets.iter().any(|target| target.intersect_path(get_clip, transform)));
 		let clicked = intersects;
 		let mut use_children = !clip || intersects;
 
@@ -2206,7 +2213,7 @@ impl<'a> ClickXRayIter<'a> {
 		match target {
 			// Single points are much cheaper than paths so have their own special case
 			XRayTarget::Point(point) => {
-				let intersects = click_targets.map_or(false, |targets| targets.iter().any(|target| target.intersect_point(*point, transform)));
+				let intersects = click_targets.is_some_and(|targets| targets.iter().any(|target| target.intersect_point(*point, transform)));
 				XRayResult {
 					clicked: intersects,
 					use_children: !clip || intersects,
@@ -2218,7 +2225,7 @@ impl<'a> ClickXRayIter<'a> {
 	}
 }
 
-pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHandler, tooltip_name: &str) -> [WidgetHolder; 6] {
+pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHandler, tooltip_name: &str) -> [WidgetHolder; 5] {
 	[
 		IconButton::new("ZoomIn", 24)
 			.tooltip("Zoom In")
@@ -2236,34 +2243,34 @@ pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHand
 			.on_update(|_| NavigationMessage::CanvasTiltResetAndZoomTo100Percent.into())
 			.disabled(ptz.tilt().abs() < 1e-4 && (ptz.zoom() - 1.).abs() < 1e-4)
 			.widget_holder(),
-		PopoverButton::new()
-			.popover_layout(vec![
-				LayoutGroup::Row {
-					widgets: vec![TextLabel::new(format!("{tooltip_name} Navigation")).bold(true).widget_holder()],
-				},
-				LayoutGroup::Row {
-					widgets: vec![TextLabel::new({
-						let tilt = if tooltip_name == "Canvas" { "Tilt:\n• Alt + Middle Click Drag\n\n" } else { "" };
-						format!(
-							"
-							Interactive controls in this\n\
-							menu are coming soon.\n\
-							\n\
-							Pan:\n\
-							• Middle Click Drag\n\
-							\n\
-							{tilt}Zoom:\n\
-							• Shift + Middle Click Drag\n\
-							• Ctrl + Scroll Wheel Roll
-							"
-						)
-						.trim()
-					})
-					.multiline(true)
-					.widget_holder()],
-				},
-			])
-			.widget_holder(),
+		// PopoverButton::new()
+		// 	.popover_layout(vec![
+		// 		LayoutGroup::Row {
+		// 			widgets: vec![TextLabel::new(format!("{tooltip_name} Navigation")).bold(true).widget_holder()],
+		// 		},
+		// 		LayoutGroup::Row {
+		// 			widgets: vec![TextLabel::new({
+		// 				let tilt = if tooltip_name == "Canvas" { "Tilt:\n• Alt + Middle Click Drag\n\n" } else { "" };
+		// 				format!(
+		// 					"
+		// 					Interactive controls in this\n\
+		// 					menu are coming soon.\n\
+		// 					\n\
+		// 					Pan:\n\
+		// 					• Middle Click Drag\n\
+		// 					\n\
+		// 					{tilt}Zoom:\n\
+		// 					• Shift + Middle Click Drag\n\
+		// 					• Ctrl + Scroll Wheel Roll
+		// 					"
+		// 				)
+		// 				.trim()
+		// 			})
+		// 			.multiline(true)
+		// 			.widget_holder()],
+		// 		},
+		// 	])
+		// 	.widget_holder(),
 		Separator::new(SeparatorType::Related).widget_holder(),
 		NumberInput::new(Some(navigation_handler.snapped_zoom(ptz.zoom()) * 100.))
 			.unit("%")
@@ -2283,7 +2290,7 @@ pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHand
 	]
 }
 
-impl<'a> Iterator for ClickXRayIter<'a> {
+impl Iterator for ClickXRayIter<'_> {
 	type Item = LayerNodeIdentifier;
 
 	fn next(&mut self) -> Option<Self::Item> {

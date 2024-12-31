@@ -114,7 +114,7 @@ impl DynamicExecutor {
 	}
 }
 
-impl<'a, I: StaticType + 'static + Send + Sync + std::panic::UnwindSafe> Executor<I, TaggedValue> for &'a DynamicExecutor {
+impl<I: StaticType + 'static + Send + Sync + std::panic::UnwindSafe> Executor<I, TaggedValue> for &DynamicExecutor {
 	fn execute(&self, input: I) -> LocalFuture<Result<TaggedValue, Box<dyn Error>>> {
 		Box::pin(async move {
 			use futures::FutureExt;

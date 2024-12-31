@@ -152,7 +152,7 @@
 		--color-transparent-checkered-background-position-mini: 0 0, 4px 4px, 4px 4px;
 		--color-transparent-checkered-background-repeat: repeat, repeat, repeat;
 
-		--background-inactive-stripes: repeating-linear-gradient(
+		--inheritance-stripes-background: repeating-linear-gradient(
 			-45deg,
 			transparent 0px,
 			transparent calc((3px * sqrt(2) / 2) - 0.5px),
@@ -161,6 +161,9 @@
 			transparent calc((3px * sqrt(2) / 2) + 0.5px),
 			transparent calc(6px * sqrt(2) / 2)
 		);
+		--inheritance-dots-background: url('data:image/svg+xml;utf8,\
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 6 6" width="6px" height="6px" fill="%23444"><rect width="1" height="1" /><rect x="3" y="3" width="1" height="1" /></svg>\
+			');
 
 		// Array of 2x3 dots (fill: --color-e-nearwhite)
 		--icon-drag-grip: url('data:image/svg+xml;utf8,\

@@ -4,6 +4,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::{Doc
 use crate::messages::portfolio::document::utility_types::misc::{GeometrySnapSource, SnapSource};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration;
 use crate::messages::tool::tool_messages::path_tool::PointSelectState;
 
 use bezier_rs::{Bezier, BezierHandles, TValue};
@@ -210,7 +211,7 @@ impl ShapeState {
 					}
 				}
 
-				let snapped = snap_manager.free_snap(&snap_data, &point, None, false);
+				let snapped = snap_manager.free_snap(&snap_data, &point, SnapTypeConfiguration::default());
 				if best_snapped.other_snap_better(&snapped) {
 					offset = snapped.snapped_point_document - point.document_point + mouse_delta;
 					best_snapped = snapped;
@@ -462,7 +463,7 @@ impl ShapeState {
 			.selected_shape_state
 			.iter()
 			.map(|(&layer, selection_state)| (network_interface.compute_modified_vector(layer), selection_state))
-			.flat_map(|(data, selection_state)| selection_state.selected_points.iter().map(move |&point| data.as_ref().map_or(false, |data| data.colinear(point))));
+			.flat_map(|(data, selection_state)| selection_state.selected_points.iter().map(move |&point| data.as_ref().is_some_and(|data| data.colinear(point))));
 
 		let Some(first_is_colinear) = points_colinear_status.next() else { return ManipulatorAngle::Mixed };
 		if points_colinear_status.any(|point| first_is_colinear != point) {
@@ -661,6 +662,10 @@ impl ShapeState {
 
 				let Some(other) = vector_data.other_colinear_handle(handle) else { continue };
 				if state.is_selected(other.to_manipulator_point()) {
+					// If two colinear handles are being dragged at the same time but not the anchor, it is necessary to break the colinear state.
+					let handles = [handle, other];
+					let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
 					continue;
 				}
 

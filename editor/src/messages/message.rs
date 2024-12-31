@@ -40,7 +40,7 @@ pub enum Message {
 /// Provides an impl of `specta::Type` for `MessageDiscriminant`, the struct created by `impl_message`.
 /// Specta isn't integrated with `impl_message`, so a remote impl must be provided using this struct.
 impl specta::Type for MessageDiscriminant {
-	fn inline(_type_map: &mut specta::TypeMap, _generics: specta::Generics) -> specta::DataType {
+	fn inline(_type_map: &mut specta::TypeCollection, _generics: specta::Generics) -> specta::DataType {
 		specta::DataType::Any
 	}
 }

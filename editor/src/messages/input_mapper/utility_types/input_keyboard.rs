@@ -290,6 +290,11 @@ impl fmt::Display for Key {
 				KeyboardPlatformLayout::Standard => "Ctrl",
 				KeyboardPlatformLayout::Mac => "⌘",
 			},
+			Self::MouseLeft => "LMB",
+			Self::MouseRight => "RMB",
+			Self::MouseMiddle => "MMB",
+			Self::MouseBack => "Mouse Back",
+			Self::MouseForward => "Mouse Fwd",
 
 			_ => key_name.as_str(),
 		};
@@ -468,7 +473,7 @@ struct BitVectorIter<'a, const LENGTH: usize> {
 	iter_index: usize,
 }
 
-impl<'a, const LENGTH: usize> Iterator for BitVectorIter<'a, LENGTH> {
+impl<const LENGTH: usize> Iterator for BitVectorIter<'_, LENGTH> {
 	type Item = usize;
 
 	fn next(&mut self) -> Option<Self::Item> {

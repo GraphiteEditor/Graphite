@@ -83,7 +83,7 @@ pub enum SelectToolMessage {
 	Overlays(OverlayContext),
 	// Tool-specific messages
 	DragStart { extend_selection: Key, select_deepest: Key },
-	DragStop { remove_from_selection: Key },
+	DragStop { remove_from_selection: Key, negative_box_selection: Key },
 	EditLayer,
 	Enter,
 	PointerMove(SelectToolPointerKeys),
@@ -187,19 +187,19 @@ impl LayoutHolder for SelectTool {
 		let disabled = self.tool_data.selected_layers_count < 2;
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.extend(self.alignment_widgets(disabled));
-		widgets.push(
-			PopoverButton::new()
-				.popover_layout(vec![
-					LayoutGroup::Row {
-						widgets: vec![TextLabel::new("Align").bold(true).widget_holder()],
-					},
-					LayoutGroup::Row {
-						widgets: vec![TextLabel::new("Coming soon").widget_holder()],
-					},
-				])
-				.disabled(disabled)
-				.widget_holder(),
-		);
+		// widgets.push(
+		// 	PopoverButton::new()
+		// 		.popover_layout(vec![
+		// 			LayoutGroup::Row {
+		// 				widgets: vec![TextLabel::new("Align").bold(true).widget_holder()],
+		// 			},
+		// 			LayoutGroup::Row {
+		// 				widgets: vec![TextLabel::new("Coming soon").widget_holder()],
+		// 			},
+		// 		])
+		// 		.disabled(disabled)
+		// 		.widget_holder(),
+		// );
 
 		// Flip
 		let disabled = self.tool_data.selected_layers_count == 0;
@@ -692,12 +692,7 @@ impl Fsm for SelectToolFsmState {
 						responses.add(DocumentMessage::StartTransaction);
 						SelectToolFsmState::Dragging
 					} else {
-						// Deselect all layers if using shallowest selection behavior
-						// Necessary since for shallowest mode, we need to know the current selected layers to determine the next
-						if tool_data.nested_selection_behavior == NestedSelectionBehavior::Shallowest {
-							responses.add(DocumentMessage::DeselectAllLayers);
-							tool_data.layers_dragging.clear();
-						}
+						// Make a box selection, preserving previously selected layers
 						let selection = tool_data.nested_selection_behavior;
 						SelectToolFsmState::DrawingBox { selection }
 					}
@@ -934,11 +929,12 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
-			(SelectToolFsmState::Dragging, SelectToolMessage::DragStop { remove_from_selection }) => {
+			(SelectToolFsmState::Dragging, SelectToolMessage::DragStop { remove_from_selection, .. }) => {
 				// Deselect layer if not snap dragging
 				responses.add(DocumentMessage::EndTransaction);
 
 				if !tool_data.has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
+					// When you click on the layer with remove from selection key (shift) pressed, we deselect all nodes that are children.
 					let quad = tool_data.selection_quad();
 
 					let intersection = document.intersect_quad_no_artboards(quad, input);
@@ -970,6 +966,7 @@ impl Fsm for SelectToolFsmState {
 						});
 					}
 				} else if let Some(selecting_layer) = tool_data.select_single_layer.take() {
+					// Previously, we may have had many layers selected. If the user clicks without dragging, we should just select the one layer that has been clicked.
 					if !tool_data.has_dragged {
 						if selecting_layer == LayerNodeIdentifier::ROOT_PARENT {
 							log::error!("selecting_layer should not be ROOT_PARENT");
@@ -1034,6 +1031,7 @@ impl Fsm for SelectToolFsmState {
 			}
 
 			(SelectToolFsmState::DrawingBox { .. }, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
+
 				let quad = tool_data.selection_quad();
 				let direction = tool_data.calculate_direction();
 				info!("mode under select is {:?}", tool_data.selection_mode);
@@ -1050,7 +1048,23 @@ impl Fsm for SelectToolFsmState {
 
 				let current_selected: HashSet<_> = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
 				if new_selected != current_selected {
-					tool_data.layers_dragging = new_selected.into_iter().collect();
+					// Negative selection when both Shift and Ctrl are pressed
+					if input.keyboard.key(remove_from_selection) && input.keyboard.key(negative_box_selection) {
+						let updated_selection = current_selected
+							.into_iter()
+							.filter(|layer| !new_selected.iter().any(|selected| layer.starts_with(*selected, document.metadata())))
+							.collect();
+						tool_data.layers_dragging = updated_selection;
+					} else {
+						let parent_selected: HashSet<_> = new_selected
+							.into_iter()
+							.map(|layer| {
+								// Find the parent node
+								layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(layer)
+							})
+							.collect();
+						tool_data.layers_dragging.extend(parent_selected.iter().copied());
+					}
 					responses.add(NodeGraphMessage::SelectedNodesSet {
 						nodes: tool_data
 							.layers_dragging
@@ -1103,9 +1117,9 @@ impl Fsm for SelectToolFsmState {
 					}
 				});
 
-				responses.add(OverlaysMessage::Draw);
-
+				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
+				responses.add(OverlaysMessage::Draw);
 
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
@@ -1179,9 +1193,13 @@ impl Fsm for SelectToolFsmState {
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
 			SelectToolFsmState::DrawingBox { .. } => {
-				// TODO: Add hint and implement functionality for holding Shift to extend the selection, thus preventing the prior selection from being cleared
-				// TODO: Also fix the current functionality so canceling the box select doesn't clear the prior selection
-				let hint_data = HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]);
+				let hint_data = HintData(vec![
+					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+					HintGroup(vec![HintInfo::keys([Key::Control, Key::Shift], "Remove from Selection").add_mac_keys([Key::Command, Key::Shift])]),
+					// TODO: Re-select deselected layers during drag when Shift is pressed, and re-deselect if Shift is released before drag ends.
+					// TODO: (See https://discord.com/channels/731730685944922173/1216976541947531264/1321360311298818048)
+					// HintGroup(vec![HintInfo::keys([Key::Shift], "Extend Selection")])
+				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
 			_ => {}
@@ -1248,12 +1266,10 @@ fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<La
 	});
 }
 
+/// Called when you double click on the layer of the shallowest layer.
+/// If possible, the direct sibling of an old selected layer is the new selected layer.
+/// Otherwise, the first non-parent ancestor is selected.
 fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
-	if document.network_interface.selected_nodes(&[]).unwrap().selected_layers_contains(layer, document.metadata()) {
-		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path });
-		return;
-	}
-
 	let Some(new_selected) = layer.ancestors(document.metadata()).filter(not_artboard(document)).find(|ancestor| {
 		ancestor
 			.parent(document.metadata())
@@ -1270,11 +1286,11 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: 
 	responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![new_selected.to_node()] });
 }
 
+/// Called when a double click on a layer in deep select mode.
+/// If the layer is text, the text tool is selected.
 fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, responses: &mut VecDeque<Message>) {
 	if is_layer_fed_by_node_of_name(layer, network_interface, "Text") {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 		responses.add(TextToolMessage::EditSelected);
-	} else if is_layer_fed_by_node_of_name(layer, network_interface, "Path") {
-		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path });
 	}
 }

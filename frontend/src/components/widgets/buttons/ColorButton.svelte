@@ -54,7 +54,7 @@
 		&.open {
 			&,
 			> .text-label {
-				background: rgba(var(--color-6-lowergray-rgb), 50%);
+				background: rgba(var(--color-6-lowergray-rgb), 0.5);
 			}
 		}
 
@@ -101,13 +101,13 @@
 					bottom: 0;
 					left: 0;
 					right: 0;
-					background: rgba(var(--color-4-dimgray-rgb), 50%);
+					background: rgba(var(--color-4-dimgray-rgb), 0.5);
 				}
 			}
 		}
 
 		> .text-label {
-			background: rgba(var(--color-5-dullgray-rgb), 50%);
+			background: rgba(var(--color-5-dullgray-rgb), 0.5);
 			font-size: 10px;
 			line-height: 12px;
 			height: 12px;
