@@ -280,8 +280,8 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 			let typesetting = TypesettingConfiguration {
 				font_size: 24.,
 				line_height_ratio: 1.2,
-				line_width: None,
-				maximum_height: None,
+				max_width: None,
+				max_height: None,
 				character_spacing: 1.,
 			};
 			modify_inputs.insert_text(text.chunks().iter().map(|chunk| chunk.text()).collect(), font, typesetting, layer);

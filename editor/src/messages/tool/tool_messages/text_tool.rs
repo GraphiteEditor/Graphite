@@ -262,13 +262,13 @@ impl TextToolData {
 		if let Some(editing_text) = self.editing_text.as_ref().filter(|_| editable) {
 			responses.add(FrontendMessage::DisplayEditableTextbox {
 				text: editing_text.text.clone(),
-				line_width: editing_text.typesetting.line_width,
+				max_width: editing_text.typesetting.max_width,
 				line_height_ratio: editing_text.typesetting.line_height_ratio,
 				font_size: editing_text.typesetting.font_size,
 				color: editing_text.color.unwrap_or(Color::BLACK),
 				url: font_cache.get_preview_url(&editing_text.font).cloned().unwrap_or_default(),
 				transform: editing_text.transform.to_cols_array(),
-				height: editing_text.typesetting.maximum_height,
+				max_height: editing_text.typesetting.max_height,
 			});
 		} else {
 			responses.add(FrontendMessage::DisplayRemoveEditableTextbox);
@@ -537,9 +537,9 @@ impl Fsm for TextToolFsmState {
 					typesetting: TypesettingConfiguration {
 						font_size: tool_options.font_size,
 						line_height_ratio: tool_options.line_height_ratio,
-						line_width: constraint_size.map(|size| size.x),
+						max_width: constraint_size.map(|size| size.x),
 						character_spacing: tool_options.character_spacing,
-						maximum_height: constraint_size.map(|size| size.y),
+						max_height: constraint_size.map(|size| size.y),
 					},
 					font: Font::new(tool_options.font_name.clone(), tool_options.font_style.clone()),
 					color: tool_options.fill.active_color(),

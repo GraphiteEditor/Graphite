@@ -64,15 +64,15 @@ fn push_str(buffer: &mut UnicodeBuffer, word: &str) {
 	buffer.push_str(word);
 }
 
-fn wrap_word(line_width: Option<f64>, glyph_buffer: &GlyphBuffer, font_size: f64, character_spacing: f64, x_pos: f64, space_glyph: Option<GlyphId>) -> bool {
-	if let Some(line_width) = line_width {
+fn wrap_word(max_width: Option<f64>, glyph_buffer: &GlyphBuffer, font_size: f64, character_spacing: f64, x_pos: f64, space_glyph: Option<GlyphId>) -> bool {
+	if let Some(max_width) = max_width {
 		// We don't word wrap spaces (to match the browser)
 		let all_glyphs = glyph_buffer.glyph_positions().iter().zip(glyph_buffer.glyph_infos());
 		let non_space_glyphs = all_glyphs.take_while(|(_, info)| space_glyph != Some(GlyphId(info.glyph_id as u16)));
 		let word_length: f64 = non_space_glyphs.map(|(pos, _)| pos.x_advance as f64 * character_spacing).sum();
 		let scaled_word_length = word_length * font_size;
 
-		if scaled_word_length + x_pos > line_width {
+		if scaled_word_length + x_pos > max_width {
 			return true;
 		}
 	}
@@ -84,8 +84,8 @@ pub struct TypesettingConfiguration {
 	pub font_size: f64,
 	pub line_height_ratio: f64,
 	pub character_spacing: f64,
-	pub line_width: Option<f64>,
-	pub maximum_height: Option<f64>,
+	pub max_width: Option<f64>,
+	pub max_height: Option<f64>,
 }
 
 pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: TypesettingConfiguration) -> Vec<Subpath<PointId>> {
@@ -114,19 +114,19 @@ pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: Types
 			let glyph_buffer = rustybuzz::shape(&buzz_face, &[], buffer);
 
 			// Don't wrap the first word
-			if index != 0 && wrap_word(typesetting.line_width, &glyph_buffer, scale, typesetting.character_spacing, builder.pos.x, space_glyph) {
+			if index != 0 && wrap_word(typesetting.max_width, &glyph_buffer, scale, typesetting.character_spacing, builder.pos.x, space_glyph) {
 				builder.pos = DVec2::new(0., builder.pos.y + line_height);
 			}
 
 			for (glyph_position, glyph_info) in glyph_buffer.glyph_positions().iter().zip(glyph_buffer.glyph_infos()) {
 				let glyph_id = GlyphId(glyph_info.glyph_id as u16);
-				if let Some(line_width) = typesetting.line_width {
-					if space_glyph != Some(glyph_id) && builder.pos.x + (glyph_position.x_advance as f64 * builder.scale * typesetting.character_spacing) >= line_width {
+				if let Some(max_width) = typesetting.max_width {
+					if space_glyph != Some(glyph_id) && builder.pos.x + (glyph_position.x_advance as f64 * builder.scale * typesetting.character_spacing) >= max_width {
 						builder.pos = DVec2::new(0., builder.pos.y + line_height);
 					}
 				}
 				// Clip when the height is exceeded
-				if typesetting.maximum_height.is_some_and(|maximum_height| builder.pos.y > maximum_height) {
+				if typesetting.max_height.is_some_and(|max_height| builder.pos.y > max_height) {
 					break 'lines;
 				}
 
@@ -143,7 +143,7 @@ pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: Types
 		}
 		builder.pos = DVec2::new(0., builder.pos.y + line_height);
 	}
-	info!("Maximum height {:?} height {}", typesetting.maximum_height, builder.pos.y);
+	info!("Maximum height {:?} height {}", typesetting.max_height, builder.pos.y);
 	builder.other_subpaths
 }
 
@@ -167,14 +167,14 @@ pub fn bounding_box(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: 
 			let glyph_buffer = rustybuzz::shape(&buzz_face, &[], buffer);
 
 			// Don't wrap the first word
-			if index != 0 && wrap_word(typesetting.line_width, &glyph_buffer, scale, typesetting.character_spacing, pos.x, space_glyph) {
+			if index != 0 && wrap_word(typesetting.max_width, &glyph_buffer, scale, typesetting.character_spacing, pos.x, space_glyph) {
 				pos = DVec2::new(0., pos.y + line_height);
 			}
 
 			for (glyph_position, glyph_info) in glyph_buffer.glyph_positions().iter().zip(glyph_buffer.glyph_infos()) {
 				let glyph_id = GlyphId(glyph_info.glyph_id as u16);
-				if let Some(line_width) = typesetting.line_width {
-					if space_glyph != Some(glyph_id) && pos.x + (glyph_position.x_advance as f64 * scale * typesetting.character_spacing) >= line_width {
+				if let Some(max_width) = typesetting.max_width {
+					if space_glyph != Some(glyph_id) && pos.x + (glyph_position.x_advance as f64 * scale * typesetting.character_spacing) >= max_width {
 						pos = DVec2::new(0., pos.y + line_height);
 					}
 				}
@@ -188,11 +188,11 @@ pub fn bounding_box(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: 
 		bounds = bounds.max(pos);
 	}
 
-	if let Some(line_width) = typesetting.line_width {
-		bounds.x = line_width;
+	if let Some(max_width) = typesetting.max_width {
+		bounds.x = max_width;
 	}
 
-	if let Some(height) = typesetting.maximum_height {
+	if let Some(height) = typesetting.max_height {
 		bounds.y = height;
 	}
 

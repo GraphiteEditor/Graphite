@@ -2128,8 +2128,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						"Size".to_string(),
 						"Line Height".to_string(),
 						"Character Spacing".to_string(),
-						"Line Width".to_string(),
-						"Textbox Height".to_string(),
+						"Max Width".to_string(),
+						"Max Height".to_string(),
 					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
