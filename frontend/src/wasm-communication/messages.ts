@@ -830,6 +830,8 @@ export class DisplayEditableTextbox extends JsMessage {
 
 	readonly lineWidth!: undefined | number;
 
+	readonly lineHeightRatio!: number;
+
 	readonly fontSize!: number;
 
 	@Type(() => Color)
@@ -838,6 +840,8 @@ export class DisplayEditableTextbox extends JsMessage {
 	readonly url!: string;
 
 	readonly transform!: number[];
+
+	readonly height!: undefined | number;
 }
 
 export class DisplayEditableTextboxTransform extends JsMessage {

@@ -318,7 +318,8 @@
 		textInput.contentEditable = "true";
 		textInput.style.transformOrigin = "0 0";
 		textInput.style.width = displayEditableTextbox.lineWidth ? `${displayEditableTextbox.lineWidth}px` : "max-content";
-		textInput.style.height = "auto";
+		textInput.style.lineHeight = `${displayEditableTextbox.lineHeightRatio}`;
+		textInput.style.height = displayEditableTextbox.height ? `${displayEditableTextbox.height}px` : "auto";
 		textInput.style.fontSize = `${displayEditableTextbox.fontSize}px`;
 		textInput.style.color = displayEditableTextbox.color.toHexOptionalAlpha() || "transparent";
 
@@ -721,14 +722,21 @@
 							}
 						}
 
+						.text-input {
+							word-break: break-all;
+						}
+
 						.text-input div {
 							cursor: text;
 							background: none;
 							border: none;
 							margin: 0;
 							padding: 0;
-							overflow: visible;
+							overflow-x: visible;
+							overflow-y: hidden;
 							white-space: pre-wrap;
+							overflow-wrap: anywhere;
+							word-break: normal;
 							display: inline-block;
 							// Workaround to force Chrome to display the flashing text entry cursor when text is empty
 							padding-left: 1px;

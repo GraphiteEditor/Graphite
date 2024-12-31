@@ -28,11 +28,14 @@ pub enum FrontendMessage {
 		text: String,
 		#[serde(rename = "lineWidth")]
 		line_width: Option<f64>,
+		#[serde(rename = "lineHeightRatio")]
+		line_height_ratio: f64,
 		#[serde(rename = "fontSize")]
 		font_size: f64,
 		color: Color,
 		url: String,
 		transform: [f64; 6],
+		height: Option<f64>,
 	},
 	DisplayEditableTextboxTransform {
 		transform: [f64; 6],

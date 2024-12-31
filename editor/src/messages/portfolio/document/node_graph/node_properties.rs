@@ -661,6 +661,27 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 				.on_commit(commit_value)
 				.widget_holder(),
 		]),
+		Some(&TaggedValue::OptionalF64(x)) => {
+			// TODO: don't wipe out the previously set value (setting it back to the default of 100) when reenabling this checkbox back to Some from None
+			let toggle_enabled = move |checkbox_input: &CheckboxInput| TaggedValue::OptionalF64(if checkbox_input.checked { Some(100.) } else { None });
+			widgets.extend_from_slice(&[
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
+				Separator::new(SeparatorType::Related).widget_holder(),
+				// The checkbox toggles if the value is Some or None
+				CheckboxInput::new(x.is_some())
+					.on_update(update_value(toggle_enabled, node_id, index))
+					.on_commit(commit_value)
+					.widget_holder(),
+				Separator::new(SeparatorType::Related).widget_holder(),
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
+				number_props
+					.value(x)
+					.on_update(update_value(move |x: &NumberInput| TaggedValue::OptionalF64(x.value), node_id, index))
+					.disabled(x.is_none())
+					.on_commit(commit_value)
+					.widget_holder(),
+			]);
+		}
 		_ => {}
 	}
 
@@ -1734,6 +1755,8 @@ pub(crate) fn text_properties(document_node: &DocumentNode, node_id: NodeId, _co
 	let size = number_widget(document_node, node_id, 3, "Size", NumberInput::default().unit(" px").min(1.), true);
 	let line_height_ratio = number_widget(document_node, node_id, 4, "Line Height", NumberInput::default().min(0.).step(0.1), true);
 	let character_spacing = number_widget(document_node, node_id, 5, "Character Spacing", NumberInput::default().min(0.).step(0.1), true);
+	let line_width = number_widget(document_node, node_id, 6, "Line Width", NumberInput::default().unit(" px").min(1.), false);
+	let height = number_widget(document_node, node_id, 7, "Textbox Height", NumberInput::default().unit(" px").min(1.), false);
 
 	let mut result = vec![LayoutGroup::Row { widgets: text }, LayoutGroup::Row { widgets: font }];
 	if let Some(style) = style {
@@ -1742,6 +1765,8 @@ pub(crate) fn text_properties(document_node: &DocumentNode, node_id: NodeId, _co
 	result.push(LayoutGroup::Row { widgets: size });
 	result.push(LayoutGroup::Row { widgets: line_height_ratio });
 	result.push(LayoutGroup::Row { widgets: character_spacing });
+	result.push(LayoutGroup::Row { widgets: line_width });
+	result.push(LayoutGroup::Row { widgets: height });
 	result
 }
 

@@ -154,8 +154,11 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Escape); action_dispatch=EyedropperToolMessage::Abort),
 		//
 		// TextToolMessage
-		entry!(KeyUp(MouseLeft); action_dispatch=TextToolMessage::Interact),
-		entry!(KeyDown(Escape); action_dispatch=TextToolMessage::CommitText),
+		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=TextToolMessage::PointerMove { center: Alt, lock_ratio: Shift }),
+		entry!(KeyDown(MouseLeft); action_dispatch=TextToolMessage::DragStart),
+		entry!(KeyUp(MouseLeft); action_dispatch=TextToolMessage::DragStop),
+		entry!(KeyDown(MouseRight); action_dispatch=TextToolMessage::Abort),
+		entry!(KeyDown(Escape); action_dispatch=TextToolMessage::Abort),
 		entry!(KeyDown(Enter); modifiers=[Accel], action_dispatch=TextToolMessage::CommitText),
 		//
 		// GradientToolMessage
