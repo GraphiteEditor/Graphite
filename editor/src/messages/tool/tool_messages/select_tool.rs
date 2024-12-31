@@ -9,14 +9,14 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
-use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
+use crate::messages::tool::common_functionality::graph_modification_utils::{get_text, is_layer_fed_by_node_of_name};
 use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::{auto_panning::AutoPanning, measure};
 
 use graph_craft::document::NodeId;
-use graphene_core::renderer::Quad;
+use graphene_core::{renderer::Quad, text::load_face};
 use graphene_std::renderer::Rect;
 use graphene_std::vector::misc::BooleanOperation;
 
@@ -402,7 +402,7 @@ impl Fsm for SelectToolFsmState {
 	type ToolOptions = ();
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionHandlerData { document, input, .. } = tool_action_data;
+		let ToolActionHandlerData { document, input, font_cache, .. } = tool_action_data;
 
 		let ToolMessage::Select(event) = event else {
 			return self;
@@ -424,6 +424,16 @@ impl Fsm for SelectToolFsmState {
 					.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 				{
 					overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+					if is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
+						let (text, font, typesetting) = get_text(layer, &document.network_interface).expect("Text layer should have text when interacting with the Text tool in `interact()`");
+
+						let buzz_face = font_cache.get(font).map(|data| load_face(data));
+						let far = graphene_core::text::bounding_box(text, buzz_face, typesetting);
+						let quad = Quad::from_box([DVec2::ZERO, far]);
+						let transformed_quad = document.metadata().transform_to_viewport(layer) * quad;
+
+						overlay_context.dashed_quad(transformed_quad, None, Some(7.), Some(5.));
+					}
 				}
 
 				// Update bounds
