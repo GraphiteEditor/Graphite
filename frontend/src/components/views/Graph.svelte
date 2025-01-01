@@ -696,7 +696,7 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryInput.dataType.toLowerCase()}-dim)`}
 							bind:this={inputs[nodeIndex + 1][0]}
 						>
-							<title>{`${dataTypeTooltip(node.primaryInput)}\n${inputConnectedToText(node.primaryInput)}`}</title>
+							<title>{`Supported types:\n${node.primaryInput.dataType}\n${dataTypeTooltip(node.primaryInput)}\n${inputConnectedToText(node.primaryInput)}`}</title>
 							{#if node.primaryInput.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -716,7 +716,9 @@
 								style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
 								bind:this={inputs[nodeIndex + 1][index + (node.primaryInput ? 1 : 0)]}
 							>
-								<title>{`${dataTypeTooltip(secondary)}\n${inputConnectedToText(secondary)}`}</title>
+								<title>
+									{`Supported types:\n${secondary.dataType}\n${dataTypeTooltip(secondary)}\n${inputConnectedToText(secondary)}`}
+								</title>
 								{#if secondary.connectedTo !== undefined}
 									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 								{:else}
