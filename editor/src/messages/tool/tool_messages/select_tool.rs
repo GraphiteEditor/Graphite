@@ -80,6 +80,7 @@ pub enum SelectToolMessage {
 	PointerOutsideViewport(SelectToolPointerKeys),
 	SelectOptions(SelectOptionsUpdate),
 	SetPivot { position: PivotPosition },
+	RestoreSelection,
 }
 
 impl ToolMetadata for SelectTool {
@@ -230,6 +231,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 
 		let additional = match self.fsm_state {
 			SelectToolFsmState::Ready { .. } => actions!(SelectToolMessageDiscriminant; DragStart),
+			SelectToolFsmState::DrawingBox { .. } => actions!(SelectToolMessageDiscriminant;RestoreSelection,DragStop),
 			_ => actions!(SelectToolMessageDiscriminant; DragStop),
 		};
 		common.extend(additional);
@@ -281,6 +283,7 @@ struct SelectToolData {
 	selected_layers_changed: bool,
 	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
+	previously_selected_layers: Vec<LayerNodeIdentifier>,
 }
 
 impl SelectToolData {
@@ -557,6 +560,7 @@ impl Fsm for SelectToolFsmState {
 					.collect();
 				let intersection_list = document.click_list(input).collect::<Vec<_>>();
 				let intersection = document.find_deepest(&intersection_list);
+				tool_data.previously_selected_layers = selected.clone();
 
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
 				// If the user is dragging the rotate trigger, go into RotatingBounds mode.
@@ -1103,6 +1107,34 @@ impl Fsm for SelectToolFsmState {
 
 				let pos: Option<DVec2> = position.into();
 				tool_data.pivot.set_normalized_position(pos.unwrap(), document, responses);
+
+				self
+			}
+			(SelectToolFsmState::DrawingBox { .. }, SelectToolMessage::RestoreSelection) => {
+				if !tool_data.previously_selected_layers.iter().any(|item| tool_data.layers_dragging.contains(item)) {
+					tool_data.layers_dragging.extend(tool_data.previously_selected_layers.clone());
+				} else {
+					let selection_set: HashSet<_> = tool_data.previously_selected_layers.iter().cloned().collect();
+					tool_data.layers_dragging.retain(|layer| !selection_set.contains(layer));
+				}
+				let selected_nodes: Vec<_> = tool_data
+					.layers_dragging
+					.iter()
+					.filter_map(|layer| {
+						if *layer != LayerNodeIdentifier::ROOT_PARENT {
+							Some(layer.to_node())
+						} else {
+							log::error!("ROOT_PARENT found in tool_data.layers_dragging during selection set");
+							None
+						}
+					})
+					.collect();
+
+				// Dispatch the SelectedNodesSet message
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: selected_nodes });
+
+				// Dispatch the OverlaysMessage::Draw message to update the UI
+				responses.add(OverlaysMessage::Draw);
 
 				self
 			}
