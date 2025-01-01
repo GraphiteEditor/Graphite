@@ -252,7 +252,7 @@ impl ToolTransition for SelectTool {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum SelectToolFsmState {
 	Ready { selection: NestedSelectionBehavior },
-	DrawingBox { selection: NestedSelectionBehavior },
+	DrawingBox { selection: NestedSelectionBehavior, previous_selected: bool },
 	Dragging,
 	ResizingBounds,
 	RotatingBounds,
@@ -660,10 +660,12 @@ impl Fsm for SelectToolFsmState {
 				// Dragging a selection box
 				else {
 					tool_data.layers_dragging = selected;
+					let mut previous_selected = true;
 
 					if !input.keyboard.key(extend_selection) {
 						responses.add(DocumentMessage::DeselectAllLayers);
 						tool_data.layers_dragging.clear();
+						previous_selected = false
 					}
 
 					if let Some(intersection) = intersection {
@@ -676,14 +678,14 @@ impl Fsm for SelectToolFsmState {
 						}
 						tool_data.get_snap_candidates(document, input);
 
-						responses.add(DocumentMessage::StartTransaction);
-						SelectToolFsmState::Dragging
-					} else {
-						// Make a box selection, preserving previously selected layers
-						let selection = tool_data.nested_selection_behavior;
-						SelectToolFsmState::DrawingBox { selection }
-					}
-				};
+							responses.add(DocumentMessage::StartTransaction);
+							SelectToolFsmState::Dragging
+						} else {
+							// Make a box selection, preserving previously selected layers
+							let selection = tool_data.nested_selection_behavior;
+							SelectToolFsmState::DrawingBox { selection, previous_selected }
+						}
+					};
 				tool_data.non_duplicated_layers = None;
 
 				state
@@ -828,7 +830,7 @@ impl Fsm for SelectToolFsmState {
 
 				SelectToolFsmState::DraggingPivot
 			}
-			(SelectToolFsmState::DrawingBox { .. }, SelectToolMessage::PointerMove(modifier_keys)) => {
+			(SelectToolFsmState::DrawingBox { selection: _, previous_selected }, SelectToolMessage::PointerMove(modifier_keys)) => {
 				tool_data.drag_current = input.mouse.position;
 				responses.add(OverlaysMessage::Draw);
 
@@ -840,7 +842,7 @@ impl Fsm for SelectToolFsmState {
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				let selection = tool_data.nested_selection_behavior;
-				SelectToolFsmState::DrawingBox { selection }
+				SelectToolFsmState::DrawingBox { selection, previous_selected }
 			}
 			(SelectToolFsmState::Ready { .. }, SelectToolMessage::PointerMove(_)) => {
 				let mut cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
@@ -1110,13 +1112,18 @@ impl Fsm for SelectToolFsmState {
 
 				self
 			}
-			(SelectToolFsmState::DrawingBox { .. }, SelectToolMessage::RestoreSelection) => {
-				if !tool_data.previously_selected_layers.iter().any(|item| tool_data.layers_dragging.contains(item)) {
-					tool_data.layers_dragging.extend(tool_data.previously_selected_layers.clone());
-				} else {
-					let selection_set: HashSet<_> = tool_data.previously_selected_layers.iter().cloned().collect();
+			(SelectToolFsmState::DrawingBox { selection, previous_selected }, SelectToolMessage::RestoreSelection) => {
+				// Toggle the selection state based on the previous_selected flag
+				if previous_selected {
+					let selection_set: HashSet<_> = tool_data.previously_selected_layers.iter().collect();
 					tool_data.layers_dragging.retain(|layer| !selection_set.contains(layer));
+				} else {
+					tool_data.layers_dragging.extend(&tool_data.previously_selected_layers);
 				}
+
+				// Update the previous_selected flag
+				let new_previous_selected = !previous_selected;
+
 				let selected_nodes: Vec<_> = tool_data
 					.layers_dragging
 					.iter()
@@ -1130,13 +1137,14 @@ impl Fsm for SelectToolFsmState {
 					})
 					.collect();
 
-				// Dispatch the SelectedNodesSet message
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: selected_nodes });
 
-				// Dispatch the OverlaysMessage::Draw message to update the UI
 				responses.add(OverlaysMessage::Draw);
 
-				self
+				SelectToolFsmState::DrawingBox {
+					selection,
+					previous_selected: new_previous_selected,
+				}
 			}
 			_ => self,
 		}
