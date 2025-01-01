@@ -8,6 +8,7 @@
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
 	let self: MenuList;
+	let isOpen = false;
 
 	// Note: IconButton should be used if only an icon, but no label, is desired.
 	// However, if multiple TextButton widgets are used in a group with only some having no label, this component is able to accommodate that.
@@ -28,7 +29,7 @@
 	$: menuListChildrenExists = (menuListChildren?.length ?? 0) > 0;
 
 	// Handles either a button click or, if applicable, the opening of the menu list floating menu
-	function onClick(e: MouseEvent) {
+	function onMouseDown(e: MouseEvent) {
 		// If there's no menu to open, trigger the action
 		if ((menuListChildren?.length ?? 0) === 0) {
 			// Call the action
@@ -41,9 +42,17 @@
 		// Focus the target so that keyboard inputs are sent to the dropdown
 		(e.target as HTMLElement | undefined)?.focus();
 
+		isOpen = !isOpen;
 		// Open the menu list floating menu
-		if (self) self.open = true;
+		if (self) self.open = isOpen;
 		else throw new Error("The menu bar floating menu has no reference to `self`");
+	}
+
+	function onRightClick(e: MouseEvent) {
+		e.preventDefault();
+		e.stopPropagation();
+		// close the menu
+		if (self) self.open = false;
 	}
 </script>
 
@@ -62,7 +71,8 @@
 		data-text-button
 		tabindex={disabled ? -1 : 0}
 		data-floating-menu-spawner={menuListChildrenExists ? "" : "no-hover-transfer"}
-		on:click={onClick}
+		on:mousedown={onMouseDown}
+		on:contextmenu={onRightClick}
 	>
 		{#if icon}
 			<IconLabel {icon} />
@@ -76,7 +86,7 @@
 	</button>
 	{#if menuListChildrenExists}
 		<MenuList
-			on:open={({ detail }) => self && (self.open = detail)}
+			on:open={({ detail }) => self && ((self.open = detail), (isOpen = !isOpen))}
 			open={self?.open || false}
 			entries={menuListChildren || []}
 			direction="Bottom"
