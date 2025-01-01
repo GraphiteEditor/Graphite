@@ -662,7 +662,7 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 				.widget_holder(),
 		]),
 		Some(&TaggedValue::OptionalF64(x)) => {
-			// TODO: don't wipe out the previously set value (setting it back to the default of 100) when reenabling this checkbox back to Some from None
+			// TODO: Don't wipe out the previously set value (setting it back to the default of 100) when reenabling this checkbox back to Some from None
 			let toggle_enabled = move |checkbox_input: &CheckboxInput| TaggedValue::OptionalF64(if checkbox_input.checked { Some(100.) } else { None });
 			widgets.extend_from_slice(&[
 				Separator::new(SeparatorType::Unrelated).widget_holder(),

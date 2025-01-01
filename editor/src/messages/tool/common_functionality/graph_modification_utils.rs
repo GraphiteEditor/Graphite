@@ -4,7 +4,7 @@ use crate::messages::prelude::*;
 use bezier_rs::Subpath;
 use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
 use graphene_core::raster::{BlendMode, ImageFrame};
-use graphene_core::text::{Font, TypesettingConfiguration};
+use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::style::Gradient;
 use graphene_core::vector::PointId;
 use graphene_core::Color;
@@ -127,7 +127,7 @@ pub fn get_text_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkIn
 }
 
 /// Gets properties from the Text node
-pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<(&String, &Font, TypesettingConfiguration)> {
+pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<(&String, &Font, TypesettingConfig)> {
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Text")?;
 
 	let Some(TaggedValue::String(text)) = &inputs[1].as_value() else { return None };
@@ -138,7 +138,7 @@ pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 	let Some(&TaggedValue::OptionalF64(max_width)) = inputs[6].as_value() else { return None };
 	let Some(&TaggedValue::OptionalF64(max_height)) = inputs[7].as_value() else { return None };
 
-	let typesetting = TypesettingConfiguration {
+	let typesetting = TypesettingConfig {
 		font_size,
 		line_height_ratio,
 		max_width,

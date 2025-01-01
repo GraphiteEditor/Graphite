@@ -1,6 +1,5 @@
 use graph_craft::wasm_application_io::WasmEditorApi;
-
-use graphene_core::text::TypesettingConfiguration;
+use graphene_core::text::TypesettingConfig;
 pub use graphene_core::text::{bounding_box, load_face, to_path, Font, FontCache};
 
 #[node_macro::node(category(""))]
@@ -17,7 +16,7 @@ fn text<'i: 'n>(
 ) -> crate::vector::VectorData {
 	let buzz_face = editor.font_cache.get(&font_name).map(|data| load_face(data));
 
-	let typesetting = TypesettingConfiguration {
+	let typesetting = TypesettingConfig {
 		font_size,
 		line_height_ratio,
 		character_spacing,

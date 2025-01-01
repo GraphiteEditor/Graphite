@@ -6,7 +6,7 @@ use crate::messages::prelude::*;
 use bezier_rs::Subpath;
 use graph_craft::document::NodeId;
 use graphene_core::raster::{BlendMode, ImageFrame};
-use graphene_core::text::{Font, TypesettingConfiguration};
+use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::PointId;
@@ -93,7 +93,7 @@ pub enum GraphOperationMessage {
 		id: NodeId,
 		text: String,
 		font: Font,
-		typesetting: TypesettingConfiguration,
+		typesetting: TypesettingConfig,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},

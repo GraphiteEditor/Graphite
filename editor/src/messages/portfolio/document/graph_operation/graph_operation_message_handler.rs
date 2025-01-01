@@ -7,7 +7,7 @@ use crate::messages::prelude::*;
 
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::renderer::Quad;
-use graphene_core::text::{Font, TypesettingConfiguration};
+use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::style::{Fill, Gradient, GradientStops, GradientType, LineCap, LineJoin, Stroke};
 use graphene_core::Color;
 use graphene_std::vector::convert_usvg_path;
@@ -277,14 +277,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 		}
 		usvg::Node::Text(text) => {
 			let font = Font::new(graphene_core::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_core::consts::DEFAULT_FONT_STYLE.to_string());
-			let typesetting = TypesettingConfiguration {
-				font_size: 24.,
-				line_height_ratio: 1.2,
-				max_width: None,
-				max_height: None,
-				character_spacing: 1.,
-			};
-			modify_inputs.insert_text(text.chunks().iter().map(|chunk| chunk.text()).collect(), font, typesetting, layer);
+			modify_inputs.insert_text(text.chunks().iter().map(|chunk| chunk.text()).collect(), font, TypesettingConfig::default(), layer);
 			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
 		}
 	}

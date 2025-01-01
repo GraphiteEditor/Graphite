@@ -27,7 +27,7 @@ impl Resize {
 		root_transform.transform_point2(self.drag_start)
 	}
 
-	/// Compute the drag start and end based on the current mouse position. If the layer doesn't exist, returns None.
+	/// Compute the drag start and end based on the current mouse position. If the layer doesn't exist, returns [`None`].
 	/// If you want to draw even without a layer, use [`Resize::calculate_points_ignore_layer`].
 	pub fn calculate_points(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, center: Key, lock_ratio: Key) -> Option<[DVec2; 2]> {
 		let layer = self.layer?;

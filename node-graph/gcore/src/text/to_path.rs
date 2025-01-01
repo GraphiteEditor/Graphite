@@ -80,7 +80,7 @@ fn wrap_word(max_width: Option<f64>, glyph_buffer: &GlyphBuffer, font_size: f64,
 }
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
-pub struct TypesettingConfiguration {
+pub struct TypesettingConfig {
 	pub font_size: f64,
 	pub line_height_ratio: f64,
 	pub character_spacing: f64,
@@ -88,7 +88,19 @@ pub struct TypesettingConfiguration {
 	pub max_height: Option<f64>,
 }
 
-pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: TypesettingConfiguration) -> Vec<Subpath<PointId>> {
+impl Default for TypesettingConfig {
+	fn default() -> Self {
+		Self {
+			font_size: 24.,
+			line_height_ratio: 1.2,
+			character_spacing: 1.,
+			max_width: None,
+			max_height: None,
+		}
+	}
+}
+
+pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: TypesettingConfig) -> Vec<Subpath<PointId>> {
 	let buzz_face = match buzz_face {
 		Some(face) => face,
 		// Show blank layer if font has not loaded
@@ -108,7 +120,7 @@ pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: Types
 		id: PointId::ZERO,
 	};
 
-	'lines: for line in str.split('\n') {
+	for line in str.split('\n') {
 		for (index, word) in SplitWordsIncludingSpaces::new(line).enumerate() {
 			push_str(&mut buffer, word);
 			let glyph_buffer = rustybuzz::shape(&buzz_face, &[], buffer);
@@ -127,7 +139,7 @@ pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: Types
 				}
 				// Clip when the height is exceeded
 				if typesetting.max_height.is_some_and(|max_height| builder.pos.y > max_height) {
-					break 'lines;
+					return builder.other_subpaths;
 				}
 
 				builder.offset = DVec2::new(glyph_position.x_offset as f64, glyph_position.y_offset as f64) * builder.scale;
@@ -141,13 +153,14 @@ pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: Types
 
 			buffer = glyph_buffer.clear();
 		}
+
 		builder.pos = DVec2::new(0., builder.pos.y + line_height);
 	}
-	info!("Maximum height {:?} height {}", typesetting.max_height, builder.pos.y);
+
 	builder.other_subpaths
 }
 
-pub fn bounding_box(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: TypesettingConfiguration) -> DVec2 {
+pub fn bounding_box(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: TypesettingConfig) -> DVec2 {
 	let buzz_face = match buzz_face {
 		Some(face) => face,
 		// Show blank layer if font has not loaded
@@ -191,9 +204,8 @@ pub fn bounding_box(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: 
 	if let Some(max_width) = typesetting.max_width {
 		bounds.x = max_width;
 	}
-
-	if let Some(height) = typesetting.max_height {
-		bounds.y = height;
+	if let Some(max_height) = typesetting.max_height {
+		bounds.y = max_height;
 	}
 
 	bounds
@@ -220,11 +232,7 @@ impl<'a> Iterator for SplitWordsIncludingSpaces<'a> {
 		let mut eaten_chars = self.text[self.start_byte..].char_indices().skip_while(|(_, c)| *c != ' ').skip_while(|(_, c)| *c == ' ');
 		let start_byte = self.start_byte;
 		self.start_byte = eaten_chars.next().map_or(self.text.len(), |(offset, _)| self.start_byte + offset);
-		if self.start_byte > start_byte {
-			self.text.get(start_byte..self.start_byte)
-		} else {
-			None
-		}
+		(self.start_byte > start_byte).then(|| self.text.get(start_byte..self.start_byte)).flatten()
 	}
 }
 

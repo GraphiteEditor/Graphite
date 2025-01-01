@@ -14,7 +14,7 @@ use crate::messages::tool::common_functionality::{auto_panning::AutoPanning, res
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::renderer::Quad;
-use graphene_core::text::{load_face, Font, FontCache, TypesettingConfiguration};
+use graphene_core::text::{load_face, Font, FontCache, TypesettingConfig};
 use graphene_core::vector::style::Fill;
 use graphene_core::Color;
 
@@ -208,7 +208,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for TextToo
 				Abort,
 				CommitText,
 			),
-			TextToolFsmState::Dragging => actions!(TextToolMessageDiscriminant;
+			TextToolFsmState::Placing | TextToolFsmState::Dragging => actions!(TextToolMessageDiscriminant;
 				DragStop,
 				Abort,
 				PointerMove,
@@ -231,9 +231,14 @@ impl ToolTransition for TextTool {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum TextToolFsmState {
+	/// The tool is ready to place or edit text.
 	#[default]
 	Ready,
+	/// The user is typing in the interactive viewport text area.
 	Editing,
+	/// The user is clicking to add a new text layer, but hasn't dragged or released the left mouse button yet.
+	Placing,
+	/// The user is dragging to create a new text area.
 	Dragging,
 }
 
@@ -241,7 +246,7 @@ enum TextToolFsmState {
 pub struct EditingText {
 	text: String,
 	font: Font,
-	typesetting: TypesettingConfiguration,
+	typesetting: TypesettingConfig,
 	color: Option<Color>,
 	transform: DAffine2,
 }
@@ -253,7 +258,8 @@ struct TextToolData {
 	new_text: String,
 	resize: Resize,
 	auto_panning: AutoPanning,
-	cached_resize_bounds: [DVec2; 2], // Since the overlays must be drawn without knowledge of the inputs
+	// Since the overlays must be drawn without knowledge of the inputs
+	cached_resize_bounds: [DVec2; 2],
 }
 
 impl TextToolData {
@@ -419,13 +425,12 @@ impl Fsm for TextToolFsmState {
 			font_cache,
 			..
 		} = transition_data;
-		let ToolMessage::Text(event) = event else {
-			return self;
-		};
 		let fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
 			.unwrap()
 			.with_alpha(0.05)
 			.rgba_hex();
+
+		let ToolMessage::Text(event) = event else { return self };
 		match (self, event) {
 			(TextToolFsmState::Editing, TextToolMessage::Overlays(mut overlay_context)) => {
 				responses.add(FrontendMessage::DisplayEditableTextboxTransform {
@@ -444,7 +449,7 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Editing
 			}
 			(_, TextToolMessage::Overlays(mut overlay_context)) => {
-				if matches!(self, Self::Dragging) {
+				if matches!(self, Self::Placing | Self::Dragging) {
 					// Get the updated selection box bounds
 					let quad = Quad::from_box(tool_data.cached_resize_bounds);
 
@@ -496,9 +501,9 @@ impl Fsm for TextToolFsmState {
 				tool_data.resize.start(document, input);
 				tool_data.cached_resize_bounds = [tool_data.resize.viewport_drag_start(document); 2];
 
-				TextToolFsmState::Dragging
+				TextToolFsmState::Placing
 			}
-			(TextToolFsmState::Dragging, TextToolMessage::PointerMove { center, lock_ratio }) => {
+			(Self::Placing | TextToolFsmState::Dragging, TextToolMessage::PointerMove { center, lock_ratio }) => {
 				tool_data.cached_resize_bounds = tool_data.resize.calculate_points_ignore_layer(document, input, center, lock_ratio);
 
 				responses.add(OverlaysMessage::Draw);
@@ -510,7 +515,7 @@ impl Fsm for TextToolFsmState {
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
-				self
+				TextToolFsmState::Dragging
 			}
 			(_, TextToolMessage::PointerMove { .. }) => {
 				tool_data.resize.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
@@ -518,7 +523,7 @@ impl Fsm for TextToolFsmState {
 
 				self
 			}
-			(TextToolFsmState::Dragging, TextToolMessage::PointerOutsideViewport { .. }) => {
+			(TextToolFsmState::Placing | TextToolFsmState::Dragging, TextToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning setup
 				let _ = tool_data.auto_panning.shift_viewport(input, responses);
 
@@ -534,7 +539,7 @@ impl Fsm for TextToolFsmState {
 
 				state
 			}
-			(TextToolFsmState::Dragging, TextToolMessage::DragStop) => {
+			(TextToolFsmState::Placing | TextToolFsmState::Dragging, TextToolMessage::DragStop) => {
 				let [start, end] = tool_data.cached_resize_bounds;
 				let has_dragged = (start - end).length_squared() > DRAG_THRESHOLD * DRAG_THRESHOLD;
 
@@ -551,7 +556,7 @@ impl Fsm for TextToolFsmState {
 				let editing_text = EditingText {
 					text: String::new(),
 					transform: DAffine2::from_translation(start),
-					typesetting: TypesettingConfiguration {
+					typesetting: TypesettingConfig {
 						font_size: tool_options.font_size,
 						line_height_ratio: tool_options.line_height_ratio,
 						max_width: constraint_size.map(|size| size.x),
@@ -625,7 +630,7 @@ impl Fsm for TextToolFsmState {
 				HintInfo::keys([Key::Control, Key::Enter], "").add_mac_keys([Key::Command, Key::Enter]),
 				HintInfo::keys([Key::Escape], "Commit Changes").prepend_slash(),
 			])]),
-			TextToolFsmState::Dragging => HintData(vec![
+			TextToolFsmState::Placing | TextToolFsmState::Dragging => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
 			]),

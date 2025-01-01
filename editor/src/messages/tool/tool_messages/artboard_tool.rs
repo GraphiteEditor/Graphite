@@ -112,7 +112,7 @@ struct ArtboardToolData {
 	drag_current: DVec2,
 	auto_panning: AutoPanning,
 	snap_candidates: Vec<SnapCandidatePoint>,
-	dragging_current_artboad_location: IVec2,
+	dragging_current_artboard_location: IVec2,
 }
 
 impl ArtboardToolData {
@@ -140,7 +140,7 @@ impl ArtboardToolData {
 	fn start_resizing(&mut self, _selected_edges: (bool, bool, bool, bool), _document: &DocumentMessageHandler, _input: &InputPreprocessorMessageHandler) {
 		if let Some(bounds) = &mut self.bounding_box_manager {
 			bounds.center_of_transformation = bounds.transform.transform_point2((bounds.bounds[0] + bounds.bounds[1]) / 2.);
-			self.dragging_current_artboad_location = bounds.bounds[0].round().as_ivec2();
+			self.dragging_current_artboard_location = bounds.bounds[0].round().as_ivec2();
 		}
 	}
 
@@ -200,9 +200,9 @@ impl ArtboardToolData {
 			dimensions: size.round().as_ivec2(),
 		});
 
-		let translation = position.round().as_ivec2() - self.dragging_current_artboad_location;
-		self.dragging_current_artboad_location = position.round().as_ivec2();
-		for child in self.selected_artboard.unwrap().children(&document.metadata()) {
+		let translation = position.round().as_ivec2() - self.dragging_current_artboard_location;
+		self.dragging_current_artboard_location = position.round().as_ivec2();
+		for child in self.selected_artboard.unwrap().children(document.metadata()) {
 			let local_translation = document.metadata().downstream_transform_to_document(child).inverse().transform_vector2(-translation.as_dvec2());
 			responses.add(GraphOperationMessage::TransformChange {
 				layer: child,
@@ -221,12 +221,9 @@ impl Fsm for ArtboardToolFsmState {
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
 		let ToolActionHandlerData { document, input, .. } = tool_action_data;
 
-		let ToolMessage::Artboard(event) = event else {
-			return self;
-		};
-
 		let hovered = ArtboardToolData::hovered_artboard(document, input).is_some();
 
+		let ToolMessage::Artboard(event) = event else { return self };
 		match (self, event) {
 			(state, ArtboardToolMessage::Overlays(mut overlay_context)) => {
 				if state != ArtboardToolFsmState::Drawing {

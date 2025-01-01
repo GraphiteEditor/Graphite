@@ -9,7 +9,7 @@ use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::raster::{BlendMode, ImageFrame};
-use graphene_core::text::{Font, TypesettingConfiguration};
+use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::{PointId, VectorModificationType};
@@ -179,7 +179,7 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 	}
 
-	pub fn insert_text(&mut self, text: String, font: Font, typesetting: TypesettingConfiguration, layer: LayerNodeIdentifier) {
+	pub fn insert_text(&mut self, text: String, font: Font, typesetting: TypesettingConfig, layer: LayerNodeIdentifier) {
 		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_node_template();
 		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_node_template();
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();

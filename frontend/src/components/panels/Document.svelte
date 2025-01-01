@@ -296,6 +296,12 @@
 		canvasCursor = cursorString;
 	}
 
+	function preventTextEditingScroll(e: Event) {
+		if (!(e.target instanceof HTMLElement)) return;
+		e.target.scrollTop = 0;
+		e.target.scrollLeft = 0;
+	}
+
 	// Text entry
 	export function triggerTextCommit() {
 		if (!textInput) return;
@@ -499,7 +505,7 @@
 						</svg>
 						<div class="text-input" style:width={canvasWidthCSS} style:height={canvasHeightCSS} style:pointer-events={showTextInput ? "auto" : ""}>
 							{#if showTextInput}
-								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" />
+								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" on:scroll={preventTextEditingScroll} />
 							{/if}
 						</div>
 						<canvas class="overlays" width={canvasWidthRoundedToEven} height={canvasHeightRoundedToEven} style:width={canvasWidthCSS} style:height={canvasHeightCSS} data-overlays-canvas>
@@ -734,8 +740,8 @@
 							padding: 0;
 							overflow-x: visible;
 							overflow-y: hidden;
-							white-space: pre-wrap;
 							overflow-wrap: anywhere;
+							white-space: pre-wrap;
 							word-break: normal;
 							display: inline-block;
 							// Workaround to force Chrome to display the flashing text entry cursor when text is empty

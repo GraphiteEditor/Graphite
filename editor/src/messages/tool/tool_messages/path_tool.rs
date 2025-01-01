@@ -588,10 +588,7 @@ impl Fsm for PathToolFsmState {
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
 		let ToolActionHandlerData { document, input, shape_editor, .. } = tool_action_data;
-		let ToolMessage::Path(event) = event else {
-			return self;
-		};
-
+		let ToolMessage::Path(event) = event else { return self };
 		match (self, event) {
 			(_, PathToolMessage::SelectionChanged) => {
 				// Set the newly targeted layers to visible
