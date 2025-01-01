@@ -16,7 +16,7 @@ use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::ProtoNodeIdentifier;
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, Image, ImageFrame, NoiseType, RedGreenBlue, RedGreenBlueAlpha};
-use graphene_core::text::Font;
+use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorData;
 use graphene_core::*;
@@ -2112,9 +2112,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							TaggedValue::Font(Font::new(graphene_core::consts::DEFAULT_FONT_FAMILY.into(), graphene_core::consts::DEFAULT_FONT_STYLE.into())),
 							false,
 						),
-						NodeInput::value(TaggedValue::F64(24.), false),
-						NodeInput::value(TaggedValue::F64(1.2), false),
-						NodeInput::value(TaggedValue::F64(1.), false),
+						NodeInput::value(TaggedValue::F64(TypesettingConfig::default().font_size), false),
+						NodeInput::value(TaggedValue::F64(TypesettingConfig::default().line_height_ratio), false),
+						NodeInput::value(TaggedValue::F64(TypesettingConfig::default().character_spacing), false),
+						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_width), false),
+						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false),
 					],
 					..Default::default()
 				},
@@ -2126,6 +2128,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						"Size".to_string(),
 						"Line Height".to_string(),
 						"Character Spacing".to_string(),
+						"Max Width".to_string(),
+						"Max Height".to_string(),
 					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
