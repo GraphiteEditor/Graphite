@@ -550,9 +550,7 @@ impl Fsm for PenToolFsmState {
 			transform = DAffine2::IDENTITY;
 		}
 
-		let ToolMessage::Pen(event) = event else {
-			return self;
-		};
+		let ToolMessage::Pen(event) = event else { return self };
 		match (self, event) {
 			(_, PenToolMessage::SelectionChanged) => {
 				responses.add(OverlaysMessage::Draw);

@@ -55,6 +55,7 @@ pub(crate) enum ParsedField {
 	Regular {
 		pat_ident: PatIdent,
 		name: Option<LitStr>,
+		description: String,
 		ty: Type,
 		exposed: bool,
 		value_source: ValueSource,
@@ -66,6 +67,7 @@ pub(crate) enum ParsedField {
 	Node {
 		pat_ident: PatIdent,
 		name: Option<LitStr>,
+		description: String,
 		input_type: Type,
 		output_type: Type,
 		implementations: Punctuated<Implementation, Comma>,
@@ -383,6 +385,21 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 	}
 
 	let (is_node, node_input_type, node_output_type) = parse_node_type(&ty);
+	let description = attrs
+		.iter()
+		.filter_map(|a| {
+			if a.style != AttrStyle::Outer {
+				return None;
+			}
+			let Meta::NameValue(name_val) = &a.meta else { return None };
+			if name_val.path.get_ident().map(|x| x.to_string()) != Some("doc".into()) {
+				return None;
+			}
+			let Expr::Lit(expr_lit) = &name_val.value else { return None };
+			let Lit::Str(ref text) = expr_lit.lit else { return None };
+			Some(text.value().trim().to_string())
+		})
+		.fold(String::new(), |acc, b| acc + &b + "\n");
 
 	if is_node {
 		let (input_type, output_type) = node_input_type
@@ -399,6 +416,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		Ok(ParsedField::Node {
 			pat_ident,
 			name,
+			description,
 			input_type,
 			output_type,
 			implementations,
@@ -411,6 +429,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		Ok(ParsedField::Regular {
 			pat_ident,
 			name,
+			description,
 			exposed,
 			number_min,
 			number_max,
@@ -599,6 +618,7 @@ mod tests {
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("b"),
 				name: None,
+				description: String::new(),
 				ty: parse_quote!(f64),
 				exposed: false,
 				value_source: ValueSource::None,
@@ -652,6 +672,7 @@ mod tests {
 				ParsedField::Node {
 					pat_ident: pat_ident("transform_target"),
 					name: None,
+					description: String::new(),
 					input_type: parse_quote!(Footprint),
 					output_type: parse_quote!(T),
 					implementations: Punctuated::new(),
@@ -659,6 +680,7 @@ mod tests {
 				ParsedField::Regular {
 					pat_ident: pat_ident("translate"),
 					name: None,
+					description: String::new(),
 					ty: parse_quote!(DVec2),
 					exposed: false,
 					value_source: ValueSource::None,
@@ -709,6 +731,7 @@ mod tests {
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("radius"),
 				name: None,
+				description: String::new(),
 				ty: parse_quote!(f64),
 				exposed: false,
 				value_source: ValueSource::Default(quote!(50.)),
@@ -757,6 +780,7 @@ mod tests {
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("shadows"),
 				name: None,
+				description: String::new(),
 				ty: parse_quote!(f64),
 				exposed: false,
 				value_source: ValueSource::None,
@@ -784,6 +808,7 @@ mod tests {
 		let input = quote!(
 			fn add(
 				a: f64,
+				/// b
 				#[range((0., 100.))]
 				#[min(-500.)]
 				#[max(500.)]
@@ -816,6 +841,7 @@ mod tests {
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("b"),
 				name: None,
+				description: String::from("b"),
 				ty: parse_quote!(f64),
 				exposed: false,
 				value_source: ValueSource::None,
@@ -865,6 +891,7 @@ mod tests {
 				pat_ident: pat_ident("path"),
 				name: None,
 				ty: parse_quote!(String),
+				description: String::new(),
 				exposed: true,
 				value_source: ValueSource::None,
 				number_min: None,

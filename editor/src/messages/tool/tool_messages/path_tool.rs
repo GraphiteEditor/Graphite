@@ -1,12 +1,12 @@
 use super::tool_prelude::*;
-use crate::consts::{COLOR_OVERLAY_YELLOW, DRAG_THRESHOLD, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
+use crate::consts::{COLOR_OVERLAY_YELLOW, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::shape_editor::{ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedPointsInfo, ShapeState};
-use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapData, SnapManager};
+use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 
 use graphene_core::renderer::Quad;
 use graphene_core::vector::ManipulatorPointId;
@@ -59,11 +59,15 @@ pub enum PathToolMessage {
 		equidistant: Key,
 		toggle_colinear: Key,
 		move_anchor_with_handles: Key,
+		snap_angle: Key,
+		lock_angle: Key,
 	},
 	PointerOutsideViewport {
 		equidistant: Key,
 		toggle_colinear: Key,
 		move_anchor_with_handles: Key,
+		snap_angle: Key,
+		lock_angle: Key,
 	},
 	RightClick,
 	SelectAllAnchors,
@@ -294,6 +298,7 @@ struct PathToolData {
 	saved_points_before_anchor_select_toggle: Vec<ManipulatorPointId>,
 	select_anchor_toggled: bool,
 	dragging_state: DraggingState,
+	angle: f64,
 }
 
 impl PathToolData {
@@ -466,13 +471,114 @@ impl PathToolData {
 		false
 	}
 
-	fn drag(&mut self, equidistant: bool, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
-		// Move the selected points with the mouse
-		let previous_mouse = document.metadata().document_to_viewport.transform_point2(self.previous_mouse_position);
-		let snapped_delta = shape_editor.snap(&mut self.snap_manager, &self.snap_cache, document, input, previous_mouse);
+	/// Attempts to get a single selected handle. Also retrieves the position of the anchor it is connected to. Used for the purpose of snapping the angle.
+	fn try_get_selected_handle_and_anchor(&self, shape_editor: &ShapeState, document: &DocumentMessageHandler) -> Option<(DVec2, DVec2)> {
+		// Only count selections of a single layer
+		let (layer, selection) = shape_editor.selected_shape_state.iter().next()?;
+
+		// Do not allow selections of multiple points to count
+		if selection.selected_points_count() != 1 {
+			return None;
+		}
+
+		// Only count selected handles
+		let selected_handle = selection.selected().next()?.as_handle()?;
+
+		let layer_to_document = document.metadata().transform_to_document(*layer);
+		let vector_data = document.network_interface.compute_modified_vector(*layer)?;
+
+		let handle_position_local = selected_handle.to_manipulator_point().get_position(&vector_data)?;
+		let anchor_id = selected_handle.to_manipulator_point().get_anchor(&vector_data)?;
+		let anchor_position_local = vector_data.point_domain.position_from_id(anchor_id)?;
+
+		let handle_position_document = layer_to_document.transform_point2(handle_position_local);
+		let anchor_position_document = layer_to_document.transform_point2(anchor_position_local);
+
+		Some((handle_position_document, anchor_position_document))
+	}
+
+	fn calculate_handle_angle(&mut self, handle_vector: DVec2, lock_angle: bool, snap_angle: bool) -> f64 {
+		let mut handle_angle = -handle_vector.angle_to(DVec2::X);
+
+		// When the angle is locked we use the old angle
+		if lock_angle {
+			handle_angle = self.angle
+		}
+
+		// Round the angle to the closest increment
+		if snap_angle {
+			let snap_resolution = HANDLE_ROTATE_SNAP_ANGLE.to_radians();
+			handle_angle = (handle_angle / snap_resolution).round() * snap_resolution;
+		}
+
+		// Cache the old handle angle for the lock angle.
+		self.angle = handle_angle;
+
+		handle_angle
+	}
+
+	fn apply_snapping(
+		&mut self,
+		handle_direction: DVec2,
+		new_handle_position: DVec2,
+		anchor_position: DVec2,
+		using_angle_constraints: bool,
+		handle_position: DVec2,
+		document: &DocumentMessageHandler,
+		input: &InputPreprocessorMessageHandler,
+	) -> DVec2 {
+		let snap_data = SnapData::new(document, input);
+		let snap_point = SnapCandidatePoint::handle_neighbors(new_handle_position, [anchor_position]);
+
+		let snap_result = match using_angle_constraints {
+			true => {
+				let snap_constraint = SnapConstraint::Line {
+					origin: anchor_position,
+					direction: handle_direction.normalize_or_zero(),
+				};
+				self.snap_manager.constrained_snap(&snap_data, &snap_point, snap_constraint, Default::default())
+			}
+			false => self.snap_manager.free_snap(&snap_data, &snap_point, Default::default()),
+		};
+
+		self.snap_manager.update_indicator(snap_result.clone());
+
+		document.metadata().document_to_viewport.transform_vector2(snap_result.snapped_point_document - handle_position)
+	}
+
+	fn drag(
+		&mut self,
+		equidistant: bool,
+		lock_angle: bool,
+		snap_angle: bool,
+		shape_editor: &mut ShapeState,
+		document: &DocumentMessageHandler,
+		input: &InputPreprocessorMessageHandler,
+		responses: &mut VecDeque<Message>,
+	) {
+		let document_to_viewport = document.metadata().document_to_viewport;
+		let previous_mouse = document_to_viewport.transform_point2(self.previous_mouse_position);
+		let current_mouse = input.mouse.position;
+		let raw_delta = document_to_viewport.inverse().transform_vector2(current_mouse - previous_mouse);
+
+		let snapped_delta = if let Some((handle_pos, anchor_pos)) = self.try_get_selected_handle_and_anchor(shape_editor, document) {
+			let cursor_pos = handle_pos + raw_delta;
+
+			let handle_angle = self.calculate_handle_angle(cursor_pos - anchor_pos, lock_angle, snap_angle);
+
+			let constrained_direction = DVec2::new(handle_angle.cos(), handle_angle.sin());
+			let projected_length = (cursor_pos - anchor_pos).dot(constrained_direction);
+			let constrained_target = anchor_pos + constrained_direction * projected_length;
+			let constrained_delta = constrained_target - handle_pos;
+
+			self.apply_snapping(constrained_direction, handle_pos + constrained_delta, anchor_pos, lock_angle || snap_angle, handle_pos, document, input)
+		} else {
+			shape_editor.snap(&mut self.snap_manager, &self.snap_cache, document, input, previous_mouse)
+		};
+
 		let handle_lengths = if equidistant { None } else { self.opposing_handle_lengths.take() };
 		shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, responses, true);
-		self.previous_mouse_position += document.metadata().document_to_viewport.inverse().transform_vector2(snapped_delta);
+		self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(snapped_delta);
 	}
 }
 
@@ -482,10 +588,7 @@ impl Fsm for PathToolFsmState {
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
 		let ToolActionHandlerData { document, input, shape_editor, .. } = tool_action_data;
-		let ToolMessage::Path(event) = event else {
-			return self;
-		};
-
+		let ToolMessage::Path(event) = event else { return self };
 		match (self, event) {
 			(_, PathToolMessage::SelectionChanged) => {
 				// Set the newly targeted layers to visible
@@ -574,6 +677,8 @@ impl Fsm for PathToolFsmState {
 					equidistant,
 					toggle_colinear,
 					move_anchor_with_handles,
+					snap_angle,
+					lock_angle,
 				},
 			) => {
 				tool_data.previous_mouse_position = input.mouse.position;
@@ -585,12 +690,16 @@ impl Fsm for PathToolFsmState {
 						equidistant,
 						toggle_colinear,
 						move_anchor_with_handles,
+						snap_angle,
+						lock_angle,
 					}
 					.into(),
 					PathToolMessage::PointerMove {
 						equidistant,
 						toggle_colinear,
 						move_anchor_with_handles,
+						snap_angle,
+						lock_angle,
 					}
 					.into(),
 				];
@@ -604,6 +713,8 @@ impl Fsm for PathToolFsmState {
 					equidistant,
 					toggle_colinear,
 					move_anchor_with_handles,
+					snap_angle,
+					lock_angle,
 				},
 			) => {
 				if tool_data.selection_status.is_none() {
@@ -631,8 +742,19 @@ impl Fsm for PathToolFsmState {
 
 				let toggle_colinear_state = input.keyboard.get(toggle_colinear as usize);
 				let equidistant_state = input.keyboard.get(equidistant as usize);
-				if !tool_data.update_colinear(equidistant_state, toggle_colinear_state, shape_editor, document, responses) {
-					tool_data.drag(equidistant_state, shape_editor, document, input, responses);
+				let lock_angle_state = input.keyboard.get(lock_angle as usize);
+				let snap_angle_state = input.keyboard.get(snap_angle as usize);
+
+				if !tool_data.update_colinear(equidistant_state, toggle_colinear_state, tool_action_data.shape_editor, tool_action_data.document, responses) {
+					tool_data.drag(
+						equidistant_state,
+						lock_angle_state,
+						snap_angle_state,
+						tool_action_data.shape_editor,
+						tool_action_data.document,
+						input,
+						responses,
+					);
 				}
 
 				// Auto-panning
@@ -641,12 +763,16 @@ impl Fsm for PathToolFsmState {
 						toggle_colinear,
 						equidistant,
 						move_anchor_with_handles,
+						snap_angle,
+						lock_angle,
 					}
 					.into(),
 					PathToolMessage::PointerMove {
 						toggle_colinear,
 						equidistant,
 						move_anchor_with_handles,
+						snap_angle,
+						lock_angle,
 					}
 					.into(),
 				];
@@ -662,11 +788,19 @@ impl Fsm for PathToolFsmState {
 
 				PathToolFsmState::DrawingBox
 			}
-			(PathToolFsmState::Dragging(dragging_state), PathToolMessage::PointerOutsideViewport { equidistant, .. }) => {
+			(
+				PathToolFsmState::Dragging(dragging_state),
+				PathToolMessage::PointerOutsideViewport {
+					equidistant, snap_angle, lock_angle, ..
+				},
+			) => {
 				// Auto-panning
 				if tool_data.auto_panning.shift_viewport(input, responses).is_some() {
 					let equidistant = input.keyboard.get(equidistant as usize);
-					tool_data.drag(equidistant, shape_editor, document, input, responses);
+					let snap_angle = input.keyboard.get(snap_angle as usize);
+					let lock_angle = input.keyboard.get(lock_angle as usize);
+
+					tool_data.drag(equidistant, lock_angle, snap_angle, shape_editor, document, input, responses);
 				}
 
 				PathToolFsmState::Dragging(dragging_state)
@@ -677,6 +811,8 @@ impl Fsm for PathToolFsmState {
 					equidistant,
 					toggle_colinear,
 					move_anchor_with_handles,
+					snap_angle,
+					lock_angle,
 				},
 			) => {
 				// Auto-panning
@@ -685,12 +821,16 @@ impl Fsm for PathToolFsmState {
 						equidistant,
 						toggle_colinear,
 						move_anchor_with_handles,
+						snap_angle,
+						lock_angle,
 					}
 					.into(),
 					PathToolMessage::PointerMove {
 						equidistant,
 						toggle_colinear,
 						move_anchor_with_handles,
+						snap_angle,
+						lock_angle,
 					}
 					.into(),
 				];
@@ -890,7 +1030,12 @@ impl Fsm for PathToolFsmState {
 
 				let drag_anchor = HintInfo::keys([Key::Space], "Drag Anchor");
 				let point_select_state_hint_group = match dragging_state.point_select_state {
-					PointSelectState::HandleNoPair => vec![drag_anchor],
+					PointSelectState::HandleNoPair => {
+						let mut hints = vec![drag_anchor];
+						hints.push(HintInfo::keys([Key::Shift], "Snap 15°"));
+						hints.push(HintInfo::keys([Key::Control], "Lock Angle"));
+						hints
+					}
 					PointSelectState::HandleWithPair => {
 						let mut hints = vec![drag_anchor];
 						hints.push(HintInfo::keys([Key::Tab], "Swap Selected Handles"));
@@ -905,6 +1050,8 @@ impl Fsm for PathToolFsmState {
 						if colinear != ManipulatorAngle::Free {
 							hints.push(HintInfo::keys([Key::Alt], "Equidistant Handles"));
 						}
+						hints.push(HintInfo::keys([Key::Shift], "Snap 15°"));
+						hints.push(HintInfo::keys([Key::Control], "Lock Angle"));
 						hints
 					}
 					PointSelectState::Anchor => Vec::new(),

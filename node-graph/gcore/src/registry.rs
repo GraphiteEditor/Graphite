@@ -40,6 +40,7 @@ pub struct NodeMetadata {
 #[derive(Clone, Debug)]
 pub struct FieldMetadata {
 	pub name: &'static str,
+	pub description: &'static str,
 	pub exposed: bool,
 	pub value_source: ValueSource,
 	pub number_min: Option<f64>,

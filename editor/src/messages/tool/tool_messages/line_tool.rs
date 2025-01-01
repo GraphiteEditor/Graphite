@@ -169,9 +169,7 @@ impl Fsm for LineToolFsmState {
 			document, global_tool_data, input, ..
 		} = tool_action_data;
 
-		let ToolMessage::Line(event) = event else {
-			return self;
-		};
+		let ToolMessage::Line(event) = event else { return self };
 		match (self, event) {
 			(_, LineToolMessage::Overlays(mut overlay_context)) => {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
