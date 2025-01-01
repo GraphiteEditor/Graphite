@@ -1,13 +1,16 @@
 use super::tool_prelude::*;
 use crate::consts::{DEFAULT_STROKE_WIDTH, LINE_ROTATE_SNAP_ANGLE};
+pub use crate::messages::frontend::{FrontendMessage, FrontendMessageDiscriminant};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
+use log::info;
 
 use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
 use graphene_core::Color;
@@ -147,11 +150,14 @@ enum LineToolFsmState {
 struct LineToolData {
 	drag_start: DVec2,
 	drag_current: DVec2,
+	drag_finish: DVec2,
 	angle: f64,
 	weight: f64,
 	layer: Option<LayerNodeIdentifier>,
 	snap_manager: SnapManager,
 	auto_panning: AutoPanning,
+	node: NodeTemplate,
+	nodes:Vec<(NodeId, NodeTemplate)>,
 }
 
 impl Fsm for LineToolFsmState {
@@ -171,37 +177,104 @@ impl Fsm for LineToolFsmState {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 				self
 			}
+
+			//setting up the starting point
 			(LineToolFsmState::Ready, LineToolMessage::DragStart) => {
+				info!("Dragging Started");
 				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
 				tool_data.drag_start = snapped.snapped_point_document;
 
-				responses.add(DocumentMessage::StartTransaction);
+				let start_point = tool_data.drag_start;
 
 				let node_type = resolve_document_node_type("Line").expect("Line node does not exist");
 				let node = node_type.node_template_input_override([
 					None,
-					Some(NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false)),
-					Some(NodeInput::value(TaggedValue::DVec2(DVec2::X), false)),
+					Some(NodeInput::value(TaggedValue::DVec2(start_point), false)),
+					Some(NodeInput::value(TaggedValue::DVec2(start_point), false)),
 				]);
-				let nodes = vec![(NodeId(0), node)];
 
-				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_bounding_artboard(input), responses);
-				responses.add(Message::StartBuffer);
-				responses.add(GraphOperationMessage::TransformSet {
-					layer,
-					transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
-					transform_in: TransformIn::Viewport,
-					skip_rerender: false,
-				});
-				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
-				tool_data.layer = Some(layer);
+				tool_data.node.document_node = node.document_node.clone();
+				let nodes: Vec<(NodeId, NodeTemplate)> = vec![(NodeId(0), node)];
+				
 
-				tool_data.layer = Some(layer);
-				tool_data.weight = tool_options.line_weight;
+				
+				tool_data.nodes = nodes;
+	
+				responses.add(DocumentMessage::StartTransaction);
 
 				LineToolFsmState::Drawing
 			}
+
+			(LineToolFsmState::Drawing, LineToolMessage::PointerMove { center, snap_angle, lock_angle }) => {
+				info!("Pointer moved");
+				info!("{:?}", tool_data.node.document_node.inputs[2]);
+
+				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
+				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
+				tool_data.drag_current = snapped.snapped_point_document;
+
+				let end_point = tool_data.drag_current;
+
+				tool_data.node.document_node.inputs[2] = NodeInput::value(TaggedValue::DVec2(end_point), false);
+
+				let layer = graph_modification_utils::new_custom(NodeId::new(), tool_data.nodes.clone(), document.new_layer_parent(false), responses);
+
+				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
+
+				LineToolFsmState::Drawing
+			}
+
+			(LineToolFsmState::Drawing, LineToolMessage::DragStop) => {
+				info!("Dragging Stopped");
+				input.mouse.finish_transaction(tool_data.drag_start, responses);
+				tool_data.drag_start = DVec2::ZERO;
+				tool_data.drag_current = DVec2::ZERO;
+				tool_data.snap_manager.cleanup(responses);
+				println!("DragStop");
+				tool_data.layer = None;
+				responses.add(DocumentMessage::CommitTransaction);
+				LineToolFsmState::Ready
+			}
+
+			//NOTE: here the new layer is created when the mouse is released
+			// (LineToolFsmState::Drawing, LineToolMessage::DragStop) => {
+			// 	println!("DragStop");
+
+			// 	let point = SnapCandidatePoint::handle(document.
+			// 	metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
+			// 	let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
+			// 	tool_data.drag_finish = snapped.snapped_point_document;
+
+			// 	responses.add(DocumentMessage::CommitTransaction);
+
+			//     let start_point = tool_data.drag_start;
+			//     let end_point = tool_data.drag_finish;
+
+			//     let node_type = resolve_document_node_type("Line").expect("Line node does not exist");
+			//     let node = node_type.node_template_input_override([
+			//         None,
+			//         Some(NodeInput::value(TaggedValue::DVec2(start_point), false)),
+			//         Some(NodeInput::value(TaggedValue::DVec2(end_point), false)),
+			//     ]);
+
+			//     let nodes = vec![(NodeId(0), node)];
+			//     let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_parent(false), responses);
+
+			//     tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
+
+			// 	tool_data.snap_manager.cleanup(responses);
+			// 	println!("DragStop");
+
+			//     tool_data.drag_start = DVec2::ZERO;
+			//     tool_data.drag_current = DVec2::ZERO;
+			// 	println!("DragStop");
+			//     LineToolFsmState::Ready
+			// }
+
+			//This part below being commented out is not responsible for pointerMove not working properly
+
+			/*
 			(LineToolFsmState::Drawing, LineToolMessage::PointerMove { center, snap_angle, lock_angle }) => {
 				tool_data.drag_current = input.mouse.position; // tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 
@@ -219,17 +292,14 @@ impl Fsm for LineToolFsmState {
 
 				LineToolFsmState::Drawing
 			}
-			(_, LineToolMessage::PointerMove { .. }) => {
-				tool_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
-				responses.add(OverlaysMessage::Draw);
-				self
-			}
+			*/
 			(LineToolFsmState::Drawing, LineToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
 				let _ = tool_data.auto_panning.shift_viewport(input, responses);
 
 				LineToolFsmState::Drawing
 			}
+
 			(state, LineToolMessage::PointerOutsideViewport { center, lock_angle, snap_angle }) => {
 				// Auto-panning
 				let messages = [
@@ -240,12 +310,19 @@ impl Fsm for LineToolFsmState {
 
 				state
 			}
-			(LineToolFsmState::Drawing, LineToolMessage::DragStop) => {
-				tool_data.snap_manager.cleanup(responses);
-				input.mouse.finish_transaction(tool_data.drag_start, responses);
-				tool_data.layer = None;
-				LineToolFsmState::Ready
+
+			//rest is same as original except ive disabled the transformation function
+			(_, LineToolMessage::PointerMove { .. }) => {
+				tool_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
+				responses.add(OverlaysMessage::Draw);
+				self
 			}
+			// (LineToolFsmState::Drawing, LineToolMessage::PointerOutsideViewport { .. }) => {
+			// 	// Auto-panning
+			// 	let _ = tool_data.auto_panning.shift_viewport(input, responses);
+
+			// 	LineToolFsmState::Drawing
+			// }
 			(LineToolFsmState::Drawing, LineToolMessage::Abort) => {
 				tool_data.snap_manager.cleanup(responses);
 				responses.add(DocumentMessage::AbortTransaction);
