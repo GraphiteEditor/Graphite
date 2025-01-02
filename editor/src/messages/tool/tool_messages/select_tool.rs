@@ -9,15 +9,15 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
-use crate::messages::tool::common_functionality::graph_modification_utils::{get_text, is_layer_fed_by_node_of_name};
+use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
+use crate::messages::tool::common_functionality::utility_functions::text_bounding_box;
 use crate::messages::tool::common_functionality::{auto_panning::AutoPanning, measure};
 
 use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;
-use graphene_core::text::load_face;
 use graphene_std::renderer::Rect;
 use graphene_std::vector::misc::BooleanOperation;
 
@@ -425,14 +425,8 @@ impl Fsm for SelectToolFsmState {
 					overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
 
 					if is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
-						let (text, font, typesetting) = get_text(layer, &document.network_interface).expect("Text layer should have text when interacting with the Text tool in `interact()`");
-
-						let buzz_face = font_cache.get(font).map(|data| load_face(data));
-						let far = graphene_core::text::bounding_box(text, buzz_face, typesetting);
-						let quad = Quad::from_box([DVec2::ZERO, far]);
-						let transformed_quad = document.metadata().transform_to_viewport(layer) * quad;
-
-						overlay_context.dashed_quad(transformed_quad, None, Some(7.), Some(5.));
+						let quad = text_bounding_box(layer, document, font_cache);
+						overlay_context.dashed_quad(quad, None, Some(7.), Some(5.));
 					}
 				}
 

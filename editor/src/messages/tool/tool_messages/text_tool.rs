@@ -9,6 +9,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Inpu
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name};
 use crate::messages::tool::common_functionality::snapping::SnapData;
+use crate::messages::tool::common_functionality::utility_functions::text_bounding_box;
 use crate::messages::tool::common_functionality::{auto_panning::AutoPanning, resize::Resize};
 
 use graph_craft::document::value::TaggedValue;
@@ -379,17 +380,10 @@ impl TextToolData {
 			.all_layers()
 			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text"))
 			.find(|&layer| {
-				let (text, font, typesetting) =
-					graph_modification_utils::get_text(layer, &document.network_interface).expect("Text layer should have text when interacting with the Text tool in `interact()`");
-
-				let buzz_face = font_cache.get(font).map(|data| load_face(data));
-				let far = graphene_core::text::bounding_box(text, buzz_face, typesetting);
-				let quad = Quad::from_box([DVec2::ZERO, far]);
-				let transformed_quad = document.metadata().transform_to_viewport(layer) * quad;
-
+				let quad = text_bounding_box(layer, document, font_cache);
 				let mouse = DVec2::new(input.mouse.position.x, input.mouse.position.y);
 
-				transformed_quad.contains(mouse)
+				quad.contains(mouse)
 			})
 	}
 }
@@ -462,15 +456,10 @@ impl Fsm for TextToolFsmState {
 					overlay_context.quad(quad, Some(&("#".to_string() + &fill_color)));
 				} else {
 					for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
-						let Some((text, font, typesetting)) = graph_modification_utils::get_text(layer, &document.network_interface) else {
-							continue;
-						};
-						let buzz_face = font_cache.get(font).map(|data| load_face(data));
-
-						let far = graphene_core::text::bounding_box(text, buzz_face, typesetting);
-						let quad = Quad::from_box([DVec2::ZERO, far]);
-						let multiplied = document.metadata().transform_to_viewport(layer) * quad;
-						overlay_context.quad(multiplied, None);
+						if is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
+							let quad = text_bounding_box(layer, document, font_cache);
+							overlay_context.quad(quad, None);
+						}
 					}
 				}
 				tool_data.resize.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);

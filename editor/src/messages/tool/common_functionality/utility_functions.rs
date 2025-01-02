@@ -1,6 +1,9 @@
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils::get_text;
 
+use graphene_core::renderer::Quad;
+use graphene_core::text::{load_face, FontCache};
 use graphene_std::vector::PointId;
 
 use glam::DVec2;
@@ -27,4 +30,15 @@ pub fn should_extend(document: &DocumentMessageHandler, goal: DVec2, tolerance: 
 	}
 
 	best
+}
+
+pub fn text_bounding_box(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, font_cache: &FontCache) -> Quad {
+	let (text, font, typesetting) = get_text(layer, &document.network_interface).expect("Text layer should have text when interacting with the Text tool in `interact()`");
+
+	let buzz_face = font_cache.get(font).map(|data| load_face(data));
+	let far = graphene_core::text::bounding_box(text, buzz_face, typesetting);
+	let quad = Quad::from_box([DVec2::ZERO, far]);
+	let transformed_quad = document.metadata().transform_to_viewport(layer) * quad;
+
+	transformed_quad
 }
