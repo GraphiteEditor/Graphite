@@ -474,24 +474,6 @@ impl Fsm for TextToolFsmState {
 
 				state
 			}
-			(TextToolFsmState::Editing, TextToolMessage::Abort) => {
-				if tool_data.new_text.is_empty() {
-					return tool_data.delete_empty_layer(font_cache, responses);
-				}
-
-				responses.add(FrontendMessage::TriggerTextCommit);
-				TextToolFsmState::Editing
-			}
-			(state, TextToolMessage::Abort) => {
-				input.mouse.finish_transaction(tool_data.resize.viewport_drag_start(document), responses);
-				tool_data.resize.cleanup(responses);
-
-				if state == TextToolFsmState::Editing {
-					tool_data.set_editing(false, font_cache, responses);
-				}
-
-				TextToolFsmState::Ready
-			}
 			(TextToolFsmState::Ready, TextToolMessage::DragStart) => {
 				tool_data.resize.start(document, input);
 				tool_data.cached_resize_bounds = [tool_data.resize.viewport_drag_start(document); 2];
@@ -597,6 +579,24 @@ impl Fsm for TextToolFsmState {
 					Some(global_tool_data.secondary_color),
 				)));
 				self
+			}
+			(TextToolFsmState::Editing, TextToolMessage::Abort) => {
+				if tool_data.new_text.is_empty() {
+					return tool_data.delete_empty_layer(font_cache, responses);
+				}
+
+				responses.add(FrontendMessage::TriggerTextCommit);
+				TextToolFsmState::Editing
+			}
+			(state, TextToolMessage::Abort) => {
+				input.mouse.finish_transaction(tool_data.resize.viewport_drag_start(document), responses);
+				tool_data.resize.cleanup(responses);
+
+				if state == TextToolFsmState::Editing {
+					tool_data.set_editing(false, font_cache, responses);
+				}
+
+				TextToolFsmState::Ready
 			}
 			_ => self,
 		}
