@@ -206,7 +206,7 @@ impl Fsm for LineToolFsmState {
 				let mut angle = -(document_points[1] - document_points[0]).angle_to(DVec2::X);
 				info!("Angle: {}", angle);
 				let mut line_length = (document_points[1] - document_points[0]).length();
-				
+
 				if keyboard.key(lock_angle) {
 					angle = tool_data.angle;
 				}
@@ -217,10 +217,12 @@ impl Fsm for LineToolFsmState {
 
 				if keyboard.key(lock_angle) {
 					let angle_vec = DVec2::new(angle.cos(), angle.sin());
+					info!("Angle_vec: {}", angle_vec);
 					line_length = (document_points[1] - document_points[0]).dot(angle_vec);
+					info!("line_length: {}", line_length);
 				}
-				document_points[1] = document_points[0] + line_length * DVec2::new(angle.cos(), angle.sin());
 				let constrained = keyboard.key(snap_angle) || keyboard.key(lock_angle);
+
 				let snap = &mut tool_data.snap_manager;
 
 				let near_point = SnapCandidatePoint::handle_neighbors(document_points[1], [tool_data.drag_start]);
@@ -228,16 +230,21 @@ impl Fsm for LineToolFsmState {
 				let config = SnapTypeConfiguration::default();
 
 				if constrained {
+					info!("CONSTRAINED");
 					let constraint = SnapConstraint::Line {
 						origin: document_points[0],
 						direction: document_points[1] - document_points[0],
 					};
 					if keyboard.key(center) {
+						info!("CENTER ACTIVE");
+
 						let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, config);
 						let snapped_far = snap.constrained_snap(&snap_data, &far_point, constraint, config);
 						let best = if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far };
-						document_points[1] = document_points[0] * 2. - best.snapped_point_document;
-						document_points[0] = best.snapped_point_document;
+						document_points[0] = document_points[0] * 2. - best.snapped_point_document;
+						document_points[1] = best.snapped_point_document;
+						info!("{:?}", document_points[0]);
+						info!("{:?}", document_points[1]);
 						snap.update_indicator(best);
 					} else {
 						let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, config);
@@ -263,12 +270,12 @@ impl Fsm for LineToolFsmState {
 				let viewport_points = [document_to_viewport.transform_point2(document_points[0]), document_to_viewport.transform_point2(document_points[1])];
 				let line_length = (viewport_points[1] - viewport_points[0]).length();
 				let angle = -(viewport_points[1] - viewport_points[0]).angle_to(DVec2::X);
-				GraphOperationMessage::TransformSet {
-					layer: tool_data.layer.unwrap(),
-					transform: glam::DAffine2::from_scale_angle_translation(DVec2::new(line_length, 1.), angle, viewport_points[0]),
-					transform_in: TransformIn::Viewport,
-					skip_rerender: false,
-				};
+				// GraphOperationMessage::TransformSet {
+				// 	layer: tool_data.layer.unwrap(),
+				// 	transform: glam::DAffine2::from_scale_angle_translation(DVec2::new(line_length, 1.), angle, viewport_points[0]),
+				// 	transform_in: TransformIn::Viewport,
+				// 	skip_rerender: false,
+				// };
 
 				let messages = [
 					LineToolMessage::PointerOutsideViewport { center, snap_angle, lock_angle }.into(),
