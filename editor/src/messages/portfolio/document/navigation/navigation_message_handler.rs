@@ -83,6 +83,11 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				};
 				self.navigation_operation = NavigationOperation::Pan { pan_original_for_abort: ptz.pan };
 			}
+			NavigationMessage::SetCursorState => {
+				info!("updated");
+				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grabbing });
+				self.mouse_position = ipp.mouse.position;
+			}
 			NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu } => {
 				let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
 					return;
