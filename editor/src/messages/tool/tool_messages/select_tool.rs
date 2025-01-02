@@ -80,6 +80,7 @@ pub enum SelectToolMessage {
 	PointerOutsideViewport(SelectToolPointerKeys),
 	SelectOptions(SelectOptionsUpdate),
 	SetPivot { position: PivotPosition },
+	RestoreSelection,
 }
 
 impl ToolMetadata for SelectTool {
@@ -230,6 +231,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 
 		let additional = match self.fsm_state {
 			SelectToolFsmState::Ready { .. } => actions!(SelectToolMessageDiscriminant; DragStart),
+			SelectToolFsmState::DrawingBox { .. } => actions!(SelectToolMessageDiscriminant;RestoreSelection,DragStop),
 			_ => actions!(SelectToolMessageDiscriminant; DragStop),
 		};
 		common.extend(additional);
@@ -250,7 +252,7 @@ impl ToolTransition for SelectTool {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum SelectToolFsmState {
 	Ready { selection: NestedSelectionBehavior },
-	DrawingBox { selection: NestedSelectionBehavior },
+	DrawingBox { selection: NestedSelectionBehavior, previous_selected: bool },
 	Dragging,
 	ResizingBounds,
 	RotatingBounds,
@@ -281,6 +283,7 @@ struct SelectToolData {
 	selected_layers_changed: bool,
 	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
+	previously_selected_layers: Vec<LayerNodeIdentifier>,
 }
 
 impl SelectToolData {
@@ -557,6 +560,7 @@ impl Fsm for SelectToolFsmState {
 					.collect();
 				let intersection_list = document.click_list(input).collect::<Vec<_>>();
 				let intersection = document.find_deepest(&intersection_list);
+				tool_data.previously_selected_layers = selected.clone();
 
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
 				// If the user is dragging the rotate trigger, go into RotatingBounds mode.
@@ -656,10 +660,12 @@ impl Fsm for SelectToolFsmState {
 				// Dragging a selection box
 				else {
 					tool_data.layers_dragging = selected;
+					let mut previous_selected = true;
 
 					if !input.keyboard.key(extend_selection) {
 						responses.add(DocumentMessage::DeselectAllLayers);
 						tool_data.layers_dragging.clear();
+						previous_selected = false
 					}
 
 					if let Some(intersection) = intersection {
@@ -672,14 +678,14 @@ impl Fsm for SelectToolFsmState {
 						}
 						tool_data.get_snap_candidates(document, input);
 
-						responses.add(DocumentMessage::StartTransaction);
-						SelectToolFsmState::Dragging
-					} else {
-						// Make a box selection, preserving previously selected layers
-						let selection = tool_data.nested_selection_behavior;
-						SelectToolFsmState::DrawingBox { selection }
-					}
-				};
+							responses.add(DocumentMessage::StartTransaction);
+							SelectToolFsmState::Dragging
+						} else {
+							// Make a box selection, preserving previously selected layers
+							let selection = tool_data.nested_selection_behavior;
+							SelectToolFsmState::DrawingBox { selection, previous_selected }
+						}
+					};
 				tool_data.non_duplicated_layers = None;
 
 				state
@@ -824,7 +830,7 @@ impl Fsm for SelectToolFsmState {
 
 				SelectToolFsmState::DraggingPivot
 			}
-			(SelectToolFsmState::DrawingBox { .. }, SelectToolMessage::PointerMove(modifier_keys)) => {
+			(SelectToolFsmState::DrawingBox { selection: _, previous_selected }, SelectToolMessage::PointerMove(modifier_keys)) => {
 				tool_data.drag_current = input.mouse.position;
 				responses.add(OverlaysMessage::Draw);
 
@@ -836,7 +842,7 @@ impl Fsm for SelectToolFsmState {
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				let selection = tool_data.nested_selection_behavior;
-				SelectToolFsmState::DrawingBox { selection }
+				SelectToolFsmState::DrawingBox { selection, previous_selected }
 			}
 			(SelectToolFsmState::Ready { .. }, SelectToolMessage::PointerMove(_)) => {
 				let mut cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
@@ -1105,6 +1111,43 @@ impl Fsm for SelectToolFsmState {
 				tool_data.pivot.set_normalized_position(pos.unwrap(), document, responses);
 
 				self
+			}
+			(SelectToolFsmState::DrawingBox { selection, previous_selected }, SelectToolMessage::RestoreSelection) => {
+				let selection_set: HashSet<_> = tool_data.previously_selected_layers.iter().collect();
+				if input.keyboard.key(Key::Shift) {
+					if previous_selected {
+						// if selected deselect it
+						tool_data.layers_dragging.retain(|layer| !selection_set.contains(layer));
+					} else {
+						tool_data.layers_dragging.extend(&tool_data.previously_selected_layers);
+					}
+				} else {
+					// On Shift release, finalize selection state
+					if previous_selected {
+						tool_data.layers_dragging.extend(&tool_data.previously_selected_layers);
+					} else {
+						tool_data.layers_dragging.retain(|layer| !selection_set.contains(layer));
+					}
+				}
+
+				let selected_nodes: Vec<_> = tool_data
+					.layers_dragging
+					.iter()
+					.filter_map(|layer| {
+						if *layer != LayerNodeIdentifier::ROOT_PARENT {
+							Some(layer.to_node())
+						} else {
+							log::error!("ROOT_PARENT found in tool_data.layers_dragging during selection set");
+							None
+						}
+					})
+					.collect();
+
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: selected_nodes });
+
+				responses.add(OverlaysMessage::Draw);
+
+				SelectToolFsmState::DrawingBox { selection, previous_selected }
 			}
 			_ => self,
 		}
