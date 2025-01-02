@@ -56,7 +56,6 @@ pub enum TextToolMessage {
 	Overlays(OverlayContext),
 
 	// Tool-specific messages
-	CommitText,
 	DragStart,
 	DragStop,
 	EditSelected,
@@ -206,7 +205,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for TextToo
 			TextToolFsmState::Editing => actions!(TextToolMessageDiscriminant;
 				DragStart,
 				Abort,
-				CommitText,
 			),
 			TextToolFsmState::Placing | TextToolFsmState::Dragging => actions!(TextToolMessageDiscriminant;
 				DragStop,
@@ -487,6 +485,14 @@ impl Fsm for TextToolFsmState {
 
 				state
 			}
+			(TextToolFsmState::Editing, TextToolMessage::Abort) => {
+				if tool_data.new_text.is_empty() {
+					return tool_data.delete_empty_layer(font_cache, responses);
+				}
+
+				responses.add(FrontendMessage::TriggerTextCommit);
+				TextToolFsmState::Editing
+			}
 			(state, TextToolMessage::Abort) => {
 				input.mouse.finish_transaction(tool_data.resize.viewport_drag_start(document), responses);
 				tool_data.resize.cleanup(responses);
@@ -567,14 +573,6 @@ impl Fsm for TextToolFsmState {
 					color: tool_options.fill.active_color(),
 				};
 				tool_data.new_text(document, editing_text, font_cache, responses);
-				TextToolFsmState::Editing
-			}
-			(TextToolFsmState::Editing, TextToolMessage::CommitText) => {
-				if tool_data.new_text.is_empty() {
-					return tool_data.delete_empty_layer(font_cache, responses);
-				}
-
-				responses.add(FrontendMessage::TriggerTextCommit);
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text, is_right_click }) => {
