@@ -1,4 +1,5 @@
 use crate::consts::{BIG_NUDGE_AMOUNT, BRUSH_SIZE_CHANGE_KEYBOARD, NUDGE_AMOUNT};
+use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeyStates};
 use crate::messages::input_mapper::utility_types::input_mouse::MouseButton;
@@ -384,6 +385,7 @@ pub fn input_mappings() -> Mapping {
 		//
 		// NavigationMessage
 		entry!(KeyDown(MouseMiddle); modifiers=[Alt], action_dispatch=NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: false }),
+		entry!(KeyDown(Space); action_dispatch=NavigationMessage::SetCursorState),
 		entry!(KeyDown(MouseMiddle); modifiers=[Shift], action_dispatch=NavigationMessage::BeginCanvasZoom),
 		entry!(KeyDown(MouseLeft); modifiers=[Shift, Space], action_dispatch=NavigationMessage::BeginCanvasZoom),
 		entry!(KeyDown(MouseMiddle); action_dispatch=NavigationMessage::BeginCanvasPan),

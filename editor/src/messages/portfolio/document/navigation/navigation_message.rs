@@ -10,6 +10,7 @@ pub enum NavigationMessage {
 	BeginCanvasPan,
 	BeginCanvasTilt { was_dispatched_from_menu: bool },
 	BeginCanvasZoom,
+	SetCursorState,
 	CanvasPan { delta: DVec2 },
 	CanvasPanByViewportFraction { delta: DVec2 },
 	CanvasPanMouseWheel { use_y_as_x: bool },
