@@ -1113,16 +1113,22 @@ impl Fsm for SelectToolFsmState {
 				self
 			}
 			(SelectToolFsmState::DrawingBox { selection, previous_selected }, SelectToolMessage::RestoreSelection) => {
-				// Toggle the selection state based on the previous_selected flag
-				if previous_selected {
-					let selection_set: HashSet<_> = tool_data.previously_selected_layers.iter().collect();
-					tool_data.layers_dragging.retain(|layer| !selection_set.contains(layer));
+				let selection_set: HashSet<_> = tool_data.previously_selected_layers.iter().collect();
+				if input.keyboard.key(Key::Shift) {
+					if previous_selected {
+						// if selected deselect it
+						tool_data.layers_dragging.retain(|layer| !selection_set.contains(layer));
+					} else {
+						tool_data.layers_dragging.extend(&tool_data.previously_selected_layers);
+					}
 				} else {
-					tool_data.layers_dragging.extend(&tool_data.previously_selected_layers);
+					// On Shift release, finalize selection state
+					if previous_selected {
+						tool_data.layers_dragging.extend(&tool_data.previously_selected_layers);
+					} else {
+						tool_data.layers_dragging.retain(|layer| !selection_set.contains(layer));
+					}
 				}
-
-				// Update the previous_selected flag
-				let new_previous_selected = !previous_selected;
 
 				let selected_nodes: Vec<_> = tool_data
 					.layers_dragging
@@ -1141,10 +1147,7 @@ impl Fsm for SelectToolFsmState {
 
 				responses.add(OverlaysMessage::Draw);
 
-				SelectToolFsmState::DrawingBox {
-					selection,
-					previous_selected: new_previous_selected,
-				}
+				SelectToolFsmState::DrawingBox { selection, previous_selected }
 			}
 			_ => self,
 		}
