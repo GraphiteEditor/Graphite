@@ -270,7 +270,6 @@
 
 	// Update mouse cursor icon
 	export function updateMouseCursor(cursor: MouseCursorIcon) {
-		console.log("Updating cursor to:", cursor);
 		let cursorString: string = cursor;
 
 		// This isn't very clean but it's good enough for now until we need more icons, then we can build something more robust (consider blob URLs)
@@ -293,7 +292,6 @@
 
 			cursorString = `url('data:image/svg+xml;utf8,${svg}') 8 8, alias`;
 		}
-		console.log("Cursor updated to:", cursorString);
 		canvasCursor = cursorString;
 	}
 
@@ -397,9 +395,9 @@
 
 		// Update mouse cursor icon
 		editor.subscriptions.subscribeJsMessage(UpdateMouseCursor, async (data) => {
-			await tick();
-
 			const { cursor } = data;
+			console.log("Received UpdateMouseCursor message:", data);
+			await tick();
 			updateMouseCursor(cursor);
 		});
 
