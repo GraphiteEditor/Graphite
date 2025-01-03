@@ -1,5 +1,5 @@
 use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, STRICT_MAX_ABSOLUTE_DIFFERENCE};
-use crate::ManipulatorGroup;
+use crate::{ManipulatorGroup, Subpath};
 
 use glam::{BVec2, DMat2, DVec2};
 
@@ -179,6 +179,19 @@ pub fn do_rectangles_overlap(rectangle1: [DVec2; 2], rectangle2: [DVec2; 2]) -> 
 	top_right1.x >= bottom_left2.x && top_right2.x >= bottom_left1.x && top_right2.y >= bottom_left1.y && top_right1.y >= bottom_left2.y
 }
 
+pub fn is_subpath_inside_polygon<PointId: crate::Identifier>(polygon: &[DVec2], subpath: &Subpath<PointId>) -> bool {
+	let polypath = Subpath::from_anchors_linear(polygon.to_vec(), true);
+	if !subpath.subpath_intersections(&polypath, Some(0.02), Some(0.05)).is_empty() {
+		return false;
+	}
+	for anchors in subpath.anchors() {
+		if !polypath.contains_point(anchors) {
+			return false;
+		}
+	}
+	true
+}
+
 /// Returns the intersection of two lines. The lines are given by a point on the line and its slope (represented by a vector).
 pub fn line_intersection(point1: DVec2, point1_slope_vector: DVec2, point2: DVec2, point2_slope_vector: DVec2) -> DVec2 {
 	assert!(point1_slope_vector.normalize() != point2_slope_vector.normalize());
@@ -286,7 +299,7 @@ pub fn compute_circular_subpath_details<PointId: crate::Identifier>(left: DVec2,
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
+	use crate::{consts::MAX_ABSOLUTE_DIFFERENCE, Bezier, EmptyId};
 
 	/// Compare vectors of `f64`s with a provided max absolute value difference.
 	fn f64_compare_vector(a: Vec<f64>, b: Vec<f64>, max_abs_diff: f64) -> bool {
@@ -350,6 +363,27 @@ mod tests {
 		assert!(!do_rectangles_overlap([DVec2::new(0., 0.), DVec2::new(10., 10.)], [DVec2::new(20., 0.), DVec2::new(30., 10.)]));
 		// No overlap, rectangles are above and below each other
 		assert!(!do_rectangles_overlap([DVec2::new(0., 0.), DVec2::new(10., 10.)], [DVec2::new(0., 20.), DVec2::new(20., 30.)]));
+	}
+
+	#[test]
+	fn test_is_subpath_inside_polygon() {
+		let lasso_polygon = vec![DVec2::new(100., 100.), DVec2::new(500., 100.), DVec2::new(500., 500.), DVec2::new(100., 500.)];
+
+		let curve = Bezier::from_quadratic_dvec2(DVec2::new(189., 289.), DVec2::new(9., 286.), DVec2::new(45., 410.));
+		let curve_intersecting = Subpath::<EmptyId>::from_bezier(&curve);
+		assert_eq!(is_subpath_inside_polygon(&lasso_polygon, &curve_intersecting), false);
+
+		let curve = Bezier::from_quadratic_dvec2(DVec2::new(115., 37.), DVec2::new(51.4, 91.8), DVec2::new(76.5, 242.));
+		let curve_outside = Subpath::<EmptyId>::from_bezier(&curve);
+		assert_eq!(is_subpath_inside_polygon(&lasso_polygon, &curve_outside), false);
+
+		let curve = Bezier::from_cubic_dvec2(DVec2::new(210.1, 133.5), DVec2::new(150.2, 436.9), DVec2::new(436., 285.), DVec2::new(247.6, 240.7));
+		let curve_inside = Subpath::<EmptyId>::from_bezier(&curve);
+		assert_eq!(is_subpath_inside_polygon(&lasso_polygon, &curve_inside), true);
+
+		let line = Bezier::from_linear_dvec2(DVec2::new(101., 101.5), DVec2::new(150.2, 499.));
+		let line_inside = Subpath::<EmptyId>::from_bezier(&line);
+		assert_eq!(is_subpath_inside_polygon(&lasso_polygon, &line_inside), true);
 	}
 
 	#[test]
