@@ -184,93 +184,12 @@ impl Fsm for LineToolFsmState {
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
 				tool_data.drag_start = snapped.snapped_point_document;
 				responses.add(DocumentMessage::StartTransaction);
-
-				// Create the node, but don't create the layer yet
-
 				LineToolFsmState::Drawing
 			}
 
 			// Updating the current position
 			(LineToolFsmState::Drawing, LineToolMessage::PointerMove { center, snap_angle, lock_angle }) => {
 				info!("Pointer moved");
-
-				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
-				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
-				let drag_current = snapped.snapped_point_document;
-				let keyboard = &input.keyboard;
-				let ignore = if let Some(layer) = tool_data.layer { vec![layer] } else { vec![] };
-				let snap_data = SnapData::ignore(document, input, &ignore);
-				let document_to_viewport = snap_data.document.metadata().document_to_viewport;
-				let mut document_points = [tool_data.drag_start, drag_current];
-
-				let mut angle = -(document_points[1] - document_points[0]).angle_to(DVec2::X);
-				info!("Angle: {}", angle);
-				let mut line_length = (document_points[1] - document_points[0]).length();
-
-				if keyboard.key(lock_angle) {
-					angle = tool_data.angle;
-				}
-				if keyboard.key(snap_angle) {
-					let snap_resolution = LINE_ROTATE_SNAP_ANGLE.to_radians();
-					angle = (angle / snap_resolution).round() * snap_resolution;
-				}
-
-				if keyboard.key(lock_angle) {
-					let angle_vec = DVec2::new(angle.cos(), angle.sin());
-					info!("Angle_vec: {}", angle_vec);
-					line_length = (document_points[1] - document_points[0]).dot(angle_vec);
-					info!("line_length: {}", line_length);
-				}
-				let constrained = keyboard.key(snap_angle) || keyboard.key(lock_angle);
-
-				let snap = &mut tool_data.snap_manager;
-
-				let near_point = SnapCandidatePoint::handle_neighbors(document_points[1], [tool_data.drag_start]);
-				let far_point = SnapCandidatePoint::handle_neighbors(2. * document_points[0] - document_points[1], [tool_data.drag_start]);
-				let config = SnapTypeConfiguration::default();
-
-				if constrained {
-					info!("CONSTRAINED");
-					let constraint = SnapConstraint::Line {
-						origin: document_points[0],
-						direction: document_points[1] - document_points[0],
-					};
-					if keyboard.key(center) {
-						info!("CENTER ACTIVE");
-
-						let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, config);
-						let snapped_far = snap.constrained_snap(&snap_data, &far_point, constraint, config);
-						let best = if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far };
-						document_points[0] = document_points[0] * 2. - best.snapped_point_document;
-						document_points[1] = best.snapped_point_document;
-						info!("{:?}", document_points[0]);
-						info!("{:?}", document_points[1]);
-						snap.update_indicator(best);
-					} else {
-						let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, config);
-						document_points[1] = snapped.snapped_point_document;
-						snap.update_indicator(snapped);
-					}
-				} else if keyboard.key(center) {
-					let snapped = snap.free_snap(&snap_data, &near_point, config);
-					let snapped_far = snap.free_snap(&snap_data, &far_point, config);
-					let best = if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far };
-					document_points[1] = document_points[0] * 2. - best.snapped_point_document;
-					document_points[0] = best.snapped_point_document;
-					snap.update_indicator(best);
-				} else {
-					let snapped = snap.free_snap(&snap_data, &near_point, config);
-					document_points[1] = snapped.snapped_point_document;
-					snap.update_indicator(snapped);
-				}
-
-				// Used for keeping the same angle next frame
-				tool_data.angle = -(document_points[1] - document_points[0]).angle_to(DVec2::X);
-
-				let viewport_points = [document_to_viewport.transform_point2(document_points[0]), document_to_viewport.transform_point2(document_points[1])];
-				let line_length = (viewport_points[1] - viewport_points[0]).length();
-				let angle = -(viewport_points[1] - viewport_points[0]).angle_to(DVec2::X);
-
 				let messages = [
 					LineToolMessage::PointerOutsideViewport { center, snap_angle, lock_angle }.into(),
 					LineToolMessage::PointerMove { center, snap_angle, lock_angle }.into(),
@@ -279,10 +198,10 @@ impl Fsm for LineToolFsmState {
 				LineToolFsmState::Drawing
 			}
 
-			// Committing the transaction on DragStop
 			(LineToolFsmState::Drawing, LineToolMessage::DragStop) => {
 				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 				// let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
+
 				tool_data.drag_current = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
 				info!("Dragging Stopped");
 				let end_point = tool_data.drag_current;
@@ -310,62 +229,6 @@ impl Fsm for LineToolFsmState {
 				LineToolFsmState::Ready
 			}
 
-			//NOTE: here the new layer is created when the mouse is released
-			// (LineToolFsmState::Drawing, LineToolMessage::DragStop) => {
-			// 	println!("DragStop");
-
-			// 	let point = SnapCandidatePoint::handle(document.
-			// 	metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
-			// 	let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
-			// 	tool_data.drag_finish = snapped.snapped_point_document;
-
-			// 	responses.add(DocumentMessage::CommitTransaction);
-
-			//     let start_point = tool_data.drag_start;
-			//     let end_point = tool_data.drag_finish;
-
-			//     let node_type = resolve_document_node_type("Line").expect("Line node does not exist");
-			//     let node = node_type.node_template_input_override([
-			//         None,
-			//         Some(NodeInput::value(TaggedValue::DVec2(start_point), false)),
-			//         Some(NodeInput::value(TaggedValue::DVec2(end_point), false)),
-			//     ]);
-
-			//     let nodes = vec![(NodeId(0), node)];
-			//     let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_parent(false), responses);
-
-			//     tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
-
-			// 	tool_data.snap_manager.cleanup(responses);
-			// 	println!("DragStop");
-
-			//     tool_data.drag_start = DVec2::ZERO;
-			//     tool_data.drag_current = DVec2::ZERO;
-			// 	println!("DragStop");
-			//     LineToolFsmState::Ready
-			// }
-
-			//This part below being commented out is not responsible for pointerMove not working properly
-
-			/*
-			(LineToolFsmState::Drawing, LineToolMessage::PointerMove { center, snap_angle, lock_angle }) => {
-				tool_data.drag_current = input.mouse.position; // tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
-
-				let keyboard = &input.keyboard;
-				let ignore = if let Some(layer) = tool_data.layer { vec![layer] } else { vec![] };
-				let snap_data = SnapData::ignore(document, input, &ignore);
-				responses.add(generate_transform(tool_data, snap_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center)));
-
-				// Auto-panning
-				let messages = [
-					LineToolMessage::PointerOutsideViewport { center, snap_angle, lock_angle }.into(),
-					LineToolMessage::PointerMove { center, snap_angle, lock_angle }.into(),
-				];
-				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
-
-				LineToolFsmState::Drawing
-			}
-			*/
 			(LineToolFsmState::Drawing, LineToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
 				let _ = tool_data.auto_panning.shift_viewport(input, responses);

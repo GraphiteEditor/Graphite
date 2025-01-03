@@ -1149,42 +1149,44 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 			}
 			NodeGraphMessage::PrintSelectedNodeCoordinates => {
-				// TODO: This will also have to print all metadata
-				// for (_, node_to_print) in network
-				// 	.nodes
-				// 	.iter()
-				// 	.filter(|node_id| selected_nodes.selected_nodes().any(|selected_id| selected_id == node_id.0))
-				// {
-				// 	if let DocumentNodeImplementation::Network(network) = &node_to_print.implementation {
-				// 		let mut output = "\r\n\r\n".to_string();
-				// 		output += &node_to_print.name;
-				// 		output += ":\r\n\r\n";
-				// 		let mut nodes = network.nodes.iter().collect::<Vec<_>>();
-				// 		nodes.sort_by_key(|(a, _)| a.0);
-				// 		output += &nodes
-				// 			.iter()
-				// 			.map(|(_, node)| {
-				// 				format!(
-				// 					"metadata: DocumentNodeMetadata {{ position: glam::IVec2::new({}, {}) }}, // {}",
-				// 					node.metadata().position.x, node.metadata().position.y, node.name
-				// 				)
-				// 			})
-				// 			.collect::<Vec<_>>()
-				// 			.join("\r\n");
-				// 		output += "\r\n";
-				// 		output += &format!(
-				// 			"imports_metadata: (NodeId::new(), ({}, {}).into()),\r\n",
-				// 			network.imports_metadata.1.x, network.imports_metadata.1.y
-				// 		);
-				// 		output += &format!(
-				// 			"exports_metadata: (NodeId::new(), ({}, {}).into()),",
-				// 			network.exports_metadata.1.x, network.exports_metadata.1.y
-				// 		);
-				// 		output += "\r\n\r\n";
-				// 		// KEEP THIS `debug!()` - Someday we can remove this once this development utility is no longer needed
-				// 		log::debug!("{output}");
-				// 	}
-				// }
+				/*
+				TODO: This will also have to print all metadata
+				for (_, node_to_print) in network
+					.nodes
+					.iter()
+					.filter(|node_id| selected_nodes.selected_nodes().any(|selected_id| selected_id == node_id.0))
+				{
+					if let DocumentNodeImplementation::Network(network) = &node_to_print.implementation {
+						let mut output = "\r\n\r\n".to_string();
+						output += &node_to_print.name;
+						output += ":\r\n\r\n";
+						let mut nodes = network.nodes.iter().collect::<Vec<_>>();
+						nodes.sort_by_key(|(a, _)| a.0);
+						output += &nodes
+							.iter()
+							.map(|(_, node)| {
+								format!(
+									"metadata: DocumentNodeMetadata {{ position: glam::IVec2::new({}, {}) }}, // {}",
+									node.metadata().position.x, node.metadata().position.y, node.name
+								)
+							})
+							.collect::<Vec<_>>()
+							.join("\r\n");
+						output += "\r\n";
+						output += &format!(
+							"imports_metadata: (NodeId::new(), ({}, {}).into()),\r\n",
+							network.imports_metadata.1.x, network.imports_metadata.1.y
+						);
+						output += &format!(
+							"exports_metadata: (NodeId::new(), ({}, {}).into()),",
+							network.exports_metadata.1.x, network.exports_metadata.1.y
+						);
+						output += "\r\n\r\n";
+						// KEEP THIS `debug!()` - Someday we can remove this once this development utility is no longer needed
+						log::debug!("{output}");
+					}
+				}
+				*/
 			}
 			NodeGraphMessage::RunDocumentGraph => {
 				responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false });
