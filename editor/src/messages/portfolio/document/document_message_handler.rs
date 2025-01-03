@@ -1371,7 +1371,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 		// More additional actions
 		common.extend(self.navigation_handler.actions());
 		common.extend(self.node_graph_handler.actions());
-		common.extend(actions!(NavigationMessageDiscriminant::SetCursorState));
+		// common.extend(actions!(NavigationMessageDiscriminant::SetCursorState));
 		common
 	}
 }
