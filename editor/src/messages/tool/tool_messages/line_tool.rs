@@ -179,7 +179,7 @@ impl Fsm for LineToolFsmState {
 
 			// Setting up the starting point
 			(LineToolFsmState::Ready, LineToolMessage::DragStart) => {
-				info!("Dragging Started");
+				//info!("Dragging Started");
 				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
 				tool_data.drag_start = snapped.snapped_point_document;
@@ -189,7 +189,7 @@ impl Fsm for LineToolFsmState {
 
 			// Updating the current position
 			(LineToolFsmState::Drawing, LineToolMessage::PointerMove { center, snap_angle, lock_angle }) => {
-				info!("Pointer moved");
+				//info!("Pointer moved");
 				let messages = [
 					LineToolMessage::PointerOutsideViewport { center, snap_angle, lock_angle }.into(),
 					LineToolMessage::PointerMove { center, snap_angle, lock_angle }.into(),
@@ -199,22 +199,19 @@ impl Fsm for LineToolFsmState {
 			}
 
 			(LineToolFsmState::Drawing, LineToolMessage::DragStop) => {
-				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
-				// let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
+				//info!("Dragging Stopped");
+				tool_data.drag_finish = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
 
-				tool_data.drag_current = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
-				info!("Dragging Stopped");
-				let end_point = tool_data.drag_current;
 				let node_type = resolve_document_node_type("Line").expect("Line node does not exist");
 				let node = node_type.node_template_input_override([
 					None,
 					Some(NodeInput::value(TaggedValue::DVec2(tool_data.drag_start), false)),
-					Some(NodeInput::value(TaggedValue::DVec2(end_point), false)),
+					Some(NodeInput::value(TaggedValue::DVec2(tool_data.drag_finish), false)),
 				]);
-				let nodeID = NodeId::new();
-				let nodes = vec![(nodeID.clone(), node)];
+				let node_id = NodeId::new();
+				let nodes = vec![(node_id.clone(), node)];
 
-				let layer = graph_modification_utils::new_custom(nodeID, nodes, document.new_layer_parent(false), responses);
+				let layer = graph_modification_utils::new_custom(node_id, nodes, document.new_layer_parent(false), responses);
 
 				tool_data.layer = Some(layer);
 
