@@ -384,9 +384,9 @@ pub fn input_mappings() -> Mapping {
 		//
 		// NavigationMessage
 		entry!(KeyDown(MouseMiddle); modifiers=[Alt], action_dispatch=NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: false }),
-		entry!(KeyDown(Space); modifiers=[MouseLeft],action_dispatch=NavigationMessage::BeginCanvasPan),
-		entry!(KeyDown(Space); action_dispatch=NavigationMessage::SetCursorState { is_active: true }),
-		entry!(KeyUp(Space); action_dispatch=NavigationMessage::SetCursorState { is_active: false }),
+		// entry!(KeyDown(Space); modifiers=[MouseLeft],action_dispatch=NavigationMessage::BeginCanvasPan),
+		entry!(KeyDown(Command); action_dispatch=NavigationMessage::SetCursorState { is_active: true }),
+		entry!(KeyUp(Command); action_dispatch=NavigationMessage::SetCursorState { is_active: false }),
 		entry!(KeyDown(MouseMiddle); modifiers=[Shift], action_dispatch=NavigationMessage::BeginCanvasZoom),
 		entry!(KeyDown(MouseLeft); modifiers=[Shift, Space], action_dispatch=NavigationMessage::BeginCanvasZoom),
 		entry!(KeyDown(MouseMiddle); action_dispatch=NavigationMessage::BeginCanvasPan),
