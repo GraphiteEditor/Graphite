@@ -736,6 +736,7 @@ const mouseCursorIconCSSNames = {
 	ZoomIn: "zoom-in",
 	ZoomOut: "zoom-out",
 	Grabbing: "grabbing",
+	Grab: "grab",
 	Crosshair: "crosshair",
 	Text: "text",
 	Move: "move",

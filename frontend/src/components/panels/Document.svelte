@@ -292,7 +292,6 @@
 
 			cursorString = `url('data:image/svg+xml;utf8,${svg}') 8 8, alias`;
 		}
-
 		canvasCursor = cursorString;
 	}
 
@@ -396,9 +395,9 @@
 
 		// Update mouse cursor icon
 		editor.subscriptions.subscribeJsMessage(UpdateMouseCursor, async (data) => {
-			await tick();
-
 			const { cursor } = data;
+			console.log("Received UpdateMouseCursor message:", data);
+			await tick();
 			updateMouseCursor(cursor);
 		});
 
