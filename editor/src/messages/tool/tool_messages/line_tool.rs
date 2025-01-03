@@ -149,15 +149,15 @@ enum LineToolFsmState {
 #[derive(Clone, Debug, Default)]
 struct LineToolData {
 	drag_start: DVec2,
-	drag_current: DVec2,
+	drag_current: DVec2, //shud be used during pointermove
 	drag_finish: DVec2,
-	angle: f64,
+	angle: f64, 
 	weight: f64,
 	layer: Option<LayerNodeIdentifier>,
 	snap_manager: SnapManager,
 	auto_panning: AutoPanning,
-	node: NodeTemplate,
-	nodes: Vec<(NodeId, NodeTemplate)>,
+	// node: NodeTemplate, 
+	// nodes: Vec<(NodeId, NodeTemplate)>,
 }
 
 impl Fsm for LineToolFsmState {
@@ -186,8 +186,11 @@ impl Fsm for LineToolFsmState {
 				responses.add(DocumentMessage::StartTransaction);
 				LineToolFsmState::Drawing
 			}
-
-			// Updating the current position
+ 
+			/*need to add functionality for pointer move event, the line preview must be shown as pointer is moved,
+			for this, (prolly) we need to create the layer at dragStart rather than dragStop, or draw the preview in existing layer and then once dragStop is called move it to new layer? if that makes sense? 			
+			*/ 
+			
 			(LineToolFsmState::Drawing, LineToolMessage::PointerMove { center, snap_angle, lock_angle }) => {
 				//info!("Pointer moved");
 				let messages = [
