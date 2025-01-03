@@ -55,6 +55,15 @@ pub fn new_custom(id: NodeId, nodes: Vec<(NodeId, NodeTemplate)>, parent: LayerN
 	LayerNodeIdentifier::new_unchecked(id)
 }
 
+// pub fn new_custom2(id: NodeId, nodes: Vec<(NodeId, NodeTemplate)>, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
+// 	responses.add(GraphOperationMessage::NewCustomLayer2{ id, nodes_add, parent, insert_index: 0 });
+// 	responses.add(GraphOperationMessage::SetUpstreamToChain {
+// 		layer: LayerNodeIdentifier::new_unchecked(id),
+// 	});
+// 	responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
+// 	LayerNodeIdentifier::new_unchecked(id)
+// }
+
 /// Locate the final pivot from the transform (TODO: decide how the pivot should actually work)
 pub fn get_pivot(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<DVec2> {
 	let pivot_node_input_index = 5;

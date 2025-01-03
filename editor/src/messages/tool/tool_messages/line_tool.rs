@@ -270,12 +270,6 @@ impl Fsm for LineToolFsmState {
 				let viewport_points = [document_to_viewport.transform_point2(document_points[0]), document_to_viewport.transform_point2(document_points[1])];
 				let line_length = (viewport_points[1] - viewport_points[0]).length();
 				let angle = -(viewport_points[1] - viewport_points[0]).angle_to(DVec2::X);
-				// GraphOperationMessage::TransformSet {
-				// 	layer: tool_data.layer.unwrap(),
-				// 	transform: glam::DAffine2::from_scale_angle_translation(DVec2::new(line_length, 1.), angle, viewport_points[0]),
-				// 	transform_in: TransformIn::Viewport,
-				// 	skip_rerender: false,
-				// };
 
 				let messages = [
 					LineToolMessage::PointerOutsideViewport { center, snap_angle, lock_angle }.into(),
@@ -298,10 +292,10 @@ impl Fsm for LineToolFsmState {
 					Some(NodeInput::value(TaggedValue::DVec2(tool_data.drag_start), false)),
 					Some(NodeInput::value(TaggedValue::DVec2(end_point), false)),
 				]);
+				let nodeID = NodeId::new();
+				let nodes = vec![(nodeID.clone(), node)];
 
-				let nodes = vec![(NodeId(0), node)];
-
-				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_parent(false), responses);
+				let layer = graph_modification_utils::new_custom(nodeID, nodes, document.new_layer_parent(false), responses);
 
 				tool_data.layer = Some(layer);
 

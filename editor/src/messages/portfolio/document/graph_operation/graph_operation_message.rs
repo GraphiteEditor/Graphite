@@ -83,6 +83,7 @@ pub enum GraphOperationMessage {
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
+
 	NewVectorLayer {
 		id: NodeId,
 		subpaths: Vec<Subpath<PointId>>,
@@ -111,3 +112,10 @@ pub enum GraphOperationMessage {
 		insert_index: usize,
 	},
 }
+
+// pub struct Nclt<'a> {
+//     pub id: NodeId,
+//     pub nodes: Vec<(NodeId, &'a NodeTemplate)>,
+//     pub parent: LayerNodeIdentifier,
+//     pub insert_index: usize,
+// }
