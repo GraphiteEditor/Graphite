@@ -14,6 +14,12 @@ use graphene_std::vector::convert_usvg_path;
 
 use glam::{DAffine2, DVec2};
 
+#[derive(Debug, Clone)]
+struct ArtboardInfo {
+	input_node: NodeInput,
+	output_nodes: Vec<InputConnector>,
+	merge_node: NodeId,
+}
 pub struct GraphOperationMessageData<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
 	pub collapsed: &'a mut CollapsedLayers,
@@ -191,13 +197,59 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 			}
 			GraphOperationMessage::ClearArtboards => {
+				responses.add(DocumentMessage::StartTransaction);
+				let mut artboard_data: HashMap<NodeId, ArtboardInfo> = HashMap::new();
 				for artboard in network_interface.all_artboards() {
+					let Some(document_node) = network_interface.network(&[]).unwrap().nodes.get(&artboard.to_node()) else {
+						log::error!("Artboard not created");
+						responses.add(DocumentMessage::AbortTransaction);
+						return;
+					};
+					let node_id = NodeId::new();
+					artboard_data.insert(
+						artboard.to_node(),
+						ArtboardInfo {
+							input_node: NodeInput::node(document_node.inputs[1].as_node().unwrap_or_default(), 0),
+							output_nodes: network_interface.outward_wires(&[]).unwrap().get(&OutputConnector::node(artboard.to_node(), 0)).unwrap().clone(),
+							merge_node: node_id,
+						},
+					);
 					responses.add(NodeGraphMessage::DeleteNodes {
 						node_ids: vec![artboard.to_node()],
 						delete_children: false,
 					});
+
+					let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
+					modify_inputs.create_layer(node_id);
+					responses.add(NodeGraphMessage::SetDisplayName {
+						node_id,
+						alias: network_interface.frontend_display_name(&artboard.to_node(), &[]),
+					});
 				}
-				// TODO: Replace deleted artboards with merge nodes
+
+				for artboard in artboard_data.clone() {
+					// modify downstream connections
+					responses.add(NodeGraphMessage::SetInput {
+						input_connector: InputConnector::node(artboard.1.merge_node, 1),
+						input: NodeInput::node(artboard.1.input_node.as_node().unwrap_or_default(), 0),
+					});
+
+					// Modify upstream connections
+					for outward_wire in artboard.1.output_nodes {
+						if let Some(artboard_info) = artboard_data.get(&outward_wire.node_id().unwrap_or_default()) {
+							responses.add(NodeGraphMessage::SetInput {
+								input_connector: InputConnector::node(artboard_info.merge_node, outward_wire.input_index()),
+								input: NodeInput::node(artboard_data[&artboard.0].merge_node, 0),
+							});
+						} else {
+							responses.add(NodeGraphMessage::SetInput {
+								input_connector: outward_wire,
+								input: NodeInput::node(artboard_data[&artboard.0].merge_node, 0),
+							});
+						}
+					}
+				}
+				responses.add(DocumentMessage::EndTransaction);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
 				responses.add(NodeGraphMessage::SendGraph);
