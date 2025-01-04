@@ -298,11 +298,6 @@ impl fmt::Display for Key {
 	}
 }
 
-pub fn is_key_held(key: Key, keyboard_state: &KeyStates) -> bool {
-	let key_index = key as usize;
-	keyboard_state.get(key_index)
-}
-
 impl From<Key> for LayoutKey {
 	fn from(key: Key) -> Self {
 		Self {
