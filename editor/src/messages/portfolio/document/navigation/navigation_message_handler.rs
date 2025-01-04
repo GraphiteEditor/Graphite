@@ -84,6 +84,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				self.navigation_operation = NavigationOperation::Pan { pan_original_for_abort: ptz.pan };
 			}
 			NavigationMessage::SetCursorState { is_active } => {
+				// info!("SetCursorState called with is_active: {}", is_active);
 				if is_active {
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grab });
 				} else {

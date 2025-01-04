@@ -102,7 +102,12 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	async function onKeyDown(e: KeyboardEvent) {
 		const key = await getLocalizedScanCode(e);
-
+		console.log("Key pressed:", key);
+		if(key=="Space"){
+			e.preventDefault();
+			// e.stopPropagation();
+			console.log("Space key detected and preventDefault applied.");
+		}
 		const NO_KEY_REPEAT_MODIFIER_KEYS = ["ControlLeft", "ControlRight", "ShiftLeft", "ShiftRight", "MetaLeft", "MetaRight", "AltLeft", "AltRight", "AltGraph", "CapsLock", "Fn", "FnLock"];
 		if (e.repeat && NO_KEY_REPEAT_MODIFIER_KEYS.includes(key)) return;
 
@@ -120,7 +125,11 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	async function onKeyUp(e: KeyboardEvent) {
 		const key = await getLocalizedScanCode(e);
-
+		// if(key=="Space"){
+		// 	e.preventDefault();
+			// e.stopPropagation();
+		// 	console.log("Space key detected and preventDefault applied.");
+		// }
 		if (await shouldRedirectKeyboardEventToBackend(e)) {
 			e.preventDefault();
 			const modifiers = makeKeyboardModifiersBitfield(e);
