@@ -179,13 +179,12 @@ pub fn do_rectangles_overlap(rectangle1: [DVec2; 2], rectangle2: [DVec2; 2]) -> 
 	top_right1.x >= bottom_left2.x && top_right2.x >= bottom_left1.x && top_right2.y >= bottom_left1.y && top_right1.y >= bottom_left2.y
 }
 
-pub fn is_subpath_inside_polygon<PointId: crate::Identifier>(polygon: &[DVec2], subpath: &Subpath<PointId>) -> bool {
-	let polypath = Subpath::from_anchors_linear(polygon.to_vec(), true);
-	if !subpath.subpath_intersections(&polypath, Some(0.02), Some(0.05)).is_empty() {
+pub fn is_subpath_inside_polygon<PointId: crate::Identifier>(polygon: &Subpath<PointId>, subpath: &Subpath<PointId>) -> bool {
+	if !subpath.subpath_intersections(&polygon, None, None).is_empty() {
 		return false;
 	}
 	for anchors in subpath.anchors() {
-		if !polypath.contains_point(anchors) {
+		if !polygon.contains_point(anchors) {
 			return false;
 		}
 	}
@@ -367,7 +366,8 @@ mod tests {
 
 	#[test]
 	fn test_is_subpath_inside_polygon() {
-		let lasso_polygon = vec![DVec2::new(100., 100.), DVec2::new(500., 100.), DVec2::new(500., 500.), DVec2::new(100., 500.)];
+		let lasso_polygon = [DVec2::new(100., 100.), DVec2::new(500., 100.), DVec2::new(500., 500.), DVec2::new(100., 500.)].to_vec();
+		let lasso_polygon = Subpath::from_anchors_linear(lasso_polygon, true);
 
 		let curve = Bezier::from_quadratic_dvec2(DVec2::new(189., 289.), DVec2::new(9., 286.), DVec2::new(45., 410.));
 		let curve_intersecting = Subpath::<EmptyId>::from_bezier(&curve);
