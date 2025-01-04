@@ -112,7 +112,6 @@ struct ArtboardToolData {
 	drag_current: DVec2,
 	auto_panning: AutoPanning,
 	snap_candidates: Vec<SnapCandidatePoint>,
-	// child_layers: Vec<LayerNodeIdentifier>,
 }
 
 impl ArtboardToolData {
@@ -158,6 +157,7 @@ impl ArtboardToolData {
 	fn start_resizing(&mut self, _selected_edges: (bool, bool, bool, bool), _document: &DocumentMessageHandler, _input: &InputPreprocessorMessageHandler) {
 		if let Some(bounds) = &mut self.bounding_box_manager {
 			bounds.center_of_transformation = bounds.transform.transform_point2((bounds.bounds[0] + bounds.bounds[1]) / 2.);
+			self.dragging_current_artboard_location = bounds.bounds[0].round().as_ivec2();
 		}
 	}
 
@@ -218,38 +218,13 @@ impl ArtboardToolData {
 		});
 		let artboard_bounds_viewport = document.metadata().bounding_box_viewport(self.selected_artboard.unwrap());
 
-		let top_edge_resized = bounds.selected_edges.as_ref().map_or(false, |edges| edges.top);
-		let left_edge_resized = bounds.selected_edges.as_ref().map_or(false, |edges| edges.left);
-		let original_left_edge_x = bounds.bounds[0].x;
-		let original_top_edge_y = bounds.bounds[0].y;
-
-		let translation_x = if left_edge_resized {
-			let delta_x = min.x.round() - original_left_edge_x.round();
-			info!("mix.x :{},original_left_edge_x:{}", min.x.round(), original_left_edge_x);
-			delta_x
-		} else {
-			0.0
-		};
-
-		let translation_y = if top_edge_resized {
-			let deltay_y = min.y.round() - original_top_edge_y.round();
-			deltay_y
-		} else {
-			0.0
-		};
-
-		let translation = DVec2::new(translation_x, translation_y);
-		let reverse_translation = DVec2::new(
-			if left_edge_resized { -translation.x } else { translation.x },
-			if top_edge_resized { -translation.y } else { translation.y },
-		);
-		info!("Translation: {:?}, Reverse Translation: {:?}", translation, reverse_translation);
-
-		let child_layers = self.get_child_layers_of_selected_artboard(document);
-		for layer in child_layers {
+		let translation = position.round().as_ivec2() - self.dragging_current_artboard_location;
+		self.dragging_current_artboard_location = position.round().as_ivec2();
+		for child in self.selected_artboard.unwrap().children(document.metadata()) {
+			let local_translation = document.metadata().downstream_transform_to_document(child).inverse().transform_vector2(-translation.as_dvec2());
 			responses.add(GraphOperationMessage::TransformChange {
-				layer,
-				transform: DAffine2::from_translation((reverse_translation).into()),
+				layer: child,
+				transform: DAffine2::from_translation(local_translation),
 				transform_in: TransformIn::Local,
 				skip_rerender: false,
 			});
@@ -264,12 +239,9 @@ impl Fsm for ArtboardToolFsmState {
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
 		let ToolActionHandlerData { document, input, .. } = tool_action_data;
 
-		let ToolMessage::Artboard(event) = event else {
-			return self;
-		};
-
 		let hovered = ArtboardToolData::hovered_artboard(document, input).is_some();
 
+		let ToolMessage::Artboard(event) = event else { return self };
 		match (self, event) {
 			(state, ArtboardToolMessage::Overlays(mut overlay_context)) => {
 				if state != ArtboardToolFsmState::Drawing {

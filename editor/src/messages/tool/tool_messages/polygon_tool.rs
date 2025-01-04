@@ -234,9 +234,7 @@ impl Fsm for PolygonToolFsmState {
 
 		let polygon_data = &mut tool_data.data;
 
-		let ToolMessage::Polygon(event) = event else {
-			return self;
-		};
+		let ToolMessage::Polygon(event) = event else { return self };
 		match (self, event) {
 			(_, PolygonToolMessage::Overlays(mut overlay_context)) => {
 				polygon_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);

@@ -154,7 +154,10 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Escape); action_dispatch=EyedropperToolMessage::Abort),
 		//
 		// TextToolMessage
-		entry!(KeyUp(MouseLeft); action_dispatch=TextToolMessage::Interact),
+		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=TextToolMessage::PointerMove { center: Alt, lock_ratio: Shift }),
+		entry!(KeyDown(MouseLeft); action_dispatch=TextToolMessage::DragStart),
+		entry!(KeyUp(MouseLeft); action_dispatch=TextToolMessage::DragStop),
+		entry!(KeyDown(MouseRight); action_dispatch=TextToolMessage::CommitText),
 		entry!(KeyDown(Escape); action_dispatch=TextToolMessage::CommitText),
 		entry!(KeyDown(Enter); modifiers=[Accel], action_dispatch=TextToolMessage::CommitText),
 		//
@@ -206,8 +209,8 @@ pub fn input_mappings() -> Mapping {
 		// PathToolMessage
 		entry!(KeyDown(Delete); modifiers=[Accel], action_dispatch=PathToolMessage::DeleteAndBreakPath),
 		entry!(KeyDown(Backspace); modifiers=[Accel], action_dispatch=PathToolMessage::DeleteAndBreakPath),
-		entry!(KeyDown(Delete); modifiers=[Accel, Shift], action_dispatch=PathToolMessage::BreakPath),
-		entry!(KeyDown(Backspace); modifiers=[Accel, Shift], action_dispatch=PathToolMessage::BreakPath),
+		entry!(KeyDown(Delete); modifiers=[Shift], action_dispatch=PathToolMessage::BreakPath),
+		entry!(KeyDown(Backspace); modifiers=[Shift], action_dispatch=PathToolMessage::BreakPath),
 		entry!(KeyDown(Tab); action_dispatch=PathToolMessage::SwapSelectedHandles),
 		entry!(KeyDown(MouseLeft); action_dispatch=PathToolMessage::MouseDown { direct_insert_without_sliding: Control, extend_selection: Shift }),
 		entry!(KeyDown(MouseRight); action_dispatch=PathToolMessage::RightClick),
@@ -215,7 +218,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyG); action_dispatch=PathToolMessage::GRS { key: KeyG }),
 		entry!(KeyDown(KeyR); action_dispatch=PathToolMessage::GRS { key: KeyR }),
 		entry!(KeyDown(KeyS); action_dispatch=PathToolMessage::GRS { key: KeyS }),
-		entry!(PointerMove; refresh_keys=[KeyC, Shift, Alt, Space], action_dispatch=PathToolMessage::PointerMove { toggle_colinear: KeyC, equidistant: Alt, move_anchor_with_handles: Space}),
+		entry!(PointerMove; refresh_keys=[KeyC, Space, Control, Shift, Alt], action_dispatch=PathToolMessage::PointerMove { toggle_colinear: KeyC, equidistant: Alt, move_anchor_with_handles: Space, snap_angle: Shift, lock_angle: Control }),
 		entry!(KeyDown(Delete); action_dispatch=PathToolMessage::Delete),
 		entry!(KeyDown(KeyA); modifiers=[Accel], action_dispatch=PathToolMessage::SelectAllAnchors),
 		entry!(KeyDown(KeyA); modifiers=[Accel, Shift], action_dispatch=PathToolMessage::DeselectAllPoints),

@@ -22,6 +22,7 @@ use crate::messages::tool::common_functionality::{auto_panning::AutoPanning, mea
 
 use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;
+use graphene_core::text::load_face;
 use graphene_std::renderer::Rect;
 use graphene_std::vector::misc::BooleanOperation;
 // use web_sys::console;
@@ -435,6 +436,7 @@ impl Fsm for SelectToolFsmState {
 		let ToolMessage::Select(event) = event else {
 			return self;
 		};
+
 		match (self, event) {
 			(_, SelectToolMessage::Overlays(mut overlay_context)) => {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
@@ -451,6 +453,17 @@ impl Fsm for SelectToolFsmState {
 					.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 				{
 					overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+
+					if is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
+						let (text, font, typesetting) = get_text(layer, &document.network_interface).expect("Text layer should have text when interacting with the Text tool in `interact()`");
+
+						let buzz_face = font_cache.get(font).map(|data| load_face(data));
+						let far = graphene_core::text::bounding_box(text, buzz_face, typesetting);
+						let quad = Quad::from_box([DVec2::ZERO, far]);
+						let transformed_quad = document.metadata().transform_to_viewport(layer) * quad;
+
+						overlay_context.dashed_quad(transformed_quad, None, Some(7.), Some(5.));
+					}
 				}
 
 				// Update bounds

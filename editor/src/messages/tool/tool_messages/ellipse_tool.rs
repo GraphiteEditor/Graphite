@@ -188,9 +188,7 @@ impl Fsm for EllipseToolFsmState {
 
 		let shape_data = &mut tool_data.data;
 
-		let ToolMessage::Ellipse(event) = event else {
-			return self;
-		};
+		let ToolMessage::Ellipse(event) = event else { return self };
 		match (self, event) {
 			(_, EllipseToolMessage::Overlays(mut overlay_context)) => {
 				shape_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
