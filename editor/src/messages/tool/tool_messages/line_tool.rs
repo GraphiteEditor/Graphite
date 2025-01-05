@@ -212,8 +212,8 @@ impl Fsm for LineToolFsmState {
 					Some(NodeInput::value(TaggedValue::DVec2(tool_data.drag_finish), false)),
 				]);
 				let node_id = NodeId::new();
-				let nodes = vec![(node_id.clone(), node)];
-
+				//let nodes = vec![(node_id.clone(), node)];
+				let nodes = vec![(NodeId(0), node)];
 				let layer = graph_modification_utils::new_custom(node_id, nodes, document.new_layer_parent(false), responses);
 
 				tool_data.layer = Some(layer);
