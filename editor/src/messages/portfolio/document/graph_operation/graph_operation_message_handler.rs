@@ -227,7 +227,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					});
 				}
 
-				for artboard in artboard_data.clone() {
+				for artboard in &artboard_data {
 					// modify downstream connections
 					responses.add(NodeGraphMessage::SetInput {
 						input_connector: InputConnector::node(artboard.1.merge_node, 1),
@@ -235,7 +235,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					});
 
 					// Modify upstream connections
-					for outward_wire in artboard.1.output_nodes {
+					for outward_wire in &artboard.1.output_nodes {
 						if let Some(artboard_info) = artboard_data.get(&outward_wire.node_id().unwrap_or_default()) {
 							responses.add(NodeGraphMessage::SetInput {
 								input_connector: InputConnector::node(artboard_info.merge_node, outward_wire.input_index()),
@@ -243,7 +243,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 							});
 						} else {
 							responses.add(NodeGraphMessage::SetInput {
-								input_connector: outward_wire,
+								input_connector: *outward_wire,
 								input: NodeInput::node(artboard_data[&artboard.0].merge_node, 0),
 							});
 						}
