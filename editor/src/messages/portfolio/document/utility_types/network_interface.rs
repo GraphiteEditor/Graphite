@@ -1255,7 +1255,6 @@ impl NodeNetworkInterface {
 			log::error!("Could not get selected nodes in shallowest_unique_layers");
 			Vec::new()
 		};
-
 		// Sorting here creates groups of similar UUID paths
 		sorted_layers.sort();
 		sorted_layers.dedup_by(|a, b| a.starts_with(b));
