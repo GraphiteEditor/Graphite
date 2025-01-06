@@ -14,7 +14,7 @@ use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::portfolio::PortfolioMessageData;
 use crate::messages::preferences::PreferencesMessageHandler;
 use crate::messages::preferences::SelectionMode;
-use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
+use crate::messages::tool::common_functionality::graph_modification_utils::{get_text, is_layer_fed_by_node_of_name};
 use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
@@ -431,7 +431,7 @@ impl Fsm for SelectToolFsmState {
 	type ToolOptions = ();
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionHandlerData { document, input, .. } = tool_action_data;
+		let ToolActionHandlerData { document, input, font_cache, .. } = tool_action_data;
 		info!("Current selection mode during transition: {:?}", tool_data.selection_mode);
 		let ToolMessage::Select(event) = event else {
 			return self;
@@ -1043,8 +1043,13 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 
-			(SelectToolFsmState::DrawingBox { .. }, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
-
+			(
+				SelectToolFsmState::DrawingBox { .. },
+				SelectToolMessage::DragStop {
+					remove_from_selection,
+					negative_box_selection,
+				},
+			) => {
 				let quad = tool_data.selection_quad();
 				let direction = tool_data.calculate_direction();
 				info!("mode under select is {:?}", tool_data.selection_mode);
@@ -1063,7 +1068,7 @@ impl Fsm for SelectToolFsmState {
 				if new_selected != current_selected {
 					// Negative selection when both Shift and Ctrl are pressed
 					if input.keyboard.key(remove_from_selection) && input.keyboard.key(negative_box_selection) {
-						let updated_selection = current_selected
+						let updated_selection: Vec<LayerNodeIdentifier> = current_selected
 							.into_iter()
 							.filter(|layer| !new_selected.iter().any(|selected| layer.starts_with(*selected, document.metadata())))
 							.collect();

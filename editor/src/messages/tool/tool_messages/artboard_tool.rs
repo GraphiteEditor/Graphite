@@ -112,6 +112,7 @@ struct ArtboardToolData {
 	drag_current: DVec2,
 	auto_panning: AutoPanning,
 	snap_candidates: Vec<SnapCandidatePoint>,
+	dragging_current_artboard_location: IVec2,
 }
 
 impl ArtboardToolData {
