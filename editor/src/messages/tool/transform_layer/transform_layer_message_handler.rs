@@ -77,8 +77,24 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					let mut point_count: usize = 0;
 					let get_location = |point: &ManipulatorPointId| point.get_position(&vector_data).map(|position| viewspace.transform_point2(position));
 					let points = shape_editor.selected_points();
+					let selected_points: Vec<&ManipulatorPointId> = points.collect();
 
-					*selected.pivot = points.filter_map(get_location).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64;
+					if selected_points.len() == 1 {
+						if let Some(point) = selected_points.first() {
+							match point {
+								ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) => {
+									if let Some(anchor_position) = point.get_anchor_position(&vector_data) {
+										*selected.pivot = viewspace.transform_point2(anchor_position);
+									}
+								}
+								_ => {
+									*selected.pivot = selected_points.iter().filter_map(|point| get_location(point)).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64;
+								}
+							}
+						}
+					} else {
+						*selected.pivot = selected_points.iter().filter_map(|point| get_location(point)).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64;
+					}
 				}
 			} else {
 				*selected.pivot = selected.mean_average_of_pivots();
