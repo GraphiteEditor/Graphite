@@ -1112,17 +1112,13 @@ impl Fsm for SelectToolFsmState {
 
 				self
 			}
-			(SelectToolFsmState::DrawingBox { selection, previous_selected }, SelectToolMessage::RestoreSelection) => {
+			(SelectToolFsmState::DrawingBox { selection, mut previous_selected }, SelectToolMessage::RestoreSelection) => {
 				let selection_set: HashSet<_> = tool_data.previously_selected_layers.iter().collect();
+
 				if input.keyboard.key(Key::Shift) {
-					if previous_selected {
-						// if selected deselect it
-						tool_data.layers_dragging.retain(|layer| !selection_set.contains(layer));
-					} else {
-						tool_data.layers_dragging.extend(&tool_data.previously_selected_layers);
-					}
+					tool_data.layers_dragging.extend(&tool_data.previously_selected_layers);
+					previous_selected = false;
 				} else {
-					// On Shift release, finalize selection state
 					if previous_selected {
 						tool_data.layers_dragging.extend(&tool_data.previously_selected_layers);
 					} else {
