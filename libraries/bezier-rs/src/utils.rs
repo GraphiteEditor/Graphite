@@ -190,35 +190,6 @@ pub fn is_rectangle_inside_other(inner: [DVec2; 2], outer: [DVec2; 2]) -> bool {
 	is_point_inside_rectangle(outer, inner[0]) && is_point_inside_rectangle(outer, inner[1])
 }
 
-/// Check if subpath is completely inside polygon (closed subpath).
-pub fn is_subpath_inside_polygon<PointId: crate::Identifier>(polygon: &Subpath<PointId>, subpath: &Subpath<PointId>) -> bool {
-	// Eliminate subpath if its bounding box is not completely inside polygon bounding box
-	if !subpath.is_empty() && !polygon.is_empty() {
-		let subpath_bbox = subpath.bounding_box().unwrap();
-		let polygon_bbox = polygon.bounding_box().unwrap();
-
-		// subpath is can only be completely inside polygon path if subpath bounding box is completely inside polygon bounding box
-		if !is_rectangle_inside_other(subpath_bbox, polygon_bbox) {
-			return false;
-		}
-	};
-
-	// Eliminate subpath if its any of the anchors is outside polygon
-	for anchors in subpath.anchors() {
-		if !polygon.contains_point(anchors) {
-			return false;
-		}
-	}
-
-	// Eliminate subpath which is intersecting with the polygon
-	if !subpath.subpath_intersections(&polygon, None, None).is_empty() {
-		return false;
-	}
-
-	// here (1) subpath bbox is inside polygon bbox, (2) its anchors are inside polygon and (3) it is not intersecting with polygon
-	true
-}
-
 /// Returns the intersection of two lines. The lines are given by a point on the line and its slope (represented by a vector).
 pub fn line_intersection(point1: DVec2, point1_slope_vector: DVec2, point2: DVec2, point2_slope_vector: DVec2) -> DVec2 {
 	assert!(point1_slope_vector.normalize() != point2_slope_vector.normalize());
@@ -400,28 +371,6 @@ mod tests {
 			[DVec2::new(10., 10.), DVec2::new(50., 50.)]
 		));
 		assert!(!is_rectangle_inside_other([DVec2::new(5., 5.), DVec2::new(50., 9.99)], [DVec2::new(10., 10.), DVec2::new(50., 50.)]));
-	}
-
-	#[test]
-	fn test_is_subpath_inside_polygon() {
-		let lasso_polygon = [DVec2::new(100., 100.), DVec2::new(500., 100.), DVec2::new(500., 500.), DVec2::new(100., 500.)].to_vec();
-		let lasso_polygon = Subpath::from_anchors_linear(lasso_polygon, true);
-
-		let curve = Bezier::from_quadratic_dvec2(DVec2::new(189., 289.), DVec2::new(9., 286.), DVec2::new(45., 410.));
-		let curve_intersecting = Subpath::<EmptyId>::from_bezier(&curve);
-		assert_eq!(is_subpath_inside_polygon(&lasso_polygon, &curve_intersecting), false);
-
-		let curve = Bezier::from_quadratic_dvec2(DVec2::new(115., 37.), DVec2::new(51.4, 91.8), DVec2::new(76.5, 242.));
-		let curve_outside = Subpath::<EmptyId>::from_bezier(&curve);
-		assert_eq!(is_subpath_inside_polygon(&lasso_polygon, &curve_outside), false);
-
-		let curve = Bezier::from_cubic_dvec2(DVec2::new(210.1, 133.5), DVec2::new(150.2, 436.9), DVec2::new(436., 285.), DVec2::new(247.6, 240.7));
-		let curve_inside = Subpath::<EmptyId>::from_bezier(&curve);
-		assert_eq!(is_subpath_inside_polygon(&lasso_polygon, &curve_inside), true);
-
-		let line = Bezier::from_linear_dvec2(DVec2::new(101., 101.5), DVec2::new(150.2, 499.));
-		let line_inside = Subpath::<EmptyId>::from_bezier(&line);
-		assert_eq!(is_subpath_inside_polygon(&lasso_polygon, &line_inside), true);
 	}
 
 	#[test]
