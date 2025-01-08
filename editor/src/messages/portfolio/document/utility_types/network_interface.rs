@@ -3311,7 +3311,7 @@ impl NodeNetworkInterface {
 		node.implementation = implementation;
 	}
 
-	// TODO: Eventually remove this (probably starting late 2024)
+	// TODO: Eventually remove this document upgrade code
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
 	pub fn replace_implementation_metadata(&mut self, node_id: &NodeId, network_path: &[NodeId], metadata: DocumentNodePersistentMetadata) {
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {

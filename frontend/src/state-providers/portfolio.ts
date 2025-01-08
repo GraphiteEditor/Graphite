@@ -117,7 +117,7 @@ export function createPortfolioState(editor: Editor) {
 		URL.revokeObjectURL(triggerRevokeBlobUrl.url);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerUpgradeDocumentToVectorManipulationFormat, async (triggerUpgradeDocumentToVectorManipulationFormat) => {
-		// TODO: Eventually remove this (probably starting late 2024)
+		// TODO: Eventually remove this document upgrade code
 		const { documentId, documentName, documentIsAutoSaved, documentIsSaved, documentSerializedContent } = triggerUpgradeDocumentToVectorManipulationFormat;
 		editor.handle.triggerUpgradeDocumentToVectorManipulationFormat(documentId, documentName, documentIsAutoSaved, documentIsSaved, documentSerializedContent);
 	});

@@ -702,7 +702,7 @@ impl EditorHandle {
 		self.dispatch(PortfolioMessage::ImaginatePollServerStatus);
 	}
 
-	// TODO: Eventually remove this (probably starting late 2024)
+	// TODO: Eventually remove this document upgrade code
 	#[wasm_bindgen(js_name = triggerUpgradeDocumentToVectorManipulationFormat)]
 	pub async fn upgrade_document_to_vector_manipulation_format(
 		&self,

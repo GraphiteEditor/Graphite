@@ -77,7 +77,7 @@ impl Dispatcher {
 
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T, process_after_all_current: bool) {
 		let message = message.into();
-		// Add all aditional messages to the buffer if it exists (except from the end buffer message)
+		// Add all additional messages to the buffer if it exists (except from the end buffer message)
 		if !matches!(message, Message::EndBuffer(_)) {
 			if let Some(buffered_queue) = &mut self.buffered_queue {
 				Self::schedule_execution(buffered_queue, true, [message]);
