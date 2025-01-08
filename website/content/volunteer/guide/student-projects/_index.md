@@ -1,21 +1,23 @@
 +++
 title = "Student projects"
+template = "book.html"
+page_template = "book.html"
 
 [extra]
-order = 1 # Page number after chapter intro
+order = 4 # Chapter number
 +++
 
 Graphite offers a number of opportunities for students to contribute by building a self-contained project as part of a structured format. These projects are designed to be completed over several months and are ideal for Google Summer of Code or similar internship programs, solo or group university capstone projects, and other arrangements. Each project has a distinct focus and is a great way to make a meaningful contribution to open source over the length of the program while receiving mentorship and guidance from the Graphite team.
 
 Student projects require adherence to a set schedule with regular check-ins, milestones, and evaluations. The structured setting is designed to provide a supportive environment for students to learn and grow as developers while gaining real-world industry experience from collaborating on a sizable software product and remaining accountable to stakeholders. It's our goal to make sure you succeed!
 
-Use this [contributor guide](../..) to start out with the code. Then when you're ready, reach out through [Discord](https://discord.graphite.rs) and use the `#🎓student-projects` channel to discuss and work towards proposing a project with the Graphite core team.
+Use this [contributor guide](..) to start out with the code. Then when you're ready, reach out through [Discord](https://discord.graphite.rs) and use the `#🎓student-projects` channel to discuss and work towards proposing a project with the Graphite core team.
 
 ## Google Summer of Code
 
 GSoC is a program offering students a [stipend](https://developers.google.com/open-source/gsoc/help/student-stipends) for successful completion of an internship-style experience with an open source organization. Read about [how it works](https://summerofcode.withgoogle.com/how-it-works/).
 
-Graphite [participated](https://summerofcode.withgoogle.com/programs/2024/organizations/graphite) in GSoC 2024 and we anticipate doing so again in 2025. Getting involved early is a great way to have a head start and stand out next summer.
+Graphite [participated in GSoC 2024](https://summerofcode.withgoogle.com/programs/2024/organizations/graphite) and we anticipate doing so again in 2025 if our organization's application is accepted. Getting involved early is a great way to have a head start and stand out in your application.
 <!-- The proposal formulation period is open now until the April 2 deadline (see the full [timeline](https://developers.google.com/open-source/gsoc/timeline)). -->
 
 ### Writing a proposal
@@ -166,14 +168,13 @@ As is the case with all projects, please discuss this with us on Discord to fles
 In addition to the detailed projects above, here are some loose ideas that may be expanded into full project descriptions before the 2025 GSoC application period opens:
 
 - Sophisticated text layout and advanced typography features
-- PDF import/export? (Scope and viability depend on the state of available libraries)
+- PDF import/export? (scope and viability depends on the state of available libraries)
 - Traditional brush engine
 - [Procedural brush engine](https://github.com/Keavon/Brush-Nodes)
 - Color management for HDR/WCG (requires good understanding of color science)
 - Image processing algorithms for photography
-- Snapping system overhaul
-- Photo processing graphics algorithms
 - [Node equivalence rewriting](https://github.com/GraphiteEditor/Graphite/issues/2021)
+- Snapping system overhaul
 
 ## Successful past projects
 
@@ -196,7 +197,7 @@ Unlike other node editors that are centered around manual graph editing, where u
 
 While general graph layout algorithms are complex and struggle to produce good results in other node editors, Graphite's graph topology is more constrained and predictable, which makes it possible to design a layout system that can produce good results. Nodes tend to be organized into rows, and layers into columns. This turns the problem into more of a constraint-based, axis-aligned packing problem.
 
-### 2024: Rendering Performance infrastructure improvements
+### 2024: Rendering performance infrastructure improvements
 
 *Graphite performance is bottlenecked by limitations in the new node graph rendering architecture that needs improvements.*
 
@@ -223,7 +224,7 @@ Student: Elbert Ronnie
 - [Report and weekly updates](https://github.com/GraphiteEditor/Graphite/discussions/1771)
 - [Rawkit library](https://crates.io/crates/rawkit)
 
-**Outcomes:** A Rust library that implements raw photo decoding functionality to native Rust. A clean, well-structured code base and API. At a minimum, demonstrate the successful end-to-end decoding, debayering, and color space handling of Sony ARW format photos in Graphite. Publish the library to crates.io.
+**Outcomes:** A Rust library that implements raw photo decoding functionality to native Rust. A clean, well-structured codebase and API. At a minimum, demonstrate the successful end-to-end decoding, debayering, and color space handling of Sony ARW format photos in Graphite. Publish the library to crates.io.
 
 **Background:** For Graphite to work as a photo editing app, it needs to import raw photos. These contain compressed sensor imagery and metadata in a variety of formats. Sony ARW is the first target and additional camera brands are stretch goals. Graphite needs a library written in pure Rust with a suitable (non-GPL) license, which does not currently exist in the ecosystem, so we need to create one ourselves.
 

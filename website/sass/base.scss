@@ -381,6 +381,7 @@ p ~ :is(h1, h2, h3, h4, details summary, blockquote, .image-comparison, .video-b
 .video-embed + :is(p, .link, .button),
 p + p > .button,
 p + :is(.link, section),
+table td p ~ p,
 img + .link,
 article {
 	margin-top: 20px;
@@ -499,6 +500,10 @@ table {
 
 	th:empty {
 		border: none;
+	}
+
+	:is(h1, h2, h3, h4, h5, h6) + & {
+		margin-top: 0;
 	}
 }
 

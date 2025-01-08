@@ -2,7 +2,7 @@
 title = "Graphite logo"
 
 [extra]
-css = ["logo.css"]
+css_inline = ["logo.css"]
 +++
 
 <section class="reading-material">

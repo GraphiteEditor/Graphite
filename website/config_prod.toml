@@ -4,7 +4,7 @@ base_url = "https://graphite.rs"
 feed_filenames = ["rss.xml"]
 
 compile_sass = true
-minify_html = false
+minify_html = true
 
 [markdown]
 highlight_code = true

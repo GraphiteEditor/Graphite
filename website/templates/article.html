@@ -13,7 +13,7 @@
 <section class="reading-material">
 	<div class="block">
 		<div class="details">
-			<h1 class="headline">{{ page.title }}</h2>
+			<h1 class="headline">{{ page.title }}</h1>
 			<span class="publication">By {{ page.extra.author }}. {{ page.date | date(format = "%B %d, %Y", timezone="America/Los_Angeles") }}.</span>
 			<img class="banner" src="{{ page.extra.banner | safe }}" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" />
 		</div>
@@ -38,7 +38,7 @@
 	</div>
 </section>
 {%- if not page.summary -%}
-{{ throw(message = "ARTICLE HAS NO SUMMARY! After the first paragraph (or two short ones), a `<!-- more -->` comment must be inserted in the markdown. Otherwise the blog page will be missing its preview text." | safe) }}
+{{ throw(message = "ARTICLE HAS NO SUMMARY! After the first paragraph (or two short ones), a `<!-- more -->` comment must be inserted in the markdown. Otherwise the blog page would be missing its preview text." | safe) }}
 {%- endif -%}
 {%- endblock content -%}
 

@@ -2,7 +2,7 @@
 title = "About Graphite"
 
 [extra]
-css = ["about.css"]
+css_inline = ["about.css"]
 css_external = ["https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"]
 +++
 
@@ -111,17 +111,15 @@ It's easy to learn and teach, yet Graphite's accessible design does not sacrific
 
 ---
 
-<div class="triptych">
+<div class="diptych">
 
 <div class="block" id="keavon">
 
 <img src="https://static.graphite.rs/content/about/core-team-photo-keavon-chambers.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Keavon Chambers" />
 
-## Keavon Chambers
+## Keavon Chambers <span class="handle">(@Keavon)</span> <span class="emoji" title="American">🇺🇸</span>
 
-*@Keavon* <span class="emoji" title="American">🇺🇸</span>
-
-*Founder, UI & product design, frontend engineering*
+***Founder, UI & product design, frontend, editor systems***
 
 Keavon is a creative generalist with a love for the fusion of arts and technology. UX and graphic designer, photographer, game developer, technical artist, and everything in between— he is equal parts designer and engineer. His multidisciplinary background in the digital arts is aptly suited for concocting the unique vision needed to bring Graphite to fruition.
 
@@ -130,26 +128,38 @@ Keavon is a creative generalist with a love for the fusion of arts and technolog
 
 <img src="https://static.graphite.rs/content/about/core-team-photo-dennis-kobert.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Dennis Kobert" />
 
-## Dennis Kobert
+## Dennis Kobert <span class="handle">(@TrueDoctor)</span> <span class="emoji" title="German">🇩🇪</span>
 
-*@TrueDoctor* <span class="emoji" title="German">🇩🇪</span>
-
-*Graphene node engine, research, architecture*
+***Graphene node engine, research, architecture***
 
 Dennis is a mix between a mathematician and a mad scientist. While still enjoying the art of photography and image editing (which drew him to the project early on), he thrives when challenged with designing complex systems and pushing boundaries. His method of building generalized solutions wrapped in elegant layers of abstraction led to his creation of the Graphene engine.
 
 </div>
+
+</div>
+<div class="diptych">
+
 <div class="block" id="hypercube">
 
-<img src="https://static.graphite.rs/content/about/core-team-photo-hypercube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Hypercube" />
+<img src="https://static.graphite.rs/content/about/core-team-photo-hypercube__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Hypercube" />
 
-## "Hypercube"
+## "Hypercube" <span class="handle">(@0Hypercube)</span> <span class="emoji" title="British">🇬🇧</span>
 
-*@0Hypercube* <span class="emoji" title="British">🇬🇧</span>
+***Editor systems, nodes, tools, architecture***
 
-*Editor systems, nodes, tools, architecture*
+"Hypercube" is a light speed code monkey who excels at developing, refactoring, and maintaining the editor codebase. With an unmatched ability to comprehend intricate code, he delivers lasting and efficient solutions at an impressive pace. He takes ownership of many central editor systems including tools, typography, transforms, layers, and node graph integration.
 
-"Hypercube" is a light speed code monkey who excels at developing, refactoring, and maintaining the editor code base. With an unmatched ability to comprehend intricate code, he delivers lasting and efficient solutions at an impressive pace. He takes ownership of many central editor systems including tools, typography, transforms, layers, and node graph integration.
+</div>
+
+<div class="block" id="adam">
+
+<img src="https://static.graphite.rs/content/about/core-team-photo-adam-gerhant.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Adam Gerhant" />
+
+## Adam Gerhant <span class="handle">(@pendapia)</span> <span class="emoji" title="American">🇺🇸</span>
+
+***Editor graph tooling, node data formats***
+
+Adam is a pragmatic problem solver with a talent for simplifying complexity. He is responsible for various architectural decisions which provide future proof integrations between the Graphene engine and editor. His work has greatly improved the performance, stability and code quality of the project, while also setting the stage for additional features.
 
 </div>
 
@@ -157,7 +167,6 @@ Dennis is a mix between a mathematician and a mad scientist. While still enjoyin
 
 </div>
 </section>
-
 
 <section>
 <div class="triptych">

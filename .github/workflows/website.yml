@@ -40,7 +40,7 @@ jobs:
       - name: 🌐 Build Graphite website with Zola
         run: |
           cd website
-          zola build
+          zola --config config_prod.toml build
 
       - name: 🔍 Check if `website/other` directory changed
         uses: dorny/paths-filter@v3

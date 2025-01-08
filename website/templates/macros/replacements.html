@@ -3,7 +3,7 @@
 {% set latest = articles.pages | slice(end = count) %}
 {% for article in latest %}
 <div class="block">
-	<a class="banner" href="{{ article.permalink | safe }}"><img src="{{ article.extra.banner | safe }}" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" /></a>
+	<a class="banner" href="{{ article.permalink | safe }}"><img src="{{ article.extra.banner | safe }}" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Article cover image" /></a>
 	<h2 class="headline"><a href="{{ article.permalink | safe }}">{{ article.title }}</a></h2>
 	<div class="summary">
 	<p>{{ article.summary | striptags | safe }}</p>

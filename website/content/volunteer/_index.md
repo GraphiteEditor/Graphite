@@ -2,7 +2,7 @@
 title = "Volunteer"
 
 [extra]
-css = ["volunteer.css"]
+css_inline = ["volunteer.css"]
 css_external = ["https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"]
 +++
 
@@ -43,7 +43,7 @@ The Graphite editor is built much like a game engine, split across user interfac
 </div>
 <div class="block feature-box-narrow">
 
-<h1 class="feature-box-header">Graphene team</h1>
+<h1 class="feature-box-header">Compiler team</h1>
 
 [Graphene](/volunteer/guide/graphene) is a programming language, interpreter, and runtime environment built upon Rust which enables Graphite artwork to compile to executable programs for fast rendering.
 

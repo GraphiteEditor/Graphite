@@ -1,0 +1,18 @@
+.balance-text {
+	visibility: hidden;
+}
+
+@media (scripting: none) {
+	.balance-text {
+		visibility: visible !important;
+	}
+}
+
+@supports (text-wrap: balance) {
+	.balance-text,
+	.balanced-text {
+		text-align: left;
+		text-wrap: balance;
+		visibility: visible;
+	}
+}

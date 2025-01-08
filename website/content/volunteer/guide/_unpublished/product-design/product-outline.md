@@ -13,7 +13,7 @@ order = 1 # Page number after chapter intro
 		- Document title
 		- Window buttons
 	- Workspace
-		- Panel interface (tab, pin, options bar, left menu)
+		- Panel interface (tab, pin, control bar, left menu)
 		- Arrangement and docking
 	- Status bar
 	- Multiple windows
@@ -22,7 +22,7 @@ order = 1 # Page number after chapter intro
 		- Canvas and frames
 		- Rulers
 		- Tool menu
-		- Options bar
+		- Control bar
 	- Properties
 		- Blending
 		- Origin

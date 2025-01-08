@@ -13,35 +13,31 @@
 #core-team {
 	background-color: var(--color-parchment);
 
-	h2 {
-		font-weight: 700;
-		text-align: center;
-		width: 100%;
-	}
-
-	h2 + p {
-		text-align: center;
-		width: 100%;
-		margin-top: 4px;
-		opacity: 0.75;
-	}
-
-	h2 + p + p {
-		text-align: center;
-	}
-
-	.emoji {
-		vertical-align: middle;
-		font-size: 1.5em;
-		margin-left: 0.25em;
-		cursor: default;
-	}
-
 	.block {
 		align-items: center;
-	}
 
-	img {
-		max-width: Min(100%, 480px);
+		img {
+			max-width: Min(100%, 320px);
+		}
+
+		h2 {
+			font-weight: 700;
+			text-align: center;
+			width: 100%;
+
+			.handle {
+				margin: 0 0.4em;
+				font-size: 0.5em;
+				font-style: italic;
+				vertical-align: middle;
+				color: var(--color-slate);
+			}
+
+			.emoji {
+				font-size: 0.8em;
+				vertical-align: middle;
+				cursor: default;
+			}
+		}
 	}
 }

@@ -3,7 +3,7 @@ title = "Imaginate"
 
 [extra]
 order = 2
-js = ["image-interaction.js"]
+js = ["carousel.js"]
 +++
 
 Imaginate is a useful tool at every stage in the artistic process. Early on it provides inspiration for styles, color palettes, subjects, and composition. It lets you quickly test ideas and explore artistic directions. It's also a useful way to generate placeholder images and content for kit bashing.

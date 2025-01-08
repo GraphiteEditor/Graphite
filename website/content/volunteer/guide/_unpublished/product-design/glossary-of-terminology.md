@@ -29,13 +29,13 @@ The bar at the top of a _panel group_ which includes a clickable tab for each pa
 ### Active tab
 The one tab in a _tab bar_ that is currently active. The user can click any inactive tab to make it become the active tab. The active tab shows the _panel content_ beneath it unless it is a _folded panel_.
 ### Folded panel
-A shrunken _panel_ showing only the _tab bar_. A _panel_ consists of the _tab bar_ and _panel body_ except when the latter is folded away. The user may click the _active tab_ to fold and restore a panel, however a panel cannot be folded if there are no other unfolded panels in its column.
+A shrunken _panel_ showing only the _tab bar_. A _panel_ consists of the _tab bar_ and _panel content_ except when the latter is folded away. The user may click the _active tab_ to fold and restore a panel, however a panel cannot be folded if there are no other unfolded panels in its column.
 ### Panel
-### Panel body
-### Options bar
-The bar that spans horizontally across the top of a _panel_ (located under the _tab bar_) which displays options related to the _panel_.
+### Panel content
+### Control bar
+The bar that spans horizontally across the top of a _panel_ (located under the _tab bar_) which displays controls related to the _panel_.
 ### Viewport
-The area that takes up the main space in a _panel_ (located beneath the _options bar_) which displays the primary content of the _panel_.
+The area that takes up the main space in a _panel_ (located beneath the _control bar_) which displays the primary content of the _panel_.
 ### Shelf
 The bar that spans vertically along the left side of some _panels_ (located left of the _viewport_) which displays a catalog of available items, such as document editing _tools_ or common _nodes_.
 ### Tool

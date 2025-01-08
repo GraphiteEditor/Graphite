@@ -10,7 +10,8 @@
 	{% if current_path -%}
 	<meta property="og:url" content="https://graphite.rs{{ current_path | safe }}" />
 	{%- endif %}
-	{% if meta_description -%}
+	{%- set meta_description = page.extra.meta_description | default(value = meta_description | default(value = false)) -%}
+	{% if meta_description %}
 	<meta name="description" content="{{ meta_description | safe }}" />
 	<meta property="og:description" content="{{ meta_description | safe }}" />
 	<meta name="twitter:description" content="{{ meta_description | safe }}" />
@@ -31,41 +32,27 @@
 	<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bona+Nova:wght@700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" />
 	<link rel="stylesheet" href="/base.css" />
 	<link rel="stylesheet" href="/syntax-highlighting.css" />
-	{%- set extra_css_external = page.extra.css_external | default(value = []) | concat(with = css_external | default(value = [])) -%}
-	{% for css_path_external in extra_css_external %}
-	<link rel="stylesheet" href="{{ css_path_external | safe }}" />
-	{%- endfor %}
 	{%- set extra_css = page.extra.css | default(value = []) | concat(with = css | default(value = [])) -%}
-	{% for css_path in extra_css %}
+	{%- set extra_css_external = page.extra.css_external | default(value = []) | concat(with = css_external | default(value = [])) -%}
+	{% for css_path in extra_css | concat(with = extra_css_external) %}
 	<link rel="stylesheet" href="/{{ css_path | safe }}" />
 	{%- endfor %}
-	{%- set extra_js = page.extra.js | default(value = []) | concat(with = js | default(value = [])) -%}
-	{% for js_path in extra_js %}
-	<script src="/js/{{ js_path | safe }}"></script>
+	{%- set extra_css_inline = page.extra.css_inline | default(value = []) | concat(with = css_inline | default(value = [])) -%}
+	{%- set global_css_inline = ["css/balance-text.css"] %}
+	{{ "<" ~ "style>" | safe }}
+	{%- for css_inline in extra_css_inline | concat(with = global_css_inline | default(value = [])) -%}
+	{{ load_data(path = css_inline) | safe }}
 	{%- endfor %}
-	<script src="/js/text-justification.js"></script>
-	<script src="/js/navbar.js"></script>
+	{{ "</" ~ "style>" | safe }}
+	{% set global_js = ["text-justification.js", "navbar.js"] -%}
+	{%- set extra_js = global_js | concat(with = page.extra.js | default(value = []) | concat(with = js | default(value = []))) -%}
+	{% for js_path in extra_js %}
+	{% set script_path = "js/" ~ js_path -%}
+	{{ "<" ~ "script>" | safe }}
+	{{ load_data(path = script_path) | safe }}
+	{{ "</" ~ "script>" | safe }}
+	{%- endfor %}
 	{{- get_env(name = "INDEX_HTML_HEAD_INCLUSION", default = "") | safe }}
-	<style>
-	.balance-text {
-		visibility: hidden;
-	}
-
-	@media (scripting: none) {
-		.balance-text {
-			visibility: visible !important;
-		}
-	}
-
-	@supports (text-wrap: balance) {
-		.balance-text,
-		.balanced-text {
-			text-align: left;
-			text-wrap: balance;
-			visibility: visible;
-		}
-	}
-	</style>
 </head>
 <body>
 	<div class="page">

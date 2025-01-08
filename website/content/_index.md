@@ -1,10 +1,11 @@
 +++
-title = "Web-based vector graphics editor and design tool"
+title = "Free online vector editor & procedural design tool"
 template = "section.html"
 
 [extra]
-css = ["index.css"]
-js = ["image-interaction.js", "video-embed.js"]
+css_inline = ["index.css"]
+js = ["carousel.js", "youtube-embed.js", "video-autoplay.js"]
+meta_description = "Open source free software. A vector graphics creativity suite with a clean, intuitive interface. Opens instantly (no signup) and runs locally in a browser. Exports SVG, PNG, JPG."
 +++
 
 <!-- ▛ LOGO ▜ -->
@@ -21,7 +22,7 @@ js = ["image-interaction.js", "video-embed.js"]
 
 <h1 class="balance-text">Your <span>procedural</span> toolbox for 2D content creation</h1>
 
-<p class="balance-text">Graphite is a free, open source vector and raster graphics engine, available now in alpha. Get creative with a nondestructive editing workflow that combines layer-based compositing with node-based generative design.</p>
+<p class="balance-text">Graphite is a free, open source vector and raster graphics editor, available now in alpha. Get creative with a nondestructive editing workflow that combines layer-based compositing with node-based generative design.</p>
 
 </div>
 </section>
@@ -95,7 +96,7 @@ js = ["image-interaction.js", "video-embed.js"]
 
 <div class="carousel-controls">
 
-<button class="direction prev" data-carousel-prev>
+<button class="direction prev" data-carousel-prev aria-label="Move to previous screenshot">
 
 <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
 
@@ -105,12 +106,12 @@ js = ["image-interaction.js", "video-embed.js"]
 </svg>
 
 </button>
-<button class="dot active" data-carousel-dot></button>
-<button class="dot" data-carousel-dot></button>
-<button class="dot" data-carousel-dot></button>
-<button class="dot" data-carousel-dot></button>
-<button class="dot" data-carousel-dot></button>
-<button class="direction next" data-carousel-next>
+<button class="dot active" data-carousel-dot aria-label="Move to screenshot 1"></button>
+<button class="dot" data-carousel-dot aria-label="Move to screenshot 2"></button>
+<button class="dot" data-carousel-dot aria-label="Move to screenshot 3"></button>
+<button class="dot" data-carousel-dot aria-label="Move to screenshot 4"></button>
+<button class="dot" data-carousel-dot aria-label="Move to screenshot 5"></button>
+<button class="direction next" data-carousel-next aria-label="Move to next screenshot">
 
 <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
 
@@ -257,7 +258,7 @@ Presently, Graphite is a lightweight offline web app with features primarily ori
 
 Graphite is designed principally as a professional-grade desktop application that is also accessible in-browser for quick, casual usage.
 
-Where's the download? Windows, Mac, and Linux apps should be available around the end of 2024. Until then, you can <a href="https://support.google.com/chrome/answer/9658361" target="_blank">install it as a PWA</a>.
+Where's the download? Windows, Mac, and Linux apps should be available around the start of 2025. Until then, you can <a href="https://support.google.com/chrome/answer/9658361" target="_blank">install it as a PWA</a>.
 
 Developing and maintaining a native app on so many platforms is a big task. A fast, sloppy approach wouldn't cut it, but engineering the right tech takes time. That's why first supporting just web, the one platform that stays up-to-date and reaches all devices, was the initial priority.
 
@@ -294,7 +295,7 @@ Graphite is the first and only graphic design package built for procedural editi
 
 <div class="block description">
 
-<h1 class="feature-box-header balance-text">Explore creative possibilities</h1>
+<h1 class="feature-box-header balance-text">Explore parametric possibilities</h1>
 
 Save hours on tedious alterations and make better creative choices. Graphite lets you iterate rapidly by adjusting node parameters instead of individual elements.
 
@@ -311,11 +312,11 @@ Want a different placement area? Just tweak the path.
 
 <div class="block description">
 
-<h1 class="feature-box-header balance-text">Mix and morph parameters</h1>
+<h1 class="feature-box-header balance-text">Mix and morph anything</h1>
 
-Nondestructive editing means every decision is tied to a parameter you can adjust later on. Use Graphite to interpolate between any states just by dragging sliders.
+Nondestructive editing means every decision is tied to a parameter you can adjust later on. Use Graphite to interpolate between any states just by dragging value sliders.
 
-Blend across color schemes. Morph shapes before they're scattered around the canvas. The possibilities are endless.
+Blend across color schemes. Morph shapes before they're scattered around the canvas. The options are endless.
 
 <a href="https://editor.graphite.rs/#demo/changing-seasons">Open this artwork</a> and give it a try yourself.
 
@@ -338,15 +339,15 @@ Graphite's representation of artwork as a node graph lets you customize, compose
 <div class="feature-icons four-wide">
 	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.rs/icons/icon-atlas-features__2.png" alt="" />
-		<span class="balance-text">Pixelation-free infinite zooming and panning of boundless content</span>
+		<span class="balance-text">Infinitely pan and zoom, export any resolution with no pixelation</span>
 	</div>
 	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 2" src="https://static.graphite.rs/icons/icon-atlas-features__2.png" alt="" />
-		<span class="balance-text">Modular node-based pipelines for generative AI <em>(soon)</em></span>
+		<span class="balance-text">Modular node-based pipelines for generative AI <em>(future)</em></span>
 	</div>
 	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 11" src="https://static.graphite.rs/icons/icon-atlas-features__2.png" alt="" />
-		<span class="balance-text">Asset pipelines for studio production environments <em>(soon)</em></span>
+		<span class="balance-text">Asset pipelines for studio production environments <em>(future)</em></span>
 	</div>
 </div>
 
@@ -415,23 +416,23 @@ You'll receive your first newsletter email with the next major Graphite news.
 <div class="block social-media-links">
 
 <a href="https://discord.graphite.rs" target="_blank">
-	<img src="https://static.graphite.rs/icons/discord__2.svg" alt="Discord" />
+	<img src="https://static.graphite.rs/icons/discord__2.svg" alt="" />
 	<span class="link not-uppercase arrow">Discord</span>
 </a>
 <a href="https://www.reddit.com/r/graphite/" target="_blank">
-	<img src="https://static.graphite.rs/icons/reddit__3.svg" alt="Reddit" />
+	<img src="https://static.graphite.rs/icons/reddit__3.svg" alt="" />
 	<span class="link not-uppercase arrow">Reddit</span>
 </a>
 <a href="https://bsky.app/profile/graphiteeditor.bsky.social" target="_blank">
-	<img src="https://static.graphite.rs/icons/bluesky.svg" alt="Bluesky" />
+	<img src="https://static.graphite.rs/icons/bluesky.svg" alt="" />
 	<span class="link not-uppercase arrow">Bluesky</span>
 </a>
 <a href="https://twitter.com/graphiteeditor" target="_blank">
-	<img src="https://static.graphite.rs/icons/twitter.svg" alt="Twitter" />
+	<img src="https://static.graphite.rs/icons/twitter.svg" alt="" />
 	<span class="link not-uppercase arrow">Twitter</span>
 </a>
 <a href="https://www.youtube.com/@GraphiteEditor" target="_blank">
-	<img src="https://static.graphite.rs/icons/youtube.svg" alt="YouTube" />
+	<img src="https://static.graphite.rs/icons/youtube.svg" alt="" />
 	<span class="link not-uppercase arrow">YouTube</span>
 </a>
 
@@ -511,7 +512,7 @@ Watch this timelapse showing the process of mixing traditional vector art (traci
 <h1><span class="alternating-text"><span>Co-create</span><span>Ideate</span><span>Illustrate</span><span>Generate</span><span>Iterate</span></span> with Imaginate</h1>
 
 **Imaginate** is a node powered by <a href="https://en.wikipedia.org/wiki/Stable_Diffusion" target="_blank">Stable Diffusion</a> that makes AI-assisted art creation an easy, nondestructive process.
-<!-- [Learn how](/learn/node-graph/imaginate) it works. --////////////////////>
+[Learn how](/learn/node-graph/imaginate) it works.
 
 </div>
 <div class="diptych">

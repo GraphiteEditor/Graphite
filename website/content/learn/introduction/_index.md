@@ -5,14 +5,14 @@ page_template = "book.html"
 
 [extra]
 order = 1
-js = ["video-embed.js"]
+js = ["youtube-embed.js"]
 +++
 
 <!-- Before taking the time to read the coming chapters, let's build some context by jumping straight into a small project that you can follow along with. That way you will have a mental framework for the topics explained in the rest of this manual. -->
 
 Begin learning Graphite by watching the introductory tutorial videos below.
 
-One is available now, and more will be released on a regular basis throughout early 2024.
+One is available now, and more will be released on a regular basis throughout early 2025.
 
 ## Tutorial series
 
