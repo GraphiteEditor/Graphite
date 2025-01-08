@@ -214,14 +214,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 						return;
 					};
 
-					//trace!("{:?}", network_interface.clone().position(&artboard.to_node(), &[]));
-					/*let wrapping_document_node = &network_interface.network(&[]).unwrap().nodes.get(&artboard.to_node());
-					let DocumentNodeImplementation::Network(wrapped_network) = &wrapping_document_node.unwrap().implementation else {
-						return;
-					};
-					//let introspection_node = find_node(wrapped_network)?;
-					trace!("{:?}", wrapped_network);*/
-
 					let node_id = NodeId::new();
 					artboard_data.insert(
 						artboard.to_node(),
