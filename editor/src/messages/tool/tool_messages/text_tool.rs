@@ -218,6 +218,11 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for TextToo
 				Abort,
 				PointerMove,
 			),
+			TextToolFsmState::DraggingPivot => actions!(TextToolMessageDiscriminant;
+				DragStop,
+				Abort,
+				PointerMove,
+			),
 		}
 	}
 }
@@ -247,6 +252,8 @@ enum TextToolFsmState {
 	Dragging,
 	/// The user is dragging to resize the text area.
 	ResizingBounds,
+	/// The user is dragging the pivot point.
+	DraggingPivot,
 }
 
 #[derive(Clone, Debug)]
@@ -270,7 +277,8 @@ struct TextToolData {
 	bounding_box_manager: Option<BoundingBoxManager>,
 	pivot: Pivot,
 	snap_candidates: Vec<SnapCandidatePoint>,
-	layers_dragging: Vec<LayerNodeIdentifier>,
+	// Handle multiple layers in the future
+	layer_dragging: Option<LayerNodeIdentifier>,
 }
 
 impl TextToolData {
@@ -401,7 +409,7 @@ impl TextToolData {
 
 	fn get_snap_candidates(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {
 		self.snap_candidates.clear();
-		for &layer in &self.layers_dragging {
+		if let Some(layer) = self.layer_dragging {
 			if (self.snap_candidates.len() as f64) < document.snapping_state.tolerance {
 				snapping::get_layer_snap_points(layer, &SnapData::new(document, input), &mut self.snap_candidates);
 			}
@@ -493,32 +501,25 @@ impl Fsm for TextToolFsmState {
 					}
 				}
 
-				// Update bounds
-				let transform = document
+				// TODO: implement for multiple layers
+				// currently we find the first layer
+				let layer = document
 					.network_interface
 					.selected_nodes(&[])
 					.unwrap()
 					.selected_visible_and_unlocked_layers(&document.network_interface)
-					.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
-					.map(|layer| document.metadata().transform_to_viewport(layer));
-				let transform = transform.unwrap_or(DAffine2::IDENTITY);
-				if transform.matrix2.determinant() == 0. {
+					.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, "Text"));
+				let bounds = layer.map(|layer| text_bounding_box(layer, document, font_cache));
+				let transform = layer.map(|layer| document.metadata().transform_to_viewport(layer)).unwrap_or(DAffine2::IDENTITY);
+
+				if layer.is_none() || bounds.is_none() || transform.matrix2.determinant() == 0. {
 					return self;
 				}
-				let bounds: Vec<Quad> = document
-					.network_interface
-					.selected_nodes(&[])
-					.unwrap()
-					.selected_visible_and_unlocked_layers(&document.network_interface)
-					.filter(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, "Text"))
-					.map(|layer| text_bounding_box(layer, document, font_cache))
-					.collect();
-				if bounds.len() > 0 {
+
+				if let Some(bounds) = bounds {
 					let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
-					for bound in bounds {
-						bounding_box_manager.bounds = [bound.0[0], bound.0[2]];
-						bounding_box_manager.transform = DAffine2::IDENTITY;
-					}
+					bounding_box_manager.bounds = [bounds.0[0], bounds.0[2]];
+					bounding_box_manager.transform = transform * transform.inverse();
 					bounding_box_manager.render_overlays(&mut overlay_context);
 				} else {
 					tool_data.bounding_box_manager.take();
@@ -555,47 +556,76 @@ impl Fsm for TextToolFsmState {
 					edges
 				});
 
-				if let Some(_selected_edges) = dragging_bounds {
+				let selected: Option<LayerNodeIdentifier> = document
+					.network_interface
+					.selected_nodes(&[])
+					.unwrap()
+					.selected_visible_and_unlocked_layers(&document.network_interface)
+					.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, "Text"));
+
+				let state =
+				// Check if the user is dragging the pivot
+				if selected.is_none() {
+					TextToolFsmState::Placing
+				} else if tool_data.pivot.is_over(input.mouse.position) {
 					responses.add(DocumentMessage::StartTransaction);
 
-					let selected: Vec<LayerNodeIdentifier> = document
-						.network_interface
-						.selected_nodes(&[])
-						.unwrap()
-						.selected_visible_and_unlocked_layers(&document.network_interface)
-						.collect();
+					// tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
+					// tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
-					tool_data.layers_dragging = selected.clone();
+					TextToolFsmState::DraggingPivot
+
+				// Check if the user is dragging the bounds
+				} else if let Some(_selected_edges) = dragging_bounds {
+					responses.add(DocumentMessage::StartTransaction);
+
+					tool_data.layer_dragging = selected.clone();
 
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						bounds.original_bound_transform = bounds.transform;
 
-						tool_data.layers_dragging.retain(|layer| {
-							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
-							} else {
-								log::error!("ROOT_PARENT should not be part of layers_dragging");
-								false
-							}
-						});
+						// tool_data.layer_dragging.retain(|layer| {
+						// 	if *layer != LayerNodeIdentifier::ROOT_PARENT {
+						// 		document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
+						// 	} else {
+						// 		log::error!("ROOT_PARENT should not be part of layer_dragging");
+						// 		false
+						// 	}
+						// });
+						let selected = Vec::from([tool_data.layer_dragging.unwrap()]);
 
 						let mut selected = Selected::new(
 							&mut bounds.original_transforms,
 							&mut bounds.center_of_transformation,
-							&tool_data.layers_dragging,
+							&selected,
 							responses,
 							&document.network_interface,
 							None,
-							&ToolType::Select,
+							&ToolType::Text,
 						);
 						bounds.center_of_transformation = selected.mean_average_of_pivots();
 					}
 					tool_data.get_snap_candidates(document, input);
 
-					return TextToolFsmState::ResizingBounds;
+					TextToolFsmState::ResizingBounds
+				} else {
+					TextToolFsmState::Placing
+				};
+
+				return state;
+			}
+			(TextToolFsmState::Ready, TextToolMessage::PointerMove { .. }) => {
+				let mut cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, false));
+
+				// Dragging the pivot overrules the other operations
+				if tool_data.pivot.is_over(input.mouse.position) {
+					cursor = MouseCursorIcon::Move;
 				}
 
-				TextToolFsmState::Placing
+				responses.add(OverlaysMessage::Draw);
+				responses.add(FrontendMessage::UpdateMouseCursor { cursor });
+
+				TextToolFsmState::Ready
 			}
 			(Self::Placing | TextToolFsmState::Dragging, TextToolMessage::PointerMove { center, lock_ratio }) => {
 				tool_data.cached_resize_bounds = tool_data.resize.calculate_points_ignore_layer(document, input, center, lock_ratio);
@@ -614,50 +644,57 @@ impl Fsm for TextToolFsmState {
 			(TextToolFsmState::ResizingBounds, TextToolMessage::PointerMove { center, lock_ratio }) => {
 				if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
 					if let Some(movement) = &mut bounds.selected_edges {
-						let (center_key, lock_ratio_key) = (input.keyboard.key(center), input.keyboard.key(lock_ratio));
+						let (center_bool, lock_ratio_bool) = (input.keyboard.key(center), input.keyboard.key(lock_ratio));
+						let center_position = center_bool.then_some(bounds.center_of_transformation);
 
-						let center_key = center_key.then_some(bounds.center_of_transformation);
+						let selected = Vec::from([tool_data.layer_dragging.unwrap()]);
 						let snap = Some(SizeSnapData {
 							manager: &mut tool_data.resize.snap_manager,
 							points: &mut tool_data.snap_candidates,
-							snap_data: SnapData::ignore(document, input, &tool_data.layers_dragging),
+							snap_data: SnapData::ignore(document, input, &selected),
 						});
-						let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center_key, lock_ratio_key, snap);
-						debug!("Position: {:?}, Size: {:?}", position, size);
-						let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
-						debug!("Delta: {:?}, Pivot: {:?}", delta, pivot);
 
-						let pivot_transform = DAffine2::from_translation(pivot);
-						let transformation = pivot_transform * delta * pivot_transform.inverse();
-						debug!("Transformation: {:?}", transformation);
+						// tool_data.layer_dragging.retain(|layer| {
+						// 	if *layer != LayerNodeIdentifier::ROOT_PARENT {
+						// 		document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
+						// 	} else {
+						// 		log::error!("ROOT_PARENT should not be part of layer_dragging");
+						// 		false
+						// 	}
+						// });
 
-						tool_data.layers_dragging.retain(|layer| {
-							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
-							} else {
-								log::error!("ROOT_PARENT should not be part of layers_dragging");
-								false
+						if let Some(selected_nodes) = document.network_interface.selected_nodes(&[]) {
+							let text_layer = selected_nodes
+								.selected_visible_and_unlocked_layers(&document.network_interface)
+								.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, "Text"));
+							let node_id = text_layer.map(|layer| graph_modification_utils::get_text_id(layer, &document.network_interface).unwrap());
+
+							if node_id.is_none() || text_layer.is_none() {
+								return TextToolFsmState::Ready;
 							}
-						});
 
-						// This somehow works all I have to get it the final changed bounding box
-						let selected = &tool_data.layers_dragging;
-						let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, selected, responses, &document.network_interface, None, &ToolType::Select);
+							let node_id = node_id.unwrap();
+							let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center_position, lock_ratio_bool, snap);
+							let (delta, pivot) = movement.bounds_to_scale_transform(position, size);
 
-						selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse());
-						//
+							let pivot_transform = DAffine2::from_translation(pivot);
+							let _transformation = pivot_transform * delta * pivot_transform.inverse();
 
-						let node_id = tool_data.layer.to_node();
+							let _transformed_bounding_box = Quad::from_box([position, size].into());
 
-						let height = size.y - position.y;
-						let width = size.x - position.x;
+							let height = (position.y - size.y).abs();
+							let width = (position.x - size.x).abs();
 
-						document
-							.network_interface
-							.set_input(&InputConnector::node(node_id, 6), NodeInput::value(TaggedValue::OptionalF64(Some(width)), false), &[]);
-						document
-							.network_interface
-							.set_input(&InputConnector::node(node_id, 7), NodeInput::value(TaggedValue::OptionalF64(Some(height)), false), &[]);
+							responses.add(NodeGraphMessage::SetInput {
+								input_connector: InputConnector::node(node_id, 6),
+								input: NodeInput::value(TaggedValue::OptionalF64(Some(width)), false),
+							});
+							responses.add(NodeGraphMessage::SetInput {
+								input_connector: InputConnector::node(node_id, 7),
+								input: NodeInput::value(TaggedValue::OptionalF64(Some(height)), false),
+							});
+							responses.add(NodeGraphMessage::RunDocumentGraph);
+						}
 
 						// AutoPanning
 						let messages = [
@@ -668,6 +705,20 @@ impl Fsm for TextToolFsmState {
 					}
 				}
 				TextToolFsmState::ResizingBounds
+			}
+			(TextToolFsmState::DraggingPivot, TextToolMessage::PointerMove { center, lock_ratio }) => {
+				let mouse_position = input.mouse.position;
+				let snapped_mouse_position = mouse_position;
+				tool_data.pivot.set_viewport_position(snapped_mouse_position, document, responses);
+
+				// AutoPanning
+				let messages = [
+					TextToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
+					TextToolMessage::PointerMove { center, lock_ratio }.into(),
+				];
+				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
+
+				TextToolFsmState::DraggingPivot
 			}
 			(_, TextToolMessage::PointerMove { .. }) => {
 				tool_data.resize.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
@@ -746,6 +797,16 @@ impl Fsm for TextToolFsmState {
 				};
 				tool_data.new_text(document, editing_text, font_cache, responses);
 				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::DraggingPivot, TextToolMessage::DragStop) => {
+				let response = match input.mouse.position.distance(tool_data.resize.viewport_drag_start(document)) < 10. * f64::EPSILON {
+					true => DocumentMessage::AbortTransaction,
+					false => DocumentMessage::EndTransaction,
+				};
+				responses.add(response);
+
+				tool_data.resize.snap_manager.cleanup(responses);
+				TextToolFsmState::Ready
 			}
 			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text, is_right_click }) => {
 				tool_data.new_text = new_text;
@@ -826,6 +887,7 @@ impl Fsm for TextToolFsmState {
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Resize Text Box")]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
 			]),
+			TextToolFsmState::DraggingPivot => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Move Pivot")])]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
@@ -834,6 +896,7 @@ impl Fsm for TextToolFsmState {
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		let cursor = match self {
 			TextToolFsmState::Dragging => MouseCursorIcon::Crosshair,
+			TextToolFsmState::DraggingPivot => MouseCursorIcon::Move,
 			_ => MouseCursorIcon::Text,
 		};
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor });

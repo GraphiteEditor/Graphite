@@ -3357,7 +3357,6 @@ impl NodeNetworkInterface {
 			log::error!("Cannot connect a network to an export, see https://github.com/GraphiteEditor/Graphite/issues/1762");
 			return;
 		}
-
 		let Some(previous_input) = self.input_from_connector(input_connector, network_path).cloned() else {
 			log::error!("Could not get previous input in set_input");
 			return;
