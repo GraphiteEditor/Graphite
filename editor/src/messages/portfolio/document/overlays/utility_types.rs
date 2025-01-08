@@ -32,16 +32,23 @@ impl core::hash::Hash for OverlayContext {
 
 impl OverlayContext {
 	pub fn quad(&mut self, quad: Quad, color_fill: Option<&str>) {
-		self.dashed_quad(quad, color_fill, None, None);
+		self.dashed_quad(quad, color_fill, None, None, None);
 	}
 
-	pub fn dashed_quad(&mut self, quad: Quad, color_fill: Option<&str>, dash_width: Option<f64>, gap_width: Option<f64>) {
+	pub fn dashed_quad(&mut self, quad: Quad, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
 		// Set the dash pattern
 		if let Some(dash_width) = dash_width {
-			let gap_width = gap_width.unwrap_or(1.);
+			let dash_gap_width = dash_gap_width.unwrap_or(1.);
 			let array = js_sys::Array::new();
-			array.push(&JsValue::from(dash_width - 1.));
-			array.push(&JsValue::from(gap_width));
+			array.push(&JsValue::from(dash_width));
+			array.push(&JsValue::from(dash_gap_width));
+
+			if let Some(dash_offset) = dash_offset {
+				if dash_offset != 0. {
+					self.render_context.set_line_dash_offset(dash_offset);
+				}
+			}
+
 			self.render_context
 				.set_line_dash(&JsValue::from(array))
 				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
@@ -70,19 +77,29 @@ impl OverlayContext {
 				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
 				.ok();
 		}
+		if dash_offset.is_some() && dash_offset != Some(0.) {
+			self.render_context.set_line_dash_offset(0.);
+		}
 	}
 
 	pub fn line(&mut self, start: DVec2, end: DVec2, color: Option<&str>) {
-		self.dashed_line(start, end, color, None, None)
+		self.dashed_line(start, end, color, None, None, None)
 	}
 
-	pub fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, dash_width: Option<f64>, gap_width: Option<f64>) {
+	pub fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
 		// Set the dash pattern
 		if let Some(dash_width) = dash_width {
-			let gap_width = gap_width.unwrap_or(1.);
+			let dash_gap_width = dash_gap_width.unwrap_or(1.);
 			let array = js_sys::Array::new();
-			array.push(&JsValue::from(dash_width - 1.));
-			array.push(&JsValue::from(gap_width));
+			array.push(&JsValue::from(dash_width));
+			array.push(&JsValue::from(dash_gap_width));
+
+			if let Some(dash_offset) = dash_offset {
+				if dash_offset != 0. {
+					self.render_context.set_line_dash_offset(dash_offset);
+				}
+			}
+
 			self.render_context
 				.set_line_dash(&JsValue::from(array))
 				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
@@ -104,6 +121,9 @@ impl OverlayContext {
 				.set_line_dash(&JsValue::from(js_sys::Array::new()))
 				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
 				.ok();
+		}
+		if dash_offset.is_some() && dash_offset != Some(0.) {
+			self.render_context.set_line_dash_offset(0.);
 		}
 	}
 

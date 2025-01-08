@@ -432,7 +432,7 @@ impl Fsm for SelectToolFsmState {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
 						let transformed_quad = document.metadata().transform_to_viewport(layer) * quad;
 
-						overlay_context.dashed_quad(transformed_quad, None, Some(7.), Some(5.));
+						overlay_context.dashed_quad(transformed_quad, None, Some(4.), Some(4.), Some(0.5));
 					}
 				}
 
