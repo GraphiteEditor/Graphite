@@ -426,7 +426,7 @@ impl Fsm for SelectToolFsmState {
 
 					if is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
 						let quad = text_bounding_box(layer, document, font_cache);
-						overlay_context.dashed_quad(quad, None, Some(7.), Some(5.));
+						overlay_context.dashed_quad(quad, None, Some(7.), Some(5.), None);
 					}
 				}
 
