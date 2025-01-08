@@ -1637,11 +1637,11 @@ impl NodeGraphMessageHandler {
 		common
 	}
 
-	/// Send the cached layout to the frontend for the options bar at the top of the node panel
+	/// Send the cached layout to the frontend for the control bar at the top of the node panel
 	fn send_node_bar_layout(&self, responses: &mut VecDeque<Message>) {
 		responses.add(LayoutMessage::SendLayout {
 			layout: Layout::WidgetLayout(WidgetLayout::new(self.widgets.to_vec())),
-			layout_target: LayoutTarget::NodeGraphBar,
+			layout_target: LayoutTarget::NodeGraphControlBar,
 		});
 	}
 

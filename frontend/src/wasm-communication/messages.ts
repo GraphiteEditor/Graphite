@@ -920,7 +920,7 @@ export class TriggerAboutGraphiteLocalizedCommitDate extends JsMessage {
 	readonly commitDate!: string;
 }
 
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 export class TriggerUpgradeDocumentToVectorManipulationFormat extends JsMessage {
 	readonly documentId!: bigint;
 	readonly documentName!: string;
@@ -1518,7 +1518,7 @@ export class UpdateDocumentBarLayout extends WidgetDiffUpdate {}
 
 export class UpdateDocumentModeLayout extends WidgetDiffUpdate {}
 
-export class UpdateLayersPanelOptionsLayout extends WidgetDiffUpdate {}
+export class UpdateLayersPanelControlBarLayout extends WidgetDiffUpdate {}
 
 // Extends JsMessage instead of WidgetDiffUpdate because the menu bar isn't diffed
 export class UpdateMenuBarLayout extends JsMessage {
@@ -1530,7 +1530,7 @@ export class UpdateMenuBarLayout extends JsMessage {
 	layout!: MenuBarEntry[];
 }
 
-export class UpdateNodeGraphBarLayout extends WidgetDiffUpdate {}
+export class UpdateNodeGraphControlBarLayout extends WidgetDiffUpdate {}
 
 export class UpdatePropertyPanelSectionsLayout extends WidgetDiffUpdate {}
 
@@ -1613,12 +1613,12 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateImportsExports,
 	UpdateInputHints,
 	UpdateInSelectedNetwork,
-	UpdateLayersPanelOptionsLayout,
+	UpdateLayersPanelControlBarLayout,
 	UpdateLayerWidths,
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
 	UpdateNodeGraph,
-	UpdateNodeGraphBarLayout,
+	UpdateNodeGraphControlBarLayout,
 	UpdateNodeGraphSelection,
 	UpdateNodeGraphTransform,
 	UpdateNodeThumbnail,

@@ -33,11 +33,11 @@ pub enum LayoutTarget {
 	/// Contains the dropdown for design / select / guide mode found on the top left of the canvas.
 	DocumentMode,
 	/// Options for opacity seen at the top of the Layers panel.
-	LayersPanelOptions,
+	LayersPanelControlBar,
 	/// The dropdown menu at the very top of the application: File, Edit, etc.
 	MenuBar,
 	/// Bar at the top of the node graph containing the location and the "Preview" and "Hide" buttons.
-	NodeGraphBar,
+	NodeGraphControlBar,
 	/// The body of the Properties panel containing many collapsable sections.
 	PropertiesSections,
 	/// The bar directly above the canvas, left-aligned and to the right of the document mode dropdown.

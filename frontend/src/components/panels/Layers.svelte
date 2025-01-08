@@ -6,7 +6,7 @@
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 	import { extractPixelData } from "@graphite/utility-functions/rasterization";
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import { defaultWidgetLayout, patchWidgetLayout, UpdateDocumentLayerDetails, UpdateDocumentLayerStructureJs, UpdateLayersPanelOptionsLayout } from "@graphite/wasm-communication/messages";
+	import { defaultWidgetLayout, patchWidgetLayout, UpdateDocumentLayerDetails, UpdateDocumentLayerStructureJs, UpdateLayersPanelControlBarLayout } from "@graphite/wasm-communication/messages";
 	import type { DataBuffer, LayerPanelEntry } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -47,12 +47,12 @@
 	let dragInPanel = false;
 
 	// Layouts
-	let layersPanelOptionsLayout = defaultWidgetLayout();
+	let layersPanelControlBarLayout = defaultWidgetLayout();
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelOptionsLayout, (updateLayersPanelOptionsLayout) => {
-			patchWidgetLayout(layersPanelOptionsLayout, updateLayersPanelOptionsLayout);
-			layersPanelOptionsLayout = layersPanelOptionsLayout;
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLayout, (updateLayersPanelControlBarLayout) => {
+			patchWidgetLayout(layersPanelControlBarLayout, updateLayersPanelControlBarLayout);
+			layersPanelControlBarLayout = layersPanelControlBarLayout;
 		});
 
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructureJs, (updateDocumentLayerStructure) => {
@@ -403,8 +403,8 @@
 </script>
 
 <LayoutCol class="layers" on:dragleave={() => (dragInPanel = false)}>
-	<LayoutRow class="options-bar" scrollableX={true}>
-		<WidgetLayout layout={layersPanelOptionsLayout} />
+	<LayoutRow class="control-bar" scrollableX={true}>
+		<WidgetLayout layout={layersPanelControlBarLayout} />
 	</LayoutRow>
 	<LayoutRow class="list-area" scrollableY={true}>
 		<LayoutCol class="list" data-layer-panel bind:this={list} on:click={() => deselectAllLayers()} on:dragover={updateInsertLine} on:dragend={drop} on:drop={drop}>
@@ -489,8 +489,8 @@
 
 <style lang="scss" global>
 	.layers {
-		// Options bar
-		.options-bar {
+		// Control bar
+		.control-bar {
 			height: 32px;
 			flex: 0 0 auto;
 			margin: 0 4px;
