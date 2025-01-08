@@ -758,6 +758,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(NodeGraphMessage::SetDisplayName {
 						node_id: layer.to_node(),
 						alias: name,
+						with_transaction: true,
 					});
 				}
 				if let Some((parent, insert_index)) = parent_and_insert_index {
@@ -802,6 +803,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(NodeGraphMessage::SetDisplayName {
 						node_id: layer.to_node(),
 						alias: name,
+						with_transaction: true,
 					});
 				}
 				if let Some((parent, insert_index)) = parent_and_insert_index {

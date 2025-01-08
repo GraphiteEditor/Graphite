@@ -125,6 +125,7 @@ pub enum NodeGraphMessage {
 	SetDisplayName {
 		node_id: NodeId,
 		alias: String,
+		with_transaction: bool,
 	},
 	SetDisplayNameImpl {
 		node_id: NodeId,

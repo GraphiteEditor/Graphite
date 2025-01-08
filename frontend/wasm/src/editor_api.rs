@@ -544,6 +544,7 @@ impl EditorHandle {
 		let message = NodeGraphMessage::SetDisplayName {
 			node_id: layer.to_node(),
 			alias: name,
+			with_transaction: true,
 		};
 		self.dispatch(message);
 	}

@@ -197,14 +197,31 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 			}
 			GraphOperationMessage::ClearArtboards => {
-				responses.add(DocumentMessage::StartTransaction);
 				let mut artboard_data: HashMap<NodeId, ArtboardInfo> = HashMap::new();
-				for artboard in network_interface.all_artboards() {
+				responses.add(NodeGraphMessage::DeleteNodes {
+					node_ids: network_interface
+						.all_artboards()
+						.iter()
+						.map(|layer_node| layer_node.to_node())
+						.collect::<Vec<graphene_core::uuid::NodeId>>(),
+					delete_children: false,
+				});
+
+				for artboard in &network_interface.all_artboards() {
 					let Some(document_node) = network_interface.network(&[]).unwrap().nodes.get(&artboard.to_node()) else {
 						log::error!("Artboard not created");
 						responses.add(DocumentMessage::AbortTransaction);
 						return;
 					};
+
+					//trace!("{:?}", network_interface.clone().position(&artboard.to_node(), &[]));
+					/*let wrapping_document_node = &network_interface.network(&[]).unwrap().nodes.get(&artboard.to_node());
+					let DocumentNodeImplementation::Network(wrapped_network) = &wrapping_document_node.unwrap().implementation else {
+						return;
+					};
+					//let introspection_node = find_node(wrapped_network)?;
+					trace!("{:?}", wrapped_network);*/
+
 					let node_id = NodeId::new();
 					artboard_data.insert(
 						artboard.to_node(),
@@ -214,16 +231,19 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 							merge_node: node_id,
 						},
 					);
-					responses.add(NodeGraphMessage::DeleteNodes {
-						node_ids: vec![artboard.to_node()],
-						delete_children: false,
-					});
 
-					let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
+					let mut modify_inputs: ModifyInputsContext<'_> = ModifyInputsContext::new(network_interface, responses);
 					modify_inputs.create_layer(node_id);
 					responses.add(NodeGraphMessage::SetDisplayName {
 						node_id,
 						alias: network_interface.frontend_display_name(&artboard.to_node(), &[]),
+						with_transaction: false,
+					});
+					let node_position = network_interface.position(&artboard.to_node(), &[]).unwrap();
+					responses.add(NodeGraphMessage::ShiftNodePosition {
+						node_id,
+						x: node_position.x,
+						y: node_position.y,
 					});
 				}
 
@@ -249,7 +269,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 						}
 					}
 				}
-				responses.add(DocumentMessage::EndTransaction);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
 				responses.add(NodeGraphMessage::SendGraph);

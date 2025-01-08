@@ -1365,11 +1365,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
-			NodeGraphMessage::SetDisplayName { node_id, alias } => {
-				responses.add(DocumentMessage::StartTransaction);
+			NodeGraphMessage::SetDisplayName { node_id, alias, with_transaction } => {
+				if with_transaction {
+					responses.add(DocumentMessage::StartTransaction);
+				}
 				responses.add(NodeGraphMessage::SetDisplayNameImpl { node_id, alias });
-				// Does not add a history step if the name was not changed
-				responses.add(DocumentMessage::EndTransaction);
+
+				if with_transaction {
+					// Does not add a history step if the name was not changed
+					responses.add(DocumentMessage::EndTransaction);
+				}
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
 				responses.add(NodeGraphMessage::SendGraph);
@@ -1946,6 +1951,7 @@ impl NodeGraphMessageHandler {
 								NodeGraphMessage::SetDisplayName {
 									node_id: layer,
 									alias: text_input.value.clone(),
+									with_transaction: true,
 								}
 								.into()
 							})
