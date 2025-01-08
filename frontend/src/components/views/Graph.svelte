@@ -100,7 +100,7 @@
 
 		const pathString = buildWirePathString(outputPortRect, inputPortRect, verticalOut, verticalIn);
 		const dataType = (outputPort.getAttribute("data-datatype") as FrontendGraphDataType) || "General";
-		const thick = verticalIn && verticalOut;
+		const thick = (verticalIn && verticalOut) || (verticalOut && !verticalIn);
 
 		return { pathString, dataType, thick, dashed };
 	}
@@ -137,7 +137,6 @@
 		if (!nodesContainer) return [];
 
 		const VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP = 1;
-
 		const containerBounds = nodesContainer.getBoundingClientRect();
 
 		const outX = verticalOut ? outputBounds.x + outputBounds.width / 2 : outputBounds.x + outputBounds.width - 1;
@@ -149,55 +148,89 @@
 		const inY = verticalIn ? inputBounds.y + inputBounds.height - VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP : inputBounds.y + inputBounds.height / 2;
 		const inConnectorX = (inX - containerBounds.x) / $nodeGraph.transform.scale;
 		const inConnectorY = (inY - containerBounds.y) / $nodeGraph.transform.scale;
-		const horizontalGap = Math.abs(outConnectorX - inConnectorX);
-		const verticalGap = Math.abs(outConnectorY - inConnectorY);
 
-		// TODO: Finish this commented out code replacement for the code below it based on this diagram: <https://files.keavon.com/-/InsubstantialElegantQueenant/capture.png>
-		// // Straight: stacking lines which are always straight, or a straight horizontal wire between two aligned nodes
-		// if ((verticalOut && verticalIn) || (!verticalOut && !verticalIn && verticalGap === 0)) {
-		// 	return [
-		// 		{ x: outConnectorX, y: outConnectorY },
-		// 		{ x: inConnectorX, y: inConnectorY },
-		// 	];
-		// }
+		// Handle straight lines
+		if ((verticalOut && verticalIn && outConnectorX === inConnectorX) || (!verticalOut && !verticalIn && outConnectorY === inConnectorY)) {
+			return [
+				{ x: outConnectorX, y: outConnectorY },
+				{ x: inConnectorX, y: inConnectorY },
+			];
+		}
 
-		// // L-shape bend
-		// if (verticalOut !== verticalIn) {
-		// }
+		// Handle L-shaped paths
+		if ((verticalOut && !verticalIn && outConnectorX === inConnectorX) || (!verticalOut && verticalIn && outConnectorY === inConnectorY)) {
+			return [
+				{ x: outConnectorX, y: outConnectorY },
+				{ x: inConnectorX, y: inConnectorY },
+			];
+		}
 
-		const curveLength = 24;
-		const curveFalloffRate = curveLength * Math.PI * 2;
+		// Handle standard right-angle paths
+		if (verticalOut) {
+			// Start vertical, then horizontal
 
-		const horizontalCurveAmount = -(2 ** ((-10 * horizontalGap) / curveFalloffRate)) + 1;
-		const verticalCurveAmount = -(2 ** ((-10 * verticalGap) / curveFalloffRate)) + 1;
-		const horizontalCurve = horizontalCurveAmount * curveLength;
-		const verticalCurve = verticalCurveAmount * curveLength;
+			return [
+				{ x: outConnectorX, y: outConnectorY },
+				{ x: outConnectorX, y: inConnectorY },
+				{ x: inConnectorX, y: inConnectorY },
+			];
+		} else if (verticalIn) {
+			// Start horizontal, then vertical
 
-		return [
-			{ x: outConnectorX, y: outConnectorY },
-			{ x: verticalOut ? outConnectorX : outConnectorX + horizontalCurve, y: verticalOut ? outConnectorY - verticalCurve : outConnectorY },
-			{ x: verticalIn ? inConnectorX : inConnectorX - horizontalCurve, y: verticalIn ? inConnectorY + verticalCurve : inConnectorY },
-			{ x: inConnectorX, y: inConnectorY },
-		];
+			return [
+				{ x: outConnectorX, y: outConnectorY },
+				{ x: inConnectorX, y: outConnectorY },
+				{ x: inConnectorX, y: inConnectorY },
+			];
+		} else {
+			// Both horizontal - use horizontal middle point
+
+			const midX = (outConnectorX + inConnectorX) / 2;
+			return [
+				{ x: outConnectorX, y: outConnectorY },
+				{ x: midX, y: outConnectorY },
+				{ x: midX, y: inConnectorY },
+				{ x: inConnectorX, y: inConnectorY },
+			];
+		}
 	}
 
 	function buildWirePathString(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): string {
 		const locations = buildWirePathLocations(outputBounds, inputBounds, verticalOut, verticalIn);
 		if (locations.length === 0) return "[error]";
-		const SMOOTHING = 0.5;
-		const delta01 = { x: (locations[1].x - locations[0].x) * SMOOTHING, y: (locations[1].y - locations[0].y) * SMOOTHING };
-		const delta23 = { x: (locations[3].x - locations[2].x) * SMOOTHING, y: (locations[3].y - locations[2].y) * SMOOTHING };
-		return `
-			M${locations[0].x},${locations[0].y}
-			L${locations[1].x},${locations[1].y}
-			C${locations[1].x + delta01.x},${locations[1].y + delta01.y}
-			${locations[2].x - delta23.x},${locations[2].y - delta23.y}
-			${locations[2].x},${locations[2].y}
-			L${locations[3].x},${locations[3].y}
-			`
-			.split("\n")
-			.map((line) => line.trim())
-			.join(" ");
+
+		if (locations.length === 2) {
+			return `M${locations[0].x},${locations[0].y} L${locations[1].x},${locations[1].y}`;
+		}
+
+		const CORNER_RADIUS = 10;
+
+		// Create path with rounded corners
+		let path = `M${locations[0].x},${locations[0].y}`;
+
+		for (let i = 1; i < locations.length - 1; i++) {
+			const prev = locations[i - 1];
+			const curr = locations[i];
+			const next = locations[i + 1];
+
+			// Calculate corner points
+			const isVertical = curr.x === prev.x;
+			const cornerStart = {
+				x: curr.x + (isVertical ? 0 : prev.x < curr.x ? -CORNER_RADIUS : CORNER_RADIUS),
+				y: curr.y + (isVertical ? (prev.y < curr.y ? -CORNER_RADIUS : CORNER_RADIUS) : 0),
+			};
+			const cornerEnd = {
+				x: curr.x + (isVertical ? (next.x < curr.x ? -CORNER_RADIUS : CORNER_RADIUS) : 0),
+				y: curr.y + (isVertical ? 0 : next.y < curr.y ? -CORNER_RADIUS : CORNER_RADIUS),
+			};
+
+			// Add line to corner start, quadratic curve for corner, then continue to next point
+			path += ` L${cornerStart.x},${cornerStart.y}`;
+			path += ` Q${curr.x},${curr.y} ${cornerEnd.x},${cornerEnd.y}`;
+		}
+
+		path += ` L${locations[locations.length - 1].x},${locations[locations.length - 1].y}`;
+		return path;
 	}
 
 	function toggleLayerDisplay(displayAsLayer: boolean, toggleId: bigint) {
