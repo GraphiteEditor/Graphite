@@ -231,8 +231,11 @@ pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, conte
 						.widget_holder()]
 						.into(),
 						_ => {
-							let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, false);
-							widgets.extend_from_slice(&[TextLabel::new(format!("Unsupported type: {}", concrete_type.name)).widget_holder()]);
+							let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, true);
+							widgets.extend_from_slice(&[
+								Separator::new(SeparatorType::Unrelated).widget_holder(),
+								TextLabel::new("-").tooltip(format!("Unsupported type: {}", concrete_type.name)).widget_holder(),
+							]);
 							widgets.into()
 						}
 					}
@@ -2095,7 +2098,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 		.reference(&node_id, context.selection_network_path)
 		.cloned()
 		.unwrap_or_default()
-		.unwrap_or_default();
+		.unwrap_or("Custom Node".to_string());
 	let visible = context.network_interface.is_visible(&node_id, context.selection_network_path);
 	let pinned = context.network_interface.is_pinned(&node_id, context.selection_network_path);
 	LayoutGroup::Section {

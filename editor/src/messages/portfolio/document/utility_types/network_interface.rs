@@ -602,9 +602,8 @@ impl NodeNetworkInterface {
 			return Vec::new();
 		};
 		match implementation {
-			DocumentNodeImplementation::Network(nested_network) => {
+			DocumentNodeImplementation::Network(_) => {
 				let nested_path = [network_path, &[*node_id]].concat();
-				let number_of_imports = self.number_of_inputs(node_id, network_path);
 				let Some(outward_wires) = self.outward_wires(&nested_path) else {
 					log::error!("Could not get outward wires in valid_input_types");
 					return Vec::new();
@@ -627,7 +626,6 @@ impl NodeNetworkInterface {
 
 				intersection.into_iter().collect::<Vec<_>>()
 			}
-
 			DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
 				let Some(implementations) = NODE_REGISTRY.get(proto_node_identifier) else {
 					log::error!("Protonode {proto_node_identifier:?} not found in registry");

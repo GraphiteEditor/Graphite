@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getContext, onMount, tick } from "svelte";
-	import { fade, slide } from "svelte/transition";
+	import { fade } from "svelte/transition";
 
 	import { FADE_TRANSITION } from "@graphite/consts";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
@@ -606,7 +606,6 @@
 				{/if}
 				{#if editingNameExportIndex === index}
 					<input
-						class="export-text-input"
 						type="text"
 						style="width: {exportsToEdgeTextInputWidth()}"
 						bind:this={inputElement}
@@ -1090,22 +1089,31 @@
 				display: flex;
 				align-items: center;
 				top: calc(var(--offset-top) * 24px);
-
 				margin-top: -5px;
 				height: 24px;
+
 				.import-text {
 					direction: rtl;
 					text-align: right;
+					text-wrap: nowrap;
 				}
+
+				.export-text {
+					text-wrap: nowrap;
+				}
+
 				.import-text-input {
 					text-align: right;
 				}
+
 				.remove-button-import {
 					margin-left: 3px;
 				}
+
 				.remove-button-export {
 					margin-right: 3px;
 				}
+
 				.reorder-drag-grip {
 					width: 8px;
 					height: 24px;
