@@ -210,7 +210,7 @@ impl DistributionSnapper {
 				let mut final_point = x;
 				final_point.snapped_point_document += y.snapped_point_document - point.document_point;
 				final_point.source_bounds = Some(final_bounds.into());
-				final_point.target = SnapTarget::Distribution(DistributionSnapTarget::Xy);
+				final_point.target = SnapTarget::DistributeEvenly(DistributionSnapTarget::XY);
 				final_point.distribution_boxes_y = y.distribution_boxes_y;
 				final_point.distribution_equal_distance_y = y.distribution_equal_distance_y;
 				final_point.distance = (final_point.distance * final_point.distance + y.distance * y.distance).sqrt();
@@ -325,7 +325,7 @@ impl DistributionSnapper {
 
 	pub fn free_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, config: SnapTypeConfiguration) {
 		let Some(bounds) = config.bbox else { return };
-		if point.source != SnapSource::BoundingBox(BoundingBoxSnapSource::Center) || !snap_data.document.snapping_state.bounds.distribute {
+		if point.source != SnapSource::BoundingBox(BoundingBoxSnapSource::CenterPoint) || !snap_data.document.snapping_state.bounding_box.distribute_evenly {
 			return;
 		}
 
@@ -335,7 +335,7 @@ impl DistributionSnapper {
 
 	pub fn constrained_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint, config: SnapTypeConfiguration) {
 		let Some(bounds) = config.bbox else { return };
-		if point.source != SnapSource::BoundingBox(BoundingBoxSnapSource::Center) || !snap_data.document.snapping_state.bounds.distribute {
+		if point.source != SnapSource::BoundingBox(BoundingBoxSnapSource::CenterPoint) || !snap_data.document.snapping_state.bounding_box.distribute_evenly {
 			return;
 		}
 

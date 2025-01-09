@@ -3,7 +3,7 @@ use super::node_graph::utility_types::Transform;
 use super::overlays::utility_types::Pivot;
 use super::utility_types::clipboards::Clipboard;
 use super::utility_types::error::EditorError;
-use super::utility_types::misc::{SnappingOptions, SnappingState, GET_SNAP_BOX_FUNCTIONS, GET_SNAP_GEOMETRY_FUNCTIONS};
+use super::utility_types::misc::{SnappingOptions, SnappingState, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
@@ -1779,28 +1779,27 @@ impl DocumentMessageHandler {
 						},
 					]
 					.into_iter()
-					.chain(GET_SNAP_BOX_FUNCTIONS.into_iter().map(|(name, closure)| LayoutGroup::Row {
+					.chain(SNAP_FUNCTIONS_FOR_BOUNDING_BOXES.into_iter().map(|(name, closure, tooltip)| LayoutGroup::Row {
 						widgets: vec![
 									CheckboxInput::new(*closure(&mut snapping_state))
 										.on_update(move |input: &CheckboxInput| DocumentMessage::SetSnapping { closure: Some(closure), snapping_state: input.checked }.into())
+										.tooltip(tooltip)
 										.widget_holder(),
-									TextLabel::new(name).widget_holder(),
+									TextLabel::new(name).tooltip(tooltip).widget_holder(),
 								],
 					}))
-					.chain(
-						[LayoutGroup::Row {
-							widgets: vec![TextLabel::new(SnappingOptions::Geometry.to_string()).widget_holder()],
-						}]
-						.into_iter()
-						.chain(GET_SNAP_GEOMETRY_FUNCTIONS.into_iter().map(|(name, closure)| LayoutGroup::Row {
-							widgets: vec![
+					.chain([LayoutGroup::Row {
+						widgets: vec![TextLabel::new(SnappingOptions::Paths.to_string()).widget_holder()],
+					}])
+					.chain(SNAP_FUNCTIONS_FOR_PATHS.into_iter().map(|(name, closure, tooltip)| LayoutGroup::Row {
+						widgets: vec![
 									CheckboxInput::new(*closure(&mut snapping_state2))
 										.on_update(move |input: &CheckboxInput| DocumentMessage::SetSnapping { closure: Some(closure), snapping_state: input.checked }.into())
+										.tooltip(tooltip)
 										.widget_holder(),
-									TextLabel::new(name).widget_holder(),
+									TextLabel::new(name).tooltip(tooltip).widget_holder(),
 								],
-						})),
-					)
+					}))
 					.collect(),
 				)
 				.widget_holder(),

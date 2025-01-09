@@ -62,11 +62,11 @@ impl DocumentMode {
 pub struct SnappingState {
 	pub snapping_enabled: bool,
 	pub grid_snapping: bool,
-	pub bounds: BoundsSnapping,
-	pub nodes: PointSnapping,
-	pub grid: GridSnapping,
-	pub tolerance: f64,
 	pub artboards: bool,
+	pub tolerance: f64,
+	pub bounding_box: BoundingBoxSnapping,
+	pub path: PathSnapping,
+	pub grid: GridSnapping,
 }
 
 impl Default for SnappingState {
@@ -74,11 +74,11 @@ impl Default for SnappingState {
 		Self {
 			snapping_enabled: true,
 			grid_snapping: false,
-			bounds: Default::default(),
-			nodes: Default::default(),
-			grid: Default::default(),
-			tolerance: 8.,
 			artboards: true,
+			tolerance: 8.,
+			bounding_box: BoundingBoxSnapping::default(),
+			path: PathSnapping::default(),
+			grid: GridSnapping::default(),
 		}
 	}
 }
@@ -89,26 +89,25 @@ impl SnappingState {
 			return false;
 		}
 		match target {
-			SnapTarget::BoundingBox(bounding_box) => match bounding_box {
-				BoundingBoxSnapTarget::Corner => self.bounds.corners,
-				BoundingBoxSnapTarget::Edge => self.bounds.edges,
-				BoundingBoxSnapTarget::EdgeMidpoint => self.bounds.edge_midpoints,
-				BoundingBoxSnapTarget::Center => self.bounds.centers,
+			SnapTarget::BoundingBox(target) => match target {
+				BoundingBoxSnapTarget::CornerPoint => self.bounding_box.corner_point,
+				BoundingBoxSnapTarget::AlongEdge => self.bounding_box.along_edge,
+				BoundingBoxSnapTarget::EdgeMidpoint => self.bounding_box.edge_midpoint,
+				BoundingBoxSnapTarget::CenterPoint => self.bounding_box.center_point,
 			},
-			SnapTarget::Geometry(nodes) => match nodes {
-				GeometrySnapTarget::AnchorWithColinearHandles => self.nodes.anchors,
-				GeometrySnapTarget::AnchorWithFreeHandles => self.nodes.anchors,
-				GeometrySnapTarget::LineMidpoint => self.nodes.line_midpoints,
-				GeometrySnapTarget::Path => self.nodes.paths,
-				GeometrySnapTarget::Normal => self.nodes.normals,
-				GeometrySnapTarget::Tangent => self.nodes.tangents,
-				GeometrySnapTarget::Intersection => self.nodes.path_intersections,
+			SnapTarget::Path(target) => match target {
+				PathSnapTarget::AnchorPointWithColinearHandles | PathSnapTarget::AnchorPointWithFreeHandles => self.path.anchor_point,
+				PathSnapTarget::LineMidpoint => self.path.line_midpoint,
+				PathSnapTarget::AlongPath => self.path.along_path,
+				PathSnapTarget::NormalToPath => self.path.normal_to_path,
+				PathSnapTarget::TangentToPath => self.path.tangent_to_path,
+				PathSnapTarget::IntersectionPoint => self.path.path_intersection_point,
 			},
 			SnapTarget::Artboard(_) => self.artboards,
 			SnapTarget::Grid(_) => self.grid_snapping,
-			SnapTarget::Alignment(AlignmentSnapTarget::Handle) => self.nodes.align,
-			SnapTarget::Alignment(_) => self.bounds.align,
-			SnapTarget::Distribution(_) => self.bounds.distribute,
+			SnapTarget::Alignment(AlignmentSnapTarget::AlignWithAnchorPoint) => self.path.align_with_anchor_point,
+			SnapTarget::Alignment(_) => self.bounding_box.align_with_corner_point,
+			SnapTarget::DistributeEvenly(_) => self.bounding_box.distribute_evenly,
 			_ => false,
 		}
 	}
@@ -116,50 +115,50 @@ impl SnappingState {
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
-pub struct BoundsSnapping {
-	pub edges: bool,
-	pub corners: bool,
-	pub edge_midpoints: bool,
-	pub centers: bool,
-	pub align: bool,
-	pub distribute: bool,
+pub struct BoundingBoxSnapping {
+	pub center_point: bool,
+	pub corner_point: bool,
+	pub edge_midpoint: bool,
+	pub along_edge: bool,
+	pub align_with_corner_point: bool,
+	pub distribute_evenly: bool,
 }
 
-impl Default for BoundsSnapping {
+impl Default for BoundingBoxSnapping {
 	fn default() -> Self {
 		Self {
-			edges: true,
-			corners: true,
-			edge_midpoints: false,
-			centers: true,
-			align: true,
-			distribute: true,
+			center_point: true,
+			corner_point: true,
+			edge_midpoint: true,
+			along_edge: true,
+			align_with_corner_point: true,
+			distribute_evenly: true,
 		}
 	}
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
-pub struct PointSnapping {
-	pub paths: bool,
-	pub path_intersections: bool,
-	pub anchors: bool,
-	pub line_midpoints: bool,
-	pub normals: bool,
-	pub tangents: bool,
-	pub align: bool,
+pub struct PathSnapping {
+	pub anchor_point: bool,
+	pub line_midpoint: bool,
+	pub along_path: bool,
+	pub normal_to_path: bool,
+	pub tangent_to_path: bool,
+	pub path_intersection_point: bool,
+	pub align_with_anchor_point: bool, // TODO: Rename
 }
 
-impl Default for PointSnapping {
+impl Default for PathSnapping {
 	fn default() -> Self {
 		Self {
-			paths: true,
-			path_intersections: true,
-			anchors: true,
-			line_midpoints: true,
-			normals: true,
-			tangents: true,
-			align: false,
+			anchor_point: true,
+			line_midpoint: true,
+			along_path: true,
+			normal_to_path: true,
+			tangent_to_path: true,
+			path_intersection_point: true,
+			align_with_anchor_point: true,
 		}
 	}
 }
@@ -265,34 +264,75 @@ impl GridSnapping {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BoundingBoxSnapSource {
-	Center,
-	Corner,
+	CornerPoint,
+	CenterPoint,
 	EdgeMidpoint,
+}
+
+impl fmt::Display for BoundingBoxSnapSource {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			BoundingBoxSnapSource::CornerPoint => write!(f, "Bounding Box: Corner Point"),
+			BoundingBoxSnapSource::CenterPoint => write!(f, "Bounding Box: Center Point"),
+			BoundingBoxSnapSource::EdgeMidpoint => write!(f, "Bounding Box: Edge Midpoint"),
+		}
+	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArtboardSnapSource {
-	Center,
-	Corner,
+	CornerPoint,
+	CenterPoint,
+}
+
+impl fmt::Display for ArtboardSnapSource {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			ArtboardSnapSource::CornerPoint => write!(f, "Artboard: Corner Point"),
+			ArtboardSnapSource::CenterPoint => write!(f, "Artboard: Center Point"),
+		}
+	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GeometrySnapSource {
-	AnchorWithColinearHandles,
-	AnchorWithFreeHandles,
-	Handle,
+pub enum PathSnapSource {
+	AnchorPointWithColinearHandles,
+	AnchorPointWithFreeHandles,
+	HandlePoint,
 	LineMidpoint,
-	Intersection,
+	IntersectionPoint,
+}
+
+impl fmt::Display for PathSnapSource {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			PathSnapSource::AnchorPointWithColinearHandles | PathSnapSource::AnchorPointWithFreeHandles => write!(f, "Path: Anchor Point"),
+			PathSnapSource::HandlePoint => write!(f, "Path: Handle Point"),
+			PathSnapSource::LineMidpoint => write!(f, "Path: Line Midpoint"),
+			PathSnapSource::IntersectionPoint => write!(f, "Path: Intersection Point"),
+		}
+	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AlignmentSnapSource {
-	BoundsCorner,
-	BoundsCenter,
-	BoundsEdgeMidpoint,
-	ArtboardCorner,
-	ArtboardCenter,
-	Handle,
+	BoundingBoxCornerPoint,
+	BoundingBoxCenterPoint,
+	BoundingBoxEdgeMidpoint,
+	ArtboardCornerPoint,
+	ArtboardCenterPoint,
+}
+
+impl fmt::Display for AlignmentSnapSource {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			AlignmentSnapSource::BoundingBoxCornerPoint => write!(f, "{}", BoundingBoxSnapSource::CornerPoint),
+			AlignmentSnapSource::BoundingBoxCenterPoint => write!(f, "{}", BoundingBoxSnapSource::CenterPoint),
+			AlignmentSnapSource::BoundingBoxEdgeMidpoint => write!(f, "{}", BoundingBoxSnapSource::EdgeMidpoint),
+			AlignmentSnapSource::ArtboardCornerPoint => write!(f, "{}", ArtboardSnapSource::CornerPoint),
+			AlignmentSnapSource::ArtboardCenterPoint => write!(f, "{}", ArtboardSnapSource::CenterPoint),
+		}
+	}
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
@@ -301,7 +341,7 @@ pub enum SnapSource {
 	None,
 	BoundingBox(BoundingBoxSnapSource),
 	Artboard(ArtboardSnapSource),
-	Geometry(GeometrySnapSource),
+	Path(PathSnapSource),
 	Alignment(AlignmentSnapSource),
 }
 
@@ -318,54 +358,164 @@ impl SnapSource {
 	pub fn center(&self) -> bool {
 		matches!(
 			self,
-			Self::Alignment(AlignmentSnapSource::ArtboardCenter | AlignmentSnapSource::BoundsCenter) | Self::Artboard(ArtboardSnapSource::Center) | Self::BoundingBox(BoundingBoxSnapSource::Center)
+			Self::Alignment(AlignmentSnapSource::ArtboardCenterPoint | AlignmentSnapSource::BoundingBoxCenterPoint)
+				| Self::Artboard(ArtboardSnapSource::CenterPoint)
+				| Self::BoundingBox(BoundingBoxSnapSource::CenterPoint)
 		)
 	}
 }
 
+impl fmt::Display for SnapSource {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			SnapSource::None => write!(f, "None"),
+			SnapSource::BoundingBox(bounding_box_snap_source) => write!(f, "{bounding_box_snap_source}"),
+			SnapSource::Artboard(artboard_snap_source) => write!(f, "{artboard_snap_source}"),
+			SnapSource::Path(path_snap_source) => write!(f, "{path_snap_source}"),
+			SnapSource::Alignment(alignment_snap_source) => write!(f, "{alignment_snap_source}"),
+		}
+	}
+}
+
 type GetSnapState = for<'a> fn(&'a mut SnappingState) -> &'a mut bool;
-pub const GET_SNAP_BOX_FUNCTIONS: [(&str, GetSnapState); 6] = [
-	("Box Center", (|snapping_state| &mut snapping_state.bounds.centers) as GetSnapState),
-	("Box Corner", (|snapping_state| &mut snapping_state.bounds.corners) as GetSnapState),
-	("Along Edge", (|snapping_state| &mut snapping_state.bounds.edges) as GetSnapState),
-	("Midpoint of Edge", (|snapping_state| &mut snapping_state.bounds.edge_midpoints) as GetSnapState),
-	("Align to Box", (|snapping_state| &mut snapping_state.bounds.align) as GetSnapState),
-	("Evenly Distribute Boxes", (|snapping_state| &mut snapping_state.bounds.distribute) as GetSnapState),
+pub const SNAP_FUNCTIONS_FOR_BOUNDING_BOXES: [(&str, GetSnapState, &str); 6] = [
+	(
+		// TODO: Rename to "Beyond Edges" and update behavior to snap to an infinite extension of the bounding box edges
+		// TODO: (even when the layer is locally rotated) instead of horizontally/vertically aligning with the corner points
+		"Align with Corner Points",
+		(|snapping_state| &mut snapping_state.bounding_box.align_with_corner_point) as GetSnapState,
+		"Snaps to horizontal/vertical alignment with the corner points of any layer's bounding box",
+	),
+	(
+		"Corner Points",
+		(|snapping_state| &mut snapping_state.bounding_box.corner_point) as GetSnapState,
+		"Snaps to the four corners of any layer's bounding box",
+	),
+	(
+		"Center Points",
+		(|snapping_state| &mut snapping_state.bounding_box.center_point) as GetSnapState,
+		"Snaps to the center point of any layer's bounding box",
+	),
+	(
+		"Edge Midpoints",
+		(|snapping_state| &mut snapping_state.bounding_box.edge_midpoint) as GetSnapState,
+		"Snaps to any of the four points at the middle of the edges of any layer's bounding box",
+	),
+	(
+		"Along Edges",
+		(|snapping_state| &mut snapping_state.bounding_box.along_edge) as GetSnapState,
+		"Snaps anywhere along the four edges of any layer's bounding box",
+	),
+	(
+		"Distribute Evenly",
+		(|snapping_state| &mut snapping_state.bounding_box.distribute_evenly) as GetSnapState,
+		// TODO: Fix the bug/limitation that requires 'Center Points' and 'Corner Points' to be enabled
+		"Snaps to a consistent distance offset established by the bounding boxes of nearby layers\n(due to a bug, 'Center Points' and 'Corner Points' must be enabled)",
+	),
 ];
-pub const GET_SNAP_GEOMETRY_FUNCTIONS: [(&str, GetSnapState); 7] = [
-	("Anchor", (|snapping_state: &mut SnappingState| &mut snapping_state.nodes.anchors) as GetSnapState),
-	("Line Midpoint", (|snapping_state: &mut SnappingState| &mut snapping_state.nodes.line_midpoints) as GetSnapState),
-	("Path", (|snapping_state: &mut SnappingState| &mut snapping_state.nodes.paths) as GetSnapState),
-	("Normal to Path", (|snapping_state: &mut SnappingState| &mut snapping_state.nodes.normals) as GetSnapState),
-	("Tangent to Path", (|snapping_state: &mut SnappingState| &mut snapping_state.nodes.tangents) as GetSnapState),
-	("Intersection", (|snapping_state: &mut SnappingState| &mut snapping_state.nodes.path_intersections) as GetSnapState),
-	("Align to Selected Path", (|snapping_state: &mut SnappingState| &mut snapping_state.nodes.align) as GetSnapState),
+pub const SNAP_FUNCTIONS_FOR_PATHS: [(&str, GetSnapState, &str); 7] = [
+	(
+		"Align with Anchor Points",
+		(|snapping_state: &mut SnappingState| &mut snapping_state.path.align_with_anchor_point) as GetSnapState,
+		"Snaps to horizontal/vertical alignment with the anchor points of any vector path",
+	),
+	(
+		"Anchor Points",
+		(|snapping_state: &mut SnappingState| &mut snapping_state.path.anchor_point) as GetSnapState,
+		"Snaps to the anchor point of any vector path",
+	),
+	(
+		// TODO: Extend to the midpoints of curved segments and rename to "Segment Midpoint"
+		"Line Midpoints",
+		(|snapping_state: &mut SnappingState| &mut snapping_state.path.line_midpoint) as GetSnapState,
+		"Snaps to the point at the middle of any straight line segment of a vector path",
+	),
+	(
+		"Path Intersection Points",
+		(|snapping_state: &mut SnappingState| &mut snapping_state.path.path_intersection_point) as GetSnapState,
+		"Snaps to any points where vector paths intersect",
+	),
+	(
+		"Along Paths",
+		(|snapping_state: &mut SnappingState| &mut snapping_state.path.along_path) as GetSnapState,
+		"Snaps along the length of any vector path",
+	),
+	(
+		// TODO: This works correctly for line segments, but not curved segments.
+		// TODO: Therefore, we should make this use the normal in relation to the incoming curve, not the straight line between the incoming curve's start point and the path.
+		"Normal to Paths",
+		(|snapping_state: &mut SnappingState| &mut snapping_state.path.normal_to_path) as GetSnapState,
+		// TODO: Fix the bug/limitation that requires 'Intersections of Paths' to be enabled
+		"Snaps a line to a point perpendicular to a vector path\n(due to a bug, 'Intersections of Paths' must be enabled)",
+	),
+	(
+		// TODO: This works correctly for line segments, but not curved segments.
+		// TODO: Therefore, we should make this use the tangent in relation to the incoming curve, not the straight line between the incoming curve's start point and the path.
+		"Tangent to Paths",
+		(|snapping_state: &mut SnappingState| &mut snapping_state.path.tangent_to_path) as GetSnapState,
+		// TODO: Fix the bug/limitation that requires 'Intersections of Paths' to be enabled
+		"Snaps a line to a point tangent to a vector path\n(due to a bug, 'Intersections of Paths' must be enabled)",
+	),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BoundingBoxSnapTarget {
-	Center,
-	Corner,
-	Edge,
+	CornerPoint,
+	CenterPoint,
 	EdgeMidpoint,
+	AlongEdge,
+}
+
+impl fmt::Display for BoundingBoxSnapTarget {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			BoundingBoxSnapTarget::CornerPoint => write!(f, "Bounding Box: Corner Point"),
+			BoundingBoxSnapTarget::CenterPoint => write!(f, "Bounding Box: Center Point"),
+			BoundingBoxSnapTarget::EdgeMidpoint => write!(f, "Bounding Box: Edge Midpoint"),
+			BoundingBoxSnapTarget::AlongEdge => write!(f, "Bounding Box: Along Edge"),
+		}
+	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum GeometrySnapTarget {
-	AnchorWithColinearHandles,
-	AnchorWithFreeHandles,
+pub enum PathSnapTarget {
+	AnchorPointWithColinearHandles,
+	AnchorPointWithFreeHandles,
 	LineMidpoint,
-	Path,
-	Normal,
-	Tangent,
-	Intersection,
+	AlongPath,
+	NormalToPath,
+	TangentToPath,
+	IntersectionPoint,
+}
+
+impl fmt::Display for PathSnapTarget {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			PathSnapTarget::AnchorPointWithColinearHandles | PathSnapTarget::AnchorPointWithFreeHandles => write!(f, "Path: Anchor Point"),
+			PathSnapTarget::LineMidpoint => write!(f, "Path: Line Midpoint"),
+			PathSnapTarget::AlongPath => write!(f, "Path: Along Path"),
+			PathSnapTarget::NormalToPath => write!(f, "Path: Normal to Path"),
+			PathSnapTarget::TangentToPath => write!(f, "Path: Tangent to Path"),
+			PathSnapTarget::IntersectionPoint => write!(f, "Path: Intersection Point"),
+		}
+	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArtboardSnapTarget {
-	Edge,
-	Corner,
-	Center,
+	CornerPoint,
+	CenterPoint,
+	AlongEdge,
+}
+
+impl fmt::Display for ArtboardSnapTarget {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			ArtboardSnapTarget::CornerPoint => write!(f, "Artboard: Corner Point"),
+			ArtboardSnapTarget::CenterPoint => write!(f, "Artboard: Center Point"),
+			ArtboardSnapTarget::AlongEdge => write!(f, "Artboard: Along Edge"),
+		}
+	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -375,14 +525,37 @@ pub enum GridSnapTarget {
 	Intersection,
 }
 
+impl fmt::Display for GridSnapTarget {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			GridSnapTarget::Line => write!(f, "Grid: Along Line"),
+			GridSnapTarget::LineNormal => write!(f, "Grid: Normal to Line"),
+			GridSnapTarget::Intersection => write!(f, "Grid: Intersection Point"),
+		}
+	}
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AlignmentSnapTarget {
-	BoundsCorner,
-	BoundsCenter,
-	ArtboardCorner,
-	ArtboardCenter,
-	Handle,
-	Intersection,
+	BoundingBoxCornerPoint,
+	BoundingBoxCenterPoint,
+	ArtboardCornerPoint,
+	ArtboardCenterPoint,
+	AlignWithAnchorPoint,
+	IntersectionPoint,
+}
+
+impl fmt::Display for AlignmentSnapTarget {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			AlignmentSnapTarget::BoundingBoxCornerPoint => write!(f, "{}", BoundingBoxSnapTarget::CornerPoint),
+			AlignmentSnapTarget::BoundingBoxCenterPoint => write!(f, "{}", BoundingBoxSnapTarget::CenterPoint),
+			AlignmentSnapTarget::ArtboardCornerPoint => write!(f, "{}", ArtboardSnapTarget::CornerPoint),
+			AlignmentSnapTarget::ArtboardCenterPoint => write!(f, "{}", ArtboardSnapTarget::CenterPoint),
+			AlignmentSnapTarget::AlignWithAnchorPoint => write!(f, "{}", PathSnapTarget::AnchorPointWithColinearHandles),
+			AlignmentSnapTarget::IntersectionPoint => write!(f, "{}", PathSnapTarget::IntersectionPoint),
+		}
+	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -393,7 +566,21 @@ pub enum DistributionSnapTarget {
 	Left,
 	Up,
 	Down,
-	Xy,
+	XY,
+}
+
+impl fmt::Display for DistributionSnapTarget {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			DistributionSnapTarget::X => write!(f, "Distribute: X"),
+			DistributionSnapTarget::Y => write!(f, "Distribute: Y"),
+			DistributionSnapTarget::Right => write!(f, "Distribute: Right"),
+			DistributionSnapTarget::Left => write!(f, "Distribute: Left"),
+			DistributionSnapTarget::Up => write!(f, "Distribute: Up"),
+			DistributionSnapTarget::Down => write!(f, "Distribute: Down"),
+			DistributionSnapTarget::XY => write!(f, "Distribute: XY"),
+		}
+	}
 }
 
 impl DistributionSnapTarget {
@@ -410,11 +597,11 @@ pub enum SnapTarget {
 	#[default]
 	None,
 	BoundingBox(BoundingBoxSnapTarget),
-	Geometry(GeometrySnapTarget),
+	Path(PathSnapTarget),
 	Artboard(ArtboardSnapTarget),
 	Grid(GridSnapTarget),
 	Alignment(AlignmentSnapTarget),
-	Distribution(DistributionSnapTarget),
+	DistributeEvenly(DistributionSnapTarget),
 }
 
 impl SnapTarget {
@@ -426,17 +613,31 @@ impl SnapTarget {
 	}
 }
 
+impl fmt::Display for SnapTarget {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			SnapTarget::None => write!(f, "None"),
+			SnapTarget::BoundingBox(bounding_box_snap_target) => write!(f, "{bounding_box_snap_target}"),
+			SnapTarget::Path(path_snap_target) => write!(f, "{path_snap_target}"),
+			SnapTarget::Artboard(artboard_snap_target) => write!(f, "{artboard_snap_target}"),
+			SnapTarget::Grid(grid_snap_target) => write!(f, "{grid_snap_target}"),
+			SnapTarget::Alignment(alignment_snap_target) => write!(f, "{alignment_snap_target}"),
+			SnapTarget::DistributeEvenly(distribution_snap_target) => write!(f, "{distribution_snap_target}"),
+		}
+	}
+}
+
 // TODO: implement icons for SnappingOptions eventually
 pub enum SnappingOptions {
 	BoundingBoxes,
-	Geometry,
+	Paths,
 }
 
 impl fmt::Display for SnappingOptions {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			SnappingOptions::BoundingBoxes => write!(f, "Bounding Boxes"),
-			SnappingOptions::Geometry => write!(f, "Geometry"),
+			SnappingOptions::Paths => write!(f, "Paths"),
 		}
 	}
 }
