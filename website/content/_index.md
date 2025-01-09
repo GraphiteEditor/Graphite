@@ -3,7 +3,7 @@ title = "Free online vector editor & procedural design tool"
 template = "section.html"
 
 [extra]
-css = ["/index.css", "/balance-text.css"]
+css = ["/page/index.css", "/component/carousel.css", "/component/feature-icons.css", "/component/feature-box.css", "/component/youtube-embed.css", "/layout/balance-text.css"]
 js = ["/js/carousel.js", "/js/youtube-embed.js", "/js/video-autoplay.js"]
 linked_js = ["https://static.graphite.rs/text-balancer/text-balancer.js"]
 meta_description = "Open source free software. A vector graphics creativity suite with a clean, intuitive interface. Opens instantly (no signup) and runs locally in a browser. Exports SVG, PNG, JPG."
@@ -456,8 +456,8 @@ Get started with Graphite by following along to a hands-on quickstart tutorial.
 
 <div class="block video-container">
 <div>
-<div class="video-embed aspect-16x9">
-	<img data-video-embed="7gjUhl_3X10" loading="lazy" src="https://static.graphite.rs/content/index/tutorial-1-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite Tutorial 1 - Hands-On Quickstart" />
+<div class="youtube-embed aspect-16x9">
+	<img data-youtube-embed="7gjUhl_3X10" loading="lazy" src="https://static.graphite.rs/content/index/tutorial-1-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite Tutorial 1 - Hands-On Quickstart" />
 </div>
 </div>
 </div>
@@ -493,8 +493,8 @@ Get started with Graphite by following along to a hands-on quickstart tutorial.
 <section id="demo-video">
 <div class="block">
 Watch this timelapse showing the process of mixing traditional vector art (tracing a physical sketch and colorizing it, first two minutes) with using Imaginate to generate a background (last 45 seconds).
-<div class="video-embed aspect-16x9">
-	<img data-video-embed="JgJvAHQLnXA" src="https://static.graphite.rs/content/index/commander-basstronaut-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite - Vector Editing: &quot;Commander Basstronaut&quot; Artwork (25x Timelapse)" />
+<div class="youtube-embed aspect-16x9">
+	<img data-youtube-embed="JgJvAHQLnXA" src="https://static.graphite.rs/content/index/commander-basstronaut-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite - Vector Editing: &quot;Commander Basstronaut&quot; Artwork (25x Timelapse)" />
 </div>
 (Recorded in an older version of Graphite from early 2023.)
 </div>

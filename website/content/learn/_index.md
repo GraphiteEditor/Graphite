@@ -6,6 +6,7 @@ page_template = "book.html"
 [extra]
 book = true
 js = ["/js/youtube-embed.js"]
+css = ["/component/youtube-embed.css"]
 +++
 
 Welcome to the Graphite user manual. Keep reading to to learn how the software can help bring your 2D creative ideas to life.
@@ -26,6 +27,6 @@ If you're ever stuck or confused, ask your questions in the `#🧭user-help` cha
 
 The fastest way to get started is to watch and follow along steps-by-step in the hands-on quickstart video:
 
-<div class="video-embed aspect-16x9">
-	<img data-video-embed="7gjUhl_3X10" src="https://static.graphite.rs/content/learn/introduction/tutorial-1-vector-art-quickstart-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite Tutorial 1 - Hands-On Quickstart" />
+<div class="youtube-embed aspect-16x9">
+	<img data-youtube-embed="7gjUhl_3X10" src="https://static.graphite.rs/content/learn/introduction/tutorial-1-vector-art-quickstart-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite Tutorial 1 - Hands-On Quickstart" />
 </div>

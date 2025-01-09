@@ -33,9 +33,11 @@
 				color: var(--color-slate);
 			}
 
-			.emoji {
-				font-size: 0.8em;
+			.flag {
+				font-family: "Noto Color Emoji", sans-serif;
+				font-style: normal;
 				vertical-align: middle;
+				font-size: 0.8em;
 				cursor: default;
 			}
 		}

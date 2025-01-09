@@ -118,11 +118,11 @@
 // ▛ PROCEDURALISM ▜
 #proceduralism {
 	background-color: var(--color-slate);
-	color: var(--color-white);
+	color: white;
 	margin-top: 0;
 	
 	.diptych {
-		background: var(--color-black);
+		background: black;
 		color: var(--color-fog);
 		overflow: hidden; // Clip off a 1px overflow beneath the video which appears at some screen widths
 		align-items: stretch;

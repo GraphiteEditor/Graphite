@@ -32,9 +32,9 @@
 
 	{#- ON EVERY PAGE OF THE SITE: CSS AND JS TO LOAD EITHER AS A LINK OR INLINE -#}
 	{#- ======================================================================== -#}
-	{%- set global_linked_css = ["/base.css", "https://fonts.googleapis.com/css2?family=Bona+Nova:wght@700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"] -%}
+	{%- set global_linked_css = ["https://fonts.googleapis.com/css2?family=Bona+Nova:wght@700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"] -%}
 	{%- set global_linked_js = [] -%}
-	{%- set global_css = [] -%}
+	{%- set global_css = ["/base.css"] -%}
 	{%- set global_js = ["/js/text-justification.js", "/js/navbar.js"] -%}
 
 	{#- RETRIEVE FROM TEMPLATES AND PAGES: CSS AND JS TO LOAD EITHER AS A LINK OR INLINE -#}
@@ -74,11 +74,13 @@
 
 	{#- INSERT INLINE CSS CODE -#}
 	{#- ====================== -#}
-	{%- for path in css_list %}
+	{%- if css_list | length > 0 %}
 	{{ "<" ~ "style>" | safe }}
+	{% for path in css_list -%}
 	{{ load_data(path = path) | safe }}
+	{% endfor -%}
 	{{ "</" ~ "style>" | safe }}
-	{%- endfor %}
+	{%- endif %}
 
 	{#- INSERT INLINE JS CODE -#}
 	{#- ===================== -#}

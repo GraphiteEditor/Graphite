@@ -2,7 +2,7 @@
 title = "About Graphite"
 
 [extra]
-css = ["/about.css"]
+css = ["/page/about.css", "/component/feature-box.css"]
 linked_css = ["https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"]
 +++
 
@@ -117,7 +117,7 @@ It's easy to learn and teach, yet Graphite's accessible design does not sacrific
 
 <img src="https://static.graphite.rs/content/about/core-team-photo-keavon-chambers.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Keavon Chambers" />
 
-## Keavon Chambers <span class="handle">(@Keavon)</span> <span class="emoji" title="American">🇺🇸</span>
+## Keavon Chambers <span class="handle">(@Keavon)</span> <span class="flag" title="American">🇺🇸</span>
 
 ***Founder, UI & product design, frontend, editor systems***
 
@@ -128,7 +128,7 @@ Keavon is a creative generalist with a love for the fusion of arts and technolog
 
 <img src="https://static.graphite.rs/content/about/core-team-photo-dennis-kobert.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Dennis Kobert" />
 
-## Dennis Kobert <span class="handle">(@TrueDoctor)</span> <span class="emoji" title="German">🇩🇪</span>
+## Dennis Kobert <span class="handle">(@TrueDoctor)</span> <span class="flag" title="German">🇩🇪</span>
 
 ***Graphene node engine, research, architecture***
 
@@ -143,7 +143,7 @@ Dennis is a mix between a mathematician and a mad scientist. While still enjoyin
 
 <img src="https://static.graphite.rs/content/about/core-team-photo-hypercube__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Hypercube" />
 
-## "Hypercube" <span class="handle">(@0Hypercube)</span> <span class="emoji" title="British">🇬🇧</span>
+## "Hypercube" <span class="handle">(@0Hypercube)</span> <span class="flag" title="British">🇬🇧</span>
 
 ***Editor systems, nodes, tools, architecture***
 
@@ -155,7 +155,7 @@ Dennis is a mix between a mathematician and a mad scientist. While still enjoyin
 
 <img src="https://static.graphite.rs/content/about/core-team-photo-adam-gerhant.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Adam Gerhant" />
 
-## Adam Gerhant <span class="handle">(@pendapia)</span> <span class="emoji" title="American">🇺🇸</span>
+## Adam Gerhant <span class="handle">(@pendapia)</span> <span class="flag" title="American">🇺🇸</span>
 
 ***Editor graph tooling, node data formats***
 

@@ -1,0 +1,116 @@
+.image-comparison {
+	position: relative;
+	touch-action: pan-y pinch-zoom;
+	max-width: Min(100%, 512px);
+
+	.crop-container {
+		height: 100%;
+
+		&:nth-child(2) {
+			overflow: hidden;
+			width: calc(100% - var(--comparison-percent));
+
+			&,
+			img {
+				position: absolute;
+				top: 0;
+				right: 0;
+			}
+		}
+
+		&.crop-container.crop-container {
+			img {
+				display: block;
+				width: auto;
+				height: 100%;
+			}
+
+			&:first-child img {
+				width: 100%;
+			}
+		}
+	}
+
+	.slide-bar {
+		position: absolute;
+		background: var(--color-navy);
+		margin-left: -2px;
+		width: 4px;
+		height: 100%;
+		top: 0;
+		left: var(--comparison-percent);
+		box-shadow: 0 0 2px rgba(255, 255, 255, 0.5);
+
+		.arrows {
+			position: absolute;
+			top: calc(50% - (40px / 2));
+			left: calc(4px / 2);
+			width: 0;
+			height: 0;
+			opacity: 1;
+			transition: opacity 0.25s;
+
+			svg {
+				position: absolute;
+				width: 6.5px;
+				height: 11px;
+				top: calc(-11px / 2);
+				fill: white;
+
+				@keyframes pulse-left {
+					from { transform: translateX(3px); }
+					to { transform: translateX(-3px); }
+				}
+
+				@keyframes pulse-right {
+					from { transform: scaleX(-1) translateX(3px); }
+					to { transform: scaleX(-1) translateX(-3px); }
+				}
+
+				@keyframes pulse-opacity {
+					0% { opacity: 0; }
+					40% { opacity: 1; }
+					90% { opacity: 1; }
+					100% { opacity: 0; }
+				}
+
+				&:nth-of-type(1) {
+					right: 6px;
+					animation: 3s infinite ease-out pulse-left, 3s infinite ease-out pulse-opacity;
+				}
+
+				&:nth-of-type(2) {
+					left: 6px;
+					animation: 3s infinite ease-out pulse-right, 3s infinite ease-out pulse-opacity;
+				}
+			}
+
+			div {
+				content: "";
+				position: absolute;
+				background: var(--color-navy);
+				top: 0;
+				left: 0;
+				width: 32px;
+				height: 32px;
+				transform: translate(-50%, -50%) rotate(45deg);
+				box-shadow: 0 0 2px rgba(255, 255, 255, 0.5);
+			}
+
+			// Cover up the box-shadow at the top and bottom of the circle so it connects to the vertical line
+			&::after {
+				content: "";
+				position: absolute;
+				background: var(--color-navy);
+				left: -2px;
+				top: -24px;
+				width: 4px;
+				height: 48px;
+			}
+		}
+	}
+
+	&:hover .slide-bar .arrows {
+		opacity: 0;
+	}
+}

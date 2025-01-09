@@ -2,7 +2,7 @@
 title = "Donate"
 
 [extra]
-# css = ["/donate.css", "/balance-text.css"]
+# css = ["/page/donate.css", "/component/feature-box.css", "/layout/balance-text.css"]
 # js = ["/js/fundraising.js"]
 # linked_js = ["https://static.graphite.rs/text-balancer/text-balancer.js"]
 +++

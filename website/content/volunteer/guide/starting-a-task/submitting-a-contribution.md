@@ -3,7 +3,6 @@ title = "Submitting a contribution"
 
 [extra]
 order = 3 # Page number after chapter intro
-linked_css = ["https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"]
 +++
 
 Collaboration is a key part of real-world software engineering. Graphite follows some basic procedures to keep the process smooth and efficient. You will want to familiarize yourself with these guidelines to save yourself and Graphite maintainers time and confusion.
@@ -72,7 +71,7 @@ Upon pushing a commit to your PR's branch, CI will need to build and test your c
 
 You also have to pass `cargo fmt` and `cargo clippy` locally before your PR can be merged.
 
-Your goal is for the check called "Editor: Dev & CI / build (pull_request)" to pass with a <span class="emoji">✅</span>. If it fails with a <span class="emoji">❌</span>, you will need to investigate. If you need access to the build logs, ask a maintainer to provide them. Occasionally, other checks may fail, but you likely won't be responsible for fixing those and they can be ignored.
+Your goal is for the check called "Editor: Dev & CI / build (pull_request)" to pass with a ✅. If it fails with a ❌, you will need to investigate. If you need access to the build logs, ask a maintainer to provide them. Occasionally, other checks may fail, but you likely won't be responsible for fixing those and they can be ignored.
 
 ## Keeping your work up-to-date
 

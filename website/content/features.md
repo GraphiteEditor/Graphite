@@ -2,7 +2,7 @@
 title = "Graphite features"
 
 [extra]
-css = ["/features.css"]
+css = ["/page/features.css", "/component/feature-box.css", "/component/feature-icons.css"]
 +++
 
 <section>

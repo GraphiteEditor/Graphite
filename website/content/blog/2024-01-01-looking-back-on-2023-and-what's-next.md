@@ -11,6 +11,7 @@ reddit = "https://www.reddit.com/r/graphite/comments/18xmoti/blog_post_looking_b
 twitter = "https://twitter.com/GraphiteEditor/status/1742576805532577937"
 
 js = ["/js/youtube-embed.js"]
+css = ["/component/youtube-embed.css"]
 +++
 
 The new year is here, and with so many accomplishments to share from the past twelve months, let's revisit the highlights of 2023 for the Graphite project. Now that winter has entered, let's swing back to the spring, summarize the summer, and follow this fall's noteworthy developments that brought another year of fruitful progress to Graphite's mission of re-envisioning artists' 2D creative workflows with the best free software we can build for the open source community. This past year as a team, we all got closer— to one another from continents apart; to visiting and connecting with our industry peers; and to reaching exciting new development milestones.
@@ -92,8 +93,8 @@ The next big news of August was my formation of [Graphite Labs, LLC](https://www
 
 I allocated my time at several points throughout the year into growing and evolving this website with a refreshed and more visually-appealing home page, dedicated pages for information [about](/about) the project and its [features](/features), an area providing resources and help for [volunteers](/volunteer) and [code contributors](/volunteer/guide), and just this month— a [user manual](/learn) complete with an introductory tutorial series. The first video went up yesterday:
 
-<div class="video-embed aspect-16x9">
-	<img data-video-embed="7gjUhl_3X10" src="https://static.graphite.rs/content/learn/introduction/tutorial-1-vector-art-quickstart-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite Tutorial 1 - Hands-On Quickstart" />
+<div class="youtube-embed aspect-16x9">
+	<img data-youtube-embed="7gjUhl_3X10" src="https://static.graphite.rs/content/learn/introduction/tutorial-1-vector-art-quickstart-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite Tutorial 1 - Hands-On Quickstart" />
 </div>
 
 The user manual and tutorial series will continue expanding throughout the coming weeks. Additional website features including user accounts, forums, and other community features are being planned.

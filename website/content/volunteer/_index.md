@@ -2,8 +2,7 @@
 title = "Volunteer"
 
 [extra]
-css = ["/volunteer.css"]
-linked_css = ["https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"]
+css = ["/page/volunteer.css", "/component/feature-box.css"]
 +++
 
 <section>
@@ -62,7 +61,7 @@ The Graphite editor is built much like a game engine, split across user interfac
 <img src="https://static.graphite.rs/content/volunteer/creative-contributions.avif" class="feature-box-full-image" style="aspect-ratio: 3/1 auto; background: var(--color-lemon)" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Flavor graphic depicting a fountain pen, ink pots, and a book" />
 </a>
 
-Assign yourself the *"<span class="emoji">🙌</span> Interested in helping with art or marketing"* role in the *#welcome* Discord channel. Then mention your experience and how you'd like to help in the *#introductions* channel.
+Assign yourself the *"🙌 Interested in helping with art or marketing"* role in the *#welcome* Discord channel. Then mention your experience and how you'd like to help in the *#introductions* channel.
 
 <a href="https://discord.graphite.rs" class="button arrow">Volunteer on Discord</a>
 
@@ -97,7 +96,7 @@ Help write, edit, and design content for this website, social media, newsletters
 
 <img src="https://static.graphite.rs/content/volunteer/user-contributions.avif" class="feature-box-full-image" style="aspect-ratio: 3/1 auto; background: var(--color-lilac)" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Flavor graphic depicting a magnifying glass on the search for a software bug" />
 
-Assign yourself the *"<span class="emoji">🐒</span> Volunteer to get pinged regularly for QA testing"* or *"<span class="emoji">🤖</span> Interested in contributing code"* roles in the *#welcome* Discord channel. In the latter case, drop by the *#development* channel to get advice writing your first node.
+Assign yourself the *"🐒 Volunteer to get pinged regularly for QA testing"* or *"🤖 Interested in contributing code"* roles in the *#welcome* Discord channel. In the latter case, drop by the *#development* channel to get advice writing your first node.
 
 <a href="https://discord.graphite.rs" class="button arrow">Volunteer on Discord</a>
 
