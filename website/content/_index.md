@@ -3,8 +3,9 @@ title = "Free online vector editor & procedural design tool"
 template = "section.html"
 
 [extra]
-css_inline = ["index.css"]
-js = ["carousel.js", "youtube-embed.js", "video-autoplay.js"]
+css = ["/index.css", "/balance-text.css"]
+js = ["/js/carousel.js", "/js/youtube-embed.js", "/js/video-autoplay.js"]
+linked_js = ["https://static.graphite.rs/text-balancer/text-balancer.js"]
 meta_description = "Open source free software. A vector graphics creativity suite with a clean, intuitive interface. Opens instantly (no signup) and runs locally in a browser. Exports SVG, PNG, JPG."
 +++
 
@@ -80,13 +81,15 @@ meta_description = "Open source free software. A vector graphics creativity suit
 <section id="screenshots" class="carousel window-size-1" data-carousel data-carousel-jostle-hint>
 
 <div class="carousel-slide" data-carousel-slide>
-	<!-- Copy of last --><img src="https://static.graphite.rs/content/index/gui-mockup-nodes__7.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
-	<img src="https://static.graphite.rs/content/index/gui-demo-painted-dreams__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
-	<img src="https://static.graphite.rs/content/index/magazine-page-layout.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
-	<img src="https://static.graphite.rs/content/index/gui-demo-node-graph-valley-of-spires__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
-	<img src="https://static.graphite.rs/content/index/gui-demo-fractal__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
 	<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__7.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
-	<!-- Copy of first --><img src="https://static.graphite.rs/content/index/gui-demo-painted-dreams__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
+	<!-- Above is a copy of the last -->
+	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-demo-painted-dreams__2.avif" />
+	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/magazine-page-layout.avif" />
+	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-demo-node-graph-valley-of-spires__2.avif" />
+	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-demo-fractal__2.avif" />
+	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-mockup-nodes__7.avif" />
+	<!-- Below is a copy of the first -->
+	<img src="https://static.graphite.rs/content/index/gui-demo-painted-dreams__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
 </div>
 
 <div class="carousel-slide torn left" data-carousel-slide-torn-left></div>
@@ -287,7 +290,7 @@ Graphite is the first and only graphic design package built for procedural editi
 <div class="diptych red-dress">
 
 <div class="block video-background">
-	<video loop muted playsinline disablepictureinpicture disableremoteplayback data-auto-play>
+	<video loop muted playsinline disablepictureinpicture disableremoteplayback data-auto-play preload="none" poster="https://static.graphite.rs/content/index/procedural-demo-red-dress-poster.avif">
 		<source src="https://static.graphite.rs/content/index/procedural-demo-red-dress.webm" type="video/webm" />
 		<source src="https://static.graphite.rs/content/index/procedural-demo-red-dress.mp4" type="video/mp4" />
 	</video>
@@ -323,7 +326,7 @@ Blend across color schemes. Morph shapes before they're scattered around the can
 </div>
 
 <div class="block video-background">
-	<video loop muted playsinline disablepictureinpicture disableremoteplayback data-auto-play>
+	<video loop muted playsinline disablepictureinpicture disableremoteplayback data-auto-play preload="none" poster="https://static.graphite.rs/content/index/procedural-demo-leaves-poster.avif">
 		<source src="https://static.graphite.rs/content/index/procedural-demo-leaves.webm" type="video/webm" />
 		<source src="https://static.graphite.rs/content/index/procedural-demo-leaves.mp4" type="video/mp4" />
 	</video>
@@ -454,7 +457,7 @@ Get started with Graphite by following along to a hands-on quickstart tutorial.
 <div class="block video-container">
 <div>
 <div class="video-embed aspect-16x9">
-	<img data-video-embed="7gjUhl_3X10" src="https://static.graphite.rs/content/index/tutorial-1-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite Tutorial 1 - Hands-On Quickstart" />
+	<img data-video-embed="7gjUhl_3X10" loading="lazy" src="https://static.graphite.rs/content/index/tutorial-1-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite Tutorial 1 - Hands-On Quickstart" />
 </div>
 </div>
 </div>

@@ -6,7 +6,7 @@ aliases = ["/contribute"]
 
 [extra]
 book = true
-css_external = ["https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"]
+linked_css = ["https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"]
 +++
 
 Welcome, potential contributor! We're excited to have you join the Graphite project and it's our goal to make the process as smooth as possible. This guide will serve as your library of knowledge to help you get started contributing to the project. If you find any information missing or unclear, please let us know through Discord or submit a pull request to help document the process for future contributors.

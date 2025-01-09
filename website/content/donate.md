@@ -2,8 +2,9 @@
 title = "Donate"
 
 [extra]
-# css_inline = ["donate.css"]
-# js = ["fundraising.js"]
+# css = ["/donate.css", "/balance-text.css"]
+# js = ["/js/fundraising.js"]
+# linked_js = ["https://static.graphite.rs/text-balancer/text-balancer.js"]
 +++
 
 <section>

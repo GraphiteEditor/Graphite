@@ -5,7 +5,7 @@ page_template = "book.html"
 
 [extra]
 book = true
-js = ["youtube-embed.js"]
+js = ["/js/youtube-embed.js"]
 +++
 
 Welcome to the Graphite user manual. Keep reading to to learn how the software can help bring your 2D creative ideas to life.

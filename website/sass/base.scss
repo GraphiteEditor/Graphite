@@ -693,7 +693,7 @@ hr,
 }
 
 // Using this requires adding this line to the page's frontmatter:
-// css_external = ["https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"]
+// linked_css = ["https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"]
 .emoji {
 	font-family: "Noto Color Emoji", sans-serif;
 	font-style: normal;
@@ -1175,6 +1175,7 @@ h1.feature-box-header.feature-box-header {
 			display: inline-block;
 			user-select: none;
 			flex: 0 0 auto;
+			height: auto;
 			padding: 0 20px;
 
 			&:first-child,
@@ -1215,8 +1216,8 @@ h1.feature-box-header.feature-box-header {
 		&.left {
 			padding-left: 160px;
 			margin-left: -160px;
-			-webkit-mask-image: url("https://static.graphite.rs/textures/torn-edge-left.png"); // TODO: Switch PNG to AVIF when Edge support has rolled out
-			mask-image: url("https://static.graphite.rs/textures/torn-edge-left.png");
+			-webkit-mask-image: url("https://static.graphite.rs/textures/torn-edge-left__2.png");
+			mask-image: url("https://static.graphite.rs/textures/torn-edge-left__2.png");
 			-webkit-mask-position: top left;
 			mask-position: top left;
 		}
@@ -1224,8 +1225,8 @@ h1.feature-box-header.feature-box-header {
 		&.right {
 			padding-right: 160px;
 			margin-right: -160px;
-			-webkit-mask-image: url("https://static.graphite.rs/textures/torn-edge-right.png"); // TODO: Switch PNG to AVIF when Edge support has rolled out
-			mask-image: url("https://static.graphite.rs/textures/torn-edge-right.png");
+			-webkit-mask-image: url("https://static.graphite.rs/textures/torn-edge-right__2.png");
+			mask-image: url("https://static.graphite.rs/textures/torn-edge-right__2.png");
 			-webkit-mask-position: top right;
 			mask-position: top right;
 		}

@@ -5,7 +5,7 @@ page_template = "book.html"
 
 [extra]
 order = 2 # Chapter number
-js = ["youtube-embed.js"]
+js = ["/js/youtube-embed.js"]
 +++
 
 The best introduction for getting up-to-speed with Graphite contribution comes from watching this webcast recording. Before asking questions in Discord, please watch the full video because it gives a comprehensive overview of most things you will need to know.

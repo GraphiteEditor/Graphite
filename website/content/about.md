@@ -2,8 +2,8 @@
 title = "About Graphite"
 
 [extra]
-css_inline = ["about.css"]
-css_external = ["https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"]
+css = ["/about.css"]
+linked_css = ["https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"]
 +++
 
 <section>

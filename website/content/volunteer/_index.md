@@ -2,8 +2,8 @@
 title = "Volunteer"
 
 [extra]
-css_inline = ["volunteer.css"]
-css_external = ["https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"]
+css = ["/volunteer.css"]
+linked_css = ["https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"]
 +++
 
 <section>

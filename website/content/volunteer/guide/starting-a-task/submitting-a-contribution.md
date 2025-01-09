@@ -3,7 +3,7 @@ title = "Submitting a contribution"
 
 [extra]
 order = 3 # Page number after chapter intro
-css_external = ["https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"]
+linked_css = ["https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"]
 +++
 
 Collaboration is a key part of real-world software engineering. Graphite follows some basic procedures to keep the process smooth and efficient. You will want to familiarize yourself with these guidelines to save yourself and Graphite maintainers time and confusion.

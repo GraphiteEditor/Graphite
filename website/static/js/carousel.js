@@ -124,6 +124,16 @@ function slideTo(carousel, index, smooth) {
 		carousel.descriptions[index].classList.add("active");
 	}
 
+	// Account for the first image being the faded out last image
+	const offsetIndex = index + 1;
+	const slideImages = Array.from(carousel.carouselContainer.querySelectorAll("[data-carousel-slide] [data-carousel-image]"));
+	// Remove lazy loading from the adjacent images
+	slideImages[clamp(offsetIndex - 2, 0, slideImages.length - 1)].removeAttribute("loading");
+	slideImages[clamp(offsetIndex - 1, 0, slideImages.length - 1)].removeAttribute("loading");
+	slideImages[clamp(offsetIndex, 0, slideImages.length - 1)].removeAttribute("loading");
+	slideImages[clamp(offsetIndex + 1, 0, slideImages.length - 1)].removeAttribute("loading");
+	slideImages[clamp(offsetIndex + 2, 0, slideImages.length - 1)].removeAttribute("loading");
+
 	setCurrentTransform(carousel, index * -100, "%", smooth);
 }
 
@@ -283,6 +293,6 @@ function dragMove(event) {
 }
 
 function clamp(value, min, max) {
-	const m = Math; // Keep this line, it fixes a bug in Zola's minifier
+	const m = Math; // This is a workaround for a bug in Zola's minifier
 	return m.min(m.max(value, min), max);
 }

@@ -38,6 +38,8 @@ jobs:
           git rev-parse --abbrev-ref HEAD | grep master > /dev/null || export INDEX_HTML_HEAD_INCLUSION=""
 
       - name: 🌐 Build Graphite website with Zola
+        env:
+          MODE: prod
         run: |
           cd website
           zola --config config_prod.toml build

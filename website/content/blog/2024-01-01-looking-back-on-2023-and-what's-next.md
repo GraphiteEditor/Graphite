@@ -10,7 +10,7 @@ summary = "Looking back on 2023, we reflect on our significant achievements and 
 reddit = "https://www.reddit.com/r/graphite/comments/18xmoti/blog_post_looking_back_on_2023_and_whats_next/"
 twitter = "https://twitter.com/GraphiteEditor/status/1742576805532577937"
 
-js = ["youtube-embed.js"]
+js = ["/js/youtube-embed.js"]
 +++
 
 The new year is here, and with so many accomplishments to share from the past twelve months, let's revisit the highlights of 2023 for the Graphite project. Now that winter has entered, let's swing back to the spring, summarize the summer, and follow this fall's noteworthy developments that brought another year of fruitful progress to Graphite's mission of re-envisioning artists' 2D creative workflows with the best free software we can build for the open source community. This past year as a team, we all got closer— to one another from continents apart; to visiting and connecting with our industry peers; and to reaching exciting new development milestones.

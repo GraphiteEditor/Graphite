@@ -29,27 +29,62 @@
 	{%- endblock %}
 	<link rel="preconnect" href="https://fonts.googleapis.com" />
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-	<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bona+Nova:wght@700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" />
-	<link rel="stylesheet" href="/base.css" />
-	<link rel="stylesheet" href="/syntax-highlighting.css" />
-	{%- set extra_css = page.extra.css | default(value = []) | concat(with = css | default(value = [])) -%}
-	{%- set extra_css_external = page.extra.css_external | default(value = []) | concat(with = css_external | default(value = [])) -%}
-	{% for css_path in extra_css | concat(with = extra_css_external) %}
-	<link rel="stylesheet" href="/{{ css_path | safe }}" />
+
+	{#- ON EVERY PAGE OF THE SITE: CSS AND JS TO LOAD EITHER AS A LINK OR INLINE -#}
+	{#- ======================================================================== -#}
+	{%- set global_linked_css = ["/base.css", "https://fonts.googleapis.com/css2?family=Bona+Nova:wght@700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"] -%}
+	{%- set global_linked_js = [] -%}
+	{%- set global_css = [] -%}
+	{%- set global_js = ["/js/text-justification.js", "/js/navbar.js"] -%}
+
+	{#- RETRIEVE FROM TEMPLATES AND PAGES: CSS AND JS TO LOAD EITHER AS A LINK OR INLINE -#}
+	{#- ================================================================================ -#}
+	{%- set linked_css = page.extra.linked_css | default(value = []) | concat(with = linked_css | default(value = [])) -%}
+	{%- set linked_js = page.extra.linked_js | default(value = []) | concat(with = linked_js | default(value = [])) -%}
+	{%- set css = page.extra.css | default(value = []) | concat(with = css | default(value = [])) -%}
+	{%- set js = page.extra.js | default(value = []) | concat(with = js | default(value = [])) -%}
+
+	{#- COMBINE THE GLOBAL AND TEMPLATE/PAGE RESOURCE LISTS -#}
+	{#- =================================================== -#}
+	{%- set linked_css_list = linked_css | concat(with = global_linked_css) -%}
+	{%- set linked_js_list = linked_js | concat(with = global_linked_js) -%}
+	{%- set css_list = css | concat(with = global_css) -%}
+	{%- set js_list = js | concat(with = global_js) -%}
+
+	{#- CONDITIONALLY MAKE ONLY PROD BUILDS ACTUALLY INLINE THE CSS AND JS FOR CLEANLINESS -#}
+	{#- ================================================================================== -#}
+	{%- if get_env(name = "MODE", default = "dev") != "prod" -%}
+	{%- set linked_css_list = linked_css_list | concat(with = css_list) -%}
+	{%- set linked_js_list = linked_js_list | concat(with = js_list) -%}
+	{%- set css_list = [] -%}
+	{%- set js_list = [] -%}
+	{%- endif -%}
+	
+	{#- INSERT CSS LINKS -#}
+	{#- ================ -#}
+	{%- for path in linked_css_list %}
+	<link rel="stylesheet" href="{{ path | safe }}" />
 	{%- endfor %}
-	{%- set extra_css_inline = page.extra.css_inline | default(value = []) | concat(with = css_inline | default(value = [])) -%}
-	{%- set global_css_inline = ["css/balance-text.css"] %}
+
+	{#- INSERT JS LINKS -#}
+	{#- =============== -#}
+	{%- for path in linked_js_list %}
+	<script src="{{ path | safe }}"></script>
+	{%- endfor %}
+
+	{#- INSERT INLINE CSS CODE -#}
+	{#- ====================== -#}
+	{%- for path in css_list %}
 	{{ "<" ~ "style>" | safe }}
-	{%- for css_inline in extra_css_inline | concat(with = global_css_inline | default(value = [])) -%}
-	{{ load_data(path = css_inline) | safe }}
-	{%- endfor %}
+	{{ load_data(path = path) | safe }}
 	{{ "</" ~ "style>" | safe }}
-	{% set global_js = ["text-justification.js", "navbar.js"] -%}
-	{%- set extra_js = global_js | concat(with = page.extra.js | default(value = []) | concat(with = js | default(value = []))) -%}
-	{% for js_path in extra_js %}
-	{% set script_path = "js/" ~ js_path -%}
+	{%- endfor %}
+
+	{#- INSERT INLINE JS CODE -#}
+	{#- ===================== -#}
+	{%- for path in js_list %}
 	{{ "<" ~ "script>" | safe }}
-	{{ load_data(path = script_path) | safe }}
+	{{ load_data(path = path) | safe }}
 	{{ "</" ~ "script>" | safe }}
 	{%- endfor %}
 	{{- get_env(name = "INDEX_HTML_HEAD_INCLUSION", default = "") | safe }}
@@ -87,7 +122,7 @@
 		</main>
 		<footer>
 			<hr />
-			<nav class="balance-text require-polyfill">
+			<nav>
 				<a href="https://github.com/GraphiteEditor/Graphite" class="link not-uppercase">GitHub</a>
 				<a href="/license" class="link not-uppercase">License</a>
 				<a href="/logo" class="link not-uppercase">Logo</a>
@@ -97,6 +132,5 @@
 			<span>Copyright &copy; {{ now() | date(format = "%Y") }} Graphite Labs, LLC</span>
 		</footer>
 	</div>
-	<script src="https://static.graphite.rs/text-balancer/text-balancer.js"></script>
 </body>
 </html>
