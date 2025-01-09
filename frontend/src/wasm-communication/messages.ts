@@ -130,11 +130,6 @@ export class UpdateWirePathInProgress extends JsMessage {
 	readonly wirePath!: WirePath | undefined;
 }
 
-export class UpdateZoomWithScroll extends JsMessage {
-	readonly zoomWithScroll!: boolean;
-}
-
-
 // Allows the auto save system to use a string for the id rather than a BigInt.
 // IndexedDb does not allow for BigInts as primary keys.
 // TypeScript does not allow subclasses to change the type of class variables in subclasses.
@@ -1629,6 +1624,5 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateToolShelfLayout,
 	UpdateWirePathInProgress,
 	UpdateWorkingColorsLayout,
-	UpdateZoomWithScroll,
 } as const;
 export type JsMessageType = keyof typeof messageMakers;

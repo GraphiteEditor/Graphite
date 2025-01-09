@@ -22,7 +22,6 @@ import {
 	UpdateNodeGraphTransform,
 	UpdateNodeThumbnail,
 	UpdateWirePathInProgress,
-	UpdateZoomWithScroll,
 } from "@graphite/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -44,7 +43,6 @@ export function createNodeGraphState(editor: Editor) {
 		inputTypeDescriptions: new Map<string, string>(),
 		nodeDescriptions: new Map<string, string>(),
 		nodeTypes: [] as FrontendNodeType[],
-		zoomWithScroll: false as boolean,
 		thumbnails: new Map<bigint, string>(),
 		selected: [] as bigint[],
 		transform: { scale: 1, x: 0, y: 0 },
@@ -133,12 +131,6 @@ export function createNodeGraphState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateWirePathInProgress, (updateWirePathInProgress) => {
 		update((state) => {
 			state.wirePathInProgress = updateWirePathInProgress.wirePath;
-			return state;
-		});
-	});
-	editor.subscriptions.subscribeJsMessage(UpdateZoomWithScroll, (updateZoomWithScroll) => {
-		update((state) => {
-			state.zoomWithScroll = updateZoomWithScroll.zoomWithScroll;
 			return state;
 		});
 	});
