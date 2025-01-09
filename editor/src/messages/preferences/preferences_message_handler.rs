@@ -107,7 +107,6 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			PreferencesMessage::SelectionMode { selection_mode } => {
 				info!("Setting selection mode to: {:?}", selection_mode);
 				self.selection_mode = selection_mode;
-				responses.add(FrontendMessage::UpdateSelectionMode { selection_mode });
 			}
 		}
 		responses.add(FrontendMessage::TriggerSavePreferences { preferences: self.clone() });
