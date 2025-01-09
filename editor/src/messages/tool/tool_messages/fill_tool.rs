@@ -81,10 +81,7 @@ impl Fsm for FillToolFsmState {
 			document, global_tool_data, input, ..
 		} = handler_data;
 
-		let ToolMessage::Fill(event) = event else {
-			return self;
-		};
-
+		let ToolMessage::Fill(event) = event else { return self };
 		match (self, event) {
 			(FillToolFsmState::Ready, color_event) => {
 				let Some(layer_identifier) = document.click(input) else {

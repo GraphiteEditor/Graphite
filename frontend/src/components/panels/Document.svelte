@@ -296,11 +296,17 @@
 		canvasCursor = cursorString;
 	}
 
+	function preventTextEditingScroll(e: Event) {
+		if (!(e.target instanceof HTMLElement)) return;
+		e.target.scrollTop = 0;
+		e.target.scrollLeft = 0;
+	}
+
 	// Text entry
 	export function triggerTextCommit() {
 		if (!textInput) return;
 		const textCleaned = textInputCleanup(textInput.innerText);
-		editor.handle.onChangeText(textCleaned);
+		editor.handle.onChangeText(textCleaned, false);
 	}
 
 	export async function displayEditableTextbox(displayEditableTextbox: DisplayEditableTextbox) {
@@ -317,8 +323,9 @@
 
 		textInput.contentEditable = "true";
 		textInput.style.transformOrigin = "0 0";
-		textInput.style.width = displayEditableTextbox.lineWidth ? `${displayEditableTextbox.lineWidth}px` : "max-content";
-		textInput.style.height = "auto";
+		textInput.style.width = displayEditableTextbox.maxWidth ? `${displayEditableTextbox.maxWidth}px` : "max-content";
+		textInput.style.height = displayEditableTextbox.maxHeight ? `${displayEditableTextbox.maxHeight}px` : "auto";
+		textInput.style.lineHeight = `${displayEditableTextbox.lineHeightRatio}`;
 		textInput.style.fontSize = `${displayEditableTextbox.fontSize}px`;
 		textInput.style.color = displayEditableTextbox.color.toHexOptionalAlpha() || "transparent";
 
@@ -437,18 +444,18 @@
 </script>
 
 <LayoutCol class="document" on:dragover={(e) => e.preventDefault()} on:drop={dropFile}>
-	<LayoutRow class="options-bar" classes={{ "for-graph": $document.graphViewOverlayOpen }} scrollableX={true}>
+	<LayoutRow class="control-bar" classes={{ "for-graph": $document.graphViewOverlayOpen }} scrollableX={true}>
 		{#if !$document.graphViewOverlayOpen}
 			<WidgetLayout layout={$document.documentModeLayout} />
 			<WidgetLayout layout={$document.toolOptionsLayout} />
 			<LayoutRow class="spacer" />
 			<WidgetLayout layout={$document.documentBarLayout} />
 		{:else}
-			<WidgetLayout layout={$document.nodeGraphBarLayout} />
+			<WidgetLayout layout={$document.nodeGraphControlBarLayout} />
 		{/if}
 	</LayoutRow>
 	<LayoutRow
-		class="shelf-and-table"
+		class="tool-shelf-and-viewport-area"
 		styles={toolShelfTotalToolsAndSeparators && {
 			"--total-separators": toolShelfTotalToolsAndSeparators.totalSeparators,
 			"--total-tool-rows-for-1-columns": toolShelfTotalToolsAndSeparators.totalToolRowsFor1Columns,
@@ -456,7 +463,7 @@
 			"--total-tool-rows-for-3-columns": toolShelfTotalToolsAndSeparators.totalToolRowsFor3Columns,
 		}}
 	>
-		<LayoutCol class="shelf">
+		<LayoutCol class="tool-shelf">
 			{#if !$document.graphViewOverlayOpen}
 				<LayoutCol class="tools" scrollableY={true}>
 					<WidgetLayout layout={$document.toolShelfLayout} />
@@ -464,24 +471,24 @@
 			{:else}
 				<LayoutRow class="spacer" />
 			{/if}
-			<LayoutCol class="shelf-bottom-widgets">
+			<LayoutCol class="tool-shelf-bottom-widgets">
 				<WidgetLayout class={"working-colors-input-area"} layout={$document.workingColorsLayout} />
 			</LayoutCol>
 		</LayoutCol>
-		<LayoutCol class="table">
+		<LayoutCol class="viewport-container">
 			{#if rulersVisible}
 				<LayoutRow class="ruler-or-scrollbar top-ruler">
 					<LayoutCol class="ruler-corner"></LayoutCol>
 					<RulerInput origin={rulerOrigin.x} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Horizontal" bind:this={rulerHorizontal} />
 				</LayoutRow>
 			{/if}
-			<LayoutRow class="viewport-container">
+			<LayoutRow class="viewport-container-inner">
 				{#if rulersVisible}
 					<LayoutCol class="ruler-or-scrollbar">
 						<RulerInput origin={rulerOrigin.y} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Vertical" bind:this={rulerVertical} />
 					</LayoutCol>
 				{/if}
-				<LayoutCol class="viewport-container" styles={{ cursor: canvasCursor }}>
+				<LayoutCol class="viewport-container-inner" styles={{ cursor: canvasCursor }}>
 					{#if cursorEyedropper}
 						<EyedropperPreview
 							colorChoice={cursorEyedropperPreviewColorChoice}
@@ -498,7 +505,7 @@
 						</svg>
 						<div class="text-input" style:width={canvasWidthCSS} style:height={canvasHeightCSS} style:pointer-events={showTextInput ? "auto" : ""}>
 							{#if showTextInput}
-								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" />
+								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" on:scroll={preventTextEditingScroll} />
 							{/if}
 						</div>
 						<canvas class="overlays" width={canvasWidthRoundedToEven} height={canvasHeightRoundedToEven} style:width={canvasWidthCSS} style:height={canvasHeightCSS} data-overlays-canvas>
@@ -540,7 +547,7 @@
 			padding-bottom: 0;
 		}
 
-		.options-bar {
+		.control-bar {
 			height: 32px;
 			flex: 0 0 auto;
 			margin: 0 4px;
@@ -554,7 +561,7 @@
 			}
 		}
 
-		.shelf-and-table {
+		.tool-shelf-and-viewport-area {
 			// Enables usage of the `100cqh` unit to reference the height of this container element.
 			container-type: size;
 
@@ -579,7 +586,7 @@
 			--columns-width: calc(var(--columns) * var(--tool-width));
 			--columns-width-max: calc(3px * var(--tool-width));
 
-			.shelf {
+			.tool-shelf {
 				flex: 0 0 auto;
 				justify-content: space-between;
 				// A precaution in case the variables above somehow fail
@@ -637,7 +644,7 @@
 					}
 				}
 
-				.shelf-bottom-widgets {
+				.tool-shelf-bottom-widgets {
 					flex: 0 0 auto;
 					align-items: center;
 
@@ -657,7 +664,7 @@
 				}
 			}
 
-			.table {
+			.viewport-container {
 				flex: 1 1 100%;
 
 				.ruler-or-scrollbar {
@@ -692,7 +699,7 @@
 					margin-right: 16px;
 				}
 
-				.viewport-container {
+				.viewport-container-inner {
 					flex: 1 1 100%;
 					position: relative;
 
@@ -721,14 +728,21 @@
 							}
 						}
 
+						.text-input {
+							word-break: break-all;
+						}
+
 						.text-input div {
 							cursor: text;
 							background: none;
 							border: none;
 							margin: 0;
 							padding: 0;
-							overflow: visible;
+							overflow-x: visible;
+							overflow-y: hidden;
+							overflow-wrap: anywhere;
 							white-space: pre-wrap;
+							word-break: normal;
 							display: inline-block;
 							// Workaround to force Chrome to display the flashing text entry cursor when text is empty
 							padding-left: 1px;

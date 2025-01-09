@@ -59,6 +59,13 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		})
 		.collect();
 
+	let input_descriptions: Vec<_> = fields
+		.iter()
+		.map(|field| match field {
+			ParsedField::Regular { description, .. } | ParsedField::Node { description, .. } => description,
+		})
+		.collect();
+
 	let struct_fields = field_names.iter().zip(struct_generics.iter()).map(|(name, gen)| {
 		quote! { pub(super) #name: #gen }
 	});
@@ -282,6 +289,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 							FieldMetadata {
 								name: #input_names,
 								widget_override: #widget_override,
+								description: #input_descriptions,
 								exposed: #exposed,
 								value_source: #value_sources,
 								number_min: #number_min_values,

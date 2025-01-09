@@ -15,7 +15,7 @@ use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_core::text::Font;
+use graphene_core::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Fill, FillType, Gradient};
 use interpreted_executor::dynamic_executor::IntrospectError;
 
@@ -407,7 +407,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					}
 				};
 
-				// TODO: Eventually remove this (probably starting late 2024)
+				// TODO: Eventually remove this document upgrade code
 				// Upgrade all old nodes to support editable subgraphs introduced in #1750
 				if upgrade_from_before_editable_subgraphs {
 					// This can be used, if uncommented, to upgrade demo artwork with outdated document node internals from their definitions. Delete when it's no longer needed.
@@ -461,7 +461,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					};
 
 					// Upgrade Fill nodes to the format change in #1778
-					// TODO: Eventually remove this (probably starting late 2024)
+					// TODO: Eventually remove this document upgrade code
 					let Some(ref reference) = node_metadata.persistent_metadata.reference.clone() else {
 						continue;
 					};
@@ -530,7 +530,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					}
 
 					// Upgrade Text node to include line height and character spacing, which were previously hardcoded to 1, from https://github.com/GraphiteEditor/Graphite/pull/2016
-					if reference == "Text" && inputs_count == 4 {
+					if reference == "Text" && inputs_count != 8 {
 						let node_definition = resolve_document_node_type(reference).unwrap();
 						let document_node = node_definition.default_node_template().document_node;
 						document.network_interface.replace_implementation(node_id, &[], document_node.implementation.clone());
@@ -541,12 +541,34 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), &[]);
 						document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), &[]);
 						document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[3].clone(), &[]);
-						document
-							.network_interface
-							.set_input(&InputConnector::node(*node_id, 4), NodeInput::value(TaggedValue::F64(1.), false), &[]);
-						document
-							.network_interface
-							.set_input(&InputConnector::node(*node_id, 5), NodeInput::value(TaggedValue::F64(1.), false), &[]);
+						document.network_interface.set_input(
+							&InputConnector::node(*node_id, 4),
+							if inputs_count == 6 {
+								old_inputs[4].clone()
+							} else {
+								NodeInput::value(TaggedValue::F64(TypesettingConfig::default().line_height_ratio), false)
+							},
+							&[],
+						);
+						document.network_interface.set_input(
+							&InputConnector::node(*node_id, 5),
+							if inputs_count == 6 {
+								old_inputs[5].clone()
+							} else {
+								NodeInput::value(TaggedValue::F64(TypesettingConfig::default().character_spacing), false)
+							},
+							&[],
+						);
+						document.network_interface.set_input(
+							&InputConnector::node(*node_id, 6),
+							NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_width), false),
+							&[],
+						);
+						document.network_interface.set_input(
+							&InputConnector::node(*node_id, 7),
+							NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false),
+							&[],
+						);
 					}
 
 					// Upgrade Sine, Cosine, and Tangent nodes to include a boolean input for whether the output should be in radians, which was previously the only option but is now not the default
@@ -594,7 +616,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					}
 				}
 
-				// TODO: Eventually remove this (probably starting late 2024)
+				// TODO: Eventually remove this document upgrade code
 				// Upgrade document to the new vector manipulation format introduced in #1676
 				let document_serialized_content = document.serialize_document();
 				if upgrade_vector_manipulation_format && !document_serialized_content.is_empty() {
@@ -952,7 +974,7 @@ impl PortfolioMessageHandler {
 	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) {
 		let new_document = new_document;
 		self.document_ids.push(document_id);
-		new_document.update_layers_panel_options_bar_widgets(responses);
+		new_document.update_layers_panel_control_bar_widgets(responses);
 
 		self.documents.insert(document_id, new_document);
 

@@ -10,7 +10,7 @@ import {
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateWorkingColorsLayout,
-	UpdateNodeGraphBarLayout,
+	UpdateNodeGraphControlBarLayout,
 	UpdateGraphViewOverlay,
 	TriggerDelayedZoomCanvasToFitAll,
 	UpdateGraphFadeArtwork,
@@ -25,7 +25,7 @@ export function createDocumentState(editor: Editor) {
 		documentBarLayout: defaultWidgetLayout(),
 		toolShelfLayout: defaultWidgetLayout(),
 		workingColorsLayout: defaultWidgetLayout(),
-		nodeGraphBarLayout: defaultWidgetLayout(),
+		nodeGraphControlBarLayout: defaultWidgetLayout(),
 		// Graph view overlay
 		graphViewOverlayOpen: false,
 		fadeArtwork: 100,
@@ -84,9 +84,9 @@ export function createDocumentState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphBarLayout, (updateNodeGraphBarLayout) => {
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphControlBarLayout, (updateNodeGraphControlBarLayout) => {
 		update((state) => {
-			patchWidgetLayout(state.nodeGraphBarLayout, updateNodeGraphBarLayout);
+			patchWidgetLayout(state.nodeGraphControlBarLayout, updateNodeGraphControlBarLayout);
 			return state;
 		});
 	});

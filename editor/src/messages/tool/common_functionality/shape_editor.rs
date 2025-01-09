@@ -795,7 +795,7 @@ impl ShapeState {
 			while let Some((anchor, handles)) = missing_anchors.keys().next().copied().and_then(|id| missing_anchors.remove_entry(&id)) {
 				visited.push(anchor);
 
-				// If the adgacent point is just this point then skip
+				// If the adjacent point is just this point then skip
 				let mut handles = handles.map(|handle| (handle.1 != anchor).then_some(handle));
 
 				// If the adjacent points are themselves being deleted, then repeatedly visit the newest agacent points.

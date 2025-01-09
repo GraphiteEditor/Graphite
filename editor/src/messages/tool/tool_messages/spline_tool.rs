@@ -194,9 +194,7 @@ impl Fsm for SplineToolFsmState {
 			document, global_tool_data, input, ..
 		} = tool_action_data;
 
-		let ToolMessage::Spline(event) = event else {
-			return self;
-		};
+		let ToolMessage::Spline(event) = event else { return self };
 		match (self, event) {
 			(_, SplineToolMessage::CanvasTransformed) => self,
 			(SplineToolFsmState::Ready, SplineToolMessage::DragStart) => {

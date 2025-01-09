@@ -1,4 +1,4 @@
-Copyright (c) 2021-2023 Graphite Labs, LLC.
+Copyright (c) 2021-2025 Graphite Labs, LLC.
 
 The design assets in this directory (including SVG code for icons and logos) are NOT licensed under the Apache 2.0 license terms applied to other Graphite source code files. This directory and its entire contents are excluded from the Apache 2.0 source code license, and full copyright is held by the rightsholder for the creative works contained as files herein.
 

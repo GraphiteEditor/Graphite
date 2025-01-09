@@ -43,8 +43,9 @@ pub struct NodeMetadata {
 #[derive(Clone, Debug)]
 pub struct FieldMetadata {
 	pub name: &'static str,
-	pub widget_override: RegistryWidgetOverride,
+	pub description: &'static str,
 	pub exposed: bool,
+	pub widget_override: RegistryWidgetOverride,
 	pub value_source: RegistryValueSource,
 	pub number_min: Option<f64>,
 	pub number_max: Option<f64>,

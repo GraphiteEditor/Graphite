@@ -32,53 +32,99 @@ impl core::hash::Hash for OverlayContext {
 
 impl OverlayContext {
 	pub fn quad(&mut self, quad: Quad, color_fill: Option<&str>) {
+		self.dashed_quad(quad, color_fill, None, None, None);
+	}
+
+	pub fn dashed_quad(&mut self, quad: Quad, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
+		// Set the dash pattern
+		if let Some(dash_width) = dash_width {
+			let dash_gap_width = dash_gap_width.unwrap_or(1.);
+			let array = js_sys::Array::new();
+			array.push(&JsValue::from(dash_width));
+			array.push(&JsValue::from(dash_gap_width));
+
+			if let Some(dash_offset) = dash_offset {
+				if dash_offset != 0. {
+					self.render_context.set_line_dash_offset(dash_offset);
+				}
+			}
+
+			self.render_context
+				.set_line_dash(&JsValue::from(array))
+				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
+				.ok();
+		}
+
 		self.render_context.begin_path();
 		self.render_context.move_to(quad.0[3].x.round() - 0.5, quad.0[3].y.round() - 0.5);
+
 		for i in 0..4 {
 			self.render_context.line_to(quad.0[i].x.round() - 0.5, quad.0[i].y.round() - 0.5);
 		}
+
 		if let Some(color_fill) = color_fill {
 			self.render_context.set_fill_style_str(color_fill);
 			self.render_context.fill();
 		}
+
 		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
 		self.render_context.stroke();
+
+		// Reset the dash pattern back to solid
+		if dash_width.is_some() {
+			self.render_context
+				.set_line_dash(&JsValue::from(js_sys::Array::new()))
+				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
+				.ok();
+		}
+		if dash_offset.is_some() && dash_offset != Some(0.) {
+			self.render_context.set_line_dash_offset(0.);
+		}
 	}
 
 	pub fn line(&mut self, start: DVec2, end: DVec2, color: Option<&str>) {
-		self.dashed_line(start, end, color, None, None)
+		self.dashed_line(start, end, color, None, None, None)
 	}
 
-	pub fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, dash_width: Option<f64>, gap_width: Option<f64>) {
-		let start = start.round() - DVec2::splat(0.5);
-		let end = end.round() - DVec2::splat(0.5);
+	pub fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
+		// Set the dash pattern
 		if let Some(dash_width) = dash_width {
-			let gap_width = gap_width.unwrap_or(1.);
+			let dash_gap_width = dash_gap_width.unwrap_or(1.);
 			let array = js_sys::Array::new();
-			array.push(&JsValue::from(dash_width - 1.));
-			array.push(&JsValue::from(gap_width));
-			self.render_context
-				.set_line_dash(&JsValue::from(array))
-				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
-				.ok();
-		} else {
-			let array = js_sys::Array::new();
+			array.push(&JsValue::from(dash_width));
+			array.push(&JsValue::from(dash_gap_width));
+
+			if let Some(dash_offset) = dash_offset {
+				if dash_offset != 0. {
+					self.render_context.set_line_dash_offset(dash_offset);
+				}
+			}
+
 			self.render_context
 				.set_line_dash(&JsValue::from(array))
 				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
 				.ok();
 		}
+
+		let start = start.round() - DVec2::splat(0.5);
+		let end = end.round() - DVec2::splat(0.5);
+
 		self.render_context.begin_path();
 		self.render_context.move_to(start.x, start.y);
 		self.render_context.line_to(end.x, end.y);
 		self.render_context.set_stroke_style_str(color.unwrap_or(COLOR_OVERLAY_BLUE));
 		self.render_context.stroke();
 
-		// Reset the dash pattern to solid after drawing
-		self.render_context
-			.set_line_dash(&JsValue::from(js_sys::Array::new()))
-			.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
-			.ok();
+		// Reset the dash pattern back to solid
+		if dash_width.is_some() {
+			self.render_context
+				.set_line_dash(&JsValue::from(js_sys::Array::new()))
+				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
+				.ok();
+		}
+		if dash_offset.is_some() && dash_offset != Some(0.) {
+			self.render_context.set_line_dash_offset(0.);
+		}
 	}
 
 	pub fn manipulator_handle(&mut self, position: DVec2, selected: bool) {

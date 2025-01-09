@@ -241,10 +241,7 @@ impl Fsm for GradientToolFsmState {
 			document, global_tool_data, input, ..
 		} = tool_action_data;
 
-		let ToolMessage::Gradient(event) = event else {
-			return self;
-		};
-
+		let ToolMessage::Gradient(event) = event else { return self };
 		match (self, event) {
 			(_, GradientToolMessage::Overlays(mut overlay_context)) => {
 				let selected = tool_data.selected_gradient.as_ref();

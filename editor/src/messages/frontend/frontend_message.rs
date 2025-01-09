@@ -26,13 +26,17 @@ pub enum FrontendMessage {
 	},
 	DisplayEditableTextbox {
 		text: String,
-		#[serde(rename = "lineWidth")]
-		line_width: Option<f64>,
+		#[serde(rename = "lineHeightRatio")]
+		line_height_ratio: f64,
 		#[serde(rename = "fontSize")]
 		font_size: f64,
 		color: Color,
 		url: String,
 		transform: [f64; 6],
+		#[serde(rename = "maxWidth")]
+		max_width: Option<f64>,
+		#[serde(rename = "maxHeight")]
+		max_height: Option<f64>,
 	},
 	DisplayEditableTextboxTransform {
 		transform: [f64; 6],
@@ -106,7 +110,7 @@ pub enum FrontendMessage {
 		#[serde(rename = "copyText")]
 		copy_text: String,
 	},
-	// TODO: Eventually remove this (probably starting late 2024)
+	// TODO: Eventually remove this document upgrade code
 	TriggerUpgradeDocumentToVectorManipulationFormat {
 		#[serde(rename = "documentId")]
 		document_id: DocumentId,
@@ -238,7 +242,7 @@ pub enum FrontendMessage {
 		#[serde(rename = "hintData")]
 		hint_data: HintData,
 	},
-	UpdateLayersPanelOptionsLayout {
+	UpdateLayersPanelControlBarLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
@@ -255,7 +259,7 @@ pub enum FrontendMessage {
 		nodes: Vec<FrontendNode>,
 		wires: Vec<FrontendNodeWire>,
 	},
-	UpdateNodeGraphBarLayout {
+	UpdateNodeGraphControlBarLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,

@@ -679,6 +679,27 @@ pub fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize
 				.on_commit(commit_value)
 				.widget_holder(),
 		]),
+		Some(&TaggedValue::OptionalF64(x)) => {
+			// TODO: Don't wipe out the previously set value (setting it back to the default of 100) when reenabling this checkbox back to Some from None
+			let toggle_enabled = move |checkbox_input: &CheckboxInput| TaggedValue::OptionalF64(if checkbox_input.checked { Some(100.) } else { None });
+			widgets.extend_from_slice(&[
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
+				Separator::new(SeparatorType::Related).widget_holder(),
+				// The checkbox toggles if the value is Some or None
+				CheckboxInput::new(x.is_some())
+					.on_update(update_value(toggle_enabled, node_id, index))
+					.on_commit(commit_value)
+					.widget_holder(),
+				Separator::new(SeparatorType::Related).widget_holder(),
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
+				number_props
+					.value(x)
+					.on_update(update_value(move |x: &NumberInput| TaggedValue::OptionalF64(x.value), node_id, index))
+					.disabled(x.is_none())
+					.on_commit(commit_value)
+					.widget_holder(),
+			]);
+		}
 		_ => {}
 	}
 

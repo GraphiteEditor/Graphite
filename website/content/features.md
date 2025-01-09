@@ -2,7 +2,7 @@
 title = "Graphite features"
 
 [extra]
-css = ["features.css"]
+css = ["/page/features.css", "/component/feature-box.css", "/component/feature-icons.css"]
 +++
 
 <section>
@@ -12,7 +12,7 @@ css = ["features.css"]
 
 The current alpha version of Graphite is a tool for vector art and graphic design. It also supports a limited, experimental raster editing toolset. All this is built around a central node graph that stores layer data and provides a basic—but continually improving—procedural design and nondestructive editing workflow which is a unique feature among vector editing software.
 
-Throughout 2024, stay tuned for major performance improvements, a multiplatform desktop app with native rendering speed, and the beginnings of a full suite of raster editing tools.
+Throughout 2025, stay tuned for major performance improvements, a multiplatform desktop app with native rendering speed, and the beginnings of a full suite of raster editing tools.
 
 </div>
 </section>
@@ -137,10 +137,10 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<img class="atlas" style="--atlas-index: 26" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Interactive graph auto-layout</span>
 		</div>
-		<div class="feature-icon ongoing" title="Development Ongoing">
+		<!-- <div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 0" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Imaginate tool</span>
-		</div>
+		</div> -->
 		<div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Infinitely zoomable/panable content</span>
@@ -149,13 +149,13 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<img class="atlas" style="--atlas-index: 12" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>GPU-accelerated raster rendering</span>
 		</div>
+		<!-- Alpha 4 -->
+		<div class="feature-icon heading" title="Expected to begin February 2025" data-year="Feb. 2025">
+			<h3>— Alpha 4 —</h3>
+		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Lightweight desktop app (with <a target="_blank" href="https://tauri.app/">Tauri</a>)</span>
-		</div>
-		<!-- Alpha 4 -->
-		<div class="feature-icon heading" title="Expected to begin February 2025" data-year="2025">
-			<h3>— Alpha 4 —</h3>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />

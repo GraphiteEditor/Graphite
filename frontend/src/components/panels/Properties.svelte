@@ -30,15 +30,6 @@
 		height: 100%;
 		flex: 1 1 100%;
 
-		.options-bar {
-			min-height: 32px;
-			margin: 0 4px;
-
-			.widget-span {
-				width: 100%;
-			}
-		}
-
 		.sections {
 			flex: 1 1 100%;
 

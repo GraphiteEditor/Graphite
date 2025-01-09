@@ -63,8 +63,7 @@ pub trait Fsm {
 	/// The implementing tool must set this to a struct designed to store the internal values stored in the tool.
 	/// For example, it might be used to store the starting location of a point when a drag began so the displacement distance can be calculated.
 	type ToolData;
-	/// The implementing tool must set this to a struct (or `()` if none) designed to store the values of the tool options set by the user in the Options Bar
-	/// (located above the viewport, below the document's tab).
+	/// The implementing tool must set this to a struct (or `()` if none) designed to store the values of the tool options set by the user in the tool controls portion on the left of the control bar.
 	type ToolOptions;
 
 	/// Implementing this mandatory trait function lets a specific tool react accordingly (and potentially change its state or internal variables) upon receiving an event to do something.

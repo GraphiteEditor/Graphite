@@ -3760,7 +3760,7 @@ impl NodeNetworkInterface {
 		node.implementation = implementation;
 	}
 
-	// TODO: Eventually remove this (probably starting late 2024)
+	// TODO: Eventually remove this document upgrade code
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
 	pub fn replace_implementation_metadata(&mut self, node_id: &NodeId, network_path: &[NodeId], metadata: DocumentNodePersistentMetadata) {
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
@@ -6153,12 +6153,6 @@ impl From<&str> for PropertiesRow {
 		PropertiesRow::with_override(input_name, WidgetOverride::None)
 	}
 }
-
-// impl From<String> for PropertiesRow {
-// 	fn from(input_name: String) -> Self {
-// 		PropertiesRow::with_override(&input_name, with_override)
-// 	}
-// }
 
 impl PropertiesRow {
 	pub fn with_override(input_name: &str, widget_override: WidgetOverride) -> Self {

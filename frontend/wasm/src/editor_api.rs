@@ -433,8 +433,8 @@ impl EditorHandle {
 
 	/// A text box was committed
 	#[wasm_bindgen(js_name = onChangeText)]
-	pub fn on_change_text(&self, new_text: String) -> Result<(), JsValue> {
-		let message = TextToolMessage::TextChange { new_text };
+	pub fn on_change_text(&self, new_text: String, is_right_click: bool) -> Result<(), JsValue> {
+		let message = TextToolMessage::TextChange { new_text, is_right_click };
 		self.dispatch(message);
 
 		Ok(())
@@ -722,7 +722,7 @@ impl EditorHandle {
 		self.dispatch(PortfolioMessage::ImaginatePollServerStatus);
 	}
 
-	// TODO: Eventually remove this (probably starting late 2024)
+	// TODO: Eventually remove this document upgrade code
 	#[wasm_bindgen(js_name = triggerUpgradeDocumentToVectorManipulationFormat)]
 	pub async fn upgrade_document_to_vector_manipulation_format(
 		&self,

@@ -194,9 +194,7 @@ impl Fsm for FreehandToolFsmState {
 			..
 		} = tool_action_data;
 
-		let ToolMessage::Freehand(event) = event else {
-			return self;
-		};
+		let ToolMessage::Freehand(event) = event else { return self };
 		match (self, event) {
 			(_, FreehandToolMessage::Overlays(mut overlay_context)) => {
 				path_endpoint_overlays(document, shape_editor, &mut overlay_context);

@@ -326,9 +326,7 @@ impl Fsm for BrushToolFsmState {
 			responses.add(BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::NoDisplayLegacyWarning));
 		}
 
-		let ToolMessage::Brush(event) = event else {
-			return self;
-		};
+		let ToolMessage::Brush(event) = event else { return self };
 		match (self, event) {
 			(BrushToolFsmState::Ready, BrushToolMessage::DragStart) => {
 				responses.add(DocumentMessage::StartTransaction);

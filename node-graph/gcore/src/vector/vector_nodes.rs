@@ -937,10 +937,10 @@ async fn jitter_points<F: 'n + Send>(
 		match handles {
 			bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
 				*handle_start = vector_data.transform.transform_point2(*handle_start) + start_delta;
-				*handle_end += vector_data.transform.transform_point2(*handle_end) + end_delta;
+				*handle_end = vector_data.transform.transform_point2(*handle_end) + end_delta;
 			}
 			bezier_rs::BezierHandles::Quadratic { handle } => {
-				*handle += vector_data.transform.transform_point2(*handle) + (start_delta + end_delta) / 2.;
+				*handle = vector_data.transform.transform_point2(*handle) + (start_delta + end_delta) / 2.;
 			}
 			bezier_rs::BezierHandles::Linear => {}
 		}
