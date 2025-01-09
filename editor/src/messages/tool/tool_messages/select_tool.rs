@@ -4,15 +4,11 @@ use super::tool_prelude::*;
 use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::{self, TransformIn};
-use crate::messages::portfolio::document::node_graph::utility_types::Direction;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{self, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
-use crate::messages::portfolio::utility_types::PersistentData;
-use crate::messages::portfolio::PortfolioMessageData;
-use crate::messages::preferences::PreferencesMessageHandler;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::graph_modification_utils::{get_text, is_layer_fed_by_node_of_name};
 use crate::messages::tool::common_functionality::pivot::Pivot;
@@ -222,10 +218,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 			// info!("nested mode updated : {:?}", nested_selection_behavior);
 			responses.add(ToolMessage::UpdateHints);
 		}
-		if let ToolMessage::UpdateSelectionMode { selection_mode } = message {
-			self.tool_data.selection_mode = selection_mode;
-			info!("Selection mode updated in SelectTool: {:?}", selection_mode);
-		}
 
 		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, false);
 
@@ -434,8 +426,8 @@ impl Fsm for SelectToolFsmState {
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
 		let ToolActionHandlerData { document, input, font_cache, .. } = tool_action_data;
+		tool_data.selection_mode = tool_action_data.preferences.get_selection_mode();
 		info!("Current selection mode during transition: {:?}", tool_data.selection_mode);
-		// info!("Current nested mode during transition: {:?}", tool_data.nested_selection_behavior);
 		let ToolMessage::Select(event) = event else {
 			return self;
 		};

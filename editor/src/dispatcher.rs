@@ -217,9 +217,11 @@ impl Dispatcher {
 					self.message_handlers.preferences_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::Tool(message) => {
+					let preferences = &self.message_handlers.preferences_message_handler;
 					let document_id = self.message_handlers.portfolio_message_handler.active_document_id().unwrap();
 					if let Some(document) = self.message_handlers.portfolio_message_handler.documents.get_mut(&document_id) {
 						let data = ToolMessageData {
+							preferences,
 							document_id,
 							document,
 							input: &self.message_handlers.input_preprocessor_message_handler,

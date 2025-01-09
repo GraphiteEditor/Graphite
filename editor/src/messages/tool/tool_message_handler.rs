@@ -18,6 +18,7 @@ pub struct ToolMessageData<'a> {
 	pub input: &'a InputPreprocessorMessageHandler,
 	pub persistent_data: &'a PersistentData,
 	pub node_graph: &'a NodeGraphExecutor,
+	pub preferences: &'a PreferencesMessageHandler,
 }
 
 #[derive(Debug, Default)]
@@ -35,6 +36,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 			document,
 			input,
 			persistent_data,
+			preferences,
 			node_graph,
 		} = data;
 		let font_cache = &persistent_data.font_cache;
@@ -86,6 +88,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 							font_cache,
 							shape_editor: &mut self.shape_editor,
 							node_graph,
+							preferences,
 						};
 
 						if let Some(tool_abort_message) = tool.event_to_message_map().tool_abort {
@@ -174,6 +177,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 					input,
 					font_cache,
 					shape_editor: &mut self.shape_editor,
+					preferences,
 					node_graph,
 				};
 
@@ -257,6 +261,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 				if let Some(tool) = tool_data.tools.get_mut(&tool_type) {
 					if tool_type == tool_data.active_tool_type {
 						let mut data = ToolActionHandlerData {
+							preferences,
 							document,
 							document_id,
 							global_tool_data: &self.tool_state.document_tool_data,

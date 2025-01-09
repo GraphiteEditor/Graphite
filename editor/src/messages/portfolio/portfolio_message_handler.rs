@@ -889,12 +889,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				self.persistent_data.use_vello = preferences.use_vello;
 			}
-
-			PortfolioMessage::UpdateSelectionMode { selection_mode } => {
-				self.selection_mode = selection_mode;
-				info!("Selection mode updated to: {:?}", selection_mode);
-				responses.add(Message::Frontend(FrontendMessage::UpdateSelectionMode { selection_mode }));
-			}
 		}
 	}
 

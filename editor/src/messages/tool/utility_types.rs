@@ -9,7 +9,7 @@ use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayProvider;
-use crate::messages::preferences::PreferencesMessageHandler;
+use crate::messages::preferences::{self, PreferencesMessageHandler};
 use crate::messages::prelude::*;
 use crate::node_graph_executor::NodeGraphExecutor;
 
@@ -26,6 +26,7 @@ pub struct ToolActionHandlerData<'a> {
 	pub font_cache: &'a FontCache,
 	pub shape_editor: &'a mut ShapeState,
 	pub node_graph: &'a NodeGraphExecutor,
+	pub preferences: &'a PreferencesMessageHandler,
 }
 impl<'a> ToolActionHandlerData<'a> {
 	pub fn new(
@@ -36,6 +37,7 @@ impl<'a> ToolActionHandlerData<'a> {
 		font_cache: &'a FontCache,
 		shape_editor: &'a mut ShapeState,
 		node_graph: &'a NodeGraphExecutor,
+		preferences: &'a PreferencesMessageHandler,
 	) -> Self {
 		Self {
 			document,
@@ -45,6 +47,7 @@ impl<'a> ToolActionHandlerData<'a> {
 			font_cache,
 			shape_editor,
 			node_graph,
+			preferences,
 		}
 	}
 }

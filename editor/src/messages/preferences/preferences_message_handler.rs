@@ -1,10 +1,6 @@
 use crate::messages::input_mapper::key_mapping::MappingVariant;
-use crate::messages::portfolio::document::DocumentMessageHandler;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
-use crate::messages::tool::tool_messages::select_tool::SelectTool;
-use crate::messages::tool::ToolMessageData;
-use graph_craft::document;
 use graph_craft::wasm_application_io::EditorPreferences;
 
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -17,6 +13,10 @@ pub struct PreferencesMessageHandler {
 }
 
 impl PreferencesMessageHandler {
+	pub fn get_selection_mode(&self) -> SelectionMode {
+		self.selection_mode
+	}
+
 	pub fn editor_preferences(&self) -> EditorPreferences {
 		EditorPreferences {
 			imaginate_hostname: self.imaginate_server_hostname.clone(),
@@ -107,7 +107,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			PreferencesMessage::SelectionMode { selection_mode } => {
 				info!("Setting selection mode to: {:?}", selection_mode);
 				self.selection_mode = selection_mode;
-				responses.add(PortfolioMessage::UpdateSelectionMode { selection_mode });
+				responses.add(FrontendMessage::UpdateSelectionMode { selection_mode });
 			}
 		}
 		responses.add(FrontendMessage::TriggerSavePreferences { preferences: self.clone() });

@@ -122,7 +122,4 @@ pub enum PortfolioMessage {
 	UpdateDocumentWidgets,
 	UpdateOpenDocumentsList,
 	UpdateVelloPreference,
-	UpdateSelectionMode {
-		selection_mode: SelectionMode,
-	},
 }

@@ -133,6 +133,9 @@ export class UpdateWirePathInProgress extends JsMessage {
 export class UpdateZoomWithScroll extends JsMessage {
 	readonly zoomWithScroll!: boolean;
 }
+export class UpdateSelectionMode extends JsMessage {
+	readonly selectionMode!: SelectionMode;
+}
 
 // Allows the auto save system to use a string for the id rather than a BigInt.
 // IndexedDb does not allow for BigInts as primary keys.
@@ -1629,5 +1632,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateWirePathInProgress,
 	UpdateWorkingColorsLayout,
 	UpdateZoomWithScroll,
+	UpdateSelectionMode,
 } as const;
 export type JsMessageType = keyof typeof messageMakers;
