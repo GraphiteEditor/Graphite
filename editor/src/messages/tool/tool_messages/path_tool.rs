@@ -648,19 +648,7 @@ impl Fsm for PathToolFsmState {
 				self
 			}
 			(Self::InsertPoint, PathToolMessage::Escape | PathToolMessage::Delete | PathToolMessage::RightClick) => tool_data.end_insertion(shape_editor, responses, InsertEndKind::Abort),
-			(Self::InsertPoint, PathToolMessage::GRS { key: propagate }) => {
-				// MAYBE: use `InputMapperMessage::KeyDown(..)` instead
-				match propagate {
-					// TODO: Don't use `Key::G` directly, instead take it as a variable from the input mappings list like in all other places
-					Key::KeyG => responses.add(TransformLayerMessage::BeginGrab),
-					// TODO: Don't use `Key::R` directly, instead take it as a variable from the input mappings list like in all other places
-					Key::KeyR => responses.add(TransformLayerMessage::BeginRotate),
-					// TODO: Don't use `Key::S` directly, instead take it as a variable from the input mappings list like in all other places
-					Key::KeyS => responses.add(TransformLayerMessage::BeginScale),
-					_ => warn!("Unexpected GRS key"),
-				}
-				tool_data.end_insertion(shape_editor, responses, InsertEndKind::Abort)
-			}
+			(Self::InsertPoint, PathToolMessage::GRS { key: _ }) => PathToolFsmState::InsertPoint,
 			// Mouse down
 			(
 				_,

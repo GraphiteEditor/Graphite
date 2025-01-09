@@ -43,6 +43,7 @@ type TransformData<'a> = (&'a DocumentMessageHandler, &'a InputPreprocessorMessa
 impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayerMessageHandler {
 	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (document, input, tool_data, shape_editor): TransformData) {
 		let using_path_tool = tool_data.active_tool_type == ToolType::Path;
+		let using_select_tool = tool_data.active_tool_type == ToolType::Select;
 
 		// TODO: Add support for transforming layer not in the document network
 		let selected_layers = document
@@ -120,6 +121,17 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			TransformLayerMessage::BeginGrab => {
+				if !(using_path_tool || using_select_tool) {
+					return;
+				}
+				let points = shape_editor.selected_points();
+				let selected_points: Vec<&ManipulatorPointId> = points.collect();
+
+				if using_path_tool && selected_points.is_empty() {
+					responses.add(TransformLayerMessage::CancelTransformOperation);
+					return;
+				}
+
 				if let TransformOperation::Grabbing(_) = self.transform_operation {
 					return;
 				}
@@ -136,6 +148,56 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				selected.original_transforms.clear();
 			}
 			TransformLayerMessage::BeginRotate => {
+				if !(using_path_tool || using_select_tool) {
+					return;
+				}
+				let Some(&layer) = selected_layers.first() else {
+					return;
+				};
+				let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
+					return;
+				};
+				let points = shape_editor.selected_points();
+				let selected_points: Vec<&ManipulatorPointId> = points.collect();
+
+				if using_path_tool && selected_points.is_empty() {
+					responses.add(TransformLayerMessage::CancelTransformOperation);
+					return;
+				}
+
+				if selected_points.len() == 1 {
+					if let Some(point) = selected_points.first() {
+						match point {
+							ManipulatorPointId::Anchor(_) => {
+								if let Some([handle1, handle2]) = point.get_handle_pair(&vector_data) {
+									if (handle1.get_handle_length(&vector_data) == 0.0 && handle2.get_handle_length(&vector_data) == 0.0)
+										|| (handle1.get_handle_length(&vector_data) == f64::MAX && handle2.get_handle_length(&vector_data) == f64::MAX)
+									{
+										self.transform_operation = TransformOperation::None;
+
+										responses.add(TransformLayerMessage::CancelTransformOperation);
+										return;
+									}
+								}
+							}
+							_ => {
+								let handle_position = point.get_position(&vector_data);
+								let anchor_position = point.get_anchor_position(&vector_data);
+
+								if let (Some(handle_pos), Some(anchor_pos)) = (handle_position, anchor_position) {
+									// Calculate the distance between the handle and anchor
+									let distance = (handle_pos - anchor_pos).length();
+
+									// If the distance is zero, return early
+									if distance == 0.0 {
+										return;
+									}
+								}
+							}
+						}
+					}
+				}
+
 				if let TransformOperation::Rotating(_) = self.transform_operation {
 					return;
 				}
@@ -152,6 +214,39 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				selected.original_transforms.clear();
 			}
 			TransformLayerMessage::BeginScale => {
+				if !(using_path_tool || using_select_tool) {
+					return;
+				}
+				let Some(&layer) = selected_layers.first() else {
+					return;
+				};
+				let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
+					return;
+				};
+
+				let points = shape_editor.selected_points();
+				let selected_points: Vec<&ManipulatorPointId> = points.collect();
+
+				if using_path_tool && selected_points.is_empty() {
+					responses.add(TransformLayerMessage::CancelTransformOperation);
+					return;
+				}
+
+				if selected_points.len() == 1 {
+					if let Some(point) = selected_points.first() {
+						if let ManipulatorPointId::Anchor(_) = point {
+							if let Some([handle1, handle2]) = point.get_handle_pair(&vector_data) {
+								if (handle1.get_handle_length(&vector_data) == 0.0 && handle2.get_handle_length(&vector_data) == 0.0)
+									|| (handle1.get_handle_length(&vector_data) == f64::MAX && handle2.get_handle_length(&vector_data) == f64::MAX)
+								{
+									responses.add(TransformLayerMessage::CancelTransformOperation);
+									return;
+								}
+							}
+						}
+					}
+				}
+
 				if let TransformOperation::Scaling(_) = self.transform_operation {
 					return;
 				}

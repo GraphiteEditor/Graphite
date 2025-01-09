@@ -403,6 +403,13 @@ impl HandleId {
 		}
 	}
 
+	pub fn get_handle_length(self, vector_data: &VectorData) -> f64 {
+		let anchor_position = self.to_manipulator_point().get_anchor_position(&vector_data).unwrap();
+		let handle_position = self.to_manipulator_point().get_position(&vector_data);
+		let handle_length = handle_position.map(|pos| (pos - anchor_position).length()).unwrap_or(f64::MAX);
+		handle_length
+	}
+
 	/// Set the handle's position relative to the anchor which is the start anchor for the primary handle and end anchor for the end handle.
 	#[must_use]
 	pub fn set_relative_position(self, relative_position: DVec2) -> VectorModificationType {
