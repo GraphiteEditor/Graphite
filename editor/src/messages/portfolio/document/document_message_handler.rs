@@ -1654,9 +1654,18 @@ impl DocumentMessageHandler {
 
 	/// Finds the artboard that bounds the point in viewport space and be the container of any newly added layers.
 	pub fn new_layer_bounding_artboard(&self, ipp: &InputPreprocessorMessageHandler) -> LayerNodeIdentifier {
-		self.click_xray(ipp)
+		let container_based_on_selection = self.new_layer_parent(true);
+
+		let container_based_on_clicked_artboard = self
+			.click_xray(ipp)
 			.find(|layer| self.network_interface.is_artboard(&layer.to_node(), &[]))
-			.unwrap_or(LayerNodeIdentifier::ROOT_PARENT)
+			.unwrap_or(LayerNodeIdentifier::ROOT_PARENT);
+
+		if container_based_on_selection.ancestors(self.metadata()).any(|ancestor| ancestor == container_based_on_clicked_artboard) {
+			container_based_on_selection
+		} else {
+			container_based_on_clicked_artboard
+		}
 	}
 
 	/// Finds the parent folder which, based on the current selections, should be the container of any newly added layers.
