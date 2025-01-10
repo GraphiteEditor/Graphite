@@ -384,13 +384,12 @@ pub fn input_mappings() -> Mapping {
 		//
 		// NavigationMessage
 		entry!(KeyDown(MouseMiddle); modifiers=[Alt], action_dispatch=NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: false }),
-		entry!(KeyDown(Command); action_dispatch=NavigationMessage::SetCursorState { is_active: true }),
-		entry!(PointerMove; modifiers=[Command], action_dispatch=NavigationMessage::SetCursorState { is_active: true }),
-		entry!(KeyUp(Command); action_dispatch=NavigationMessage::SetCursorState { is_active: false }),
+		entry!(KeyDownNoRepeat(Space); action_dispatch=NavigationMessage::SetCursorState { is_active: true }),
+		entry!(KeyUp(Space); action_dispatch=NavigationMessage::SetCursorState { is_active: false }),
 		entry!(KeyDown(MouseMiddle); modifiers=[Shift], action_dispatch=NavigationMessage::BeginCanvasZoom),
 		entry!(KeyDown(MouseLeft); modifiers=[Shift, Space], action_dispatch=NavigationMessage::BeginCanvasZoom),
 		entry!(KeyDown(MouseMiddle); action_dispatch=NavigationMessage::BeginCanvasPan),
-		entry!(KeyDown(MouseLeft); modifiers=[Command], action_dispatch=NavigationMessage::BeginCanvasPan),
+		entry!(KeyDown(MouseLeft); modifiers=[Space], action_dispatch=NavigationMessage::BeginCanvasPan),
 		entry!(KeyDown(NumpadAdd); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }),
 		entry!(KeyDown(Equal); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }),
 		entry!(KeyDown(Minus); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }),
