@@ -171,7 +171,7 @@ pub fn solve_cubic(a: f64, b: f64, c: f64, d: f64) -> [Option<f64>; 3] {
 	}
 }
 
-/// Check if two rectangles have any overlap. The rectangles are represented by a pair of coordinates that designate the top left and bottom right corners (in a graphical coordinate system).
+/// Determines if two rectangles have any overlap. The rectangles are represented by a pair of coordinates that designate the top left and bottom right corners (in a graphical coordinate system).
 pub fn do_rectangles_overlap(rectangle1: [DVec2; 2], rectangle2: [DVec2; 2]) -> bool {
 	let [bottom_left1, top_right1] = rectangle1;
 	let [bottom_left2, top_right2] = rectangle2;
@@ -179,13 +179,13 @@ pub fn do_rectangles_overlap(rectangle1: [DVec2; 2], rectangle2: [DVec2; 2]) -> 
 	top_right1.x >= bottom_left2.x && top_right2.x >= bottom_left1.x && top_right2.y >= bottom_left1.y && top_right1.y >= bottom_left2.y
 }
 
-/// Check if a point is completely inside rectangle which is respresented as pair of coordinates [top-left, bottom-right].
+/// Determines if a point is completely inside a rectangle, which is represented as a pair of coordinates [top-left, bottom-right].
 pub fn is_point_inside_rectangle(rect: [DVec2; 2], point: DVec2) -> bool {
-	let [top_left, bottom_rigth] = rect;
-	point.x > top_left.x && point.x < bottom_rigth.x && point.y > top_left.y && point.y < bottom_rigth.y
+	let [top_left, bottom_right] = rect;
+	point.x > top_left.x && point.x < bottom_right.x && point.y > top_left.y && point.y < bottom_right.y
 }
 
-/// Check if inner rectangle is completely inside outer rectangle. The rectangles are represented as pair of coordinates [top-left, bottom-right].
+/// Determines if the inner rectangle is completely inside the outer rectangle. The rectangles are represented as pairs of coordinates [top-left, bottom-right].
 pub fn is_rectangle_inside_other(inner: [DVec2; 2], outer: [DVec2; 2]) -> bool {
 	is_point_inside_rectangle(outer, inner[0]) && is_point_inside_rectangle(outer, inner[1])
 }
