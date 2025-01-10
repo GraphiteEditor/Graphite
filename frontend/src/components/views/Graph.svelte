@@ -185,14 +185,25 @@
 			];
 		} else {
 			// Both horizontal - use horizontal middle point
-
-			const midX = (outConnectorX + inConnectorX) / 2;
-			return [
-				{ x: outConnectorX, y: outConnectorY },
-				{ x: midX - halfLineWidth, y: outConnectorY },
-				{ x: midX - halfLineWidth, y: inConnectorY },
-				{ x: inConnectorX, y: inConnectorY },
-			];
+			if (outConnectorX > inConnectorX) {
+				const midY = (inConnectorY + outConnectorY) / 2;
+				return [
+					{ x: outConnectorX, y: outConnectorY },
+					{ x: outConnectorX + gridSpacing, y: outConnectorY },
+					{ x: outConnectorX + gridSpacing, y: midY },
+					{ x: inConnectorX - gridSpacing, y: midY },
+					{ x: inConnectorX - gridSpacing, y: inConnectorY },
+					{ x: inConnectorX, y: inConnectorY },
+				];
+			} else {
+				const midX = (outConnectorX + inConnectorX) / 2 + (((outConnectorX + inConnectorX) / 2) % gridSpacing);
+				return [
+					{ x: outConnectorX, y: outConnectorY },
+					{ x: midX - halfLineWidth, y: outConnectorY },
+					{ x: midX - halfLineWidth, y: inConnectorY },
+					{ x: inConnectorX, y: inConnectorY },
+				];
+			}
 		}
 	}
 
