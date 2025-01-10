@@ -1,5 +1,5 @@
 use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, STRICT_MAX_ABSOLUTE_DIFFERENCE};
-use crate::ManipulatorGroup;
+use crate::{ManipulatorGroup, Subpath};
 
 use glam::{BVec2, DMat2, DVec2};
 
@@ -171,12 +171,23 @@ pub fn solve_cubic(a: f64, b: f64, c: f64, d: f64) -> [Option<f64>; 3] {
 	}
 }
 
-/// Determine if two rectangles have any overlap. The rectangles are represented by a pair of coordinates that designate the top left and bottom right corners (in a graphical coordinate system).
+/// Determines if two rectangles have any overlap. The rectangles are represented by a pair of coordinates that designate the top left and bottom right corners (in a graphical coordinate system).
 pub fn do_rectangles_overlap(rectangle1: [DVec2; 2], rectangle2: [DVec2; 2]) -> bool {
 	let [bottom_left1, top_right1] = rectangle1;
 	let [bottom_left2, top_right2] = rectangle2;
 
 	top_right1.x >= bottom_left2.x && top_right2.x >= bottom_left1.x && top_right2.y >= bottom_left1.y && top_right1.y >= bottom_left2.y
+}
+
+/// Determines if a point is completely inside a rectangle, which is represented as a pair of coordinates [top-left, bottom-right].
+pub fn is_point_inside_rectangle(rect: [DVec2; 2], point: DVec2) -> bool {
+	let [top_left, bottom_right] = rect;
+	point.x > top_left.x && point.x < bottom_right.x && point.y > top_left.y && point.y < bottom_right.y
+}
+
+/// Determines if the inner rectangle is completely inside the outer rectangle. The rectangles are represented as pairs of coordinates [top-left, bottom-right].
+pub fn is_rectangle_inside_other(inner: [DVec2; 2], outer: [DVec2; 2]) -> bool {
+	is_point_inside_rectangle(outer, inner[0]) && is_point_inside_rectangle(outer, inner[1])
 }
 
 /// Returns the intersection of two lines. The lines are given by a point on the line and its slope (represented by a vector).
@@ -286,7 +297,7 @@ pub fn compute_circular_subpath_details<PointId: crate::Identifier>(left: DVec2,
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
+	use crate::{consts::MAX_ABSOLUTE_DIFFERENCE, Bezier, EmptyId};
 
 	/// Compare vectors of `f64`s with a provided max absolute value difference.
 	fn f64_compare_vector(a: Vec<f64>, b: Vec<f64>, max_abs_diff: f64) -> bool {
@@ -350,6 +361,16 @@ mod tests {
 		assert!(!do_rectangles_overlap([DVec2::new(0., 0.), DVec2::new(10., 10.)], [DVec2::new(20., 0.), DVec2::new(30., 10.)]));
 		// No overlap, rectangles are above and below each other
 		assert!(!do_rectangles_overlap([DVec2::new(0., 0.), DVec2::new(10., 10.)], [DVec2::new(0., 20.), DVec2::new(20., 30.)]));
+	}
+
+	#[test]
+	fn test_is_rectangle_inside_other() {
+		assert!(!is_rectangle_inside_other([DVec2::new(10., 10.), DVec2::new(50., 50.)], [DVec2::new(10., 10.), DVec2::new(50., 50.)]));
+		assert!(is_rectangle_inside_other(
+			[DVec2::new(10.01, 10.01), DVec2::new(49., 49.)],
+			[DVec2::new(10., 10.), DVec2::new(50., 50.)]
+		));
+		assert!(!is_rectangle_inside_other([DVec2::new(5., 5.), DVec2::new(50., 9.99)], [DVec2::new(10., 10.), DVec2::new(50., 50.)]));
 	}
 
 	#[test]

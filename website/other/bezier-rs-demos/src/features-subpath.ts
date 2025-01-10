@@ -142,6 +142,27 @@ const subpathFeatures = {
 			),
 		inputOptions: [intersectionErrorOptions, minimumSeparationOptions],
 	},
+	"inside-other": {
+		name: "Inside (Other Subpath)",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string =>
+			subpath.inside_subpath(
+				[
+					[40, 40],
+					[160, 40],
+					[160, 80],
+					[200, 100],
+					[160, 120],
+					[160, 160],
+					[40, 160],
+					[40, 120],
+					[80, 100],
+					[40, 80],
+				],
+				options.error,
+				options.minimum_separation,
+			),
+		inputOptions: [intersectionErrorOptions, minimumSeparationOptions],
+	},
 	curvature: {
 		name: "Curvature",
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.curvature(options.t, SUBPATH_T_VALUE_VARIANTS[options.TVariant]),
