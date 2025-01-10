@@ -100,8 +100,7 @@
 
 		const pathString = buildWirePathString(outputPortRect, inputPortRect, verticalOut, verticalIn);
 		const dataType = (outputPort.getAttribute("data-datatype") as FrontendGraphDataType) || "General";
-		const thick = (verticalIn && verticalOut) || (verticalOut && !verticalIn);
-
+		const thick = verticalIn && verticalOut;
 		return { pathString, dataType, thick, dashed };
 	}
 
@@ -136,6 +135,8 @@
 	function buildWirePathLocations(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): { x: number; y: number }[] {
 		if (!nodesContainer) return [];
 
+		const lineWidth = 2;
+		const halfLineWidth = lineWidth / 2;
 		const VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP = 1;
 		const containerBounds = nodesContainer.getBoundingClientRect();
 
@@ -188,8 +189,8 @@
 			const midX = (outConnectorX + inConnectorX) / 2;
 			return [
 				{ x: outConnectorX, y: outConnectorY },
-				{ x: midX, y: outConnectorY },
-				{ x: midX, y: inConnectorY },
+				{ x: midX - halfLineWidth, y: outConnectorY },
+				{ x: midX - halfLineWidth, y: inConnectorY },
 				{ x: inConnectorX, y: inConnectorY },
 			];
 		}
