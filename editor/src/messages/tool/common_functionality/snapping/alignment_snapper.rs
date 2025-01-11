@@ -19,7 +19,7 @@ impl AlignmentSnapper {
 		let document = snap_data.document;
 
 		self.bounding_box_points.clear();
-		if !document.snapping_state.bounding_box.align_with_corner_point {
+		if !document.snapping_state.bounding_box.align_with_edges {
 			return;
 		}
 
