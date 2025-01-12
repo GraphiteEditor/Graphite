@@ -1,9 +1,11 @@
-use crate::consts::SLOWING_DIVISOR;
+use crate::consts::{SLOWING_DIVISOR, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_SNAP_BACKGROUND};
+use crate::messages::portfolio::document::overlays::utility_types::Pivot;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, Typing};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
-use crate::messages::tool::utility_types::{ToolData, ToolType};
+use crate::messages::tool::utility_types::{ToolData, ToolType, ToolTransition, EventToMessageMap};
+
 
 use graphene_core::vector::ManipulatorPointId;
 
@@ -36,6 +38,16 @@ impl TransformLayerMessageHandler {
 			_ => Axis::Both,
 		};
 		self.transform_operation.hints(self.snap, axis_constraint, responses);
+	}
+}
+
+impl ToolTransition for TransformLayerMessageHandler {
+	fn event_to_message_map(&self) -> EventToMessageMap {
+		EventToMessageMap {
+			tool_abort: Some(TransformLayerMessage::CancelTransformOperation.into()),
+			overlay_provider: Some(|overlay_context| TransformLayerMessage::Overlays(overlay_context).into()),
+			..Default::default()
+		}
 	}
 }
 
@@ -92,6 +104,30 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 		};
 
 		match message {
+			TransformLayerMessage::Overlays(overlay_context) => {
+				debug!("We were here");
+				let axis_constraint = match self.transform_operation {
+					TransformOperation::Grabbing(grabbing) => grabbing.constraint,
+					TransformOperation::Scaling(scaling) => scaling.constraint,
+					_ => Axis::Both,
+				};
+
+				let axis_text = |vector: DVec2, separate: bool| match (axis_constraint, separate) {
+					(Axis::Both, false) => format!("by {:.3}", vector.x),
+					(Axis::Both, true) => format!("by {:.3}, {:.3}", vector.x, vector.y),
+					(Axis::X, _) => format!("X by {:.3}", vector.x),
+					(Axis::Y, _) => format!("Y by {:.3}", vector.y),
+				};
+				let grs_value_text = match self.transform_operation {
+					TransformOperation::None => String::new(),
+					// TODO: Fix that the translation is showing numbers in viewport space, not document space
+					TransformOperation::Grabbing(translation) => format!("Translating {}", axis_text(translation.to_dvec(), true)),
+					TransformOperation::Rotating(rotation) => format!("Rotating by {:.3}°", rotation.to_f64(self.snap) * 360. / std::f64::consts::TAU),
+					TransformOperation::Scaling(scale) => format!("Scaling {}", axis_text(scale.to_dvec(self.snap), false)),
+				};
+				let transform = glam::DAffine2::from_translation(  DVec2::new(327.0, -35.0));
+				overlay_context.text(&grs_value_text, COLOR_OVERLAY_WHITE, Some(COLOR_OVERLAY_SNAP_BACKGROUND), transform, 4., [Pivot::Start, Pivot::End]);
+			}
 			TransformLayerMessage::ApplyTransformOperation => {
 				selected.original_transforms.clear();
 
@@ -118,6 +154,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				self.transform_operation = TransformOperation::Grabbing(Default::default());
 
 				selected.original_transforms.clear();
+
+				responses.add(OverlaysMessage::Draw);
 			}
 			TransformLayerMessage::BeginRotate => {
 				if let TransformOperation::Rotating(_) = self.transform_operation {
@@ -134,6 +172,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				self.transform_operation = TransformOperation::Rotating(Default::default());
 
 				selected.original_transforms.clear();
+
+				responses.add(OverlaysMessage::Draw);
 			}
 			TransformLayerMessage::BeginScale => {
 				if let TransformOperation::Scaling(_) = self.transform_operation {
@@ -150,6 +190,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				self.transform_operation = TransformOperation::Scaling(Default::default());
 
 				selected.original_transforms.clear();
+
+				responses.add(OverlaysMessage::Draw);
 			}
 			TransformLayerMessage::CancelTransformOperation => {
 				selected.revert_operation();
