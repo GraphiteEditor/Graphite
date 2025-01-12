@@ -135,6 +135,7 @@
 	function buildWirePathLocations(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): { x: number; y: number }[] {
 		if (!nodesContainer) return [];
 
+		const scale = $nodeGraph.transform.scale; // Get the current scale
 		const lineWidth = 2;
 		const halfLineWidth = lineWidth / 2;
 		const VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP = 1;
@@ -142,13 +143,13 @@
 
 		const outX = verticalOut ? outputBounds.x + outputBounds.width / 2 : outputBounds.x + outputBounds.width - 1;
 		const outY = verticalOut ? outputBounds.y + VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP : outputBounds.y + outputBounds.height / 2;
-		const outConnectorX = (outX - containerBounds.x) / $nodeGraph.transform.scale;
-		const outConnectorY = (outY - containerBounds.y) / $nodeGraph.transform.scale;
+		const outConnectorX = Math.round((outX - containerBounds.x) / scale); // Adjust for scale
+		const outConnectorY = Math.round((outY - containerBounds.y) / scale); // Adjust for scale
 
 		const inX = verticalIn ? inputBounds.x + inputBounds.width / 2 : inputBounds.x + 1;
 		const inY = verticalIn ? inputBounds.y + inputBounds.height - VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP : inputBounds.y + inputBounds.height / 2;
-		const inConnectorX = (inX - containerBounds.x) / $nodeGraph.transform.scale;
-		const inConnectorY = (inY - containerBounds.y) / $nodeGraph.transform.scale;
+		const inConnectorX = Math.round((inX - containerBounds.x) / scale); // Adjust for scale
+		const inConnectorY = Math.round((inY - containerBounds.y) / scale); // Adjust for scale
 
 		// Handle straight lines
 		if ((verticalOut && verticalIn && outConnectorX === inConnectorX) || (!verticalOut && !verticalIn && outConnectorY === inConnectorY)) {
@@ -167,12 +168,21 @@
 		}
 
 		// Handle standard right-angle paths
-		if (verticalOut) {
+		if (verticalOut && inConnectorX > outConnectorX) {
 			// Start vertical, then horizontal
 
 			return [
 				{ x: outConnectorX, y: outConnectorY },
 				{ x: outConnectorX, y: inConnectorY },
+				{ x: inConnectorX, y: inConnectorY },
+			];
+		} else if (verticalOut && inConnectorX <= outConnectorX) {
+			const midY = (inConnectorY + outConnectorY) / 2 + (((inConnectorY + outConnectorY) / 2) % gridSpacing);
+			return [
+				{ x: outConnectorX, y: outConnectorY },
+				{ x: outConnectorX, y: midY + 5.5 * lineWidth },
+				{ x: inConnectorX - gridSpacing + lineWidth, y: midY + 5.5 * lineWidth },
+				{ x: inConnectorX - gridSpacing + lineWidth, y: inConnectorY },
 				{ x: inConnectorX, y: inConnectorY },
 			];
 		} else if (verticalIn) {
@@ -185,7 +195,35 @@
 			];
 		} else {
 			// Both horizontal - use horizontal middle point
-			if (outConnectorX > inConnectorX) {
+			// Whwn outConnector point is one of the two closest diagonally opposite points.
+			if (0 <= inConnectorX - outConnectorX && inConnectorX - outConnectorX <= gridSpacing && inConnectorY - outConnectorY >= -1 * gridSpacing && inConnectorY - outConnectorY <= gridSpacing) {
+				return [
+					{ x: outConnectorX - 2 * lineWidth, y: outConnectorY },
+					{ x: outConnectorX - 2 * lineWidth, y: inConnectorY },
+					{ x: inConnectorX, y: inConnectorY },
+				];
+			}
+
+			// When inConnector point lies on the horizontal line above and below the outConnector point.
+			else if (-1 * gridSpacing <= outConnectorY - inConnectorY && outConnectorY - inConnectorY <= gridSpacing && outConnectorX > inConnectorX) {
+				if (inConnectorY < outConnectorY) {
+					return [
+						{ x: outConnectorX, y: outConnectorY },
+						{ x: outConnectorX, y: inConnectorY - gridSpacing },
+						{ x: inConnectorX - gridSpacing, y: inConnectorY - gridSpacing },
+						{ x: inConnectorX - gridSpacing, y: inConnectorY },
+						{ x: inConnectorX, y: inConnectorY },
+					];
+				} else {
+					return [
+						{ x: outConnectorX, y: outConnectorY },
+						{ x: outConnectorX, y: inConnectorY + gridSpacing },
+						{ x: inConnectorX - gridSpacing, y: inConnectorY + gridSpacing },
+						{ x: inConnectorX - gridSpacing, y: inConnectorY },
+						{ x: inConnectorX, y: inConnectorY },
+					];
+				}
+			} else if (outConnectorX > inConnectorX - gridSpacing) {
 				const midY = (inConnectorY + outConnectorY) / 2 + (((inConnectorY + outConnectorY) / 2) % gridSpacing);
 				return [
 					{ x: outConnectorX, y: outConnectorY },
@@ -193,6 +231,15 @@
 					{ x: outConnectorX + gridSpacing - 2 * lineWidth, y: midY },
 					{ x: inConnectorX - gridSpacing + lineWidth, y: midY },
 					{ x: inConnectorX - gridSpacing + lineWidth, y: inConnectorY },
+					{ x: inConnectorX, y: inConnectorY },
+				];
+			}
+			// when inConnector point lies on the vertical grid line two units to the right of outConnector point.
+			else if (gridSpacing <= inConnectorX - outConnectorX && inConnectorX - outConnectorX <= 2 * gridSpacing) {
+				return [
+					{ x: outConnectorX, y: outConnectorY },
+					{ x: outConnectorX + gridSpacing - 2 * lineWidth, y: outConnectorY },
+					{ x: outConnectorX + gridSpacing - 2 * lineWidth, y: inConnectorY },
 					{ x: inConnectorX, y: inConnectorY },
 				];
 			} else {
