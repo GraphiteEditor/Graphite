@@ -61,9 +61,10 @@ pub trait DynAny<'a>: 'a {
 	fn reborrow_box<'short>(self: Box<Self>) -> Box<dyn DynAny<'short> + 'short>
 	where
 		'a: 'short;
-	fn reborrow_ref<'short>(&'a self) -> &'short (dyn DynAny<'short> + 'short)
+	fn reborrow_ref<'short>(&'a self) -> &'short (dyn DynAny<'short> + Send + Sync + 'short)
 	where
-		'a: 'short;
+		'a: 'short,
+		Self: Send + Sync;
 }
 
 impl<'a, T: StaticType + 'a> DynAny<'a> for T {
@@ -81,9 +82,10 @@ impl<'a, T: StaticType + 'a> DynAny<'a> for T {
 		self
 	}
 
-	fn reborrow_ref<'short>(&'a self) -> &'short (dyn DynAny<'short> + 'short)
+	fn reborrow_ref<'short>(&'a self) -> &'short (dyn DynAny<'short> + Send + Sync + 'short)
 	where
 		'a: 'short,
+		Self: Send + Sync,
 	{
 		self
 	}

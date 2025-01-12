@@ -3,21 +3,23 @@ use core::borrow::Borrow;
 use crate::transform::Footprint;
 use dyn_any::DynAny;
 
-pub trait ExtractFootprint {
+pub trait Ctx {}
+
+pub trait ExtractFootprint: Ctx {
 	fn footprint(&self) -> Option<&Footprint>;
 }
 
-pub trait ExtractTime {
+pub trait ExtractTime: Ctx {
 	fn time(&self) -> Option<f64>;
 }
 
-pub trait ExtractIndex {
+pub trait ExtractIndex: Ctx {
 	fn index(&self) -> Option<usize>;
 }
 
-pub trait ExtractVarArgs {
+pub trait ExtractVarArgs: Ctx {
 	// Call this lifetime 'b so it is less likely to coflict when auto generating the function signature for implementation
-	fn vararg<'b>(&'b self, index: usize) -> Result<impl DynAny<'b>, VarArgsResult>
+	fn vararg<'b>(&'b self, index: usize) -> Result<impl DynAny<'b> + Send + Sync, VarArgsResult>
 	where
 		Self: 'b;
 }
@@ -27,6 +29,7 @@ pub enum VarArgsResult {
 	IndexOutOfBounds,
 	NoVarArgs,
 }
+impl<T: Ctx> Ctx for Option<&T> {}
 
 impl<T: ExtractFootprint> ExtractFootprint for Option<&T> {
 	fn footprint(&self) -> Option<&Footprint> {
@@ -53,6 +56,8 @@ impl<T: ExtractVarArgs> ExtractVarArgs for Option<&T> {
 	}
 }
 
+impl Ctx for ContextImpl<'_> {}
+
 impl ExtractFootprint for ContextImpl<'_> {
 	fn footprint(&self) -> Option<&Footprint> {
 		self.footprint
@@ -69,7 +74,7 @@ impl ExtractIndex for ContextImpl<'_> {
 	}
 }
 impl ExtractVarArgs for ContextImpl<'_> {
-	fn vararg<'b>(&'b self, index: usize) -> Result<impl DynAny<'b>, VarArgsResult>
+	fn vararg<'b>(&'b self, index: usize) -> Result<impl DynAny<'b> + Send + Sync, VarArgsResult>
 	where
 		Self: 'b,
 	{
@@ -79,12 +84,12 @@ impl ExtractVarArgs for ContextImpl<'_> {
 }
 
 pub type Context<'a> = Option<&'a ContextImpl<'a>>;
-type DynRef<'a> = &'a (dyn DynAny<'a> + 'a);
+type DynRef<'a> = &'a (dyn DynAny<'a> + 'a + Send + Sync);
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, dyn_any::DynAny)]
 pub struct ContextImpl<'a> {
 	footprint: Option<&'a crate::transform::Footprint>,
-	varargs: Option<&'a [&'a (dyn dyn_any::DynAny<'a> + 'a)]>,
+	varargs: Option<&'a [DynRef<'a>]>,
 	// This could be converted into a single enum to save extra bytes
 	index: Option<usize>,
 	time: Option<f64>,
@@ -116,10 +121,10 @@ impl<'a> ContextImpl<'a> {
 	}
 }
 
-fn shorten_lifetime_to_vec<'c, 'b: 'c>(input: &'b [&'b (dyn DynAny<'b> + 'b)]) -> Vec<&'c (dyn DynAny<'c> + 'c)> {
+fn shorten_lifetime_to_vec<'c, 'b: 'c>(input: &'b [DynRef<'b>]) -> Vec<DynRef<'c>> {
 	input.iter().map(|&x| x.reborrow_ref()).collect()
 }
-fn shorten_lifetime_to_buffer<'c, 'b: 'c, const N: usize>(input: &'b [&'b (dyn DynAny<'b> + 'b)], buffer: &'c mut [&'c (dyn DynAny<'c> + 'c); N]) -> &'c [&'c (dyn DynAny<'c> + 'c)] {
+fn shorten_lifetime_to_buffer<'c, 'b: 'c, const N: usize>(input: &'b [DynRef<'b>], buffer: &'c mut [DynRef<'c>; N]) -> &'c [DynRef<'c>] {
 	let iter = input.iter().map(|&x| x.reborrow_ref()).zip(buffer.iter_mut());
 	if input.len() > N {
 		unreachable!("Insufficient buffer size for varargs");

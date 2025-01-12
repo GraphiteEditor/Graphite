@@ -48,6 +48,7 @@ pub mod application_io;
 #[cfg(feature = "reflections")]
 pub mod registry;
 
+pub use context::*;
 use core::any::TypeId;
 pub use memo::MemoHash;
 pub use raster::Color;

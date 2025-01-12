@@ -2,6 +2,7 @@ use crate::raster::BlendMode;
 use crate::raster::ImageFrame;
 use crate::registry::types::Percentage;
 use crate::vector::style::GradientStops;
+use crate::Ctx;
 use crate::{Color, Node};
 
 use math_parser::ast;
@@ -39,7 +40,7 @@ impl ValueProvider for MathNodeContext {
 /// Calculates a mathematical expression with input values "A" and "B"
 #[node_macro::node(category("Math"))]
 fn math<U: num_traits::float::Float>(
-	_: (),
+	_: impl Ctx,
 	/// The value of "A" when calculating the expression
 	#[implementations(f64, f32)]
 	operand_a: U,
