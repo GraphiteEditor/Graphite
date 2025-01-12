@@ -14,6 +14,7 @@ pub use crate as graphene_core;
 pub use ctor;
 
 pub mod consts;
+pub mod context;
 pub mod generic;
 pub mod logic;
 pub mod ops;
@@ -55,7 +56,7 @@ pub use types::Cow;
 // pub trait Node: for<'n> NodeIO<'n> {
 /// The node trait allows for defining any node. Nodes can only take one call argument input, however they can store references to other nodes inside the struct.
 /// See `node-graph/README.md` for information on how to define a new node.
-pub trait Node<'i, Input: 'i>: 'i {
+pub trait Node<'i, Input>: 'i {
 	type Output: 'i;
 	/// Evaluates the node with the single specified input.
 	fn eval(&'i self, input: Input) -> Self::Output;
