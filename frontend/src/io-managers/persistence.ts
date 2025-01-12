@@ -16,6 +16,17 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 		await set("documents_tab_order", documentOrder, graphiteStore);
 	}
 
+	async function storeCurrentDocumentIndex() {
+		const documentIndex = getFromStore(portfolio).activeDocumentIndex;
+		const documentId = getFromStore(portfolio).documents[documentIndex].id;
+
+		await storeDocumentDocumentByID(String(documentId));
+	}
+
+	async function storeDocumentDocumentByID(documentId: string) {
+		await set("current_document_id", String(documentId), graphiteStore);
+	}
+
 	async function storeDocument(autoSaveDocument: TriggerIndexedDbWriteDocument) {
 		await update<Record<string, TriggerIndexedDbWriteDocument>>(
 			"documents",
@@ -28,6 +39,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 		);
 
 		await storeDocumentOrder();
+		await storeDocumentDocumentByID(autoSaveDocument.details.id);
 	}
 
 	async function removeDocument(id: string) {
@@ -42,11 +54,13 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 		);
 
 		await storeDocumentOrder();
+		await storeCurrentDocumentIndex();
 	}
 
 	async function loadDocuments() {
 		const previouslySavedDocuments = await get<Record<string, TriggerIndexedDbWriteDocument>>("documents", graphiteStore);
 		const documentOrder = await get<string[]>("documents_tab_order", graphiteStore);
+		const currentDocumentId = await get<string>("current_document_id", graphiteStore);
 		if (!previouslySavedDocuments || !documentOrder) return;
 
 		const orderedSavedDocuments = documentOrder.flatMap((id) => (previouslySavedDocuments[id] ? [previouslySavedDocuments[id]] : []));
@@ -54,6 +68,9 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 		orderedSavedDocuments?.forEach(async (doc: TriggerIndexedDbWriteDocument) => {
 			editor.handle.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document);
 		});
+		if (currentDocumentId) {
+			editor.handle.selectDocument(BigInt(currentDocumentId));
+		}
 	}
 
 	// PREFERENCES
@@ -91,5 +108,6 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 
 export async function wipeDocuments() {
 	await del("documents_tab_order", graphiteStore);
+	await del("current_document_id", graphiteStore);
 	await del("documents", graphiteStore);
 }
