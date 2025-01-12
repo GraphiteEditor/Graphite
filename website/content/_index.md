@@ -43,7 +43,10 @@ js = ["image-interaction.js", "video-embed.js"]
 		<img src="https://static.graphite.rs/icons/discord__2.svg" alt="Discord" />
 	</a>
 	<a href="https://www.reddit.com/r/graphite/" target="_blank">
-		<img src="https://static.graphite.rs/icons/reddit__2.svg" alt="Reddit" />
+		<img src="https://static.graphite.rs/icons/reddit__3.svg" alt="Reddit" />
+	</a>
+	<a href="https://bsky.app/profile/graphiteeditor.bsky.social" target="_blank">
+		<img src="https://static.graphite.rs/icons/bluesky.svg" alt="Bluesky" />
 	</a>
 	<a href="https://twitter.com/graphiteeditor" target="_blank">
 		<img src="https://static.graphite.rs/icons/twitter.svg" alt="Twitter" />
@@ -64,7 +67,6 @@ js = ["image-interaction.js", "video-embed.js"]
 		const stars = parseInt(json.stargazers_count);
 		if (!stars) throw new Error();
 		let quantity = stars.toLocaleString("en-US");
-		if (quantity.length === 5) quantity = quantity.replace(",", "");
 		element.innerText = quantity;
 	} catch {
 		element.remove();
@@ -72,24 +74,6 @@ js = ["image-interaction.js", "video-embed.js"]
 })();
 </script>
 <!-- ▙ QUICK LINKS ▟ -->
-
-<!-- ▛ HEXAGONS ▜ -->
-<div class="hexagons">
-<div>
-
-<svg viewBox="0 0 1400 1215.42" xmlns="http://www.w3.org/2000/svg">
-
-<polygon points="1049.43,0.99 350.57,0.99 1.14,607.71 350.57,1214.44 1049.43,1214.44 1398.86,607.71" />
-<polygon points="1016.39,57.57 383.61,57.57 67.22,607.71 383.61,1157.85 1016.39,1157.85 1332.78,607.71" />
-<polygon points="964.49,149.01 435.51,149.01 171.02,607.71 435.51,1066.41 964.49,1066.41 1228.98,607.71" />
-<polygon points="875.52,304.71 524.48,304.71 348.96,607.71 524.48,910.71 875.52,910.71 1051.04,607.71" />
-<polygon points="768.12,490.96 631.88,490.96 563.78,607.71 631.88,724.47 768.12,724.47 836.22,607.71" />
-
-</svg>
-
-</div>
-</div>
-<!-- ▙ HEXAGONS ▟ -->
 
 <!-- ▛ SCREENSHOTS ▜ -->
 <section id="screenshots" class="carousel window-size-1" data-carousel data-carousel-jostle-hint>
@@ -141,7 +125,7 @@ js = ["image-interaction.js", "video-embed.js"]
 <div class="screenshot-description">
 
 <p data-carousel-description class="active">
-	<a href="https://editor.graphite.rs/#demo/painted-dreams"><em>Painted Dreams</em></a> — Made using nondestructive boolean operations and procedural dot patterns
+	<a href="https://editor.graphite.rs/#demo/painted-dreams"><em>Painted Dreams</em></a> — Made using nondestructive boolean operations and procedural polka dot patterns
 </p>
 <p data-carousel-description>
 	Design for a magazine spread, a preview of the upcoming focus on desktop publishing
@@ -160,7 +144,6 @@ js = ["image-interaction.js", "video-embed.js"]
 
 </div>
 </section>
-
 <!-- ▙ SCREENSHOTS ▟ -->
 <!--                 -->
 <!-- ▛ OVERVIEW ▜ -->
@@ -202,12 +185,12 @@ Stop jumping between programs— upcoming tools will make Graphite a first-class
 		<span>Digital Painting</span>
 	</div>
 	<div class="feature-icon">
-		<img class="atlas" style="--atlas-index: 16" src="https://static.graphite.rs/icons/icon-atlas-features__2.png" alt="" />
-		<span>VFX Compositing</span>
-	</div>
-	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 15" src="https://static.graphite.rs/icons/icon-atlas-features__2.png" alt="" />
 		<span>Desktop Publishing</span>
+	</div>
+	<div class="feature-icon">
+		<img class="atlas" style="--atlas-index: 16" src="https://static.graphite.rs/icons/icon-atlas-features__2.png" alt="" />
+		<span>VFX Compositing</span>
 	</div>
 </div>
 
@@ -272,11 +255,11 @@ Presently, Graphite is a lightweight offline web app with features primarily ori
 
 ## Desktop-first and web-ready
 
-Graphite is designed principally as a desktop-grade professional application that is also accessible in-browser for fast, casual usage.
+Graphite is designed principally as a professional-grade desktop application that is also accessible in-browser for quick, casual usage.
 
-Where's the download? Desktop apps for Windows, Mac, and Linux should be available later in 2024. Until then, you can <a href="https://support.google.com/chrome/answer/9658361" target="_blank">install it as a PWA</a>.
+Where's the download? Windows, Mac, and Linux apps should be available around the end of 2024. Until then, you can <a href="https://support.google.com/chrome/answer/9658361" target="_blank">install it as a PWA</a>.
 
-Developing and maintaining a native app on four platforms is a big task. To not compromise on the optimal desktop experience—which takes longer to do the right way—priorities called for initially supporting just web, the one platform that stays up-to-date and reaches all devices.
+Developing and maintaining a native app on so many platforms is a big task. A fast, sloppy approach wouldn't cut it, but engineering the right tech takes time. That's why first supporting just web, the one platform that stays up-to-date and reaches all devices, was the initial priority.
 
 Once it's ready to shine, Graphite's code architecture is structured to deliver native performance for your graphically intensive workloads on desktop platforms and very low overhead on the web thanks to WebAssembly and WebGPU, new high-performance browser technologies.
 
@@ -296,7 +279,7 @@ Once it's ready to shine, Graphite's code architecture is structured to deliver 
 
 ---
 
-Graphite is the first and only graphic design package built for procedural editing — where everything is nondestructive.
+Graphite is the first and only graphic design package built for procedural editing — where everything you make is nondestructive.
 
 </div>
 
@@ -311,7 +294,7 @@ Graphite is the first and only graphic design package built for procedural editi
 
 <div class="block description">
 
-<h1 class="feature-box-header balance-text">Explore more creative avenues</h1>
+<h1 class="feature-box-header balance-text">Explore creative possibilities</h1>
 
 Save hours on tedious alterations and make better creative choices. Graphite lets you iterate rapidly by adjusting node parameters instead of individual elements.
 
@@ -350,7 +333,7 @@ Blend across color schemes. Morph shapes before they're scattered around the can
 
 ## Geared for generative pipelines
 
-Graphite's representation of artwork as a node graph lets you customize, compose, reuse, share, and automate your own content workflows:
+Graphite's representation of artwork as a node graph lets you customize, compose, reuse, share, and automate your content workflows:
 
 <div class="feature-icons four-wide">
 	<div class="feature-icon">
@@ -380,7 +363,7 @@ Graphite's representation of artwork as a node graph lets you customize, compose
 
 ## Support the mission
 
-If you aren't paying for your free software, someone else is covering your share. Chip in so Graphite remains sustainable and independent.
+If you aren't paying for your free software, someone else is covering your share. Chip in so Graphite can remain sustainable and independent.
 
 <a href="https://github.com/sponsors/GraphiteEditor" class="button arrow">Donate</a>
 
@@ -399,7 +382,7 @@ If you aren't paying for your free software, someone else is covering your share
 
 <h1 class="feature-box-header">Stay in the loop</h1>
 
-Subscribe to the newsletter for quarterly updates on major development progress. And follow along—or join the conversation—on social media.
+Subscribe to the newsletter for quarterly updates on major development progress. And follow along, or join the conversation, on social media.
 
 <div class="newsletter-success">
 
@@ -436,12 +419,16 @@ You'll receive your first newsletter email with the next major Graphite news.
 	<span class="link not-uppercase arrow">Discord</span>
 </a>
 <a href="https://www.reddit.com/r/graphite/" target="_blank">
-	<img src="https://static.graphite.rs/icons/reddit__2.svg" alt="Reddit" />
-	<span class="link not-uppercase arrow">/r/Graphite</span>
+	<img src="https://static.graphite.rs/icons/reddit__3.svg" alt="Reddit" />
+	<span class="link not-uppercase arrow">Reddit</span>
+</a>
+<a href="https://bsky.app/profile/graphiteeditor.bsky.social" target="_blank">
+	<img src="https://static.graphite.rs/icons/bluesky.svg" alt="Bluesky" />
+	<span class="link not-uppercase arrow">Bluesky</span>
 </a>
 <a href="https://twitter.com/graphiteeditor" target="_blank">
 	<img src="https://static.graphite.rs/icons/twitter.svg" alt="Twitter" />
-	<span class="link not-uppercase arrow">@GraphiteEditor</span>
+	<span class="link not-uppercase arrow">Twitter</span>
 </a>
 <a href="https://www.youtube.com/@GraphiteEditor" target="_blank">
 	<img src="https://static.graphite.rs/icons/youtube.svg" alt="YouTube" />

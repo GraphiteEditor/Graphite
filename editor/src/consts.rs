@@ -30,6 +30,9 @@ pub const DRAG_BEYOND_VIEWPORT_SPEED_FACTOR: f64 = 20.;
 
 // Snapping point
 pub const SNAP_POINT_TOLERANCE: f64 = 5.;
+pub const MAX_ALIGNMENT_CANDIDATES: usize = 100; // These are layers whose bounding boxes are used for alignment.
+pub const MAX_SNAP_CANDIDATES: usize = 10; // These are layers that are used for the layer snapper
+pub const MAX_LAYER_SNAP_POINTS: usize = 100; // These are points (anchors and bounding box corners etc.) in the layer snapper
 
 pub const DRAG_THRESHOLD: f64 = 1.;
 
@@ -59,6 +62,7 @@ pub const MANIPULATOR_GROUP_MARKER_SIZE: f64 = 6.;
 pub const SELECTION_THRESHOLD: f64 = 10.;
 pub const HIDE_HANDLE_DISTANCE: f64 = 3.;
 pub const INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE: f64 = 50.;
+pub const HANDLE_ROTATE_SNAP_ANGLE: f64 = 15.;
 
 // Pen tool
 pub const CREATE_CURVE_THRESHOLD: f64 = 5.;

@@ -241,10 +241,7 @@ impl Fsm for GradientToolFsmState {
 			document, global_tool_data, input, ..
 		} = tool_action_data;
 
-		let ToolMessage::Gradient(event) = event else {
-			return self;
-		};
-
+		let ToolMessage::Gradient(event) = event else { return self };
 		match (self, event) {
 			(_, GradientToolMessage::Overlays(mut overlay_context)) => {
 				let selected = tool_data.selected_gradient.as_ref();
@@ -253,7 +250,7 @@ impl Fsm for GradientToolFsmState {
 					let Some(gradient) = get_gradient(layer, &document.network_interface) else { continue };
 					let transform = gradient_space_transform(layer, document);
 					let dragging = selected
-						.filter(|selected| selected.layer.map_or(false, |selected_layer| selected_layer == layer))
+						.filter(|selected| selected.layer.is_some_and(|selected_layer| selected_layer == layer))
 						.map(|selected| selected.dragging);
 
 					let Gradient { start, end, stops, .. } = gradient;

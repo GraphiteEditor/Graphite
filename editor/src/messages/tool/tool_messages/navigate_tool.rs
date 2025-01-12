@@ -95,10 +95,7 @@ impl Fsm for NavigateToolFsmState {
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		let ToolMessage::Navigate(navigate) = message else {
-			return self;
-		};
-
+		let ToolMessage::Navigate(navigate) = message else { return self };
 		match navigate {
 			NavigateToolMessage::PointerUp { zoom_in } => {
 				if self == NavigateToolFsmState::ZoomOrClickZooming {

@@ -191,7 +191,7 @@ impl SymmetricalBasis {
 }
 
 // https://gitlab.com/inkscape/lib2geom/-/blob/master/src/2geom/sbasis.cpp#L228
-impl<'a> std::ops::Mul for &'a SymmetricalBasis {
+impl std::ops::Mul for &SymmetricalBasis {
 	type Output = SymmetricalBasis;
 	fn mul(self, b: Self) -> Self::Output {
 		let a = self;

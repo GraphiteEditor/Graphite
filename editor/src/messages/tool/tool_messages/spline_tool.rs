@@ -194,16 +194,14 @@ impl Fsm for SplineToolFsmState {
 			document, global_tool_data, input, ..
 		} = tool_action_data;
 
-		let ToolMessage::Spline(event) = event else {
-			return self;
-		};
+		let ToolMessage::Spline(event) = event else { return self };
 		match (self, event) {
 			(_, SplineToolMessage::CanvasTransformed) => self,
 			(SplineToolFsmState::Ready, SplineToolMessage::DragStart) => {
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(DocumentMessage::DeselectAllLayers);
 
-				let parent = document.new_layer_parent(true);
+				let parent = document.new_layer_bounding_artboard(input);
 
 				tool_data.weight = tool_options.line_weight;
 

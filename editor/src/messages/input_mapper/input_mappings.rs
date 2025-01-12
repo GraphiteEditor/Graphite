@@ -98,7 +98,7 @@ pub fn input_mappings() -> Mapping {
 		// SelectToolMessage
 		entry!(PointerMove; refresh_keys=[Control, Alt, Shift], action_dispatch=SelectToolMessage::PointerMove(SelectToolPointerKeys { axis_align: Shift, snap_angle: Control, center: Alt, duplicate: Alt })),
 		entry!(KeyDown(MouseLeft); action_dispatch=SelectToolMessage::DragStart { extend_selection: Shift, select_deepest: Accel }),
-		entry!(KeyUp(MouseLeft); action_dispatch=SelectToolMessage::DragStop { remove_from_selection: Shift }),
+		entry!(KeyUp(MouseLeft); action_dispatch=SelectToolMessage::DragStop { remove_from_selection: Shift, negative_box_selection: Control }),
 		entry!(KeyDown(Enter); action_dispatch=SelectToolMessage::Enter),
 		entry!(DoubleClick(MouseButton::Left); action_dispatch=SelectToolMessage::EditLayer),
 		entry!(KeyDown(MouseRight); action_dispatch=SelectToolMessage::Abort),
@@ -154,7 +154,10 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Escape); action_dispatch=EyedropperToolMessage::Abort),
 		//
 		// TextToolMessage
-		entry!(KeyUp(MouseLeft); action_dispatch=TextToolMessage::Interact),
+		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=TextToolMessage::PointerMove { center: Alt, lock_ratio: Shift }),
+		entry!(KeyDown(MouseLeft); action_dispatch=TextToolMessage::DragStart),
+		entry!(KeyUp(MouseLeft); action_dispatch=TextToolMessage::DragStop),
+		entry!(KeyDown(MouseRight); action_dispatch=TextToolMessage::CommitText),
 		entry!(KeyDown(Escape); action_dispatch=TextToolMessage::CommitText),
 		entry!(KeyDown(Enter); modifiers=[Accel], action_dispatch=TextToolMessage::CommitText),
 		//
@@ -206,8 +209,8 @@ pub fn input_mappings() -> Mapping {
 		// PathToolMessage
 		entry!(KeyDown(Delete); modifiers=[Accel], action_dispatch=PathToolMessage::DeleteAndBreakPath),
 		entry!(KeyDown(Backspace); modifiers=[Accel], action_dispatch=PathToolMessage::DeleteAndBreakPath),
-		entry!(KeyDown(Delete); modifiers=[Accel, Shift], action_dispatch=PathToolMessage::BreakPath),
-		entry!(KeyDown(Backspace); modifiers=[Accel, Shift], action_dispatch=PathToolMessage::BreakPath),
+		entry!(KeyDown(Delete); modifiers=[Shift], action_dispatch=PathToolMessage::BreakPath),
+		entry!(KeyDown(Backspace); modifiers=[Shift], action_dispatch=PathToolMessage::BreakPath),
 		entry!(KeyDown(Tab); action_dispatch=PathToolMessage::SwapSelectedHandles),
 		entry!(KeyDown(MouseLeft); action_dispatch=PathToolMessage::MouseDown { direct_insert_without_sliding: Control, extend_selection: Shift }),
 		entry!(KeyDown(MouseRight); action_dispatch=PathToolMessage::RightClick),
@@ -215,7 +218,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyG); action_dispatch=PathToolMessage::GRS { key: KeyG }),
 		entry!(KeyDown(KeyR); action_dispatch=PathToolMessage::GRS { key: KeyR }),
 		entry!(KeyDown(KeyS); action_dispatch=PathToolMessage::GRS { key: KeyS }),
-		entry!(PointerMove; refresh_keys=[KeyC, Shift, Alt, Space], action_dispatch=PathToolMessage::PointerMove { toggle_colinear: KeyC, equidistant: Alt, move_anchor_with_handles: Space}),
+		entry!(PointerMove; refresh_keys=[KeyC, Space, Control, Shift, Alt], action_dispatch=PathToolMessage::PointerMove { toggle_colinear: KeyC, equidistant: Alt, move_anchor_with_handles: Space, snap_angle: Shift, lock_angle: Control }),
 		entry!(KeyDown(Delete); action_dispatch=PathToolMessage::Delete),
 		entry!(KeyDown(KeyA); modifiers=[Accel], action_dispatch=PathToolMessage::SelectAllAnchors),
 		entry!(KeyDown(KeyA); modifiers=[Accel, Shift], action_dispatch=PathToolMessage::DeselectAllPoints),
@@ -258,7 +261,7 @@ pub fn input_mappings() -> Mapping {
 		//
 		// FreehandToolMessage
 		entry!(PointerMove; action_dispatch=FreehandToolMessage::PointerMove),
-		entry!(KeyDown(MouseLeft); action_dispatch=FreehandToolMessage::DragStart),
+		entry!(KeyDown(MouseLeft); action_dispatch=FreehandToolMessage::DragStart { append_to_selected: Shift }),
 		entry!(KeyUp(MouseLeft); action_dispatch=FreehandToolMessage::DragStop),
 		entry!(KeyDown(MouseRight); action_dispatch=FreehandToolMessage::Abort),
 		entry!(KeyDown(Escape); action_dispatch=FreehandToolMessage::Abort),
@@ -381,9 +384,8 @@ pub fn input_mappings() -> Mapping {
 		//
 		// NavigationMessage
 		entry!(KeyDown(MouseMiddle); modifiers=[Alt], action_dispatch=NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: false }),
-		entry!(KeyDown(Command); action_dispatch=NavigationMessage::SetCursorState { is_active: true }),
-		entry!(PointerMove; modifiers=[Command], action_dispatch=NavigationMessage::SetCursorState { is_active: true }),
-		entry!(KeyUp(Command); action_dispatch=NavigationMessage::SetCursorState { is_active: false }),
+		entry!(KeyDownNoRepeat(Space); action_dispatch=NavigationMessage::SetCursorState { is_active: true }),
+		entry!(KeyUp(Space); action_dispatch=NavigationMessage::SetCursorState { is_active: false }),
 		entry!(KeyDown(MouseMiddle); modifiers=[Shift], action_dispatch=NavigationMessage::BeginCanvasZoom),
 		entry!(KeyDown(MouseLeft); modifiers=[Shift, Space], action_dispatch=NavigationMessage::BeginCanvasZoom),
 		entry!(KeyDown(MouseMiddle); action_dispatch=NavigationMessage::BeginCanvasPan),
@@ -404,6 +406,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Tab); modifiers=[Control], action_dispatch=PortfolioMessage::NextDocument),
 		entry!(KeyDown(Tab); modifiers=[Control, Shift], action_dispatch=PortfolioMessage::PrevDocument),
 		entry!(KeyDown(KeyW); modifiers=[Accel], action_dispatch=PortfolioMessage::CloseActiveDocumentWithConfirmation),
+		entry!(KeyDown(KeyW); modifiers=[Accel,Alt], action_dispatch=PortfolioMessage::CloseAllDocumentsWithConfirmation),
 		entry!(KeyDown(KeyO); modifiers=[Accel], action_dispatch=PortfolioMessage::OpenDocument),
 		entry!(KeyDown(KeyI); modifiers=[Accel], action_dispatch=PortfolioMessage::Import),
 		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=PortfolioMessage::Cut { clipboard: Clipboard::Device }),
@@ -414,7 +417,6 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyV); modifiers=[Accel], action_dispatch=FrontendMessage::TriggerPaste),
 		//
 		// DialogMessage
-		entry!(KeyDown(KeyW); modifiers=[Accel, Alt], action_dispatch=DialogMessage::CloseAllDocumentsWithConfirmation),
 		entry!(KeyDown(KeyE); modifiers=[Accel], action_dispatch=DialogMessage::RequestExportDialog),
 		entry!(KeyDown(KeyN); modifiers=[Accel], action_dispatch=DialogMessage::RequestNewDocumentDialog),
 		entry!(KeyDown(Comma); modifiers=[Accel], action_dispatch=DialogMessage::RequestPreferencesDialog),

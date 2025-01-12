@@ -829,7 +829,7 @@ export class UpdateDocumentLayerStructureJs extends JsMessage {
 export class DisplayEditableTextbox extends JsMessage {
 	readonly text!: string;
 
-	readonly lineWidth!: undefined | number;
+	readonly lineHeightRatio!: number;
 
 	readonly fontSize!: number;
 
@@ -839,6 +839,10 @@ export class DisplayEditableTextbox extends JsMessage {
 	readonly url!: string;
 
 	readonly transform!: number[];
+
+	readonly maxWidth!: undefined | number;
+
+	readonly maxHeight!: undefined | number;
 }
 
 export class DisplayEditableTextboxTransform extends JsMessage {
@@ -862,6 +866,8 @@ export class LayerPanelEntry {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 
+	inSelectedNetwork!: boolean;
+
 	childrenAllowed!: boolean;
 
 	childrenPresent!: boolean;
@@ -883,9 +889,9 @@ export class LayerPanelEntry {
 
 	selected!: boolean;
 
-	inSelectedNetwork!: boolean;
+	ancestorOfSelected!: boolean;
 
-	selectedParent!: boolean;
+	descendantOfSelected!: boolean;
 }
 
 export class DisplayDialogDismiss extends JsMessage {}

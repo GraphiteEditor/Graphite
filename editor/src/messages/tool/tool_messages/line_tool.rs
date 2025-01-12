@@ -7,7 +7,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
+use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 
 use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
 use graphene_core::Color;
@@ -163,9 +163,7 @@ impl Fsm for LineToolFsmState {
 			document, global_tool_data, input, ..
 		} = tool_action_data;
 
-		let ToolMessage::Line(event) = event else {
-			return self;
-		};
+		let ToolMessage::Line(event) = event else { return self };
 		match (self, event) {
 			(_, LineToolMessage::Overlays(mut overlay_context)) => {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
@@ -173,7 +171,7 @@ impl Fsm for LineToolFsmState {
 			}
 			(LineToolFsmState::Ready, LineToolMessage::DragStart) => {
 				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
-				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, None, false);
+				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
 				tool_data.drag_start = snapped.snapped_point_document;
 
 				responses.add(DocumentMessage::StartTransaction);
@@ -186,7 +184,7 @@ impl Fsm for LineToolFsmState {
 				]);
 				let nodes = vec![(NodeId(0), node)];
 
-				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_parent(false), responses);
+				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_bounding_artboard(input), responses);
 				responses.add(Message::StartBuffer);
 				responses.add(GraphOperationMessage::TransformSet {
 					layer,
@@ -314,6 +312,7 @@ fn generate_transform(tool_data: &mut LineToolData, snap_data: SnapData, lock_an
 
 	let near_point = SnapCandidatePoint::handle_neighbors(document_points[1], [tool_data.drag_start]);
 	let far_point = SnapCandidatePoint::handle_neighbors(2. * document_points[0] - document_points[1], [tool_data.drag_start]);
+	let config = SnapTypeConfiguration::default();
 
 	if constrained {
 		let constraint = SnapConstraint::Line {
@@ -321,26 +320,26 @@ fn generate_transform(tool_data: &mut LineToolData, snap_data: SnapData, lock_an
 			direction: document_points[1] - document_points[0],
 		};
 		if center {
-			let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, None);
-			let snapped_far = snap.constrained_snap(&snap_data, &far_point, constraint, None);
+			let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, config);
+			let snapped_far = snap.constrained_snap(&snap_data, &far_point, constraint, config);
 			let best = if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far };
 			document_points[1] = document_points[0] * 2. - best.snapped_point_document;
 			document_points[0] = best.snapped_point_document;
 			snap.update_indicator(best);
 		} else {
-			let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, None);
+			let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, config);
 			document_points[1] = snapped.snapped_point_document;
 			snap.update_indicator(snapped);
 		}
 	} else if center {
-		let snapped = snap.free_snap(&snap_data, &near_point, None, false);
-		let snapped_far = snap.free_snap(&snap_data, &far_point, None, false);
+		let snapped = snap.free_snap(&snap_data, &near_point, config);
+		let snapped_far = snap.free_snap(&snap_data, &far_point, config);
 		let best = if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far };
 		document_points[1] = document_points[0] * 2. - best.snapped_point_document;
 		document_points[0] = best.snapped_point_document;
 		snap.update_indicator(best);
 	} else {
-		let snapped = snap.free_snap(&snap_data, &near_point, None, false);
+		let snapped = snap.free_snap(&snap_data, &near_point, config);
 		document_points[1] = snapped.snapped_point_document;
 		snap.update_indicator(snapped);
 	}

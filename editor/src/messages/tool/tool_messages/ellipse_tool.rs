@@ -188,9 +188,7 @@ impl Fsm for EllipseToolFsmState {
 
 		let shape_data = &mut tool_data.data;
 
-		let ToolMessage::Ellipse(event) = event else {
-			return self;
-		};
+		let ToolMessage::Ellipse(event) = event else { return self };
 		match (self, event) {
 			(_, EllipseToolMessage::Overlays(mut overlay_context)) => {
 				shape_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
@@ -205,7 +203,7 @@ impl Fsm for EllipseToolFsmState {
 				let node = node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(0.5), false)), Some(NodeInput::value(TaggedValue::F64(0.5), false))]);
 				let nodes = vec![(NodeId(0), node)];
 
-				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_parent(true), responses);
+				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_bounding_artboard(input), responses);
 				responses.add(Message::StartBuffer);
 				responses.add(GraphOperationMessage::TransformSet {
 					layer,

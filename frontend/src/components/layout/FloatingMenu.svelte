@@ -473,7 +473,7 @@
 
 			.floating-menu-content {
 				background: var(--color-2-mildblack);
-				box-shadow: rgba(var(--color-0-black-rgb), 50%) 0 2px 4px;
+				box-shadow: rgba(var(--color-0-black-rgb), 0.5) 0 2px 4px;
 				border-radius: 4px;
 				color: var(--color-e-nearwhite);
 				font-size: inherit;

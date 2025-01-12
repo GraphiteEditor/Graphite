@@ -661,6 +661,27 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 				.on_commit(commit_value)
 				.widget_holder(),
 		]),
+		Some(&TaggedValue::OptionalF64(x)) => {
+			// TODO: Don't wipe out the previously set value (setting it back to the default of 100) when reenabling this checkbox back to Some from None
+			let toggle_enabled = move |checkbox_input: &CheckboxInput| TaggedValue::OptionalF64(if checkbox_input.checked { Some(100.) } else { None });
+			widgets.extend_from_slice(&[
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
+				Separator::new(SeparatorType::Related).widget_holder(),
+				// The checkbox toggles if the value is Some or None
+				CheckboxInput::new(x.is_some())
+					.on_update(update_value(toggle_enabled, node_id, index))
+					.on_commit(commit_value)
+					.widget_holder(),
+				Separator::new(SeparatorType::Related).widget_holder(),
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
+				number_props
+					.value(x)
+					.on_update(update_value(move |x: &NumberInput| TaggedValue::OptionalF64(x.value), node_id, index))
+					.disabled(x.is_none())
+					.on_commit(commit_value)
+					.widget_holder(),
+			]);
+		}
 		_ => {}
 	}
 
@@ -1734,6 +1755,8 @@ pub(crate) fn text_properties(document_node: &DocumentNode, node_id: NodeId, _co
 	let size = number_widget(document_node, node_id, 3, "Size", NumberInput::default().unit(" px").min(1.), true);
 	let line_height_ratio = number_widget(document_node, node_id, 4, "Line Height", NumberInput::default().min(0.).step(0.1), true);
 	let character_spacing = number_widget(document_node, node_id, 5, "Character Spacing", NumberInput::default().min(0.).step(0.1), true);
+	let max_width = number_widget(document_node, node_id, 6, "Max Width", NumberInput::default().unit(" px").min(1.), false);
+	let max_height = number_widget(document_node, node_id, 7, "Max Height", NumberInput::default().unit(" px").min(1.), false);
 
 	let mut result = vec![LayoutGroup::Row { widgets: text }, LayoutGroup::Row { widgets: font }];
 	if let Some(style) = style {
@@ -1742,6 +1765,8 @@ pub(crate) fn text_properties(document_node: &DocumentNode, node_id: NodeId, _co
 	result.push(LayoutGroup::Row { widgets: size });
 	result.push(LayoutGroup::Row { widgets: line_height_ratio });
 	result.push(LayoutGroup::Row { widgets: character_spacing });
+	result.push(LayoutGroup::Row { widgets: max_width });
+	result.push(LayoutGroup::Row { widgets: max_height });
 	result
 }
 
@@ -2615,4 +2640,53 @@ pub(crate) fn artboard_properties(document_node: &DocumentNode, node_id: NodeId,
 	let clip_row = LayoutGroup::Row { widgets: clip };
 
 	vec![location, dimensions, background, clip_row]
+}
+
+pub fn math_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let expression_index = 1;
+	let operation_b_index = 2;
+
+	let expression = (|| {
+		let mut widgets = start_widgets(document_node, node_id, expression_index, "Expression", FrontendGraphDataType::General, true);
+
+		let Some(input) = document_node.inputs.get(expression_index) else {
+			log::warn!("A widget failed to be built because its node's input index is invalid.");
+			return vec![];
+		};
+		if let Some(TaggedValue::String(x)) = &input.as_non_exposed_value() {
+			widgets.extend_from_slice(&[
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
+				TextInput::new(x.clone())
+					.centered(true)
+					.on_update(update_value(
+						|x: &TextInput| {
+							TaggedValue::String({
+								let mut expression = x.value.trim().to_string();
+
+								if ["+", "-", "*", "/", "^", "%"].iter().any(|&infix| infix == expression) {
+									expression = format!("A {} B", expression);
+								} else if expression == "^" {
+									expression = String::from("A^B");
+								}
+
+								expression
+							})
+						},
+						node_id,
+						expression_index,
+					))
+					.on_commit(commit_value)
+					.widget_holder(),
+			])
+		}
+		widgets
+	})();
+	let operand_b = number_widget(document_node, node_id, operation_b_index, "Operand B", NumberInput::default(), true);
+	let operand_a_hint = vec![TextLabel::new("(Operand A is the primary input)").widget_holder()];
+
+	vec![
+		LayoutGroup::Row { widgets: expression }.with_tooltip(r#"A math expression that may incorporate "A" and/or "B", such as "sqrt(A + B) - B^2""#),
+		LayoutGroup::Row { widgets: operand_b }.with_tooltip(r#"The value of "B" when calculating the expression"#),
+		LayoutGroup::Row { widgets: operand_a_hint }.with_tooltip(r#""A" is fed by the value from the previous node in the primary data flow, or it is 0 if disconnected"#),
+	]
 }

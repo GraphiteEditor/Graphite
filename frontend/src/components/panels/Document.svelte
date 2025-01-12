@@ -295,11 +295,17 @@
 		canvasCursor = cursorString;
 	}
 
+	function preventTextEditingScroll(e: Event) {
+		if (!(e.target instanceof HTMLElement)) return;
+		e.target.scrollTop = 0;
+		e.target.scrollLeft = 0;
+	}
+
 	// Text entry
 	export function triggerTextCommit() {
 		if (!textInput) return;
 		const textCleaned = textInputCleanup(textInput.innerText);
-		editor.handle.onChangeText(textCleaned);
+		editor.handle.onChangeText(textCleaned, false);
 	}
 
 	export async function displayEditableTextbox(displayEditableTextbox: DisplayEditableTextbox) {
@@ -316,8 +322,9 @@
 
 		textInput.contentEditable = "true";
 		textInput.style.transformOrigin = "0 0";
-		textInput.style.width = displayEditableTextbox.lineWidth ? `${displayEditableTextbox.lineWidth}px` : "max-content";
-		textInput.style.height = "auto";
+		textInput.style.width = displayEditableTextbox.maxWidth ? `${displayEditableTextbox.maxWidth}px` : "max-content";
+		textInput.style.height = displayEditableTextbox.maxHeight ? `${displayEditableTextbox.maxHeight}px` : "auto";
+		textInput.style.lineHeight = `${displayEditableTextbox.lineHeightRatio}`;
 		textInput.style.fontSize = `${displayEditableTextbox.fontSize}px`;
 		textInput.style.color = displayEditableTextbox.color.toHexOptionalAlpha() || "transparent";
 
@@ -497,7 +504,7 @@
 						</svg>
 						<div class="text-input" style:width={canvasWidthCSS} style:height={canvasHeightCSS} style:pointer-events={showTextInput ? "auto" : ""}>
 							{#if showTextInput}
-								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" />
+								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" on:scroll={preventTextEditingScroll} />
 							{/if}
 						</div>
 						<canvas class="overlays" width={canvasWidthRoundedToEven} height={canvasHeightRoundedToEven} style:width={canvasWidthCSS} style:height={canvasHeightCSS} data-overlays-canvas>
@@ -720,14 +727,21 @@
 							}
 						}
 
+						.text-input {
+							word-break: break-all;
+						}
+
 						.text-input div {
 							cursor: text;
 							background: none;
 							border: none;
 							margin: 0;
 							padding: 0;
-							overflow: visible;
+							overflow-x: visible;
+							overflow-y: hidden;
+							overflow-wrap: anywhere;
 							white-space: pre-wrap;
+							word-break: normal;
 							display: inline-block;
 							// Workaround to force Chrome to display the flashing text entry cursor when text is empty
 							padding-left: 1px;

@@ -234,9 +234,7 @@ impl Fsm for PolygonToolFsmState {
 
 		let polygon_data = &mut tool_data.data;
 
-		let ToolMessage::Polygon(event) = event else {
-			return self;
-		};
+		let ToolMessage::Polygon(event) = event else { return self };
 		match (self, event) {
 			(_, PolygonToolMessage::Overlays(mut overlay_context)) => {
 				polygon_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
@@ -264,7 +262,7 @@ impl Fsm for PolygonToolFsmState {
 
 				let nodes = vec![(NodeId(0), node)];
 
-				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_parent(false), responses);
+				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_bounding_artboard(input), responses);
 				responses.add(Message::StartBuffer);
 				responses.add(GraphOperationMessage::TransformSet {
 					layer,

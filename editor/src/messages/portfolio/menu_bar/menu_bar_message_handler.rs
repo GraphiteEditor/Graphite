@@ -183,6 +183,14 @@ impl LayoutHolder for MenuBarMessageHandler {
 				"Layer".into(),
 				no_active_document,
 				MenuBarEntryChildren(vec![
+					vec![MenuBarEntry {
+						label: "New".into(),
+						icon: Some("NewLayer".into()),
+						shortcut: action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder),
+						action: MenuBarEntry::create_action(|_| DocumentMessage::CreateEmptyFolder.into()),
+						disabled: no_active_document,
+						..MenuBarEntry::default()
+					}],
 					vec![
 						MenuBarEntry {
 							label: "Select All".into(),
@@ -213,14 +221,24 @@ impl LayoutHolder for MenuBarMessageHandler {
 							..MenuBarEntry::default()
 						},
 					],
-					vec![MenuBarEntry {
-						label: "Delete Selected".into(),
-						icon: Some("Trash".into()),
-						shortcut: action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers),
-						action: MenuBarEntry::create_action(|_| DocumentMessage::DeleteSelectedLayers.into()),
-						disabled: no_active_document || !has_selected_nodes,
-						..MenuBarEntry::default()
-					}],
+					vec![
+						MenuBarEntry {
+							label: "Group Selected".into(),
+							icon: Some("Folder".into()),
+							shortcut: action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers),
+							action: MenuBarEntry::create_action(|_| DocumentMessage::GroupSelectedLayers.into()),
+							disabled: no_active_document || !has_selected_layers,
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Delete Selected".into(),
+							icon: Some("Trash".into()),
+							shortcut: action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers),
+							action: MenuBarEntry::create_action(|_| DocumentMessage::DeleteSelectedLayers.into()),
+							disabled: no_active_document || !has_selected_nodes,
+							..MenuBarEntry::default()
+						},
+					],
 					vec![
 						MenuBarEntry {
 							label: "Grab Selected".into(),

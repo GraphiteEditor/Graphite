@@ -120,6 +120,7 @@ tagged_value! {
 	U64(u64),
 	#[cfg_attr(feature = "serde", serde(alias = "F32"))] // TODO: Eventually remove this alias (probably starting late 2024)
 	F64(f64),
+	OptionalF64(Option<f64>),
 	Bool(bool),
 	UVec2(UVec2),
 	IVec2(IVec2),

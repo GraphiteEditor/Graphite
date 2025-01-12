@@ -252,7 +252,7 @@ async fn transform<I: Into<Footprint> + 'n + ApplyTransform + Clone + Send + Syn
 	data
 }
 
-#[node_macro::node(category("Debug"))]
+#[node_macro::node(category(""))]
 fn replace_transform<Data: TransformMut, TransformInput: Transform>(
 	_: (),
 	#[implementations(VectorData, ImageFrame<Color>, GraphicGroup)] mut data: Data,

@@ -102,7 +102,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Rectang
 			self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
 			return;
 		};
-
 		match action {
 			RectangleOptionsUpdate::FillColor(color) => {
 				self.options.fill.custom_color = color;
@@ -193,10 +192,7 @@ impl Fsm for RectangleToolFsmState {
 	) -> Self {
 		let shape_data = &mut tool_data.data;
 
-		let ToolMessage::Rectangle(event) = event else {
-			return self;
-		};
-
+		let ToolMessage::Rectangle(event) = event else { return self };
 		match (self, event) {
 			(_, RectangleToolMessage::Overlays(mut overlay_context)) => {
 				shape_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
@@ -211,7 +207,7 @@ impl Fsm for RectangleToolFsmState {
 				let node = node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(1.), false)), Some(NodeInput::value(TaggedValue::F64(1.), false))]);
 				let nodes = vec![(NodeId(0), node)];
 
-				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_parent(true), responses);
+				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_bounding_artboard(input), responses);
 				responses.add(Message::StartBuffer);
 				responses.add(GraphOperationMessage::TransformSet {
 					layer,
