@@ -172,8 +172,8 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		}
 
 		if (!inTextInput && !inContextMenu) {
-			const isRightClick = e.button === 2;
-			if (textToolInteractiveInputElement) editor.handle.onChangeText(textInputCleanup(textToolInteractiveInputElement.innerText), isRightClick);
+			const isLeftOrRightClick = e.button === 2 || e.button === 0;
+			if (textToolInteractiveInputElement) editor.handle.onChangeText(textInputCleanup(textToolInteractiveInputElement.innerText), isLeftOrRightClick);
 			else viewportPointerInteractionOngoing = isTargetingCanvas instanceof Element;
 		}
 

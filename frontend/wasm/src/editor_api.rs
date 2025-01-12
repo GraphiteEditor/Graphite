@@ -433,8 +433,8 @@ impl EditorHandle {
 
 	/// A text box was committed
 	#[wasm_bindgen(js_name = onChangeText)]
-	pub fn on_change_text(&self, new_text: String, is_right_click: bool) -> Result<(), JsValue> {
-		let message = TextToolMessage::TextChange { new_text, is_right_click };
+	pub fn on_change_text(&self, new_text: String, is_left_or_right_click: bool) -> Result<(), JsValue> {
+		let message = TextToolMessage::TextChange { new_text, is_left_or_right_click };
 		self.dispatch(message);
 
 		Ok(())
