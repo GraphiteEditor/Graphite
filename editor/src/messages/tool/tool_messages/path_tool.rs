@@ -298,6 +298,7 @@ struct PathToolData {
 	saved_points_before_anchor_select_toggle: Vec<ManipulatorPointId>,
 	select_anchor_toggled: bool,
 	dragging_state: DraggingState,
+	current_selected_handle_id: Option<ManipulatorPointId>,
 	angle: f64,
 }
 
@@ -472,7 +473,7 @@ impl PathToolData {
 	}
 
 	/// Attempts to get a single selected handle. Also retrieves the position of the anchor it is connected to. Used for the purpose of snapping the angle.
-	fn try_get_selected_handle_and_anchor(&self, shape_editor: &ShapeState, document: &DocumentMessageHandler) -> Option<(DVec2, DVec2)> {
+	fn try_get_selected_handle_and_anchor(&self, shape_editor: &ShapeState, document: &DocumentMessageHandler) -> Option<(DVec2, DVec2, ManipulatorPointId)> {
 		// Only count selections of a single layer
 		let (layer, selection) = shape_editor.selected_shape_state.iter().next()?;
 
@@ -483,6 +484,7 @@ impl PathToolData {
 
 		// Only count selected handles
 		let selected_handle = selection.selected().next()?.as_handle()?;
+		let handle_id = selected_handle.to_manipulator_point();
 
 		let layer_to_document = document.metadata().transform_to_document(*layer);
 		let vector_data = document.network_interface.compute_modified_vector(*layer)?;
@@ -494,24 +496,26 @@ impl PathToolData {
 		let handle_position_document = layer_to_document.transform_point2(handle_position_local);
 		let anchor_position_document = layer_to_document.transform_point2(anchor_position_local);
 
-		Some((handle_position_document, anchor_position_document))
+		Some((handle_position_document, anchor_position_document, handle_id))
 	}
 
-	fn calculate_handle_angle(&mut self, handle_vector: DVec2, lock_angle: bool, snap_angle: bool) -> f64 {
-		let mut handle_angle = -handle_vector.angle_to(DVec2::X);
+	fn calculate_handle_angle(&mut self, handle_vector: DVec2, handle_id: ManipulatorPointId, lock_angle: bool, snap_angle: bool) -> f64 {
+		let current_angle = -handle_vector.angle_to(DVec2::X);
 
 		// When the angle is locked we use the old angle
-		if lock_angle {
-			handle_angle = self.angle
+		if self.current_selected_handle_id == Some(handle_id) && lock_angle {
+			return self.angle;
 		}
 
 		// Round the angle to the closest increment
-		if snap_angle {
+		let mut handle_angle = current_angle;
+		if snap_angle && !lock_angle {
 			let snap_resolution = HANDLE_ROTATE_SNAP_ANGLE.to_radians();
 			handle_angle = (handle_angle / snap_resolution).round() * snap_resolution;
 		}
 
-		// Cache the old handle angle for the lock angle.
+		// Cache the angle and handle id for lock angle
+		self.current_selected_handle_id = Some(handle_id);
 		self.angle = handle_angle;
 
 		handle_angle
@@ -561,10 +565,10 @@ impl PathToolData {
 		let current_mouse = input.mouse.position;
 		let raw_delta = document_to_viewport.inverse().transform_vector2(current_mouse - previous_mouse);
 
-		let snapped_delta = if let Some((handle_pos, anchor_pos)) = self.try_get_selected_handle_and_anchor(shape_editor, document) {
+		let snapped_delta = if let Some((handle_pos, anchor_pos, handle_id)) = self.try_get_selected_handle_and_anchor(shape_editor, document) {
 			let cursor_pos = handle_pos + raw_delta;
 
-			let handle_angle = self.calculate_handle_angle(cursor_pos - anchor_pos, lock_angle, snap_angle);
+			let handle_angle = self.calculate_handle_angle(cursor_pos - anchor_pos, handle_id, lock_angle, snap_angle);
 
 			let constrained_direction = DVec2::new(handle_angle.cos(), handle_angle.sin());
 			let projected_length = (cursor_pos - anchor_pos).dot(constrained_direction);
