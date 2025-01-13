@@ -7,7 +7,8 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::{Comma, RArrow};
 use syn::{
-	parse_quote, AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, Type, TypeParam, WhereClause,
+	parse_quote, AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lifetime, Lit, LitFloat, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, Type, TypeParam,
+	WhereClause,
 };
 
 use crate::codegen::generate_node_code;
@@ -507,7 +508,8 @@ impl ParsedNodeFn {
 	fn replace_impl_trait_in_input(&mut self) {
 		if let Type::ImplTrait(impl_trait) = self.input.ty.clone() {
 			let ident = Ident::new("_Input", impl_trait.span());
-			let bounds = impl_trait.bounds;
+			let mut bounds = impl_trait.bounds;
+			bounds.push(parse_quote!('n));
 			self.fn_generics.push(GenericParam::Type(TypeParam {
 				attrs: Default::default(),
 				ident: ident.clone(),
@@ -520,6 +522,9 @@ impl ParsedNodeFn {
 			if self.input.implementations.is_empty() {
 				self.input.implementations.push(parse_quote!(gcore::Context));
 			}
+		}
+		if self.input.pat_ident.ident == "_" {
+			self.input.pat_ident.ident = Ident::new("__ctx", self.input.pat_ident.ident.span());
 		}
 	}
 }

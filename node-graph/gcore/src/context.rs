@@ -3,7 +3,7 @@ use core::borrow::Borrow;
 use crate::transform::Footprint;
 use dyn_any::DynAny;
 
-pub trait Ctx {}
+pub trait Ctx: Copy + Send {}
 
 pub trait ExtractFootprint: Ctx {
 	fn footprint(&self) -> Option<&Footprint>;
@@ -29,24 +29,26 @@ pub enum VarArgsResult {
 	IndexOutOfBounds,
 	NoVarArgs,
 }
-impl<T: Ctx> Ctx for Option<&T> {}
+impl<T: Ctx + Sync> Ctx for Option<&T> {}
+impl Ctx for () {}
+impl Ctx for Footprint {}
 
-impl<T: ExtractFootprint> ExtractFootprint for Option<&T> {
+impl<T: ExtractFootprint + Sync> ExtractFootprint for Option<&T> {
 	fn footprint(&self) -> Option<&Footprint> {
 		self.and_then(|x| x.footprint())
 	}
 }
-impl<T: ExtractTime> ExtractTime for Option<&T> {
+impl<T: ExtractTime + Sync> ExtractTime for Option<&T> {
 	fn time(&self) -> Option<f64> {
 		self.and_then(|x| x.time())
 	}
 }
-impl<T: ExtractIndex> ExtractIndex for Option<&T> {
+impl<T: ExtractIndex + Sync> ExtractIndex for Option<&T> {
 	fn index(&self) -> Option<usize> {
 		self.and_then(|x| x.index())
 	}
 }
-impl<T: ExtractVarArgs> ExtractVarArgs for Option<&T> {
+impl<T: ExtractVarArgs + Sync> ExtractVarArgs for Option<&T> {
 	fn vararg<'b>(&'b self, index: usize) -> Result<impl DynAny<'b>, VarArgsResult>
 	where
 		Self: 'b,
@@ -88,7 +90,7 @@ type DynRef<'a> = &'a (dyn DynAny<'a> + 'a + Send + Sync);
 
 #[derive(Default, Clone, Copy, dyn_any::DynAny)]
 pub struct ContextImpl<'a> {
-	footprint: Option<&'a crate::transform::Footprint>,
+	pub(crate) footprint: Option<&'a crate::transform::Footprint>,
 	varargs: Option<&'a [DynRef<'a>]>,
 	// This could be converted into a single enum to save extra bytes
 	index: Option<usize>,

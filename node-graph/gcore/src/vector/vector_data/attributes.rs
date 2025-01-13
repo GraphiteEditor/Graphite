@@ -778,44 +778,44 @@ impl bezier_rs::Identifier for PointId {
 	}
 }
 
-impl crate::vector::ConcatElement for super::VectorData {
-	fn concat(&mut self, other: &Self, transform: glam::DAffine2, node_id: u64) {
-		let new_ids = other
-			.point_domain
-			.id
-			.iter()
-			.filter(|id| self.point_domain.id.contains(id))
-			.map(|&old| (old, old.generate_from_hash(node_id)));
-		let point_map = new_ids.collect::<HashMap<_, _>>();
-		let new_ids = other
-			.segment_domain
-			.ids
-			.iter()
-			.filter(|id| self.segment_domain.ids.contains(id))
-			.map(|&old| (old, old.generate_from_hash(node_id)));
-		let segment_map = new_ids.collect::<HashMap<_, _>>();
-		let new_ids = other
-			.region_domain
-			.ids
-			.iter()
-			.filter(|id| self.region_domain.ids.contains(id))
-			.map(|&old| (old, old.generate_from_hash(node_id)));
-		let region_map = new_ids.collect::<HashMap<_, _>>();
-		let id_map = IdMap {
-			point_offset: self.point_domain.ids().len(),
-			point_map,
-			segment_map,
-			region_map,
-		};
-		self.point_domain.concat(&other.point_domain, transform * other.transform, &id_map);
-		self.segment_domain.concat(&other.segment_domain, transform * other.transform, &id_map);
-		self.region_domain.concat(&other.region_domain, transform * other.transform, &id_map);
-		// TODO: properly deal with fills such as gradients
-		self.style = other.style.clone();
-		self.colinear_manipulators.extend(other.colinear_manipulators.iter().copied());
-		self.alpha_blending = other.alpha_blending;
-	}
-}
+// impl crate::vector::ConcatElement for super::VectorData {
+// 	fn concat(&mut self, other: &Self, transform: glam::DAffine2, node_id: u64) {
+// 		let new_ids = other
+// 			.point_domain
+// 			.id
+// 			.iter()
+// 			.filter(|id| self.point_domain.id.contains(id))
+// 			.map(|&old| (old, old.generate_from_hash(node_id)));
+// 		let point_map = new_ids.collect::<HashMap<_, _>>();
+// 		let new_ids = other
+// 			.segment_domain
+// 			.ids
+// 			.iter()
+// 			.filter(|id| self.segment_domain.ids.contains(id))
+// 			.map(|&old| (old, old.generate_from_hash(node_id)));
+// 		let segment_map = new_ids.collect::<HashMap<_, _>>();
+// 		let new_ids = other
+// 			.region_domain
+// 			.ids
+// 			.iter()
+// 			.filter(|id| self.region_domain.ids.contains(id))
+// 			.map(|&old| (old, old.generate_from_hash(node_id)));
+// 		let region_map = new_ids.collect::<HashMap<_, _>>();
+// 		let id_map = IdMap {
+// 			point_offset: self.point_domain.ids().len(),
+// 			point_map,
+// 			segment_map,
+// 			region_map,
+// 		};
+// 		self.point_domain.concat(&other.point_domain, transform * other.transform, &id_map);
+// 		self.segment_domain.concat(&other.segment_domain, transform * other.transform, &id_map);
+// 		self.region_domain.concat(&other.region_domain, transform * other.transform, &id_map);
+// 		// TODO: properly deal with fills such as gradients
+// 		self.style = other.style.clone();
+// 		self.colinear_manipulators.extend(other.colinear_manipulators.iter().copied());
+// 		self.alpha_blending = other.alpha_blending;
+// 	}
+// }
 
 /// Represents the conversion of ids used when concatenating vector data with conflicting ids.
 struct IdMap {

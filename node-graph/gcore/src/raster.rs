@@ -1,7 +1,7 @@
 pub use self::color::{Color, Luma, SRGBA8};
 use crate::vector::VectorData;
-use crate::GraphicGroup;
 use crate::{registry::types::Percentage, transform::Footprint};
+use crate::{Ctx, GraphicGroup};
 
 use bytemuck::{Pod, Zeroable};
 use core::fmt::Debug;
@@ -308,51 +308,31 @@ impl SetBlendMode for ImageFrame<Color> {
 }
 
 #[node_macro::node(category("Style"))]
-async fn blend_mode<F: 'n + Send, T: SetBlendMode>(
+fn blend_mode<T: SetBlendMode>(
+	_: impl Ctx,
 	#[implementations(
-		(),
-		(),
-		(),
-		Footprint,
+		 GraphicGroup,
+		 VectorData,
+		 ImageFrame<Color>,
 	)]
-	footprint: F,
-	#[implementations(
-		() -> GraphicGroup,
-		() -> VectorData,
-		() -> ImageFrame<Color>,
-		Footprint -> GraphicGroup,
-		Footprint -> VectorData,
-		Footprint -> ImageFrame<Color>,
-	)]
-	value: impl Node<F, Output = T>,
+	mut value: T,
 	blend_mode: BlendMode,
 ) -> T {
-	let mut value = value.eval(footprint).await;
 	value.set_blend_mode(blend_mode);
 	value
 }
 
 #[node_macro::node(category("Style"))]
-async fn opacity<F: 'n + Send, T: MultiplyAlpha>(
+fn opacity<T: MultiplyAlpha>(
+	_: impl Ctx,
 	#[implementations(
-		(),
-		(),
-		(),
-		Footprint,
+		 GraphicGroup,
+		 VectorData,
+		 ImageFrame<Color>,
 	)]
-	footprint: F,
-	#[implementations(
-		() -> GraphicGroup,
-		() -> VectorData,
-		() -> ImageFrame<Color>,
-		Footprint -> GraphicGroup,
-		Footprint -> VectorData,
-		Footprint -> ImageFrame<Color>,
-	)]
-	value: impl Node<F, Output = T>,
+	mut value: T,
 	#[default(100.)] factor: Percentage,
 ) -> T {
-	let mut value = value.eval(footprint).await;
 	let opacity_multiplier = factor / 100.;
 	value.multiply_alpha(opacity_multiplier);
 	value

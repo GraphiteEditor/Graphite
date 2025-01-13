@@ -94,10 +94,10 @@ impl<T> OnceCellNode<T> {
 #[derive(Clone, Copy)]
 pub struct ClonedNode<T: Clone>(pub T);
 
-impl<'i, T: Clone + 'i> Node<'i, ()> for ClonedNode<T> {
+impl<'i, T: Clone + 'i, I> Node<'i, I> for ClonedNode<T> {
 	type Output = T;
 	#[inline(always)]
-	fn eval(&'i self, _input: ()) -> Self::Output {
+	fn eval(&'i self, _input: I) -> Self::Output {
 		self.0.clone()
 	}
 }
