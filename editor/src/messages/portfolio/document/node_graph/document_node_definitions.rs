@@ -128,17 +128,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![PropertiesRow::with_override(
-						"In",
-						WidgetOverride::String("The identity node simply passes its data through.".to_string()),
-					)],
+					input_properties: vec!["In".into()],
 					output_names: vec!["Out".to_string()],
 					..Default::default()
 				},
 			},
 
 			description: Cow::Borrowed("The identity node passes its data through. You can use this to organize your node graph."),
-			properties: None,
+			properties: Some(&|_node_id, _context| node_properties::string_properties("The identity node simply passes its data through.".to_string())),
 		},
 		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
@@ -153,16 +150,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![PropertiesRow::with_override(
-						"In",
-						WidgetOverride::String("The Monitor node is used by the editor to access the data flowing through it.".to_string()),
-					)],
+					input_properties: vec!["In".into()],
 					output_names: vec!["Out".to_string()],
 					..Default::default()
 				},
 			},
 			description: Cow::Borrowed("The Monitor node is used by the editor to access the data flowing through it."),
-			properties: None,
+			properties: Some(&|_node_id, _context| node_properties::string_properties("The Monitor node is used by the editor to access the data flowing through it.".to_string())),
 		},
 		DocumentNodeDefinition {
 			identifier: "Merge",
@@ -331,7 +325,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
 					input_properties: vec![
-						PropertiesRow::with_override("Artboards", WidgetOverride::Hidden),
+						"Artboards".into(),
 						PropertiesRow::with_override("Contents", WidgetOverride::Hidden),
 						PropertiesRow::with_override(
 							"Location",
@@ -435,7 +429,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![PropertiesRow::with_override("api", WidgetOverride::Hidden), "URL".into()],
+					input_properties: vec!["api".into(), "URL".into()],
 					output_names: vec!["Image Frame".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -685,7 +679,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![PropertiesRow::with_override("Artwork", WidgetOverride::Hidden), "Footprint".into()],
+					input_properties: vec!["Artwork".into(), "Footprint".into()],
 					output_names: vec!["Canvas".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -762,10 +756,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![PropertiesRow::with_override(
-						"Image",
-						WidgetOverride::String("Creates an embedded image with the given transform.".to_string()),
-					)],
+					input_properties: vec!["Image".into()],
 					output_names: vec!["Image".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -799,7 +790,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("Creates an embedded image with the given transform."),
-			properties: None,
+			properties: Some(&|_node_id, _context| node_properties::string_properties("Creates an embedded image with the given transform.".to_string())),
 		},
 		DocumentNodeDefinition {
 			identifier: "Noise Pattern",
@@ -809,6 +800,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					manual_composition: Some(concrete!(Footprint)),
 					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::raster::NoisePatternNode")),
 					inputs: vec![
+						NodeInput::value(TaggedValue::Bool(false), false),
 						NodeInput::value(TaggedValue::Bool(true), false),
 						NodeInput::value(TaggedValue::U32(0), false),
 						NodeInput::value(TaggedValue::F64(10.), false),
@@ -829,6 +821,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
 					input_properties: vec![
+						"Spacer".into(),
 						"Clip".into(),
 						"Seed".into(),
 						PropertiesRow::with_override("Scale", WidgetOverride::Custom("noise_properties_scale".to_string())),
@@ -895,10 +888,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![
-						PropertiesRow::with_override("Image", WidgetOverride::Hidden),
-						PropertiesRow::with_override("Stencil", WidgetOverride::Custom("mask_stencil".to_string())),
-					],
+					input_properties: vec!["Image".into(), PropertiesRow::with_override("Stencil", WidgetOverride::Custom("mask_stencil".to_string()))],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
@@ -922,11 +912,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![
-						PropertiesRow::with_override("Image", WidgetOverride::Hidden),
-						PropertiesRow::with_override("Insertion", WidgetOverride::Hidden),
-						"Into".into(),
-					],
+					input_properties: vec!["Image".into(), PropertiesRow::with_override("Insertion", WidgetOverride::Hidden), "Into".into()],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
@@ -1203,7 +1189,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![PropertiesRow::with_override("Image", WidgetOverride::String("A bitmap image is embedded in this node".to_string()))],
+					input_properties: vec!["Image".into()],
 					output_names: vec!["Image".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1227,7 +1213,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: None,
+			properties: Some(&|_node_id, _context| node_properties::string_properties("A bitmap image is embedded in this node".to_string())),
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
@@ -2019,7 +2005,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
 					input_properties: vec![
-						PropertiesRow::with_override("Image", WidgetOverride::Hidden),
+						"Image".into(),
 						PropertiesRow::with_override("Brightness", WidgetOverride::Custom("brightness".to_string())),
 						PropertiesRow::with_override("Brightness", WidgetOverride::Custom("contrast".to_string())),
 						"Use Classic".into(),
@@ -2047,7 +2033,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![PropertiesRow::with_override("Image", WidgetOverride::Hidden), "Curve".into()],
+					input_properties: vec!["Image".into(), "Curve".into()],
 					output_names: vec!["Image".to_string()],
 					..Default::default()
 				},
@@ -2072,7 +2058,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
 					input_properties: vec![
-						PropertiesRow::with_override("None", WidgetOverride::Hidden),
+						"None".into(),
 						PropertiesRow::with_override(
 							"Start",
 							WidgetOverride::Vec2(Vec2InputSettings {
@@ -2114,10 +2100,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![
-						PropertiesRow::with_override("None", WidgetOverride::Hidden),
-						PropertiesRow::with_override("Points", WidgetOverride::Custom("spline_input".to_string())),
-					],
+					input_properties: vec!["None".into(), PropertiesRow::with_override("Points", WidgetOverride::Custom("spline_input".to_string()))],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
@@ -2220,7 +2203,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
 					input_properties: vec![
-						PropertiesRow::with_override("Editor API", WidgetOverride::Hidden),
+						"Editor API".into(),
 						PropertiesRow::with_override("Text", WidgetOverride::Custom("text_area".to_string())),
 						PropertiesRow::with_override("Font", WidgetOverride::Custom("text_font".to_string())),
 						PropertiesRow::with_override(
@@ -2344,7 +2327,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					input_properties: vec![
-						PropertiesRow::with_override("Vector Data", WidgetOverride::Hidden),
+						"Vector Data".into(),
 						PropertiesRow::with_override(
 							"Translation",
 							WidgetOverride::Vec2(Vec2InputSettings {
@@ -2437,7 +2420,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 						..Default::default()
 					}),
-					input_properties: vec![PropertiesRow::with_override("Group of Paths", WidgetOverride::Hidden), "Operation".into()],
+					input_properties: vec!["Group of Paths".into(), "Operation".into()],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
@@ -2468,7 +2451,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
 					input_properties: vec![
-						PropertiesRow::with_override("Points", WidgetOverride::Hidden),
+						"Points".into(),
 						Into::<PropertiesRow>::into("Instance").with_tooltip("Artwork to be copied and placed at each point"),
 						PropertiesRow::with_override(
 							"Random Scale Min",
@@ -2627,7 +2610,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					input_properties: vec![
-						PropertiesRow::with_override("Vector Data", WidgetOverride::Hidden),
+						"Vector Data".into(),
 						PropertiesRow::with_override(
 							"Spacing",
 							WidgetOverride::Number(NumberInputSettings {
@@ -2731,7 +2714,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					input_properties: vec![
-						PropertiesRow::with_override("Vector Data", WidgetOverride::Hidden),
+						"Vector Data".into(),
 						PropertiesRow::with_override(
 							"Separation Disk Diameter",
 							WidgetOverride::Number(NumberInputSettings {
@@ -2771,7 +2754,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
 					input_properties: vec![
-						PropertiesRow::with_override("Segmentation", WidgetOverride::Hidden),
+						"Segmentation".into(),
 						PropertiesRow::with_override("Index", WidgetOverride::Number(NumberInputSettings { min: Some(0.), ..Default::default() })),
 					],
 					output_names: vec!["Image".to_string()],

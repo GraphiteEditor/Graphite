@@ -448,6 +448,8 @@ fn image_frame<_P: Pixel>(image: Image<_P>, transform: DAffine2) -> ImageFrame<_
 #[allow(clippy::too_many_arguments)]
 fn noise_pattern(
 	footprint: Footprint,
+	// The first input is not shown in the properties panel, so this spacer is needed.
+	_empty_spacer_input: bool,
 	clip: bool,
 	seed: u32,
 	scale: f64,

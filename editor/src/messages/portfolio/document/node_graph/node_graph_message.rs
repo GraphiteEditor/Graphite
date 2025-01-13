@@ -58,8 +58,7 @@ pub enum NodeGraphMessage {
 	EnterNestedNetwork,
 	DuplicateSelectedNodes,
 	ExposeInput {
-		node_id: NodeId,
-		input_index: usize,
+		input_connector: InputConnector,
 		new_exposed: bool,
 	},
 	InsertNode {

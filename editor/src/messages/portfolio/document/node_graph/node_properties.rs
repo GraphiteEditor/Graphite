@@ -7,7 +7,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Inpu
 use crate::messages::prelude::*;
 
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, NodeId, NodeInput};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus};
 use graph_craft::Type;
 use graphene_core::memo::IORecord;
@@ -56,8 +56,7 @@ pub fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphData
 		.tooltip("Expose this parameter input in node graph")
 		.on_update(move |_parameter| {
 			NodeGraphMessage::ExposeInput {
-				node_id,
-				input_index: index,
+				input_connector: InputConnector::node(node_id, index),
 				new_exposed: !exposed,
 			}
 			.into()
@@ -2082,7 +2081,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 		layout = properties_override(node_id, context);
 	} else {
 		let number_of_inputs = context.network_interface.number_of_inputs(&node_id, context.selection_network_path);
-		for input_index in 0..number_of_inputs {
+		for input_index in 1..number_of_inputs {
 			let row = context.call_widget_override(&node_id, input_index).unwrap_or_else(|| {
 				let input_type = context.network_interface.input_type(&InputConnector::node(node_id, input_index), context.selection_network_path);
 				property_from_type(node_id, input_index, &input_type.0, context)
@@ -2097,7 +2096,17 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 		.network_interface
 		.reference(&node_id, context.selection_network_path)
 		.cloned()
-		.unwrap_or_default()
+		.unwrap_or_default() // If there is an error getting the reference, default to empty string
+		.or_else(||{
+			// If there is no reference, try to get the proto node name
+			context.network_interface.implementation(&node_id, context.selection_network_path).and_then(|implementation|{
+				if let DocumentNodeImplementation::ProtoNode(protonode) = implementation {
+					Some(protonode.name.clone().into_owned())
+				} else {
+					None
+				}
+			})
+		})
 		.unwrap_or("Custom Node".to_string());
 	let visible = context.network_interface.is_visible(&node_id, context.selection_network_path);
 	let pinned = context.network_interface.is_pinned(&node_id, context.selection_network_path);

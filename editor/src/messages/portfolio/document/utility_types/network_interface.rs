@@ -632,6 +632,7 @@ impl NodeNetworkInterface {
 					return Vec::new();
 				};
 				let number_of_inputs = self.number_of_inputs(node_id, network_path);
+				log::debug!("Number of inputs for node {node_id} is {number_of_inputs}");
 				implementations
 					.iter()
 					.filter_map(|(node_io, _)| {
@@ -642,7 +643,7 @@ impl NodeNetworkInterface {
 							node_io.inputs[iterator_index].clone().nested_type() == input_type || node_io.inputs[iterator_index] == input_type
 						});
 						if valid_implementation {
-							Some(node_io.inputs[*input_index].clone())
+							node_io.inputs.get(*input_index).cloned()
 						} else {
 							None
 						}
@@ -906,7 +907,7 @@ impl NodeNetworkInterface {
 	{
 		self.modify_import_export(network_path)
 			.map(|modify_import_export_click_target| {
-				get_ports(&modify_import_export_click_target)
+				get_ports(modify_import_export_click_target)
 					.iter()
 					.filter_map(|(_, click_target)| click_target.bounding_box().map(|bounding_box| (bounding_box[0].x as i32, bounding_box[0].y as i32)))
 					.collect()

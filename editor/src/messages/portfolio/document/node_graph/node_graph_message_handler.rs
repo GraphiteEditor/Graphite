@@ -314,7 +314,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(DocumentMessage::EnterNestedNetwork { node_id });
 				}
 			}
-			NodeGraphMessage::ExposeInput { node_id, input_index, new_exposed } => {
+			NodeGraphMessage::ExposeInput { input_connector, new_exposed } => {
+				let InputConnector::Node { node_id, input_index } = input_connector else {
+					log::error!("Cannot expose/hide export");
+					return;
+				};
 				let Some(node) = network_interface.document_node(&node_id, selection_network_path) else {
 					log::error!("Could not find node {node_id} in NodeGraphMessage::ExposeInput");
 					return;
@@ -325,9 +329,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				};
 				if let NodeInput::Value { exposed, .. } = &mut input {
 					*exposed = new_exposed;
-				} else {
-					// TODO: Should network and node inputs be able to be hidden?
-					log::error!("Could not hide/show input: {:?} since it is not NodeInput::Value", input);
+				} else if !new_exposed {
+					// If hiding an input that is not a value, then disconnect it. This will convert it to a value input.
+					responses.add(NodeGraphMessage::DisconnectInput { input_connector });
+					responses.add(NodeGraphMessage::ExposeInput { input_connector, new_exposed });
 					return;
 				}
 
@@ -337,6 +342,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					input_connector: InputConnector::node(node_id, input_index),
 					input,
 				});
+
 				responses.add(PropertiesPanelMessage::Refresh);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
