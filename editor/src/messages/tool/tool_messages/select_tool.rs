@@ -80,7 +80,6 @@ pub enum SelectToolMessage {
 	PointerOutsideViewport(SelectToolPointerKeys),
 	SelectOptions(SelectOptionsUpdate),
 	SetPivot { position: PivotPosition },
-	RestoreSelection,
 }
 
 impl ToolMetadata for SelectTool {
@@ -231,7 +230,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 
 		let additional = match self.fsm_state {
 			SelectToolFsmState::Ready { .. } => actions!(SelectToolMessageDiscriminant; DragStart),
-			SelectToolFsmState::DrawingBox { .. } => actions!(SelectToolMessageDiscriminant;RestoreSelection,DragStop),
 			_ => actions!(SelectToolMessageDiscriminant; DragStop),
 		};
 		common.extend(additional);
