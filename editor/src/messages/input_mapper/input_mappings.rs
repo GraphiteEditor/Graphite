@@ -96,7 +96,6 @@ pub fn input_mappings() -> Mapping {
 		entry!(PointerMove; refresh_keys=[Control, Shift], action_dispatch=TransformLayerMessage::PointerMove { slow_key: Shift, snap_key: Control }),
 		//
 		// SelectToolMessage
-		entry!(KeyDown(Shift); refresh_keys=[Shift], action_dispatch=SelectToolMessage::RestoreSelection),
 		entry!(PointerMove; refresh_keys=[Control, Alt, Shift], action_dispatch=SelectToolMessage::PointerMove(SelectToolPointerKeys { axis_align: Shift, snap_angle: Control, center: Alt, duplicate: Alt })),
 		entry!(KeyDown(MouseLeft); action_dispatch=SelectToolMessage::DragStart { extend_selection: Shift, select_deepest: Accel }),
 		entry!(KeyUp(MouseLeft); action_dispatch=SelectToolMessage::DragStop { remove_from_selection: Shift, negative_box_selection: Control }),

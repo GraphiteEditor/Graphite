@@ -285,6 +285,8 @@ struct SelectToolData {
 	auto_panning: AutoPanning,
 	previously_selected_layers: Vec<LayerNodeIdentifier>,
 	previous_selected: bool,
+	restore_selection_debounce: bool,
+	shift_pressed_before_drag: bool,
 }
 
 impl SelectToolData {
@@ -662,11 +664,13 @@ impl Fsm for SelectToolFsmState {
 				else {
 					tool_data.layers_dragging = selected;
 					tool_data.previous_selected = true;
+					tool_data.shift_pressed_before_drag = true;
 
 					if !input.keyboard.key(extend_selection) {
 						responses.add(DocumentMessage::DeselectAllLayers);
 						tool_data.layers_dragging.clear();
 						tool_data.previous_selected = false;
+						tool_data.shift_pressed_before_drag = false
 					}
 
 					if let Some(intersection) = intersection {
@@ -832,9 +836,44 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::DraggingPivot
 			}
 			(SelectToolFsmState::DrawingBox { .. }, SelectToolMessage::PointerMove(modifier_keys)) => {
-				tool_data.previous_selected = true;
 				tool_data.drag_current = input.mouse.position;
 
+				let selection_set: HashSet<_> = tool_data.previously_selected_layers.iter().collect();
+
+				if input.keyboard.key(Key::Shift) && !tool_data.restore_selection_debounce {
+					log::info!("when shift is pressed:{:?}", tool_data.previous_selected);
+					tool_data.layers_dragging.extend(&tool_data.previously_selected_layers);
+					tool_data.previous_selected = false;
+					tool_data.restore_selection_debounce = true;
+				}
+
+				if !input.keyboard.key(Key::Shift) && tool_data.restore_selection_debounce {
+					if tool_data.previous_selected {
+						tool_data.layers_dragging.extend(&tool_data.previously_selected_layers);
+					} else {
+						tool_data.layers_dragging.retain(|layer| !selection_set.contains(layer));
+					}
+					if tool_data.shift_pressed_before_drag {
+						tool_data.layers_dragging.extend(&tool_data.previously_selected_layers);
+						tool_data.shift_pressed_before_drag = false;
+					}
+					tool_data.restore_selection_debounce = false;
+				}
+
+				let selected_nodes: Vec<_> = tool_data
+					.layers_dragging
+					.iter()
+					.filter_map(|layer| {
+						if *layer != LayerNodeIdentifier::ROOT_PARENT {
+							Some(layer.to_node())
+						} else {
+							log::error!("ROOT_PARENT found in tool_data.layers_dragging during selection set");
+							None
+						}
+					})
+					.collect();
+
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: selected_nodes });
 				responses.add(OverlaysMessage::Draw);
 
 				// AutoPanning
@@ -1114,39 +1153,6 @@ impl Fsm for SelectToolFsmState {
 				tool_data.pivot.set_normalized_position(pos.unwrap(), document, responses);
 
 				self
-			}
-			(SelectToolFsmState::DrawingBox { selection }, SelectToolMessage::RestoreSelection) => {
-				let selection_set: HashSet<_> = tool_data.previously_selected_layers.iter().collect();
-
-				if input.keyboard.key(Key::Shift) {
-					tool_data.layers_dragging.extend(&tool_data.previously_selected_layers);
-					tool_data.previous_selected = false;
-				} else {
-					if tool_data.previous_selected {
-						tool_data.layers_dragging.extend(&tool_data.previously_selected_layers);
-					} else {
-						tool_data.layers_dragging.retain(|layer| !selection_set.contains(layer));
-					}
-				}
-
-				let selected_nodes: Vec<_> = tool_data
-					.layers_dragging
-					.iter()
-					.filter_map(|layer| {
-						if *layer != LayerNodeIdentifier::ROOT_PARENT {
-							Some(layer.to_node())
-						} else {
-							log::error!("ROOT_PARENT found in tool_data.layers_dragging during selection set");
-							None
-						}
-					})
-					.collect();
-
-				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: selected_nodes });
-
-				responses.add(OverlaysMessage::Draw);
-
-				SelectToolFsmState::DrawingBox { selection }
 			}
 			_ => self,
 		}
