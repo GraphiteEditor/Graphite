@@ -1,5 +1,6 @@
 use super::transform_utils;
 use super::utility_types::ModifyInputsContext;
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
@@ -197,6 +198,10 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 			}
 			GraphOperationMessage::ClearArtboards => {
+				if &network_interface.all_artboards().len() == &0 {
+					return;
+				}
+
 				let mut artboard_data: HashMap<NodeId, ArtboardInfo> = HashMap::new();
 				responses.add(NodeGraphMessage::DeleteNodes {
 					node_ids: network_interface
@@ -231,12 +236,27 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 						alias: network_interface.frontend_display_name(&artboard.to_node(), &[]),
 						with_transaction: false,
 					});
+					// shifting nodes in node graph layout
 					let node_position = network_interface.position(&artboard.to_node(), &[]).unwrap();
 					responses.add(NodeGraphMessage::ShiftNodePosition {
 						node_id,
 						x: node_position.x,
 						y: node_position.y,
 					});
+					// A layer transformation is relative to it's current artboard.
+					// when an artboard with non-0 position deleted, we need to calculate it's offset and add it to childern layers
+					let artboard_upper_left = network_interface.document_metadata().bounding_box_document(*artboard).unwrap()[0];
+					let layers = artboard.deepest_children(network_interface.document_metadata());
+					if artboard_upper_left != DVec2::ZERO {
+						for layer in layers {
+							responses.add(GraphOperationMessage::TransformChange {
+								layer,
+								transform: DAffine2::from_translation(artboard_upper_left),
+								transform_in: TransformIn::Local,
+								skip_rerender: true,
+							});
+						}
+					}
 				}
 
 				for artboard in &artboard_data {
