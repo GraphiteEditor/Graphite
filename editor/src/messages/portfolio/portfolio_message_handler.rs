@@ -994,10 +994,8 @@ impl PortfolioMessageHandler {
 		responses.add(PortfolioMessage::LoadDocumentResources { document_id });
 		responses.add(PortfolioMessage::UpdateDocumentWidgets);
 		responses.add(ToolMessage::InitTools);
-		responses.add(NodeGraphMessage::Init);
 		responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 		responses.add(PropertiesPanelMessage::Clear);
-		responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 	}
 
 	/// Returns an iterator over the open documents in order.
