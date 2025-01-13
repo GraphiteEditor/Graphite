@@ -8,7 +8,7 @@ pub use {alignment_snapper::*, distribution_snapper::*, grid_snapper::*, layer_s
 use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_SNAP_BACKGROUND, COLOR_OVERLAY_WHITE};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, Pivot};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::misc::{BoundingBoxSnapTarget, GridSnapTarget, PathSnapTarget, SnapTarget};
+use crate::messages::portfolio::document::utility_types::misc::{GridSnapTarget, PathSnapTarget, SnapTarget};
 use crate::messages::prelude::*;
 
 use bezier_rs::{Subpath, TValue};
@@ -135,14 +135,7 @@ fn get_closest_line(lines: &[SnappedLine]) -> Option<&SnappedPoint> {
 fn get_closest_intersection(snap_to: DVec2, curves: &[SnappedCurve]) -> Option<SnappedPoint> {
 	let mut best = None;
 	for curve_i in curves {
-		if curve_i.point.target == SnapTarget::BoundingBox(BoundingBoxSnapTarget::AlongEdge) {
-			continue;
-		}
-
 		for curve_j in curves {
-			if curve_j.point.target == SnapTarget::BoundingBox(BoundingBoxSnapTarget::AlongEdge) {
-				continue;
-			}
 			if curve_i.start == curve_j.start && curve_i.layer == curve_j.layer {
 				continue;
 			}
