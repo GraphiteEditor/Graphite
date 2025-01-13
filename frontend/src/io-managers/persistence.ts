@@ -20,10 +20,10 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 		const documentIndex = getFromStore(portfolio).activeDocumentIndex;
 		const documentId = getFromStore(portfolio).documents[documentIndex].id;
 
-		await storeDocumentDocumentByID(String(documentId));
+		await storeCurrentDocumentByID(String(documentId));
 	}
 
-	async function storeDocumentDocumentByID(documentId: string) {
+	async function storeCurrentDocumentByID(documentId: string) {
 		await set("current_document_id", String(documentId), graphiteStore);
 	}
 
@@ -39,7 +39,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 		);
 
 		await storeDocumentOrder();
-		await storeDocumentDocumentByID(autoSaveDocument.details.id);
+		await storeCurrentDocumentByID(autoSaveDocument.details.id);
 	}
 
 	async function removeDocument(id: string) {
@@ -53,8 +53,14 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 			graphiteStore,
 		);
 
+		const documentCount = getFromStore(portfolio).documents.length;
+		if (documentCount > 0) {
+			await storeCurrentDocumentIndex();
+		} else {
+			await del("current_document_id", graphiteStore);
+		}
+
 		await storeDocumentOrder();
-		await storeCurrentDocumentIndex();
 	}
 
 	async function loadDocuments() {
