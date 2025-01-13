@@ -379,7 +379,7 @@ pub const SNAP_FUNCTIONS_FOR_BOUNDING_BOXES: [(&str, GetSnapState, &str); 5] = [
 	(
 		"Align with Edges",
 		(|snapping_state| &mut snapping_state.bounding_box.align_with_edges) as GetSnapState,
-        "Snaps to horizontal/vertical alignment with the edges of any layer's bounding box"
+		"Snaps to horizontal/vertical alignment with the edges of any layer's bounding box",
 	),
 	(
 		"Corner Points",

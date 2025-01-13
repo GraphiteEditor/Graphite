@@ -74,14 +74,9 @@ impl AlignmentSnapper {
 					Quad::intersect_rays(target_point.document_point, DVec2::X, origin, direction),
 				]
 			} else {
-				let Some(quad) = target_point.quad else {
-					continue;
-				};
-				let quad = quad.0;
+				let Some(quad) = target_point.quad.map(|quad| quad.0) else { continue };
 				let edges = [quad[1] - quad[0], quad[3] - quad[0]];
-				edges
-					.map(|edge| edge.try_normalize().map(|edge| (point.document_point - target_position).project_onto(edge) + target_position))
-					.into()
+				edges.map(|edge| edge.try_normalize().map(|edge| (point.document_point - target_position).project_onto(edge) + target_position))
 			};
 
 			let target_path = matches!(target_point.target, SnapTarget::Path(_));
