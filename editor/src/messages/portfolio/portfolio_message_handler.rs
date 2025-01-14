@@ -384,7 +384,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				document_serialized_content,
 			} => {
 				// It can be helpful to temporarily set `upgrade_from_before_editable_subgraphs` to true if it's desired to upgrade a piece of artwork to use fresh copies of all nodes
-				let upgrade_from_before_editable_subgraphs = document_serialized_content.contains("node_output_index");
+				let replace_implementations_from_definition = document_serialized_content.contains("node_output_index");
 				let upgrade_vector_manipulation_format = document_serialized_content.contains("ManipulatorGroupIds") && !document_name.contains("__DO_NOT_UPGRADE__");
 				let document_name = document_name.replace("__DO_NOT_UPGRADE__", "");
 
@@ -409,7 +409,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 				// TODO: Eventually remove this document upgrade code
 				// Upgrade all old nodes to support editable subgraphs introduced in #1750
-				if upgrade_from_before_editable_subgraphs {
+				if replace_implementations_from_definition {
 					// This can be used, if uncommented, to upgrade demo artwork with outdated document node internals from their definitions. Delete when it's no longer needed.
 					// Used for upgrading old internal networks for demo artwork nodes. Will reset all node internals for any opened file
 					for node_id in &document

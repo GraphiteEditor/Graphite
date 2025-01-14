@@ -1019,7 +1019,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.graph_fade_artwork_percentage = percentage;
 				responses.add(FrontendMessage::UpdateGraphFadeArtwork { percentage });
 			}
-			
+
 			DocumentMessage::SetNodePinned { node_id, pinned } => {
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(NodeGraphMessage::SetPinned { node_id, pinned });
@@ -1459,26 +1459,22 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
-		let document_message_handler = serde_json::from_str::<OldDocumentMessageHandler>(serialized_content)
-			.map_or_else(
-				|_| serde_json::from_str::<DocumentMessageHandler>(serialized_content),
-				|old_message_handler| {
-					let default_document_message_handler = DocumentMessageHandler {
-						network_interface: NodeNetworkInterface::from_old_network(old_message_handler.network),
-						collapsed: old_message_handler.collapsed,
-						commit_hash: old_message_handler.commit_hash,
-						document_ptz: old_message_handler.document_ptz,
-						document_mode: old_message_handler.document_mode,
-						view_mode: old_message_handler.view_mode,
-						overlays_visible: old_message_handler.overlays_visible,
-						rulers_visible: old_message_handler.rulers_visible,
-						graph_view_overlay_open: old_message_handler.graph_view_overlay_open,
-						snapping_state: old_message_handler.snapping_state,
-						..Default::default()
-					};
-					Ok(default_document_message_handler)
-				},
-			)
+		let document_message_handler = serde_json::from_str::<DocumentMessageHandler>(serialized_content)
+			.or_else(|_| {
+				serde_json::from_str::<OldDocumentMessageHandler>(serialized_content).map(|old_message_handler| DocumentMessageHandler {
+					network_interface: NodeNetworkInterface::from_old_network(old_message_handler.network),
+					collapsed: old_message_handler.collapsed,
+					commit_hash: old_message_handler.commit_hash,
+					document_ptz: old_message_handler.document_ptz,
+					document_mode: old_message_handler.document_mode,
+					view_mode: old_message_handler.view_mode,
+					overlays_visible: old_message_handler.overlays_visible,
+					rulers_visible: old_message_handler.rulers_visible,
+					graph_view_overlay_open: old_message_handler.graph_view_overlay_open,
+					snapping_state: old_message_handler.snapping_state,
+					..Default::default()
+				})
+			})
 			.map_err(|e| EditorError::DocumentDeserialization(e.to_string()))?;
 		Ok(document_message_handler)
 	}

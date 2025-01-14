@@ -36,7 +36,6 @@ pub struct NodeNetworkInterface {
 	/// All input/output types based on the compiled network.
 	#[serde(skip)]
 	pub resolved_types: ResolvedDocumentNodeTypes,
-	/// Disallow aborting transactions whilst undoing to avoid #559.
 	#[serde(skip)]
 	transaction_status: TransactionStatus,
 }
@@ -632,7 +631,6 @@ impl NodeNetworkInterface {
 					return Vec::new();
 				};
 				let number_of_inputs = self.number_of_inputs(node_id, network_path);
-				log::debug!("Number of inputs for node {node_id} is {number_of_inputs}");
 				implementations
 					.iter()
 					.filter_map(|(node_io, _)| {
@@ -3762,12 +3760,8 @@ impl NodeNetworkInterface {
 	// TODO: Eventually remove this document upgrade code
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
 	pub fn replace_implementation_metadata(&mut self, node_id: &NodeId, network_path: &[NodeId], metadata: DocumentNodePersistentMetadata) {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Could not get network metdata in set implementation");
-			return;
-		};
-		let Some(node_metadata) = network_metadata.persistent_metadata.node_metadata.get_mut(node_id) else {
-			log::error!("Could not get persistent node metadata for node {node_id} in set implementation");
+		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+			log::error!("Could not get network metadata in set implementation");
 			return;
 		};
 		node_metadata.persistent_metadata.network_metadata = metadata.network_metadata;
@@ -6055,6 +6049,7 @@ fn return_true() -> bool {
 
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct DocumentNodeMetadata {
+	#[serde(deserialize_with = "deserialize_node_persistent_metadata")]
 	pub persistent_metadata: DocumentNodePersistentMetadata,
 	#[serde(skip)]
 	pub transient_metadata: DocumentNodeTransientMetadata,
@@ -6123,7 +6118,7 @@ pub enum WidgetOverride {
 }
 
 // TODO: Custom deserialization/serialization to ensure number of properties row matches number of node inputs
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PropertiesRow {
 	/// A general datastore than can store key value pairs of any types for any input
 	/// TODO: This could be simplified to just Value, and key value pairs could be stored as the Object variant
@@ -6138,12 +6133,6 @@ pub struct PropertiesRow {
 impl Default for PropertiesRow {
 	fn default() -> Self {
 		"".into()
-	}
-}
-
-impl PartialEq for PropertiesRow {
-	fn eq(&self, other: &Self) -> bool {
-		self.input_data == other.input_data && self.widget_override == other.widget_override
 	}
 }
 
@@ -6283,6 +6272,62 @@ impl DocumentNodePersistentMetadata {
 	pub fn is_layer(&self) -> bool {
 		matches!(self.node_type_metadata, NodeTypePersistentMetadata::Layer(_))
 	}
+}
+
+/// Persistent metadata for each node in the network, which must be included when creating, serializing, and deserializing saving a node.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DocumentNodePersistentMetadataInputNames {
+	pub reference: Option<String>,
+	#[serde(default)]
+	pub display_name: String,
+	pub input_names: Vec<String>,
+	pub output_names: Vec<String>,
+	#[serde(default = "return_true")]
+	pub has_primary_output: bool,
+	#[serde(default)]
+	pub locked: bool,
+	#[serde(default)]
+	pub pinned: bool,
+	pub node_type_metadata: NodeTypePersistentMetadata,
+	pub network_metadata: Option<NodeNetworkMetadata>,
+}
+
+impl From<DocumentNodePersistentMetadataInputNames> for DocumentNodePersistentMetadata {
+	fn from(old: DocumentNodePersistentMetadataInputNames) -> Self {
+		let ret = DocumentNodePersistentMetadata {
+			reference: old.reference,
+			display_name: old.display_name,
+			input_properties: old.input_names.into_iter().map(|name| name.as_str().into()).collect(),
+			output_names: old.output_names,
+			has_primary_output: old.has_primary_output,
+			locked: old.locked,
+			pinned: old.pinned,
+			node_type_metadata: old.node_type_metadata,
+			network_metadata: old.network_metadata,
+		};
+		ret
+	}
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+enum NodePersistentMetadataVersions {
+	NodePersistentMetadataInputNames(DocumentNodePersistentMetadataInputNames),
+	NodePersistentMetadata(DocumentNodePersistentMetadata),
+}
+
+fn deserialize_node_persistent_metadata<'de, D>(deserializer: D) -> Result<DocumentNodePersistentMetadata, D::Error>
+where
+	D: serde::Deserializer<'de>,
+{
+	use serde::Deserialize;
+
+	let value = Value::deserialize(deserializer)?;
+
+	serde_json::from_value::<DocumentNodePersistentMetadata>(value.clone()).or_else(|_| {
+		serde_json::from_value::<DocumentNodePersistentMetadataInputNames>(value)
+			.map(DocumentNodePersistentMetadata::from)
+			.map_err(serde::de::Error::custom)
+	})
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
