@@ -102,8 +102,9 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 						}
 					}
 				};
-				send_abort_to_tool(tool_type, true);
+
 				send_abort_to_tool(old_tool, false);
+				send_abort_to_tool(tool_type, true);
 
 				// Unsubscribe old tool from the broadcaster
 				tool_data.tools.get(&tool_type).unwrap().deactivate(responses);
