@@ -76,25 +76,18 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					let viewspace = document.metadata().transform_to_viewport(selected_layers[0]);
 
 					let mut point_count: usize = 0;
-					let get_location = |point: &ManipulatorPointId| point.get_position(&vector_data).map(|position| viewspace.transform_point2(position));
+					let get_location = |point: &&ManipulatorPointId| point.get_position(&vector_data).map(|position| viewspace.transform_point2(position));
 					let points = shape_editor.selected_points();
 					let selected_points: Vec<&ManipulatorPointId> = points.collect();
 
 					if selected_points.len() == 1 {
-						if let Some(point) = selected_points.first() {
-							match point {
-								ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) => {
-									if let Some(anchor_position) = point.get_anchor_position(&vector_data) {
-										*selected.pivot = viewspace.transform_point2(anchor_position);
-									}
-								}
-								_ => {
-									*selected.pivot = selected_points.iter().filter_map(|point| get_location(point)).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64;
-								}
-							}
+						let point = &selected_points[0];
+						if let ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) = point {
+							let anchor_position = point.get_anchor_position(&vector_data).unwrap();
+							*selected.pivot = viewspace.transform_point2(anchor_position);
+						} else {
+							*selected.pivot = selected_points.iter().filter_map(get_location).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64;
 						}
-					} else {
-						*selected.pivot = selected_points.iter().filter_map(|point| get_location(point)).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64;
 					}
 				}
 			} else {
@@ -121,23 +114,13 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			TransformLayerMessage::BeginGrab => {
-				if !(using_path_tool || using_select_tool) {
-					return;
-				}
-				let points = shape_editor.selected_points();
-				let selected_points: Vec<&ManipulatorPointId> = points.collect();
+				if !(using_path_tool || using_select_tool)
+					|| (using_path_tool && shape_editor.selected_points().next().is_none())
+					|| matches!(self.transform_operation, TransformOperation::Grabbing(_))
+					|| selected_layers.is_empty()
+				{
+					selected.original_transforms.clear();
 
-				if using_path_tool && selected_points.is_empty() {
-					responses.add(TransformLayerMessage::CancelTransformOperation);
-					return;
-				}
-
-				if let TransformOperation::Grabbing(_) = self.transform_operation {
-					return;
-				}
-
-				// Don't allow grab with no selected layers
-				if selected_layers.is_empty() {
 					return;
 				}
 
@@ -148,62 +131,46 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				selected.original_transforms.clear();
 			}
 			TransformLayerMessage::BeginRotate => {
-				if !(using_path_tool || using_select_tool) {
-					return;
-				}
-				let Some(&layer) = selected_layers.first() else {
-					return;
-				};
-				let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
-					return;
-				};
-				let points = shape_editor.selected_points();
-				let selected_points: Vec<&ManipulatorPointId> = points.collect();
-
-				if using_path_tool && selected_points.is_empty() {
-					responses.add(TransformLayerMessage::CancelTransformOperation);
+				let selected_points: Vec<&ManipulatorPointId> = shape_editor.selected_points().collect();
+				if !(using_path_tool || using_select_tool)
+					|| (using_path_tool && selected_points.is_empty())
+					|| selected_layers.is_empty()
+					|| matches!(self.transform_operation, TransformOperation::Rotating(_))
+				{
+					selected.original_transforms.clear();
 					return;
 				}
 
-				if selected_points.len() == 1 {
-					if let Some(point) = selected_points.first() {
+				if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
+					if selected_points.len() == 1 {
+						let point = &selected_points[0];
+
 						match point {
 							ManipulatorPointId::Anchor(_) => {
 								if let Some([handle1, handle2]) = point.get_handle_pair(&vector_data) {
-									if (handle1.get_handle_length(&vector_data) == 0.0 && handle2.get_handle_length(&vector_data) == 0.0)
+									if (handle1.get_handle_length(&vector_data) == 0. && handle2.get_handle_length(&vector_data) == 0.)
 										|| (handle1.get_handle_length(&vector_data) == f64::MAX && handle2.get_handle_length(&vector_data) == f64::MAX)
 									{
-										self.transform_operation = TransformOperation::None;
-
-										responses.add(TransformLayerMessage::CancelTransformOperation);
 										return;
 									}
 								}
 							}
 							_ => {
-								let handle_position = point.get_position(&vector_data);
-								let anchor_position = point.get_anchor_position(&vector_data);
+								// TODO: Need to fix handle snap to anchor issue. SEE (https://discord.com/channels/731730685944922173/1217752903209713715).
 
-								if let (Some(handle_pos), Some(anchor_pos)) = (handle_position, anchor_position) {
-									// Calculate the distance between the handle and anchor
-									let distance = (handle_pos - anchor_pos).length();
+								let handle_length = point.as_handle().and_then(|handle| Some(handle.get_handle_length(&vector_data)));
 
-									// If the distance is zero, return early
-									if distance == 0.0 {
+								if let Some(length) = handle_length {
+									if length == 0. {
+										selected.original_transforms.clear();
 										return;
 									}
 								}
 							}
 						}
 					}
-				}
-
-				if let TransformOperation::Rotating(_) = self.transform_operation {
-					return;
-				}
-
-				// Don't allow rotate with no selected layers
-				if selected_layers.is_empty() {
+				} else {
+					selected.original_transforms.clear();
 					return;
 				}
 
@@ -214,45 +181,47 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				selected.original_transforms.clear();
 			}
 			TransformLayerMessage::BeginScale => {
-				if !(using_path_tool || using_select_tool) {
-					return;
-				}
-				let Some(&layer) = selected_layers.first() else {
-					return;
-				};
-				let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
-					return;
-				};
+				let selected_points: Vec<&ManipulatorPointId> = shape_editor.selected_points().collect();
 
-				let points = shape_editor.selected_points();
-				let selected_points: Vec<&ManipulatorPointId> = points.collect();
-
-				if using_path_tool && selected_points.is_empty() {
-					responses.add(TransformLayerMessage::CancelTransformOperation);
+				if (using_path_tool && selected_points.is_empty())
+					|| !(using_path_tool || using_select_tool)
+					|| matches!(self.transform_operation, TransformOperation::Scaling(_))
+					|| selected_layers.is_empty()
+				{
+					selected.original_transforms.clear();
 					return;
 				}
 
-				if selected_points.len() == 1 {
-					if let Some(point) = selected_points.first() {
-						if let ManipulatorPointId::Anchor(_) = point {
-							if let Some([handle1, handle2]) = point.get_handle_pair(&vector_data) {
-								if (handle1.get_handle_length(&vector_data) == 0.0 && handle2.get_handle_length(&vector_data) == 0.0)
-									|| (handle1.get_handle_length(&vector_data) == f64::MAX && handle2.get_handle_length(&vector_data) == f64::MAX)
-								{
-									responses.add(TransformLayerMessage::CancelTransformOperation);
-									return;
+				if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
+					if selected_points.len() == 1 {
+						let point = &selected_points[0];
+
+						match point {
+							ManipulatorPointId::Anchor(_) => {
+								if let Some([handle1, handle2]) = point.get_handle_pair(&vector_data) {
+									let handle1_length = handle1.get_handle_length(&vector_data);
+									let handle2_length = handle2.get_handle_length(&vector_data);
+
+									if (handle1_length == 0. && handle2_length == 0.) || (handle1_length == f64::MAX && handle2_length == f64::MAX) {
+										selected.original_transforms.clear();
+										return;
+									}
+								}
+							}
+							_ => {
+								let handle_length = point.as_handle().and_then(|handle| Some(handle.get_handle_length(&vector_data)));
+
+								if let Some(length) = handle_length {
+									if length == 0. {
+										selected.original_transforms.clear();
+										return;
+									}
 								}
 							}
 						}
 					}
-				}
-
-				if let TransformOperation::Scaling(_) = self.transform_operation {
-					return;
-				}
-
-				// Don't allow scale with no selected layers
-				if selected_layers.is_empty() {
+				} else {
+					selected.original_transforms.clear();
 					return;
 				}
 
