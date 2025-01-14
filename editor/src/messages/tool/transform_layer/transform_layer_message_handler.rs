@@ -1,15 +1,17 @@
-use crate::consts::{SLOWING_DIVISOR, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_SNAP_BACKGROUND};
-use crate::messages::portfolio::document::overlays::utility_types::Pivot;
+use crate::consts::SLOWING_DIVISOR;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, Typing};
+use crate::messages::portfolio::document::overlays::utility_types::{OverlayProvider, Pivot};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
-use crate::messages::tool::utility_types::{ToolData, ToolType, ToolTransition, EventToMessageMap};
-
+use crate::messages::tool::utility_types::{ToolData, ToolType};
+use crate::consts::COLOR_OVERLAY_SNAP_BACKGROUND;
 
 use graphene_core::vector::ManipulatorPointId;
 
 use glam::DVec2;
+
+const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| DocumentMessage::DrawTransformGRSOverlays(context).into();
 
 #[derive(Debug, Clone, Default)]
 pub struct TransformLayerMessageHandler {
@@ -32,22 +34,7 @@ impl TransformLayerMessageHandler {
 	}
 
 	pub fn hints(&self, responses: &mut VecDeque<Message>) {
-		let axis_constraint = match self.transform_operation {
-			TransformOperation::Grabbing(grabbing) => grabbing.constraint,
-			TransformOperation::Scaling(scaling) => scaling.constraint,
-			_ => Axis::Both,
-		};
-		self.transform_operation.hints(self.snap, axis_constraint, responses);
-	}
-}
-
-impl ToolTransition for TransformLayerMessageHandler {
-	fn event_to_message_map(&self) -> EventToMessageMap {
-		EventToMessageMap {
-			tool_abort: Some(TransformLayerMessage::CancelTransformOperation.into()),
-			overlay_provider: Some(|overlay_context| TransformLayerMessage::Overlays(overlay_context).into()),
-			..Default::default()
-		}
+		self.transform_operation.hints(responses);
 	}
 }
 
@@ -104,8 +91,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 		};
 
 		match message {
-			TransformLayerMessage::Overlays(overlay_context) => {
-				debug!("We were here");
+			TransformLayerMessage::Overlays(overlay_context, transform) => {
 				let axis_constraint = match self.transform_operation {
 					TransformOperation::Grabbing(grabbing) => grabbing.constraint,
 					TransformOperation::Scaling(scaling) => scaling.constraint,
@@ -118,6 +104,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					(Axis::X, _) => format!("X by {:.3}", vector.x),
 					(Axis::Y, _) => format!("Y by {:.3}", vector.y),
 				};
+
 				let grs_value_text = match self.transform_operation {
 					TransformOperation::None => String::new(),
 					// TODO: Fix that the translation is showing numbers in viewport space, not document space
@@ -125,8 +112,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					TransformOperation::Rotating(rotation) => format!("Rotating by {:.3}°", rotation.to_f64(self.snap) * 360. / std::f64::consts::TAU),
 					TransformOperation::Scaling(scale) => format!("Scaling {}", axis_text(scale.to_dvec(self.snap), false)),
 				};
-				let transform = glam::DAffine2::from_translation(  DVec2::new(327.0, -35.0));
-				overlay_context.text(&grs_value_text, COLOR_OVERLAY_WHITE, Some(COLOR_OVERLAY_SNAP_BACKGROUND), transform, 4., [Pivot::Start, Pivot::End]);
+
+				overlay_context.text(&grs_value_text, COLOR_OVERLAY_SNAP_BACKGROUND, None, transform, 0., [Pivot::Start, Pivot::End]);
 			}
 			TransformLayerMessage::ApplyTransformOperation => {
 				selected.original_transforms.clear();
@@ -138,6 +125,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				responses.add(DocumentMessage::EndTransaction);
 				responses.add(ToolMessage::UpdateHints);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 			}
 			TransformLayerMessage::BeginGrab => {
 				if let TransformOperation::Grabbing(_) = self.transform_operation {
@@ -155,7 +143,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 				selected.original_transforms.clear();
 
-				responses.add(OverlaysMessage::Draw);
+				responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 			}
 			TransformLayerMessage::BeginRotate => {
 				if let TransformOperation::Rotating(_) = self.transform_operation {
@@ -173,7 +161,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 				selected.original_transforms.clear();
 
-				responses.add(OverlaysMessage::Draw);
+				responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 			}
 			TransformLayerMessage::BeginScale => {
 				if let TransformOperation::Scaling(_) = self.transform_operation {
@@ -191,7 +179,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 				selected.original_transforms.clear();
 
-				responses.add(OverlaysMessage::Draw);
+				responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 			}
 			TransformLayerMessage::CancelTransformOperation => {
 				selected.revert_operation();
@@ -203,6 +191,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 				responses.add(DocumentMessage::AbortTransaction);
 				responses.add(ToolMessage::UpdateHints);
+
+				responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 			}
 			TransformLayerMessage::ConstrainX => self.transform_operation.constrain_axis(Axis::X, &mut selected, self.snap),
 			TransformLayerMessage::ConstrainY => self.transform_operation.constrain_axis(Axis::Y, &mut selected, self.snap),
@@ -212,12 +202,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				let new_snap = input.keyboard.get(snap_key as usize);
 				if new_snap != self.snap {
 					self.snap = new_snap;
-					let axis_constraint = match self.transform_operation {
-						TransformOperation::Grabbing(grabbing) => grabbing.constraint,
-						TransformOperation::Scaling(scaling) => scaling.constraint,
-						_ => Axis::Both,
-					};
-					self.transform_operation.apply_transform_operation(&mut selected, self.snap, axis_constraint);
+					self.transform_operation.apply_transform_operation(&mut selected, self.snap);
 				}
 
 				if self.typing.digits.is_empty() {
@@ -227,9 +212,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						TransformOperation::None => unreachable!(),
 						TransformOperation::Grabbing(translation) => {
 							let change = if self.slow { delta_pos / SLOWING_DIVISOR } else { delta_pos };
-							let axis_constraint = translation.constraint;
 							self.transform_operation = TransformOperation::Grabbing(translation.increment_amount(change));
-							self.transform_operation.apply_transform_operation(&mut selected, self.snap, axis_constraint);
+							self.transform_operation.apply_transform_operation(&mut selected, self.snap);
 						}
 						TransformOperation::Rotating(rotation) => {
 							let start_offset = *selected.pivot - self.mouse_position;
@@ -239,7 +223,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let change = if self.slow { angle / SLOWING_DIVISOR } else { angle };
 
 							self.transform_operation = TransformOperation::Rotating(rotation.increment_amount(change));
-							self.transform_operation.apply_transform_operation(&mut selected, self.snap, Axis::Both);
+							self.transform_operation.apply_transform_operation(&mut selected, self.snap);
 						}
 						TransformOperation::Scaling(scale) => {
 							let change = {
@@ -251,9 +235,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							};
 
 							let change = if self.slow { change / SLOWING_DIVISOR } else { change };
-							let axis_constraint = scale.constraint;
 							self.transform_operation = TransformOperation::Scaling(scale.increment_amount(change));
-							self.transform_operation.apply_transform_operation(&mut selected, self.snap, axis_constraint);
+							self.transform_operation.apply_transform_operation(&mut selected, self.snap);
 						}
 					};
 				}

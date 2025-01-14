@@ -265,7 +265,7 @@ pub enum TransformOperation {
 }
 
 impl TransformOperation {
-	pub fn apply_transform_operation(&self, selected: &mut Selected, snapping: bool, axis_constraint: Axis) {
+	pub fn apply_transform_operation(&self, selected: &mut Selected, snapping: bool) {
 		if self != &TransformOperation::None {
 			let transformation = match self {
 				TransformOperation::Grabbing(translation) => DAffine2::from_translation(translation.to_dvec()),
@@ -275,7 +275,7 @@ impl TransformOperation {
 			};
 
 			selected.update_transforms(transformation);
-			self.hints(snapping, axis_constraint, selected.responses);
+			self.hints(selected.responses);
 		}
 	}
 
@@ -287,7 +287,7 @@ impl TransformOperation {
 			TransformOperation::Scaling(scale) => scale.constraint.set_or_toggle(axis),
 		};
 
-		self.apply_transform_operation(selected, snapping, axis);
+		self.apply_transform_operation(selected, snapping);
 	}
 
 	pub fn grs_typed(&mut self, typed: Option<f64>, selected: &mut Selected, snapping: bool) {
@@ -298,16 +298,10 @@ impl TransformOperation {
 			TransformOperation::Scaling(scale) => scale.typed_factor = typed,
 		};
 
-		let axis_constraint = match self {
-			TransformOperation::Grabbing(grabbing) => grabbing.constraint,
-			TransformOperation::Scaling(scaling) => scaling.constraint,
-			_ => Axis::Both,
-		};
-
-		self.apply_transform_operation(selected, snapping, axis_constraint);
+		self.apply_transform_operation(selected, snapping);
 	}
 
-	pub fn hints(&self, snapping: bool, axis_constraint: Axis, responses: &mut VecDeque<Message>) {
+	pub fn hints(&self, responses: &mut VecDeque<Message>) {
 		use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 		use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
@@ -321,23 +315,7 @@ impl TransformOperation {
 			input_hints.push(HintInfo::keys([Key::KeyY], "Along Y Axis"));
 		}
 
-		// TODO: Eventually, move this somewhere else (maybe an overlay in the corner of the viewport, design is TBD) since servicable but not ideal for UI design consistency to have it in the hints bar
-		let axis_text = |vector: DVec2, separate: bool| match (axis_constraint, separate) {
-			(Axis::Both, false) => format!("by {:.3}", vector.x),
-			(Axis::Both, true) => format!("by {:.3}, {:.3}", vector.x, vector.y),
-			(Axis::X, _) => format!("X by {:.3}", vector.x),
-			(Axis::Y, _) => format!("Y by {:.3}", vector.y),
-		};
-		let grs_value_text = match self {
-			TransformOperation::None => String::new(),
-			// TODO: Fix that the translation is showing numbers in viewport space, not document space
-			TransformOperation::Grabbing(translation) => format!("Translating {}", axis_text(translation.to_dvec(), true)),
-			TransformOperation::Rotating(rotation) => format!("Rotating by {:.3}°", rotation.to_f64(snapping) * 360. / std::f64::consts::TAU),
-			TransformOperation::Scaling(scale) => format!("Scaling {}", axis_text(scale.to_dvec(snapping), false)),
-		};
-		let grs_value = vec![HintInfo::label(grs_value_text)];
-
-		let hint_data = HintData(vec![HintGroup(input_hints), HintGroup(grs_value)]);
+		let hint_data = HintData(vec![HintGroup(input_hints)]);
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 }
