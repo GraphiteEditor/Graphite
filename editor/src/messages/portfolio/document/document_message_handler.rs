@@ -373,21 +373,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					overlay_context.text(&name, COLOR_OVERLAY_GRAY, None, transform, 0., [Pivot::Start, Pivot::End]);
 				}
 			}
-			DocumentMessage::DrawTransformGRSOverlays(overlay_context) => {
-				for layer in self.metadata().all_layers() {
-					if !self.network_interface.is_artboard(&layer.to_node(), &[]) {
-						continue;
-					}
-					let Some(bounds) = self.metadata().bounding_box_document(layer) else { continue };
-					let transform = self.metadata().document_to_viewport
-						* DAffine2::from_translation(DVec2::new(bounds[0].x.min(bounds[1].x), bounds[1].y.max(bounds[0].y)))
-						* DAffine2::from_scale(DVec2::splat(self.document_ptz.zoom().recip()))
-						* DAffine2::from_translation(-DVec2::Y * 4.);
-
-					responses.add(TransformLayerMessage::Overlays(overlay_context, transform));
-					break;
-				}
-			}
 			DocumentMessage::DuplicateSelectedLayers => {
 				let parent = self.new_layer_parent(false);
 				let calculated_insert_index =

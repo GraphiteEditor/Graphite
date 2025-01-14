@@ -1,17 +1,18 @@
+use crate::consts::COLOR_OVERLAY_SNAP_BACKGROUND;
 use crate::consts::SLOWING_DIVISOR;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
-use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, Typing};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayProvider, Pivot};
+use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, Typing};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
-use crate::consts::COLOR_OVERLAY_SNAP_BACKGROUND;
+use glam::DAffine2;
 
 use graphene_core::vector::ManipulatorPointId;
 
 use glam::DVec2;
 
-const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| DocumentMessage::DrawTransformGRSOverlays(context).into();
+const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| TransformLayerMessage::Overlays(context).into();
 
 #[derive(Debug, Clone, Default)]
 pub struct TransformLayerMessageHandler {
@@ -91,29 +92,41 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 		};
 
 		match message {
-			TransformLayerMessage::Overlays(overlay_context, transform) => {
-				let axis_constraint = match self.transform_operation {
-					TransformOperation::Grabbing(grabbing) => grabbing.constraint,
-					TransformOperation::Scaling(scaling) => scaling.constraint,
-					_ => Axis::Both,
-				};
+			TransformLayerMessage::Overlays(overlay_context) => {
+				for layer in document.metadata().all_layers() {
+					if !document.network_interface.is_artboard(&layer.to_node(), &[]) {
+						continue;
+					}
+					let Some(bounds) = document.metadata().bounding_box_document(layer) else { continue };
+					let transform = document.metadata().document_to_viewport
+						* DAffine2::from_translation(DVec2::new(bounds[0].x.min(bounds[1].x), bounds[1].y.max(bounds[0].y)))
+						* DAffine2::from_scale(DVec2::splat(document.document_ptz.zoom().recip()))
+						* DAffine2::from_translation(-DVec2::Y * 4.);
 
-				let axis_text = |vector: DVec2, separate: bool| match (axis_constraint, separate) {
-					(Axis::Both, false) => format!("by {:.3}", vector.x),
-					(Axis::Both, true) => format!("by {:.3}, {:.3}", vector.x, vector.y),
-					(Axis::X, _) => format!("X by {:.3}", vector.x),
-					(Axis::Y, _) => format!("Y by {:.3}", vector.y),
-				};
+					let axis_constraint = match self.transform_operation {
+						TransformOperation::Grabbing(grabbing) => grabbing.constraint,
+						TransformOperation::Scaling(scaling) => scaling.constraint,
+						_ => Axis::Both,
+					};
 
-				let grs_value_text = match self.transform_operation {
-					TransformOperation::None => String::new(),
-					// TODO: Fix that the translation is showing numbers in viewport space, not document space
-					TransformOperation::Grabbing(translation) => format!("Translating {}", axis_text(translation.to_dvec(), true)),
-					TransformOperation::Rotating(rotation) => format!("Rotating by {:.3}°", rotation.to_f64(self.snap) * 360. / std::f64::consts::TAU),
-					TransformOperation::Scaling(scale) => format!("Scaling {}", axis_text(scale.to_dvec(self.snap), false)),
-				};
+					let axis_text = |vector: DVec2, separate: bool| match (axis_constraint, separate) {
+						(Axis::Both, false) => format!("by {:.3}", vector.x),
+						(Axis::Both, true) => format!("by {:.3}, {:.3}", vector.x, vector.y),
+						(Axis::X, _) => format!("X by {:.3}", vector.x),
+						(Axis::Y, _) => format!("Y by {:.3}", vector.y),
+					};
+					let grs_value_text = match self.transform_operation {
+						TransformOperation::None => String::new(),
+						TransformOperation::Grabbing(translation) => format!(
+							"Translating {}",
+							axis_text(document.metadata().document_to_viewport.inverse().transform_vector2(translation.to_dvec()), true)
+						),
+						TransformOperation::Rotating(rotation) => format!("Rotating by {:.3}°", rotation.to_f64(self.snap).to_degrees()),
+						TransformOperation::Scaling(scale) => format!("Scaling {}", axis_text(scale.to_dvec(self.snap), false)),
+					};
 
-				overlay_context.text(&grs_value_text, COLOR_OVERLAY_SNAP_BACKGROUND, None, transform, 0., [Pivot::Start, Pivot::End]);
+					overlay_context.text(&grs_value_text, COLOR_OVERLAY_SNAP_BACKGROUND, None, transform, 0., [Pivot::Start, Pivot::End]);
+				}
 			}
 			TransformLayerMessage::ApplyTransformOperation => {
 				selected.original_transforms.clear();
