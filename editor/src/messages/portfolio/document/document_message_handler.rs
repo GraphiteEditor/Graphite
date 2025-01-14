@@ -1695,7 +1695,7 @@ impl DocumentMessageHandler {
 			.unwrap_or(0)
 	}
 
-	/// Loads layer resources such as creating the blob URLs for the images and loading all of the fonts in the document.
+	/// Loads all of the fonts in the document.
 	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>) {
 		let mut fonts = HashSet::new();
 		for (_node_id, node) in self.document_network().recursive_nodes() {
