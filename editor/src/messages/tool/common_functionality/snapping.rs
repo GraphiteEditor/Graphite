@@ -461,10 +461,10 @@ impl SnapManager {
 				overlay_context.line(viewport, target, None);
 			}
 			for &target in align.iter().flatten() {
-				overlay_context.manipulator_handle(target, false);
+				overlay_context.manipulator_handle(target, false, None);
 			}
 			if any_align {
-				overlay_context.manipulator_handle(viewport, false);
+				overlay_context.manipulator_handle(viewport, false, None);
 			}
 
 			if !any_align && ind.distribution_equal_distance_x.is_none() && ind.distribution_equal_distance_y.is_none() {
