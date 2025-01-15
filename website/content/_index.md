@@ -369,7 +369,7 @@ Graphite's representation of artwork as a node graph lets you customize, compose
 
 If you aren't paying for your free software, someone else is covering your share. Chip in so Graphite can remain sustainable and independent.
 
-<a href="https://github.com/sponsors/GraphiteEditor" class="button arrow">Donate</a>
+<a href="/donate" class="button arrow">Donate</a>
 
 </div>
 
