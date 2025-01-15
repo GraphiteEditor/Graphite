@@ -340,14 +340,13 @@ fn update_spline(tool_data: &mut SplineToolData, show_preview: bool, responses: 
 		responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
 		if show_preview {
-			tool_data.preview_point = Some(next_point_id);
 			tool_data.preview_segment = Some(id);
-		} else {
-			tool_data.points.push((next_point_id, next_point_pos));
 		}
 	}
 
-	if tool_data.points.is_empty() {
+	if show_preview {
+		tool_data.preview_point = Some(next_point_id);
+	} else {
 		tool_data.points.push((next_point_id, next_point_pos));
 	}
 }
