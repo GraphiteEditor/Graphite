@@ -62,6 +62,7 @@ pub enum PenToolMessage {
 	Undo,
 	UpdateOptions(PenOptionsUpdate),
 	RecalculateLatestPointsPosition,
+	RemovePreviousHandle,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -175,6 +176,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 				PointerMove,
 				Confirm,
 				Abort,
+				RemovePreviousHandle,
 			),
 		}
 	}
@@ -684,6 +686,15 @@ impl Fsm for PenToolFsmState {
 					responses.add(PenToolMessage::DragStart { append_to_selected });
 					PenToolFsmState::PlacingAnchor
 				}
+			}
+			(PenToolFsmState::PlacingAnchor, PenToolMessage::RemovePreviousHandle) => {
+				if let Some(last_point) = tool_data.latest_points.last_mut() {
+					last_point.handle_start = last_point.pos;
+					responses.add(OverlaysMessage::Draw);
+				} else {
+					log::warn!("No latest point available to modify handle_start.");
+				}
+				self
 			}
 			(PenToolFsmState::DraggingHandle, PenToolMessage::DragStop) => tool_data
 				.finish_placing_handle(SnapData::new(document, input), transform, responses)
