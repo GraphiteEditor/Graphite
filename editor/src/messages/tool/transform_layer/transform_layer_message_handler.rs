@@ -1,5 +1,5 @@
-use crate::consts::COLOR_OVERLAY_SNAP_BACKGROUND;
 use crate::consts::SLOWING_DIVISOR;
+use crate::consts::{COLOR_OVERLAY_SNAP_BACKGROUND, COLOR_OVERLAY_WHITE};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayProvider, Pivot};
 use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, Typing};
@@ -96,12 +96,9 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				for layer in document.metadata().all_layers() {
 					if !document.network_interface.is_artboard(&layer.to_node(), &[]) {
 						continue;
-					}
-					let Some(bounds) = document.metadata().bounding_box_document(layer) else { continue };
-					let transform = document.metadata().document_to_viewport
-						* DAffine2::from_translation(DVec2::new(bounds[0].x.min(bounds[1].x), bounds[1].y.max(bounds[0].y)))
-						* DAffine2::from_scale(DVec2::splat(document.document_ptz.zoom().recip()))
-						* DAffine2::from_translation(-DVec2::Y * 4.);
+					};
+
+					let transform = DAffine2::from_translation(DVec2::new(0.0, input.viewport_bounds.size().y)) * DAffine2::from_scale(DVec2::splat(1.2));
 
 					let axis_constraint = match self.transform_operation {
 						TransformOperation::Grabbing(grabbing) => grabbing.constraint,
@@ -109,23 +106,26 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						_ => Axis::Both,
 					};
 
+					let format_rounded = |value: f64| format!("{:.3}", value).trim_end_matches('0').trim_end_matches('.').to_string();
+
 					let axis_text = |vector: DVec2, separate: bool| match (axis_constraint, separate) {
-						(Axis::Both, false) => format!("by {:.3}", vector.x),
-						(Axis::Both, true) => format!("by {:.3}, {:.3}", vector.x, vector.y),
-						(Axis::X, _) => format!("X by {:.3}", vector.x),
-						(Axis::Y, _) => format!("Y by {:.3}", vector.y),
+						(Axis::Both, false) => format!("by {}", format_rounded(vector.x)),
+						(Axis::Both, true) => format!("by ({}, {})", format_rounded(vector.x), format_rounded(vector.y)),
+						(Axis::X, _) => format!("X by {}", format_rounded(vector.x)),
+						(Axis::Y, _) => format!("Y by {}", format_rounded(vector.y)),
 					};
+
 					let grs_value_text = match self.transform_operation {
 						TransformOperation::None => String::new(),
 						TransformOperation::Grabbing(translation) => format!(
 							"Translating {}",
 							axis_text(document.metadata().document_to_viewport.inverse().transform_vector2(translation.to_dvec()), true)
 						),
-						TransformOperation::Rotating(rotation) => format!("Rotating by {:.3}°", rotation.to_f64(self.snap).to_degrees()),
+						TransformOperation::Rotating(rotation) => format!("Rotating by {}°", format_rounded(rotation.to_f64(self.snap).to_degrees())),
 						TransformOperation::Scaling(scale) => format!("Scaling {}", axis_text(scale.to_dvec(self.snap), false)),
 					};
 
-					overlay_context.text(&grs_value_text, COLOR_OVERLAY_SNAP_BACKGROUND, None, transform, 0., [Pivot::Start, Pivot::End]);
+					overlay_context.text(&grs_value_text, COLOR_OVERLAY_WHITE, Some(COLOR_OVERLAY_SNAP_BACKGROUND), transform, 4., [Pivot::Start, Pivot::End]);
 				}
 			}
 			TransformLayerMessage::ApplyTransformOperation => {
