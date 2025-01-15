@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::consts::{COLOR_OVERLAY_YELLOW, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
+use crate::consts::{COLOR_OVERLAY_BLUE, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -520,6 +520,7 @@ impl PathToolData {
 		handle_angle
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	fn apply_snapping(
 		&mut self,
 		handle_direction: DVec2,
@@ -549,6 +550,7 @@ impl PathToolData {
 		document.metadata().document_to_viewport.transform_vector2(snap_result.snapped_point_document - handle_position)
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	fn drag(
 		&mut self,
 		equidistant: bool,
@@ -622,7 +624,13 @@ impl Fsm for PathToolFsmState {
 						let state = tool_data.update_insertion(shape_editor, document, responses, input);
 
 						if let Some(closest_segment) = &tool_data.segment {
-							overlay_context.manipulator_anchor(closest_segment.closest_point_to_viewport(), false, Some(COLOR_OVERLAY_YELLOW));
+							overlay_context.manipulator_anchor(closest_segment.closest_point_to_viewport(), false, Some(COLOR_OVERLAY_BLUE));
+							if let (Some(handle1), Some(handle2)) = closest_segment.handle_positions(document.metadata()) {
+								overlay_context.line(closest_segment.closest_point_to_viewport(), handle1, Some(COLOR_OVERLAY_BLUE));
+								overlay_context.line(closest_segment.closest_point_to_viewport(), handle2, Some(COLOR_OVERLAY_BLUE));
+								overlay_context.manipulator_handle(handle1, false, Some(COLOR_OVERLAY_BLUE));
+								overlay_context.manipulator_handle(handle2, false, Some(COLOR_OVERLAY_BLUE));
+							}
 						}
 
 						responses.add(PathToolMessage::SelectedPointUpdated);
@@ -648,19 +656,7 @@ impl Fsm for PathToolFsmState {
 				self
 			}
 			(Self::InsertPoint, PathToolMessage::Escape | PathToolMessage::Delete | PathToolMessage::RightClick) => tool_data.end_insertion(shape_editor, responses, InsertEndKind::Abort),
-			(Self::InsertPoint, PathToolMessage::GRS { key: propagate }) => {
-				// MAYBE: use `InputMapperMessage::KeyDown(..)` instead
-				match propagate {
-					// TODO: Don't use `Key::G` directly, instead take it as a variable from the input mappings list like in all other places
-					Key::KeyG => responses.add(TransformLayerMessage::BeginGrab),
-					// TODO: Don't use `Key::R` directly, instead take it as a variable from the input mappings list like in all other places
-					Key::KeyR => responses.add(TransformLayerMessage::BeginRotate),
-					// TODO: Don't use `Key::S` directly, instead take it as a variable from the input mappings list like in all other places
-					Key::KeyS => responses.add(TransformLayerMessage::BeginScale),
-					_ => warn!("Unexpected GRS key"),
-				}
-				tool_data.end_insertion(shape_editor, responses, InsertEndKind::Abort)
-			}
+			(Self::InsertPoint, PathToolMessage::GRS { key: _ }) => PathToolFsmState::InsertPoint,
 			// Mouse down
 			(
 				_,
