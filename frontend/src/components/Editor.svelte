@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy, setContext } from "svelte";
 
+	import { type Editor } from "@graphite/editor";
 	import { createClipboardManager } from "@graphite/io-managers/clipboard";
 	import { createDragManager } from "@graphite/io-managers/drag";
 	import { createHyperlinkManager } from "@graphite/io-managers/hyperlinks";
@@ -15,7 +16,6 @@
 	import { createNodeGraphState } from "@graphite/state-providers/node-graph";
 	import { createPortfolioState } from "@graphite/state-providers/portfolio";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
-	import { type Editor } from "@graphite/wasm-communication/editor";
 
 	import MainWindow from "@graphite/components/window/MainWindow.svelte";
 

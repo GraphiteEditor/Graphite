@@ -58,17 +58,7 @@ pub enum FrontendMessage {
 		#[serde(rename = "commitDate")]
 		commit_date: String,
 	},
-	TriggerCopyToClipboardBlobUrl {
-		#[serde(rename = "blobUrl")]
-		blob_url: String,
-	},
 	TriggerDelayedZoomCanvasToFitAll,
-	TriggerDownloadBlobUrl {
-		#[serde(rename = "layerName")]
-		layer_name: String,
-		#[serde(rename = "blobUrl")]
-		blob_url: String,
-	},
 	TriggerDownloadImage {
 		svg: String,
 		name: String,
@@ -99,9 +89,6 @@ pub enum FrontendMessage {
 	TriggerLoadPreferences,
 	TriggerOpenDocument,
 	TriggerPaste,
-	TriggerRevokeBlobUrl {
-		url: String,
-	},
 	TriggerSavePreferences {
 		preferences: PreferencesMessageHandler,
 	},
@@ -110,7 +97,7 @@ pub enum FrontendMessage {
 		#[serde(rename = "copyText")]
 		copy_text: String,
 	},
-	// TODO: Eventually remove this (probably starting late 2024)
+	// TODO: Eventually remove this document upgrade code
 	TriggerUpgradeDocumentToVectorManipulationFormat {
 		#[serde(rename = "documentId")]
 		document_id: DocumentId,
@@ -234,7 +221,7 @@ pub enum FrontendMessage {
 		#[serde(rename = "hintData")]
 		hint_data: HintData,
 	},
-	UpdateLayersPanelOptionsLayout {
+	UpdateLayersPanelControlBarLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
@@ -251,7 +238,7 @@ pub enum FrontendMessage {
 		nodes: Vec<FrontendNode>,
 		wires: Vec<FrontendNodeWire>,
 	},
-	UpdateNodeGraphBarLayout {
+	UpdateNodeGraphControlBarLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
@@ -293,9 +280,5 @@ pub enum FrontendMessage {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
-	},
-	UpdateZoomWithScroll {
-		#[serde(rename = "zoomWithScroll")]
-		zoom_with_scroll: bool,
 	},
 }

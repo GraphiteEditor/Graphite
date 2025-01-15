@@ -1,7 +1,7 @@
 use super::graph_modification_utils;
 use super::snapping::{SnapCache, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::misc::{GeometrySnapSource, SnapSource};
+use crate::messages::portfolio::document::utility_types::misc::{PathSnapSource, SnapSource};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration;
@@ -116,6 +116,20 @@ impl ClosestSegment {
 		(stroke_width_sq + tolerance_sq) < dist_sq
 	}
 
+	pub fn handle_positions(&self, document_metadata: &DocumentMetadata) -> (Option<DVec2>, Option<DVec2>) {
+		// Transform to viewport space
+		let transform = document_metadata.transform_to_viewport(self.layer);
+
+		// Split the Bezier at the parameter `t`
+		let [first, second] = self.bezier.split(TValue::Parametric(self.t));
+
+		// Transform the handle positions to viewport space
+		let first_handle = first.handle_end().map(|handle| transform.transform_point2(handle));
+		let second_handle = second.handle_start().map(|handle| transform.transform_point2(handle));
+
+		(first_handle, second_handle)
+	}
+
 	pub fn adjusted_insert(&self, responses: &mut VecDeque<Message>) -> PointId {
 		let layer = self.layer;
 		let [first, second] = self.bezier.split(TValue::Parametric(self.t));
@@ -193,9 +207,10 @@ impl ShapeState {
 
 			for &selected in &state.selected_points {
 				let source = match selected {
-					ManipulatorPointId::Anchor(_) if vector_data.colinear(selected) => SnapSource::Geometry(GeometrySnapSource::AnchorWithColinearHandles),
-					ManipulatorPointId::Anchor(_) => SnapSource::Geometry(GeometrySnapSource::AnchorWithFreeHandles),
-					_ => SnapSource::Geometry(GeometrySnapSource::Handle),
+					ManipulatorPointId::Anchor(_) if vector_data.colinear(selected) => SnapSource::Path(PathSnapSource::AnchorPointWithColinearHandles),
+					ManipulatorPointId::Anchor(_) => SnapSource::Path(PathSnapSource::AnchorPointWithFreeHandles),
+					// TODO: This doesn't actually work for handles, instead handles enter the arm above for free handles
+					ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) => SnapSource::Path(PathSnapSource::HandlePoint),
 				};
 
 				let Some(position) = selected.get_position(&vector_data) else { continue };
@@ -795,7 +810,7 @@ impl ShapeState {
 			while let Some((anchor, handles)) = missing_anchors.keys().next().copied().and_then(|id| missing_anchors.remove_entry(&id)) {
 				visited.push(anchor);
 
-				// If the adgacent point is just this point then skip
+				// If the adjacent point is just this point then skip
 				let mut handles = handles.map(|handle| (handle.1 != anchor).then_some(handle));
 
 				// If the adjacent points are themselves being deleted, then repeatedly visit the newest agacent points.

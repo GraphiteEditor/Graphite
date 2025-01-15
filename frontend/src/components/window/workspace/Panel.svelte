@@ -14,11 +14,11 @@
 <script lang="ts">
 	import { getContext, tick } from "svelte";
 
+	import type { Editor } from "@graphite/editor";
+	import { type LayoutKeysGroup, type Key } from "@graphite/messages";
 	import { platformIsMac, isEventSupported } from "@graphite/utility-functions/platform";
 
 	import { extractPixelData } from "@graphite/utility-functions/rasterization";
-	import type { Editor } from "@graphite/wasm-communication/editor";
-	import { type LayoutKeysGroup, type Key } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";

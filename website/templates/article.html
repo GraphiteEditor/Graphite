@@ -6,14 +6,14 @@
 {%- set meta_image = page.extra.banner_png | safe -%}
 {%- set meta_article_type = true -%}
 {%- set meta_description = page.extra.summary | default(value = page.content | striptags | safe | linebreaksbr | replace(from = "<br>", to = " ") | replace(from = "  ", to = " ") | trim | truncate(length = 200)) -%}
-{%- set css = ["article.css"] -%}
+{%- set css = ["/template/article.css", "/layout/reading-material.css"] -%}
 {%- endblock head -%}
 
 {%- block content -%}{%- set page = page | default(value = section) -%}
 <section class="reading-material">
 	<div class="block">
 		<div class="details">
-			<h1 class="headline">{{ page.title }}</h2>
+			<h1 class="headline">{{ page.title }}</h1>
 			<span class="publication">By {{ page.extra.author }}. {{ page.date | date(format = "%B %d, %Y", timezone="America/Los_Angeles") }}.</span>
 			<img class="banner" src="{{ page.extra.banner | safe }}" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" />
 		</div>
@@ -38,7 +38,7 @@
 	</div>
 </section>
 {%- if not page.summary -%}
-{{ throw(message = "ARTICLE HAS NO SUMMARY! After the first paragraph (or two short ones), a `<!-- more -->` comment must be inserted in the markdown. Otherwise the blog page will be missing its preview text." | safe) }}
+{{ throw(message = "ARTICLE HAS NO SUMMARY! After the first paragraph (or two short ones), a `<!-- more -->` comment must be inserted in the markdown. Otherwise the blog page would be missing its preview text." | safe) }}
 {%- endif -%}
 {%- endblock content -%}
 

@@ -304,7 +304,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						let () = fut.await;
 						use wasm_bindgen::prelude::*;
 
-						#[wasm_bindgen(module = "/../frontend/src/wasm-communication/editor.ts")]
+						#[wasm_bindgen(module = "/../frontend/src/editor.ts")]
 						extern "C" {
 							#[wasm_bindgen(js_name = injectImaginatePollServerStatus)]
 							fn inject();
@@ -407,7 +407,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					}
 				};
 
-				// TODO: Eventually remove this (probably starting late 2024)
+				// TODO: Eventually remove this document upgrade code
 				// Upgrade all old nodes to support editable subgraphs introduced in #1750
 				if upgrade_from_before_editable_subgraphs {
 					// This can be used, if uncommented, to upgrade demo artwork with outdated document node internals from their definitions. Delete when it's no longer needed.
@@ -461,7 +461,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					};
 
 					// Upgrade Fill nodes to the format change in #1778
-					// TODO: Eventually remove this (probably starting late 2024)
+					// TODO: Eventually remove this document upgrade code
 					let Some(ref reference) = node_metadata.persistent_metadata.reference.clone() else {
 						continue;
 					};
@@ -616,7 +616,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					}
 				}
 
-				// TODO: Eventually remove this (probably starting late 2024)
+				// TODO: Eventually remove this document upgrade code
 				// Upgrade document to the new vector manipulation format introduced in #1676
 				let document_serialized_content = document.serialize_document();
 				if upgrade_vector_manipulation_format && !document_serialized_content.is_empty() {
@@ -974,7 +974,7 @@ impl PortfolioMessageHandler {
 	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) {
 		let new_document = new_document;
 		self.document_ids.push(document_id);
-		new_document.update_layers_panel_options_bar_widgets(responses);
+		new_document.update_layers_panel_control_bar_widgets(responses);
 
 		self.documents.insert(document_id, new_document);
 

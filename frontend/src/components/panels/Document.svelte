@@ -1,11 +1,7 @@
 <script lang="ts">
 	import { getContext, onMount, tick } from "svelte";
 
-	import type { DocumentState } from "@graphite/state-providers/document";
-	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
-	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
-	import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
-	import type { Editor } from "@graphite/wasm-communication/editor";
+	import type { Editor } from "@graphite/editor";
 	import {
 		type MouseCursorIcon,
 		type XY,
@@ -19,7 +15,11 @@
 		UpdateEyedropperSamplingState,
 		UpdateMouseCursor,
 		isWidgetSpanRow,
-	} from "@graphite/wasm-communication/messages";
+	} from "@graphite/messages";
+	import type { DocumentState } from "@graphite/state-providers/document";
+	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
+	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
+	import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
 
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -275,17 +275,17 @@
 		// This isn't very clean but it's good enough for now until we need more icons, then we can build something more robust (consider blob URLs)
 		if (cursor === "custom-rotate") {
 			const svg = `
-					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20">
-						<path transform="translate(2 2)" fill="black" stroke="black" stroke-width="2px" d="
-						M8,15.2C4,15.2,0.8,12,0.8,8C0.8,4,4,0.8,8,0.8c2,0,3.9,0.8,5.3,2.3l-1,1C11.2,2.9,9.6,2.2,8,2.2C4.8,2.2,2.2,4.8,2.2,8s2.6,5.8,5.8,5.8s5.8-2.6,5.8-5.8h1.4C15.2,12,12,15.2,8,15.2z
-						" />
-						<polygon transform="translate(2 2)" fill="black" stroke="black" stroke-width="2px" points="12.6,0 15.5,5 9.7,5" />
-						<path transform="translate(2 2)" fill="white" d="
-						M8,15.2C4,15.2,0.8,12,0.8,8C0.8,4,4,0.8,8,0.8c2,0,3.9,0.8,5.3,2.3l-1,1C11.2,2.9,9.6,2.2,8,2.2C4.8,2.2,2.2,4.8,2.2,8s2.6,5.8,5.8,5.8s5.8-2.6,5.8-5.8h1.4C15.2,12,12,15.2,8,15.2z
-						" />
-						<polygon transform="translate(2 2)" fill="white" points="12.6,0 15.5,5 9.7,5" />
-					</svg>
-					`
+				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20">
+					<path transform="translate(2 2)" fill="black" stroke="black" stroke-width="2px" d="
+					M8,15.2C4,15.2,0.8,12,0.8,8C0.8,4,4,0.8,8,0.8c2,0,3.9,0.8,5.3,2.3l-1,1C11.2,2.9,9.6,2.2,8,2.2C4.8,2.2,2.2,4.8,2.2,8s2.6,5.8,5.8,5.8s5.8-2.6,5.8-5.8h1.4C15.2,12,12,15.2,8,15.2z
+					" />
+					<polygon transform="translate(2 2)" fill="black" stroke="black" stroke-width="2px" points="12.6,0 15.5,5 9.7,5" />
+					<path transform="translate(2 2)" fill="white" d="
+					M8,15.2C4,15.2,0.8,12,0.8,8C0.8,4,4,0.8,8,0.8c2,0,3.9,0.8,5.3,2.3l-1,1C11.2,2.9,9.6,2.2,8,2.2C4.8,2.2,2.2,4.8,2.2,8s2.6,5.8,5.8,5.8s5.8-2.6,5.8-5.8h1.4C15.2,12,12,15.2,8,15.2z
+					" />
+					<polygon transform="translate(2 2)" fill="white" points="12.6,0 15.5,5 9.7,5" />
+				</svg>
+				`
 				.split("\n")
 				.map((line) => line.trim())
 				.join("");
@@ -444,18 +444,18 @@
 </script>
 
 <LayoutCol class="document" on:dragover={(e) => e.preventDefault()} on:drop={dropFile}>
-	<LayoutRow class="options-bar" classes={{ "for-graph": $document.graphViewOverlayOpen }} scrollableX={true}>
+	<LayoutRow class="control-bar" classes={{ "for-graph": $document.graphViewOverlayOpen }} scrollableX={true}>
 		{#if !$document.graphViewOverlayOpen}
 			<WidgetLayout layout={$document.documentModeLayout} />
 			<WidgetLayout layout={$document.toolOptionsLayout} />
 			<LayoutRow class="spacer" />
 			<WidgetLayout layout={$document.documentBarLayout} />
 		{:else}
-			<WidgetLayout layout={$document.nodeGraphBarLayout} />
+			<WidgetLayout layout={$document.nodeGraphControlBarLayout} />
 		{/if}
 	</LayoutRow>
 	<LayoutRow
-		class="shelf-and-table"
+		class="tool-shelf-and-viewport-area"
 		styles={toolShelfTotalToolsAndSeparators && {
 			"--total-separators": toolShelfTotalToolsAndSeparators.totalSeparators,
 			"--total-tool-rows-for-1-columns": toolShelfTotalToolsAndSeparators.totalToolRowsFor1Columns,
@@ -463,7 +463,7 @@
 			"--total-tool-rows-for-3-columns": toolShelfTotalToolsAndSeparators.totalToolRowsFor3Columns,
 		}}
 	>
-		<LayoutCol class="shelf">
+		<LayoutCol class="tool-shelf">
 			{#if !$document.graphViewOverlayOpen}
 				<LayoutCol class="tools" scrollableY={true}>
 					<WidgetLayout layout={$document.toolShelfLayout} />
@@ -471,24 +471,24 @@
 			{:else}
 				<LayoutRow class="spacer" />
 			{/if}
-			<LayoutCol class="shelf-bottom-widgets">
+			<LayoutCol class="tool-shelf-bottom-widgets">
 				<WidgetLayout class={"working-colors-input-area"} layout={$document.workingColorsLayout} />
 			</LayoutCol>
 		</LayoutCol>
-		<LayoutCol class="table">
+		<LayoutCol class="viewport-container">
 			{#if rulersVisible}
 				<LayoutRow class="ruler-or-scrollbar top-ruler">
 					<LayoutCol class="ruler-corner"></LayoutCol>
 					<RulerInput origin={rulerOrigin.x} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Horizontal" bind:this={rulerHorizontal} />
 				</LayoutRow>
 			{/if}
-			<LayoutRow class="viewport-container">
+			<LayoutRow class="viewport-container-inner">
 				{#if rulersVisible}
 					<LayoutCol class="ruler-or-scrollbar">
 						<RulerInput origin={rulerOrigin.y} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Vertical" bind:this={rulerVertical} />
 					</LayoutCol>
 				{/if}
-				<LayoutCol class="viewport-container" styles={{ cursor: canvasCursor }}>
+				<LayoutCol class="viewport-container-inner" styles={{ cursor: canvasCursor }}>
 					{#if cursorEyedropper}
 						<EyedropperPreview
 							colorChoice={cursorEyedropperPreviewColorChoice}
@@ -547,7 +547,7 @@
 			padding-bottom: 0;
 		}
 
-		.options-bar {
+		.control-bar {
 			height: 32px;
 			flex: 0 0 auto;
 			margin: 0 4px;
@@ -561,7 +561,7 @@
 			}
 		}
 
-		.shelf-and-table {
+		.tool-shelf-and-viewport-area {
 			// Enables usage of the `100cqh` unit to reference the height of this container element.
 			container-type: size;
 
@@ -586,7 +586,7 @@
 			--columns-width: calc(var(--columns) * var(--tool-width));
 			--columns-width-max: calc(3px * var(--tool-width));
 
-			.shelf {
+			.tool-shelf {
 				flex: 0 0 auto;
 				justify-content: space-between;
 				// A precaution in case the variables above somehow fail
@@ -644,7 +644,7 @@
 					}
 				}
 
-				.shelf-bottom-widgets {
+				.tool-shelf-bottom-widgets {
 					flex: 0 0 auto;
 					align-items: center;
 
@@ -664,7 +664,7 @@
 				}
 			}
 
-			.table {
+			.viewport-container {
 				flex: 1 1 100%;
 
 				.ruler-or-scrollbar {
@@ -699,7 +699,7 @@
 					margin-right: 16px;
 				}
 
-				.viewport-container {
+				.viewport-container-inner {
 					flex: 1 1 100%;
 					position: relative;
 

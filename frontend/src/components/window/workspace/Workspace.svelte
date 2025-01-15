@@ -1,11 +1,10 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
+	import type { Editor } from "@graphite/editor";
+	import type { FrontendDocumentDetails } from "@graphite/messages";
 	import type { DialogState } from "@graphite/state-providers/dialog";
 	import type { PortfolioState } from "@graphite/state-providers/portfolio";
-	import type { Editor } from "@graphite/wasm-communication/editor";
-
-	import type { FrontendDocumentDetails } from "@graphite/wasm-communication/messages";
 
 	import Dialog from "@graphite/components/floating-menus/Dialog.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";

@@ -1,7 +1,8 @@
 import { tick } from "svelte";
 import { writable } from "svelte/store";
 
-import { type Editor } from "@graphite/wasm-communication/editor";
+import { type Editor } from "@graphite/editor";
+
 import {
 	defaultWidgetLayout,
 	patchWidgetLayout,
@@ -10,11 +11,11 @@ import {
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateWorkingColorsLayout,
-	UpdateNodeGraphBarLayout,
+	UpdateNodeGraphControlBarLayout,
 	UpdateGraphViewOverlay,
 	TriggerDelayedZoomCanvasToFitAll,
 	UpdateGraphFadeArtwork,
-} from "@graphite/wasm-communication/messages";
+} from "@graphite/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createDocumentState(editor: Editor) {
@@ -25,7 +26,7 @@ export function createDocumentState(editor: Editor) {
 		documentBarLayout: defaultWidgetLayout(),
 		toolShelfLayout: defaultWidgetLayout(),
 		workingColorsLayout: defaultWidgetLayout(),
-		nodeGraphBarLayout: defaultWidgetLayout(),
+		nodeGraphControlBarLayout: defaultWidgetLayout(),
 		// Graph view overlay
 		graphViewOverlayOpen: false,
 		fadeArtwork: 100,
@@ -43,7 +44,6 @@ export function createDocumentState(editor: Editor) {
 		await tick();
 
 		update((state) => {
-			// `state.documentModeLayout` is mutated in the function
 			patchWidgetLayout(state.documentModeLayout, updateDocumentModeLayout);
 			return state;
 		});
@@ -52,7 +52,6 @@ export function createDocumentState(editor: Editor) {
 		await tick();
 
 		update((state) => {
-			// `state.documentModeLayout` is mutated in the function
 			patchWidgetLayout(state.toolOptionsLayout, updateToolOptionsLayout);
 			return state;
 		});
@@ -61,7 +60,6 @@ export function createDocumentState(editor: Editor) {
 		await tick();
 
 		update((state) => {
-			// `state.documentModeLayout` is mutated in the function
 			patchWidgetLayout(state.documentBarLayout, updateDocumentBarLayout);
 			return state;
 		});
@@ -70,7 +68,6 @@ export function createDocumentState(editor: Editor) {
 		await tick();
 
 		update((state) => {
-			// `state.documentModeLayout` is mutated in the function
 			patchWidgetLayout(state.toolShelfLayout, updateToolShelfLayout);
 			return state;
 		});
@@ -79,14 +76,13 @@ export function createDocumentState(editor: Editor) {
 		await tick();
 
 		update((state) => {
-			// `state.documentModeLayout` is mutated in the function
 			patchWidgetLayout(state.workingColorsLayout, updateWorkingColorsLayout);
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphBarLayout, (updateNodeGraphBarLayout) => {
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphControlBarLayout, (updateNodeGraphControlBarLayout) => {
 		update((state) => {
-			patchWidgetLayout(state.nodeGraphBarLayout, updateNodeGraphBarLayout);
+			patchWidgetLayout(state.nodeGraphControlBarLayout, updateNodeGraphControlBarLayout);
 			return state;
 		});
 	});
