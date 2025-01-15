@@ -18,7 +18,6 @@ jobs:
       RUSTC_WRAPPER: /usr/bin/sccache
       CARGO_INCREMENTAL: 0
       SCCACHE_DIR: /var/lib/github-actions/.cache
-      INDEX_HTML_HEAD_REPLACEMENT: <script defer data-domain="editor.graphite.rs" data-api="https://graphite.rs/visit/event" src="https://graphite.rs/visit/script.hash.js"></script>
 
     steps:
       - name: 📥 Clone and checkout repository
@@ -47,7 +46,15 @@ jobs:
 
       - name: ✂ Replace template in <head> of index.html
         run: |
+          # Check if we are on the locally-serve-fonts branch
+          if git rev-parse --abbrev-ref HEAD | grep locally-serve-fonts > /dev/null; then
+            export INDEX_HTML_HEAD_SCRIPT=$(curl -s https://graphite.rs/visit/script.hash.js) || exit 1
+            export INDEX_HTML_HEAD_REPLACEMENT="<script data-domain=\"editor.graphite.rs\" data-api=\"https://graphite.rs/visit/event\">$INDEX_HTML_HEAD_SCRIPT</script>"
+          else
+            export INDEX_HTML_HEAD_REPLACEMENT=""
+          fi
           sed -i "s|<!-- INDEX_HTML_HEAD_REPLACEMENT -->|$INDEX_HTML_HEAD_REPLACEMENT|" frontend/index.html
+          echo "INDEX_HTML_HEAD_REPLACEMENT=$INDEX_HTML_HEAD_REPLACEMENT" >> $GITHUB_ENV
 
       - name: 🌐 Build Graphite web code
         env:

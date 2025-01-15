@@ -27,14 +27,12 @@
 	{% block rss -%}
 	<link rel="alternate" type="application/rss+xml" title="RSS" href="{{ get_url(path = 'blog/rss.xml', trailing_slash = false) | safe }}" />
 	{%- endblock %}
-	<link rel="preconnect" href="https://fonts.googleapis.com" />
-	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
 	{#- ON EVERY PAGE OF THE SITE: CSS AND JS TO LOAD EITHER AS A LINK OR INLINE -#}
 	{#- ======================================================================== -#}
-	{%- set global_linked_css = ["https://fonts.googleapis.com/css2?family=Bona+Nova:wght@700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"] -%}
+	{%- set global_linked_css = [] -%}
 	{%- set global_linked_js = [] -%}
-	{%- set global_css = ["/base.css"] -%}
+	{%- set global_css = ["/base.css", "/fonts.css"] -%}
 	{%- set global_js = ["/js/text-justification.js", "/js/navbar.js"] -%}
 
 	{#- RETRIEVE FROM TEMPLATES AND PAGES: CSS AND JS TO LOAD EITHER AS A LINK OR INLINE -#}
@@ -89,6 +87,7 @@
 	{{ load_data(path = path) | safe }}
 	{{ "</" ~ "script>" | safe }}
 	{%- endfor %}
+
 	{{- get_env(name = "INDEX_HTML_HEAD_INCLUSION", default = "") | safe }}
 </head>
 <body>

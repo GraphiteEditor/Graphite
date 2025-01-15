@@ -3,17 +3,17 @@ name: "Website"
 on:
   push:
     branches:
-      - master
+      - locally-serve-fonts
     paths:
       - website/**
   pull_request:
     branches:
-      - master
+      - locally-serve-fonts
     paths:
       - website/**
 env:
   CARGO_TERM_COLOR: always
-  INDEX_HTML_HEAD_INCLUSION: <script defer data-domain="graphite.rs" data-api="/visit/event" src="/visit/script.js"></script>
+  INDEX_HTML_HEAD_INCLUSION: REPLACE_ME
 
 jobs:
   build:
@@ -34,8 +34,13 @@ jobs:
 
       - name: ✂ Replace template in <head> of index.html
         run: |
-          # Remove the INDEX_HTML_HEAD_INCLUSION environment variable for build links (not master deploys)
-          git rev-parse --abbrev-ref HEAD | grep master > /dev/null || export INDEX_HTML_HEAD_INCLUSION=""
+          # Check if we are on the locally-serve-fonts branch
+          if git rev-parse --abbrev-ref HEAD | grep locally-serve-fonts > /dev/null; then
+            export INDEX_HTML_HEAD_SCRIPT=$(curl -s https://graphite.rs/visit/script.hash.js) || exit 1
+            echo "INDEX_HTML_HEAD_INCLUSION=<script data-domain=\"graphite.rs\" data-api=\"/visit/event\">$INDEX_HTML_HEAD_SCRIPT</script>" >> $GITHUB_ENV
+          else
+            echo "INDEX_HTML_HEAD_INCLUSION=<script>alert();</script>" >> $GITHUB_ENV
+          fi
 
       - name: 🌐 Build Graphite website with Zola
         env:

@@ -2,9 +2,9 @@
 title = "Donate"
 
 [extra]
-# css = ["/page/donate.css", "/component/feature-box.css", "/layout/balance-text.css"]
+# css = ["/page/donate.css", "/component/feature-box.css"]
 # js = ["/js/fundraising.js"]
-# linked_js = ["https://static.graphite.rs/text-balancer/text-balancer.js"]
+# linked_js = []
 +++
 
 <section>
@@ -33,7 +33,7 @@ Your monthly support (or one-off contribution) helps provide the resources neede
 
 # Support the mission
 
-<p class="balance-text">
+<p>
 You can help realize Graphite's ambitious vision of building the ultimate 2D creative tool.
 Graphite is built by a small, dedicated crew of volunteers in need of resources to grow.
 </p>
