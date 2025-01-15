@@ -276,10 +276,6 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 			}
 			NavigationMessage::EndCanvasPTZ { abort_transform } => {
-				if ipp.keyboard.key(Key::Space) {
-					debug!("space is pressed");
-					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grab });
-				}
 				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
 					log::error!("Could not get mutable PTZ in EndCanvasPTZ");
 					return;
@@ -315,7 +311,12 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 
 				// Send the final messages to close out the operation
 				responses.add(BroadcastEvent::CanvasTransformed);
-				// responses.add(ToolMessage::UpdateCursor);
+				if ipp.keyboard.key(Key::Space) {
+					debug!("space is pressed");
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grab });
+				} else {
+					responses.add(ToolMessage::UpdateCursor);
+				}
 				responses.add(ToolMessage::UpdateHints);
 				responses.add(NavigateToolMessage::End);
 			}
