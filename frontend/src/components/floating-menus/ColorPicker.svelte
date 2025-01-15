@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { onDestroy, createEventDispatcher, getContext } from "svelte";
 
+	import type { Editor } from "@graphite/editor";
+	import type { HSV, RGB, FillChoice } from "@graphite/messages";
+	import { Color, Gradient } from "@graphite/messages";
 	import { clamp } from "@graphite/utility-functions/math";
-	import type { Editor } from "@graphite/wasm-communication/editor";
-	import type { HSV, RGB, FillChoice } from "@graphite/wasm-communication/messages";
-	import { Color, Gradient } from "@graphite/wasm-communication/messages";
 
 	import FloatingMenu, { type MenuDirection } from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";

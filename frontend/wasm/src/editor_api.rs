@@ -28,7 +28,7 @@ use wasm_bindgen::prelude::*;
 
 // /// We directly interface with the updateImage JS function for massively increased performance over serializing and deserializing.
 // /// This avoids creating a json with a list millions of numbers long.
-// #[wasm_bindgen(module = "/../src/wasm-communication/editor.ts")]
+// #[wasm_bindgen(module = "/../src/editor.ts")]
 // extern "C" {
 // 	// fn dispatchTauri(message: String) -> String;
 // 	fn dispatchTauri(message: String);
@@ -433,8 +433,8 @@ impl EditorHandle {
 
 	/// A text box was committed
 	#[wasm_bindgen(js_name = onChangeText)]
-	pub fn on_change_text(&self, new_text: String, is_right_click: bool) -> Result<(), JsValue> {
-		let message = TextToolMessage::TextChange { new_text, is_right_click };
+	pub fn on_change_text(&self, new_text: String, is_left_or_right_click: bool) -> Result<(), JsValue> {
+		let message = TextToolMessage::TextChange { new_text, is_left_or_right_click };
 		self.dispatch(message);
 
 		Ok(())

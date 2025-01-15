@@ -138,10 +138,6 @@ export class UpdateWirePathInProgress extends JsMessage {
 	readonly wirePath!: WirePath | undefined;
 }
 
-export class UpdateZoomWithScroll extends JsMessage {
-	readonly zoomWithScroll!: boolean;
-}
-
 // Allows the auto save system to use a string for the id rather than a BigInt.
 // IndexedDb does not allow for BigInts as primary keys.
 // TypeScript does not allow subclasses to change the type of class variables in subclasses.
@@ -788,17 +784,7 @@ export class TriggerImport extends JsMessage {}
 
 export class TriggerPaste extends JsMessage {}
 
-export class TriggerCopyToClipboardBlobUrl extends JsMessage {
-	readonly blobUrl!: string;
-}
-
 export class TriggerDelayedZoomCanvasToFitAll extends JsMessage {}
-
-export class TriggerDownloadBlobUrl extends JsMessage {
-	readonly layerName!: string;
-
-	readonly blobUrl!: string;
-}
 
 export class TriggerDownloadImage extends JsMessage {
 	readonly svg!: string;
@@ -815,10 +801,6 @@ export class TriggerDownloadTextFile extends JsMessage {
 	readonly document!: string;
 
 	readonly name!: string;
-}
-
-export class TriggerRevokeBlobUrl extends JsMessage {
-	readonly url!: string;
 }
 
 export class TriggerSavePreferences extends JsMessage {
@@ -1584,9 +1566,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayRemoveEditableTextbox,
 	SendUIMetadata,
 	TriggerAboutGraphiteLocalizedCommitDate,
-	TriggerCopyToClipboardBlobUrl,
 	TriggerDelayedZoomCanvasToFitAll,
-	TriggerDownloadBlobUrl,
 	TriggerDownloadImage,
 	TriggerDownloadTextFile,
 	TriggerFetchAndOpenDocument,
@@ -1598,7 +1578,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerLoadPreferences,
 	TriggerOpenDocument,
 	TriggerPaste,
-	TriggerRevokeBlobUrl,
 	TriggerSavePreferences,
 	TriggerTextCommit,
 	TriggerTextCopy,
@@ -1641,6 +1620,5 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateToolShelfLayout,
 	UpdateWirePathInProgress,
 	UpdateWorkingColorsLayout,
-	UpdateZoomWithScroll,
 } as const;
 export type JsMessageType = keyof typeof messageMakers;

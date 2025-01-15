@@ -155,7 +155,10 @@ impl LayoutHolder for PathTool {
 			})
 			.tooltip(colinear_handles_tooltip)
 			.widget_holder();
-		let colinear_handles_label = TextLabel::new("Colinear Handles").tooltip(colinear_handles_tooltip).widget_holder();
+		let colinear_handles_label = TextLabel::new("Colinear Handles")
+			.disabled(self.tool_data.selection_status.is_none())
+			.tooltip(colinear_handles_tooltip)
+			.widget_holder();
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![

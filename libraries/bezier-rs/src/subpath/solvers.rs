@@ -1,6 +1,6 @@
 use super::*;
 use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
-use crate::utils::{compute_circular_subpath_details, line_intersection, SubpathTValue};
+use crate::utils::{compute_circular_subpath_details, is_rectangle_inside_other, line_intersection, SubpathTValue};
 use crate::TValue;
 
 use glam::{DAffine2, DMat2, DVec2};
@@ -237,6 +237,47 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		false
 	}
 
+	/// Returns `true` if this subpath is completely inside the `other` subpath.
+	/// <iframe frameBorder="0" width="100%" height="350px" src="https://graphite.rs/libraries/bezier-rs#subpath/inside-other/solo" title="Inside Other Subpath Demo"></iframe>
+	pub fn is_inside_subpath(&self, other: &Subpath<PointId>, error: Option<f64>, minimum_separation: Option<f64>) -> bool {
+		// Eliminate any possibility of one being inside the other, if either of them is empty
+		if self.is_empty() || other.is_empty() {
+			return false;
+		}
+
+		// Safe to unwrap because the subpath is not empty
+		let inner_bbox = self.bounding_box().unwrap();
+		let outer_bbox = other.bounding_box().unwrap();
+
+		// Eliminate this subpath if its bounding box is not completely inside the other subpath's bounding box.
+		// Reasoning:
+		// If the (min x, min y) of the inner subpath is less than or equal to the (min x, min y) of the outer subpath,
+		// or if the (min x, min y) of the inner subpath is greater than or equal to the (max x, max y) of the outer subpath,
+		// then the inner subpath is intersecting with or outside the outer subpath. The same logic applies for (max x, max y).
+		if !is_rectangle_inside_other(inner_bbox, outer_bbox) {
+			return false;
+		}
+
+		// Eliminate this subpath if any of its anchors are outside the other subpath.
+		for anchors in self.anchors() {
+			if !other.contains_point(anchors) {
+				return false;
+			}
+		}
+
+		// Eliminate this subpath if it intersects with the other subpath.
+		if !self.subpath_intersections(other, error, minimum_separation).is_empty() {
+			return false;
+		}
+
+		// At this point:
+		// (1) This subpath's bounding box is inside the other subpath's bounding box,
+		// (2) Its anchors are inside the other subpath, and
+		// (3) It is not intersecting with the other subpath.
+		// Hence, this subpath is completely inside the given other subpath.
+		true
+	}
+
 	/// Returns a normalized unit vector representing the tangent on the subpath based on the parametric `t`-value provided.
 	/// <iframe frameBorder="0" width="100%" height="350px" src="https://graphite.rs/libraries/bezier-rs#subpath/tangent/solo" title="Tangent Demo"></iframe>
 	pub fn tangent(&self, t: SubpathTValue) -> DVec2 {
@@ -267,7 +308,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		})
 	}
 
-	/// Return the min and max corners that represent the bounding box of the subpath.
+	/// Return the min and max corners that represent the bounding box of the subpath. Return `None` if the subpath is empty.
 	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#subpath/bounding-box/solo" title="Bounding Box Demo"></iframe>
 	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {
 		self.iter().map(|bezier| bezier.bounding_box()).reduce(|bbox1, bbox2| [bbox1[0].min(bbox2[0]), bbox1[1].max(bbox2[1])])
@@ -875,6 +916,28 @@ mod tests {
 	}
 
 	// TODO: add more intersection tests
+
+	#[test]
+	fn is_inside_subpath() {
+		let boundary_polygon = [DVec2::new(100., 100.), DVec2::new(500., 100.), DVec2::new(500., 500.), DVec2::new(100., 500.)].to_vec();
+		let boundary_polygon = Subpath::from_anchors_linear(boundary_polygon, true);
+
+		let curve = Bezier::from_quadratic_dvec2(DVec2::new(189., 289.), DVec2::new(9., 286.), DVec2::new(45., 410.));
+		let curve_intersecting = Subpath::<EmptyId>::from_bezier(&curve);
+		assert_eq!(curve_intersecting.is_inside_subpath(&boundary_polygon, None, None), false);
+
+		let curve = Bezier::from_quadratic_dvec2(DVec2::new(115., 37.), DVec2::new(51.4, 91.8), DVec2::new(76.5, 242.));
+		let curve_outside = Subpath::<EmptyId>::from_bezier(&curve);
+		assert_eq!(curve_outside.is_inside_subpath(&boundary_polygon, None, None), false);
+
+		let curve = Bezier::from_cubic_dvec2(DVec2::new(210.1, 133.5), DVec2::new(150.2, 436.9), DVec2::new(436., 285.), DVec2::new(247.6, 240.7));
+		let curve_inside = Subpath::<EmptyId>::from_bezier(&curve);
+		assert_eq!(curve_inside.is_inside_subpath(&boundary_polygon, None, None), true);
+
+		let line = Bezier::from_linear_dvec2(DVec2::new(101., 101.5), DVec2::new(150.2, 499.));
+		let line_inside = Subpath::<EmptyId>::from_bezier(&line);
+		assert_eq!(line_inside.is_inside_subpath(&boundary_polygon, None, None), true);
+	}
 
 	#[test]
 	fn round_join_counter_clockwise_rotation() {

@@ -1,7 +1,7 @@
 use super::graph_modification_utils;
 use super::snapping::{SnapCache, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::misc::{GeometrySnapSource, SnapSource};
+use crate::messages::portfolio::document::utility_types::misc::{PathSnapSource, SnapSource};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration;
@@ -193,9 +193,10 @@ impl ShapeState {
 
 			for &selected in &state.selected_points {
 				let source = match selected {
-					ManipulatorPointId::Anchor(_) if vector_data.colinear(selected) => SnapSource::Geometry(GeometrySnapSource::AnchorWithColinearHandles),
-					ManipulatorPointId::Anchor(_) => SnapSource::Geometry(GeometrySnapSource::AnchorWithFreeHandles),
-					_ => SnapSource::Geometry(GeometrySnapSource::Handle),
+					ManipulatorPointId::Anchor(_) if vector_data.colinear(selected) => SnapSource::Path(PathSnapSource::AnchorPointWithColinearHandles),
+					ManipulatorPointId::Anchor(_) => SnapSource::Path(PathSnapSource::AnchorPointWithFreeHandles),
+					// TODO: This doesn't actually work for handles, instead handles enter the arm above for free handles
+					ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) => SnapSource::Path(PathSnapSource::HandlePoint),
 				};
 
 				let Some(position) = selected.get_position(&vector_data) else { continue };

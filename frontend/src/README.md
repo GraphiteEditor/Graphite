@@ -26,21 +26,17 @@ _Some state providers, similarly to I/O managers, may subscribe to backend event
 
 TypeScript files which define and `export` individual helper functions for use elsewhere in the codebase. These files should not persist state outside each function.
 
-## WASM communication: `wasm-communication/`
-
-TypeScript files which serve as the JS interface to the WASM bindings for the editor backend.
-
-### WASM editor: `editor.ts`
+## WASM editor: `editor.ts`
 
 Instantiates the WASM and editor backend instances. The function `initWasm()` asynchronously constructs and initializes an instance of the WASM bindings JS module provided by wasm-bindgen/wasm-pack. The function `createEditor()` constructs an instance of the editor backend. In theory there could be multiple editor instances sharing the same WASM module instance. The function returns an object where `raw` is the WASM module, `instance` is the editor, and `subscriptions` is the subscription router (described below).
 
 `initWasm()` occurs in `main.ts` right before the Svelte application exists, then `createEditor()` is run in `Editor.svelte` during the Svelte app's creation. Similarly to the state providers described above, the editor is given via `setContext()` so other components can get it via `getContext` and call functions on `editor.raw`, `editor.handle`, or `editor.subscriptions`.
 
-### Message definitions: `messages.ts`
+## Message definitions: `messages.ts`
 
 Defines the message formats and data types received from the backend. Since Rust and JS support different styles of data representation, this bridges the gap from Rust into JS land. Messages (and the data contained within) are serialized in Rust by `serde` into JSON, and these definitions are manually kept up-to-date to parallel the message structs and their data types. (However, directives like `#[serde(skip)]` or `#[serde(rename = "someOtherName")]` may cause the TypeScript format to look slightly different from the Rust structs.) These definitions are basically just for the sake of TypeScript to understand the format, although in some cases we may perform data conversion here using translation functions that we can provide.
 
-### Subscription router: `subscription-router.ts`
+## Subscription router: `subscription-router.ts`
 
 Associates messages from the backend with subscribers in the frontend, and routes messages to subscriber callbacks. This module provides a `subscribeJsMessage(messageType, callback)` function which JS code throughout the frontend can call to be registered as the exclusive handler for a chosen message type. This file's other exported function, `handleJsMessage(messageType, messageData, wasm, instance)`, is called in `editor.ts` by the associated editor instance when the backend sends a `FrontendMessage`. When this occurs, the subscription router delivers the message to the subscriber for given `messageType` by executing its registered `callback` function. As an argument to the function, it provides the `messageData` payload transformed into its TypeScript-friendly format defined in `messages.ts`.
 
