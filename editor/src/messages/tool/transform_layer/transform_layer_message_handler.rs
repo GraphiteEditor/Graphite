@@ -80,8 +80,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					let points = shape_editor.selected_points();
 					let selected_points: Vec<&ManipulatorPointId> = points.collect();
 
-					if selected_points.len() == 1 {
-						let point = &selected_points[0];
+					if let [point] = selected_points.as_slice() {
 						if let ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) = point {
 							let anchor_position = point.get_anchor_position(&vector_data).unwrap();
 							*selected.pivot = viewspace.transform_point2(anchor_position);
@@ -114,10 +113,10 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			TransformLayerMessage::BeginGrab => {
-				if !(using_path_tool || using_select_tool)
+				if (!using_path_tool && !using_select_tool)
 					|| (using_path_tool && shape_editor.selected_points().next().is_none())
-					|| matches!(self.transform_operation, TransformOperation::Grabbing(_))
 					|| selected_layers.is_empty()
+					|| matches!(self.transform_operation, TransformOperation::Grabbing(_))
 				{
 					selected.original_transforms.clear();
 
@@ -132,7 +131,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 			}
 			TransformLayerMessage::BeginRotate => {
 				let selected_points: Vec<&ManipulatorPointId> = shape_editor.selected_points().collect();
-				if !(using_path_tool || using_select_tool)
+
+				if (!using_path_tool && !using_select_tool)
 					|| (using_path_tool && selected_points.is_empty())
 					|| selected_layers.is_empty()
 					|| matches!(self.transform_operation, TransformOperation::Rotating(_))
@@ -141,37 +141,31 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					return;
 				}
 
-				if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
-					if selected_points.len() == 1 {
-						let point = &selected_points[0];
-
-						match point {
-							ManipulatorPointId::Anchor(_) => {
-								if let Some([handle1, handle2]) = point.get_handle_pair(&vector_data) {
-									if (handle1.get_handle_length(&vector_data) == 0. && handle2.get_handle_length(&vector_data) == 0.)
-										|| (handle1.get_handle_length(&vector_data) == f64::MAX && handle2.get_handle_length(&vector_data) == f64::MAX)
-									{
-										return;
-									}
-								}
-							}
-							_ => {
-								// TODO: Need to fix handle snap to anchor issue. SEE (https://discord.com/channels/731730685944922173/1217752903209713715).
-
-								let handle_length = point.as_handle().and_then(|handle| Some(handle.get_handle_length(&vector_data)));
-
-								if let Some(length) = handle_length {
-									if length == 0. {
-										selected.original_transforms.clear();
-										return;
-									}
-								}
-							}
-						}
-					}
-				} else {
+				let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) else {
 					selected.original_transforms.clear();
 					return;
+				};
+
+				if let [point] = selected_points.as_slice() {
+					if matches!(point, ManipulatorPointId::Anchor(_)) {
+						if let Some([handle1, handle2]) = point.get_handle_pair(&vector_data) {
+							let handle1_length = handle1.length(&vector_data);
+							let handle2_length = handle2.length(&vector_data);
+
+							if (handle1_length == 0. && handle2_length == 0.) || (handle1_length == f64::MAX && handle2_length == f64::MAX) {
+								return;
+							}
+						}
+					} else {
+						// TODO: Fix handle snap to anchor issue, see <https://discord.com/channels/731730685944922173/1217752903209713715>
+
+						let handle_length = point.as_handle().map(|handle| handle.length(&vector_data));
+
+						if handle_length == Some(0.) {
+							selected.original_transforms.clear();
+							return;
+						}
+					}
 				}
 
 				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse);
@@ -184,45 +178,38 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				let selected_points: Vec<&ManipulatorPointId> = shape_editor.selected_points().collect();
 
 				if (using_path_tool && selected_points.is_empty())
-					|| !(using_path_tool || using_select_tool)
-					|| matches!(self.transform_operation, TransformOperation::Scaling(_))
+					|| (!using_path_tool && !using_select_tool)
 					|| selected_layers.is_empty()
+					|| matches!(self.transform_operation, TransformOperation::Scaling(_))
 				{
 					selected.original_transforms.clear();
 					return;
 				}
 
-				if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
-					if selected_points.len() == 1 {
-						let point = &selected_points[0];
-
-						match point {
-							ManipulatorPointId::Anchor(_) => {
-								if let Some([handle1, handle2]) = point.get_handle_pair(&vector_data) {
-									let handle1_length = handle1.get_handle_length(&vector_data);
-									let handle2_length = handle2.get_handle_length(&vector_data);
-
-									if (handle1_length == 0. && handle2_length == 0.) || (handle1_length == f64::MAX && handle2_length == f64::MAX) {
-										selected.original_transforms.clear();
-										return;
-									}
-								}
-							}
-							_ => {
-								let handle_length = point.as_handle().and_then(|handle| Some(handle.get_handle_length(&vector_data)));
-
-								if let Some(length) = handle_length {
-									if length == 0. {
-										selected.original_transforms.clear();
-										return;
-									}
-								}
-							}
-						}
-					}
-				} else {
+				let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) else {
 					selected.original_transforms.clear();
 					return;
+				};
+
+				if let [point] = selected_points.as_slice() {
+					if matches!(point, ManipulatorPointId::Anchor(_)) {
+						if let Some([handle1, handle2]) = point.get_handle_pair(&vector_data) {
+							let handle1_length = handle1.length(&vector_data);
+							let handle2_length = handle2.length(&vector_data);
+
+							if (handle1_length == 0. && handle2_length == 0.) || (handle1_length == f64::MAX && handle2_length == f64::MAX) {
+								selected.original_transforms.clear();
+								return;
+							}
+						}
+					} else {
+						let handle_length = point.as_handle().map(|handle| handle.length(&vector_data));
+
+						if handle_length == Some(0.) {
+							selected.original_transforms.clear();
+							return;
+						}
+					}
 				}
 
 				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse);
@@ -295,6 +282,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						}
 					};
 				}
+
 				self.mouse_position = input.mouse.position;
 			}
 			TransformLayerMessage::SelectionChanged => {

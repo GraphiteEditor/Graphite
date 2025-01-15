@@ -101,6 +101,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 							tool.process_message(ToolMessage::UpdateCursor, responses, &mut data);
 						}
 					}
+
 					if matches!(old_tool, ToolType::Path | ToolType::Select) {
 						responses.add(TransformLayerMessage::CancelTransformOperation);
 					}

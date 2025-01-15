@@ -176,7 +176,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 				PointerMove,
 				Confirm,
 				Abort,
-				RemovePreviousHandle
+				RemovePreviousHandle,
 			),
 		}
 	}
