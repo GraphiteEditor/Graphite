@@ -571,9 +571,9 @@
 			// when inConnector point lies on the vertical grid line two units to the right of outConnector point.
 			else if (gridSpacing <= inConnectorX - outConnectorX && inConnectorX - outConnectorX <= 2 * gridSpacing) {
 				return [
-					{ x: outConnectorX - 2 * lineWidth, y: outConnectorY },
-					{ x: outConnectorX - 2 * lineWidth, y: inConnectorY },
-
+					{ x: outConnectorX, y: outConnectorY },
+					{ x: outConnectorX + gridSpacing - 2 * lineWidth, y: outConnectorY },
+					{ x: outConnectorX + gridSpacing - 2 * lineWidth, y: inConnectorY },
 					{ x: inConnectorX, y: inConnectorY },
 				];
 			} else {
