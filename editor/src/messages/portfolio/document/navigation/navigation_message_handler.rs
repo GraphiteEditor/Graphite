@@ -171,6 +171,8 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 					false => -ipp.mouse.scroll_delta.as_dvec2(),
 					true => (-ipp.mouse.scroll_delta.y, 0.).into(),
 				} * VIEWPORT_SCROLL_RATE;
+				responses.add(SelectToolMessage::Delta { delta });
+				responses.add(PathToolMessage::Delta { delta });
 				responses.add(NavigationMessage::CanvasPan { delta });
 				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 			}

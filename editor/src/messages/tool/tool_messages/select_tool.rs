@@ -80,6 +80,7 @@ pub enum SelectToolMessage {
 	PointerOutsideViewport(SelectToolPointerKeys),
 	SelectOptions(SelectOptionsUpdate),
 	SetPivot { position: PivotPosition },
+	Delta { delta: DVec2 },
 }
 
 impl ToolMetadata for SelectTool {
@@ -230,6 +231,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 
 		let additional = match self.fsm_state {
 			SelectToolFsmState::Ready { .. } => actions!(SelectToolMessageDiscriminant; DragStart),
+			SelectToolFsmState::DrawingBox { .. } => actions!(SelectToolMessageDiscriminant;DragStop,Delta),
 			_ => actions!(SelectToolMessageDiscriminant; DragStop),
 		};
 		common.extend(additional);
@@ -407,6 +409,11 @@ impl Fsm for SelectToolFsmState {
 
 		let ToolMessage::Select(event) = event else { return self };
 		match (self, event) {
+			(SelectToolFsmState::DrawingBox { .. }, SelectToolMessage::Delta { delta }) => {
+				tool_data.drag_start += delta;
+
+				self
+			}
 			(_, SelectToolMessage::Overlays(mut overlay_context)) => {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 

@@ -79,6 +79,9 @@ pub enum PathToolMessage {
 		new_y: f64,
 	},
 	SwapSelectedHandles,
+	Delta {
+		delta: DVec2,
+	},
 }
 
 impl ToolMetadata for PathTool {
@@ -229,6 +232,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeleteAndBreakPath,
 				Escape,
 				RightClick,
+				Delta
 			),
 			PathToolFsmState::InsertPoint => actions!(PathToolMessageDiscriminant;
 				Enter,
@@ -785,6 +789,11 @@ impl Fsm for PathToolFsmState {
 				if let Some(offset) = tool_data.auto_panning.shift_viewport(input, responses) {
 					tool_data.drag_start_pos += offset;
 				}
+
+				PathToolFsmState::DrawingBox
+			}
+			(PathToolFsmState::DrawingBox, PathToolMessage::Delta { delta }) => {
+				tool_data.drag_start_pos += delta;
 
 				PathToolFsmState::DrawingBox
 			}
