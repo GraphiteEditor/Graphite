@@ -137,7 +137,7 @@
 
 		const scale = $nodeGraph.transform.scale; // Get the current scale
 		const lineWidth = 2;
-		const halfLineWidth = lineWidth / 2;
+
 		const VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP = 1;
 		const containerBounds = nodesContainer.getBoundingClientRect();
 
@@ -154,7 +154,7 @@
 		// Handle straight lines
 		if ((verticalOut && verticalIn && outConnectorX === inConnectorX) || (!verticalOut && !verticalIn && outConnectorY === inConnectorY)) {
 			if (!verticalOut && !verticalIn && outConnectorY === inConnectorY && outConnectorX > inConnectorX) {
-				// outConnector point and inConnector point lying on the same horizontal grid line and outConnector lies to the right of inconnector.
+				// outConnector point and inConnector point lying on the same horizontal grid line and outConnector point lies to the right of inConnector point.
 				return [
 					{ x: outConnectorX, y: outConnectorY },
 					{ x: outConnectorX + gridSpacing, y: outConnectorY },
@@ -180,15 +180,16 @@
 		}
 
 		// Handle standard right-angle paths
-		// Start vertical, then horizontal
 
+		// Start vertical, then horizontal
 		if (verticalOut && inConnectorX > outConnectorX) {
 			//outConnector point lies to the left of inConnector point.
 
 			if (outConnectorY < inConnectorY) {
 				// outConnector point lies above inConnector point.
 				if (-4 * gridSpacing <= outConnectorX - inConnectorX && outConnectorX - inConnectorX < -3 * gridSpacing) {
-					//3 units above inConnector point.
+					//outConnector point lies on the vertical grid line 4 units to the left of inConnector point point.
+
 					return [
 						{ x: outConnectorX, y: outConnectorY },
 						{ x: outConnectorX, y: outConnectorY - gridSpacing + 5.5 * lineWidth },
@@ -196,7 +197,9 @@
 						{ x: inConnectorX - 2 * gridSpacing + lineWidth, y: inConnectorY },
 						{ x: inConnectorX, y: inConnectorY },
 					];
-				} else if (-3 * gridSpacing <= outConnectorX - inConnectorX && outConnectorX - inConnectorX <= -1 * gridSpacing) {
+				}
+				if (-3 * gridSpacing <= outConnectorX - inConnectorX && outConnectorX - inConnectorX <= -1 * gridSpacing) {
+					// outConnector point lying on vertical grid lines 3 and 2 units to the left of inConnector point.
 					if (-2 * gridSpacing <= outConnectorY - inConnectorY && outConnectorY - inConnectorY <= -1 * gridSpacing) {
 						return [
 							{ x: outConnectorX, y: outConnectorY },
@@ -226,7 +229,9 @@
 						];
 					}
 				} else if (-1 * gridSpacing < outConnectorX - inConnectorX && outConnectorX - inConnectorX <= 0 * gridSpacing) {
+					// outConnector point lying on vertical grid line 1 units to the left of inConnector point.
 					if (-2 * gridSpacing <= outConnectorY - inConnectorY && outConnectorY - inConnectorY <= -1 * gridSpacing) {
+						// outConnector point lying on horizontal grid line 1 unit above inConnector point.
 						return [
 							{ x: outConnectorX, y: outConnectorY + 4 * lineWidth },
 							{ x: outConnectorX + gridSpacing, y: outConnectorY + 4 * lineWidth },
@@ -234,9 +239,9 @@
 							{ x: inConnectorX + lineWidth, y: inConnectorY },
 						];
 					} else if (-1 * gridSpacing <= outConnectorY - inConnectorY && outConnectorY - inConnectorY <= 0 * gridSpacing) {
+						// outConnector point lying on the same horizontal grid line as inConnector point.
 						return [
 							{ x: outConnectorX, y: outConnectorY + 5 * lineWidth },
-
 							{ x: inConnectorX, y: inConnectorY },
 						];
 					} else {
@@ -263,24 +268,25 @@
 			} else {
 				// outConnector point lies below inConnector point.
 				if (-1 * gridSpacing <= outConnectorX - inConnectorX && outConnectorX - inConnectorX <= 0 * gridSpacing) {
+					// outConnector point lying on vertical grid line 1 unit to the left of inConnector point.
 					if (0 * gridSpacing <= outConnectorY - inConnectorY && outConnectorY - inConnectorY <= 2 * gridSpacing) {
+						//outConnector point lying on the horizontal grid lines 1 and 2 units below the inConnector point.
 						return [
 							{ x: outConnectorX, y: outConnectorY + 4 * lineWidth },
 							{ x: outConnectorX - gridSpacing, y: outConnectorY + 4 * lineWidth },
 							{ x: outConnectorX - gridSpacing, y: inConnectorY },
-
+							{ x: inConnectorX, y: inConnectorY },
+						];
+					} else {
+						const midY = (inConnectorY + outConnectorY) / 2 - (((inConnectorY + outConnectorY) / 2) % gridSpacing);
+						return [
+							{ x: outConnectorX, y: outConnectorY },
+							{ x: outConnectorX, y: midY },
+							{ x: inConnectorX - 2 * gridSpacing, y: midY },
+							{ x: inConnectorX - 2 * gridSpacing, y: inConnectorY },
 							{ x: inConnectorX, y: inConnectorY },
 						];
 					}
-
-					const midY = (inConnectorY + outConnectorY) / 2 - (((inConnectorY + outConnectorY) / 2) % gridSpacing);
-					return [
-						{ x: outConnectorX, y: outConnectorY },
-						{ x: outConnectorX, y: midY },
-						{ x: inConnectorX - 2 * gridSpacing, y: midY },
-						{ x: inConnectorX - 2 * gridSpacing, y: inConnectorY },
-						{ x: inConnectorX, y: inConnectorY },
-					];
 				} else {
 					return [
 						{ x: outConnectorX, y: outConnectorY },
@@ -293,14 +299,10 @@
 			//outConnector point lies to the right of inConnector point.
 
 			if (outConnectorY < inConnectorY) {
-				// outConnector point lies above inConnector point.
+				// outConnector point lying on any horizontal grid line above inConnector point.
 
-				/*return [
-					{ x: outConnectorX, y: outConnectorY },
-					{ x: 36, y: 36 },
-					{ x: inConnectorX, y: inConnectorY },
-				];*/
 				if (-2 * gridSpacing < outConnectorY - inConnectorY && outConnectorY - inConnectorY <= -1 * gridSpacing) {
+					// outConnector point lying on horizontal grid line 1 unit above inConnector point.
 					return [
 						{ x: outConnectorX, y: outConnectorY },
 						{ x: outConnectorX, y: outConnectorY - gridSpacing + 5.5 * lineWidth },
@@ -310,6 +312,7 @@
 						{ x: inConnectorX, y: inConnectorY },
 					];
 				} else if (-1 * gridSpacing < outConnectorY - inConnectorY && outConnectorY - inConnectorY <= 0 * gridSpacing) {
+					// outConnector point lying on the same horizontal grid line as inConnector point.
 					return [
 						{ x: outConnectorX, y: outConnectorY },
 						{ x: outConnectorX, y: outConnectorY - 2 * gridSpacing + 5.5 * lineWidth },
@@ -318,9 +321,8 @@
 						{ x: inConnectorX - 2 * gridSpacing + lineWidth, y: inConnectorY },
 						{ x: inConnectorX, y: inConnectorY },
 					];
-				}
-
-				if (gridSpacing <= outConnectorX - inConnectorX && outConnectorX - inConnectorX <= 3 * gridSpacing) {
+				} else if (gridSpacing <= outConnectorX - inConnectorX && outConnectorX - inConnectorX <= 3 * gridSpacing) {
+					// outConnector point lying on vertical grid lines 1 and 2 units to the right of inConnector point.
 					return [
 						{ x: outConnectorX, y: outConnectorY },
 						{ x: outConnectorX, y: outConnectorY - gridSpacing + 5.5 * lineWidth },
@@ -479,7 +481,8 @@
 			} else {
 				//outConnectorY lies on or above the inConnectorY point.
 				if (-6 * gridSpacing < inConnectorX - outConnectorX && inConnectorX - outConnectorX < 4 * gridSpacing) {
-					// edge case
+					// edge case: outConnector point lying on vertical grid lines ranging from 4 units to left to 5 units to right of inConnector point.
+
 					if (-1 * gridSpacing < inConnectorX - outConnectorX && inConnectorX - outConnectorX < 4 * gridSpacing) {
 						return [
 							{ x: outConnectorX, y: outConnectorY },
@@ -501,7 +504,7 @@
 						];
 					}
 				} else if (4 * gridSpacing < inConnectorX - outConnectorX) {
-					// left of edge case
+					// left of edge case: outConnector point lying on vertical grid lines more than 4 units to left of inConnector point.
 					const midX = (inConnectorX + outConnectorX) / 2 + (((inConnectorX + outConnectorX) / 2) % gridSpacing);
 					return [
 						{ x: outConnectorX, y: outConnectorY },
@@ -511,7 +514,7 @@
 						{ x: inConnectorX, y: inConnectorY },
 					];
 				} else if (6 * gridSpacing > inConnectorX - outConnectorX) {
-					// right of edge case
+					// right of edge case: outConnector point lying on the vertical grid lines more than 5 units to right of inConnector point.
 
 					return [
 						{ x: outConnectorX, y: outConnectorY },
@@ -587,6 +590,7 @@
 				];
 			}
 		}
+		return [];
 	}
 
 	function buildWirePathString(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): string {
