@@ -63,7 +63,7 @@ impl SnappedPoint {
 		Self {
 			snapped_point_document: point.document_point + translation,
 			source: point.source,
-			target: SnapTarget::Distribution(target),
+			target: SnapTarget::DistributeEvenly(target),
 			distribution_boxes_x,
 			distribution_equal_distance_x: is_x.then_some(distances.equal),
 			distribution_boxes_y,

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import type { PivotPosition } from "@graphite/wasm-communication/messages";
+	import type { PivotPosition } from "@graphite/messages";
 
 	const dispatch = createEventDispatcher<{ position: PivotPosition }>();
 

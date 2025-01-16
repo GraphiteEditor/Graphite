@@ -282,7 +282,7 @@ impl Default for VectorData {
 	}
 }
 
-/// A selectable part of a curve, either an anchor (start or end of a bézier) or a handle (doesn't necessarily go through the bézier but influences curviture).
+/// A selectable part of a curve, either an anchor (start or end of a bézier) or a handle (doesn't necessarily go through the bézier but influences curvature).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ManipulatorPointId {
@@ -303,6 +303,13 @@ impl ManipulatorPointId {
 			ManipulatorPointId::Anchor(id) => vector_data.point_domain.position_from_id(*id),
 			ManipulatorPointId::PrimaryHandle(id) => vector_data.segment_from_id(*id).and_then(|bezier| bezier.handle_start()),
 			ManipulatorPointId::EndHandle(id) => vector_data.segment_from_id(*id).and_then(|bezier| bezier.handle_end()),
+		}
+	}
+
+	pub fn get_anchor_position(&self, vector_data: &VectorData) -> Option<DVec2> {
+		match self {
+			ManipulatorPointId::EndHandle(_) | ManipulatorPointId::PrimaryHandle(_) => self.get_anchor(vector_data).and_then(|id| vector_data.point_domain.position_from_id(id)),
+			_ => self.get_position(vector_data),
 		}
 	}
 
@@ -394,6 +401,13 @@ impl HandleId {
 			HandleType::Primary => ManipulatorPointId::PrimaryHandle(self.segment),
 			HandleType::End => ManipulatorPointId::EndHandle(self.segment),
 		}
+	}
+
+	/// Calculate the magnitude of the handle from the anchor.
+	pub fn length(self, vector_data: &VectorData) -> f64 {
+		let anchor_position = self.to_manipulator_point().get_anchor_position(vector_data).unwrap();
+		let handle_position = self.to_manipulator_point().get_position(vector_data);
+		handle_position.map(|pos| (pos - anchor_position).length()).unwrap_or(f64::MAX)
 	}
 
 	/// Set the handle's position relative to the anchor which is the start anchor for the primary handle and end anchor for the end handle.

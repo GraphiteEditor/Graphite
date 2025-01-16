@@ -1,19 +1,17 @@
-# The URL the site will be built for
-base_url = "https://graphite.rs"
-
-# Whether to automatically compile all Sass files in the sass directory
-compile_sass = true
-
 title = "Graphite"
 description = "2D raster & vector editor that melds traditional layers & tools with a modern node-based procedural workflow."
+base_url = "https://graphite.rs"
 feed_filenames = ["rss.xml"]
 
+compile_sass = true
+minify_html = false
+
 [markdown]
-# Whether to do syntax highlighting
-# Theme can be customized by setting the `highlight_theme` variable to a theme supported by Zola
 highlight_code = true
 highlight_theme = "css"
-highlight_themes_css = [{ theme = "kronuz", filename = "syntax-highlighting.css" }]
+highlight_themes_css = [
+	{ theme = "kronuz", filename = "syntax-highlighting.css" },
+]
 
 [extra]
 # Put all your custom variables here

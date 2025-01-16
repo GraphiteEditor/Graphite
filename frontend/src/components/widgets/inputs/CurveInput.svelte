@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
+	import type { Curve, CurveManipulatorGroup } from "@graphite/messages";
 	import { clamp } from "@graphite/utility-functions/math";
-	import type { Curve, CurveManipulatorGroup } from "@graphite/wasm-communication/messages";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 

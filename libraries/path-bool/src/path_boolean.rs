@@ -1340,7 +1340,7 @@ fn get_selected_faces<'a>(predicate: &'a impl Fn(u8) -> bool, flags: &'a HashMap
 
 fn walk_faces<'a>(faces: &'a [DualVertexKey], edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>, vertices: &SlotMap<DualVertexKey, DualGraphVertex>) -> impl Iterator<Item = PathSegment> + 'a {
 	let face_set: HashSet<_> = faces.iter().copied().collect();
-	// TODO: Try using a binary search to avioid the hashset construction
+	// TODO: Try using a binary search to avoid the hashset construction
 	let is_removed_edge = |edge: &DualGraphHalfEdge| face_set.contains(&edge.incident_vertex) == face_set.contains(&edges[edge.twin.unwrap()].incident_vertex);
 
 	let mut edge_to_next = HashMap::new();
@@ -1481,7 +1481,7 @@ impl Display for BooleanError {
 		match self {
 			Self::MultipleOuterFaces => f.write_str("Found multiple candidates for the outer face in a connected component of the dual graph."),
 			Self::NoEarInPolygon => f.write_str("Failed to compute winding order for one of the faces, this usually happens when the polygon is malformed."),
-			Self::InvalidPathCommand(cmd) => f.write_fmt(format_args!("Encountered a '{cmd}' while parsing the svg data which was not recogniezed")),
+			Self::InvalidPathCommand(cmd) => f.write_fmt(format_args!("Encountered a '{cmd}' while parsing the svg data which was not recognized")),
 		}
 	}
 }

@@ -8,6 +8,7 @@ author = "Keavon Chambers & Hypercube"
 summary = "Graphite's Q3 2024 update introduces improvements to performance, node graph organization, nondestructive path editing, a new render engine, and more helpful nodes."
 reddit = "https://www.reddit.com/r/graphite/comments/1g4h6ya/blog_post_graphite_progress_report_q3_2024/"
 twitter = "https://x.com/GraphiteEditor/status/1846283664562573344"
+css = ["/component/demo-artwork.css"]
 +++
 
 [Graphite](/), a new open source 2D procedural graphics editor, has spent July–September building major improvements to **performance, node graph organization, nondestructive path editing, a new render engine, and more helpful nodes**, amongst over 100 other features and fixes.

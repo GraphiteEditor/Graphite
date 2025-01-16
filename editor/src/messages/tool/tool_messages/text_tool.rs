@@ -64,7 +64,7 @@ pub enum TextToolMessage {
 	Interact,
 	PointerMove { center: Key, lock_ratio: Key },
 	PointerOutsideViewport { center: Key, lock_ratio: Key },
-	TextChange { new_text: String, is_right_click: bool },
+	TextChange { new_text: String, is_left_or_right_click: bool },
 	UpdateBounds { new_text: String },
 	UpdateOptions(TextOptionsUpdate),
 }
@@ -808,10 +808,10 @@ impl Fsm for TextToolFsmState {
 				tool_data.resize.snap_manager.cleanup(responses);
 				TextToolFsmState::Ready
 			}
-			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text, is_right_click }) => {
+			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text, is_left_or_right_click }) => {
 				tool_data.new_text = new_text;
 
-				if !is_right_click {
+				if !is_left_or_right_click {
 					tool_data.set_editing(false, font_cache, responses);
 
 					responses.add(NodeGraphMessage::SetInput {

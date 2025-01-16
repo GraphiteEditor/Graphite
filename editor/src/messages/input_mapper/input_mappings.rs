@@ -258,6 +258,8 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(MouseRight); action_dispatch=PenToolMessage::Confirm),
 		entry!(KeyDown(Escape); action_dispatch=PenToolMessage::Confirm),
 		entry!(KeyDown(Enter); action_dispatch=PenToolMessage::Confirm),
+		entry!(KeyDown(Delete); action_dispatch=PenToolMessage::RemovePreviousHandle),
+		entry!(KeyDown(Backspace); action_dispatch=PenToolMessage::RemovePreviousHandle),
 		//
 		// FreehandToolMessage
 		entry!(PointerMove; action_dispatch=FreehandToolMessage::PointerMove),

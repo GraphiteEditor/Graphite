@@ -62,6 +62,7 @@ pub enum PenToolMessage {
 	Undo,
 	UpdateOptions(PenOptionsUpdate),
 	RecalculateLatestPointsPosition,
+	RemovePreviousHandle,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -175,6 +176,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 				PointerMove,
 				Confirm,
 				Abort,
+				RemovePreviousHandle,
 			),
 		}
 	}
@@ -562,45 +564,67 @@ impl Fsm for PenToolFsmState {
 				self
 			}
 			(_, PenToolMessage::Overlays(mut overlay_context)) => {
+				let valid = |point: DVec2, handle: DVec2| point.distance_squared(handle) >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE;
+
 				let transform = document.metadata().document_to_viewport * transform;
+
+				// The currently-being-placed anchor
+				let next_anchor = transform.transform_point2(tool_data.next_point);
+				// The currently-being-placed anchor's outgoing handle (the one currently being dragged out)
+				let next_handle_start = transform.transform_point2(tool_data.next_handle_start);
+
+				// The most recently placed anchor
+				let anchor_start = tool_data.latest_point().map(|point| transform.transform_point2(point.pos));
+				// The most recently placed anchor's incoming handle (opposite the one currently being dragged out)
+				let handle_end = tool_data.handle_end.map(|point| transform.transform_point2(point));
+				// The most recently placed anchor's outgoing handle (which is currently influencing the currently-being-placed segment)
+				let handle_start = tool_data.latest_point().map(|point| transform.transform_point2(point.handle_start));
+
 				if let (Some((start, handle_start)), Some(handle_end)) = (tool_data.latest_point().map(|point| (point.pos, point.handle_start)), tool_data.handle_end) {
 					let handles = BezierHandles::Cubic { handle_start, handle_end };
-					let bezier = Bezier {
-						start,
-						handles,
-						end: tool_data.next_point,
-					};
+					let end = tool_data.next_point;
+					let bezier = Bezier { start, handles, end };
+					// Draw the curve for the currently-being-placed segment
 					overlay_context.outline_bezier(bezier, transform);
 				}
 
-				let valid = |point: DVec2, handle: DVec2| point.distance_squared(handle) >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE;
-				let next_point = transform.transform_point2(tool_data.next_point);
-				let next_handle_start = transform.transform_point2(tool_data.next_handle_start);
-				overlay_context.line(next_point, next_handle_start, None);
-				let start = tool_data.latest_point().map(|point| transform.transform_point2(point.pos));
+				// Draw the line between the currently-being-placed anchor and its currently-being-dragged-out outgoing handle (opposite the one currently being dragged out)
+				overlay_context.line(next_anchor, next_handle_start, None);
 
-				let handle_start = tool_data.latest_point().map(|point| transform.transform_point2(point.handle_start));
-				let handle_end = tool_data.handle_end.map(|point| transform.transform_point2(point));
+				if let (Some(anchor_start), Some(handle_start), Some(handle_end)) = (anchor_start, handle_start, handle_end) {
+					// Draw the line between the most recently placed anchor and its outgoing handle (which is currently influencing the currently-being-placed segment)
+					overlay_context.line(anchor_start, handle_start, None);
 
-				if let (Some(start), Some(handle_start), Some(handle_end)) = (start, handle_start, handle_end) {
-					overlay_context.line(start, handle_start, None);
-					overlay_context.line(next_point, handle_end, None);
+					// Draw the line between the currently-being-placed anchor and its incoming handle (opposite the one currently being dragged out)
+					overlay_context.line(next_anchor, handle_end, None);
 
 					path_overlays(document, shape_editor, &mut overlay_context);
 
-					if self == PenToolFsmState::DraggingHandle && valid(next_point, handle_end) {
-						overlay_context.manipulator_handle(handle_end, false);
+					if self == PenToolFsmState::DraggingHandle && valid(next_anchor, handle_end) {
+						// Draw the handle circle for the currently-being-dragged-out incoming handle (opposite the one currently being dragged out)
+						overlay_context.manipulator_handle(handle_end, false, None);
 					}
-					if valid(start, handle_start) {
-						overlay_context.manipulator_handle(handle_start, false);
+
+					if valid(anchor_start, handle_start) {
+						// Draw the handle circle for the most recently placed anchor's outgoing handle (which is currently influencing the currently-being-placed segment)
+						overlay_context.manipulator_handle(handle_start, false, None);
 					}
 				} else {
+					// Draw the whole path and its manipulators when the user is clicking-and-dragging out from the most recently placed anchor to set its outgoing handle, during which it would otherwise not have its overlays drawn
 					path_overlays(document, shape_editor, &mut overlay_context);
 				}
-				if self == PenToolFsmState::DraggingHandle && valid(next_point, next_handle_start) {
-					overlay_context.manipulator_handle(next_handle_start, false);
+
+				if self == PenToolFsmState::DraggingHandle && valid(next_anchor, next_handle_start) {
+					// Draw the handle circle for the currently-being-dragged-out outgoing handle (the one currently being dragged out, under the user's cursor)
+					overlay_context.manipulator_handle(next_handle_start, false, None);
 				}
-				overlay_context.manipulator_anchor(next_point, false, None);
+
+				if self == PenToolFsmState::DraggingHandle {
+					// Draw the anchor square for the most recently placed anchor
+					overlay_context.manipulator_anchor(next_anchor, false, None);
+				}
+
+				// Draw the overlays that visualize current snapping
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 
 				self
@@ -662,6 +686,15 @@ impl Fsm for PenToolFsmState {
 					responses.add(PenToolMessage::DragStart { append_to_selected });
 					PenToolFsmState::PlacingAnchor
 				}
+			}
+			(PenToolFsmState::PlacingAnchor, PenToolMessage::RemovePreviousHandle) => {
+				if let Some(last_point) = tool_data.latest_points.last_mut() {
+					last_point.handle_start = last_point.pos;
+					responses.add(OverlaysMessage::Draw);
+				} else {
+					log::warn!("No latest point available to modify handle_start.");
+				}
+				self
 			}
 			(PenToolFsmState::DraggingHandle, PenToolMessage::DragStop) => tool_data
 				.finish_placing_handle(SnapData::new(document, input), transform, responses)

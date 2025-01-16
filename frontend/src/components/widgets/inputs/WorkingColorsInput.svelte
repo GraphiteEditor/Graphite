@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
-	import type { Editor } from "@graphite/wasm-communication/editor";
-	import { Color } from "@graphite/wasm-communication/messages";
+	import type { Editor } from "@graphite/editor";
+	import { Color } from "@graphite/messages";
 
 	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
