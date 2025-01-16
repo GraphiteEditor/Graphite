@@ -324,7 +324,7 @@ impl ProtoNetwork {
 		}
 	}
 
-	// TODO: Remsove
+	// TODO: Remove
 	/// Create a hashmap with the list of nodes this proto network depends on/uses as inputs.
 	pub fn collect_inwards_edges(&self) -> HashMap<NodeId, Vec<NodeId>> {
 		let mut edges: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
@@ -552,27 +552,19 @@ impl core::fmt::Debug for GraphErrorType {
 			GraphErrorType::NoImplementations => write!(f, "No implementations found"),
 			GraphErrorType::NoConstructor => write!(f, "No construct found for node"),
 			GraphErrorType::InvalidImplementations { inputs, error_inputs } => {
-				let ordinal = |x: usize| match x.to_string().as_str() {
-					x if x.ends_with('1') && !x.ends_with("11") => format!("{x}st"),
-					x if x.ends_with('2') && !x.ends_with("12") => format!("{x}nd"),
-					x if x.ends_with('3') && !x.ends_with("13") => format!("{x}rd"),
-					x => format!("{x}th"),
-				};
-				let format_index = |index: usize| if index == 0 { "primary".to_string() } else { format!("{} secondary", ordinal(index)) };
-				let format_error = |(index, (real, expected)): &(usize, (Type, Type))| format!("• The {} input expected {} but found {}", format_index(*index), expected, real);
+				let format_error = |(index, (_found, expected)): &(usize, (Type, Type))| format!("• Input {}: {expected}", index + 1);
 				let format_error_list = |errors: &Vec<(usize, (Type, Type))>| errors.iter().map(format_error).collect::<Vec<_>>().join("\n");
-				let errors = error_inputs.iter().map(format_error_list).collect::<Vec<_>>();
+				let mut errors = error_inputs.iter().map(format_error_list).collect::<Vec<_>>();
+				errors.sort();
 				write!(
 					f,
-					"Node graph type error! If this just appeared while editing the graph,\n\
-					consider using undo to go back and try another way to connect the nodes.\n\
+					"This node isn't compatible with the com-\n\
+					bination of types for the data it is given:\n\
+					{inputs}\n\
 					\n\
-					No node implementation exists for type:\n\
-					({inputs})\n\
-					\n\
-					Caused by{}:\n\
+					Each invalid input should be replaced by\n\
+					data with one of these supported types:\n\
 					{}",
-					if errors.len() > 1 { " one of" } else { "" },
 					errors.join("\n")
 				)
 			}
@@ -679,7 +671,8 @@ impl TypingContext {
 		};
 
 		// Get the node input type from the proto node declaration
-		let input = match node.input {
+		// TODO: When removing automatic composition, rename this to just `call_argument`
+		let primary_input_or_call_argument = match node.input {
 			ProtoNodeInput::None => concrete!(()),
 			ProtoNodeInput::ManualComposition(ref ty) => ty.clone(),
 			ProtoNodeInput::Node(id) | ProtoNodeInput::NodeLambda(id) => {
@@ -687,6 +680,7 @@ impl TypingContext {
 				input.return_value.clone()
 			}
 		};
+		let using_manual_composition = matches!(node.input, ProtoNodeInput::ManualComposition(_) | ProtoNodeInput::None);
 		let impls = self.lookup.get(&node.identifier).ok_or_else(|| vec![GraphError::new(node, GraphErrorType::NoImplementations)])?;
 
 		if let Some(index) = inputs.iter().position(|p| {
@@ -724,7 +718,7 @@ impl TypingContext {
 		// List of all implementations that match the input types
 		let valid_output_types = impls
 			.keys()
-			.filter(|node_io| valid_subtype(&node_io.call_argument, &input) && inputs.iter().zip(node_io.inputs.iter()).all(|(p1, p2)| valid_subtype(p1, p2)))
+			.filter(|node_io| valid_subtype(&node_io.call_argument, &primary_input_or_call_argument) && inputs.iter().zip(node_io.inputs.iter()).all(|(p1, p2)| valid_subtype(p1, p2)))
 			.collect::<Vec<_>>();
 
 		// Attempt to substitute generic types with concrete types and save the list of results
@@ -733,10 +727,10 @@ impl TypingContext {
 			.map(|node_io| {
 				collect_generics(node_io)
 					.iter()
-					.try_for_each(|generic| check_generic(node_io, &input, &inputs, generic).map(|_| ()))
+					.try_for_each(|generic| check_generic(node_io, &primary_input_or_call_argument, &inputs, generic).map(|_| ()))
 					.map(|_| {
 						if let Type::Generic(out) = &node_io.return_value {
-							((*node_io).clone(), check_generic(node_io, &input, &inputs, out).unwrap())
+							((*node_io).clone(), check_generic(node_io, &primary_input_or_call_argument, &inputs, out).unwrap())
 						} else {
 							((*node_io).clone(), node_io.return_value.clone())
 						}
@@ -752,14 +746,18 @@ impl TypingContext {
 				let mut best_errors = usize::MAX;
 				let mut error_inputs = Vec::new();
 				for node_io in impls.keys() {
-					let current_errors = [&input]
+					let current_errors = [&primary_input_or_call_argument]
 						.into_iter()
 						.chain(&inputs)
 						.cloned()
 						.zip([&node_io.call_argument].into_iter().chain(&node_io.inputs).cloned())
 						.enumerate()
 						.filter(|(_, (p1, p2))| !valid_subtype(p1, p2))
-						.map(|(index, ty)| (node.original_location.inputs(index).min_by_key(|s| s.node.len()).map(|s| s.index).unwrap_or(index), ty))
+						.map(|(index, ty)| {
+							let i = node.original_location.inputs(index).min_by_key(|s| s.node.len()).map(|s| s.index).unwrap_or(index);
+							let i = if using_manual_composition { i } else { i + 1 };
+							(i, ty)
+						})
 						.collect::<Vec<_>>();
 					if current_errors.len() < best_errors {
 						best_errors = current_errors.len();
@@ -769,7 +767,17 @@ impl TypingContext {
 						error_inputs.push(current_errors);
 					}
 				}
-				let inputs = [&input].into_iter().chain(&inputs).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
+				let inputs = [&primary_input_or_call_argument]
+					.into_iter()
+					.chain(&inputs)
+					.enumerate()
+					// TODO: Make the following line's if statement conditional on being a call argument or primary input
+					.filter_map(|(i, t)| {
+						let i = if using_manual_composition { i } else { i + 1 };
+						if i == 0 { None } else { Some(format!("• Input {i}: {t}")) }
+					})
+					.collect::<Vec<_>>()
+					.join("\n");
 				Err(vec![GraphError::new(node, GraphErrorType::InvalidImplementations { inputs, error_inputs })])
 			}
 			[(org_nio, _)] => {
@@ -794,13 +802,13 @@ impl TypingContext {
 						return Ok(org_nio.clone());
 					}
 				}
-				let inputs = [&input].into_iter().chain(&inputs).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
+				let inputs = [&primary_input_or_call_argument].into_iter().chain(&inputs).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
 				let valid = valid_output_types.into_iter().cloned().collect();
 				Err(vec![GraphError::new(node, GraphErrorType::MultipleImplementations { inputs, valid })])
 			}
 
 			_ => {
-				let inputs = [&input].into_iter().chain(&inputs).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
+				let inputs = [&primary_input_or_call_argument].into_iter().chain(&inputs).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
 				let valid = valid_output_types.into_iter().cloned().collect();
 				Err(vec![GraphError::new(node, GraphErrorType::MultipleImplementations { inputs, valid })])
 			}

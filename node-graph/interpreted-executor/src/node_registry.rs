@@ -222,6 +222,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			),
 		),
 		// Filters
+		// TODO: Move these filters to the new node macro and put them in `graphene_core::raster::adjustments`, then add them to the document upgrade script which moves many of the adjustment nodes from `graphene_core::raster` to `graphene_core::raster::adjustments`
 		(
 			ProtoNodeIdentifier::new("graphene_core::raster::BrightnessContrastNode"),
 			|args| {

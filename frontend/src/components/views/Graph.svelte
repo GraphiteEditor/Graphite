@@ -327,7 +327,7 @@
 	}
 
 	function dataTypeTooltip(value: FrontendGraphInput | FrontendGraphOutput): string {
-		return value.resolvedType ? `Resolved Data: ${value.resolvedType}` : `Unresolved Data: ${value.dataType}`;
+		return value.resolvedType ? `Resolved Data:\n${value.resolvedType}` : `Unresolved Data ${value.dataType}`;
 	}
 
 	function validTypesText(value: FrontendGraphInput): string {
@@ -502,7 +502,7 @@
 				style:--offset-top={position.y / 24}
 				bind:this={outputs[0][index]}
 			>
-				<title>{`${dataTypeTooltip(outputMetadata)}\n${outputConnectedToText(outputMetadata)}`}</title>
+				<title>{`${dataTypeTooltip(outputMetadata)}\n\n${outputConnectedToText(outputMetadata)}`}</title>
 				{#if outputMetadata.connectedTo !== undefined}
 					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 				{:else}
@@ -576,7 +576,7 @@
 				style:--offset-top={position.y / 24}
 				bind:this={inputs[0][index]}
 			>
-				<title>{`${dataTypeTooltip(inputMetadata)}\n${inputConnectedToText(inputMetadata)}`}</title>
+				<title>{`${dataTypeTooltip(inputMetadata)}\n\n${inputConnectedToText(inputMetadata)}`}</title>
 				{#if inputMetadata.connectedTo !== undefined}
 					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 				{:else}
@@ -670,8 +670,8 @@
 				bind:this={nodeElements[nodeIndex]}
 			>
 				{#if node.errors}
-					<span class="node-error faded" transition:fade={FADE_TRANSITION} data-node-error>{node.errors}</span>
-					<span class="node-error hover" transition:fade={FADE_TRANSITION} data-node-error>{node.errors}</span>
+					<span class="node-error faded" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>
+					<span class="node-error hover" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>
 				{/if}
 				<div class="thumbnail">
 					{#if $nodeGraph.thumbnails.has(node.id)}
@@ -689,7 +689,7 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
 							bind:this={outputs[nodeIndex + 1][0]}
 						>
-							<title>{`${dataTypeTooltip(node.primaryOutput)}\n${outputConnectedToText(node.primaryOutput)}`}</title>
+							<title>{`${dataTypeTooltip(node.primaryOutput)}\n\n${outputConnectedToText(node.primaryOutput)}`}</title>
 							{#if node.primaryOutput.connectedTo.length > 0}
 								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color)" />
 								{#if primaryOutputConnectedToLayer(node)}
@@ -712,7 +712,7 @@
 						bind:this={inputs[nodeIndex + 1][0]}
 					>
 						{#if node.primaryInput}
-							<title>{`${dataTypeTooltip(node.primaryInput)}\n${validTypesText(node.primaryInput)}\n${inputConnectedToText(node.primaryInput)}`}</title>
+							<title>{`${dataTypeTooltip(node.primaryInput)}\n\n${validTypesText(node.primaryInput)}\n\n${inputConnectedToText(node.primaryInput)}`}</title>
 						{/if}
 						{#if node.primaryInput?.connectedTo !== undefined}
 							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color)" />
@@ -737,7 +737,7 @@
 							style:--data-color-dim={`var(--color-data-${stackDataInput.dataType.toLowerCase()}-dim)`}
 							bind:this={inputs[nodeIndex + 1][1]}
 						>
-							<title>{`${dataTypeTooltip(stackDataInput)}\n${validTypesText(stackDataInput)}\n${inputConnectedToText(stackDataInput)}`}</title>
+							<title>{`${dataTypeTooltip(stackDataInput)}\n\n${validTypesText(stackDataInput)}\n\n${inputConnectedToText(stackDataInput)}`}</title>
 							{#if stackDataInput.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -810,8 +810,8 @@
 				bind:this={nodeElements[nodeIndex]}
 			>
 				{#if node.errors}
-					<span class="node-error faded" transition:fade={FADE_TRANSITION} data-node-error>{node.errors}</span>
-					<span class="node-error hover" transition:fade={FADE_TRANSITION} data-node-error>{node.errors}</span>
+					<span class="node-error faded" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>
+					<span class="node-error hover" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>
 				{/if}
 				<!-- Primary row -->
 				<div class="primary" class:in-selected-network={$nodeGraph.inSelectedNetwork} class:no-secondary-section={exposedInputsOutputs.length === 0}>
@@ -844,7 +844,7 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryInput.dataType.toLowerCase()}-dim)`}
 							bind:this={inputs[nodeIndex + 1][0]}
 						>
-							<title>{`${dataTypeTooltip(node.primaryInput)}\n${validTypesText(node.primaryInput)}\n${inputConnectedToText(node.primaryInput)}`}</title>
+							<title>{`${dataTypeTooltip(node.primaryInput)}\n\n${validTypesText(node.primaryInput)}\n\n${inputConnectedToText(node.primaryInput)}`}</title>
 							{#if node.primaryInput.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -864,7 +864,7 @@
 								style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
 								bind:this={inputs[nodeIndex + 1][index + (node.primaryInput ? 1 : 0)]}
 							>
-								<title>{`${dataTypeTooltip(secondary)}\n${validTypesText(secondary)}\n${inputConnectedToText(secondary)}`}</title>
+								<title>{`${dataTypeTooltip(secondary)}\n\n${validTypesText(secondary)}\n\n${inputConnectedToText(secondary)}`}</title>
 								{#if secondary.connectedTo !== undefined}
 									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 								{:else}
@@ -887,7 +887,7 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
 							bind:this={outputs[nodeIndex + 1][0]}
 						>
-							<title>{`${dataTypeTooltip(node.primaryOutput)}\n${outputConnectedToText(node.primaryOutput)}`}</title>
+							<title>{`${dataTypeTooltip(node.primaryOutput)}\n\n${outputConnectedToText(node.primaryOutput)}`}</title>
 							{#if node.primaryOutput.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -906,7 +906,7 @@
 							style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
 							bind:this={outputs[nodeIndex + 1][outputIndex + (node.primaryOutput ? 1 : 0)]}
 						>
-							<title>{`${dataTypeTooltip(secondary)}\n${outputConnectedToText(secondary)}`}</title>
+							<title>{`${dataTypeTooltip(secondary)}\n\n${outputConnectedToText(secondary)}`}</title>
 							{#if secondary.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
