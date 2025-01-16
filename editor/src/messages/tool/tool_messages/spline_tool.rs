@@ -1,6 +1,8 @@
 use super::tool_prelude::*;
 use crate::consts::{DEFAULT_STROKE_WIDTH, DRAG_THRESHOLD};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::overlays::utility_functions::path_endpoint_overlays;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
@@ -38,6 +40,7 @@ impl Default for SplineOptions {
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum SplineToolMessage {
 	// Standard messages
+	Overlays(OverlayContext),
 	CanvasTransformed,
 	Abort,
 	WorkingColorChanged,
@@ -168,6 +171,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SplineT
 impl ToolTransition for SplineTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
+			overlay_provider: Some(|overlay_context: OverlayContext| SplineToolMessage::Overlays(overlay_context).into()),
 			canvas_transformed: Some(SplineToolMessage::CanvasTransformed.into()),
 			tool_abort: Some(SplineToolMessage::Abort.into()),
 			working_color_changed: Some(SplineToolMessage::WorkingColorChanged.into()),
@@ -198,12 +202,21 @@ impl Fsm for SplineToolFsmState {
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
 		let ToolActionHandlerData {
-			document, global_tool_data, input, ..
+			document,
+			global_tool_data,
+			input,
+			shape_editor,
+			..
 		} = tool_action_data;
 
 		let ToolMessage::Spline(event) = event else { return self };
 		match (self, event) {
 			(_, SplineToolMessage::CanvasTransformed) => self,
+			(_, SplineToolMessage::Overlays(mut overlay_context)) => {
+				path_endpoint_overlays(document, shape_editor, &mut overlay_context);
+
+				self
+			}
 			(SplineToolFsmState::Ready, SplineToolMessage::DragStart) => {
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(DocumentMessage::DeselectAllLayers);
