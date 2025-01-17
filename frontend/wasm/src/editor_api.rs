@@ -299,7 +299,7 @@ impl EditorHandle {
 	}
 
 	#[wasm_bindgen(js_name = openAutoSavedDocument)]
-	pub fn open_auto_saved_document(&self, document_id: u64, document_name: String, document_is_saved: bool, document_serialized_content: String) {
+	pub fn open_auto_saved_document(&self, document_id: u64, document_name: String, document_is_saved: bool, document_serialized_content: String, to_front: bool) {
 		let document_id = DocumentId(document_id);
 		let message = PortfolioMessage::OpenDocumentFileWithId {
 			document_id,
@@ -307,6 +307,7 @@ impl EditorHandle {
 			document_is_auto_saved: true,
 			document_is_saved,
 			document_serialized_content,
+			to_front,
 		};
 		self.dispatch(message);
 	}
@@ -733,6 +734,7 @@ impl EditorHandle {
 			document_is_auto_saved,
 			document_is_saved,
 			document_serialized_content: document_serialized_content.clone(),
+			to_front: false,
 		});
 
 		let document = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap();
@@ -798,6 +800,7 @@ impl EditorHandle {
 				document_is_auto_saved,
 				document_is_saved,
 				document_serialized_content,
+				to_front: false,
 			});
 			return;
 		}
@@ -902,6 +905,7 @@ impl EditorHandle {
 			document_is_auto_saved,
 			document_is_saved,
 			document_serialized_content,
+			to_front: false,
 		});
 	}
 }

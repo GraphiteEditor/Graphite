@@ -32,7 +32,7 @@ pub struct PortfolioMessageData<'a> {
 pub struct PortfolioMessageHandler {
 	menu_bar_message_handler: MenuBarMessageHandler,
 	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
-	document_ids: Vec<DocumentId>,
+	document_ids: VecDeque<DocumentId>,
 	active_panel: PanelType,
 	pub(crate) active_document_id: Option<DocumentId>,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
@@ -258,7 +258,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				} else if self.active_document_id.is_some() {
 					let document_id = if document_index == self.document_ids.len() {
 						// If we closed the last document take the one previous (same as last)
-						*self.document_ids.last().unwrap()
+						*self.document_ids.back().unwrap()
 					} else {
 						// Move to the next tab
 						self.document_ids[document_index]
@@ -349,7 +349,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				}
 
-				self.load_document(new_document, document_id, responses);
+				self.load_document(new_document, document_id, responses, false);
+				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
 			PortfolioMessage::NextDocument => {
 				if let Some(active_document_id) = self.active_document_id {
@@ -368,13 +369,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				document_name,
 				document_serialized_content,
 			} => {
+				let document_id = DocumentId(generate_uuid());
 				responses.add(PortfolioMessage::OpenDocumentFileWithId {
-					document_id: DocumentId(generate_uuid()),
+					document_id,
 					document_name,
 					document_is_auto_saved: false,
 					document_is_saved: true,
 					document_serialized_content,
+					to_front: false,
 				});
+				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
 			PortfolioMessage::OpenDocumentFileWithId {
 				document_id,
@@ -382,6 +386,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				document_is_auto_saved,
 				document_is_saved,
 				document_serialized_content,
+				to_front,
 			} => {
 				// It can be helpful to temporarily set `upgrade_from_before_editable_subgraphs` to true if it's desired to upgrade a piece of artwork to use fresh copies of all nodes
 				let upgrade_from_before_editable_subgraphs = document_serialized_content.contains("node_output_index");
@@ -661,7 +666,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				document.set_auto_save_state(document_is_auto_saved);
 				document.set_save_state(document_is_saved);
 
-				self.load_document(document, document_id, responses);
+				self.load_document(document, document_id, responses, to_front);
 			}
 			PortfolioMessage::PasteIntoFolder { clipboard, parent, insert_index } => {
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {
@@ -813,6 +818,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
 				} else {
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				}
+				let document = self.documents.get_mut(&document_id).expect("Tried to read non existant document");
+				if !document.is_loaded {
+					responses.add(PortfolioMessage::LoadDocumentResources { document_id });
+					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+					responses.add(PropertiesPanelMessage::Clear);
+					document.is_loaded = true;
 				}
 			}
 			PortfolioMessage::SubmitDocumentExport {
@@ -971,9 +983,12 @@ impl PortfolioMessageHandler {
 	}
 
 	// TODO: Fix how this doesn't preserve tab order upon loading new document from *File > Open*
-	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) {
-		let new_document = new_document;
-		self.document_ids.push(document_id);
+	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>, to_front: bool) {
+		if to_front {
+			self.document_ids.push_front(document_id);
+		} else {
+			self.document_ids.push_back(document_id);
+		}
 		new_document.update_layers_panel_control_bar_widgets(responses);
 
 		self.documents.insert(document_id, new_document);
@@ -990,12 +1005,6 @@ impl PortfolioMessageHandler {
 		// TODO: Remove this and find a way to fix the issue where creating a new document when the node graph is open causes the transform in the new document to be incorrect
 		responses.add(DocumentMessage::GraphViewOverlay { open: false });
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-		responses.add(PortfolioMessage::SelectDocument { document_id });
-		responses.add(PortfolioMessage::LoadDocumentResources { document_id });
-		responses.add(PortfolioMessage::UpdateDocumentWidgets);
-		responses.add(ToolMessage::InitTools);
-		responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
-		responses.add(PropertiesPanelMessage::Clear);
 	}
 
 	/// Returns an iterator over the open documents in order.

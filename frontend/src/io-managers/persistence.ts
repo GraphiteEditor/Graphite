@@ -71,11 +71,23 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 
 		const orderedSavedDocuments = documentOrder.flatMap((id) => (previouslySavedDocuments[id] ? [previouslySavedDocuments[id]] : []));
 
-		orderedSavedDocuments?.forEach(async (doc: TriggerIndexedDbWriteDocument) => {
-			editor.handle.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document);
-		});
 		if (currentDocumentId) {
+			const doc = previouslySavedDocuments[currentDocumentId];
+			editor.handle.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document, false);
+			const currentIndex = orderedSavedDocuments.findIndex(doc => doc.details.id === currentDocumentId);
+			for (let i = currentIndex-1; i >= 0; i--) {
+				const doc = orderedSavedDocuments[i];
+				editor.handle.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document, true);
+			}
+			for (let i = currentIndex+1; i < orderedSavedDocuments.length; i++) {
+				const doc = orderedSavedDocuments[i];
+				editor.handle.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document, false);
+			}
 			editor.handle.selectDocument(BigInt(currentDocumentId));
+		} else {
+			orderedSavedDocuments?.forEach(async (doc: TriggerIndexedDbWriteDocument) => {
+				editor.handle.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document, false);
+			});
 		}
 	}
 
