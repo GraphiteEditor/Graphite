@@ -8,6 +8,7 @@ use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
+use crate::messages::tool::common_functionality::utility_functions::should_extend;
 
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
@@ -182,8 +183,8 @@ impl ToolTransition for SplineTool {
 
 #[derive(Clone, Debug, Default)]
 struct SplineToolData {
-	/// Points that are inserted.
-	points: Vec<(PointId, DVec2)>,
+	/// Current end point of the spline i.e. either last inserted or end point to be extended.
+	end_point: Option<(PointId, DVec2)>,
 	/// Point to be inserted.
 	next_point: DVec2,
 	/// Point that was inserted temporarily to show preview.
@@ -219,11 +220,25 @@ impl Fsm for SplineToolFsmState {
 			}
 			(SplineToolFsmState::Ready, SplineToolMessage::DragStart) => {
 				responses.add(DocumentMessage::StartTransaction);
+
+				tool_data.weight = tool_options.line_weight;
+
+				// Extend an endpoint of the selected path
+				let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+				if let Some((layer, point, position)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE, selected_nodes.selected_layers(document.metadata())) {
+					tool_data.layer = Some(layer);
+					tool_data.end_point = Some((point, position));
+					// update next point to preview current mouse pos instead of pointing last mouse pos when DragStop event occured.
+					tool_data.next_point = position;
+
+					update_spline(tool_data, true, responses);
+
+					return SplineToolFsmState::Drawing;
+				}
+
 				responses.add(DocumentMessage::DeselectAllLayers);
 
 				let parent = document.new_layer_bounding_artboard(input);
-
-				tool_data.weight = tool_options.line_weight;
 
 				let path_node_type = resolve_document_node_type("Path").expect("Path node does not exist");
 				let path_node = path_node_type.default_node_template();
@@ -250,7 +265,7 @@ impl Fsm for SplineToolFsmState {
 				let transform = document.metadata().transform_to_viewport(layer);
 				let pos = transform.inverse().transform_point2(snapped_position);
 
-				if tool_data.points.last().map_or(true, |last_pos| last_pos.1.distance(pos) > DRAG_THRESHOLD) {
+				if tool_data.end_point.map_or(true, |last_pos| last_pos.1.distance(pos) > DRAG_THRESHOLD) {
 					tool_data.next_point = pos;
 				}
 
@@ -289,7 +304,7 @@ impl Fsm for SplineToolFsmState {
 				state
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::Confirm | SplineToolMessage::Abort) => {
-				if tool_data.points.len() >= 2 {
+				if tool_data.end_point.is_some() {
 					delete_preview(tool_data, responses);
 					responses.add(DocumentMessage::EndTransaction);
 				} else {
@@ -299,7 +314,7 @@ impl Fsm for SplineToolFsmState {
 				tool_data.layer = None;
 				tool_data.preview_point = None;
 				tool_data.preview_segment = None;
-				tool_data.points.clear();
+				tool_data.end_point = None;
 				tool_data.snap_manager.cleanup(responses);
 
 				SplineToolFsmState::Ready
@@ -346,8 +361,8 @@ fn update_spline(tool_data: &mut SplineToolData, show_preview: bool, responses: 
 	};
 	responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
-	if let Some((last_point_id, _)) = tool_data.points.last() {
-		let points = [*last_point_id, next_point_id];
+	if let Some((last_point_id, _)) = tool_data.end_point {
+		let points = [last_point_id, next_point_id];
 		let id = SegmentId::generate();
 		let modification_type = VectorModificationType::InsertSegment { id, points, handles: [None, None] };
 		responses.add(GraphOperationMessage::Vector { layer, modification_type });
@@ -360,7 +375,7 @@ fn update_spline(tool_data: &mut SplineToolData, show_preview: bool, responses: 
 	if show_preview {
 		tool_data.preview_point = Some(next_point_id);
 	} else {
-		tool_data.points.push((next_point_id, next_point_pos));
+		tool_data.end_point = Some((next_point_id, next_point_pos));
 	}
 }
 
