@@ -48,7 +48,7 @@ pub enum SplineToolMessage {
 
 	// Tool-specific messages
 	Confirm,
-	DragStart,
+	DragStart { append_to_selected: Key },
 	DragStop,
 	PointerMove,
 	PointerOutsideViewport,
@@ -218,7 +218,7 @@ impl Fsm for SplineToolFsmState {
 
 				self
 			}
-			(SplineToolFsmState::Ready, SplineToolMessage::DragStart) => {
+			(SplineToolFsmState::Ready, SplineToolMessage::DragStart { append_to_selected }) => {
 				responses.add(DocumentMessage::StartTransaction);
 
 				tool_data.weight = tool_options.line_weight;
@@ -231,9 +231,25 @@ impl Fsm for SplineToolFsmState {
 					// update next point to preview current mouse pos instead of pointing last mouse pos when DragStop event occured.
 					tool_data.next_point = position;
 
-					update_spline(tool_data, true, responses);
+					extend_spline(tool_data, true, responses);
 
 					return SplineToolFsmState::Drawing;
+				}
+
+				if input.keyboard.key(append_to_selected) {
+					let mut selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&document.network_interface);
+					let existing_layer = selected_layers_except_artboards.next().filter(|_| selected_layers_except_artboards.next().is_none());
+					if let Some(layer) = existing_layer {
+						tool_data.layer = Some(layer);
+
+						let transform = document.metadata().transform_to_viewport(layer);
+						let position = transform.inverse().transform_point2(input.mouse.position);
+						tool_data.next_point = position;
+
+						extend_spline(tool_data, false, responses);
+
+						return SplineToolFsmState::Drawing;
+					}
 				}
 
 				responses.add(DocumentMessage::DeselectAllLayers);
@@ -269,7 +285,7 @@ impl Fsm for SplineToolFsmState {
 					tool_data.next_point = pos;
 				}
 
-				update_spline(tool_data, false, responses);
+				extend_spline(tool_data, false, responses);
 
 				SplineToolFsmState::Drawing
 			}
@@ -282,7 +298,7 @@ impl Fsm for SplineToolFsmState {
 				let pos = transform.inverse().transform_point2(snapped_position);
 				tool_data.next_point = pos;
 
-				update_spline(tool_data, true, responses);
+				extend_spline(tool_data, true, responses);
 
 				// Auto-panning
 				let messages = [SplineToolMessage::PointerOutsideViewport.into(), SplineToolMessage::PointerMove.into()];
@@ -348,7 +364,7 @@ impl Fsm for SplineToolFsmState {
 	}
 }
 
-fn update_spline(tool_data: &mut SplineToolData, show_preview: bool, responses: &mut VecDeque<Message>) {
+fn extend_spline(tool_data: &mut SplineToolData, show_preview: bool, responses: &mut VecDeque<Message>) {
 	delete_preview(tool_data, responses);
 
 	let Some(layer) = tool_data.layer else { return };
