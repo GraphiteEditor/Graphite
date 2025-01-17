@@ -57,13 +57,11 @@
 
 	function exportsToEdgeTextInputWidth() {
 		let exportTextDivs = document.querySelectorAll(`[data-export-text-edge]`);
-		console.log("exportTextDivs", exportTextDivs);
 		let exportTextDiv = Array.from(exportTextDivs).find((div) => {
 			return div.getAttribute("data-index") === String(editingNameExportIndex);
 		});
 		if (!graph || !exportTextDiv) return "50px";
 		let distance = graph.getBoundingClientRect().right - exportTextDiv.getBoundingClientRect().right;
-		console.log(distance);
 		return distance - 15 + "px";
 	}
 
