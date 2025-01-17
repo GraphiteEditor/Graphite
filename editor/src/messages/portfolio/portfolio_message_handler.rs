@@ -614,6 +614,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							.network_interface
 							.set_input(&InputConnector::node(NodeId(0), 1), NodeInput::value(TaggedValue::String(label), false), &[*node_id]);
 					}
+
+					if reference == "Noise Pattern" && inputs_count == 15 {
+						let node_definition = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type(reference).unwrap();
+						let new_noise_pattern_node = node_definition.default_node_template();
+						document.network_interface.replace_implementation(node_id, &[], new_noise_pattern_node.document_node.implementation)
+					}
 				}
 
 				// TODO: Eventually remove this document upgrade code
