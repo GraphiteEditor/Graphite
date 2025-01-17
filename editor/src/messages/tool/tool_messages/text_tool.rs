@@ -638,7 +638,20 @@ impl Fsm for TextToolFsmState {
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
-
+	fn standard_tool_messages(&self, message: &ToolMessage, responses: &mut VecDeque<Message>, _tool_data: &mut Self::ToolData) -> bool {
+		// Check for standard hits or cursor events
+		match message {
+			ToolMessage::UpdateHints => {
+				self.update_hints(responses);
+				true
+			}
+			ToolMessage::UpdateCursor => {
+				self.update_cursor(responses);
+				true
+			}
+			_ => false,
+		}
+	}
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		let cursor = match self {
 			TextToolFsmState::Dragging => MouseCursorIcon::Crosshair,

@@ -9,7 +9,7 @@ use crate::messages::portfolio::document::navigation::utility_types::NavigationO
 use crate::messages::portfolio::document::utility_types::misc::PTZ;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
-use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
+use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo, ToolData, ToolType};
 
 use graph_craft::document::NodeId;
 
@@ -22,6 +22,7 @@ pub struct NavigationMessageData<'a> {
 	pub selection_bounds: Option<[DVec2; 2]>,
 	pub document_ptz: &'a mut PTZ,
 	pub graph_view_overlay_open: bool,
+	pub tool_type: ToolType,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -40,6 +41,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 			selection_bounds,
 			document_ptz,
 			graph_view_overlay_open,
+			tool_type,
 		} = data;
 
 		fn get_ptz<'a>(document_ptz: &'a PTZ, network_interface: &'a NodeNetworkInterface, graph_view_overlay_open: bool, breadcrumb_network_path: &[NodeId]) -> Option<&'a PTZ> {
@@ -88,7 +90,12 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				if is_active {
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grab });
 				} else {
-					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
+					if tool_type != ToolType::Select {
+						log::info!("ToolType is not Select, so we are not updating the cursor");
+						responses.add(ToolMessage::UpdateCursor);
+					} else {
+						responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
+					}
 				}
 			}
 			NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu } => {

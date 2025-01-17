@@ -160,6 +160,8 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(MouseRight); action_dispatch=TextToolMessage::CommitText),
 		entry!(KeyDown(Escape); action_dispatch=TextToolMessage::CommitText),
 		entry!(KeyDown(Enter); modifiers=[Accel], action_dispatch=TextToolMessage::CommitText),
+		// entry!(KeyDownNoRepeat(Space); action_dispatch=NavigationMessage::SetCursorState { is_active: true }),
+		// entry!(KeyUp(Space); action_dispatch=NavigationMessage::SetCursorState { is_active: false }),
 		//
 		// GradientToolMessage
 		entry!(KeyDown(MouseLeft); action_dispatch=GradientToolMessage::PointerDown),
