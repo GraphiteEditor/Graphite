@@ -60,13 +60,13 @@ Learn more from the [website](https://graphite.rs/), subscribe to the [newslette
 
 ## Screenshots
 
-[!["Painted Dreams" vector artwork](https://static.graphite.rs/content/index/gui-demo-painted-dreams__2.png)](https://editor.graphite.rs/#demo/painted-dreams)
+[!["Painted Dreams" vector artwork](https://static.graphite.rs/content/index/gui-demo-painted-dreams__3.png)](https://editor.graphite.rs/#demo/painted-dreams)
 
-![Magazine spread](https://static.graphite.rs/content/index/magazine-page-layout.png)
+![Magazine spread](https://static.graphite.rs/content/index/magazine-page-layout__2.png)
 
-[!["Valley of Spires" vector artwork](https://static.graphite.rs/content/index/gui-demo-node-graph-valley-of-spires__2.png)](https://editor.graphite.rs/#demo/valley-of-spires)
+[!["Isometric Fountain" vector artwork](https://static.graphite.rs/content/index/gui-demo-node-graph-isometric-fountain.png)](https://editor.graphite.rs/#demo/isometric-fountain)
 
-!["Marbled Mandelbrot" fractal raster artwork](https://static.graphite.rs/content/index/gui-demo-fractal__2.png)
+!["Marbled Mandelbrot" fractal raster artwork](https://static.graphite.rs/content/index/gui-demo-fractal__3.png)
 
 ## Contributing/building the code
 

@@ -81,15 +81,15 @@ meta_description = "Open source free software. A vector graphics creativity suit
 <section id="screenshots" class="carousel window-size-1" data-carousel data-carousel-jostle-hint>
 
 <div class="carousel-slide" data-carousel-slide>
-	<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__7.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
+	<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__8.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
 	<!-- Above is a copy of the last -->
-	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-demo-painted-dreams__2.avif" />
-	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/magazine-page-layout.avif" />
-	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-demo-node-graph-valley-of-spires__2.avif" />
-	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-demo-fractal__2.avif" />
-	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-mockup-nodes__7.avif" />
+	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-demo-painted-dreams__3.avif" />
+	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/magazine-page-layout__2.avif" />
+	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-demo-node-graph-isometric-fountain.avif" />
+	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-demo-fractal__3.avif" />
+	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-mockup-nodes__8.avif" />
 	<!-- Below is a copy of the first -->
-	<img src="https://static.graphite.rs/content/index/gui-demo-painted-dreams__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
+	<img src="https://static.graphite.rs/content/index/gui-demo-painted-dreams__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
 </div>
 
 <div class="carousel-slide torn left" data-carousel-slide-torn-left></div>
@@ -135,13 +135,13 @@ meta_description = "Open source free software. A vector graphics creativity suit
 	Design for a magazine spread, a preview of the upcoming focus on desktop publishing
 </p>
 <p data-carousel-description>
-	<a href="https://editor.graphite.rs/#demo/valley-of-spires"><em>Valley of Spires</em></a> — All layer stacks are represented, under the hood, by a node graph
+	<a href="https://editor.graphite.rs/#demo/isometric-fountain"><em>Isometric Fountain</em></a> — All layer stacks are represented, under the hood, by a nondestructive node graph
 </p>
 <p data-carousel-description>
 	Mandelbrot fractal filled with a noise pattern, procedurally generated and infinitely scalable
 </p>
 <p data-carousel-description>
-	Coming soon: mockup for the actively in-development raster workflow with new nodes for photo editing
+	Coming soon: this user interface mockup shows the raster image editing features planned for 2025
 </p>
 
 </div>
