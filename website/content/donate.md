@@ -3,8 +3,6 @@ title = "Donate"
 
 [extra]
 css = ["/page/donate.css", "/component/feature-box.css"]
-# js = ["/js/fundraising.js"]
-# linked_js = ["https://static.graphite.rs/text-balancer/text-balancer.js"]
 +++
 
 <section>
@@ -14,29 +12,14 @@ css = ["/page/donate.css", "/component/feature-box.css"]
 
 **Safeguard the sustainable, independent future of quality open source creative software.**
 
-Graphite is entirely built and funded by the community. Your contributions directly help us level up the scope and speed of the project's development. Resources are put towards infrastructure, legal costs, swag to keep contributors happy and motivated, and outreach like exhibiting at conventions and traveling to conferences to foster industry relationships. Hiring full-time developers is the next big goal as support grows.
+Graphite is 100% built and funded by the community. Your contributions directly help us level up the scope and speed of the project's development. Resources are put towards infrastructure, legal costs, swag to keep contributors happy and motivated, and outreach like exhibiting at conventions and traveling to conferences to foster industry relationships. Hiring full-time developers is the big next step as support grows.
 
-*Additionally, boosting the [Graphite Discord server](https://discord.graphite.rs) is another helpful way to contribute if you have Nitro boosts to spare.*
+Select a level of support that suits you from the choices below. Or, you can ensure **100% of your contribution benefits Graphite** and have a choice of **custom** monthly donation amounts by paying through **GitHub Sponsors**.
 
-*Live donation statistics are coming soon.*
-
-</div>
-</section>
-
-<section id="github-sponsors" class="feature-box-outer">
-<div class="feature-box-inner">
-
-<div class="block">
-
-<h1 class="feature-box-header">Donate without fees</h1>
-
----
-
-To ensure **100% of your contribution benefits Graphite**, or to pick a **custom** monthly donation, please support through **GitHub Sponsors**:
-
-<a href="https://github.com/sponsors/GraphiteEditor" target="_blank" class="button arrow">Sponsor through GitHub</a>
-
-</div>
+<p class="call-to-action">
+<a href="https://github.com/sponsors/GraphiteEditor" target="_blank" class="button arrow">Donate: GitHub Sponsors</a>
+<a href="#supporter-memberships" class="button arrow">Donate: without an account</a>
+</p>
 
 </div>
 </section>
@@ -50,7 +33,7 @@ To ensure **100% of your contribution benefits Graphite**, or to pick a **custom
 
 ---
 
-Or click a membership level below to pay directly (no account needed). A small fee (2.9% + 30¢ / month) reduces what we receive.
+Click a membership level below to pay directly (no account needed). A small fee (2.9% + 30¢ / month) reduces what we receive.
 
 </div>
 
@@ -123,12 +106,9 @@ Or click a membership level below to pay directly (no account needed). A small f
 
 </div>
 
-<div class="block one-time-donation">
+<div class="block">
 
 <a href="https://donate.stripe.com/fZeg2j0HQ5VU6HK14d" target="_blank" class="button arrow">Or make a one-time donation</a>
-
-</div>
-<div class="block manage-membership">
 
 [Manage your ongoing membership](https://billing.stripe.com/p/login/aEU9EzctSfe3cfK5kk)
 
@@ -187,7 +167,9 @@ Please [get in touch](/contact) if you'd like a custom arrangement or want to pa
 
 </div>
 
-<div class="block manage-membership">
+<div class="block">
+
+<a href="https://donate.stripe.com/fZeg2j0HQ5VU6HK14d" target="_blank" class="button arrow">Or make a one-time donation</a>
 
 [Manage your ongoing membership](https://billing.stripe.com/p/login/aEU9EzctSfe3cfK5kk)
 
