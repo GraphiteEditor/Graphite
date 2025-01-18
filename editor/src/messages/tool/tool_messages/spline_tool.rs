@@ -287,7 +287,7 @@ impl Fsm for SplineToolFsmState {
 				let Some(layer) = tool_data.layer else {
 					return SplineToolFsmState::Ready;
 				};
-				let pos = get_next_point(document, input, layer);
+				let pos = get_mouse_position(document, input, layer);
 
 				if tool_data.end_point.map_or(true, |last_pos| last_pos.1.distance(pos) > DRAG_THRESHOLD) {
 					tool_data.next_point = pos;
@@ -306,7 +306,7 @@ impl Fsm for SplineToolFsmState {
 				let Some(layer) = tool_data.layer else {
 					return SplineToolFsmState::Ready;
 				};
-				tool_data.next_point = get_next_point(document, input, layer);
+				tool_data.next_point = get_mouse_position(document, input, layer);
 
 				extend_spline(tool_data, true, responses);
 
@@ -370,7 +370,7 @@ impl Fsm for SplineToolFsmState {
 	}
 }
 
-fn get_next_point(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, layer: LayerNodeIdentifier) -> DVec2 {
+fn get_mouse_position(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, layer: LayerNodeIdentifier) -> DVec2 {
 	let snapped_position = input.mouse.position;
 	let transform = document.metadata().transform_to_viewport(layer);
 	let pos = transform.inverse().transform_point2(snapped_position);
