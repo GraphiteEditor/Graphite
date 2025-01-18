@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::consts::{DEFAULT_STROKE_WIDTH, DRAG_THRESHOLD};
+use crate::consts::{DEFAULT_STROKE_WIDTH, DRAG_THRESHOLD, EXTEND_PATH_THRESHOLD, PATH_JOIN_THRESHOLD};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_endpoint_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -8,7 +8,7 @@ use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
-use crate::messages::tool::common_functionality::utility_functions::should_extend;
+use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
 
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
@@ -197,6 +197,16 @@ struct SplineToolData {
 	auto_panning: AutoPanning,
 }
 
+impl SplineToolData {
+	fn cleanup(&mut self, responses: &mut VecDeque<Message>) {
+		self.layer = None;
+		self.preview_point = None;
+		self.preview_segment = None;
+		self.end_point = None;
+		self.snap_manager.cleanup(responses);
+	}
+}
+
 impl Fsm for SplineToolFsmState {
 	type ToolData = SplineToolData;
 	type ToolOptions = SplineOptions;
@@ -221,11 +231,12 @@ impl Fsm for SplineToolFsmState {
 			(SplineToolFsmState::Ready, SplineToolMessage::DragStart { append_to_selected }) => {
 				responses.add(DocumentMessage::StartTransaction);
 
+				tool_data.cleanup(responses);
 				tool_data.weight = tool_options.line_weight;
 
 				// Extend an endpoint of the selected path
 				let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
-				if let Some((layer, point, position)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE, selected_nodes.selected_layers(document.metadata())) {
+				if let Some((layer, point, position)) = should_extend(document, input.mouse.position, EXTEND_PATH_THRESHOLD, selected_nodes.selected_layers(document.metadata())) {
 					tool_data.layer = Some(layer);
 					tool_data.end_point = Some((point, position));
 					// update next point to preview current mouse pos instead of pointing last mouse pos when DragStop event occured.
@@ -236,6 +247,7 @@ impl Fsm for SplineToolFsmState {
 					return SplineToolFsmState::Drawing;
 				}
 
+				// Create new path in the same layer when shift is down
 				if input.keyboard.key(append_to_selected) {
 					let mut selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&document.network_interface);
 					let existing_layer = selected_layers_except_artboards.next().filter(|_| selected_layers_except_artboards.next().is_none());
@@ -245,8 +257,6 @@ impl Fsm for SplineToolFsmState {
 						let transform = document.metadata().transform_to_viewport(layer);
 						let position = transform.inverse().transform_point2(input.mouse.position);
 						tool_data.next_point = position;
-
-						extend_spline(tool_data, false, responses);
 
 						return SplineToolFsmState::Drawing;
 					}
@@ -277,12 +287,15 @@ impl Fsm for SplineToolFsmState {
 				let Some(layer) = tool_data.layer else {
 					return SplineToolFsmState::Ready;
 				};
-				let snapped_position = input.mouse.position;
-				let transform = document.metadata().transform_to_viewport(layer);
-				let pos = transform.inverse().transform_point2(snapped_position);
+				let pos = get_next_point(document, input, layer);
 
 				if tool_data.end_point.map_or(true, |last_pos| last_pos.1.distance(pos) > DRAG_THRESHOLD) {
 					tool_data.next_point = pos;
+				}
+
+				if join_path(document, input.mouse.position, tool_data, responses) {
+					responses.add(DocumentMessage::EndTransaction);
+					return SplineToolFsmState::Ready;
 				}
 
 				extend_spline(tool_data, false, responses);
@@ -293,10 +306,7 @@ impl Fsm for SplineToolFsmState {
 				let Some(layer) = tool_data.layer else {
 					return SplineToolFsmState::Ready;
 				};
-				let snapped_position = input.mouse.position; // tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
-				let transform = document.metadata().transform_to_viewport(layer);
-				let pos = transform.inverse().transform_point2(snapped_position);
-				tool_data.next_point = pos;
+				tool_data.next_point = get_next_point(document, input, layer);
 
 				extend_spline(tool_data, true, responses);
 
@@ -327,11 +337,7 @@ impl Fsm for SplineToolFsmState {
 					responses.add(DocumentMessage::AbortTransaction);
 				}
 
-				tool_data.layer = None;
-				tool_data.preview_point = None;
-				tool_data.preview_segment = None;
-				tool_data.end_point = None;
-				tool_data.snap_manager.cleanup(responses);
+				tool_data.cleanup(responses);
 
 				SplineToolFsmState::Ready
 			}
@@ -362,6 +368,39 @@ impl Fsm for SplineToolFsmState {
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 	}
+}
+
+fn get_next_point(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, layer: LayerNodeIdentifier) -> DVec2 {
+	let snapped_position = input.mouse.position;
+	let transform = document.metadata().transform_to_viewport(layer);
+	let pos = transform.inverse().transform_point2(snapped_position);
+	pos
+}
+
+/// Return `true` only if new segment is inserted to connect two end points in the selected layer otherwise `false`.
+fn join_path(document: &DocumentMessageHandler, mouse_pos: DVec2, tool_data: &mut SplineToolData, responses: &mut VecDeque<Message>) -> bool {
+	let Some((endpoint_id, _)) = tool_data.end_point else {
+		return false;
+	};
+	// use preview_point to get current dragging position.
+	let Some(preview_point) = tool_data.preview_point else {
+		return false;
+	};
+
+	let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+	let Some((layer, point, _)) = closest_point(document, mouse_pos, PATH_JOIN_THRESHOLD, selected_nodes.selected_layers(document.metadata()), |p| p == preview_point) else {
+		return false;
+	};
+
+	// NOTE: deleting preview point so inserting segement connects endpoints not the preview point which is temporary as last inserted could be preview point.
+	delete_preview(tool_data, responses);
+
+	let points = [endpoint_id, point];
+	let id = SegmentId::generate();
+	let modification_type = VectorModificationType::InsertSegment { id, points, handles: [None, None] };
+	responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+	true
 }
 
 fn extend_spline(tool_data: &mut SplineToolData, show_preview: bool, responses: &mut VecDeque<Message>) {
