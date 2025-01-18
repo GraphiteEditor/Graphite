@@ -141,7 +141,7 @@ impl Dispatcher {
 				Message::NoOp => {}
 				Message::Init => {
 					// Load persistent data from the browser database
-					queue.add(FrontendMessage::TriggerLoadAutoSaveDocuments);
+					queue.add(FrontendMessage::TriggerLoadFirstAutoSaveDocument);
 					queue.add(FrontendMessage::TriggerLoadPreferences);
 
 					// Display the menu bar at the top of the window
@@ -153,6 +153,7 @@ impl Dispatcher {
 						node_descriptions: document_node_definitions::collect_node_descriptions(),
 						node_types: document_node_definitions::collect_node_types(),
 					});
+					queue.add(FrontendMessage::TriggerLoadRestAutoSaveDocuments);
 				}
 				Message::Batched(messages) => {
 					messages.iter().for_each(|message| self.handle_message(message.to_owned(), false));

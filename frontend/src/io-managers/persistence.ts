@@ -3,7 +3,14 @@ import { get as getFromStore } from "svelte/store";
 
 import { type PortfolioState } from "@graphite/state-providers/portfolio";
 import { type Editor } from "@graphite/wasm-communication/editor";
-import { TriggerIndexedDbWriteDocument, TriggerIndexedDbRemoveDocument, TriggerSavePreferences, TriggerLoadAutoSaveDocuments, TriggerLoadPreferences } from "@graphite/wasm-communication/messages";
+import {
+	TriggerIndexedDbWriteDocument,
+	TriggerIndexedDbRemoveDocument,
+	TriggerSavePreferences,
+	TriggerLoadFirstAutoSaveDocument,
+	TriggerLoadRestAutoSaveDocuments,
+	TriggerLoadPreferences,
+} from "@graphite/wasm-communication/messages";
 
 const graphiteStore = createStore("graphite", "store");
 
@@ -63,7 +70,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 		await storeDocumentOrder();
 	}
 
-	async function loadDocuments() {
+	async function loadFirstDocument() {
 		const previouslySavedDocuments = await get<Record<string, TriggerIndexedDbWriteDocument>>("documents", graphiteStore);
 		const documentOrder = await get<string[]>("documents_tab_order", graphiteStore);
 		const currentDocumentId = await get<string>("current_document_id", graphiteStore);
@@ -74,20 +81,46 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 		if (currentDocumentId) {
 			const doc = previouslySavedDocuments[currentDocumentId];
 			editor.handle.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document, false);
-			const currentIndex = orderedSavedDocuments.findIndex(doc => doc.details.id === currentDocumentId);
-			for (let i = currentIndex-1; i >= 0; i--) {
+			editor.handle.selectDocument(BigInt(currentDocumentId));
+		} else {
+			const len = orderedSavedDocuments.length;
+			if (len > 0) {
+				const doc = orderedSavedDocuments[len - 1];
+				editor.handle.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document, false);
+				editor.handle.selectDocument(BigInt(doc.details.id));
+			}
+		}
+	}
+
+	async function loadRestDocuments() {
+		const previouslySavedDocuments = await get<Record<string, TriggerIndexedDbWriteDocument>>("documents", graphiteStore);
+		const documentOrder = await get<string[]>("documents_tab_order", graphiteStore);
+		const currentDocumentId = await get<string>("current_document_id", graphiteStore);
+		if (!previouslySavedDocuments || !documentOrder) return;
+
+		const orderedSavedDocuments = documentOrder.flatMap((id) => (previouslySavedDocuments[id] ? [previouslySavedDocuments[id]] : []));
+
+		if (currentDocumentId) {
+			const currentIndex = orderedSavedDocuments.findIndex((doc) => doc.details.id === currentDocumentId);
+			for (let i = currentIndex - 1; i >= 0; i--) {
 				const doc = orderedSavedDocuments[i];
 				editor.handle.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document, true);
 			}
-			for (let i = currentIndex+1; i < orderedSavedDocuments.length; i++) {
+			for (let i = currentIndex + 1; i < orderedSavedDocuments.length; i++) {
 				const doc = orderedSavedDocuments[i];
 				editor.handle.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document, false);
 			}
 			editor.handle.selectDocument(BigInt(currentDocumentId));
 		} else {
-			orderedSavedDocuments?.forEach(async (doc: TriggerIndexedDbWriteDocument) => {
-				editor.handle.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document, false);
-			});
+			const len = orderedSavedDocuments.length;
+			for (let i = len - 2; i >= 0; i--) {
+				const doc = orderedSavedDocuments[i];
+				editor.handle.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document, true);
+			}
+			if (len > 0) {
+				const doc = orderedSavedDocuments[len - 1];
+				editor.handle.selectDocument(BigInt(doc.details.id));
+			}
 		}
 	}
 
@@ -119,8 +152,11 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 	editor.subscriptions.subscribeJsMessage(TriggerIndexedDbRemoveDocument, async (removeAutoSaveDocument) => {
 		await removeDocument(removeAutoSaveDocument.documentId);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerLoadAutoSaveDocuments, async () => {
-		await loadDocuments();
+	editor.subscriptions.subscribeJsMessage(TriggerLoadFirstAutoSaveDocument, async () => {
+		await loadFirstDocument();
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerLoadRestAutoSaveDocuments, async () => {
+		await loadRestDocuments();
 	});
 }
 

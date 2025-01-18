@@ -982,7 +982,6 @@ impl PortfolioMessageHandler {
 		}
 	}
 
-	// TODO: Fix how this doesn't preserve tab order upon loading new document from *File > Open*
 	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>, to_front: bool) {
 		if to_front {
 			self.document_ids.push_front(document_id);

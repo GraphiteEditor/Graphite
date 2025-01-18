@@ -761,7 +761,8 @@ export class UpdateMouseCursor extends JsMessage {
 	readonly cursor!: MouseCursorIcon;
 }
 
-export class TriggerLoadAutoSaveDocuments extends JsMessage {}
+export class TriggerLoadFirstAutoSaveDocument extends JsMessage {}
+export class TriggerLoadRestAutoSaveDocuments extends JsMessage {}
 
 export class TriggerLoadPreferences extends JsMessage {}
 
@@ -1583,7 +1584,8 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerImport,
 	TriggerIndexedDbRemoveDocument,
 	TriggerIndexedDbWriteDocument,
-	TriggerLoadAutoSaveDocuments,
+	TriggerLoadFirstAutoSaveDocument,
+	TriggerLoadRestAutoSaveDocuments,
 	TriggerLoadPreferences,
 	TriggerOpenDocument,
 	TriggerPaste,
