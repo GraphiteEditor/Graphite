@@ -11,6 +11,8 @@ pub struct OverlaysMessageHandler {
 	pub overlay_providers: HashSet<OverlayProvider>,
 	canvas: Option<web_sys::HtmlCanvasElement>,
 	context: Option<web_sys::CanvasRenderingContext2d>,
+	#[allow(dead_code)]
+	device_pixel_ratio: Option<f64>,
 }
 
 impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessageHandler {
@@ -22,6 +24,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 			OverlaysMessage::Draw => {
 				use super::utility_functions::overlay_canvas_element;
 				use super::utility_types::OverlayContext;
+				use glam::{DAffine2, DVec2};
 				use wasm_bindgen::JsCast;
 
 				let canvas = match &self.canvas {
@@ -39,17 +42,24 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 
 				let size = ipp.viewport_bounds.size().as_uvec2();
 
+				let device_pixel_ratio = *self.device_pixel_ratio.get_or_insert_with(|| web_sys::window().map(|w| w.device_pixel_ratio()).unwrap_or(1.0));
+
+				let [a, b, c, d, e, f] = DAffine2::from_scale(DVec2::splat(device_pixel_ratio)).to_cols_array();
+				context.set_transform(a, b, c, d, e, f).expect("scaling is necessary to support HiDPI displays");
 				context.clear_rect(0., 0., ipp.viewport_bounds.size().x, ipp.viewport_bounds.size().y);
+				context.reset_transform().expect("scaling is necessary to support HiDPI displays");
 
 				if overlays_visible {
 					responses.add(DocumentMessage::GridOverlays(OverlayContext {
 						render_context: context.clone(),
 						size: size.as_dvec2(),
+						device_pixel_ratio,
 					}));
 					for provider in &self.overlay_providers {
 						responses.add(provider(OverlayContext {
 							render_context: context.clone(),
 							size: size.as_dvec2(),
+							device_pixel_ratio,
 						}));
 					}
 				}
