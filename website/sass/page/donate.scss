@@ -1,51 +1,108 @@
-// #fundraising {
-// 	background-color: var(--color-seaside);
-// 	color: rgba(0, 0, 0, 0.9);
+.call-to-action {
+	display: flex;
+	flex-wrap: wrap;
+	flex-direction: row;
+	gap: calc(var(--font-size-link) * 0.8);
 
-// 	.graphic {
-// 		max-width: 400px;
-// 	}
+	.button {
+		margin: 0;
+	}
+}
 
-// 	.fundraising {
-// 		margin-top: 20px;
+#supporter-memberships,
+#corporate-sponsorships {
+	.triptych {
+		gap: 10px;
+		margin-top: 10px;
+	}
+
+	.triptych + .block,
+	.feature-box-inner > .block + :is(.block, .triptych) {
+		margin-top: calc(var(--feature-box-padding) / 2 * var(--variable-px));
+	}
+
+	.triptych + .block {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.feature-box-narrow {
+		min-width: 0;
+		background-color: var(--color-fog);
+		padding: calc(var(--feature-box-padding) / 2 * var(--variable-px));
+		text-decoration: none;
+		color: var(--color-navy);
+
+		&:hover {
+			background-color: var(--color-lemon);
+		}
+
+		h1 {
+			// Compensates for emoji starting with some left spacing
+			text-indent: -0.2em;
+		}
+
+		ul {
+			padding-left: 1em;
+			font-size: calc(7 / 9 * 1em);
+		}
+	}
+
+	.button {
+		background-color: var(--color-fog);
+	}
+}
+
+#supporter-memberships {
+	background-color: var(--color-mustard);
+}
+
+#corporate-sponsorships {
+	background-color: var(--color-ale);
+	margin-top: 0;
+}
+
+// .fundraising {
+// 	margin-top: 20px;
+// 	width: 100%;
+//
+// 	.fundraising-bar {
 // 		width: 100%;
-		
-// 		.fundraising-bar {
-// 			width: 100%;
-// 			height: 32px;
+// 		height: 32px;
+// 		border-radius: 10000px;
+// 		background: var(--color-fog);
+// 		overflow: hidden;
+//
+// 		.fundraising-bar-progress {
+// 			width: calc(var(--fundraising-percent) - (4px * 2) - (32px - 4px * 2));
+// 			padding-left: calc(32px - 4px * 2);
+// 			height: calc(100% - 4px * 2);
+// 			margin: 4px;
 // 			border-radius: 10000px;
-// 			background: var(--color-fog);
-// 			overflow: hidden;
-			
-// 			.fundraising-bar-progress {
-// 				width: calc(var(--fundraising-percent) - (4px * 2) - (32px - 4px * 2));
-// 				padding-left: calc(32px - 4px * 2);
-// 				height: calc(100% - 4px * 2);
-// 				margin: 4px;
-// 				border-radius: 10000px;
-// 				background: linear-gradient(to right, var(--color-navy), var(--color-crimson));
-// 				transition: opacity 1s, width 2s;
-// 			}
+// 			background: linear-gradient(to right, var(--color-navy), var(--color-crimson));
+// 			transition: opacity 1s, width 2s;
 // 		}
+// 	}
+//
+// 	.goal-metrics {
+// 		display: flex;
+// 		justify-content: space-between;
+// 		font-weight: 800;
+// 		margin-top: 8px;
+// 		margin-left: 20px;
+// 		width: calc(100% - 40px);
 
-// 		.goal-metrics {
-// 			display: flex;
-// 			justify-content: space-between;
-// 			font-weight: 800;
-// 			margin-top: 8px;
-// 			margin-left: 20px;
-// 			width: calc(100% - 40px);
-
-// 			> span {
-// 				transition: opacity 1s;
-// 			}
+// 		> span {
+// 			transition: opacity 1s;
 // 		}
-
-// 		&.fundraising.loading {
-// 			.goal-metrics > span,
-// 			.fundraising-bar .fundraising-bar-progress {
-// 				opacity: 0;
-// 			}
+// 	}
+//
+// 	&.fundraising.loading {
+// 		.goal-metrics > span,
+// 		.fundraising-bar .fundraising-bar-progress {
+// 			opacity: 0;
 // 		}
 // 	}
 // }
