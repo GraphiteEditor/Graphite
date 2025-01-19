@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher, onMount, onDestroy } from "svelte";
 
-	import { type NumberInputMode, type NumberInputIncrementBehavior } from "@graphite/wasm-communication/messages";
+	import { type NumberInputMode, type NumberInputIncrementBehavior } from "@graphite/messages";
 	import { evaluateMathExpression } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
 
 	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";

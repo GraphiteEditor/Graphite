@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { getContext, onMount, tick } from "svelte";
+	import { cubicInOut } from "svelte/easing";
 	import { fade } from "svelte/transition";
 
-	import { FADE_TRANSITION } from "@graphite/consts";
+	import type { Editor } from "@graphite/editor";
+	import type { Node } from "@graphite/messages";
+	import type { FrontendNodeWire, FrontendNode, FrontendGraphInput, FrontendGraphOutput, FrontendGraphDataType, WirePath } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
-	import type { Editor } from "@graphite/wasm-communication/editor";
-	import type { Node } from "@graphite/wasm-communication/messages";
-	import type { FrontendNodeWire, FrontendNode, FrontendGraphInput, FrontendGraphOutput, FrontendGraphDataType, WirePath } from "@graphite/wasm-communication/messages";
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -18,8 +18,10 @@
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+
 	const GRID_COLLAPSE_SPACING = 10;
 	const GRID_SIZE = 24;
+	const FADE_TRANSITION = { duration: 200, easing: cubicInOut };
 
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");

@@ -7,8 +7,9 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 
-use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
+use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
+use graphene_std::vector::{PointId, SegmentId, VectorModificationType};
 
 #[derive(Default)]
 pub struct SplineTool {
@@ -177,8 +178,14 @@ impl ToolTransition for SplineTool {
 
 #[derive(Clone, Debug, Default)]
 struct SplineToolData {
-	points: Vec<DVec2>,
+	/// Points that are inserted.
+	points: Vec<(PointId, DVec2)>,
+	/// Point to be inserted.
 	next_point: DVec2,
+	/// Point that was inserted temporarily to show preview.
+	preview_point: Option<PointId>,
+	/// Segment that was inserted temporarily to show preview.
+	preview_segment: Option<SegmentId>,
 	weight: f64,
 	layer: Option<LayerNodeIdentifier>,
 	snap_manager: SnapManager,
@@ -205,9 +212,11 @@ impl Fsm for SplineToolFsmState {
 
 				tool_data.weight = tool_options.line_weight;
 
-				let node_type = resolve_document_node_type("Spline").expect("Spline node does not exist");
-				let node = node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::VecDVec2(Vec::new()), false))]);
-				let nodes = vec![(NodeId(0), node)];
+				let path_node_type = resolve_document_node_type("Path").expect("Path node does not exist");
+				let path_node = path_node_type.default_node_template();
+				let spline_node_type = resolve_document_node_type("Splines from Points").expect("Spline from Points node does not exist");
+				let spline_node = spline_node_type.node_template_input_override([Some(NodeInput::node(NodeId(1), 0))]);
+				let nodes = vec![(NodeId(1), path_node), (NodeId(0), spline_node)];
 
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
 				tool_options.fill.apply_fill(layer, responses);
@@ -228,12 +237,11 @@ impl Fsm for SplineToolFsmState {
 				let transform = document.metadata().transform_to_viewport(layer);
 				let pos = transform.inverse().transform_point2(snapped_position);
 
-				if tool_data.points.last().map_or(true, |last_pos| last_pos.distance(pos) > DRAG_THRESHOLD) {
-					tool_data.points.push(pos);
+				if tool_data.points.last().map_or(true, |last_pos| last_pos.1.distance(pos) > DRAG_THRESHOLD) {
 					tool_data.next_point = pos;
 				}
 
-				update_spline(document, tool_data, true, responses);
+				update_spline(tool_data, false, responses);
 
 				SplineToolFsmState::Drawing
 			}
@@ -246,7 +254,7 @@ impl Fsm for SplineToolFsmState {
 				let pos = transform.inverse().transform_point2(snapped_position);
 				tool_data.next_point = pos;
 
-				update_spline(document, tool_data, true, responses);
+				update_spline(tool_data, true, responses);
 
 				// Auto-panning
 				let messages = [SplineToolMessage::PointerOutsideViewport.into(), SplineToolMessage::PointerMove.into()];
@@ -269,13 +277,15 @@ impl Fsm for SplineToolFsmState {
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::Confirm | SplineToolMessage::Abort) => {
 				if tool_data.points.len() >= 2 {
-					update_spline(document, tool_data, false, responses);
+					delete_preview(tool_data, responses);
 					responses.add(DocumentMessage::EndTransaction);
 				} else {
 					responses.add(DocumentMessage::AbortTransaction);
 				}
 
 				tool_data.layer = None;
+				tool_data.preview_point = None;
+				tool_data.preview_segment = None;
 				tool_data.points.clear();
 				tool_data.snap_manager.cleanup(responses);
 
@@ -310,17 +320,49 @@ impl Fsm for SplineToolFsmState {
 	}
 }
 
-fn update_spline(document: &DocumentMessageHandler, tool_data: &SplineToolData, show_preview: bool, responses: &mut VecDeque<Message>) {
-	let mut points = tool_data.points.clone();
-	if show_preview {
-		points.push(tool_data.next_point)
-	}
-	let value = TaggedValue::VecDVec2(points);
+fn update_spline(tool_data: &mut SplineToolData, show_preview: bool, responses: &mut VecDeque<Message>) {
+	delete_preview(tool_data, responses);
 
 	let Some(layer) = tool_data.layer else { return };
 
-	let Some(node_id) = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface).upstream_node_id_from_name("Spline") else {
-		return;
+	let next_point_pos = tool_data.next_point;
+	let next_point_id = PointId::generate();
+	let modification_type = VectorModificationType::InsertPoint {
+		id: next_point_id,
+		position: next_point_pos,
 	};
-	responses.add_front(NodeGraphMessage::SetInputValue { node_id, input_index: 1, value });
+	responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+	if let Some((last_point_id, _)) = tool_data.points.last() {
+		let points = [*last_point_id, next_point_id];
+		let id = SegmentId::generate();
+		let modification_type = VectorModificationType::InsertSegment { id, points, handles: [None, None] };
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+		if show_preview {
+			tool_data.preview_segment = Some(id);
+		}
+	}
+
+	if show_preview {
+		tool_data.preview_point = Some(next_point_id);
+	} else {
+		tool_data.points.push((next_point_id, next_point_pos));
+	}
+}
+
+fn delete_preview(tool_data: &mut SplineToolData, responses: &mut VecDeque<Message>) {
+	let Some(layer) = tool_data.layer else { return };
+
+	if let Some(id) = tool_data.preview_point {
+		let modification_type = VectorModificationType::RemovePoint { id };
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
+	}
+	if let Some(id) = tool_data.preview_segment {
+		let modification_type = VectorModificationType::RemoveSegment { id };
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
+	}
+
+	tool_data.preview_point = None;
+	tool_data.preview_segment = None;
 }

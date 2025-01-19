@@ -304,7 +304,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						let () = fut.await;
 						use wasm_bindgen::prelude::*;
 
-						#[wasm_bindgen(module = "/../frontend/src/wasm-communication/editor.ts")]
+						#[wasm_bindgen(module = "/../frontend/src/editor.ts")]
 						extern "C" {
 							#[wasm_bindgen(js_name = injectImaginatePollServerStatus)]
 							fn inject();

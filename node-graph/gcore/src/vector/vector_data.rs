@@ -306,6 +306,13 @@ impl ManipulatorPointId {
 		}
 	}
 
+	pub fn get_anchor_position(&self, vector_data: &VectorData) -> Option<DVec2> {
+		match self {
+			ManipulatorPointId::EndHandle(_) | ManipulatorPointId::PrimaryHandle(_) => self.get_anchor(vector_data).and_then(|id| vector_data.point_domain.position_from_id(id)),
+			_ => self.get_position(vector_data),
+		}
+	}
+
 	/// Attempt to get a pair of handles. For an anchor this is the first two handles connected. For a handle it is self and the first opposing handle.
 	#[must_use]
 	pub fn get_handle_pair(self, vector_data: &VectorData) -> Option<[HandleId; 2]> {
@@ -394,6 +401,13 @@ impl HandleId {
 			HandleType::Primary => ManipulatorPointId::PrimaryHandle(self.segment),
 			HandleType::End => ManipulatorPointId::EndHandle(self.segment),
 		}
+	}
+
+	/// Calculate the magnitude of the handle from the anchor.
+	pub fn length(self, vector_data: &VectorData) -> f64 {
+		let anchor_position = self.to_manipulator_point().get_anchor_position(vector_data).unwrap();
+		let handle_position = self.to_manipulator_point().get_position(vector_data);
+		handle_position.map(|pos| (pos - anchor_position).length()).unwrap_or(f64::MAX)
 	}
 
 	/// Set the handle's position relative to the anchor which is the start anchor for the primary handle and end anchor for the end handle.

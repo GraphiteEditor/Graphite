@@ -2,45 +2,183 @@
 title = "Donate"
 
 [extra]
-# css = ["/page/donate.css", "/component/feature-box.css", "/layout/balance-text.css"]
-# js = ["/js/fundraising.js"]
-# linked_js = ["https://static.graphite.rs/text-balancer/text-balancer.js"]
+css = ["/page/donate.css", "/component/feature-box.css"]
 +++
 
 <section>
 <div class="block">
 
-# Donate
+# Support Graphite
 
-**Safeguard the sustainable, independent future of Graphite.**
+**Safeguard the sustainable, independent future of quality open source creative software.**
 
-Your monthly support (or one-off contribution) helps provide the resources needed to grow Graphite into the ultimate 2D creative tool.
+Graphite is 100% built and funded by the community. Your contributions directly help us level up the scope and speed of the project's development. Resources are put towards infrastructure, legal costs, swag to keep contributors happy and motivated, and outreach like exhibiting at conventions and traveling to conferences to foster industry relationships. Hiring full-time developers is the big next step as support grows.
 
-<a href="https://github.com/sponsors/GraphiteEditor" class="button arrow">&hearts; Give now</a>
+Select a level of support that suits you from the choices below. Or, you can ensure **100% of your contribution benefits Graphite** and have a choice of **custom** monthly donation amounts by paying through **GitHub Sponsors**.
 
-<br />
-
-(Additionally, boosting the [Graphite Discord server](https://discord.graphite.rs) is helpful if you already have spare Nitro boosts.)
+<p class="call-to-action">
+<a href="https://github.com/sponsors/GraphiteEditor" target="_blank" class="button arrow">Donate: GitHub Sponsors</a>
+<a href="#supporter-memberships" class="button arrow">Donate: without an account</a>
+</p>
 
 </div>
 </section>
 
-<!-- <section id="fundraising" class="feature-box-outer">
+<section id="supporter-memberships" class="feature-box-outer">
 <div class="feature-box-inner">
-<div>
 
 <div class="block">
 
-# Support the mission
+<h1 class="feature-box-header">Supporter memberships</h1>
 
-<p class="balance-text">
-You can help realize Graphite's ambitious vision of building the ultimate 2D creative tool.
-Graphite is built by a small, dedicated crew of volunteers in need of resources to grow.
-</p>
+---
 
-### Summer 2023 fundraising goal:
+Click a membership level below to pay directly (no account needed). A small fee (2.9% + 30¢ / month) reduces what we receive.
 
-<div class="fundraising loading" data-fundraising>
+</div>
+
+<div class="triptych">
+
+<a href="https://buy.stripe.com/6oE2btfCK9863vybII" target="_blank" class="block feature-box-narrow">
+
+<h1 class="feature-box-header">⭕ &ldquo;Quark&rdquo; &raquo;</h1>
+
+**$5 / month**
+
+- Your GitHub profile unlocks a shiny achievement acknowledging your contribution *(through GitHub Sponsors only)*
+
+</a>
+<a href="https://buy.stripe.com/00gdUb62aesq9TW7st" target="_blank" class="block feature-box-narrow">
+
+<h1 class="feature-box-header">➕ &ldquo;Proton&rdquo; &raquo;</h1>
+
+**$10 / month**
+
+- Get a **"Member" role** and accompanying **gold-colored nametag on Discord**
+- *Plus the lower-tier rewards*
+
+</a>
+<a href="https://buy.stripe.com/5kAbM38aiacaeac28a" target="_blank" class="block feature-box-narrow">
+
+<h1 class="feature-box-header">⚛️ &ldquo;Carbon&rdquo; &raquo;</h1>
+
+**$15 / month**
+
+- Your name/handle listed in the end-of-year **retrospective blog post** thank-you section
+- *Plus the lower-tier rewards*
+
+</a>
+
+</div>
+<div class="triptych">
+
+<a href="https://buy.stripe.com/28o4jB62a0BA5DGbIL" target="_blank" class="block feature-box-narrow">
+
+<h1 class="feature-box-header">🧬 &ldquo;DNA&rdquo; &raquo;</h1>
+
+**$25 / month**
+
+- Your **personal name** (or handle) **on the Graphite website and GitHub readme**
+- Option to be mailed a personal **thank-you card with Graphite stickers** (US addresses only)
+- *Plus the lower-tier rewards*
+
+</a>
+<a href="https://buy.stripe.com/28o03laiq0BA8PS6os" target="_blank" class="block feature-box-narrow">
+
+<h1 class="feature-box-header">🌱 &ldquo;Organism&rdquo; &raquo;</h1>
+
+**$50 / month**
+
+- Option to be given a public **shout-out of appreciation** from @GraphiteEditor on your choice of social media sites
+- *Plus the lower-tier rewards*
+
+</a>
+<a href="https://buy.stripe.com/fZedUbduCfwu2ru7sx" target="_blank" class="block feature-box-narrow">
+
+<h1 class="feature-box-header">🌄 &ldquo;Biosphere&rdquo; &raquo;</h1>
+
+**$75 / month**
+
+- Your personal name (or handle) may be a **hyperlink** to your personal site or social media profile
+- *Plus the lower-tier rewards*
+
+</a>
+
+</div>
+
+<div class="block">
+
+<a href="https://donate.stripe.com/fZeg2j0HQ5VU6HK14d" target="_blank" class="button arrow">Or make a one-time donation</a>
+
+[Manage your ongoing membership](https://billing.stripe.com/p/login/aEU9EzctSfe3cfK5kk)
+
+</div>
+
+</div>
+</section>
+
+<section id="corporate-sponsorships" class="feature-box-outer">
+<div class="feature-box-inner">
+
+<div class="block">
+
+<h1 class="feature-box-header">Corporate sponsorships</h1>
+
+---
+
+These higher tiers are also available to individuals who want to make a larger impact.
+
+Please [get in touch](/contact) if you'd like a custom arrangement or want to pay by invoice or ACH to help avoid processing fees.
+
+</div>
+
+<div class="triptych">
+
+<a href="https://buy.stripe.com/7sI6rJ1LU5VUaY05kq" target="_blank" class="block feature-box-narrow">
+
+<h1 class="feature-box-header">🪨 &ldquo;Charcoal&rdquo; &raquo;</h1>
+
+**$100 / month**
+
+- Your **company name** may be shown **on the Graphite website and GitHub readme** starting at this tier level
+- *Plus the lower-tier rewards for members*
+
+</a>
+<a href="https://buy.stripe.com/3cs8zR8ai0BA8PSaEL" target="_blank" class="block feature-box-narrow">
+
+<h1 class="feature-box-header">🛡️ &ldquo;Carbide&rdquo; &raquo;</h1>
+
+**$250 / month**
+
+- Your name on the website and readme may be a **hyperlink** to your company/personal site
+- *Plus the lower-tier rewards for members*
+
+</a>
+<a href="https://buy.stripe.com/fZeaHZ76e0BAeaccMU" target="_blank" class="block feature-box-narrow">
+
+<h1 class="feature-box-header">💎 &ldquo;Diamond&rdquo; &raquo;</h1>
+
+**$500 / month**
+
+- Your name and link on the website and readme may instead be a **hyperlinked logo**
+- *Plus the lower-tier rewards for members*
+
+</a>
+
+</div>
+
+<div class="block">
+
+<a href="https://donate.stripe.com/fZeg2j0HQ5VU6HK14d" target="_blank" class="button arrow">Or make a one-time donation</a>
+
+[Manage your ongoing membership](https://billing.stripe.com/p/login/aEU9EzctSfe3cfK5kk)
+
+</div>
+
+</div>
+</section>
+
+<!-- <div class="fundraising loading" data-fundraising>
 	<div class="fundraising-bar" data-fundraising-bar style="--fundraising-percent: 0%">
 		<div class="fundraising-bar-progress"></div>
 	</div>
@@ -48,18 +186,4 @@ Graphite is built by a small, dedicated crew of volunteers in need of resources 
 		<span data-fundraising-percent>Progress: <span data-dynamic>0</span>%</span>
 		<span data-fundraising-goal>Goal: $<span data-dynamic>0</span>/month</span>
 	</div>
-</div>
-
-[Become a monthly supporter](https://github.com/sponsors/GraphiteEditor) this summer to collect an exclusive 💚 badge. Each season you support, a new heart design is yours to keep. In the future, they'll be shown on Graphite account profiles and community areas like forums and in-app collaboration.
-
-<a href="https://github.com/sponsors/GraphiteEditor" class="button arrow">Donate</a>
-
-</div>
-
-<div class="graphic">
-	<a href="https://github.com/sponsors/GraphiteEditor"><img src="https://files.keavon.com/-/OtherDroopyBoto/Spring_Heart.png" /></a>
-</div>
-
-</div>
-</div>
-</section> -->
+</div> -->

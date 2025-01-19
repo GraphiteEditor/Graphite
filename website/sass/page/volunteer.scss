@@ -1,5 +1,5 @@
-.diptych {
-	gap: 0 calc(80 * var(--variable-px));
+.diptych.diptych {
+	gap: 0 calc(var(--feature-box-padding) * var(--variable-px));
 
 	.feature-box-narrow {
 		margin-top: calc(40 * var(--variable-px));

@@ -86,9 +86,6 @@ impl LayerSnapper {
 					}
 				}
 			}
-			if !snap_data.ignore_bounds(layer) {
-				self.add_layer_bounds(document, layer, SnapTarget::BoundingBox(BoundingBoxSnapTarget::AlongEdge));
-			}
 		}
 	}
 

@@ -19,7 +19,7 @@ impl AlignmentSnapper {
 		let document = snap_data.document;
 
 		self.bounding_box_points.clear();
-		if !document.snapping_state.bounding_box.align_with_corner_point {
+		if !document.snapping_state.bounding_box.align_with_edges {
 			return;
 		}
 
@@ -74,7 +74,9 @@ impl AlignmentSnapper {
 					Quad::intersect_rays(target_point.document_point, DVec2::X, origin, direction),
 				]
 			} else {
-				[DVec2::new(point.document_point.x, target_position.y), DVec2::new(target_position.x, point.document_point.y)].map(Some)
+				let Some(quad) = target_point.quad.map(|quad| quad.0) else { continue };
+				let edges = [quad[1] - quad[0], quad[3] - quad[0]];
+				edges.map(|edge| edge.try_normalize().map(|edge| (point.document_point - target_position).project_onto(edge) + target_position))
 			};
 
 			let target_path = matches!(target_point.target, SnapTarget::Path(_));
