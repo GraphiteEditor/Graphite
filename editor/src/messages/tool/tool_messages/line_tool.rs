@@ -167,6 +167,7 @@ impl Fsm for LineToolFsmState {
 		match (self, event) {
 			(_, LineToolMessage::Overlays(mut overlay_context)) => {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
+
 				self
 			}
 			(LineToolFsmState::Ready, LineToolMessage::DragStart) => {
