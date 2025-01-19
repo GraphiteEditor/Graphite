@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
+	import type { Editor } from "@graphite/editor";
+	import type { Widget, WidgetSpanColumn, WidgetSpanRow } from "@graphite/messages";
+	import { narrowWidgetProps, isWidgetSpanColumn, isWidgetSpanRow } from "@graphite/messages";
 	import { debouncer } from "@graphite/utility-functions/debounce";
-	import type { Editor } from "@graphite/wasm-communication/editor";
-	import type { Widget, WidgetSpanColumn, WidgetSpanRow } from "@graphite/wasm-communication/messages";
-	import { narrowWidgetProps, isWidgetSpanColumn, isWidgetSpanRow } from "@graphite/wasm-communication/messages";
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
 	import BreadcrumbTrailButtons from "@graphite/components/widgets/buttons/BreadcrumbTrailButtons.svelte";

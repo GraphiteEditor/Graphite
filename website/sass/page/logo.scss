@@ -36,7 +36,7 @@
 			flex-direction: column;
 
 			img {
-				max-width: calc(100vw - 2 * 80 * var(--variable-px));
+				max-width: calc(100vw - 2 * var(--feature-box-padding) * var(--variable-px));
 			}
 
 			span {

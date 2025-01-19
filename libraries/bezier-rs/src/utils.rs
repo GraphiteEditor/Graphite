@@ -2,6 +2,7 @@ use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, STRICT_MAX_ABSOLUTE_DIFFERENCE};
 use crate::{ManipulatorGroup, Subpath};
 
 use glam::{BVec2, DMat2, DVec2};
+use std::fmt::Write;
 
 #[derive(Copy, Clone, PartialEq)]
 /// A structure which can be used to reference a particular point along a `Bezier`.
@@ -292,6 +293,18 @@ pub fn compute_circular_subpath_details<PointId: crate::Identifier>(left: DVec2,
 		),
 		right + (right - center).perp() * handle_offset_factor,
 	)
+}
+
+pub fn format_point(svg: &mut String, prefix: &str, x: f64, y: f64) -> std::fmt::Result {
+	write!(svg, "{prefix}{:.6}", x)?;
+	let trimmed_length = svg.trim_end_matches('0').trim_end_matches('.').len();
+	svg.truncate(trimmed_length);
+
+	write!(svg, ",{:.6}", y)?;
+	let trimmed_length = svg.trim_end_matches('0').trim_end_matches('.').len();
+	svg.truncate(trimmed_length);
+
+	Ok(())
 }
 
 #[cfg(test)]
