@@ -157,6 +157,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SplineT
 				Undo,
 				DragStart,
 				DragStop,
+				PointerMove,
 				Confirm,
 				Abort,
 			),
@@ -209,6 +210,7 @@ impl SplineToolData {
 	fn snapping_position(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) -> DVec2 {
 		let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
+		self.snap_manager.update_indicator(snapped.clone());
 		snapped.snapped_point_document
 	}
 }
@@ -231,6 +233,7 @@ impl Fsm for SplineToolFsmState {
 			(_, SplineToolMessage::CanvasTransformed) => self,
 			(_, SplineToolMessage::Overlays(mut overlay_context)) => {
 				path_endpoint_overlays(document, shape_editor, &mut overlay_context);
+				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 
 				self
 			}
@@ -321,6 +324,12 @@ impl Fsm for SplineToolFsmState {
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				SplineToolFsmState::Drawing
+			}
+			(_, SplineToolMessage::PointerMove) => {
+				tool_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
+				responses.add(OverlaysMessage::Draw);
+				log::info!("10");
+				self
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::PointerOutsideViewport) => {
 				// Auto-panning
