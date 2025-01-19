@@ -8,7 +8,7 @@
 #logo {
 	img {
 		width: auto;
-		max-width: 100%;
+		max-width: 75%;
 		max-height: 160px;
 	}
 }
@@ -165,7 +165,7 @@
 		}
 
 		.description {
-			margin: calc(80 * var(--variable-px));
+			margin: calc(var(--feature-box-padding) * var(--variable-px));
 		}
 
 		+ .diptych {
