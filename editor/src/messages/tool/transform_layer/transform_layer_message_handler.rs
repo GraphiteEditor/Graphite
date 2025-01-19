@@ -1,5 +1,5 @@
 use crate::consts::SLOWING_DIVISOR;
-use crate::consts::{COLOR_OVERLAY_SNAP_BACKGROUND, COLOR_OVERLAY_WHITE};
+use crate::consts::{ANGLE_MEASURE_RADIUS_FACTOR, ARC_MEASURE_RADIUS_FACTOR_RANGE, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_SNAP_BACKGROUND, COLOR_OVERLAY_WHITE};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayProvider, Pivot};
 use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, Typing};
@@ -11,6 +11,7 @@ use glam::DAffine2;
 use graphene_core::vector::ManipulatorPointId;
 
 use glam::DVec2;
+use std::f64::consts::TAU;
 
 const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| TransformLayerMessage::Overlays(context).into();
 
@@ -92,13 +93,14 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 		};
 
 		match message {
-			TransformLayerMessage::Overlays(overlay_context) => {
+			TransformLayerMessage::Overlays(mut overlay_context) => {
 				for layer in document.metadata().all_layers() {
 					if !document.network_interface.is_artboard(&layer.to_node(), &[]) {
 						continue;
 					};
 
-					let transform = DAffine2::from_translation(DVec2::new(0.0, input.viewport_bounds.size().y)) * DAffine2::from_scale(DVec2::splat(1.2));
+					let viewport_box = input.viewport_bounds.size();
+					let transform = DAffine2::from_translation(DVec2::new(0.0, viewport_box.y)) * DAffine2::from_scale(DVec2::splat(1.2));
 
 					let axis_constraint = match self.transform_operation {
 						TransformOperation::Grabbing(grabbing) => grabbing.constraint,
@@ -106,13 +108,13 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						_ => Axis::Both,
 					};
 
-					let format_rounded = |value: f64| format!("{:.3}", value).trim_end_matches('0').trim_end_matches('.').to_string();
+					let format_rounded = |value: f64, precision: usize| format!("{:.*}", precision, value).trim_end_matches('0').trim_end_matches('.').to_string();
 
 					let axis_text = |vector: DVec2, separate: bool| match (axis_constraint, separate) {
-						(Axis::Both, false) => format!("by {}", format_rounded(vector.x)),
-						(Axis::Both, true) => format!("by ({}, {})", format_rounded(vector.x), format_rounded(vector.y)),
-						(Axis::X, _) => format!("X by {}", format_rounded(vector.x)),
-						(Axis::Y, _) => format!("Y by {}", format_rounded(vector.y)),
+						(Axis::Both, false) => format!("by {}", format_rounded(vector.x, 3)),
+						(Axis::Both, true) => format!("by ({}, {})", format_rounded(vector.x, 3), format_rounded(vector.y, 3)),
+						(Axis::X, _) => format!("X by {}", format_rounded(vector.x, 3)),
+						(Axis::Y, _) => format!("Y by {}", format_rounded(vector.y, 3)),
 					};
 
 					let grs_value_text = match self.transform_operation {
@@ -121,9 +123,85 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							"Translating {}",
 							axis_text(document.metadata().document_to_viewport.inverse().transform_vector2(translation.to_dvec()), true)
 						),
-						TransformOperation::Rotating(rotation) => format!("Rotating by {}°", format_rounded(rotation.to_f64(self.snap).to_degrees())),
+						TransformOperation::Rotating(rotation) => format!("Rotating by {}°", format_rounded(rotation.to_f64(self.snap).to_degrees(), 3)),
 						TransformOperation::Scaling(scale) => format!("Scaling {}", axis_text(scale.to_dvec(self.snap), false)),
 					};
+
+					match self.transform_operation {
+						TransformOperation::None => (),
+						TransformOperation::Grabbing(translation) => {
+							use graphene_core::renderer::Quad;
+
+							let translation = document.metadata().document_to_viewport.inverse().transform_vector2(translation.to_dvec());
+							let vec_to_end = self.mouse_position - self.start_mouse;
+
+							let quad = Quad::from_box([self.pivot, self.pivot + vec_to_end]).0;
+							if matches!(axis_constraint, Axis::Both | Axis::X) {
+								overlay_context.line(quad[0], quad[1], None);
+								let x_transform = DAffine2::from_translation((quad[0] + quad[1]) / 2.);
+								overlay_context.text(&format_rounded(translation.x, 3), COLOR_OVERLAY_BLUE, None, x_transform, 4., [Pivot::Middle, Pivot::End]);
+							}
+
+							if matches!(axis_constraint, Axis::Both | Axis::Y) {
+								overlay_context.line(quad[0], quad[3], None);
+								let x_parameter = vec_to_end.x.clamp(-1., 1.);
+								let y_transform = DAffine2::from_translation((quad[0] + quad[3]) / 2. + x_parameter * DVec2::X * 0.);
+								let pivot_selection = if x_parameter > 0. {
+									Pivot::Start
+								} else if x_parameter == 0. {
+									Pivot::Middle
+								} else {
+									Pivot::End
+								};
+								overlay_context.text(&format_rounded(translation.y, 2), COLOR_OVERLAY_BLUE, None, y_transform, 3., [pivot_selection, Pivot::Middle]);
+							}
+							if matches!(axis_constraint, Axis::Both) {
+								overlay_context.dashed_line(quad[1], quad[2], None, Some(2.), Some(2.), Some(0.5));
+								overlay_context.dashed_line(quad[3], quad[2], None, Some(2.), Some(2.), Some(0.5));
+							}
+						}
+						TransformOperation::Scaling(scale) => {
+							let scale = scale.to_f64(self.snap);
+							let text = format!("{}x", format_rounded(scale, 3));
+							// https://media.discordapp.net/attachments/931942323644928040/1330398373747884074/image.png
+							let extension_vector = self.mouse_position - self.start_mouse; // a
+							let local_edge = self.start_mouse - self.pivot; // m
+							let local_edge = match axis_constraint {
+								Axis::X => local_edge.with_y(0.),
+								Axis::Y => local_edge.with_x(0.),
+								_ => local_edge,
+							};
+							let boundary_point = local_edge + self.pivot; // p
+							let projected_pointer = extension_vector.project_onto(local_edge); // u
+							let dashed_till = if extension_vector.dot(local_edge) < 0.0 { local_edge + projected_pointer } else { local_edge }; // s1
+							let lined_till = projected_pointer + boundary_point; // x1
+							if dashed_till.dot(local_edge) > 0.0 {
+								overlay_context.dashed_line(self.pivot, self.pivot + dashed_till, None, Some(4.), Some(4.), Some(0.5));
+							}
+							overlay_context.line(boundary_point, lined_till, None);
+
+							let transform = DAffine2::from_translation(boundary_point.midpoint(self.pivot) + local_edge.perp().normalize() * local_edge.element_product().signum() * 24.);
+							overlay_context.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
+						}
+						TransformOperation::Rotating(rotation) => {
+							let angle = rotation.to_f64(self.snap);
+							let width = viewport_box.max_element();
+							let radius = self.start_mouse.distance(self.pivot);
+							let arc_radius = ANGLE_MEASURE_RADIUS_FACTOR * width;
+							let radius = radius.clamp(ARC_MEASURE_RADIUS_FACTOR_RANGE.0 * width, ARC_MEASURE_RADIUS_FACTOR_RANGE.1 * width);
+							let text = format!("{}°", format_rounded(angle.to_degrees(), 2));
+							let text_texture_width = overlay_context.get_width(&text) / 2.;
+							let text_texture_height = 12.;
+							let text_angle_on_unit_circle = DVec2::from_angle((angle % TAU) / 2.);
+							let text_texture_position = DVec2::new(
+								(arc_radius + 4. + text_texture_width) * text_angle_on_unit_circle.x,
+								(arc_radius + text_texture_height) * text_angle_on_unit_circle.y,
+							);
+							let transform = DAffine2::from_translation(text_texture_position + self.pivot);
+							overlay_context.draw_angle(self.pivot, radius, arc_radius, angle);
+							overlay_context.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
+						}
+					}
 
 					overlay_context.text(&grs_value_text, COLOR_OVERLAY_WHITE, Some(COLOR_OVERLAY_SNAP_BACKGROUND), transform, 4., [Pivot::Start, Pivot::End]);
 				}
@@ -246,10 +324,16 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 								(current_frame_dist - previous_frame_dist) / start_transform_dist
 							};
-
+							let region_negate = (self.start_mouse - *selected.pivot).dot(self.mouse_position - *selected.pivot) < 0.0;
 							let change = if self.slow { change / SLOWING_DIVISOR } else { change };
+							let change = change * scale.dragged_factor.signum();
 							self.transform_operation = TransformOperation::Scaling(scale.increment_amount(change));
-							self.transform_operation.apply_transform_operation(&mut selected, self.snap);
+							if region_negate {
+								let tmp_operation = TransformOperation::Scaling(scale.negate());
+								tmp_operation.apply_transform_operation(&mut selected, self.snap);
+							} else {
+								self.transform_operation.apply_transform_operation(&mut selected, self.snap);
+							}
 						}
 					};
 				}
@@ -262,7 +346,13 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 			TransformLayerMessage::TypeBackspace => self.transform_operation.grs_typed(self.typing.type_backspace(), &mut selected, self.snap),
 			TransformLayerMessage::TypeDecimalPoint => self.transform_operation.grs_typed(self.typing.type_decimal_point(), &mut selected, self.snap),
 			TransformLayerMessage::TypeDigit { digit } => self.transform_operation.grs_typed(self.typing.type_number(digit), &mut selected, self.snap),
-			TransformLayerMessage::TypeNegate => self.transform_operation.grs_typed(self.typing.type_negate(), &mut selected, self.snap),
+			TransformLayerMessage::TypeNegate => {
+				if self.typing.digits.is_empty() {
+					self.transform_operation.negate(&mut selected, self.snap)
+				} else {
+					self.transform_operation.grs_typed(self.typing.type_negate(), &mut selected, self.snap)
+				}
+			}
 		}
 	}
 

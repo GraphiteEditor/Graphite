@@ -226,14 +226,29 @@ impl Default for Scale {
 }
 
 impl Scale {
-	pub fn to_dvec(self, snap: bool) -> DVec2 {
+	pub fn to_f64(self, snap: bool) -> f64 {
 		let factor = if let Some(value) = self.typed_factor { value } else { self.dragged_factor };
-		let factor = if snap { (factor / SCALE_SNAP_INTERVAL).round() * SCALE_SNAP_INTERVAL } else { factor };
+		if snap {
+			(factor / SCALE_SNAP_INTERVAL).round() * SCALE_SNAP_INTERVAL
+		} else {
+			factor
+		}
+	}
+
+	pub fn to_dvec(self, snap: bool) -> DVec2 {
+		let factor = self.to_f64(snap);
 
 		match self.constraint {
 			Axis::Both => DVec2::splat(factor),
 			Axis::X => DVec2::new(factor, 1.),
 			Axis::Y => DVec2::new(1., factor),
+		}
+	}
+
+	pub fn negate(self) -> Self {
+		Self {
+			dragged_factor: -self.dragged_factor,
+			..self
 		}
 	}
 
@@ -317,6 +332,16 @@ impl TransformOperation {
 
 		let hint_data = HintData(vec![HintGroup(input_hints)]);
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
+	}
+
+	pub fn negate(&mut self, selected: &mut Selected, snapping: bool) {
+		if *self != TransformOperation::None {
+			*self = match self {
+				TransformOperation::Scaling(scale) => TransformOperation::Scaling(scale.negate()),
+				_ => *self,
+			};
+			self.apply_transform_operation(selected, snapping);
+		}
 	}
 }
 
