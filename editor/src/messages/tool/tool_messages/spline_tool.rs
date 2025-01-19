@@ -7,7 +7,8 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::snapping::SnapManager;
+use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapManager, SnapTypeConfiguration};
+
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
 
 use graph_craft::document::{NodeId, NodeInput};
@@ -198,12 +199,17 @@ struct SplineToolData {
 }
 
 impl SplineToolData {
-	fn cleanup(&mut self, responses: &mut VecDeque<Message>) {
+	fn cleanup(&mut self) {
 		self.layer = None;
 		self.preview_point = None;
 		self.preview_segment = None;
 		self.end_point = None;
-		self.snap_manager.cleanup(responses);
+	}
+
+	fn snapping_position(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) -> DVec2 {
+		let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
+		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
+		snapped.snapped_point_document
 	}
 }
 
@@ -231,7 +237,7 @@ impl Fsm for SplineToolFsmState {
 			(SplineToolFsmState::Ready, SplineToolMessage::DragStart { append_to_selected }) => {
 				responses.add(DocumentMessage::StartTransaction);
 
-				tool_data.cleanup(responses);
+				tool_data.cleanup();
 				tool_data.weight = tool_options.line_weight;
 
 				// Extend an endpoint of the selected path
@@ -282,12 +288,12 @@ impl Fsm for SplineToolFsmState {
 				SplineToolFsmState::Drawing
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::DragStop) => {
-				responses.add(DocumentMessage::EndTransaction);
+				tool_data.snap_manager.cleanup(responses);
 
-				let Some(layer) = tool_data.layer else {
+				if tool_data.layer.is_none() {
 					return SplineToolFsmState::Ready;
 				};
-				let pos = get_mouse_position(document, input, layer);
+				let pos = tool_data.snapping_position(document, input);
 
 				if tool_data.end_point.map_or(true, |last_pos| last_pos.1.distance(pos) > DRAG_THRESHOLD) {
 					tool_data.next_point = pos;
@@ -303,10 +309,10 @@ impl Fsm for SplineToolFsmState {
 				SplineToolFsmState::Drawing
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::PointerMove) => {
-				let Some(layer) = tool_data.layer else {
+				if tool_data.layer.is_none() {
 					return SplineToolFsmState::Ready;
 				};
-				tool_data.next_point = get_mouse_position(document, input, layer);
+				tool_data.next_point = tool_data.snapping_position(document, input);
 
 				extend_spline(tool_data, true, responses);
 
@@ -337,7 +343,8 @@ impl Fsm for SplineToolFsmState {
 					responses.add(DocumentMessage::AbortTransaction);
 				}
 
-				tool_data.cleanup(responses);
+				tool_data.snap_manager.cleanup(responses);
+				tool_data.cleanup();
 
 				SplineToolFsmState::Ready
 			}
@@ -368,13 +375,6 @@ impl Fsm for SplineToolFsmState {
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 	}
-}
-
-fn get_mouse_position(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, layer: LayerNodeIdentifier) -> DVec2 {
-	let snapped_position = input.mouse.position;
-	let transform = document.metadata().transform_to_viewport(layer);
-	let pos = transform.inverse().transform_point2(snapped_position);
-	pos
 }
 
 /// Return `true` only if new segment is inserted to connect two end points in the selected layer otherwise `false`.
