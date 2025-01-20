@@ -19,12 +19,14 @@ use graphene_core::raster::{
 use graphene_core::text::Font;
 use graphene_core::vector::misc::CentroidType;
 use graphene_core::vector::style::{GradientType, LineCap, LineJoin};
-use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops};
-
-use glam::{DAffine2, DVec2, IVec2, UVec2};
+use graphene_std::application_io::TextureFrame;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::misc::BooleanOperation;
+use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops};
 use graphene_std::vector::VectorData;
+use graphene_std::{GraphicGroup, Raster};
+
+use glam::{DAffine2, DVec2, IVec2, UVec2};
 
 pub(crate) fn string_properties(text: String) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_holder();
@@ -152,6 +154,10 @@ pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, conte
 						Some(x) if x == TypeId::of::<Curve>() => curves_widget(document_node, node_id, index, name, true),
 						Some(x) if x == TypeId::of::<GradientStops>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(false), true),
 						Some(x) if x == TypeId::of::<VectorData>() => vector_widget(document_node, node_id, index, name, true).into(),
+						Some(x) if x == TypeId::of::<Raster>() || x == TypeId::of::<ImageFrame<Color>>() || x == TypeId::of::<TextureFrame>() => {
+							raster_widget(document_node, node_id, index, name, true).into()
+						}
+						Some(x) if x == TypeId::of::<GraphicGroup>() => group_widget(document_node, node_id, index, name, true).into(),
 						Some(x) if x == TypeId::of::<Footprint>() => {
 							let widgets = footprint_widget(document_node, node_id, index);
 							let (last, rest) = widgets.split_last().expect("Footprint widget should return multiple rows");
@@ -233,7 +239,14 @@ pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, conte
 							let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, true);
 							widgets.extend_from_slice(&[
 								Separator::new(SeparatorType::Unrelated).widget_holder(),
-								TextLabel::new("-").tooltip(format!("Unsupported type: {}", concrete_type.name)).widget_holder(),
+								TextLabel::new("-")
+									.tooltip(format!(
+										"This data can only be supplied through the\n\
+										node graph because no widget exists for its type:\n\
+										{}",
+										concrete_type.name
+									))
+									.widget_holder(),
 							]);
 							widgets.into()
 						}
@@ -644,7 +657,25 @@ pub fn vector_widget(document_node: &DocumentNode, node_id: NodeId, index: usize
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::VectorData, blank_assist);
 
 	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-	widgets.push(TextLabel::new("Vector data must be supplied through the graph").widget_holder());
+	widgets.push(TextLabel::new("Vector data is supplied through the node graph").widget_holder());
+
+	widgets
+}
+
+pub fn raster_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Raster, blank_assist);
+
+	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+	widgets.push(TextLabel::new("Raster data is supplied through the node graph").widget_holder());
+
+	widgets
+}
+
+pub fn group_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Group, blank_assist);
+
+	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+	widgets.push(TextLabel::new("Group data is supplied through the node graph").widget_holder());
 
 	widgets
 }

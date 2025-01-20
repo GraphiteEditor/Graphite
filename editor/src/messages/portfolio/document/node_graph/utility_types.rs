@@ -11,7 +11,7 @@ pub enum FrontendGraphDataType {
 	Raster,
 	VectorData,
 	Number,
-	Graphic,
+	Group,
 	Artboard,
 }
 
@@ -30,7 +30,7 @@ impl FrontendGraphDataType {
 			| TaggedValue::F64Array4(_)
 			| TaggedValue::VecF64(_)
 			| TaggedValue::VecDVec2(_) => Self::Number,
-			TaggedValue::GraphicGroup(_) | TaggedValue::GraphicElement(_) => Self::Graphic,
+			TaggedValue::GraphicGroup(_) | TaggedValue::GraphicElement(_) => Self::Group,
 			TaggedValue::ArtboardGroup(_) => Self::Artboard,
 			_ => Self::General,
 		}
