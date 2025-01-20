@@ -15,7 +15,7 @@ use bezier_rs::Subpath;
 use dyn_any::DynAny;
 
 use base64::Engine;
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DMat2, DVec2};
 use num_traits::Zero;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
@@ -58,10 +58,10 @@ impl ClickTarget {
 	}
 
 	/// Does the click target intersect the path
-	pub fn intersect_path<It: Iterator<Item = bezier_rs::Bezier>>(&self, mut bezier_iter: impl FnMut() -> It, layer_transform: DAffine2) -> bool {
+	pub fn intersect_path<It: Iterator<Item = bezier_rs::Bezier>>(&self, mut bezier_iter: impl FnMut() -> It, mut layer_transform: DAffine2) -> bool {
 		// Check if the matrix is not invertible
 		if layer_transform.matrix2.determinant().abs() <= f64::EPSILON {
-			return false;
+			layer_transform.matrix2 += glam::DMat2::IDENTITY * 1e-4;
 		}
 		let inverse = layer_transform.inverse();
 		let mut bezier_iter = || bezier_iter().map(|bezier| bezier.apply_transformation(|point| inverse.transform_point2(point)));
