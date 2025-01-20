@@ -1,5 +1,7 @@
 use super::utility_functions::overlay_canvas_context;
-use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER};
+use crate::consts::{
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_TRANSPARENT, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
+};
 use crate::messages::prelude::Message;
 
 use bezier_rs::{Bezier, Subpath};
@@ -235,8 +237,8 @@ impl OverlayContext {
 	pub fn draw_scale(&mut self, start: DVec2, scale: f64, radius: f64, text: &str) {
 		let sign = scale.signum();
 		self.line(start + DVec2::X * radius * sign, start + DVec2::X * (radius * scale), None);
-		self.circle(start, radius, Some("#ffffff00"), None);
-		self.circle(start, radius * scale.abs(), Some("#ffffff00"), None);
+		self.circle(start, radius, Some(COLOR_OVERLAY_TRANSPARENT), None);
+		self.circle(start, radius * scale.abs(), Some(COLOR_OVERLAY_TRANSPARENT), None);
 		self.text(
 			text,
 			COLOR_OVERLAY_BLUE,

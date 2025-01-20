@@ -298,7 +298,6 @@ impl TransformOperation {
 			let transformation = match self {
 				TransformOperation::Grabbing(translation) => {
 					if local {
-						debug!("{:?}", quad);
 						DAffine2::from_angle(edge.to_angle()) * DAffine2::from_translation(translation.to_dvec()) * DAffine2::from_angle(-edge.to_angle())
 					} else {
 						DAffine2::from_translation(translation.to_dvec())
