@@ -58,7 +58,7 @@ async fn assign_colors<F: 'n + Send, T: VectorIterMut>(
 	reverse: bool,
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_randomize")] randomize: bool,
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_seed")] seed: SeedValue,
-	#[widget(ParsedWidgetOverride::Custom = "assign_colors_repeat_every_row")] repeat_every: u32,
+	#[widget(ParsedWidgetOverride::Custom = "assign_colors_repeat_every")] repeat_every: u32,
 ) -> T {
 	let mut input = vector_group.eval(footprint).await;
 	let length = input.vector_iter_mut().count();

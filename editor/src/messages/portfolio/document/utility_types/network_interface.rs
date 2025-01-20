@@ -3281,6 +3281,14 @@ impl NodeNetworkInterface {
 		}
 	}
 
+	pub fn set_reference(&mut self, node_id: &NodeId, network_path: &[NodeId], reference: Option<String>) {
+		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+			log::error!("Could not get node_metadata in set_reference");
+			return;
+		};
+		node_metadata.persistent_metadata.reference = reference;
+	}
+
 	pub fn set_transform(&mut self, transform: DAffine2, network_path: &[NodeId]) {
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network in set_transform");
