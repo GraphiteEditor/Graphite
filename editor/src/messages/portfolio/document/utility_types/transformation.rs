@@ -437,16 +437,26 @@ impl<'a> Selected<'a> {
 	}
 
 	pub fn bounding_box(&mut self) -> Quad {
-		self.selected
+		let metadata = self.network_interface.document_metadata();
+		let transform = self
+			.network_interface
+			.selected_nodes(&[])
+			.unwrap()
+			.selected_visible_and_unlocked_layers(&self.network_interface)
+			.find(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
+			.map(|layer| metadata.transform_to_viewport(layer))
+			.unwrap_or(DAffine2::IDENTITY);
+		if transform.matrix2.determinant() == 0. {
+			return Default::default();
+		}
+		let bounds = self
+			.selected
 			.iter()
-			.filter_map(|&layer| {
-				self.network_interface
-					.document_metadata()
-					.bounding_box_with_transform(layer, DAffine2::IDENTITY)
-					.map(|bounds| self.network_interface.document_metadata().transform_to_document(layer) * Quad::from_box(bounds))
-			})
-			.last()
-			.unwrap_or_default()
+			.filter_map(|&layer| metadata.bounding_box_with_transform(layer, transform.inverse() * metadata.transform_to_viewport(layer)))
+			.reduce(Quad::combine_bounds)
+			.unwrap_or_default();
+
+		transform * Quad::from_box(bounds)
 	}
 
 	fn transform_layer(document_metadata: &DocumentMetadata, layer: LayerNodeIdentifier, original_transform: Option<&DAffine2>, transformation: DAffine2, responses: &mut VecDeque<Message>) {
