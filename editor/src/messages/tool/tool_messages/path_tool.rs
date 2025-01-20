@@ -451,15 +451,20 @@ impl PathToolData {
 	}
 
 	fn update_colinear(&mut self, equidistant: bool, toggle_colinear: bool, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> bool {
+		// Check handle colinear state
+		let is_colinear = self
+			.selection_status
+			.angle()
+			.map(|angle| match angle {
+				ManipulatorAngle::Colinear => true,
+				ManipulatorAngle::Free | ManipulatorAngle::Mixed => false,
+			})
+			.unwrap_or(false);
+
 		// Check if the toggle_colinear key has just been pressed
 		if toggle_colinear && !self.toggle_colinear_debounce {
 			self.opposing_handle_lengths = None;
-			let colinear = self.selection_status.angle().is_some_and(|angle| match angle {
-				ManipulatorAngle::Colinear => true,
-				ManipulatorAngle::Free => false,
-				ManipulatorAngle::Mixed => false,
-			});
-			if colinear {
+			if is_colinear {
 				shape_editor.disable_colinear_handles_state_on_selected(&document.network_interface, responses);
 			} else {
 				shape_editor.convert_selected_manipulators_to_colinear_handles(responses, document);
@@ -470,6 +475,40 @@ impl PathToolData {
 		self.toggle_colinear_debounce = toggle_colinear;
 
 		if equidistant && self.opposing_handle_lengths.is_none() {
+			if !is_colinear {
+				// Try to get selected handle info
+				let Some((_, _, selected_handle_id)) = self.try_get_selected_handle_and_anchor(shape_editor, document) else {
+					self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(document));
+					return false;
+				};
+
+				let Some((layer, _)) = shape_editor.selected_shape_state.iter().next() else {
+					self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(document));
+					return false;
+				};
+
+				let Some(vector_data) = document.network_interface.compute_modified_vector(*layer) else {
+					self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(document));
+					return false;
+				};
+
+				// Check if handle has a pair (to ignore handles of edges of open paths)
+				if let Some(handle_pair) = selected_handle_id.get_handle_pair(&vector_data) {
+					let opposite_handle_length = handle_pair.iter().filter(|&&h| h.to_manipulator_point() != selected_handle_id).find_map(|&h| {
+						let opp_handle_pos = h.to_manipulator_point().get_position(&vector_data)?;
+						let opp_anchor_id = h.to_manipulator_point().get_anchor(&vector_data)?;
+						let opp_anchor_pos = vector_data.point_domain.position_from_id(opp_anchor_id)?;
+						Some((opp_handle_pos - opp_anchor_pos).length())
+					});
+
+					// Make handles colinear if opposite handle is zero length
+					if opposite_handle_length.map_or(false, |l| l == 0.0) {
+						debug!("Zero length non-colinear handle detected: {:?}", selected_handle_id);
+						shape_editor.convert_selected_manipulators_to_colinear_handles(responses, document);
+						return true;
+					}
+				}
+			}
 			self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(document));
 		}
 		false
