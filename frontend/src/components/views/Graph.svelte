@@ -79,6 +79,7 @@
 		focusInput(currentName);
 		editingNameImportIndex = index;
 	}
+
 	function setEditingExportNameIndex(index: number, currentName: string) {
 		focusInput(currentName);
 		editingNameExportIndex = index;
@@ -330,7 +331,7 @@
 	}
 
 	function validTypesText(value: FrontendGraphInput): string {
-		return "Valid Types: \n" + value.validTypes.join(",\n ");
+		return `Valid Types:\n${value.validTypes.join(",\n ")}`;
 	}
 
 	function outputConnectedToText(output: FrontendGraphOutput): string {
@@ -510,18 +511,17 @@
 			</svg>
 
 			<div
-				class="edit-import-export"
+				class="edit-import-export import"
 				on:pointerenter={() => (hoveringImportIndex = index)}
 				on:pointerleave={() => (hoveringImportIndex = undefined)}
 				style:--offset-left={position.x / 24}
 				style:--offset-top={position.y / 24}
-				style="right: calc(100% - var(--offset-left) * 24px);"
 			>
 				{#if editingNameImportIndex == index}
 					<input
 						class="import-text-input"
 						type="text"
-						style="width: {importsToEdgeTextInputWidth()}"
+						style:width={importsToEdgeTextInputWidth()}
 						bind:this={inputElement}
 						bind:value={editingNameText}
 						on:blur={setEditingImportName}
@@ -584,12 +584,11 @@
 				{/if}
 			</svg>
 			<div
-				class="edit-import-export"
+				class="edit-import-export export"
 				on:pointerenter={() => (hoveringExportIndex = index)}
 				on:pointerleave={() => (hoveringExportIndex = undefined)}
 				style:--offset-left={position.x / 24}
 				style:--offset-top={position.y / 24}
-				style="left: calc(var(--offset-left) * 24px + 17px);"
 			>
 				{#if hoveringExportIndex === index || editingNameExportIndex === index}
 					<div class="reorder-drag-grip" title="Reorder this export"></div>
@@ -607,7 +606,7 @@
 				{#if editingNameExportIndex === index}
 					<input
 						type="text"
-						style="width: {exportsToEdgeTextInputWidth()}"
+						style:width={exportsToEdgeTextInputWidth()}
 						bind:this={inputElement}
 						bind:value={editingNameText}
 						on:blur={setEditingExportName}
@@ -1075,7 +1074,7 @@
 				left: calc(var(--offset-left) * 24px);
 				width: 50px;
 				height: 2px;
-				background-color: white;
+				background: white;
 			}
 
 			.plus {
@@ -1092,8 +1091,15 @@
 				margin-top: -5px;
 				height: 24px;
 
+				&.import {
+					right: calc(100% - var(--offset-left) * 24px);
+				}
+
+				&.export {
+					left: calc(var(--offset-left) * 24px + 17px);
+				}
+
 				.import-text {
-					direction: rtl;
 					text-align: right;
 					text-wrap: nowrap;
 				}

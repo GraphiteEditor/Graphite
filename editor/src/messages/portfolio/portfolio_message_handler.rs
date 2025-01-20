@@ -622,6 +622,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 						let old_inputs = document.network_interface.replace_inputs(node_id, new_noise_pattern_node.document_node.inputs.clone(), &[]);
 
+						document
+							.network_interface
+							.set_input(&InputConnector::node(*node_id, 0), NodeInput::value(TaggedValue::None, false), &[]);
 						for (i, input) in old_inputs.iter().enumerate() {
 							document.network_interface.set_input(&InputConnector::node(*node_id, i + 1), input.clone(), &[]);
 						}

@@ -1643,14 +1643,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					)
 					.into_iter()
 					.next();
-				// let remove_imports = network_interface.frontend_import_export_modify(
-				// 	|modify_import_export_click_target| modify_import_export_click_target.remove_imports_exports.output_ports().collect::<Vec<_>>(),
-				// 	breadcrumb_network_path,
-				// );
-				// let remove_exports = network_interface.frontend_import_export_modify(
-				// 	|modify_import_export_click_target| modify_import_export_click_target.remove_imports_exports.input_ports().collect::<Vec<_>>(),
-				// 	breadcrumb_network_path,
-				// );
+
 				responses.add(FrontendMessage::UpdateImportsExports {
 					imports,
 					exports,

@@ -15,9 +15,9 @@ use graphene_std::renderer::{ClickTarget, Quad};
 use graphene_std::transform::Footprint;
 use graphene_std::vector::{PointId, VectorData, VectorModificationType};
 use interpreted_executor::{dynamic_executor::ResolvedDocumentNodeTypes, node_registry::NODE_REGISTRY};
-use serde_json::{json, Value};
 
 use glam::{DAffine2, DVec2, IVec2};
+use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
@@ -1320,7 +1320,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Layers excluding ones that are children of other layers in the list.
-	/// TODO: Cache this
+	// TODO: Cache this
 	pub fn shallowest_unique_layers(&self, network_path: &[NodeId]) -> impl Iterator<Item = LayerNodeIdentifier> {
 		let mut sorted_layers = if let Some(selected_nodes) = self.selected_nodes(network_path) {
 			selected_nodes
@@ -6005,7 +6005,7 @@ pub struct NodeNetworkTransientMetadata {
 	// node_group_bounding_box: Vec<(Subpath<ManipulatorGroupId>, Vec<Nodes>)>,
 	/// Cache for all outward wire connections
 	pub outward_wires: TransientMetadata<HashMap<OutputConnector, Vec<InputConnector>>>,
-	/// TODO: Cache all wire paths instead of calculating in Graph.svelte
+	// TODO: Cache all wire paths instead of calculating in Graph.svelte
 	// pub wire_paths: Vec<WirePath>
 	/// All export connector click targets
 	pub import_export_ports: TransientMetadata<Ports>,
@@ -6121,7 +6121,7 @@ pub enum WidgetOverride {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PropertiesRow {
 	/// A general datastore than can store key value pairs of any types for any input
-	/// TODO: This could be simplified to just Value, and key value pairs could be stored as the Object variant
+	// TODO: This could be simplified to just Value, and key value pairs could be stored as the Object variant
 	pub input_data: HashMap<String, Value>,
 	// An input can override a widget, which would otherwise be automatically generated from the type
 	// The string is the identifier to the widget override function stored in INPUT_OVERRIDES
@@ -6225,8 +6225,8 @@ impl PropertiesRow {
 pub struct DocumentNodePersistentMetadata {
 	/// The name of the node definition, as originally set by [`DocumentNodeDefinition`], used to display in the UI and to display the appropriate properties if no display name is set.
 	/// Used during serialization/deserialization to prevent storing implementation or inputs (and possible other fields) if they are the same as the definition.
-	/// TODO: The reference is removed once the node is modified, since the node now stores its own implementation and inputs.
-	/// TODO: Implement node versioning so that references to old nodes can be updated to the new node definition.
+	// TODO: The reference is removed once the node is modified, since the node now stores its own implementation and inputs.
+	// TODO: Implement node versioning so that references to old nodes can be updated to the new node definition.
 	pub reference: Option<String>,
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the reference name is displayed to the user in italics.
 	#[serde(default)]
