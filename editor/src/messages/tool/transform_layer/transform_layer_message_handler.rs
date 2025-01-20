@@ -7,6 +7,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
 use glam::DAffine2;
+use graphene_core::renderer::Quad;
 
 use graphene_core::vector::ManipulatorPointId;
 
@@ -21,6 +22,8 @@ pub struct TransformLayerMessageHandler {
 
 	slow: bool,
 	snap: bool,
+	local: bool,
+	fixed_bbox: Quad,
 	typing: Typing,
 
 	mouse_position: ViewportPosition,
@@ -136,16 +139,30 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let vec_to_end = self.mouse_position - self.start_mouse;
 
 							let quad = Quad::from_box([self.pivot, self.pivot + vec_to_end]).0;
+
+							let bbox = self.fixed_bbox.0;
+							let e1 = (bbox[1] - bbox[0]).normalize();
 							if matches!(axis_constraint, Axis::Both | Axis::X) {
-								overlay_context.line(quad[0], quad[1], None);
-								let x_transform = DAffine2::from_translation((quad[0] + quad[1]) / 2.);
+								let end = if self.local {
+									(quad[1] - quad[0]).length() * e1 * e1.dot(quad[1] - quad[0]).signum() + quad[0]
+								} else {
+									quad[1]
+								};
+								overlay_context.line(quad[0], end, None);
+
+								let x_transform = DAffine2::from_translation((quad[0] + end) / 2.);
 								overlay_context.text(&format_rounded(translation.x, 3), COLOR_OVERLAY_BLUE, None, x_transform, 4., [Pivot::Middle, Pivot::End]);
 							}
 
 							if matches!(axis_constraint, Axis::Both | Axis::Y) {
-								overlay_context.line(quad[0], quad[3], None);
+								let end = if self.local {
+									(quad[3] - quad[0]).length() * e1.perp() * e1.perp().dot(quad[3] - quad[0]).signum() + quad[0]
+								} else {
+									quad[3]
+								};
+								overlay_context.line(quad[0], end, None);
 								let x_parameter = vec_to_end.x.clamp(-1., 1.);
-								let y_transform = DAffine2::from_translation((quad[0] + quad[3]) / 2. + x_parameter * DVec2::X * 0.);
+								let y_transform = DAffine2::from_translation((quad[0] + end) / 2. + x_parameter * DVec2::X * 0.);
 								let pivot_selection = if x_parameter > 0. {
 									Pivot::Start
 								} else if x_parameter == 0. {
@@ -163,18 +180,30 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						TransformOperation::Scaling(scale) => {
 							let scale = scale.to_f64(self.snap);
 							let text = format!("{}x", format_rounded(scale, 3));
-							// https://media.discordapp.net/attachments/931942323644928040/1330398373747884074/image.png
-							let extension_vector = self.mouse_position - self.start_mouse; // a
-							let local_edge = self.start_mouse - self.pivot; // m
+							let extension_vector = self.mouse_position - self.start_mouse;
+							let local_edge = self.start_mouse - self.pivot;
+							let quad = self.fixed_bbox.0;
 							let local_edge = match axis_constraint {
-								Axis::X => local_edge.with_y(0.),
-								Axis::Y => local_edge.with_x(0.),
+								Axis::X => {
+									if self.local {
+										local_edge.project_onto(quad[1] - quad[0])
+									} else {
+										local_edge.with_y(0.)
+									}
+								}
+								Axis::Y => {
+									if self.local {
+										local_edge.project_onto(quad[3] - quad[0])
+									} else {
+										local_edge.with_x(0.)
+									}
+								}
 								_ => local_edge,
 							};
-							let boundary_point = local_edge + self.pivot; // p
-							let projected_pointer = extension_vector.project_onto(local_edge); // u
-							let dashed_till = if extension_vector.dot(local_edge) < 0.0 { local_edge + projected_pointer } else { local_edge }; // s1
-							let lined_till = projected_pointer + boundary_point; // x1
+							let boundary_point = local_edge + self.pivot;
+							let projected_pointer = extension_vector.project_onto(local_edge);
+							let dashed_till = if extension_vector.dot(local_edge) < 0.0 { local_edge + projected_pointer } else { local_edge };
+							let lined_till = projected_pointer + boundary_point;
 							if dashed_till.dot(local_edge) > 0.0 {
 								overlay_context.dashed_line(self.pivot, self.pivot + dashed_till, None, Some(4.), Some(4.), Some(0.5));
 							}
@@ -231,6 +260,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse);
 
 				self.transform_operation = TransformOperation::Grabbing(Default::default());
+				self.local = false;
+				self.fixed_bbox = selected.bounding_box();
 
 				selected.original_transforms.clear();
 
@@ -250,6 +281,9 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 				self.transform_operation = TransformOperation::Rotating(Default::default());
 
+				self.local = false;
+				self.fixed_bbox = selected.bounding_box();
+
 				selected.original_transforms.clear();
 
 				responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
@@ -268,6 +302,9 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 				self.transform_operation = TransformOperation::Scaling(Default::default());
 
+				self.local = false;
+				self.fixed_bbox = selected.bounding_box();
+
 				selected.original_transforms.clear();
 
 				responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
@@ -285,15 +322,15 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 				responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 			}
-			TransformLayerMessage::ConstrainX => self.transform_operation.constrain_axis(Axis::X, &mut selected, self.snap),
-			TransformLayerMessage::ConstrainY => self.transform_operation.constrain_axis(Axis::Y, &mut selected, self.snap),
+			TransformLayerMessage::ConstrainX => self.local = self.transform_operation.constrain_axis(Axis::X, &mut selected, self.snap, self.local, self.fixed_bbox),
+			TransformLayerMessage::ConstrainY => self.local = self.transform_operation.constrain_axis(Axis::Y, &mut selected, self.snap, self.local, self.fixed_bbox),
 			TransformLayerMessage::PointerMove { slow_key, snap_key } => {
 				self.slow = input.keyboard.get(slow_key as usize);
 
 				let new_snap = input.keyboard.get(snap_key as usize);
 				if new_snap != self.snap {
 					self.snap = new_snap;
-					self.transform_operation.apply_transform_operation(&mut selected, self.snap);
+					self.transform_operation.apply_transform_operation(&mut selected, self.snap, self.local, self.fixed_bbox);
 				}
 
 				if self.typing.digits.is_empty() {
@@ -304,7 +341,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						TransformOperation::Grabbing(translation) => {
 							let change = if self.slow { delta_pos / SLOWING_DIVISOR } else { delta_pos };
 							self.transform_operation = TransformOperation::Grabbing(translation.increment_amount(change));
-							self.transform_operation.apply_transform_operation(&mut selected, self.snap);
+							self.transform_operation.apply_transform_operation(&mut selected, self.snap, self.local, self.fixed_bbox);
 						}
 						TransformOperation::Rotating(rotation) => {
 							let start_offset = *selected.pivot - self.mouse_position;
@@ -314,7 +351,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let change = if self.slow { angle / SLOWING_DIVISOR } else { angle };
 
 							self.transform_operation = TransformOperation::Rotating(rotation.increment_amount(change));
-							self.transform_operation.apply_transform_operation(&mut selected, self.snap);
+							self.transform_operation.apply_transform_operation(&mut selected, self.snap, self.local, self.fixed_bbox);
 						}
 						TransformOperation::Scaling(scale) => {
 							let change = {
@@ -330,9 +367,9 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							self.transform_operation = TransformOperation::Scaling(scale.increment_amount(change));
 							if region_negate {
 								let tmp_operation = TransformOperation::Scaling(scale.negate());
-								tmp_operation.apply_transform_operation(&mut selected, self.snap);
+								tmp_operation.apply_transform_operation(&mut selected, self.snap, self.local, self.fixed_bbox);
 							} else {
-								self.transform_operation.apply_transform_operation(&mut selected, self.snap);
+								self.transform_operation.apply_transform_operation(&mut selected, self.snap, self.local, self.fixed_bbox);
 							}
 						}
 					};
@@ -343,14 +380,18 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				let target_layers = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
 				shape_editor.set_selected_layers(target_layers);
 			}
-			TransformLayerMessage::TypeBackspace => self.transform_operation.grs_typed(self.typing.type_backspace(), &mut selected, self.snap),
-			TransformLayerMessage::TypeDecimalPoint => self.transform_operation.grs_typed(self.typing.type_decimal_point(), &mut selected, self.snap),
-			TransformLayerMessage::TypeDigit { digit } => self.transform_operation.grs_typed(self.typing.type_number(digit), &mut selected, self.snap),
+			TransformLayerMessage::TypeBackspace => self.transform_operation.grs_typed(self.typing.type_backspace(), &mut selected, self.snap, self.local, self.fixed_bbox),
+			TransformLayerMessage::TypeDecimalPoint => self
+				.transform_operation
+				.grs_typed(self.typing.type_decimal_point(), &mut selected, self.snap, self.local, self.fixed_bbox),
+			TransformLayerMessage::TypeDigit { digit } => self
+				.transform_operation
+				.grs_typed(self.typing.type_number(digit), &mut selected, self.snap, self.local, self.fixed_bbox),
 			TransformLayerMessage::TypeNegate => {
 				if self.typing.digits.is_empty() {
-					self.transform_operation.negate(&mut selected, self.snap)
+					self.transform_operation.negate(&mut selected, self.snap, self.local, self.fixed_bbox)
 				} else {
-					self.transform_operation.grs_typed(self.typing.type_negate(), &mut selected, self.snap)
+					self.transform_operation.grs_typed(self.typing.type_negate(), &mut selected, self.snap, self.local, self.fixed_bbox)
 				}
 			}
 		}

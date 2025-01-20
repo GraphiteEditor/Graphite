@@ -122,14 +122,15 @@ pub enum Axis {
 }
 
 impl Axis {
-	pub fn set_or_toggle(&mut self, target: Axis) {
-		// If constrained to an axis and target is requesting the same axis, toggle back to Both
-		if *self == target {
-			*self = Axis::Both;
-		}
-		// If current axis is different from the target axis, switch to the target
-		else {
-			*self = target;
+	pub fn contrainted_to_axis(self, target: Axis, local: bool) -> (Self, bool) {
+		if self == target {
+			if local {
+				(Axis::Both, false)
+			} else {
+				(self, true)
+			}
+		} else {
+			(target, false)
 		}
 	}
 }
@@ -172,6 +173,11 @@ impl Translation {
 			typed_distance: None,
 			constraint: self.constraint,
 		}
+	}
+
+	pub fn with_constraint(self, target: Axis, local: bool) -> (Self, bool) {
+		let (constraint, local) = self.constraint.contrainted_to_axis(target, local);
+		(Self { constraint, ..self }, local)
 	}
 }
 
@@ -268,6 +274,11 @@ impl Scale {
 			constraint: self.constraint,
 		}
 	}
+
+	pub fn with_constraint(self, target: Axis, local: bool) -> (Self, bool) {
+		let (constraint, local) = self.constraint.contrainted_to_axis(target, local);
+		(Self { constraint, ..self }, local)
+	}
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Copy)]
@@ -280,12 +291,27 @@ pub enum TransformOperation {
 }
 
 impl TransformOperation {
-	pub fn apply_transform_operation(&self, selected: &mut Selected, snapping: bool) {
+	pub fn apply_transform_operation(&self, selected: &mut Selected, snapping: bool, local: bool, quad: Quad) {
+		let quad = quad.0;
+		let edge = quad[1] - quad[0];
 		if self != &TransformOperation::None {
 			let transformation = match self {
-				TransformOperation::Grabbing(translation) => DAffine2::from_translation(translation.to_dvec()),
+				TransformOperation::Grabbing(translation) => {
+					if local {
+						debug!("{:?}", quad);
+						DAffine2::from_angle(edge.to_angle()) * DAffine2::from_translation(translation.to_dvec()) * DAffine2::from_angle(-edge.to_angle())
+					} else {
+						DAffine2::from_translation(translation.to_dvec())
+					}
+				}
 				TransformOperation::Rotating(rotation) => DAffine2::from_angle(rotation.to_f64(snapping)),
-				TransformOperation::Scaling(scale) => DAffine2::from_scale(scale.to_dvec(snapping)),
+				TransformOperation::Scaling(scale) => {
+					if local {
+						DAffine2::from_angle(edge.to_angle()) * DAffine2::from_scale(scale.to_dvec(snapping)) * DAffine2::from_angle(-edge.to_angle())
+					} else {
+						DAffine2::from_scale(scale.to_dvec(snapping))
+					}
+				}
 				TransformOperation::None => unreachable!(),
 			};
 
@@ -294,18 +320,23 @@ impl TransformOperation {
 		}
 	}
 
-	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, snapping: bool) {
-		match self {
-			TransformOperation::None => (),
-			TransformOperation::Grabbing(translation) => translation.constraint.set_or_toggle(axis),
-			TransformOperation::Rotating(_) => (),
-			TransformOperation::Scaling(scale) => scale.constraint.set_or_toggle(axis),
+	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, snapping: bool, mut local: bool, quad: Quad) -> bool {
+		(*self, local) = match self {
+			TransformOperation::Grabbing(translation) => {
+				let (translation, local) = translation.with_constraint(axis, local);
+				(TransformOperation::Grabbing(translation), local)
+			}
+			TransformOperation::Scaling(scale) => {
+				let (scale, local) = scale.with_constraint(axis, local);
+				(TransformOperation::Scaling(scale), local)
+			}
+			_ => (*self, false),
 		};
-
-		self.apply_transform_operation(selected, snapping);
+		self.apply_transform_operation(selected, snapping, local, quad);
+		local
 	}
 
-	pub fn grs_typed(&mut self, typed: Option<f64>, selected: &mut Selected, snapping: bool) {
+	pub fn grs_typed(&mut self, typed: Option<f64>, selected: &mut Selected, snapping: bool, local: bool, quad: Quad) {
 		match self {
 			TransformOperation::None => (),
 			TransformOperation::Grabbing(translation) => translation.typed_distance = typed,
@@ -313,7 +344,7 @@ impl TransformOperation {
 			TransformOperation::Scaling(scale) => scale.typed_factor = typed,
 		};
 
-		self.apply_transform_operation(selected, snapping);
+		self.apply_transform_operation(selected, snapping, local, quad);
 	}
 
 	pub fn hints(&self, responses: &mut VecDeque<Message>) {
@@ -334,13 +365,13 @@ impl TransformOperation {
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
-	pub fn negate(&mut self, selected: &mut Selected, snapping: bool) {
+	pub fn negate(&mut self, selected: &mut Selected, snapping: bool, local: bool, quad: Quad) {
 		if *self != TransformOperation::None {
 			*self = match self {
 				TransformOperation::Scaling(scale) => TransformOperation::Scaling(scale.negate()),
 				_ => *self,
 			};
-			self.apply_transform_operation(selected, snapping);
+			self.apply_transform_operation(selected, snapping, local, quad);
 		}
 	}
 }
@@ -403,6 +434,19 @@ impl<'a> Selected<'a> {
 			.reduce(Quad::combine_bounds)
 			.unwrap_or_default();
 		(min + max) / 2.
+	}
+
+	pub fn bounding_box(&mut self) -> Quad {
+		self.selected
+			.iter()
+			.filter_map(|&layer| {
+				self.network_interface
+					.document_metadata()
+					.bounding_box_with_transform(layer, DAffine2::IDENTITY)
+					.map(|bounds| self.network_interface.document_metadata().transform_to_document(layer) * Quad::from_box(bounds))
+			})
+			.last()
+			.unwrap_or_default()
 	}
 
 	fn transform_layer(document_metadata: &DocumentMetadata, layer: LayerNodeIdentifier, original_transform: Option<&DAffine2>, transformation: DAffine2, responses: &mut VecDeque<Message>) {
