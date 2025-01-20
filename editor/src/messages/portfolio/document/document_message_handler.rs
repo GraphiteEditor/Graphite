@@ -29,7 +29,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeNetwork, OldNodeNetwork};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::vector::style::ViewMode;
-use graphene_std::renderer::{ClickTarget, Quad};
+use graphene_std::renderer::{ClickTarget, Quad, Rect};
 use graphene_std::vector::path_bool_lib;
 
 use glam::{DAffine2, DVec2, IVec2};
@@ -2204,7 +2204,35 @@ impl<'a> ClickXRayIter<'a> {
 		match target {
 			// Single points are much cheaper than paths so have their own special case
 			XRayTarget::Point(point) => {
-				let intersects = click_targets.is_some_and(|targets| targets.iter().any(|target| target.intersect_point(*point, transform)));
+				let intersects = click_targets.is_some_and(|targets| {
+					targets.iter().any(|target| {
+						if target.intersect_point(*point, transform) {
+							return true;
+						}
+
+						let tolerance = 5.0;
+						let expanded_bounds = target
+							.bounding_box_with_transform(transform)
+							.map(|bounds| [bounds[0] - DVec2::splat(tolerance), bounds[1] + DVec2::splat(tolerance)]);
+
+						if let Some(bounds) = expanded_bounds {
+							let min_size = tolerance * 2.0;
+
+							let size = bounds[1] - bounds[0];
+
+							// For very thin objects
+							if size.x < min_size || size.y < min_size {
+								let center = (bounds[0] + bounds[1]) * 0.5;
+								let expanded = [center - DVec2::splat(min_size * 0.5), center + DVec2::splat(min_size * 0.5)];
+								Rect::from_box(expanded).contains(*point)
+							} else {
+								Rect::from_box(bounds).contains(*point)
+							}
+						} else {
+							false
+						}
+					})
+				});
 				XRayResult {
 					clicked: intersects,
 					use_children: !clip || intersects,
