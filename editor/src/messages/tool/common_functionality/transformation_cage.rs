@@ -287,14 +287,14 @@ impl BoundingBoxManager {
 		let (left, top): (f64, f64) = self.bounds[0].into();
 		let (right, bottom): (f64, f64) = self.bounds[1].into();
 		[
-			self.transform.transform_point2(DVec2::new(left, top)),
-			self.transform.transform_point2(DVec2::new(left, (top + bottom) / 2.)),
-			self.transform.transform_point2(DVec2::new(left, bottom)),
-			self.transform.transform_point2(DVec2::new((left + right) / 2., top)),
-			self.transform.transform_point2(DVec2::new((left + right) / 2., bottom)),
-			self.transform.transform_point2(DVec2::new(right, top)),
-			self.transform.transform_point2(DVec2::new(right, (top + bottom) / 2.)),
-			self.transform.transform_point2(DVec2::new(right, bottom)),
+			DVec2::new(left, top),
+			DVec2::new(left, (top + bottom) / 2.),
+			DVec2::new(left, bottom),
+			DVec2::new((left + right) / 2., top),
+			DVec2::new((left + right) / 2., bottom),
+			DVec2::new(right, top),
+			DVec2::new(right, (top + bottom) / 2.),
+			DVec2::new(right, bottom),
 		]
 	}
 
@@ -303,7 +303,7 @@ impl BoundingBoxManager {
 		overlay_context.quad(self.transform * Quad::from_box(self.bounds), None);
 
 		for position in self.evaluate_transform_handle_positions() {
-			overlay_context.square(position, Some(6.), None, None);
+			overlay_context.square(self.transform.transform_point2(position), Some(6.), None, None);
 		}
 	}
 
@@ -365,13 +365,9 @@ impl BoundingBoxManager {
 		let cursor = self.transform.inverse().transform_point2(cursor);
 		let [threshold_x, threshold_y] = self.compute_viewport_threshold(BOUNDS_ROTATE_THRESHOLD);
 
-		let min = self.bounds[0].min(self.bounds[1]);
-		let max = self.bounds[0].max(self.bounds[1]);
-
-		let outside_bounds = (min.x > cursor.x || cursor.x > max.x) || (min.y > cursor.y || cursor.y > max.y);
-		let inside_extended_bounds = min.x - cursor.x < threshold_x && min.y - cursor.y < threshold_y && cursor.x - max.x < threshold_x && cursor.y - max.y < threshold_y;
-
-		outside_bounds & inside_extended_bounds
+		self.evaluate_transform_handle_positions()
+			.iter()
+			.any(|&center| center.x - threshold_x < cursor.x && cursor.x < center.x + threshold_x && center.y - threshold_y < cursor.y && cursor.y < center.y + threshold_y)
 	}
 
 	/// Gets the required mouse cursor to show resizing bounds or optionally rotation
