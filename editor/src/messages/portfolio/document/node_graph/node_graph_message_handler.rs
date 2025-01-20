@@ -2178,7 +2178,7 @@ impl NodeGraphMessageHandler {
 			let inputs = frontend_inputs_lookup.remove(&node_id).unwrap_or_default();
 			let mut inputs = inputs.into_iter().map(|input| {
 				input.map(|input| FrontendGraphInput {
-					data_type: FrontendGraphDataType::with_type(&input.ty),
+					data_type: FrontendGraphDataType::displayed_type(&input.ty, &input.type_source),
 					resolved_type: Some(format!("{:?} from {:?}", &input.ty, input.type_source)),
 					valid_types: input.valid_types.iter().map(|ty| ty.to_string()).collect(),
 					name: input.name.unwrap_or_else(|| input.ty.nested_type().to_string()),
@@ -2191,8 +2191,8 @@ impl NodeGraphMessageHandler {
 
 			let output_types = network_interface.output_types(&node_id, breadcrumb_network_path);
 			let primary_output_type = output_types.first().cloned().flatten();
-			let frontend_data_type = if let Some((output_type, _)) = &primary_output_type {
-				FrontendGraphDataType::with_type(output_type)
+			let frontend_data_type = if let Some((output_type, type_source)) = &primary_output_type {
+				FrontendGraphDataType::displayed_type(output_type, type_source)
 			} else {
 				FrontendGraphDataType::General
 			};
@@ -2213,8 +2213,8 @@ impl NodeGraphMessageHandler {
 				if index == 0 && network_interface.has_primary_output(&node_id, breadcrumb_network_path) {
 					continue;
 				}
-				let frontend_data_type = if let Some((output_type, _)) = &exposed_output {
-					FrontendGraphDataType::with_type(output_type)
+				let frontend_data_type = if let Some((output_type, type_source)) = &exposed_output {
+					FrontendGraphDataType::displayed_type(output_type, type_source)
 				} else {
 					FrontendGraphDataType::General
 				};

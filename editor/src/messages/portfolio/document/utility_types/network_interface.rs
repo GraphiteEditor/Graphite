@@ -781,7 +781,7 @@ impl NodeNetworkInterface {
 						let encapsulating_node_id = encapsulating_path.pop().unwrap();
 
 						let (input_type, type_source) = self.input_type(&InputConnector::node(encapsulating_node_id, *import_index), &encapsulating_path);
-						let data_type = FrontendGraphDataType::with_type(&input_type);
+						let data_type = FrontendGraphDataType::displayed_type(&input_type, &type_source);
 
 						let Some(input_name) = properties_row.input_data.get("input_name").and_then(|input_name| input_name.as_str()) else {
 							log::error!("Could not get input_name in frontend_imports");
@@ -839,12 +839,15 @@ impl NodeNetworkInterface {
 						let output_types = self.output_types(node_id, network_path);
 
 						if let Some((output_type, type_source)) = output_types.get(*output_index).cloned().flatten() {
-							(FrontendGraphDataType::with_type(&output_type), Some((output_type, type_source)))
+							(FrontendGraphDataType::displayed_type(&output_type, &type_source), Some((output_type, type_source)))
 						} else {
 							(FrontendGraphDataType::General, None)
 						}
 					} else if let NodeInput::Value { tagged_value, .. } = export {
-						(FrontendGraphDataType::with_type(&tagged_value.ty()), Some((tagged_value.ty(), TypeSource::TaggedValue)))
+						(
+							FrontendGraphDataType::displayed_type(&tagged_value.ty(), &TypeSource::TaggedValue),
+							Some((tagged_value.ty(), TypeSource::TaggedValue)),
+						)
 					// TODO: Get type from parent node input when <https://github.com/GraphiteEditor/Graphite/issues/1762> is possible
 					// else if let NodeInput::Network { import_type, .. } = export {
 					// 	(FrontendGraphDataType::with_type(import_type), Some(import_type.clone()))
@@ -1320,7 +1323,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Layers excluding ones that are children of other layers in the list.
-	// TODO: Cache this
+	/// TODO: Cache this
 	pub fn shallowest_unique_layers(&self, network_path: &[NodeId]) -> impl Iterator<Item = LayerNodeIdentifier> {
 		let mut sorted_layers = if let Some(selected_nodes) = self.selected_nodes(network_path) {
 			selected_nodes
@@ -6005,7 +6008,7 @@ pub struct NodeNetworkTransientMetadata {
 	// node_group_bounding_box: Vec<(Subpath<ManipulatorGroupId>, Vec<Nodes>)>,
 	/// Cache for all outward wire connections
 	pub outward_wires: TransientMetadata<HashMap<OutputConnector, Vec<InputConnector>>>,
-	// TODO: Cache all wire paths instead of calculating in Graph.svelte
+	/// TODO: Cache all wire paths instead of calculating in Graph.svelte
 	// pub wire_paths: Vec<WirePath>
 	/// All export connector click targets
 	pub import_export_ports: TransientMetadata<Ports>,
@@ -6121,13 +6124,11 @@ pub enum WidgetOverride {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PropertiesRow {
 	/// A general datastore than can store key value pairs of any types for any input
-	// TODO: This could be simplified to just Value, and key value pairs could be stored as the Object variant
+	/// TODO: This could be simplified to just Value, and key value pairs could be stored as the Object variant
 	pub input_data: HashMap<String, Value>,
 	// An input can override a widget, which would otherwise be automatically generated from the type
 	// The string is the identifier to the widget override function stored in INPUT_OVERRIDES
 	pub widget_override: Option<String>,
-	// Tool tip when hovering over any widgets created by the properties row
-	pub tooltip: Option<String>,
 }
 
 impl Default for PropertiesRow {
@@ -6147,22 +6148,16 @@ impl PropertiesRow {
 		let mut input_data = HashMap::new();
 		input_data.insert("input_name".to_string(), Value::String(input_name.to_string()));
 		match widget_override {
-			WidgetOverride::None => PropertiesRow {
-				input_data,
-				widget_override: None,
-				tooltip: None,
-			},
+			WidgetOverride::None => PropertiesRow { input_data, widget_override: None },
 			WidgetOverride::Hidden => PropertiesRow {
 				input_data,
 				widget_override: Some("hidden".to_string()),
-				tooltip: None,
 			},
 			WidgetOverride::String(string_properties) => {
 				input_data.insert("string_properties".to_string(), Value::String(string_properties));
 				PropertiesRow {
 					input_data,
 					widget_override: Some("string".to_string()),
-					tooltip: None,
 				}
 			}
 			WidgetOverride::Number(mut number_properties) => {
@@ -6190,7 +6185,6 @@ impl PropertiesRow {
 				PropertiesRow {
 					input_data,
 					widget_override: Some("number".to_string()),
-					tooltip: None,
 				}
 			}
 			WidgetOverride::Vec2(vec2_properties) => {
@@ -6203,19 +6197,17 @@ impl PropertiesRow {
 				PropertiesRow {
 					input_data,
 					widget_override: Some("vec2".to_string()),
-					tooltip: None,
 				}
 			}
 			WidgetOverride::Custom(lambda_name) => PropertiesRow {
 				input_data,
 				widget_override: Some(lambda_name),
-				tooltip: None,
 			},
 		}
 	}
 
 	pub fn with_tooltip(mut self, tooltip: &str) -> Self {
-		self.tooltip = Some(tooltip.to_string());
+		self.input_data.insert("tooltip".to_string(), json!(tooltip));
 		self
 	}
 }
@@ -6224,9 +6216,9 @@ impl PropertiesRow {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocumentNodePersistentMetadata {
 	/// The name of the node definition, as originally set by [`DocumentNodeDefinition`], used to display in the UI and to display the appropriate properties if no display name is set.
-	/// Used during serialization/deserialization to prevent storing implementation or inputs (and possible other fields) if they are the same as the definition.
-	// TODO: The reference is removed once the node is modified, since the node now stores its own implementation and inputs.
-	// TODO: Implement node versioning so that references to old nodes can be updated to the new node definition.
+	/// TODO: Used during serialization/deserialization to prevent storing implementation or inputs (and possible other fields) if they are the same as the definition.
+	/// TODO: The reference is removed once the node is modified, since the node now stores its own implementation and inputs.
+	/// TODO: Implement node versioning so that references to old nodes can be updated to the new node definition.
 	pub reference: Option<String>,
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the reference name is displayed to the user in italics.
 	#[serde(default)]

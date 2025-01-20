@@ -55,8 +55,8 @@ impl NodePropertiesContext<'_> {
 						log::error!("Could not get input properties row in call_widget_override");
 						return Vec::new();
 					};
-					if let Some(tooltip) = &input_properties_row.tooltip {
-						layout_group.into_iter().map(|widget| widget.with_tooltip(tooltip)).collect::<Vec<_>>()
+					if let Some(tooltip) = &input_properties_row.input_data.get("tooltip").and_then(|tooltip| tooltip.as_str()) {
+						layout_group.into_iter().map(|widget| widget.with_tooltip(*tooltip)).collect::<Vec<_>>()
 					} else {
 						layout_group
 					}
