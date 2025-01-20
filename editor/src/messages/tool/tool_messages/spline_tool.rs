@@ -395,7 +395,8 @@ fn join_path(document: &DocumentMessageHandler, mouse_pos: DVec2, tool_data: &mu
 		return false;
 	};
 
-	// NOTE: deleting preview point so inserting segement connects endpoints not the preview point which is temporary as last inserted could be preview point.
+	// NOTE: deleting preview point before joining two endponts because
+	// last point inserted could be preview point and segment which is after the endpoint
 	delete_preview(tool_data, responses);
 
 	let points = [endpoint, point];
