@@ -307,12 +307,21 @@ impl Fsm for SplineToolFsmState {
 				SplineToolFsmState::Drawing
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::PointerMove) => {
-				if tool_data.layer.is_none() {
+				let Some(layer) = tool_data.layer else {
 					return SplineToolFsmState::Ready;
 				};
-				let snapped_point = tool_data.snapped_point(document, input);
-				tool_data.next_point = snapped_point.snapped_point_document;
-				tool_data.snap_manager.update_indicator(snapped_point);
+				let ignore = |cp: PointId| tool_data.preview_point.is_some_and(|pp| pp == cp) || tool_data.points.last().is_some_and(|(ep, _)| *ep == cp);
+				let join_point = closest_point(document, input.mouse.position, PATH_JOIN_THRESHOLD, vec![layer].into_iter(), ignore);
+
+				// endpoints snapping
+				if let Some((_, _, point)) = join_point {
+					tool_data.next_point = point;
+					tool_data.snap_manager.clear_indicator();
+				} else {
+					let snapped_point = tool_data.snapped_point(document, input);
+					tool_data.next_point = snapped_point.snapped_point_document;
+					tool_data.snap_manager.update_indicator(snapped_point);
+				}
 
 				extend_spline(tool_data, true, responses);
 
