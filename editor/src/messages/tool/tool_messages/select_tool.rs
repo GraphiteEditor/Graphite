@@ -23,6 +23,8 @@ use graphene_std::vector::misc::BooleanOperation;
 
 use std::fmt;
 
+use glam::DMat2;
+
 #[derive(Default)]
 pub struct SelectTool {
 	fsm_state: SelectToolFsmState,
@@ -444,9 +446,9 @@ impl Fsm for SelectToolFsmState {
 					.selected_visible_and_unlocked_layers(&document.network_interface)
 					.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 					.map(|layer| document.metadata().transform_to_viewport(layer));
-				let transform = transform.unwrap_or(DAffine2::IDENTITY);
+				let mut transform = transform.unwrap_or(DAffine2::IDENTITY);
 				if transform.matrix2.determinant() == 0. {
-					return self;
+					transform.matrix2 += DMat2::IDENTITY * 1e-4;
 				}
 				let bounds = document
 					.network_interface

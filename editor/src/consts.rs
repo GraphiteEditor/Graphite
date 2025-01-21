@@ -43,6 +43,10 @@ pub const SLOWING_DIVISOR: f64 = 10.;
 pub const NUDGE_AMOUNT: f64 = 1.;
 pub const BIG_NUDGE_AMOUNT: f64 = 10.;
 
+// Select quad overlay category limit
+pub const CATEGORY_ONE_MINIMUM: f64 = 4793158.;
+pub const CATEGORY_TWO_MINIMUM: f64 = 41773.;
+
 // Tools
 pub const DEFAULT_STROKE_WIDTH: f64 = 2.;
 

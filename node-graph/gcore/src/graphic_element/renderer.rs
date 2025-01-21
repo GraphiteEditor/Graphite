@@ -61,7 +61,7 @@ impl ClickTarget {
 	pub fn intersect_path<It: Iterator<Item = bezier_rs::Bezier>>(&self, mut bezier_iter: impl FnMut() -> It, mut layer_transform: DAffine2) -> bool {
 		// Check if the matrix is not invertible
 		if layer_transform.matrix2.determinant().abs() <= f64::EPSILON {
-			layer_transform.matrix2 += glam::DMat2::IDENTITY * 1e-4;
+			layer_transform.matrix2 += DMat2::IDENTITY * 1e-4;
 		}
 		let inverse = layer_transform.inverse();
 		let mut bezier_iter = || bezier_iter().map(|bezier| bezier.apply_transformation(|point| inverse.transform_point2(point)));

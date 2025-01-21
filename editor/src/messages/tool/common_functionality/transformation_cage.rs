@@ -1,4 +1,4 @@
-use crate::consts::{BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, SELECTION_DRAG_ANGLE};
+use crate::consts::{BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, CATEGORY_ONE_MINIMUM, CATEGORY_TWO_MINIMUM, SELECTION_DRAG_ANGLE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::transformation::OriginalTransforms;
@@ -300,10 +300,33 @@ impl BoundingBoxManager {
 
 	/// Update the position of the bounding box and transform handles
 	pub fn render_overlays(&mut self, overlay_context: &mut OverlayContext) {
-		overlay_context.quad(self.transform * Quad::from_box(self.bounds), None);
+		let quad = self.transform * Quad::from_box(self.bounds);
+		overlay_context.quad(quad, None);
+		let corners = quad.0;
+		let edge_midpoints = quad.edges().map(|[a, b]| a.midpoint(b));
 
-		for position in self.evaluate_transform_handle_positions() {
-			overlay_context.square(self.transform.transform_point2(position), Some(6.), None, None);
+		let area_sq = (corners[0] - corners[1]).length_squared() * (corners[3] - corners[0]).length_squared();
+		let narrow = (self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any();
+
+		let mut draw_handle = |point: DVec2| overlay_context.square(point, Some(6.), None, None);
+
+		if !narrow {
+			match area_sq {
+				0.0..=CATEGORY_TWO_MINIMUM => {
+					edge_midpoints.map(draw_handle);
+				}
+				CATEGORY_TWO_MINIMUM..=CATEGORY_ONE_MINIMUM => {
+					corners.map(draw_handle);
+				}
+				CATEGORY_ONE_MINIMUM.. => {
+					edge_midpoints.map(&mut draw_handle);
+					corners.map(draw_handle);
+				}
+				_ => unreachable!(),
+			}
+		} else {
+			draw_handle(self.transform.transform_point2(self.bounds[0]));
+			draw_handle(self.transform.transform_point2(self.bounds[1]));
 		}
 	}
 
@@ -365,9 +388,13 @@ impl BoundingBoxManager {
 		let cursor = self.transform.inverse().transform_point2(cursor);
 		let [threshold_x, threshold_y] = self.compute_viewport_threshold(BOUNDS_ROTATE_THRESHOLD);
 
-		self.evaluate_transform_handle_positions()
-			.iter()
-			.any(|&center| center.x - threshold_x < cursor.x && cursor.x < center.x + threshold_x && center.y - threshold_y < cursor.y && cursor.y < center.y + threshold_y)
+		let narrow = (self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any();
+		let within_square_bounds = |center: &DVec2| center.x - threshold_x < cursor.x && cursor.x < center.x + threshold_x && center.y - threshold_y < cursor.y && cursor.y < center.y + threshold_y;
+		if !narrow {
+			self.evaluate_transform_handle_positions().iter().any(within_square_bounds)
+		} else {
+			[self.bounds[0], self.bounds[1]].iter().any(within_square_bounds)
+		}
 	}
 
 	/// Gets the required mouse cursor to show resizing bounds or optionally rotation
