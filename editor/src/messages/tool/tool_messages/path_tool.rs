@@ -40,6 +40,7 @@ pub enum PathToolMessage {
 		extend_selection: Key,
 	},
 	Escape,
+	ClosePath,
 	FlipSmoothSharp,
 	GRS {
 		// Should be `Key::KeyG` (Grab), `Key::KeyR` (Rotate), or `Key::KeyS` (Scale)
@@ -179,6 +180,12 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 		let updating_point = message == ToolMessage::Path(PathToolMessage::SelectedPointUpdated);
 
 		match message {
+			ToolMessage::Path(PathToolMessage::ClosePath) => {
+				responses.add(DocumentMessage::AddTransaction);
+				tool_data.shape_editor.close_selected_path(&tool_data.document, responses);
+				responses.add(DocumentMessage::EndTransaction);
+				responses.add(OverlaysMessage::Draw);
+			}
 			ToolMessage::Path(PathToolMessage::SwapSelectedHandles) => {
 				if tool_data.shape_editor.handle_with_pair_selected(&tool_data.document.network_interface) {
 					tool_data.shape_editor.alternate_selected_handles(&tool_data.document.network_interface);
@@ -210,6 +217,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeselectAllPoints,
 				BreakPath,
 				DeleteAndBreakPath,
+				ClosePath,
 			),
 			PathToolFsmState::Dragging(_) => actions!(PathToolMessageDiscriminant;
 				Escape,
