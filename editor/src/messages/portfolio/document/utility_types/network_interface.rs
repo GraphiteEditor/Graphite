@@ -3722,14 +3722,14 @@ impl NodeNetworkInterface {
 				return;
 			};
 			for downstream_connection in &outward_wires {
-				self.disconnect_input(downstream_connection, &network_path);
-				self.create_wire(&OutputConnector::Import(shift_output_down - 1), downstream_connection, &network_path);
+				self.disconnect_input(downstream_connection, network_path);
+				self.create_wire(&OutputConnector::Import(shift_output_down - 1), downstream_connection, network_path);
 			}
 		}
 		// Node inputs at or above the end index should be shifted up one
 		for shift_output_up in (end_index..last_import_index).rev() {
 			let Some(outward_wires) = self
-				.outward_wires(&network_path)
+				.outward_wires(network_path)
 				.and_then(|outward_wires| outward_wires.get(&OutputConnector::Import(shift_output_up)))
 				.cloned()
 			else {
@@ -3737,15 +3737,15 @@ impl NodeNetworkInterface {
 				return;
 			};
 			for downstream_connection in &outward_wires {
-				self.disconnect_input(downstream_connection, &network_path);
-				self.create_wire(&OutputConnector::Import(shift_output_up + 1), downstream_connection, &network_path);
+				self.disconnect_input(downstream_connection, network_path);
+				self.create_wire(&OutputConnector::Import(shift_output_up + 1), downstream_connection, network_path);
 			}
 		}
 
 		// Move the connections to the moved export after all other ones have been shifted
 		for downstream_connection in &move_to_end_index {
-			self.disconnect_input(downstream_connection, &network_path);
-			self.create_wire(&OutputConnector::Import(end_index), downstream_connection, &network_path);
+			self.disconnect_input(downstream_connection, network_path);
+			self.create_wire(&OutputConnector::Import(end_index), downstream_connection, network_path);
 		}
 
 		// Update the metadata for the current network

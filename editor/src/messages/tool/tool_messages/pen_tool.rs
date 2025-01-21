@@ -793,7 +793,10 @@ impl Fsm for PenToolFsmState {
 			(_, PenToolMessage::Redo) => {
 				tool_data.point_index = (tool_data.point_index + 1).min(tool_data.latest_points.len().saturating_sub(1));
 				tool_data.place_anchor(SnapData::new(document, input), transform, input.mouse.position, responses);
-				(tool_data.point_index == 0).then_some(PenToolFsmState::Ready).unwrap_or(PenToolFsmState::PlacingAnchor)
+				match tool_data.point_index {
+					0 => PenToolFsmState::Ready,
+					_ => PenToolFsmState::PlacingAnchor,
+				}
 			}
 			_ => self,
 		}

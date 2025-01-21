@@ -1989,10 +1989,11 @@ impl NodeGraphMessageHandler {
 					.collect::<Vec<_>>()
 					.iter()
 					.filter_map(|node_id| {
-						context
-							.network_interface
-							.is_pinned(node_id, context.selection_network_path)
-							.then(|| node_properties::generate_node_properties(*node_id, context))
+						if context.network_interface.is_pinned(node_id, context.selection_network_path) {
+							Some(node_properties::generate_node_properties(*node_id, context))
+						} else {
+							None
+						}
 					})
 					.collect::<Vec<_>>();
 

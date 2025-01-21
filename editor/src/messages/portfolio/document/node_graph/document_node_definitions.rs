@@ -15,7 +15,7 @@ use graph_craft::document::*;
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::ProtoNodeIdentifier;
 use graphene_core::raster::brush_cache::BrushCache;
-use graphene_core::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, Image, ImageFrame, NoiseType, RedGreenBlue, RedGreenBlueAlpha};
+use graphene_core::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, ImageFrame, NoiseType, RedGreenBlue, RedGreenBlueAlpha};
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorData;
@@ -2922,12 +2922,13 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 	properties: None, // Some(&node_properties::imaginate_properties),
 });
 
-pub static NODE_OVERRIDES: once_cell::sync::Lazy<HashMap<String, Box<dyn Fn(NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Send + Sync>>> =
-	once_cell::sync::Lazy::new(static_node_properties);
+type NodeProperties = HashMap<String, Box<dyn Fn(NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Send + Sync>>;
+
+pub static NODE_OVERRIDES: once_cell::sync::Lazy<NodeProperties> = once_cell::sync::Lazy::new(static_node_properties);
 
 /// Defines the logic for inputs to display a custom properties panel widget.
-fn static_node_properties() -> HashMap<String, Box<dyn Fn(NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Send + Sync>> {
-	let mut map: HashMap<String, Box<dyn Fn(NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Send + Sync>> = HashMap::new();
+fn static_node_properties() -> NodeProperties {
+	let mut map: NodeProperties = HashMap::new();
 	map.insert("channel_mixer_properties".to_string(), Box::new(node_properties::channel_mixer_properties));
 	map.insert("fill_properties".to_string(), Box::new(node_properties::fill_properties));
 	map.insert("stroke_properties".to_string(), Box::new(node_properties::stroke_properties));
@@ -2938,21 +2939,22 @@ fn static_node_properties() -> HashMap<String, Box<dyn Fn(NodeId, &mut NodePrope
 	map.insert("rectangle_properties".to_string(), Box::new(node_properties::rectangle_properties));
 	map.insert(
 		"identity_properties".to_string(),
-		Box::new(|_node_id, _context| node_properties::string_properties("The identity node simply passes its data through.".to_string())),
+		Box::new(|_node_id, _context| node_properties::string_properties("The identity node simply passes its data through.")),
 	);
 	map.insert(
 		"monitor_properties".to_string(),
-		Box::new(|_node_id, _context| node_properties::string_properties("The Monitor node is used by the editor to access the data flowing through it.".to_string())),
+		Box::new(|_node_id, _context| node_properties::string_properties("The Monitor node is used by the editor to access the data flowing through it.")),
 	);
 	map
 }
 
-static INPUT_OVERRIDES: once_cell::sync::Lazy<HashMap<String, Box<dyn Fn(NodeId, usize, &mut NodePropertiesContext) -> Result<Vec<LayoutGroup>, String> + Send + Sync>>> =
-	once_cell::sync::Lazy::new(static_input_properties);
+type InputProperties = HashMap<String, Box<dyn Fn(NodeId, usize, &mut NodePropertiesContext) -> Result<Vec<LayoutGroup>, String> + Send + Sync>>;
+
+static INPUT_OVERRIDES: once_cell::sync::Lazy<InputProperties> = once_cell::sync::Lazy::new(static_input_properties);
 
 /// Defines the logic for inputs to display a custom properties panel widget.
-fn static_input_properties() -> HashMap<String, Box<dyn Fn(NodeId, usize, &mut NodePropertiesContext) -> Result<Vec<LayoutGroup>, String> + Send + Sync>> {
-	let mut map: HashMap<String, Box<dyn Fn(NodeId, usize, &mut NodePropertiesContext) -> Result<Vec<LayoutGroup>, String> + Send + Sync>> = HashMap::new();
+fn static_input_properties() -> InputProperties {
+	let mut map: InputProperties = HashMap::new();
 	map.insert("hidden".to_string(), Box::new(|_node_id, _index, _context| Ok(Vec::new())));
 	map.insert(
 		"string".to_string(),
@@ -2963,7 +2965,7 @@ fn static_input_properties() -> HashMap<String, Box<dyn Fn(NodeId, usize, &mut N
 			let Some(string) = value.as_str() else {
 				return Err(format!("Could not downcast string properties for node {}", node_id));
 			};
-			Ok(node_properties::string_properties(string.to_string()))
+			Ok(node_properties::string_properties(string))
 		}),
 	);
 	map.insert(

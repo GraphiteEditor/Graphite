@@ -1,6 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
-use super::document_node_definitions::{NodePropertiesContext, IMAGINATE_NODE, NODE_OVERRIDES};
+use super::document_node_definitions::{NodePropertiesContext, NODE_OVERRIDES};
 use super::utility_types::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
@@ -8,9 +8,8 @@ use crate::messages::prelude::*;
 
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
-use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus};
+use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use graph_craft::Type;
-use graphene_core::memo::IORecord;
 use graphene_core::raster::curve::Curve;
 use graphene_core::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
@@ -28,7 +27,7 @@ use graphene_std::{GraphicGroup, Raster};
 
 use glam::{DAffine2, DVec2, IVec2, UVec2};
 
-pub(crate) fn string_properties(text: String) -> Vec<LayoutGroup> {
+pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_holder();
 	vec![LayoutGroup::Row { widgets: vec![widget] }]
 }
@@ -2090,11 +2089,12 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 // }
 
 pub(crate) fn node_no_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	string_properties(if context.network_interface.is_layer(&node_id, context.selection_network_path) {
-		"Layer has no properties".to_string()
+	let text = if context.network_interface.is_layer(&node_id, context.selection_network_path) {
+		"Layer has no properties"
 	} else {
-		"Node has no properties".to_string()
-	})
+		"Node has no properties"
+	};
+	string_properties(text)
 }
 
 pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> LayoutGroup {
