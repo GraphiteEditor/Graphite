@@ -185,8 +185,8 @@ impl ToolTransition for SplineTool {
 
 #[derive(Clone, Debug, Default)]
 struct SplineToolData {
-	/// Current end point of the spline i.e. either last inserted or end point to be extended.
-	end_point: Option<(PointId, DVec2)>,
+	/// list of points inserted.
+	points: Vec<(PointId, DVec2)>,
 	/// Point to be inserted.
 	next_point: DVec2,
 	/// Point that was inserted temporarily to show preview.
@@ -204,7 +204,7 @@ impl SplineToolData {
 		self.layer = None;
 		self.preview_point = None;
 		self.preview_segment = None;
-		self.end_point = None;
+		self.points = Vec::new();
 	}
 
 	/// get snapped point but ignoring current layer
@@ -248,7 +248,7 @@ impl Fsm for SplineToolFsmState {
 				let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
 				if let Some((layer, point, position)) = should_extend(document, input.mouse.position, EXTEND_PATH_THRESHOLD, selected_nodes.selected_layers(document.metadata())) {
 					tool_data.layer = Some(layer);
-					tool_data.end_point = Some((point, position));
+					tool_data.points.push((point, position));
 					// update next point to preview current mouse pos instead of pointing last mouse pos when DragStop event occured.
 					tool_data.next_point = position;
 
@@ -300,7 +300,7 @@ impl Fsm for SplineToolFsmState {
 					return SplineToolFsmState::Ready;
 				}
 				tool_data.next_point = tool_data.snapped_point(document, input).snapped_point_document;
-				if tool_data.end_point.map_or(true, |last_pos| last_pos.1.distance(tool_data.next_point) > DRAG_THRESHOLD) {
+				if tool_data.points.last().map_or(true, |last_pos| last_pos.1.distance(tool_data.next_point) > DRAG_THRESHOLD) {
 					extend_spline(tool_data, false, responses);
 				}
 
@@ -341,7 +341,7 @@ impl Fsm for SplineToolFsmState {
 				state
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::Confirm | SplineToolMessage::Abort) => {
-				if tool_data.end_point.is_some() {
+				if tool_data.points.len() >= 2 {
 					delete_preview(tool_data, responses);
 					responses.add(DocumentMessage::EndTransaction);
 				} else {
@@ -384,7 +384,7 @@ impl Fsm for SplineToolFsmState {
 
 /// Return `true` only if new segment is inserted to connect two end points in the selected layer otherwise `false`.
 fn join_path(document: &DocumentMessageHandler, mouse_pos: DVec2, tool_data: &mut SplineToolData, responses: &mut VecDeque<Message>) -> bool {
-	let Some((endpoint, _)) = tool_data.end_point else {
+	let Some((endpoint, _)) = tool_data.points.last().map(|p| *p) else {
 		return false;
 	};
 	// use preview_point to get current dragging position.
@@ -423,8 +423,8 @@ fn extend_spline(tool_data: &mut SplineToolData, show_preview: bool, responses: 
 	};
 	responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
-	if let Some((last_point_id, _)) = tool_data.end_point {
-		let points = [last_point_id, next_point_id];
+	if let Some((last_point_id, _)) = tool_data.points.last() {
+		let points = [*last_point_id, next_point_id];
 		let id = SegmentId::generate();
 		let modification_type = VectorModificationType::InsertSegment { id, points, handles: [None, None] };
 		responses.add(GraphOperationMessage::Vector { layer, modification_type });
@@ -437,7 +437,7 @@ fn extend_spline(tool_data: &mut SplineToolData, show_preview: bool, responses: 
 	if show_preview {
 		tool_data.preview_point = Some(next_point_id);
 	} else {
-		tool_data.end_point = Some((next_point_id, next_point_pos));
+		tool_data.points.push((next_point_id, next_point_pos));
 	}
 }
 
