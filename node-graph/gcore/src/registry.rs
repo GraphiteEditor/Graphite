@@ -29,27 +29,39 @@ pub mod types {
 	pub type Resolution = glam::UVec2;
 }
 
+// Translation struct between macro and definition
 #[derive(Clone)]
 pub struct NodeMetadata {
 	pub display_name: &'static str,
 	pub category: Option<&'static str>,
 	pub fields: Vec<FieldMetadata>,
 	pub description: &'static str,
+	pub properties: Option<&'static str>,
 }
 
+// Translation struct between macro and definition
 #[derive(Clone, Debug)]
 pub struct FieldMetadata {
 	pub name: &'static str,
 	pub description: &'static str,
 	pub exposed: bool,
-	pub value_source: ValueSource,
+	pub widget_override: RegistryWidgetOverride,
+	pub value_source: RegistryValueSource,
 	pub number_min: Option<f64>,
 	pub number_max: Option<f64>,
 	pub number_mode_range: Option<(f64, f64)>,
 }
 
 #[derive(Clone, Debug)]
-pub enum ValueSource {
+pub enum RegistryWidgetOverride {
+	None,
+	Hidden,
+	String(&'static str),
+	Custom(&'static str),
+}
+
+#[derive(Clone, Debug)]
+pub enum RegistryValueSource {
 	None,
 	Default(&'static str),
 	Scope(&'static str),

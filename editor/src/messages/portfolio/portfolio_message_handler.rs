@@ -384,7 +384,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				document_serialized_content,
 			} => {
 				// It can be helpful to temporarily set `upgrade_from_before_editable_subgraphs` to true if it's desired to upgrade a piece of artwork to use fresh copies of all nodes
-				let upgrade_from_before_editable_subgraphs = document_serialized_content.contains("node_output_index");
+				let replace_implementations_from_definition = document_serialized_content.contains("node_output_index");
 				let upgrade_vector_manipulation_format = document_serialized_content.contains("ManipulatorGroupIds") && !document_name.contains("__DO_NOT_UPGRADE__");
 				let document_name = document_name.replace("__DO_NOT_UPGRADE__", "");
 
@@ -409,7 +409,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 				// TODO: Eventually remove this document upgrade code
 				// Upgrade all old nodes to support editable subgraphs introduced in #1750
-				if upgrade_from_before_editable_subgraphs {
+				if replace_implementations_from_definition {
 					// This can be used, if uncommented, to upgrade demo artwork with outdated document node internals from their definitions. Delete when it's no longer needed.
 					// Used for upgrading old internal networks for demo artwork nodes. Will reset all node internals for any opened file
 					for node_id in &document
@@ -613,6 +613,31 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						document
 							.network_interface
 							.set_input(&InputConnector::node(NodeId(0), 1), NodeInput::value(TaggedValue::String(label), false), &[*node_id]);
+					}
+
+					if reference == "Image" && inputs_count == 1 {
+						let node_definition = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type(reference).unwrap();
+						let new_image_node = node_definition.default_node_template();
+						document.network_interface.replace_implementation(node_id, &[], new_image_node.document_node.implementation);
+
+						// Insert a new empty input for the image
+						document.network_interface.add_import(TaggedValue::None, false, 0, "Empty", &[*node_id]);
+						document.network_interface.set_reference(node_id, &[], Some("Image".to_string()));
+					}
+
+					if reference == "Noise Pattern" && inputs_count == 15 {
+						let node_definition = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type(reference).unwrap();
+						let new_noise_pattern_node = node_definition.default_node_template();
+						document.network_interface.replace_implementation(node_id, &[], new_noise_pattern_node.document_node.implementation);
+
+						let old_inputs = document.network_interface.replace_inputs(node_id, new_noise_pattern_node.document_node.inputs.clone(), &[]);
+
+						document
+							.network_interface
+							.set_input(&InputConnector::node(*node_id, 0), NodeInput::value(TaggedValue::None, false), &[]);
+						for (i, input) in old_inputs.iter().enumerate() {
+							document.network_interface.set_input(&InputConnector::node(*node_id, i + 1), input.clone(), &[]);
+						}
 					}
 				}
 

@@ -55,12 +55,22 @@ async fn draw_image_frame(_: (), image: ImageFrame<graphene_core::raster::SRGBA8
 
 #[node_macro::node(category("Network"))]
 async fn load_resource<'a: 'n>(_: (), _primary: (), #[scope("editor-api")] editor: &'a WasmEditorApi, url: String) -> Arc<[u8]> {
-	editor.application_io.as_ref().unwrap().load_resource(url).unwrap().await.unwrap()
+	let Some(api) = editor.application_io.as_ref() else {
+		return Arc::from(include_bytes!("../../graph-craft/src/null.png").to_vec());
+	};
+	let Ok(data) = api.load_resource(url) else {
+		return Arc::from(include_bytes!("../../graph-craft/src/null.png").to_vec());
+	};
+	let Ok(data) = data.await else {
+		return Arc::from(include_bytes!("../../graph-craft/src/null.png").to_vec());
+	};
+
+	data
 }
 
 #[node_macro::node(category("Raster"))]
 fn decode_image(_: (), data: Arc<[u8]>) -> ImageFrame<Color> {
-	let image = image::load_from_memory(data.as_ref()).expect("Failed to decode image");
+	let Some(image) = image::load_from_memory(data.as_ref()).ok() else { return ImageFrame::default() };
 	let image = image.to_rgba32f();
 	let image = ImageFrame {
 		image: Image {

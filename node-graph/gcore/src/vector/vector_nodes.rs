@@ -50,14 +50,15 @@ async fn assign_colors<F: 'n + Send, T: VectorIterMut>(
 		Footprint -> GraphicGroup,
 		Footprint -> VectorData,
 	)]
+	#[widget(ParsedWidgetOverride::Hidden)]
 	vector_group: impl Node<F, Output = T>,
 	#[default(true)] fill: bool,
 	stroke: bool,
-	gradient: GradientStops,
+	#[widget(ParsedWidgetOverride::Custom = "assign_colors_gradient")] gradient: GradientStops,
 	reverse: bool,
-	randomize: bool,
-	seed: SeedValue,
-	repeat_every: u32,
+	#[widget(ParsedWidgetOverride::Custom = "assign_colors_randomize")] randomize: bool,
+	#[widget(ParsedWidgetOverride::Custom = "assign_colors_seed")] seed: SeedValue,
+	#[widget(ParsedWidgetOverride::Custom = "assign_colors_repeat_every")] repeat_every: u32,
 ) -> T {
 	let mut input = vector_group.eval(footprint).await;
 	let length = input.vector_iter_mut().count();
@@ -89,7 +90,7 @@ async fn assign_colors<F: 'n + Send, T: VectorIterMut>(
 	input
 }
 
-#[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
 async fn fill<F: 'n + Send, FillTy: Into<Fill> + 'n + Send, TargetTy: VectorIterMut + 'n + Send>(
 	#[implementations(
 		(),
@@ -161,7 +162,7 @@ async fn fill<F: 'n + Send, FillTy: Into<Fill> + 'n + Send, TargetTy: VectorIter
 	target
 }
 
-#[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
 async fn stroke<F: 'n + Send, ColorTy: Into<Option<Color>> + 'n + Send, TargetTy: VectorIterMut + 'n + Send>(
 	#[implementations(
 		(),
@@ -430,7 +431,7 @@ async fn bounding_box<F: 'n + Send>(
 	result
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector"), path(graphene_core::vector), properties("offset_path_properties"))]
 async fn offset_path<F: 'n + Send>(
 	#[implementations(
 		(),

@@ -146,6 +146,14 @@ pub enum FrontendMessage {
 	UpdateGraphViewOverlay {
 		open: bool,
 	},
+	UpdateImportReorderIndex {
+		#[serde(rename = "importIndex")]
+		index: Option<usize>,
+	},
+	UpdateExportReorderIndex {
+		#[serde(rename = "exportIndex")]
+		index: Option<usize>,
+	},
 	UpdateLayerWidths {
 		#[serde(rename = "layerWidths")]
 		layer_widths: HashMap<NodeId, u32>,

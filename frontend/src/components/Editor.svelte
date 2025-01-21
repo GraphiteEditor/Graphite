@@ -123,8 +123,8 @@
 		--color-data-vectordata-dim: #4b778c;
 		--color-data-number: #cbbab4;
 		--color-data-number-dim: #87736b;
-		--color-data-graphic: #6b84e8;
-		--color-data-graphic-dim: #4a557b;
+		--color-data-group: #6b84e8;
+		--color-data-group-dim: #4a557b;
 		--color-data-artboard: #70a898;
 		--color-data-artboard-dim: #3a6156;
 
