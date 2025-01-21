@@ -508,7 +508,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							.get(node_id)
 							.and_then(|node| node.persistent_metadata.reference.as_ref())
 						{
-							let node_definition = resolve_document_node_type(reference).unwrap();
+							let Some(node_definition) = resolve_document_node_type(reference) else { continue };
 							let default_definition_node = node_definition.default_node_template();
 							document.network_interface.replace_implementation(node_id, &[], default_definition_node.document_node.implementation);
 							document
