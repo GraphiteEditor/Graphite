@@ -79,7 +79,7 @@ Click a membership level below to pay directly (no account needed). A small fee 
 **$25 / month**
 
 - Your **personal name** (or handle) **on the Graphite website and GitHub readme**
-- Option to be mailed a personal **thank-you card with Graphite stickers** (US addresses only)
+- Option to be mailed a personal **thank-you card with Graphite stickers** (in the US only)
 - *Plus the lower-tier rewards*
 
 </a>
