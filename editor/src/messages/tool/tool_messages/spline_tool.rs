@@ -207,9 +207,12 @@ impl SplineToolData {
 		self.end_point = None;
 	}
 
+	/// get snapped point but ignoring current layer
 	fn snapped_point(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) -> SnappedPoint {
 		let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
-		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
+		let ignore = if let Some(layer) = self.layer { vec![layer] } else { vec![] };
+		let snap_data = SnapData::ignore(document, input, &ignore);
+		let snapped = self.snap_manager.free_snap(&snap_data, &point, SnapTypeConfiguration::default());
 		snapped
 	}
 }
