@@ -588,7 +588,7 @@ impl ConcatElement for GraphicGroup {
 	}
 }
 
-#[node_macro::node(category(""))]
+#[node_macro::node(category(""), path(graphene_core::vector))]
 async fn sample_points<F: 'n + Send + Copy>(
 	#[implementations(
 		(),
@@ -815,7 +815,7 @@ async fn poisson_disk_points<F: 'n + Send>(
 	result
 }
 
-#[node_macro::node(category(""))]
+#[node_macro::node(category(""), path(graphene_core::vector))]
 async fn subpath_segment_lengths<F: 'n + Send>(
 	#[implementations(
 		(),
@@ -978,6 +978,8 @@ async fn morph<F: 'n + Send + Copy>(
 	let source = source.eval(footprint).await;
 	let target = target.eval(footprint).await;
 	let mut result = VectorData::empty();
+
+	let time = time.clamp(0., 1.);
 
 	// Lerp styles
 	result.alpha_blending = if time < 0.5 { source.alpha_blending } else { target.alpha_blending };

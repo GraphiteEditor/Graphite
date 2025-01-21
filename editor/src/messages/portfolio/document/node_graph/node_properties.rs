@@ -240,8 +240,7 @@ pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, conte
 								Separator::new(SeparatorType::Unrelated).widget_holder(),
 								TextLabel::new("-")
 									.tooltip(format!(
-										"This data can only be supplied through the\n\
-										node graph because no widget exists for its type:\n\
+										"This data can only be supplied through the node graph because no widget exists for its type:\n\
 										{}",
 										concrete_type.name
 									))

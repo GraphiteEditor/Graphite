@@ -20,7 +20,7 @@ pub mod types {
 	pub type PixelLength = f64;
 	/// Non negative
 	pub type Length = f64;
-	///  0.- 1.
+	/// 0 to 1
 	pub type Fraction = f64;
 	pub type IntegerCount = u32;
 	/// Int input with randomization button

@@ -394,6 +394,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				let upgrade_vector_manipulation_format = document_serialized_content.contains("ManipulatorGroupIds") && !document_name.contains("__DO_NOT_UPGRADE__");
 				let document_name = document_name.replace("__DO_NOT_UPGRADE__", "");
 
+				const TEXT_REPLACEMENTS: [(&str, &str); 2] = [
+					("graphene_core::vector::vector_nodes::SamplePointsNode", "graphene_core::vector::SamplePointsNode"),
+					("graphene_core::vector::vector_nodes::SubpathSegmentLengthsNode", "graphene_core::vector::SubpathSegmentLengthsNode"),
+				];
+				let document_serialized_content = TEXT_REPLACEMENTS
+					.iter()
+					.fold(document_serialized_content, |document_serialized_content, (old, new)| document_serialized_content.replace(old, new));
+
 				let document = DocumentMessageHandler::deserialize_document(&document_serialized_content).map(|mut document| {
 					document.name.clone_from(&document_name);
 					document
@@ -413,57 +421,46 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					}
 				};
 
-				const REPLACEMENTS: [(&str, &str); 47] = [
-					("graphene_core::graphic_element::AppendArtboardNode", "graphene_core::AddArtboardNode"),
-					("graphene_core::graphic_element::ToArtboardNode", "graphene_core::ConstructArtboardNode"),
-					("graphene_core::graphic_element::ToElementNode", "graphene_core::ToGraphicElementNode"),
-					("graphene_core::graphic_element::ToGroupNode", "graphene_core::ToGraphicGroupNode"),
-					("graphene_core::ops::LogicAndNode", "graphene_core::logic::LogicAndNode"),
-					("graphene_core::ops::LogicNotNode", "graphene_core::logic::LogicNotNode"),
-					("graphene_core::ops::LogicOrNode", "graphene_core::logic::LogicOrNode"),
-					("graphene_core::ops::Vector2ValueNode", "graphene_core::ops::ConstructVector2"),
-					("graphene_core::raster::adjustments::BlackAndWhiteNode", "graphene_core::raster::BlackAndWhiteNode"),
-					("graphene_core::raster::adjustments::BlendNode", "graphene_core::raster::BlendNode"),
-					("graphene_core::raster::adjustments::ChannelMixerNode", "graphene_core::raster::ChannelMixerNode"),
+				const REPLACEMENTS: [(&str, &str); 36] = [
+					("graphene_core::AddArtboardNode", "graphene_core::graphic_element::AppendArtboardNode"),
+					("graphene_core::ConstructArtboardNode", "graphene_core::graphic_element::ToArtboardNode"),
+					("graphene_core::ToGraphicElementNode", "graphene_core::graphic_element::ToElementNode"),
+					("graphene_core::ToGraphicGroupNode", "graphene_core::graphic_element::ToGroupNode"),
+					("graphene_core::logic::LogicAndNode", "graphene_core::ops::LogicAndNode"),
+					("graphene_core::logic::LogicNotNode", "graphene_core::ops::LogicNotNode"),
+					("graphene_core::logic::LogicOrNode", "graphene_core::ops::LogicOrNode"),
+					("graphene_core::ops::ConstructVector2", "graphene_core::ops::Vector2ValueNode"),
+					("graphene_core::raster::BlackAndWhiteNode", "graphene_core::raster::adjustments::BlackAndWhiteNode"),
+					("graphene_core::raster::BlendNode", "graphene_core::raster::adjustments::BlendNode"),
+					("graphene_core::raster::ChannelMixerNode", "graphene_core::raster::adjustments::ChannelMixerNode"),
 					("graphene_core::raster::adjustments::ColorOverlayNode", "graphene_core::raster::adjustments::ColorOverlayNode"),
-					("graphene_core::raster::adjustments::ExposureNode", "graphene_core::raster::ExposureNode"),
-					("graphene_core::raster::adjustments::ExtractChannelNode", "graphene_core::raster::ExtractChannelNode"),
-					("graphene_core::raster::adjustments::GradientMapNode", "graphene_core::raster::GradientMapNode"),
-					("graphene_core::raster::adjustments::HueSaturationNode", "graphene_core::raster::HueSaturationNode"),
-					("graphene_core::raster::adjustments::IndexNode", "graphene_core::raster::IndexNode"),
-					("graphene_core::raster::adjustments::InvertNode", "graphene_core::raster::InvertNode"),
-					("graphene_core::raster::adjustments::InvertNode", "graphene_core::raster::InvertRGBNode"),
-					("graphene_core::raster::adjustments::LevelsNode", "graphene_core::raster::LevelsNode"),
-					("graphene_core::raster::adjustments::LuminanceNode", "graphene_core::raster::LuminanceNode"),
-					("graphene_core::raster::adjustments::MakeOpaqueNode", "graphene_core::raster::ExtractOpaqueNode"),
-					("graphene_core::raster::adjustments::PosterizeNode", "graphene_core::raster::PosterizeNode"),
-					("graphene_core::raster::adjustments::ThresholdNode", "graphene_core::raster::ThresholdNode"),
-					("graphene_core::raster::adjustments::VibranceNode", "graphene_core::raster::VibranceNode"),
-					("graphene_core::text::TextNode", "graphene_core::text::TextGeneratorNode"),
-					("graphene_core::transform::ReplaceTransformNode", "graphene_core::transform::SetTransformNode"),
-					("graphene_core::vector::generator_nodes::EllipseNode", "graphene_core::vector::generator_nodes::EllipseGenerator"),
-					("graphene_core::vector::generator_nodes::LineNode", "graphene_core::vector::generator_nodes::LineGenerator"),
-					("graphene_core::vector::generator_nodes::PathNode", "graphene_core::vector::generator_nodes::PathGenerator"),
-					("graphene_core::vector::generator_nodes::RectangleNode", "graphene_core::vector::generator_nodes::RectangleGenerator"),
+					("graphene_core::raster::ExposureNode", "graphene_core::raster::adjustments::ExposureNode"),
+					("graphene_core::raster::ExtractChannelNode", "graphene_core::raster::adjustments::ExtractChannelNode"),
+					("graphene_core::raster::GradientMapNode", "graphene_core::raster::adjustments::GradientMapNode"),
+					("graphene_core::raster::HueSaturationNode", "graphene_core::raster::adjustments::HueSaturationNode"),
+					("graphene_core::raster::IndexNode", "graphene_core::raster::adjustments::IndexNode"),
+					("graphene_core::raster::InvertNode", "graphene_core::raster::adjustments::InvertNode"),
+					("graphene_core::raster::InvertRGBNode", "graphene_core::raster::adjustments::InvertNode"),
+					("graphene_core::raster::LevelsNode", "graphene_core::raster::adjustments::LevelsNode"),
+					("graphene_core::raster::LuminanceNode", "graphene_core::raster::adjustments::LuminanceNode"),
+					("graphene_core::raster::ExtractOpaqueNode", "graphene_core::raster::adjustments::MakeOpaqueNode"),
+					("graphene_core::raster::PosterizeNode", "graphene_core::raster::adjustments::PosterizeNode"),
+					("graphene_core::raster::ThresholdNode", "graphene_core::raster::adjustments::ThresholdNode"),
+					("graphene_core::raster::VibranceNode", "graphene_core::raster::adjustments::VibranceNode"),
+					("graphene_core::text::TextGeneratorNode", "graphene_core::text::TextNode"),
+					("graphene_core::transform::SetTransformNode", "graphene_core::transform::ReplaceTransformNode"),
+					("graphene_core::vector::generator_nodes::EllipseGenerator", "graphene_core::vector::generator_nodes::EllipseNode"),
+					("graphene_core::vector::generator_nodes::LineGenerator", "graphene_core::vector::generator_nodes::LineNode"),
+					("graphene_core::vector::generator_nodes::PathGenerator", "graphene_core::vector::generator_nodes::PathNode"),
+					("graphene_core::vector::generator_nodes::RectangleGenerator", "graphene_core::vector::generator_nodes::RectangleNode"),
 					(
-						"graphene_core::vector::generator_nodes::RegularPolygonNode",
 						"graphene_core::vector::generator_nodes::RegularPolygonGenerator",
+						"graphene_core::vector::generator_nodes::RegularPolygonNode",
 					),
-					("graphene_core::vector::generator_nodes::SplineNode", "graphene_core::vector::generator_nodes::SplineGenerator"),
-					("graphene_core::vector::generator_nodes::StarNode", "graphene_core::vector::generator_nodes::StarGenerator"),
-					("graphene_core::vector::vector_nodes::AreaNode", "graphene_core::vector::AreaNode"),
-					("graphene_core::vector::vector_nodes::BoundingBoxNode", "graphene_core::vector::BoundingBoxNode"),
-					("graphene_core::vector::vector_nodes::CentroidNode", "graphene_core::vector::CentroidNode"),
-					("graphene_core::vector::vector_nodes::CircularRepeatNode", "graphene_core::vector::CircularRepeatNode"),
-					("graphene_core::vector::vector_nodes::CopyToPoints", "graphene_core::vector::CopyToPoints"),
-					("graphene_core::vector::vector_nodes::MorphNode", "graphene_core::vector::MorphNode"),
-					("graphene_core::vector::vector_nodes::PoissonDiskPoints", "graphene_core::vector::PoissonDiskPoints"),
-					("graphene_core::vector::vector_nodes::RepeatNode", "graphene_core::vector::RepeatNode"),
-					("graphene_core::vector::vector_nodes::SolidifyStrokeNode", "graphene_core::vector::SolidifyStrokeNode"),
-					("graphene_core::vector::vector_nodes::SplinesFromPointsNode", "graphene_core::vector::SplinesFromPointsNode"),
-					("graphene_core::vector::vector_nodes::StrokeNode", "graphene_core::vector::SetStrokeNode"),
-					("graphene_std::gpu_nodes::BlendGpuImageNode", "graphene_std::executor::BlendGpuImageNode"),
-					("graphene_std::raster::SampleImageNode", "graphene_std::raster::SampleNode"),
+					("graphene_core::vector::generator_nodes::SplineGenerator", "graphene_core::vector::generator_nodes::SplineNode"),
+					("graphene_core::vector::generator_nodes::StarGenerator", "graphene_core::vector::generator_nodes::StarNode"),
+					("graphene_std::executor::BlendGpuImageNode", "graphene_std::gpu_nodes::BlendGpuImageNode"),
+					("graphene_std::raster::SampleNode", "graphene_std::raster::SampleImageNode"),
 				];
 				for node_id in &document
 					.network_interface
@@ -476,7 +473,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					.collect::<Vec<NodeId>>()
 				{
 					if let Some(DocumentNodeImplementation::ProtoNode(protonode_id)) = document.network_interface.network(&[]).unwrap().nodes.get(node_id).map(|node| node.implementation.clone()) {
-						for (new, old) in REPLACEMENTS {
+						for (old, new) in REPLACEMENTS {
 							let node_path_without_type_args = protonode_id.name.split('<').next();
 							if node_path_without_type_args == Some(old) {
 								document

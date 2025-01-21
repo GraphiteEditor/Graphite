@@ -41,7 +41,7 @@ pub struct NodePropertiesContext<'a> {
 impl NodePropertiesContext<'_> {
 	pub fn call_widget_override(&mut self, node_id: &NodeId, index: usize) -> Option<Vec<LayoutGroup>> {
 		let Some(input_properties_row) = self.network_interface.input_properties_row(node_id, index, self.selection_network_path) else {
-			log::error!("Could not get input properties row in call_widget_override");
+			log::error!("Could not get input properties row at the beginning of call_widget_override");
 			return None;
 		};
 		if let Some(widget_override) = &input_properties_row.widget_override {
@@ -2466,7 +2466,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						nodes: [
 							DocumentNode {
 								inputs: vec![NodeInput::network(concrete!(graphene_core::vector::VectorData), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::vector_nodes::SubpathSegmentLengthsNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::SubpathSegmentLengthsNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
@@ -2479,7 +2479,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(concrete!(bool), 4), // From the document node's parameters
 									NodeInput::node(NodeId(0), 0),          // From output 0 of SubpathSegmentLengthsNode
 								],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::vector_nodes::SamplePointsNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::SamplePointsNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
