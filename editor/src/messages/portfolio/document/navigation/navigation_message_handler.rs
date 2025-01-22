@@ -4,16 +4,18 @@ use crate::consts::{
 };
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
-use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
+use crate::messages::input_mapper::utility_types::input_mouse::{MouseKeys, MouseState, ViewportPosition};
 use crate::messages::portfolio::document::navigation::utility_types::NavigationOperation;
 use crate::messages::portfolio::document::utility_types::misc::PTZ;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
-use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo, ToolData, ToolType};
+use crate::messages::tool::tool_messages;
+use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo, ToolData, ToolFsmState, ToolType};
 
 use graph_craft::document::NodeId;
 
 use glam::{DAffine2, DVec2};
+use usvg::filter::Input;
 
 pub struct NavigationMessageData<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
@@ -87,7 +89,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 			}
 			NavigationMessage::SetCursorState { is_active } => {
 				// info!("SetCursorState called with is_active: {}", is_active);
-				if is_active {
+				if is_active && !ipp.mouse.mouse_keys.contains(MouseKeys::LEFT) {
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grab });
 				} else {
 					if tool_type != ToolType::Select {
