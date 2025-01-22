@@ -176,7 +176,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			// Sub-messages
 			DocumentMessage::Navigation(message) => {
 				let data = NavigationMessageData {
-					transform_layer_handler: transform_layer_handler.clone(),
+					transform_layer_handler: transform_layer_handler,
 					tool_type: *current_tool,
 					network_interface: &mut self.network_interface,
 					breadcrumb_network_path: &self.breadcrumb_network_path,

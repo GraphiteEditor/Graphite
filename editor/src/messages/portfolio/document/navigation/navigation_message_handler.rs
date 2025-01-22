@@ -24,7 +24,7 @@ pub struct NavigationMessageData<'a> {
 	pub document_ptz: &'a mut PTZ,
 	pub graph_view_overlay_open: bool,
 	pub tool_type: ToolType,
-	pub transform_layer_handler: TransformLayerMessageHandler,
+	pub transform_layer_handler: &'a TransformLayerMessageHandler,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]

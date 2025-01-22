@@ -26,7 +26,7 @@ pub struct PortfolioMessageData<'a> {
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub current_tool: &'a ToolType,
-	pub transform_layer_handler: TransformLayerMessageHandler,
+	pub transform_layer_handler: &'a TransformLayerMessageHandler,
 }
 
 #[derive(Debug, Default)]

@@ -218,7 +218,7 @@ impl Dispatcher {
 							ipp,
 							preferences,
 							current_tool,
-							transform_layer_handler: transform_layer_handler.clone(),
+							transform_layer_handler: transform_layer_handler,
 						},
 					);
 				}
