@@ -1204,6 +1204,16 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						parent,
 						insert_index: folder_index,
 					});
+
+					let layer_local_transform = self.network_interface.document_metadata().transform_to_viewport(child);
+					let undo_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();
+					let transform = undo_transform * layer_local_transform;
+					responses.add(GraphOperationMessage::TransformSet {
+						layer: child,
+						transform,
+						transform_in: TransformIn::Local,
+						skip_rerender: false,
+					});
 				}
 
 				// Delete empty group folder
