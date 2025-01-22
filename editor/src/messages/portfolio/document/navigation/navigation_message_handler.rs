@@ -4,18 +4,17 @@ use crate::consts::{
 };
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
-use crate::messages::input_mapper::utility_types::input_mouse::{MouseKeys, MouseState, ViewportPosition};
+use crate::messages::input_mapper::utility_types::input_mouse::{MouseKeys, ViewportPosition};
 use crate::messages::portfolio::document::navigation::utility_types::NavigationOperation;
 use crate::messages::portfolio::document::utility_types::misc::PTZ;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
-use crate::messages::tool::tool_messages;
-use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo, ToolData, ToolFsmState, ToolType};
+
+use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo, ToolType};
 
 use graph_craft::document::NodeId;
 
 use glam::{DAffine2, DVec2};
-use usvg::filter::Input;
 
 pub struct NavigationMessageData<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
@@ -25,6 +24,7 @@ pub struct NavigationMessageData<'a> {
 	pub document_ptz: &'a mut PTZ,
 	pub graph_view_overlay_open: bool,
 	pub tool_type: ToolType,
+	pub transform_layer_handler: TransformLayerMessageHandler,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -44,6 +44,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 			document_ptz,
 			graph_view_overlay_open,
 			tool_type,
+			transform_layer_handler,
 		} = data;
 
 		fn get_ptz<'a>(document_ptz: &'a PTZ, network_interface: &'a NodeNetworkInterface, graph_view_overlay_open: bool, breadcrumb_network_path: &[NodeId]) -> Option<&'a PTZ> {
@@ -88,8 +89,8 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				self.navigation_operation = NavigationOperation::Pan { pan_original_for_abort: ptz.pan };
 			}
 			NavigationMessage::SetCursorState { is_active } => {
-				// info!("SetCursorState called with is_active: {}", is_active);
-				if is_active && !ipp.mouse.mouse_keys.contains(MouseKeys::LEFT) {
+				let should_update_cursor = is_active && !ipp.mouse.mouse_keys.contains(MouseKeys::LEFT) && transform_layer_handler.is_transforming();
+				if should_update_cursor {
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grab });
 				} else {
 					if tool_type != ToolType::Select {

@@ -40,6 +40,7 @@ pub struct DocumentMessageData<'a> {
 	pub persistent_data: &'a PersistentData,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub current_tool: &'a ToolType,
+	pub transform_layer_handler: &'a TransformLayerMessageHandler,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -166,6 +167,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			persistent_data,
 			executor,
 			current_tool,
+			transform_layer_handler,
 		} = data;
 
 		let selected_nodes_bounding_box_viewport = self.network_interface.selected_nodes_bounding_box_viewport(&self.breadcrumb_network_path);
@@ -174,6 +176,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			// Sub-messages
 			DocumentMessage::Navigation(message) => {
 				let data = NavigationMessageData {
+					transform_layer_handler: transform_layer_handler.clone(),
 					tool_type: *current_tool,
 					network_interface: &mut self.network_interface,
 					breadcrumb_network_path: &self.breadcrumb_network_path,

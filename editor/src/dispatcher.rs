@@ -23,6 +23,7 @@ pub struct DispatcherMessageHandlers {
 	pub portfolio_message_handler: PortfolioMessageHandler,
 	preferences_message_handler: PreferencesMessageHandler,
 	tool_message_handler: ToolMessageHandler,
+	pub transform_layer_handler: TransformLayerMessageHandler,
 	workspace_message_handler: WorkspaceMessageHandler,
 }
 
@@ -208,10 +209,18 @@ impl Dispatcher {
 					let ipp = &self.message_handlers.input_preprocessor_message_handler;
 					let preferences = &self.message_handlers.preferences_message_handler;
 					let current_tool = &self.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type;
+					let transform_layer_handler = &self.message_handlers.transform_layer_handler;
 
-					self.message_handlers
-						.portfolio_message_handler
-						.process_message(message, &mut queue, PortfolioMessageData { ipp, preferences, current_tool });
+					self.message_handlers.portfolio_message_handler.process_message(
+						message,
+						&mut queue,
+						PortfolioMessageData {
+							ipp,
+							preferences,
+							current_tool,
+							transform_layer_handler: transform_layer_handler.clone(),
+						},
+					);
 				}
 				Message::Preferences(message) => {
 					self.message_handlers.preferences_message_handler.process_message(message, &mut queue, ());

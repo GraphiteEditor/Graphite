@@ -26,6 +26,7 @@ pub struct PortfolioMessageData<'a> {
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub current_tool: &'a ToolType,
+	pub transform_layer_handler: TransformLayerMessageHandler,
 }
 
 #[derive(Debug, Default)]
@@ -42,7 +43,12 @@ pub struct PortfolioMessageHandler {
 
 impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMessageHandler {
 	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, data: PortfolioMessageData) {
-		let PortfolioMessageData { ipp, preferences, current_tool } = data;
+		let PortfolioMessageData {
+			ipp,
+			preferences,
+			current_tool,
+			transform_layer_handler,
+		} = data;
 
 		match message {
 			// Sub-messages
@@ -79,7 +85,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						let document_inputs = DocumentMessageData {
 							document_id,
 							ipp,
-
+							transform_layer_handler: &transform_layer_handler,
 							persistent_data: &self.persistent_data,
 							executor: &mut self.executor,
 							current_tool,
@@ -98,6 +104,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						persistent_data: &self.persistent_data,
 						executor: &mut self.executor,
 						current_tool,
+						transform_layer_handler: &transform_layer_handler,
 					};
 					document.process_message(message, responses, document_inputs)
 				}
