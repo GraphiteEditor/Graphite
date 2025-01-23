@@ -3181,16 +3181,14 @@ impl NodeNetworkInterface {
 				for current_node_id in horizontal_flow_iter {
 					if self.is_layer(&current_node_id, &[]) {
 						let current_layer_node = LayerNodeIdentifier::new(current_node_id, self, &[]);
-						if !self.document_metadata.structure.contains_key(&current_layer_node) {
-							if current_node_id == first_root_layer.to_node() {
-								awaiting_primary_flow.push((current_node_id, LayerNodeIdentifier::ROOT_PARENT));
-								children.push((LayerNodeIdentifier::ROOT_PARENT, current_layer_node));
-							} else {
-								awaiting_primary_flow.push((current_node_id, parent_layer_node));
-								children.push((parent_layer_node, current_layer_node));
-							}
-							parent_layer_node = current_layer_node;
+						if current_node_id == first_root_layer.to_node() {
+							awaiting_primary_flow.push((current_node_id, LayerNodeIdentifier::ROOT_PARENT));
+							children.push((LayerNodeIdentifier::ROOT_PARENT, current_layer_node));
+						} else {
+							awaiting_primary_flow.push((current_node_id, parent_layer_node));
+							children.push((parent_layer_node, current_layer_node));
 						}
+						parent_layer_node = current_layer_node;
 					}
 				}
 			} else {
@@ -3198,11 +3196,9 @@ impl NodeNetworkInterface {
 				for current_node_id in horizontal_flow_iter.skip(1) {
 					if self.is_layer(&current_node_id, &[]) {
 						let current_layer_node = LayerNodeIdentifier::new(current_node_id, self, &[]);
-						if !self.document_metadata.structure.contains_key(&current_layer_node) {
-							awaiting_primary_flow.push((current_node_id, parent_layer_node));
-							children.push((parent_layer_node, current_layer_node));
-							parent_layer_node = current_layer_node;
-						}
+						awaiting_primary_flow.push((current_node_id, parent_layer_node));
+						children.push((parent_layer_node, current_layer_node));
+						parent_layer_node = current_layer_node;
 					}
 				}
 			}
@@ -3219,12 +3215,10 @@ impl NodeNetworkInterface {
 					if self.is_layer(&current_node_id, &[]) {
 						// Create a new layer for the top of each stack, and add it as a child to the previous parent
 						let current_layer_node = LayerNodeIdentifier::new(current_node_id, self, &[]);
-						if !self.document_metadata.structure.contains_key(&current_layer_node) {
-							children.push(current_layer_node);
+						children.push(current_layer_node);
 
-							// The layer nodes for the horizontal flow is itself
-							awaiting_horizontal_flow.push((current_node_id, current_layer_node));
-						}
+						// The layer nodes for the horizontal flow is itself
+						awaiting_horizontal_flow.push((current_node_id, current_layer_node));
 					}
 				}
 				for child in children {
