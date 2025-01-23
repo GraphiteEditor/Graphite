@@ -128,10 +128,7 @@ impl PointDomain {
 	}
 
 	pub fn push(&mut self, id: PointId, position: DVec2) {
-		if self.id.contains(&id) {
-			warn!("Duplicate point");
-			return;
-		}
+		debug_assert!(!self.id.contains(&id));
 		self.id.push(id);
 		self.positions.push(position);
 	}
@@ -291,22 +288,13 @@ impl SegmentDomain {
 	}
 
 	pub(crate) fn push(&mut self, id: SegmentId, start: usize, end: usize, handles: bezier_rs::BezierHandles, stroke: StrokeId) {
-		if self.ids.contains(&id) {
-			return;
-		}
-		// Attempt to keep line joins?
-		let after = self.end_point.iter().copied().position(|other_end| other_end == start);
-		let before = self.start_point.iter().copied().position(|other_start| other_start == end);
-		let index = match (before, after) {
-			(_, Some(after)) => after + 1,
-			(Some(before), _) => before,
-			(None, None) => self.ids.len(),
-		};
-		self.ids.insert(index, id);
-		self.start_point.insert(index, start);
-		self.end_point.insert(index, end);
-		self.handles.insert(index, handles);
-		self.stroke.insert(index, stroke);
+		debug_assert!(!self.ids.contains(&id), "Tried to push an existing point to a point domain");
+
+		self.ids.push(id);
+		self.start_point.push(start);
+		self.end_point.push(end);
+		self.handles.push(handles);
+		self.stroke.push(stroke);
 	}
 
 	pub(crate) fn start_point_mut(&mut self) -> impl Iterator<Item = (SegmentId, &mut usize)> {
