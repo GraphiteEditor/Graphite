@@ -622,6 +622,16 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						parent,
 						insert_index: calculated_insert_index,
 					});
+
+					let layer_local_transform = self.network_interface.document_metadata().transform_to_viewport(layer_to_move);
+					let undo_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();
+					let transform = undo_transform * layer_local_transform;
+					responses.add(GraphOperationMessage::TransformSet {
+						layer: layer_to_move,
+						transform,
+						transform_in: TransformIn::Local,
+						skip_rerender: false,
+					});
 				}
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -1193,6 +1203,16 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						layer: child,
 						parent,
 						insert_index: folder_index,
+					});
+
+					let layer_local_transform = self.network_interface.document_metadata().transform_to_viewport(child);
+					let undo_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();
+					let transform = undo_transform * layer_local_transform;
+					responses.add(GraphOperationMessage::TransformSet {
+						layer: child,
+						transform,
+						transform_in: TransformIn::Local,
+						skip_rerender: false,
 					});
 				}
 
