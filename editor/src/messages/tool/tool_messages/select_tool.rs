@@ -425,8 +425,8 @@ impl Fsm for SelectToolFsmState {
 					overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
 
 					if is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
-						let quad = text_bounding_box(layer, document, font_cache);
-						overlay_context.dashed_quad(quad, None, Some(7.), Some(5.), None);
+						let transformed_quad = document.metadata().transform_to_viewport(layer) * text_bounding_box(layer, document, font_cache);
+						overlay_context.dashed_quad(transformed_quad, None, Some(7.), Some(5.), None);
 					}
 				}
 

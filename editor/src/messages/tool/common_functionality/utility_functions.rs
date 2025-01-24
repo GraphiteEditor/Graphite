@@ -38,7 +38,6 @@ pub fn text_bounding_box(layer: LayerNodeIdentifier, document: &DocumentMessageH
 	let buzz_face = font_cache.get(font).map(|data| load_face(data));
 	let far = graphene_core::text::bounding_box(text, buzz_face, typesetting);
 	let quad = Quad::from_box([DVec2::ZERO, far]);
-	let transformed_quad = document.metadata().transform_to_viewport(layer) * quad;
 
-	transformed_quad
+	quad
 }

@@ -83,6 +83,16 @@ impl Pivot {
 		}
 	}
 
+	pub fn update_box_pivot(&mut self, normalized_pivot: DVec2, layer_transform: DAffine2, bounds_transform: DAffine2, overlay_context: &mut OverlayContext) {
+		self.normalized_pivot = normalized_pivot;
+		self.transform_from_normalized = layer_transform * bounds_transform;
+
+		self.pivot = Some(self.transform_from_normalized.transform_point2(normalized_pivot));
+		if let Some(pivot) = self.pivot {
+			overlay_context.pivot(pivot);
+		}
+	}
+
 	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
 		self.recalculate_pivot(document);
 		if let Some(pivot) = self.pivot {

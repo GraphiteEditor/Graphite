@@ -400,10 +400,10 @@ impl TextToolData {
 			.all_layers()
 			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text"))
 			.find(|&layer| {
-				let quad = text_bounding_box(layer, document, font_cache);
+				let transformed_quad = document.metadata().transform_to_viewport(layer) * text_bounding_box(layer, document, font_cache);
 				let mouse = DVec2::new(input.mouse.position.x, input.mouse.position.y);
 
-				quad.contains(mouse)
+				transformed_quad.contains(mouse)
 			})
 	}
 
@@ -495,8 +495,8 @@ impl Fsm for TextToolFsmState {
 						.selected_visible_and_unlocked_layers(&document.network_interface)
 					{
 						if is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
-							let quad = text_bounding_box(layer, document, font_cache);
-							overlay_context.quad(quad, None);
+							let transformed_quad = document.metadata().transform_to_viewport(layer) * text_bounding_box(layer, document, font_cache);
+							overlay_context.quad(transformed_quad, None);
 						}
 					}
 				}
@@ -519,14 +519,17 @@ impl Fsm for TextToolFsmState {
 				if let Some(bounds) = bounds {
 					let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 					bounding_box_manager.bounds = [bounds.0[0], bounds.0[2]];
-					bounding_box_manager.transform = transform * transform.inverse();
+					bounding_box_manager.transform = transform;
 					bounding_box_manager.render_overlays(&mut overlay_context);
 				} else {
 					tool_data.bounding_box_manager.take();
 				}
 
 				// Update pivot
-				tool_data.pivot.update_pivot(document, &mut overlay_context);
+				let (min, max) = bounds.map(|quad| (quad.0[0], quad.0[2])).unwrap();
+				let bounds_transform = DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
+				let layer_transform = document.metadata().transform_to_viewport(layer.unwrap());
+				tool_data.pivot.update_box_pivot(DVec2::new(0.5, 0.5), layer_transform, bounds_transform, &mut overlay_context);
 
 				tool_data.resize.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 
@@ -615,7 +618,10 @@ impl Fsm for TextToolFsmState {
 				return state;
 			}
 			(TextToolFsmState::Ready, TextToolMessage::PointerMove { .. }) => {
-				let mut cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, false));
+				let mut cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Text, |bounds| bounds.get_cursor(input, false));
+				if cursor == MouseCursorIcon::Default {
+					cursor = MouseCursorIcon::Text;
+				}
 
 				// Dragging the pivot overrules the other operations
 				if tool_data.pivot.is_over(input.mouse.position) {
@@ -843,6 +849,7 @@ impl Fsm for TextToolFsmState {
 				self
 			}
 			(TextToolFsmState::Editing, TextToolMessage::Abort) => {
+				tool_data.bounding_box_manager.take();
 				if tool_data.new_text.is_empty() {
 					return tool_data.delete_empty_layer(font_cache, responses);
 				}
