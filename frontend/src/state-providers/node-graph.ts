@@ -15,6 +15,8 @@ import {
 	UpdateClickTargets,
 	UpdateContextMenuInformation,
 	UpdateInSelectedNetwork,
+	UpdateImportReorderIndex,
+	UpdateExportReorderIndex,
 	UpdateImportsExports,
 	UpdateLayerWidths,
 	UpdateNodeGraph,
@@ -47,6 +49,8 @@ export function createNodeGraphState(editor: Editor) {
 		selected: [] as bigint[],
 		transform: { scale: 1, x: 0, y: 0 },
 		inSelectedNetwork: true,
+		reorderImportIndex: undefined as number | undefined,
+		reorderExportIndex: undefined as number | undefined,
 	});
 
 	// Set up message subscriptions on creation
@@ -73,6 +77,18 @@ export function createNodeGraphState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateContextMenuInformation, (updateContextMenuInformation) => {
 		update((state) => {
 			state.contextMenuInformation = updateContextMenuInformation.contextMenuInformation;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateImportReorderIndex, (updateImportReorderIndex) => {
+		update((state) => {
+			state.reorderImportIndex = updateImportReorderIndex.importIndex;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateExportReorderIndex, (updateExportReorderIndex) => {
+		update((state) => {
+			state.reorderExportIndex = updateExportReorderIndex.exportIndex;
 			return state;
 		});
 	});

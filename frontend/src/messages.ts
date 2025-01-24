@@ -73,6 +73,14 @@ export class UpdateInSelectedNetwork extends JsMessage {
 	readonly inSelectedNetwork!: boolean;
 }
 
+export class UpdateImportReorderIndex extends JsMessage {
+	readonly importIndex!: number | undefined;
+}
+
+export class UpdateExportReorderIndex extends JsMessage {
+	readonly exportIndex!: number | undefined;
+}
+
 const LayerWidths = Transform(({ obj }) => obj.layerWidths);
 const ChainWidths = Transform(({ obj }) => obj.chainWidths);
 const HasLeftInputWire = Transform(({ obj }) => obj.hasLeftInputWire);
@@ -170,6 +178,7 @@ export type FrontendClickTargets = {
 	readonly iconClickTargets: string[];
 	readonly allNodesBoundingBox: string;
 	readonly importExportsBoundingBox: string;
+	readonly modifyImportExport: string[];
 };
 
 export type ContextMenuInformation = {
@@ -178,7 +187,7 @@ export type ContextMenuInformation = {
 	contextMenuData: "CreateNode" | { nodeId: bigint; currentlyIsNode: boolean };
 };
 
-export type FrontendGraphDataType = "General" | "Raster" | "VectorData" | "Number" | "Graphic" | "Artboard";
+export type FrontendGraphDataType = "General" | "Raster" | "VectorData" | "Number" | "Group" | "Artboard";
 
 export class Node {
 	readonly index!: bigint;
@@ -209,6 +218,8 @@ export class FrontendGraphInput {
 	readonly name!: string;
 
 	readonly resolvedType!: string | undefined;
+
+	readonly validTypes!: string[];
 
 	@CreateOutputConnectorOptional
 	connectedTo!: Node | undefined;
@@ -1592,6 +1603,8 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateImportsExports,
 	UpdateInputHints,
 	UpdateInSelectedNetwork,
+	UpdateExportReorderIndex,
+	UpdateImportReorderIndex,
 	UpdateLayersPanelControlBarLayout,
 	UpdateLayerWidths,
 	UpdateMenuBarLayout,

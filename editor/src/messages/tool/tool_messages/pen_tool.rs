@@ -332,9 +332,8 @@ impl PenToolData {
 				},
 			});
 		}
-		if close_subpath {
-			responses.add(DocumentMessage::EndTransaction);
-		} else {
+		responses.add(DocumentMessage::EndTransaction);
+		if !close_subpath {
 			self.add_point(LastPoint {
 				id: end,
 				pos: next_point,
@@ -764,7 +763,7 @@ impl Fsm for PenToolFsmState {
 
 				state
 			}
-			(PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor, PenToolMessage::Abort | PenToolMessage::Confirm) => {
+			(PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor, PenToolMessage::Confirm) => {
 				responses.add(DocumentMessage::EndTransaction);
 				tool_data.handle_end = None;
 				tool_data.latest_points.clear();
@@ -793,9 +792,11 @@ impl Fsm for PenToolFsmState {
 			}
 			(_, PenToolMessage::Redo) => {
 				tool_data.point_index = (tool_data.point_index + 1).min(tool_data.latest_points.len().saturating_sub(1));
-				tool_data
-					.place_anchor(SnapData::new(document, input), transform, input.mouse.position, responses)
-					.unwrap_or(PenToolFsmState::PlacingAnchor)
+				tool_data.place_anchor(SnapData::new(document, input), transform, input.mouse.position, responses);
+				match tool_data.point_index {
+					0 => PenToolFsmState::Ready,
+					_ => PenToolFsmState::PlacingAnchor,
+				}
 			}
 			_ => self,
 		}
