@@ -1,8 +1,20 @@
-.call-to-action {
+.call-to-action.call-to-action.call-to-action {
 	display: flex;
 	flex-wrap: wrap;
 	flex-direction: row;
 	gap: calc(var(--font-size-link) * 0.8);
+	margin-top: calc(40 * var(--variable-px));
+
+	span {
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+
+		em {
+			text-align: center;
+			margin-top: 0.5em;
+		}
+	}
 
 	.button {
 		margin: 0;
