@@ -1,4 +1,4 @@
-use crate::consts::{BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, CATEGORY_ONE_MINIMUM, CATEGORY_TWO_MINIMUM, SELECTION_DRAG_ANGLE};
+use crate::consts::{BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, SELECTION_DRAG_ANGLE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::transformation::OriginalTransforms;
@@ -303,26 +303,29 @@ impl BoundingBoxManager {
 		let quad = self.transform * Quad::from_box(self.bounds);
 		overlay_context.quad(quad, None);
 		let corners = quad.0;
-		let edge_midpoints = quad.edges().map(|[a, b]| a.midpoint(b));
+		let vertical_edges = [corners[0].midpoint(corners[1]), corners[2].midpoint(corners[3])];
+		let horizontal_edges = [corners[1].midpoint(corners[2]), corners[3].midpoint(corners[0])];
 
-		let area_sq = (corners[0] - corners[1]).length_squared() * (corners[3] - corners[0]).length_squared();
+		let vertical_length = (corners[0] - corners[1]).length_squared();
+		let horizontal_length = (corners[3] - corners[0]).length_squared();
+		debug!("{vertical_length} {horizontal_length}");
+		let vertical_edge_visible = vertical_length > MIN_LENGTH_FOR_MIDPOINT_VISIBILITY.powi(2);
+		let horizontal_edge_visible = horizontal_length > MIN_LENGTH_FOR_MIDPOINT_VISIBILITY.powi(2);
 		let narrow = (self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any();
 
 		let mut draw_handle = |point: DVec2| overlay_context.square(point, Some(6.), None, None);
-
 		if !narrow {
-			match area_sq {
-				0.0..=CATEGORY_TWO_MINIMUM => {
-					edge_midpoints.map(draw_handle);
+			if vertical_edge_visible || horizontal_edge_visible {
+				corners.map(&mut draw_handle);
+				if vertical_edge_visible {
+					vertical_edges.map(&mut draw_handle);
 				}
-				CATEGORY_TWO_MINIMUM..=CATEGORY_ONE_MINIMUM => {
-					corners.map(draw_handle);
+				if horizontal_edge_visible {
+					horizontal_edges.map(&mut draw_handle);
 				}
-				CATEGORY_ONE_MINIMUM.. => {
-					edge_midpoints.map(&mut draw_handle);
-					corners.map(draw_handle);
-				}
-				_ => unreachable!(),
+			} else {
+				vertical_edges.map(&mut draw_handle);
+				horizontal_edges.map(&mut draw_handle);
 			}
 		} else {
 			draw_handle(self.transform.transform_point2(self.bounds[0]));
