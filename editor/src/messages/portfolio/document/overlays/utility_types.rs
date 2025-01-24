@@ -192,10 +192,10 @@ impl OverlayContext {
 	}
 
 	pub fn draw_arc(&mut self, center: DVec2, radius: f64, start_from: f64, end_at: f64) {
-		let segments = ((end_at - start_from).abs() / (std::f64::consts::PI / 4.0)).ceil() as usize;
+		let segments = ((end_at - start_from).abs() / (std::f64::consts::PI / 4.)).ceil() as usize;
 		let step = (end_at - start_from) / segments as f64;
-		let half_step = step / 2.0;
-		let factor = 4.0 / 3.0 * half_step.sin() / (1.0 + half_step.cos());
+		let half_step = step / 2.;
+		let factor = 4. / 3. * half_step.sin() / (1. + half_step.cos());
 
 		self.render_context.begin_path();
 

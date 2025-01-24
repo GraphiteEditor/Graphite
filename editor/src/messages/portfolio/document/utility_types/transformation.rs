@@ -123,14 +123,14 @@ pub enum Axis {
 
 impl Axis {
 	pub fn contrainted_to_axis(self, target: Axis, local: bool) -> (Self, bool) {
-		if self == target {
-			if local {
-				(Axis::Both, false)
-			} else {
-				(self, true)
-			}
+		if self != target {
+			return (target, false);
+		}
+
+		if local {
+			(Axis::Both, false)
 		} else {
-			(target, false)
+			(self, true)
 		}
 	}
 }
@@ -211,10 +211,8 @@ impl Rotation {
 	}
 
 	pub fn negate(self) -> Self {
-		Self {
-			dragged_angle: -self.dragged_angle,
-			..self
-		}
+		let dragged_angle = -self.dragged_angle;
+		Self { dragged_angle, ..self }
 	}
 }
 
@@ -256,10 +254,8 @@ impl Scale {
 	}
 
 	pub fn negate(self) -> Self {
-		Self {
-			dragged_factor: -self.dragged_factor,
-			..self
-		}
+		let dragged_factor = -self.dragged_factor;
+		Self { dragged_factor, ..self }
 	}
 
 	#[must_use]
@@ -442,17 +438,20 @@ impl<'a> Selected<'a> {
 
 	pub fn bounding_box(&mut self) -> Quad {
 		let metadata = self.network_interface.document_metadata();
+
 		let transform = self
 			.network_interface
 			.selected_nodes(&[])
 			.unwrap()
-			.selected_visible_and_unlocked_layers(&self.network_interface)
+			.selected_visible_and_unlocked_layers(self.network_interface)
 			.find(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 			.map(|layer| metadata.transform_to_viewport(layer))
 			.unwrap_or(DAffine2::IDENTITY);
+
 		if transform.matrix2.determinant() == 0. {
 			return Default::default();
 		}
+
 		let bounds = self
 			.selected
 			.iter()
