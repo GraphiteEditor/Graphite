@@ -223,15 +223,15 @@ impl OverlayContext {
 		self.render_context.stroke();
 	}
 
-	pub fn draw_angle(&mut self, pivot: DVec2, radius: f64, arc_radius: f64, angle: f64) {
+	pub fn draw_angle(&mut self, pivot: DVec2, radius: f64, arc_radius: f64, offset_angle: f64, angle: f64) {
 		let color_line = COLOR_OVERLAY_BLUE;
 
-		let end_point1 = pivot + radius * DVec2::from_angle(angle);
-		let end_point2 = pivot + radius * DVec2::X;
+		let end_point1 = pivot + radius * DVec2::from_angle(angle + offset_angle);
+		let end_point2 = pivot + radius * DVec2::from_angle(offset_angle);
 		self.line(pivot, end_point1, Some(color_line));
 		self.line(pivot, end_point2, Some(color_line));
 
-		self.draw_arc(pivot, arc_radius, 0., angle % TAU);
+		self.draw_arc(pivot, arc_radius, offset_angle, (angle) % TAU + offset_angle);
 	}
 
 	pub fn draw_scale(&mut self, start: DVec2, scale: f64, radius: f64, text: &str) {

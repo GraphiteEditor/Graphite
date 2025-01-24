@@ -214,6 +214,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						}
 						TransformOperation::Rotating(rotation) => {
 							let angle = rotation.to_f64(self.snap);
+							let quad = self.fixed_bbox.0;
+							let offset_angle = (quad[1] - quad[0]).to_angle();
 							let width = viewport_box.max_element();
 							let radius = self.start_mouse.distance(self.pivot);
 							let arc_radius = ANGLE_MEASURE_RADIUS_FACTOR * width;
@@ -221,13 +223,13 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let text = format!("{}°", format_rounded(angle.to_degrees(), 2));
 							let text_texture_width = overlay_context.get_width(&text) / 2.;
 							let text_texture_height = 12.;
-							let text_angle_on_unit_circle = DVec2::from_angle((angle % TAU) / 2.);
+							let text_angle_on_unit_circle = DVec2::from_angle((angle % TAU) / 2. + offset_angle);
 							let text_texture_position = DVec2::new(
 								(arc_radius + 4. + text_texture_width) * text_angle_on_unit_circle.x,
 								(arc_radius + text_texture_height) * text_angle_on_unit_circle.y,
 							);
 							let transform = DAffine2::from_translation(text_texture_position + self.pivot);
-							overlay_context.draw_angle(self.pivot, radius, arc_radius, angle);
+							overlay_context.draw_angle(self.pivot, radius, arc_radius, offset_angle, angle);
 							overlay_context.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
 						}
 					}
