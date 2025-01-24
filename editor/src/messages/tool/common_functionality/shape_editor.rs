@@ -878,9 +878,7 @@ impl ShapeState {
 
 	pub fn break_path_at_selected_point(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
-			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
-				continue;
-			};
+			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
 
 			for &delete in &state.selected_points {
 				let Some(point) = delete.get_anchor(&vector_data) else { continue };

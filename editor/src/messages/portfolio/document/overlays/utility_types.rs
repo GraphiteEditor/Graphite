@@ -1,5 +1,7 @@
 use super::utility_functions::overlay_canvas_context;
-use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER};
+use crate::consts::{
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_TRANSPARENT, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
+};
 use crate::messages::prelude::Message;
 
 use bezier_rs::{Bezier, Subpath};
@@ -188,6 +190,65 @@ impl OverlayContext {
 		self.render_context.fill();
 		self.render_context.stroke();
 	}
+
+	pub fn draw_arc(&mut self, center: DVec2, radius: f64, start_from: f64, end_at: f64) {
+		let segments = ((end_at - start_from).abs() / (std::f64::consts::PI / 4.)).ceil() as usize;
+		let step = (end_at - start_from) / segments as f64;
+		let half_step = step / 2.;
+		let factor = 4. / 3. * half_step.sin() / (1. + half_step.cos());
+
+		self.render_context.begin_path();
+
+		for i in 0..segments {
+			let start_angle = start_from + step * i as f64;
+			let end_angle = start_angle + step;
+			let start_vec = DVec2::from_angle(start_angle);
+			let end_vec = DVec2::from_angle(end_angle);
+
+			let start = center + radius * start_vec;
+			let end = center + radius * end_vec;
+
+			let handle_start = start + start_vec.perp() * radius * factor;
+			let handle_end = end - end_vec.perp() * radius * factor;
+
+			let bezier = Bezier {
+				start,
+				end,
+				handles: bezier_rs::BezierHandles::Cubic { handle_start, handle_end },
+			};
+
+			self.bezier_command(bezier, DAffine2::IDENTITY, i == 0);
+		}
+
+		self.render_context.stroke();
+	}
+
+	pub fn draw_angle(&mut self, pivot: DVec2, radius: f64, arc_radius: f64, offset_angle: f64, angle: f64) {
+		let color_line = COLOR_OVERLAY_BLUE;
+
+		let end_point1 = pivot + radius * DVec2::from_angle(angle + offset_angle);
+		let end_point2 = pivot + radius * DVec2::from_angle(offset_angle);
+		self.line(pivot, end_point1, Some(color_line));
+		self.line(pivot, end_point2, Some(color_line));
+
+		self.draw_arc(pivot, arc_radius, offset_angle, (angle) % TAU + offset_angle);
+	}
+
+	pub fn draw_scale(&mut self, start: DVec2, scale: f64, radius: f64, text: &str) {
+		let sign = scale.signum();
+		self.line(start + DVec2::X * radius * sign, start + DVec2::X * (radius * scale), None);
+		self.circle(start, radius, Some(COLOR_OVERLAY_TRANSPARENT), None);
+		self.circle(start, radius * scale.abs(), Some(COLOR_OVERLAY_TRANSPARENT), None);
+		self.text(
+			text,
+			COLOR_OVERLAY_BLUE,
+			None,
+			DAffine2::from_translation(start + sign * DVec2::X * radius * (1. + scale.abs()) / 2.),
+			2.,
+			[Pivot::Middle, Pivot::End],
+		)
+	}
+
 	pub fn pivot(&mut self, position: DVec2) {
 		let (x, y) = (position.round() - DVec2::splat(0.5)).into();
 
@@ -298,6 +359,10 @@ impl OverlayContext {
 
 		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
 		self.render_context.stroke();
+	}
+
+	pub fn get_width(&self, text: &str) -> f64 {
+		self.render_context.measure_text(text).expect("Failed to measure text dimensions").width()
 	}
 
 	pub fn text(&self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {

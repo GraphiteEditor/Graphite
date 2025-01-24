@@ -971,7 +971,9 @@ impl Fsm for PathToolFsmState {
 				if nearest_point.is_some() {
 					// Flip the selected point between smooth and sharp
 					if !tool_data.double_click_handled && tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD {
+						responses.add(DocumentMessage::StartTransaction);
 						shape_editor.flip_smooth_sharp(&document.network_interface, input.mouse.position, SELECTION_TOLERANCE, responses);
+						responses.add(DocumentMessage::EndTransaction);
 						responses.add(PathToolMessage::SelectedPointUpdated);
 					}
 
