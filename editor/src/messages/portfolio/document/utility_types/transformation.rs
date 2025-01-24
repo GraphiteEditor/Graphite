@@ -143,19 +143,16 @@ pub struct Translation {
 }
 
 impl Translation {
-	pub fn to_dvec(self) -> DVec2 {
+	pub fn to_dvec(self, transform: DAffine2) -> DVec2 {
 		if let Some(value) = self.typed_distance {
-			if self.constraint == Axis::Y {
-				return DVec2::new(0., value);
-			} else {
-				return DVec2::new(value, 0.);
+			let document_displacement = if self.constraint == Axis::Y { DVec2::new(0., value) } else { DVec2::new(value, 0.) };
+			transform.transform_vector2(document_displacement)
+		} else {
+			match self.constraint {
+				Axis::Both => self.dragged_distance,
+				Axis::X => DVec2::new(self.dragged_distance.x, 0.),
+				Axis::Y => DVec2::new(0., self.dragged_distance.y),
 			}
-		}
-
-		match self.constraint {
-			Axis::Both => self.dragged_distance,
-			Axis::X => DVec2::new(self.dragged_distance.x, 0.),
-			Axis::Y => DVec2::new(0., self.dragged_distance.y),
 		}
 	}
 
@@ -210,6 +207,13 @@ impl Rotation {
 		Self {
 			dragged_angle: angle,
 			typed_angle: None,
+		}
+	}
+
+	pub fn negate(self) -> Self {
+		Self {
+			dragged_angle: -self.dragged_angle,
+			..self
 		}
 	}
 }
@@ -291,16 +295,16 @@ pub enum TransformOperation {
 }
 
 impl TransformOperation {
-	pub fn apply_transform_operation(&self, selected: &mut Selected, snapping: bool, local: bool, quad: Quad) {
+	pub fn apply_transform_operation(&self, selected: &mut Selected, snapping: bool, local: bool, quad: Quad, transform: DAffine2) {
 		let quad = quad.0;
 		let edge = quad[1] - quad[0];
 		if self != &TransformOperation::None {
 			let transformation = match self {
 				TransformOperation::Grabbing(translation) => {
 					if local {
-						DAffine2::from_angle(edge.to_angle()) * DAffine2::from_translation(translation.to_dvec()) * DAffine2::from_angle(-edge.to_angle())
+						DAffine2::from_angle(edge.to_angle()) * DAffine2::from_translation(translation.to_dvec(transform)) * DAffine2::from_angle(-edge.to_angle())
 					} else {
-						DAffine2::from_translation(translation.to_dvec())
+						DAffine2::from_translation(translation.to_dvec(transform))
 					}
 				}
 				TransformOperation::Rotating(rotation) => DAffine2::from_angle(rotation.to_f64(snapping)),
@@ -319,7 +323,7 @@ impl TransformOperation {
 		}
 	}
 
-	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, snapping: bool, mut local: bool, quad: Quad) -> bool {
+	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, snapping: bool, mut local: bool, quad: Quad, transform: DAffine2) -> bool {
 		(*self, local) = match self {
 			TransformOperation::Grabbing(translation) => {
 				let (translation, local) = translation.with_constraint(axis, local);
@@ -331,11 +335,11 @@ impl TransformOperation {
 			}
 			_ => (*self, false),
 		};
-		self.apply_transform_operation(selected, snapping, local, quad);
+		self.apply_transform_operation(selected, snapping, local, quad, transform);
 		local
 	}
 
-	pub fn grs_typed(&mut self, typed: Option<f64>, selected: &mut Selected, snapping: bool, local: bool, quad: Quad) {
+	pub fn grs_typed(&mut self, typed: Option<f64>, selected: &mut Selected, snapping: bool, local: bool, quad: Quad, transform: DAffine2) {
 		match self {
 			TransformOperation::None => (),
 			TransformOperation::Grabbing(translation) => translation.typed_distance = typed,
@@ -343,7 +347,7 @@ impl TransformOperation {
 			TransformOperation::Scaling(scale) => scale.typed_factor = typed,
 		};
 
-		self.apply_transform_operation(selected, snapping, local, quad);
+		self.apply_transform_operation(selected, snapping, local, quad, transform);
 	}
 
 	pub fn hints(&self, responses: &mut VecDeque<Message>) {
@@ -364,13 +368,14 @@ impl TransformOperation {
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
-	pub fn negate(&mut self, selected: &mut Selected, snapping: bool, local: bool, quad: Quad) {
+	pub fn negate(&mut self, selected: &mut Selected, snapping: bool, local: bool, quad: Quad, transform: DAffine2) {
 		if *self != TransformOperation::None {
 			*self = match self {
 				TransformOperation::Scaling(scale) => TransformOperation::Scaling(scale.negate()),
+				TransformOperation::Rotating(rotation) => TransformOperation::Rotating(rotation.negate()),
 				_ => *self,
 			};
-			self.apply_transform_operation(selected, snapping, local, quad);
+			self.apply_transform_operation(selected, snapping, local, quad, transform);
 		}
 	}
 }
