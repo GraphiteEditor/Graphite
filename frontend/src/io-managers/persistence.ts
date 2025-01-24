@@ -9,6 +9,7 @@ import {
 	TriggerLoadPreferences,
 	TriggerLoadFirstAutoSaveDocument,
 	TriggerLoadRestAutoSaveDocuments,
+	TriggerSaveActiveDocument,
 } from "@graphite/messages";
 import { type PortfolioState } from "@graphite/state-providers/portfolio";
 
@@ -157,6 +158,14 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerLoadRestAutoSaveDocuments, async () => {
 		await loadRestDocuments();
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerSaveActiveDocument, async (activeDocument) => {
+		const documentId = String(activeDocument.documentId);
+		const previouslySavedDocuments = await get<Record<string, TriggerIndexedDbWriteDocument>>("documents", graphiteStore);
+		if (!previouslySavedDocuments) return;
+		if (documentId in previouslySavedDocuments) {
+			await storeCurrentDocumentByID(documentId);
+		}
 	});
 }
 

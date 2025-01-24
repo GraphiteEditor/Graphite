@@ -808,6 +808,10 @@ export class TriggerSavePreferences extends JsMessage {
 	readonly preferences!: Record<string, unknown>;
 }
 
+export class TriggerSaveActiveDocument extends JsMessage {
+	readonly documentId!: bigint;
+}
+
 export class DocumentChanged extends JsMessage {}
 
 export type DataBuffer = {
@@ -1581,6 +1585,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerOpenDocument,
 	TriggerPaste,
 	TriggerSavePreferences,
+	TriggerSaveActiveDocument,
 	TriggerTextCommit,
 	TriggerTextCopy,
 	TriggerUpgradeDocumentToVectorManipulationFormat,

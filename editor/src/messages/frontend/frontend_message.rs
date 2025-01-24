@@ -93,6 +93,10 @@ pub enum FrontendMessage {
 	TriggerSavePreferences {
 		preferences: PreferencesMessageHandler,
 	},
+	TriggerSaveActiveDocument {
+		#[serde(rename = "documentId")]
+		document_id: DocumentId,
+	},
 	TriggerTextCommit,
 	TriggerTextCopy {
 		#[serde(rename = "copyText")]
