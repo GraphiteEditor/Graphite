@@ -1063,12 +1063,10 @@ impl GraphicElementRendered for Vec<Color> {
 	}
 }
 
-/// A segment of an svg string to allow for embedding blob urls
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SvgSegment {
 	Slice(&'static str),
 	String(String),
-	BlobUrl(u64),
 }
 
 impl From<String> for SvgSegment {
@@ -1094,7 +1092,6 @@ impl RenderSvgSegmentList for Vec<SvgSegment> {
 			result.push_str(match segment {
 				SvgSegment::Slice(x) => x,
 				SvgSegment::String(x) => x,
-				SvgSegment::BlobUrl(_) => "<!-- Blob url not yet loaded -->",
 			});
 		}
 		result

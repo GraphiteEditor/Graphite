@@ -47,6 +47,7 @@ type TransformData<'a> = (&'a DocumentMessageHandler, &'a InputPreprocessorMessa
 impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayerMessageHandler {
 	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (document, input, tool_data, shape_editor): TransformData) {
 		let using_path_tool = tool_data.active_tool_type == ToolType::Path;
+		let using_select_tool = tool_data.active_tool_type == ToolType::Select;
 
 		// TODO: Add support for transforming layer not in the document network
 		let selected_layers = document
@@ -79,10 +80,18 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					let viewspace = document.metadata().transform_to_viewport(selected_layers[0]);
 
 					let mut point_count: usize = 0;
-					let get_location = |point: &ManipulatorPointId| point.get_position(&vector_data).map(|position| viewspace.transform_point2(position));
+					let get_location = |point: &&ManipulatorPointId| point.get_position(&vector_data).map(|position| viewspace.transform_point2(position));
 					let points = shape_editor.selected_points();
+					let selected_points: Vec<&ManipulatorPointId> = points.collect();
 
-					*selected.pivot = points.filter_map(get_location).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64;
+					if let [point] = selected_points.as_slice() {
+						if let ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) = point {
+							let anchor_position = point.get_anchor_position(&vector_data).unwrap();
+							*selected.pivot = viewspace.transform_point2(anchor_position);
+						} else {
+							*selected.pivot = selected_points.iter().filter_map(get_location).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64;
+						}
+					}
 				}
 			} else {
 				*selected.pivot = selected.mean_average_of_pivots();
@@ -250,12 +259,13 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 			}
 			TransformLayerMessage::BeginGrab => {
-				if let TransformOperation::Grabbing(_) = self.transform_operation {
-					return;
-				}
+				if (!using_path_tool && !using_select_tool)
+					|| (using_path_tool && shape_editor.selected_points().next().is_none())
+					|| selected_layers.is_empty()
+					|| matches!(self.transform_operation, TransformOperation::Grabbing(_))
+				{
+					selected.original_transforms.clear();
 
-				// Don't allow grab with no selected layers
-				if selected_layers.is_empty() {
 					return;
 				}
 
@@ -270,13 +280,42 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 			}
 			TransformLayerMessage::BeginRotate => {
-				if let TransformOperation::Rotating(_) = self.transform_operation {
+				let selected_points: Vec<&ManipulatorPointId> = shape_editor.selected_points().collect();
+
+				if (!using_path_tool && !using_select_tool)
+					|| (using_path_tool && selected_points.is_empty())
+					|| selected_layers.is_empty()
+					|| matches!(self.transform_operation, TransformOperation::Rotating(_))
+				{
+					selected.original_transforms.clear();
 					return;
 				}
 
-				// Don't allow rotate with no selected layers
-				if selected_layers.is_empty() {
+				let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) else {
+					selected.original_transforms.clear();
 					return;
+				};
+
+				if let [point] = selected_points.as_slice() {
+					if matches!(point, ManipulatorPointId::Anchor(_)) {
+						if let Some([handle1, handle2]) = point.get_handle_pair(&vector_data) {
+							let handle1_length = handle1.length(&vector_data);
+							let handle2_length = handle2.length(&vector_data);
+
+							if (handle1_length == 0. && handle2_length == 0.) || (handle1_length == f64::MAX && handle2_length == f64::MAX) {
+								return;
+							}
+						}
+					} else {
+						// TODO: Fix handle snap to anchor issue, see <https://discord.com/channels/731730685944922173/1217752903209713715>
+
+						let handle_length = point.as_handle().map(|handle| handle.length(&vector_data));
+
+						if handle_length == Some(0.) {
+							selected.original_transforms.clear();
+							return;
+						}
+					}
 				}
 
 				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse);
@@ -291,13 +330,41 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 			}
 			TransformLayerMessage::BeginScale => {
-				if let TransformOperation::Scaling(_) = self.transform_operation {
+				let selected_points: Vec<&ManipulatorPointId> = shape_editor.selected_points().collect();
+
+				if (using_path_tool && selected_points.is_empty())
+					|| (!using_path_tool && !using_select_tool)
+					|| selected_layers.is_empty()
+					|| matches!(self.transform_operation, TransformOperation::Scaling(_))
+				{
+					selected.original_transforms.clear();
 					return;
 				}
 
-				// Don't allow scale with no selected layers
-				if selected_layers.is_empty() {
+				let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) else {
+					selected.original_transforms.clear();
 					return;
+				};
+
+				if let [point] = selected_points.as_slice() {
+					if matches!(point, ManipulatorPointId::Anchor(_)) {
+						if let Some([handle1, handle2]) = point.get_handle_pair(&vector_data) {
+							let handle1_length = handle1.length(&vector_data);
+							let handle2_length = handle2.length(&vector_data);
+
+							if (handle1_length == 0. && handle2_length == 0.) || (handle1_length == f64::MAX && handle2_length == f64::MAX) {
+								selected.original_transforms.clear();
+								return;
+							}
+						}
+					} else {
+						let handle_length = point.as_handle().map(|handle| handle.length(&vector_data));
+
+						if handle_length == Some(0.) {
+							selected.original_transforms.clear();
+							return;
+						}
+					}
 				}
 
 				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse);
@@ -376,6 +443,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						}
 					};
 				}
+
 				self.mouse_position = input.mouse.position;
 			}
 			TransformLayerMessage::SelectionChanged => {

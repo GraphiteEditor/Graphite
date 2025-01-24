@@ -129,7 +129,7 @@ impl OverlayContext {
 		}
 	}
 
-	pub fn manipulator_handle(&mut self, position: DVec2, selected: bool) {
+	pub fn manipulator_handle(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
 		let position = position.round() - DVec2::splat(0.5);
 
 		self.render_context.begin_path();
@@ -139,7 +139,7 @@ impl OverlayContext {
 
 		let fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
 		self.render_context.set_fill_style_str(fill);
-		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
+		self.render_context.set_stroke_style_str(color.unwrap_or(COLOR_OVERLAY_BLUE));
 		self.render_context.fill();
 		self.render_context.stroke();
 	}

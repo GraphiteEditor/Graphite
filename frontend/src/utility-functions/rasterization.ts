@@ -1,5 +1,3 @@
-import { replaceBlobURLsWithBase64 } from "@graphite/utility-functions/files";
-
 // Rasterize the string of an SVG document at a given width and height and return the canvas it was drawn onto during the rasterization process
 export async function rasterizeSVGCanvas(svg: string, width: number, height: number, backgroundColor?: string): Promise<HTMLCanvasElement> {
 	// A canvas to render our SVG to in order to get a raster image
@@ -15,11 +13,8 @@ export async function rasterizeSVGCanvas(svg: string, width: number, height: num
 		context.fillRect(0, 0, width, height);
 	}
 
-	// This SVG rasterization scheme has the limitation that it cannot access blob URLs, so they must be inlined to base64 URLs
-	const svgWithBase64Images = await replaceBlobURLsWithBase64(svg);
-
 	// Create a blob URL for our SVG
-	const svgBlob = new Blob([svgWithBase64Images], { type: "image/svg+xml;charset=utf-8" });
+	const svgBlob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
 	const url = URL.createObjectURL(svgBlob);
 
 	// Load the Image from the URL and wait until it's done
@@ -63,18 +58,6 @@ export async function extractPixelData(imageData: ImageBitmapSource): Promise<Im
 	const height = canvasContext.canvas.height;
 
 	return canvasContext.getImageData(0, 0, width, height);
-}
-
-/// Convert an image source (e.g. BMP document) into a PNG blob
-export async function imageToPNG(imageData: ImageBitmapSource): Promise<Blob> {
-	const canvasContext = await imageToCanvasContext(imageData);
-
-	return new Promise((resolve, reject) => {
-		canvasContext.canvas.toBlob((pngBlob) => {
-			if (pngBlob) resolve(pngBlob);
-			else reject("Converting canvas to blob data failed in imageToPNG()");
-		}, "image/png");
-	});
 }
 
 export async function imageToCanvasContext(imageData: ImageBitmapSource): Promise<CanvasRenderingContext2D> {

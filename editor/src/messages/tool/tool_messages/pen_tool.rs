@@ -62,6 +62,7 @@ pub enum PenToolMessage {
 	Undo,
 	UpdateOptions(PenOptionsUpdate),
 	RecalculateLatestPointsPosition,
+	RemovePreviousHandle,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -175,6 +176,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 				PointerMove,
 				Confirm,
 				Abort,
+				RemovePreviousHandle,
 			),
 		}
 	}
@@ -330,9 +332,8 @@ impl PenToolData {
 				},
 			});
 		}
-		if close_subpath {
-			responses.add(DocumentMessage::EndTransaction);
-		} else {
+		responses.add(DocumentMessage::EndTransaction);
+		if !close_subpath {
 			self.add_point(LastPoint {
 				id: end,
 				pos: next_point,
@@ -600,12 +601,12 @@ impl Fsm for PenToolFsmState {
 
 					if self == PenToolFsmState::DraggingHandle && valid(next_anchor, handle_end) {
 						// Draw the handle circle for the currently-being-dragged-out incoming handle (opposite the one currently being dragged out)
-						overlay_context.manipulator_handle(handle_end, false);
+						overlay_context.manipulator_handle(handle_end, false, None);
 					}
 
 					if valid(anchor_start, handle_start) {
 						// Draw the handle circle for the most recently placed anchor's outgoing handle (which is currently influencing the currently-being-placed segment)
-						overlay_context.manipulator_handle(handle_start, false);
+						overlay_context.manipulator_handle(handle_start, false, None);
 					}
 				} else {
 					// Draw the whole path and its manipulators when the user is clicking-and-dragging out from the most recently placed anchor to set its outgoing handle, during which it would otherwise not have its overlays drawn
@@ -614,7 +615,7 @@ impl Fsm for PenToolFsmState {
 
 				if self == PenToolFsmState::DraggingHandle && valid(next_anchor, next_handle_start) {
 					// Draw the handle circle for the currently-being-dragged-out outgoing handle (the one currently being dragged out, under the user's cursor)
-					overlay_context.manipulator_handle(next_handle_start, false);
+					overlay_context.manipulator_handle(next_handle_start, false, None);
 				}
 
 				if self == PenToolFsmState::DraggingHandle {
@@ -685,6 +686,15 @@ impl Fsm for PenToolFsmState {
 					PenToolFsmState::PlacingAnchor
 				}
 			}
+			(PenToolFsmState::PlacingAnchor, PenToolMessage::RemovePreviousHandle) => {
+				if let Some(last_point) = tool_data.latest_points.last_mut() {
+					last_point.handle_start = last_point.pos;
+					responses.add(OverlaysMessage::Draw);
+				} else {
+					log::warn!("No latest point available to modify handle_start.");
+				}
+				self
+			}
 			(PenToolFsmState::DraggingHandle, PenToolMessage::DragStop) => tool_data
 				.finish_placing_handle(SnapData::new(document, input), transform, responses)
 				.unwrap_or(PenToolFsmState::PlacingAnchor),
@@ -753,7 +763,7 @@ impl Fsm for PenToolFsmState {
 
 				state
 			}
-			(PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor, PenToolMessage::Abort | PenToolMessage::Confirm) => {
+			(PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor, PenToolMessage::Confirm) => {
 				responses.add(DocumentMessage::EndTransaction);
 				tool_data.handle_end = None;
 				tool_data.latest_points.clear();
@@ -782,9 +792,11 @@ impl Fsm for PenToolFsmState {
 			}
 			(_, PenToolMessage::Redo) => {
 				tool_data.point_index = (tool_data.point_index + 1).min(tool_data.latest_points.len().saturating_sub(1));
-				tool_data
-					.place_anchor(SnapData::new(document, input), transform, input.mouse.position, responses)
-					.unwrap_or(PenToolFsmState::PlacingAnchor)
+				tool_data.place_anchor(SnapData::new(document, input), transform, input.mouse.position, responses);
+				match tool_data.point_index {
+					0 => PenToolFsmState::Ready,
+					_ => PenToolFsmState::PlacingAnchor,
+				}
 			}
 			_ => self,
 		}

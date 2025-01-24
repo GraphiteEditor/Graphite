@@ -96,7 +96,6 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 					true => MappingVariant::ZoomWithScroll,
 				};
 				responses.add(KeyMappingMessage::ModifyMapping(variant));
-				responses.add(FrontendMessage::UpdateZoomWithScroll { zoom_with_scroll });
 			}
 		}
 

@@ -91,7 +91,6 @@ impl SnappingState {
 		match target {
 			SnapTarget::BoundingBox(target) => match target {
 				BoundingBoxSnapTarget::CornerPoint => self.bounding_box.corner_point,
-				BoundingBoxSnapTarget::AlongEdge => self.bounding_box.along_edge,
 				BoundingBoxSnapTarget::EdgeMidpoint => self.bounding_box.edge_midpoint,
 				BoundingBoxSnapTarget::CenterPoint => self.bounding_box.center_point,
 			},
@@ -106,7 +105,7 @@ impl SnappingState {
 			SnapTarget::Artboard(_) => self.artboards,
 			SnapTarget::Grid(_) => self.grid_snapping,
 			SnapTarget::Alignment(AlignmentSnapTarget::AlignWithAnchorPoint) => self.path.align_with_anchor_point,
-			SnapTarget::Alignment(_) => self.bounding_box.align_with_corner_point,
+			SnapTarget::Alignment(_) => self.bounding_box.align_with_edges,
 			SnapTarget::DistributeEvenly(_) => self.bounding_box.distribute_evenly,
 			_ => false,
 		}
@@ -119,8 +118,7 @@ pub struct BoundingBoxSnapping {
 	pub center_point: bool,
 	pub corner_point: bool,
 	pub edge_midpoint: bool,
-	pub along_edge: bool,
-	pub align_with_corner_point: bool,
+	pub align_with_edges: bool,
 	pub distribute_evenly: bool,
 }
 
@@ -130,8 +128,7 @@ impl Default for BoundingBoxSnapping {
 			center_point: true,
 			corner_point: true,
 			edge_midpoint: true,
-			along_edge: true,
-			align_with_corner_point: true,
+			align_with_edges: true,
 			distribute_evenly: true,
 		}
 	}
@@ -378,13 +375,11 @@ impl fmt::Display for SnapSource {
 }
 
 type GetSnapState = for<'a> fn(&'a mut SnappingState) -> &'a mut bool;
-pub const SNAP_FUNCTIONS_FOR_BOUNDING_BOXES: [(&str, GetSnapState, &str); 6] = [
+pub const SNAP_FUNCTIONS_FOR_BOUNDING_BOXES: [(&str, GetSnapState, &str); 5] = [
 	(
-		// TODO: Rename to "Beyond Edges" and update behavior to snap to an infinite extension of the bounding box edges
-		// TODO: (even when the layer is locally rotated) instead of horizontally/vertically aligning with the corner points
-		"Align with Corner Points",
-		(|snapping_state| &mut snapping_state.bounding_box.align_with_corner_point) as GetSnapState,
-		"Snaps to horizontal/vertical alignment with the corner points of any layer's bounding box",
+		"Align with Edges",
+		(|snapping_state| &mut snapping_state.bounding_box.align_with_edges) as GetSnapState,
+		"Snaps to horizontal/vertical alignment with the edges of any layer's bounding box",
 	),
 	(
 		"Corner Points",
@@ -400,11 +395,6 @@ pub const SNAP_FUNCTIONS_FOR_BOUNDING_BOXES: [(&str, GetSnapState, &str); 6] = [
 		"Edge Midpoints",
 		(|snapping_state| &mut snapping_state.bounding_box.edge_midpoint) as GetSnapState,
 		"Snaps to any of the four points at the middle of the edges of any layer's bounding box",
-	),
-	(
-		"Along Edges",
-		(|snapping_state| &mut snapping_state.bounding_box.along_edge) as GetSnapState,
-		"Snaps anywhere along the four edges of any layer's bounding box",
 	),
 	(
 		"Distribute Evenly",
@@ -463,7 +453,6 @@ pub enum BoundingBoxSnapTarget {
 	CornerPoint,
 	CenterPoint,
 	EdgeMidpoint,
-	AlongEdge,
 }
 
 impl fmt::Display for BoundingBoxSnapTarget {
@@ -472,7 +461,6 @@ impl fmt::Display for BoundingBoxSnapTarget {
 			BoundingBoxSnapTarget::CornerPoint => write!(f, "Bounding Box: Corner Point"),
 			BoundingBoxSnapTarget::CenterPoint => write!(f, "Bounding Box: Center Point"),
 			BoundingBoxSnapTarget::EdgeMidpoint => write!(f, "Bounding Box: Edge Midpoint"),
-			BoundingBoxSnapTarget::AlongEdge => write!(f, "Bounding Box: Along Edge"),
 		}
 	}
 }

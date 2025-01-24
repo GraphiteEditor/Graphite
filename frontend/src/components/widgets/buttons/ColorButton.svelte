@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import type { FillChoice } from "@graphite/wasm-communication/messages";
-	import { Color, Gradient } from "@graphite/wasm-communication/messages";
+	import type { FillChoice } from "@graphite/messages";
+	import { Color, Gradient } from "@graphite/messages";
 
 	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";

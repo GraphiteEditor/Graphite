@@ -76,8 +76,8 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 				self.tool_is_active = true;
 
 				// Send the old and new tools a transition to their FSM Abort states
-				let mut send_abort_to_tool = |tool_type, update_hints_and_cursor: bool| {
-					if let Some(tool) = tool_data.tools.get_mut(&tool_type) {
+				let mut send_abort_to_tool = |old_tool: ToolType, new_tool: ToolType, update_hints_and_cursor: bool| {
+					if let Some(tool) = tool_data.tools.get_mut(&new_tool) {
 						let mut data = ToolActionHandlerData {
 							document,
 							document_id,
@@ -101,9 +101,14 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 							tool.process_message(ToolMessage::UpdateCursor, responses, &mut data);
 						}
 					}
+
+					if matches!(old_tool, ToolType::Path | ToolType::Select) {
+						responses.add(TransformLayerMessage::CancelTransformOperation);
+					}
 				};
-				send_abort_to_tool(tool_type, true);
-				send_abort_to_tool(old_tool, false);
+
+				send_abort_to_tool(old_tool, tool_type, true);
+				send_abort_to_tool(old_tool, old_tool, false);
 
 				// Unsubscribe old tool from the broadcaster
 				tool_data.tools.get(&tool_type).unwrap().deactivate(responses);

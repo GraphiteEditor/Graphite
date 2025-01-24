@@ -1,5 +1,7 @@
 import { get } from "svelte/store";
 
+import { type Editor } from "@graphite/editor";
+import { TriggerPaste } from "@graphite/messages";
 import { type DialogState } from "@graphite/state-providers/dialog";
 import { type DocumentState } from "@graphite/state-providers/document";
 import { type FullscreenState } from "@graphite/state-providers/fullscreen";
@@ -9,8 +11,6 @@ import { platformIsMac } from "@graphite/utility-functions/platform";
 import { extractPixelData } from "@graphite/utility-functions/rasterization";
 import { stripIndents } from "@graphite/utility-functions/strip-indents";
 import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
-import { type Editor } from "@graphite/wasm-communication/editor";
-import { TriggerPaste } from "@graphite/wasm-communication/messages";
 
 type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap | "modifyinputfield";
 type EventListenerTarget = {
@@ -172,8 +172,8 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		}
 
 		if (!inTextInput && !inContextMenu) {
-			const isRightClick = e.button === 2;
-			if (textToolInteractiveInputElement) editor.handle.onChangeText(textInputCleanup(textToolInteractiveInputElement.innerText), isRightClick);
+			const isLeftOrRightClick = e.button === 2 || e.button === 0;
+			if (textToolInteractiveInputElement) editor.handle.onChangeText(textInputCleanup(textToolInteractiveInputElement.innerText), isLeftOrRightClick);
 			else viewportPointerInteractionOngoing = isTargetingCanvas instanceof Element;
 		}
 

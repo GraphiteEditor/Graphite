@@ -1,5 +1,5 @@
-import { type Editor } from "@graphite/wasm-communication/editor";
-import { TriggerAboutGraphiteLocalizedCommitDate } from "@graphite/wasm-communication/messages";
+import { type Editor } from "@graphite/editor";
+import { TriggerAboutGraphiteLocalizedCommitDate } from "@graphite/messages";
 
 export function createLocalizationManager(editor: Editor) {
 	// Subscribe to process backend event
