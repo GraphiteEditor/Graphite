@@ -116,6 +116,20 @@ impl ClosestSegment {
 		(stroke_width_sq + tolerance_sq) < dist_sq
 	}
 
+	pub fn handle_positions(&self, document_metadata: &DocumentMetadata) -> (Option<DVec2>, Option<DVec2>) {
+		// Transform to viewport space
+		let transform = document_metadata.transform_to_viewport(self.layer);
+
+		// Split the Bezier at the parameter `t`
+		let [first, second] = self.bezier.split(TValue::Parametric(self.t));
+
+		// Transform the handle positions to viewport space
+		let first_handle = first.handle_end().map(|handle| transform.transform_point2(handle));
+		let second_handle = second.handle_start().map(|handle| transform.transform_point2(handle));
+
+		(first_handle, second_handle)
+	}
+
 	pub fn adjusted_insert(&self, responses: &mut VecDeque<Message>) -> PointId {
 		let layer = self.layer;
 		let [first, second] = self.bezier.split(TValue::Parametric(self.t));

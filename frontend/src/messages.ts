@@ -73,6 +73,14 @@ export class UpdateInSelectedNetwork extends JsMessage {
 	readonly inSelectedNetwork!: boolean;
 }
 
+export class UpdateImportReorderIndex extends JsMessage {
+	readonly importIndex!: number | undefined;
+}
+
+export class UpdateExportReorderIndex extends JsMessage {
+	readonly exportIndex!: number | undefined;
+}
+
 const LayerWidths = Transform(({ obj }) => obj.layerWidths);
 const ChainWidths = Transform(({ obj }) => obj.chainWidths);
 const HasLeftInputWire = Transform(({ obj }) => obj.hasLeftInputWire);
@@ -130,10 +138,6 @@ export class UpdateWirePathInProgress extends JsMessage {
 	readonly wirePath!: WirePath | undefined;
 }
 
-export class UpdateZoomWithScroll extends JsMessage {
-	readonly zoomWithScroll!: boolean;
-}
-
 // Allows the auto save system to use a string for the id rather than a BigInt.
 // IndexedDb does not allow for BigInts as primary keys.
 // TypeScript does not allow subclasses to change the type of class variables in subclasses.
@@ -174,6 +178,7 @@ export type FrontendClickTargets = {
 	readonly iconClickTargets: string[];
 	readonly allNodesBoundingBox: string;
 	readonly importExportsBoundingBox: string;
+	readonly modifyImportExport: string[];
 };
 
 export type ContextMenuInformation = {
@@ -182,7 +187,7 @@ export type ContextMenuInformation = {
 	contextMenuData: "CreateNode" | { nodeId: bigint; currentlyIsNode: boolean };
 };
 
-export type FrontendGraphDataType = "General" | "Raster" | "VectorData" | "Number" | "Graphic" | "Artboard";
+export type FrontendGraphDataType = "General" | "Raster" | "VectorData" | "Number" | "Group" | "Artboard";
 
 export class Node {
 	readonly index!: bigint;
@@ -213,6 +218,8 @@ export class FrontendGraphInput {
 	readonly name!: string;
 
 	readonly resolvedType!: string | undefined;
+
+	readonly validTypes!: string[];
 
 	@CreateOutputConnectorOptional
 	connectedTo!: Node | undefined;
@@ -778,17 +785,7 @@ export class TriggerImport extends JsMessage {}
 
 export class TriggerPaste extends JsMessage {}
 
-export class TriggerCopyToClipboardBlobUrl extends JsMessage {
-	readonly blobUrl!: string;
-}
-
 export class TriggerDelayedZoomCanvasToFitAll extends JsMessage {}
-
-export class TriggerDownloadBlobUrl extends JsMessage {
-	readonly layerName!: string;
-
-	readonly blobUrl!: string;
-}
 
 export class TriggerDownloadImage extends JsMessage {
 	readonly svg!: string;
@@ -805,10 +802,6 @@ export class TriggerDownloadTextFile extends JsMessage {
 	readonly document!: string;
 
 	readonly name!: string;
-}
-
-export class TriggerRevokeBlobUrl extends JsMessage {
-	readonly url!: string;
 }
 
 export class TriggerSavePreferences extends JsMessage {
@@ -1574,9 +1567,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayRemoveEditableTextbox,
 	SendUIMetadata,
 	TriggerAboutGraphiteLocalizedCommitDate,
-	TriggerCopyToClipboardBlobUrl,
 	TriggerDelayedZoomCanvasToFitAll,
-	TriggerDownloadBlobUrl,
 	TriggerDownloadImage,
 	TriggerDownloadTextFile,
 	TriggerFetchAndOpenDocument,
@@ -1589,7 +1580,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerLoadPreferences,
 	TriggerOpenDocument,
 	TriggerPaste,
-	TriggerRevokeBlobUrl,
 	TriggerSavePreferences,
 	TriggerTextCommit,
 	TriggerTextCopy,
@@ -1615,6 +1605,8 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateImportsExports,
 	UpdateInputHints,
 	UpdateInSelectedNetwork,
+	UpdateExportReorderIndex,
+	UpdateImportReorderIndex,
 	UpdateLayersPanelControlBarLayout,
 	UpdateLayerWidths,
 	UpdateMenuBarLayout,
@@ -1630,6 +1622,5 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateToolShelfLayout,
 	UpdateWirePathInProgress,
 	UpdateWorkingColorsLayout,
-	UpdateZoomWithScroll,
 } as const;
 export type JsMessageType = keyof typeof messageMakers;

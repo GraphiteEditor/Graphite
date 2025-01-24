@@ -12,7 +12,7 @@ use editor::consts::FILE_SAVE_SUFFIX;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use editor::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
+use editor::messages::portfolio::document::utility_types::network_interface::{ImportOrExport, NodeTemplate};
 use editor::messages::portfolio::utility_types::Platform;
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
@@ -28,7 +28,7 @@ use wasm_bindgen::prelude::*;
 
 // /// We directly interface with the updateImage JS function for massively increased performance over serializing and deserializing.
 // /// This avoids creating a json with a list millions of numbers long.
-// #[wasm_bindgen(module = "/../src/wasm-communication/editor.ts")]
+// #[wasm_bindgen(module = "/../src/editor.ts")]
 // extern "C" {
 // 	// fn dispatchTauri(message: String) -> String;
 // 	fn dispatchTauri(message: String);
@@ -434,8 +434,8 @@ impl EditorHandle {
 
 	/// A text box was committed
 	#[wasm_bindgen(js_name = onChangeText)]
-	pub fn on_change_text(&self, new_text: String, is_right_click: bool) -> Result<(), JsValue> {
-		let message = TextToolMessage::TextChange { new_text, is_right_click };
+	pub fn on_change_text(&self, new_text: String, is_left_or_right_click: bool) -> Result<(), JsValue> {
+		let message = TextToolMessage::TextChange { new_text, is_left_or_right_click };
 		self.dispatch(message);
 
 		Ok(())
@@ -698,6 +698,26 @@ impl EditorHandle {
 		self.dispatch(DocumentMessage::SetToNodeOrLayer { node_id: NodeId(id), is_layer });
 	}
 
+	/// Set the name of an import or export
+	#[wasm_bindgen(js_name = setImportName)]
+	pub fn set_import_name(&self, index: usize, name: String) {
+		let message = NodeGraphMessage::SetImportExportName {
+			name,
+			index: ImportOrExport::Import(index),
+		};
+		self.dispatch(message);
+	}
+
+	/// Set the name of an export
+	#[wasm_bindgen(js_name = setExportName)]
+	pub fn set_export_name(&self, index: usize, name: String) {
+		let message = NodeGraphMessage::SetImportExportName {
+			name,
+			index: ImportOrExport::Export(index),
+		};
+		self.dispatch(message);
+	}
+
 	#[wasm_bindgen(js_name = injectImaginatePollServerStatus)]
 	pub fn inject_imaginate_poll_server_status(&self) {
 		self.dispatch(PortfolioMessage::ImaginatePollServerStatus);
@@ -756,7 +776,10 @@ impl EditorHandle {
 			if let Some(network) = document_node.implementation.get_network() {
 				let mut nodes_to_upgrade = Vec::new();
 				for (node_id, _) in network.nodes.iter().collect::<Vec<_>>() {
-					if document.network_interface.reference(node_id, &[]).is_some_and(|reference| reference == "To Artboard")
+					if document
+						.network_interface
+						.reference(node_id, &[])
+						.is_some_and(|reference| *reference == Some("To Artboard".to_string()))
 						&& document
 							.network_interface
 							.network(&[])
@@ -772,7 +795,7 @@ impl EditorHandle {
 					document
 						.network_interface
 						.replace_implementation(&node_id, &[], DocumentNodeImplementation::proto("graphene_core::ToArtboardNode"));
-					document.network_interface.add_import(TaggedValue::IVec2(glam::IVec2::default()), false, 2, "".to_string(), &[node_id]);
+					document.network_interface.add_import(TaggedValue::IVec2(glam::IVec2::default()), false, 2, "", &[node_id]);
 				}
 			}
 		}

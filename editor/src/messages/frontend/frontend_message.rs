@@ -58,17 +58,7 @@ pub enum FrontendMessage {
 		#[serde(rename = "commitDate")]
 		commit_date: String,
 	},
-	TriggerCopyToClipboardBlobUrl {
-		#[serde(rename = "blobUrl")]
-		blob_url: String,
-	},
 	TriggerDelayedZoomCanvasToFitAll,
-	TriggerDownloadBlobUrl {
-		#[serde(rename = "layerName")]
-		layer_name: String,
-		#[serde(rename = "blobUrl")]
-		blob_url: String,
-	},
 	TriggerDownloadImage {
 		svg: String,
 		name: String,
@@ -100,9 +90,6 @@ pub enum FrontendMessage {
 	TriggerLoadPreferences,
 	TriggerOpenDocument,
 	TriggerPaste,
-	TriggerRevokeBlobUrl {
-		url: String,
-	},
 	TriggerSavePreferences {
 		preferences: PreferencesMessageHandler,
 	},
@@ -159,6 +146,14 @@ pub enum FrontendMessage {
 	},
 	UpdateGraphViewOverlay {
 		open: bool,
+	},
+	UpdateImportReorderIndex {
+		#[serde(rename = "importIndex")]
+		index: Option<usize>,
+	},
+	UpdateExportReorderIndex {
+		#[serde(rename = "exportIndex")]
+		index: Option<usize>,
 	},
 	UpdateLayerWidths {
 		#[serde(rename = "layerWidths")]
@@ -294,9 +289,5 @@ pub enum FrontendMessage {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
-	},
-	UpdateZoomWithScroll {
-		#[serde(rename = "zoomWithScroll")]
-		zoom_with_scroll: bool,
 	},
 }
