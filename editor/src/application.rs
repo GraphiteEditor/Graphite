@@ -75,6 +75,7 @@ mod test {
 				document_is_auto_saved: true,
 				document_is_saved: true,
 				document_serialized_content: r#" [removed until test is reenabled] "#.into(),
+				to_front: false,
 			}
 			.into(),
 			InputPreprocessorMessage::BoundsOfViewports {
