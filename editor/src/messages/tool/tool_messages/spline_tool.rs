@@ -193,6 +193,7 @@ struct SplineToolData {
 	preview_point: Option<PointId>,
 	/// Segment that was inserted temporarily to show preview.
 	preview_segment: Option<SegmentId>,
+	extend: bool,
 	weight: f64,
 	layer: Option<LayerNodeIdentifier>,
 	snap_manager: SnapManager,
@@ -204,6 +205,7 @@ impl SplineToolData {
 		self.layer = None;
 		self.preview_point = None;
 		self.preview_segment = None;
+		self.extend = false;
 		self.points = Vec::new();
 	}
 
@@ -251,6 +253,7 @@ impl Fsm for SplineToolFsmState {
 					tool_data.points.push((point, position));
 					// update next point to preview current mouse pos instead of pointing last mouse pos when DragStop event occured.
 					tool_data.next_point = position;
+					tool_data.extend = true;
 
 					extend_spline(tool_data, true, responses);
 
@@ -292,6 +295,11 @@ impl Fsm for SplineToolFsmState {
 				SplineToolFsmState::Drawing
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::DragStop) => {
+				// if extending ignore first DragStop event to avoid inserting new point.
+				if tool_data.extend {
+					tool_data.extend = false;
+					return SplineToolFsmState::Drawing;
+				}
 				if tool_data.layer.is_none() {
 					return SplineToolFsmState::Ready;
 				};
