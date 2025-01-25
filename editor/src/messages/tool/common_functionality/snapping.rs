@@ -11,7 +11,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::misc::{GridSnapTarget, PathSnapTarget, SnapTarget};
 use crate::messages::prelude::*;
 
-use bezier_rs::{Subpath, TValue};
+use bezier_rs::TValue;
 use graphene_core::renderer::Quad;
 use graphene_core::vector::PointId;
 use graphene_std::renderer::Rect;
@@ -151,7 +151,7 @@ fn get_closest_intersection(snap_to: DVec2, curves: &[SnappedCurve]) -> Option<S
 						distance,
 						target: SnapTarget::Path(PathSnapTarget::IntersectionPoint),
 						tolerance: close.point.tolerance,
-						curves: [Some(close.document_curve), Some(far.document_curve)],
+						layers: [Some(close.layer), Some(far.layer)],
 						source: close.point.source,
 						at_intersection: true,
 						constrained: true,
@@ -443,9 +443,9 @@ impl SnapManager {
 	pub fn draw_overlays(&mut self, snap_data: SnapData, overlay_context: &mut OverlayContext) {
 		let to_viewport = snap_data.document.metadata().document_to_viewport;
 		if let Some(ind) = &self.indicator {
-			for curve in &ind.curves {
-				let Some(curve) = curve else { continue };
-				overlay_context.outline([Subpath::from_bezier(curve)].iter(), to_viewport);
+			for layer in &ind.layers {
+				let &Some(layer) = layer else { continue };
+				overlay_context.outline(snap_data.document.metadata().layer_outline(layer), snap_data.document.metadata().transform_to_viewport(layer));
 			}
 			if let Some(quad) = ind.target_bounds {
 				overlay_context.quad(to_viewport * quad, None);

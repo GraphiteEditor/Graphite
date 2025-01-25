@@ -27,7 +27,7 @@ pub struct SnappedPoint {
 	pub fully_constrained: bool,
 	pub target_bounds: Option<Quad>,
 	pub source_bounds: Option<Quad>,
-	pub curves: [Option<Bezier>; 2],
+	pub layers: [Option<LayerNodeIdentifier>; 2],
 	pub distance: f64,
 	pub tolerance: f64,
 	pub distribution_boxes_x: VecDeque<Rect>,
