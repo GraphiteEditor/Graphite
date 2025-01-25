@@ -55,7 +55,7 @@ fn ellipse<F: 'n + Send>(#[implementations((), Footprint)] _footprint: F, _prima
 	ellipse
 }
 
-#[node_macro::node(category("Vector: Shape"))]
+#[node_macro::node(category("Vector: Shape"), properties("rectangle_properties"))]
 fn rectangle<F: 'n + Send, T: CornerRadius>(
 	#[implementations((), Footprint)] _footprint: F,
 	_primary: (),

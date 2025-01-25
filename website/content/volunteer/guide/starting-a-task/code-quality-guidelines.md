@@ -27,15 +27,15 @@ Always use the style `42.` instead of `42.0` for whole-number floats to maintain
 
 ## Comments
 
-For consistency, please try to write comments in *Sentence case* (starting with a capital letter). End with a period only if multiple sentences are used in the same comment. For doc comments (`///`), always write in full sentences ending with a period. There should always be one space after the `//` or `///` comment markers, and `/* */` style comments shouldn't be used.
+For consistency, please try to write comments (`//`) in *Sentence case* (with a capital first letter) and don't end with a period unless multiple sentences are used in the same comment. For doc comments (`///`), always end your sentences with a period. There should always be one space after the `//` or `///` comment markers, and `/* */` style comments should be avoided.
 
 Avoid including commented-out code, unless you have a compelling reason to keep it around for future adaption, in your PRs that are open for code review.
 
-Comments should usually be placed on a separate line above the code they are referring to, not at the end of the code line.
+Comments should usually be placed on a separate line above the code they are referring to, not at the end of the same code line.
 
 ## Blank lines
 
-Please make a habit of grouping together related lines of codes in blocks separated by blank lines. If you have dozens of lines comprising a single unbroken block of logic, you are likely not splitting it apart enough to aid readability. Find sensible places to partition the logic and insert blank lines between each. Roughly 10% of the code you write should ideally be blank lines, otherwise you are likely underutilizing them at the expense of readability.
+Please make a habit of grouping together related lines of code in blocks separated by blank lines. If you have dozens of lines comprising a single unbroken block of logic, you are likely not splitting it apart enough to aid readability. Find sensible places to partition the logic and insert blank lines between each. Roughly 10% of the code you write should ideally be blank lines, otherwise you are likely underutilizing them at the expense of readability.
 
 ## Imports
 

@@ -31,6 +31,7 @@
 	--variable-px: Min(1px, 0.15vw);
 	--page-edge-padding: 40px;
 	--border-thickness: 2px;
+	--feature-box-padding: 80;
 	--font-size-link: calc(1rem * 4 / 3);
 }
 
@@ -53,6 +54,7 @@ body {
 		--font-size-link: calc(1rem * 4 / 3);
 		--page-edge-padding: 28px;
 		--border-thickness: 1px;
+		--feature-box-padding: 40;
 	}
 
 	html,
