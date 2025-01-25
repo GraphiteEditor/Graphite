@@ -21,9 +21,8 @@ use graphene_core::text::load_face;
 use graphene_std::renderer::Rect;
 use graphene_std::vector::misc::BooleanOperation;
 
-use std::fmt;
-
 use glam::DMat2;
+use std::fmt;
 
 #[derive(Default)]
 pub struct SelectTool {

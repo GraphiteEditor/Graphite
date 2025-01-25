@@ -58,8 +58,9 @@ impl ClickTarget {
 	}
 
 	/// Does the click target intersect the path
-	pub fn intersect_path<It: Iterator<Item = bezier_rs::Bezier>>(&self, mut bezier_iter: impl FnMut() -> It, mut layer_transform: DAffine2) -> bool {
+	pub fn intersect_path<It: Iterator<Item = bezier_rs::Bezier>>(&self, mut bezier_iter: impl FnMut() -> It, layer_transform: DAffine2) -> bool {
 		// Check if the matrix is not invertible
+		let mut layer_transform = layer_transform;
 		if layer_transform.matrix2.determinant().abs() <= f64::EPSILON {
 			layer_transform.matrix2 += DMat2::IDENTITY * 1e-4;
 		}
