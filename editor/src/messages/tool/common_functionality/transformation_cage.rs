@@ -1,4 +1,4 @@
-use crate::consts::{BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, SELECTION_DRAG_ANGLE};
+use crate::consts::{BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, MIN_LENGTH_FOR_CORNERS_VISIBILITY, MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, SELECTION_DRAG_ANGLE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::transformation::OriginalTransforms;
@@ -308,21 +308,21 @@ impl BoundingBoxManager {
 
 		let vertical_length = (corners[0] - corners[1]).length_squared();
 		let horizontal_length = (corners[3] - corners[0]).length_squared();
-		debug!("{vertical_length} {horizontal_length}");
 		let vertical_edge_visible = vertical_length > MIN_LENGTH_FOR_MIDPOINT_VISIBILITY.powi(2);
 		let horizontal_edge_visible = horizontal_length > MIN_LENGTH_FOR_MIDPOINT_VISIBILITY.powi(2);
+		let corners_visible = vertical_length > MIN_LENGTH_FOR_CORNERS_VISIBILITY.powi(2) && horizontal_length > MIN_LENGTH_FOR_CORNERS_VISIBILITY;
 		let narrow = (self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any();
 
 		let mut draw_handle = |point: DVec2| overlay_context.square(point, Some(6.), None, None);
 		if !narrow {
-			if vertical_edge_visible || horizontal_edge_visible {
-				corners.map(&mut draw_handle);
+			if corners_visible {
 				if vertical_edge_visible {
 					vertical_edges.map(&mut draw_handle);
 				}
 				if horizontal_edge_visible {
 					horizontal_edges.map(&mut draw_handle);
 				}
+				corners.map(&mut draw_handle);
 			} else {
 				vertical_edges.map(&mut draw_handle);
 				horizontal_edges.map(&mut draw_handle);

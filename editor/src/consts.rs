@@ -45,6 +45,7 @@ pub const BIG_NUDGE_AMOUNT: f64 = 10.;
 
 // Select quad overlay category limit
 pub const MIN_LENGTH_FOR_MIDPOINT_VISIBILITY: f64 = 20.;
+pub const MIN_LENGTH_FOR_CORNERS_VISIBILITY: f64 = 12.;
 
 // Tools
 pub const DEFAULT_STROKE_WIDTH: f64 = 2.;
