@@ -293,18 +293,21 @@ fn generate_transform(tool_data: &mut LineToolData, snap_data: SnapData, lock_an
 
 	let mut angle = -(document_points[1] - document_points[0]).angle_to(DVec2::X);
 	let mut line_length = (document_points[1] - document_points[0]).length();
+
 	if lock_angle {
 		angle = tool_data.angle;
-	}
-	if snap_angle {
+	} else if snap_angle {
 		let snap_resolution = LINE_ROTATE_SNAP_ANGLE.to_radians();
 		angle = (angle / snap_resolution).round() * snap_resolution;
 	}
+
+	tool_data.angle = angle;
 
 	if lock_angle {
 		let angle_vec = DVec2::new(angle.cos(), angle.sin());
 		line_length = (document_points[1] - document_points[0]).dot(angle_vec);
 	}
+
 	document_points[1] = document_points[0] + line_length * DVec2::new(angle.cos(), angle.sin());
 
 	let constrained = snap_angle || lock_angle;
