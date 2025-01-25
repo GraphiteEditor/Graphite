@@ -151,7 +151,7 @@ fn get_closest_intersection(snap_to: DVec2, curves: &[SnappedCurve]) -> Option<S
 						distance,
 						target: SnapTarget::Path(PathSnapTarget::IntersectionPoint),
 						tolerance: close.point.tolerance,
-						layers: [Some(close.layer), Some(far.layer)],
+						outline_layers: [Some(close.layer), Some(far.layer)],
 						source: close.point.source,
 						at_intersection: true,
 						constrained: true,
@@ -443,7 +443,7 @@ impl SnapManager {
 	pub fn draw_overlays(&mut self, snap_data: SnapData, overlay_context: &mut OverlayContext) {
 		let to_viewport = snap_data.document.metadata().document_to_viewport;
 		if let Some(ind) = &self.indicator {
-			for layer in &ind.layers {
+			for layer in &ind.outline_layers {
 				let &Some(layer) = layer else { continue };
 				overlay_context.outline(snap_data.document.metadata().layer_outline(layer), snap_data.document.metadata().transform_to_viewport(layer));
 			}
