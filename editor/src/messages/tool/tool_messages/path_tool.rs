@@ -1061,7 +1061,7 @@ impl Fsm for PathToolFsmState {
 					HintInfo::keys([Key::Delete], "Delete Selected"),
 					// TODO: Only show the following hints if at least one anchor is selected
 					HintInfo::keys([Key::Accel], "No Dissolve").prepend_plus(),
-					HintInfo::keys([Key::Shift], "Break Anchor").prepend_plus(),
+					HintInfo::keys([Key::Shift], "Cut Anchor").prepend_plus(),
 				]),
 			]),
 			PathToolFsmState::Dragging(dragging_state) => {
