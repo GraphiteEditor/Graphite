@@ -26,11 +26,8 @@ pub struct OverlayContext {
 	#[specta(skip)]
 	pub render_context: web_sys::CanvasRenderingContext2d,
 	pub size: DVec2,
-	// The device pixel ratio is a property provided
-	// by the browser window and is the css pixel size
-	// divided by the physical pixel size. It allows
-	// better pixel density of visualizations on
-	// high dpi displays (such as Retina displays).
+	// The device pixel ratio is a property provided by the browser window and is the CSS pixel size divided by the physical monitor's pixel size.
+	// It allows better pixel density of visualizations on high-DPI displays where the OS display scaling is not 100%, or where the browser is zoomed.
 	pub device_pixel_ratio: f64,
 }
 // Message hashing isn't used but is required by the message system macros
@@ -44,8 +41,9 @@ impl OverlayContext {
 	}
 
 	pub fn dashed_quad(&mut self, quad: Quad, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
-		// Set the dash pattern
 		self.start_dpi_aware_transform();
+
+		// Set the dash pattern
 		if let Some(dash_width) = dash_width {
 			let dash_gap_width = dash_gap_width.unwrap_or(1.);
 			let array = js_sys::Array::new();
@@ -89,6 +87,7 @@ impl OverlayContext {
 		if dash_offset.is_some() && dash_offset != Some(0.) {
 			self.render_context.set_line_dash_offset(0.);
 		}
+
 		self.end_dpi_aware_transform();
 	}
 
@@ -97,8 +96,9 @@ impl OverlayContext {
 	}
 
 	pub fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
-		// Set the dash pattern
 		self.start_dpi_aware_transform();
+
+		// Set the dash pattern
 		if let Some(dash_width) = dash_width {
 			let dash_gap_width = dash_gap_width.unwrap_or(1.);
 			let array = js_sys::Array::new();
@@ -136,11 +136,13 @@ impl OverlayContext {
 		if dash_offset.is_some() && dash_offset != Some(0.) {
 			self.render_context.set_line_dash_offset(0.);
 		}
+
 		self.end_dpi_aware_transform();
 	}
 
 	pub fn manipulator_handle(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
 		self.start_dpi_aware_transform();
+
 		let position = position.round() - DVec2::splat(0.5);
 
 		self.render_context.begin_path();
@@ -153,6 +155,7 @@ impl OverlayContext {
 		self.render_context.set_stroke_style_str(color.unwrap_or(COLOR_OVERLAY_BLUE));
 		self.render_context.fill();
 		self.render_context.stroke();
+
 		self.end_dpi_aware_transform();
 	}
 
@@ -162,10 +165,9 @@ impl OverlayContext {
 		self.square(position, None, Some(color_fill), Some(color_stroke));
 	}
 
-	/// Transforms the Canvas Context To Adjust for DPI
+	/// Transforms the canvas context to adjust for DPI scaling
 	///
-	/// Overwrites all existing tranforms.
-	/// This operation can be reversed with [`Self::reset_transform`].
+	/// Overwrites all existing tranforms. This operation can be reversed with [`Self::reset_transform`].
 	fn start_dpi_aware_transform(&self) {
 		let [a, b, c, d, e, f] = DAffine2::from_scale(DVec2::splat(self.device_pixel_ratio)).to_cols_array();
 		self.render_context
@@ -173,10 +175,9 @@ impl OverlayContext {
 			.expect("transform should be able to be set to be able to account for DPI");
 	}
 
-	/// Untransforms the Canvas Context To Adjust for DPI
+	/// Un-transforms the Canvas context to adjust for DPI scaling
 	///
-	/// Warning: this function doesn't only reset the
-	/// DPI adjustment, it resets the entire transform.
+	/// Warning: this function doesn't only reset the DPI scaling adjustment, it resets the entire transform.
 	fn end_dpi_aware_transform(&self) {
 		self.render_context.reset_transform().expect("transform should be able to be reset to be able to account for DPI");
 	}
@@ -190,12 +191,14 @@ impl OverlayContext {
 		let corner = position - DVec2::splat(size) / 2.;
 
 		self.start_dpi_aware_transform();
+
 		self.render_context.begin_path();
 		self.render_context.rect(corner.x, corner.y, size, size);
 		self.render_context.set_fill_style_str(color_fill);
 		self.render_context.set_stroke_style_str(color_stroke);
 		self.render_context.fill();
 		self.render_context.stroke();
+
 		self.end_dpi_aware_transform();
 	}
 
@@ -207,10 +210,12 @@ impl OverlayContext {
 		let corner = position - DVec2::splat(size) / 2.;
 
 		self.start_dpi_aware_transform();
+
 		self.render_context.begin_path();
 		self.render_context.rect(corner.x, corner.y, size, size);
 		self.render_context.set_fill_style_str(color_fill);
 		self.render_context.fill();
+
 		self.end_dpi_aware_transform();
 	}
 
@@ -220,12 +225,14 @@ impl OverlayContext {
 		let position = position.round();
 
 		self.start_dpi_aware_transform();
+
 		self.render_context.begin_path();
 		self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("Failed to draw the circle");
 		self.render_context.set_fill_style_str(color_fill);
 		self.render_context.set_stroke_style_str(color_stroke);
 		self.render_context.fill();
 		self.render_context.stroke();
+
 		self.end_dpi_aware_transform();
 	}
 
@@ -291,6 +298,7 @@ impl OverlayContext {
 		let (x, y) = (position.round() - DVec2::splat(0.5)).into();
 
 		self.start_dpi_aware_transform();
+
 		// Circle
 
 		self.render_context.begin_path();
@@ -315,11 +323,15 @@ impl OverlayContext {
 		self.render_context.move_to(x, y - crosshair_radius);
 		self.render_context.line_to(x, y + crosshair_radius);
 		self.render_context.stroke();
+
+		self.render_context.set_line_cap("butt");
+
 		self.end_dpi_aware_transform();
 	}
 
 	pub fn outline_vector(&mut self, vector_data: &VectorData, transform: DAffine2) {
 		self.start_dpi_aware_transform();
+
 		self.render_context.begin_path();
 		let mut last_point = None;
 		for (_, bezier, start_id, end_id) in vector_data.segment_bezier_iter() {
@@ -331,20 +343,24 @@ impl OverlayContext {
 
 		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
 		self.render_context.stroke();
+
 		self.end_dpi_aware_transform();
 	}
 
 	pub fn outline_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
 		self.start_dpi_aware_transform();
+
 		self.render_context.begin_path();
 		self.bezier_command(bezier, transform, true);
 		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
 		self.render_context.stroke();
+
 		self.end_dpi_aware_transform();
 	}
 
 	fn bezier_command(&self, bezier: Bezier, transform: DAffine2, move_to: bool) {
 		self.start_dpi_aware_transform();
+
 		let Bezier { start, end, handles } = bezier.apply_transformation(|point| transform.transform_point2(point));
 		if move_to {
 			self.render_context.move_to(start.x, start.y);
@@ -355,11 +371,13 @@ impl OverlayContext {
 			bezier_rs::BezierHandles::Quadratic { handle } => self.render_context.quadratic_curve_to(handle.x, handle.y, end.x, end.y),
 			bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => self.render_context.bezier_curve_to(handle_start.x, handle_start.y, handle_end.x, handle_end.y, end.x, end.y),
 		}
+
 		self.end_dpi_aware_transform();
 	}
 
 	pub fn outline(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
 		self.start_dpi_aware_transform();
+
 		self.render_context.begin_path();
 		for subpath in subpaths {
 			let subpath = subpath.borrow();
@@ -406,6 +424,7 @@ impl OverlayContext {
 
 		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
 		self.render_context.stroke();
+
 		self.end_dpi_aware_transform();
 	}
 

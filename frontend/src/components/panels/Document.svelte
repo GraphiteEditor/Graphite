@@ -370,7 +370,22 @@
 	}
 
 	onMount(() => {
-		devicePixelRatio = window.devicePixelRatio;
+		// Not compatible with Safari:
+		// <https://developer.mozilla.org/en-US/docs/Web/API/Window/devicePixelRatio#browser_compatibility>
+		// <https://bugs.webkit.org/show_bug.cgi?id=124862>
+		let removeUpdatePixelRatio: (() => void) | undefined = undefined;
+		const updatePixelRatio = () => {
+			removeUpdatePixelRatio?.();
+			const mediaQueryList = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+			// The event is one-time use, so we have to set up a new listener and remove the old one every time
+			mediaQueryList.addEventListener("change", updatePixelRatio);
+			removeUpdatePixelRatio = () => mediaQueryList.removeEventListener("change", updatePixelRatio);
+
+			devicePixelRatio = window.devicePixelRatio;
+			editor.handle.setDevicePixelRatio(devicePixelRatio);
+		};
+		updatePixelRatio();
+
 		// Update rendered SVGs
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentArtwork, async (data) => {
 			await tick();
