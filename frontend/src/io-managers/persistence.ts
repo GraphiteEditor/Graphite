@@ -20,18 +20,10 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 
 	async function storeDocumentOrder() {
 		const documentOrder = getFromStore(portfolio).documents.map((doc) => String(doc.id));
-
 		await set("documents_tab_order", documentOrder, graphiteStore);
 	}
 
-	async function storeCurrentDocumentIndex() {
-		const documentIndex = getFromStore(portfolio).activeDocumentIndex;
-		const documentId = getFromStore(portfolio).documents[documentIndex].id;
-
-		await storeCurrentDocumentByID(String(documentId));
-	}
-
-	async function storeCurrentDocumentByID(documentId: string) {
+	async function storeCurrentDocumentId(documentId: string) {
 		await set("current_document_id", String(documentId), graphiteStore);
 	}
 
@@ -47,7 +39,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 		);
 
 		await storeDocumentOrder();
-		await storeCurrentDocumentByID(autoSaveDocument.details.id);
+		await storeCurrentDocumentId(autoSaveDocument.details.id);
 	}
 
 	async function removeDocument(id: string) {
@@ -63,7 +55,10 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 
 		const documentCount = getFromStore(portfolio).documents.length;
 		if (documentCount > 0) {
-			await storeCurrentDocumentIndex();
+			const documentIndex = getFromStore(portfolio).activeDocumentIndex;
+			const documentId = getFromStore(portfolio).documents[documentIndex].id;
+
+			await storeCurrentDocumentId(String(documentId));
 		} else {
 			await del("current_document_id", graphiteStore);
 		}
@@ -103,24 +98,33 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 
 		if (currentDocumentId) {
 			const currentIndex = orderedSavedDocuments.findIndex((doc) => doc.details.id === currentDocumentId);
-			for (let i = currentIndex - 1; i >= 0; i--) {
-				const doc = orderedSavedDocuments[i];
-				editor.handle.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document, true);
+			const beforeCurrentIndex = currentIndex - 1;
+			const afterCurrentIndex = currentIndex + 1;
+
+			for (let i = beforeCurrentIndex; i >= 0; i--) {
+				const { document, details } = orderedSavedDocuments[i];
+				const { id, name, isSaved } = details;
+				editor.handle.openAutoSavedDocument(BigInt(id), name, isSaved, document, true);
 			}
-			for (let i = currentIndex + 1; i < orderedSavedDocuments.length; i++) {
-				const doc = orderedSavedDocuments[i];
-				editor.handle.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document, false);
+			for (let i = afterCurrentIndex; i < orderedSavedDocuments.length; i++) {
+				const { document, details } = orderedSavedDocuments[i];
+				const { id, name, isSaved } = details;
+				editor.handle.openAutoSavedDocument(BigInt(id), name, isSaved, document, false);
 			}
+
 			editor.handle.selectDocument(BigInt(currentDocumentId));
 		} else {
-			const len = orderedSavedDocuments.length;
-			for (let i = len - 2; i >= 0; i--) {
-				const doc = orderedSavedDocuments[i];
-				editor.handle.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document, true);
+			const length = orderedSavedDocuments.length;
+
+			for (let i = length - 2; i >= 0; i--) {
+				const { document, details } = orderedSavedDocuments[i];
+				const { id, name, isSaved } = details;
+				editor.handle.openAutoSavedDocument(BigInt(id), name, isSaved, document, true);
 			}
-			if (len > 0) {
-				const doc = orderedSavedDocuments[len - 1];
-				editor.handle.selectDocument(BigInt(doc.details.id));
+
+			if (length > 0) {
+				const id = orderedSavedDocuments[length - 1].details.id;
+				editor.handle.selectDocument(BigInt(id));
 			}
 		}
 	}
@@ -159,12 +163,12 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 	editor.subscriptions.subscribeJsMessage(TriggerLoadRestAutoSaveDocuments, async () => {
 		await loadRestDocuments();
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerSaveActiveDocument, async (activeDocument) => {
-		const documentId = String(activeDocument.documentId);
+	editor.subscriptions.subscribeJsMessage(TriggerSaveActiveDocument, async (triggerSaveActiveDocument) => {
+		const documentId = String(triggerSaveActiveDocument.documentId);
 		const previouslySavedDocuments = await get<Record<string, TriggerIndexedDbWriteDocument>>("documents", graphiteStore);
 		if (!previouslySavedDocuments) return;
 		if (documentId in previouslySavedDocuments) {
-			await storeCurrentDocumentByID(documentId);
+			await storeCurrentDocumentId(documentId);
 		}
 	});
 }

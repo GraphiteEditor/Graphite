@@ -117,7 +117,7 @@ pub struct DocumentMessageHandler {
 	/// If the user clicks or Ctrl-clicks one layer, it becomes the start of the range selection and then Shift-clicking another layer selects all layers between the start and end.
 	#[serde(skip)]
 	layer_range_selection_reference: Option<LayerNodeIdentifier>,
-
+	/// Whether or not the editor has executed the network to render the document yet. If this is opened as an inactive tab, it won't be loaded initially because the active tab is prioritized.
 	#[serde(skip)]
 	pub is_loaded: bool,
 }
@@ -157,7 +157,6 @@ impl Default for DocumentMessageHandler {
 			saved_hash: None,
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
-
 			is_loaded: false,
 		}
 	}

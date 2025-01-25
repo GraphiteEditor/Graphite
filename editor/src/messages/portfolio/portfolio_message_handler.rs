@@ -915,12 +915,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				} else {
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				}
-				let document = self.documents.get_mut(&document_id).expect("Tried to read non existant document");
+
+				let Some(document) = self.documents.get_mut(&document_id) else {
+					warn!("Tried to read non existant document");
+					return;
+				};
 				if !document.is_loaded {
+					document.is_loaded = true;
 					responses.add(PortfolioMessage::LoadDocumentResources { document_id });
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
 					responses.add(PropertiesPanelMessage::Clear);
-					document.is_loaded = true;
 				}
 			}
 			PortfolioMessage::SubmitDocumentExport {

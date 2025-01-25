@@ -153,6 +153,8 @@ impl Dispatcher {
 						node_descriptions: document_node_definitions::collect_node_descriptions(),
 						node_types: document_node_definitions::collect_node_types(),
 					});
+
+					// Finish loading persistent data from the browser database
 					queue.add(FrontendMessage::TriggerLoadRestAutoSaveDocuments);
 				}
 				Message::Batched(messages) => {
