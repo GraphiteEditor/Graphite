@@ -679,7 +679,7 @@ struct StrokePathIterPointMetadata(tinyvec::TinyVec<[StrokePathIterPointSegmentM
 
 impl StrokePathIterPointMetadata {
 	fn set(&mut self, value: StrokePathIterPointSegmentMetadata) {
-		self.0.push(value);
+		self.0.insert(0, value);
 	}
 	#[must_use]
 	fn connected(&self) -> usize {
