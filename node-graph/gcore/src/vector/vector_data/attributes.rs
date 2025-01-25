@@ -654,7 +654,7 @@ impl super::VectorData {
 	}
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 struct StrokePathIterPointSegmentMetadata {
 	segment_index: usize,
 	start_from_end: bool,
@@ -675,28 +675,24 @@ impl StrokePathIterPointSegmentMetadata {
 }
 
 #[derive(Clone, Default)]
-struct StrokePathIterPointMetadata([Option<StrokePathIterPointSegmentMetadata>; 2]);
+struct StrokePathIterPointMetadata(tinyvec::TinyVec<[StrokePathIterPointSegmentMetadata; 2]>);
 
 impl StrokePathIterPointMetadata {
 	fn set(&mut self, value: StrokePathIterPointSegmentMetadata) {
-		if self.0[0].is_none() {
-			self.0[0] = Some(value)
-		} else if self.0[1].is_none() {
-			self.0[1] = Some(value);
-		} else {
-			panic!("Mesh networks are not supported");
-		}
+		self.0.push(value);
 	}
 	#[must_use]
 	fn connected(&self) -> usize {
-		self.0.iter().filter(|val| val.is_some()).count()
+		self.0.len()
 	}
 	#[must_use]
 	fn take_first(&mut self) -> Option<StrokePathIterPointSegmentMetadata> {
-		self.0[0].take().or_else(|| self.0[1].take())
+		self.0.pop()
 	}
 	fn take_eq(&mut self, target: StrokePathIterPointSegmentMetadata) -> bool {
-		self.0[0].take_if(|&mut value| value == target).or_else(|| self.0[1].take_if(|&mut value| value == target)).is_some()
+		let has_taken = self.0.contains(&target);
+		self.0.retain(|value| *value != target);
+		has_taken
 	}
 }
 

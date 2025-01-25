@@ -228,6 +228,7 @@ impl Dispatcher {
 							input: &self.message_handlers.input_preprocessor_message_handler,
 							persistent_data: &self.message_handlers.portfolio_message_handler.persistent_data,
 							node_graph: &self.message_handlers.portfolio_message_handler.executor,
+							preferences: &self.message_handlers.preferences_message_handler,
 						};
 
 						self.message_handlers.tool_message_handler.process_message(message, &mut queue, data);

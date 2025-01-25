@@ -8,6 +8,7 @@ pub struct PreferencesMessageHandler {
 	pub imaginate_refresh_frequency: f64,
 	pub zoom_with_scroll: bool,
 	pub use_vello: bool,
+	pub vector_meshes: bool,
 }
 
 impl PreferencesMessageHandler {
@@ -34,6 +35,7 @@ impl Default for PreferencesMessageHandler {
 			imaginate_refresh_frequency: 1.,
 			zoom_with_scroll: matches!(MappingVariant::default(), MappingVariant::ZoomWithScroll),
 			use_vello,
+			vector_meshes: false,
 		}
 	}
 }
@@ -87,6 +89,9 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				responses.add(PortfolioMessage::ImaginateServerHostname);
 				responses.add(PortfolioMessage::ImaginateCheckServerStatus);
 				responses.add(PortfolioMessage::EditorPreferences);
+			}
+			PreferencesMessage::VectorMeshes { enabled } => {
+				self.vector_meshes = enabled;
 			}
 			PreferencesMessage::ModifyLayout { zoom_with_scroll } => {
 				self.zoom_with_scroll = zoom_with_scroll;

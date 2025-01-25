@@ -85,6 +85,17 @@ impl PreferencesDialogMessageHandler {
 		// 		.widget_holder(),
 		// ];
 
+		let vector_section = vec![TextLabel::new("Vector Editing").italic(true).widget_holder()];
+		let vector_mesh_tooltip = "Allow tools to produce vector meshes with >2 segments connected to one anchor point";
+		let vector_meshes = vec![
+			CheckboxInput::new(preferences.vector_meshes)
+				.tooltip(vector_mesh_tooltip)
+				.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::VectorMeshes { enabled: checkbox_input.checked }.into())
+				.widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			TextLabel::new("Vector Meshes (Experimental)").table_align(true).tooltip(vector_mesh_tooltip).widget_holder(),
+		];
+
 		Layout::WidgetLayout(WidgetLayout::new(vec![
 			LayoutGroup::Row { widgets: input_section },
 			LayoutGroup::Row { widgets: zoom_with_scroll },
@@ -92,6 +103,8 @@ impl PreferencesDialogMessageHandler {
 			LayoutGroup::Row { widgets: use_vello },
 			// LayoutGroup::Row { widgets: imaginate_server_hostname },
 			// LayoutGroup::Row { widgets: imaginate_refresh_frequency },
+			LayoutGroup::Row { widgets: vector_section },
+			LayoutGroup::Row { widgets: vector_meshes },
 		]))
 	}
 
