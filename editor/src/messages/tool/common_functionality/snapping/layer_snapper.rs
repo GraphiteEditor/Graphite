@@ -156,7 +156,7 @@ impl LayerSnapper {
 							target: path.target,
 							distance,
 							tolerance,
-							curves: [path.bounds.is_none().then_some(path.document_curve), Some(constraint_path)],
+							curves: [path.bounds.is_none().then_some(path.document_curve), None],
 							source: point.source,
 							target_bounds: path.bounds,
 							at_intersection: true,
