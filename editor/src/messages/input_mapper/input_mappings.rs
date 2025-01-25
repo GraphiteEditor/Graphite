@@ -270,7 +270,7 @@ pub fn input_mappings() -> Mapping {
 		//
 		// SplineToolMessage
 		entry!(PointerMove; action_dispatch=SplineToolMessage::PointerMove),
-		entry!(KeyDown(MouseLeft); action_dispatch=SplineToolMessage::DragStart),
+		entry!(KeyDown(MouseLeft); action_dispatch=SplineToolMessage::DragStart { append_to_selected: Shift }),
 		entry!(KeyUp(MouseLeft); action_dispatch=SplineToolMessage::DragStop),
 		entry!(KeyDown(MouseRight); action_dispatch=SplineToolMessage::Confirm),
 		entry!(KeyDown(Escape); action_dispatch=SplineToolMessage::Confirm),

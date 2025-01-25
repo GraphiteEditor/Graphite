@@ -71,6 +71,9 @@ pub const HANDLE_ROTATE_SNAP_ANGLE: f64 = 15.;
 // Pen tool
 pub const CREATE_CURVE_THRESHOLD: f64 = 5.;
 
+// Spline tool
+pub const PATH_JOIN_THRESHOLD: f64 = 5.;
+
 // Line tool
 pub const LINE_ROTATE_SNAP_ANGLE: f64 = 15.;
 
