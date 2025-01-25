@@ -1,8 +1,7 @@
 use super::utility_types::OverlayContext;
 use crate::consts::HIDE_HANDLE_DISTANCE;
 use crate::messages::tool::common_functionality::shape_editor::{SelectedLayerState, ShapeState};
-use crate::messages::tool::tool_messages::tool_prelude::DocumentMessageHandler;
-use crate::messages::tool::tool_messages::tool_prelude::PreferencesMessageHandler;
+use crate::messages::tool::tool_messages::tool_prelude::{DocumentMessageHandler, PreferencesMessageHandler};
 
 use graphene_core::vector::ManipulatorPointId;
 

@@ -47,7 +47,7 @@ impl PreferencesDialogMessageHandler {
 			TextLabel::new("Zoom with Scroll").table_align(true).tooltip(zoom_with_scroll_tooltip).widget_holder(),
 		];
 		let vello_tooltip = "Use the experimental Vello renderer (your browser must support WebGPU)";
-		let renderer_section = vec![TextLabel::new("Renderer").italic(true).widget_holder()];
+		let renderer_section = vec![TextLabel::new("Experimental").italic(true).widget_holder()];
 		let use_vello = vec![
 			CheckboxInput::new(preferences.use_vello && preferences.supports_wgpu())
 				.tooltip(vello_tooltip)
@@ -55,7 +55,7 @@ impl PreferencesDialogMessageHandler {
 				.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::UseVello { use_vello: checkbox_input.checked }.into())
 				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			TextLabel::new("Vello (Experimental)")
+			TextLabel::new("Vello Renderer")
 				.table_align(true)
 				.tooltip(vello_tooltip)
 				.disabled(!preferences.supports_wgpu())
@@ -85,18 +85,14 @@ impl PreferencesDialogMessageHandler {
 		// 		.widget_holder(),
 		// ];
 
-		let vector_section = vec![TextLabel::new("Vector Editing").italic(true).widget_holder()];
-		let vector_mesh_tooltip = "Allow tools to produce vector meshes with >2 segments connected to one anchor point.\n\nCurrently this does not work well with line joins or fills.";
+		let vector_mesh_tooltip = "Allow tools to produce vector meshes, where more than two segments can connect to an anchor point.\n\nCurrently this does not properly handle line joins and fills.";
 		let vector_meshes = vec![
 			CheckboxInput::new(preferences.vector_meshes)
 				.tooltip(vector_mesh_tooltip)
 				.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::VectorMeshes { enabled: checkbox_input.checked }.into())
 				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			TextLabel::new("Vector Meshes (Experimental: breaks fills and line joins)")
-				.table_align(true)
-				.tooltip(vector_mesh_tooltip)
-				.widget_holder(),
+			TextLabel::new("Vector Meshes").table_align(true).tooltip(vector_mesh_tooltip).widget_holder(),
 		];
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![
@@ -104,10 +100,9 @@ impl PreferencesDialogMessageHandler {
 			LayoutGroup::Row { widgets: zoom_with_scroll },
 			LayoutGroup::Row { widgets: renderer_section },
 			LayoutGroup::Row { widgets: use_vello },
+			LayoutGroup::Row { widgets: vector_meshes },
 			// LayoutGroup::Row { widgets: imaginate_server_hostname },
 			// LayoutGroup::Row { widgets: imaginate_refresh_frequency },
-			LayoutGroup::Row { widgets: vector_section },
-			LayoutGroup::Row { widgets: vector_meshes },
 		]))
 	}
 
