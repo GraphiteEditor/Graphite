@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import { type RadioEntries, type RadioEntryData } from "@graphite/wasm-communication/messages";
+	import { type RadioEntries, type RadioEntryData } from "@graphite/messages";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";

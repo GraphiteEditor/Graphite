@@ -77,7 +77,7 @@ impl Dispatcher {
 
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T, process_after_all_current: bool) {
 		let message = message.into();
-		// Add all aditional messages to the buffer if it exists (except from the end buffer message)
+		// Add all additional messages to the buffer if it exists (except from the end buffer message)
 		if !matches!(message, Message::EndBuffer(_)) {
 			if let Some(buffered_queue) = &mut self.buffered_queue {
 				Self::schedule_execution(buffered_queue, true, [message]);
@@ -141,7 +141,7 @@ impl Dispatcher {
 				Message::NoOp => {}
 				Message::Init => {
 					// Load persistent data from the browser database
-					queue.add(FrontendMessage::TriggerLoadAutoSaveDocuments);
+					queue.add(FrontendMessage::TriggerLoadFirstAutoSaveDocument);
 					queue.add(FrontendMessage::TriggerLoadPreferences);
 
 					// Display the menu bar at the top of the window
@@ -153,6 +153,9 @@ impl Dispatcher {
 						node_descriptions: document_node_definitions::collect_node_descriptions(),
 						node_types: document_node_definitions::collect_node_types(),
 					});
+
+					// Finish loading persistent data from the browser database
+					queue.add(FrontendMessage::TriggerLoadRestAutoSaveDocuments);
 				}
 				Message::Batched(messages) => {
 					messages.iter().for_each(|message| self.handle_message(message.to_owned(), false));
@@ -217,22 +220,22 @@ impl Dispatcher {
 					self.message_handlers.preferences_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::Tool(message) => {
-					let preferences = &self.message_handlers.preferences_message_handler;
 					let document_id = self.message_handlers.portfolio_message_handler.active_document_id().unwrap();
-					if let Some(document) = self.message_handlers.portfolio_message_handler.documents.get_mut(&document_id) {
-						let data = ToolMessageData {
-							preferences,
-							document_id,
-							document,
-							input: &self.message_handlers.input_preprocessor_message_handler,
-							persistent_data: &self.message_handlers.portfolio_message_handler.persistent_data,
-							node_graph: &self.message_handlers.portfolio_message_handler.executor,
-						};
-
-						self.message_handlers.tool_message_handler.process_message(message, &mut queue, data);
-					} else {
+					let Some(document) = self.message_handlers.portfolio_message_handler.documents.get_mut(&document_id) else {
 						warn!("Called ToolMessage without an active document.\nGot {message:?}");
-					}
+						return;
+					};
+
+					let data = ToolMessageData {
+						document_id,
+						document,
+						input: &self.message_handlers.input_preprocessor_message_handler,
+						persistent_data: &self.message_handlers.portfolio_message_handler.persistent_data,
+						node_graph: &self.message_handlers.portfolio_message_handler.executor,
+						preferences: &self.message_handlers.preferences_message_handler,
+					};
+
+					self.message_handlers.tool_message_handler.process_message(message, &mut queue, data);
 				}
 				Message::Workspace(message) => {
 					self.message_handlers.workspace_message_handler.process_message(message, &mut queue, ());

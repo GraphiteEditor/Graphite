@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { isWidgetSpanColumn, isWidgetSpanRow, isWidgetSection, type WidgetLayout } from "@graphite/wasm-communication/messages";
+	import { isWidgetSpanColumn, isWidgetSpanRow, isWidgetSection, type WidgetLayout } from "@graphite/messages";
 
 	import WidgetSection from "@graphite/components/widgets/WidgetSection.svelte";
 	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";

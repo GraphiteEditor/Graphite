@@ -1,7 +1,7 @@
 import { writable } from "svelte/store";
 
-import { type Editor } from "@graphite/wasm-communication/editor";
-import type { FrontendGraphOutput, FrontendGraphInput } from "@graphite/wasm-communication/messages";
+import { type Editor } from "@graphite/editor";
+import type { FrontendGraphOutput, FrontendGraphInput } from "@graphite/messages";
 import {
 	type Box,
 	type FrontendClickTargets,
@@ -15,6 +15,8 @@ import {
 	UpdateClickTargets,
 	UpdateContextMenuInformation,
 	UpdateInSelectedNetwork,
+	UpdateImportReorderIndex,
+	UpdateExportReorderIndex,
 	UpdateImportsExports,
 	UpdateLayerWidths,
 	UpdateNodeGraph,
@@ -22,7 +24,7 @@ import {
 	UpdateNodeGraphTransform,
 	UpdateNodeThumbnail,
 	UpdateWirePathInProgress,
-} from "@graphite/wasm-communication/messages";
+} from "@graphite/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createNodeGraphState(editor: Editor) {
@@ -47,6 +49,8 @@ export function createNodeGraphState(editor: Editor) {
 		selected: [] as bigint[],
 		transform: { scale: 1, x: 0, y: 0 },
 		inSelectedNetwork: true,
+		reorderImportIndex: undefined as number | undefined,
+		reorderExportIndex: undefined as number | undefined,
 	});
 
 	// Set up message subscriptions on creation
@@ -73,6 +77,18 @@ export function createNodeGraphState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateContextMenuInformation, (updateContextMenuInformation) => {
 		update((state) => {
 			state.contextMenuInformation = updateContextMenuInformation.contextMenuInformation;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateImportReorderIndex, (updateImportReorderIndex) => {
+		update((state) => {
+			state.reorderImportIndex = updateImportReorderIndex.importIndex;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateExportReorderIndex, (updateExportReorderIndex) => {
+		update((state) => {
+			state.reorderExportIndex = updateExportReorderIndex.exportIndex;
 			return state;
 		});
 	});
@@ -134,6 +150,7 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
+
 	return {
 		subscribe,
 	};

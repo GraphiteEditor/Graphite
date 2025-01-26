@@ -31,7 +31,7 @@ fn return_true() -> bool {
 	true
 }
 
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(untagged))]
@@ -40,7 +40,7 @@ enum NodeInputVersions {
 	NodeInput(NodeInput),
 }
 
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize))]
 pub enum OldNodeInput {
@@ -58,7 +58,7 @@ pub enum OldNodeInput {
 	Inline(InlineRust),
 }
 
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 #[cfg(feature = "serde")]
 fn deserialize_inputs<'de, D>(deserializer: D) -> Result<Vec<NodeInput>, D::Error>
 where
@@ -496,7 +496,7 @@ pub enum OldDocumentNodeImplementation {
 	/// This describes a (document) node implemented as a proto node.
 	///
 	/// A proto node identifier which can be found in `node_registry.rs`.
-	#[cfg_attr(feature = "serde", serde(alias = "Unresolved"))] // TODO: Eventually remove this alias (probably starting late 2024)
+	#[cfg_attr(feature = "serde", serde(alias = "Unresolved"))] // TODO: Eventually remove this alias document upgrade code
 	ProtoNode(ProtoNodeIdentifier),
 	/// The Extract variant is a tag which tells the compilation process to do something special. It invokes language-level functionality built for use by the ExtractNode to enable metaprogramming.
 	/// When the ExtractNode is compiled, it gets replaced by a value node containing a representation of the source code for the function/lambda of the document node that's fed into the ExtractNode
@@ -531,7 +531,7 @@ pub enum DocumentNodeImplementation {
 	/// This describes a (document) node implemented as a proto node.
 	///
 	/// A proto node identifier which can be found in `node_registry.rs`.
-	#[cfg_attr(feature = "serde", serde(alias = "Unresolved"))] // TODO: Eventually remove this alias (probably starting late 2024)
+	#[cfg_attr(feature = "serde", serde(alias = "Unresolved"))] // TODO: Eventually remove this alias document upgrade code
 	ProtoNode(ProtoNodeIdentifier),
 	/// The Extract variant is a tag which tells the compilation process to do something special. It invokes language-level functionality built for use by the ExtractNode to enable metaprogramming.
 	/// When the ExtractNode is compiled, it gets replaced by a value node containing a representation of the source code for the function/lambda of the document node that's fed into the ExtractNode
@@ -588,7 +588,7 @@ impl DocumentNodeImplementation {
 	}
 }
 
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(untagged))]
@@ -597,7 +597,7 @@ pub enum NodeExportVersions {
 	NodeInput(NodeInput),
 }
 
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize))]
 pub struct NodeOutput {
@@ -605,7 +605,7 @@ pub struct NodeOutput {
 	pub node_output_index: usize,
 }
 
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 #[cfg(feature = "serde")]
 fn deserialize_exports<'de, D>(deserializer: D) -> Result<Vec<NodeInput>, D::Error>
 where
@@ -681,7 +681,7 @@ pub struct OldDocumentNode {
 	pub original_location: OriginalLocation,
 }
 
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 #[derive(Clone, Debug, PartialEq, Default, specta::Type, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// Metadata about the node including its position in the graph UI
@@ -689,7 +689,7 @@ pub struct OldDocumentNodeMetadata {
 	pub position: IVec2,
 }
 
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 #[derive(Clone, Copy, Debug, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// Root Node is the "default" export for a node network. Used by document metadata, displaying UI-only "Export" node, and for restoring the default preview node.
@@ -698,7 +698,7 @@ pub struct OldRootNode {
 	pub output_index: usize,
 }
 
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 #[derive(PartialEq, Debug, Clone, Hash, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum OldPreviewing {
@@ -709,14 +709,14 @@ pub enum OldPreviewing {
 	No,
 }
 
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 #[derive(Clone, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// A network (subgraph) of nodes containing each [`DocumentNode`] and its ID, as well as list mapping each export to its connected node, or a value if disconnected
 pub struct OldNodeNetwork {
 	/// The list of data outputs that are exported from this network to the parent network.
 	/// Each export is a reference to a node within this network, paired with its output index, that is the source of the network's exported data.
-	#[cfg_attr(feature = "serde", serde(alias = "outputs", deserialize_with = "deserialize_exports"))] // TODO: Eventually remove this alias (probably starting late 2024)
+	#[cfg_attr(feature = "serde", serde(alias = "outputs", deserialize_with = "deserialize_exports"))] // TODO: Eventually remove this alias document upgrade code
 	pub exports: Vec<NodeInput>,
 	/// The list of all nodes in this network.
 	//cfg_attr(feature = "serde", #[cfg_attr(feature = "serde", serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap")))]
@@ -736,7 +736,7 @@ pub struct OldNodeNetwork {
 	pub scope_injections: HashMap<String, (NodeId, Type)>,
 }
 
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 #[cfg(feature = "serde")]
 fn migrate_layer_to_merge<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
 	let mut s: String = serde::Deserialize::deserialize(deserializer)?;
@@ -745,11 +745,11 @@ fn migrate_layer_to_merge<'de, D: serde::Deserializer<'de>>(deserializer: D) -> 
 	}
 	Ok(s)
 }
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 fn default_import_metadata() -> (NodeId, IVec2) {
 	(NodeId::new(), IVec2::new(-25, -4))
 }
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 fn default_export_metadata() -> (NodeId, IVec2) {
 	(NodeId::new(), IVec2::new(8, -4))
 }
@@ -760,9 +760,9 @@ fn default_export_metadata() -> (NodeId, IVec2) {
 pub struct NodeNetwork {
 	/// The list of data outputs that are exported from this network to the parent network.
 	/// Each export is a reference to a node within this network, paired with its output index, that is the source of the network's exported data.
-	#[cfg_attr(feature = "serde", serde(alias = "outputs", deserialize_with = "deserialize_exports"))] // TODO: Eventually remove this alias (probably starting late 2024)
+	#[cfg_attr(feature = "serde", serde(alias = "outputs", deserialize_with = "deserialize_exports"))] // TODO: Eventually remove this alias document upgrade code
 	pub exports: Vec<NodeInput>,
-	/// TODO: Instead of storing import types in each NodeInput::Network connection, the types are stored here. This is similar to how types need to be defined for parameters when creating a function in Rust.
+	// TODO: Instead of storing import types in each NodeInput::Network connection, the types are stored here. This is similar to how types need to be defined for parameters when creating a function in Rust.
 	// pub import_types: Vec<Type>,
 	/// The list of all nodes in this network.
 	#[cfg_attr(

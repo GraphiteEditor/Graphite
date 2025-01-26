@@ -9,7 +9,9 @@ jobs:
   clippy:
     name: Run Clippy
     runs-on: ubuntu-latest
-    if: ${{ !github.event.pull_request.draft }}
+    # TODO(Keavon): Find a workaround (passing the output text to a separate action with permission to read the secrets?) that allows this to work on fork PRs
+    if: false
+    # if: ${{ !github.event.pull_request.draft && !github.event.pull_request.head.repo.fork }}
     permissions:
       contents: read
       pull-requests: write

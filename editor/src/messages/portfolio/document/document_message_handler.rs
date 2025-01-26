@@ -3,7 +3,7 @@ use super::node_graph::utility_types::Transform;
 use super::overlays::utility_types::Pivot;
 use super::utility_types::clipboards::Clipboard;
 use super::utility_types::error::EditorError;
-use super::utility_types::misc::{SnappingOptions, SnappingState, GET_SNAP_BOX_FUNCTIONS, GET_SNAP_GEOMETRY_FUNCTIONS};
+use super::utility_types::misc::{SnappingOptions, SnappingState, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
@@ -117,6 +117,9 @@ pub struct DocumentMessageHandler {
 	/// If the user clicks or Ctrl-clicks one layer, it becomes the start of the range selection and then Shift-clicking another layer selects all layers between the start and end.
 	#[serde(skip)]
 	layer_range_selection_reference: Option<LayerNodeIdentifier>,
+	/// Whether or not the editor has executed the network to render the document yet. If this is opened as an inactive tab, it won't be loaded initially because the active tab is prioritized.
+	#[serde(skip)]
+	pub is_loaded: bool,
 }
 
 impl Default for DocumentMessageHandler {
@@ -154,6 +157,7 @@ impl Default for DocumentMessageHandler {
 			saved_hash: None,
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
+			is_loaded: false,
 		}
 	}
 }
@@ -194,7 +198,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::PropertiesPanel(message) => {
 				let properties_panel_message_handler_data = PropertiesPanelMessageHandlerData {
-					network_interface: &self.network_interface,
+					network_interface: &mut self.network_interface,
 					selection_network_path: &self.selection_network_path,
 					document_name: self.name.as_str(),
 					executor,
@@ -275,10 +279,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let data_buffer: RawBuffer = Self::default().serialize_root();
 				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
 
-				// Clear the options bar
+				// Clear the control bar
 				responses.add(LayoutMessage::SendLayout {
 					layout: Layout::WidgetLayout(Default::default()),
-					layout_target: LayoutTarget::LayersPanelOptions,
+					layout_target: LayoutTarget::LayersPanelControlBar,
 				});
 			}
 			DocumentMessage::InsertBooleanOperation { operation } => {
@@ -350,7 +354,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(ipp, responses),
 			DocumentMessage::DocumentHistoryForward => self.redo_with_history(ipp, responses),
 			DocumentMessage::DocumentStructureChanged => {
-				self.update_layers_panel_options_bar_widgets(responses);
+				self.update_layers_panel_control_bar_widgets(responses);
 
 				self.network_interface.load_structure();
 				let data_buffer: RawBuffer = self.serialize_root();
@@ -391,6 +395,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.selection_network_path.clone_from(&self.breadcrumb_network_path);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::ZoomCanvasToFitAll);
+				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 			}
 			DocumentMessage::Escape => {
 				if self.node_graph_handler.drag_start.is_some() {
@@ -620,6 +625,16 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						layer: layer_to_move,
 						parent,
 						insert_index: calculated_insert_index,
+					});
+
+					let layer_local_transform = self.network_interface.document_metadata().transform_to_viewport(layer_to_move);
+					let undo_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();
+					let transform = undo_transform * layer_local_transform;
+					responses.add(GraphOperationMessage::TransformSet {
+						layer: layer_to_move,
+						transform,
+						transform_in: TransformIn::Local,
+						skip_rerender: false,
 					});
 				}
 
@@ -1007,7 +1022,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				}
 				responses.add(PropertiesPanelMessage::Refresh);
 				responses.add(NodeGraphMessage::UpdateLayerPanel);
-				responses.add(NodeGraphMessage::UpdateInSelectedNetwork)
+				responses.add(NodeGraphMessage::UpdateInSelectedNetwork);
 			}
 			DocumentMessage::SetBlendModeForSelectedLayers { blend_mode } => {
 				for layer in self.network_interface.selected_nodes(&[]).unwrap().selected_layers_except_artboards(&self.network_interface) {
@@ -1019,7 +1034,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(FrontendMessage::UpdateGraphFadeArtwork { percentage });
 			}
 			DocumentMessage::SetNodePinned { node_id, pinned } => {
-				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::SetPinned { node_id, pinned });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
@@ -1047,6 +1062,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::SetToNodeOrLayer { node_id, is_layer } => {
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer });
+				responses.add(DocumentMessage::EndTransaction);
 			}
 			DocumentMessage::SetViewMode { view_mode } => {
 				self.view_mode = view_mode;
@@ -1192,6 +1208,16 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						parent,
 						insert_index: folder_index,
 					});
+
+					let layer_local_transform = self.network_interface.document_metadata().transform_to_viewport(child);
+					let undo_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();
+					let transform = undo_transform * layer_local_transform;
+					responses.add(GraphOperationMessage::TransformSet {
+						layer: child,
+						transform,
+						transform_in: TransformIn::Local,
+						skip_rerender: false,
+					});
 				}
 
 				// Delete empty group folder
@@ -1224,21 +1250,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						.navigation_handler
 						.calculate_offset_transform(ipp.viewport_bounds.center(), &network_metadata.persistent_metadata.navigation_metadata.node_graph_ptz);
 					self.network_interface.set_transform(transform, &self.breadcrumb_network_path);
-					let imports = self.network_interface.frontend_imports(&self.breadcrumb_network_path).unwrap_or_default();
-					let exports = self.network_interface.frontend_exports(&self.breadcrumb_network_path).unwrap_or_default();
-					let add_import = self.network_interface.frontend_import_modify(&self.breadcrumb_network_path);
-					let add_export = self.network_interface.frontend_export_modify(&self.breadcrumb_network_path);
 
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(DocumentMessage::RenderScrollbars);
 					responses.add(NodeGraphMessage::UpdateEdges);
 					responses.add(NodeGraphMessage::UpdateBoxSelection);
-					responses.add(FrontendMessage::UpdateImportsExports {
-						imports,
-						exports,
-						add_import,
-						add_export,
-					});
+					responses.add(NodeGraphMessage::UpdateImportsExports);
+
 					responses.add(FrontendMessage::UpdateNodeGraphTransform {
 						transform: Transform {
 							scale: transform.matrix2.x_axis.x,
@@ -1488,26 +1506,22 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
-		let document_message_handler = serde_json::from_str::<OldDocumentMessageHandler>(serialized_content)
-			.map_or_else(
-				|_| serde_json::from_str::<DocumentMessageHandler>(serialized_content),
-				|old_message_handler| {
-					let default_document_message_handler = DocumentMessageHandler {
-						network_interface: NodeNetworkInterface::from_old_network(old_message_handler.network),
-						collapsed: old_message_handler.collapsed,
-						commit_hash: old_message_handler.commit_hash,
-						document_ptz: old_message_handler.document_ptz,
-						document_mode: old_message_handler.document_mode,
-						view_mode: old_message_handler.view_mode,
-						overlays_visible: old_message_handler.overlays_visible,
-						rulers_visible: old_message_handler.rulers_visible,
-						graph_view_overlay_open: old_message_handler.graph_view_overlay_open,
-						snapping_state: old_message_handler.snapping_state,
-						..Default::default()
-					};
-					Ok(default_document_message_handler)
-				},
-			)
+		let document_message_handler = serde_json::from_str::<DocumentMessageHandler>(serialized_content)
+			.or_else(|_| {
+				serde_json::from_str::<OldDocumentMessageHandler>(serialized_content).map(|old_message_handler| DocumentMessageHandler {
+					network_interface: NodeNetworkInterface::from_old_network(old_message_handler.network),
+					collapsed: old_message_handler.collapsed,
+					commit_hash: old_message_handler.commit_hash,
+					document_ptz: old_message_handler.document_ptz,
+					document_mode: old_message_handler.document_mode,
+					view_mode: old_message_handler.view_mode,
+					overlays_visible: old_message_handler.overlays_visible,
+					rulers_visible: old_message_handler.rulers_visible,
+					graph_view_overlay_open: old_message_handler.graph_view_overlay_open,
+					snapping_state: old_message_handler.snapping_state,
+					..Default::default()
+				})
+			})
 			.map_err(|e| EditorError::DocumentDeserialization(e.to_string()))?;
 		Ok(document_message_handler)
 	}
@@ -1677,9 +1691,18 @@ impl DocumentMessageHandler {
 
 	/// Finds the artboard that bounds the point in viewport space and be the container of any newly added layers.
 	pub fn new_layer_bounding_artboard(&self, ipp: &InputPreprocessorMessageHandler) -> LayerNodeIdentifier {
-		self.click_xray(ipp)
+		let container_based_on_selection = self.new_layer_parent(true);
+
+		let container_based_on_clicked_artboard = self
+			.click_xray(ipp)
 			.find(|layer| self.network_interface.is_artboard(&layer.to_node(), &[]))
-			.unwrap_or(LayerNodeIdentifier::ROOT_PARENT)
+			.unwrap_or(LayerNodeIdentifier::ROOT_PARENT);
+
+		if container_based_on_selection.ancestors(self.metadata()).any(|ancestor| ancestor == container_based_on_clicked_artboard) {
+			container_based_on_selection
+		} else {
+			container_based_on_clicked_artboard
+		}
 	}
 
 	/// Finds the parent folder which, based on the current selections, should be the container of any newly added layers.
@@ -1709,7 +1732,7 @@ impl DocumentMessageHandler {
 			.unwrap_or(0)
 	}
 
-	/// Loads layer resources such as creating the blob URLs for the images and loading all of the fonts in the document.
+	/// Loads all of the fonts in the document.
 	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>) {
 		let mut fonts = HashSet::new();
 		for (_node_id, node) in self.document_network().recursive_nodes() {
@@ -1802,28 +1825,27 @@ impl DocumentMessageHandler {
 						},
 					]
 					.into_iter()
-					.chain(GET_SNAP_BOX_FUNCTIONS.into_iter().map(|(name, closure)| LayoutGroup::Row {
+					.chain(SNAP_FUNCTIONS_FOR_BOUNDING_BOXES.into_iter().map(|(name, closure, tooltip)| LayoutGroup::Row {
 						widgets: vec![
 									CheckboxInput::new(*closure(&mut snapping_state))
 										.on_update(move |input: &CheckboxInput| DocumentMessage::SetSnapping { closure: Some(closure), snapping_state: input.checked }.into())
+										.tooltip(tooltip)
 										.widget_holder(),
-									TextLabel::new(name).widget_holder(),
+									TextLabel::new(name).tooltip(tooltip).widget_holder(),
 								],
 					}))
-					.chain(
-						[LayoutGroup::Row {
-							widgets: vec![TextLabel::new(SnappingOptions::Geometry.to_string()).widget_holder()],
-						}]
-						.into_iter()
-						.chain(GET_SNAP_GEOMETRY_FUNCTIONS.into_iter().map(|(name, closure)| LayoutGroup::Row {
-							widgets: vec![
+					.chain([LayoutGroup::Row {
+						widgets: vec![TextLabel::new(SnappingOptions::Paths.to_string()).widget_holder()],
+					}])
+					.chain(SNAP_FUNCTIONS_FOR_PATHS.into_iter().map(|(name, closure, tooltip)| LayoutGroup::Row {
+						widgets: vec![
 									CheckboxInput::new(*closure(&mut snapping_state2))
 										.on_update(move |input: &CheckboxInput| DocumentMessage::SetSnapping { closure: Some(closure), snapping_state: input.checked }.into())
+										.tooltip(tooltip)
 										.widget_holder(),
-									TextLabel::new(name).widget_holder(),
+									TextLabel::new(name).tooltip(tooltip).widget_holder(),
 								],
-						})),
-					)
+					}))
 					.collect(),
 				)
 				.widget_holder(),
@@ -1924,7 +1946,7 @@ impl DocumentMessageHandler {
 		});
 	}
 
-	pub fn update_layers_panel_options_bar_widgets(&self, responses: &mut VecDeque<Message>) {
+	pub fn update_layers_panel_control_bar_widgets(&self, responses: &mut VecDeque<Message>) {
 		// Get an iterator over the selected layers (excluding artboards which don't have an opacity or blend mode).
 		let selected_nodes = self.network_interface.selected_nodes(&[]).unwrap();
 		let selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&self.network_interface);
@@ -1992,7 +2014,7 @@ impl DocumentMessageHandler {
 			.selected_layers(self.metadata())
 			.all(|layer| self.network_interface.is_locked(&layer.to_node(), &[]));
 
-		let layers_panel_options_bar = WidgetLayout::new(vec![LayoutGroup::Row {
+		let layers_panel_control_bar = WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
 				DropdownInput::new(blend_mode_menu_entries)
 					.selected_index(blend_mode.and_then(|blend_mode| blend_mode.index_in_list_svg_subset()).map(|index| index as u32))
@@ -2060,8 +2082,8 @@ impl DocumentMessageHandler {
 		}]);
 
 		responses.add(LayoutMessage::SendLayout {
-			layout: Layout::WidgetLayout(layers_panel_options_bar),
-			layout_target: LayoutTarget::LayersPanelOptions,
+			layout: Layout::WidgetLayout(layers_panel_control_bar),
+			layout_target: LayoutTarget::LayersPanelControlBar,
 		});
 	}
 
@@ -2104,7 +2126,7 @@ impl DocumentMessageHandler {
 /// Create a network interface with a single export
 fn default_document_network_interface() -> NodeNetworkInterface {
 	let mut network_interface = NodeNetworkInterface::default();
-	network_interface.add_export(TaggedValue::ArtboardGroup(graphene_core::ArtboardGroup::EMPTY), -1, "".to_string(), &[]);
+	network_interface.add_export(TaggedValue::ArtboardGroup(graphene_core::ArtboardGroup::EMPTY), -1, "", &[]);
 	network_interface
 }
 
@@ -2318,7 +2340,7 @@ impl Iterator for ClickXRayIter<'_> {
 	}
 }
 
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct OldDocumentMessageHandler {
 	// ============================================

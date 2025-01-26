@@ -191,13 +191,14 @@ impl Fsm for FreehandToolFsmState {
 			global_tool_data,
 			input,
 			shape_editor,
+			preferences,
 			..
 		} = tool_action_data;
 
 		let ToolMessage::Freehand(event) = event else { return self };
 		match (self, event) {
 			(_, FreehandToolMessage::Overlays(mut overlay_context)) => {
-				path_endpoint_overlays(document, shape_editor, &mut overlay_context);
+				path_endpoint_overlays(document, shape_editor, &mut overlay_context, tool_action_data.preferences);
 
 				self
 			}
@@ -210,7 +211,8 @@ impl Fsm for FreehandToolFsmState {
 
 				// Extend an endpoint of the selected path
 				let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
-				if let Some((layer, point, position)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE, selected_nodes.selected_layers(document.metadata())) {
+				let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
+				if let Some((layer, point, position)) = should_extend(document, input.mouse.position, tolerance, selected_nodes.selected_layers(document.metadata()), preferences) {
 					tool_data.layer = Some(layer);
 					tool_data.end_point = Some((position, point));
 

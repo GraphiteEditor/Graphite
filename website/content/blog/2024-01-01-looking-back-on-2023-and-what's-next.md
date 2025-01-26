@@ -10,7 +10,8 @@ summary = "Looking back on 2023, we reflect on our significant achievements and 
 reddit = "https://www.reddit.com/r/graphite/comments/18xmoti/blog_post_looking_back_on_2023_and_whats_next/"
 twitter = "https://twitter.com/GraphiteEditor/status/1742576805532577937"
 
-js = ["video-embed.js"]
+js = ["/js/youtube-embed.js"]
+css = ["/component/youtube-embed.css"]
 +++
 
 The new year is here, and with so many accomplishments to share from the past twelve months, let's revisit the highlights of 2023 for the Graphite project. Now that winter has entered, let's swing back to the spring, summarize the summer, and follow this fall's noteworthy developments that brought another year of fruitful progress to Graphite's mission of re-envisioning artists' 2D creative workflows with the best free software we can build for the open source community. This past year as a team, we all got closer— to one another from continents apart; to visiting and connecting with our industry peers; and to reaching exciting new development milestones.
@@ -92,8 +93,8 @@ The next big news of August was my formation of [Graphite Labs, LLC](https://www
 
 I allocated my time at several points throughout the year into growing and evolving this website with a refreshed and more visually-appealing home page, dedicated pages for information [about](/about) the project and its [features](/features), an area providing resources and help for [volunteers](/volunteer) and [code contributors](/volunteer/guide), and just this month— a [user manual](/learn) complete with an introductory tutorial series. The first video went up yesterday:
 
-<div class="video-embed aspect-16x9">
-	<img data-video-embed="7gjUhl_3X10" src="https://static.graphite.rs/content/learn/introduction/tutorial-1-vector-art-quickstart-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite Tutorial 1 - Hands-On Quickstart" />
+<div class="youtube-embed aspect-16x9">
+	<img data-youtube-embed="7gjUhl_3X10" src="https://static.graphite.rs/content/learn/introduction/tutorial-1-vector-art-quickstart-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite Tutorial 1 - Hands-On Quickstart" />
 </div>
 
 The user manual and tutorial series will continue expanding throughout the coming weeks. Additional website features including user accounts, forums, and other community features are being planned.
@@ -139,7 +140,7 @@ Just folders and graph-driven legacy layers remained, but for the second phase, 
 
 <center><em>Block diagram after the second phase</em></center>
 
-For the third phase, we had to yet again port each of the viewport tools so they would operate on the unified document graph instead of the legacy layer graphs. But the incremental approach ended here— this last phase had to happen all at once, which posed a challenge for developing the editor while numerous features were fully broken pending rework. We began with a separate development branch, always kept up-to-date with the latest editor code changes, for a couple months until breakages were reduced to an acceptable level, then integrated with the main code base in October. By tracking and burning down the list of [62 outstanding issues and regressions](https://github.com/GraphiteEditor/Graphite/issues/1394) one-by-one, in mid-December we finally reached our long-sought goal: deploying a new stable release of Graphite featuring the unified node graph! I'd like to extend an extra big thank-you to core team member ["Hypercube"](/about#hypercube) for the dedication and persistence in grinding through most of these.
+For the third phase, we had to yet again port each of the viewport tools so they would operate on the unified document graph instead of the legacy layer graphs. But the incremental approach ended here— this last phase had to happen all at once, which posed a challenge for developing the editor while numerous features were fully broken pending rework. We began with a separate development branch, always kept up-to-date with the latest editor code changes, for a couple months until breakages were reduced to an acceptable level, then integrated with the main codebase in October. By tracking and burning down the list of [62 outstanding issues and regressions](https://github.com/GraphiteEditor/Graphite/issues/1394) one-by-one, in mid-December we finally reached our long-sought goal: deploying a new stable release of Graphite featuring the unified node graph! I'd like to extend an extra big thank-you to core team member ["Hypercube"](/about#hypercube) for the dedication and persistence in grinding through most of these.
 
 <p><img src="https://static.graphite.rs/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/migration-block-diagram-4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Block diagram of a Graphite document now that the migration is complete" /></p>
 
@@ -176,7 +177,7 @@ And then from a development perspective, I am looking forward to accomplishing t
 Achieving everything listed above is ambitious, but it's ambition that has brought us to where we are today. Pulling this off will require a larger team and more resources than we've had in 2023. So if the mission we are striving for is exciting and you agree the world needs a truly great and versatile open source 2D graphics suite, we need your help!
 
 - Technically inclined developers interested in Rust, web dev, computer graphics, backend programming, compilers, machine learning, mathematics, or any of the other varied disciplines that Graphite overlaps with— we likely have a role or project for you.
-- We also have self-contained research projects involving problem-solving outside an existing code base. One example: there are numerous industry-standard image filter effects we'd like to implement in Graphite where a volunteer could run analysis on the colors of test images to identify a suitable algorithm that gives matching results. We hope to assemble a larger Discord community of motivated people we can tap for help in solving these sorts of problems. These also make great university term projects and we've mentored several groups successfully in the past, so please reach out.
+- We also have self-contained research projects involving problem-solving outside an existing codebase. One example: there are numerous industry-standard image filter effects we'd like to implement in Graphite where a volunteer could run analysis on the colors of test images to identify a suitable algorithm that gives matching results. We hope to assemble a larger Discord community of motivated people we can tap for help in solving these sorts of problems. These also make great university term projects and we've mentored several groups successfully in the past, so please reach out.
 - Technical artists with experience in procedural editing tools and engineers who enjoy designing solutions for complex problems would also be highly valuable community members when it comes to taking part in the many large, nuanced product and architecture design decisions we'll have to make this year.
 - Graphic designers and artists who put the time into using Graphite on a regular basis and helping us learn its practical strengths and weaknesses would also be valuable contributors. Helping with the creative parts of maintaining the app and assisting new users who have questions in the growing community would relieve the burden from the core team.
 - And spread the word! Create tutorial videos. Show off your creations on social media. Use it in your classroom. 2024 is the year Graphite is ready to come out of the shadows and get discovered.
@@ -187,7 +188,7 @@ If your New Year's resolution is joining an open source project, consider Graphi
 
 There's one last big way you can help and keep Graphite from needing to turn to investors who would someday come knocking for exponential profits at the expense of you, the user. That doesn't align with my vision so I have been self-funding Graphite for the past three years. But I, alone, can't keep that going for a fourth year and beyond.
 
-With a laser-tight focus on completing our 2023 development objectives, I haven't yet called out for donations until now. You can be the very first person to join at the level of a Supporter (starting at $10 monthly) or Sponsor (starting at $50 monthly for individuals and $100 monthly for companies). Please consider joining at one of the levels [listed here](https://github.com/sponsors/GraphiteEditor).
+With a laser-tight focus on completing our 2023 development objectives, I haven't yet called out for donations until now. You can be the very first person to join at the level of a Supporter (starting at $10 monthly) or Sponsor (starting at $50 monthly for individuals and $100 monthly for companies). Please consider joining at one of the levels [listed here](/donate).
 
 Please help launch Graphite towards the 2024 goal of attaining self-sufficiency so I can maintain my full-time commitment to an independent Graphite for the long haul. Thank you, it really means the world to me. ♥
 

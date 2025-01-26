@@ -456,7 +456,7 @@ impl Fsm for SelectToolFsmState {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
 						let transformed_quad = document.metadata().transform_to_viewport(layer) * quad;
 
-						overlay_context.dashed_quad(transformed_quad, None, Some(7.), Some(5.));
+						overlay_context.dashed_quad(transformed_quad, None, Some(4.), Some(4.), Some(0.5));
 					}
 				}
 
@@ -526,7 +526,7 @@ impl Fsm for SelectToolFsmState {
 
 						// Measure with Alt held down
 						// TODO: Don't use `Key::Alt` directly, instead take it as a variable from the input mappings list like in all other places
-						if input.keyboard.get(Key::Alt as usize) {
+						if !matches!(self, Self::ResizingBounds { .. }) && input.keyboard.get(Key::Alt as usize) {
 							let hovered_bounds = document
 								.metadata()
 								.bounding_box_with_transform(layer, transform.inverse() * document.metadata().transform_to_viewport(layer));

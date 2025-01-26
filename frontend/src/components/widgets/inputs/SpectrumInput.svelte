@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher, onDestroy } from "svelte";
 
-	import { Color, type Gradient } from "@graphite/wasm-communication/messages";
+	import { Color, type Gradient } from "@graphite/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";

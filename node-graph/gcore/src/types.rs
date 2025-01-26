@@ -110,7 +110,7 @@ impl NodeIOTypes {
 impl core::fmt::Debug for NodeIOTypes {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		f.write_fmt(format_args!(
-			"node({}) -> {}",
+			"node({}) → {}",
 			[&self.call_argument].into_iter().chain(&self.inputs).map(|input| input.to_string()).collect::<Vec<_>>().join(", "),
 			self.return_value
 		))
@@ -292,13 +292,13 @@ fn format_type(ty: &str) -> String {
 impl core::fmt::Debug for Type {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self {
-			Self::Generic(arg0) => write!(f, "Generic({arg0})"),
+			Self::Generic(arg0) => write!(f, "Generic<{arg0}>"),
 			#[cfg(feature = "type_id_logging")]
-			Self::Concrete(arg0) => write!(f, "Concrete({}, {:?})", arg0.name, arg0.id),
+			Self::Concrete(arg0) => write!(f, "Concrete<{}, {:?}>", arg0.name, arg0.id),
 			#[cfg(not(feature = "type_id_logging"))]
-			Self::Concrete(arg0) => write!(f, "Concrete({})", format_type(&arg0.name)),
-			Self::Fn(arg0, arg1) => write!(f, "({arg0:?} -> {arg1:?})"),
-			Self::Future(arg0) => write!(f, "Future({arg0:?})"),
+			Self::Concrete(arg0) => write!(f, "Concrete<{}>", format_type(&arg0.name)),
+			Self::Fn(arg0, arg1) => write!(f, "{arg0:?} → {arg1:?}"),
+			Self::Future(arg0) => write!(f, "Future<{arg0:?}>"),
 		}
 	}
 }
@@ -308,7 +308,7 @@ impl std::fmt::Display for Type {
 		match self {
 			Type::Generic(name) => write!(f, "{name}"),
 			Type::Concrete(ty) => write!(f, "{}", format_type(&ty.name)),
-			Type::Fn(input, output) => write!(f, "({input} -> {output})"),
+			Type::Fn(input, output) => write!(f, "{input} → {output}"),
 			Type::Future(ty) => write!(f, "Future<{ty}>"),
 		}
 	}

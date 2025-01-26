@@ -16,6 +16,7 @@ use crate::node_graph_executor::NodeGraphExecutor;
 use graphene_core::raster::color::Color;
 use graphene_core::text::FontCache;
 
+use std::borrow::Cow;
 use std::fmt::{self, Debug};
 
 pub struct ToolActionHandlerData<'a> {
@@ -27,29 +28,6 @@ pub struct ToolActionHandlerData<'a> {
 	pub shape_editor: &'a mut ShapeState,
 	pub node_graph: &'a NodeGraphExecutor,
 	pub preferences: &'a PreferencesMessageHandler,
-}
-impl<'a> ToolActionHandlerData<'a> {
-	pub fn new(
-		document: &'a mut DocumentMessageHandler,
-		document_id: DocumentId,
-		global_tool_data: &'a DocumentToolData,
-		input: &'a InputPreprocessorMessageHandler,
-		font_cache: &'a FontCache,
-		shape_editor: &'a mut ShapeState,
-		node_graph: &'a NodeGraphExecutor,
-		preferences: &'a PreferencesMessageHandler,
-	) -> Self {
-		Self {
-			document,
-			document_id,
-			global_tool_data,
-			input,
-			font_cache,
-			shape_editor,
-			node_graph,
-			preferences,
-		}
-	}
 }
 
 pub trait ToolCommon: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionHandlerData<'a>> + LayoutHolder + ToolTransition + ToolMetadata {}
@@ -67,8 +45,7 @@ pub trait Fsm {
 	/// The implementing tool must set this to a struct designed to store the internal values stored in the tool.
 	/// For example, it might be used to store the starting location of a point when a drag began so the displacement distance can be calculated.
 	type ToolData;
-	/// The implementing tool must set this to a struct (or `()` if none) designed to store the values of the tool options set by the user in the Options Bar
-	/// (located above the viewport, below the document's tab).
+	/// The implementing tool must set this to a struct (or `()` if none) designed to store the values of the tool options set by the user in the tool controls portion on the left of the control bar.
 	type ToolOptions;
 
 	/// Implementing this mandatory trait function lets a specific tool react accordingly (and potentially change its state or internal variables) upon receiving an event to do something.
@@ -497,7 +474,7 @@ pub struct HintInfo {
 	/// No such icon is shown if `None` is given, and it can be combined with `key_groups` if desired.
 	pub mouse: Option<MouseMotion>,
 	/// The text describing what occurs with this input combination.
-	pub label: String,
+	pub label: Cow<'static, str>,
 	/// Draws a prepended "+" symbol which indicates that this is a refinement upon a previous hint in the group.
 	pub plus: bool,
 	/// Draws a prepended "/" symbol which indicates that this is an alternative to a previous hint in the group.
@@ -505,7 +482,7 @@ pub struct HintInfo {
 }
 
 impl HintInfo {
-	pub fn keys(keys: impl IntoIterator<Item = Key>, label: impl Into<String>) -> Self {
+	pub fn keys(keys: impl IntoIterator<Item = Key>, label: impl Into<Cow<'static, str>>) -> Self {
 		let keys: Vec<_> = keys.into_iter().collect();
 		Self {
 			key_groups: vec![KeysGroup(keys).into()],
@@ -517,7 +494,7 @@ impl HintInfo {
 		}
 	}
 
-	pub fn multi_keys(multi_keys: impl IntoIterator<Item = impl IntoIterator<Item = Key>>, label: impl Into<String>) -> Self {
+	pub fn multi_keys(multi_keys: impl IntoIterator<Item = impl IntoIterator<Item = Key>>, label: impl Into<Cow<'static, str>>) -> Self {
 		let key_groups = multi_keys.into_iter().map(|keys| KeysGroup(keys.into_iter().collect()).into()).collect();
 		Self {
 			key_groups,
@@ -529,7 +506,7 @@ impl HintInfo {
 		}
 	}
 
-	pub fn mouse(mouse_motion: MouseMotion, label: impl Into<String>) -> Self {
+	pub fn mouse(mouse_motion: MouseMotion, label: impl Into<Cow<'static, str>>) -> Self {
 		Self {
 			key_groups: vec![],
 			key_groups_mac: None,
@@ -540,7 +517,7 @@ impl HintInfo {
 		}
 	}
 
-	pub fn label(label: impl Into<String>) -> Self {
+	pub fn label(label: impl Into<Cow<'static, str>>) -> Self {
 		Self {
 			key_groups: vec![],
 			key_groups_mac: None,
@@ -551,7 +528,7 @@ impl HintInfo {
 		}
 	}
 
-	pub fn keys_and_mouse(keys: impl IntoIterator<Item = Key>, mouse_motion: MouseMotion, label: impl Into<String>) -> Self {
+	pub fn keys_and_mouse(keys: impl IntoIterator<Item = Key>, mouse_motion: MouseMotion, label: impl Into<Cow<'static, str>>) -> Self {
 		let keys: Vec<_> = keys.into_iter().collect();
 		Self {
 			key_groups: vec![KeysGroup(keys).into()],
@@ -563,7 +540,7 @@ impl HintInfo {
 		}
 	}
 
-	pub fn multi_keys_and_mouse(multi_keys: impl IntoIterator<Item = impl IntoIterator<Item = Key>>, mouse_motion: MouseMotion, label: impl Into<String>) -> Self {
+	pub fn multi_keys_and_mouse(multi_keys: impl IntoIterator<Item = impl IntoIterator<Item = Key>>, mouse_motion: MouseMotion, label: impl Into<Cow<'static, str>>) -> Self {
 		let key_groups = multi_keys.into_iter().map(|keys| KeysGroup(keys.into_iter().collect()).into()).collect();
 		Self {
 			key_groups,
@@ -575,7 +552,7 @@ impl HintInfo {
 		}
 	}
 
-	pub fn arrow_keys(label: impl Into<String>) -> Self {
+	pub fn arrow_keys(label: impl Into<Cow<'static, str>>) -> Self {
 		let multi_keys = [[Key::ArrowUp], [Key::ArrowRight], [Key::ArrowDown], [Key::ArrowLeft]];
 		Self::multi_keys(multi_keys, label)
 	}

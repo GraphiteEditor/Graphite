@@ -78,6 +78,7 @@ pub enum PortfolioMessage {
 		document_is_auto_saved: bool,
 		document_is_saved: bool,
 		document_serialized_content: String,
+		to_front: bool,
 	},
 	PasteIntoFolder {
 		clipboard: Clipboard,

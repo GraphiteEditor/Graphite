@@ -15,7 +15,6 @@ pub struct LayerSnapper {
 	points_to_snap: Vec<SnapCandidatePoint>,
 	paths_to_snap: Vec<SnapCandidatePath>,
 }
-
 impl LayerSnapper {
 	pub fn add_layer_bounds(&mut self, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, target: SnapTarget) {
 		if !document.snapping_state.target_enabled(target) {
@@ -49,6 +48,7 @@ impl LayerSnapper {
 			});
 		}
 	}
+
 	pub fn collect_paths(&mut self, snap_data: &mut SnapData, first_point: bool) {
 		if !first_point {
 			return;
@@ -60,7 +60,7 @@ impl LayerSnapper {
 			if !document.network_interface.is_artboard(&layer.to_node(), &[]) || snap_data.ignore.contains(&layer) {
 				continue;
 			}
-			self.add_layer_bounds(document, layer, SnapTarget::Artboard(ArtboardSnapTarget::Edge));
+			self.add_layer_bounds(document, layer, SnapTarget::Artboard(ArtboardSnapTarget::AlongEdge));
 		}
 		for &layer in snap_data.get_candidates() {
 			let transform = document.metadata().transform_to_document(layer);
@@ -68,8 +68,7 @@ impl LayerSnapper {
 				continue;
 			}
 
-			if document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Intersection)) || document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Path))
-			{
+			if document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::IntersectionPoint)) || document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::AlongPath)) {
 				for subpath in document.metadata().layer_outline(layer) {
 					for (start_index, curve) in subpath.iter().enumerate() {
 						let document_curve = curve.apply_transformation(|p| transform.transform_point2(p));
@@ -81,23 +80,21 @@ impl LayerSnapper {
 							document_curve,
 							layer,
 							start,
-							target: SnapTarget::Geometry(GeometrySnapTarget::Path),
+							target: SnapTarget::Path(PathSnapTarget::AlongPath),
 							bounds: None,
 						});
 					}
 				}
 			}
-			if !snap_data.ignore_bounds(layer) {
-				self.add_layer_bounds(document, layer, SnapTarget::BoundingBox(BoundingBoxSnapTarget::Edge));
-			}
 		}
 	}
+
 	pub fn free_snap_paths(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, config: SnapTypeConfiguration) {
 		self.collect_paths(snap_data, !config.use_existing_candidates);
 
 		let document = snap_data.document;
-		let normals = document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Normal));
-		let tangents = document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Tangent));
+		let normals = document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::NormalToPath));
+		let tangents = document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::TangentToPath));
 		let tolerance = snap_tolerance(document);
 
 		for path in &self.paths_to_snap {
@@ -120,7 +117,7 @@ impl LayerSnapper {
 						target: path.target,
 						distance,
 						tolerance,
-						curves: [path.bounds.is_none().then_some(path.document_curve), None],
+						outline_layers: [path.bounds.is_none().then_some(path.layer), None],
 						source: point.source,
 						target_bounds: path.bounds,
 						..Default::default()
@@ -159,7 +156,7 @@ impl LayerSnapper {
 							target: path.target,
 							distance,
 							tolerance,
-							curves: [path.bounds.is_none().then_some(path.document_curve), Some(constraint_path)],
+							outline_layers: [path.bounds.is_none().then_some(path.layer), None],
 							source: point.source,
 							target_bounds: path.bounds,
 							at_intersection: true,
@@ -187,7 +184,7 @@ impl LayerSnapper {
 				return;
 			}
 
-			if document.snapping_state.target_enabled(SnapTarget::Artboard(ArtboardSnapTarget::Corner)) {
+			if document.snapping_state.target_enabled(SnapTarget::Artboard(ArtboardSnapTarget::CornerPoint)) {
 				let Some(bounds) = document
 					.network_interface
 					.document_metadata()
@@ -217,6 +214,7 @@ impl LayerSnapper {
 			get_bbox_points(quad, &mut self.points_to_snap, values, document);
 		}
 	}
+
 	pub fn snap_anchors(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, c: SnapConstraint, constrained_point: DVec2) {
 		let mut best = None;
 		for candidate in &self.points_to_snap {
@@ -243,6 +241,7 @@ impl LayerSnapper {
 					tolerance,
 					constrained: true,
 					target_bounds: candidate.quad,
+					outline_layers: [candidate.outline_layer, None],
 					..Default::default()
 				});
 			}
@@ -251,6 +250,7 @@ impl LayerSnapper {
 			snap_results.points.push(result);
 		}
 	}
+
 	pub fn free_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, config: SnapTypeConfiguration) {
 		self.collect_anchors(snap_data, !config.use_existing_candidates);
 		self.snap_anchors(snap_data, point, snap_results, SnapConstraint::None, point.document_point);
@@ -275,10 +275,10 @@ fn normals_and_tangents(path: &SnapCandidatePath, normals: bool, tangents: bool,
 				}
 				snap_results.points.push(SnappedPoint {
 					snapped_point_document: normal_point,
-					target: SnapTarget::Geometry(GeometrySnapTarget::Normal),
+					target: SnapTarget::Path(PathSnapTarget::NormalToPath),
 					distance,
 					tolerance,
-					curves: [Some(path.document_curve), None],
+					outline_layers: [Some(path.layer), None],
 					source: point.source,
 					constrained: true,
 					..Default::default()
@@ -296,10 +296,10 @@ fn normals_and_tangents(path: &SnapCandidatePath, normals: bool, tangents: bool,
 				}
 				snap_results.points.push(SnappedPoint {
 					snapped_point_document: tangent_point,
-					target: SnapTarget::Geometry(GeometrySnapTarget::Tangent),
+					target: SnapTarget::Path(PathSnapTarget::TangentToPath),
 					distance,
 					tolerance,
-					curves: [Some(path.document_curve), None],
+					outline_layers: [Some(path.layer), None],
 					source: point.source,
 					constrained: true,
 					..Default::default()
@@ -317,41 +317,50 @@ struct SnapCandidatePath {
 	target: SnapTarget,
 	bounds: Option<Quad>,
 }
+
 #[derive(Clone, Debug, Default)]
 pub struct SnapCandidatePoint {
 	pub document_point: DVec2,
 	pub source: SnapSource,
 	pub target: SnapTarget,
 	pub quad: Option<Quad>,
+	/// This layer is outlined if the snap candidate is used.
+	pub outline_layer: Option<LayerNodeIdentifier>,
 	pub neighbors: Vec<DVec2>,
 	pub alignment: bool,
 }
 impl SnapCandidatePoint {
-	pub fn new(document_point: DVec2, source: SnapSource, target: SnapTarget) -> Self {
-		Self::new_quad(document_point, source, target, None, true)
+	pub fn new(document_point: DVec2, source: SnapSource, target: SnapTarget, outline_layer: Option<LayerNodeIdentifier>) -> Self {
+		Self::new_quad(document_point, source, target, None, outline_layer, true)
 	}
-	pub fn new_quad(document_point: DVec2, source: SnapSource, target: SnapTarget, quad: Option<Quad>, alignment: bool) -> Self {
+
+	pub fn new_quad(document_point: DVec2, source: SnapSource, target: SnapTarget, quad: Option<Quad>, outline_layer: Option<LayerNodeIdentifier>, alignment: bool) -> Self {
 		Self {
 			document_point,
 			source,
 			target,
 			quad,
+			outline_layer,
 			alignment,
 			..Default::default()
 		}
 	}
+
 	pub fn new_source(document_point: DVec2, source: SnapSource) -> Self {
-		Self::new(document_point, source, SnapTarget::None)
+		Self::new(document_point, source, SnapTarget::None, None)
 	}
+
 	pub fn handle(document_point: DVec2) -> Self {
-		Self::new_source(document_point, SnapSource::Geometry(GeometrySnapSource::AnchorWithFreeHandles))
+		Self::new_source(document_point, SnapSource::Path(PathSnapSource::AnchorPointWithFreeHandles))
 	}
+
 	pub fn handle_neighbors(document_point: DVec2, neighbors: impl Into<Vec<DVec2>>) -> Self {
-		let mut point = Self::new_source(document_point, SnapSource::Geometry(GeometrySnapSource::AnchorWithFreeHandles));
+		let mut point = Self::new_source(document_point, SnapSource::Path(PathSnapSource::AnchorPointWithFreeHandles));
 		point.neighbors = neighbors.into();
 		point
 	}
 }
+
 #[derive(Default)]
 pub struct BBoxSnapValues {
 	corner_source: SnapSource,
@@ -363,64 +372,68 @@ pub struct BBoxSnapValues {
 }
 impl BBoxSnapValues {
 	pub const BOUNDING_BOX: Self = Self {
-		corner_source: SnapSource::BoundingBox(BoundingBoxSnapSource::Corner),
-		corner_target: SnapTarget::BoundingBox(BoundingBoxSnapTarget::Corner),
+		corner_source: SnapSource::BoundingBox(BoundingBoxSnapSource::CornerPoint),
+		corner_target: SnapTarget::BoundingBox(BoundingBoxSnapTarget::CornerPoint),
 		edge_source: SnapSource::BoundingBox(BoundingBoxSnapSource::EdgeMidpoint),
 		edge_target: SnapTarget::BoundingBox(BoundingBoxSnapTarget::EdgeMidpoint),
-		center_source: SnapSource::BoundingBox(BoundingBoxSnapSource::Center),
-		center_target: SnapTarget::BoundingBox(BoundingBoxSnapTarget::Center),
+		center_source: SnapSource::BoundingBox(BoundingBoxSnapSource::CenterPoint),
+		center_target: SnapTarget::BoundingBox(BoundingBoxSnapTarget::CenterPoint),
 	};
 
 	pub const ARTBOARD: Self = Self {
-		corner_source: SnapSource::Artboard(ArtboardSnapSource::Corner),
-		corner_target: SnapTarget::Artboard(ArtboardSnapTarget::Corner),
+		corner_source: SnapSource::Artboard(ArtboardSnapSource::CornerPoint),
+		corner_target: SnapTarget::Artboard(ArtboardSnapTarget::CornerPoint),
 		edge_source: SnapSource::None,
 		edge_target: SnapTarget::None,
-		center_source: SnapSource::Artboard(ArtboardSnapSource::Center),
-		center_target: SnapTarget::Artboard(ArtboardSnapTarget::Center),
+		center_source: SnapSource::Artboard(ArtboardSnapSource::CenterPoint),
+		center_target: SnapTarget::Artboard(ArtboardSnapTarget::CenterPoint),
 	};
 
 	pub const ALIGN_BOUNDING_BOX: Self = Self {
-		corner_source: SnapSource::Alignment(AlignmentSnapSource::BoundsCorner),
-		corner_target: SnapTarget::Alignment(AlignmentSnapTarget::BoundsCorner),
+		corner_source: SnapSource::Alignment(AlignmentSnapSource::BoundingBoxCornerPoint),
+		corner_target: SnapTarget::Alignment(AlignmentSnapTarget::BoundingBoxCornerPoint),
 		edge_source: SnapSource::None,
 		edge_target: SnapTarget::None,
-		center_source: SnapSource::Alignment(AlignmentSnapSource::BoundsCenter),
-		center_target: SnapTarget::Alignment(AlignmentSnapTarget::BoundsCenter),
+		center_source: SnapSource::Alignment(AlignmentSnapSource::BoundingBoxCenterPoint),
+		center_target: SnapTarget::Alignment(AlignmentSnapTarget::BoundingBoxCenterPoint),
 	};
 
 	pub const ALIGN_ARTBOARD: Self = Self {
-		corner_source: SnapSource::Alignment(AlignmentSnapSource::ArtboardCorner),
-		corner_target: SnapTarget::Alignment(AlignmentSnapTarget::ArtboardCorner),
+		corner_source: SnapSource::Alignment(AlignmentSnapSource::ArtboardCornerPoint),
+		corner_target: SnapTarget::Alignment(AlignmentSnapTarget::ArtboardCornerPoint),
 		edge_source: SnapSource::None,
 		edge_target: SnapTarget::None,
-		center_source: SnapSource::Alignment(AlignmentSnapSource::ArtboardCenter),
-		center_target: SnapTarget::Alignment(AlignmentSnapTarget::ArtboardCenter),
+		center_source: SnapSource::Alignment(AlignmentSnapSource::ArtboardCenterPoint),
+		center_target: SnapTarget::Alignment(AlignmentSnapTarget::ArtboardCenterPoint),
 	};
 }
+
 pub fn get_bbox_points(quad: Quad, points: &mut Vec<SnapCandidatePoint>, values: BBoxSnapValues, document: &DocumentMessageHandler) {
 	for index in 0..4 {
 		let start = quad.0[index];
 		let end = quad.0[(index + 1) % 4];
 		if document.snapping_state.target_enabled(values.corner_target) {
-			points.push(SnapCandidatePoint::new_quad(start, values.corner_source, values.corner_target, Some(quad), false));
+			points.push(SnapCandidatePoint::new_quad(start, values.corner_source, values.corner_target, Some(quad), None, false));
 		}
 		if document.snapping_state.target_enabled(values.edge_target) {
-			points.push(SnapCandidatePoint::new_quad((start + end) / 2., values.edge_source, values.edge_target, Some(quad), false));
+			points.push(SnapCandidatePoint::new_quad((start + end) / 2., values.edge_source, values.edge_target, Some(quad), None, false));
 		}
 	}
+
 	if document.snapping_state.target_enabled(values.center_target) {
-		points.push(SnapCandidatePoint::new_quad(quad.center(), values.center_source, values.center_target, Some(quad), false));
+		points.push(SnapCandidatePoint::new_quad(quad.center(), values.center_source, values.center_target, Some(quad), None, false));
 	}
 }
 
 fn handle_not_under(to_document: DAffine2) -> impl Fn(&DVec2) -> bool {
 	move |&offset: &DVec2| to_document.transform_vector2(offset).length_squared() >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE
 }
+
 fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<PointId>, snap_data: &SnapData, points: &mut Vec<SnapCandidatePoint>, to_document: DAffine2) {
 	let document = snap_data.document;
+
 	// Midpoints of linear segments
-	if document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::LineMidpoint)) {
+	if document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::LineMidpoint)) {
 		for (index, curve) in subpath.iter().enumerate() {
 			if snap_data.ignore_manipulator(layer, subpath.manipulator_groups()[index].id) || snap_data.ignore_manipulator(layer, subpath.manipulator_groups()[(index + 1) % subpath.len()].id) {
 				continue;
@@ -434,12 +447,14 @@ fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<Poin
 			if in_handle.is_none() && out_handle.is_none() {
 				points.push(SnapCandidatePoint::new(
 					to_document.transform_point2(curve.start() * 0.5 + curve.end * 0.5),
-					SnapSource::Geometry(GeometrySnapSource::LineMidpoint),
-					SnapTarget::Geometry(GeometrySnapTarget::LineMidpoint),
+					SnapSource::Path(PathSnapSource::LineMidpoint),
+					SnapTarget::Path(PathSnapTarget::LineMidpoint),
+					Some(layer),
 				));
 			}
 		}
 	}
+
 	// Anchors
 	for (index, group) in subpath.manipulator_groups().iter().enumerate() {
 		if snap_data.ignore_manipulator(layer, group.id) {
@@ -452,19 +467,22 @@ fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<Poin
 
 		let colinear = are_manipulator_handles_colinear(group, to_document, subpath, index);
 
-		if colinear && document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::AnchorWithColinearHandles)) {
-			// Colinear handles
+		// Colinear handles
+		if colinear && document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::AnchorPointWithColinearHandles)) {
 			points.push(SnapCandidatePoint::new(
 				to_document.transform_point2(group.anchor),
-				SnapSource::Geometry(GeometrySnapSource::AnchorWithColinearHandles),
-				SnapTarget::Geometry(GeometrySnapTarget::AnchorWithColinearHandles),
+				SnapSource::Path(PathSnapSource::AnchorPointWithColinearHandles),
+				SnapTarget::Path(PathSnapTarget::AnchorPointWithColinearHandles),
+				Some(layer),
 			));
-		} else if !colinear && document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::AnchorWithFreeHandles)) {
-			// Free handles
+		}
+		// Free handles
+		else if !colinear && document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::AnchorPointWithFreeHandles)) {
 			points.push(SnapCandidatePoint::new(
 				to_document.transform_point2(group.anchor),
-				SnapSource::Geometry(GeometrySnapSource::AnchorWithFreeHandles),
-				SnapTarget::Geometry(GeometrySnapTarget::AnchorWithFreeHandles),
+				SnapSource::Path(PathSnapSource::AnchorPointWithFreeHandles),
+				SnapTarget::Path(PathSnapTarget::AnchorPointWithFreeHandles),
+				Some(layer),
 			));
 		}
 	}

@@ -7,9 +7,10 @@ use graph_craft::wasm_application_io::EditorPreferences;
 pub struct PreferencesMessageHandler {
 	pub imaginate_server_hostname: String,
 	pub imaginate_refresh_frequency: f64,
+	pub selection_mode: SelectionMode,
 	pub zoom_with_scroll: bool,
 	pub use_vello: bool,
-	pub selection_mode: SelectionMode,
+	pub vector_meshes: bool,
 }
 
 impl PreferencesMessageHandler {
@@ -38,9 +39,10 @@ impl Default for PreferencesMessageHandler {
 		Self {
 			imaginate_server_hostname: host_name,
 			imaginate_refresh_frequency: 1.,
+			selection_mode: SelectionMode::Touched,
 			zoom_with_scroll: matches!(MappingVariant::default(), MappingVariant::ZoomWithScroll),
 			use_vello,
-			selection_mode: SelectionMode::Touched,
+			vector_meshes: false,
 		}
 	}
 }
@@ -72,16 +74,11 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			}
 
 			// Per-preference messages
-			PreferencesMessage::ImaginateRefreshFrequency { seconds } => {
-				self.imaginate_refresh_frequency = seconds;
-				responses.add(PortfolioMessage::ImaginateCheckServerStatus);
-				responses.add(PortfolioMessage::EditorPreferences);
-			}
-			PreferencesMessage::UseVello { use_vello } => {
-				self.use_vello = use_vello;
-				responses.add(PortfolioMessage::UpdateVelloPreference);
-				responses.add(PortfolioMessage::EditorPreferences);
-			}
+			// PreferencesMessage::ImaginateRefreshFrequency { seconds } => {
+			// 	self.imaginate_refresh_frequency = seconds;
+			// 	responses.add(PortfolioMessage::ImaginateCheckServerStatus);
+			// 	responses.add(PortfolioMessage::EditorPreferences);
+			// }
 			// PreferencesMessage::ImaginateServerHostname { hostname } => {
 			// 	let initial = hostname.clone();
 			// 	let has_protocol = hostname.starts_with("http://") || hostname.starts_with("https://");
@@ -92,11 +89,19 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			// 		refresh_dialog(responses);
 			// 	}
 
-			// 	self.imaginate_server_hostname = hostname;
-			// 	responses.add(PortfolioMessage::ImaginateServerHostname);
-			// 	responses.add(PortfolioMessage::ImaginateCheckServerStatus);
-			// 	responses.add(PortfolioMessage::EditorPreferences);
-			// }
+			//	self.imaginate_server_hostname = hostname;
+			//	responses.add(PortfolioMessage::ImaginateServerHostname);
+			//	responses.add(PortfolioMessage::ImaginateCheckServerStatus);
+			//	responses.add(PortfolioMessage::EditorPreferences);
+			//}
+			PreferencesMessage::UseVello { use_vello } => {
+				self.use_vello = use_vello;
+				responses.add(PortfolioMessage::UpdateVelloPreference);
+				responses.add(PortfolioMessage::EditorPreferences);
+			}
+			PreferencesMessage::VectorMeshes { enabled } => {
+				self.vector_meshes = enabled;
+			}
 			PreferencesMessage::ModifyLayout { zoom_with_scroll } => {
 				self.zoom_with_scroll = zoom_with_scroll;
 
