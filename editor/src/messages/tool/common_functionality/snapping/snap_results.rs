@@ -27,7 +27,8 @@ pub struct SnappedPoint {
 	pub fully_constrained: bool,
 	pub target_bounds: Option<Quad>,
 	pub source_bounds: Option<Quad>,
-	pub curves: [Option<Bezier>; 2],
+	/// These layer(s) are outlined in the overlays when the snap is used.
+	pub outline_layers: [Option<LayerNodeIdentifier>; 2],
 	pub distance: f64,
 	pub tolerance: f64,
 	pub distribution_boxes_x: VecDeque<Rect>,

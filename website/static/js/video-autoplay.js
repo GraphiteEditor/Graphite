@@ -10,7 +10,8 @@ window.addEventListener("DOMContentLoaded", () => {
 		new IntersectionObserver((entries) => {
 			entries.forEach((entry) => {
 				if (!loaded && entry.intersectionRatio > VISIBILITY_COVERAGE_FRACTION) {
-					player.play();
+					player.removeAttribute("preload");
+					player.setAttribute("autoplay", "");
 
 					loaded = true;
 				};

@@ -12,7 +12,7 @@
 
 **Graphite is a free, open source vector and raster graphics engine, [available now](https://editor.graphite.rs) in alpha. Get creative with a nondestructive editing workflow that combines layer-based compositing with node-based generative design.**
 
-Starting life as a vector editor, Graphite is evolving into a generalized, all-in-one graphics toolbox that's built more like a game engine than a conventional creative app. The editor's tools wrap its node graph core, providing user-friendly workflows for vector, raster, and beyond. Photo editing, motion graphics, digital painting, desktop publishing, and VFX compositing are additional competencies planned on the [roadmap](https://graphite.rs/features/#roadmap) to make Graphite a highly versatile content creation tool.
+Having begun life as a vector editor, Graphite continues evolving into a generalized, all-in-one graphics toolbox that's built more like a game engine than a conventional creative app. The editor's tools wrap its node graph core, providing user-friendly workflows for vector, raster, and beyond. Photo editing, motion graphics, digital painting, desktop publishing, and VFX compositing are additional competencies from the [roadmap](https://graphite.rs/features/#roadmap) making Graphite into a highly versatile content creation tool.
 
 Learn more from the [website](https://graphite.rs/), subscribe to the [newsletter](https://graphite.rs/#newsletter), consider [volunteering](https://graphite.rs/volunteer/) or [donating](https://graphite.rs/donate/), and remember to give this repository a ⭐!
 
@@ -60,13 +60,9 @@ Learn more from the [website](https://graphite.rs/), subscribe to the [newslette
 
 ## Screenshots
 
-[!["Painted Dreams" vector artwork](https://static.graphite.rs/content/index/gui-demo-painted-dreams__2.png)](https://editor.graphite.rs/#demo/painted-dreams)
+!["Isometric Fountain" vector artwork](https://static.graphite.rs/content/index/gui-demo-node-graph-isometric-fountain.png)
 
-![Magazine spread](https://static.graphite.rs/content/index/magazine-page-layout.png)
-
-[!["Valley of Spires" vector artwork](https://static.graphite.rs/content/index/gui-demo-node-graph-valley-of-spires__2.png)](https://editor.graphite.rs/#demo/valley-of-spires)
-
-!["Marbled Mandelbrot" fractal raster artwork](https://static.graphite.rs/content/index/gui-demo-fractal__2.png)
+!["Marbled Mandelbrot" fractal raster artwork](https://static.graphite.rs/content/index/gui-demo-fractal__3.png)
 
 ## Contributing/building the code
 

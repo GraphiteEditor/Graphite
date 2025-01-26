@@ -4,7 +4,7 @@
 
 .feature-box-narrow,
 .feature-box-outer {
-	padding: calc(80 * var(--variable-px));
+	padding: calc(var(--feature-box-padding) * var(--variable-px));
 	background-image: url("https://static.graphite.rs/textures/noise.png");
 	background-blend-mode: overlay;
 	background-position: center;
@@ -15,11 +15,11 @@
 }
 
 .feature-box-full-image {
-	width: calc(100% + 2 * 80 * var(--variable-px));
+	width: calc(100% + 2 * var(--feature-box-padding) * var(--variable-px));
 	height: auto;
-	margin-left: calc(-80 * var(--variable-px));
-	margin-top: calc(-80 * var(--variable-px));
-	margin-bottom: calc(40 * var(--variable-px));
+	margin-left: calc(-1 * var(--feature-box-padding) * var(--variable-px));
+	margin-top: calc(-1 * var(--feature-box-padding) * var(--variable-px));
+	margin-bottom: calc(var(--feature-box-padding) / 2 * var(--variable-px));
 	display: block;
 }
 
@@ -71,7 +71,7 @@ h1.feature-box-header.feature-box-header {
 .triptych {
 	display: flex;
 	flex-wrap: wrap;
-	gap: calc(80 * var(--variable-px));
+	gap: calc(var(--feature-box-padding) * var(--variable-px));
 
 	.block {
 		flex: 1 1 0;

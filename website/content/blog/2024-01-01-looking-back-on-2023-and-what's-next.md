@@ -188,7 +188,7 @@ If your New Year's resolution is joining an open source project, consider Graphi
 
 There's one last big way you can help and keep Graphite from needing to turn to investors who would someday come knocking for exponential profits at the expense of you, the user. That doesn't align with my vision so I have been self-funding Graphite for the past three years. But I, alone, can't keep that going for a fourth year and beyond.
 
-With a laser-tight focus on completing our 2023 development objectives, I haven't yet called out for donations until now. You can be the very first person to join at the level of a Supporter (starting at $10 monthly) or Sponsor (starting at $50 monthly for individuals and $100 monthly for companies). Please consider joining at one of the levels [listed here](https://github.com/sponsors/GraphiteEditor).
+With a laser-tight focus on completing our 2023 development objectives, I haven't yet called out for donations until now. You can be the very first person to join at the level of a Supporter (starting at $10 monthly) or Sponsor (starting at $50 monthly for individuals and $100 monthly for companies). Please consider joining at one of the levels [listed here](/donate).
 
 Please help launch Graphite towards the 2024 goal of attaining self-sufficiency so I can maintain my full-time commitment to an independent Graphite for the long haul. Thank you, it really means the world to me. ♥
 

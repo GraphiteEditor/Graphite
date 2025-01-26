@@ -85,12 +85,17 @@ pub enum FrontendMessage {
 		document: String,
 		details: FrontendDocumentDetails,
 	},
-	TriggerLoadAutoSaveDocuments,
+	TriggerLoadFirstAutoSaveDocument,
+	TriggerLoadRestAutoSaveDocuments,
 	TriggerLoadPreferences,
 	TriggerOpenDocument,
 	TriggerPaste,
 	TriggerSavePreferences {
 		preferences: PreferencesMessageHandler,
+	},
+	TriggerSaveActiveDocument {
+		#[serde(rename = "documentId")]
+		document_id: DocumentId,
 	},
 	TriggerTextCommit,
 	TriggerTextCopy {
@@ -145,6 +150,14 @@ pub enum FrontendMessage {
 	},
 	UpdateGraphViewOverlay {
 		open: bool,
+	},
+	UpdateImportReorderIndex {
+		#[serde(rename = "importIndex")]
+		index: Option<usize>,
+	},
+	UpdateExportReorderIndex {
+		#[serde(rename = "exportIndex")]
+		index: Option<usize>,
 	},
 	UpdateLayerWidths {
 		#[serde(rename = "layerWidths")]
