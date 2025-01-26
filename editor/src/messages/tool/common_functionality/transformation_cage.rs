@@ -310,7 +310,7 @@ impl BoundingBoxManager {
 		let horizontal_length = (corners[3] - corners[0]).length_squared();
 		let vertical_edge_visible = vertical_length > MIN_LENGTH_FOR_MIDPOINT_VISIBILITY.powi(2);
 		let horizontal_edge_visible = horizontal_length > MIN_LENGTH_FOR_MIDPOINT_VISIBILITY.powi(2);
-		let corners_visible = vertical_length > MIN_LENGTH_FOR_CORNERS_VISIBILITY.powi(2) && horizontal_length > MIN_LENGTH_FOR_CORNERS_VISIBILITY;
+		let corners_visible = vertical_length > MIN_LENGTH_FOR_CORNERS_VISIBILITY.powi(2) && horizontal_length > MIN_LENGTH_FOR_CORNERS_VISIBILITY.powi(2);
 		let narrow = (self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any();
 
 		let mut draw_handle = |point: DVec2| overlay_context.square(point, Some(6.), None, None);
