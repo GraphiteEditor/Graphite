@@ -297,31 +297,31 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 			}
-			PortfolioMessage::ImaginateCheckServerStatus => {
-				let server_status = self.persistent_data.imaginate.server_status().clone();
-				self.persistent_data.imaginate.poll_server_check();
-				#[cfg(target_arch = "wasm32")]
-				if let Some(fut) = self.persistent_data.imaginate.initiate_server_check() {
-					wasm_bindgen_futures::spawn_local(async move {
-						let () = fut.await;
-						use wasm_bindgen::prelude::*;
+			// PortfolioMessage::ImaginateCheckServerStatus => {
+			// 	let server_status = self.persistent_data.imaginate.server_status().clone();
+			// 	self.persistent_data.imaginate.poll_server_check();
+			// 	#[cfg(target_arch = "wasm32")]
+			// 	if let Some(fut) = self.persistent_data.imaginate.initiate_server_check() {
+			// 		wasm_bindgen_futures::spawn_local(async move {
+			// 			let () = fut.await;
+			// 			use wasm_bindgen::prelude::*;
 
-						#[wasm_bindgen(module = "/../frontend/src/editor.ts")]
-						extern "C" {
-							#[wasm_bindgen(js_name = injectImaginatePollServerStatus)]
-							fn inject();
-						}
-						inject();
-					})
-				}
-				if &server_status != self.persistent_data.imaginate.server_status() {
-					responses.add(PropertiesPanelMessage::Refresh);
-				}
-			}
-			PortfolioMessage::ImaginatePollServerStatus => {
-				self.persistent_data.imaginate.poll_server_check();
-				responses.add(PropertiesPanelMessage::Refresh);
-			}
+			// 			#[wasm_bindgen(module = "/../frontend/src/editor.ts")]
+			// 			extern "C" {
+			// 				#[wasm_bindgen(js_name = injectImaginatePollServerStatus)]
+			// 				fn inject();
+			// 			}
+			// 			inject();
+			// 		})
+			// 	}
+			// 	if &server_status != self.persistent_data.imaginate.server_status() {
+			// 		responses.add(PropertiesPanelMessage::Refresh);
+			// 	}
+			// }
+			// PortfolioMessage::ImaginatePollServerStatus => {
+			// 	self.persistent_data.imaginate.poll_server_check();
+			// 	responses.add(PropertiesPanelMessage::Refresh);
+			// }
 			PortfolioMessage::EditorPreferences => self.executor.update_editor_preferences(preferences.editor_preferences()),
 			// PortfolioMessage::ImaginateServerHostname => {
 			// 	self.persistent_data.imaginate.set_host_name(&preferences.imaginate_server_hostname);

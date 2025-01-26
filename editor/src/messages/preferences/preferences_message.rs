@@ -9,10 +9,10 @@ pub enum PreferencesMessage {
 	ResetToDefaults,
 
 	// Per-preference messages
-	// ImaginateRefreshFrequency { seconds: f64 },
-	// ImaginateServerHostname { hostname: String },
 	UseVello { use_vello: bool },
 	SelectionMode { selection_mode: SelectionMode },
 	VectorMeshes { enabled: bool },
 	ModifyLayout { zoom_with_scroll: bool },
+	// ImaginateRefreshFrequency { seconds: f64 },
+	// ImaginateServerHostname { hostname: String },
 }

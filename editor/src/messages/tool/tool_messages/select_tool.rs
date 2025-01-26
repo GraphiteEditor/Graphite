@@ -260,9 +260,8 @@ enum SelectToolFsmState {
 
 impl Default for SelectToolFsmState {
 	fn default() -> Self {
-		SelectToolFsmState::Ready {
-			selection: NestedSelectionBehavior::Deepest,
-		}
+		let selection = NestedSelectionBehavior::Deepest;
+		SelectToolFsmState::Ready { selection }
 	}
 }
 
@@ -284,7 +283,6 @@ struct SelectToolData {
 	selected_layers_changed: bool,
 	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
-	selection_mode: SelectionMode,
 }
 
 impl SelectToolData {
@@ -308,13 +306,10 @@ impl SelectToolData {
 
 	pub fn calculate_direction(&self) -> SelectionMode {
 		let bbox: [DVec2; 2] = self.selection_box();
-		if bbox[1].x > bbox[0].x {
-			SelectionMode::Enclosed
-		} else if bbox[1].x < bbox[0].x {
+		if bbox[1].x < bbox[0].x {
 			SelectionMode::Touched
 		} else {
-			// If the x coordinates are equal, the area is zero, so we use rightwards which corresponds to the "Enclosed"
-			// selection mode to ensure the selection ends up empty, as nothing will be enclosed by an empty area.
+			// This also covers the case where they're equal: the area is zero, so we use `Enclosed` to ensure the selection ends up empty, as nothing will be enclosed by an empty area
 			SelectionMode::Enclosed
 		}
 	}
@@ -422,9 +417,6 @@ impl Fsm for SelectToolFsmState {
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
 		let ToolActionHandlerData { document, input, font_cache, .. } = tool_action_data;
 
-		// TODO: Should this be moved down a line?
-		tool_data.selection_mode = tool_action_data.preferences.get_selection_mode();
-
 		let ToolMessage::Select(event) = event else { return self };
 		match (self, event) {
 			(_, SelectToolMessage::Overlays(mut overlay_context)) => {
@@ -499,7 +491,7 @@ impl Fsm for SelectToolFsmState {
 					// Get the updated selection box bounds
 					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
 
-					let mut selection_direction = tool_data.selection_mode;
+					let mut selection_direction = tool_action_data.preferences.get_selection_mode();
 					if selection_direction == SelectionMode::Directional {
 						selection_direction = tool_data.calculate_direction();
 					}
@@ -1057,7 +1049,7 @@ impl Fsm for SelectToolFsmState {
 			) => {
 				let quad = tool_data.selection_quad();
 
-				let mut selection_direction = tool_data.selection_mode;
+				let mut selection_direction = tool_action_data.preferences.get_selection_mode();
 				if selection_direction == SelectionMode::Directional {
 					selection_direction = tool_data.calculate_direction();
 				}

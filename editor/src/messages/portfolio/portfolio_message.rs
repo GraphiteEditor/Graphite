@@ -46,15 +46,15 @@ pub enum PortfolioMessage {
 		document_id: DocumentId,
 	},
 	DestroyAllDocuments,
+	EditorPreferences,
 	FontLoaded {
 		font_family: String,
 		font_style: String,
 		preview_url: String,
 		data: Vec<u8>,
 	},
-	ImaginateCheckServerStatus,
-	ImaginatePollServerStatus,
-	EditorPreferences,
+	// ImaginateCheckServerStatus,
+	// ImaginatePollServerStatus,
 	// ImaginateServerHostname,
 	Import,
 	LoadDocumentResources {

@@ -1,6 +1,7 @@
 use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
+
 use graph_craft::wasm_application_io::EditorPreferences;
 
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -74,26 +75,6 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			}
 
 			// Per-preference messages
-			// PreferencesMessage::ImaginateRefreshFrequency { seconds } => {
-			// 	self.imaginate_refresh_frequency = seconds;
-			// 	responses.add(PortfolioMessage::ImaginateCheckServerStatus);
-			// 	responses.add(PortfolioMessage::EditorPreferences);
-			// }
-			// PreferencesMessage::ImaginateServerHostname { hostname } => {
-			// 	let initial = hostname.clone();
-			// 	let has_protocol = hostname.starts_with("http://") || hostname.starts_with("https://");
-			// 	let hostname = if has_protocol { hostname } else { "http://".to_string() + &hostname };
-			// 	let hostname = if hostname.ends_with('/') { hostname } else { hostname + "/" };
-
-			// 	if hostname != initial {
-			// 		refresh_dialog(responses);
-			// 	}
-
-			//	self.imaginate_server_hostname = hostname;
-			//	responses.add(PortfolioMessage::ImaginateServerHostname);
-			//	responses.add(PortfolioMessage::ImaginateCheckServerStatus);
-			//	responses.add(PortfolioMessage::EditorPreferences);
-			//}
 			PreferencesMessage::UseVello { use_vello } => {
 				self.use_vello = use_vello;
 				responses.add(PortfolioMessage::UpdateVelloPreference);
@@ -115,6 +96,27 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				self.selection_mode = selection_mode;
 			}
 		}
+		// TODO: Reenable when Imaginate is restored (and move back up one line since the auto-formatter doesn't like it in that block)
+		// PreferencesMessage::ImaginateRefreshFrequency { seconds } => {
+		// 	self.imaginate_refresh_frequency = seconds;
+		// 	responses.add(PortfolioMessage::ImaginateCheckServerStatus);
+		// 	responses.add(PortfolioMessage::EditorPreferences);
+		// }
+		// PreferencesMessage::ImaginateServerHostname { hostname } => {
+		// 	let initial = hostname.clone();
+		// 	let has_protocol = hostname.starts_with("http://") || hostname.starts_with("https://");
+		// 	let hostname = if has_protocol { hostname } else { "http://".to_string() + &hostname };
+		// 	let hostname = if hostname.ends_with('/') { hostname } else { hostname + "/" };
+
+		// 	if hostname != initial {
+		// 		refresh_dialog(responses);
+		// 	}
+
+		//	self.imaginate_server_hostname = hostname;
+		//	responses.add(PortfolioMessage::ImaginateServerHostname);
+		//	responses.add(PortfolioMessage::ImaginateCheckServerStatus);
+		//	responses.add(PortfolioMessage::EditorPreferences);
+		//}
 
 		responses.add(FrontendMessage::TriggerSavePreferences { preferences: self.clone() });
 	}

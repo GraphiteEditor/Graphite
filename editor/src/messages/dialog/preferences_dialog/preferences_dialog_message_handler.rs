@@ -77,7 +77,6 @@ impl PreferencesDialogMessageHandler {
 					.into()
 				})
 				.widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			TextLabel::new("Zoom with Scroll").table_align(true).tooltip(zoom_with_scroll_tooltip).widget_holder(),
 		];
 
@@ -89,7 +88,6 @@ impl PreferencesDialogMessageHandler {
 				.disabled(!preferences.supports_wgpu())
 				.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::UseVello { use_vello: checkbox_input.checked }.into())
 				.widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			TextLabel::new("Vello Renderer")
 				.table_align(true)
 				.tooltip(vello_tooltip)
@@ -97,11 +95,19 @@ impl PreferencesDialogMessageHandler {
 				.widget_holder(),
 		];
 
+		let vector_mesh_tooltip = "Allow tools to produce vector meshes, where more than two segments can connect to an anchor point.\n\nCurrently this does not properly handle line joins and fills.";
+		let vector_meshes = vec![
+			CheckboxInput::new(preferences.vector_meshes)
+				.tooltip(vector_mesh_tooltip)
+				.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::VectorMeshes { enabled: checkbox_input.checked }.into())
+				.widget_holder(),
+			TextLabel::new("Vector Meshes").table_align(true).tooltip(vector_mesh_tooltip).widget_holder(),
+		];
+
 		// TODO: Reenable when Imaginate is restored
 		// let imaginate_server_hostname = vec![
 		// 	TextLabel::new("Imaginate").min_width(60).italic(true).widget_holder(),
 		// 	TextLabel::new("Server Hostname").table_align(true).widget_holder(),
-		// 	Separator::new(SeparatorType::Unrelated).widget_holder(),
 		// 	TextInput::new(&preferences.imaginate_server_hostname)
 		// 		.min_width(200)
 		// 		.on_update(|text_input: &TextInput| PreferencesMessage::ImaginateServerHostname { hostname: text_input.value.clone() }.into())
@@ -110,7 +116,6 @@ impl PreferencesDialogMessageHandler {
 		// let imaginate_refresh_frequency = vec![
 		// 	TextLabel::new("").min_width(60).widget_holder(),
 		// 	TextLabel::new("Refresh Frequency").table_align(true).widget_holder(),
-		// 	Separator::new(SeparatorType::Unrelated).widget_holder(),
 		// 	NumberInput::new(Some(preferences.imaginate_refresh_frequency))
 		// 		.unit(" seconds")
 		// 		.min(0.)
@@ -119,16 +124,6 @@ impl PreferencesDialogMessageHandler {
 		// 		.on_update(|number_input: &NumberInput| PreferencesMessage::ImaginateRefreshFrequency { seconds: number_input.value.unwrap() }.into())
 		// 		.widget_holder(),
 		// ];
-
-		let vector_mesh_tooltip = "Allow tools to produce vector meshes, where more than two segments can connect to an anchor point.\n\nCurrently this does not properly handle line joins and fills.";
-		let vector_meshes = vec![
-			CheckboxInput::new(preferences.vector_meshes)
-				.tooltip(vector_mesh_tooltip)
-				.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::VectorMeshes { enabled: checkbox_input.checked }.into())
-				.widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			TextLabel::new("Vector Meshes").table_align(true).tooltip(vector_mesh_tooltip).widget_holder(),
-		];
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![
 			LayoutGroup::Row { widgets: selection_section },
