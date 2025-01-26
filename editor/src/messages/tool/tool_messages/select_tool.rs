@@ -600,6 +600,7 @@ impl Fsm for SelectToolFsmState {
 							&document.network_interface,
 							None,
 							&ToolType::Select,
+							None
 						);
 						bounds.center_of_transformation = selected.mean_average_of_pivots();
 					}
@@ -628,6 +629,7 @@ impl Fsm for SelectToolFsmState {
 							&document.network_interface,
 							None,
 							&ToolType::Select,
+							None
 						);
 
 						bounds.center_of_transformation = selected.mean_average_of_pivots();
@@ -755,7 +757,16 @@ impl Fsm for SelectToolFsmState {
 							}
 						});
 						let selected = &tool_data.layers_dragging;
-						let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, selected, responses, &document.network_interface, None, &ToolType::Select);
+						let mut selected = Selected::new(
+							&mut bounds.original_transforms,
+							&mut pivot,
+							selected,
+							responses,
+							&document.network_interface,
+							None,
+							&ToolType::Select,
+							None,
+						);
 
 						selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse());
 
@@ -803,6 +814,7 @@ impl Fsm for SelectToolFsmState {
 						&document.network_interface,
 						None,
 						&ToolType::Select,
+						None,
 					);
 
 					selected.update_transforms(delta);

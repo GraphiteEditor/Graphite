@@ -63,6 +63,8 @@ pub enum PenToolMessage {
 	UpdateOptions(PenOptionsUpdate),
 	RecalculateLatestPointsPosition,
 	RemovePreviousHandle,
+	GRS { grab: Key, rotate: Key, scale: Key },
+	FinalPosition { final_pos: DVec2 },
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -71,6 +73,7 @@ enum PenToolFsmState {
 	Ready,
 	DraggingHandle,
 	PlacingAnchor,
+	GRSHandle,
 }
 
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -162,13 +165,14 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 
 	fn actions(&self) -> ActionList {
 		match self.fsm_state {
-			PenToolFsmState::Ready => actions!(PenToolMessageDiscriminant;
+			PenToolFsmState::Ready | PenToolFsmState::GRSHandle => actions!(PenToolMessageDiscriminant;
 				Undo,
 				DragStart,
 				DragStop,
 				Confirm,
 				Abort,
 				PointerMove,
+				FinalPosition
 			),
 			PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor => actions!(PenToolMessageDiscriminant;
 				DragStart,
@@ -177,6 +181,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 				Confirm,
 				Abort,
 				RemovePreviousHandle,
+				GRS,
 			),
 		}
 	}
@@ -223,6 +228,8 @@ struct PenToolData {
 	modifiers: ModifierState,
 
 	buffering_merged_vector: bool,
+
+	before_grs_pos: DVec2,
 }
 impl PenToolData {
 	fn latest_point(&self) -> Option<&LastPoint> {
@@ -553,6 +560,69 @@ impl Fsm for PenToolFsmState {
 
 		let ToolMessage::Pen(event) = event else { return self };
 		match (self, event) {
+			(PenToolFsmState::PlacingAnchor | PenToolFsmState::GRSHandle, PenToolMessage::GRS { grab, rotate, scale }) => {
+				if let Some(latest) = tool_data.latest_point_mut() {
+					if let Some(layer) = layer {
+						if latest.handle_start != latest.pos {
+							let viewport = document.metadata().transform_to_viewport(layer);
+							let last_point = viewport.transform_point2(latest.pos);
+							let handle = viewport.transform_point2(latest.handle_start);
+							if input.keyboard.key(grab) {
+								responses.add(TransformLayerMessage::BeginGrabPen { last_point, handle });
+							} else if input.keyboard.key(rotate) {
+								responses.add(TransformLayerMessage::BeginRotatePen { last_point, handle });
+							} else if input.keyboard.key(scale) {
+								responses.add(TransformLayerMessage::BeginScalePen { last_point, handle });
+							}
+							tool_data.before_grs_pos = latest.handle_start;
+						} else {
+							return PenToolFsmState::PlacingAnchor;
+						}
+					}
+				} else {
+					return PenToolFsmState::PlacingAnchor;
+				}
+
+				PenToolFsmState::GRSHandle
+			}
+			(PenToolFsmState::GRSHandle, PenToolMessage::FinalPosition { final_pos }) => {
+				if let Some(latest_pt) = tool_data.latest_point_mut() {
+					let layer_space_to_viewport = document.metadata().transform_to_viewport(layer.unwrap());
+					let final_pos = layer_space_to_viewport.inverse().transform_point2(final_pos);
+					latest_pt.handle_start = final_pos;
+				}
+
+				responses.add(OverlaysMessage::Draw);
+
+				PenToolFsmState::GRSHandle
+			} // }
+			(PenToolFsmState::GRSHandle, PenToolMessage::Confirm) => {
+				tool_data.next_point = input.mouse.position;
+				tool_data.next_handle_start = input.mouse.position;
+				responses.add(OverlaysMessage::Draw);
+				responses.add(PenToolMessage::PointerMove {
+					snap_angle: Key::Control,
+					break_handle: Key::Alt,
+					lock_angle: Key::Shift,
+				});
+
+				PenToolFsmState::PlacingAnchor
+			}
+			(PenToolFsmState::GRSHandle, PenToolMessage::Abort) => {
+				tool_data.next_point = input.mouse.position;
+				tool_data.next_handle_start = input.mouse.position;
+				let previous = tool_data.before_grs_pos;
+				if let Some(latest) = tool_data.latest_point_mut() {
+					latest.handle_start = previous;
+				}
+				responses.add(OverlaysMessage::Draw);
+				responses.add(PenToolMessage::PointerMove {
+					snap_angle: Key::Control,
+					break_handle: Key::Alt,
+					lock_angle: Key::Shift,
+				});
+				PenToolFsmState::PlacingAnchor
+			}
 			(_, PenToolMessage::SelectionChanged) => {
 				responses.add(OverlaysMessage::Draw);
 				self
@@ -804,7 +874,7 @@ impl Fsm for PenToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			PenToolFsmState::Ready => HintData(vec![HintGroup(vec![
+			PenToolFsmState::Ready | PenToolFsmState::GRSHandle => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::Lmb, "Draw Path"),
 				// TODO: Only show this if a single layer is selected and it's of a valid type (e.g. a vector path but not raster or artboard)
 				HintInfo::keys([Key::Shift], "Append to Selected Layer").prepend_plus(),
