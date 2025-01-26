@@ -2397,6 +2397,7 @@ dependencies = [
  "serde_json",
  "specta",
  "spirv-std",
+ "tinyvec",
  "tokio",
  "usvg",
  "vello",

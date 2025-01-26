@@ -75,7 +75,8 @@
 	let canvasSvgWidth: number | undefined = undefined;
 	let canvasSvgHeight: number | undefined = undefined;
 
-	// Used to set the canvas rendering dimensions.
+	let devicePixelRatio: number | undefined;
+
 	// Dimension is rounded up to the nearest even number because resizing is centered, and dividing an odd number by 2 for centering causes antialiasing
 	$: canvasWidthRoundedToEven = canvasSvgWidth && (canvasSvgWidth % 2 === 1 ? canvasSvgWidth + 1 : canvasSvgWidth);
 	$: canvasHeightRoundedToEven = canvasSvgHeight && (canvasSvgHeight % 2 === 1 ? canvasSvgHeight + 1 : canvasSvgHeight);
@@ -83,6 +84,13 @@
 	// The value above in pixels, or if undefined, we fall back to 100% as a non-pixel-perfect backup that's hopefully short-lived
 	$: canvasWidthCSS = canvasWidthRoundedToEven ? `${canvasWidthRoundedToEven}px` : "100%";
 	$: canvasHeightCSS = canvasHeightRoundedToEven ? `${canvasHeightRoundedToEven}px` : "100%";
+
+	$: canvasWidthScaled = canvasSvgWidth && devicePixelRatio && Math.floor(canvasSvgWidth * devicePixelRatio);
+	$: canvasHeightScaled = canvasSvgHeight && devicePixelRatio && Math.floor(canvasSvgHeight * devicePixelRatio);
+
+	// Used to set the canvas rendering dimensions.
+	$: canvasWidthScaledRoundedToEven = canvasWidthScaled && (canvasWidthScaled % 2 === 1 ? canvasWidthScaled + 1 : canvasWidthScaled);
+	$: canvasHeightScaledRoundedToEven = canvasHeightScaled && (canvasHeightScaled % 2 === 1 ? canvasHeightScaled + 1 : canvasHeightScaled);
 
 	$: toolShelfTotalToolsAndSeparators = ((layoutGroup) => {
 		if (!isWidgetSpanRow(layoutGroup)) return undefined;
@@ -362,6 +370,22 @@
 	}
 
 	onMount(() => {
+		// Not compatible with Safari:
+		// <https://developer.mozilla.org/en-US/docs/Web/API/Window/devicePixelRatio#browser_compatibility>
+		// <https://bugs.webkit.org/show_bug.cgi?id=124862>
+		let removeUpdatePixelRatio: (() => void) | undefined = undefined;
+		const updatePixelRatio = () => {
+			removeUpdatePixelRatio?.();
+			const mediaQueryList = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+			// The event is one-time use, so we have to set up a new listener and remove the old one every time
+			mediaQueryList.addEventListener("change", updatePixelRatio);
+			removeUpdatePixelRatio = () => mediaQueryList.removeEventListener("change", updatePixelRatio);
+
+			devicePixelRatio = window.devicePixelRatio;
+			editor.handle.setDevicePixelRatio(devicePixelRatio);
+		};
+		updatePixelRatio();
+
 		// Update rendered SVGs
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentArtwork, async (data) => {
 			await tick();
@@ -508,7 +532,14 @@
 								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" on:scroll={preventTextEditingScroll} />
 							{/if}
 						</div>
-						<canvas class="overlays" width={canvasWidthRoundedToEven} height={canvasHeightRoundedToEven} style:width={canvasWidthCSS} style:height={canvasHeightCSS} data-overlays-canvas>
+						<canvas
+							class="overlays"
+							width={canvasWidthScaledRoundedToEven}
+							height={canvasHeightScaledRoundedToEven}
+							style:width={canvasWidthCSS}
+							style:height={canvasHeightCSS}
+							data-overlays-canvas
+						>
 						</canvas>
 					</div>
 					<div class="graph-view" class:open={$document.graphViewOverlayOpen} style:--fade-artwork={`${$document.fadeArtwork}%`} data-graph>

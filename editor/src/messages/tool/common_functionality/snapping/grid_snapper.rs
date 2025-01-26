@@ -2,7 +2,6 @@ use super::*;
 
 use crate::messages::portfolio::document::utility_types::misc::{GridSnapTarget, GridSnapping, GridType, SnapTarget};
 
-use bezier_rs::Bezier;
 use glam::DVec2;
 use graphene_core::renderer::Quad;
 
@@ -172,10 +171,6 @@ impl GridSnapper {
 					at_intersection: false,
 					constrained: true,
 					source_bounds: point.quad,
-					curves: [
-						Some(Bezier::from_linear_dvec2(projected - constraint_direction * tolerance, projected + constraint_direction * tolerance)),
-						None,
-					],
 					distance,
 					tolerance,
 					..Default::default()

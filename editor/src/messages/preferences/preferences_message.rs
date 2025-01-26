@@ -9,5 +9,6 @@ pub enum PreferencesMessage {
 	ImaginateRefreshFrequency { seconds: f64 },
 	UseVello { use_vello: bool },
 	ImaginateServerHostname { hostname: String },
+	VectorMeshes { enabled: bool },
 	ModifyLayout { zoom_with_scroll: bool },
 }

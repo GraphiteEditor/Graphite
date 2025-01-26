@@ -352,6 +352,13 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Inform the overlays system of the current device pixel ratio
+	#[wasm_bindgen(js_name = setDevicePixelRatio)]
+	pub fn set_device_pixel_ratio(&self, ratio: f64) {
+		let message = OverlaysMessage::SetDevicePixelRatio { ratio };
+		self.dispatch(message);
+	}
+
 	/// Mouse movement within the screenspace bounds of the viewport
 	#[wasm_bindgen(js_name = onMouseMove)]
 	pub fn on_mouse_move(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
