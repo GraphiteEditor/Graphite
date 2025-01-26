@@ -750,7 +750,6 @@
 							overflow-x: visible;
 							overflow-y: hidden;
 							overflow-wrap: anywhere;
-							text-overflow: ellipsis;
 							white-space: pre-wrap;
 							word-break: normal;
 							display: inline-block;

@@ -407,16 +407,14 @@ impl TextToolData {
 			})
 	}
 
-	fn get_snap_candidates(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {
+	fn get_snap_candidates(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, font_cache: &FontCache) {
 		self.snap_candidates.clear();
-		if let Some(layer) = self.layer_dragging {
+		if let Some(layer) = self.layer_dragging {		
 			if (self.snap_candidates.len() as f64) < document.snapping_state.tolerance {
 				snapping::get_layer_snap_points(layer, &SnapData::new(document, input), &mut self.snap_candidates);
 			}
-			if let Some(bounds) = document.metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY) {
-				let quad = document.metadata().transform_to_document(layer) * Quad::from_box(bounds);
-				snapping::get_bbox_points(quad, &mut self.snap_candidates, snapping::BBoxSnapValues::BOUNDING_BOX, document);
-			}
+			let quad = document.metadata().transform_to_document(layer) * text_bounding_box(layer, document, &font_cache);
+			snapping::get_bbox_points(quad, &mut self.snap_candidates, snapping::BBoxSnapValues::BOUNDING_BOX, document);
 		}
 	}
 }
@@ -609,7 +607,7 @@ impl Fsm for TextToolFsmState {
 						);
 						bounds.center_of_transformation = selected.mean_average_of_pivots();
 					}
-					tool_data.get_snap_candidates(document, input);
+					tool_data.get_snap_candidates(document, input, &font_cache);
 
 					TextToolFsmState::ResizingBounds
 				} else {
@@ -619,16 +617,24 @@ impl Fsm for TextToolFsmState {
 				return state;
 			}
 			(TextToolFsmState::Ready, TextToolMessage::PointerMove { .. }) => {
-				let mut cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Text, |bounds| bounds.get_cursor(input, false));
-				if cursor == MouseCursorIcon::Default {
-					cursor = MouseCursorIcon::Text;
-				}
+				// This ensures the cursor only changes if a layer is selected
+				let layer = document
+						.network_interface
+						.selected_nodes(&[])
+						.unwrap()
+						.selected_visible_and_unlocked_layers(&document.network_interface)
+						.find(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text"));
 
+				let mut cursor = MouseCursorIcon::Text;
+				if layer.is_some() {
+					cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Text, |bounds| bounds.get_cursor(input, false));
+				}
+				
 				// Dragging the pivot overrules the other operations
-				if tool_data.pivot.is_over(input.mouse.position) {
-					cursor = MouseCursorIcon::Move;
-				}
-
+				// if tool_data.pivot.is_over(input.mouse.position) {
+					// 	cursor = MouseCursorIcon::Move;
+					// }
+					
 				responses.add(OverlaysMessage::Draw);
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 
@@ -670,38 +676,36 @@ impl Fsm for TextToolFsmState {
 						// 	}
 						// });
 
-						if let Some(selected_nodes) = document.network_interface.selected_nodes(&[]) {
-							let text_layer = selected_nodes
-								.selected_visible_and_unlocked_layers(&document.network_interface)
-								.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, "Text"));
-							let node_id = text_layer.map(|layer| graph_modification_utils::get_text_id(layer, &document.network_interface).unwrap());
+						let text_layer = tool_data.layer_dragging;
+						let node_id = text_layer.map(|layer| graph_modification_utils::get_text_id(layer, &document.network_interface).unwrap());
 
-							if node_id.is_none() || text_layer.is_none() {
-								return TextToolFsmState::Ready;
-							}
-
-							let node_id = node_id.unwrap();
-							let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center_position, lock_ratio_bool, snap);
-							let (delta, pivot) = movement.bounds_to_scale_transform(position, size);
-
-							let pivot_transform = DAffine2::from_translation(pivot);
-							let _transformation = pivot_transform * delta * pivot_transform.inverse();
-
-							let _transformed_bounding_box = Quad::from_box([position, size].into());
-
-							let height = (position.y - size.y).abs();
-							let width = (position.x - size.x).abs();
-
-							responses.add(NodeGraphMessage::SetInput {
-								input_connector: InputConnector::node(node_id, 6),
-								input: NodeInput::value(TaggedValue::OptionalF64(Some(width)), false),
-							});
-							responses.add(NodeGraphMessage::SetInput {
-								input_connector: InputConnector::node(node_id, 7),
-								input: NodeInput::value(TaggedValue::OptionalF64(Some(height)), false),
-							});
-							responses.add(NodeGraphMessage::RunDocumentGraph);
+						if node_id.is_none() || text_layer.is_none() {
+							return TextToolFsmState::Ready;
 						}
+
+						let node_id = node_id.unwrap();
+						let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center_position, lock_ratio_bool, snap);
+
+						// Pivots will not work as expected here.
+						// let (delta, pivot) = movement.bounds_to_scale_transform(position, size);
+
+						// let pivot_transform = DAffine2::from_translation(pivot);
+						// let _transformation = pivot_transform * delta * pivot_transform.inverse();
+
+						// let _transformed_bounding_box = Quad::from_box([position, size].into());
+
+						let height = (position.y - size.y).abs();
+						let width = (position.x - size.x).abs();
+
+						responses.add(NodeGraphMessage::SetInput {
+							input_connector: InputConnector::node(node_id, 6),
+							input: NodeInput::value(TaggedValue::OptionalF64(Some(width)), false),
+						});
+						responses.add(NodeGraphMessage::SetInput {
+							input_connector: InputConnector::node(node_id, 7),
+							input: NodeInput::value(TaggedValue::OptionalF64(Some(height)), false),
+						});
+						responses.add(NodeGraphMessage::RunDocumentGraph);
 
 						// AutoPanning
 						let messages = [
@@ -714,9 +718,9 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::ResizingBounds
 			}
 			(TextToolFsmState::DraggingPivot, TextToolMessage::PointerMove { center, lock_ratio }) => {
-				let mouse_position = input.mouse.position;
-				let snapped_mouse_position = mouse_position;
-				tool_data.pivot.set_viewport_position(snapped_mouse_position, document, responses);
+				// let mouse_position = input.mouse.position;
+				// let snapped_mouse_position = mouse_position;
+				// tool_data.pivot.set_viewport_position(snapped_mouse_position, document, responses);
 
 				// AutoPanning
 				let messages = [
@@ -812,7 +816,8 @@ impl Fsm for TextToolFsmState {
 				// };
 				// responses.add(response);
 
-				tool_data.resize.snap_manager.cleanup(responses);
+				// tool_data.resize.snap_manager.cleanup(responses);
+
 				TextToolFsmState::Ready
 			}
 			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text, is_left_or_right_click }) => {
@@ -850,7 +855,6 @@ impl Fsm for TextToolFsmState {
 				self
 			}
 			(TextToolFsmState::Editing, TextToolMessage::Abort) => {
-				tool_data.bounding_box_manager.take();
 				if tool_data.new_text.is_empty() {
 					return tool_data.delete_empty_layer(font_cache, responses);
 				}
