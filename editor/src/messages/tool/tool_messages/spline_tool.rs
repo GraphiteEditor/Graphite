@@ -227,6 +227,7 @@ impl Fsm for SplineToolFsmState {
 			global_tool_data,
 			input,
 			shape_editor,
+			preferences,
 			..
 		} = tool_action_data;
 
@@ -234,7 +235,7 @@ impl Fsm for SplineToolFsmState {
 		match (self, event) {
 			(_, SplineToolMessage::CanvasTransformed) => self,
 			(_, SplineToolMessage::Overlays(mut overlay_context)) => {
-				path_endpoint_overlays(document, shape_editor, &mut overlay_context);
+				path_endpoint_overlays(document, shape_editor, &mut overlay_context, preferences);
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 				self
 			}
@@ -250,7 +251,7 @@ impl Fsm for SplineToolFsmState {
 
 				// Extend an endpoint of the selected path
 				let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
-				if let Some((layer, point, position)) = should_extend(document, viewport, SNAP_POINT_TOLERANCE, selected_nodes.selected_layers(document.metadata())) {
+				if let Some((layer, point, position)) = should_extend(document, viewport, SNAP_POINT_TOLERANCE, selected_nodes.selected_layers(document.metadata()), preferences) {
 					tool_data.layer = Some(layer);
 					tool_data.points.push((point, position));
 					tool_data.next_point = position;
@@ -304,7 +305,7 @@ impl Fsm for SplineToolFsmState {
 				if tool_data.layer.is_none() {
 					return SplineToolFsmState::Ready;
 				};
-				if join_path(document, input.mouse.position, tool_data, responses) {
+				if join_path(document, input.mouse.position, tool_data, preferences, responses) {
 					responses.add(DocumentMessage::EndTransaction);
 					return SplineToolFsmState::Ready;
 				}
@@ -318,7 +319,7 @@ impl Fsm for SplineToolFsmState {
 			(SplineToolFsmState::Drawing, SplineToolMessage::PointerMove) => {
 				let Some(layer) = tool_data.layer else { return SplineToolFsmState::Ready };
 				let ignore = |cp: PointId| tool_data.preview_point.is_some_and(|pp| pp == cp) || tool_data.points.last().is_some_and(|(ep, _)| *ep == cp);
-				let join_point = closest_point(document, input.mouse.position, PATH_JOIN_THRESHOLD, vec![layer].into_iter(), ignore);
+				let join_point = closest_point(document, input.mouse.position, PATH_JOIN_THRESHOLD, vec![layer].into_iter(), ignore, preferences);
 
 				// Endpoints snapping
 				if let Some((_, _, point)) = join_point {
@@ -402,7 +403,7 @@ impl Fsm for SplineToolFsmState {
 }
 
 /// Return `true` only if new segment is inserted to connect two end points in the selected layer otherwise `false`.
-fn join_path(document: &DocumentMessageHandler, mouse_pos: DVec2, tool_data: &mut SplineToolData, responses: &mut VecDeque<Message>) -> bool {
+fn join_path(document: &DocumentMessageHandler, mouse_pos: DVec2, tool_data: &mut SplineToolData, preferences: &PreferencesMessageHandler, responses: &mut VecDeque<Message>) -> bool {
 	let Some(&(endpoint, _)) = tool_data.points.last() else { return false };
 
 	let preview_point = tool_data.preview_point;
@@ -410,9 +411,14 @@ fn join_path(document: &DocumentMessageHandler, mouse_pos: DVec2, tool_data: &mu
 	let selected_layers = selected_nodes.selected_layers(document.metadata());
 
 	// Get the closest point to mouse position which is not preview_point or end_point.
-	let closest_point = closest_point(document, mouse_pos, PATH_JOIN_THRESHOLD, selected_layers, |cp| {
-		preview_point.is_some_and(|pp| pp == cp) || cp == endpoint
-	});
+	let closest_point = closest_point(
+		document,
+		mouse_pos,
+		PATH_JOIN_THRESHOLD,
+		selected_layers,
+		|cp| preview_point.is_some_and(|pp| pp == cp) || cp == endpoint,
+		preferences,
+	);
 	let Some((layer, join_point, _)) = closest_point else { return false };
 
 	// Last end point inserted was the preview point and segment therefore we delete it before joining the end_point & join_point.

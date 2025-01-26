@@ -55,6 +55,7 @@ glam = { workspace = true, default-features = false, features = [
 
 # Required dependencies
 half = { version = "2.4.1", default-features = false, features = ["bytemuck"] }
+tinyvec = { version = "1" }
 
 # Optional workspace dependencies
 dyn-any = { workspace = true, optional = true }

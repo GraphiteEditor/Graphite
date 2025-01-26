@@ -1,7 +1,7 @@
 use super::utility_types::OverlayContext;
 use crate::consts::HIDE_HANDLE_DISTANCE;
 use crate::messages::tool::common_functionality::shape_editor::{SelectedLayerState, ShapeState};
-use crate::messages::tool::tool_messages::tool_prelude::DocumentMessageHandler;
+use crate::messages::tool::tool_messages::tool_prelude::{DocumentMessageHandler, PreferencesMessageHandler};
 
 use graphene_core::vector::ManipulatorPointId;
 
@@ -62,7 +62,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, shape_editor: &mut Shape
 	}
 }
 
-pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext) {
+pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext, preferences: &PreferencesMessageHandler) {
 	for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
 		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
 			continue;
@@ -72,7 +72,7 @@ pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &
 		let selected = shape_editor.selected_shape_state.get(&layer);
 		let is_selected = |selected: Option<&SelectedLayerState>, point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_selected(point));
 
-		for point in vector_data.single_connected_points() {
+		for point in vector_data.extendable_points(preferences.vector_meshes) {
 			let Some(position) = vector_data.point_domain.position_from_id(point) else { continue };
 			let position = transform.transform_point2(position);
 			overlay_context.manipulator_anchor(position, is_selected(selected, ManipulatorPointId::Anchor(point)), None);
