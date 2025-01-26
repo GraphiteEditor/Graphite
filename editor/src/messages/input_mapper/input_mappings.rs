@@ -260,6 +260,9 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Enter); action_dispatch=PenToolMessage::Confirm),
 		entry!(KeyDown(Delete); action_dispatch=PenToolMessage::RemovePreviousHandle),
 		entry!(KeyDown(Backspace); action_dispatch=PenToolMessage::RemovePreviousHandle),
+		entry!(KeyDown(KeyG); action_dispatch=PenToolMessage::GRS { grab: KeyG, rotate: KeyR, scale: KeyS }),
+		entry!(KeyDown(KeyR); action_dispatch=PenToolMessage::GRS { grab: KeyG, rotate: KeyR, scale: KeyS }),
+		entry!(KeyDown(KeyS); action_dispatch=PenToolMessage::GRS { grab: KeyG, rotate: KeyR, scale: KeyS }),
 		//
 		// FreehandToolMessage
 		entry!(PointerMove; action_dispatch=FreehandToolMessage::PointerMove),
