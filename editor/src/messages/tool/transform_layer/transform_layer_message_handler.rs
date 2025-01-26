@@ -31,6 +31,7 @@ pub struct TransformLayerMessageHandler {
 
 	original_transforms: OriginalTransforms,
 	pivot: DVec2,
+	grab_target: DVec2,
 
 	// pen-tool
 	handle: DVec2,
@@ -48,25 +49,27 @@ impl TransformLayerMessageHandler {
 	}
 }
 
-fn calculate_pivot(selected_points: &Vec<&ManipulatorPointId>, vector_data: &VectorData, viewspace: DAffine2, get_location: impl Fn(&ManipulatorPointId) -> Option<DVec2>) -> Option<DVec2> {
+fn calculate_pivot(selected_points: &Vec<&ManipulatorPointId>, vector_data: &VectorData, viewspace: DAffine2, get_location: impl Fn(&ManipulatorPointId) -> Option<DVec2>) -> Option<(DVec2, DVec2)> {
 	if let [point] = selected_points.as_slice() {
 		match point {
 			ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) => {
 				// Get the anchor position and transform it to the pivot
-				point.get_anchor_position(vector_data).map(|anchor_position| viewspace.transform_point2(anchor_position))
+				let pivot_pos = point.get_anchor_position(vector_data).map(|anchor_position| viewspace.transform_point2(anchor_position))?;
+				let target = viewspace.transform_point2(point.get_position(vector_data)?);
+				Some((pivot_pos, target))
 			}
 			_ => {
 				// Calculate the average position of all selected points
 				let mut point_count = 0;
 				let average_position = selected_points.iter().filter_map(|p| get_location(p)).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64;
-				Some(average_position)
+				Some((average_position, average_position))
 			}
 		}
 	} else {
 		// Handle the case where there are multiple points
 		let mut point_count = 0;
 		let average_position = selected_points.iter().filter_map(|p| get_location(p)).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64;
-		Some(average_position)
+		Some((average_position, average_position))
 	}
 }
 
@@ -119,8 +122,9 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					let points = shape_editor.selected_points();
 					let selected_points: Vec<&ManipulatorPointId> = points.collect();
 
-					if let Some(new_pivot) = calculate_pivot(&selected_points, &vector_data, viewspace, |arg0: &ManipulatorPointId| get_location(&arg0)) {
+					if let Some((new_pivot, grab_target)) = calculate_pivot(&selected_points, &vector_data, viewspace, |arg0: &ManipulatorPointId| get_location(&arg0)) {
 						*selected.pivot = new_pivot;
+						self.grab_target = grab_target;
 					} else {
 						log::warn!("Failed to calculate pivot.");
 					}
@@ -167,7 +171,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				let bottom_right = DVec2::new(handle.x, last_point.y);
 				self.local = false;
 				self.fixed_bbox = Quad::from_box([top_left, bottom_right]);
-
+				self.grab_target = handle;
 				self.pivot = last_point;
 				self.handle = handle;
 
@@ -369,7 +373,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						TransformOperation::Grabbing(translation) => {
 							let translation = document_to_viewport.inverse().transform_vector2(translation.to_dvec(document_to_viewport));
 							let vec_to_end = self.mouse_position - self.start_mouse;
-							let quad = Quad::from_box([self.pivot, self.pivot + vec_to_end]).0;
+							let quad = Quad::from_box([self.grab_target, self.grab_target + vec_to_end]).0;
 							let e1 = (self.fixed_bbox.0[1] - self.fixed_bbox.0[0]).normalize();
 
 							if matches!(axis_constraint, Axis::Both | Axis::X) {
