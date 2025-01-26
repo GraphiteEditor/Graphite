@@ -9,9 +9,9 @@ use crate::messages::tool::utility_types::{ToolData, ToolType};
 
 use graphene_core::renderer::Quad;
 use graphene_core::vector::ManipulatorPointId;
+use graphene_std::vector::VectorData;
 
 use glam::{DAffine2, DVec2};
-use graphene_std::vector::VectorData;
 use std::f64::consts::TAU;
 
 const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| TransformLayerMessage::Overlays(context).into();
@@ -33,7 +33,7 @@ pub struct TransformLayerMessageHandler {
 	pivot: DVec2,
 	grab_target: DVec2,
 
-	// pen-tool
+	// Pen tool (outgoing handle GRS manipulation)
 	handle: DVec2,
 	last_point: DVec2,
 	grs_pen_handle: bool,
@@ -50,26 +50,27 @@ impl TransformLayerMessageHandler {
 }
 
 fn calculate_pivot(selected_points: &Vec<&ManipulatorPointId>, vector_data: &VectorData, viewspace: DAffine2, get_location: impl Fn(&ManipulatorPointId) -> Option<DVec2>) -> Option<(DVec2, DVec2)> {
-	if let [point] = selected_points.as_slice() {
-		match point {
-			ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) => {
-				// Get the anchor position and transform it to the pivot
-				let pivot_pos = point.get_anchor_position(vector_data).map(|anchor_position| viewspace.transform_point2(anchor_position))?;
-				let target = viewspace.transform_point2(point.get_position(vector_data)?);
-				Some((pivot_pos, target))
-			}
-			_ => {
-				// Calculate the average position of all selected points
-				let mut point_count = 0;
-				let average_position = selected_points.iter().filter_map(|p| get_location(p)).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64;
-				Some((average_position, average_position))
-			}
-		}
-	} else {
+	let [point] = selected_points.as_slice() else {
 		// Handle the case where there are multiple points
 		let mut point_count = 0;
 		let average_position = selected_points.iter().filter_map(|p| get_location(p)).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64;
-		Some((average_position, average_position))
+
+		return Some((average_position, average_position));
+	};
+
+	match point {
+		ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) => {
+			// Get the anchor position and transform it to the pivot
+			let pivot_pos = point.get_anchor_position(vector_data).map(|anchor_position| viewspace.transform_point2(anchor_position))?;
+			let target = viewspace.transform_point2(point.get_position(vector_data)?);
+			Some((pivot_pos, target))
+		}
+		_ => {
+			// Calculate the average position of all selected points
+			let mut point_count = 0;
+			let average_position = selected_points.iter().filter_map(|p| get_location(p)).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64;
+			Some((average_position, average_position))
+		}
 	}
 }
 
@@ -105,6 +106,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				selected.revert_operation();
 				typing.clear();
 			}
+
 			if using_pen_tool {
 				selected.responses.add(PenToolMessage::GRS {
 					grab: Key::KeyG,
@@ -114,23 +116,22 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				return;
 			}
 
-			if using_path_tool {
-				if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
-					*selected.original_transforms = OriginalTransforms::default();
-					let viewspace = document.metadata().transform_to_viewport(selected_layers[0]);
-					let get_location = |point: &&ManipulatorPointId| point.get_position(&vector_data).map(|position| viewspace.transform_point2(position));
-					let points = shape_editor.selected_points();
-					let selected_points: Vec<&ManipulatorPointId> = points.collect();
-
-					if let Some((new_pivot, grab_target)) = calculate_pivot(&selected_points, &vector_data, viewspace, |arg0: &ManipulatorPointId| get_location(&arg0)) {
-						*selected.pivot = new_pivot;
-						self.grab_target = grab_target;
-					} else {
-						log::warn!("Failed to calculate pivot.");
-					}
-				}
-			} else {
+			if !using_path_tool {
 				*selected.pivot = selected.mean_average_of_pivots();
+			} else if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
+				*selected.original_transforms = OriginalTransforms::default();
+
+				let viewspace = document.metadata().transform_to_viewport(selected_layers[0]);
+				let selected_points = shape_editor.selected_points().collect::<Vec<_>>();
+
+				let get_location = |point: &&ManipulatorPointId| point.get_position(&vector_data).map(|position| viewspace.transform_point2(position));
+				if let Some((new_pivot, grab_target)) = calculate_pivot(&selected_points, &vector_data, viewspace, |point: &ManipulatorPointId| get_location(&point)) {
+					*selected.pivot = new_pivot;
+
+					self.grab_target = grab_target;
+				} else {
+					log::warn!("Failed to calculate pivot.");
+				}
 			}
 
 			*mouse_position = input.mouse.position;
@@ -150,17 +151,21 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				if using_pen_tool {
 					self.last_point = DVec2::ZERO;
 					self.grs_pen_handle = false;
-					selected.responses.add(PenToolMessage::Confirm);
+
 					selected.pen_handle = None;
+
+					selected.responses.add(PenToolMessage::Confirm);
 				} else {
 					responses.add(DocumentMessage::EndTransaction);
 					responses.add(ToolMessage::UpdateHints);
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
+
 				responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 			}
 			TransformLayerMessage::BeginGrabPen { last_point, handle } | TransformLayerMessage::BeginRotatePen { last_point, handle } | TransformLayerMessage::BeginScalePen { last_point, handle } => {
 				self.typing.clear();
+
 				self.last_point = last_point;
 				self.handle = handle;
 				self.grs_pen_handle = true;
@@ -186,7 +191,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 			}
 			TransformLayerMessage::BeginGrab => {
-				if (!using_path_tool && !using_select_tool & !using_pen_tool)
+				if (!using_path_tool && !using_select_tool && !using_pen_tool)
 					|| (using_path_tool && shape_editor.selected_points().next().is_none())
 					|| selected_layers.is_empty()
 					|| matches!(self.transform_operation, TransformOperation::Grabbing(_))
@@ -307,10 +312,12 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 			}
 			TransformLayerMessage::CancelTransformOperation => {
 				if using_pen_tool {
+					self.typing.clear();
+
 					self.last_point = DVec2::ZERO;
 					self.transform_operation = TransformOperation::None;
-					self.typing.clear();
 					self.handle = DVec2::ZERO;
+
 					responses.add(PenToolMessage::Abort);
 				} else {
 					selected.revert_operation();
@@ -449,11 +456,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						TransformOperation::Rotating(rotation) => {
 							let angle = rotation.to_f64(self.snap);
 							let quad = self.fixed_bbox.0;
-							let offset_angle = if self.grs_pen_handle {
-								(self.handle - self.last_point).to_angle()
-							} else {
-								(quad[1] - quad[0]).to_angle()
-							};
+							let offset_angle = if self.grs_pen_handle { self.handle - self.last_point } else { quad[1] - quad[0] };
+							let offset_angle = offset_angle.to_angle();
 							let width = viewport_box.max_element();
 							let radius = self.start_mouse.distance(self.pivot);
 							let arc_radius = ANGLE_MEASURE_RADIUS_FACTOR * width;
@@ -497,10 +501,9 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 								.apply_transform_operation(&mut selected, self.snap, self.local, self.fixed_bbox, document_to_viewport);
 						}
 						TransformOperation::Rotating(rotation) => {
-							let angle;
 							let start_offset = *selected.pivot - self.mouse_position;
 							let end_offset = *selected.pivot - input.mouse.position;
-							angle = start_offset.angle_to(end_offset);
+							let angle = start_offset.angle_to(end_offset);
 
 							let change = if self.slow { angle / SLOWING_DIVISOR } else { angle };
 
@@ -517,7 +520,9 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 								(current_frame_dist - previous_frame_dist) / start_transform_dist
 							};
 							let change = if self.slow { change / SLOWING_DIVISOR } else { change };
+
 							self.transform_operation = TransformOperation::Scaling(scale.increment_amount(change));
+
 							self.transform_operation
 								.apply_transform_operation(&mut selected, self.snap, self.local, self.fixed_bbox, document_to_viewport);
 						}

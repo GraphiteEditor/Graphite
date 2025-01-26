@@ -384,7 +384,8 @@ pub struct Selected<'a> {
 	pub pivot: &'a mut DVec2,
 	pub shape_editor: Option<&'a ShapeState>,
 	pub tool_type: &'a ToolType,
-	pub pen_handle: Option<&'a mut DVec2>, // Only for Pen-tool
+	// Only for the Pen tool
+	pub pen_handle: Option<&'a mut DVec2>,
 }
 
 impl<'a> Selected<'a> {
@@ -507,8 +508,8 @@ impl<'a> Selected<'a> {
 
 	pub fn apply_transform_pen(&mut self, transformation: DAffine2) {
 		if let Some(pen_handle) = &self.pen_handle {
-			let final_pos = transformation.transform_point2(**pen_handle);
-			self.responses.add(PenToolMessage::FinalPosition { final_pos });
+			let final_position = transformation.transform_point2(**pen_handle);
+			self.responses.add(PenToolMessage::FinalPosition { final_position });
 		}
 	}
 

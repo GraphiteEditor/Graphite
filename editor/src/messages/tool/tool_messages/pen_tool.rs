@@ -64,7 +64,7 @@ pub enum PenToolMessage {
 	RecalculateLatestPointsPosition,
 	RemovePreviousHandle,
 	GRS { grab: Key, rotate: Key, scale: Key },
-	FinalPosition { final_pos: DVec2 },
+	FinalPosition { final_position: DVec2 },
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -571,33 +571,32 @@ impl Fsm for PenToolFsmState {
 		let ToolMessage::Pen(event) = event else { return self };
 		match (self, event) {
 			(PenToolFsmState::PlacingAnchor | PenToolFsmState::GRSHandle, PenToolMessage::GRS { grab, rotate, scale }) => {
-				if let Some(latest) = tool_data.latest_point_mut() {
-					if let Some(layer) = layer {
-						if latest.handle_start != latest.pos {
-							let viewport = document.metadata().transform_to_viewport(layer);
-							let last_point = viewport.transform_point2(latest.pos);
-							let handle = viewport.transform_point2(latest.handle_start);
-							if input.keyboard.key(grab) {
-								responses.add(TransformLayerMessage::BeginGrabPen { last_point, handle });
-							} else if input.keyboard.key(rotate) {
-								responses.add(TransformLayerMessage::BeginRotatePen { last_point, handle });
-							} else if input.keyboard.key(scale) {
-								responses.add(TransformLayerMessage::BeginScalePen { last_point, handle });
-							}
-							tool_data.before_grs_pos = latest.handle_start;
-						} else {
-							return PenToolFsmState::PlacingAnchor;
-						}
+				let Some(latest) = tool_data.latest_point_mut() else { return PenToolFsmState::PlacingAnchor };
+				let Some(layer) = layer else { return PenToolFsmState::PlacingAnchor };
+
+				if latest.handle_start != latest.pos {
+					let viewport = document.metadata().transform_to_viewport(layer);
+					let last_point = viewport.transform_point2(latest.pos);
+					let handle = viewport.transform_point2(latest.handle_start);
+
+					if input.keyboard.key(grab) {
+						responses.add(TransformLayerMessage::BeginGrabPen { last_point, handle });
+					} else if input.keyboard.key(rotate) {
+						responses.add(TransformLayerMessage::BeginRotatePen { last_point, handle });
+					} else if input.keyboard.key(scale) {
+						responses.add(TransformLayerMessage::BeginScalePen { last_point, handle });
 					}
-				} else {
-					return PenToolFsmState::PlacingAnchor;
+
+					tool_data.before_grs_pos = latest.handle_start;
 				}
 
 				PenToolFsmState::GRSHandle
 			}
-			(PenToolFsmState::GRSHandle, PenToolMessage::FinalPosition { final_pos }) => {
+			(PenToolFsmState::GRSHandle, PenToolMessage::FinalPosition { final_position: final_pos }) => {
+				let Some(layer) = layer else { return PenToolFsmState::GRSHandle };
+
 				if let Some(latest_pt) = tool_data.latest_point_mut() {
-					let layer_space_to_viewport = document.metadata().transform_to_viewport(layer.unwrap());
+					let layer_space_to_viewport = document.metadata().transform_to_viewport(layer);
 					let final_pos = layer_space_to_viewport.inverse().transform_point2(final_pos);
 					latest_pt.handle_start = final_pos;
 				}
@@ -605,10 +604,11 @@ impl Fsm for PenToolFsmState {
 				responses.add(OverlaysMessage::Draw);
 
 				PenToolFsmState::GRSHandle
-			} // }
+			}
 			(PenToolFsmState::GRSHandle, PenToolMessage::Confirm) => {
 				tool_data.next_point = input.mouse.position;
 				tool_data.next_handle_start = input.mouse.position;
+
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PenToolMessage::PointerMove {
 					snap_angle: Key::Control,
@@ -621,16 +621,19 @@ impl Fsm for PenToolFsmState {
 			(PenToolFsmState::GRSHandle, PenToolMessage::Abort) => {
 				tool_data.next_point = input.mouse.position;
 				tool_data.next_handle_start = input.mouse.position;
+
 				let previous = tool_data.before_grs_pos;
 				if let Some(latest) = tool_data.latest_point_mut() {
 					latest.handle_start = previous;
 				}
+
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PenToolMessage::PointerMove {
 					snap_angle: Key::Control,
 					break_handle: Key::Alt,
 					lock_angle: Key::Shift,
 				});
+
 				PenToolFsmState::PlacingAnchor
 			}
 			(_, PenToolMessage::SelectionChanged) => {
