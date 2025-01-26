@@ -104,7 +104,7 @@ pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, numbe
 		return vec![];
 	};
 
-	let (mut number_min, mut number_max, range) = (None, None, None);
+	let (mut number_min, mut number_max, range) = number_options;
 	let mut number_input = NumberInput::default();
 	if let Some((range_start, range_end)) = range {
 		number_min = Some(range_start);
