@@ -604,6 +604,7 @@ impl Fsm for TextToolFsmState {
 							&document.network_interface,
 							None,
 							&ToolType::Text,
+							None,
 						);
 						bounds.center_of_transformation = selected.mean_average_of_pivots();
 					}
