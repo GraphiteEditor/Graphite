@@ -221,20 +221,21 @@ impl Dispatcher {
 				}
 				Message::Tool(message) => {
 					let document_id = self.message_handlers.portfolio_message_handler.active_document_id().unwrap();
-					if let Some(document) = self.message_handlers.portfolio_message_handler.documents.get_mut(&document_id) {
-						let data = ToolMessageData {
-							document_id,
-							document,
-							input: &self.message_handlers.input_preprocessor_message_handler,
-							persistent_data: &self.message_handlers.portfolio_message_handler.persistent_data,
-							node_graph: &self.message_handlers.portfolio_message_handler.executor,
-							preferences: &self.message_handlers.preferences_message_handler,
-						};
-
-						self.message_handlers.tool_message_handler.process_message(message, &mut queue, data);
-					} else {
+					let Some(document) = self.message_handlers.portfolio_message_handler.documents.get_mut(&document_id) else {
 						warn!("Called ToolMessage without an active document.\nGot {message:?}");
-					}
+						return;
+					};
+
+					let data = ToolMessageData {
+						document_id,
+						document,
+						input: &self.message_handlers.input_preprocessor_message_handler,
+						persistent_data: &self.message_handlers.portfolio_message_handler.persistent_data,
+						node_graph: &self.message_handlers.portfolio_message_handler.executor,
+						preferences: &self.message_handlers.preferences_message_handler,
+					};
+
+					self.message_handlers.tool_message_handler.process_message(message, &mut queue, data);
 				}
 				Message::Workspace(message) => {
 					self.message_handlers.workspace_message_handler.process_message(message, &mut queue, ());

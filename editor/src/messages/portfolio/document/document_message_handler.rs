@@ -1407,6 +1407,29 @@ impl DocumentMessageHandler {
 		self.intersect_quad(viewport_quad, ipp).filter(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
 
+	pub fn is_layer_fully_inside(&self, layer: &LayerNodeIdentifier, quad: graphene_core::renderer::Quad) -> bool {
+		// Get the bounding box of the layer in document space
+		let Some(bounding_box) = self.metadata().bounding_box_viewport(*layer) else { return false };
+
+		// Check if the bounding box is fully within the selection quad
+		let [top_left, bottom_right] = bounding_box;
+
+		let quad_bbox = quad.bounding_box();
+
+		let quad_left = quad_bbox[0].x;
+		let quad_right = quad_bbox[1].x;
+		let quad_top = quad_bbox[0].y.max(quad_bbox[1].y); // Correct top
+		let quad_bottom = quad_bbox[0].y.min(quad_bbox[1].y); // Correct bottom
+
+		// Extract layer's bounding box coordinates
+		let layer_left = top_left.x;
+		let layer_right = bottom_right.x;
+		let layer_top = bottom_right.y;
+		let layer_bottom = top_left.y;
+
+		layer_left >= quad_left && layer_right <= quad_right && layer_top <= quad_top && layer_bottom >= quad_bottom
+	}
+
 	/// Find all of the layers that were clicked on from a viewport space location
 	pub fn click_xray(&self, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);

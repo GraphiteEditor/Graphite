@@ -725,10 +725,10 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	#[wasm_bindgen(js_name = injectImaginatePollServerStatus)]
-	pub fn inject_imaginate_poll_server_status(&self) {
-		self.dispatch(PortfolioMessage::ImaginatePollServerStatus);
-	}
+	// #[wasm_bindgen(js_name = injectImaginatePollServerStatus)]
+	// pub fn inject_imaginate_poll_server_status(&self) {
+	// 	self.dispatch(PortfolioMessage::ImaginatePollServerStatus);
+	// }
 
 	// TODO: Eventually remove this document upgrade code
 	#[wasm_bindgen(js_name = triggerUpgradeDocumentToVectorManipulationFormat)]
