@@ -138,7 +138,7 @@ pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: Types
 					}
 				}
 				// Clip when the height is exceeded
-				if typesetting.max_height.is_some_and(|max_height| builder.pos.y > max_height) {
+				if typesetting.max_height.is_some_and(|max_height| builder.pos.y > max_height - line_height) {
 					return builder.other_subpaths;
 				}
 

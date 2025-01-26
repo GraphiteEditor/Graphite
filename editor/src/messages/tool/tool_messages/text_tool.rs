@@ -571,13 +571,14 @@ impl Fsm for TextToolFsmState {
 				if selected.is_none() {
 					TextToolFsmState::Placing
 				} else if tool_data.pivot.is_over(input.mouse.position) {
-					responses.add(DocumentMessage::StartTransaction);
+					// Pivot currently hardcoded to 0.5, 0.5 for text layers
+
+					// responses.add(DocumentMessage::StartTransaction);
 
 					// tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
 					// tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
-
 					TextToolFsmState::DraggingPivot
-
+					
 				// Check if the user is dragging the bounds
 				} else if let Some(_selected_edges) = dragging_bounds {
 					responses.add(DocumentMessage::StartTransaction);
@@ -805,11 +806,11 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::DraggingPivot, TextToolMessage::DragStop) => {
-				let response = match input.mouse.position.distance(tool_data.resize.viewport_drag_start(document)) < 10. * f64::EPSILON {
-					true => DocumentMessage::AbortTransaction,
-					false => DocumentMessage::EndTransaction,
-				};
-				responses.add(response);
+				// let response = match input.mouse.position.distance(tool_data.resize.viewport_drag_start(document)) < 10. * f64::EPSILON {
+				// 	true => DocumentMessage::AbortTransaction,
+				// 	false => DocumentMessage::EndTransaction,
+				// };
+				// responses.add(response);
 
 				tool_data.resize.snap_manager.cleanup(responses);
 				TextToolFsmState::Ready
