@@ -88,6 +88,7 @@ impl SelectedEdges {
 
 		let mut min = self.bounds[0];
 		let mut max = self.bounds[1];
+
 		if self.top {
 			min.y = mouse.y;
 		} else if self.bottom {
@@ -102,19 +103,28 @@ impl SelectedEdges {
 		let mut pivot = self.pivot_from_bounds(min, max);
 		if let Some(center_around) = center_around {
 			let center_around = transform.inverse().transform_point2(center_around);
+			pivot = center_around;
+			let filter_finite = |stretch: f64| {
+				if stretch.is_finite() {
+					stretch
+				} else {
+					warn!("Invalid stretch");
+					1. // Just use the standard behaviour
+				}
+			};
 			if self.top {
-				pivot.y = center_around.y;
-				max.y = center_around.y * 2. - min.y;
+				let stretch = filter_finite((center_around.y - min.y) / (center_around.y - self.bounds[0].y));
+				max.y = (max.y - center_around.y) * stretch + center_around.y;
 			} else if self.bottom {
-				pivot.y = center_around.y;
-				min.y = center_around.y * 2. - max.y;
+				let stretch = filter_finite((center_around.y - max.y) / (center_around.y - self.bounds[1].y));
+				min.y = (min.y - center_around.y) * stretch + center_around.y;
 			}
 			if self.left {
-				pivot.x = center_around.x;
-				max.x = center_around.x * 2. - min.x;
+				let stretch = filter_finite((center_around.x - min.x) / (center_around.x - self.bounds[0].x));
+				max.x = (max.x - center_around.x) * stretch + center_around.x;
 			} else if self.right {
-				pivot.x = center_around.x;
-				min.x = center_around.x * 2. - max.x;
+				let stretch = filter_finite((center_around.x - max.x) / (center_around.x - self.bounds[1].x));
+				min.x = (min.x - center_around.x) * stretch + center_around.x;
 			}
 		}
 
