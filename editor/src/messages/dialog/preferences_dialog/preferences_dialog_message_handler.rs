@@ -32,41 +32,37 @@ impl PreferencesDialogMessageHandler {
 	const TITLE: &'static str = "Editor Preferences";
 
 	fn layout(&self, preferences: &PreferencesMessageHandler) -> Layout {
-		let selection_section = vec![TextLabel::new("Selection Mode").italic(true).widget_holder()];
+		let selection_section = vec![TextLabel::new("Selection").italic(true).widget_holder()];
 		let selection_mode = RadioInput::new(vec![
-			RadioEntryData::new("touched")
-				.label("Touched")
-				.tooltip("Select objects that are touched by the selection area")
+			RadioEntryData::new(SelectionMode::Touched.to_string())
+				.label(SelectionMode::Touched.to_string())
+				.tooltip(SelectionMode::Touched.tooltip_description())
 				.on_update(move |_| {
 					PreferencesMessage::SelectionMode {
 						selection_mode: SelectionMode::Touched,
 					}
 					.into()
 				}),
-			RadioEntryData::new("contained")
-				.label("Contained")
-				.tooltip("Select objects that are fully contained within the selection area")
+			RadioEntryData::new(SelectionMode::Enclosed.to_string())
+				.label(SelectionMode::Enclosed.to_string())
+				.tooltip(SelectionMode::Enclosed.tooltip_description())
 				.on_update(move |_| {
 					PreferencesMessage::SelectionMode {
-						selection_mode: SelectionMode::Contained,
+						selection_mode: SelectionMode::Enclosed,
 					}
 					.into()
 				}),
-			RadioEntryData::new("by_drag_direction")
-				.label("By Drag Direction")
-				.tooltip("Select objects based on the drag direction of the selection area")
+			RadioEntryData::new(SelectionMode::Directional.to_string())
+				.label(SelectionMode::Directional.to_string())
+				.tooltip(SelectionMode::Directional.tooltip_description())
 				.on_update(move |_| {
 					PreferencesMessage::SelectionMode {
-						selection_mode: SelectionMode::ByDragDirection,
+						selection_mode: SelectionMode::Directional,
 					}
 					.into()
 				}),
 		])
-		.selected_index(Some(match preferences.selection_mode {
-			SelectionMode::Touched => 0,
-			SelectionMode::Contained => 1,
-			SelectionMode::ByDragDirection => 2,
-		}))
+		.selected_index(Some(preferences.selection_mode as u32))
 		.widget_holder();
 
 		let zoom_with_scroll_tooltip = "Use the scroll wheel for zooming instead of vertically panning (not recommended for trackpads)";

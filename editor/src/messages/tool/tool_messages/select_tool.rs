@@ -41,12 +41,6 @@ pub enum SelectOptionsUpdate {
 	NestedSelectionBehavior(NestedSelectionBehavior),
 }
 
-enum SelectionDirection {
-	Leftwards,
-	Rightwards,
-	None,
-}
-
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum NestedSelectionBehavior {
 	#[default]
@@ -312,14 +306,16 @@ impl SelectToolData {
 		Quad::from_box(bbox)
 	}
 
-	pub fn calculate_direction(&self) -> SelectionDirection {
+	pub fn calculate_direction(&self) -> SelectionMode {
 		let bbox: [DVec2; 2] = self.selection_box();
 		if bbox[1].x > bbox[0].x {
-			SelectionDirection::Rightwards
+			SelectionMode::Enclosed
 		} else if bbox[1].x < bbox[0].x {
-			SelectionDirection::Leftwards
+			SelectionMode::Touched
 		} else {
-			SelectionDirection::None
+			// If the x coordinates are equal, the area is zero, so we use rightwards which corresponds to the "Enclosed"
+			// selection mode to ensure the selection ends up empty, as nothing will be enclosed by an empty area.
+			SelectionMode::Enclosed
 		}
 	}
 
@@ -503,17 +499,37 @@ impl Fsm for SelectToolFsmState {
 					// Get the updated selection box bounds
 					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
 
+					let mut selection_direction = tool_data.selection_mode;
+					if selection_direction == SelectionMode::Directional {
+						selection_direction = tool_data.calculate_direction();
+					}
+
 					// Draw outline visualizations on the layers to be selected
-					for layer in document.intersect_quad_no_artboards(quad, input) {
-						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+					let mut draw_layer_outline = |layer| overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+					let intersection = document.intersect_quad_no_artboards(quad, input);
+					if selection_direction == SelectionMode::Enclosed {
+						for layer in intersection.filter(|layer| document.is_layer_fully_inside(layer, quad)) {
+							draw_layer_outline(layer);
+						}
+					} else {
+						for layer in intersection {
+							draw_layer_outline(layer);
+						}
 					}
 
 					// Update the selection box
-					let fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+					let mut fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
 						.unwrap()
 						.with_alpha(0.05)
 						.rgba_hex();
-					overlay_context.quad(quad, Some(&("#".to_string() + &fill_color)));
+					fill_color.insert(0, '#');
+					let fill_color = Some(fill_color.as_str());
+
+					if selection_direction == SelectionMode::Enclosed {
+						overlay_context.dashed_quad(quad, fill_color, Some(4.), Some(4.), Some(0.5));
+					} else {
+						overlay_context.quad(quad, fill_color);
+					}
 				}
 				// Only highlight layers if the viewport is not being panned (middle mouse button is pressed)
 				// TODO: Don't use `Key::Mmb` directly, instead take it as a variable from the input mappings list like in all other places
@@ -1041,14 +1057,16 @@ impl Fsm for SelectToolFsmState {
 			) => {
 				let quad = tool_data.selection_quad();
 
-				let new_selected = match tool_data.selection_mode {
-					SelectionMode::Touched => document.intersect_quad_no_artboards(quad, input).collect(),
-					SelectionMode::Contained => document.intersect_quad_no_artboards(quad, input).filter(|layer| document.is_layer_fully_inside(layer, quad)).collect(),
-					SelectionMode::ByDragDirection => match tool_data.calculate_direction() {
-						SelectionDirection::Rightwards => document.intersect_quad_no_artboards(quad, input).filter(|layer| document.is_layer_fully_inside(layer, quad)).collect(),
-						SelectionDirection::Leftwards => document.intersect_quad_no_artboards(quad, input).collect(),
-						SelectionDirection::None => HashSet::new(),
-					},
+				let mut selection_direction = tool_data.selection_mode;
+				if selection_direction == SelectionMode::Directional {
+					selection_direction = tool_data.calculate_direction();
+				}
+
+				let intersection = document.intersect_quad_no_artboards(quad, input);
+				let new_selected: HashSet<_> = if selection_direction == SelectionMode::Enclosed {
+					intersection.filter(|layer| document.is_layer_fully_inside(layer, quad)).collect()
+				} else {
+					intersection.collect()
 				};
 
 				let current_selected: HashSet<_> = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
