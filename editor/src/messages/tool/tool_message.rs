@@ -1,6 +1,7 @@
 use super::utility_types::ToolType;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
+
 use graphene_core::raster::color::Color;
 
 #[impl_message(Message, Tool)]

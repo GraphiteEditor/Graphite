@@ -323,9 +323,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				responses.add(PropertiesPanelMessage::Refresh);
 			}
 			PortfolioMessage::EditorPreferences => self.executor.update_editor_preferences(preferences.editor_preferences()),
-			PortfolioMessage::ImaginateServerHostname => {
-				self.persistent_data.imaginate.set_host_name(&preferences.imaginate_server_hostname);
-			}
+			// PortfolioMessage::ImaginateServerHostname => {
+			// 	self.persistent_data.imaginate.set_host_name(&preferences.imaginate_server_hostname);
+			// }
 			PortfolioMessage::Import => {
 				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
 				responses.add(FrontendMessage::TriggerImport);

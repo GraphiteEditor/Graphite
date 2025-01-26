@@ -3,9 +3,9 @@
 use super::tool_prelude::*;
 use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
-use crate::messages::portfolio::document::graph_operation::utility_types::{self, TransformIn};
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
-use crate::messages::portfolio::document::utility_types::document_metadata::{self, LayerNodeIdentifier};
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
@@ -21,7 +21,6 @@ use graphene_core::renderer::Quad;
 use graphene_core::text::load_face;
 use graphene_std::renderer::Rect;
 use graphene_std::vector::misc::BooleanOperation;
-// use web_sys::console;
 
 use std::fmt;
 
@@ -78,6 +77,7 @@ pub enum SelectToolMessage {
 	// Standard messages
 	Abort,
 	Overlays(OverlayContext),
+
 	// Tool-specific messages
 	DragStart { extend_selection: Key, select_deepest: Key },
 	DragStop { remove_from_selection: Key, negative_box_selection: Key },
@@ -215,7 +215,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		if let ToolMessage::Select(SelectToolMessage::SelectOptions(SelectOptionsUpdate::NestedSelectionBehavior(nested_selection_behavior))) = message {
 			self.tool_data.nested_selection_behavior = nested_selection_behavior;
-			// info!("nested mode updated : {:?}", nested_selection_behavior);
 			responses.add(ToolMessage::UpdateHints);
 		}
 
@@ -257,8 +256,8 @@ impl ToolTransition for SelectTool {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum SelectToolFsmState {
-	Ready { selection: NestedSelectionBehavior, selection_mode: SelectionMode },
-	DrawingBox { selection: NestedSelectionBehavior, selection_mode: SelectionMode },
+	Ready { selection: NestedSelectionBehavior },
+	DrawingBox,
 	Dragging,
 	ResizingBounds,
 	RotatingBounds,
@@ -267,9 +266,9 @@ enum SelectToolFsmState {
 
 impl Default for SelectToolFsmState {
 	fn default() -> Self {
-		let selection = NestedSelectionBehavior::Deepest;
-		let selection_mode = SelectionMode::Touched;
-		SelectToolFsmState::Ready { selection, selection_mode }
+		SelectToolFsmState::Ready {
+			selection: NestedSelectionBehavior::Deepest,
+		}
 	}
 }
 
@@ -426,15 +425,15 @@ impl Fsm for SelectToolFsmState {
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
 		let ToolActionHandlerData { document, input, font_cache, .. } = tool_action_data;
-		tool_data.selection_mode = tool_action_data.preferences.get_selection_mode();
-		info!("Current selection mode during transition: {:?}", tool_data.selection_mode);
-		let ToolMessage::Select(event) = event else {
-			return self;
-		};
 
+		// TODO: Should this be moved down a line?
+		tool_data.selection_mode = tool_action_data.preferences.get_selection_mode();
+
+		let ToolMessage::Select(event) = event else { return self };
 		match (self, event) {
 			(_, SelectToolMessage::Overlays(mut overlay_context)) => {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
+
 				let selected_layers_count = document.network_interface.selected_nodes(&[]).unwrap().selected_unlocked_layers(&document.network_interface).count();
 				tool_data.selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
 				tool_data.selected_layers_count = selected_layers_count;
@@ -500,7 +499,7 @@ impl Fsm for SelectToolFsmState {
 				tool_data.pivot.update_pivot(document, &mut overlay_context);
 
 				// Check if the tool is in box selection mode
-				if matches!(self, Self::DrawingBox { .. }) {
+				if matches!(self, Self::DrawingBox) {
 					// Get the updated selection box bounds
 					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
 
@@ -700,10 +699,7 @@ impl Fsm for SelectToolFsmState {
 						responses.add(DocumentMessage::StartTransaction);
 						SelectToolFsmState::Dragging
 					} else {
-						// Make a box selection, preserving previously selected layers
-						let selection = tool_data.nested_selection_behavior;
-						let selection_mode = tool_data.selection_mode;
-						SelectToolFsmState::DrawingBox { selection,selection_mode }
+						SelectToolFsmState::DrawingBox
 					}
 				};
 				tool_data.non_duplicated_layers = None;
@@ -714,8 +710,7 @@ impl Fsm for SelectToolFsmState {
 				responses.add(DocumentMessage::AbortTransaction);
 
 				let selection = tool_data.nested_selection_behavior;
-				let selection_mode = tool_data.selection_mode;
-				SelectToolFsmState::Ready { selection, selection_mode }
+				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::PointerMove(modifier_keys)) => {
 				tool_data.has_dragged = true;
@@ -851,7 +846,7 @@ impl Fsm for SelectToolFsmState {
 
 				SelectToolFsmState::DraggingPivot
 			}
-			(SelectToolFsmState::DrawingBox { .. }, SelectToolMessage::PointerMove(modifier_keys)) => {
+			(SelectToolFsmState::DrawingBox, SelectToolMessage::PointerMove(modifier_keys)) => {
 				tool_data.drag_current = input.mouse.position;
 				responses.add(OverlaysMessage::Draw);
 
@@ -862,9 +857,7 @@ impl Fsm for SelectToolFsmState {
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
-				let selection = tool_data.nested_selection_behavior;
-				let selection_mode = tool_data.selection_mode;
-				SelectToolFsmState::DrawingBox { selection, selection_mode }
+				SelectToolFsmState::DrawingBox
 			}
 			(SelectToolFsmState::Ready { .. }, SelectToolMessage::PointerMove(_)) => {
 				let mut cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
@@ -883,8 +876,7 @@ impl Fsm for SelectToolFsmState {
 				}
 
 				let selection = tool_data.nested_selection_behavior;
-				let selection_mode = tool_data.selection_mode;
-				SelectToolFsmState::Ready { selection, selection_mode }
+				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::PointerOutsideViewport(_)) => {
 				// AutoPanning
@@ -912,7 +904,7 @@ impl Fsm for SelectToolFsmState {
 
 				self
 			}
-			(SelectToolFsmState::DrawingBox { .. }, SelectToolMessage::PointerOutsideViewport(_)) => {
+			(SelectToolFsmState::DrawingBox, SelectToolMessage::PointerOutsideViewport(_)) => {
 				// AutoPanning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					tool_data.drag_start += shift;
@@ -939,8 +931,7 @@ impl Fsm for SelectToolFsmState {
 				responses.add_front(response);
 
 				let selection = tool_data.nested_selection_behavior;
-				let selection_mode = tool_data.selection_mode;
-				SelectToolFsmState::Ready { selection, selection_mode }
+				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::DragStop { remove_from_selection, .. }) => {
 				// Deselect layer if not snap dragging
@@ -949,7 +940,6 @@ impl Fsm for SelectToolFsmState {
 				if !tool_data.has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
 					// When you click on the layer with remove from selection key (shift) pressed, we deselect all nodes that are children.
 					let quad = tool_data.selection_quad();
-
 					let intersection = document.intersect_quad_no_artboards(quad, input);
 
 					if let Some(path) = intersection.last() {
@@ -998,8 +988,7 @@ impl Fsm for SelectToolFsmState {
 				tool_data.select_single_layer = None;
 
 				let selection = tool_data.nested_selection_behavior;
-				let selection_mode = tool_data.selection_mode;
-				SelectToolFsmState::Ready { selection, selection_mode }
+				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::ResizingBounds, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
 				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
@@ -1015,8 +1004,7 @@ impl Fsm for SelectToolFsmState {
 				}
 
 				let selection = tool_data.nested_selection_behavior;
-				let selection_mode = tool_data.selection_mode;
-				SelectToolFsmState::Ready { selection, selection_mode }
+				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::RotatingBounds, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
 				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
@@ -1030,8 +1018,7 @@ impl Fsm for SelectToolFsmState {
 				}
 
 				let selection = tool_data.nested_selection_behavior;
-				let selection_mode = tool_data.selection_mode;
-				SelectToolFsmState::Ready { selection, selection_mode }
+				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
 				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
@@ -1043,24 +1030,21 @@ impl Fsm for SelectToolFsmState {
 				tool_data.snap_manager.cleanup(responses);
 
 				let selection = tool_data.nested_selection_behavior;
-				let selection_mode = tool_data.selection_mode;
-				SelectToolFsmState::Ready { selection, selection_mode }
+				SelectToolFsmState::Ready { selection }
 			}
-
 			(
-				SelectToolFsmState::DrawingBox { .. },
+				SelectToolFsmState::DrawingBox,
 				SelectToolMessage::DragStop {
 					remove_from_selection,
 					negative_box_selection,
 				},
 			) => {
 				let quad = tool_data.selection_quad();
-				let direction = tool_data.calculate_direction();
-				// let new_selected: HashSet<_> = document.intersect_quad_no_artboards(quad, input).collect();
-				let new_selected: HashSet<_> = match tool_data.selection_mode {
+
+				let new_selected = match tool_data.selection_mode {
 					SelectionMode::Touched => document.intersect_quad_no_artboards(quad, input).collect(),
 					SelectionMode::Contained => document.intersect_quad_no_artboards(quad, input).filter(|layer| document.is_layer_fully_inside(layer, quad)).collect(),
-					SelectionMode::ByDragDirection => match direction {
+					SelectionMode::ByDragDirection => match tool_data.calculate_direction() {
 						SelectionDirection::Rightwards => document.intersect_quad_no_artboards(quad, input).filter(|layer| document.is_layer_fully_inside(layer, quad)).collect(),
 						SelectionDirection::Leftwards => document.intersect_quad_no_artboards(quad, input).collect(),
 						SelectionDirection::None => HashSet::new(),
@@ -1071,7 +1055,7 @@ impl Fsm for SelectToolFsmState {
 				if new_selected != current_selected {
 					// Negative selection when both Shift and Ctrl are pressed
 					if input.keyboard.key(remove_from_selection) && input.keyboard.key(negative_box_selection) {
-						let updated_selection: Vec<LayerNodeIdentifier> = current_selected
+						let updated_selection = current_selected
 							.into_iter()
 							.filter(|layer| !new_selected.iter().any(|selected| layer.starts_with(*selected, document.metadata())))
 							.collect();
@@ -1104,8 +1088,7 @@ impl Fsm for SelectToolFsmState {
 				responses.add(OverlaysMessage::Draw);
 
 				let selection = tool_data.nested_selection_behavior;
-				let selection_mode = tool_data.selection_mode;
-				SelectToolFsmState::Ready { selection, selection_mode }
+				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::Ready { .. }, SelectToolMessage::Enter) => {
 				let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
@@ -1120,8 +1103,7 @@ impl Fsm for SelectToolFsmState {
 				}
 
 				let selection = tool_data.nested_selection_behavior;
-				let selection_mode = tool_data.selection_mode;
-				SelectToolFsmState::Ready { selection, selection_mode }
+				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
@@ -1129,8 +1111,7 @@ impl Fsm for SelectToolFsmState {
 				responses.add(OverlaysMessage::Draw);
 
 				let selection = tool_data.nested_selection_behavior;
-				let selection_mode = tool_data.selection_mode;
-				SelectToolFsmState::Ready { selection, selection_mode }
+				SelectToolFsmState::Ready { selection }
 			}
 			(_, SelectToolMessage::Abort) => {
 				tool_data.layers_dragging.retain(|layer| {
@@ -1146,8 +1127,7 @@ impl Fsm for SelectToolFsmState {
 				responses.add(OverlaysMessage::Draw);
 
 				let selection = tool_data.nested_selection_behavior;
-				let selection_mode = tool_data.selection_mode;
-				SelectToolFsmState::Ready { selection, selection_mode }
+				SelectToolFsmState::Ready { selection }
 			}
 			(_, SelectToolMessage::SetPivot { position }) => {
 				responses.add(DocumentMessage::StartTransaction);
@@ -1178,7 +1158,7 @@ impl Fsm for SelectToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		match self {
-			SelectToolFsmState::Ready { selection, selection_mode } => {
+			SelectToolFsmState::Ready { selection } => {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
 					HintGroup({
@@ -1217,7 +1197,7 @@ impl Fsm for SelectToolFsmState {
 				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
-			SelectToolFsmState::DrawingBox { .. } => {
+			SelectToolFsmState::DrawingBox => {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Control, Key::Shift], "Remove from Selection").add_mac_keys([Key::Command, Key::Shift])]),

@@ -1,6 +1,5 @@
-use graphene_std::{imaginate::ImaginatePersistentData, text::FontCache};
-
-use crate::messages::preferences::SelectionMode;
+use graphene_std::imaginate::ImaginatePersistentData;
+use graphene_std::text::FontCache;
 
 #[derive(Debug, Default)]
 pub struct PersistentData {

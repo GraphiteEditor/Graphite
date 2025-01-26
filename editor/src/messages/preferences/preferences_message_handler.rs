@@ -48,6 +48,7 @@ impl Default for PreferencesMessageHandler {
 impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 	fn process_message(&mut self, message: PreferencesMessage, responses: &mut VecDeque<Message>, _data: ()) {
 		match message {
+			// Management messages
 			PreferencesMessage::Load { preferences } => {
 				if let Ok(deserialized_preferences) = serde_json::from_str::<PreferencesMessageHandler>(&preferences) {
 					*self = deserialized_preferences;
@@ -70,6 +71,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				*self = Self::default()
 			}
 
+			// Per-preference messages
 			PreferencesMessage::ImaginateRefreshFrequency { seconds } => {
 				self.imaginate_refresh_frequency = seconds;
 				responses.add(PortfolioMessage::ImaginateCheckServerStatus);
@@ -80,23 +82,24 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				responses.add(PortfolioMessage::UpdateVelloPreference);
 				responses.add(PortfolioMessage::EditorPreferences);
 			}
-			PreferencesMessage::ImaginateServerHostname { hostname } => {
-				let initial = hostname.clone();
-				let has_protocol = hostname.starts_with("http://") || hostname.starts_with("https://");
-				let hostname = if has_protocol { hostname } else { "http://".to_string() + &hostname };
-				let hostname = if hostname.ends_with('/') { hostname } else { hostname + "/" };
+			// PreferencesMessage::ImaginateServerHostname { hostname } => {
+			// 	let initial = hostname.clone();
+			// 	let has_protocol = hostname.starts_with("http://") || hostname.starts_with("https://");
+			// 	let hostname = if has_protocol { hostname } else { "http://".to_string() + &hostname };
+			// 	let hostname = if hostname.ends_with('/') { hostname } else { hostname + "/" };
 
-				if hostname != initial {
-					refresh_dialog(responses);
-				}
+			// 	if hostname != initial {
+			// 		refresh_dialog(responses);
+			// 	}
 
-				self.imaginate_server_hostname = hostname;
-				responses.add(PortfolioMessage::ImaginateServerHostname);
-				responses.add(PortfolioMessage::ImaginateCheckServerStatus);
-				responses.add(PortfolioMessage::EditorPreferences);
-			}
+			// 	self.imaginate_server_hostname = hostname;
+			// 	responses.add(PortfolioMessage::ImaginateServerHostname);
+			// 	responses.add(PortfolioMessage::ImaginateCheckServerStatus);
+			// 	responses.add(PortfolioMessage::EditorPreferences);
+			// }
 			PreferencesMessage::ModifyLayout { zoom_with_scroll } => {
 				self.zoom_with_scroll = zoom_with_scroll;
+
 				let variant = match zoom_with_scroll {
 					false => MappingVariant::Default,
 					true => MappingVariant::ZoomWithScroll,
@@ -104,10 +107,10 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				responses.add(KeyMappingMessage::ModifyMapping(variant));
 			}
 			PreferencesMessage::SelectionMode { selection_mode } => {
-				info!("Setting selection mode to: {:?}", selection_mode);
 				self.selection_mode = selection_mode;
 			}
 		}
+
 		responses.add(FrontendMessage::TriggerSavePreferences { preferences: self.clone() });
 	}
 

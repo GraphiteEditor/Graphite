@@ -118,30 +118,12 @@ struct ArtboardToolData {
 impl ArtboardToolData {
 	fn get_snap_candidates(&mut self, document: &DocumentMessageHandler, _input: &InputPreprocessorMessageHandler) {
 		self.snap_candidates.clear();
+
 		let Some(layer) = self.selected_artboard else { return };
 
 		if let Some(bounds) = document.metadata().bounding_box_with_transform(layer, document.metadata().transform_to_document(layer)) {
 			snapping::get_bbox_points(Quad::from_box(bounds), &mut self.snap_candidates, snapping::BBoxSnapValues::ARTBOARD, document);
 		}
-	}
-
-	pub fn get_child_layers_of_selected_artboard(&self, document: &DocumentMessageHandler) -> Vec<LayerNodeIdentifier> {
-		let Some(artboard_id) = self.selected_artboard else {
-			return Vec::new();
-		};
-		let structure = document.metadata().structure.clone();
-		let child_layers = structure
-			.iter()
-			.filter_map(|(layer_id, node_relations)| {
-				if let Some(parent_id) = node_relations.parent {
-					if parent_id == artboard_id {
-						return Some(*layer_id);
-					}
-				}
-				None
-			})
-			.collect::<Vec<LayerNodeIdentifier>>();
-		child_layers
 	}
 
 	fn check_dragging_bounds(&mut self, cursor: DVec2) -> Option<(bool, bool, bool, bool)> {
@@ -217,7 +199,6 @@ impl ArtboardToolData {
 			location: position.round().as_ivec2(),
 			dimensions: size.round().as_ivec2(),
 		});
-		let artboard_bounds_viewport = document.metadata().bounding_box_viewport(self.selected_artboard.unwrap());
 
 		let translation = position.round().as_ivec2() - self.dragging_current_artboard_location;
 		self.dragging_current_artboard_location = position.round().as_ivec2();
