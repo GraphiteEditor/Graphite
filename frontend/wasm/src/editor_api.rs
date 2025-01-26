@@ -299,7 +299,7 @@ impl EditorHandle {
 	}
 
 	#[wasm_bindgen(js_name = openAutoSavedDocument)]
-	pub fn open_auto_saved_document(&self, document_id: u64, document_name: String, document_is_saved: bool, document_serialized_content: String) {
+	pub fn open_auto_saved_document(&self, document_id: u64, document_name: String, document_is_saved: bool, document_serialized_content: String, to_front: bool) {
 		let document_id = DocumentId(document_id);
 		let message = PortfolioMessage::OpenDocumentFileWithId {
 			document_id,
@@ -307,6 +307,7 @@ impl EditorHandle {
 			document_is_auto_saved: true,
 			document_is_saved,
 			document_serialized_content,
+			to_front,
 		};
 		self.dispatch(message);
 	}
@@ -348,6 +349,13 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = zoomCanvasToFitAll)]
 	pub fn zoom_canvas_to_fit_all(&self) {
 		let message = DocumentMessage::ZoomCanvasToFitAll;
+		self.dispatch(message);
+	}
+
+	/// Inform the overlays system of the current device pixel ratio
+	#[wasm_bindgen(js_name = setDevicePixelRatio)]
+	pub fn set_device_pixel_ratio(&self, ratio: f64) {
+		let message = OverlaysMessage::SetDevicePixelRatio { ratio };
 		self.dispatch(message);
 	}
 
@@ -717,10 +725,10 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	#[wasm_bindgen(js_name = injectImaginatePollServerStatus)]
-	pub fn inject_imaginate_poll_server_status(&self) {
-		self.dispatch(PortfolioMessage::ImaginatePollServerStatus);
-	}
+	// #[wasm_bindgen(js_name = injectImaginatePollServerStatus)]
+	// pub fn inject_imaginate_poll_server_status(&self) {
+	// 	self.dispatch(PortfolioMessage::ImaginatePollServerStatus);
+	// }
 
 	// TODO: Eventually remove this document upgrade code
 	#[wasm_bindgen(js_name = triggerUpgradeDocumentToVectorManipulationFormat)]
@@ -753,6 +761,7 @@ impl EditorHandle {
 			document_is_auto_saved,
 			document_is_saved,
 			document_serialized_content: document_serialized_content.clone(),
+			to_front: false,
 		});
 
 		let document = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap();
@@ -821,6 +830,7 @@ impl EditorHandle {
 				document_is_auto_saved,
 				document_is_saved,
 				document_serialized_content,
+				to_front: false,
 			});
 			return;
 		}
@@ -925,6 +935,7 @@ impl EditorHandle {
 			document_is_auto_saved,
 			document_is_saved,
 			document_serialized_content,
+			to_front: false,
 		});
 	}
 }

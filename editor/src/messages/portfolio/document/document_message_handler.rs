@@ -117,6 +117,9 @@ pub struct DocumentMessageHandler {
 	/// If the user clicks or Ctrl-clicks one layer, it becomes the start of the range selection and then Shift-clicking another layer selects all layers between the start and end.
 	#[serde(skip)]
 	layer_range_selection_reference: Option<LayerNodeIdentifier>,
+	/// Whether or not the editor has executed the network to render the document yet. If this is opened as an inactive tab, it won't be loaded initially because the active tab is prioritized.
+	#[serde(skip)]
+	pub is_loaded: bool,
 }
 
 impl Default for DocumentMessageHandler {
@@ -154,6 +157,7 @@ impl Default for DocumentMessageHandler {
 			saved_hash: None,
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
+			is_loaded: false,
 		}
 	}
 }
@@ -622,6 +626,16 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						parent,
 						insert_index: calculated_insert_index,
 					});
+
+					let layer_local_transform = self.network_interface.document_metadata().transform_to_viewport(layer_to_move);
+					let undo_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();
+					let transform = undo_transform * layer_local_transform;
+					responses.add(GraphOperationMessage::TransformSet {
+						layer: layer_to_move,
+						transform,
+						transform_in: TransformIn::Local,
+						skip_rerender: false,
+					});
 				}
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -1019,9 +1033,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.graph_fade_artwork_percentage = percentage;
 				responses.add(FrontendMessage::UpdateGraphFadeArtwork { percentage });
 			}
-
 			DocumentMessage::SetNodePinned { node_id, pinned } => {
-				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::SetPinned { node_id, pinned });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
@@ -1049,6 +1062,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::SetToNodeOrLayer { node_id, is_layer } => {
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer });
+				responses.add(DocumentMessage::EndTransaction);
 			}
 			DocumentMessage::SetViewMode { view_mode } => {
 				self.view_mode = view_mode;
@@ -1193,6 +1207,16 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						layer: child,
 						parent,
 						insert_index: folder_index,
+					});
+
+					let layer_local_transform = self.network_interface.document_metadata().transform_to_viewport(child);
+					let undo_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();
+					let transform = undo_transform * layer_local_transform;
+					responses.add(GraphOperationMessage::TransformSet {
+						layer: child,
+						transform,
+						transform_in: TransformIn::Local,
+						skip_rerender: false,
 					});
 				}
 
@@ -1381,6 +1405,29 @@ impl DocumentMessageHandler {
 	/// Runs an intersection test with all layers and a viewport space quad; ignoring artboards
 	pub fn intersect_quad_no_artboards<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
 		self.intersect_quad(viewport_quad, ipp).filter(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
+	}
+
+	pub fn is_layer_fully_inside(&self, layer: &LayerNodeIdentifier, quad: graphene_core::renderer::Quad) -> bool {
+		// Get the bounding box of the layer in document space
+		let Some(bounding_box) = self.metadata().bounding_box_viewport(*layer) else { return false };
+
+		// Check if the bounding box is fully within the selection quad
+		let [top_left, bottom_right] = bounding_box;
+
+		let quad_bbox = quad.bounding_box();
+
+		let quad_left = quad_bbox[0].x;
+		let quad_right = quad_bbox[1].x;
+		let quad_top = quad_bbox[0].y.max(quad_bbox[1].y); // Correct top
+		let quad_bottom = quad_bbox[0].y.min(quad_bbox[1].y); // Correct bottom
+
+		// Extract layer's bounding box coordinates
+		let layer_left = top_left.x;
+		let layer_right = bottom_right.x;
+		let layer_top = bottom_right.y;
+		let layer_bottom = top_left.y;
+
+		layer_left >= quad_left && layer_right <= quad_right && layer_top <= quad_top && layer_bottom >= quad_bottom
 	}
 
 	/// Find all of the layers that were clicked on from a viewport space location

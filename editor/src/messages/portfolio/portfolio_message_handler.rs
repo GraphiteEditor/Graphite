@@ -9,6 +9,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use crate::messages::portfolio::document::DocumentMessageData;
+use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, ToolType};
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
@@ -32,12 +33,13 @@ pub struct PortfolioMessageData<'a> {
 pub struct PortfolioMessageHandler {
 	menu_bar_message_handler: MenuBarMessageHandler,
 	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
-	document_ids: Vec<DocumentId>,
+	document_ids: VecDeque<DocumentId>,
 	active_panel: PanelType,
 	pub(crate) active_document_id: Option<DocumentId>,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	pub persistent_data: PersistentData,
 	pub executor: NodeGraphExecutor,
+	pub selection_mode: SelectionMode,
 }
 
 impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMessageHandler {
@@ -258,7 +260,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				} else if self.active_document_id.is_some() {
 					let document_id = if document_index == self.document_ids.len() {
 						// If we closed the last document take the one previous (same as last)
-						*self.document_ids.last().unwrap()
+						*self.document_ids.back().unwrap()
 					} else {
 						// Move to the next tab
 						self.document_ids[document_index]
@@ -295,35 +297,35 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 			}
-			PortfolioMessage::ImaginateCheckServerStatus => {
-				let server_status = self.persistent_data.imaginate.server_status().clone();
-				self.persistent_data.imaginate.poll_server_check();
-				#[cfg(target_arch = "wasm32")]
-				if let Some(fut) = self.persistent_data.imaginate.initiate_server_check() {
-					wasm_bindgen_futures::spawn_local(async move {
-						let () = fut.await;
-						use wasm_bindgen::prelude::*;
+			// PortfolioMessage::ImaginateCheckServerStatus => {
+			// 	let server_status = self.persistent_data.imaginate.server_status().clone();
+			// 	self.persistent_data.imaginate.poll_server_check();
+			// 	#[cfg(target_arch = "wasm32")]
+			// 	if let Some(fut) = self.persistent_data.imaginate.initiate_server_check() {
+			// 		wasm_bindgen_futures::spawn_local(async move {
+			// 			let () = fut.await;
+			// 			use wasm_bindgen::prelude::*;
 
-						#[wasm_bindgen(module = "/../frontend/src/editor.ts")]
-						extern "C" {
-							#[wasm_bindgen(js_name = injectImaginatePollServerStatus)]
-							fn inject();
-						}
-						inject();
-					})
-				}
-				if &server_status != self.persistent_data.imaginate.server_status() {
-					responses.add(PropertiesPanelMessage::Refresh);
-				}
-			}
-			PortfolioMessage::ImaginatePollServerStatus => {
-				self.persistent_data.imaginate.poll_server_check();
-				responses.add(PropertiesPanelMessage::Refresh);
-			}
+			// 			#[wasm_bindgen(module = "/../frontend/src/editor.ts")]
+			// 			extern "C" {
+			// 				#[wasm_bindgen(js_name = injectImaginatePollServerStatus)]
+			// 				fn inject();
+			// 			}
+			// 			inject();
+			// 		})
+			// 	}
+			// 	if &server_status != self.persistent_data.imaginate.server_status() {
+			// 		responses.add(PropertiesPanelMessage::Refresh);
+			// 	}
+			// }
+			// PortfolioMessage::ImaginatePollServerStatus => {
+			// 	self.persistent_data.imaginate.poll_server_check();
+			// 	responses.add(PropertiesPanelMessage::Refresh);
+			// }
 			PortfolioMessage::EditorPreferences => self.executor.update_editor_preferences(preferences.editor_preferences()),
-			PortfolioMessage::ImaginateServerHostname => {
-				self.persistent_data.imaginate.set_host_name(&preferences.imaginate_server_hostname);
-			}
+			// PortfolioMessage::ImaginateServerHostname => {
+			// 	self.persistent_data.imaginate.set_host_name(&preferences.imaginate_server_hostname);
+			// }
 			PortfolioMessage::Import => {
 				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
 				responses.add(FrontendMessage::TriggerImport);
@@ -349,7 +351,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				}
 
-				self.load_document(new_document, document_id, responses);
+				self.load_document(new_document, document_id, responses, false);
+				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
 			PortfolioMessage::NextDocument => {
 				if let Some(active_document_id) = self.active_document_id {
@@ -368,13 +371,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				document_name,
 				document_serialized_content,
 			} => {
+				let document_id = DocumentId(generate_uuid());
 				responses.add(PortfolioMessage::OpenDocumentFileWithId {
-					document_id: DocumentId(generate_uuid()),
+					document_id,
 					document_name,
 					document_is_auto_saved: false,
 					document_is_saved: true,
 					document_serialized_content,
+					to_front: false,
 				});
+				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
 			PortfolioMessage::OpenDocumentFileWithId {
 				document_id,
@@ -382,6 +388,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				document_is_auto_saved,
 				document_is_saved,
 				document_serialized_content,
+				to_front,
 			} => {
 				// TODO: Eventually remove this document upgrade code
 				// This big code block contains lots of hacky code for upgrading old documents to the new format
@@ -756,7 +763,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				document.set_auto_save_state(document_is_auto_saved);
 				document.set_save_state(document_is_saved);
 
-				self.load_document(document, document_id, responses);
+				self.load_document(document, document_id, responses, to_front);
 			}
 			PortfolioMessage::PasteIntoFolder { clipboard, parent, insert_index } => {
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {
@@ -896,6 +903,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				responses.add(FrontendMessage::UpdateActiveDocument { document_id });
+				responses.add(FrontendMessage::TriggerSaveActiveDocument { document_id });
 				responses.add(ToolMessage::InitTools);
 				responses.add(NodeGraphMessage::Init);
 				responses.add(OverlaysMessage::Draw);
@@ -908,6 +916,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
 				} else {
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				}
+
+				let Some(document) = self.documents.get_mut(&document_id) else {
+					warn!("Tried to read non existant document");
+					return;
+				};
+				if !document.is_loaded {
+					document.is_loaded = true;
+					responses.add(PortfolioMessage::LoadDocumentResources { document_id });
+					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+					responses.add(PropertiesPanelMessage::Clear);
 				}
 			}
 			PortfolioMessage::SubmitDocumentExport {
@@ -1065,10 +1084,12 @@ impl PortfolioMessageHandler {
 		}
 	}
 
-	// TODO: Fix how this doesn't preserve tab order upon loading new document from *File > Open*
-	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) {
-		let new_document = new_document;
-		self.document_ids.push(document_id);
+	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>, to_front: bool) {
+		if to_front {
+			self.document_ids.push_front(document_id);
+		} else {
+			self.document_ids.push_back(document_id);
+		}
 		new_document.update_layers_panel_control_bar_widgets(responses);
 
 		self.documents.insert(document_id, new_document);
@@ -1085,14 +1106,6 @@ impl PortfolioMessageHandler {
 		// TODO: Remove this and find a way to fix the issue where creating a new document when the node graph is open causes the transform in the new document to be incorrect
 		responses.add(DocumentMessage::GraphViewOverlay { open: false });
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-		responses.add(PortfolioMessage::SelectDocument { document_id });
-		responses.add(PortfolioMessage::LoadDocumentResources { document_id });
-		responses.add(PortfolioMessage::UpdateDocumentWidgets);
-		responses.add(ToolMessage::InitTools);
-		responses.add(NodeGraphMessage::Init);
-		responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
-		responses.add(PropertiesPanelMessage::Clear);
-		responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 	}
 
 	/// Returns an iterator over the open documents in order.

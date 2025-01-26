@@ -18,6 +18,7 @@ pub struct ToolMessageData<'a> {
 	pub input: &'a InputPreprocessorMessageHandler,
 	pub persistent_data: &'a PersistentData,
 	pub node_graph: &'a NodeGraphExecutor,
+	pub preferences: &'a PreferencesMessageHandler,
 }
 
 #[derive(Debug, Default)]
@@ -36,6 +37,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 			input,
 			persistent_data,
 			node_graph,
+			preferences,
 		} = data;
 		let font_cache = &persistent_data.font_cache;
 
@@ -86,6 +88,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 							font_cache,
 							shape_editor: &mut self.shape_editor,
 							node_graph,
+							preferences,
 						};
 
 						if let Some(tool_abort_message) = tool.event_to_message_map().tool_abort {
@@ -180,6 +183,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 					font_cache,
 					shape_editor: &mut self.shape_editor,
 					node_graph,
+					preferences,
 				};
 
 				// Set initial hints and cursor
@@ -269,6 +273,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 							font_cache,
 							shape_editor: &mut self.shape_editor,
 							node_graph,
+							preferences,
 						};
 						if matches!(tool_message, ToolMessage::UpdateHints) {
 							if self.transform_layer_handler.is_transforming() {

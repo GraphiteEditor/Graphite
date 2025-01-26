@@ -85,12 +85,17 @@ pub enum FrontendMessage {
 		document: String,
 		details: FrontendDocumentDetails,
 	},
-	TriggerLoadAutoSaveDocuments,
+	TriggerLoadFirstAutoSaveDocument,
+	TriggerLoadRestAutoSaveDocuments,
 	TriggerLoadPreferences,
 	TriggerOpenDocument,
 	TriggerPaste,
 	TriggerSavePreferences {
 		preferences: PreferencesMessageHandler,
+	},
+	TriggerSaveActiveDocument {
+		#[serde(rename = "documentId")]
+		document_id: DocumentId,
 	},
 	TriggerTextCommit,
 	TriggerTextCopy {

@@ -768,7 +768,8 @@ export class UpdateMouseCursor extends JsMessage {
 	readonly cursor!: MouseCursorIcon;
 }
 
-export class TriggerLoadAutoSaveDocuments extends JsMessage {}
+export class TriggerLoadFirstAutoSaveDocument extends JsMessage {}
+export class TriggerLoadRestAutoSaveDocuments extends JsMessage {}
 
 export class TriggerLoadPreferences extends JsMessage {}
 
@@ -805,6 +806,10 @@ export class TriggerDownloadTextFile extends JsMessage {
 
 export class TriggerSavePreferences extends JsMessage {
 	readonly preferences!: Record<string, unknown>;
+}
+
+export class TriggerSaveActiveDocument extends JsMessage {
+	readonly documentId!: bigint;
 }
 
 export class DocumentChanged extends JsMessage {}
@@ -1574,10 +1579,12 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerImport,
 	TriggerIndexedDbRemoveDocument,
 	TriggerIndexedDbWriteDocument,
-	TriggerLoadAutoSaveDocuments,
+	TriggerLoadFirstAutoSaveDocument,
 	TriggerLoadPreferences,
+	TriggerLoadRestAutoSaveDocuments,
 	TriggerOpenDocument,
 	TriggerPaste,
+	TriggerSaveActiveDocument,
 	TriggerSavePreferences,
 	TriggerTextCommit,
 	TriggerTextCopy,
@@ -1597,14 +1604,14 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentModeLayout,
 	UpdateDocumentRulers,
 	UpdateDocumentScrollbars,
+	UpdateExportReorderIndex,
 	UpdateEyedropperSamplingState,
 	UpdateGraphFadeArtwork,
 	UpdateGraphViewOverlay,
+	UpdateImportReorderIndex,
 	UpdateImportsExports,
 	UpdateInputHints,
 	UpdateInSelectedNetwork,
-	UpdateExportReorderIndex,
-	UpdateImportReorderIndex,
 	UpdateLayersPanelControlBarLayout,
 	UpdateLayerWidths,
 	UpdateMenuBarLayout,

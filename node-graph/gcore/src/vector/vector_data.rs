@@ -243,14 +243,12 @@ impl VectorData {
 		self.point_domain.resolve_id(point).map_or(0, |point| self.segment_domain.connected_count(point))
 	}
 
-	/// Points connected to a single segment
-	pub fn single_connected_points(&self) -> impl Iterator<Item = PointId> + '_ {
-		self.point_domain
-			.ids()
-			.iter()
-			.enumerate()
-			.filter(|(index, _)| self.segment_domain.connected_count(*index) == 1)
-			.map(|(_, &id)| id)
+	/// Points that can be extended from.
+	///
+	/// This is usually only points with exactly one connection unless vector meshes are enabled.
+	pub fn extendable_points(&self, vector_meshes: bool) -> impl Iterator<Item = PointId> + '_ {
+		let point_ids = self.point_domain.ids().iter().enumerate();
+		point_ids.filter(move |(index, _)| vector_meshes || self.segment_domain.connected_count(*index) == 1).map(|(_, &id)| id)
 	}
 
 	/// Computes if all the connected handles are colinear for an anchor, or if that handle is colinear for a handle.

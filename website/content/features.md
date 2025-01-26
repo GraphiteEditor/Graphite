@@ -58,7 +58,7 @@ Marrying vector and raster under one roof enables both art forms to complement e
 
 ## Powered by Graphene
 
-**Graphene** is the node graph engine that powers Graphite's compositor and procedural graphics pipeline. It's a visual scripting environment built upon the high-performance Rust programming language. Its runtime is [designed](/blog/distributed-computing-in-the-graphene-runtime/) to distribute rendering across CPU cores, GPUs, and network/cloud machines while optimizing for interactive frame rates.
+**Graphene** is the purpose-built node graph engine that powers Graphite's compositor and procedural graphics pipeline. It's a visual scripting environment built upon the high-performance Rust programming language. Its runtime is [designed](/blog/distributed-computing-in-the-graphene-runtime/) to distribute rendering across CPU cores, GPUs, and network/cloud machines while optimizing for interactive frame rates.
 
 <!-- Rust programmers may find the following technical details to be of interest. Graphene node graphs are programs built out of reusable Rust functions using Graphite as a visual "code" editor. New nodes and data types can be implemented by writing custom Rust code with a built-in text editor. `no_std` code also gets compiled to GPU compute shaders using [`rust-gpu`](https://github.com/EmbarkStudios/rust-gpu). Each node is independently pre-compiled by `rustc` into portable WASM binaries and linked at runtime. Groups of nodes may be compiled into one unit of execution, utilizing Rust's zero-cost abstractions and optimizations to run with less overhead. And whole node graphs can be compiled into standalone executables for use outside Graphite. -->
 
@@ -66,7 +66,7 @@ Marrying vector and raster under one roof enables both art forms to complement e
 <div class="block">
 
 <!-- ## Proudly written in Rust -->
-## Written in Rust
+## Built with Rust
 
 Always on the bleeding edge and built to last— Graphite is written on a robust foundation with Rust, a modern programming language optimized for creating fast, reliable, future-proof software. Even the GPU compute shaders are written in Rust, enabling reuse of CPU code implementations for nodes.
 
@@ -156,6 +156,18 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Lightweight desktop app (with <a target="_blank" href="https://tauri.app/">Tauri</a>)</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 8" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Lambda nodes</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 18" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Node versioning</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 40" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Contextual properties panel</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
@@ -280,10 +292,6 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 		<!-- 1.0 Release -->
 		<div class="feature-icon heading">
 			<h3>— 1.0 Release —</h3>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 40" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Fully native UI rewrite (with <a target="_blank" href="https://github.com/linebender/xilem">Xilem</a>)</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 20" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
