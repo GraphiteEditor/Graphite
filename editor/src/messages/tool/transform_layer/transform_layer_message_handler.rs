@@ -118,6 +118,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 			if !using_path_tool {
 				*selected.pivot = selected.mean_average_of_pivots();
+				self.grab_target = selected.mean_average_of_pivots();
 			} else if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
 				*selected.original_transforms = OriginalTransforms::default();
 
