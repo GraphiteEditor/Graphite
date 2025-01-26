@@ -9,6 +9,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use crate::messages::portfolio::document::DocumentMessageData;
+use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, ToolType};
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
@@ -38,6 +39,7 @@ pub struct PortfolioMessageHandler {
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	pub persistent_data: PersistentData,
 	pub executor: NodeGraphExecutor,
+	pub selection_mode: SelectionMode,
 }
 
 impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMessageHandler {
@@ -295,35 +297,35 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 			}
-			PortfolioMessage::ImaginateCheckServerStatus => {
-				let server_status = self.persistent_data.imaginate.server_status().clone();
-				self.persistent_data.imaginate.poll_server_check();
-				#[cfg(target_arch = "wasm32")]
-				if let Some(fut) = self.persistent_data.imaginate.initiate_server_check() {
-					wasm_bindgen_futures::spawn_local(async move {
-						let () = fut.await;
-						use wasm_bindgen::prelude::*;
+			// PortfolioMessage::ImaginateCheckServerStatus => {
+			// 	let server_status = self.persistent_data.imaginate.server_status().clone();
+			// 	self.persistent_data.imaginate.poll_server_check();
+			// 	#[cfg(target_arch = "wasm32")]
+			// 	if let Some(fut) = self.persistent_data.imaginate.initiate_server_check() {
+			// 		wasm_bindgen_futures::spawn_local(async move {
+			// 			let () = fut.await;
+			// 			use wasm_bindgen::prelude::*;
 
-						#[wasm_bindgen(module = "/../frontend/src/editor.ts")]
-						extern "C" {
-							#[wasm_bindgen(js_name = injectImaginatePollServerStatus)]
-							fn inject();
-						}
-						inject();
-					})
-				}
-				if &server_status != self.persistent_data.imaginate.server_status() {
-					responses.add(PropertiesPanelMessage::Refresh);
-				}
-			}
-			PortfolioMessage::ImaginatePollServerStatus => {
-				self.persistent_data.imaginate.poll_server_check();
-				responses.add(PropertiesPanelMessage::Refresh);
-			}
+			// 			#[wasm_bindgen(module = "/../frontend/src/editor.ts")]
+			// 			extern "C" {
+			// 				#[wasm_bindgen(js_name = injectImaginatePollServerStatus)]
+			// 				fn inject();
+			// 			}
+			// 			inject();
+			// 		})
+			// 	}
+			// 	if &server_status != self.persistent_data.imaginate.server_status() {
+			// 		responses.add(PropertiesPanelMessage::Refresh);
+			// 	}
+			// }
+			// PortfolioMessage::ImaginatePollServerStatus => {
+			// 	self.persistent_data.imaginate.poll_server_check();
+			// 	responses.add(PropertiesPanelMessage::Refresh);
+			// }
 			PortfolioMessage::EditorPreferences => self.executor.update_editor_preferences(preferences.editor_preferences()),
-			PortfolioMessage::ImaginateServerHostname => {
-				self.persistent_data.imaginate.set_host_name(&preferences.imaginate_server_hostname);
-			}
+			// PortfolioMessage::ImaginateServerHostname => {
+			// 	self.persistent_data.imaginate.set_host_name(&preferences.imaginate_server_hostname);
+			// }
 			PortfolioMessage::Import => {
 				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
 				responses.add(FrontendMessage::TriggerImport);

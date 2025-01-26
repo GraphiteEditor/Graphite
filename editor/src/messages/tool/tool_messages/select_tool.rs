@@ -9,6 +9,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
+use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::graph_modification_utils::{get_text, is_layer_fed_by_node_of_name};
 use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapManager};
@@ -250,12 +251,13 @@ impl ToolTransition for SelectTool {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum SelectToolFsmState {
 	Ready { selection: NestedSelectionBehavior },
-	DrawingBox { selection: NestedSelectionBehavior },
+	DrawingBox,
 	Dragging,
 	ResizingBounds,
 	RotatingBounds,
 	DraggingPivot,
 }
+
 impl Default for SelectToolFsmState {
 	fn default() -> Self {
 		let selection = NestedSelectionBehavior::Deepest;
@@ -297,12 +299,22 @@ impl SelectToolData {
 		}
 	}
 
-	fn selection_quad(&self) -> Quad {
+	pub fn selection_quad(&self) -> Quad {
 		let bbox = self.selection_box();
 		Quad::from_box(bbox)
 	}
 
-	fn selection_box(&self) -> [DVec2; 2] {
+	pub fn calculate_direction(&self) -> SelectionMode {
+		let bbox: [DVec2; 2] = self.selection_box();
+		if bbox[1].x < bbox[0].x {
+			SelectionMode::Touched
+		} else {
+			// This also covers the case where they're equal: the area is zero, so we use `Enclosed` to ensure the selection ends up empty, as nothing will be enclosed by an empty area
+			SelectionMode::Enclosed
+		}
+	}
+
+	pub fn selection_box(&self) -> [DVec2; 2] {
 		if self.drag_current == self.drag_start {
 			let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 			[self.drag_start - tolerance, self.drag_start + tolerance]
@@ -475,21 +487,41 @@ impl Fsm for SelectToolFsmState {
 				tool_data.pivot.update_pivot(document, &mut overlay_context);
 
 				// Check if the tool is in box selection mode
-				if matches!(self, Self::DrawingBox { .. }) {
+				if matches!(self, Self::DrawingBox) {
 					// Get the updated selection box bounds
 					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
 
+					let mut selection_direction = tool_action_data.preferences.get_selection_mode();
+					if selection_direction == SelectionMode::Directional {
+						selection_direction = tool_data.calculate_direction();
+					}
+
 					// Draw outline visualizations on the layers to be selected
-					for layer in document.intersect_quad_no_artboards(quad, input) {
-						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+					let mut draw_layer_outline = |layer| overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+					let intersection = document.intersect_quad_no_artboards(quad, input);
+					if selection_direction == SelectionMode::Enclosed {
+						for layer in intersection.filter(|layer| document.is_layer_fully_inside(layer, quad)) {
+							draw_layer_outline(layer);
+						}
+					} else {
+						for layer in intersection {
+							draw_layer_outline(layer);
+						}
 					}
 
 					// Update the selection box
-					let fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+					let mut fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
 						.unwrap()
 						.with_alpha(0.05)
 						.rgba_hex();
-					overlay_context.quad(quad, Some(&("#".to_string() + &fill_color)));
+					fill_color.insert(0, '#');
+					let fill_color = Some(fill_color.as_str());
+
+					if selection_direction == SelectionMode::Enclosed {
+						overlay_context.dashed_quad(quad, fill_color, Some(4.), Some(4.), Some(0.5));
+					} else {
+						overlay_context.quad(quad, fill_color);
+					}
 				}
 				// Only highlight layers if the viewport is not being panned (middle mouse button is pressed)
 				// TODO: Don't use `Key::Mmb` directly, instead take it as a variable from the input mappings list like in all other places
@@ -677,9 +709,7 @@ impl Fsm for SelectToolFsmState {
 						responses.add(DocumentMessage::StartTransaction);
 						SelectToolFsmState::Dragging
 					} else {
-						// Make a box selection, preserving previously selected layers
-						let selection = tool_data.nested_selection_behavior;
-						SelectToolFsmState::DrawingBox { selection }
+						SelectToolFsmState::DrawingBox
 					}
 				};
 				tool_data.non_duplicated_layers = None;
@@ -836,7 +866,7 @@ impl Fsm for SelectToolFsmState {
 
 				SelectToolFsmState::DraggingPivot
 			}
-			(SelectToolFsmState::DrawingBox { .. }, SelectToolMessage::PointerMove(modifier_keys)) => {
+			(SelectToolFsmState::DrawingBox, SelectToolMessage::PointerMove(modifier_keys)) => {
 				tool_data.drag_current = input.mouse.position;
 				responses.add(OverlaysMessage::Draw);
 
@@ -847,8 +877,7 @@ impl Fsm for SelectToolFsmState {
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
-				let selection = tool_data.nested_selection_behavior;
-				SelectToolFsmState::DrawingBox { selection }
+				SelectToolFsmState::DrawingBox
 			}
 			(SelectToolFsmState::Ready { .. }, SelectToolMessage::PointerMove(_)) => {
 				let mut cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
@@ -895,7 +924,7 @@ impl Fsm for SelectToolFsmState {
 
 				self
 			}
-			(SelectToolFsmState::DrawingBox { .. }, SelectToolMessage::PointerOutsideViewport(_)) => {
+			(SelectToolFsmState::DrawingBox, SelectToolMessage::PointerOutsideViewport(_)) => {
 				// AutoPanning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					tool_data.drag_start += shift;
@@ -1024,14 +1053,26 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(
-				SelectToolFsmState::DrawingBox { .. },
+				SelectToolFsmState::DrawingBox,
 				SelectToolMessage::DragStop {
 					remove_from_selection,
 					negative_box_selection,
 				},
 			) => {
 				let quad = tool_data.selection_quad();
-				let new_selected: HashSet<_> = document.intersect_quad_no_artboards(quad, input).collect();
+
+				let mut selection_direction = tool_action_data.preferences.get_selection_mode();
+				if selection_direction == SelectionMode::Directional {
+					selection_direction = tool_data.calculate_direction();
+				}
+
+				let intersection = document.intersect_quad_no_artboards(quad, input);
+				let new_selected: HashSet<_> = if selection_direction == SelectionMode::Enclosed {
+					intersection.filter(|layer| document.is_layer_fully_inside(layer, quad)).collect()
+				} else {
+					intersection.collect()
+				};
+
 				let current_selected: HashSet<_> = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
 				if new_selected != current_selected {
 					// Negative selection when both Shift and Ctrl are pressed
@@ -1178,7 +1219,7 @@ impl Fsm for SelectToolFsmState {
 				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
-			SelectToolFsmState::DrawingBox { .. } => {
+			SelectToolFsmState::DrawingBox => {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Control, Key::Shift], "Remove from Selection").add_mac_keys([Key::Command, Key::Shift])]),
