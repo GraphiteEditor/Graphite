@@ -166,11 +166,11 @@ type DynBox = Box<dyn Any + Send + Sync>;
 #[derive(Default, dyn_any::DynAny)]
 pub struct OwnedContextImpl {
 	pub footprint: Option<crate::transform::Footprint>,
-	pub(crate) varargs: Option<Arc<[DynBox]>>,
-	pub(crate) parent: Option<Arc<dyn ExtractVarArgs + Sync + Send>>,
+	pub varargs: Option<Arc<[DynBox]>>,
+	pub parent: Option<Arc<dyn ExtractVarArgs + Sync + Send>>,
 	// This could be converted into a single enum to save extra bytes
-	pub(crate) index: Option<usize>,
-	pub(crate) time: Option<f64>,
+	pub index: Option<usize>,
+	pub time: Option<f64>,
 }
 
 impl<T: ExtractAll + CloneVarArgs> From<T> for OwnedContextImpl {

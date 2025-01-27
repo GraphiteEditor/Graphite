@@ -161,11 +161,14 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	let mut clauses = Vec::new();
 	for (field, name) in fields.iter().zip(struct_generics.iter()) {
 		clauses.push(match (field, *is_async) {
-			(ParsedField::Regular { ty, .. }, _) => quote!(
-				#ty: Send,
-				// #name: 'n,
-				#name: #graphene_core::Node<'n, #input_type, Output = #ty>
-			),
+			(ParsedField::Regular { ty, .. }, _) => {
+				let all_lifetime_ty = substitute_lifetimes(ty.clone(), "all");
+				quote!(
+					for<'all> #all_lifetime_ty: Send,
+					// #name: 'n,
+					#name: #graphene_core::Node<'n, #input_type, Output = #ty>
+				)
+			}
 			(ParsedField::Node { input_type, output_type, .. }, false) => {
 				quote!(
 					// #name: 'n,
@@ -337,7 +340,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 				}
 			}
 			.into_iter()
-			.map(|(input, out, node)| (substitute_lifetimes(input.clone()), substitute_lifetimes(out.clone()), node))
+			.map(|(input, out, node)| (substitute_lifetimes(input.clone(), "_"), substitute_lifetimes(out.clone(), "_"), node))
 			.collect::<Vec<_>>()
 		})
 		.collect();
@@ -430,11 +433,11 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 
 use syn::{visit_mut::VisitMut, GenericArgument, Lifetime, Type};
 
-struct LifetimeReplacer;
+struct LifetimeReplacer(&'static str);
 
 impl VisitMut for LifetimeReplacer {
 	fn visit_lifetime_mut(&mut self, lifetime: &mut Lifetime) {
-		lifetime.ident = syn::Ident::new("_", lifetime.ident.span());
+		lifetime.ident = syn::Ident::new(self.0, lifetime.ident.span());
 	}
 
 	fn visit_type_mut(&mut self, ty: &mut Type) {
@@ -459,7 +462,7 @@ impl VisitMut for LifetimeReplacer {
 }
 
 #[must_use]
-fn substitute_lifetimes(mut ty: Type) -> Type {
-	LifetimeReplacer.visit_type_mut(&mut ty);
+fn substitute_lifetimes(mut ty: Type, lifetime: &'static str) -> Type {
+	LifetimeReplacer(lifetime).visit_type_mut(&mut ty);
 	ty
 }

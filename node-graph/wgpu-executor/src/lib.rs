@@ -914,7 +914,7 @@ async fn render_texture<'a: 'n>(
 #[node_macro::node(category(""))]
 async fn upload_texture<'a: 'n>(
 	footprint: impl ExtractFootprint + Ctx,
-	#[implementations(graphene_core::Context -> ImageFrame<Color>)] input: impl Node<graphene_core::Context<'n>, Output = ImageFrame<Color>>,
+	#[implementations(graphene_core::Context -> ImageFrame<Color>)] input: impl Node<graphene_core::Context<'static>, Output = ImageFrame<Color>>,
 	executor: &'a WgpuExecutor,
 ) -> TextureFrame {
 	// let new_data: Vec<RGBA16F> = input.image.data.into_iter().map(|c| c.into()).collect();
