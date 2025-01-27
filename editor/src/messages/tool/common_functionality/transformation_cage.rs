@@ -399,16 +399,6 @@ impl BoundingBoxManager {
 			let mut left = (cursor.x - min.x).abs() < threshold_x;
 			let mut right = (max.x - cursor.x).abs() < threshold_x;
 
-			// Prioritise single axis transformations on very small bounds
-			if cursor.y - min.y + max.y - cursor.y < threshold_y * 2. && (left || right) {
-				top = false;
-				bottom = false;
-			}
-			if cursor.x - min.x + max.x - cursor.x < threshold_x * 2. && (top || bottom) {
-				left = false;
-				right = false;
-			}
-
 			// On bounds with no width/height, disallow transformation in the relevant axis
 			if (max.x - min.x) < f64::EPSILON * 1000. {
 				left = false;
