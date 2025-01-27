@@ -322,7 +322,16 @@ impl TransformOperation {
 			};
 
 			selected.update_transforms(transformation);
-			self.hints(selected.responses);
+			self.hints(selected.responses, local);
+		}
+	}
+
+	pub fn is_typing(&self) -> bool {
+		match self {
+			TransformOperation::None => false,
+			TransformOperation::Grabbing(translation) => translation.typed_distance.is_some(),
+			TransformOperation::Rotating(rotation) => rotation.typed_angle.is_some(),
+			TransformOperation::Scaling(scale) => scale.typed_factor.is_some(),
 		}
 	}
 
@@ -353,18 +362,47 @@ impl TransformOperation {
 		self.apply_transform_operation(selected, snapping, local, quad, transform);
 	}
 
-	pub fn hints(&self, responses: &mut VecDeque<Message>) {
+	pub fn hints(&self, responses: &mut VecDeque<Message>, local: bool) {
 		use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 		use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 		let mut input_hints = Vec::new();
-		input_hints.push(HintInfo::keys([Key::Shift], "Slow Mode"));
-		if matches!(self, TransformOperation::Rotating(_) | TransformOperation::Scaling(_)) {
+		if self.is_typing() {
+			input_hints.push(HintInfo::keys([Key::Minus], "Negate direction"));
+			input_hints.push(HintInfo::keys([Key::Backspace], "Delete digit"));
+			input_hints.push(HintInfo::keys([Key::NumKeys], "Enter number"));
+		} else {
+			input_hints.push(HintInfo::keys([Key::Shift], "Slow Mode"));
 			input_hints.push(HintInfo::keys([Key::Control], "Snap"));
-		}
-		if matches!(self, TransformOperation::Grabbing(_) | TransformOperation::Scaling(_)) {
-			input_hints.push(HintInfo::keys([Key::KeyX], "Along X Axis"));
-			input_hints.push(HintInfo::keys([Key::KeyY], "Along Y Axis"));
+			if matches!(self, TransformOperation::Grabbing(_) | TransformOperation::Scaling(_)) {
+				let axis_constraint = match self {
+					TransformOperation::Grabbing(grabbing) => grabbing.constraint,
+					TransformOperation::Scaling(scaling) => scaling.constraint,
+					_ => Axis::Both,
+				};
+				match axis_constraint {
+					Axis::Both => {
+						input_hints.push(HintInfo::keys([Key::KeyX], "Along X Axis"));
+						input_hints.push(HintInfo::keys([Key::KeyY], "Along Y Axis"));
+					}
+					Axis::X => {
+						if local {
+							input_hints.push(HintInfo::keys([Key::KeyX], "Unconstraint"));
+						} else {
+							input_hints.push(HintInfo::keys([Key::KeyX], "Along Local X Axis"));
+						}
+						input_hints.push(HintInfo::keys([Key::KeyY], "Along Y Axis"));
+					}
+					Axis::Y => {
+						if local {
+							input_hints.push(HintInfo::keys([Key::KeyX], "Unconstraint"));
+						} else {
+							input_hints.push(HintInfo::keys([Key::KeyY], "Along Local Y Axis"));
+						}
+						input_hints.push(HintInfo::keys([Key::KeyX], "Along X Axis"));
+					}
+				}
+			}
 		}
 
 		let hint_data = HintData(vec![HintGroup(input_hints)]);

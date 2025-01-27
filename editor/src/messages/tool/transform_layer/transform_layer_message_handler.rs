@@ -49,7 +49,7 @@ impl TransformLayerMessageHandler {
 	}
 
 	pub fn hints(&self, responses: &mut VecDeque<Message>) {
-		self.transform_operation.hints(responses);
+		self.transform_operation.hints(responses, self.local);
 	}
 }
 
