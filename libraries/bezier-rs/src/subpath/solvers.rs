@@ -428,7 +428,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 			_ => 4.,
 		};
 		// TODO: Besides returning None using the `?` operator, is there a more appropriate way to handle a `None` result from `get_segment`?
-		let in_segment = self.get_segment(self.len_segments() - 1)?;
+		let in_segment = self.get_segment(self.len_segments().checked_sub(1)?)?;
 		let out_segment = other.get_segment(0)?;
 
 		let in_tangent = in_segment.tangent(TValue::Parametric(1.));
@@ -483,13 +483,13 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		let center_to_right = right - center;
 		let center_to_left = left - center;
 
-		let in_segment = self.get_segment(self.len_segments() - 1).unwrap();
-		let in_tangent = in_segment.tangent(TValue::Parametric(1.));
+		let in_segment = self.len_segments().checked_sub(1).and_then(|segment| self.get_segment(segment));
+		let in_tangent = in_segment.map(|in_segment| in_segment.tangent(TValue::Parametric(1.)));
 
 		let mut angle = center_to_right.angle_to(center_to_left) / 2.;
 		let mut arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);
 
-		if (arc_point - left).angle_to(in_tangent).abs() > PI / 2. {
+		if in_tangent.map(|in_tangent| (arc_point - left).angle_to(in_tangent).abs()).unwrap_or_default() > PI / 2. {
 			angle = angle - PI * (if angle < 0. { -1. } else { 1. });
 			arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);
 		}

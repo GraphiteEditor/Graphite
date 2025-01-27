@@ -14,11 +14,18 @@ css = ["/page/donate.css", "/component/feature-box.css"]
 
 Graphite is 100% built and funded by the community. Your contributions directly help us level up the scope and speed of the project's development. Resources are put towards infrastructure, legal costs, swag to keep contributors happy and motivated, and outreach like exhibiting at conventions and traveling to conferences to foster industry relationships. Hiring full-time developers is the big next step as support grows.
 
-Select a level of support that suits you from the choices below. Or, you can ensure **100% of your contribution benefits Graphite** and have a choice of **custom** monthly donation amounts by paying through **GitHub Sponsors**.
-
 <p class="call-to-action">
+
+<span>
 <a href="https://github.com/sponsors/GraphiteEditor" target="_blank" class="button arrow">Donate: GitHub Sponsors</a>
+<em>Avoids processing fees</em>
+</span>
+
+<span>
 <a href="#supporter-memberships" class="button arrow">Donate: without an account</a>
+<em>Be done in just a few clicks</em>
+</span>
+
 </p>
 
 </div>
@@ -33,7 +40,9 @@ Select a level of support that suits you from the choices below. Or, you can ens
 
 ---
 
-Click a membership level below to pay directly (no account needed). A small fee (2.9% + 30¢ / month) reduces what we receive.
+Click a membership level below to pay directly by card, no account needed.
+
+A small fee of 2.9% + 30¢ reduces what we receive each month. If convenient, consider instead using <a href="https://github.com/sponsors/GraphiteEditor" target="_blank">GitHub Sponsors</a> for **no fees**.
 
 </div>
 
@@ -79,7 +88,7 @@ Click a membership level below to pay directly (no account needed). A small fee 
 **$25 / month**
 
 - Your **personal name** (or handle) **on the Graphite website and GitHub readme**
-- Option to be mailed a personal **thank-you card with Graphite stickers** (US addresses only)
+- Option to be mailed a personal **thank-you card with Graphite stickers** (in the US only)
 - *Plus the lower-tier rewards*
 
 </a>
@@ -126,9 +135,7 @@ Click a membership level below to pay directly (no account needed). A small fee 
 
 ---
 
-These higher tiers are also available to individuals who want to make a larger impact.
-
-Please [get in touch](/contact) if you'd like a custom arrangement or want to pay by invoice or ACH to help avoid processing fees.
+Also available to individuals wanting to make a larger impact. [Reach out](/contact) to pay by invoice or ACH to avoid fees, or for a custom arrangement.
 
 </div>
 

@@ -301,6 +301,7 @@ struct PathToolData {
 	saved_points_before_anchor_select_toggle: Vec<ManipulatorPointId>,
 	select_anchor_toggled: bool,
 	dragging_state: DraggingState,
+	current_selected_handle_id: Option<ManipulatorPointId>,
 	angle: f64,
 }
 
@@ -450,15 +451,20 @@ impl PathToolData {
 	}
 
 	fn update_colinear(&mut self, equidistant: bool, toggle_colinear: bool, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> bool {
+		// Check handle colinear state
+		let is_colinear = self
+			.selection_status
+			.angle()
+			.map(|angle| match angle {
+				ManipulatorAngle::Colinear => true,
+				ManipulatorAngle::Free | ManipulatorAngle::Mixed => false,
+			})
+			.unwrap_or(false);
+
 		// Check if the toggle_colinear key has just been pressed
 		if toggle_colinear && !self.toggle_colinear_debounce {
 			self.opposing_handle_lengths = None;
-			let colinear = self.selection_status.angle().is_some_and(|angle| match angle {
-				ManipulatorAngle::Colinear => true,
-				ManipulatorAngle::Free => false,
-				ManipulatorAngle::Mixed => false,
-			});
-			if colinear {
+			if is_colinear {
 				shape_editor.disable_colinear_handles_state_on_selected(&document.network_interface, responses);
 			} else {
 				shape_editor.convert_selected_manipulators_to_colinear_handles(responses, document);
@@ -469,13 +475,46 @@ impl PathToolData {
 		self.toggle_colinear_debounce = toggle_colinear;
 
 		if equidistant && self.opposing_handle_lengths.is_none() {
+			if !is_colinear {
+				// Try to get selected handle info
+				let Some((_, _, selected_handle_id)) = self.try_get_selected_handle_and_anchor(shape_editor, document) else {
+					self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(document));
+					return false;
+				};
+
+				let Some((layer, _)) = shape_editor.selected_shape_state.iter().next() else {
+					self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(document));
+					return false;
+				};
+
+				let Some(vector_data) = document.network_interface.compute_modified_vector(*layer) else {
+					self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(document));
+					return false;
+				};
+
+				// Check if handle has a pair (to ignore handles of edges of open paths)
+				if let Some(handle_pair) = selected_handle_id.get_handle_pair(&vector_data) {
+					let opposite_handle_length = handle_pair.iter().filter(|&&h| h.to_manipulator_point() != selected_handle_id).find_map(|&h| {
+						let opp_handle_pos = h.to_manipulator_point().get_position(&vector_data)?;
+						let opp_anchor_id = h.to_manipulator_point().get_anchor(&vector_data)?;
+						let opp_anchor_pos = vector_data.point_domain.position_from_id(opp_anchor_id)?;
+						Some((opp_handle_pos - opp_anchor_pos).length())
+					});
+
+					// Make handles colinear if opposite handle is zero length
+					if opposite_handle_length.map_or(false, |l| l == 0.) {
+						shape_editor.convert_selected_manipulators_to_colinear_handles(responses, document);
+						return true;
+					}
+				}
+			}
 			self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(document));
 		}
 		false
 	}
 
 	/// Attempts to get a single selected handle. Also retrieves the position of the anchor it is connected to. Used for the purpose of snapping the angle.
-	fn try_get_selected_handle_and_anchor(&self, shape_editor: &ShapeState, document: &DocumentMessageHandler) -> Option<(DVec2, DVec2)> {
+	fn try_get_selected_handle_and_anchor(&self, shape_editor: &ShapeState, document: &DocumentMessageHandler) -> Option<(DVec2, DVec2, ManipulatorPointId)> {
 		// Only count selections of a single layer
 		let (layer, selection) = shape_editor.selected_shape_state.iter().next()?;
 
@@ -486,6 +525,7 @@ impl PathToolData {
 
 		// Only count selected handles
 		let selected_handle = selection.selected().next()?.as_handle()?;
+		let handle_id = selected_handle.to_manipulator_point();
 
 		let layer_to_document = document.metadata().transform_to_document(*layer);
 		let vector_data = document.network_interface.compute_modified_vector(*layer)?;
@@ -497,24 +537,26 @@ impl PathToolData {
 		let handle_position_document = layer_to_document.transform_point2(handle_position_local);
 		let anchor_position_document = layer_to_document.transform_point2(anchor_position_local);
 
-		Some((handle_position_document, anchor_position_document))
+		Some((handle_position_document, anchor_position_document, handle_id))
 	}
 
-	fn calculate_handle_angle(&mut self, handle_vector: DVec2, lock_angle: bool, snap_angle: bool) -> f64 {
-		let mut handle_angle = -handle_vector.angle_to(DVec2::X);
+	fn calculate_handle_angle(&mut self, handle_vector: DVec2, handle_id: ManipulatorPointId, lock_angle: bool, snap_angle: bool) -> f64 {
+		let current_angle = -handle_vector.angle_to(DVec2::X);
 
 		// When the angle is locked we use the old angle
-		if lock_angle {
-			handle_angle = self.angle
+		if self.current_selected_handle_id == Some(handle_id) && lock_angle {
+			return self.angle;
 		}
 
 		// Round the angle to the closest increment
-		if snap_angle {
+		let mut handle_angle = current_angle;
+		if snap_angle && !lock_angle {
 			let snap_resolution = HANDLE_ROTATE_SNAP_ANGLE.to_radians();
 			handle_angle = (handle_angle / snap_resolution).round() * snap_resolution;
 		}
 
-		// Cache the old handle angle for the lock angle.
+		// Cache the angle and handle id for lock angle
+		self.current_selected_handle_id = Some(handle_id);
 		self.angle = handle_angle;
 
 		handle_angle
@@ -566,10 +608,10 @@ impl PathToolData {
 		let current_mouse = input.mouse.position;
 		let raw_delta = document_to_viewport.inverse().transform_vector2(current_mouse - previous_mouse);
 
-		let snapped_delta = if let Some((handle_pos, anchor_pos)) = self.try_get_selected_handle_and_anchor(shape_editor, document) {
+		let snapped_delta = if let Some((handle_pos, anchor_pos, handle_id)) = self.try_get_selected_handle_and_anchor(shape_editor, document) {
 			let cursor_pos = handle_pos + raw_delta;
 
-			let handle_angle = self.calculate_handle_angle(cursor_pos - anchor_pos, lock_angle, snap_angle);
+			let handle_angle = self.calculate_handle_angle(cursor_pos - anchor_pos, handle_id, lock_angle, snap_angle);
 
 			let constrained_direction = DVec2::new(handle_angle.cos(), handle_angle.sin());
 			let projected_length = (cursor_pos - anchor_pos).dot(constrained_direction);
@@ -929,7 +971,9 @@ impl Fsm for PathToolFsmState {
 				if nearest_point.is_some() {
 					// Flip the selected point between smooth and sharp
 					if !tool_data.double_click_handled && tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD {
+						responses.add(DocumentMessage::StartTransaction);
 						shape_editor.flip_smooth_sharp(&document.network_interface, input.mouse.position, SELECTION_TOLERANCE, responses);
+						responses.add(DocumentMessage::EndTransaction);
 						responses.add(PathToolMessage::SelectedPointUpdated);
 					}
 
@@ -1017,7 +1061,7 @@ impl Fsm for PathToolFsmState {
 					HintInfo::keys([Key::Delete], "Delete Selected"),
 					// TODO: Only show the following hints if at least one anchor is selected
 					HintInfo::keys([Key::Accel], "No Dissolve").prepend_plus(),
-					HintInfo::keys([Key::Shift], "Break Anchor").prepend_plus(),
+					HintInfo::keys([Key::Shift], "Cut Anchor").prepend_plus(),
 				]),
 			]),
 			PathToolFsmState::Dragging(dragging_state) => {

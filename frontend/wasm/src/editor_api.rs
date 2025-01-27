@@ -12,7 +12,7 @@ use editor::consts::FILE_SAVE_SUFFIX;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use editor::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
+use editor::messages::portfolio::document::utility_types::network_interface::{ImportOrExport, NodeTemplate};
 use editor::messages::portfolio::utility_types::Platform;
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
@@ -299,7 +299,7 @@ impl EditorHandle {
 	}
 
 	#[wasm_bindgen(js_name = openAutoSavedDocument)]
-	pub fn open_auto_saved_document(&self, document_id: u64, document_name: String, document_is_saved: bool, document_serialized_content: String) {
+	pub fn open_auto_saved_document(&self, document_id: u64, document_name: String, document_is_saved: bool, document_serialized_content: String, to_front: bool) {
 		let document_id = DocumentId(document_id);
 		let message = PortfolioMessage::OpenDocumentFileWithId {
 			document_id,
@@ -307,6 +307,7 @@ impl EditorHandle {
 			document_is_auto_saved: true,
 			document_is_saved,
 			document_serialized_content,
+			to_front,
 		};
 		self.dispatch(message);
 	}
@@ -348,6 +349,13 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = zoomCanvasToFitAll)]
 	pub fn zoom_canvas_to_fit_all(&self) {
 		let message = DocumentMessage::ZoomCanvasToFitAll;
+		self.dispatch(message);
+	}
+
+	/// Inform the overlays system of the current device pixel ratio
+	#[wasm_bindgen(js_name = setDevicePixelRatio)]
+	pub fn set_device_pixel_ratio(&self, ratio: f64) {
+		let message = OverlaysMessage::SetDevicePixelRatio { ratio };
 		self.dispatch(message);
 	}
 
@@ -698,10 +706,30 @@ impl EditorHandle {
 		self.dispatch(DocumentMessage::SetToNodeOrLayer { node_id: NodeId(id), is_layer });
 	}
 
-	#[wasm_bindgen(js_name = injectImaginatePollServerStatus)]
-	pub fn inject_imaginate_poll_server_status(&self) {
-		self.dispatch(PortfolioMessage::ImaginatePollServerStatus);
+	/// Set the name of an import or export
+	#[wasm_bindgen(js_name = setImportName)]
+	pub fn set_import_name(&self, index: usize, name: String) {
+		let message = NodeGraphMessage::SetImportExportName {
+			name,
+			index: ImportOrExport::Import(index),
+		};
+		self.dispatch(message);
 	}
+
+	/// Set the name of an export
+	#[wasm_bindgen(js_name = setExportName)]
+	pub fn set_export_name(&self, index: usize, name: String) {
+		let message = NodeGraphMessage::SetImportExportName {
+			name,
+			index: ImportOrExport::Export(index),
+		};
+		self.dispatch(message);
+	}
+
+	// #[wasm_bindgen(js_name = injectImaginatePollServerStatus)]
+	// pub fn inject_imaginate_poll_server_status(&self) {
+	// 	self.dispatch(PortfolioMessage::ImaginatePollServerStatus);
+	// }
 
 	// TODO: Eventually remove this document upgrade code
 	#[wasm_bindgen(js_name = triggerUpgradeDocumentToVectorManipulationFormat)]
@@ -734,6 +762,7 @@ impl EditorHandle {
 			document_is_auto_saved,
 			document_is_saved,
 			document_serialized_content: document_serialized_content.clone(),
+			to_front: false,
 		});
 
 		let document = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap();
@@ -755,7 +784,10 @@ impl EditorHandle {
 			if let Some(network) = document_node.implementation.get_network() {
 				let mut nodes_to_upgrade = Vec::new();
 				for (node_id, _) in network.nodes.iter().collect::<Vec<_>>() {
-					if document.network_interface.reference(node_id, &[]).is_some_and(|reference| reference == "To Artboard")
+					if document
+						.network_interface
+						.reference(node_id, &[])
+						.is_some_and(|reference| *reference == Some("To Artboard".to_string()))
 						&& document
 							.network_interface
 							.network(&[])
@@ -771,7 +803,7 @@ impl EditorHandle {
 					document
 						.network_interface
 						.replace_implementation(&node_id, &[], DocumentNodeImplementation::proto("graphene_core::ToArtboardNode"));
-					document.network_interface.add_import(TaggedValue::IVec2(glam::IVec2::default()), false, 2, "".to_string(), &[node_id]);
+					document.network_interface.add_import(TaggedValue::IVec2(glam::IVec2::default()), false, 2, "", &[node_id]);
 				}
 			}
 		}
@@ -799,6 +831,7 @@ impl EditorHandle {
 				document_is_auto_saved,
 				document_is_saved,
 				document_serialized_content,
+				to_front: false,
 			});
 			return;
 		}
@@ -903,6 +936,7 @@ impl EditorHandle {
 			document_is_auto_saved,
 			document_is_saved,
 			document_serialized_content,
+			to_front: false,
 		});
 	}
 }

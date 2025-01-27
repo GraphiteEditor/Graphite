@@ -73,6 +73,14 @@ export class UpdateInSelectedNetwork extends JsMessage {
 	readonly inSelectedNetwork!: boolean;
 }
 
+export class UpdateImportReorderIndex extends JsMessage {
+	readonly importIndex!: number | undefined;
+}
+
+export class UpdateExportReorderIndex extends JsMessage {
+	readonly exportIndex!: number | undefined;
+}
+
 const LayerWidths = Transform(({ obj }) => obj.layerWidths);
 const ChainWidths = Transform(({ obj }) => obj.chainWidths);
 const HasLeftInputWire = Transform(({ obj }) => obj.hasLeftInputWire);
@@ -170,6 +178,7 @@ export type FrontendClickTargets = {
 	readonly iconClickTargets: string[];
 	readonly allNodesBoundingBox: string;
 	readonly importExportsBoundingBox: string;
+	readonly modifyImportExport: string[];
 };
 
 export type ContextMenuInformation = {
@@ -178,7 +187,7 @@ export type ContextMenuInformation = {
 	contextMenuData: "CreateNode" | { nodeId: bigint; currentlyIsNode: boolean };
 };
 
-export type FrontendGraphDataType = "General" | "Raster" | "VectorData" | "Number" | "Graphic" | "Artboard";
+export type FrontendGraphDataType = "General" | "Raster" | "VectorData" | "Number" | "Group" | "Artboard";
 
 export class Node {
 	readonly index!: bigint;
@@ -209,6 +218,8 @@ export class FrontendGraphInput {
 	readonly name!: string;
 
 	readonly resolvedType!: string | undefined;
+
+	readonly validTypes!: string[];
 
 	@CreateOutputConnectorOptional
 	connectedTo!: Node | undefined;
@@ -757,7 +768,8 @@ export class UpdateMouseCursor extends JsMessage {
 	readonly cursor!: MouseCursorIcon;
 }
 
-export class TriggerLoadAutoSaveDocuments extends JsMessage {}
+export class TriggerLoadFirstAutoSaveDocument extends JsMessage {}
+export class TriggerLoadRestAutoSaveDocuments extends JsMessage {}
 
 export class TriggerLoadPreferences extends JsMessage {}
 
@@ -794,6 +806,10 @@ export class TriggerDownloadTextFile extends JsMessage {
 
 export class TriggerSavePreferences extends JsMessage {
 	readonly preferences!: Record<string, unknown>;
+}
+
+export class TriggerSaveActiveDocument extends JsMessage {
+	readonly documentId!: bigint;
 }
 
 export class DocumentChanged extends JsMessage {}
@@ -1563,10 +1579,12 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerImport,
 	TriggerIndexedDbRemoveDocument,
 	TriggerIndexedDbWriteDocument,
-	TriggerLoadAutoSaveDocuments,
+	TriggerLoadFirstAutoSaveDocument,
 	TriggerLoadPreferences,
+	TriggerLoadRestAutoSaveDocuments,
 	TriggerOpenDocument,
 	TriggerPaste,
+	TriggerSaveActiveDocument,
 	TriggerSavePreferences,
 	TriggerTextCommit,
 	TriggerTextCopy,
@@ -1586,9 +1604,11 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentModeLayout,
 	UpdateDocumentRulers,
 	UpdateDocumentScrollbars,
+	UpdateExportReorderIndex,
 	UpdateEyedropperSamplingState,
 	UpdateGraphFadeArtwork,
 	UpdateGraphViewOverlay,
+	UpdateImportReorderIndex,
 	UpdateImportsExports,
 	UpdateInputHints,
 	UpdateInSelectedNetwork,

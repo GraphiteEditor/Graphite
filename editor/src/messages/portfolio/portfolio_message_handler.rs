@@ -9,12 +9,13 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use crate::messages::portfolio::document::DocumentMessageData;
+use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, ToolType};
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeInput};
+use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Fill, FillType, Gradient};
 use interpreted_executor::dynamic_executor::IntrospectError;
@@ -32,12 +33,13 @@ pub struct PortfolioMessageData<'a> {
 pub struct PortfolioMessageHandler {
 	menu_bar_message_handler: MenuBarMessageHandler,
 	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
-	document_ids: Vec<DocumentId>,
+	document_ids: VecDeque<DocumentId>,
 	active_panel: PanelType,
 	pub(crate) active_document_id: Option<DocumentId>,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	pub persistent_data: PersistentData,
 	pub executor: NodeGraphExecutor,
+	pub selection_mode: SelectionMode,
 }
 
 impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMessageHandler {
@@ -258,7 +260,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				} else if self.active_document_id.is_some() {
 					let document_id = if document_index == self.document_ids.len() {
 						// If we closed the last document take the one previous (same as last)
-						*self.document_ids.last().unwrap()
+						*self.document_ids.back().unwrap()
 					} else {
 						// Move to the next tab
 						self.document_ids[document_index]
@@ -295,35 +297,35 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 			}
-			PortfolioMessage::ImaginateCheckServerStatus => {
-				let server_status = self.persistent_data.imaginate.server_status().clone();
-				self.persistent_data.imaginate.poll_server_check();
-				#[cfg(target_arch = "wasm32")]
-				if let Some(fut) = self.persistent_data.imaginate.initiate_server_check() {
-					wasm_bindgen_futures::spawn_local(async move {
-						let () = fut.await;
-						use wasm_bindgen::prelude::*;
+			// PortfolioMessage::ImaginateCheckServerStatus => {
+			// 	let server_status = self.persistent_data.imaginate.server_status().clone();
+			// 	self.persistent_data.imaginate.poll_server_check();
+			// 	#[cfg(target_arch = "wasm32")]
+			// 	if let Some(fut) = self.persistent_data.imaginate.initiate_server_check() {
+			// 		wasm_bindgen_futures::spawn_local(async move {
+			// 			let () = fut.await;
+			// 			use wasm_bindgen::prelude::*;
 
-						#[wasm_bindgen(module = "/../frontend/src/editor.ts")]
-						extern "C" {
-							#[wasm_bindgen(js_name = injectImaginatePollServerStatus)]
-							fn inject();
-						}
-						inject();
-					})
-				}
-				if &server_status != self.persistent_data.imaginate.server_status() {
-					responses.add(PropertiesPanelMessage::Refresh);
-				}
-			}
-			PortfolioMessage::ImaginatePollServerStatus => {
-				self.persistent_data.imaginate.poll_server_check();
-				responses.add(PropertiesPanelMessage::Refresh);
-			}
+			// 			#[wasm_bindgen(module = "/../frontend/src/editor.ts")]
+			// 			extern "C" {
+			// 				#[wasm_bindgen(js_name = injectImaginatePollServerStatus)]
+			// 				fn inject();
+			// 			}
+			// 			inject();
+			// 		})
+			// 	}
+			// 	if &server_status != self.persistent_data.imaginate.server_status() {
+			// 		responses.add(PropertiesPanelMessage::Refresh);
+			// 	}
+			// }
+			// PortfolioMessage::ImaginatePollServerStatus => {
+			// 	self.persistent_data.imaginate.poll_server_check();
+			// 	responses.add(PropertiesPanelMessage::Refresh);
+			// }
 			PortfolioMessage::EditorPreferences => self.executor.update_editor_preferences(preferences.editor_preferences()),
-			PortfolioMessage::ImaginateServerHostname => {
-				self.persistent_data.imaginate.set_host_name(&preferences.imaginate_server_hostname);
-			}
+			// PortfolioMessage::ImaginateServerHostname => {
+			// 	self.persistent_data.imaginate.set_host_name(&preferences.imaginate_server_hostname);
+			// }
 			PortfolioMessage::Import => {
 				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
 				responses.add(FrontendMessage::TriggerImport);
@@ -349,7 +351,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				}
 
-				self.load_document(new_document, document_id, responses);
+				self.load_document(new_document, document_id, responses, false);
+				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
 			PortfolioMessage::NextDocument => {
 				if let Some(active_document_id) = self.active_document_id {
@@ -368,13 +371,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				document_name,
 				document_serialized_content,
 			} => {
+				let document_id = DocumentId(generate_uuid());
 				responses.add(PortfolioMessage::OpenDocumentFileWithId {
-					document_id: DocumentId(generate_uuid()),
+					document_id,
 					document_name,
 					document_is_auto_saved: false,
 					document_is_saved: true,
 					document_serialized_content,
+					to_front: false,
 				});
+				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
 			PortfolioMessage::OpenDocumentFileWithId {
 				document_id,
@@ -382,11 +388,26 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				document_is_auto_saved,
 				document_is_saved,
 				document_serialized_content,
+				to_front,
 			} => {
+				// TODO: Eventually remove this document upgrade code
+				// This big code block contains lots of hacky code for upgrading old documents to the new format
+
 				// It can be helpful to temporarily set `upgrade_from_before_editable_subgraphs` to true if it's desired to upgrade a piece of artwork to use fresh copies of all nodes
-				let upgrade_from_before_editable_subgraphs = document_serialized_content.contains("node_output_index");
+				let replace_implementations_from_definition = document_serialized_content.contains("node_output_index");
+				// Upgrade layer implementation from https://github.com/GraphiteEditor/Graphite/pull/1946 (see also `fn fix_nodes()` in `main.rs` of Graphene CLI)
+				let upgrade_from_before_returning_nested_click_targets =
+					document_serialized_content.contains("graphene_core::ConstructLayerNode") || document_serialized_content.contains("graphene_core::AddArtboardNode");
 				let upgrade_vector_manipulation_format = document_serialized_content.contains("ManipulatorGroupIds") && !document_name.contains("__DO_NOT_UPGRADE__");
 				let document_name = document_name.replace("__DO_NOT_UPGRADE__", "");
+
+				const TEXT_REPLACEMENTS: [(&str, &str); 2] = [
+					("graphene_core::vector::vector_nodes::SamplePointsNode", "graphene_core::vector::SamplePointsNode"),
+					("graphene_core::vector::vector_nodes::SubpathSegmentLengthsNode", "graphene_core::vector::SubpathSegmentLengthsNode"),
+				];
+				let document_serialized_content = TEXT_REPLACEMENTS
+					.iter()
+					.fold(document_serialized_content, |document_serialized_content, (old, new)| document_serialized_content.replace(old, new));
 
 				let document = DocumentMessageHandler::deserialize_document(&document_serialized_content).map(|mut document| {
 					document.name.clone_from(&document_name);
@@ -407,9 +428,72 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					}
 				};
 
-				// TODO: Eventually remove this document upgrade code
+				const REPLACEMENTS: [(&str, &str); 36] = [
+					("graphene_core::AddArtboardNode", "graphene_core::graphic_element::AppendArtboardNode"),
+					("graphene_core::ConstructArtboardNode", "graphene_core::graphic_element::ToArtboardNode"),
+					("graphene_core::ToGraphicElementNode", "graphene_core::graphic_element::ToElementNode"),
+					("graphene_core::ToGraphicGroupNode", "graphene_core::graphic_element::ToGroupNode"),
+					("graphene_core::logic::LogicAndNode", "graphene_core::ops::LogicAndNode"),
+					("graphene_core::logic::LogicNotNode", "graphene_core::ops::LogicNotNode"),
+					("graphene_core::logic::LogicOrNode", "graphene_core::ops::LogicOrNode"),
+					("graphene_core::ops::ConstructVector2", "graphene_core::ops::Vector2ValueNode"),
+					("graphene_core::raster::BlackAndWhiteNode", "graphene_core::raster::adjustments::BlackAndWhiteNode"),
+					("graphene_core::raster::BlendNode", "graphene_core::raster::adjustments::BlendNode"),
+					("graphene_core::raster::ChannelMixerNode", "graphene_core::raster::adjustments::ChannelMixerNode"),
+					("graphene_core::raster::adjustments::ColorOverlayNode", "graphene_core::raster::adjustments::ColorOverlayNode"),
+					("graphene_core::raster::ExposureNode", "graphene_core::raster::adjustments::ExposureNode"),
+					("graphene_core::raster::ExtractChannelNode", "graphene_core::raster::adjustments::ExtractChannelNode"),
+					("graphene_core::raster::GradientMapNode", "graphene_core::raster::adjustments::GradientMapNode"),
+					("graphene_core::raster::HueSaturationNode", "graphene_core::raster::adjustments::HueSaturationNode"),
+					("graphene_core::raster::IndexNode", "graphene_core::raster::adjustments::IndexNode"),
+					("graphene_core::raster::InvertNode", "graphene_core::raster::adjustments::InvertNode"),
+					("graphene_core::raster::InvertRGBNode", "graphene_core::raster::adjustments::InvertNode"),
+					("graphene_core::raster::LevelsNode", "graphene_core::raster::adjustments::LevelsNode"),
+					("graphene_core::raster::LuminanceNode", "graphene_core::raster::adjustments::LuminanceNode"),
+					("graphene_core::raster::ExtractOpaqueNode", "graphene_core::raster::adjustments::MakeOpaqueNode"),
+					("graphene_core::raster::PosterizeNode", "graphene_core::raster::adjustments::PosterizeNode"),
+					("graphene_core::raster::ThresholdNode", "graphene_core::raster::adjustments::ThresholdNode"),
+					("graphene_core::raster::VibranceNode", "graphene_core::raster::adjustments::VibranceNode"),
+					("graphene_core::text::TextGeneratorNode", "graphene_core::text::TextNode"),
+					("graphene_core::transform::SetTransformNode", "graphene_core::transform::ReplaceTransformNode"),
+					("graphene_core::vector::generator_nodes::EllipseGenerator", "graphene_core::vector::generator_nodes::EllipseNode"),
+					("graphene_core::vector::generator_nodes::LineGenerator", "graphene_core::vector::generator_nodes::LineNode"),
+					("graphene_core::vector::generator_nodes::PathGenerator", "graphene_core::vector::generator_nodes::PathNode"),
+					("graphene_core::vector::generator_nodes::RectangleGenerator", "graphene_core::vector::generator_nodes::RectangleNode"),
+					(
+						"graphene_core::vector::generator_nodes::RegularPolygonGenerator",
+						"graphene_core::vector::generator_nodes::RegularPolygonNode",
+					),
+					("graphene_core::vector::generator_nodes::SplineGenerator", "graphene_core::vector::generator_nodes::SplineNode"),
+					("graphene_core::vector::generator_nodes::StarGenerator", "graphene_core::vector::generator_nodes::StarNode"),
+					("graphene_std::executor::BlendGpuImageNode", "graphene_std::gpu_nodes::BlendGpuImageNode"),
+					("graphene_std::raster::SampleNode", "graphene_std::raster::SampleImageNode"),
+				];
+				for node_id in &document
+					.network_interface
+					.network_metadata(&[])
+					.unwrap()
+					.persistent_metadata
+					.node_metadata
+					.keys()
+					.cloned()
+					.collect::<Vec<NodeId>>()
+				{
+					if let Some(DocumentNodeImplementation::ProtoNode(protonode_id)) = document.network_interface.network(&[]).unwrap().nodes.get(node_id).map(|node| node.implementation.clone()) {
+						for (old, new) in REPLACEMENTS {
+							let node_path_without_type_args = protonode_id.name.split('<').next();
+							if node_path_without_type_args == Some(old) {
+								document
+									.network_interface
+									.replace_implementation(node_id, &[], DocumentNodeImplementation::ProtoNode(new.to_string().into()));
+								document.network_interface.set_manual_compostion(node_id, &[], Some(graph_craft::Type::Generic("T".into())));
+							}
+						}
+					}
+				}
+
 				// Upgrade all old nodes to support editable subgraphs introduced in #1750
-				if upgrade_from_before_editable_subgraphs {
+				if replace_implementations_from_definition || upgrade_from_before_returning_nested_click_targets {
 					// This can be used, if uncommented, to upgrade demo artwork with outdated document node internals from their definitions. Delete when it's no longer needed.
 					// Used for upgrading old internal networks for demo artwork nodes. Will reset all node internals for any opened file
 					for node_id in &document
@@ -431,12 +515,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							.get(node_id)
 							.and_then(|node| node.persistent_metadata.reference.as_ref())
 						{
-							let node_definition = resolve_document_node_type(reference).unwrap();
+							let Some(node_definition) = resolve_document_node_type(reference) else { continue };
 							let default_definition_node = node_definition.default_node_template();
 							document.network_interface.replace_implementation(node_id, &[], default_definition_node.document_node.implementation);
 							document
 								.network_interface
 								.replace_implementation_metadata(node_id, &[], default_definition_node.persistent_node_metadata);
+							document.network_interface.set_manual_compostion(node_id, &[], default_definition_node.document_node.manual_composition);
 						}
 					}
 				}
@@ -460,8 +545,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						continue;
 					};
 
-					// Upgrade Fill nodes to the format change in #1778
-					// TODO: Eventually remove this document upgrade code
 					let Some(ref reference) = node_metadata.persistent_metadata.reference.clone() else {
 						continue;
 					};
@@ -472,6 +555,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					};
 					let inputs_count = node.inputs.len();
 
+					// Upgrade Fill nodes to the format change in #1778
 					if reference == "Fill" && inputs_count == 8 {
 						let node_definition = resolve_document_node_type(reference).unwrap();
 						let document_node = node_definition.default_node_template().document_node;
@@ -600,19 +684,37 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::Bool(false), false), &[]);
 					}
 
-					// Upgrade layer implementation from https://github.com/GraphiteEditor/Graphite/pull/1946
-					if reference == "Merge" || reference == "Artboard" {
-						let node_definition = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type(reference).unwrap();
-						let new_merge_node = node_definition.default_node_template();
-						document.network_interface.replace_implementation(node_id, &[], new_merge_node.document_node.implementation)
-					}
-
 					// Upgrade artboard name being passed as hidden value input to "To Artboard"
-					if reference == "Artboard" {
+					if reference == "Artboard" && upgrade_from_before_returning_nested_click_targets {
 						let label = document.network_interface.frontend_display_name(node_id, &[]);
 						document
 							.network_interface
 							.set_input(&InputConnector::node(NodeId(0), 1), NodeInput::value(TaggedValue::String(label), false), &[*node_id]);
+					}
+
+					if reference == "Image" && inputs_count == 1 {
+						let node_definition = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type(reference).unwrap();
+						let new_image_node = node_definition.default_node_template();
+						document.network_interface.replace_implementation(node_id, &[], new_image_node.document_node.implementation);
+
+						// Insert a new empty input for the image
+						document.network_interface.add_import(TaggedValue::None, false, 0, "Empty", &[*node_id]);
+						document.network_interface.set_reference(node_id, &[], Some("Image".to_string()));
+					}
+
+					if reference == "Noise Pattern" && inputs_count == 15 {
+						let node_definition = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type(reference).unwrap();
+						let new_noise_pattern_node = node_definition.default_node_template();
+						document.network_interface.replace_implementation(node_id, &[], new_noise_pattern_node.document_node.implementation);
+
+						let old_inputs = document.network_interface.replace_inputs(node_id, new_noise_pattern_node.document_node.inputs.clone(), &[]);
+
+						document
+							.network_interface
+							.set_input(&InputConnector::node(*node_id, 0), NodeInput::value(TaggedValue::None, false), &[]);
+						for (i, input) in old_inputs.iter().enumerate() {
+							document.network_interface.set_input(&InputConnector::node(*node_id, i + 1), input.clone(), &[]);
+						}
 					}
 				}
 
@@ -661,7 +763,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				document.set_auto_save_state(document_is_auto_saved);
 				document.set_save_state(document_is_saved);
 
-				self.load_document(document, document_id, responses);
+				self.load_document(document, document_id, responses, to_front);
 			}
 			PortfolioMessage::PasteIntoFolder { clipboard, parent, insert_index } => {
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {
@@ -801,6 +903,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				responses.add(FrontendMessage::UpdateActiveDocument { document_id });
+				responses.add(FrontendMessage::TriggerSaveActiveDocument { document_id });
 				responses.add(ToolMessage::InitTools);
 				responses.add(NodeGraphMessage::Init);
 				responses.add(OverlaysMessage::Draw);
@@ -813,6 +916,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
 				} else {
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				}
+
+				let Some(document) = self.documents.get_mut(&document_id) else {
+					warn!("Tried to read non existant document");
+					return;
+				};
+				if !document.is_loaded {
+					document.is_loaded = true;
+					responses.add(PortfolioMessage::LoadDocumentResources { document_id });
+					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+					responses.add(PropertiesPanelMessage::Clear);
 				}
 			}
 			PortfolioMessage::SubmitDocumentExport {
@@ -970,10 +1084,12 @@ impl PortfolioMessageHandler {
 		}
 	}
 
-	// TODO: Fix how this doesn't preserve tab order upon loading new document from *File > Open*
-	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) {
-		let new_document = new_document;
-		self.document_ids.push(document_id);
+	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>, to_front: bool) {
+		if to_front {
+			self.document_ids.push_front(document_id);
+		} else {
+			self.document_ids.push_back(document_id);
+		}
 		new_document.update_layers_panel_control_bar_widgets(responses);
 
 		self.documents.insert(document_id, new_document);
@@ -990,14 +1106,6 @@ impl PortfolioMessageHandler {
 		// TODO: Remove this and find a way to fix the issue where creating a new document when the node graph is open causes the transform in the new document to be incorrect
 		responses.add(DocumentMessage::GraphViewOverlay { open: false });
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-		responses.add(PortfolioMessage::SelectDocument { document_id });
-		responses.add(PortfolioMessage::LoadDocumentResources { document_id });
-		responses.add(PortfolioMessage::UpdateDocumentWidgets);
-		responses.add(ToolMessage::InitTools);
-		responses.add(NodeGraphMessage::Init);
-		responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
-		responses.add(PropertiesPanelMessage::Clear);
-		responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 	}
 
 	/// Returns an iterator over the open documents in order.
