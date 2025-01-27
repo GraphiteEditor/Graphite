@@ -151,8 +151,6 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					};
 
 					let viewport_box = input.viewport_bounds.size();
-					let transform = DAffine2::from_translation(DVec2::new(0., viewport_box.y)) * DAffine2::from_scale(DVec2::splat(1.2));
-
 					let axis_constraint = match self.transform_operation {
 						TransformOperation::Grabbing(grabbing) => grabbing.constraint,
 						TransformOperation::Scaling(scaling) => scaling.constraint,
@@ -160,23 +158,6 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					};
 
 					let format_rounded = |value: f64, precision: usize| format!("{:.*}", precision, value).trim_end_matches('0').trim_end_matches('.').to_string();
-
-					let axis_text = |vector: DVec2, separate: bool| match (axis_constraint, separate) {
-						(Axis::Both, false) => format!("by {}", format_rounded(vector.x, 3)),
-						(Axis::Both, true) => format!("by ({}, {})", format_rounded(vector.x, 3), format_rounded(vector.y, 3)),
-						(Axis::X, _) => format!("X by {}", format_rounded(vector.x, 3)),
-						(Axis::Y, _) => format!("Y by {}", format_rounded(vector.y, 3)),
-					};
-
-					let grs_value_text = match self.transform_operation {
-						TransformOperation::None => String::new(),
-						TransformOperation::Grabbing(translation) => format!(
-							"Translating {}",
-							axis_text(document_to_viewport.inverse().transform_vector2(translation.to_dvec(document_to_viewport)), true)
-						),
-						TransformOperation::Rotating(rotation) => format!("Rotating by {}°", format_rounded(rotation.to_f64(self.snap).to_degrees(), 3)),
-						TransformOperation::Scaling(scale) => format!("Scaling {}", axis_text(scale.to_dvec(self.snap), false)),
-					};
 
 					match self.transform_operation {
 						TransformOperation::None => (),
@@ -278,8 +259,6 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							overlay_context.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
 						}
 					}
-
-					overlay_context.text(&grs_value_text, COLOR_OVERLAY_WHITE, Some(COLOR_OVERLAY_SNAP_BACKGROUND), transform, 4., [Pivot::Start, Pivot::End]);
 				}
 			}
 			TransformLayerMessage::ApplyTransformOperation => {
