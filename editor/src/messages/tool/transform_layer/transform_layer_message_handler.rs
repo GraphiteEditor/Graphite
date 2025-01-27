@@ -177,7 +177,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let quad = Quad::from_box([self.grab_target, self.grab_target + viewport_translate]).0;
 							let e1 = (self.fixed_bbox.0[1] - self.fixed_bbox.0[0]).normalize();
 
-							if matches!(axis_constraint, Axis::Both | Axis::X) {
+							if matches!(axis_constraint, Axis::Both | Axis::X) && translation.x != 0. {
 								let end = if self.local {
 									(quad[1] - quad[0]).length() * e1 * e1.dot(quad[1] - quad[0]).signum() + quad[0]
 								} else {
@@ -189,7 +189,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 								overlay_context.text(&format_rounded(translation.x, 3), COLOR_OVERLAY_BLUE, None, x_transform, 4., [Pivot::Middle, Pivot::End]);
 							}
 
-							if matches!(axis_constraint, Axis::Both | Axis::Y) {
+							if matches!(axis_constraint, Axis::Both | Axis::Y) && translation.y != 0. {
 								let end = if self.local {
 									(quad[3] - quad[0]).length() * e1.perp() * e1.perp().dot(quad[3] - quad[0]).signum() + quad[0]
 								} else {
@@ -209,7 +209,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 									overlay_context.text(&format_rounded(translation.y, 2), COLOR_OVERLAY_BLUE, None, y_transform, 3., [pivot_selection, Pivot::Middle]);
 								}
 							}
-							if matches!(axis_constraint, Axis::Both) {
+							if matches!(axis_constraint, Axis::Both) && translation.x != 0. && translation.y != 0. {
 								overlay_context.dashed_line(quad[1], quad[2], None, Some(2.), Some(2.), Some(0.5));
 								overlay_context.dashed_line(quad[3], quad[2], None, Some(2.), Some(2.), Some(0.5));
 							}
