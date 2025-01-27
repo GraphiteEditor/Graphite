@@ -41,7 +41,6 @@ pub struct NodePropertiesContext<'a> {
 impl NodePropertiesContext<'_> {
 	pub fn call_widget_override(&mut self, node_id: &NodeId, index: usize) -> Option<Vec<LayoutGroup>> {
 		let Some(input_properties_row) = self.network_interface.input_properties_row(node_id, index, self.selection_network_path) else {
-			log::error!("Could not get input properties row at the beginning of call_widget_override");
 			return None;
 		};
 		if let Some(widget_override) = &input_properties_row.widget_override {
@@ -2410,7 +2409,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						PropertiesRow::with_override(
 							"Random Scale Bias",
 							WidgetOverride::Number(NumberInputSettings {
-								min: Some(0.),
 								mode: NumberInputMode::Range,
 								range_min: Some(-50.),
 								range_max: Some(50.),
@@ -2710,7 +2708,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		};
 	}
 	let node_registry = graphene_core::registry::NODE_REGISTRY.lock().unwrap();
-	'outer: for (id, metadata) in graphene_core::registry::NODE_METADATA.lock().unwrap().drain() {
+	'outer: for (id, metadata) in graphene_core::registry::NODE_METADATA.lock().unwrap().iter() {
 		use graphene_core::registry::*;
 
 		for node in custom.iter() {
@@ -2722,7 +2720,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				..
 			} = node;
 			match implementation {
-				DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) if name == &id => continue 'outer,
+				DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) if name == id => continue 'outer,
 				_ => (),
 			}
 		}
@@ -2734,7 +2732,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description,
 			properties,
 		} = metadata;
-		let Some(implementations) = &node_registry.get(&id) else { continue };
+		let Some(implementations) = &node_registry.get(id) else { continue };
 		let valid_inputs: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
 		let first_node_io = implementations.first().map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
 		let mut input_type = &first_node_io.call_argument;
@@ -2769,7 +2767,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				document_node: DocumentNode {
 					inputs,
 					manual_composition: Some(input_type.clone()),
-					implementation: DocumentNodeImplementation::ProtoNode(id.into()),
+					implementation: DocumentNodeImplementation::ProtoNode(id.clone().into()),
 					visible: true,
 					skip_deduplication: false,
 					..Default::default()
@@ -2793,7 +2791,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			category: category.unwrap_or("UNCATEGORIZED"),
 			description: Cow::Borrowed(description),
-			properties,
+			properties: *properties,
 		};
 		custom.push(node);
 	}
@@ -3006,6 +3004,27 @@ fn static_input_properties() -> InputProperties {
 				mode
 			}) {
 				number_input = number_input.mode(mode);
+			}
+			if let Some(range_min) = context
+				.network_interface
+				.input_metadata(&node_id, index, "range_min", context.selection_network_path)
+				.and_then(|value| value.as_f64())
+			{
+				number_input = number_input.range_min(Some(range_min));
+			}
+			if let Some(range_max) = context
+				.network_interface
+				.input_metadata(&node_id, index, "range_max", context.selection_network_path)
+				.and_then(|value| value.as_f64())
+			{
+				number_input = number_input.range_max(Some(range_max));
+			}
+			if let Some(is_integer) = context
+				.network_interface
+				.input_metadata(&node_id, index, "is_integer", context.selection_network_path)
+				.and_then(|value| value.as_bool())
+			{
+				number_input = number_input.is_integer(is_integer);
 			}
 			let blank_assist = context
 				.network_interface

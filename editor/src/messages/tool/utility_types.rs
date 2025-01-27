@@ -9,6 +9,7 @@ use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayProvider;
+use crate::messages::preferences::PreferencesMessageHandler;
 use crate::messages::prelude::*;
 use crate::node_graph_executor::NodeGraphExecutor;
 
@@ -26,27 +27,7 @@ pub struct ToolActionHandlerData<'a> {
 	pub font_cache: &'a FontCache,
 	pub shape_editor: &'a mut ShapeState,
 	pub node_graph: &'a NodeGraphExecutor,
-}
-impl<'a> ToolActionHandlerData<'a> {
-	pub fn new(
-		document: &'a mut DocumentMessageHandler,
-		document_id: DocumentId,
-		global_tool_data: &'a DocumentToolData,
-		input: &'a InputPreprocessorMessageHandler,
-		font_cache: &'a FontCache,
-		shape_editor: &'a mut ShapeState,
-		node_graph: &'a NodeGraphExecutor,
-	) -> Self {
-		Self {
-			document,
-			document_id,
-			global_tool_data,
-			input,
-			font_cache,
-			shape_editor,
-			node_graph,
-		}
-	}
+	pub preferences: &'a PreferencesMessageHandler,
 }
 
 pub trait ToolCommon: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionHandlerData<'a>> + LayoutHolder + ToolTransition + ToolMetadata {}

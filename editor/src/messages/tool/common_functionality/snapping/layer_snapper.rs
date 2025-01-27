@@ -117,7 +117,7 @@ impl LayerSnapper {
 						target: path.target,
 						distance,
 						tolerance,
-						curves: [path.bounds.is_none().then_some(path.document_curve), None],
+						outline_layers: [path.bounds.is_none().then_some(path.layer), None],
 						source: point.source,
 						target_bounds: path.bounds,
 						..Default::default()
@@ -156,7 +156,7 @@ impl LayerSnapper {
 							target: path.target,
 							distance,
 							tolerance,
-							curves: [path.bounds.is_none().then_some(path.document_curve), None],
+							outline_layers: [path.bounds.is_none().then_some(path.layer), None],
 							source: point.source,
 							target_bounds: path.bounds,
 							at_intersection: true,
@@ -241,6 +241,7 @@ impl LayerSnapper {
 					tolerance,
 					constrained: true,
 					target_bounds: candidate.quad,
+					outline_layers: [candidate.outline_layer, None],
 					..Default::default()
 				});
 			}
@@ -277,7 +278,7 @@ fn normals_and_tangents(path: &SnapCandidatePath, normals: bool, tangents: bool,
 					target: SnapTarget::Path(PathSnapTarget::NormalToPath),
 					distance,
 					tolerance,
-					curves: [Some(path.document_curve), None],
+					outline_layers: [Some(path.layer), None],
 					source: point.source,
 					constrained: true,
 					..Default::default()
@@ -298,7 +299,7 @@ fn normals_and_tangents(path: &SnapCandidatePath, normals: bool, tangents: bool,
 					target: SnapTarget::Path(PathSnapTarget::TangentToPath),
 					distance,
 					tolerance,
-					curves: [Some(path.document_curve), None],
+					outline_layers: [Some(path.layer), None],
 					source: point.source,
 					constrained: true,
 					..Default::default()
@@ -323,27 +324,30 @@ pub struct SnapCandidatePoint {
 	pub source: SnapSource,
 	pub target: SnapTarget,
 	pub quad: Option<Quad>,
+	/// This layer is outlined if the snap candidate is used.
+	pub outline_layer: Option<LayerNodeIdentifier>,
 	pub neighbors: Vec<DVec2>,
 	pub alignment: bool,
 }
 impl SnapCandidatePoint {
-	pub fn new(document_point: DVec2, source: SnapSource, target: SnapTarget) -> Self {
-		Self::new_quad(document_point, source, target, None, true)
+	pub fn new(document_point: DVec2, source: SnapSource, target: SnapTarget, outline_layer: Option<LayerNodeIdentifier>) -> Self {
+		Self::new_quad(document_point, source, target, None, outline_layer, true)
 	}
 
-	pub fn new_quad(document_point: DVec2, source: SnapSource, target: SnapTarget, quad: Option<Quad>, alignment: bool) -> Self {
+	pub fn new_quad(document_point: DVec2, source: SnapSource, target: SnapTarget, quad: Option<Quad>, outline_layer: Option<LayerNodeIdentifier>, alignment: bool) -> Self {
 		Self {
 			document_point,
 			source,
 			target,
 			quad,
+			outline_layer,
 			alignment,
 			..Default::default()
 		}
 	}
 
 	pub fn new_source(document_point: DVec2, source: SnapSource) -> Self {
-		Self::new(document_point, source, SnapTarget::None)
+		Self::new(document_point, source, SnapTarget::None, None)
 	}
 
 	pub fn handle(document_point: DVec2) -> Self {
@@ -409,15 +413,15 @@ pub fn get_bbox_points(quad: Quad, points: &mut Vec<SnapCandidatePoint>, values:
 		let start = quad.0[index];
 		let end = quad.0[(index + 1) % 4];
 		if document.snapping_state.target_enabled(values.corner_target) {
-			points.push(SnapCandidatePoint::new_quad(start, values.corner_source, values.corner_target, Some(quad), false));
+			points.push(SnapCandidatePoint::new_quad(start, values.corner_source, values.corner_target, Some(quad), None, false));
 		}
 		if document.snapping_state.target_enabled(values.edge_target) {
-			points.push(SnapCandidatePoint::new_quad((start + end) / 2., values.edge_source, values.edge_target, Some(quad), false));
+			points.push(SnapCandidatePoint::new_quad((start + end) / 2., values.edge_source, values.edge_target, Some(quad), None, false));
 		}
 	}
 
 	if document.snapping_state.target_enabled(values.center_target) {
-		points.push(SnapCandidatePoint::new_quad(quad.center(), values.center_source, values.center_target, Some(quad), false));
+		points.push(SnapCandidatePoint::new_quad(quad.center(), values.center_source, values.center_target, Some(quad), None, false));
 	}
 }
 
@@ -445,6 +449,7 @@ fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<Poin
 					to_document.transform_point2(curve.start() * 0.5 + curve.end * 0.5),
 					SnapSource::Path(PathSnapSource::LineMidpoint),
 					SnapTarget::Path(PathSnapTarget::LineMidpoint),
+					Some(layer),
 				));
 			}
 		}
@@ -468,6 +473,7 @@ fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<Poin
 				to_document.transform_point2(group.anchor),
 				SnapSource::Path(PathSnapSource::AnchorPointWithColinearHandles),
 				SnapTarget::Path(PathSnapTarget::AnchorPointWithColinearHandles),
+				Some(layer),
 			));
 		}
 		// Free handles
@@ -476,6 +482,7 @@ fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<Poin
 				to_document.transform_point2(group.anchor),
 				SnapSource::Path(PathSnapSource::AnchorPointWithFreeHandles),
 				SnapTarget::Path(PathSnapTarget::AnchorPointWithFreeHandles),
+				Some(layer),
 			));
 		}
 	}

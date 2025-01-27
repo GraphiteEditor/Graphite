@@ -384,6 +384,8 @@ pub struct Selected<'a> {
 	pub pivot: &'a mut DVec2,
 	pub shape_editor: Option<&'a ShapeState>,
 	pub tool_type: &'a ToolType,
+	// Only for the Pen tool
+	pub pen_handle: Option<&'a mut DVec2>,
 }
 
 impl<'a> Selected<'a> {
@@ -396,6 +398,7 @@ impl<'a> Selected<'a> {
 		network_interface: &'a NodeNetworkInterface,
 		shape_editor: Option<&'a ShapeState>,
 		tool_type: &'a ToolType,
+		pen_handle: Option<&'a mut DVec2>,
 	) -> Self {
 		// If user is using the Select tool then use the original layer transforms
 		if (*tool_type == ToolType::Select) && (*original_transforms == OriginalTransforms::Path(HashMap::new())) {
@@ -412,6 +415,7 @@ impl<'a> Selected<'a> {
 			pivot,
 			shape_editor,
 			tool_type,
+			pen_handle,
 		}
 	}
 
@@ -502,6 +506,13 @@ impl<'a> Selected<'a> {
 		}
 	}
 
+	pub fn apply_transform_pen(&mut self, transformation: DAffine2) {
+		if let Some(pen_handle) = &self.pen_handle {
+			let final_position = transformation.transform_point2(**pen_handle);
+			self.responses.add(PenToolMessage::FinalPosition { final_position });
+		}
+	}
+
 	pub fn apply_transformation(&mut self, transformation: DAffine2) {
 		if !self.selected.is_empty() {
 			// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
@@ -523,7 +534,10 @@ impl<'a> Selected<'a> {
 	pub fn update_transforms(&mut self, delta: DAffine2) {
 		let pivot = DAffine2::from_translation(*self.pivot);
 		let transformation = pivot * delta * pivot.inverse();
-		self.apply_transformation(transformation);
+		match self.tool_type {
+			ToolType::Pen => self.apply_transform_pen(transformation),
+			_ => self.apply_transformation(transformation),
+		}
 	}
 
 	pub fn revert_operation(&mut self) {
