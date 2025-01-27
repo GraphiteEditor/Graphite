@@ -143,8 +143,8 @@ pub struct Translation {
 }
 
 impl Translation {
-	pub fn to_dvec(self, transform: DAffine2) -> DVec2 {
-		if let Some(value) = self.typed_distance {
+	pub fn to_dvec(self, transform: DAffine2, snap: bool) -> DVec2 {
+		let displacement = if let Some(value) = self.typed_distance {
 			let document_displacement = if self.constraint == Axis::Y { DVec2::new(0., value) } else { DVec2::new(value, 0.) };
 			transform.transform_vector2(document_displacement)
 		} else {
@@ -153,6 +153,12 @@ impl Translation {
 				Axis::X => DVec2::new(self.dragged_distance.x, 0.),
 				Axis::Y => DVec2::new(0., self.dragged_distance.y),
 			}
+		};
+		let displacement = transform.inverse().transform_vector2(displacement);
+		if snap {
+			(displacement).round()
+		} else {
+			displacement
 		}
 	}
 
@@ -297,10 +303,11 @@ impl TransformOperation {
 		if self != &TransformOperation::None {
 			let transformation = match self {
 				TransformOperation::Grabbing(translation) => {
+					let translate = DAffine2::from_translation(transform.transform_vector2(translation.to_dvec(transform, snapping)));
 					if local {
-						DAffine2::from_angle(edge.to_angle()) * DAffine2::from_translation(translation.to_dvec(transform)) * DAffine2::from_angle(-edge.to_angle())
+						DAffine2::from_angle(edge.to_angle()) * translate * DAffine2::from_angle(-edge.to_angle())
 					} else {
-						DAffine2::from_translation(translation.to_dvec(transform))
+						translate
 					}
 				}
 				TransformOperation::Rotating(rotation) => DAffine2::from_angle(rotation.to_f64(snapping)),
