@@ -5,8 +5,8 @@ use std::sync::Mutex;
 
 use dyn_any::DynAny;
 
+use crate::raster::image::ImageFrame;
 use crate::raster::Image;
-use crate::raster::ImageFrame;
 use crate::vector::brush_stroke::BrushStroke;
 use crate::vector::brush_stroke::BrushStyle;
 use crate::Color;

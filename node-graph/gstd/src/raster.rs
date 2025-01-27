@@ -4,9 +4,9 @@ use dyn_any::DynAny;
 use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use graph_craft::proto::DynFuture;
 use graphene_core::raster::bbox::Bbox;
+use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
 use graphene_core::raster::{
-	Alpha, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, Image, ImageFrame, Linear, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, RedGreenBlue,
-	Sample,
+	Alpha, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, Image, Linear, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, RedGreenBlue, Sample,
 };
 use graphene_core::transform::{Footprint, Transform};
 use graphene_core::{AlphaBlending, Color, Node};
@@ -33,7 +33,9 @@ impl From<std::io::Error> for Error {
 }
 
 #[node_macro::node(category("Debug: Raster"))]
-fn sample_image(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<Color> {
+fn sample_image(footprint: Footprint, image_frame: ImageFrameTable<Color>) -> ImageFrameTable<Color> {
+	let image_frame = image_frame.instances().next().expect("ONE INSTANCE EXPECTED");
+
 	// Resize the image using the image crate
 	let image = image_frame.image;
 	let data = bytemuck::cast_vec(image.data);
@@ -47,10 +49,10 @@ fn sample_image(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFr
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
-		return ImageFrame::empty();
+		return ImageFrameTable::default();
 	}
 
-	let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, data).expect("Failed to convert internal ImageFrame into image-rs data type.");
+	let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, data).expect("Failed to convert internal image format into image-rs data type.");
 
 	let dynamic_image: image::DynamicImage = image_buffer.into();
 	let offset = (intersection.start - image_bounds.start).max(DVec2::ZERO);
@@ -83,11 +85,14 @@ fn sample_image(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFr
 	// we need to adjust the offset if we truncate the offset calculation
 
 	let new_transform = image_frame.transform * DAffine2::from_translation(offset) * DAffine2::from_scale(size);
-	ImageFrame {
+
+	let result = ImageFrame {
 		image,
 		transform: new_transform,
 		alpha_blending: image_frame.alpha_blending,
-	}
+	};
+
+	ImageFrameTable::new(result)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -215,11 +220,12 @@ pub struct BlendImageTupleNode<P, Fg, MapFn> {
 }
 
 #[node_macro::old_node_fn(BlendImageTupleNode<_P, _Fg>)]
-fn blend_image_tuple<_P: Alpha + Pixel + Debug, MapFn, _Fg: Sample<Pixel = _P> + Transform>(images: (ImageFrame<_P>, _Fg), map_fn: &'input MapFn) -> ImageFrame<_P>
+fn blend_image_tuple<_P: Alpha + Pixel + Debug, MapFn, _Fg: Sample<Pixel = _P> + Transform>(images: (ImageFrameTable<_P>, _Fg), map_fn: &'input MapFn) -> ImageFrameTable<_P>
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input + Clone,
 {
 	let (background, foreground) = images;
+	let mut background = background.instances().next().expect("ONE INSTANCE EXPECTED");
 
 	blend_image(foreground, background, map_fn)
 }
@@ -244,6 +250,7 @@ where
 	MapFn: Fn(_P, _P) -> _P,
 {
 	let background_size = DVec2::new(background.width() as f64, background.height() as f64);
+
 	// Transforms a point from the background image to the foreground image
 	let bg_to_fg = background.transform() * DAffine2::from_scale(1. / background_size);
 
@@ -277,11 +284,13 @@ pub struct ExtendImageToBoundsNode<Bounds> {
 }
 
 #[node_macro::old_node_fn(ExtendImageToBoundsNode)]
-fn extend_image_to_bounds(image: ImageFrame<Color>, bounds: DAffine2) -> ImageFrame<Color> {
+fn extend_image_to_bounds(image: ImageFrameTable<Color>, bounds: DAffine2) -> ImageFrameTable<Color> {
+	let image = image.instances().next().expect("ONE INSTANCE EXPECTED");
+
 	let image_aabb = Bbox::unit().affine_transform(image.transform()).to_axis_aligned_bbox();
 	let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();
 	if image_aabb.contains(bounds_aabb.start) && image_aabb.contains(bounds_aabb.end) {
-		return image;
+		return ImageFrameTable::new(image.clone());
 	}
 
 	if image.image.width == 0 || image.image.height == 0 {
@@ -310,125 +319,129 @@ fn extend_image_to_bounds(image: ImageFrame<Color>, bounds: DAffine2) -> ImageFr
 	// Compute new transform.
 	// let layer_to_new_texture_space = (DAffine2::from_scale(1. / new_scale) * DAffine2::from_translation(new_start) * layer_to_image_space).inverse();
 	let new_texture_to_layer_space = image.transform * DAffine2::from_scale(1. / orig_image_scale) * DAffine2::from_translation(new_start) * DAffine2::from_scale(new_scale);
-	ImageFrame {
+	let result = ImageFrame {
 		image: new_img,
 		transform: new_texture_to_layer_space,
 		alpha_blending: image.alpha_blending,
-	}
+	};
+
+	ImageFrameTable::new(result)
 }
 
 #[node_macro::node(category("Debug: Raster"))]
-fn empty_image<P: Pixel>(_: (), transform: DAffine2, #[implementations(Color)] color: P) -> ImageFrame<P> {
+fn empty_image(_: (), transform: DAffine2, color: Color) -> ImageFrameTable<Color> {
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
 
 	let image = Image::new(width, height, color);
 
-	ImageFrame {
+	let result = ImageFrame {
 		image,
 		transform,
 		alpha_blending: AlphaBlending::default(),
-	}
+	};
+
+	ImageFrameTable::new(result)
 }
 
-#[cfg(feature = "serde")]
-macro_rules! generate_imaginate_node {
-	($($val:ident: $t:ident: $o:ty,)*) => {
-		pub struct ImaginateNode<P: Pixel, E, C, G, $($t,)*> {
-			editor_api: E,
-			controller: C,
-			generation_id: G,
-			$($val: $t,)*
-			cache: std::sync::Arc<std::sync::Mutex<HashMap<u64, Image<P>>>>,
-			last_generation: std::sync::atomic::AtomicU64,
-		}
+// #[cfg(feature = "serde")]
+// macro_rules! generate_imaginate_node {
+// 	($($val:ident: $t:ident: $o:ty,)*) => {
+// 		pub struct ImaginateNode<P: Pixel, E, C, G, $($t,)*> {
+// 			editor_api: E,
+// 			controller: C,
+// 			generation_id: G,
+// 			$($val: $t,)*
+// 			cache: std::sync::Arc<std::sync::Mutex<HashMap<u64, Image<P>>>>,
+// 			last_generation: std::sync::atomic::AtomicU64,
+// 		}
 
-		impl<'e, P: Pixel, E, C, G, $($t,)*> ImaginateNode<P, E, C, G, $($t,)*>
-		where $($t: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, $o>>,)*
-			E: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, &'e WasmEditorApi>>,
-			C: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, ImaginateController>>,
-			G: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, u64>>,
-		{
-			#[allow(clippy::too_many_arguments)]
-			pub fn new(editor_api: E, controller: C, $($val: $t,)*  generation_id: G ) -> Self {
-				Self { editor_api, controller, generation_id, $($val,)* cache: Default::default(), last_generation: std::sync::atomic::AtomicU64::new(u64::MAX) }
-			}
-		}
+// 		impl<'e, P: Pixel, E, C, G, $($t,)*> ImaginateNode<P, E, C, G, $($t,)*>
+// 		where $($t: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, $o>>,)*
+// 			E: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, &'e WasmEditorApi>>,
+// 			C: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, ImaginateController>>,
+// 			G: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, u64>>,
+// 		{
+// 			#[allow(clippy::too_many_arguments)]
+// 			pub fn new(editor_api: E, controller: C, $($val: $t,)*  generation_id: G ) -> Self {
+// 				Self { editor_api, controller, generation_id, $($val,)* cache: Default::default(), last_generation: std::sync::atomic::AtomicU64::new(u64::MAX) }
+// 			}
+// 		}
 
-		impl<'i, 'e: 'i, P: Pixel + 'i + Hash + Default + Send, E: 'i, C: 'i, G: 'i, $($t: 'i,)*> Node<'i, ImageFrame<P>> for ImaginateNode<P, E, C, G, $($t,)*>
-		where $($t: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, $o>>,)*
-			E: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, &'e WasmEditorApi>>,
-			C: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, ImaginateController>>,
-			G: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, u64>>,
-		{
-			type Output = DynFuture<'i, ImageFrame<P>>;
+// 		impl<'i, 'e: 'i, P: Pixel + 'i + Hash + Default + Send, E: 'i, C: 'i, G: 'i, $($t: 'i,)*> Node<'i, ImageFrame<P>> for ImaginateNode<P, E, C, G, $($t,)*>
+// 		where $($t: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, $o>>,)*
+// 			E: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, &'e WasmEditorApi>>,
+// 			C: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, ImaginateController>>,
+// 			G: for<'any_input> Node<'any_input, (), Output = DynFuture<'any_input, u64>>,
+// 		{
+// 			type Output = DynFuture<'i, ImageFrame<P>>;
 
-			fn eval(&'i self, frame: ImageFrame<P>) -> Self::Output {
-				let controller = self.controller.eval(());
-				$(let $val = self.$val.eval(());)*
+// 			fn eval(&'i self, frame: ImageFrame<P>) -> Self::Output {
+// 				let controller = self.controller.eval(());
+// 				$(let $val = self.$val.eval(());)*
 
-				use std::hash::Hasher;
-				let mut hasher = rustc_hash::FxHasher::default();
-				frame.image.hash(&mut hasher);
-				let hash = hasher.finish();
-				let editor_api = self.editor_api.eval(());
-				let cache = self.cache.clone();
-				let generation_future = self.generation_id.eval(());
-				let last_generation = &self.last_generation;
+// 				use std::hash::Hasher;
+// 				let mut hasher = rustc_hash::FxHasher::default();
+// 				frame.image.hash(&mut hasher);
+// 				let hash = hasher.finish();
+// 				let editor_api = self.editor_api.eval(());
+// 				let cache = self.cache.clone();
+// 				let generation_future = self.generation_id.eval(());
+// 				let last_generation = &self.last_generation;
 
-				Box::pin(async move {
-					let controller: ImaginateController = controller.await;
-					let generation_id = generation_future.await;
-					if generation_id !=  last_generation.swap(generation_id, std::sync::atomic::Ordering::SeqCst) {
-						let image = super::imaginate::imaginate(frame.image, editor_api, controller, $($val,)*).await;
+// 				Box::pin(async move {
+// 					let controller: ImaginateController = controller.await;
+// 					let generation_id = generation_future.await;
+// 					if generation_id !=  last_generation.swap(generation_id, std::sync::atomic::Ordering::SeqCst) {
+// 						let image = super::imaginate::imaginate(frame.image, editor_api, controller, $($val,)*).await;
 
-						cache.lock().unwrap().insert(hash, image.clone());
+// 						cache.lock().unwrap().insert(hash, image.clone());
 
-						return wrap_image_frame(image, frame.transform);
-					}
-					let image = cache.lock().unwrap().get(&hash).cloned().unwrap_or_default();
+// 						return wrap_image_frame(image, frame.transform);
+// 					}
+// 					let image = cache.lock().unwrap().get(&hash).cloned().unwrap_or_default();
 
-					return wrap_image_frame(image, frame.transform);
-				})
-			}
-		}
-	}
-}
+// 					return wrap_image_frame(image, frame.transform);
+// 				})
+// 			}
+// 		}
+// 	}
+// }
 
-fn wrap_image_frame<P: Pixel>(image: Image<P>, transform: DAffine2) -> ImageFrame<P> {
-	if !transform.decompose_scale().abs_diff_eq(DVec2::ZERO, 0.00001) {
-		ImageFrame {
-			image,
-			transform,
-			alpha_blending: AlphaBlending::default(),
-		}
-	} else {
-		let resolution = DVec2::new(image.height as f64, image.width as f64);
-		ImageFrame {
-			image,
-			transform: DAffine2::from_scale_angle_translation(resolution, 0., transform.translation),
-			alpha_blending: AlphaBlending::default(),
-		}
-	}
-}
+// fn wrap_image_frame<P: Pixel>(image: Image<P>, transform: DAffine2) -> ImageFrame<P> {
+// 	if !transform.decompose_scale().abs_diff_eq(DVec2::ZERO, 0.00001) {
+// 		ImageFrame {
+// 			image,
+// 			transform,
+// 			alpha_blending: AlphaBlending::default(),
+// 		}
+// 	} else {
+// 		let resolution = DVec2::new(image.height as f64, image.width as f64);
+// 		ImageFrame {
+// 			image,
+// 			transform: DAffine2::from_scale_angle_translation(resolution, 0., transform.translation),
+// 			alpha_blending: AlphaBlending::default(),
+// 		}
+// 	}
+// }
 
-#[cfg(feature = "serde")]
-generate_imaginate_node! {
-	seed: Seed: f64,
-	res: Res: Option<DVec2>,
-	samples: Samples: u32,
-	sampling_method: SamplingMethod: ImaginateSamplingMethod,
-	prompt_guidance: PromptGuidance: f64,
-	prompt: Prompt: String,
-	negative_prompt: NegativePrompt: String,
-	adapt_input_image: AdaptInputImage: bool,
-	image_creativity: ImageCreativity: f64,
-	inpaint: Inpaint: bool,
-	mask_blur: MaskBlur: f64,
-	mask_starting_fill: MaskStartingFill: ImaginateMaskStartingFill,
-	improve_faces: ImproveFaces: bool,
-	tiling: Tiling: bool,
-}
+// #[cfg(feature = "serde")]
+// generate_imaginate_node! {
+// 	seed: Seed: f64,
+// 	res: Res: Option<DVec2>,
+// 	samples: Samples: u32,
+// 	sampling_method: SamplingMethod: ImaginateSamplingMethod,
+// 	prompt_guidance: PromptGuidance: f64,
+// 	prompt: Prompt: String,
+// 	negative_prompt: NegativePrompt: String,
+// 	adapt_input_image: AdaptInputImage: bool,
+// 	image_creativity: ImageCreativity: f64,
+// 	inpaint: Inpaint: bool,
+// 	mask_blur: MaskBlur: f64,
+// 	mask_starting_fill: MaskStartingFill: ImaginateMaskStartingFill,
+// 	improve_faces: ImproveFaces: bool,
+// 	tiling: Tiling: bool,
+// }
 
 #[node_macro::node(category("Raster: Generator"))]
 #[allow(clippy::too_many_arguments)]
@@ -450,7 +463,7 @@ fn noise_pattern(
 	cellular_distance_function: CellularDistanceFunction,
 	cellular_return_type: CellularReturnType,
 	cellular_jitter: f64,
-) -> ImageFrame<Color> {
+) -> ImageFrameTable<Color> {
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
 	let mut size = viewport_bounds.size();
@@ -467,7 +480,7 @@ fn noise_pattern(
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
-		return ImageFrame::empty();
+		return ImageFrameTable::default();
 	}
 
 	let footprint_scale = footprint.scale();
@@ -511,11 +524,13 @@ fn noise_pattern(
 				}
 			}
 
-			return ImageFrame::<Color> {
+			let result = ImageFrame {
 				image,
 				transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
 				alpha_blending: AlphaBlending::default(),
 			};
+
+			return ImageFrameTable::new(result);
 		}
 	};
 	noise.set_noise_type(Some(noise_type));
@@ -573,16 +588,17 @@ fn noise_pattern(
 		}
 	}
 
-	// Return the coherent noise image
-	ImageFrame::<Color> {
+	let result = ImageFrame {
 		image,
 		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
 		alpha_blending: AlphaBlending::default(),
-	}
+	};
+
+	ImageFrameTable::new(result)
 }
 
 #[node_macro::node(category("Raster: Generator"))]
-fn mandelbrot(footprint: Footprint) -> ImageFrame<Color> {
+fn mandelbrot(footprint: Footprint) -> ImageFrameTable<Color> {
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
 	let image_bounds = Bbox::from_transform(DAffine2::IDENTITY).to_axis_aligned_bbox();
@@ -593,7 +609,7 @@ fn mandelbrot(footprint: Footprint) -> ImageFrame<Color> {
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
-		return ImageFrame::empty();
+		return ImageFrameTable::default();
 	}
 
 	let scale = footprint.scale();
@@ -614,7 +630,8 @@ fn mandelbrot(footprint: Footprint) -> ImageFrame<Color> {
 			data.push(map_color(iter, max_iter));
 		}
 	}
-	ImageFrame {
+
+	let result = ImageFrame {
 		image: Image {
 			width,
 			height,
@@ -623,7 +640,9 @@ fn mandelbrot(footprint: Footprint) -> ImageFrame<Color> {
 		},
 		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
 		..Default::default()
-	}
+	};
+
+	ImageFrameTable::new(result)
 }
 
 #[inline(always)]

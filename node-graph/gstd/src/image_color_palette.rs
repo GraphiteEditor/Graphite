@@ -1,4 +1,4 @@
-use graphene_core::raster::ImageFrame;
+use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
 use graphene_core::transform::Footprint;
 use graphene_core::Color;
 
@@ -10,10 +10,10 @@ async fn image_color_palette<F: 'n + Send>(
 	)]
 	footprint: F,
 	#[implementations(
-		() -> ImageFrame<Color>,
-		Footprint -> ImageFrame<Color>,
+		() -> ImageFrameTable<Color>,
+		Footprint -> ImageFrameTable<Color>,
 	)]
-	image: impl Node<F, Output = ImageFrame<Color>>,
+	image: impl Node<F, Output = ImageFrameTable<Color>>,
 	#[min(1.)]
 	#[max(28.)]
 	max_size: u32,
@@ -26,6 +26,8 @@ async fn image_color_palette<F: 'n + Send>(
 	let mut colors: Vec<Vec<Color>> = vec![vec![]; (bins + 1.) as usize];
 
 	let image = image.eval(footprint).await;
+	let image = image.instances().next().expect("ONE INSTANCE EXPECTED");
+
 	for pixel in image.image.data.iter() {
 		let r = pixel.r() * GRID;
 		let g = pixel.g() * GRID;
@@ -82,7 +84,7 @@ mod test {
 			max_size: CopiedNode(1u32),
 			image: FnNode::new(|_| {
 				Box::pin(async move {
-					ImageFrame {
+					ImageFrameTable::new(ImageFrame {
 						image: Image {
 							width: 100,
 							height: 100,
@@ -90,7 +92,7 @@ mod test {
 							base64_string: None,
 						},
 						..Default::default()
-					}
+					})
 				})
 			}),
 		};

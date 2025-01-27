@@ -61,7 +61,9 @@ impl Clone for ComputePass {
 }
 
 #[node_macro::old_node_impl(MapGpuNode)]
-async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, editor_api: &'a graphene_core::application_io::EditorApi<WasmApplicationIo>) -> ImageFrame<Color> {
+async fn map_gpu<'a: 'input>(image: ImageFrameTable<Color>, node: DocumentNode, editor_api: &'a graphene_core::application_io::EditorApi<WasmApplicationIo>) -> ImageFrameTable<Color> {
+	let image = image.instances().next().expect("ONE INSTANCE EXPECTED");
+
 	log::debug!("Executing gpu node");
 	let executor = &editor_api.application_io.as_ref().and_then(|io| io.gpu_executor()).unwrap();
 
@@ -77,7 +79,7 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 		let name = "placeholder".to_string();
 		let Ok(compute_pass_descriptor) = create_compute_pass_descriptor(node, &image, executor).await else {
 			log::error!("Error creating compute pass descriptor in 'map_gpu()");
-			return ImageFrame::empty();
+			return ImageFrameTable::default();
 		};
 		self.cache.lock().as_mut().unwrap().insert(name, compute_pass_descriptor.clone());
 		log::error!("created compute pass");
@@ -105,7 +107,7 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	#[cfg(feature = "image-compare")]
 	log::debug!("score: {:?}", score.score);
 
-	ImageFrame {
+	let result = ImageFrame {
 		image: Image {
 			data: colors,
 			width: image.image.width,
@@ -114,7 +116,9 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 		},
 		transform: image.transform,
 		alpha_blending: image.alpha_blending,
-	}
+	};
+
+	ImageFrameTable::new(result)
 }
 
 impl<Node, EditorApi> MapGpuNode<Node, EditorApi> {
@@ -127,7 +131,7 @@ impl<Node, EditorApi> MapGpuNode<Node, EditorApi> {
 	}
 }
 
-async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(node: DocumentNode, image: &ImageFrame<T>, executor: &&WgpuExecutor) -> Result<ComputePass, String> {
+async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(node: DocumentNode, image: &ImageFrameTable<T>, executor: &&WgpuExecutor) -> Result<ComputePass, String> {
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let inner_network = NodeNetwork::value_network(node);
 
@@ -145,40 +149,37 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(node
 				implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into()),
 				..Default::default()
 			},
-			/*DocumentNode {
-				name: "Index".into(),
-				// inputs: vec![NodeInput::Network(concrete!(UVec3))],
-				inputs: vec![NodeInput::Inline(InlineRust::new("i1.x as usize".into(), concrete![u32]))],
-				implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::CopiedNode".into()),
-				..Default::default()
-			},*/
-				/*
-			DocumentNode {
-				name: "Get Node".into(),
-				inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(0), 0)],
-				implementation: DocumentNodeImplementation::ProtoNode("graphene_core::storage::GetNode".into()),
-				..Default::default()
-			},*/
+			// DocumentNode {
+			// 	name: "Index".into(),
+			// 	// inputs: vec![NodeInput::Network(concrete!(UVec3))],
+			// 	inputs: vec![NodeInput::Inline(InlineRust::new("i1.x as usize".into(), concrete![u32]))],
+			// 	implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::CopiedNode".into()),
+			// 	..Default::default()
+			// },
+			// DocumentNode {
+			// 	name: "Get Node".into(),
+			// 	inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(0), 0)],
+			// 	implementation: DocumentNodeImplementation::ProtoNode("graphene_core::storage::GetNode".into()),
+			// 	..Default::default()
+			// },
 			DocumentNode {
 				inputs: vec![NodeInput::node(NodeId(0), 0)],
 				implementation: DocumentNodeImplementation::Network(inner_network),
 				..Default::default()
 			},
-			/*
-			DocumentNode {
-				name: "Save Node".into(),
-				inputs: vec![
-					NodeInput::node(NodeId(5), 0),
-					NodeInput::Inline(InlineRust::new(
-						"|x| o0[(_global_index.y * i1 + _global_index.x) as usize] = x".into(),
-						// "|x|()".into(),
-						Type::Fn(Box::new(concrete!(PackedPixel)), Box::new(concrete!(()))),
-					)),
-				],
-				implementation: DocumentNodeImplementation::ProtoNode("graphene_core::generic::FnMutNode".into()),
-				..Default::default()
-			},
-			*/
+			// DocumentNode {
+			// 	name: "Save Node".into(),
+			// 	inputs: vec![
+			// 		NodeInput::node(NodeId(5), 0),
+			// 		NodeInput::Inline(InlineRust::new(
+			// 			"|x| o0[(_global_index.y * i1 + _global_index.x) as usize] = x".into(),
+			// 			// "|x|()".into(),
+			// 			Type::Fn(Box::new(concrete!(PackedPixel)), Box::new(concrete!(()))),
+			// 		)),
+			// 	],
+			// 	implementation: DocumentNodeImplementation::ProtoNode("graphene_core::generic::FnMutNode".into()),
+			// 	..Default::default()
+			// },
 		]
 		.into_iter()
 		.enumerate()
@@ -204,7 +205,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(node
 	)
 	.await
 	.unwrap();
-	// return ImageFrame::empty();
+
 	let len: usize = image.image.data.len();
 
 	let storage_buffer = executor
@@ -218,21 +219,22 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(node
 			},
 		)
 		.unwrap();
-	/*
-	let canvas = editor_api.application_io.create_surface();
 
-	let surface = unsafe { executor.create_surface(canvas) }.unwrap();
-	let surface_id = surface.surface_id;
+	// let canvas = editor_api.application_io.create_surface();
 
-	let texture = executor.create_texture_buffer(image.image.clone(), TextureBufferOptions::Texture).unwrap();
+	// let surface = unsafe { executor.create_surface(canvas) }.unwrap();
+	// let surface_id = surface.surface_id;
 
-	// executor.create_render_pass(texture, surface).unwrap();
+	// let texture = executor.create_texture_buffer(image.image.clone(), TextureBufferOptions::Texture).unwrap();
 
-	let frame = SurfaceFrame {
-		surface_id,
-		transform: image.transform,
-	};
-	return frame;*/
+	// // executor.create_render_pass(texture, surface).unwrap();
+
+	// let frame = SurfaceFrame {
+	// 	surface_id,
+	// 	transform: image.transform,
+	// };
+	// return frame;
+
 	log::debug!("creating buffer");
 	let width_uniform = executor.create_uniform_buffer(image.image.width).unwrap();
 
@@ -269,9 +271,13 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(node
 }
 
 #[node_macro::node(category("Debug: GPU"))]
-async fn blend_gpu_image(_: (), foreground: ImageFrame<Color>, background: ImageFrame<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrame<Color> {
+async fn blend_gpu_image(_: (), foreground: ImageFrameTable<Color>, background: ImageFrameTable<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrameTable<Color> {
+	let foreground = foreground.instances().next().expect("ONE INSTANCE EXPECTED");
+	let background = background.instances().next().expect("ONE INSTANCE EXPECTED");
+
 	let foreground_size = DVec2::new(foreground.image.width as f64, foreground.image.height as f64);
 	let background_size = DVec2::new(background.image.width as f64, background.image.height as f64);
+
 	// Transforms a point from the background image to the foreground image
 	let bg_to_fg = DAffine2::from_scale(foreground_size) * foreground.transform.inverse() * background.transform * DAffine2::from_scale(1. / background_size);
 
@@ -320,7 +326,7 @@ async fn blend_gpu_image(_: (), foreground: ImageFrame<Color>, background: Image
 	let proto_networks: Result<Vec<_>, _> = compiler.compile(network.clone()).collect();
 	let Ok(proto_networks_result) = proto_networks else {
 		log::error!("Error compiling network in 'blend_gpu_image()");
-		return ImageFrame::empty();
+		return ImageFrameTable::default();
 	};
 	let proto_networks = proto_networks_result;
 	log::debug!("compiling shader");
@@ -430,7 +436,7 @@ async fn blend_gpu_image(_: (), foreground: ImageFrame<Color>, background: Image
 	let result = executor.read_output_buffer(readback_buffer).await.unwrap();
 	let colors = bytemuck::pod_collect_to_vec::<u8, Color>(result.as_slice());
 
-	ImageFrame {
+	let result = ImageFrame {
 		image: Image {
 			data: colors,
 			width: background.image.width,
@@ -439,5 +445,7 @@ async fn blend_gpu_image(_: (), foreground: ImageFrame<Color>, background: Image
 		},
 		transform: background.transform,
 		alpha_blending: background.alpha_blending,
-	}
+	};
+
+	ImageFrameTable::new(result)
 }

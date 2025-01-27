@@ -1,5 +1,6 @@
-use crate::application_io::TextureFrame;
-use crate::raster::{BlendMode, ImageFrame};
+use crate::application_io::{TextureFrame, TextureFrameTable};
+use crate::raster::image::{ImageFrame, ImageFrameTable};
+use crate::raster::BlendMode;
 use crate::transform::{ApplyTransform, Footprint, Transform, TransformMut};
 use crate::uuid::NodeId;
 use crate::vector::{InstanceId, VectorData, VectorDataTable};
@@ -135,7 +136,6 @@ impl GraphicGroup {
 }
 
 /// The possible forms of graphical content held in a Vec by the `elements` field of [`GraphicElement`].
-/// Can be another recursively nested [`GraphicGroup`], a [`VectorData`] shape, an [`ImageFrame`], or an [`Artboard`].
 #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GraphicElement {
@@ -143,7 +143,7 @@ pub enum GraphicElement {
 	GraphicGroup(GraphicGroup),
 	/// A vector shape, equivalent to the SVG <path> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path
 	VectorData(VectorDataTable),
-	Raster(Raster),
+	RasterFrame(RasterFrame),
 }
 
 // TODO: Can this be removed? It doesn't necessarily make that much sense to have a default when, instead, the entire GraphicElement just shouldn't exist if there's no specific content to assign it.
@@ -182,75 +182,74 @@ impl GraphicElement {
 		}
 	}
 
-	pub fn as_raster(&self) -> Option<&Raster> {
+	pub fn as_raster(&self) -> Option<&RasterFrame> {
 		match self {
-			GraphicElement::Raster(raster) => Some(raster),
+			GraphicElement::RasterFrame(raster) => Some(raster),
 			_ => None,
 		}
 	}
 
-	pub fn as_raster_mut(&mut self) -> Option<&mut Raster> {
+	pub fn as_raster_mut(&mut self) -> Option<&mut RasterFrame> {
 		match self {
-			GraphicElement::Raster(raster) => Some(raster),
+			GraphicElement::RasterFrame(raster) => Some(raster),
 			_ => None,
 		}
 	}
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
-pub enum Raster {
-	/// A bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
-	ImageFrame(ImageFrame<Color>),
-	Texture(TextureFrame),
+pub enum RasterFrame {
+	/// A CPU-based bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
+	ImageFrame(ImageFrameTable<Color>),
+	/// A GPU texture with a finite position and extent
+	TextureFrame(TextureFrameTable),
 }
 
-impl<'de> serde::Deserialize<'de> for Raster {
+impl<'de> serde::Deserialize<'de> for RasterFrame {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
 		D: serde::Deserializer<'de>,
 	{
-		let frame = ImageFrame::deserialize(deserializer)?;
-		Ok(Raster::ImageFrame(frame))
+		Ok(RasterFrame::ImageFrame(ImageFrameTable::new(ImageFrame::deserialize(deserializer)?)))
 	}
 }
 
-impl serde::Serialize for Raster {
+impl serde::Serialize for RasterFrame {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: serde::Serializer,
 	{
 		match self {
-			Raster::ImageFrame(_) => self.serialize(serializer),
-			Raster::Texture(_) => todo!(),
+			RasterFrame::ImageFrame(_) => self.serialize(serializer),
+			RasterFrame::TextureFrame(_) => todo!(),
 		}
 	}
 }
 
-impl Transform for Raster {
+impl Transform for RasterFrame {
 	fn transform(&self) -> DAffine2 {
 		match self {
-			Raster::ImageFrame(frame) => frame.transform(),
-			Raster::Texture(frame) => frame.transform(),
+			RasterFrame::ImageFrame(frame) => frame.transform(),
+			RasterFrame::TextureFrame(frame) => frame.transform(),
 		}
 	}
 	fn local_pivot(&self, pivot: glam::DVec2) -> glam::DVec2 {
 		match self {
-			Raster::ImageFrame(frame) => frame.local_pivot(pivot),
-			Raster::Texture(frame) => frame.local_pivot(pivot),
+			RasterFrame::ImageFrame(frame) => frame.local_pivot(pivot),
+			RasterFrame::TextureFrame(frame) => frame.local_pivot(pivot),
 		}
 	}
 }
-impl TransformMut for Raster {
+impl TransformMut for RasterFrame {
 	fn transform_mut(&mut self) -> &mut DAffine2 {
 		match self {
-			Raster::ImageFrame(frame) => frame.transform_mut(),
-			Raster::Texture(frame) => frame.transform_mut(),
+			RasterFrame::ImageFrame(frame) => frame.transform_mut(),
+			RasterFrame::TextureFrame(frame) => frame.transform_mut(),
 		}
 	}
 }
 
 /// Some [`ArtboardData`] with some optional clipping bounds that can be exported.
-/// Similar to an Inkscape page: https://media.inkscape.org/media/doc/release_notes/1.2/Inkscape_1.2.html#Page_tool
 #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Artboard {
@@ -341,11 +340,11 @@ async fn to_element<F: 'n + Send, Data: Into<GraphicElement> + 'n>(
 	#[implementations(
 		() -> GraphicGroup,
 	 	() -> VectorDataTable,
-		() -> ImageFrame<Color>,
+		() -> ImageFrameTable<Color>,
 	 	() -> TextureFrame,
 	 	Footprint -> GraphicGroup,
 	 	Footprint -> VectorDataTable,
-		Footprint -> ImageFrame<Color>,
+		Footprint -> ImageFrameTable<Color>,
 	 	Footprint -> TextureFrame,
 	)]
 	data: impl Node<F, Output = Data>,
@@ -366,11 +365,11 @@ async fn to_group<F: 'n + Send, Data: Into<GraphicGroup> + 'n>(
 	#[implementations(
 		() -> GraphicGroup,
 		() -> VectorDataTable,
-		() -> ImageFrame<Color>,
+		() -> ImageFrameTable<Color>,
 		() -> TextureFrame,
 		Footprint -> GraphicGroup,
 		Footprint -> VectorDataTable,
-		Footprint -> ImageFrame<Color>,
+		Footprint -> ImageFrameTable<Color>,
 		Footprint -> TextureFrame,
 	)]
 	element: impl Node<F, Output = Data>,
@@ -433,11 +432,11 @@ async fn to_artboard<F: 'n + Send + ApplyTransform, Data: Into<GraphicGroup> + '
 	#[implementations(
 		() -> GraphicGroup,
 		() -> VectorDataTable,
-		() -> ImageFrame<Color>,
+		() -> ImageFrameTable<Color>,
 		() -> TextureFrame,
 		Footprint -> GraphicGroup,
 		Footprint -> VectorDataTable,
-		Footprint -> ImageFrame<Color>,
+		Footprint -> ImageFrameTable<Color>,
 		Footprint -> TextureFrame,
 	)]
 	contents: impl Node<F, Output = Data>,
@@ -489,27 +488,45 @@ async fn append_artboard<F: 'n + Send + Copy>(
 	artboards
 }
 
+// TODO: Remove this one
 impl From<ImageFrame<Color>> for GraphicElement {
 	fn from(image_frame: ImageFrame<Color>) -> Self {
-		GraphicElement::Raster(Raster::ImageFrame(image_frame))
+		GraphicElement::RasterFrame(RasterFrame::ImageFrame(ImageFrameTable::new(image_frame)))
 	}
 }
+
+impl From<ImageFrameTable<Color>> for GraphicElement {
+	fn from(image_frame: ImageFrameTable<Color>) -> Self {
+		GraphicElement::RasterFrame(RasterFrame::ImageFrame(image_frame))
+	}
+}
+
+// TODO: Remove this one
 impl From<TextureFrame> for GraphicElement {
 	fn from(texture: TextureFrame) -> Self {
-		GraphicElement::Raster(Raster::Texture(texture))
+		GraphicElement::RasterFrame(RasterFrame::TextureFrame(TextureFrameTable::new(texture)))
 	}
 }
+
+impl From<TextureFrameTable> for GraphicElement {
+	fn from(texture: TextureFrameTable) -> Self {
+		GraphicElement::RasterFrame(RasterFrame::TextureFrame(texture))
+	}
+}
+
 // TODO: Remove this one
 impl From<VectorData> for GraphicElement {
 	fn from(vector_data: VectorData) -> Self {
 		GraphicElement::VectorData(VectorDataTable::new(vector_data))
 	}
 }
+
 impl From<VectorDataTable> for GraphicElement {
 	fn from(vector_data: VectorDataTable) -> Self {
 		GraphicElement::VectorData(vector_data)
 	}
 }
+
 impl From<GraphicGroup> for GraphicElement {
 	fn from(graphic_group: GraphicGroup) -> Self {
 		GraphicElement::GraphicGroup(graphic_group)
@@ -534,7 +551,7 @@ impl DerefMut for GraphicGroup {
 trait ToGraphicElement: Into<GraphicElement> {}
 
 impl ToGraphicElement for VectorDataTable {}
-impl ToGraphicElement for ImageFrame<Color> {}
+impl ToGraphicElement for ImageFrameTable<Color> {}
 impl ToGraphicElement for TextureFrame {}
 
 impl<T> From<T> for GraphicGroup

@@ -6,8 +6,8 @@ use graphene_core::application_io::SurfaceHandle;
 use graphene_core::application_io::{ApplicationIo, ExportFormat, RenderConfig};
 #[cfg(target_arch = "wasm32")]
 use graphene_core::raster::bbox::Bbox;
+use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
 use graphene_core::raster::Image;
-use graphene_core::raster::ImageFrame;
 use graphene_core::renderer::RenderMetadata;
 use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
 use graphene_core::transform::Footprint;
@@ -35,7 +35,12 @@ async fn create_surface<'a: 'n>(_: (), editor: &'a WasmEditorApi) -> Arc<WasmSur
 
 #[node_macro::node(category("Debug: GPU"))]
 #[cfg(target_arch = "wasm32")]
-async fn draw_image_frame(_: (), image: ImageFrame<graphene_core::raster::SRGBA8>, surface_handle: Arc<WasmSurfaceHandle>) -> graphene_core::application_io::SurfaceHandleFrame<HtmlCanvasElement> {
+async fn draw_image_frame(
+	_: (),
+	image: ImageFrameTable<graphene_core::raster::SRGBA8>,
+	surface_handle: Arc<WasmSurfaceHandle>,
+) -> graphene_core::application_io::SurfaceHandleFrame<HtmlCanvasElement> {
+	let image = image.instances().next().expect("ONE INSTANCE EXPECTED");
 	let image_data = image.image.data;
 	let array: Clamped<&[u8]> = Clamped(bytemuck::cast_slice(image_data.as_slice()));
 	if image.image.width > 0 && image.image.height > 0 {
@@ -69,8 +74,10 @@ async fn load_resource<'a: 'n>(_: (), _primary: (), #[scope("editor-api")] edito
 }
 
 #[node_macro::node(category("Raster"))]
-fn decode_image(_: (), data: Arc<[u8]>) -> ImageFrame<Color> {
-	let Some(image) = image::load_from_memory(data.as_ref()).ok() else { return ImageFrame::default() };
+fn decode_image(_: (), data: Arc<[u8]>) -> ImageFrameTable<Color> {
+	let Some(image) = image::load_from_memory(data.as_ref()).ok() else {
+		return ImageFrameTable::default();
+	};
 	let image = image.to_rgba32f();
 	let image = ImageFrame {
 		image: Image {
@@ -81,7 +88,8 @@ fn decode_image(_: (), data: Arc<[u8]>) -> ImageFrame<Color> {
 		},
 		..Default::default()
 	};
-	image
+
+	ImageFrameTable::new(image)
 }
 
 fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_params: RenderParams, footprint: Footprint) -> RenderOutputType {
@@ -145,16 +153,16 @@ async fn rasterize<T: GraphicElementRendered + graphene_core::transform::Transfo
 	_: (),
 	#[implementations(
 		Footprint -> VectorDataTable,
-		Footprint -> ImageFrame<Color>,
+		Footprint -> ImageFrameTable<Color>,
 		Footprint -> GraphicGroup,
 	)]
 	data: impl Node<Footprint, Output = T>,
 	footprint: Footprint,
 	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
-) -> ImageFrame<Color> {
+) -> ImageFrameFrame<Color> {
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");
-		return ImageFrame::default();
+		return ImageFrameFrame::default();
 	}
 
 	let mut data = data.eval(footprint).await;
@@ -192,12 +200,13 @@ async fn rasterize<T: GraphicElementRendered + graphene_core::transform::Transfo
 
 	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
 
-	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
-	ImageFrame {
-		image,
+	let result = ImageFrame {
+		image: Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32),
 		transform: footprint.transform,
 		..Default::default()
-	}
+	};
+
+	ImageFrameFrame::new(result)
 }
 
 #[node_macro::node(category(""))]
@@ -206,7 +215,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	editor_api: &'a WasmEditorApi,
 	#[implementations(
 		Footprint -> VectorDataTable,
-		Footprint -> ImageFrame<Color>,
+		Footprint -> ImageFrameTable<Color>,
 		Footprint -> GraphicGroup,
 		Footprint -> graphene_core::Artboard,
 		Footprint -> graphene_core::ArtboardGroup,

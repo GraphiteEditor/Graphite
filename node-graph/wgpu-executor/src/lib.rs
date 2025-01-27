@@ -7,7 +7,8 @@ pub use executor::GpuExecutor;
 use dyn_any::{DynAny, StaticType};
 use gpu_executor::{ComputePassDimensions, GPUConstant, StorageBufferOptions, TextureBufferOptions, TextureBufferType, ToStorageBuffer, ToUniformBuffer};
 use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle, TextureFrame};
-use graphene_core::raster::{Image, ImageFrame, SRGBA8};
+use graphene_core::raster::image::ImageFrameTable;
+use graphene_core::raster::{Image, SRGBA8};
 use graphene_core::transform::{Footprint, Transform};
 use graphene_core::Type;
 use graphene_core::{Color, Cow, Node, SurfaceFrame};
@@ -164,7 +165,7 @@ impl WgpuExecutor {
 
 		{
 			let mut renderer = self.vello_renderer.lock().await;
-			for (id, texture) in context.ressource_overrides.iter() {
+			for (id, texture) in context.resource_overrides.iter() {
 				let texture_view = wgpu::ImageCopyTextureBase {
 					texture: texture.clone(),
 					mip_level: 0,
@@ -908,11 +909,13 @@ async fn render_texture<'a: 'n>(_: (), footprint: Footprint, image: impl Node<Fo
 #[node_macro::node(category(""))]
 async fn upload_texture<'a: 'n, F: Copy + Send + Sync + 'n>(
 	#[implementations((), Footprint)] footprint: F,
-	#[implementations(() -> ImageFrame<Color>, Footprint -> ImageFrame<Color>)] input: impl Node<F, Output = ImageFrame<Color>>,
+	#[implementations(() -> ImageFrameTable<Color>, Footprint -> ImageFrameTable<Color>)] input: impl Node<F, Output = ImageFrameTable<Color>>,
 	executor: &'a WgpuExecutor,
 ) -> TextureFrame {
 	// let new_data: Vec<RGBA16F> = input.image.data.into_iter().map(|c| c.into()).collect();
 	let input = input.eval(footprint).await;
+	let input = input.instances().next().expect("ONE INSTANCE EXPECTED");
+
 	let new_data = input.image.data.into_iter().map(SRGBA8::from).collect();
 	let new_image = Image {
 		width: input.image.width,

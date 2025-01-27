@@ -1,5 +1,6 @@
 use graph_craft::proto::types::Percentage;
-use graphene_core::raster::{Image, ImageFrame};
+use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
+use graphene_core::raster::Image;
 use graphene_core::transform::Footprint;
 use graphene_core::Color;
 
@@ -15,18 +16,19 @@ async fn dehaze<F: 'n + Send + Sync>(
 	)]
 	footprint: F,
 	#[implementations(
-		() -> ImageFrame<Color>,
-		Footprint -> ImageFrame<Color>,
+		() -> ImageFrameTable<Color>,
+		Footprint -> ImageFrameTable<Color>,
 	)]
-	image_frame: impl Node<F, Output = ImageFrame<Color>>,
+	image_frame: impl Node<F, Output = ImageFrameTable<Color>>,
 	strength: Percentage,
-) -> ImageFrame<Color> {
+) -> ImageFrameTable<Color> {
 	let image_frame = image_frame.eval(footprint).await;
+	let image_frame = image_frame.instances().next().expect("ONE INSTANCE EXPECTED");
 
 	// Prepare the image data for processing
 	let image = image_frame.image;
 	let image_data = bytemuck::cast_vec(image.data);
-	let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, image_data).expect("Failed to convert internal ImageFrame into image-rs data type.");
+	let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, image_data).expect("Failed to convert internal image format into image-rs data type.");
 	let dynamic_image: image::DynamicImage = image_buffer.into();
 
 	// Run the dehaze algorithm
@@ -42,11 +44,13 @@ async fn dehaze<F: 'n + Send + Sync>(
 		base64_string: None,
 	};
 
-	ImageFrame {
+	let result = ImageFrame {
 		image: dehazed_image,
 		transform: image_frame.transform,
 		alpha_blending: image_frame.alpha_blending,
-	}
+	};
+
+	ImageFrameTable::new(result)
 }
 
 // There is no real point in modifying these values because they do not change the final result all that much.

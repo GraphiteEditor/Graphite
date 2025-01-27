@@ -27,7 +27,8 @@ use crate::node_graph_executor::NodeGraphExecutor;
 
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeNetwork, OldNodeNetwork};
-use graphene_core::raster::{BlendMode, ImageFrame};
+use graphene_core::raster::image::ImageFrame;
+use graphene_core::raster::BlendMode;
 use graphene_core::vector::style::ViewMode;
 use graphene_std::renderer::{ClickTarget, Quad};
 use graphene_std::vector::path_bool_lib;

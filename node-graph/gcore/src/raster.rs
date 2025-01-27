@@ -1,7 +1,9 @@
 pub use self::color::{Color, Luma, SRGBA8};
+use crate::raster::image::ImageFrameTable;
+use crate::registry::types::Percentage;
+use crate::transform::Footprint;
 use crate::vector::VectorDataTable;
 use crate::GraphicGroup;
-use crate::{registry::types::Percentage, transform::Footprint};
 
 use bytemuck::{Pod, Zeroable};
 use core::fmt::Debug;
@@ -283,7 +285,7 @@ impl<T: BitmapMut + Bitmap> BitmapMut for &mut T {
 }
 
 #[cfg(feature = "alloc")]
-pub use self::image::{Image, ImageFrame};
+pub use self::image::Image;
 #[cfg(feature = "alloc")]
 pub(crate) mod image;
 
@@ -303,9 +305,11 @@ impl SetBlendMode for GraphicGroup {
 		self.alpha_blending.blend_mode = blend_mode;
 	}
 }
-impl SetBlendMode for ImageFrame<Color> {
+impl SetBlendMode for ImageFrameTable<Color> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		self.alpha_blending.blend_mode = blend_mode;
+		for mut instance in self.instances() {
+			instance.alpha_blending.blend_mode = blend_mode;
+		}
 	}
 }
 
@@ -321,10 +325,10 @@ async fn blend_mode<F: 'n + Send, T: SetBlendMode>(
 	#[implementations(
 		() -> GraphicGroup,
 		() -> VectorDataTable,
-		() -> ImageFrame<Color>,
+		() -> ImageFrameTable<Color>,
 		Footprint -> GraphicGroup,
 		Footprint -> VectorDataTable,
-		Footprint -> ImageFrame<Color>,
+		Footprint -> ImageFrameTable<Color>,
 	)]
 	value: impl Node<F, Output = T>,
 	blend_mode: BlendMode,
@@ -346,10 +350,10 @@ async fn opacity<F: 'n + Send, T: MultiplyAlpha>(
 	#[implementations(
 		() -> GraphicGroup,
 		() -> VectorDataTable,
-		() -> ImageFrame<Color>,
+		() -> ImageFrameTable<Color>,
 		Footprint -> GraphicGroup,
 		Footprint -> VectorDataTable,
-		Footprint -> ImageFrame<Color>,
+		Footprint -> ImageFrameTable<Color>,
 	)]
 	value: impl Node<F, Output = T>,
 	#[default(100.)] factor: Percentage,

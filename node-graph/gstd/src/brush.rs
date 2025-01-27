@@ -3,8 +3,9 @@ use crate::raster::{blend_image_closure, BlendImageTupleNode, EmptyImageNode, Ex
 use graphene_core::raster::adjustments::blend_colors;
 use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::raster::brush_cache::BrushCache;
+use graphene_core::raster::image::ImageFrame;
 use graphene_core::raster::BlendMode;
-use graphene_core::raster::{Alpha, BlendColorPairNode, Color, Image, ImageFrame, Pixel, Sample};
+use graphene_core::raster::{Alpha, BlendColorPairNode, Color, Image, Pixel, Sample};
 use graphene_core::transform::{Footprint, Transform, TransformMut};
 use graphene_core::value::{ClonedNode, CopiedNode, ValueNode};
 use graphene_core::vector::brush_stroke::{BrushStroke, BrushStyle};
@@ -86,7 +87,7 @@ fn brush_stamp_generator(diameter: f64, color: Color, hardness: f64, flow: f64) 
 }
 
 #[node_macro::node(skip_impl)]
-fn blit<P: Alpha + Pixel + std::fmt::Debug, BlendFn>(mut target: ImageFrame<P>, texture: Image<P>, positions: Vec<DVec2>, blend_mode: BlendFn) -> ImageFrame<P>
+fn blit<P: Alpha + Pixel + std::fmt::Debug, BlendFn>(mut target: ImageFrameTable<P>, texture: Image<P>, positions: Vec<DVec2>, blend_mode: BlendFn) -> ImageFrameTable<P>
 where
 	BlendFn: for<'any_input> Node<'any_input, (P, P), Output = P>,
 {
@@ -152,7 +153,7 @@ macro_rules! inline_blend_funcs {
 	};
 }
 
-pub fn blend_with_mode(background: ImageFrame<Color>, foreground: ImageFrame<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrame<Color> {
+pub fn blend_with_mode(background: ImageFrameTable<Color>, foreground: ImageFrameTable<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrameTable<Color> {
 	let opacity = opacity / 100.;
 	inline_blend_funcs!(
 		background,
@@ -201,7 +202,7 @@ pub fn blend_with_mode(background: ImageFrame<Color>, foreground: ImageFrame<Col
 }
 
 #[node_macro::node(category(""))]
-fn brush(_footprint: Footprint, image: ImageFrame<Color>, bounds: ImageFrame<Color>, strokes: Vec<BrushStroke>, cache: BrushCache) -> ImageFrame<Color> {
+fn brush(_: Footprint, image: ImageFrameTable<Color>, bounds: ImageFrameTable<Color>, strokes: Vec<BrushStroke>, cache: BrushCache) -> ImageFrameTable<Color> {
 	let stroke_bbox = strokes.iter().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
 	let image_bbox = Bbox::from_transform(image.transform).to_axis_aligned_bbox();
 	let bbox = if image_bbox.size().length() < 0.1 { stroke_bbox } else { stroke_bbox.union(&image_bbox) };

@@ -112,23 +112,23 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			|_| Box::pin(async move { FutureWrapperNode::new(IdentityNode::new()).into_type_erased() }),
 			NodeIOTypes::new(generic!(I), generic!(I), vec![]),
 		),
-		async_node!(graphene_core::ops::IntoNode<ImageFrame<SRGBA8>>, input: ImageFrame<Color>, params: []),
-		async_node!(graphene_core::ops::IntoNode<ImageFrame<Color>>, input: ImageFrame<SRGBA8>, params: []),
-		async_node!(graphene_core::ops::IntoNode<GraphicGroup>, input: ImageFrame<Color>, params: []),
+		async_node!(graphene_core::ops::IntoNode<ImageFrameTable<SRGBA8>>, input: ImageFrameTable<Color>, params: []),
+		async_node!(graphene_core::ops::IntoNode<ImageFrameTable<Color>>, input: ImageFrameTable<SRGBA8>, params: []),
+		async_node!(graphene_core::ops::IntoNode<GraphicGroup>, input: ImageFrameTable<Color>, params: []),
 		async_node!(graphene_core::ops::IntoNode<GraphicGroup>, input: VectorDataTable, params: []),
 		async_node!(graphene_core::ops::IntoNode<GraphicGroup>, input: GraphicGroup, params: []),
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::ops::IntoNode<&WgpuExecutor>, input: &WasmEditorApi, params: []),
 		async_node!(graphene_core::ops::IntoNode<GraphicElement>, input: VectorDataTable, params: []),
-		async_node!(graphene_core::ops::IntoNode<GraphicElement>, input: ImageFrame<Color>, params: []),
+		async_node!(graphene_core::ops::IntoNode<GraphicElement>, input: ImageFrameTable<Color>, params: []),
 		async_node!(graphene_core::ops::IntoNode<GraphicElement>, input: GraphicGroup, params: []),
 		async_node!(graphene_core::ops::IntoNode<GraphicGroup>, input: GraphicGroup, params: []),
 		async_node!(graphene_core::ops::IntoNode<GraphicGroup>, input: VectorDataTable, params: []),
-		async_node!(graphene_core::ops::IntoNode<GraphicGroup>, input: ImageFrame<Color>, params: []),
-		register_node!(graphene_std::raster::MaskImageNode<_, _, _>, input: ImageFrame<Color>, params: [ImageFrame<Color>]),
-		register_node!(graphene_std::raster::MaskImageNode<_, _, _>, input: ImageFrame<Color>, params: [ImageFrame<Luma>]),
-		register_node!(graphene_std::raster::InsertChannelNode<_, _, _, _>, input: ImageFrame<Color>, params: [ImageFrame<Color>, RedGreenBlue]),
-		register_node!(graphene_std::raster::InsertChannelNode<_, _, _, _>, input: ImageFrame<Color>, params: [ImageFrame<Luma>, RedGreenBlue]),
+		async_node!(graphene_core::ops::IntoNode<GraphicGroup>, input: ImageFrameTable<Color>, params: []),
+		register_node!(graphene_std::raster::MaskImageNode<_, _, _>, input: ImageFrameTable<Color>, params: [ImageFrameTable<Color>]),
+		register_node!(graphene_std::raster::MaskImageNode<_, _, _>, input: ImageFrameTable<Color>, params: [ImageFrameTable<Luma>]),
+		register_node!(graphene_std::raster::InsertChannelNode<_, _, _, _>, input: ImageFrameTable<Color>, params: [ImageFrameTable<Color>, RedGreenBlue]),
+		register_node!(graphene_std::raster::InsertChannelNode<_, _, _, _>, input: ImageFrameTable<Color>, params: [ImageFrameTable<Luma>, RedGreenBlue]),
 		(
 			ProtoNodeIdentifier::new("graphene_std::raster::CombineChannelsNode"),
 			|args| {
@@ -136,10 +136,10 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					use graphene_core::raster::*;
 					use graphene_core::value::*;
 
-					let channel_r: ImageFrame<Color> = DowncastBothNode::new(args[0].clone()).eval(()).await;
-					let channel_g: ImageFrame<Color> = DowncastBothNode::new(args[1].clone()).eval(()).await;
-					let channel_b: ImageFrame<Color> = DowncastBothNode::new(args[2].clone()).eval(()).await;
-					let channel_a: ImageFrame<Color> = DowncastBothNode::new(args[3].clone()).eval(()).await;
+					let channel_r: ImageFrameTable<Color> = DowncastBothNode::new(args[0].clone()).eval(()).await;
+					let channel_g: ImageFrameTable<Color> = DowncastBothNode::new(args[1].clone()).eval(()).await;
+					let channel_b: ImageFrameTable<Color> = DowncastBothNode::new(args[2].clone()).eval(()).await;
+					let channel_a: ImageFrameTable<Color> = DowncastBothNode::new(args[3].clone()).eval(()).await;
 
 					let insert_r = InsertChannelNode::new(ClonedNode::new(channel_r.clone()), CopiedNode::new(RedGreenBlue::Red));
 					let insert_g = InsertChannelNode::new(ClonedNode::new(channel_g.clone()), CopiedNode::new(RedGreenBlue::Green));
@@ -155,7 +155,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 							transform = image.transform;
 						}
 					}
-					let empty_image = ImageFrame {
+					let empty_image = ImageFrameTable {
 						image: Image::new(bounds.x, bounds.y, Color::BLACK),
 						transform,
 						..Default::default()
@@ -169,12 +169,17 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			},
 			NodeIOTypes::new(
 				concrete!(()),
-				concrete!(ImageFrame<Color>),
-				vec![fn_type!(ImageFrame<Color>), fn_type!(ImageFrame<Color>), fn_type!(ImageFrame<Color>), fn_type!(ImageFrame<Color>)],
+				concrete!(ImageFrameTable<Color>),
+				vec![
+					fn_type!(ImageFrameTable<Color>),
+					fn_type!(ImageFrameTable<Color>),
+					fn_type!(ImageFrameTable<Color>),
+					fn_type!(ImageFrameTable<Color>),
+				],
 			),
 		),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Footprint, fn_params: [Footprint => ImageFrame<Color>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: (), params: [ImageFrame<Color>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Footprint, fn_params: [Footprint => ImageFrameTable<Color>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: (), params: [ImageFrameTable<Color>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Footprint, fn_params: [Footprint => TextureFrame]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: (), params: [TextureFrame]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Footprint, fn_params: [Footprint => VectorDataTable]),
@@ -195,13 +200,13 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					let editor_api: DowncastBothNode<(), &WasmEditorApi> = DowncastBothNode::new(args[1].clone());
 					// let document_node = ClonedNode::new(document_node.eval(()));
 					let node = graphene_std::gpu_nodes::MapGpuNode::new(document_node, editor_api);
-					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(node);
+					let any: DynAnyNode<ImageFrameTable<Color>, _, _> = graphene_std::any::DynAnyNode::new(node);
 					any.into_type_erased()
 				})
 			},
 			NodeIOTypes::new(
-				concrete!(ImageFrame<Color>),
-				concrete!(ImageFrame<Color>),
+				concrete!(ImageFrameTable<Color>),
+				concrete!(ImageFrameTable<Color>),
 				vec![fn_type!(graph_craft::document::DocumentNode), fn_type!(WasmEditorApi)],
 			),
 		),
@@ -239,18 +244,18 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 						let generate_brightness_contrast_legacy_mapper_node = GenerateBrightnessContrastLegacyMapperNode::new(brightness, contrast);
 						let map_image_frame_node = graphene_std::raster::MapImageNode::new(ValueNode::new(generate_brightness_contrast_legacy_mapper_node.eval(())));
 						let map_image_frame_node = FutureWrapperNode::new(map_image_frame_node);
-						let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(map_image_frame_node);
+						let any: DynAnyNode<ImageFrameTable<Color>, _, _> = graphene_std::any::DynAnyNode::new(map_image_frame_node);
 						any.into_type_erased()
 					} else {
 						let generate_brightness_contrast_mapper_node = GenerateBrightnessContrastMapperNode::new(brightness, contrast);
 						let map_image_frame_node = graphene_std::raster::MapImageNode::new(ValueNode::new(generate_brightness_contrast_mapper_node.eval(())));
 						let map_image_frame_node = FutureWrapperNode::new(map_image_frame_node);
-						let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(map_image_frame_node);
+						let any: DynAnyNode<ImageFrameTable<Color>, _, _> = graphene_std::any::DynAnyNode::new(map_image_frame_node);
 						any.into_type_erased()
 					}
 				})
 			},
-			NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), vec![fn_type!(f64), fn_type!(f64), fn_type!(bool)]),
+			NodeIOTypes::new(concrete!(ImageFrameTable<Color>), concrete!(ImageFrameTable<Color>), vec![fn_type!(f64), fn_type!(f64), fn_type!(bool)]),
 		),
 		(
 			ProtoNodeIdentifier::new("graphene_core::raster::CurvesNode"),
@@ -263,11 +268,11 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					let generate_curves_node = GenerateCurvesNode::new(curve, ClonedNode::new(0_f32));
 					let map_image_frame_node = graphene_std::raster::MapImageNode::new(ValueNode::new(generate_curves_node.eval(())));
 					let map_image_frame_node = FutureWrapperNode::new(map_image_frame_node);
-					let any: DynAnyNode<ImageFrame<Luma>, _, _> = graphene_std::any::DynAnyNode::new(map_image_frame_node);
+					let any: DynAnyNode<ImageFrameTable<Luma>, _, _> = graphene_std::any::DynAnyNode::new(map_image_frame_node);
 					any.into_type_erased()
 				})
 			},
-			NodeIOTypes::new(concrete!(ImageFrame<Luma>), concrete!(ImageFrame<Luma>), vec![fn_type!(graphene_core::raster::curve::Curve)]),
+			NodeIOTypes::new(concrete!(ImageFrameTable<Luma>), concrete!(ImageFrameTable<Luma>), vec![fn_type!(graphene_core::raster::curve::Curve)]),
 		),
 		// TODO: Use channel split and merge for this instead of using LuminanceMut for the whole color.
 		(
@@ -281,11 +286,15 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					let generate_curves_node = GenerateCurvesNode::new(curve, ClonedNode::new(0_f32));
 					let map_image_frame_node = graphene_std::raster::MapImageNode::new(ValueNode::new(generate_curves_node.eval(())));
 					let map_image_frame_node = FutureWrapperNode::new(map_image_frame_node);
-					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(map_image_frame_node);
+					let any: DynAnyNode<ImageFrameTable<Color>, _, _> = graphene_std::any::DynAnyNode::new(map_image_frame_node);
 					any.into_type_erased()
 				})
 			},
-			NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), vec![fn_type!(graphene_core::raster::curve::Curve)]),
+			NodeIOTypes::new(
+				concrete!(ImageFrameTable<Color>),
+				concrete!(ImageFrameTable<Color>),
+				vec![fn_type!(graphene_core::raster::curve::Curve)],
+			),
 		),
 		(
 			ProtoNodeIdentifier::new("graphene_std::raster::ImaginateNode"),
@@ -301,8 +310,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				})
 			},
 			NodeIOTypes::new(
-				concrete!(ImageFrame<Color>),
-				concrete!(ImageFrame<Color>),
+				concrete!(ImageFrameTable<Color>),
+				concrete!(ImageFrameTable<Color>),
 				vec![
 					fn_type!(&WasmEditorApi),
 					fn_type!(ImaginateController),
@@ -326,7 +335,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), params: [Image<Color>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), params: [VectorDataTable]),
-		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), params: [ImageFrame<Color>]),
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), params: [ImageFrameTable<Color>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), params: [Vec<DVec2>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), params: [Arc<WasmSurfaceHandle>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), params: [WindowHandle]),
@@ -340,7 +349,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), params: [RenderOutput]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Footprint, fn_params: [Footprint => Image<Color>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Footprint, fn_params: [Footprint => VectorDataTable]),
-		async_node!(graphene_core::memo::MemoNode<_, _>, input: Footprint, fn_params: [Footprint => ImageFrame<Color>]),
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: Footprint, fn_params: [Footprint => ImageFrameTable<Color>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Footprint, fn_params: [Footprint => Vec<DVec2>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Footprint, fn_params: [Footprint => Arc<WasmSurfaceHandle>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Footprint, fn_params: [Footprint => WindowHandle]),

@@ -1,6 +1,6 @@
 use super::discrete_srgb::float_to_srgb_u8;
 use super::Color;
-use crate::AlphaBlending;
+use crate::{AlphaBlending, Instances};
 use alloc::vec::Vec;
 use core::hash::{Hash, Hasher};
 use dyn_any::StaticType;
@@ -215,6 +215,8 @@ impl<P: Pixel> IntoIterator for Image<P> {
 		self.data.into_iter()
 	}
 }
+
+pub type ImageFrameTable<P: Pixel> = Instances<ImageFrame<P>>;
 
 #[derive(Clone, Debug, PartialEq, Default, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

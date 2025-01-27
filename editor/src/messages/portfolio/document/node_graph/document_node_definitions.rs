@@ -15,14 +15,13 @@ use graph_craft::document::*;
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::ProtoNodeIdentifier;
 use graphene_core::raster::brush_cache::BrushCache;
-use graphene_core::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, ImageFrame, NoiseType, RedGreenBlue, RedGreenBlueAlpha};
+use graphene_core::raster::image::ImageFrameTable;
+use graphene_core::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlue, RedGreenBlueAlpha};
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorDataTable;
 use graphene_core::*;
 use graphene_std::wasm_application_io::WasmEditorApi;
-
-use vector::VectorDataTable;
 #[cfg(feature = "gpu")]
 use wgpu_executor::{Bindgroup, CommandBuffer, PipelineLayout, ShaderHandle, ShaderInputFrame, WgpuShaderInput};
 
@@ -546,8 +545,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(3), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(ImageFrame<Color>), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<_, ImageFrame>")),
+								inputs: vec![NodeInput::network(concrete!(ImageFrameTable<Color>), 0)],
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<_, ImageFrame>")), // TODO: Possibly change `ImageFrame` to something else
 								..Default::default()
 							},
 							DocumentNode {
@@ -574,7 +573,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true)],
+					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -812,8 +811,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_std::raster::MaskImageNode"),
 					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
+						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true),
+						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true),
 					],
 					..Default::default()
 				},
@@ -835,8 +834,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_std::raster::InsertChannelNode"),
 					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
+						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true),
+						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true),
 						NodeInput::value(TaggedValue::RedGreenBlue(RedGreenBlue::default()), false),
 					],
 					..Default::default()
@@ -859,10 +858,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					implementation: DocumentNodeImplementation::proto("graphene_std::raster::CombineChannelsNode"),
 					inputs: vec![
 						NodeInput::value(TaggedValue::None, false),
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
+						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true),
+						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true),
+						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true),
+						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true),
 					],
 					..Default::default()
 				},
@@ -890,7 +889,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						nodes: [
 							DocumentNode {
 								inputs: vec![
-									NodeInput::network(concrete!(ImageFrame<Color>), 0),
+									NodeInput::network(concrete!(ImageFrameTable<Color>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Red), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::adjustments::ExtractChannelNode")),
@@ -899,7 +898,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::network(concrete!(ImageFrame<Color>), 0),
+									NodeInput::network(concrete!(ImageFrameTable<Color>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Green), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::adjustments::ExtractChannelNode")),
@@ -908,7 +907,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::network(concrete!(ImageFrame<Color>), 0),
+									NodeInput::network(concrete!(ImageFrameTable<Color>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Blue), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::adjustments::ExtractChannelNode")),
@@ -917,7 +916,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::network(concrete!(ImageFrame<Color>), 0),
+									NodeInput::network(concrete!(ImageFrameTable<Color>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Alpha), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::adjustments::ExtractChannelNode")),
@@ -932,7 +931,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true)],
+					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -998,8 +997,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(0), 0)],
 						nodes: vec![DocumentNode {
 							inputs: vec![
-								NodeInput::network(concrete!(graphene_core::raster::ImageFrame<Color>), 0),
-								NodeInput::network(concrete!(graphene_core::raster::ImageFrame<Color>), 1),
+								NodeInput::network(concrete!(ImageFrameTable<Color>), 0),
+								NodeInput::network(concrete!(ImageFrameTable<Color>), 1),
 								NodeInput::network(concrete!(Vec<graphene_core::vector::brush_stroke::BrushStroke>), 2),
 								NodeInput::network(concrete!(BrushCache), 3),
 							],
@@ -1014,8 +1013,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
+						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true),
+						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true),
 						NodeInput::value(TaggedValue::BrushStrokes(Vec::new()), false),
 						NodeInput::value(TaggedValue::BrushCache(BrushCache::new_proto()), false),
 					],
@@ -1064,7 +1063,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::memo::MemoNode"),
-					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true)],
+					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true)],
 					manual_composition: Some(concrete!(())),
 					..Default::default()
 				},
@@ -1083,7 +1082,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::memo::ImpureMemoNode"),
-					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true)],
+					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true)],
 					manual_composition: Some(concrete!(Footprint)),
 					..Default::default()
 				},
@@ -1104,7 +1103,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
 						exports: vec![NodeInput::node(NodeId(0), 0)],
 						nodes: vec![DocumentNode {
-							inputs: vec![NodeInput::network(concrete!(ImageFrame<Color>), 1)],
+							inputs: vec![NodeInput::network(concrete!(ImageFrameTable<Color>), 1)],
 							implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::CullNode")),
 							manual_composition: Some(concrete!(Footprint)),
 							..Default::default()
@@ -1115,7 +1114,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), false)],
+					inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), false)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -1810,7 +1809,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							},
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(ImageFrame<Color>), 0), NodeInput::node(NodeId(0), 0)],
+								inputs: vec![NodeInput::network(concrete!(ImageFrameTable<Color>), 0), NodeInput::node(NodeId(0), 0)],
 								manual_composition: Some(generic!(T)),
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::UploadTextureNode")),
 								..Default::default()
@@ -1828,7 +1827,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true)],
+					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -1884,7 +1883,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_std::executor::MapGpuSingleImageNode"),
 					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
+						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true),
 						NodeInput::value(TaggedValue::DocumentNode(DocumentNode::default()), true),
 					],
 					..Default::default()
@@ -1926,7 +1925,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::raster::BrightnessContrastNode"),
 					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
+						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true),
 						NodeInput::value(TaggedValue::F64(0.), false),
 						NodeInput::value(TaggedValue::F64(0.), false),
 						NodeInput::value(TaggedValue::Bool(false), false),
@@ -1957,7 +1956,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::raster::CurvesNode"),
 					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
+						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true),
 						NodeInput::value(TaggedValue::Curve(Default::default()), false),
 					],
 					..Default::default()
@@ -2671,29 +2670,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
-		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
-		DocumentNodeDefinition {
-			identifier: "Index",
-			category: "Debug",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::raster::IndexNode"),
-					inputs: vec![NodeInput::value(TaggedValue::Segments(vec![ImageFrame::empty()]), true), NodeInput::value(TaggedValue::U32(0), false)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![
-						"Segmentation".into(),
-						PropertiesRow::with_override("Index", WidgetOverride::Number(NumberInputSettings { min: Some(0.), ..Default::default() })),
-					],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
 	];
 
 	// Remove struct generics
@@ -2808,7 +2784,7 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 				exports: vec![NodeInput::node(NodeId(1), 0)],
 				nodes: [
 					DocumentNode {
-						inputs: vec![NodeInput::network(concrete!(ImageFrame<Color>), 0)],
+						inputs: vec![NodeInput::network(concrete!(ImageFrameTable<Color>), 0)],
 						implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
 						manual_composition: Some(concrete!(())),
 						skip_deduplication: true,
@@ -2846,7 +2822,7 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 				..Default::default()
 			}),
 			inputs: vec![
-				NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true),
 				NodeInput::scope("editor-api"),
 				NodeInput::value(TaggedValue::ImaginateController(Default::default()), false),
 				NodeInput::value(TaggedValue::F64(0.), false), // Remember to keep index used in `ImaginateRandom` updated with this entry's index

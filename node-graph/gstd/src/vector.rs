@@ -50,7 +50,7 @@ async fn boolean_operation<F: 'n + Send>(
 				let vector_data = boolean_operation_on_vector_data(&vector_data, BooleanOperation::Union);
 				VectorDataTable::new(vector_data)
 			}
-			GraphicElement::Raster(image) => vector_from_image(image),
+			GraphicElement::RasterFrame(image) => vector_from_image(image),
 		}
 	}
 
