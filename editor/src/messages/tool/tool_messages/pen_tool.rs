@@ -973,6 +973,8 @@ fn merge_layers(document: &DocumentMessageHandler, current_layer: LayerNodeIdent
 
 	// Add a flatten vector elements node after the merge
 	let flatten_node_id = NodeId::new();
+	#[cfg(target_arch = "wasm32")]
+	let _ = web_sys::window().expect("Failed in pen_tool.rs").alert_with_message("pen_tool.rs").expect("Failed in pen_tool.rs");
 	let flatten_node = document_node_definitions::resolve_document_node_type("Flatten Vector Elements")
 		.expect("Failed to create flatten node")
 		.default_node_template();
