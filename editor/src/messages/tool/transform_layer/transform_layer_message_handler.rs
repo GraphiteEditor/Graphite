@@ -162,7 +162,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					};
 
 					let format_rounded = |value: f64, precision: usize| {
-						if self.typing.string.is_empty() {
+						if self.typing.digits.is_empty() {
 							format!("{:.*}", precision, value).trim_end_matches('0').trim_end_matches('.').to_string()
 						} else {
 							self.typing.string.clone()
