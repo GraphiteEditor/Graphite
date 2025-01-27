@@ -248,7 +248,13 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						TransformOperation::Rotating(rotation) => {
 							let angle = rotation.to_f64(self.snap);
 							let quad = self.fixed_bbox.0;
-							let offset_angle = if self.grs_pen_handle { self.handle - self.last_point } else { quad[1] - quad[0] };
+							let offset_angle = if self.grs_pen_handle {
+								self.handle - self.last_point
+							} else if using_path_tool {
+								self.start_mouse - self.pivot
+							} else {
+								quad[1] - quad[0]
+							};
 							let offset_angle = offset_angle.to_angle();
 							let width = viewport_box.max_element();
 							let radius = self.start_mouse.distance(self.pivot);
