@@ -30,6 +30,23 @@ pub struct SelectedEdges {
 	aspect_ratio: f64,
 }
 
+#[derive(Clone, Debug, Default)]
+enum Orientation {
+	Horizontal,
+	Vertical,
+	#[default]
+	None,
+}
+
+#[derive(Clone, Debug, Default)]
+enum HandleDisplayCategory {
+	#[default]
+	One,
+	Two(Orientation),
+	Three(Orientation),
+	Four,
+}
+
 impl SelectedEdges {
 	pub fn new(top: bool, bottom: bool, left: bool, right: bool, bounds: [DVec2; 2]) -> Self {
 		let size = (bounds[0] - bounds[1]).abs();
@@ -306,6 +323,33 @@ impl BoundingBoxManager {
 		let vertical_edges = [corners[0].midpoint(corners[1]), corners[2].midpoint(corners[3])];
 		let horizontal_edges = [corners[1].midpoint(corners[2]), corners[3].midpoint(corners[0])];
 
+		let mut draw_handle = |point: DVec2| overlay_context.square(point, Some(6.), None, None);
+		let category = self.overlay_display_category();
+		if matches!(
+			category,
+			HandleDisplayCategory::One | HandleDisplayCategory::Two(Orientation::Horizontal) | HandleDisplayCategory::Three(_)
+		) {
+			horizontal_edges.map(&mut draw_handle);
+		}
+		if matches!(
+			category,
+			HandleDisplayCategory::One | HandleDisplayCategory::Two(Orientation::Vertical) | HandleDisplayCategory::Three(_)
+		) {
+			vertical_edges.map(&mut draw_handle);
+		}
+		if matches!(category, HandleDisplayCategory::One | HandleDisplayCategory::Two(_)) {
+			corners.map(&mut draw_handle);
+		}
+		if matches!(category, HandleDisplayCategory::Four) {
+			draw_handle(self.transform.transform_point2(self.bounds[0]));
+			draw_handle(self.transform.transform_point2(self.bounds[1]));
+		}
+	}
+
+	fn overlay_display_category(&self) -> HandleDisplayCategory {
+		let quad = self.transform * Quad::from_box(self.bounds);
+		let corners = quad.0;
+
 		let vertical_length = (corners[0] - corners[1]).length_squared();
 		let horizontal_length = (corners[3] - corners[0]).length_squared();
 		let vertical_edge_visible = vertical_length > MIN_LENGTH_FOR_MIDPOINT_VISIBILITY.powi(2);
@@ -313,23 +357,20 @@ impl BoundingBoxManager {
 		let corners_visible = vertical_length > MIN_LENGTH_FOR_CORNERS_VISIBILITY.powi(2) && horizontal_length > MIN_LENGTH_FOR_CORNERS_VISIBILITY.powi(2);
 		let narrow = (self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any();
 
-		let mut draw_handle = |point: DVec2| overlay_context.square(point, Some(6.), None, None);
 		if !narrow {
 			if corners_visible {
-				if vertical_edge_visible {
-					vertical_edges.map(&mut draw_handle);
+				match (vertical_edge_visible, horizontal_edge_visible) {
+					(true, true) => HandleDisplayCategory::One,
+					(true, false) => HandleDisplayCategory::Two(Orientation::Vertical),
+					(false, true) => HandleDisplayCategory::Two(Orientation::Horizontal),
+					(false, false) => HandleDisplayCategory::Two(Orientation::None),
 				}
-				if horizontal_edge_visible {
-					horizontal_edges.map(&mut draw_handle);
-				}
-				corners.map(&mut draw_handle);
 			} else {
-				vertical_edges.map(&mut draw_handle);
-				horizontal_edges.map(&mut draw_handle);
+				let orientation = if vertical_length > horizontal_length { Orientation::Vertical } else { Orientation::Horizontal };
+				HandleDisplayCategory::Three(orientation)
 			}
 		} else {
-			draw_handle(self.transform.transform_point2(self.bounds[0]));
-			draw_handle(self.transform.transform_point2(self.bounds[1]));
+			HandleDisplayCategory::Four
 		}
 	}
 
@@ -403,12 +444,24 @@ impl BoundingBoxManager {
 	/// Gets the required mouse cursor to show resizing bounds or optionally rotation
 	pub fn get_cursor(&self, input: &InputPreprocessorMessageHandler, rotate: bool) -> MouseCursorIcon {
 		if let Some(directions) = self.check_selected_edges(input.mouse.position) {
-			match directions {
+			let category = self.overlay_display_category();
+			let grab_cursor = match directions {
 				(true, _, false, false) | (_, true, false, false) => MouseCursorIcon::NSResize,
 				(false, false, true, _) | (false, false, _, true) => MouseCursorIcon::EWResize,
 				(true, _, true, _) | (_, true, _, true) => MouseCursorIcon::NWSEResize,
 				(true, _, _, true) | (_, true, true, _) => MouseCursorIcon::NESWResize,
 				_ => MouseCursorIcon::Default,
+			};
+			match grab_cursor {
+				MouseCursorIcon::NWSEResize | MouseCursorIcon::NESWResize => match category {
+					HandleDisplayCategory::Three(orientation) => match orientation {
+						Orientation::Horizontal => MouseCursorIcon::EWResize,
+						Orientation::Vertical => MouseCursorIcon::NSResize,
+						_ => unreachable!(),
+					},
+					_ => grab_cursor,
+				},
+				other => other,
 			}
 		} else if rotate && self.check_rotate(input.mouse.position) {
 			MouseCursorIcon::Rotate
