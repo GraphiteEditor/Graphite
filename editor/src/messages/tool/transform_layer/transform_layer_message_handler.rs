@@ -1,4 +1,4 @@
-use crate::consts::{ANGLE_MEASURE_RADIUS_FACTOR, ARC_MEASURE_RADIUS_FACTOR_RANGE, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_SNAP_BACKGROUND, COLOR_OVERLAY_WHITE, SLOWING_DIVISOR};
+use crate::consts::{ANGLE_MEASURE_RADIUS_FACTOR, ARC_MEASURE_RADIUS_FACTOR_RANGE, COLOR_OVERLAY_BLUE, SLOWING_DIVISOR};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayProvider, Pivot};
 use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, Typing};
@@ -519,8 +519,12 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				.transform_operation
 				.grs_typed(self.typing.type_backspace(), &mut selected, self.snap, self.local, self.fixed_bbox, document_to_viewport),
 			TransformLayerMessage::TypeDecimalPoint => {
-				self.transform_operation
-					.grs_typed(self.typing.type_decimal_point(), &mut selected, self.snap, self.local, self.fixed_bbox, document_to_viewport)
+				if self.typing.digits.is_empty() {
+					self.typing.negative = false;
+				} else {
+					self.transform_operation
+						.grs_typed(self.typing.type_decimal_point(), &mut selected, self.snap, self.local, self.fixed_bbox, document_to_viewport)
+				}
 			}
 			TransformLayerMessage::TypeDigit { digit } => {
 				self.transform_operation
