@@ -199,6 +199,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			}
 			GraphOperationMessage::ClearArtboards => {
 				if &network_interface.all_artboards().len() == &0 {
+					responses.add(DocumentMessage::Undo);
 					return;
 				}
 
@@ -228,7 +229,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 							merge_node: node_id,
 						},
 					);
-
 					let mut modify_inputs: ModifyInputsContext<'_> = ModifyInputsContext::new(network_interface, responses);
 					modify_inputs.create_layer(node_id);
 					responses.add(NodeGraphMessage::SetDisplayName {
@@ -243,20 +243,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 						x: node_position.x,
 						y: node_position.y,
 					});
-					// A layer transformation is relative to it's current artboard.
-					// when an artboard with non-0 position deleted, we need to calculate it's offset and add it to childern layers
-					let artboard_upper_left = network_interface.document_metadata().bounding_box_document(*artboard).unwrap()[0];
-					let layers = artboard.deepest_children(network_interface.document_metadata());
-					if artboard_upper_left != DVec2::ZERO {
-						for layer in layers {
-							responses.add(GraphOperationMessage::TransformChange {
-								layer,
-								transform: DAffine2::from_translation(artboard_upper_left),
-								transform_in: TransformIn::Local,
-								skip_rerender: true,
-							});
-						}
-					}
 				}
 
 				for artboard in &artboard_data {
@@ -280,6 +266,13 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 							});
 						}
 					}
+					// Reposition merge nodes
+					responses.add(GraphOperationMessage::TransformChange {
+						layer: LayerNodeIdentifier::new_unchecked(artboard.1.merge_node),
+						transform: DAffine2::from_translation(network_interface.document_metadata().bounding_box_document(LayerNodeIdentifier::new_unchecked(*artboard.0)).unwrap()[0]),
+						transform_in: TransformIn::Local,
+						skip_rerender: false,
+					});
 				}
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);

@@ -286,17 +286,6 @@ impl LayerNodeIdentifier {
 		}
 	}
 
-	/// none-folder layers given the common parent
-	pub fn deepest_children(self, metadata: &DocumentMetadata) -> Vec<LayerNodeIdentifier> {
-		let mut children: Vec<LayerNodeIdentifier> = Vec::new();
-		for descendant in self.descendants(metadata) {
-			if !descendant.has_children(metadata) {
-				children.push(descendant);
-			}
-		}
-		children
-	}
-
 	/// Add a child towards the top of the Layers panel
 	pub fn push_front_child(self, metadata: &mut DocumentMetadata, new: LayerNodeIdentifier) {
 		assert!(!metadata.structure.contains_key(&new), "Cannot add already existing layer");
