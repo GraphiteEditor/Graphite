@@ -15,6 +15,10 @@ use glam::{DAffine2, DVec2};
 use std::f64::consts::TAU;
 
 const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| TransformLayerMessage::Overlays(context).into();
+const MESSAGE_TO_RUSH_OVERLAY: TransformLayerMessage = TransformLayerMessage::PointerMove {
+	slow_key: Key::Shift,
+	snap_key: Key::Control,
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct TransformLayerMessageHandler {
@@ -320,6 +324,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				};
 
 				responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
+				// Find a way better than this hack
+				responses.add(MESSAGE_TO_RUSH_OVERLAY);
 			}
 			TransformLayerMessage::BeginGrab => {
 				if (!using_path_tool && !using_select_tool && !using_pen_tool)
@@ -341,6 +347,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				selected.original_transforms.clear();
 
 				responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
+				responses.add(MESSAGE_TO_RUSH_OVERLAY);
 			}
 			TransformLayerMessage::BeginRotate => {
 				let selected_points: Vec<&ManipulatorPointId> = shape_editor.selected_points().collect();
@@ -391,6 +398,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				selected.original_transforms.clear();
 
 				responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
+				responses.add(MESSAGE_TO_RUSH_OVERLAY);
 			}
 			TransformLayerMessage::BeginScale => {
 				let selected_points: Vec<&ManipulatorPointId> = shape_editor.selected_points().collect();
@@ -440,6 +448,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				selected.original_transforms.clear();
 
 				responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
+				responses.add(MESSAGE_TO_RUSH_OVERLAY);
 			}
 			TransformLayerMessage::CancelTransformOperation => {
 				if using_pen_tool {
