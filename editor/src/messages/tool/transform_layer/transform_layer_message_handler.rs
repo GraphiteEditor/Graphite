@@ -213,7 +213,6 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						TransformOperation::Scaling(scale) => {
 							let scale = scale.to_f64(self.snap);
 							let text = format!("{}x", format_rounded(scale, 3));
-							let extension_vector = self.mouse_position - self.start_mouse;
 							let local_edge = self.start_mouse - self.pivot;
 							let quad = self.fixed_bbox.0;
 							let local_edge = match axis_constraint {
@@ -233,14 +232,14 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 								}
 								_ => local_edge,
 							};
-							let boundary_point = local_edge + self.pivot;
-							let projected_pointer = extension_vector.project_onto(local_edge);
-							let dashed_till = if extension_vector.dot(local_edge) < 0. { local_edge + projected_pointer } else { local_edge };
-							let lined_till = projected_pointer + boundary_point;
-							if dashed_till.dot(local_edge) > 0. {
-								overlay_context.dashed_line(self.pivot, self.pivot + dashed_till, None, Some(4.), Some(4.), Some(0.5));
+							let scale = scale * (self.mouse_position - self.pivot).dot(self.start_mouse - self.pivot).signum();
+							let boundary_point = self.pivot + local_edge * scale.min(1.);
+							let end_point = self.pivot + local_edge * scale.max(1.);
+
+							if scale > 0. {
+								overlay_context.dashed_line(self.pivot, boundary_point, None, Some(4.), Some(4.), Some(0.5));
 							}
-							overlay_context.line(boundary_point, lined_till, None);
+							overlay_context.line(boundary_point, end_point, None);
 
 							let transform = DAffine2::from_translation(boundary_point.midpoint(self.pivot) + local_edge.perp().normalize() * local_edge.element_product().signum() * 24.);
 							overlay_context.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
@@ -515,10 +514,13 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							};
 							let change = if self.slow { change / SLOWING_DIVISOR } else { change };
 
-							self.transform_operation = TransformOperation::Scaling(scale.increment_amount(change));
+							let sign = (self.mouse_position - *selected.pivot).dot(self.start_mouse - *selected.pivot).signum();
+							let scale = scale.increment_amount(change);
+							self.transform_operation = TransformOperation::Scaling(scale);
 
-							self.transform_operation
-								.apply_transform_operation(&mut selected, self.snap, self.local, self.fixed_bbox, document_to_viewport);
+							let tmp_op = TransformOperation::Scaling(if sign > 0. { scale } else { scale.negate() });
+
+							tmp_op.apply_transform_operation(&mut selected, self.snap, self.local, self.fixed_bbox, document_to_viewport);
 						}
 					};
 				}
