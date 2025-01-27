@@ -2,8 +2,8 @@ use crate::application_io::TextureFrame;
 use crate::raster::bbox::AxisAlignedBbox;
 use crate::raster::{ImageFrame, Pixel};
 use crate::vector::VectorData;
-use crate::Context;
 use crate::{Artboard, ArtboardGroup, Color, ContextImpl, Ctx, ExtractFootprint, GraphicElement, GraphicGroup};
+use crate::{Context, OwnedContextImpl};
 
 use glam::{DAffine2, DVec2};
 
@@ -287,14 +287,14 @@ impl ApplyTransform for () {
 // }
 #[node_macro::node(category(""))]
 async fn transform<T: 'n + TransformMut + 'static>(
-	input: impl ExtractFootprint,
+	input: impl ExtractFootprint + Ctx,
 	#[implementations(
 		Context -> VectorData,
 		Context -> GraphicGroup,
 		Context -> ImageFrame<Color>,
 		Context -> TextureFrame,
 	)]
-	transform_target: impl Node<Context<'all_input>, Output = T>,
+	transform_target: impl Node<Context<'static>, Output = T>,
 	translate: DVec2,
 	rotate: f64,
 	scale: DVec2,
@@ -309,12 +309,12 @@ where
 	if !footprint.ignore_modifications {
 		footprint.apply_transform(&modification);
 	}
-	let ctx: ContextImpl<'_> = ContextImpl {
-		footprint: Some(&footprint),
+	let ctx = OwnedContextImpl {
+		footprint: Some(footprint),
 		..Default::default()
 	};
 
-	let mut transform_target = transform_target.eval(Some(&ctx)).await;
+	let mut transform_target = transform_target.eval(Some(ctx.into())).await;
 
 	let data_transform = transform_target.transform_mut();
 	*data_transform = modification * (*data_transform);

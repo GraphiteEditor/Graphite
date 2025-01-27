@@ -9,8 +9,8 @@ use gpu_executor::{ComputePassDimensions, GPUConstant, StorageBufferOptions, Tex
 use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle, TextureFrame};
 use graphene_core::raster::{Image, ImageFrame, SRGBA8};
 use graphene_core::transform::{Footprint, Transform};
-use graphene_core::Type;
-use graphene_core::{Color, Cow, Node, SurfaceFrame};
+use graphene_core::{Color, Cow, ExtractFootprint, Node, OwnedContextImpl, SurfaceFrame};
+use graphene_core::{Ctx, Type};
 
 use anyhow::{bail, Result};
 use futures::Future;
@@ -824,12 +824,12 @@ impl<T> ShaderInputNode<T> {
 }
 
 #[node_macro::node(category(""))]
-async fn uniform<'a: 'n, T: ToUniformBuffer + Send + 'n>(_: (), #[implementations(f32, DAffine2)] data: T, executor: &'a WgpuExecutor) -> WgpuShaderInput {
+async fn uniform<'a: 'n, T: ToUniformBuffer + Send + 'n>(_: impl Ctx, #[implementations(f32, DAffine2)] data: T, executor: &'a WgpuExecutor) -> WgpuShaderInput {
 	executor.create_uniform_buffer(data).unwrap()
 }
 
 #[node_macro::node(category(""))]
-async fn storage<'a: 'n, T: ToStorageBuffer + Send + 'n>(_: (), #[implementations(Vec<u8>)] data: T, executor: &'a WgpuExecutor) -> WgpuShaderInput {
+async fn storage<'a: 'n, T: ToStorageBuffer + Send + 'n>(_: impl Ctx, #[implementations(Vec<u8>)] data: T, executor: &'a WgpuExecutor) -> WgpuShaderInput {
 	executor
 		.create_storage_buffer(
 			data,
@@ -844,18 +844,18 @@ async fn storage<'a: 'n, T: ToStorageBuffer + Send + 'n>(_: (), #[implementation
 }
 
 #[node_macro::node(category(""))]
-async fn create_output_buffer<'a: 'n>(_: (), size: usize, executor: &'a WgpuExecutor, ty: Type) -> Arc<WgpuShaderInput> {
+async fn create_output_buffer<'a: 'n>(_: impl Ctx + 'a, size: usize, executor: &'a WgpuExecutor, ty: Type) -> Arc<WgpuShaderInput> {
 	Arc::new(executor.create_output_buffer(size, ty, true).unwrap())
 }
 
 #[node_macro::node(skip_impl)]
-async fn create_compute_pass<'a: 'n>(_: (), layout: PipelineLayout, executor: &'a WgpuExecutor, output: WgpuShaderInput, instances: ComputePassDimensions) -> CommandBuffer {
+async fn create_compute_pass<'a: 'n>(_: impl Ctx + 'a, layout: PipelineLayout, executor: &'a WgpuExecutor, output: WgpuShaderInput, instances: ComputePassDimensions) -> CommandBuffer {
 	executor.create_compute_pass(&layout, Some(output.into()), instances).unwrap()
 }
 
 #[node_macro::node(category("Debug: GPU"))]
 async fn create_pipeline_layout(
-	_: (),
+	_: impl Ctx,
 	shader: impl Node<(), Output = ShaderHandle>,
 	entry_point: String,
 	bind_group: impl Node<(), Output = Bindgroup>,
@@ -870,14 +870,14 @@ async fn create_pipeline_layout(
 }
 
 #[node_macro::node(category(""))]
-async fn read_output_buffer<'a: 'n>(_: (), buffer: Arc<WgpuShaderInput>, executor: &'a WgpuExecutor, _compute_pass: ()) -> Vec<u8> {
+async fn read_output_buffer<'a: 'n>(_: impl Ctx + 'a, buffer: Arc<WgpuShaderInput>, executor: &'a WgpuExecutor, _compute_pass: ()) -> Vec<u8> {
 	executor.read_output_buffer(buffer).await.unwrap()
 }
 
 pub type WindowHandle = Arc<SurfaceHandle<Window>>;
 
 #[node_macro::node(skip_impl)]
-fn create_gpu_surface<'a: 'n, Io: ApplicationIo<Executor = WgpuExecutor, Surface = Window> + 'a + Send + Sync>(_: (), editor_api: &'a EditorApi<Io>) -> Option<WgpuSurface> {
+fn create_gpu_surface<'a: 'n, Io: ApplicationIo<Executor = WgpuExecutor, Surface = Window> + 'a + Send + Sync>(_: impl Ctx + 'a, editor_api: &'a EditorApi<Io>) -> Option<WgpuSurface> {
 	let canvas = editor_api.application_io.as_ref()?.window()?;
 	let executor = editor_api.application_io.as_ref()?.gpu_executor()?;
 	Some(Arc::new(executor.create_surface(canvas).ok()?))
@@ -890,7 +890,13 @@ pub struct ShaderInputFrame {
 }
 
 #[node_macro::node(category(""))]
-async fn render_texture<'a: 'n>(_: (), footprint: Footprint, image: impl Node<Footprint, Output = ShaderInputFrame>, surface: Option<WgpuSurface>, executor: &'a WgpuExecutor) -> SurfaceFrame {
+async fn render_texture<'a: 'n>(
+	_: impl Ctx + 'a,
+	footprint: Footprint,
+	image: impl Node<Footprint, Output = ShaderInputFrame>,
+	surface: Option<WgpuSurface>,
+	executor: &'a WgpuExecutor,
+) -> SurfaceFrame {
 	let surface = surface.unwrap();
 	let surface_id = surface.window_id;
 	let image = image.eval(footprint).await;
@@ -906,13 +912,15 @@ async fn render_texture<'a: 'n>(_: (), footprint: Footprint, image: impl Node<Fo
 }
 
 #[node_macro::node(category(""))]
-async fn upload_texture<'a: 'n, F: Copy + Send + Sync + 'n>(
-	#[implementations((), Footprint)] footprint: F,
-	#[implementations(() -> ImageFrame<Color>, Footprint -> ImageFrame<Color>)] input: impl Node<F, Output = ImageFrame<Color>>,
+async fn upload_texture<'a: 'n>(
+	footprint: impl ExtractFootprint + Ctx,
+	#[implementations(graphene_core::Context -> ImageFrame<Color>)] input: impl Node<graphene_core::Context<'n>, Output = ImageFrame<Color>>,
 	executor: &'a WgpuExecutor,
 ) -> TextureFrame {
 	// let new_data: Vec<RGBA16F> = input.image.data.into_iter().map(|c| c.into()).collect();
-	let input = input.eval(footprint).await;
+	let footprint = footprint.footprint().copied();
+	let ctx = OwnedContextImpl { footprint, ..Default::default() };
+	let input = input.eval(Some(ctx.into())).await;
 	let new_data = input.image.data.into_iter().map(SRGBA8::from).collect();
 	let new_image = Image {
 		width: input.image.width,

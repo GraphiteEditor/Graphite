@@ -73,28 +73,28 @@ pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
 pub type FutureAny<'n> = DynFuture<'n, Any<'n>>;
 // TODO: is this safe? This is assumed to be send+sync.
 #[cfg(not(target_arch = "wasm32"))]
-pub type TypeErasedNode<'n, 'i, 's> = dyn NodeIO<'i, Any<'s>, Output = FutureAny<'i>> + 'n + Send + Sync;
+pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n + Send + Sync;
 #[cfg(target_arch = "wasm32")]
-pub type TypeErasedNode<'n, 'i, 's> = dyn NodeIO<'i, Any<'s>, Output = FutureAny<'i>> + 'n;
-pub type TypeErasedPinnedRef<'n, 'i, 's> = Pin<&'n TypeErasedNode<'n, 'i, 's>>;
-pub type TypeErasedRef<'n, 'i, 's> = &'n TypeErasedNode<'n, 'i, 's>;
-pub type TypeErasedBox<'n, 'i, 's> = Box<TypeErasedNode<'n, 'i, 's>>;
-pub type TypeErasedPinned<'n, 'i, 's> = Pin<Box<TypeErasedNode<'n, 'i, 's>>>;
+pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n;
+pub type TypeErasedPinnedRef<'n> = Pin<&'n TypeErasedNode<'n>>;
+pub type TypeErasedRef<'n> = &'n TypeErasedNode<'n>;
+pub type TypeErasedBox<'n> = Box<TypeErasedNode<'n>>;
+pub type TypeErasedPinned<'n> = Pin<Box<TypeErasedNode<'n>>>;
 
-pub type SharedNodeContainer<'n, 'i, 's> = std::sync::Arc<NodeContainer<'n, 'i, 's>>;
+pub type SharedNodeContainer = std::sync::Arc<NodeContainer>;
 
-pub type NodeConstructor = for<'n, 'i, 's> fn(Vec<SharedNodeContainer<'n, 'i, 's>>) -> DynFuture<'n, TypeErasedBox<'n, 'i, 's>>;
+pub type NodeConstructor = fn(Vec<SharedNodeContainer>) -> DynFuture<'static, TypeErasedBox<'static>>;
 
 #[derive(Clone)]
-pub struct NodeContainer<'n, 'i, 's> {
+pub struct NodeContainer {
 	#[cfg(feature = "dealloc_nodes")]
-	pub node: *const TypeErasedNode<'n, 'i, 's>,
+	pub node: *const TypeErasedNode<'static>,
 	#[cfg(not(feature = "dealloc_nodes"))]
-	pub node: TypeErasedRef<'n, 'i, 's>,
+	pub node: TypeErasedRef<'static>,
 }
 
-impl<'n: 'i, 'i: 's, 's> Deref for NodeContainer<'n, 'i, 's> {
-	type Target = TypeErasedNode<'n, 'i, 's>;
+impl Deref for NodeContainer {
+	type Target = TypeErasedNode<'static>;
 
 	#[cfg(feature = "dealloc_nodes")]
 	fn deref(&self) -> &Self::Target {
@@ -112,42 +112,32 @@ impl<'n: 'i, 'i: 's, 's> Deref for NodeContainer<'n, 'i, 's> {
 /// Marks NodeContainer as Sync. This dissallows the use of threadlocal storage for nodes as this would invalidate references to them.
 // TODO: implement this on a higher level wrapper to avoid missuse
 #[cfg(feature = "dealloc_nodes")]
-unsafe impl<'n: 'i, 'i, 's> Send for NodeContainer<'n, 'i, 's> {}
+unsafe impl Send for NodeContainer {}
 #[cfg(feature = "dealloc_nodes")]
-unsafe impl<'n: 'i, 'i, 's> Sync for NodeContainer<'n, 'i, 's> {}
+unsafe impl Sync for NodeContainer {}
 
 #[cfg(feature = "dealloc_nodes")]
-impl<'n, 'i, 's> Drop for NodeContainer<'n, 'i, 's> {
+impl Drop for NodeContainer {
 	fn drop(&mut self) {
 		unsafe { self.dealloc_unchecked() }
 	}
 }
 
-impl<'n: 'i, 'i: 's, 's> core::fmt::Debug for NodeContainer<'n, 'i, 's> {
+impl core::fmt::Debug for NodeContainer {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("NodeContainer").finish()
 	}
 }
 
-impl<'n: 'i, 'i: 's, 's> NodeContainer<'n, 'i, 's> {
-	pub fn new(node: TypeErasedBox<'n, 'i, 's>) -> SharedNodeContainer<'n, 'i, 's> {
+impl NodeContainer {
+	pub fn new(node: TypeErasedBox<'static>) -> SharedNodeContainer {
 		let node = Box::leak(node);
 		Self { node }.into()
 	}
-}
 
-impl<'n, 'i, 's> NodeContainer<'n, 'i, 's> {
 	#[cfg(feature = "dealloc_nodes")]
 	unsafe fn dealloc_unchecked(&mut self) {
 		std::mem::drop(Box::from_raw(self.node as *mut TypeErasedNode));
-	}
-}
-
-impl<'n: 'i, 'i: 's, 's> Node<'i, Any<'s>> for SharedNodeContainer<'n, 'i, 's> {
-	type Output = FutureAny<'i>;
-
-	fn eval(&'i self, input: Any<'s>) -> Self::Output {
-		(**self).eval(input)
 	}
 }
 
@@ -159,12 +149,12 @@ use std::marker::PhantomData;
 /// Boxes the input and downcasts the output.
 /// Wraps around a node taking Box<dyn DynAny> and returning Box<dyn DynAny>
 #[derive(Clone)]
-pub struct DowncastBothNode<'n, 'i, 's, I, O> {
-	node: SharedNodeContainer<'n, 'i, 's>,
+pub struct DowncastBothNode<I, O> {
+	node: SharedNodeContainer,
 	_i: PhantomData<I>,
 	_o: PhantomData<O>,
 }
-impl<'input: 's, 'n: 'input, 's, O: 'input + StaticType + WasmNotSend, I: StaticType + WasmNotSend + 's> Node<'input, I> for DowncastBothNode<'n, 'input, 's, I, O> {
+impl<'input, O: 'input + StaticType + WasmNotSend, I: 'input + StaticType + WasmNotSend> Node<'input, I> for DowncastBothNode<I, O> {
 	type Output = DynFuture<'input, O>;
 	#[inline]
 	fn eval(&'input self, input: I) -> Self::Output {
@@ -186,8 +176,8 @@ impl<'input: 's, 'n: 'input, 's, O: 'input + StaticType + WasmNotSend, I: Static
 		self.node.serialize()
 	}
 }
-impl<'n: 'i, 'i: 's, 's, I, O> DowncastBothNode<'n, 'i, 's, I, O> {
-	pub const fn new(node: SharedNodeContainer<'n, 'i, 's>) -> Self {
+impl<I, O> DowncastBothNode<I, O> {
+	pub const fn new(node: SharedNodeContainer) -> Self {
 		Self {
 			node,
 			_i: core::marker::PhantomData,
@@ -199,7 +189,7 @@ pub struct FutureWrapperNode<Node> {
 	node: Node,
 }
 
-impl<'i, T: WasmNotSend, N> Node<'i, T> for FutureWrapperNode<N>
+impl<'i, T: 'i + WasmNotSend, N> Node<'i, T> for FutureWrapperNode<N>
 where
 	N: Node<'i, T, Output: WasmNotSend> + WasmNotSend,
 {
@@ -232,7 +222,7 @@ pub struct DynAnyNode<I, O, Node> {
 	_o: PhantomData<O>,
 }
 
-impl<'input, _I: StaticType + WasmNotSend, _O: 'input + StaticType + WasmNotSend, N: 'input> Node<'input, Any<'input>> for DynAnyNode<_I, _O, N>
+impl<'input, _I: 'input + StaticType + WasmNotSend, _O: 'input + StaticType + WasmNotSend, N: 'input> Node<'input, Any<'input>> for DynAnyNode<_I, _O, N>
 where
 	N: Node<'input, _I, Output = DynFuture<'input, _O>>,
 {
@@ -273,7 +263,7 @@ where
 		self.node.serialize()
 	}
 }
-impl<'input, _I: StaticType, _O: 'input + StaticType, N: 'input> DynAnyNode<_I, _O, N>
+impl<'input, _I: 'input + StaticType, _O: 'input + StaticType, N: 'input> DynAnyNode<_I, _O, N>
 where
 	N: Node<'input, _I, Output = DynFuture<'input, _O>>,
 {

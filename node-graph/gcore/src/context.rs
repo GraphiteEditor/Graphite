@@ -1,64 +1,109 @@
-use core::borrow::Borrow;
+use core::{
+	any::Any,
+	borrow::Borrow,
+	ops::{Deref, Index},
+};
+use std::sync::Arc;
 
 use crate::transform::Footprint;
 use dyn_any::DynAny;
 
-pub trait Ctx: Copy + Send {}
+pub trait Ctx: Clone + Send {}
 
-pub trait ExtractFootprint: Ctx {
+pub trait ExtractFootprint {
 	fn footprint(&self) -> Option<&Footprint>;
 }
 
-pub trait ExtractTime: Ctx {
+pub trait ExtractTime {
 	fn time(&self) -> Option<f64>;
 }
 
-pub trait ExtractIndex: Ctx {
+pub trait ExtractIndex {
 	fn index(&self) -> Option<usize>;
 }
 
-pub trait ExtractVarArgs: Ctx {
+// Consider returning a slice or something like that
+pub trait ExtractVarArgs {
 	// Call this lifetime 'b so it is less likely to coflict when auto generating the function signature for implementation
-	fn vararg<'b>(&'b self, index: usize) -> Result<impl DynAny<'b> + Send + Sync, VarArgsResult>
-	where
-		Self: 'b;
+	fn vararg(&self, index: usize) -> Result<DynRef<'_>, VarArgsResult>;
+	fn varargs_len(&self) -> Result<usize, VarArgsResult>;
 }
+// Consider returning a slice or something like that
+pub trait CloneVarArgs: ExtractVarArgs {
+	// fn box_clone(&self) -> Vec<DynBox>;
+	fn box_clone(&self) -> Box<dyn ExtractVarArgs + Send + Sync>;
+}
+
+pub trait ExtractAll: ExtractFootprint + ExtractIndex + ExtractTime + ExtractVarArgs {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VarArgsResult {
 	IndexOutOfBounds,
 	NoVarArgs,
 }
-impl<T: Ctx + Sync> Ctx for Option<&T> {}
+impl<T: Ctx> Ctx for Option<T> {}
+impl<T: Ctx + Sync> Ctx for &T {}
 impl Ctx for () {}
 impl Ctx for Footprint {}
-
-impl<T: ExtractFootprint + Sync> ExtractFootprint for Option<&T> {
+impl ExtractFootprint for () {
 	fn footprint(&self) -> Option<&Footprint> {
-		self.and_then(|x| x.footprint())
+		None
 	}
 }
-impl<T: ExtractTime + Sync> ExtractTime for Option<&T> {
+
+impl<'n, T: ExtractFootprint + Ctx + Sync + Send> ExtractFootprint for &'n T {
+	fn footprint(&self) -> Option<&Footprint> {
+		(*self).footprint()
+	}
+}
+impl<'n, T: ExtractFootprint> ExtractFootprint for Arc<T>
+where
+	Arc<T>: Ctx,
+{
+	fn footprint(&self) -> Option<&Footprint> {
+		(**self).footprint()
+	}
+}
+
+impl<T: ExtractFootprint + Sync> ExtractFootprint for Option<T> {
+	fn footprint(&self) -> Option<&Footprint> {
+		self.as_ref().and_then(|x| x.footprint())
+	}
+}
+impl<T: ExtractTime + Sync> ExtractTime for Option<T> {
 	fn time(&self) -> Option<f64> {
-		self.and_then(|x| x.time())
+		self.as_ref().and_then(|x| x.time())
 	}
 }
-impl<T: ExtractIndex + Sync> ExtractIndex for Option<&T> {
+impl<T: ExtractIndex> ExtractIndex for Option<T> {
 	fn index(&self) -> Option<usize> {
-		self.and_then(|x| x.index())
+		self.as_ref().and_then(|x| x.index())
 	}
 }
-impl<T: ExtractVarArgs + Sync> ExtractVarArgs for Option<&T> {
-	fn vararg<'b>(&'b self, index: usize) -> Result<impl DynAny<'b>, VarArgsResult>
-	where
-		Self: 'b,
-	{
-		let Some(inner) = self else { return Err(VarArgsResult::NoVarArgs) };
+impl<T: ExtractVarArgs + Sync> ExtractVarArgs for Option<T> {
+	fn vararg(&self, index: usize) -> Result<DynRef<'_>, VarArgsResult> {
+		let Some(ref inner) = self else { return Err(VarArgsResult::NoVarArgs) };
 		inner.vararg(index)
+	}
+
+	fn varargs_len(&self) -> Result<usize, VarArgsResult> {
+		let Some(ref inner) = self else { return Err(VarArgsResult::NoVarArgs) };
+		inner.varargs_len()
+	}
+}
+
+impl<'a, T: ExtractVarArgs + Sync> ExtractVarArgs for &'a T {
+	fn vararg(&self, index: usize) -> Result<DynRef<'_>, VarArgsResult> {
+		(*self).vararg(index)
+	}
+
+	fn varargs_len(&self) -> Result<usize, VarArgsResult> {
+		(*self).varargs_len()
 	}
 }
 
 impl Ctx for ContextImpl<'_> {}
+impl Ctx for Arc<OwnedContextImpl> {}
 
 impl ExtractFootprint for ContextImpl<'_> {
 	fn footprint(&self) -> Option<&Footprint> {
@@ -75,18 +120,74 @@ impl ExtractIndex for ContextImpl<'_> {
 		self.index
 	}
 }
-impl ExtractVarArgs for ContextImpl<'_> {
-	fn vararg<'b>(&'b self, index: usize) -> Result<impl DynAny<'b> + Send + Sync, VarArgsResult>
-	where
-		Self: 'b,
-	{
+impl<'a> ExtractVarArgs for ContextImpl<'a> {
+	fn vararg(&self, index: usize) -> Result<DynRef<'_>, VarArgsResult> {
 		let Some(inner) = self.varargs else { return Err(VarArgsResult::NoVarArgs) };
-		inner.get(index).ok_or(VarArgsResult::IndexOutOfBounds)
+		inner.get(index).ok_or(VarArgsResult::IndexOutOfBounds).copied()
+	}
+
+	fn varargs_len(&self) -> Result<usize, VarArgsResult> {
+		let Some(inner) = self.varargs else { return Err(VarArgsResult::NoVarArgs) };
+		Ok(inner.len())
 	}
 }
 
-pub type Context<'a> = Option<&'a ContextImpl<'a>>;
-type DynRef<'a> = &'a (dyn DynAny<'a> + 'a + Send + Sync);
+impl ExtractFootprint for Arc<OwnedContextImpl> {
+	fn footprint(&self) -> Option<&Footprint> {
+		self.footprint.as_ref()
+	}
+}
+impl ExtractTime for Arc<OwnedContextImpl> {
+	fn time(&self) -> Option<f64> {
+		self.time
+	}
+}
+impl ExtractIndex for Arc<OwnedContextImpl> {
+	fn index(&self) -> Option<usize> {
+		self.index
+	}
+}
+impl ExtractVarArgs for Arc<OwnedContextImpl> {
+	fn vararg(&self, index: usize) -> Result<DynRef<'_>, VarArgsResult> {
+		let Some(ref inner) = self.varargs else { return Err(VarArgsResult::NoVarArgs) };
+		inner.get(index).map(|x| x.as_ref()).ok_or(VarArgsResult::IndexOutOfBounds)
+	}
+
+	fn varargs_len(&self) -> Result<usize, VarArgsResult> {
+		let Some(ref inner) = self.varargs else { return Err(VarArgsResult::NoVarArgs) };
+		Ok(inner.len())
+	}
+}
+
+pub type Context<'a> = Option<Arc<OwnedContextImpl>>;
+type DynRef<'a> = &'a (dyn Any + Send + Sync);
+type DynBox = Box<dyn Any + Send + Sync>;
+
+#[derive(Default, dyn_any::DynAny)]
+pub struct OwnedContextImpl {
+	pub footprint: Option<crate::transform::Footprint>,
+	pub(crate) varargs: Option<Arc<[DynBox]>>,
+	pub(crate) parent: Option<Arc<dyn ExtractVarArgs + Sync + Send>>,
+	// This could be converted into a single enum to save extra bytes
+	pub(crate) index: Option<usize>,
+	pub(crate) time: Option<f64>,
+}
+
+impl<T: ExtractAll + CloneVarArgs> From<T> for OwnedContextImpl {
+	fn from(value: T) -> Self {
+		let footprint = value.footprint().copied();
+		let index = value.index();
+		let time = value.time();
+		let parent = value.box_clone();
+		OwnedContextImpl {
+			footprint,
+			varargs: None,
+			parent: Some(parent.into()),
+			index,
+			time,
+		}
+	}
+}
 
 #[derive(Default, Clone, Copy, dyn_any::DynAny)]
 pub struct ContextImpl<'a> {
@@ -108,51 +209,51 @@ impl<'a> ContextImpl<'a> {
 			..*self
 		}
 	}
-	#[cfg(feature = "alloc")]
-	pub fn reborrow_var_args_to_vec<'short>(&self) -> Option<alloc::boxed::Box<[DynRef<'short>]>>
-	where
-		'a: 'short,
-	{
-		self.varargs.map(|x| shorten_lifetime_to_vec(x).into())
-	}
-	pub fn reborrow_var_args_to_buffer<'short, const N: usize>(&self, buffer: &'short mut [DynRef<'short>; N]) -> Option<&'short [DynRef<'short>]>
-	where
-		'a: 'short,
-	{
-		self.varargs.map(|x| shorten_lifetime_to_buffer(x, buffer))
-	}
+	// #[cfg(feature = "alloc")]
+	// pub fn reborrow_var_args_to_vec<'short>(&self) -> Option<alloc::boxed::Box<[DynRef<'short>]>>
+	// where
+	// 	'a: 'short,
+	// {
+	// 	self.varargs.map(|x| shorten_lifetime_to_vec(x).into())
+	// }
+	// pub fn reborrow_var_args_to_buffer<'short, const N: usize>(&self, buffer: &'short mut [DynRef<'short>; N]) -> Option<&'short [DynRef<'short>]>
+	// where
+	// 	'a: 'short,
+	// {
+	// 	self.varargs.map(|x| shorten_lifetime_to_buffer(x, buffer))
+	// }
 }
 
-fn shorten_lifetime_to_vec<'c, 'b: 'c>(input: &'b [DynRef<'b>]) -> Vec<DynRef<'c>> {
-	input.iter().map(|&x| x.reborrow_ref()).collect()
-}
-fn shorten_lifetime_to_buffer<'c, 'b: 'c, const N: usize>(input: &'b [DynRef<'b>], buffer: &'c mut [DynRef<'c>; N]) -> &'c [DynRef<'c>] {
-	let iter = input.iter().map(|&x| x.reborrow_ref()).zip(buffer.iter_mut());
-	if input.len() > N {
-		unreachable!("Insufficient buffer size for varargs");
-	}
-	for (data, buffer_slot) in iter {
-		*buffer_slot = data.reborrow_ref();
-	}
-	&buffer[..input.len()]
-}
+// fn shorten_lifetime_to_vec<'c, 'b: 'c>(input: &'b [DynRef<'b>]) -> Vec<DynRef<'c>> {
+// 	input.iter().map(|&x| x.reborrow_ref()).collect()
+// }
+// fn shorten_lifetime_to_buffer<'c, 'b: 'c, const N: usize>(input: &'b [DynRef<'b>], buffer: &'c mut [DynRef<'c>; N]) -> &'c [DynRef<'c>] {
+// 	let iter = input.iter().map(|&x| x.reborrow_ref()).zip(buffer.iter_mut());
+// 	if input.len() > N {
+// 		unreachable!("Insufficient buffer size for varargs");
+// 	}
+// 	for (data, buffer_slot) in iter {
+// 		*buffer_slot = data.reborrow_ref();
+// 	}
+// 	&buffer[..input.len()]
+// }
 
-#[test]
-fn shorten_lifetime_compile_test() {
-	let context: ContextImpl<'static> = const {
-		ContextImpl {
-			footprint: None,
-			varargs: None,
-			index: None,
-			time: None,
-		}
-	};
-	let footprint = Footprint::default();
-	let local_varargs = context.reborrow_var_args_to_vec();
-	let out = context.with_footprint(&footprint, local_varargs.as_ref());
-	assert!(out.footprint().is_some());
-	let mut buffer: [_; 0] = [];
-	let local_varargs_buf = context.reborrow_var_args_to_buffer(&mut buffer);
-	let out = context.with_footprint(&footprint, local_varargs_buf.as_ref());
-	assert!(out.footprint().is_some());
-}
+// #[test]
+// fn shorten_lifetime_compile_test() {
+// 	let context: ContextImpl<'static> = const {
+// 		ContextImpl {
+// 			footprint: None,
+// 			varargs: None,
+// 			index: None,
+// 			time: None,
+// 		}
+// 	};
+// 	let footprint = Footprint::default();
+// 	let local_varargs = context.reborrow_var_args_to_vec();
+// 	let out = context.with_footprint(&footprint, local_varargs.as_ref());
+// 	assert!(out.footprint().is_some());
+// 	let mut buffer: [_; 0] = [];
+// 	let local_varargs_buf = context.reborrow_var_args_to_buffer(&mut buffer);
+// 	let out = context.with_footprint(&footprint, local_varargs_buf.as_ref());
+// 	assert!(out.footprint().is_some());
+// }
