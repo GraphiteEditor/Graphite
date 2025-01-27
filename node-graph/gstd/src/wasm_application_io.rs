@@ -11,6 +11,7 @@ use graphene_core::raster::Image;
 use graphene_core::renderer::RenderMetadata;
 use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
 use graphene_core::transform::Footprint;
+use graphene_core::transform::TransformSet;
 use graphene_core::vector::VectorDataTable;
 use graphene_core::GraphicGroup;
 use graphene_core::{Color, WasmNotSend};
@@ -149,7 +150,7 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 
 #[node_macro::node(category(""))]
 #[cfg(target_arch = "wasm32")]
-async fn rasterize<T: GraphicElementRendered + graphene_core::transform::TransformMut + WasmNotSend + 'n>(
+async fn rasterize<T: GraphicElementRendered + TransformSet + WasmNotSend + 'n>(
 	_: (),
 	#[implementations(
 		Footprint -> VectorDataTable,
@@ -175,7 +176,7 @@ async fn rasterize<T: GraphicElementRendered + graphene_core::transform::Transfo
 		..Default::default()
 	};
 
-	*data.transform_mut() = DAffine2::from_translation(-aabb.start) * data.transform();
+	data.set_transform(DAffine2::from_translation(-aabb.start) * data.transform());
 	data.render_svg(&mut render, &render_params);
 	render.format_svg(glam::DVec2::ZERO, size);
 	let svg_string = render.svg.to_svg_string();

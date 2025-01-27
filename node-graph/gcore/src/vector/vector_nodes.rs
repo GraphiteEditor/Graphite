@@ -3,7 +3,7 @@ use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, SeedValue};
 use crate::renderer::GraphicElementRendered;
-use crate::transform::{Footprint, Transform, TransformMut};
+use crate::transform::{Footprint, Transform, TransformSet};
 use crate::vector::style::LineJoin;
 use crate::vector::PointDomain;
 use crate::{Color, GraphicElement, GraphicGroup};
@@ -230,7 +230,7 @@ async fn stroke<F: 'n + Send, ColorTy: Into<Option<Color>> + 'n + Send, TargetTy
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + Transform + TransformMut + Send>(
+async fn repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + Transform + TransformSet + Send>(
 	#[implementations(
 		(),
 		(),
@@ -274,8 +274,7 @@ async fn repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + Transform 
 		new_instance.new_ids_from_hash(None);
 		let modification = DAffine2::from_translation(center) * DAffine2::from_angle(angle) * DAffine2::from_translation(translation) * DAffine2::from_translation(-center);
 
-		let data_transform = new_instance.transform_mut();
-		*data_transform = modification * first_vector_transform;
+		new_instance.set_transform(modification * first_vector_transform);
 		result.push((new_instance, None));
 	}
 
@@ -283,7 +282,7 @@ async fn repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + Transform 
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn circular_repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + Transform + TransformMut + Send>(
+async fn circular_repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + Transform + TransformSet + Send>(
 	#[implementations(
 		(),
 		(),
@@ -323,8 +322,7 @@ async fn circular_repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + T
 		let mut new_instance = result.last().map(|(element, _)| element.clone()).unwrap_or(instance.to_graphic_element());
 		new_instance.new_ids_from_hash(None);
 
-		let data_transform = new_instance.transform_mut();
-		*data_transform = modification * first_vector_transform;
+		new_instance.set_transform(modification * first_vector_transform);
 		result.push((new_instance, None));
 	}
 
@@ -332,7 +330,7 @@ async fn circular_repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + T
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn copy_to_points<F: 'n + Send + Copy, I: GraphicElementRendered + ConcatElement + TransformMut + Send + 'n>(
+async fn copy_to_points<F: 'n + Send + Copy, I: GraphicElementRendered + ConcatElement + TransformSet + Send + 'n>(
 	#[implementations(
 		(),
 		(),
@@ -410,8 +408,7 @@ async fn copy_to_points<F: 'n + Send + Copy, I: GraphicElementRendered + ConcatE
 		let mut new_instance = result.last().map(|(element, _)| element.clone()).unwrap_or(instance.to_graphic_element());
 		new_instance.new_ids_from_hash(None);
 
-		let data_transform = new_instance.transform_mut();
-		*data_transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation) * center_transform * instance_transform;
+		new_instance.set_transform(DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation) * center_transform * instance_transform);
 		result.push((new_instance, None));
 	}
 
@@ -597,7 +594,7 @@ impl ConcatElement for GraphicGroup {
 	fn concat(&mut self, other: &Self, transform: DAffine2, _node_id: u64) {
 		// TODO: Decide if we want to keep this behavior whereby the layers are flattened
 		for (mut element, footprint_mapping) in other.iter().cloned() {
-			*element.transform_mut() = transform * element.transform() * other.transform();
+			element.set_transform(transform * element.transform() * other.transform());
 			self.push((element, footprint_mapping));
 		}
 		self.alpha_blending = other.alpha_blending;
