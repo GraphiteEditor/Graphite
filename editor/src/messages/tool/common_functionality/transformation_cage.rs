@@ -324,7 +324,7 @@ impl BoundingBoxManager {
 		let horizontal_edges = [corners[1].midpoint(corners[2]), corners[3].midpoint(corners[0])];
 
 		let mut draw_handle = |point: DVec2| overlay_context.square(point, Some(6.), None, None);
-		let category = self.overlay_display_category();
+		let category = self.overlay_display_category(None);
 		if matches!(
 			category,
 			HandleDisplayCategory::One | HandleDisplayCategory::Two(Orientation::Horizontal) | HandleDisplayCategory::Three(_)
@@ -346,7 +346,7 @@ impl BoundingBoxManager {
 		}
 	}
 
-	fn overlay_display_category(&self) -> HandleDisplayCategory {
+	fn overlay_display_category(&self, cursor: Option<DVec2>) -> HandleDisplayCategory {
 		let quad = self.transform * Quad::from_box(self.bounds);
 		let corners = quad.0;
 
@@ -366,8 +366,22 @@ impl BoundingBoxManager {
 					(false, false) => HandleDisplayCategory::Two(Orientation::None),
 				}
 			} else {
-				let orientation = if vertical_length > horizontal_length { Orientation::Vertical } else { Orientation::Horizontal };
-				HandleDisplayCategory::Three(orientation)
+				use std::f64::INFINITY;
+				cursor.map_or(HandleDisplayCategory::Three(Orientation::None), |cursor| {
+					let cursor = self.transform.inverse().transform_point2(cursor);
+					let min_vertical_distance_square = [corners[0].midpoint(corners[1]), corners[2].midpoint(corners[3])]
+						.iter()
+						.fold(INFINITY, |acc, x| acc.min(x.distance_squared(cursor)));
+					let min_horizontal_distance_square = [corners[1].midpoint(corners[2]), corners[3].midpoint(corners[0])]
+						.iter()
+						.fold(INFINITY, |acc, x| acc.min(x.distance_squared(cursor)));
+					let orientation = if min_vertical_distance_square > min_horizontal_distance_square {
+						Orientation::Horizontal
+					} else {
+						Orientation::Vertical
+					};
+					HandleDisplayCategory::Three(orientation)
+				})
 			}
 		} else {
 			HandleDisplayCategory::Four
@@ -434,7 +448,6 @@ impl BoundingBoxManager {
 	/// Gets the required mouse cursor to show resizing bounds or optionally rotation
 	pub fn get_cursor(&self, input: &InputPreprocessorMessageHandler, rotate: bool) -> MouseCursorIcon {
 		if let Some(directions) = self.check_selected_edges(input.mouse.position) {
-			let category = self.overlay_display_category();
 			let grab_cursor = match directions {
 				(true, _, false, false) | (_, true, false, false) => MouseCursorIcon::NSResize,
 				(false, false, true, _) | (false, false, _, true) => MouseCursorIcon::EWResize,
@@ -443,7 +456,7 @@ impl BoundingBoxManager {
 				_ => MouseCursorIcon::Default,
 			};
 			match grab_cursor {
-				MouseCursorIcon::NWSEResize | MouseCursorIcon::NESWResize => match category {
+				MouseCursorIcon::NWSEResize | MouseCursorIcon::NESWResize => match self.overlay_display_category(Some(input.mouse.position)) {
 					HandleDisplayCategory::Three(orientation) => match orientation {
 						Orientation::Horizontal => MouseCursorIcon::EWResize,
 						Orientation::Vertical => MouseCursorIcon::NSResize,
