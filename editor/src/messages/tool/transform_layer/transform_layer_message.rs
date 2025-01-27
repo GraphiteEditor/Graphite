@@ -7,6 +7,9 @@ use glam::DVec2;
 #[impl_message(Message, ToolMessage, TransformLayer)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformLayerMessage {
+	// Overlays
+	Overlays(OverlayContext),
+
 	// Messages
 	ApplyTransformOperation,
 	BeginGrab,
@@ -18,7 +21,6 @@ pub enum TransformLayerMessage {
 	CancelTransformOperation,
 	ConstrainX,
 	ConstrainY,
-	Overlays(OverlayContext),
 	PointerMove { slow_key: Key, snap_key: Key },
 	SelectionChanged,
 	TypeBackspace,
