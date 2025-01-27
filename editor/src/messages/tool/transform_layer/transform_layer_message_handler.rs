@@ -163,8 +163,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						TransformOperation::None => (),
 						TransformOperation::Grabbing(translation) => {
 							let translation = translation.to_dvec(document_to_viewport, self.snap);
-							let vec_to_end = self.mouse_position - self.start_mouse;
-							let quad = Quad::from_box([self.grab_target, self.grab_target + vec_to_end]).0;
+							let viewport_translate = document_to_viewport.transform_vector2(translation);
+							let quad = Quad::from_box([self.grab_target, self.grab_target + viewport_translate]).0;
 							let e1 = (self.fixed_bbox.0[1] - self.fixed_bbox.0[0]).normalize();
 
 							if matches!(axis_constraint, Axis::Both | Axis::X) {
@@ -186,7 +186,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 									quad[3]
 								};
 								overlay_context.line(quad[0], end, None);
-								let x_parameter = vec_to_end.x.clamp(-1., 1.);
+								let x_parameter = viewport_translate.x.clamp(-1., 1.);
 								let y_transform = DAffine2::from_translation((quad[0] + end) / 2. + x_parameter * DVec2::X * 0.);
 								let pivot_selection = if x_parameter > 0. {
 									Pivot::Start
