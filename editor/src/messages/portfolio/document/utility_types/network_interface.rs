@@ -6293,18 +6293,24 @@ pub struct DocumentNodePersistentMetadataInputNames {
 
 impl From<DocumentNodePersistentMetadataInputNames> for DocumentNodePersistentMetadata {
 	fn from(old: DocumentNodePersistentMetadataInputNames) -> Self {
-		let ret = DocumentNodePersistentMetadata {
+		let input_properties = old
+			.reference
+			.as_ref()
+			.and_then(|reference| resolve_document_node_type(reference))
+			.map(|definition| definition.node_template.persistent_node_metadata.input_properties.clone())
+			.unwrap_or(old.input_names.into_iter().map(|name| name.as_str().into()).collect());
+
+		DocumentNodePersistentMetadata {
 			reference: old.reference,
 			display_name: old.display_name,
-			input_properties: old.input_names.into_iter().map(|name| name.as_str().into()).collect(),
+			input_properties,
 			output_names: old.output_names,
 			has_primary_output: old.has_primary_output,
 			locked: old.locked,
 			pinned: old.pinned,
 			node_type_metadata: old.node_type_metadata,
 			network_metadata: old.network_metadata,
-		};
-		ret
+		}
 	}
 }
 
