@@ -11,7 +11,7 @@ use graphene_core::raster::ImageFrame;
 use graphene_core::renderer::RenderMetadata;
 use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
 use graphene_core::transform::Footprint;
-use graphene_core::vector::VectorData;
+use graphene_core::vector::VectorDataTable;
 use graphene_core::GraphicGroup;
 use graphene_core::{Color, WasmNotSend};
 
@@ -144,7 +144,7 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 async fn rasterize<T: GraphicElementRendered + graphene_core::transform::TransformMut + WasmNotSend + 'n>(
 	_: (),
 	#[implementations(
-		Footprint -> VectorData,
+		Footprint -> VectorDataTable,
 		Footprint -> ImageFrame<Color>,
 		Footprint -> GraphicGroup,
 	)]
@@ -205,7 +205,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	render_config: RenderConfig,
 	editor_api: &'a WasmEditorApi,
 	#[implementations(
-		Footprint -> VectorData,
+		Footprint -> VectorDataTable,
 		Footprint -> ImageFrame<Color>,
 		Footprint -> GraphicGroup,
 		Footprint -> graphene_core::Artboard,

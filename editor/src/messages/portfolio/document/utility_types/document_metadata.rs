@@ -3,8 +3,7 @@ use graph_craft::document::NodeId;
 use graphene_core::renderer::ClickTarget;
 use graphene_core::renderer::Quad;
 use graphene_core::transform::Footprint;
-use graphene_std::vector::PointId;
-use graphene_std::vector::VectorData;
+use graphene_std::vector::{PointId, VectorData};
 
 use glam::{DAffine2, DVec2};
 use std::collections::{HashMap, HashSet};

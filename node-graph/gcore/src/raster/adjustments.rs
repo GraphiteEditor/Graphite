@@ -8,7 +8,7 @@ use super::{Channel, Color, Pixel};
 use crate::registry::types::{Angle, Percentage, SignedPercentage};
 use crate::transform::Footprint;
 use crate::vector::style::GradientStops;
-use crate::vector::VectorData;
+use crate::vector::VectorDataTable;
 use crate::GraphicGroup;
 
 use dyn_any::DynAny;
@@ -1490,9 +1490,11 @@ impl MultiplyAlpha for Color {
 		*self = Color::from_rgbaf32_unchecked(self.r(), self.g(), self.b(), (self.a() * factor as f32).clamp(0., 1.))
 	}
 }
-impl MultiplyAlpha for VectorData {
+impl MultiplyAlpha for VectorDataTable {
 	fn multiply_alpha(&mut self, factor: f64) {
-		self.alpha_blending.opacity *= factor as f32;
+		for mut instance in self.instances() {
+			instance.alpha_blending.opacity *= factor as f32;
+		}
 	}
 }
 impl MultiplyAlpha for GraphicGroup {

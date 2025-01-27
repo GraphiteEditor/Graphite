@@ -4,13 +4,15 @@ pub use attributes::*;
 pub use modification::*;
 
 use super::style::{PathStyle, Stroke};
-use crate::{AlphaBlending, Color};
+use crate::{AlphaBlending, Color, Instances};
 
 use bezier_rs::ManipulatorGroup;
 use dyn_any::DynAny;
 
 use core::borrow::Borrow;
 use glam::{DAffine2, DVec2};
+
+pub type VectorDataTable = Instances<VectorData>;
 
 /// [VectorData] is passed between nodes.
 /// It contains a list of subpaths (that may be open or closed), a transform, and some style information.

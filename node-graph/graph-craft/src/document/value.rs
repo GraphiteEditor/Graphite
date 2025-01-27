@@ -137,7 +137,7 @@ tagged_value! {
 	ImaginateSamplingMethod(ImaginateSamplingMethod),
 	ImaginateMaskStartingFill(ImaginateMaskStartingFill),
 	ImaginateController(ImaginateController),
-	VectorData(graphene_core::vector::VectorData),
+	VectorData(graphene_core::vector::VectorDataTable),
 	Fill(graphene_core::vector::style::Fill),
 	Stroke(graphene_core::vector::style::Stroke),
 	F64Array4([f64; 4]),

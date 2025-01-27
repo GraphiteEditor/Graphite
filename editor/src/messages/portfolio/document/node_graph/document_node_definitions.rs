@@ -18,10 +18,11 @@ use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, ImageFrame, NoiseType, RedGreenBlue, RedGreenBlueAlpha};
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::transform::Footprint;
-use graphene_core::vector::VectorData;
+use graphene_core::vector::VectorDataTable;
 use graphene_core::*;
 use graphene_std::wasm_application_io::WasmEditorApi;
 
+use vector::VectorDataTable;
 #[cfg(feature = "gpu")]
 use wgpu_executor::{Bindgroup, CommandBuffer, PipelineLayout, ShaderHandle, ShaderInputFrame, WgpuShaderInput};
 
@@ -664,7 +665,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::VectorData(VectorData::default()), true),
+						NodeInput::value(TaggedValue::VectorData(VectorDataTable::default()), true),
 						NodeInput::value(
 							TaggedValue::Footprint(Footprint {
 								transform: DAffine2::from_scale_angle_translation(DVec2::new(100., 100.), 0., DVec2::new(0., 0.)),
@@ -2046,7 +2047,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: vec![
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(VectorData), 0)],
+								inputs: vec![NodeInput::network(concrete!(VectorDataTable), 0)],
 								implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
 								manual_composition: Some(generic!(T)),
 								skip_deduplication: true,
@@ -2066,7 +2067,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::VectorData(VectorData::empty()), true),
+						NodeInput::value(TaggedValue::VectorData(VectorDataTable::default()), true),
 						NodeInput::value(TaggedValue::VectorModification(Default::default()), false),
 					],
 					..Default::default()
@@ -2189,7 +2190,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					inputs: vec![
-						NodeInput::value(TaggedValue::VectorData(VectorData::empty()), true),
+						NodeInput::value(TaggedValue::VectorData(VectorDataTable::default()), true),
 						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
 						NodeInput::value(TaggedValue::F64(0.), false),
 						NodeInput::value(TaggedValue::DVec2(DVec2::ONE), false),
@@ -2200,7 +2201,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(VectorData), 0)],
+								inputs: vec![NodeInput::network(concrete!(VectorDataTable), 0)],
 								implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
 								manual_composition: Some(generic!(T)),
 								skip_deduplication: true,
@@ -2296,7 +2297,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: vec![
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(VectorData), 0), NodeInput::network(concrete!(vector::style::Fill), 1)],
+								inputs: vec![NodeInput::network(concrete!(VectorDataTable), 0), NodeInput::network(concrete!(vector::style::Fill), 1)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::vector::BooleanOperationNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
@@ -2366,8 +2367,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					// TODO: Wrap this implementation with a document node that has a cache node so the output is cached?
 					implementation: DocumentNodeImplementation::proto("graphene_core::vector::CopyToPointsNode"),
 					inputs: vec![
-						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorDataTable::default()), true),
+						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorDataTable::default()), true),
 						NodeInput::value(TaggedValue::F64(1.), false),
 						NodeInput::value(TaggedValue::F64(1.), false),
 						NodeInput::value(TaggedValue::F64(0.), false),
@@ -2463,14 +2464,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(2), 0)], // Taken from output 0 of Sample Points
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(graphene_core::vector::VectorData), 0)],
+								inputs: vec![NodeInput::network(concrete!(graphene_core::vector::VectorDataTable), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::SubpathSegmentLengthsNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::network(concrete!(graphene_core::vector::VectorData), 0),
+									NodeInput::network(concrete!(graphene_core::vector::VectorDataTable), 0),
 									NodeInput::network(concrete!(f64), 1),  // From the document node's parameters
 									NodeInput::network(concrete!(f64), 2),  // From the document node's parameters
 									NodeInput::network(concrete!(f64), 3),  // From the document node's parameters
@@ -2495,7 +2496,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorDataTable::default()), true),
 						NodeInput::value(TaggedValue::F64(100.), false),
 						NodeInput::value(TaggedValue::F64(0.), false),
 						NodeInput::value(TaggedValue::F64(0.), false),
@@ -2586,7 +2587,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						nodes: [
 							DocumentNode {
 								inputs: vec![
-									NodeInput::network(concrete!(graphene_core::vector::VectorData), 0),
+									NodeInput::network(concrete!(graphene_core::vector::VectorDataTable), 0),
 									NodeInput::network(concrete!(f64), 1),
 									NodeInput::network(concrete!(u32), 2),
 								],
@@ -2608,7 +2609,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorDataTable::default()), true),
 						NodeInput::value(TaggedValue::F64(10.), false),
 						NodeInput::value(TaggedValue::U32(0), false),
 					],

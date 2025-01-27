@@ -22,7 +22,7 @@ use graphene_std::application_io::TextureFrame;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops};
-use graphene_std::vector::VectorData;
+use graphene_std::vector::VectorDataTable;
 use graphene_std::{GraphicGroup, Raster};
 
 use glam::{DAffine2, DVec2, IVec2, UVec2};
@@ -152,7 +152,7 @@ pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, numbe
 						}
 						Some(x) if x == TypeId::of::<Curve>() => curves_widget(document_node, node_id, index, name, true),
 						Some(x) if x == TypeId::of::<GradientStops>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(false), true),
-						Some(x) if x == TypeId::of::<VectorData>() => vector_widget(document_node, node_id, index, name, true).into(),
+						Some(x) if x == TypeId::of::<VectorDataTable>() => vector_widget(document_node, node_id, index, name, true).into(),
 						Some(x) if x == TypeId::of::<Raster>() || x == TypeId::of::<ImageFrame<Color>>() || x == TypeId::of::<TextureFrame>() => {
 							raster_widget(document_node, node_id, index, name, true).into()
 						}

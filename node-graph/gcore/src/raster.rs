@@ -1,5 +1,5 @@
 pub use self::color::{Color, Luma, SRGBA8};
-use crate::vector::VectorData;
+use crate::vector::VectorDataTable;
 use crate::GraphicGroup;
 use crate::{registry::types::Percentage, transform::Footprint};
 
@@ -291,9 +291,11 @@ trait SetBlendMode {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode);
 }
 
-impl SetBlendMode for VectorData {
+impl SetBlendMode for VectorDataTable {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		self.alpha_blending.blend_mode = blend_mode;
+		for mut instance in self.instances() {
+			instance.alpha_blending.blend_mode = blend_mode;
+		}
 	}
 }
 impl SetBlendMode for GraphicGroup {
@@ -318,10 +320,10 @@ async fn blend_mode<F: 'n + Send, T: SetBlendMode>(
 	footprint: F,
 	#[implementations(
 		() -> GraphicGroup,
-		() -> VectorData,
+		() -> VectorDataTable,
 		() -> ImageFrame<Color>,
 		Footprint -> GraphicGroup,
-		Footprint -> VectorData,
+		Footprint -> VectorDataTable,
 		Footprint -> ImageFrame<Color>,
 	)]
 	value: impl Node<F, Output = T>,
@@ -343,10 +345,10 @@ async fn opacity<F: 'n + Send, T: MultiplyAlpha>(
 	footprint: F,
 	#[implementations(
 		() -> GraphicGroup,
-		() -> VectorData,
+		() -> VectorDataTable,
 		() -> ImageFrame<Color>,
 		Footprint -> GraphicGroup,
-		Footprint -> VectorData,
+		Footprint -> VectorDataTable,
 		Footprint -> ImageFrame<Color>,
 	)]
 	value: impl Node<F, Output = T>,

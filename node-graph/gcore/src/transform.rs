@@ -1,7 +1,7 @@
 use crate::application_io::TextureFrame;
 use crate::raster::bbox::AxisAlignedBbox;
 use crate::raster::{ImageFrame, Pixel};
-use crate::vector::VectorData;
+use crate::vector::{VectorData, VectorDataTable};
 use crate::{Artboard, ArtboardGroup, Color, GraphicElement, GraphicGroup};
 
 use glam::{DAffine2, DVec2};
@@ -95,6 +95,24 @@ impl TransformMut for VectorData {
 	}
 }
 
+impl Transform for VectorDataTable {
+	fn transform(&self) -> DAffine2 {
+		let vector_data = self.instances().next().expect("ONE INSTANCE EXPECTED");
+		vector_data.transform
+	}
+	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
+		let vector_data = self.instances().next().expect("ONE INSTANCE EXPECTED");
+		vector_data.local_pivot(pivot)
+	}
+}
+impl TransformMut for VectorDataTable {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		// TODO: Solve compiler error
+		let mut vector_data = self.instances().next().expect("ONE INSTANCE EXPECTED");
+		&mut vector_data.transform
+	}
+}
+
 impl Transform for Artboard {
 	fn transform(&self) -> DAffine2 {
 		DAffine2::from_translation(self.location.as_dvec2())
@@ -177,7 +195,7 @@ impl From<()> for Footprint {
 }
 
 #[node_macro::node(category("Debug"))]
-fn cull<T>(_footprint: Footprint, #[implementations(VectorData, GraphicGroup, Artboard, ImageFrame<Color>, ArtboardGroup)] data: T) -> T {
+fn cull<T>(_footprint: Footprint, #[implementations(VectorDataTable, GraphicGroup, Artboard, ImageFrame<Color>, ArtboardGroup)] data: T) -> T {
 	data
 }
 
@@ -222,11 +240,11 @@ async fn transform<I: Into<Footprint> + 'n + ApplyTransform + Clone + Send + Syn
 	)]
 	mut input: I,
 	#[implementations(
-		() -> VectorData,
+		() -> VectorDataTable,
 		() -> GraphicGroup,
 		() -> ImageFrame<Color>,
 		() -> TextureFrame,
-		Footprint -> VectorData,
+		Footprint -> VectorDataTable,
 		Footprint -> GraphicGroup,
 		Footprint -> ImageFrame<Color>,
 		Footprint -> TextureFrame,
@@ -255,7 +273,7 @@ async fn transform<I: Into<Footprint> + 'n + ApplyTransform + Clone + Send + Syn
 #[node_macro::node(category(""))]
 fn replace_transform<Data: TransformMut, TransformInput: Transform>(
 	_: (),
-	#[implementations(VectorData, ImageFrame<Color>, GraphicGroup)] mut data: Data,
+	#[implementations(VectorDataTable, ImageFrame<Color>, GraphicGroup)] mut data: Data,
 	#[implementations(DAffine2)] transform: TransformInput,
 ) -> Data {
 	let data_transform = data.transform_mut();

@@ -8,13 +8,15 @@ use graphene_core::raster::{Alpha, BlendColorPairNode, Color, Image, ImageFrame,
 use graphene_core::transform::{Footprint, Transform, TransformMut};
 use graphene_core::value::{ClonedNode, CopiedNode, ValueNode};
 use graphene_core::vector::brush_stroke::{BrushStroke, BrushStyle};
-use graphene_core::vector::VectorData;
+use graphene_core::vector::VectorDataTable;
 use graphene_core::Node;
 
 use glam::{DAffine2, DVec2};
 
 #[node_macro::node(category("Debug"))]
-fn vector_points(_: (), vector_data: VectorData) -> Vec<DVec2> {
+fn vector_points(_: (), vector_data: VectorDataTable) -> Vec<DVec2> {
+	let vector_data = vector_data.instances().next().expect("ONE INSTANCE EXPECTED");
+
 	vector_data.point_domain.positions().to_vec()
 }
 

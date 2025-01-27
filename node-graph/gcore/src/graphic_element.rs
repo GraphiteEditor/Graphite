@@ -2,13 +2,15 @@ use crate::application_io::TextureFrame;
 use crate::raster::{BlendMode, ImageFrame};
 use crate::transform::{ApplyTransform, Footprint, Transform, TransformMut};
 use crate::uuid::NodeId;
-use crate::vector::VectorData;
+use crate::vector::{InstanceId, VectorData, VectorDataTable};
 use crate::Color;
 
-use dyn_any::DynAny;
+use dyn_any::{DynAny, StaticType};
 
 use core::ops::{Deref, DerefMut};
 use glam::{DAffine2, IVec2};
+use std::hash::Hash;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 pub mod renderer;
 
@@ -36,6 +38,67 @@ impl AlphaBlending {
 			blend_mode: BlendMode::Normal,
 		}
 	}
+}
+
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct Instances<T>
+where
+	T: Into<GraphicElement> + StaticType + 'static,
+{
+	id: Vec<InstanceId>,
+	instances: Vec<Arc<Mutex<T>>>,
+}
+
+impl<T: Into<GraphicElement> + StaticType + 'static> Instances<T> {
+	pub fn new(instance: T) -> Self {
+		Self {
+			id: vec![InstanceId::generate()],
+			instances: vec![Arc::new(Mutex::new(instance))],
+		}
+	}
+
+	pub fn instances(&self) -> impl Iterator<Item = MutexGuard<'_, T>> {
+		self.instances.iter().map(|item| item.lock().expect("Failed to lock mutex"))
+	}
+
+	pub fn id(&self) -> impl Iterator<Item = InstanceId> + '_ {
+		self.id.iter().copied()
+	}
+
+	pub fn push(&mut self, id: InstanceId, instance: T) {
+		self.id.push(id);
+		self.instances.push(Arc::new(Mutex::new(instance)));
+	}
+
+	pub fn replace_all(&mut self, id: InstanceId, instance: T) {
+		let mut instance = Arc::new(Mutex::new(instance));
+
+		for (old_id, old_instance) in self.id.iter_mut().zip(self.instances.iter_mut()) {
+			let mut new_id = id;
+			std::mem::swap(old_id, &mut new_id);
+			std::mem::swap(&mut instance, old_instance);
+		}
+	}
+}
+
+impl<T: Into<GraphicElement> + Hash + StaticType + 'static> core::hash::Hash for Instances<T> {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.id.hash(state);
+		for instance in &self.instances {
+			let instance = instance.lock().unwrap();
+			instance.hash(state);
+		}
+	}
+}
+
+impl<T: Into<GraphicElement> + PartialEq + StaticType + 'static> PartialEq for Instances<T> {
+	fn eq(&self, other: &Self) -> bool {
+		self.id == other.id && self.instances.len() == other.instances.len() && { self.instances.iter().zip(other.instances.iter()).all(|(a, b)| *a.lock().unwrap() == *b.lock().unwrap()) }
+	}
+}
+
+unsafe impl<T: Into<GraphicElement> + StaticType + 'static> dyn_any::StaticType for Instances<T> {
+	type Static = Instances<T>;
 }
 
 /// A list of [`GraphicElement`]s
@@ -79,14 +142,14 @@ pub enum GraphicElement {
 	/// Equivalent to the SVG <g> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g
 	GraphicGroup(GraphicGroup),
 	/// A vector shape, equivalent to the SVG <path> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path
-	VectorData(Box<VectorData>),
+	VectorData(VectorDataTable),
 	Raster(Raster),
 }
 
 // TODO: Can this be removed? It doesn't necessarily make that much sense to have a default when, instead, the entire GraphicElement just shouldn't exist if there's no specific content to assign it.
 impl Default for GraphicElement {
 	fn default() -> Self {
-		Self::VectorData(Box::new(VectorData::empty()))
+		Self::VectorData(VectorDataTable::default())
 	}
 }
 
@@ -105,14 +168,14 @@ impl GraphicElement {
 		}
 	}
 
-	pub fn as_vector_data(&self) -> Option<&VectorData> {
+	pub fn as_vector_data(&self) -> Option<&VectorDataTable> {
 		match self {
 			GraphicElement::VectorData(data) => Some(data),
 			_ => None,
 		}
 	}
 
-	pub fn as_vector_data_mut(&mut self) -> Option<&mut VectorData> {
+	pub fn as_vector_data_mut(&mut self) -> Option<&mut VectorDataTable> {
 		match self {
 			GraphicElement::VectorData(data) => Some(data),
 			_ => None,
@@ -277,11 +340,11 @@ async fn to_element<F: 'n + Send, Data: Into<GraphicElement> + 'n>(
 	footprint: F,
 	#[implementations(
 		() -> GraphicGroup,
-	 	() -> VectorData,
+	 	() -> VectorDataTable,
 		() -> ImageFrame<Color>,
 	 	() -> TextureFrame,
 	 	Footprint -> GraphicGroup,
-	 	Footprint -> VectorData,
+	 	Footprint -> VectorDataTable,
 		Footprint -> ImageFrame<Color>,
 	 	Footprint -> TextureFrame,
 	)]
@@ -302,11 +365,11 @@ async fn to_group<F: 'n + Send, Data: Into<GraphicGroup> + 'n>(
 	footprint: F,
 	#[implementations(
 		() -> GraphicGroup,
-		() -> VectorData,
+		() -> VectorDataTable,
 		() -> ImageFrame<Color>,
 		() -> TextureFrame,
 		Footprint -> GraphicGroup,
-		Footprint -> VectorData,
+		Footprint -> VectorDataTable,
 		Footprint -> ImageFrame<Color>,
 		Footprint -> TextureFrame,
 	)]
@@ -369,11 +432,11 @@ async fn to_artboard<F: 'n + Send + ApplyTransform, Data: Into<GraphicGroup> + '
 	mut footprint: F,
 	#[implementations(
 		() -> GraphicGroup,
-		() -> VectorData,
+		() -> VectorDataTable,
 		() -> ImageFrame<Color>,
 		() -> TextureFrame,
 		Footprint -> GraphicGroup,
-		Footprint -> VectorData,
+		Footprint -> VectorDataTable,
 		Footprint -> ImageFrame<Color>,
 		Footprint -> TextureFrame,
 	)]
@@ -436,9 +499,15 @@ impl From<TextureFrame> for GraphicElement {
 		GraphicElement::Raster(Raster::Texture(texture))
 	}
 }
+// TODO: Remove this one
 impl From<VectorData> for GraphicElement {
 	fn from(vector_data: VectorData) -> Self {
-		GraphicElement::VectorData(Box::new(vector_data))
+		GraphicElement::VectorData(VectorDataTable::new(vector_data))
+	}
+}
+impl From<VectorDataTable> for GraphicElement {
+	fn from(vector_data: VectorDataTable) -> Self {
+		GraphicElement::VectorData(vector_data)
 	}
 }
 impl From<GraphicGroup> for GraphicElement {
@@ -464,7 +533,7 @@ impl DerefMut for GraphicGroup {
 /// as that would conflict with the implementation for `Self`
 trait ToGraphicElement: Into<GraphicElement> {}
 
-impl ToGraphicElement for VectorData {}
+impl ToGraphicElement for VectorDataTable {}
 impl ToGraphicElement for ImageFrame<Color> {}
 impl ToGraphicElement for TextureFrame {}
 

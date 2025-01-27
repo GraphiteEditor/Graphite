@@ -431,15 +431,18 @@ async fn path_modify<F: 'n + Send + Sync + Clone>(
 	)]
 	input: F,
 	#[implementations(
-		() -> VectorData,
-		Footprint -> VectorData,
+		() -> VectorDataTable,
+		Footprint -> VectorDataTable,
 	)]
-	vector_data: impl Node<F, Output = VectorData>,
+	vector_data: impl Node<F, Output = VectorDataTable>,
 	modification: Box<VectorModification>,
-) -> VectorData {
-	let mut vector_data = vector_data.eval(input).await;
+) -> VectorDataTable {
+	let vector_data = vector_data.eval(input).await;
+	let mut vector_data = vector_data.instances().next().expect("ONE INSTANCE EXPECTED");
+
 	modification.apply(&mut vector_data);
-	vector_data
+
+	VectorDataTable::new(vector_data.clone())
 }
 
 #[test]

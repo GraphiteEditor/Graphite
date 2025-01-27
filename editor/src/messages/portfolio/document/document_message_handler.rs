@@ -1159,9 +1159,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::UpdateClipTargets { clip_targets } => {
 				self.network_interface.update_clip_targets(clip_targets);
 			}
-			DocumentMessage::UpdateVectorModify { vector_modify } => {
-				self.network_interface.update_vector_modify(vector_modify);
-			}
 			DocumentMessage::Undo => {
 				if self.network_interface.transaction_status() != TransactionStatus::Finished {
 					return;
