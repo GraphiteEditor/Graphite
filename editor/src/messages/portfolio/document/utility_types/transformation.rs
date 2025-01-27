@@ -587,6 +587,7 @@ impl<'a> Selected<'a> {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Typing {
 	pub digits: Vec<u8>,
+	pub string: String,
 	pub contains_decimal: bool,
 	pub negative: bool,
 }
@@ -596,6 +597,7 @@ const DECIMAL_POINT: u8 = 10;
 impl Typing {
 	pub fn type_number(&mut self, number: u8) -> Option<f64> {
 		self.digits.push(number);
+		self.string.push((number as u8 + b'0') as char);
 
 		self.evaluate()
 	}
@@ -610,7 +612,7 @@ impl Typing {
 			Some(_) => (),
 			None => self.negative = false,
 		}
-
+		self.string.pop();
 		self.evaluate()
 	}
 
@@ -618,6 +620,7 @@ impl Typing {
 		if !self.contains_decimal {
 			self.contains_decimal = true;
 			self.digits.push(DECIMAL_POINT);
+			self.string.push('.');
 		}
 
 		self.evaluate()
@@ -625,6 +628,11 @@ impl Typing {
 
 	pub fn type_negate(&mut self) -> Option<f64> {
 		self.negative = !self.negative;
+		if self.negative {
+			self.string.insert(0, '-');
+		} else {
+			self.string.remove(0);
+		}
 
 		self.evaluate()
 	}
@@ -660,6 +668,7 @@ impl Typing {
 
 	pub fn clear(&mut self) {
 		self.digits.clear();
+		self.string.clear();
 		self.contains_decimal = false;
 		self.negative = false;
 	}

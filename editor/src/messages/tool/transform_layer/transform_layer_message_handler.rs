@@ -157,7 +157,13 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						_ => Axis::Both,
 					};
 
-					let format_rounded = |value: f64, precision: usize| format!("{:.*}", precision, value).trim_end_matches('0').trim_end_matches('.').to_string();
+					let format_rounded = |value: f64, precision: usize| {
+						if self.typing.string.is_empty() {
+							format!("{:.*}", precision, value).trim_end_matches('0').trim_end_matches('.').to_string()
+						} else {
+							self.typing.string.clone()
+						}
+					};
 
 					match self.transform_operation {
 						TransformOperation::None => (),
@@ -195,7 +201,9 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 								} else {
 									Pivot::End
 								};
-								overlay_context.text(&format_rounded(translation.y, 2), COLOR_OVERLAY_BLUE, None, y_transform, 3., [pivot_selection, Pivot::Middle]);
+								if axis_constraint != Axis::Both || self.typing.digits.is_empty() {
+									overlay_context.text(&format_rounded(translation.y, 2), COLOR_OVERLAY_BLUE, None, y_transform, 3., [pivot_selection, Pivot::Middle]);
+								}
 							}
 							if matches!(axis_constraint, Axis::Both) {
 								overlay_context.dashed_line(quad[1], quad[2], None, Some(2.), Some(2.), Some(0.5));
