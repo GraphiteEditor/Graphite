@@ -16,7 +16,7 @@ use crate::messages::tool::common_functionality::{auto_panning::AutoPanning, piv
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::renderer::Quad;
-use graphene_core::text::{load_face, Font, FontCache, TypesettingConfig};
+use graphene_core::text::{load_face, lines_clipping, Font, FontCache, TypesettingConfig};
 use graphene_core::vector::style::Fill;
 use graphene_core::Color;
 
@@ -459,9 +459,9 @@ impl Fsm for TextToolFsmState {
 				responses.add(FrontendMessage::DisplayEditableTextboxTransform {
 					transform: document.metadata().transform_to_viewport(tool_data.layer).to_cols_array(),
 				});
-				if let Some(editing_text) = tool_data.editing_text.as_ref() {
+				if let Some(editing_text) = tool_data.editing_text.as_mut() {
 					let buzz_face = font_cache.get(&editing_text.font).map(|data| load_face(data));
-					let far = graphene_core::text::bounding_box(&tool_data.new_text, buzz_face, editing_text.typesetting);
+					let far = graphene_core::text::bounding_box(&tool_data.new_text, buzz_face.clone(), editing_text.typesetting);
 					if far.x != 0. && far.y != 0. {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
 						let transformed_quad = document.metadata().transform_to_viewport(tool_data.layer) * quad;
@@ -485,18 +485,6 @@ impl Fsm for TextToolFsmState {
 					}
 
 					overlay_context.quad(quad, Some(&("#".to_string() + &fill_color)));
-				} else {
-					for layer in document
-						.network_interface
-						.selected_nodes(&[])
-						.unwrap()
-						.selected_visible_and_unlocked_layers(&document.network_interface)
-					{
-						if is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
-							let transformed_quad = document.metadata().transform_to_viewport(layer) * text_bounding_box(layer, document, font_cache);
-							overlay_context.quad(transformed_quad, None);
-						}
-					}
 				}
 
 				// TODO: implement for multiple layers
@@ -518,7 +506,22 @@ impl Fsm for TextToolFsmState {
 					let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 					bounding_box_manager.bounds = [bounds.0[0], bounds.0[2]];
 					bounding_box_manager.transform = transform;
-					bounding_box_manager.render_overlays(&mut overlay_context);
+
+					// We don't use the render_overlays function from bounding_box_manager
+					// since we need to draw the red line before transform handles
+					let transformed_quad = transform * bounds;
+					overlay_context.quad(transformed_quad, None);
+
+					if let Some((text, font, typesetting)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface) {
+						let buzz_face = font_cache.get(font).map(|data| load_face(data));
+						if lines_clipping(text.as_str(), buzz_face, typesetting) {
+							overlay_context.line(transformed_quad.0[2], transformed_quad.0[3], Some(&"#FF0000".to_string()));
+						}
+					}
+
+					for position in bounding_box_manager.evaluate_transform_handle_positions() {
+						overlay_context.square(position, Some(6.), None, None);
+					}
 				} else {
 					tool_data.bounding_box_manager.take();
 				}
@@ -626,15 +629,15 @@ impl Fsm for TextToolFsmState {
 						.selected_visible_and_unlocked_layers(&document.network_interface)
 						.find(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text"));
 
-				let mut cursor = MouseCursorIcon::Text;
-				if layer.is_some() {
-					cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Text, |bounds| bounds.get_cursor(input, false));
+				let mut cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Text, |bounds| bounds.get_cursor(input, false));
+				if layer.is_none() || cursor == MouseCursorIcon::Default {
+					cursor = MouseCursorIcon::Text;
 				}
 				
 				// Dragging the pivot overrules the other operations
 				// if tool_data.pivot.is_over(input.mouse.position) {
-					// 	cursor = MouseCursorIcon::Move;
-					// }
+				// 	cursor = MouseCursorIcon::Move;
+				// }
 					
 				responses.add(OverlaysMessage::Draw);
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor });
