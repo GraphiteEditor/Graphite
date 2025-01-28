@@ -16,6 +16,7 @@ use crate::messages::tool::common_functionality::snapping::{self, SnapCandidateP
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::{auto_panning::AutoPanning, measure};
 
+use bezier_rs::Subpath;
 use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;
 use graphene_core::text::load_face;
@@ -73,7 +74,7 @@ pub enum SelectToolMessage {
 	Overlays(OverlayContext),
 
 	// Tool-specific messages
-	DragStart { extend_selection: Key, select_deepest: Key },
+	DragStart { extend_selection: Key, select_deepest: Key, lasso_select: Key },
 	DragStop { remove_from_selection: Key, negative_box_selection: Key },
 	EditLayer,
 	Enter,
@@ -248,10 +249,17 @@ impl ToolTransition for SelectTool {
 		}
 	}
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum SelectionType {
+	Box,
+	Lasso,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum SelectToolFsmState {
 	Ready { selection: NestedSelectionBehavior },
-	DrawingBox,
+	Drawing { selection_type: SelectionType },
 	Dragging,
 	ResizingBounds,
 	RotatingBounds,
@@ -269,6 +277,7 @@ impl Default for SelectToolFsmState {
 struct SelectToolData {
 	drag_start: ViewportPosition,
 	drag_current: ViewportPosition,
+	lasso_polygon: Vec<ViewportPosition>,
 	layers_dragging: Vec<LayerNodeIdentifier>,
 	layer_selected_on_start: Option<LayerNodeIdentifier>,
 	select_single_layer: Option<LayerNodeIdentifier>,
@@ -321,6 +330,22 @@ impl SelectToolData {
 		} else {
 			[self.drag_start, self.drag_current]
 		}
+	}
+
+	pub fn intersect_lasso_no_artboards(&self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) -> Vec<LayerNodeIdentifier> {
+		if self.lasso_polygon.len() < 2 {
+			return Vec::new();
+		}
+		let polygon = Subpath::from_anchors_linear(self.lasso_polygon.clone().into_iter(), true);
+		document.intersect_polygon_no_artboards(polygon, input).collect()
+	}
+
+	pub fn is_layer_inside_lasso_polygon(&self, layer: &LayerNodeIdentifier, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) -> bool {
+		if self.lasso_polygon.len() < 2 {
+			return false;
+		}
+		let polygon = Subpath::from_anchors_linear(self.lasso_polygon.clone().into_iter(), true);
+		document.is_layer_fully_inside_polygon(layer, input, polygon)
 	}
 
 	/// Duplicates the currently dragging layers. Called when Alt is pressed and the layers have not yet been duplicated.
@@ -486,8 +511,8 @@ impl Fsm for SelectToolFsmState {
 				// Update pivot
 				tool_data.pivot.update_pivot(document, &mut overlay_context);
 
-				// Check if the tool is in box selection mode
-				if matches!(self, Self::DrawingBox) {
+				// Check if the tool is in selection mode
+				if let Self::Drawing { selection_type } = self {
 					// Get the updated selection box bounds
 					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
 
@@ -498,9 +523,16 @@ impl Fsm for SelectToolFsmState {
 
 					// Draw outline visualizations on the layers to be selected
 					let mut draw_layer_outline = |layer| overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
-					let intersection = document.intersect_quad_no_artboards(quad, input);
+					let intersection: Vec<LayerNodeIdentifier> = match selection_type {
+						SelectionType::Box => document.intersect_quad_no_artboards(quad, input).collect(),
+						SelectionType::Lasso => tool_data.intersect_lasso_no_artboards(document, input),
+					};
 					if selection_direction == SelectionMode::Enclosed {
-						for layer in intersection.filter(|layer| document.is_layer_fully_inside(layer, quad)) {
+						let is_inside = |layer: &LayerNodeIdentifier| match selection_type {
+							SelectionType::Box => document.is_layer_fully_inside(layer, quad),
+							SelectionType::Lasso => tool_data.is_layer_inside_lasso_polygon(layer, document, input),
+						};
+						for layer in intersection.into_iter().filter(is_inside) {
 							draw_layer_outline(layer);
 						}
 					} else {
@@ -517,10 +549,32 @@ impl Fsm for SelectToolFsmState {
 					fill_color.insert(0, '#');
 					let fill_color = Some(fill_color.as_str());
 
-					if selection_direction == SelectionMode::Enclosed {
-						overlay_context.dashed_quad(quad, fill_color, Some(4.), Some(4.), Some(0.5));
-					} else {
-						overlay_context.quad(quad, fill_color);
+					let mut draw_lasso = |dashed: bool| {
+						let polygon_len = tool_data.lasso_polygon.len();
+						let polygon = &tool_data.lasso_polygon;
+						if polygon_len > 1 {
+							for line in polygon.windows(2) {
+								if dashed {
+									overlay_context.dashed_line(line[0], line[1], None, Some(4.), Some(4.0), Some(0.5));
+									continue;
+								}
+								overlay_context.line(line[0], line[1], None);
+							}
+						}
+						if polygon_len > 2 {
+							if dashed {
+								overlay_context.dashed_line(polygon[0], polygon[polygon_len - 1], None, Some(4.), Some(4.0), Some(0.5));
+							} else {
+								overlay_context.line(polygon[0], polygon[polygon_len - 1], None);
+							}
+						}
+					};
+
+					match (selection_type, selection_direction) {
+						(SelectionType::Box, SelectionMode::Enclosed) => overlay_context.dashed_quad(quad, fill_color, Some(4.), Some(4.), Some(0.5)),
+						(SelectionType::Lasso, SelectionMode::Enclosed) => draw_lasso(true),
+						(SelectionType::Box, _) => overlay_context.quad(quad, fill_color),
+						(SelectionType::Lasso, _) => draw_lasso(false),
 					}
 				}
 				// Only highlight layers if the viewport is not being panned (middle mouse button is pressed)
@@ -559,7 +613,14 @@ impl Fsm for SelectToolFsmState {
 
 				self
 			}
-			(SelectToolFsmState::Ready { .. }, SelectToolMessage::DragStart { extend_selection, select_deepest }) => {
+			(
+				SelectToolFsmState::Ready { .. },
+				SelectToolMessage::DragStart {
+					extend_selection,
+					select_deepest,
+					lasso_select,
+				},
+			) => {
 				tool_data.drag_start = input.mouse.position;
 				tool_data.drag_current = input.mouse.position;
 
@@ -709,7 +770,11 @@ impl Fsm for SelectToolFsmState {
 						responses.add(DocumentMessage::StartTransaction);
 						SelectToolFsmState::Dragging
 					} else {
-						SelectToolFsmState::DrawingBox
+						if input.keyboard.key(lasso_select) {
+							SelectToolFsmState::Drawing { selection_type: SelectionType::Lasso }
+						} else {
+							SelectToolFsmState::Drawing { selection_type: SelectionType::Box }
+						}
 					}
 				};
 				tool_data.non_duplicated_layers = None;
@@ -866,9 +931,22 @@ impl Fsm for SelectToolFsmState {
 
 				SelectToolFsmState::DraggingPivot
 			}
-			(SelectToolFsmState::DrawingBox, SelectToolMessage::PointerMove(modifier_keys)) => {
+			(SelectToolFsmState::Drawing { selection_type }, SelectToolMessage::PointerMove(modifier_keys)) => {
 				tool_data.drag_current = input.mouse.position;
 				responses.add(OverlaysMessage::Draw);
+
+				if selection_type == SelectionType::Lasso {
+					let lasso_polygon = &mut tool_data.lasso_polygon;
+					let current_position = input.mouse.position;
+
+					if !lasso_polygon.is_empty() {
+						if lasso_polygon.last().unwrap().distance_squared(current_position) > SELECTION_TOLERANCE.powi(2) {
+							lasso_polygon.push(current_position);
+						}
+					} else {
+						lasso_polygon.push(current_position);
+					}
+				}
 
 				// AutoPanning
 				let messages = [
@@ -877,7 +955,7 @@ impl Fsm for SelectToolFsmState {
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
-				SelectToolFsmState::DrawingBox
+				SelectToolFsmState::Drawing { selection_type }
 			}
 			(SelectToolFsmState::Ready { .. }, SelectToolMessage::PointerMove(_)) => {
 				let mut cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
@@ -924,7 +1002,7 @@ impl Fsm for SelectToolFsmState {
 
 				self
 			}
-			(SelectToolFsmState::DrawingBox, SelectToolMessage::PointerOutsideViewport(_)) => {
+			(SelectToolFsmState::Drawing { .. }, SelectToolMessage::PointerOutsideViewport(_)) => {
 				// AutoPanning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					tool_data.drag_start += shift;
@@ -1053,7 +1131,7 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(
-				SelectToolFsmState::DrawingBox,
+				SelectToolFsmState::Drawing { selection_type },
 				SelectToolMessage::DragStop {
 					remove_from_selection,
 					negative_box_selection,
@@ -1066,11 +1144,18 @@ impl Fsm for SelectToolFsmState {
 					selection_direction = tool_data.calculate_direction();
 				}
 
-				let intersection = document.intersect_quad_no_artboards(quad, input);
+				let intersection: Vec<LayerNodeIdentifier> = match selection_type {
+					SelectionType::Box => document.intersect_quad_no_artboards(quad, input).collect(),
+					SelectionType::Lasso => tool_data.intersect_lasso_no_artboards(document, input),
+				};
 				let new_selected: HashSet<_> = if selection_direction == SelectionMode::Enclosed {
-					intersection.filter(|layer| document.is_layer_fully_inside(layer, quad)).collect()
+					let is_inside = |layer: &LayerNodeIdentifier| match selection_type {
+						SelectionType::Box => document.is_layer_fully_inside(layer, quad),
+						SelectionType::Lasso => tool_data.is_layer_inside_lasso_polygon(layer, document, input),
+					};
+					intersection.into_iter().filter(is_inside).collect()
 				} else {
-					intersection.collect()
+					intersection.into_iter().collect()
 				};
 
 				let current_selected: HashSet<_> = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
@@ -1107,6 +1192,7 @@ impl Fsm for SelectToolFsmState {
 							.collect(),
 					});
 				}
+				tool_data.lasso_polygon.clear();
 				responses.add(OverlaysMessage::Draw);
 
 				let selection = tool_data.nested_selection_behavior;
@@ -1194,6 +1280,7 @@ impl Fsm for SelectToolFsmState {
 						HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
 						HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
 					]),
+					// TODO: add hint for lasso select.
 					HintGroup(vec![HintInfo::keys([Key::KeyG, Key::KeyR, Key::KeyS], "Grab/Rotate/Scale Selected")]),
 					HintGroup(vec![
 						HintInfo::arrow_keys("Nudge Selected"),
@@ -1219,7 +1306,7 @@ impl Fsm for SelectToolFsmState {
 				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
-			SelectToolFsmState::DrawingBox => {
+			SelectToolFsmState::Drawing { .. } => {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Control, Key::Shift], "Remove from Selection").add_mac_keys([Key::Command, Key::Shift])]),

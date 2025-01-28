@@ -1448,11 +1448,16 @@ impl DocumentMessageHandler {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
 		viewport_polygon.apply_transform(document_to_viewport.inverse());
 
-		log::info!("polygon inside");
+		let layer_click_targets = self.network_interface.document_metadata().click_targets(*layer);
+		let layer_transform = self.network_interface.document_metadata().transform_to_document(*layer);
 
-		self.metadata()
-			.click_targets(*layer)
-			.is_some_and(|targets| targets.iter().all(|target| target.subpath().is_inside_subpath(&viewport_polygon, None, None)))
+		layer_click_targets.is_some_and(|targets| {
+			targets.iter().all(|target| {
+				let mut subpath = target.subpath().clone();
+				subpath.apply_transform(layer_transform);
+				subpath.is_inside_subpath(&viewport_polygon, None, None)
+			})
+		})
 	}
 
 	/// Find all of the layers that were clicked on from a viewport space location
@@ -2266,7 +2271,6 @@ impl<'a> ClickXRayIter<'a> {
 			XRayTarget::Quad(quad) => self.check_layer_area_target(click_targets, clip, layer, quad_to_path_lib_segments(*quad), transform),
 			XRayTarget::Path(path) => self.check_layer_area_target(click_targets, clip, layer, path.clone(), transform),
 			XRayTarget::Polygon(polygon) => {
-				log::info!("polygon intersection");
 				let polygon = polygon.iter_closed().map(|line| path_bool_lib::PathSegment::Line(line.start, line.end)).collect();
 				self.check_layer_area_target(click_targets, clip, layer, polygon, transform)
 			}
