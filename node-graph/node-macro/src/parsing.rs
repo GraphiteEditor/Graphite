@@ -7,8 +7,7 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::{Comma, RArrow};
 use syn::{
-	parse_quote, AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lifetime, Lit, LitFloat, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, Type, TypeParam,
-	WhereClause,
+	parse_quote, AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, Type, TypeParam, WhereClause,
 };
 
 use crate::codegen::generate_node_code;

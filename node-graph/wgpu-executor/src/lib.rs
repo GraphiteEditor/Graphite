@@ -918,7 +918,7 @@ async fn upload_texture<'a: 'n>(
 	executor: &'a WgpuExecutor,
 ) -> TextureFrame {
 	// let new_data: Vec<RGBA16F> = input.image.data.into_iter().map(|c| c.into()).collect();
-	let footprint = footprint.footprint().copied();
+	let footprint = footprint.try_footprint().copied();
 	let ctx = OwnedContextImpl { footprint, ..Default::default() };
 	let input = input.eval(Some(ctx.into())).await;
 	let new_data = input.image.data.into_iter().map(SRGBA8::from).collect();

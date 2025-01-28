@@ -9,7 +9,7 @@ use graphene_core::raster::{
 	Sample,
 };
 use graphene_core::transform::{Footprint, Transform};
-use graphene_core::{AlphaBlending, Color, Node};
+use graphene_core::{AlphaBlending, Color, Ctx, ExtractFootprint, Node};
 
 use fastnoise_lite;
 use glam::{DAffine2, DVec2, Vec2};
@@ -33,11 +33,12 @@ impl From<std::io::Error> for Error {
 }
 
 #[node_macro::node(category("Debug: Raster"))]
-fn sample_image(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<Color> {
+fn sample_image(ctx: impl ExtractFootprint + Clone, image_frame: ImageFrame<Color>) -> ImageFrame<Color> {
 	// Resize the image using the image crate
 	let image = image_frame.image;
 	let data = bytemuck::cast_vec(image.data);
 
+	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 	let image_bounds = Bbox::from_transform(image_frame.transform).to_axis_aligned_bbox();
 	let intersection = viewport_bounds.intersect(&image_bounds);
@@ -318,7 +319,7 @@ fn extend_image_to_bounds(image: ImageFrame<Color>, bounds: DAffine2) -> ImageFr
 }
 
 #[node_macro::node(category("Debug: Raster"))]
-fn empty_image<P: Pixel>(_: (), transform: DAffine2, #[implementations(Color)] color: P) -> ImageFrame<P> {
+fn empty_image<P: Pixel>(_: impl Ctx, transform: DAffine2, #[implementations(Color)] color: P) -> ImageFrame<P> {
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
 
@@ -447,7 +448,7 @@ fn image_frame<_P: Pixel>(image: Image<_P>, transform: DAffine2) -> ImageFrame<_
 #[node_macro::node(category("Raster: Generator"))]
 #[allow(clippy::too_many_arguments)]
 fn noise_pattern(
-	footprint: Footprint,
+	ctx: impl ExtractFootprint,
 	clip: bool,
 	seed: u32,
 	scale: f64,
@@ -464,6 +465,7 @@ fn noise_pattern(
 	cellular_return_type: CellularReturnType,
 	cellular_jitter: f64,
 ) -> ImageFrame<Color> {
+	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
 	let mut size = viewport_bounds.size();
@@ -595,7 +597,8 @@ fn noise_pattern(
 }
 
 #[node_macro::node(category("Raster: Generator"))]
-fn mandelbrot(footprint: Footprint) -> ImageFrame<Color> {
+fn mandelbrot(ctx: impl ExtractFootprint) -> ImageFrame<Color> {
+	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
 	let image_bounds = Bbox::from_transform(DAffine2::IDENTITY).to_axis_aligned_bbox();

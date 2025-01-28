@@ -1,25 +1,23 @@
-use core::{
-	any::Any,
-	borrow::Borrow,
-	ops::{Deref, Index},
-};
+use core::{any::Any, borrow::Borrow};
 use std::sync::Arc;
 
 use crate::transform::Footprint;
-use dyn_any::DynAny;
 
 pub trait Ctx: Clone + Send {}
 
 pub trait ExtractFootprint {
-	fn footprint(&self) -> Option<&Footprint>;
+	fn try_footprint(&self) -> Option<&Footprint>;
+	fn footprint(&self) -> &Footprint {
+		self.try_footprint().expect("Context did not have a footprint")
+	}
 }
 
 pub trait ExtractTime {
-	fn time(&self) -> Option<f64>;
+	fn try_time(&self) -> Option<f64>;
 }
 
 pub trait ExtractIndex {
-	fn index(&self) -> Option<usize>;
+	fn try_index(&self) -> Option<usize>;
 }
 
 // Consider returning a slice or something like that
@@ -31,10 +29,12 @@ pub trait ExtractVarArgs {
 // Consider returning a slice or something like that
 pub trait CloneVarArgs: ExtractVarArgs {
 	// fn box_clone(&self) -> Vec<DynBox>;
-	fn box_clone(&self) -> Box<dyn ExtractVarArgs + Send + Sync>;
+	fn arc_clone(&self) -> Option<Arc<dyn ExtractVarArgs + Send + Sync>>;
 }
 
 pub trait ExtractAll: ExtractFootprint + ExtractIndex + ExtractTime + ExtractVarArgs {}
+
+impl<T: ?Sized + ExtractFootprint + ExtractIndex + ExtractTime + ExtractVarArgs> ExtractAll for T {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VarArgsResult {
@@ -46,38 +46,30 @@ impl<T: Ctx + Sync> Ctx for &T {}
 impl Ctx for () {}
 impl Ctx for Footprint {}
 impl ExtractFootprint for () {
-	fn footprint(&self) -> Option<&Footprint> {
+	fn try_footprint(&self) -> Option<&Footprint> {
 		None
 	}
 }
 
 impl<'n, T: ExtractFootprint + Ctx + Sync + Send> ExtractFootprint for &'n T {
-	fn footprint(&self) -> Option<&Footprint> {
-		(*self).footprint()
-	}
-}
-impl<'n, T: ExtractFootprint> ExtractFootprint for Arc<T>
-where
-	Arc<T>: Ctx,
-{
-	fn footprint(&self) -> Option<&Footprint> {
-		(**self).footprint()
+	fn try_footprint(&self) -> Option<&Footprint> {
+		(*self).try_footprint()
 	}
 }
 
 impl<T: ExtractFootprint + Sync> ExtractFootprint for Option<T> {
-	fn footprint(&self) -> Option<&Footprint> {
-		self.as_ref().and_then(|x| x.footprint())
+	fn try_footprint(&self) -> Option<&Footprint> {
+		self.as_ref().and_then(|x| x.try_footprint())
 	}
 }
 impl<T: ExtractTime + Sync> ExtractTime for Option<T> {
-	fn time(&self) -> Option<f64> {
-		self.as_ref().and_then(|x| x.time())
+	fn try_time(&self) -> Option<f64> {
+		self.as_ref().and_then(|x| x.try_time())
 	}
 }
 impl<T: ExtractIndex> ExtractIndex for Option<T> {
-	fn index(&self) -> Option<usize> {
-		self.as_ref().and_then(|x| x.index())
+	fn try_index(&self) -> Option<usize> {
+		self.as_ref().and_then(|x| x.try_index())
 	}
 }
 impl<T: ExtractVarArgs + Sync> ExtractVarArgs for Option<T> {
@@ -91,8 +83,37 @@ impl<T: ExtractVarArgs + Sync> ExtractVarArgs for Option<T> {
 		inner.varargs_len()
 	}
 }
+impl<T: ExtractFootprint + Sync> ExtractFootprint for Arc<T> {
+	fn try_footprint(&self) -> Option<&Footprint> {
+		(**self).try_footprint()
+	}
+}
+impl<T: ExtractTime + Sync> ExtractTime for Arc<T> {
+	fn try_time(&self) -> Option<f64> {
+		(**self).try_time()
+	}
+}
+impl<T: ExtractIndex> ExtractIndex for Arc<T> {
+	fn try_index(&self) -> Option<usize> {
+		(**self).try_index()
+	}
+}
+impl<T: ExtractVarArgs + Sync> ExtractVarArgs for Arc<T> {
+	fn vararg(&self, index: usize) -> Result<DynRef<'_>, VarArgsResult> {
+		(**self).vararg(index)
+	}
 
-impl<'a, T: ExtractVarArgs + Sync> ExtractVarArgs for &'a T {
+	fn varargs_len(&self) -> Result<usize, VarArgsResult> {
+		(**self).varargs_len()
+	}
+}
+impl<T: CloneVarArgs + Sync> CloneVarArgs for Option<T> {
+	fn arc_clone(&self) -> Option<Arc<dyn ExtractVarArgs + Send + Sync>> {
+		self.as_ref().and_then(CloneVarArgs::arc_clone)
+	}
+}
+
+impl<T: ExtractVarArgs + Sync> ExtractVarArgs for &T {
 	fn vararg(&self, index: usize) -> Result<DynRef<'_>, VarArgsResult> {
 		(*self).vararg(index)
 	}
@@ -101,22 +122,27 @@ impl<'a, T: ExtractVarArgs + Sync> ExtractVarArgs for &'a T {
 		(*self).varargs_len()
 	}
 }
+impl<T: CloneVarArgs + Sync> CloneVarArgs for Arc<T> {
+	fn arc_clone(&self) -> Option<Arc<dyn ExtractVarArgs + Send + Sync>> {
+		(**self).arc_clone()
+	}
+}
 
 impl Ctx for ContextImpl<'_> {}
 impl Ctx for Arc<OwnedContextImpl> {}
 
 impl ExtractFootprint for ContextImpl<'_> {
-	fn footprint(&self) -> Option<&Footprint> {
+	fn try_footprint(&self) -> Option<&Footprint> {
 		self.footprint
 	}
 }
 impl ExtractTime for ContextImpl<'_> {
-	fn time(&self) -> Option<f64> {
+	fn try_time(&self) -> Option<f64> {
 		self.time
 	}
 }
 impl ExtractIndex for ContextImpl<'_> {
-	fn index(&self) -> Option<usize> {
+	fn try_index(&self) -> Option<usize> {
 		self.index
 	}
 }
@@ -132,30 +158,46 @@ impl<'a> ExtractVarArgs for ContextImpl<'a> {
 	}
 }
 
-impl ExtractFootprint for Arc<OwnedContextImpl> {
-	fn footprint(&self) -> Option<&Footprint> {
+impl ExtractFootprint for OwnedContextImpl {
+	fn try_footprint(&self) -> Option<&Footprint> {
 		self.footprint.as_ref()
 	}
 }
-impl ExtractTime for Arc<OwnedContextImpl> {
-	fn time(&self) -> Option<f64> {
+impl ExtractTime for OwnedContextImpl {
+	fn try_time(&self) -> Option<f64> {
 		self.time
 	}
 }
-impl ExtractIndex for Arc<OwnedContextImpl> {
-	fn index(&self) -> Option<usize> {
+impl ExtractIndex for OwnedContextImpl {
+	fn try_index(&self) -> Option<usize> {
 		self.index
 	}
 }
-impl ExtractVarArgs for Arc<OwnedContextImpl> {
+impl ExtractVarArgs for OwnedContextImpl {
 	fn vararg(&self, index: usize) -> Result<DynRef<'_>, VarArgsResult> {
-		let Some(ref inner) = self.varargs else { return Err(VarArgsResult::NoVarArgs) };
+		let Some(ref inner) = self.varargs else {
+			let Some(ref parent) = self.parent else {
+				return Err(VarArgsResult::NoVarArgs);
+			};
+			return parent.vararg(index);
+		};
 		inner.get(index).map(|x| x.as_ref()).ok_or(VarArgsResult::IndexOutOfBounds)
 	}
 
 	fn varargs_len(&self) -> Result<usize, VarArgsResult> {
-		let Some(ref inner) = self.varargs else { return Err(VarArgsResult::NoVarArgs) };
+		let Some(ref inner) = self.varargs else {
+			let Some(ref parent) = self.parent else {
+				return Err(VarArgsResult::NoVarArgs);
+			};
+			return parent.varargs_len();
+		};
 		Ok(inner.len())
+	}
+}
+
+impl CloneVarArgs for OwnedContextImpl {
+	fn arc_clone(&self) -> Option<Arc<dyn ExtractVarArgs + Send + Sync>> {
+		todo!()
 	}
 }
 
@@ -173,19 +215,25 @@ pub struct OwnedContextImpl {
 	pub time: Option<f64>,
 }
 
-impl<T: ExtractAll + CloneVarArgs> From<T> for OwnedContextImpl {
-	fn from(value: T) -> Self {
-		let footprint = value.footprint().copied();
-		let index = value.index();
-		let time = value.time();
-		let parent = value.box_clone();
+impl OwnedContextImpl {
+	pub fn from<T: ExtractAll + CloneVarArgs>(value: T) -> Self {
+		let footprint = value.try_footprint().copied();
+		let index = value.try_index();
+		let time = value.try_time();
+		let parent = value.arc_clone();
 		OwnedContextImpl {
 			footprint,
 			varargs: None,
-			parent: Some(parent.into()),
+			parent,
 			index,
 			time,
 		}
+	}
+}
+
+impl OwnedContextImpl {
+	pub fn set_footprint(&mut self, footprint: Footprint) {
+		self.footprint = Some(footprint);
 	}
 }
 

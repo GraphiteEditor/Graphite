@@ -2,7 +2,7 @@ use crate::application_io::TextureFrame;
 use crate::raster::bbox::AxisAlignedBbox;
 use crate::raster::{ImageFrame, Pixel};
 use crate::vector::VectorData;
-use crate::{Artboard, ArtboardGroup, Color, ContextImpl, Ctx, ExtractFootprint, GraphicElement, GraphicGroup};
+use crate::{Artboard, ArtboardGroup, CloneVarArgs, Color, ContextImpl, Ctx, ExtractAll, ExtractFootprint, GraphicElement, GraphicGroup};
 use crate::{Context, OwnedContextImpl};
 
 use glam::{DAffine2, DVec2};
@@ -212,82 +212,9 @@ impl ApplyTransform for () {
 	fn apply_transform(&mut self, &_modification: &DAffine2) {}
 }
 
-// async fn transform2<'call, 'input: 'call, 'n: 'call, T: 'n + TransformMut, _Input: ExtractFootprint + 'call>(
-// 	input: _Input,
-// 	transform_target: impl crate::Node<'call, Context<'call>, Output = T> + 'n,
-// ) -> T
-// where
-// {
-// 	let footprint = input.footprint().unwrap();
-// 	let ctx: ContextImpl<'_> = ContextImpl {
-// 		footprint: Some(&footprint),
-// 		..Default::default()
-// 	};
-// 	let mut transform_target = transform_target.eval(Some(&ctx));
-// 	transform_target
-// }
-
-// struct Context2<'a>(&'a str);
-
-// async fn transform2<'call, 'n: 'call, T: 'n>(
-// 	// input: _Input,
-// 	transform_target: &'n (impl for<'all_input> crate::Node<'all_input, Context2<'all_input>, Output: core::future::Future<Output = T>> + Sync),
-// ) -> T {
-// 	// // let footprint = *input.footprint().unwrap();
-// 	// let ctx: ContextImpl<'_> = ContextImpl {
-// 	// 	// footprint: Some(&footprint),
-// 	// 	..Default::default()
-// 	// };
-// 	// let transform_target = transform_target.eval(Some(&ctx)).await;
-// 	// transform_target
-// 	let string = String::from("test");
-
-// 	transform_target.eval(Context2(&string.as_ref())).await
-// }
-
-// async fn transform3<'call, 'n: 'call, T: 'n>(transform_target: impl for<'all_input> crate::Node<'all_input, Context2<'all_input>, Output = impl core::future::Future<Output = T>> + Sync) -> T {
-// 	let string = String::from("test");
-
-// 	transform_target.eval(Context2(&string.as_ref())).await
-// }
-
-// // impl<'call, 'n: 'call, T: 'n, _Input: 'n, Node0> crate::Node<'n, _Input> for TransformNode<Node0>
-// // where
-// // 	Node0: for<'all_input> crate::Node<'all_input, Context2<'all_input>, Output: core::future::Future<Output = T>>,
-// // 	// for<'a, 'b, 'c> <Node0 as crate::Node<'a, std::option::Option<&'b ContextImpl<'b>>>>::Output: crate::WasmNotSend,
-// // 	Node0: Sync + Send,
-// // {
-// // 	type Output = core::pin::Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
-// // 	#[inline]
-// // 	fn eval(&'n self, __input: _Input) -> Self::Output {
-// // 		let transform_target = &self.transform_target;
-// // 		Box::pin(self::transform3(transform_target))
-// // 	}
-// // }
-
-// // impl<'call, 'n: 'call, T: 'n, _Input: 'n + ExtractFootprint, Node0> crate::Node<'n, _Input> for TransformNode<Node0>
-// impl<'call, 'n: 'call, T: 'n, _Input: 'n, Node0, F0> crate::Node<'n, _Input> for TransformNode<Node0>
-// where
-// 	Node0: for<'all_input> crate::Node<'all_input, Context2<'all_input>, Output = F0>,
-// 	F0: core::future::Future<Output = T> + Send,
-// 	// for<'a, 'b, 'c> <Node0 as crate::Node<'a, std::option::Option<&'b ContextImpl<'b>>>>::Output: crate::WasmNotSend,
-// 	Node0: Sync + Send,
-// {
-// 	// type Output = crate::registry::DynFuture<'n, T>;
-// 	type Output = core::pin::Pin<Box<dyn core::future::Future<Output = T> + 'n + Send>>;
-// 	#[inline]
-// 	fn eval(&'n self, __input: _Input) -> Self::Output {
-// 		let transform_target = &self.transform_target;
-// 		Box::pin(self::transform3(transform_target))
-// 	}
-// }
-
-// pub struct TransformNode<Node0> {
-// 	pub(super) transform_target: Node0,
-// }
 #[node_macro::node(category(""))]
 async fn transform<T: 'n + TransformMut + 'static>(
-	input: impl ExtractFootprint + Ctx,
+	input: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
 		Context -> VectorData,
 		Context -> GraphicGroup,
@@ -304,15 +231,13 @@ async fn transform<T: 'n + TransformMut + 'static>(
 where
 {
 	let modification = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
-	let mut footprint = *input.footprint().unwrap();
+	let mut footprint = *input.try_footprint().unwrap();
 
 	if !footprint.ignore_modifications {
 		footprint.apply_transform(&modification);
 	}
-	let ctx = OwnedContextImpl {
-		footprint: Some(footprint),
-		..Default::default()
-	};
+	let mut ctx = OwnedContextImpl::from(input);
+	ctx.set_footprint(footprint);
 
 	let mut transform_target = transform_target.eval(Some(ctx.into())).await;
 
