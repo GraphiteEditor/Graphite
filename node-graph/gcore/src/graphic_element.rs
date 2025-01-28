@@ -3,7 +3,7 @@ use crate::raster::{BlendMode, ImageFrame};
 use crate::transform::{ApplyTransform, Footprint, Transform, TransformMut};
 use crate::uuid::NodeId;
 use crate::vector::VectorData;
-use crate::Color;
+use crate::{Color, Ctx};
 
 use dyn_any::DynAny;
 
@@ -232,26 +232,7 @@ impl ArtboardGroup {
 }
 
 #[node_macro::node(category(""))]
-async fn layer<F: 'n + Send + Copy>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> GraphicGroup,
-		Footprint -> GraphicGroup,
-	)]
-	stack: impl Node<F, Output = GraphicGroup>,
-	#[implementations(
-		() -> GraphicElement,
-		Footprint -> GraphicElement,
-	)]
-	element: impl Node<F, Output = GraphicElement>,
-	node_path: Vec<NodeId>,
-) -> GraphicGroup {
-	let mut element = element.eval(footprint).await;
-	let mut stack = stack.eval(footprint).await;
+async fn layer(_: impl Ctx, mut stack: GraphicGroup, mut element: GraphicElement, node_path: Vec<NodeId>) -> GraphicGroup {
 	if stack.transform.matrix2.determinant() != 0. {
 		*element.transform_mut() = stack.transform.inverse() * element.transform();
 	} else {
@@ -266,70 +247,36 @@ async fn layer<F: 'n + Send + Copy>(
 }
 
 #[node_macro::node(category("Debug"))]
-async fn to_element<F: 'n + Send, Data: Into<GraphicElement> + 'n>(
+async fn to_element<Data: Into<GraphicElement> + 'n>(
+	_: impl Ctx,
 	#[implementations(
-		(),
-		(),
-		(),
-		(),
-		Footprint,
+		GraphicGroup,
+	 	VectorData,
+		ImageFrame<Color>,
+	 	TextureFrame,
 	)]
-	footprint: F,
-	#[implementations(
-		() -> GraphicGroup,
-	 	() -> VectorData,
-		() -> ImageFrame<Color>,
-	 	() -> TextureFrame,
-	 	Footprint -> GraphicGroup,
-	 	Footprint -> VectorData,
-		Footprint -> ImageFrame<Color>,
-	 	Footprint -> TextureFrame,
-	)]
-	data: impl Node<F, Output = Data>,
+	data: Data,
 ) -> GraphicElement {
-	data.eval(footprint).await.into()
+	data.into()
 }
 
 #[node_macro::node(category("General"))]
-async fn to_group<F: 'n + Send, Data: Into<GraphicGroup> + 'n>(
+async fn to_group<Data: Into<GraphicGroup> + 'n>(
+	_: impl Ctx,
 	#[implementations(
-		(),
-		(),
-		(),
-		(),
-		Footprint,
+		GraphicGroup,
+		VectorData,
+		ImageFrame<Color>,
+		TextureFrame,
 	)]
-	footprint: F,
-	#[implementations(
-		() -> GraphicGroup,
-		() -> VectorData,
-		() -> ImageFrame<Color>,
-		() -> TextureFrame,
-		Footprint -> GraphicGroup,
-		Footprint -> VectorData,
-		Footprint -> ImageFrame<Color>,
-		Footprint -> TextureFrame,
-	)]
-	element: impl Node<F, Output = Data>,
+	element: Data,
 ) -> GraphicGroup {
-	element.eval(footprint).await.into()
+	element.into()
 }
 
 #[node_macro::node(category("General"))]
-async fn flatten_group<F: 'n + Send>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> GraphicGroup,
-		Footprint -> GraphicGroup,
-	)]
-	group: impl Node<F, Output = GraphicGroup>,
-	fully_flatten: bool,
-) -> GraphicGroup {
-	let nested_group = group.eval(footprint).await;
+async fn flatten_group(_: impl Ctx, group: GraphicGroup, fully_flatten: bool) -> GraphicGroup {
+	let nested_group = group;
 	let mut flat_group = GraphicGroup::EMPTY;
 	fn flatten_group(result_group: &mut GraphicGroup, current_group: GraphicGroup, fully_flatten: bool) {
 		let mut collection_group = GraphicGroup::EMPTY;
