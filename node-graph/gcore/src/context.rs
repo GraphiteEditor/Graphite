@@ -235,6 +235,13 @@ impl OwnedContextImpl {
 	pub fn set_footprint(&mut self, footprint: Footprint) {
 		self.footprint = Some(footprint);
 	}
+	pub fn with_footprint(mut self, footprint: Footprint) -> Self {
+		self.footprint = Some(footprint);
+		self
+	}
+	pub fn into_context(self) -> Option<Arc<Self>> {
+		Some(Arc::new(self))
+	}
 }
 
 #[derive(Default, Clone, Copy, dyn_any::DynAny)]
@@ -257,51 +264,4 @@ impl<'a> ContextImpl<'a> {
 			..*self
 		}
 	}
-	// #[cfg(feature = "alloc")]
-	// pub fn reborrow_var_args_to_vec<'short>(&self) -> Option<alloc::boxed::Box<[DynRef<'short>]>>
-	// where
-	// 	'a: 'short,
-	// {
-	// 	self.varargs.map(|x| shorten_lifetime_to_vec(x).into())
-	// }
-	// pub fn reborrow_var_args_to_buffer<'short, const N: usize>(&self, buffer: &'short mut [DynRef<'short>; N]) -> Option<&'short [DynRef<'short>]>
-	// where
-	// 	'a: 'short,
-	// {
-	// 	self.varargs.map(|x| shorten_lifetime_to_buffer(x, buffer))
-	// }
 }
-
-// fn shorten_lifetime_to_vec<'c, 'b: 'c>(input: &'b [DynRef<'b>]) -> Vec<DynRef<'c>> {
-// 	input.iter().map(|&x| x.reborrow_ref()).collect()
-// }
-// fn shorten_lifetime_to_buffer<'c, 'b: 'c, const N: usize>(input: &'b [DynRef<'b>], buffer: &'c mut [DynRef<'c>; N]) -> &'c [DynRef<'c>] {
-// 	let iter = input.iter().map(|&x| x.reborrow_ref()).zip(buffer.iter_mut());
-// 	if input.len() > N {
-// 		unreachable!("Insufficient buffer size for varargs");
-// 	}
-// 	for (data, buffer_slot) in iter {
-// 		*buffer_slot = data.reborrow_ref();
-// 	}
-// 	&buffer[..input.len()]
-// }
-
-// #[test]
-// fn shorten_lifetime_compile_test() {
-// 	let context: ContextImpl<'static> = const {
-// 		ContextImpl {
-// 			footprint: None,
-// 			varargs: None,
-// 			index: None,
-// 			time: None,
-// 		}
-// 	};
-// 	let footprint = Footprint::default();
-// 	let local_varargs = context.reborrow_var_args_to_vec();
-// 	let out = context.with_footprint(&footprint, local_varargs.as_ref());
-// 	assert!(out.footprint().is_some());
-// 	let mut buffer: [_; 0] = [];
-// 	let local_varargs_buf = context.reborrow_var_args_to_buffer(&mut buffer);
-// 	let out = context.with_footprint(&footprint, local_varargs_buf.as_ref());
-// 	assert!(out.footprint().is_some());
-// }

@@ -6,7 +6,7 @@ use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::style::LineJoin;
 use crate::vector::PointDomain;
-use crate::{Color, GraphicElement, GraphicGroup};
+use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroup, OwnedContextImpl};
 
 use bezier_rs::{Cap, Join, Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
@@ -37,20 +37,9 @@ impl VectorIterMut for VectorData {
 }
 
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
-async fn assign_colors<F: 'n + Send, T: VectorIterMut>(
-	#[implementations(
-		(),
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> GraphicGroup,
-		() -> VectorData,
-		Footprint -> GraphicGroup,
-		Footprint -> VectorData,
-	)]
-	vector_group: impl Node<F, Output = T>,
+async fn assign_colors<T: VectorIterMut>(
+	_: impl Ctx,
+	#[implementations(GraphicGroup, VectorData)] mut vector_group: T,
 	#[default(true)] fill: bool,
 	stroke: bool,
 	gradient: GradientStops,
@@ -59,13 +48,12 @@ async fn assign_colors<F: 'n + Send, T: VectorIterMut>(
 	seed: SeedValue,
 	repeat_every: u32,
 ) -> T {
-	let mut input = vector_group.eval(footprint).await;
-	let length = input.vector_iter_mut().count();
+	let length = vector_group.vector_iter_mut().count();
 	let gradient = if reverse { gradient.reversed() } else { gradient };
 
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 
-	for (i, (vector_data, _)) in input.vector_iter_mut().enumerate() {
+	for (i, (vector_data, _)) in vector_group.vector_iter_mut().enumerate() {
 		let factor = match randomize {
 			true => rng.gen::<f64>(),
 			false => match repeat_every {
@@ -86,58 +74,14 @@ async fn assign_colors<F: 'n + Send, T: VectorIterMut>(
 			}
 		}
 	}
-	input
+	vector_group
 }
 
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
-async fn fill<F: 'n + Send, FillTy: Into<Fill> + 'n + Send, TargetTy: VectorIterMut + 'n + Send>(
+async fn fill<FillTy: Into<Fill> + 'n + Send, TargetTy: VectorIterMut + 'n + Send>(
+	_: impl Ctx,
+	#[implementations(VectorData, VectorData, VectorData, VectorData, GraphicGroup, GraphicGroup, GraphicGroup, GraphicGroup)] mut vector_data: TargetTy,
 	#[implementations(
-		(),
-		(),
-		(),
-		(),
-		(),
-		(),
-		(),
-		(),
-		Footprint,
-		Footprint,
-		Footprint,
-		Footprint,
-		Footprint,
-		Footprint,
-		Footprint,
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> VectorData,
-		() -> VectorData,
-		() -> VectorData,
-		() -> VectorData,
-		() -> GraphicGroup,
-		() -> GraphicGroup,
-		() -> GraphicGroup,
-		() -> GraphicGroup,
-		Footprint -> VectorData,
-		Footprint -> VectorData,
-		Footprint -> VectorData,
-		Footprint -> VectorData,
-		Footprint -> GraphicGroup,
-		Footprint -> GraphicGroup,
-		Footprint -> GraphicGroup,
-		Footprint -> GraphicGroup,
-	)]
-	vector_data: impl Node<F, Output = TargetTy>,
-	#[implementations(
-		Fill,
-		Option<Color>,
-		Color,
-		Gradient,
-		Fill,
-		Option<Color>,
-		Color,
-		Gradient,
 		Fill,
 		Option<Color>,
 		Color,
@@ -152,44 +96,19 @@ async fn fill<F: 'n + Send, FillTy: Into<Fill> + 'n + Send, TargetTy: VectorIter
 	_backup_color: Option<Color>,
 	_backup_gradient: Gradient,
 ) -> TargetTy {
-	let mut target = vector_data.eval(footprint).await;
 	let fill: Fill = fill.into();
-	for (target, _transform) in target.vector_iter_mut() {
+	for (target, _transform) in vector_data.vector_iter_mut() {
 		target.style.set_fill(fill.clone());
 	}
 
-	target
+	vector_data
 }
 
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
-async fn stroke<F: 'n + Send, ColorTy: Into<Option<Color>> + 'n + Send, TargetTy: VectorIterMut + 'n + Send>(
+async fn stroke<ColorTy: Into<Option<Color>> + 'n + Send, TargetTy: VectorIterMut + 'n + Send>(
+	_: impl Ctx,
+	#[implementations(VectorData, VectorData, GraphicGroup, GraphicGroup)] mut vector_data: TargetTy,
 	#[implementations(
-		(),
-		(),
-		(),
-		(),
-		Footprint,
-		Footprint,
-		Footprint,
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> VectorData,
-		() -> VectorData,
-		() -> GraphicGroup,
-		() -> GraphicGroup,
-		Footprint -> VectorData,
-		Footprint -> VectorData,
-		Footprint -> GraphicGroup,
-		Footprint -> GraphicGroup,
-	)]
-	vector_data: impl Node<F, Output = TargetTy>,
-	#[implementations(
-		Option<Color>,
-		Color,
-		Option<Color>,
-		Color,
 		Option<Color>,
 		Color,
 		Option<Color>,
@@ -204,7 +123,6 @@ async fn stroke<F: 'n + Send, ColorTy: Into<Option<Color>> + 'n + Send, TargetTy
 	line_join: LineJoin,
 	#[default(4.)] miter_limit: f64,
 ) -> TargetTy {
-	let mut target = vector_data.eval(footprint).await;
 	let stroke = Stroke {
 		color: color.into(),
 		weight,
@@ -215,37 +133,24 @@ async fn stroke<F: 'n + Send, ColorTy: Into<Option<Color>> + 'n + Send, TargetTy
 		line_join_miter_limit: miter_limit,
 		transform: DAffine2::IDENTITY,
 	};
-	for (target, transform) in target.vector_iter_mut() {
+	for (target, transform) in vector_data.vector_iter_mut() {
 		target.style.set_stroke(Stroke { transform, ..stroke.clone() });
 	}
 
-	target
+	vector_data
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + Transform + TransformMut + Send>(
-	#[implementations(
-		(),
-		(),
-		Footprint,
-		Footprint,
-	)]
-	footprint: F,
+async fn repeat<I: 'n + GraphicElementRendered + Transform + TransformMut + Send>(
+	_: impl Ctx,
 	// TODO: Implement other GraphicElementRendered types.
-	#[implementations(
-		() -> VectorData,
-		() -> GraphicGroup,
-		Footprint -> VectorData,
-		Footprint -> GraphicGroup,
-	)]
-	instance: impl Node<F, Output = I>,
+	#[implementations(VectorData, GraphicGroup)] instance: I,
 	#[default(100., 100.)]
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
 	direction: DVec2,
 	angle: Angle,
 	#[default(4)] instances: IntegerCount,
 ) -> GraphicGroup {
-	let instance = instance.eval(footprint).await;
 	let first_vector_transform = instance.transform();
 
 	let angle = angle.to_radians();
@@ -276,27 +181,14 @@ async fn repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + Transform 
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn circular_repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + Transform + TransformMut + Send>(
-	#[implementations(
-		(),
-		(),
-		Footprint,
-		Footprint,
-	)]
-	footprint: F,
+async fn circular_repeat<I: 'n + GraphicElementRendered + Transform + TransformMut + Send>(
+	_: impl Ctx,
 	// TODO: Implement other GraphicElementRendered types.
-	#[implementations(
-		() -> VectorData,
-		() -> GraphicGroup,
-		Footprint -> VectorData,
-		Footprint -> GraphicGroup,
-	)]
-	instance: impl Node<F, Output = I>,
+	#[implementations(VectorData, GraphicGroup)] instance: I,
 	angle_offset: Angle,
 	#[default(5)] radius: f64,
 	#[default(5)] instances: IntegerCount,
 ) -> GraphicGroup {
-	let instance = instance.eval(footprint).await;
 	let first_vector_transform = instance.transform();
 	let instances = instances.max(1);
 
@@ -325,27 +217,12 @@ async fn circular_repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + T
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn copy_to_points<F: 'n + Send + Copy, I: GraphicElementRendered + ConcatElement + TransformMut + Send + 'n>(
-	#[implementations(
-		(),
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> VectorData,
-		() -> VectorData,
-		Footprint -> VectorData,
-	)]
-	points: impl Node<F, Output = VectorData>,
+async fn copy_to_points<I: GraphicElementRendered + ConcatElement + TransformMut + Send + 'n>(
+	_: impl Ctx,
+	points: VectorData,
 	#[expose]
-	#[implementations(
-		() -> VectorData,
-		() -> GraphicGroup,
-		Footprint -> VectorData,
-		Footprint -> GraphicGroup,
-	)]
-	instance: impl Node<F, Output = I>,
+	#[implementations(VectorData, GraphicGroup)]
+	instance: I,
 	#[default(1)] random_scale_min: f64,
 	#[default(1)] random_scale_max: f64,
 	random_scale_bias: f64,
@@ -353,8 +230,6 @@ async fn copy_to_points<F: 'n + Send + Copy, I: GraphicElementRendered + ConcatE
 	random_rotation: Angle,
 	random_rotation_seed: SeedValue,
 ) -> GraphicGroup {
-	let points = points.eval(footprint).await;
-	let instance = instance.eval(footprint).await;
 	let instance_transform = instance.transform();
 
 	let random_scale_difference = random_scale_max - random_scale_min;
@@ -409,20 +284,7 @@ async fn copy_to_points<F: 'n + Send + Copy, I: GraphicElementRendered + ConcatE
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn bounding_box<F: 'n + Send>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> VectorData,
-		Footprint -> VectorData,
-	)]
-	vector_data: impl Node<F, Output = VectorData>,
-) -> VectorData {
-	let vector_data = vector_data.eval(footprint).await;
-
+async fn bounding_box(_: impl Ctx, vector_data: VectorData) -> VectorData {
 	let bounding_box = vector_data.bounding_box_with_transform(vector_data.transform).unwrap();
 	let mut result = VectorData::from_subpath(Subpath::new_rect(bounding_box[0], bounding_box[1]));
 	result.style = vector_data.style.clone();
@@ -431,23 +293,7 @@ async fn bounding_box<F: 'n + Send>(
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn offset_path<F: 'n + Send>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> VectorData,
-		Footprint -> VectorData,
-	)]
-	vector_data: impl Node<F, Output = VectorData>,
-	distance: f64,
-	line_join: LineJoin,
-	#[default(4.)] miter_limit: f64,
-) -> VectorData {
-	let vector_data = vector_data.eval(footprint).await;
-
+async fn offset_path(_: impl Ctx, vector_data: VectorData, distance: f64, line_join: LineJoin, #[default(4.)] miter_limit: f64) -> VectorData {
 	let subpaths = vector_data.stroke_bezier_paths();
 	let mut result = VectorData::empty();
 	result.style = vector_data.style.clone();
@@ -475,20 +321,7 @@ async fn offset_path<F: 'n + Send>(
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn solidify_stroke<F: 'n + Send>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> VectorData,
-		Footprint -> VectorData,
-	)]
-	vector_data: impl Node<F, Output = VectorData>,
-) -> VectorData {
-	let vector_data = vector_data.eval(footprint).await;
-
+async fn solidify_stroke(_: impl Ctx, vector_data: VectorData) -> VectorData {
 	let VectorData { transform, style, .. } = &vector_data;
 	let subpaths = vector_data.stroke_bezier_paths();
 	let mut result = VectorData::empty();
@@ -534,19 +367,7 @@ async fn solidify_stroke<F: 'n + Send>(
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn flatten_vector_elements<F: 'n + Send>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> GraphicGroup,
-		Footprint -> GraphicGroup,
-	)]
-	graphic_group_input: impl Node<F, Output = GraphicGroup>,
-) -> VectorData {
-	let graphic_group = graphic_group_input.eval(footprint).await;
+async fn flatten_vector_elements(_: impl Ctx, graphic_group_input: GraphicGroup) -> VectorData {
 	// A node based solution to support passing through vector data could be a network node with a cache node connected to
 	// a flatten vector elements connected to an if else node, another connection from the cache directly
 	// To the if else node, and another connection from the cache to a matches type node connected to the if else node.
@@ -565,7 +386,7 @@ async fn flatten_vector_elements<F: 'n + Send>(
 	}
 
 	let mut result = VectorData::empty();
-	concat_group(&graphic_group, DAffine2::IDENTITY, &mut result);
+	concat_group(&graphic_group_input, DAffine2::IDENTITY, &mut result);
 	// TODO: This leads to incorrect stroke widths when flattening groups with different transforms.
 	result.style.set_stroke_transform(DAffine2::IDENTITY);
 
@@ -588,31 +409,7 @@ impl ConcatElement for GraphicGroup {
 }
 
 #[node_macro::node(category(""))]
-async fn sample_points<F: 'n + Send + Copy>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> VectorData,
-		Footprint -> VectorData,
-	)]
-	vector_data: impl Node<F, Output = VectorData>,
-	spacing: f64,
-	start_offset: f64,
-	stop_offset: f64,
-	adaptive_spacing: bool,
-	#[implementations(
-		() -> Vec<f64>,
-		Footprint -> Vec<f64>,
-	)]
-	subpath_segment_lengths: impl Node<F, Output = Vec<f64>>,
-) -> VectorData {
-	// Evaluate vector data and subpath segment lengths asynchronously.
-	let vector_data = vector_data.eval(footprint).await;
-	let subpath_segment_lengths = subpath_segment_lengths.eval(footprint).await;
-
+async fn sample_points(_: impl Ctx, vector_data: VectorData, spacing: f64, start_offset: f64, stop_offset: f64, adaptive_spacing: bool, subpath_segment_lengths: Vec<f64>) -> VectorData {
 	// Create an iterator over the bezier segments with enumeration and peeking capability.
 	let mut bezier = vector_data.segment_bezier_iter().enumerate().peekable();
 
@@ -756,24 +553,14 @@ async fn sample_points<F: 'n + Send + Copy>(
 }
 
 #[node_macro::node(category(""), path(graphene_core::vector))]
-async fn poisson_disk_points<F: 'n + Send>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> VectorData,
-		Footprint -> VectorData,
-	)]
-	vector_data: impl Node<F, Output = VectorData>,
+async fn poisson_disk_points(
+	_: impl Ctx,
+	vector_data: VectorData,
 	#[default(10.)]
 	#[min(0.01)]
 	separation_disk_diameter: f64,
 	seed: SeedValue,
 ) -> VectorData {
-	let vector_data = vector_data.eval(footprint).await;
-
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 	let mut result = VectorData::empty();
 
@@ -815,20 +602,7 @@ async fn poisson_disk_points<F: 'n + Send>(
 }
 
 #[node_macro::node(category(""))]
-async fn subpath_segment_lengths<F: 'n + Send>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> VectorData,
-		Footprint -> VectorData,
-	)]
-	vector_data: impl Node<F, Output = VectorData>,
-) -> Vec<f64> {
-	let vector_data = vector_data.eval(footprint).await;
-
+async fn subpath_segment_lengths(_: impl Ctx, vector_data: VectorData) -> Vec<f64> {
 	vector_data
 		.segment_bezier_iter()
 		.map(|(_id, bezier, _, _)| bezier.apply_transformation(|point| vector_data.transform.transform_point2(point)).length(None))
@@ -836,21 +610,7 @@ async fn subpath_segment_lengths<F: 'n + Send>(
 }
 
 #[node_macro::node(name("Splines from Points"), category("Vector"), path(graphene_core::vector))]
-async fn splines_from_points<F: 'n + Send>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> VectorData,
-		Footprint -> VectorData,
-	)]
-	vector_data: impl Node<F, Output = VectorData>,
-) -> VectorData {
-	// Evaluate the vector data within the given footprint.
-	let mut vector_data = vector_data.eval(footprint).await;
-
+async fn splines_from_points(_: impl Ctx, mut vector_data: VectorData) -> VectorData {
 	// Exit early if there are no points to generate splines from.
 	if vector_data.point_domain.positions().is_empty() {
 		return vector_data;
@@ -890,22 +650,7 @@ async fn splines_from_points<F: 'n + Send>(
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn jitter_points<F: 'n + Send>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> VectorData,
-		Footprint -> VectorData,
-	)]
-	vector_data: impl Node<F, Output = VectorData>,
-	#[default(5.)] amount: f64,
-	seed: SeedValue,
-) -> VectorData {
-	let mut vector_data = vector_data.eval(footprint).await;
-
+async fn jitter_points(_: impl Ctx, mut vector_data: VectorData, #[default(5.)] amount: f64, seed: SeedValue) -> VectorData {
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 
 	let deltas = (0..vector_data.point_domain.positions().len())
@@ -952,30 +697,15 @@ async fn jitter_points<F: 'n + Send>(
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn morph<F: 'n + Send + Copy>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> VectorData,
-		Footprint -> VectorData,
-	)]
-	source: impl Node<F, Output = VectorData>,
-	#[expose]
-	#[implementations(
-		() -> VectorData,
-		Footprint -> VectorData,
-	)]
-	target: impl Node<F, Output = VectorData>,
+async fn morph(
+	_: impl Ctx,
+	source: VectorData,
+	#[expose] target: VectorData,
 	#[range((0., 1.))]
 	#[default(0.5)]
 	time: Fraction,
 	#[min(0.)] start_index: IntegerCount,
 ) -> VectorData {
-	let source = source.eval(footprint).await;
-	let target = target.eval(footprint).await;
 	let mut result = VectorData::empty();
 
 	// Lerp styles
@@ -1163,20 +893,8 @@ fn bevel_algorithm(mut vector_data: VectorData, distance: f64) -> VectorData {
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn bevel<F: 'n + Send + Copy>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> VectorData,
-		Footprint -> VectorData,
-	)]
-	source: impl Node<F, Output = VectorData>,
-	#[default(10.)] distance: Length,
-) -> VectorData {
-	bevel_algorithm(source.eval(footprint).await, distance)
+fn bevel(_: impl Ctx, source: VectorData, #[default(10.)] distance: Length) -> VectorData {
+	bevel_algorithm(source, distance)
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
@@ -1192,8 +910,9 @@ async fn area(_: (), vector_data: impl Node<Footprint, Output = VectorData>) -> 
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn centroid(_: (), vector_data: impl Node<Footprint, Output = VectorData>, centroid_type: CentroidType) -> DVec2 {
-	let vector_data = vector_data.eval(Footprint::default()).await;
+async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl Node<Context<'static>, Output = VectorData>, centroid_type: CentroidType) -> DVec2 {
+	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
+	let vector_data = vector_data.eval(new_ctx).await;
 
 	if centroid_type == CentroidType::Area {
 		let mut area = 0.;

@@ -1,9 +1,10 @@
 use crate::application_io::TextureFrame;
 use crate::raster::{BlendMode, ImageFrame};
-use crate::transform::{ApplyTransform, Footprint, Transform, TransformMut};
+use crate::transform::{Transform, TransformMut};
 use crate::uuid::NodeId;
 use crate::vector::VectorData;
-use crate::{Color, Ctx};
+use crate::Context;
+use crate::{CloneVarArgs, Color, Ctx, ExtractAll, OwnedContextImpl};
 
 use dyn_any::DynAny;
 
@@ -305,34 +306,25 @@ async fn flatten_group(_: impl Ctx, group: GraphicGroup, fully_flatten: bool) ->
 }
 
 #[node_macro::node(category(""))]
-async fn to_artboard<F: 'n + Send + ApplyTransform, Data: Into<GraphicGroup> + 'n>(
+async fn to_artboard<Data: Into<GraphicGroup> + 'n>(
+	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
-		(),
-		(),
-		(),
-		(),
-		Footprint,
+		Context -> GraphicGroup,
+		Context -> VectorData,
+		Context -> ImageFrame<Color>,
+		Context -> TextureFrame,
 	)]
-	mut footprint: F,
-	#[implementations(
-		() -> GraphicGroup,
-		() -> VectorData,
-		() -> ImageFrame<Color>,
-		() -> TextureFrame,
-		Footprint -> GraphicGroup,
-		Footprint -> VectorData,
-		Footprint -> ImageFrame<Color>,
-		Footprint -> TextureFrame,
-	)]
-	contents: impl Node<F, Output = Data>,
+	contents: impl Node<Context<'static>, Output = Data>,
 	label: String,
 	location: IVec2,
 	dimensions: IVec2,
 	background: Color,
 	clip: bool,
 ) -> Artboard {
-	footprint.apply_transform(&DAffine2::from_translation(location.as_dvec2()));
-	let graphic_group = contents.eval(footprint).await;
+	let mut footprint = *ctx.footprint();
+	footprint.translate(location.as_dvec2());
+	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(footprint);
+	let graphic_group = contents.eval(new_ctx.into_context()).await;
 
 	Artboard {
 		graphic_group: graphic_group.into(),
@@ -345,27 +337,7 @@ async fn to_artboard<F: 'n + Send + ApplyTransform, Data: Into<GraphicGroup> + '
 }
 
 #[node_macro::node(category(""))]
-async fn append_artboard<F: 'n + Send + Copy>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> ArtboardGroup,
-		Footprint -> ArtboardGroup,
-	)]
-	artboards: impl Node<F, Output = ArtboardGroup>,
-	#[implementations(
-		() -> Artboard,
-		Footprint -> Artboard,
-	)]
-	artboard: impl Node<F, Output = Artboard>,
-	node_path: Vec<NodeId>,
-) -> ArtboardGroup {
-	let artboard = artboard.eval(footprint).await;
-	let mut artboards = artboards.eval(footprint).await;
-
+async fn append_artboard(_: impl Ctx, mut artboards: ArtboardGroup, artboard: Artboard, node_path: Vec<NodeId>) -> ArtboardGroup {
 	// Get the penultimate element of the node path, or None if the path is too short
 	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
 	artboards.append_artboard(artboard, encapsulating_node_id);
