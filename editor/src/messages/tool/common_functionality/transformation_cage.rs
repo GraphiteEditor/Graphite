@@ -406,12 +406,23 @@ impl BoundingBoxManager {
 		let min = self.bounds[0].min(self.bounds[1]);
 		let max = self.bounds[0].max(self.bounds[1]);
 		let [threshold_x, threshold_y] = self.compute_viewport_threshold(BOUNDS_SELECT_THRESHOLD);
+		let [min_x, min_y] = self.compute_viewport_threshold(MIN_LENGTH_FOR_CORNERS_VISIBILITY);
 
 		if min.x - cursor.x < threshold_x && min.y - cursor.y < threshold_y && cursor.x - max.x < threshold_x && cursor.y - max.y < threshold_y {
 			let mut top = (cursor.y - min.y).abs() < threshold_y;
 			let mut bottom = (max.y - cursor.y).abs() < threshold_y;
 			let mut left = (cursor.x - min.x).abs() < threshold_x;
 			let mut right = (max.x - cursor.x).abs() < threshold_x;
+
+			// Prioritise single axis transformations on very small bounds
+			if cursor.y - min.y + max.y - cursor.y < min_y && (left || right) {
+				top = false;
+				bottom = false;
+			}
+			if cursor.x - min.x + max.x - cursor.x < min_x && (top || bottom) {
+				left = false;
+				right = false;
+			}
 
 			// On bounds with no width/height, disallow transformation in the relevant axis
 			if (max.x - min.x) < f64::EPSILON * 1000. {
