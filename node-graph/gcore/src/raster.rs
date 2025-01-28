@@ -3,7 +3,7 @@ use crate::raster::image::ImageFrameTable;
 use crate::registry::types::Percentage;
 use crate::transform::Footprint;
 use crate::vector::VectorDataTable;
-use crate::GraphicGroup;
+use crate::GraphicGroupTable;
 
 use bytemuck::{Pod, Zeroable};
 use core::fmt::Debug;
@@ -300,9 +300,11 @@ impl SetBlendMode for VectorDataTable {
 		}
 	}
 }
-impl SetBlendMode for GraphicGroup {
+impl SetBlendMode for GraphicGroupTable {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		self.alpha_blending.blend_mode = blend_mode;
+		for mut instance in self.instances() {
+			instance.alpha_blending.blend_mode = blend_mode;
+		}
 	}
 }
 impl SetBlendMode for ImageFrameTable<Color> {
@@ -323,10 +325,10 @@ async fn blend_mode<F: 'n + Send, T: SetBlendMode>(
 	)]
 	footprint: F,
 	#[implementations(
-		() -> GraphicGroup,
+		() -> GraphicGroupTable,
 		() -> VectorDataTable,
 		() -> ImageFrameTable<Color>,
-		Footprint -> GraphicGroup,
+		Footprint -> GraphicGroupTable,
 		Footprint -> VectorDataTable,
 		Footprint -> ImageFrameTable<Color>,
 	)]
@@ -348,10 +350,10 @@ async fn opacity<F: 'n + Send, T: MultiplyAlpha>(
 	)]
 	footprint: F,
 	#[implementations(
-		() -> GraphicGroup,
+		() -> GraphicGroupTable,
 		() -> VectorDataTable,
 		() -> ImageFrameTable<Color>,
-		Footprint -> GraphicGroup,
+		Footprint -> GraphicGroupTable,
 		Footprint -> VectorDataTable,
 		Footprint -> ImageFrameTable<Color>,
 	)]

@@ -4,7 +4,7 @@ pub use attributes::*;
 pub use modification::*;
 
 use super::style::{PathStyle, Stroke};
-use crate::{AlphaBlending, Color, Instances};
+use crate::{AlphaBlending, Color, GraphicGroupTable, Instances};
 
 use bezier_rs::ManipulatorGroup;
 use dyn_any::DynAny;
@@ -31,7 +31,7 @@ pub struct VectorData {
 	pub region_domain: RegionDomain,
 
 	// Used to store the upstream graphic group during destructive Boolean Operations (and other nodes with a similar effect) so that click targets can be preserved.
-	pub upstream_graphic_group: Option<crate::GraphicGroup>,
+	pub upstream_graphic_group: Option<GraphicGroupTable>,
 }
 
 impl core::hash::Hash for VectorData {

@@ -15,10 +15,10 @@ use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::{PointId, VectorModificationType};
 use graphene_core::{Artboard, Color};
+use graphene_std::vector::{VectorData, VectorDataTable};
+use graphene_std::GraphicGroupTable;
 
 use glam::{DAffine2, DVec2, IVec2};
-use graphene_std::vector::{VectorData, VectorDataTable};
-use graphene_std::GraphicGroup;
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformIn {
@@ -127,7 +127,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn create_artboard(&mut self, new_id: NodeId, artboard: Artboard) -> LayerNodeIdentifier {
 		let artboard_node_template = resolve_document_node_type("Artboard").expect("Node").node_template_input_override([
 			Some(NodeInput::value(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroup::EMPTY), true)),
-			Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_core::GraphicGroup::EMPTY), true)),
+			Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_core::GraphicGroupTable::default()), true)),
 			Some(NodeInput::value(TaggedValue::IVec2(artboard.location), false)),
 			Some(NodeInput::value(TaggedValue::IVec2(artboard.dimensions), false)),
 			Some(NodeInput::value(TaggedValue::Color(artboard.background), false)),
@@ -139,7 +139,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn insert_boolean_data(&mut self, operation: graphene_std::vector::misc::BooleanOperation, layer: LayerNodeIdentifier) {
 		let boolean = resolve_document_node_type("Boolean Operation").expect("Boolean node does not exist").node_template_input_override([
-			Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_std::GraphicGroup::EMPTY), true)),
+			Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_std::GraphicGroupTable::default()), true)),
 			Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
 		]);
 
@@ -291,7 +291,7 @@ impl<'a> ModifyInputsContext<'a> {
 		// TODO: Allow the path node to operate on Graphic Group data by utilizing the reference for each vector data in a group.
 		if node_definition.identifier == "Path" {
 			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]).0.nested_type();
-			if layer_input_type == concrete!(GraphicGroup) {
+			if layer_input_type == concrete!(GraphicGroupTable) {
 				let Some(flatten_vector_elements_definition) = resolve_document_node_type("Flatten Vector Elements") else {
 					log::error!("Flatten Vector Elements does not exist in ModifyInputsContext::existing_node_id");
 					return None;

@@ -6,7 +6,7 @@ use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformSet};
 use crate::vector::style::LineJoin;
 use crate::vector::PointDomain;
-use crate::{Color, GraphicElement, GraphicGroup};
+use crate::{Color, GraphicElement, GraphicGroup, GraphicGroupTable};
 
 use bezier_rs::{Cap, Join, Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
@@ -19,11 +19,15 @@ trait VectorIterMut {
 	fn vector_iter_mut(&mut self) -> impl Iterator<Item = (MutexGuard<'_, VectorData>, DAffine2)>;
 }
 
-impl VectorIterMut for GraphicGroup {
+impl VectorIterMut for GraphicGroupTable {
 	fn vector_iter_mut(&mut self) -> impl Iterator<Item = (MutexGuard<'_, VectorData>, DAffine2)> {
-		let parent_transform = self.transform;
+		let mut instance = self.instances().next().expect("ONE INSTANCE EXPECTED");
+
+		let parent_transform = instance.transform;
+
+		// TODO: Get this to compile
 		// Grab only the direct children (perhaps unintuitive?)
-		self.iter_mut().filter_map(|(element, _)| element.as_vector_data_mut()).map(move |vector_data| {
+		instance.iter_mut().filter_map(|(element, _)| element.as_vector_data_mut()).map(move |vector_data| {
 			let vector_data = vector_data.instances().next().expect("ONE INSTANCE EXPECTED");
 			let transform = parent_transform * vector_data.transform;
 			(vector_data, transform)
@@ -49,9 +53,9 @@ async fn assign_colors<F: 'n + Send, T: VectorIterMut>(
 	)]
 	footprint: F,
 	#[implementations(
-		() -> GraphicGroup,
+		() -> GraphicGroupTable,
 		() -> VectorDataTable,
-		Footprint -> GraphicGroup,
+		Footprint -> GraphicGroupTable,
 		Footprint -> VectorDataTable,
 	)]
 	#[widget(ParsedWidgetOverride::Hidden)]
@@ -122,18 +126,18 @@ async fn fill<F: 'n + Send, FillTy: Into<Fill> + 'n + Send, TargetTy: VectorIter
 		() -> VectorDataTable,
 		() -> VectorDataTable,
 		() -> VectorDataTable,
-		() -> GraphicGroup,
-		() -> GraphicGroup,
-		() -> GraphicGroup,
-		() -> GraphicGroup,
+		() -> GraphicGroupTable,
+		() -> GraphicGroupTable,
+		() -> GraphicGroupTable,
+		() -> GraphicGroupTable,
 		Footprint -> VectorDataTable,
 		Footprint -> VectorDataTable,
 		Footprint -> VectorDataTable,
 		Footprint -> VectorDataTable,
-		Footprint -> GraphicGroup,
-		Footprint -> GraphicGroup,
-		Footprint -> GraphicGroup,
-		Footprint -> GraphicGroup,
+		Footprint -> GraphicGroupTable,
+		Footprint -> GraphicGroupTable,
+		Footprint -> GraphicGroupTable,
+		Footprint -> GraphicGroupTable,
 	)]
 	vector_data: impl Node<F, Output = TargetTy>,
 	#[implementations(
@@ -184,12 +188,12 @@ async fn stroke<F: 'n + Send, ColorTy: Into<Option<Color>> + 'n + Send, TargetTy
 	#[implementations(
 		() -> VectorDataTable,
 		() -> VectorDataTable,
-		() -> GraphicGroup,
-		() -> GraphicGroup,
+		() -> GraphicGroupTable,
+		() -> GraphicGroupTable,
 		Footprint -> VectorDataTable,
 		Footprint -> VectorDataTable,
-		Footprint -> GraphicGroup,
-		Footprint -> GraphicGroup,
+		Footprint -> GraphicGroupTable,
+		Footprint -> GraphicGroupTable,
 	)]
 	vector_data: impl Node<F, Output = TargetTy>,
 	#[implementations(
@@ -241,9 +245,9 @@ async fn repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + Transform 
 	// TODO: Implement other GraphicElementRendered types.
 	#[implementations(
 		() -> VectorDataTable,
-		() -> GraphicGroup,
+		() -> GraphicGroupTable,
 		Footprint -> VectorDataTable,
-		Footprint -> GraphicGroup,
+		Footprint -> GraphicGroupTable,
 	)]
 	instance: impl Node<F, Output = I>,
 	#[default(100., 100.)]
@@ -251,7 +255,7 @@ async fn repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + Transform 
 	direction: DVec2,
 	angle: Angle,
 	#[default(4)] instances: IntegerCount,
-) -> GraphicGroup {
+) -> GraphicGroupTable {
 	let instance = instance.eval(footprint).await;
 	let first_vector_transform = instance.transform();
 
@@ -259,10 +263,10 @@ async fn repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + Transform 
 	let instances = instances.max(1);
 	let total = (instances - 1) as f64;
 
-	let mut result = GraphicGroup::EMPTY;
+	let mut result = GraphicGroup::default();
 
 	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY) else {
-		return result;
+		return GraphicGroupTable::new(result);
 	};
 
 	let center = (bounding_box[0] + bounding_box[1]) / 2.;
@@ -278,7 +282,7 @@ async fn repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + Transform 
 		result.push((new_instance, None));
 	}
 
-	result
+	GraphicGroupTable::new(result)
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
@@ -293,23 +297,23 @@ async fn circular_repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + T
 	// TODO: Implement other GraphicElementRendered types.
 	#[implementations(
 		() -> VectorDataTable,
-		() -> GraphicGroup,
+		() -> GraphicGroupTable,
 		Footprint -> VectorDataTable,
-		Footprint -> GraphicGroup,
+		Footprint -> GraphicGroupTable,
 	)]
 	instance: impl Node<F, Output = I>,
 	angle_offset: Angle,
 	#[default(5)] radius: f64,
 	#[default(5)] instances: IntegerCount,
-) -> GraphicGroup {
+) -> GraphicGroupTable {
 	let instance = instance.eval(footprint).await;
 	let first_vector_transform = instance.transform();
 	let instances = instances.max(1);
 
-	let mut result = GraphicGroup::EMPTY;
+	let mut result = GraphicGroup::default();
 
 	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY) else {
-		return result;
+		return GraphicGroupTable::new(result);
 	};
 
 	let center = (bounding_box[0] + bounding_box[1]) / 2.;
@@ -326,7 +330,7 @@ async fn circular_repeat<F: 'n + Send + Copy, I: 'n + GraphicElementRendered + T
 		result.push((new_instance, None));
 	}
 
-	result
+	GraphicGroupTable::new(result)
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
@@ -346,9 +350,9 @@ async fn copy_to_points<F: 'n + Send + Copy, I: GraphicElementRendered + ConcatE
 	#[expose]
 	#[implementations(
 		() -> VectorDataTable,
-		() -> GraphicGroup,
+		() -> GraphicGroupTable,
 		Footprint -> VectorDataTable,
-		Footprint -> GraphicGroup,
+		Footprint -> GraphicGroupTable,
 	)]
 	instance: impl Node<F, Output = I>,
 	#[default(1)] random_scale_min: f64,
@@ -357,7 +361,7 @@ async fn copy_to_points<F: 'n + Send + Copy, I: GraphicElementRendered + ConcatE
 	random_scale_seed: SeedValue,
 	random_rotation: Angle,
 	random_rotation_seed: SeedValue,
-) -> GraphicGroup {
+) -> GraphicGroupTable {
 	let points = points.eval(footprint).await;
 	let points = points.instances().next().expect("ONE INSTANCE EXPECTED");
 
@@ -412,7 +416,7 @@ async fn copy_to_points<F: 'n + Send + Copy, I: GraphicElementRendered + ConcatE
 		result.push((new_instance, None));
 	}
 
-	result
+	GraphicGroupTable::new(result)
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
@@ -553,12 +557,14 @@ async fn flatten_vector_elements<F: 'n + Send>(
 	)]
 	footprint: F,
 	#[implementations(
-		() -> GraphicGroup,
-		Footprint -> GraphicGroup,
+		() -> GraphicGroupTable,
+		Footprint -> GraphicGroupTable,
 	)]
-	graphic_group_input: impl Node<F, Output = GraphicGroup>,
+	graphic_group_input: impl Node<F, Output = GraphicGroupTable>,
 ) -> VectorDataTable {
 	let graphic_group = graphic_group_input.eval(footprint).await;
+	let graphic_group = graphic_group.instances().next().expect("ONE INSTANCE EXPECTED");
+
 	// A node based solution to support passing through vector data could be a network node with a cache node connected to
 	// a flatten vector elements connected to an if else node, another connection from the cache directly
 	// To the if else node, and another connection from the cache to a matches type node connected to the if else node.
@@ -571,7 +577,8 @@ async fn flatten_vector_elements<F: 'n + Send>(
 					}
 				}
 				GraphicElement::GraphicGroup(graphic_group) => {
-					concat_group(graphic_group, current_transform * graphic_group.transform, result);
+					let graphic_group = graphic_group.instances().next().expect("ONE INSTANCE EXPECTED");
+					concat_group(&graphic_group, current_transform * graphic_group.transform, result);
 				}
 				_ => {}
 			}
@@ -590,14 +597,18 @@ pub trait ConcatElement {
 	fn concat(&mut self, other: &Self, transform: DAffine2, node_id: u64);
 }
 
-impl ConcatElement for GraphicGroup {
+impl ConcatElement for GraphicGroupTable {
 	fn concat(&mut self, other: &Self, transform: DAffine2, _node_id: u64) {
+		let mut own = self.instances().next().expect("ONE INSTANCE EXPECTED");
+		let other = other.instances().next().expect("ONE INSTANCE EXPECTED");
+
 		// TODO: Decide if we want to keep this behavior whereby the layers are flattened
 		for (mut element, footprint_mapping) in other.iter().cloned() {
 			element.set_transform(transform * element.transform() * other.transform());
-			self.push((element, footprint_mapping));
+			own.push((element, footprint_mapping));
 		}
-		self.alpha_blending = other.alpha_blending;
+
+		own.alpha_blending = other.alpha_blending;
 	}
 }
 

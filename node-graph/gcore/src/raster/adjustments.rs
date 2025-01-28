@@ -9,7 +9,7 @@ use crate::registry::types::{Angle, Percentage, SignedPercentage};
 use crate::transform::Footprint;
 use crate::vector::style::GradientStops;
 use crate::vector::VectorDataTable;
-use crate::{GraphicElement, GraphicGroup};
+use crate::{GraphicElement, GraphicGroupTable};
 
 use dyn_any::DynAny;
 
@@ -1507,9 +1507,11 @@ impl MultiplyAlpha for VectorDataTable {
 		}
 	}
 }
-impl MultiplyAlpha for GraphicGroup {
+impl MultiplyAlpha for GraphicGroupTable {
 	fn multiply_alpha(&mut self, factor: f64) {
-		self.alpha_blending.opacity *= factor as f32;
+		for mut instance in self.instances() {
+			instance.alpha_blending.opacity *= factor as f32;
+		}
 	}
 }
 impl<P: Pixel> MultiplyAlpha for ImageFrameTable<P>

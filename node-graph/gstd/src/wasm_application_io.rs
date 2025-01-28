@@ -13,7 +13,7 @@ use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, I
 use graphene_core::transform::Footprint;
 use graphene_core::transform::TransformSet;
 use graphene_core::vector::VectorDataTable;
-use graphene_core::GraphicGroup;
+use graphene_core::GraphicGroupTable;
 use graphene_core::{Color, WasmNotSend};
 
 #[cfg(target_arch = "wasm32")]
@@ -217,7 +217,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	#[implementations(
 		Footprint -> VectorDataTable,
 		Footprint -> ImageFrameTable<Color>,
-		Footprint -> GraphicGroup,
+		Footprint -> GraphicGroupTable,
 		Footprint -> graphene_core::Artboard,
 		Footprint -> graphene_core::ArtboardGroup,
 		Footprint -> Option<Color>,

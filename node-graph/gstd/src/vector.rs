@@ -5,7 +5,7 @@ use graphene_core::transform::Transform;
 use graphene_core::vector::misc::BooleanOperation;
 use graphene_core::vector::style::Fill;
 pub use graphene_core::vector::*;
-use graphene_core::{Color, GraphicElement, GraphicGroup};
+use graphene_core::{Color, GraphicElement, GraphicGroupTable};
 pub use path_bool as path_bool_lib;
 use path_bool::{FillRule, PathBooleanOperation};
 
@@ -20,13 +20,14 @@ async fn boolean_operation<F: 'n + Send>(
 	)]
 	footprint: F,
 	#[implementations(
-		() -> GraphicGroup,
-		Footprint -> GraphicGroup,
+		() -> GraphicGroupTable,
+		Footprint -> GraphicGroupTable,
 	)]
-	group_of_paths: impl Node<F, Output = GraphicGroup>,
+	group_of_paths: impl Node<F, Output = GraphicGroupTable>,
 	operation: BooleanOperation,
 ) -> VectorDataTable {
 	let group_of_paths = group_of_paths.eval(footprint).await;
+	let group_of_paths = group_of_paths.instances().next().expect("ONE INSTANCE EXPECTED");
 
 	fn vector_from_image<T: Transform>(image_frame: T) -> VectorDataTable {
 		let corner1 = DVec2::ZERO;

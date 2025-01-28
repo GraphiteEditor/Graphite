@@ -3,7 +3,7 @@ use crate::raster::bbox::AxisAlignedBbox;
 use crate::raster::image::{ImageFrame, ImageFrameTable};
 use crate::raster::Pixel;
 use crate::vector::{VectorData, VectorDataTable};
-use crate::{Artboard, ArtboardGroup, Color, GraphicElement, GraphicGroup};
+use crate::{Artboard, ArtboardGroup, Color, GraphicElement, GraphicGroup, GraphicGroupTable};
 
 use glam::{DAffine2, DVec2};
 
@@ -100,6 +100,20 @@ impl Transform for GraphicGroup {
 impl TransformSet for GraphicGroup {
 	fn set_transform(&mut self, value: DAffine2) {
 		self.transform = value;
+	}
+}
+
+// Implementations for GraphicGroupTable
+impl Transform for GraphicGroupTable {
+	fn transform(&self) -> DAffine2 {
+		let graphic_group = self.instances().next().expect("ONE INSTANCE EXPECTED");
+		graphic_group.transform
+	}
+}
+impl TransformSet for GraphicGroupTable {
+	fn set_transform(&mut self, value: DAffine2) {
+		let mut graphic_group = self.instances().next().expect("ONE INSTANCE EXPECTED");
+		graphic_group.transform = value;
 	}
 }
 
@@ -259,7 +273,7 @@ impl From<()> for Footprint {
 }
 
 #[node_macro::node(category("Debug"))]
-fn cull<T>(_footprint: Footprint, #[implementations(VectorDataTable, GraphicGroup, Artboard, ImageFrameTable<Color>, ArtboardGroup)] data: T) -> T {
+fn cull<T>(_footprint: Footprint, #[implementations(VectorDataTable, GraphicGroupTable, Artboard, ImageFrameTable<Color>, ArtboardGroup)] data: T) -> T {
 	data
 }
 
@@ -294,11 +308,11 @@ async fn transform<I: Into<Footprint> + 'n + ApplyTransform + Clone + Send + Syn
 	mut input: I,
 	#[implementations(
 		() -> VectorDataTable,
-		() -> GraphicGroup,
+		() -> GraphicGroupTable,
 		() -> ImageFrameTable<Color>,
 		() -> TextureFrame,
 		Footprint -> VectorDataTable,
-		Footprint -> GraphicGroup,
+		Footprint -> GraphicGroupTable,
 		Footprint -> ImageFrameTable<Color>,
 		Footprint -> TextureFrame,
 	)]
@@ -325,7 +339,7 @@ async fn transform<I: Into<Footprint> + 'n + ApplyTransform + Clone + Send + Syn
 #[node_macro::node(category(""))]
 fn replace_transform<Data: TransformSet, TransformInput: Transform>(
 	_: (),
-	#[implementations(VectorDataTable, ImageFrameTable<Color>, GraphicGroup)] mut data: Data,
+	#[implementations(VectorDataTable, ImageFrameTable<Color>, GraphicGroupTable)] mut data: Data,
 	#[implementations(DAffine2)] transform: TransformInput,
 ) -> Data {
 	data.set_transform(transform.transform());

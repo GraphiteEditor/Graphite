@@ -24,7 +24,7 @@ use graphene_std::transform::Footprint;
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops};
 use graphene_std::vector::VectorDataTable;
-use graphene_std::{GraphicGroup, RasterFrame};
+use graphene_std::{GraphicGroupTable, RasterFrame};
 
 use glam::{DAffine2, DVec2, IVec2, UVec2};
 
@@ -157,7 +157,7 @@ pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, numbe
 						Some(x) if x == TypeId::of::<RasterFrame>() || x == TypeId::of::<ImageFrameTable<Color>>() || x == TypeId::of::<TextureFrame>() => {
 							raster_widget(document_node, node_id, index, name, true).into()
 						}
-						Some(x) if x == TypeId::of::<GraphicGroup>() => group_widget(document_node, node_id, index, name, true).into(),
+						Some(x) if x == TypeId::of::<GraphicGroupTable>() => group_widget(document_node, node_id, index, name, true).into(),
 						Some(x) if x == TypeId::of::<Footprint>() => {
 							let widgets = footprint_widget(document_node, node_id, index);
 							let (last, rest) = widgets.split_last().expect("Footprint widget should return multiple rows");

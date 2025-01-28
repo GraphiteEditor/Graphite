@@ -102,6 +102,8 @@ unsafe impl<T: Into<GraphicElement> + StaticType + 'static> dyn_any::StaticType 
 	type Static = Instances<T>;
 }
 
+pub type GraphicGroupTable = Instances<GraphicGroup>;
+
 /// A list of [`GraphicElement`]s
 #[derive(Clone, Debug, PartialEq, DynAny, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -120,12 +122,6 @@ impl core::hash::Hash for GraphicGroup {
 }
 
 impl GraphicGroup {
-	pub const EMPTY: Self = Self {
-		elements: Vec::new(),
-		transform: DAffine2::IDENTITY,
-		alpha_blending: AlphaBlending::new(),
-	};
-
 	pub fn new(elements: Vec<GraphicElement>) -> Self {
 		Self {
 			elements: elements.into_iter().map(|element| (element, None)).collect(),
@@ -140,7 +136,7 @@ impl GraphicGroup {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GraphicElement {
 	/// Equivalent to the SVG <g> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g
-	GraphicGroup(GraphicGroup),
+	GraphicGroup(GraphicGroupTable),
 	/// A vector shape, equivalent to the SVG <path> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path
 	VectorData(VectorDataTable),
 	RasterFrame(RasterFrame),
@@ -154,14 +150,14 @@ impl Default for GraphicElement {
 }
 
 impl GraphicElement {
-	pub fn as_group(&self) -> Option<&GraphicGroup> {
+	pub fn as_group(&self) -> Option<&GraphicGroupTable> {
 		match self {
 			GraphicElement::GraphicGroup(group) => Some(group),
 			_ => None,
 		}
 	}
 
-	pub fn as_group_mut(&mut self) -> Option<&mut GraphicGroup> {
+	pub fn as_group_mut(&mut self) -> Option<&mut GraphicGroupTable> {
 		match self {
 			GraphicElement::GraphicGroup(group) => Some(group),
 			_ => None,
@@ -264,7 +260,7 @@ pub struct Artboard {
 impl Artboard {
 	pub fn new(location: IVec2, dimensions: IVec2) -> Self {
 		Self {
-			graphic_group: GraphicGroup::EMPTY,
+			graphic_group: GraphicGroup::default(),
 			label: String::from("Artboard"),
 			location: location.min(location + dimensions),
 			dimensions: dimensions.abs(),
@@ -392,13 +388,13 @@ async fn flatten_group<F: 'n + Send>(
 	fully_flatten: bool,
 ) -> GraphicGroup {
 	let nested_group = group.eval(footprint).await;
-	let mut flat_group = GraphicGroup::EMPTY;
+	let mut flat_group = GraphicGroup::default();
 	fn flatten_group(result_group: &mut GraphicGroup, current_group: GraphicGroup, fully_flatten: bool) {
-		let mut collection_group = GraphicGroup::EMPTY;
+		let mut collection_group = GraphicGroup::default();
 		for (element, reference) in current_group.elements {
 			if let GraphicElement::GraphicGroup(mut nested_group) = element {
 				nested_group.transform *= current_group.transform;
-				let mut sub_group = GraphicGroup::EMPTY;
+				let mut sub_group = GraphicGroup::default();
 				if fully_flatten {
 					flatten_group(&mut sub_group, nested_group, fully_flatten);
 				} else {

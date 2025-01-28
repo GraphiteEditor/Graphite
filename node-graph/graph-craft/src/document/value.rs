@@ -170,7 +170,7 @@ tagged_value! {
 	BrushStrokes(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
 	BrushCache(BrushCache),
 	DocumentNode(DocumentNode),
-	GraphicGroup(graphene_core::GraphicGroup),
+	GraphicGroup(graphene_core::GraphicGroupTable),
 	GraphicElement(graphene_core::GraphicElement),
 	ArtboardGroup(graphene_core::ArtboardGroup),
 	Curve(graphene_core::raster::curve::Curve),

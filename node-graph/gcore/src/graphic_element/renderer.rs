@@ -9,7 +9,7 @@ use crate::transform::{Footprint, Transform};
 use crate::uuid::{generate_uuid, NodeId};
 use crate::vector::style::{Fill, Stroke, ViewMode};
 use crate::vector::{PointId, VectorDataTable};
-use crate::{AlphaBlending, Artboard, ArtboardGroup, Color, GraphicElement, GraphicGroup, RasterFrame};
+use crate::{AlphaBlending, Artboard, ArtboardGroup, Color, GraphicElement, GraphicGroup, GraphicGroupTable, RasterFrame};
 
 use bezier_rs::Subpath;
 use dyn_any::DynAny;
@@ -403,6 +403,51 @@ impl GraphicElementRendered for GraphicGroup {
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {
 		for (element, node_id) in self.elements.iter_mut() {
 			element.new_ids_from_hash(*node_id);
+		}
+	}
+
+	fn to_graphic_element(&self) -> GraphicElement {
+		GraphicElement::GraphicGroup(GraphicGroupTable::new(self.clone()))
+	}
+}
+
+impl GraphicElementRendered for GraphicGroupTable {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		for instance in self.instances() {
+			instance.render_svg(render, render_params);
+		}
+	}
+
+	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
+		self.instances().flat_map(|instance| instance.bounding_box(transform)).reduce(Quad::combine_bounds)
+	}
+
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
+		let instance = self.instances().next().expect("ONE INSTANCE EXPECTED");
+
+		instance.collect_metadata(metadata, footprint, element_id);
+	}
+
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+		for instance in self.instances() {
+			instance.add_upstream_click_targets(click_targets);
+		}
+	}
+
+	#[cfg(feature = "vello")]
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
+		for instance in self.instances() {
+			instance.render_to_vello(scene, transform, context);
+		}
+	}
+
+	fn contains_artboard(&self) -> bool {
+		self.instances().any(|instance| instance.contains_artboard())
+	}
+
+	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {
+		for mut instance in self.instances() {
+			instance.new_ids_from_hash(None);
 		}
 	}
 

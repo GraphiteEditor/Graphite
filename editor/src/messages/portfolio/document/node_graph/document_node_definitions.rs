@@ -204,8 +204,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
-						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
+						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroupTable::default()), true),
+						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroupTable::default()), true),
 					],
 					..Default::default()
 				},
@@ -313,7 +313,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					}),
 					inputs: vec![
 						NodeInput::value(TaggedValue::ArtboardGroup(ArtboardGroup::EMPTY), true),
-						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
+						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroupTable::default()), true),
 						NodeInput::value(TaggedValue::IVec2(glam::IVec2::ZERO), false),
 						NodeInput::value(TaggedValue::IVec2(glam::IVec2::new(1920, 1080)), false),
 						NodeInput::value(TaggedValue::Color(Color::WHITE), false),
@@ -2315,7 +2315,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
+						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroupTable::default()), true),
 						NodeInput::value(TaggedValue::BooleanOperation(vector::misc::BooleanOperation::Union), false),
 					],
 					..Default::default()
