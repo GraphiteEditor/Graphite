@@ -11,7 +11,6 @@ use graphene_core::raster::Image;
 use graphene_core::renderer::RenderMetadata;
 use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
 use graphene_core::transform::Footprint;
-use graphene_core::transform::TransformSet;
 use graphene_core::vector::VectorDataTable;
 use graphene_core::GraphicGroupTable;
 use graphene_core::{Color, WasmNotSend};
@@ -20,10 +19,10 @@ use graphene_core::{Color, WasmNotSend};
 use base64::Engine;
 #[cfg(target_arch = "wasm32")]
 use glam::DAffine2;
+#[cfg(target_arch = "wasm32")]
+use graphene_core::transform::TransformSet;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::Clamped;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
@@ -34,30 +33,33 @@ async fn create_surface<'a: 'n>(_: (), editor: &'a WasmEditorApi) -> Arc<WasmSur
 	Arc::new(editor.application_io.as_ref().unwrap().create_window())
 }
 
-#[node_macro::node(category("Debug: GPU"))]
-#[cfg(target_arch = "wasm32")]
-async fn draw_image_frame(
-	_: (),
-	image: ImageFrameTable<graphene_core::raster::SRGBA8>,
-	surface_handle: Arc<WasmSurfaceHandle>,
-) -> graphene_core::application_io::SurfaceHandleFrame<HtmlCanvasElement> {
-	let image = image.instances().next().expect("ONE INSTANCE EXPECTED");
-	let image_data = image.image.data;
-	let array: Clamped<&[u8]> = Clamped(bytemuck::cast_slice(image_data.as_slice()));
-	if image.image.width > 0 && image.image.height > 0 {
-		let canvas = &surface_handle.surface;
-		canvas.set_width(image.image.width);
-		canvas.set_height(image.image.height);
-		// TODO: replace "2d" with "bitmaprenderer" once we switch to ImageBitmap (lives on gpu) from ImageData (lives on cpu)
-		let context = canvas.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
-		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(array, image.image.width, image.image.height).expect("Failed to construct ImageData");
-		context.put_image_data(&image_data, 0., 0.).unwrap();
-	}
-	graphene_core::application_io::SurfaceHandleFrame {
-		surface_handle,
-		transform: image.transform,
-	}
-}
+// #[cfg(target_arch = "wasm32")]
+// use wasm_bindgen::Clamped;
+//
+// #[node_macro::node(category("Debug: GPU"))]
+// #[cfg(target_arch = "wasm32")]
+// async fn draw_image_frame(
+// 	_: (),
+// 	image: ImageFrameTable<graphene_core::raster::SRGBA8>,
+// 	surface_handle: Arc<WasmSurfaceHandle>,
+// ) -> graphene_core::application_io::SurfaceHandleFrame<HtmlCanvasElement> {
+// 	let image = image.instances().next().expect("ONE INSTANCE EXPECTED");
+// 	let image_data = image.image.data;
+// 	let array: Clamped<&[u8]> = Clamped(bytemuck::cast_slice(image_data.as_slice()));
+// 	if image.image.width > 0 && image.image.height > 0 {
+// 		let canvas = &surface_handle.surface;
+// 		canvas.set_width(image.image.width);
+// 		canvas.set_height(image.image.height);
+// 		// TODO: replace "2d" with "bitmaprenderer" once we switch to ImageBitmap (lives on gpu) from ImageData (lives on cpu)
+// 		let context = canvas.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
+// 		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(array, image.image.width, image.image.height).expect("Failed to construct ImageData");
+// 		context.put_image_data(&image_data, 0., 0.).unwrap();
+// 	}
+// 	graphene_core::application_io::SurfaceHandleFrame {
+// 		surface_handle,
+// 		transform: image.transform,
+// 	}
+// }
 
 #[node_macro::node(category("Network"))]
 async fn load_resource<'a: 'n>(_: (), _primary: (), #[scope("editor-api")] editor: &'a WasmEditorApi, url: String) -> Arc<[u8]> {
@@ -155,15 +157,15 @@ async fn rasterize<T: GraphicElementRendered + TransformSet + WasmNotSend + 'n>(
 	#[implementations(
 		Footprint -> VectorDataTable,
 		Footprint -> ImageFrameTable<Color>,
-		Footprint -> GraphicGroup,
+		Footprint -> GraphicGroupTable,
 	)]
 	data: impl Node<Footprint, Output = T>,
 	footprint: Footprint,
 	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
-) -> ImageFrameFrame<Color> {
+) -> ImageFrameTable<Color> {
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");
-		return ImageFrameFrame::default();
+		return ImageFrameTable::default();
 	}
 
 	let mut data = data.eval(footprint).await;
@@ -207,7 +209,7 @@ async fn rasterize<T: GraphicElementRendered + TransformSet + WasmNotSend + 'n>(
 		..Default::default()
 	};
 
-	ImageFrameFrame::new(result)
+	ImageFrameTable::new(result)
 }
 
 #[node_macro::node(category(""))]

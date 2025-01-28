@@ -446,7 +446,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 	}
 
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {
-		for mut instance in self.instances() {
+		for instance in self.instances_mut() {
 			instance.new_ids_from_hash(None);
 		}
 	}
@@ -673,7 +673,7 @@ impl GraphicElementRendered for VectorDataTable {
 	}
 
 	fn new_ids_from_hash(&mut self, reference: Option<NodeId>) {
-		for mut instance in self.instances() {
+		for instance in self.instances_mut() {
 			instance.vector_new_ids_from_hash(reference.map(|id| id.0).unwrap_or_default());
 		}
 	}
@@ -757,8 +757,8 @@ impl GraphicElementRendered for Artboard {
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let mut subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
 
-		if self.graphic_group.transform.matrix2.determinant() != 0. {
-			subpath.apply_transform(self.graphic_group.transform.inverse());
+		if self.graphic_group.transform().matrix2.determinant() != 0. {
+			subpath.apply_transform(self.graphic_group.transform().inverse());
 			click_targets.push(ClickTarget::new(subpath, 0.));
 		}
 	}

@@ -11,24 +11,22 @@ use crate::{Color, GraphicElement, GraphicGroup, GraphicGroupTable};
 use bezier_rs::{Cap, Join, Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
 use rand::{Rng, SeedableRng};
-use std::sync::MutexGuard;
 
 /// Implemented for types that can be converted to an iterator of vector data.
 /// Used for the fill and stroke node so they can be used on VectorData or GraphicGroup
 trait VectorIterMut {
-	fn vector_iter_mut(&mut self) -> impl Iterator<Item = (MutexGuard<'_, VectorData>, DAffine2)>;
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = (&mut VectorData, DAffine2)>;
 }
 
 impl VectorIterMut for GraphicGroupTable {
-	fn vector_iter_mut(&mut self) -> impl Iterator<Item = (MutexGuard<'_, VectorData>, DAffine2)> {
-		let mut instance = self.instances().next().expect("ONE INSTANCE EXPECTED");
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = (&mut VectorData, DAffine2)> {
+		let instance = self.instances_mut().next().expect("ONE INSTANCE EXPECTED");
 
 		let parent_transform = instance.transform;
 
-		// TODO: Get this to compile
-		// Grab only the direct children (perhaps unintuitive?)
+		// Grab only the direct children
 		instance.iter_mut().filter_map(|(element, _)| element.as_vector_data_mut()).map(move |vector_data| {
-			let vector_data = vector_data.instances().next().expect("ONE INSTANCE EXPECTED");
+			let vector_data = vector_data.instances_mut().next().expect("ONE INSTANCE EXPECTED");
 			let transform = parent_transform * vector_data.transform;
 			(vector_data, transform)
 		})
@@ -36,8 +34,8 @@ impl VectorIterMut for GraphicGroupTable {
 }
 
 impl VectorIterMut for VectorDataTable {
-	fn vector_iter_mut(&mut self) -> impl Iterator<Item = (MutexGuard<'_, VectorData>, DAffine2)> {
-		self.instances().map(|instance| {
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = (&mut VectorData, DAffine2)> {
+		self.instances_mut().map(|instance| {
 			let transform = instance.transform;
 			(instance, transform)
 		})
@@ -75,7 +73,7 @@ async fn assign_colors<F: 'n + Send, T: VectorIterMut>(
 
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 
-	for (i, (mut vector_data, _)) in vector_group.vector_iter_mut().enumerate() {
+	for (i, (vector_data, _)) in vector_group.vector_iter_mut().enumerate() {
 		let factor = match randomize {
 			true => rng.gen::<f64>(),
 			false => match repeat_every {
@@ -165,7 +163,7 @@ async fn fill<F: 'n + Send, FillTy: Into<Fill> + 'n + Send, TargetTy: VectorIter
 ) -> TargetTy {
 	let mut target = vector_data.eval(footprint).await;
 	let fill: Fill = fill.into();
-	for (mut target, _transform) in target.vector_iter_mut() {
+	for (target, _transform) in target.vector_iter_mut() {
 		target.style.set_fill(fill.clone());
 	}
 
@@ -226,7 +224,7 @@ async fn stroke<F: 'n + Send, ColorTy: Into<Option<Color>> + 'n + Send, TargetTy
 		line_join_miter_limit: miter_limit,
 		transform: DAffine2::IDENTITY,
 	};
-	for (mut target, transform) in target.vector_iter_mut() {
+	for (target, transform) in target.vector_iter_mut() {
 		target.style.set_stroke(Stroke { transform, ..stroke.clone() });
 	}
 
@@ -573,12 +571,12 @@ async fn flatten_vector_elements<F: 'n + Send>(
 			match element {
 				GraphicElement::VectorData(vector_data) => {
 					for instance in vector_data.instances() {
-						result.concat(&instance, current_transform, reference.map(|node_id| node_id.0).unwrap_or_default());
+						result.concat(instance, current_transform, reference.map(|node_id| node_id.0).unwrap_or_default());
 					}
 				}
 				GraphicElement::GraphicGroup(graphic_group) => {
 					let graphic_group = graphic_group.instances().next().expect("ONE INSTANCE EXPECTED");
-					concat_group(&graphic_group, current_transform * graphic_group.transform, result);
+					concat_group(graphic_group, current_transform * graphic_group.transform, result);
 				}
 				_ => {}
 			}
@@ -586,7 +584,7 @@ async fn flatten_vector_elements<F: 'n + Send>(
 	}
 
 	let mut result = VectorData::empty();
-	concat_group(&graphic_group, DAffine2::IDENTITY, &mut result);
+	concat_group(graphic_group, DAffine2::IDENTITY, &mut result);
 	// TODO: This leads to incorrect stroke widths when flattening groups with different transforms.
 	result.style.set_stroke_transform(DAffine2::IDENTITY);
 
@@ -599,7 +597,7 @@ pub trait ConcatElement {
 
 impl ConcatElement for GraphicGroupTable {
 	fn concat(&mut self, other: &Self, transform: DAffine2, _node_id: u64) {
-		let mut own = self.instances().next().expect("ONE INSTANCE EXPECTED");
+		let own = self.instances_mut().next().expect("ONE INSTANCE EXPECTED");
 		let other = other.instances().next().expect("ONE INSTANCE EXPECTED");
 
 		// TODO: Decide if we want to keep this behavior whereby the layers are flattened
@@ -877,8 +875,8 @@ async fn splines_from_points<F: 'n + Send>(
 	vector_data: impl Node<F, Output = VectorDataTable>,
 ) -> VectorDataTable {
 	// Evaluate the vector data within the given footprint.
-	let vector_data = vector_data.eval(footprint).await;
-	let mut vector_data = vector_data.instances().next().expect("ONE INSTANCE EXPECTED");
+	let mut vector_data = vector_data.eval(footprint).await;
+	let vector_data = vector_data.instances_mut().next().expect("ONE INSTANCE EXPECTED");
 
 	// Exit early if there are no points to generate splines from.
 	if vector_data.point_domain.positions().is_empty() {

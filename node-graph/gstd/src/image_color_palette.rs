@@ -1,4 +1,4 @@
-use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
+use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::transform::Footprint;
 use graphene_core::Color;
 

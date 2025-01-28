@@ -3,7 +3,7 @@ use crate::raster::{blend_image_closure, BlendImageTupleNode, EmptyImageNode, Ex
 use graphene_core::raster::adjustments::blend_colors;
 use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::raster::brush_cache::BrushCache;
-use graphene_core::raster::image::ImageFrame;
+use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::{Alpha, BlendColorPairNode, Color, Image, Pixel, Sample};
 use graphene_core::transform::{Footprint, Transform, TransformSet};
@@ -87,7 +87,7 @@ fn brush_stamp_generator(diameter: f64, color: Color, hardness: f64, flow: f64) 
 }
 
 #[node_macro::node(skip_impl)]
-fn blit<P: Alpha + Pixel + std::fmt::Debug, BlendFn>(mut target: ImageFrameTable<P>, texture: Image<P>, positions: Vec<DVec2>, blend_mode: BlendFn) -> ImageFrameTable<P>
+fn blit<P: Alpha + Pixel + std::fmt::Debug, BlendFn>(mut target: ImageFrame<P>, texture: Image<P>, positions: Vec<DVec2>, blend_mode: BlendFn) -> ImageFrame<P>
 where
 	BlendFn: for<'any_input> Node<'any_input, (P, P), Output = P>,
 {
@@ -138,7 +138,9 @@ pub fn create_brush_texture(brush_style: &BrushStyle) -> Image<Color> {
 	let blank_texture = EmptyImageNode::new(CopiedNode::new(transform), CopiedNode::new(Color::TRANSPARENT)).eval(());
 	let normal_blend = BlendColorPairNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
 	let blend_executor = BlendImageTupleNode::new(ValueNode::new(normal_blend));
-	blend_executor.eval((blank_texture, stamp)).image
+	let image = blend_executor.eval((blank_texture, stamp));
+	let image_frame = image.instances().next().expect("ONE INSTANCE EXPECTED");
+	image_frame.clone().image
 }
 
 macro_rules! inline_blend_funcs {
@@ -203,6 +205,9 @@ pub fn blend_with_mode(background: ImageFrameTable<Color>, foreground: ImageFram
 
 #[node_macro::node(category(""))]
 fn brush(_: Footprint, image: ImageFrameTable<Color>, bounds: ImageFrameTable<Color>, strokes: Vec<BrushStroke>, cache: BrushCache) -> ImageFrameTable<Color> {
+	let image = image.instances().next().expect("ONE INSTANCE EXPECTED");
+	let image = image.clone();
+
 	let stroke_bbox = strokes.iter().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
 	let image_bbox = Bbox::from_transform(image.transform).to_axis_aligned_bbox();
 	let bbox = if image_bbox.size().length() < 0.1 { stroke_bbox } else { stroke_bbox.union(&image_bbox) };
@@ -214,11 +219,11 @@ fn brush(_: Footprint, image: ImageFrameTable<Color>, bounds: ImageFrameTable<Co
 
 	let mut background_bounds = bbox.to_transform();
 
-	if bounds.transform != DAffine2::ZERO {
-		background_bounds = bounds.transform;
+	if bounds.transform() != DAffine2::ZERO {
+		background_bounds = bounds.transform();
 	}
 
-	let mut actual_image = ExtendImageToBoundsNode::new(ClonedNode::new(background_bounds)).eval(brush_plan.background);
+	let mut actual_image = ExtendImageToBoundsNode::new(ClonedNode::new(background_bounds)).eval(ImageFrameTable::new(brush_plan.background));
 	let final_stroke_idx = brush_plan.strokes.len().saturating_sub(1);
 	for (idx, stroke) in brush_plan.strokes.into_iter().enumerate() {
 		// Create brush texture.
@@ -239,8 +244,7 @@ fn brush(_: Footprint, image: ImageFrameTable<Color>, bounds: ImageFrameTable<Co
 			bbox.start = bbox.start.floor();
 			bbox.end = bbox.end.floor();
 			let stroke_size = bbox.size() + DVec2::splat(stroke.style.diameter);
-			// For numerical stability we want to place the first blit point at a stable, integer offset
-			// in layer space.
+			// For numerical stability we want to place the first blit point at a stable, integer offset in layer space.
 			let snap_offset = positions[0].floor() - positions[0];
 			let stroke_origin_in_layer = bbox.start - snap_offset - DVec2::splat(stroke.style.diameter / 2.);
 			let stroke_to_layer = DAffine2::from_translation(stroke_origin_in_layer) * DAffine2::from_scale(stroke_size);
@@ -249,19 +253,23 @@ fn brush(_: Footprint, image: ImageFrameTable<Color>, bounds: ImageFrameTable<Co
 			let blit_node = BlitNode::new(ClonedNode::new(brush_texture), ClonedNode::new(positions), ClonedNode::new(normal_blend));
 			let blit_target = if idx == 0 {
 				let target = core::mem::take(&mut brush_plan.first_stroke_texture);
-				ExtendImageToBoundsNode::new(CopiedNode::new(stroke_to_layer)).eval(target)
+				ExtendImageToBoundsNode::new(CopiedNode::new(stroke_to_layer)).eval(ImageFrameTable::new(target))
 			} else {
 				EmptyImageNode::new(CopiedNode::new(stroke_to_layer), CopiedNode::new(Color::TRANSPARENT)).eval(())
 			};
-			blit_node.eval(blit_target)
+
+			let blit_target = blit_target.instances().next().expect("ONE INSTANCE EXPECTED");
+			blit_node.eval(blit_target.clone())
 		};
 
 		// Cache image before doing final blend, and store final stroke texture.
 		if idx == final_stroke_idx {
+			let actual_image = actual_image.instances().next().expect("ONE INSTANCE EXPECTED");
 			cache.cache_results(core::mem::take(&mut draw_strokes), actual_image.clone(), stroke_texture.clone());
 		}
 
 		// TODO: Is this the correct way to do opacity in blending?
+		let stroke_texture = ImageFrameTable::new(stroke_texture);
 		actual_image = blend_with_mode(actual_image, stroke_texture, stroke.style.blend_mode, (stroke.style.color.a() * 100.) as f64);
 	}
 

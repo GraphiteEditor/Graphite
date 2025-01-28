@@ -11,7 +11,6 @@ use dyn_any::{DynAny, StaticType};
 use core::ops::{Deref, DerefMut};
 use glam::{DAffine2, IVec2};
 use std::hash::Hash;
-use std::sync::{Arc, Mutex, MutexGuard};
 
 pub mod renderer;
 
@@ -41,25 +40,37 @@ impl AlphaBlending {
 	}
 }
 
-#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Instances<T>
 where
 	T: Into<GraphicElement> + StaticType + 'static,
 {
 	id: Vec<InstanceId>,
-	instances: Vec<Arc<Mutex<T>>>,
+	instances: Vec<T>,
 }
 
 impl<T: Into<GraphicElement> + StaticType + 'static> Instances<T> {
 	pub fn new(instance: T) -> Self {
 		Self {
 			id: vec![InstanceId::generate()],
-			instances: vec![Arc::new(Mutex::new(instance))],
+			instances: vec![instance],
 		}
 	}
 
-	pub fn instances(&self) -> impl Iterator<Item = MutexGuard<'_, T>> {
-		self.instances.iter().map(|item| item.lock().expect("Failed to lock mutex"))
+	pub fn instances(&self) -> impl Iterator<Item = &T> {
+		self.instances.iter()
+	}
+
+	pub fn instances_mut(&mut self) -> impl Iterator<Item = &mut T> {
+		self.instances.iter_mut()
+	}
+
+	pub fn one_item(&self) -> &T {
+		self.instances.get(0).expect("ONE INSTANCE EXPECTED")
+	}
+
+	pub fn one_item_mut(&mut self) -> &mut T {
+		self.instances.get_mut(0).expect("ONE INSTANCE EXPECTED")
 	}
 
 	pub fn id(&self) -> impl Iterator<Item = InstanceId> + '_ {
@@ -68,11 +79,11 @@ impl<T: Into<GraphicElement> + StaticType + 'static> Instances<T> {
 
 	pub fn push(&mut self, id: InstanceId, instance: T) {
 		self.id.push(id);
-		self.instances.push(Arc::new(Mutex::new(instance)));
+		self.instances.push(instance);
 	}
 
 	pub fn replace_all(&mut self, id: InstanceId, instance: T) {
-		let mut instance = Arc::new(Mutex::new(instance));
+		let mut instance = instance;
 
 		for (old_id, old_instance) in self.id.iter_mut().zip(self.instances.iter_mut()) {
 			let mut new_id = id;
@@ -82,11 +93,16 @@ impl<T: Into<GraphicElement> + StaticType + 'static> Instances<T> {
 	}
 }
 
+impl<T: Into<GraphicElement> + Default + Hash + StaticType + 'static> Default for Instances<T> {
+	fn default() -> Self {
+		Self::new(T::default())
+	}
+}
+
 impl<T: Into<GraphicElement> + Hash + StaticType + 'static> core::hash::Hash for Instances<T> {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.id.hash(state);
 		for instance in &self.instances {
-			let instance = instance.lock().unwrap();
 			instance.hash(state);
 		}
 	}
@@ -94,7 +110,7 @@ impl<T: Into<GraphicElement> + Hash + StaticType + 'static> core::hash::Hash for
 
 impl<T: Into<GraphicElement> + PartialEq + StaticType + 'static> PartialEq for Instances<T> {
 	fn eq(&self, other: &Self) -> bool {
-		self.id == other.id && self.instances.len() == other.instances.len() && { self.instances.iter().zip(other.instances.iter()).all(|(a, b)| *a.lock().unwrap() == *b.lock().unwrap()) }
+		self.id == other.id && self.instances.len() == other.instances.len() && { self.instances.iter().zip(other.instances.iter()).all(|(a, b)| a == b) }
 	}
 }
 
@@ -128,6 +144,42 @@ impl GraphicGroup {
 			transform: DAffine2::IDENTITY,
 			alpha_blending: AlphaBlending::new(),
 		}
+	}
+}
+
+impl From<GraphicGroup> for GraphicGroupTable {
+	fn from(graphic_group: GraphicGroup) -> Self {
+		Self::new(graphic_group)
+	}
+}
+impl From<VectorData> for GraphicGroupTable {
+	fn from(vector_data: VectorData) -> Self {
+		Self::new(GraphicGroup::new(vec![GraphicElement::VectorData(VectorDataTable::new(vector_data))]))
+	}
+}
+impl From<VectorDataTable> for GraphicGroupTable {
+	fn from(vector_data: VectorDataTable) -> Self {
+		Self::new(GraphicGroup::new(vec![GraphicElement::VectorData(vector_data)]))
+	}
+}
+impl From<ImageFrame<Color>> for GraphicGroupTable {
+	fn from(image_frame: ImageFrame<Color>) -> Self {
+		Self::new(GraphicGroup::new(vec![GraphicElement::RasterFrame(RasterFrame::ImageFrame(ImageFrameTable::new(image_frame)))]))
+	}
+}
+impl From<ImageFrameTable<Color>> for GraphicGroupTable {
+	fn from(image_frame: ImageFrameTable<Color>) -> Self {
+		Self::new(GraphicGroup::new(vec![GraphicElement::RasterFrame(RasterFrame::ImageFrame(image_frame))]))
+	}
+}
+impl From<TextureFrame> for GraphicGroupTable {
+	fn from(texture_frame: TextureFrame) -> Self {
+		Self::new(GraphicGroup::new(vec![GraphicElement::RasterFrame(RasterFrame::TextureFrame(TextureFrameTable::new(texture_frame)))]))
+	}
+}
+impl From<TextureFrameTable> for GraphicGroupTable {
+	fn from(texture_frame: TextureFrameTable) -> Self {
+		Self::new(GraphicGroup::new(vec![GraphicElement::RasterFrame(RasterFrame::TextureFrame(texture_frame))]))
 	}
 }
 
@@ -249,7 +301,7 @@ impl TransformSet for RasterFrame {
 #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Artboard {
-	pub graphic_group: GraphicGroup,
+	pub graphic_group: GraphicGroupTable,
 	pub label: String,
 	pub location: IVec2,
 	pub dimensions: IVec2,
@@ -260,7 +312,7 @@ pub struct Artboard {
 impl Artboard {
 	pub fn new(location: IVec2, dimensions: IVec2) -> Self {
 		Self {
-			graphic_group: GraphicGroup::default(),
+			graphic_group: GraphicGroupTable::default(),
 			label: String::from("Artboard"),
 			location: location.min(location + dimensions),
 			dimensions: dimensions.abs(),
@@ -297,19 +349,22 @@ async fn layer<F: 'n + Send + Copy>(
 	)]
 	footprint: F,
 	#[implementations(
-		() -> GraphicGroup,
-		Footprint -> GraphicGroup,
+		() -> GraphicGroupTable,
+		Footprint -> GraphicGroupTable,
 	)]
-	stack: impl Node<F, Output = GraphicGroup>,
+	stack: impl Node<F, Output = GraphicGroupTable>,
 	#[implementations(
 		() -> GraphicElement,
 		Footprint -> GraphicElement,
 	)]
 	element: impl Node<F, Output = GraphicElement>,
 	node_path: Vec<NodeId>,
-) -> GraphicGroup {
+) -> GraphicGroupTable {
 	let mut element = element.eval(footprint).await;
-	let mut stack = stack.eval(footprint).await;
+	let stack = stack.eval(footprint).await;
+	let stack = stack.instances().next().expect("ONE INSTANCE EXPECTED");
+	let mut stack = stack.clone();
+
 	if stack.transform.matrix2.determinant() != 0. {
 		element.set_transform(stack.transform.inverse() * element.transform());
 	} else {
@@ -320,7 +375,8 @@ async fn layer<F: 'n + Send + Copy>(
 	// Get the penultimate element of the node path, or None if the path is too short
 	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
 	stack.push((element, encapsulating_node_id));
-	stack
+
+	GraphicGroupTable::new(stack)
 }
 
 #[node_macro::node(category("Debug"))]
@@ -334,14 +390,14 @@ async fn to_element<F: 'n + Send, Data: Into<GraphicElement> + 'n>(
 	)]
 	footprint: F,
 	#[implementations(
-		() -> GraphicGroup,
+		() -> GraphicGroupTable,
 	 	() -> VectorDataTable,
 		() -> ImageFrameTable<Color>,
-	 	() -> TextureFrame,
-	 	Footprint -> GraphicGroup,
+	 	() -> TextureFrameTable,
+	 	Footprint -> GraphicGroupTable,
 	 	Footprint -> VectorDataTable,
 		Footprint -> ImageFrameTable<Color>,
-	 	Footprint -> TextureFrame,
+	 	Footprint -> TextureFrameTable,
 	)]
 	data: impl Node<F, Output = Data>,
 ) -> GraphicElement {
@@ -349,7 +405,7 @@ async fn to_element<F: 'n + Send, Data: Into<GraphicElement> + 'n>(
 }
 
 #[node_macro::node(category("General"))]
-async fn to_group<F: 'n + Send, Data: Into<GraphicGroup> + 'n>(
+async fn to_group<F: 'n + Send, Data: Into<GraphicGroupTable> + 'n>(
 	#[implementations(
 		(),
 		(),
@@ -359,17 +415,17 @@ async fn to_group<F: 'n + Send, Data: Into<GraphicGroup> + 'n>(
 	)]
 	footprint: F,
 	#[implementations(
-		() -> GraphicGroup,
+		() -> GraphicGroupTable,
 		() -> VectorDataTable,
 		() -> ImageFrameTable<Color>,
-		() -> TextureFrame,
-		Footprint -> GraphicGroup,
+		() -> TextureFrameTable,
+		Footprint -> GraphicGroupTable,
 		Footprint -> VectorDataTable,
 		Footprint -> ImageFrameTable<Color>,
-		Footprint -> TextureFrame,
+		Footprint -> TextureFrameTable,
 	)]
 	element: impl Node<F, Output = Data>,
-) -> GraphicGroup {
+) -> GraphicGroupTable {
 	element.eval(footprint).await.into()
 }
 
@@ -381,19 +437,27 @@ async fn flatten_group<F: 'n + Send>(
 	)]
 	footprint: F,
 	#[implementations(
-		() -> GraphicGroup,
-		Footprint -> GraphicGroup,
+		() -> GraphicGroupTable,
+		Footprint -> GraphicGroupTable,
 	)]
-	group: impl Node<F, Output = GraphicGroup>,
+	group: impl Node<F, Output = GraphicGroupTable>,
 	fully_flatten: bool,
-) -> GraphicGroup {
+) -> GraphicGroupTable {
 	let nested_group = group.eval(footprint).await;
+	let nested_group = nested_group.instances().next().expect("ONE INSTANCE EXPECTED");
+	let nested_group = nested_group.clone();
+
 	let mut flat_group = GraphicGroup::default();
+
 	fn flatten_group(result_group: &mut GraphicGroup, current_group: GraphicGroup, fully_flatten: bool) {
 		let mut collection_group = GraphicGroup::default();
 		for (element, reference) in current_group.elements {
-			if let GraphicElement::GraphicGroup(mut nested_group) = element {
-				nested_group.transform *= current_group.transform;
+			if let GraphicElement::GraphicGroup(nested_group) = element {
+				let nested_group = nested_group.instances().next().expect("ONE INSTANCE EXPECTED");
+				let mut nested_group = nested_group.clone();
+
+				nested_group.set_transform(nested_group.transform() * current_group.transform);
+
 				let mut sub_group = GraphicGroup::default();
 				if fully_flatten {
 					flatten_group(&mut sub_group, nested_group, fully_flatten);
@@ -411,12 +475,14 @@ async fn flatten_group<F: 'n + Send>(
 
 		result_group.append(&mut collection_group.elements);
 	}
+
 	flatten_group(&mut flat_group, nested_group, fully_flatten);
-	flat_group
+
+	GraphicGroupTable::new(flat_group)
 }
 
 #[node_macro::node(category(""))]
-async fn to_artboard<F: 'n + Send + ApplyTransform, Data: Into<GraphicGroup> + 'n>(
+async fn to_artboard<F: 'n + Send + ApplyTransform, Data: Into<GraphicGroupTable> + 'n>(
 	#[implementations(
 		(),
 		(),
@@ -426,11 +492,11 @@ async fn to_artboard<F: 'n + Send + ApplyTransform, Data: Into<GraphicGroup> + '
 	)]
 	mut footprint: F,
 	#[implementations(
-		() -> GraphicGroup,
+		() -> GraphicGroupTable,
 		() -> VectorDataTable,
 		() -> ImageFrameTable<Color>,
 		() -> TextureFrame,
-		Footprint -> GraphicGroup,
+		Footprint -> GraphicGroupTable,
 		Footprint -> VectorDataTable,
 		Footprint -> ImageFrameTable<Color>,
 		Footprint -> TextureFrame,
@@ -490,41 +556,41 @@ impl From<ImageFrame<Color>> for GraphicElement {
 		GraphicElement::RasterFrame(RasterFrame::ImageFrame(ImageFrameTable::new(image_frame)))
 	}
 }
-
 impl From<ImageFrameTable<Color>> for GraphicElement {
 	fn from(image_frame: ImageFrameTable<Color>) -> Self {
 		GraphicElement::RasterFrame(RasterFrame::ImageFrame(image_frame))
 	}
 }
-
 // TODO: Remove this one
 impl From<TextureFrame> for GraphicElement {
 	fn from(texture: TextureFrame) -> Self {
 		GraphicElement::RasterFrame(RasterFrame::TextureFrame(TextureFrameTable::new(texture)))
 	}
 }
-
 impl From<TextureFrameTable> for GraphicElement {
 	fn from(texture: TextureFrameTable) -> Self {
 		GraphicElement::RasterFrame(RasterFrame::TextureFrame(texture))
 	}
 }
-
 // TODO: Remove this one
 impl From<VectorData> for GraphicElement {
 	fn from(vector_data: VectorData) -> Self {
 		GraphicElement::VectorData(VectorDataTable::new(vector_data))
 	}
 }
-
 impl From<VectorDataTable> for GraphicElement {
 	fn from(vector_data: VectorDataTable) -> Self {
 		GraphicElement::VectorData(vector_data)
 	}
 }
-
+// TODO: Remove this one
 impl From<GraphicGroup> for GraphicElement {
 	fn from(graphic_group: GraphicGroup) -> Self {
+		GraphicElement::GraphicGroup(GraphicGroupTable::new(graphic_group))
+	}
+}
+impl From<GraphicGroupTable> for GraphicElement {
+	fn from(graphic_group: GraphicGroupTable) -> Self {
 		GraphicElement::GraphicGroup(graphic_group)
 	}
 }

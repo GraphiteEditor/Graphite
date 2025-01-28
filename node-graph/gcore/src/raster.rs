@@ -287,7 +287,7 @@ impl<T: BitmapMut + Bitmap> BitmapMut for &mut T {
 #[cfg(feature = "alloc")]
 pub use self::image::Image;
 #[cfg(feature = "alloc")]
-pub(crate) mod image;
+pub mod image;
 
 trait SetBlendMode {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode);
@@ -295,21 +295,21 @@ trait SetBlendMode {
 
 impl SetBlendMode for VectorDataTable {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		for mut instance in self.instances() {
+		for instance in self.instances_mut() {
 			instance.alpha_blending.blend_mode = blend_mode;
 		}
 	}
 }
 impl SetBlendMode for GraphicGroupTable {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		for mut instance in self.instances() {
+		for instance in self.instances_mut() {
 			instance.alpha_blending.blend_mode = blend_mode;
 		}
 	}
 }
 impl SetBlendMode for ImageFrameTable<Color> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		for mut instance in self.instances() {
+		for instance in self.instances_mut() {
 			instance.alpha_blending.blend_mode = blend_mode;
 		}
 	}

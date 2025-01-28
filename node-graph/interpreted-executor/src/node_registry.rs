@@ -1,10 +1,10 @@
 use dyn_any::StaticType;
 use graph_craft::document::value::RenderOutput;
-use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_core::fn_type;
 use graphene_core::ops::IdentityNode;
 use graphene_core::raster::color::Color;
+use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
 use graphene_core::raster::*;
 use graphene_core::structural::Then;
 use graphene_core::transform::Footprint;
@@ -15,9 +15,9 @@ use graphene_core::{Cow, ProtoNodeIdentifier, Type};
 use graphene_core::{Node, NodeIO, NodeIOTypes};
 use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DynAnyNode, FutureWrapperNode, IntoTypeErasedNode};
 use graphene_std::application_io::TextureFrame;
-use graphene_std::raster::*;
 use graphene_std::wasm_application_io::*;
 use graphene_std::GraphicElement;
+use graphene_std::{raster::*, GraphicGroup};
 #[cfg(feature = "gpu")]
 use wgpu_executor::{ShaderInputFrame, WgpuExecutor};
 use wgpu_executor::{WgpuSurface, WindowHandle};
@@ -112,8 +112,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			|_| Box::pin(async move { FutureWrapperNode::new(IdentityNode::new()).into_type_erased() }),
 			NodeIOTypes::new(generic!(I), generic!(I), vec![]),
 		),
-		async_node!(graphene_core::ops::IntoNode<ImageFrameTable<SRGBA8>>, input: ImageFrameTable<Color>, params: []),
-		async_node!(graphene_core::ops::IntoNode<ImageFrameTable<Color>>, input: ImageFrameTable<SRGBA8>, params: []),
+		// async_node!(graphene_core::ops::IntoNode<ImageFrameTable<SRGBA8>>, input: ImageFrameTable<Color>, params: []),
+		// async_node!(graphene_core::ops::IntoNode<ImageFrameTable<Color>>, input: ImageFrameTable<SRGBA8>, params: []),
 		async_node!(graphene_core::ops::IntoNode<GraphicGroupTable>, input: ImageFrameTable<Color>, params: []),
 		async_node!(graphene_core::ops::IntoNode<GraphicGroupTable>, input: VectorDataTable, params: []),
 		async_node!(graphene_core::ops::IntoNode<GraphicGroupTable>, input: GraphicGroupTable, params: []), // TODO: Is this redundant?
@@ -125,9 +125,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::ops::IntoNode<GraphicGroupTable>, input: VectorDataTable, params: []),
 		async_node!(graphene_core::ops::IntoNode<GraphicGroupTable>, input: ImageFrameTable<Color>, params: []),
 		register_node!(graphene_std::raster::MaskImageNode<_, _, _>, input: ImageFrameTable<Color>, params: [ImageFrameTable<Color>]),
-		register_node!(graphene_std::raster::MaskImageNode<_, _, _>, input: ImageFrameTable<Color>, params: [ImageFrameTable<Luma>]),
 		register_node!(graphene_std::raster::InsertChannelNode<_, _, _, _>, input: ImageFrameTable<Color>, params: [ImageFrameTable<Color>, RedGreenBlue]),
-		register_node!(graphene_std::raster::InsertChannelNode<_, _, _, _>, input: ImageFrameTable<Color>, params: [ImageFrameTable<Luma>, RedGreenBlue]),
+		// register_node!(graphene_std::raster::MaskImageNode<_, _, _>, input: ImageFrameTable<Color>, params: [ImageFrameTable<Luma>]),
+		// register_node!(graphene_std::raster::InsertChannelNode<_, _, _, _>, input: ImageFrameTable<Color>, params: [ImageFrameTable<Luma>, RedGreenBlue]),
 		(
 			ProtoNodeIdentifier::new("graphene_std::raster::CombineChannelsNode"),
 			|args| {
@@ -146,6 +146,11 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					let complete_node = insert_r.then(insert_g).then(insert_b);
 					let complete_node = complete_node.then(MaskImageNode::new(ClonedNode::new(channel_a.clone())));
 
+					let channel_r = channel_r.instances().next().expect("ONE INSTANCE EXPECTED");
+					let channel_g = channel_g.instances().next().expect("ONE INSTANCE EXPECTED");
+					let channel_b = channel_b.instances().next().expect("ONE INSTANCE EXPECTED");
+					let channel_a = channel_a.instances().next().expect("ONE INSTANCE EXPECTED");
+
 					// TODO: Move to FN Node for better performance
 					let (mut transform, mut bounds) = (DAffine2::ZERO, glam::UVec2::ZERO);
 					for image in [channel_a, channel_r, channel_g, channel_b] {
@@ -154,11 +159,12 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 							transform = image.transform;
 						}
 					}
-					let empty_image = ImageFrameTable {
+					let empty_image = ImageFrame {
 						image: Image::new(bounds.x, bounds.y, Color::BLACK),
 						transform,
 						..Default::default()
 					};
+					let empty_image = ImageFrameTable::new(empty_image);
 					let final_image = ClonedNode::new(empty_image).then(complete_node);
 					let final_image = FutureWrapperNode::new(final_image);
 
@@ -256,23 +262,23 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			},
 			NodeIOTypes::new(concrete!(ImageFrameTable<Color>), concrete!(ImageFrameTable<Color>), vec![fn_type!(f64), fn_type!(f64), fn_type!(bool)]),
 		),
-		(
-			ProtoNodeIdentifier::new("graphene_core::raster::CurvesNode"),
-			|args| {
-				use graphene_core::raster::{curve::Curve, GenerateCurvesNode};
-				let curve: DowncastBothNode<(), Curve> = DowncastBothNode::new(args[0].clone());
-				Box::pin(async move {
-					let curve = ClonedNode::new(curve.eval(()).await);
+		// (
+		// 	ProtoNodeIdentifier::new("graphene_core::raster::CurvesNode"),
+		// 	|args| {
+		// 		use graphene_core::raster::{curve::Curve, GenerateCurvesNode};
+		// 		let curve: DowncastBothNode<(), Curve> = DowncastBothNode::new(args[0].clone());
+		// 		Box::pin(async move {
+		// 			let curve = ClonedNode::new(curve.eval(()).await);
 
-					let generate_curves_node = GenerateCurvesNode::new(curve, ClonedNode::new(0_f32));
-					let map_image_frame_node = graphene_std::raster::MapImageNode::new(ValueNode::new(generate_curves_node.eval(())));
-					let map_image_frame_node = FutureWrapperNode::new(map_image_frame_node);
-					let any: DynAnyNode<ImageFrameTable<Luma>, _, _> = graphene_std::any::DynAnyNode::new(map_image_frame_node);
-					any.into_type_erased()
-				})
-			},
-			NodeIOTypes::new(concrete!(ImageFrameTable<Luma>), concrete!(ImageFrameTable<Luma>), vec![fn_type!(graphene_core::raster::curve::Curve)]),
-		),
+		// 			let generate_curves_node = GenerateCurvesNode::new(curve, ClonedNode::new(0_f32));
+		// 			let map_image_frame_node = graphene_std::raster::MapImageNode::new(ValueNode::new(generate_curves_node.eval(())));
+		// 			let map_image_frame_node = FutureWrapperNode::new(map_image_frame_node);
+		// 			let any: DynAnyNode<ImageFrameTable<Luma>, _, _> = graphene_std::any::DynAnyNode::new(map_image_frame_node);
+		// 			any.into_type_erased()
+		// 		})
+		// 	},
+		// 	NodeIOTypes::new(concrete!(ImageFrameTable<Luma>), concrete!(ImageFrameTable<Luma>), vec![fn_type!(graphene_core::raster::curve::Curve)]),
+		// ),
 		// TODO: Use channel split and merge for this instead of using LuminanceMut for the whole color.
 		(
 			ProtoNodeIdentifier::new("graphene_core::raster::CurvesNode"),
@@ -295,43 +301,43 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				vec![fn_type!(graphene_core::raster::curve::Curve)],
 			),
 		),
-		(
-			ProtoNodeIdentifier::new("graphene_std::raster::ImaginateNode"),
-			|args: Vec<graph_craft::proto::SharedNodeContainer>| {
-				Box::pin(async move {
-					use graphene_std::raster::ImaginateNode;
-					macro_rules! instantiate_imaginate_node {
-								($($i:expr,)*) => { ImaginateNode::new($(graphene_std::any::input_node(args[$i].clone()),)* ) };
-							}
-					let node: ImaginateNode<Color, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _> = instantiate_imaginate_node!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,);
-					let any = graphene_std::any::DynAnyNode::new(node);
-					any.into_type_erased()
-				})
-			},
-			NodeIOTypes::new(
-				concrete!(ImageFrameTable<Color>),
-				concrete!(ImageFrameTable<Color>),
-				vec![
-					fn_type!(&WasmEditorApi),
-					fn_type!(ImaginateController),
-					fn_type!(f64),
-					fn_type!(Option<DVec2>),
-					fn_type!(u32),
-					fn_type!(ImaginateSamplingMethod),
-					fn_type!(f64),
-					fn_type!(String),
-					fn_type!(String),
-					fn_type!(bool),
-					fn_type!(f64),
-					fn_type!(bool),
-					fn_type!(f64),
-					fn_type!(ImaginateMaskStartingFill),
-					fn_type!(bool),
-					fn_type!(bool),
-					fn_type!(u64),
-				],
-			),
-		),
+		// (
+		// 	ProtoNodeIdentifier::new("graphene_std::raster::ImaginateNode"),
+		// 	|args: Vec<graph_craft::proto::SharedNodeContainer>| {
+		// 		Box::pin(async move {
+		// 			use graphene_std::raster::ImaginateNode;
+		// 			macro_rules! instantiate_imaginate_node {
+		// 						($($i:expr,)*) => { ImaginateNode::new($(graphene_std::any::input_node(args[$i].clone()),)* ) };
+		// 					}
+		// 			let node: ImaginateNode<Color, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _> = instantiate_imaginate_node!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,);
+		// 			let any = graphene_std::any::DynAnyNode::new(node);
+		// 			any.into_type_erased()
+		// 		})
+		// 	},
+		// 	NodeIOTypes::new(
+		// 		concrete!(ImageFrameTable<Color>),
+		// 		concrete!(ImageFrameTable<Color>),
+		// 		vec![
+		// 			fn_type!(&WasmEditorApi),
+		// 			fn_type!(ImaginateController),
+		// 			fn_type!(f64),
+		// 			fn_type!(Option<DVec2>),
+		// 			fn_type!(u32),
+		// 			fn_type!(ImaginateSamplingMethod),
+		// 			fn_type!(f64),
+		// 			fn_type!(String),
+		// 			fn_type!(String),
+		// 			fn_type!(bool),
+		// 			fn_type!(f64),
+		// 			fn_type!(bool),
+		// 			fn_type!(f64),
+		// 			fn_type!(ImaginateMaskStartingFill),
+		// 			fn_type!(bool),
+		// 			fn_type!(bool),
+		// 			fn_type!(u64),
+		// 		],
+		// 	),
+		// ),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), params: [Image<Color>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), params: [VectorDataTable]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), params: [ImageFrameTable<Color>]),

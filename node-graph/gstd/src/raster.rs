@@ -1,21 +1,16 @@
-use crate::wasm_application_io::WasmEditorApi;
-
 use dyn_any::DynAny;
-use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
-use graph_craft::proto::DynFuture;
 use graphene_core::raster::bbox::Bbox;
 use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
 use graphene_core::raster::{
 	Alpha, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, Image, Linear, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, RedGreenBlue, Sample,
 };
 use graphene_core::transform::{Footprint, Transform};
-use graphene_core::{AlphaBlending, Color, Node};
+use graphene_core::{AlphaBlending, Color, GraphicElement, Node};
 
 use fastnoise_lite;
 use glam::{DAffine2, DVec2, Vec2};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
-use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -37,7 +32,7 @@ fn sample_image(footprint: Footprint, image_frame: ImageFrameTable<Color>) -> Im
 	let image_frame = image_frame.instances().next().expect("ONE INSTANCE EXPECTED");
 
 	// Resize the image using the image crate
-	let image = image_frame.image;
+	let image = image_frame.image.clone();
 	let data = bytemuck::cast_vec(image.data);
 
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
@@ -220,12 +215,14 @@ pub struct BlendImageTupleNode<P, Fg, MapFn> {
 }
 
 #[node_macro::old_node_fn(BlendImageTupleNode<_P, _Fg>)]
-fn blend_image_tuple<_P: Alpha + Pixel + Debug, MapFn, _Fg: Sample<Pixel = _P> + Transform>(images: (ImageFrameTable<_P>, _Fg), map_fn: &'input MapFn) -> ImageFrameTable<_P>
+fn blend_image_tuple<_P: Alpha + Pixel + Debug + dyn_any::StaticType, MapFn, _Fg: Sample<Pixel = _P> + Transform>(images: (ImageFrameTable<_P>, _Fg), map_fn: &'input MapFn) -> ImageFrameTable<_P>
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input + Clone,
+	GraphicElement: From<ImageFrame<_P>>,
+	_P::Static: Pixel,
+	ImageFrameTable<_P>: BitmapMut<Pixel = _P> + Sample<Pixel = _P> + Transform,
 {
 	let (background, foreground) = images;
-	let mut background = background.instances().next().expect("ONE INSTANCE EXPECTED");
 
 	blend_image(foreground, background, map_fn)
 }

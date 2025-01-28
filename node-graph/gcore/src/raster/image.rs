@@ -1,6 +1,6 @@
 use super::discrete_srgb::float_to_srgb_u8;
 use super::Color;
-use crate::{AlphaBlending, Instances};
+use crate::{AlphaBlending, GraphicElement, Instances};
 use alloc::vec::Vec;
 use core::hash::{Hash, Hasher};
 use dyn_any::StaticType;
@@ -216,7 +216,7 @@ impl<P: Pixel> IntoIterator for Image<P> {
 	}
 }
 
-pub type ImageFrameTable<P: Pixel> = Instances<ImageFrame<P>>;
+pub type ImageFrameTable<P> = Instances<ImageFrame<P>>;
 
 #[derive(Clone, Debug, PartialEq, Default, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -250,6 +250,22 @@ impl<P: Debug + Copy + Pixel> Sample for ImageFrame<P> {
 	}
 }
 
+impl<P: Debug + Copy + Pixel + dyn_any::StaticType> Sample for ImageFrameTable<P>
+where
+	GraphicElement: From<ImageFrame<P>>,
+	P::Static: Pixel,
+{
+	type Pixel = P;
+
+	// TODO: Improve sampling logic
+	#[inline(always)]
+	fn sample(&self, pos: DVec2, area: DVec2) -> Option<Self::Pixel> {
+		let image = self.instances().next().expect("ONE INSTANCE EXPECTED");
+
+		Sample::sample(image, pos, area)
+	}
+}
+
 impl<P: Copy + Pixel> Bitmap for ImageFrame<P> {
 	type Pixel = P;
 
@@ -266,9 +282,47 @@ impl<P: Copy + Pixel> Bitmap for ImageFrame<P> {
 	}
 }
 
+impl<P: Copy + Pixel + dyn_any::StaticType> Bitmap for ImageFrameTable<P>
+where
+	P::Static: Pixel,
+	GraphicElement: From<ImageFrame<P>>,
+{
+	type Pixel = P;
+
+	fn width(&self) -> u32 {
+		let image = self.instances().next().expect("ONE INSTANCE EXPECTED");
+
+		image.width()
+	}
+
+	fn height(&self) -> u32 {
+		let image = self.instances().next().expect("ONE INSTANCE EXPECTED");
+
+		image.height()
+	}
+
+	fn get_pixel(&self, x: u32, y: u32) -> Option<Self::Pixel> {
+		let image = self.instances().next().expect("ONE INSTANCE EXPECTED");
+
+		image.get_pixel(x, y)
+	}
+}
+
 impl<P: Copy + Pixel> BitmapMut for ImageFrame<P> {
 	fn get_pixel_mut(&mut self, x: u32, y: u32) -> Option<&mut Self::Pixel> {
 		self.image.get_pixel_mut(x, y)
+	}
+}
+
+impl<P: Copy + Pixel + dyn_any::StaticType> BitmapMut for ImageFrameTable<P>
+where
+	GraphicElement: From<ImageFrame<P>>,
+	P::Static: Pixel,
+{
+	fn get_pixel_mut(&mut self, x: u32, y: u32) -> Option<&mut Self::Pixel> {
+		let image = self.instances_mut().next().expect("ONE INSTANCE EXPECTED");
+
+		BitmapMut::get_pixel_mut(image, x, y)
 	}
 }
 

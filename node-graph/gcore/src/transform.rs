@@ -68,7 +68,7 @@ where
 	GraphicElement: From<ImageFrame<P>>,
 {
 	fn set_transform(&mut self, value: DAffine2) {
-		let mut image_frame = self.instances().next().expect("ONE INSTANCE EXPECTED");
+		let image_frame = self.instances_mut().next().expect("ONE INSTANCE EXPECTED");
 		image_frame.transform = value;
 	}
 }
@@ -86,7 +86,7 @@ impl Transform for TextureFrameTable {
 }
 impl TransformSet for TextureFrameTable {
 	fn set_transform(&mut self, value: DAffine2) {
-		let mut image_frame = self.instances().next().expect("ONE INSTANCE EXPECTED");
+		let image_frame = self.instances_mut().next().expect("ONE INSTANCE EXPECTED");
 		image_frame.transform = value;
 	}
 }
@@ -112,7 +112,7 @@ impl Transform for GraphicGroupTable {
 }
 impl TransformSet for GraphicGroupTable {
 	fn set_transform(&mut self, value: DAffine2) {
-		let mut graphic_group = self.instances().next().expect("ONE INSTANCE EXPECTED");
+		let graphic_group = self.instances_mut().next().expect("ONE INSTANCE EXPECTED");
 		graphic_group.transform = value;
 	}
 }
@@ -172,7 +172,7 @@ impl Transform for VectorDataTable {
 }
 impl TransformSet for VectorDataTable {
 	fn set_transform(&mut self, value: DAffine2) {
-		let mut vector_data = self.instances().next().expect("ONE INSTANCE EXPECTED");
+		let vector_data = self.instances_mut().next().expect("ONE INSTANCE EXPECTED");
 		vector_data.transform = value;
 	}
 }

@@ -682,9 +682,9 @@ impl Blend<Color> for Option<Color> {
 }
 impl Blend<Color> for ImageFrameTable<Color> {
 	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-		let result = self.clone();
+		let mut result = self.clone();
 
-		for (mut over, under) in result.instances().zip(under.instances()) {
+		for (over, under) in result.instances_mut().zip(under.instances()) {
 			let data = over.image.data.iter().zip(under.image.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
 
 			*over = ImageFrame {
@@ -832,7 +832,7 @@ where
 	GraphicElement: From<ImageFrame<P>>,
 {
 	fn adjust(&mut self, map_fn: impl Fn(&P) -> P) {
-		for mut instance in self.instances() {
+		for instance in self.instances_mut() {
 			for c in instance.image.data.iter_mut() {
 				*c = map_fn(c);
 			}
@@ -1502,14 +1502,14 @@ impl MultiplyAlpha for Color {
 }
 impl MultiplyAlpha for VectorDataTable {
 	fn multiply_alpha(&mut self, factor: f64) {
-		for mut instance in self.instances() {
+		for instance in self.instances_mut() {
 			instance.alpha_blending.opacity *= factor as f32;
 		}
 	}
 }
 impl MultiplyAlpha for GraphicGroupTable {
 	fn multiply_alpha(&mut self, factor: f64) {
-		for mut instance in self.instances() {
+		for instance in self.instances_mut() {
 			instance.alpha_blending.opacity *= factor as f32;
 		}
 	}
@@ -1521,7 +1521,7 @@ where
 	GraphicElement: From<ImageFrame<P>>,
 {
 	fn multiply_alpha(&mut self, factor: f64) {
-		for mut instance in self.instances() {
+		for instance in self.instances_mut() {
 			instance.alpha_blending.opacity *= factor as f32;
 		}
 	}

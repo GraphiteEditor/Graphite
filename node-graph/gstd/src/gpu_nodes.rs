@@ -4,6 +4,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::*;
 use graph_craft::proto::*;
 use graphene_core::application_io::ApplicationIo;
+use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
 use graphene_core::raster::*;
 use graphene_core::*;
 use wgpu_executor::{Bindgroup, PipelineLayout, Shader, ShaderIO, ShaderInput, WgpuExecutor, WgpuShaderInput};
@@ -62,6 +63,7 @@ impl Clone for ComputePass {
 
 #[node_macro::old_node_impl(MapGpuNode)]
 async fn map_gpu<'a: 'input>(image: ImageFrameTable<Color>, node: DocumentNode, editor_api: &'a graphene_core::application_io::EditorApi<WasmApplicationIo>) -> ImageFrameTable<Color> {
+	let image_frame_table = &image;
 	let image = image.instances().next().expect("ONE INSTANCE EXPECTED");
 
 	log::debug!("Executing gpu node");
@@ -77,7 +79,7 @@ async fn map_gpu<'a: 'input>(image: ImageFrameTable<Color>, node: DocumentNode, 
 		self.cache.lock().as_ref().unwrap().get("placeholder").unwrap().clone()
 	} else {
 		let name = "placeholder".to_string();
-		let Ok(compute_pass_descriptor) = create_compute_pass_descriptor(node, &image, executor).await else {
+		let Ok(compute_pass_descriptor) = create_compute_pass_descriptor(node, &image_frame_table, executor).await else {
 			log::error!("Error creating compute pass descriptor in 'map_gpu()");
 			return ImageFrameTable::default();
 		};
@@ -131,7 +133,13 @@ impl<Node, EditorApi> MapGpuNode<Node, EditorApi> {
 	}
 }
 
-async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(node: DocumentNode, image: &ImageFrameTable<T>, executor: &&WgpuExecutor) -> Result<ComputePass, String> {
+async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(node: DocumentNode, image: &ImageFrameTable<T>, executor: &&WgpuExecutor) -> Result<ComputePass, String>
+where
+	GraphicElement: From<ImageFrame<T>>,
+	T::Static: Pixel,
+{
+	let image = image.instances().next().expect("ONE INSTANCE EXPECTED");
+
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let inner_network = NodeNetwork::value_network(node);
 

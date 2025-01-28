@@ -1,10 +1,10 @@
 use crate::transform::Footprint;
 
 use bezier_rs::{ManipulatorGroup, Subpath};
-use graphene_core::transform::Transform;
 use graphene_core::vector::misc::BooleanOperation;
 use graphene_core::vector::style::Fill;
 pub use graphene_core::vector::*;
+use graphene_core::{transform::Transform, GraphicGroup};
 use graphene_core::{Color, GraphicElement, GraphicGroupTable};
 pub use path_bool as path_bool_lib;
 use path_bool::{FillRule, PathBooleanOperation};
@@ -29,7 +29,7 @@ async fn boolean_operation<F: 'n + Send>(
 	let group_of_paths = group_of_paths.eval(footprint).await;
 	let group_of_paths = group_of_paths.instances().next().expect("ONE INSTANCE EXPECTED");
 
-	fn vector_from_image<T: Transform>(image_frame: T) -> VectorDataTable {
+	fn vector_from_image<T: Transform>(image_frame: T) -> VectorData {
 		let corner1 = DVec2::ZERO;
 		let corner2 = DVec2::new(1., 1.);
 
@@ -39,17 +39,21 @@ async fn boolean_operation<F: 'n + Send>(
 		let mut vector_data = VectorData::from_subpath(subpath);
 		vector_data.style.set_fill(Fill::Solid(Color::from_rgb_str("777777").unwrap().to_gamma_srgb()));
 
-		VectorDataTable::new(vector_data)
+		vector_data
 	}
 
-	fn union_vector_data(graphic_element: &GraphicElement) -> VectorDataTable {
+	fn union_vector_data(graphic_element: &GraphicElement) -> VectorData {
 		match graphic_element {
-			GraphicElement::VectorData(vector_data) => vector_data.clone(),
+			GraphicElement::VectorData(vector_data) => {
+				let vector_data = vector_data.instances().next().expect("ONE INSTANCE EXPECTED");
+				vector_data.clone()
+			}
 			// Union all vector data in the graphic group into a single vector
 			GraphicElement::GraphicGroup(graphic_group) => {
+				let graphic_group = graphic_group.instances().next().expect("ONE INSTANCE EXPECTED");
 				let vector_data = collect_vector_data(graphic_group);
-				let vector_data = boolean_operation_on_vector_data(&vector_data, BooleanOperation::Union);
-				VectorDataTable::new(vector_data)
+
+				boolean_operation_on_vector_data(&vector_data, BooleanOperation::Union)
 			}
 			GraphicElement::RasterFrame(image) => vector_from_image(image),
 		}
@@ -57,7 +61,8 @@ async fn boolean_operation<F: 'n + Send>(
 
 	fn collect_vector_data(graphic_group: &GraphicGroup) -> Vec<VectorData> {
 		// Ensure all non vector data in the graphic group is converted to vector data
-		let vector_data = graphic_group.iter().flat_map(|(element, _)| union_vector_data(element).instances());
+		let vector_data = graphic_group.iter().map(|(element, _)| union_vector_data(element)).clone();
+
 		// Apply the transform from the parent graphic group
 		let transformed_vector_data = vector_data.map(|mut vector_data| {
 			vector_data.transform = graphic_group.transform * vector_data.transform;
@@ -195,7 +200,7 @@ async fn boolean_operation<F: 'n + Send>(
 	VectorData::transform(&mut boolean_operation_result, transform);
 	boolean_operation_result.style.set_stroke_transform(DAffine2::IDENTITY);
 	boolean_operation_result.transform = DAffine2::IDENTITY;
-	boolean_operation_result.upstream_graphic_group = Some(group_of_paths);
+	boolean_operation_result.upstream_graphic_group = Some(GraphicGroupTable::new(group_of_paths.clone()));
 
 	VectorDataTable::new(boolean_operation_result)
 }

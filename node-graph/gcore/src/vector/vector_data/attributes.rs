@@ -815,8 +815,8 @@ impl crate::vector::ConcatElement for VectorData {
 
 impl crate::vector::ConcatElement for VectorDataTable {
 	fn concat(&mut self, other: &Self, transform: glam::DAffine2, node_id: u64) {
-		for (mut instance, other_instance) in self.instances().zip(other.instances()) {
-			instance.concat(&other_instance, transform, node_id);
+		for (instance, other_instance) in self.instances_mut().zip(other.instances()) {
+			instance.concat(other_instance, transform, node_id);
 		}
 	}
 }

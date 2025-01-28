@@ -26,8 +26,8 @@ async fn dehaze<F: 'n + Send + Sync>(
 	let image_frame = image_frame.instances().next().expect("ONE INSTANCE EXPECTED");
 
 	// Prepare the image data for processing
-	let image = image_frame.image;
-	let image_data = bytemuck::cast_vec(image.data);
+	let image = &image_frame.image;
+	let image_data = bytemuck::cast_vec(image.data.clone());
 	let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, image_data).expect("Failed to convert internal image format into image-rs data type.");
 	let dynamic_image: image::DynamicImage = image_buffer.into();
 
