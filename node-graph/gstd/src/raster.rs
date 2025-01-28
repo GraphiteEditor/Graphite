@@ -1,5 +1,6 @@
 use crate::wasm_application_io::WasmEditorApi;
 
+use crate::registry::types::{Fraction, SeedValue};
 use dyn_any::DynAny;
 use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use graph_craft::proto::DynFuture;
@@ -641,4 +642,119 @@ fn mandelbrot_impl(c: Vec2, max_iter: usize) -> usize {
 fn map_color(iter: usize, max_iter: usize) -> Color {
 	let v = iter as f32 / max_iter as f32;
 	Color::from_rgbaf32_unchecked(v, v, v, 1.)
+}
+
+use glam::Mat2;
+
+const SC: f32 = 1.6180339887498947;
+const INV_SC: f32 = 0.6180339887498949;
+const D1: f32 = 1.3763819204711734;
+const D2: f32 = 0.32491969623290629;
+const A1: f32 = 0.61803398874989479;
+const A2: f32 = 0.80901699437494745;
+const A3: f32 = 0.5877852522924728;
+const COS1: f32 = -0.8090169943749475;
+const SIN1: f32 = 0.5877852522924732;
+const COS2: f32 = -0.30901699437494734;
+const SIN2: f32 = 0.9510565162951536;
+
+#[node_macro::node(category("Raster: Generator"))]
+async fn penrose_robinson(footprint: Footprint, _a: (), #[default(9)] base_levels: SeedValue, #[default(0.5)] scale_x: Fraction, #[default(0.5)] scale_y: Fraction) -> ImageFrame<Color> {
+	let viewport_bounds = footprint.viewport_bounds_in_local_space();
+	let image_bounds = Bbox::from_transform(DAffine2::IDENTITY).to_axis_aligned_bbox();
+	let intersection = viewport_bounds.intersect(&image_bounds);
+	let size = intersection.size();
+	let offset = (intersection.start - image_bounds.start).max(DVec2::ZERO);
+
+	if size.x <= 0. || size.y <= 0. {
+		return ImageFrame::empty();
+	}
+
+	let scale = footprint.scale();
+	let width = (size.x * scale.x) as u32;
+	let height = (size.y * scale.y) as u32;
+	let mut data = Vec::with_capacity(width as usize * height as usize);
+
+	let co = scale_y as f32;
+	let si = scale_x as f32;
+
+	let scale_factor = (co * co + si * si).sqrt();
+	let rot = Mat2::from_cols(Vec2::new(co, -si), Vec2::new(si, co)) * scale_factor.recip();
+
+	for y in 0..height {
+		for x in 0..width {
+			let p = Vec2::new((x as f32 - width as f32 * 0.5) / height as f32, (y as f32 - height as f32 * 0.5) / height as f32);
+
+			let mut q = rot * (p * 0.5 * scale_factor) + Vec2::new(0.8, 0.);
+
+			let mut type_id = 0;
+			let mut final_m = Mat2::IDENTITY;
+
+			if q.y < 0. {
+				type_id = 1;
+				final_m = Mat2::from_cols(Vec2::new(1., 0.), Vec2::new(0., -1.));
+				q.y = -q.y;
+			}
+
+			for _ in 0..base_levels {
+				let m;
+
+				if type_id < 2 {
+					if 1. - D1 * q.y - q.x > 0. {
+						q.x -= 1.;
+						m = Mat2::from_cols(Vec2::new(-1., 0.), Vec2::new(0., 1.));
+						type_id = 1 - type_id;
+					} else if 1. - D2 * q.y - q.x > 0. {
+						q -= Vec2::new(A2, A3);
+						m = Mat2::from_cols(Vec2::new(COS1, SIN1), Vec2::new(-SIN1, COS1));
+						type_id = 3 - type_id;
+					} else {
+						q.x -= A1 + 1.;
+						m = Mat2::from_cols(Vec2::new(COS1, -SIN1), Vec2::new(SIN1, COS1));
+					}
+				} else {
+					if D1 * q.y - q.x > 0. {
+						m = Mat2::from_cols(Vec2::new(-COS2, SIN2), Vec2::new(SIN2, COS2));
+						type_id -= 2;
+					} else {
+						q.x -= A1;
+						m = Mat2::from_cols(Vec2::new(COS2, -SIN2), Vec2::new(SIN2, COS2));
+					}
+				}
+
+				q = m * q;
+				final_m = m * final_m;
+				q *= SC;
+			}
+
+			let edge_dist = get_edge_dist(type_id, q);
+			let g = 0.06274509803921569;
+			let value = edge_dist.abs().clamp(0., g);
+			let v = value / g;
+			data.push(Color::from_rgbf32_unchecked(v, v, v));
+		}
+	}
+
+	ImageFrame {
+		image: Image {
+			width,
+			height,
+			data,
+			..Default::default()
+		},
+		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
+		..Default::default()
+	}
+}
+
+fn get_edge_dist(type_id: i32, q: Vec2) -> f32 {
+	if type_id < 2 {
+		let d1 = 1. - (D1 * q.y + q.x) * INV_SC;
+		let d2 = (-D1 * q.y + q.x) * INV_SC;
+		d1.min(d2)
+	} else {
+		let d1 = -D2 * q.y + q.x;
+		let d2 = INV_SC - D2 * q.y - q.x;
+		d1.min(d2)
+	}
 }
