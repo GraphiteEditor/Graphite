@@ -23,7 +23,7 @@ async fn dehaze<F: 'n + Send + Sync>(
 	strength: Percentage,
 ) -> ImageFrameTable<Color> {
 	let image_frame = image_frame.eval(footprint).await;
-	let image_frame = image_frame.instances().next().expect("ONE INSTANCE EXPECTED");
+	let image_frame = image_frame.one_item();
 
 	// Prepare the image data for processing
 	let image = &image_frame.image;

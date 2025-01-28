@@ -16,7 +16,7 @@ use glam::{DAffine2, DVec2};
 
 #[node_macro::node(category("Debug"))]
 fn vector_points(_: (), vector_data: VectorDataTable) -> Vec<DVec2> {
-	let vector_data = vector_data.instances().next().expect("ONE INSTANCE EXPECTED");
+	let vector_data = vector_data.one_item();
 
 	vector_data.point_domain.positions().to_vec()
 }
@@ -139,7 +139,7 @@ pub fn create_brush_texture(brush_style: &BrushStyle) -> Image<Color> {
 	let normal_blend = BlendColorPairNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
 	let blend_executor = BlendImageTupleNode::new(ValueNode::new(normal_blend));
 	let image = blend_executor.eval((blank_texture, stamp));
-	let image_frame = image.instances().next().expect("ONE INSTANCE EXPECTED");
+	let image_frame = image.one_item();
 	image_frame.clone().image
 }
 
@@ -205,7 +205,7 @@ pub fn blend_with_mode(background: ImageFrameTable<Color>, foreground: ImageFram
 
 #[node_macro::node(category(""))]
 fn brush(_: Footprint, image: ImageFrameTable<Color>, bounds: ImageFrameTable<Color>, strokes: Vec<BrushStroke>, cache: BrushCache) -> ImageFrameTable<Color> {
-	let image = image.instances().next().expect("ONE INSTANCE EXPECTED");
+	let image = image.one_item();
 	let image = image.clone();
 
 	let stroke_bbox = strokes.iter().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
@@ -258,13 +258,13 @@ fn brush(_: Footprint, image: ImageFrameTable<Color>, bounds: ImageFrameTable<Co
 				EmptyImageNode::new(CopiedNode::new(stroke_to_layer), CopiedNode::new(Color::TRANSPARENT)).eval(())
 			};
 
-			let blit_target = blit_target.instances().next().expect("ONE INSTANCE EXPECTED");
+			let blit_target = blit_target.one_item();
 			blit_node.eval(blit_target.clone())
 		};
 
 		// Cache image before doing final blend, and store final stroke texture.
 		if idx == final_stroke_idx {
-			let actual_image = actual_image.instances().next().expect("ONE INSTANCE EXPECTED");
+			let actual_image = actual_image.one_item();
 			cache.cache_results(core::mem::take(&mut draw_strokes), actual_image.clone(), stroke_texture.clone());
 		}
 

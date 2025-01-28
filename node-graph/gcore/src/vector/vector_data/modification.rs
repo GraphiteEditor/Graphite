@@ -438,7 +438,7 @@ async fn path_modify<F: 'n + Send + Sync + Clone>(
 	modification: Box<VectorModification>,
 ) -> VectorDataTable {
 	let mut vector_data = vector_data.eval(input).await;
-	let vector_data = vector_data.instances_mut().next().expect("ONE INSTANCE EXPECTED");
+	let vector_data = vector_data.one_item_mut();
 
 	modification.apply(vector_data);
 

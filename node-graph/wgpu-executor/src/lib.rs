@@ -912,7 +912,7 @@ async fn render_texture<'a: 'n>(_: (), footprint: Footprint, image: impl Node<Fo
 // ) -> TextureFrame {
 // 	// let new_data: Vec<RGBA16F> = input.image.data.into_iter().map(|c| c.into()).collect();
 // 	let input = input.eval(footprint).await;
-// 	let input = input.instances().next().expect("ONE INSTANCE EXPECTED");
+// 	let input = input.one_item();
 
 // 	let new_data: Vec<SRGBA8> = input.image.data.iter().map(|x| (*x).into()).collect();
 // 	let new_image = Image {

@@ -27,7 +27,7 @@ async fn boolean_operation<F: 'n + Send>(
 	operation: BooleanOperation,
 ) -> VectorDataTable {
 	let group_of_paths = group_of_paths.eval(footprint).await;
-	let group_of_paths = group_of_paths.instances().next().expect("ONE INSTANCE EXPECTED");
+	let group_of_paths = group_of_paths.one_item();
 
 	fn vector_from_image<T: Transform>(image_frame: T) -> VectorData {
 		let corner1 = DVec2::ZERO;
@@ -45,12 +45,12 @@ async fn boolean_operation<F: 'n + Send>(
 	fn union_vector_data(graphic_element: &GraphicElement) -> VectorData {
 		match graphic_element {
 			GraphicElement::VectorData(vector_data) => {
-				let vector_data = vector_data.instances().next().expect("ONE INSTANCE EXPECTED");
+				let vector_data = vector_data.one_item();
 				vector_data.clone()
 			}
 			// Union all vector data in the graphic group into a single vector
 			GraphicElement::GraphicGroup(graphic_group) => {
-				let graphic_group = graphic_group.instances().next().expect("ONE INSTANCE EXPECTED");
+				let graphic_group = graphic_group.one_item();
 				let vector_data = collect_vector_data(graphic_group);
 
 				boolean_operation_on_vector_data(&vector_data, BooleanOperation::Union)

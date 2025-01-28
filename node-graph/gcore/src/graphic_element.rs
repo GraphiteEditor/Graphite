@@ -57,40 +57,43 @@ impl<T: Into<GraphicElement> + StaticType + 'static> Instances<T> {
 		}
 	}
 
+	pub fn one_item(&self) -> &T {
+		self.instances.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {} (one_item)", self.instances.len()))
+	}
+
+	pub fn one_item_mut(&mut self) -> &mut T {
+		let length = self.instances.len();
+		self.instances.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {} (one_item_mut)", length))
+	}
+
 	pub fn instances(&self) -> impl Iterator<Item = &T> {
+		assert!(self.instances.len() == 1, "ONE INSTANCE EXPECTED, FOUND {} (instances)", self.instances.len());
 		self.instances.iter()
 	}
 
 	pub fn instances_mut(&mut self) -> impl Iterator<Item = &mut T> {
+		assert!(self.instances.len() == 1, "ONE INSTANCE EXPECTED, FOUND {} (instances_mut)", self.instances.len());
 		self.instances.iter_mut()
 	}
 
-	pub fn one_item(&self) -> &T {
-		self.instances.get(0).expect("ONE INSTANCE EXPECTED")
-	}
+	// pub fn id(&self) -> impl Iterator<Item = InstanceId> + '_ {
+	// 	self.id.iter().copied()
+	// }
 
-	pub fn one_item_mut(&mut self) -> &mut T {
-		self.instances.get_mut(0).expect("ONE INSTANCE EXPECTED")
-	}
+	// pub fn push(&mut self, id: InstanceId, instance: T) {
+	// 	self.id.push(id);
+	// 	self.instances.push(instance);
+	// }
 
-	pub fn id(&self) -> impl Iterator<Item = InstanceId> + '_ {
-		self.id.iter().copied()
-	}
+	// pub fn replace_all(&mut self, id: InstanceId, instance: T) {
+	// 	let mut instance = instance;
 
-	pub fn push(&mut self, id: InstanceId, instance: T) {
-		self.id.push(id);
-		self.instances.push(instance);
-	}
-
-	pub fn replace_all(&mut self, id: InstanceId, instance: T) {
-		let mut instance = instance;
-
-		for (old_id, old_instance) in self.id.iter_mut().zip(self.instances.iter_mut()) {
-			let mut new_id = id;
-			std::mem::swap(old_id, &mut new_id);
-			std::mem::swap(&mut instance, old_instance);
-		}
-	}
+	// 	for (old_id, old_instance) in self.id.iter_mut().zip(self.instances.iter_mut()) {
+	// 		let mut new_id = id;
+	// 		std::mem::swap(old_id, &mut new_id);
+	// 		std::mem::swap(&mut instance, old_instance);
+	// 	}
+	// }
 }
 
 impl<T: Into<GraphicElement> + Default + Hash + StaticType + 'static> Default for Instances<T> {
@@ -362,7 +365,7 @@ async fn layer<F: 'n + Send + Copy>(
 ) -> GraphicGroupTable {
 	let mut element = element.eval(footprint).await;
 	let stack = stack.eval(footprint).await;
-	let stack = stack.instances().next().expect("ONE INSTANCE EXPECTED");
+	let stack = stack.one_item();
 	let mut stack = stack.clone();
 
 	if stack.transform.matrix2.determinant() != 0. {
@@ -444,7 +447,7 @@ async fn flatten_group<F: 'n + Send>(
 	fully_flatten: bool,
 ) -> GraphicGroupTable {
 	let nested_group = group.eval(footprint).await;
-	let nested_group = nested_group.instances().next().expect("ONE INSTANCE EXPECTED");
+	let nested_group = nested_group.one_item();
 	let nested_group = nested_group.clone();
 
 	let mut flat_group = GraphicGroup::default();
@@ -453,7 +456,7 @@ async fn flatten_group<F: 'n + Send>(
 		let mut collection_group = GraphicGroup::default();
 		for (element, reference) in current_group.elements {
 			if let GraphicElement::GraphicGroup(nested_group) = element {
-				let nested_group = nested_group.instances().next().expect("ONE INSTANCE EXPECTED");
+				let nested_group = nested_group.one_item();
 				let mut nested_group = nested_group.clone();
 
 				nested_group.set_transform(nested_group.transform() * current_group.transform);

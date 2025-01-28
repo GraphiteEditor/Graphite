@@ -260,7 +260,7 @@ where
 	// TODO: Improve sampling logic
 	#[inline(always)]
 	fn sample(&self, pos: DVec2, area: DVec2) -> Option<Self::Pixel> {
-		let image = self.instances().next().expect("ONE INSTANCE EXPECTED");
+		let image = self.one_item();
 
 		Sample::sample(image, pos, area)
 	}
@@ -290,19 +290,19 @@ where
 	type Pixel = P;
 
 	fn width(&self) -> u32 {
-		let image = self.instances().next().expect("ONE INSTANCE EXPECTED");
+		let image = self.one_item();
 
 		image.width()
 	}
 
 	fn height(&self) -> u32 {
-		let image = self.instances().next().expect("ONE INSTANCE EXPECTED");
+		let image = self.one_item();
 
 		image.height()
 	}
 
 	fn get_pixel(&self, x: u32, y: u32) -> Option<Self::Pixel> {
-		let image = self.instances().next().expect("ONE INSTANCE EXPECTED");
+		let image = self.one_item();
 
 		image.get_pixel(x, y)
 	}
@@ -320,7 +320,7 @@ where
 	P::Static: Pixel,
 {
 	fn get_pixel_mut(&mut self, x: u32, y: u32) -> Option<&mut Self::Pixel> {
-		let image = self.instances_mut().next().expect("ONE INSTANCE EXPECTED");
+		let image = self.one_item_mut();
 
 		BitmapMut::get_pixel_mut(image, x, y)
 	}

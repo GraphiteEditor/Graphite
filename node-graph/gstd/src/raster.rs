@@ -29,7 +29,7 @@ impl From<std::io::Error> for Error {
 
 #[node_macro::node(category("Debug: Raster"))]
 fn sample_image(footprint: Footprint, image_frame: ImageFrameTable<Color>) -> ImageFrameTable<Color> {
-	let image_frame = image_frame.instances().next().expect("ONE INSTANCE EXPECTED");
+	let image_frame = image_frame.one_item();
 
 	// Resize the image using the image crate
 	let image = image_frame.image.clone();
@@ -282,7 +282,7 @@ pub struct ExtendImageToBoundsNode<Bounds> {
 
 #[node_macro::old_node_fn(ExtendImageToBoundsNode)]
 fn extend_image_to_bounds(image: ImageFrameTable<Color>, bounds: DAffine2) -> ImageFrameTable<Color> {
-	let image = image.instances().next().expect("ONE INSTANCE EXPECTED");
+	let image = image.one_item();
 
 	let image_aabb = Bbox::unit().affine_transform(image.transform()).to_axis_aligned_bbox();
 	let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();

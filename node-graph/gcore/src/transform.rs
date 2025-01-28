@@ -53,11 +53,11 @@ where
 	GraphicElement: From<ImageFrame<P>>,
 {
 	fn transform(&self) -> DAffine2 {
-		let image_frame = self.instances().next().expect("ONE INSTANCE EXPECTED");
+		let image_frame = self.one_item();
 		image_frame.transform
 	}
 	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
-		let image_frame = self.instances().next().expect("ONE INSTANCE EXPECTED");
+		let image_frame = self.one_item();
 		image_frame.local_pivot(pivot)
 	}
 }
@@ -68,7 +68,7 @@ where
 	GraphicElement: From<ImageFrame<P>>,
 {
 	fn set_transform(&mut self, value: DAffine2) {
-		let image_frame = self.instances_mut().next().expect("ONE INSTANCE EXPECTED");
+		let image_frame = self.one_item_mut();
 		image_frame.transform = value;
 	}
 }
@@ -76,17 +76,17 @@ where
 // Implementations for TextureTable
 impl Transform for TextureFrameTable {
 	fn transform(&self) -> DAffine2 {
-		let image_frame = self.instances().next().expect("ONE INSTANCE EXPECTED");
+		let image_frame = self.one_item();
 		image_frame.transform
 	}
 	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
-		let image_frame = self.instances().next().expect("ONE INSTANCE EXPECTED");
+		let image_frame = self.one_item();
 		image_frame.local_pivot(pivot)
 	}
 }
 impl TransformSet for TextureFrameTable {
 	fn set_transform(&mut self, value: DAffine2) {
-		let image_frame = self.instances_mut().next().expect("ONE INSTANCE EXPECTED");
+		let image_frame = self.one_item_mut();
 		image_frame.transform = value;
 	}
 }
@@ -106,13 +106,13 @@ impl TransformSet for GraphicGroup {
 // Implementations for GraphicGroupTable
 impl Transform for GraphicGroupTable {
 	fn transform(&self) -> DAffine2 {
-		let graphic_group = self.instances().next().expect("ONE INSTANCE EXPECTED");
+		let graphic_group = self.one_item();
 		graphic_group.transform
 	}
 }
 impl TransformSet for GraphicGroupTable {
 	fn set_transform(&mut self, value: DAffine2) {
-		let graphic_group = self.instances_mut().next().expect("ONE INSTANCE EXPECTED");
+		let graphic_group = self.one_item_mut();
 		graphic_group.transform = value;
 	}
 }
@@ -162,17 +162,17 @@ impl TransformSet for VectorData {
 // Implementations for VectorDataTable
 impl Transform for VectorDataTable {
 	fn transform(&self) -> DAffine2 {
-		let vector_data = self.instances().next().expect("ONE INSTANCE EXPECTED");
+		let vector_data = self.one_item();
 		vector_data.transform
 	}
 	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
-		let vector_data = self.instances().next().expect("ONE INSTANCE EXPECTED");
+		let vector_data = self.one_item();
 		vector_data.local_pivot(pivot)
 	}
 }
 impl TransformSet for VectorDataTable {
 	fn set_transform(&mut self, value: DAffine2) {
-		let vector_data = self.instances_mut().next().expect("ONE INSTANCE EXPECTED");
+		let vector_data = self.one_item_mut();
 		vector_data.transform = value;
 	}
 }

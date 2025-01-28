@@ -64,7 +64,7 @@ impl Clone for ComputePass {
 #[node_macro::old_node_impl(MapGpuNode)]
 async fn map_gpu<'a: 'input>(image: ImageFrameTable<Color>, node: DocumentNode, editor_api: &'a graphene_core::application_io::EditorApi<WasmApplicationIo>) -> ImageFrameTable<Color> {
 	let image_frame_table = &image;
-	let image = image.instances().next().expect("ONE INSTANCE EXPECTED");
+	let image = image.one_item();
 
 	log::debug!("Executing gpu node");
 	let executor = &editor_api.application_io.as_ref().and_then(|io| io.gpu_executor()).unwrap();
@@ -138,7 +138,7 @@ where
 	GraphicElement: From<ImageFrame<T>>,
 	T::Static: Pixel,
 {
-	let image = image.instances().next().expect("ONE INSTANCE EXPECTED");
+	let image = image.one_item();
 
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let inner_network = NodeNetwork::value_network(node);
@@ -280,8 +280,8 @@ where
 
 #[node_macro::node(category("Debug: GPU"))]
 async fn blend_gpu_image(_: (), foreground: ImageFrameTable<Color>, background: ImageFrameTable<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrameTable<Color> {
-	let foreground = foreground.instances().next().expect("ONE INSTANCE EXPECTED");
-	let background = background.instances().next().expect("ONE INSTANCE EXPECTED");
+	let foreground = foreground.one_item();
+	let background = background.one_item();
 
 	let foreground_size = DVec2::new(foreground.image.width as f64, foreground.image.height as f64);
 	let background_size = DVec2::new(background.image.width as f64, background.image.height as f64);

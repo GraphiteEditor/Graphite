@@ -146,10 +146,10 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					let complete_node = insert_r.then(insert_g).then(insert_b);
 					let complete_node = complete_node.then(MaskImageNode::new(ClonedNode::new(channel_a.clone())));
 
-					let channel_r = channel_r.instances().next().expect("ONE INSTANCE EXPECTED");
-					let channel_g = channel_g.instances().next().expect("ONE INSTANCE EXPECTED");
-					let channel_b = channel_b.instances().next().expect("ONE INSTANCE EXPECTED");
-					let channel_a = channel_a.instances().next().expect("ONE INSTANCE EXPECTED");
+					let channel_r = channel_r.one_item();
+					let channel_g = channel_g.one_item();
+					let channel_b = channel_b.one_item();
+					let channel_a = channel_a.one_item();
 
 					// TODO: Move to FN Node for better performance
 					let (mut transform, mut bounds) = (DAffine2::ZERO, glam::UVec2::ZERO);

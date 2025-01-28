@@ -43,7 +43,7 @@ async fn create_surface<'a: 'n>(_: (), editor: &'a WasmEditorApi) -> Arc<WasmSur
 // 	image: ImageFrameTable<graphene_core::raster::SRGBA8>,
 // 	surface_handle: Arc<WasmSurfaceHandle>,
 // ) -> graphene_core::application_io::SurfaceHandleFrame<HtmlCanvasElement> {
-// 	let image = image.instances().next().expect("ONE INSTANCE EXPECTED");
+// 	let image = image.one_item();
 // 	let image_data = image.image.data;
 // 	let array: Clamped<&[u8]> = Clamped(bytemuck::cast_slice(image_data.as_slice()));
 // 	if image.image.width > 0 && image.image.height > 0 {
