@@ -231,200 +231,200 @@ impl ArtboardGroup {
 	}
 }
 
-// #[node_macro::node(category(""))]
-// async fn layer<F: 'n + Send + Copy>(
-// 	#[implementations(
-// 		(),
-// 		Footprint,
-// 	)]
-// 	footprint: F,
-// 	#[implementations(
-// 		() -> GraphicGroup,
-// 		Footprint -> GraphicGroup,
-// 	)]
-// 	stack: impl Node<F, Output = GraphicGroup>,
-// 	#[implementations(
-// 		() -> GraphicElement,
-// 		Footprint -> GraphicElement,
-// 	)]
-// 	element: impl Node<F, Output = GraphicElement>,
-// 	node_path: Vec<NodeId>,
-// ) -> GraphicGroup {
-// 	let mut element = element.eval(footprint).await;
-// 	let mut stack = stack.eval(footprint).await;
-// 	if stack.transform.matrix2.determinant() != 0. {
-// 		*element.transform_mut() = stack.transform.inverse() * element.transform();
-// 	} else {
-// 		stack.clear();
-// 		stack.transform = DAffine2::IDENTITY;
-// 	}
+#[node_macro::node(category(""))]
+async fn layer<F: 'n + Send + Copy>(
+	#[implementations(
+		(),
+		Footprint,
+	)]
+	footprint: F,
+	#[implementations(
+		() -> GraphicGroup,
+		Footprint -> GraphicGroup,
+	)]
+	stack: impl Node<F, Output = GraphicGroup>,
+	#[implementations(
+		() -> GraphicElement,
+		Footprint -> GraphicElement,
+	)]
+	element: impl Node<F, Output = GraphicElement>,
+	node_path: Vec<NodeId>,
+) -> GraphicGroup {
+	let mut element = element.eval(footprint).await;
+	let mut stack = stack.eval(footprint).await;
+	if stack.transform.matrix2.determinant() != 0. {
+		*element.transform_mut() = stack.transform.inverse() * element.transform();
+	} else {
+		stack.clear();
+		stack.transform = DAffine2::IDENTITY;
+	}
 
-// 	// Get the penultimate element of the node path, or None if the path is too short
-// 	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
-// 	stack.push((element, encapsulating_node_id));
-// 	stack
-// }
+	// Get the penultimate element of the node path, or None if the path is too short
+	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
+	stack.push((element, encapsulating_node_id));
+	stack
+}
 
-// #[node_macro::node(category("Debug"))]
-// async fn to_element<F: 'n + Send, Data: Into<GraphicElement> + 'n>(
-// 	#[implementations(
-// 		(),
-// 		(),
-// 		(),
-// 		(),
-// 		Footprint,
-// 	)]
-// 	footprint: F,
-// 	#[implementations(
-// 		() -> GraphicGroup,
-// 	 	() -> VectorData,
-// 		() -> ImageFrame<Color>,
-// 	 	() -> TextureFrame,
-// 	 	Footprint -> GraphicGroup,
-// 	 	Footprint -> VectorData,
-// 		Footprint -> ImageFrame<Color>,
-// 	 	Footprint -> TextureFrame,
-// 	)]
-// 	data: impl Node<F, Output = Data>,
-// ) -> GraphicElement {
-// 	data.eval(footprint).await.into()
-// }
+#[node_macro::node(category("Debug"))]
+async fn to_element<F: 'n + Send, Data: Into<GraphicElement> + 'n>(
+	#[implementations(
+		(),
+		(),
+		(),
+		(),
+		Footprint,
+	)]
+	footprint: F,
+	#[implementations(
+		() -> GraphicGroup,
+	 	() -> VectorData,
+		() -> ImageFrame<Color>,
+	 	() -> TextureFrame,
+	 	Footprint -> GraphicGroup,
+	 	Footprint -> VectorData,
+		Footprint -> ImageFrame<Color>,
+	 	Footprint -> TextureFrame,
+	)]
+	data: impl Node<F, Output = Data>,
+) -> GraphicElement {
+	data.eval(footprint).await.into()
+}
 
-// #[node_macro::node(category("General"))]
-// async fn to_group<F: 'n + Send, Data: Into<GraphicGroup> + 'n>(
-// 	#[implementations(
-// 		(),
-// 		(),
-// 		(),
-// 		(),
-// 		Footprint,
-// 	)]
-// 	footprint: F,
-// 	#[implementations(
-// 		() -> GraphicGroup,
-// 		() -> VectorData,
-// 		() -> ImageFrame<Color>,
-// 		() -> TextureFrame,
-// 		Footprint -> GraphicGroup,
-// 		Footprint -> VectorData,
-// 		Footprint -> ImageFrame<Color>,
-// 		Footprint -> TextureFrame,
-// 	)]
-// 	element: impl Node<F, Output = Data>,
-// ) -> GraphicGroup {
-// 	element.eval(footprint).await.into()
-// }
+#[node_macro::node(category("General"))]
+async fn to_group<F: 'n + Send, Data: Into<GraphicGroup> + 'n>(
+	#[implementations(
+		(),
+		(),
+		(),
+		(),
+		Footprint,
+	)]
+	footprint: F,
+	#[implementations(
+		() -> GraphicGroup,
+		() -> VectorData,
+		() -> ImageFrame<Color>,
+		() -> TextureFrame,
+		Footprint -> GraphicGroup,
+		Footprint -> VectorData,
+		Footprint -> ImageFrame<Color>,
+		Footprint -> TextureFrame,
+	)]
+	element: impl Node<F, Output = Data>,
+) -> GraphicGroup {
+	element.eval(footprint).await.into()
+}
 
-// #[node_macro::node(category("General"))]
-// async fn flatten_group<F: 'n + Send>(
-// 	#[implementations(
-// 		(),
-// 		Footprint,
-// 	)]
-// 	footprint: F,
-// 	#[implementations(
-// 		() -> GraphicGroup,
-// 		Footprint -> GraphicGroup,
-// 	)]
-// 	group: impl Node<F, Output = GraphicGroup>,
-// 	fully_flatten: bool,
-// ) -> GraphicGroup {
-// 	let nested_group = group.eval(footprint).await;
-// 	let mut flat_group = GraphicGroup::EMPTY;
-// 	fn flatten_group(result_group: &mut GraphicGroup, current_group: GraphicGroup, fully_flatten: bool) {
-// 		let mut collection_group = GraphicGroup::EMPTY;
-// 		for (element, reference) in current_group.elements {
-// 			if let GraphicElement::GraphicGroup(mut nested_group) = element {
-// 				nested_group.transform *= current_group.transform;
-// 				let mut sub_group = GraphicGroup::EMPTY;
-// 				if fully_flatten {
-// 					flatten_group(&mut sub_group, nested_group, fully_flatten);
-// 				} else {
-// 					for (collection_element, _) in &mut nested_group.elements {
-// 						*collection_element.transform_mut() = nested_group.transform * collection_element.transform();
-// 					}
-// 					sub_group = nested_group;
-// 				}
-// 				collection_group.append(&mut sub_group.elements);
-// 			} else {
-// 				collection_group.push((element, reference));
-// 			}
-// 		}
+#[node_macro::node(category("General"))]
+async fn flatten_group<F: 'n + Send>(
+	#[implementations(
+		(),
+		Footprint,
+	)]
+	footprint: F,
+	#[implementations(
+		() -> GraphicGroup,
+		Footprint -> GraphicGroup,
+	)]
+	group: impl Node<F, Output = GraphicGroup>,
+	fully_flatten: bool,
+) -> GraphicGroup {
+	let nested_group = group.eval(footprint).await;
+	let mut flat_group = GraphicGroup::EMPTY;
+	fn flatten_group(result_group: &mut GraphicGroup, current_group: GraphicGroup, fully_flatten: bool) {
+		let mut collection_group = GraphicGroup::EMPTY;
+		for (element, reference) in current_group.elements {
+			if let GraphicElement::GraphicGroup(mut nested_group) = element {
+				nested_group.transform *= current_group.transform;
+				let mut sub_group = GraphicGroup::EMPTY;
+				if fully_flatten {
+					flatten_group(&mut sub_group, nested_group, fully_flatten);
+				} else {
+					for (collection_element, _) in &mut nested_group.elements {
+						*collection_element.transform_mut() = nested_group.transform * collection_element.transform();
+					}
+					sub_group = nested_group;
+				}
+				collection_group.append(&mut sub_group.elements);
+			} else {
+				collection_group.push((element, reference));
+			}
+		}
 
-// 		result_group.append(&mut collection_group.elements);
-// 	}
-// 	flatten_group(&mut flat_group, nested_group, fully_flatten);
-// 	flat_group
-// }
+		result_group.append(&mut collection_group.elements);
+	}
+	flatten_group(&mut flat_group, nested_group, fully_flatten);
+	flat_group
+}
 
-// #[node_macro::node(category(""))]
-// async fn to_artboard<F: 'n + Send + ApplyTransform, Data: Into<GraphicGroup> + 'n>(
-// 	#[implementations(
-// 		(),
-// 		(),
-// 		(),
-// 		(),
-// 		Footprint,
-// 	)]
-// 	mut footprint: F,
-// 	#[implementations(
-// 		() -> GraphicGroup,
-// 		() -> VectorData,
-// 		() -> ImageFrame<Color>,
-// 		() -> TextureFrame,
-// 		Footprint -> GraphicGroup,
-// 		Footprint -> VectorData,
-// 		Footprint -> ImageFrame<Color>,
-// 		Footprint -> TextureFrame,
-// 	)]
-// 	contents: impl Node<F, Output = Data>,
-// 	label: String,
-// 	location: IVec2,
-// 	dimensions: IVec2,
-// 	background: Color,
-// 	clip: bool,
-// ) -> Artboard {
-// 	footprint.apply_transform(&DAffine2::from_translation(location.as_dvec2()));
-// 	let graphic_group = contents.eval(footprint).await;
+#[node_macro::node(category(""))]
+async fn to_artboard<F: 'n + Send + ApplyTransform, Data: Into<GraphicGroup> + 'n>(
+	#[implementations(
+		(),
+		(),
+		(),
+		(),
+		Footprint,
+	)]
+	mut footprint: F,
+	#[implementations(
+		() -> GraphicGroup,
+		() -> VectorData,
+		() -> ImageFrame<Color>,
+		() -> TextureFrame,
+		Footprint -> GraphicGroup,
+		Footprint -> VectorData,
+		Footprint -> ImageFrame<Color>,
+		Footprint -> TextureFrame,
+	)]
+	contents: impl Node<F, Output = Data>,
+	label: String,
+	location: IVec2,
+	dimensions: IVec2,
+	background: Color,
+	clip: bool,
+) -> Artboard {
+	footprint.apply_transform(&DAffine2::from_translation(location.as_dvec2()));
+	let graphic_group = contents.eval(footprint).await;
 
-// 	Artboard {
-// 		graphic_group: graphic_group.into(),
-// 		label,
-// 		location: location.min(location + dimensions),
-// 		dimensions: dimensions.abs(),
-// 		background,
-// 		clip,
-// 	}
-// }
+	Artboard {
+		graphic_group: graphic_group.into(),
+		label,
+		location: location.min(location + dimensions),
+		dimensions: dimensions.abs(),
+		background,
+		clip,
+	}
+}
 
-// #[node_macro::node(category(""))]
-// async fn append_artboard<F: 'n + Send + Copy>(
-// 	#[implementations(
-// 		(),
-// 		Footprint,
-// 	)]
-// 	footprint: F,
-// 	#[implementations(
-// 		() -> ArtboardGroup,
-// 		Footprint -> ArtboardGroup,
-// 	)]
-// 	artboards: impl Node<F, Output = ArtboardGroup>,
-// 	#[implementations(
-// 		() -> Artboard,
-// 		Footprint -> Artboard,
-// 	)]
-// 	artboard: impl Node<F, Output = Artboard>,
-// 	node_path: Vec<NodeId>,
-// ) -> ArtboardGroup {
-// 	let artboard = artboard.eval(footprint).await;
-// 	let mut artboards = artboards.eval(footprint).await;
+#[node_macro::node(category(""))]
+async fn append_artboard<F: 'n + Send + Copy>(
+	#[implementations(
+		(),
+		Footprint,
+	)]
+	footprint: F,
+	#[implementations(
+		() -> ArtboardGroup,
+		Footprint -> ArtboardGroup,
+	)]
+	artboards: impl Node<F, Output = ArtboardGroup>,
+	#[implementations(
+		() -> Artboard,
+		Footprint -> Artboard,
+	)]
+	artboard: impl Node<F, Output = Artboard>,
+	node_path: Vec<NodeId>,
+) -> ArtboardGroup {
+	let artboard = artboard.eval(footprint).await;
+	let mut artboards = artboards.eval(footprint).await;
 
-// 	// Get the penultimate element of the node path, or None if the path is too short
-// 	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
-// 	artboards.append_artboard(artboard, encapsulating_node_id);
+	// Get the penultimate element of the node path, or None if the path is too short
+	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
+	artboards.append_artboard(artboard, encapsulating_node_id);
 
-// 	artboards
-// }
+	artboards
+}
 
 impl From<ImageFrame<Color>> for GraphicElement {
 	fn from(image_frame: ImageFrame<Color>) -> Self {

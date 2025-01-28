@@ -16,7 +16,7 @@ pub use ctor;
 pub mod consts;
 pub mod context;
 pub mod generic;
-// pub mod logic;
+pub mod logic;
 pub mod ops;
 pub mod structural;
 #[cfg(feature = "std")]
