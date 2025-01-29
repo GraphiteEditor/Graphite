@@ -1,6 +1,6 @@
 use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::transform::Footprint;
-use graphene_core::Color;
+use graphene_core::{Color, Ctx};
 
 #[node_macro::node(category("Raster"))]
 async fn image_color_palette<F: 'n + Send>(

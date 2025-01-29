@@ -954,8 +954,9 @@ fn bevel(_: impl Ctx, source: VectorDataTable, #[default(10.)] distance: Length)
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn area(_: (), vector_data: impl Node<Footprint, Output = VectorDataTable>) -> f64 {
-	let vector_data = vector_data.eval(Footprint::default()).await;
+async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl Node<Context<'static>, Output = VectorDataTable>) -> f64 {
+	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
+	let vector_data = vector_data.eval(new_ctx).await;
 	let vector_data = vector_data.one_item();
 
 	let mut area = 0.;

@@ -17,24 +17,24 @@ fn to_string<T: core::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f
 }
 
 #[node_macro::node(category("Debug"))]
-async fn switch<T, F: Send + 'n + Clone>(
-	#[implementations(Context)] footprint: F,
+async fn switch<T, C: Send + 'n + Clone>(
+	#[implementations(Context)] ctx: C,
 	condition: bool,
 	#[expose]
 	#[implementations(
 		Context -> String, Context -> bool, Context -> f64, Context -> u32, Context -> u64, Context -> DVec2, Context -> VectorDataTable, Context -> DAffine2,
 	)]
-	if_true: impl Node<F, Output = T>,
+	if_true: impl Node<C, Output = T>,
 	#[expose]
 	#[implementations(
 		Context -> String, Context -> bool, Context -> f64, Context -> u32, Context -> u64, Context -> DVec2, Context -> VectorDataTable, Context -> DAffine2,
 	)]
-	if_false: impl Node<F, Output = T>,
+	if_false: impl Node<C, Output = T>,
 ) -> T {
 	if condition {
 		// we can't remove these calls because we only want to evaluate the brach that we actually need
-		if_true.eval(footprint).await
+		if_true.eval(ctx).await
 	} else {
-		if_false.eval(footprint).await
+		if_false.eval(ctx).await
 	}
 }

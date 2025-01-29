@@ -10,12 +10,12 @@ use graphene_core::transform::{Footprint, Transform, TransformMut};
 use graphene_core::value::{ClonedNode, CopiedNode, ValueNode};
 use graphene_core::vector::brush_stroke::{BrushStroke, BrushStyle};
 use graphene_core::vector::VectorDataTable;
-use graphene_core::Node;
+use graphene_core::{Ctx, Node};
 
 use glam::{DAffine2, DVec2};
 
 #[node_macro::node(category("Debug"))]
-fn vector_points(_: (), vector_data: VectorDataTable) -> Vec<DVec2> {
+fn vector_points(_: impl Ctx, vector_data: VectorDataTable) -> Vec<DVec2> {
 	let vector_data = vector_data.one_item();
 
 	vector_data.point_domain.positions().to_vec()
@@ -202,7 +202,7 @@ pub fn blend_with_mode(background: ImageFrame<Color>, foreground: ImageFrame<Col
 }
 
 #[node_macro::node(category(""))]
-fn brush(_: Footprint, image: ImageFrameTable<Color>, bounds: ImageFrameTable<Color>, strokes: Vec<BrushStroke>, cache: BrushCache) -> ImageFrameTable<Color> {
+fn brush(_: impl Ctx, image: ImageFrameTable<Color>, bounds: ImageFrameTable<Color>, strokes: Vec<BrushStroke>, cache: BrushCache) -> ImageFrameTable<Color> {
 	let image = image.one_item().clone();
 
 	let stroke_bbox = strokes.iter().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);

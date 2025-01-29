@@ -12,8 +12,7 @@ use graphene_core::renderer::RenderMetadata;
 use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
 use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorDataTable;
-use graphene_core::GraphicGroupTable;
-use graphene_core::{Color, WasmNotSend};
+use graphene_core::{Color, Ctx, GraphicGroupTable, WasmNotSend};
 
 #[cfg(target_arch = "wasm32")]
 use base64::Engine;
@@ -27,7 +26,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 #[node_macro::node(category("Debug: GPU"))]
-async fn create_surface<'a: 'n>(_: (), editor: &'a WasmEditorApi) -> Arc<WasmSurfaceHandle> {
+async fn create_surface<'a: 'n>(_: impl Ctx, editor: &'a WasmEditorApi) -> Arc<WasmSurfaceHandle> {
 	Arc::new(editor.application_io.as_ref().unwrap().create_window())
 }
 
@@ -37,7 +36,7 @@ async fn create_surface<'a: 'n>(_: (), editor: &'a WasmEditorApi) -> Arc<WasmSur
 // #[node_macro::node(category("Debug: GPU"))]
 // #[cfg(target_arch = "wasm32")]
 // async fn draw_image_frame(
-// 	_: (),
+// 	_: impl Ctx,
 // 	image: ImageFrameTable<graphene_core::raster::SRGBA8>,
 // 	surface_handle: Arc<WasmSurfaceHandle>,
 // ) -> graphene_core::application_io::SurfaceHandleFrame<HtmlCanvasElement> {
@@ -60,7 +59,7 @@ async fn create_surface<'a: 'n>(_: (), editor: &'a WasmEditorApi) -> Arc<WasmSur
 // }
 
 #[node_macro::node(category("Network"))]
-async fn load_resource<'a: 'n>(_: (), _primary: (), #[scope("editor-api")] editor: &'a WasmEditorApi, url: String) -> Arc<[u8]> {
+async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")] editor: &'a WasmEditorApi, url: String) -> Arc<[u8]> {
 	let Some(api) = editor.application_io.as_ref() else {
 		return Arc::from(include_bytes!("../../graph-craft/src/null.png").to_vec());
 	};
@@ -75,7 +74,7 @@ async fn load_resource<'a: 'n>(_: (), _primary: (), #[scope("editor-api")] edito
 }
 
 #[node_macro::node(category("Raster"))]
-fn decode_image(_: (), data: Arc<[u8]>) -> ImageFrameTable<Color> {
+fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> ImageFrameTable<Color> {
 	let Some(image) = image::load_from_memory(data.as_ref()).ok() else {
 		return ImageFrameTable::default();
 	};
@@ -151,7 +150,7 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 #[node_macro::node(category(""))]
 #[cfg(target_arch = "wasm32")]
 async fn rasterize<T: GraphicElementRendered + graphene_core::transform::TransformMut + WasmNotSend + 'n>(
-	_: (),
+	_: impl Ctx,
 	#[implementations(
 		Footprint -> VectorDataTable,
 		Footprint -> ImageFrameTable<Color>,

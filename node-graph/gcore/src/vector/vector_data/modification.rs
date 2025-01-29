@@ -437,10 +437,10 @@ impl core::hash::Hash for VectorModification {
 // 	vector_data: impl Node<F, Output = VectorDataTable>,
 // 	modification: Box<VectorModification>,
 // ) -> VectorDataTable {
-// 	let mut vector_data = vector_data.eval(input).await;
 // 	let vector_data = vector_data.one_item_mut();
 
-// 	modification.apply(vector_data);
+// 	let mut vector_data = vector_data.eval(input).await;
+// 	modification.apply(&mut vector_data);
 
 // 	VectorDataTable::new(vector_data.clone())
 // }

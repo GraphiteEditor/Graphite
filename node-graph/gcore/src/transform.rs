@@ -3,8 +3,7 @@ use crate::raster::bbox::AxisAlignedBbox;
 use crate::raster::image::{ImageFrame, ImageFrameTable};
 use crate::raster::Pixel;
 use crate::vector::{VectorData, VectorDataTable};
-use crate::{Artboard, ArtboardGroup, CloneVarArgs, Color, ContextImpl, Ctx, ExtractAll, ExtractFootprint, GraphicElement, GraphicGroupTable};
-use crate::{Context, OwnedContextImpl};
+use crate::{Artboard, ArtboardGroup, CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 
 use glam::{DAffine2, DVec2};
 
@@ -303,7 +302,7 @@ impl ApplyTransform for () {
 
 #[node_macro::node(category(""))]
 async fn transform<T: 'n + TransformMut + 'static>(
-	input: impl ExtractAll + CloneVarArgs + Ctx,
+	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	#[implementations(
 		Context -> VectorDataTable,
 		Context -> GraphicGroupTable,
@@ -316,16 +315,14 @@ async fn transform<T: 'n + TransformMut + 'static>(
 	scale: DVec2,
 	shear: DVec2,
 	_pivot: DVec2,
-) -> T
-where
-{
+) -> T {
 	let modification = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
-	let mut footprint = *input.try_footprint().unwrap();
+	let mut footprint = *ctx.try_footprint().unwrap();
 
 	if !footprint.ignore_modifications {
 		footprint.apply_transform(&modification);
 	}
-	let mut ctx = OwnedContextImpl::from(input);
+	let mut ctx = OwnedContextImpl::from(ctx);
 	ctx.set_footprint(footprint);
 
 	let mut transform_target = transform_target.eval(Some(ctx.into())).await;

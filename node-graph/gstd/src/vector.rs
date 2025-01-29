@@ -5,7 +5,7 @@ use graphene_core::vector::misc::BooleanOperation;
 use graphene_core::vector::style::Fill;
 pub use graphene_core::vector::*;
 use graphene_core::{transform::Transform, GraphicGroup};
-use graphene_core::{Color, GraphicElement, GraphicGroupTable};
+use graphene_core::{Color, Ctx, GraphicElement, GraphicGroupTable};
 pub use path_bool as path_bool_lib;
 use path_bool::{FillRule, PathBooleanOperation};
 
