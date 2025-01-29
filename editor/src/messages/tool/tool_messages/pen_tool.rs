@@ -15,7 +15,7 @@ use bezier_rs::{Bezier, BezierHandles};
 use graph_craft::document::NodeId;
 use graphene_core::vector::{PointId, VectorModificationType};
 use graphene_core::Color;
-use graphene_std::vector::{HandleId, SegmentId};
+use graphene_std::vector::{HandleId, ManipulatorPointId, SegmentId, VectorData};
 
 #[derive(Default)]
 pub struct PenTool {
@@ -56,8 +56,8 @@ pub enum PenToolMessage {
 	Confirm,
 	DragStart { append_to_selected: Key },
 	DragStop,
-	PointerMove { snap_angle: Key, break_handle: Key, lock_angle: Key },
-	PointerOutsideViewport { snap_angle: Key, break_handle: Key, lock_angle: Key },
+	PointerMove { snap_angle: Key, break_handle: Key, lock_angle: Key, colinear: Key },
+	PointerOutsideViewport { snap_angle: Key, break_handle: Key, lock_angle: Key, colinear: Key },
 	Redo,
 	Undo,
 	UpdateOptions(PenOptionsUpdate),
@@ -203,6 +203,7 @@ struct ModifierState {
 	snap_angle: bool,
 	lock_angle: bool,
 	break_handle: bool,
+	colinear: bool,
 }
 #[derive(Clone, Debug)]
 struct LastPoint {
@@ -222,6 +223,12 @@ struct PenToolData {
 	next_handle_start: DVec2,
 
 	g1_continuous: bool,
+	colinear: bool,
+	toggle_colinear_debounce: bool,
+	equidistant: bool,
+
+	handle_end_before_bent: Option<DVec2>,
+	segment_end_before_bent: Option<SegmentId>,
 
 	angle: f64,
 	auto_panning: AutoPanning,
@@ -245,6 +252,8 @@ impl PenToolData {
 		self.latest_points.truncate(self.point_index);
 		self.latest_points.push(point);
 	}
+
+	fn get_end_handle_position(&self, transform: DAffine2, vector_data: VectorData) {}
 
 	// When the vector data transform changes, the positions of the points must be recalculated.
 	fn recalculate_latest_points_position(&mut self, document: &DocumentMessageHandler) {
@@ -272,11 +281,19 @@ impl PenToolData {
 
 		// Break the control
 		let Some(last_pos) = self.latest_point().map(|point| point.pos) else { return };
+
 		let transform = document.metadata().document_to_viewport * transform;
 		let on_top = transform.transform_point2(self.next_point).distance_squared(transform.transform_point2(last_pos)) < crate::consts::SNAP_POINT_TOLERANCE.powi(2);
+		self.colinear = true;
 		if on_top {
+			self.equidistant = true;
+			if self.handle_end.is_some() && self.latest_point().unwrap().in_segment.is_some() {
+				self.segment_end_before_bent = self.latest_point().unwrap().in_segment;
+			}
 			if let Some(point) = self.latest_point_mut() {
+				// self.bent_previous_segment = point.in_segment;
 				point.in_segment = None;
+				self.colinear = false
 			}
 			self.handle_end = None;
 		}
@@ -286,6 +303,10 @@ impl PenToolData {
 		let document = snap_data.document;
 		let next_handle_start = self.next_handle_start;
 		let handle_start = self.latest_point()?.handle_start;
+		self.handle_end_before_bent = self.handle_end;
+		log::info!("finish placing handle making equidistant false");
+		self.equidistant = false;
+		self.colinear = true;
 		let mouse = snap_data.input.mouse.position;
 		let Some(handle_end) = self.handle_end else {
 			self.handle_end = Some(next_handle_start);
@@ -326,6 +347,7 @@ impl PenToolData {
 
 		let points = [start, end];
 		let id = SegmentId::generate();
+		self.segment_end_before_bent = Some(id);
 		let modification_type = VectorModificationType::InsertSegment { id, points, handles };
 		responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
@@ -350,20 +372,137 @@ impl PenToolData {
 		}
 		Some(if close_subpath { PenToolFsmState::Ready } else { PenToolFsmState::PlacingAnchor })
 	}
+	fn drag_handle(&mut self, snap_data: SnapData, transform: DAffine2, mouse: DVec2, responses: &mut VecDeque<Message>, layer: Option<LayerNodeIdentifier>) -> Option<PenToolFsmState> {
+		let document = snap_data.document;
+		self.next_handle_start = self.compute_snapped_angle(snap_data, transform, self.colinear, mouse, Some(self.next_point), false);
 
-	fn drag_handle(&mut self, snap_data: SnapData, transform: DAffine2, mouse: DVec2, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
-		let colinear = !self.modifiers.break_handle && self.handle_end.is_some();
-		self.next_handle_start = self.compute_snapped_angle(snap_data, transform, colinear, mouse, Some(self.next_point), false);
-		if let Some(handle_end) = self.handle_end.as_mut().filter(|_| colinear) {
-			*handle_end = self.next_point * 2. - self.next_handle_start;
-			self.g1_continuous = true;
+		if self.equidistant {
+			log::info!("making equidistand");
+			self.make_equidistant(responses, layer);
 		} else {
-			self.g1_continuous = false;
+			log::info!("locking length");
+			self.lock_length(responses, layer);
 		}
+
+		self.colinear(responses, layer); // Uncommented to ensure collinearity
 
 		responses.add(OverlaysMessage::Draw);
 
 		Some(PenToolFsmState::DraggingHandle)
+	}
+
+	fn colinear(&mut self, responses: &mut VecDeque<Message>, layer: Option<LayerNodeIdentifier>) {
+		if self.colinear {
+			if let Some(handle) = self.handle_end.as_mut() {
+				let a = self.next_handle_start; // Start of the line
+				let b = self.next_point; // End of the line
+				let p = *handle; // Current handle position
+
+				// Direction vector from a to b
+				let ab = (b - a).normalize();
+
+				// Relative distance of handle to the next_point
+				let relative_distance = (p - b).length();
+
+				// Set handle_end to be colinear while maintaining relative distance to next_point
+				*handle = b + relative_distance * ab;
+			} else {
+				let a = self.next_handle_start; // Start of the line
+				let b = self.next_point; // End of the line
+				let p = self.handle_end_before_bent.unwrap(); // Current handle position
+				log::info!("a is {:?}", a);
+				log::info!("b is {:?}", b);
+				log::info!("p is {:?}", p);
+
+				// Direction vector from a to b
+				let ab = (b - a).normalize();
+				log::info!("ab is {:?}", ab);
+
+				// Relative distance of handle to the next_point
+				let relative_distance = (p - b).length();
+				log::info!("relative distance {:?}", relative_distance);
+
+				// Set handle_end to be colinear while maintaining relative distance to next_point
+				let relative_position = relative_distance * ab;
+				log::info!("relative position {:?}", relative_position);
+				if let Some((segment, handle)) = self.segment_end_before_bent.zip(self.handle_end_before_bent) {
+					let modification_type = VectorModificationType::SetEndHandle { segment, relative_position };
+					responses.add(GraphOperationMessage::Vector {
+						layer: layer.unwrap(),
+						modification_type,
+					});
+					// Both are `Some`, and you can access `segment` and `handle` here.
+				} else if let Some(segment) = self.segment_end_before_bent {
+					return;
+					// Only `segment` is `Some`
+				} else if let Some(handle) = self.handle_end_before_bent {
+					return;
+					// Only `handle` is `Some`
+				}
+			}
+		}
+	}
+	fn lock_length(&mut self, responses: &mut VecDeque<Message>, layer: Option<LayerNodeIdentifier>) {
+		if !self.modifiers.break_handle && self.colinear {
+			if let Some(handle) = self.handle_end.as_mut() {
+				*handle = self.next_point * 2. - self.next_handle_start;
+			} else {
+				if let Some((segment, handle)) = self.segment_end_before_bent.zip(self.handle_end_before_bent) {
+					let relative_position = self.latest_point().unwrap().pos - self.next_handle_start;
+					self.handle_end_before_bent = Some((self.latest_point().unwrap().pos) * 2. - self.next_handle_start);
+
+					let modification_type = VectorModificationType::SetEndHandle { segment, relative_position };
+					responses.add(GraphOperationMessage::Vector {
+						layer: layer.unwrap(),
+						modification_type,
+					});
+					// Both are `Some`, and you can access `segment` and `handle` here.
+				} else if let Some(segment) = self.segment_end_before_bent {
+					return;
+					// Only `segment` is `Some`
+				} else if let Some(handle) = self.handle_end_before_bent {
+					return;
+					// Only `handle` is `Some`
+				}
+			}
+		} else {
+		}
+	}
+	fn make_equidistant(&mut self, responses: &mut VecDeque<Message>, layer: Option<LayerNodeIdentifier>) {
+		if self.modifiers.break_handle && self.colinear {
+			if let Some(handle) = self.handle_end.as_mut() {
+				*handle = self.next_point * 2. - self.next_handle_start;
+			} else {
+				if let Some((segment, handle)) = self.segment_end_before_bent.zip(self.handle_end_before_bent) {
+					let relative_position = self.latest_point().unwrap().pos - self.next_handle_start;
+					self.handle_end_before_bent = Some((self.latest_point().unwrap().pos) * 2. - self.next_handle_start);
+
+					let modification_type = VectorModificationType::SetEndHandle { segment, relative_position };
+					responses.add(GraphOperationMessage::Vector {
+						layer: layer.unwrap(),
+						modification_type,
+					});
+					// Both are `Some`, and you can access `segment` and `handle` here.
+				} else if let Some(segment) = self.segment_end_before_bent {
+					return;
+					// Only `segment` is `Some`
+				} else if let Some(handle) = self.handle_end_before_bent {
+					return;
+					// Only `handle` is `Some`
+				}
+			}
+		}
+	}
+
+	fn make_colinear(&mut self) {
+		if self.colinear {
+			if let Some(handle_end) = self.handle_end.as_mut() {
+				*handle_end = self.next_point * 2. - self.next_handle_start;
+				self.g1_continuous = true;
+			} else {
+				self.g1_continuous = true;
+			}
+		}
 	}
 
 	fn place_anchor(&mut self, snap_data: SnapData, transform: DAffine2, mouse: DVec2, preferences: &PreferencesMessageHandler, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
@@ -614,6 +753,7 @@ impl Fsm for PenToolFsmState {
 					snap_angle: Key::Control,
 					break_handle: Key::Alt,
 					lock_angle: Key::Shift,
+					colinear: Key::KeyC,
 				});
 
 				PenToolFsmState::PlacingAnchor
@@ -632,6 +772,7 @@ impl Fsm for PenToolFsmState {
 					snap_angle: Key::Control,
 					break_handle: Key::Alt,
 					lock_angle: Key::Shift,
+					colinear: Key::KeyC,
 				});
 
 				PenToolFsmState::PlacingAnchor
@@ -781,39 +922,95 @@ impl Fsm for PenToolFsmState {
 			(PenToolFsmState::DraggingHandle, PenToolMessage::DragStop) => tool_data
 				.finish_placing_handle(SnapData::new(document, input), transform, preferences, responses)
 				.unwrap_or(PenToolFsmState::PlacingAnchor),
-			(PenToolFsmState::DraggingHandle, PenToolMessage::PointerMove { snap_angle, break_handle, lock_angle }) => {
+			(
+				PenToolFsmState::DraggingHandle,
+				PenToolMessage::PointerMove {
+					snap_angle,
+					break_handle,
+					lock_angle,
+					colinear,
+				},
+			) => {
+				log::info!("handle end {:?}", tool_data.handle_end);
+				log::info!("handle before bend {:?}", tool_data.handle_end_before_bent);
 				tool_data.modifiers = ModifierState {
 					snap_angle: input.keyboard.key(snap_angle),
 					lock_angle: input.keyboard.key(lock_angle),
 					break_handle: input.keyboard.key(break_handle),
+					colinear: input.keyboard.key(colinear),
 				};
 				let snap_data = SnapData::new(document, input);
 
-				let state = tool_data.drag_handle(snap_data, transform, input.mouse.position, responses).unwrap_or(PenToolFsmState::Ready);
+				if tool_data.modifiers.colinear && !tool_data.toggle_colinear_debounce {
+					tool_data.equidistant = true;
+					tool_data.colinear = !tool_data.colinear;
+					tool_data.toggle_colinear_debounce = true;
+				}
+
+				if !tool_data.modifiers.colinear {
+					tool_data.toggle_colinear_debounce = false;
+				}
+
+				let state = tool_data.drag_handle(snap_data, transform, input.mouse.position, responses, layer).unwrap_or(PenToolFsmState::Ready);
 
 				// Auto-panning
 				let messages = [
-					PenToolMessage::PointerOutsideViewport { snap_angle, break_handle, lock_angle }.into(),
-					PenToolMessage::PointerMove { snap_angle, break_handle, lock_angle }.into(),
+					PenToolMessage::PointerOutsideViewport {
+						snap_angle,
+						break_handle,
+						lock_angle,
+						colinear,
+					}
+					.into(),
+					PenToolMessage::PointerMove {
+						snap_angle,
+						break_handle,
+						lock_angle,
+						colinear,
+					}
+					.into(),
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				state
 			}
-			(PenToolFsmState::PlacingAnchor, PenToolMessage::PointerMove { snap_angle, break_handle, lock_angle }) => {
+			(
+				PenToolFsmState::PlacingAnchor,
+				PenToolMessage::PointerMove {
+					snap_angle,
+					break_handle,
+					lock_angle,
+					colinear,
+				},
+			) => {
 				tool_data.modifiers = ModifierState {
 					snap_angle: input.keyboard.key(snap_angle),
 					lock_angle: input.keyboard.key(lock_angle),
 					break_handle: input.keyboard.key(break_handle),
+					colinear: input.keyboard.key(colinear),
 				};
+
+				log::info!("handle end {:?}", tool_data.handle_end_before_bent);
 				let state = tool_data
 					.place_anchor(SnapData::new(document, input), transform, input.mouse.position, preferences, responses)
 					.unwrap_or(PenToolFsmState::Ready);
 
 				// Auto-panning
 				let messages = [
-					PenToolMessage::PointerOutsideViewport { snap_angle, break_handle, lock_angle }.into(),
-					PenToolMessage::PointerMove { snap_angle, break_handle, lock_angle }.into(),
+					PenToolMessage::PointerOutsideViewport {
+						snap_angle,
+						break_handle,
+						lock_angle,
+						colinear,
+					}
+					.into(),
+					PenToolMessage::PointerMove {
+						snap_angle,
+						break_handle,
+						lock_angle,
+						colinear,
+					}
+					.into(),
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
@@ -836,11 +1033,31 @@ impl Fsm for PenToolFsmState {
 
 				PenToolFsmState::PlacingAnchor
 			}
-			(state, PenToolMessage::PointerOutsideViewport { snap_angle, break_handle, lock_angle }) => {
+			(
+				state,
+				PenToolMessage::PointerOutsideViewport {
+					snap_angle,
+					break_handle,
+					lock_angle,
+					colinear,
+				},
+			) => {
 				// Auto-panning
 				let messages = [
-					PenToolMessage::PointerOutsideViewport { snap_angle, break_handle, lock_angle }.into(),
-					PenToolMessage::PointerMove { snap_angle, break_handle, lock_angle }.into(),
+					PenToolMessage::PointerOutsideViewport {
+						snap_angle,
+						break_handle,
+						lock_angle,
+						colinear,
+					}
+					.into(),
+					PenToolMessage::PointerMove {
+						snap_angle,
+						break_handle,
+						lock_angle,
+						colinear,
+					}
+					.into(),
 				];
 				tool_data.auto_panning.stop(&messages, responses);
 
