@@ -32,8 +32,8 @@ fn sample_image(footprint: Footprint, image_frame: ImageFrameTable<Color>) -> Im
 	let image_frame = image_frame.one_item();
 
 	// Resize the image using the image crate
-	let image = image_frame.image.clone();
-	let data = bytemuck::cast_vec(image.data);
+	let image = &image_frame.image;
+	let data = bytemuck::cast_vec(image.data.clone());
 
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 	let image_bounds = Bbox::from_transform(image_frame.transform).to_axis_aligned_bbox();

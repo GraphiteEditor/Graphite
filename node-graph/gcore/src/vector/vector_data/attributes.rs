@@ -1,4 +1,5 @@
-use super::{HandleId, VectorData, VectorDataTable};
+use crate::vector::vector_data::{HandleId, VectorData, VectorDataTable};
+use crate::vector::ConcatElement;
 
 use dyn_any::DynAny;
 
@@ -774,7 +775,7 @@ impl bezier_rs::Identifier for PointId {
 	}
 }
 
-impl crate::vector::ConcatElement for VectorData {
+impl ConcatElement for VectorData {
 	fn concat(&mut self, other: &Self, transform: glam::DAffine2, node_id: u64) {
 		let new_ids = other
 			.point_domain
@@ -813,7 +814,7 @@ impl crate::vector::ConcatElement for VectorData {
 	}
 }
 
-impl crate::vector::ConcatElement for VectorDataTable {
+impl ConcatElement for VectorDataTable {
 	fn concat(&mut self, other: &Self, transform: glam::DAffine2, node_id: u64) {
 		for (instance, other_instance) in self.instances_mut().zip(other.instances()) {
 			instance.concat(other_instance, transform, node_id);

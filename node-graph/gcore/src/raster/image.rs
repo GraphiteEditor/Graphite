@@ -1,6 +1,7 @@
 use super::discrete_srgb::float_to_srgb_u8;
 use super::Color;
-use crate::{AlphaBlending, GraphicElement, Instances};
+use crate::instances::Instances;
+use crate::{AlphaBlending, GraphicElement};
 use alloc::vec::Vec;
 use core::hash::{Hash, Hasher};
 use dyn_any::StaticType;

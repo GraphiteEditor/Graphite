@@ -5,9 +5,7 @@ use graph_craft::document::*;
 use graph_craft::proto::*;
 use graphene_core::application_io::ApplicationIo;
 use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
-use graphene_core::raster::BlendMode;
-use graphene_core::raster::Image;
-use graphene_core::raster::Pixel;
+use graphene_core::raster::{BlendMode, Image, Pixel};
 use graphene_core::*;
 use wgpu_executor::{Bindgroup, PipelineLayout, Shader, ShaderIO, ShaderInput, WgpuExecutor, WgpuShaderInput};
 

@@ -306,6 +306,7 @@ fn brush(_: Footprint, image: ImageFrameTable<Color>, bounds: ImageFrameTable<Co
 		let blend_executor = BlendImageTupleNode::new(ValueNode::new(blend_params));
 		actual_image = blend_executor.eval((actual_image, erase_restore_mask));
 	}
+
 	ImageFrameTable::new(actual_image)
 }
 

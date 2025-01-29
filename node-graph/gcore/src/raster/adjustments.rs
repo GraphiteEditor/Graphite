@@ -1696,6 +1696,30 @@ async fn color_overlay<F: 'n + Send, T: Adjust<Color>>(
 	input
 }
 
+// #[cfg(feature = "alloc")]
+// pub use index_node::IndexNode;
+
+// #[cfg(feature = "alloc")]
+// mod index_node {
+// 	use crate::raster::{Color, ImageFrame};
+
+// 	#[node_macro::node(category(""))]
+// 	pub fn index<T: Default + Clone>(
+// 		_: (),
+// 		#[implementations(Vec<ImageFrame<Color>>, Vec<Color>)]
+// 		#[widget(ParsedWidgetOverride::Hidden)]
+// 		input: Vec<T>,
+// 		index: u32,
+// 	) -> T {
+// 		if (index as usize) < input.len() {
+// 			input[index as usize].clone()
+// 		} else {
+// 			warn!("The number of segments is {} but the requested segment is {}!", input.len(), index);
+// 			Default::default()
+// 		}
+// 	}
+// }
+
 #[cfg(test)]
 mod test {
 	use crate::raster::image::{ImageFrame, ImageFrameTable};

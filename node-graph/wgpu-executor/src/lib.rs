@@ -8,8 +8,7 @@ use dyn_any::{DynAny, StaticType};
 use gpu_executor::{ComputePassDimensions, GPUConstant, StorageBufferOptions, TextureBufferOptions, TextureBufferType, ToStorageBuffer, ToUniformBuffer};
 use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle};
 use graphene_core::transform::{Footprint, Transform};
-use graphene_core::Type;
-use graphene_core::{Cow, Node, SurfaceFrame};
+use graphene_core::{Cow, Node, SurfaceFrame, Type};
 
 use anyhow::{bail, Result};
 use futures::Future;
@@ -153,7 +152,7 @@ impl WgpuExecutor {
 		let surface_texture = surface.get_current_texture()?;
 
 		let render_params = RenderParams {
-			// We are using an explicit opaque color here to eliminate the alpha premulitplication step
+			// We are using an explicit opaque color here to eliminate the alpha premultiplication step
 			// which would be required to support a transparent webgpu canvas
 			base_color: vello::peniko::Color::from_rgba8(0x22, 0x22, 0x22, 0xff),
 			width,

@@ -1,7 +1,8 @@
+use crate::instances::Instances;
 use crate::text::FontCache;
 use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::style::ViewMode;
-use crate::{AlphaBlending, Instances};
+use crate::AlphaBlending;
 
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
 

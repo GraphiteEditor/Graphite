@@ -61,12 +61,12 @@ async fn boolean_operation<F: 'n + Send>(
 
 	fn collect_vector_data(graphic_group: &GraphicGroup) -> Vec<VectorData> {
 		// Ensure all non vector data in the graphic group is converted to vector data
-		let vector_data = graphic_group.iter().map(|(element, _)| union_vector_data(element)).clone();
+		let vector_data = graphic_group.iter().map(|(element, _)| union_vector_data(element));
 
 		// Apply the transform from the parent graphic group
 		let transformed_vector_data = vector_data.map(|mut vector_data| {
 			vector_data.transform = graphic_group.transform * vector_data.transform;
-			vector_data.clone()
+			vector_data
 		});
 		transformed_vector_data.collect::<Vec<_>>()
 	}

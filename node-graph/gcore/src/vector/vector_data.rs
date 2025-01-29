@@ -4,7 +4,8 @@ pub use attributes::*;
 pub use modification::*;
 
 use super::style::{PathStyle, Stroke};
-use crate::{AlphaBlending, Color, GraphicGroupTable, Instances};
+use crate::instances::Instances;
+use crate::{AlphaBlending, Color, GraphicGroupTable};
 
 use bezier_rs::ManipulatorGroup;
 use dyn_any::DynAny;

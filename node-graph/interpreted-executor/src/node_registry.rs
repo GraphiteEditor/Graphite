@@ -15,9 +15,9 @@ use graphene_core::{Cow, ProtoNodeIdentifier, Type};
 use graphene_core::{Node, NodeIO, NodeIOTypes};
 use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DynAnyNode, FutureWrapperNode, IntoTypeErasedNode};
 use graphene_std::application_io::TextureFrame;
+use graphene_std::raster::*;
 use graphene_std::wasm_application_io::*;
-use graphene_std::GraphicElement;
-use graphene_std::{raster::*, GraphicGroup};
+use graphene_std::{GraphicElement, GraphicGroup};
 #[cfg(feature = "gpu")]
 use wgpu_executor::{ShaderInputFrame, WgpuExecutor};
 use wgpu_executor::{WgpuSurface, WindowHandle};
@@ -116,7 +116,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		// async_node!(graphene_core::ops::IntoNode<ImageFrameTable<Color>>, input: ImageFrameTable<SRGBA8>, params: []),
 		async_node!(graphene_core::ops::IntoNode<GraphicGroupTable>, input: ImageFrameTable<Color>, params: []),
 		async_node!(graphene_core::ops::IntoNode<GraphicGroupTable>, input: VectorDataTable, params: []),
-		async_node!(graphene_core::ops::IntoNode<GraphicGroupTable>, input: GraphicGroupTable, params: []), // TODO: Is this redundant?
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::ops::IntoNode<&WgpuExecutor>, input: &WasmEditorApi, params: []),
 		async_node!(graphene_core::ops::IntoNode<GraphicElement>, input: VectorDataTable, params: []),
