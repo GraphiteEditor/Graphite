@@ -1,7 +1,9 @@
 pub use self::color::{Color, Luma, SRGBA8};
-use crate::vector::VectorData;
-use crate::GraphicGroup;
-use crate::{registry::types::Percentage, transform::Footprint};
+use crate::raster::image::ImageFrameTable;
+use crate::registry::types::Percentage;
+use crate::transform::Footprint;
+use crate::vector::VectorDataTable;
+use crate::GraphicGroupTable;
 
 use bytemuck::{Pod, Zeroable};
 use core::fmt::Debug;
@@ -283,27 +285,33 @@ impl<T: BitmapMut + Bitmap> BitmapMut for &mut T {
 }
 
 #[cfg(feature = "alloc")]
-pub use self::image::{Image, ImageFrame};
+pub use self::image::Image;
 #[cfg(feature = "alloc")]
-pub(crate) mod image;
+pub mod image;
 
 trait SetBlendMode {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode);
 }
 
-impl SetBlendMode for VectorData {
+impl SetBlendMode for VectorDataTable {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		self.alpha_blending.blend_mode = blend_mode;
+		for instance in self.instances_mut() {
+			instance.alpha_blending.blend_mode = blend_mode;
+		}
 	}
 }
-impl SetBlendMode for GraphicGroup {
+impl SetBlendMode for GraphicGroupTable {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		self.alpha_blending.blend_mode = blend_mode;
+		for instance in self.instances_mut() {
+			instance.alpha_blending.blend_mode = blend_mode;
+		}
 	}
 }
-impl SetBlendMode for ImageFrame<Color> {
+impl SetBlendMode for ImageFrameTable<Color> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		self.alpha_blending.blend_mode = blend_mode;
+		for instance in self.instances_mut() {
+			instance.alpha_blending.blend_mode = blend_mode;
+		}
 	}
 }
 
@@ -317,12 +325,12 @@ async fn blend_mode<F: 'n + Send, T: SetBlendMode>(
 	)]
 	footprint: F,
 	#[implementations(
-		() -> GraphicGroup,
-		() -> VectorData,
-		() -> ImageFrame<Color>,
-		Footprint -> GraphicGroup,
-		Footprint -> VectorData,
-		Footprint -> ImageFrame<Color>,
+		() -> GraphicGroupTable,
+		() -> VectorDataTable,
+		() -> ImageFrameTable<Color>,
+		Footprint -> GraphicGroupTable,
+		Footprint -> VectorDataTable,
+		Footprint -> ImageFrameTable<Color>,
 	)]
 	value: impl Node<F, Output = T>,
 	blend_mode: BlendMode,
@@ -342,12 +350,12 @@ async fn opacity<F: 'n + Send, T: MultiplyAlpha>(
 	)]
 	footprint: F,
 	#[implementations(
-		() -> GraphicGroup,
-		() -> VectorData,
-		() -> ImageFrame<Color>,
-		Footprint -> GraphicGroup,
-		Footprint -> VectorData,
-		Footprint -> ImageFrame<Color>,
+		() -> GraphicGroupTable,
+		() -> VectorDataTable,
+		() -> ImageFrameTable<Color>,
+		Footprint -> GraphicGroupTable,
+		Footprint -> VectorDataTable,
+		Footprint -> ImageFrameTable<Color>,
 	)]
 	value: impl Node<F, Output = T>,
 	#[default(100.)] factor: Percentage,
