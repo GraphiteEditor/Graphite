@@ -767,7 +767,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				responses.add(DocumentMessage::AddTransaction);
 
-				let image_frame = ImageFrame { image, ..Default::default() };
+				let image_frame = ImageFrame {
+					image,
+					transform: DAffine2::IDENTITY,
+					alpha_blending: Default::default(),
+				};
 				let layer = graph_modification_utils::new_image_layer(image_frame, layer_node_id, self.new_layer_parent(true), responses);
 
 				if let Some(name) = name {

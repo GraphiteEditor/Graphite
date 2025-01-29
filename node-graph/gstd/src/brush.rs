@@ -272,7 +272,7 @@ fn brush(_: Footprint, image: ImageFrameTable<Color>, bounds: ImageFrameTable<Co
 		let opaque_image = ImageFrame {
 			image: Image::new(bbox.size().x as u32, bbox.size().y as u32, Color::WHITE),
 			transform: background_bounds,
-			..Default::default()
+			alpha_blending: Default::default(),
 		};
 		let mut erase_restore_mask = opaque_image;
 
