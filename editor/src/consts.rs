@@ -48,6 +48,7 @@ pub const DEFAULT_STROKE_WIDTH: f64 = 2.;
 
 // Select tool
 pub const SELECTION_TOLERANCE: f64 = 5.;
+pub const DRAG_DIRECTION_THRESHOLD: f64 = 15.;
 pub const SELECTION_DRAG_ANGLE: f64 = 90.;
 pub const PIVOT_CROSSHAIR_THICKNESS: f64 = 1.;
 pub const PIVOT_CROSSHAIR_LENGTH: f64 = 9.;

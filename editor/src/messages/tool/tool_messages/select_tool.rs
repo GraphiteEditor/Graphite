@@ -1,7 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::tool_prelude::*;
-use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
+use crate::consts::{DRAG_DIRECTION_THRESHOLD, DRAG_THRESHOLD, ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -278,6 +278,7 @@ struct SelectToolData {
 	drag_start: ViewportPosition,
 	drag_current: ViewportPosition,
 	lasso_polygon: Vec<ViewportPosition>,
+	selection_mode: Option<SelectionMode>,
 	layers_dragging: Vec<LayerNodeIdentifier>,
 	layer_selected_on_start: Option<LayerNodeIdentifier>,
 	select_single_layer: Option<LayerNodeIdentifier>,
@@ -313,14 +314,21 @@ impl SelectToolData {
 		Quad::from_box(bbox)
 	}
 
-	pub fn calculate_direction(&self) -> SelectionMode {
+	pub fn calculate_direction(&mut self) -> SelectionMode {
 		let bbox: [DVec2; 2] = self.selection_box();
-		if bbox[1].x < bbox[0].x {
-			SelectionMode::Touched
-		} else {
-			// This also covers the case where they're equal: the area is zero, so we use `Enclosed` to ensure the selection ends up empty, as nothing will be enclosed by an empty area
-			SelectionMode::Enclosed
+		let above_threshold = bbox[1].distance_squared(bbox[0]) > DRAG_DIRECTION_THRESHOLD.powi(2);
+
+		if self.selection_mode.is_none() && above_threshold {
+			let mode = if bbox[1].x < bbox[0].x {
+				SelectionMode::Touched
+			} else {
+				// This also covers the case where they're equal: the area is zero, so we use `Enclosed` to ensure the selection ends up empty, as nothing will be enclosed by an empty area
+				SelectionMode::Enclosed
+			};
+			self.selection_mode = Some(mode);
 		}
+
+		self.selection_mode.unwrap_or(SelectionMode::Touched)
 	}
 
 	pub fn selection_box(&self) -> [DVec2; 2] {
@@ -623,6 +631,7 @@ impl Fsm for SelectToolFsmState {
 			) => {
 				tool_data.drag_start = input.mouse.position;
 				tool_data.drag_current = input.mouse.position;
+				tool_data.selection_mode = None;
 
 				let dragging_bounds = tool_data.bounding_box_manager.as_mut().and_then(|bounding_box| {
 					let edges = bounding_box.check_selected_edges(input.mouse.position);
