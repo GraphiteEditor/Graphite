@@ -557,32 +557,13 @@ impl Fsm for SelectToolFsmState {
 					fill_color.insert(0, '#');
 					let fill_color = Some(fill_color.as_str());
 
-					let mut draw_lasso = |dashed: bool| {
-						let polygon_len = tool_data.lasso_polygon.len();
-						let polygon = &tool_data.lasso_polygon;
-						if polygon_len > 1 {
-							for line in polygon.windows(2) {
-								if dashed {
-									overlay_context.dashed_line(line[0], line[1], None, Some(4.), Some(4.0), Some(0.5));
-									continue;
-								}
-								overlay_context.line(line[0], line[1], None);
-							}
-						}
-						if polygon_len > 2 {
-							if dashed {
-								overlay_context.dashed_line(polygon[0], polygon[polygon_len - 1], None, Some(4.), Some(4.0), Some(0.5));
-							} else {
-								overlay_context.line(polygon[0], polygon[polygon_len - 1], None);
-							}
-						}
-					};
+					let polygon = &tool_data.lasso_polygon;
 
 					match (selection_type, selection_direction) {
 						(SelectionType::Box, SelectionMode::Enclosed) => overlay_context.dashed_quad(quad, fill_color, Some(4.), Some(4.), Some(0.5)),
-						(SelectionType::Lasso, SelectionMode::Enclosed) => draw_lasso(true),
+						(SelectionType::Lasso, SelectionMode::Enclosed) => overlay_context.dashed_polygon(polygon, fill_color, Some(4.), Some(4.), Some(0.5)),
 						(SelectionType::Box, _) => overlay_context.quad(quad, fill_color),
-						(SelectionType::Lasso, _) => draw_lasso(false),
+						(SelectionType::Lasso, _) => overlay_context.polygon(polygon, fill_color),
 					}
 				}
 				// Only highlight layers if the viewport is not being panned (middle mouse button is pressed)

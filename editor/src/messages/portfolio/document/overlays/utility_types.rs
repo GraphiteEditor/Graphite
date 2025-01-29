@@ -37,10 +37,22 @@ impl core::hash::Hash for OverlayContext {
 
 impl OverlayContext {
 	pub fn quad(&mut self, quad: Quad, color_fill: Option<&str>) {
-		self.dashed_quad(quad, color_fill, None, None, None);
+		self.dashed_polygon(&quad.0, color_fill, None, None, None);
 	}
 
 	pub fn dashed_quad(&mut self, quad: Quad, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
+		self.dashed_polygon(&quad.0, color_fill, dash_width, dash_gap_width, dash_offset);
+	}
+
+	pub fn polygon(&mut self, polygon: &[DVec2], color_fill: Option<&str>) {
+		self.dashed_polygon(&polygon, color_fill, None, None, None);
+	}
+
+	pub fn dashed_polygon(&mut self, polygon: &[DVec2], color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
+		if polygon.len() < 2 {
+			return;
+		}
+
 		self.start_dpi_aware_transform();
 
 		// Set the dash pattern
@@ -63,10 +75,10 @@ impl OverlayContext {
 		}
 
 		self.render_context.begin_path();
-		self.render_context.move_to(quad.0[3].x.round() - 0.5, quad.0[3].y.round() - 0.5);
+		self.render_context.move_to(polygon.last().unwrap().x.round() - 0.5, polygon.last().unwrap().y.round() - 0.5);
 
-		for i in 0..4 {
-			self.render_context.line_to(quad.0[i].x.round() - 0.5, quad.0[i].y.round() - 0.5);
+		for point in polygon {
+			self.render_context.line_to(point.x.round() - 0.5, point.y.round() - 0.5);
 		}
 
 		if let Some(color_fill) = color_fill {
