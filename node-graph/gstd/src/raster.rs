@@ -435,7 +435,7 @@ fn empty_image<P: Pixel>(_: impl Ctx, transform: DAffine2, #[implementations(Col
 #[node_macro::node(category("Raster: Generator"))]
 #[allow(clippy::too_many_arguments)]
 fn noise_pattern(
-	ctx: impl ExtractFootprint,
+	ctx: impl ExtractFootprint + Ctx,
 	_primary: (),
 	clip: bool,
 	seed: u32,

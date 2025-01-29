@@ -19,10 +19,10 @@ impl<'i, const N: u32> Node<'i, ()> for IntNode<N> {
 #[derive(Default, Debug, Clone, Copy)]
 pub struct ValueNode<T>(pub T);
 
-impl<'i, T: 'i> Node<'i, ()> for ValueNode<T> {
+impl<'i, T: 'i, I> Node<'i, I> for ValueNode<T> {
 	type Output = &'i T;
 	#[inline(always)]
-	fn eval(&'i self, _input: ()) -> Self::Output {
+	fn eval(&'i self, _input: I) -> Self::Output {
 		&self.0
 	}
 }
@@ -140,10 +140,10 @@ impl<T: Clone> DebugClonedNode<T> {
 #[derive(Clone, Copy)]
 pub struct CopiedNode<T: Copy>(pub T);
 
-impl<'i, T: Copy + 'i> Node<'i, ()> for CopiedNode<T> {
+impl<'i, T: Copy + 'i, I> Node<'i, I> for CopiedNode<T> {
 	type Output = T;
 	#[inline(always)]
-	fn eval(&'i self, _input: ()) -> Self::Output {
+	fn eval(&'i self, _input: I) -> Self::Output {
 		self.0
 	}
 }
