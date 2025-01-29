@@ -1,4 +1,4 @@
-use crate::consts::{BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, MIN_LENGTH_FOR_CORNERS_VISIBILITY, MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, SELECTION_DRAG_ANGLE};
+use crate::consts::{BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, MIN_LENGTH_FOR_CORNERS_VISIBILITY, MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_HANDLE, SELECTION_DRAG_ANGLE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::transformation::OriginalTransforms;
@@ -407,7 +407,7 @@ impl BoundingBoxManager {
 		let max = self.bounds[0].max(self.bounds[1]);
 		let [threshold_x, threshold_y] = self.compute_viewport_threshold(BOUNDS_SELECT_THRESHOLD);
 		let [corner_min_x, corner_min_y] = self.compute_viewport_threshold(MIN_LENGTH_FOR_CORNERS_VISIBILITY);
-		let [edge_min_x, edge_min_y] = self.compute_viewport_threshold(MIN_LENGTH_FOR_MIDPOINT_VISIBILITY);
+		let [edge_min_x, edge_min_y] = self.compute_viewport_threshold(MIN_LENGTH_FOR_RESIZE_HANDLE);
 
 		if min.x - cursor.x < threshold_x && min.y - cursor.y < threshold_y && cursor.x - max.x < threshold_x && cursor.y - max.y < threshold_y {
 			let mut top = (cursor.y - min.y).abs() < threshold_y;
