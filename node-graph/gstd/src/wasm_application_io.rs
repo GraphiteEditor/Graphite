@@ -12,7 +12,7 @@ use graphene_core::renderer::RenderMetadata;
 use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
 use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorDataTable;
-use graphene_core::{Color, Ctx, GraphicGroupTable, WasmNotSend};
+use graphene_core::{Color, Context, Ctx, GraphicGroupTable, OwnedContextImpl, WasmNotSend};
 
 #[cfg(target_arch = "wasm32")]
 use base64::Engine;
@@ -150,22 +150,24 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 #[node_macro::node(category(""))]
 #[cfg(target_arch = "wasm32")]
 async fn rasterize<T: GraphicElementRendered + graphene_core::transform::TransformMut + WasmNotSend + 'n>(
-	_: impl Ctx,
+	footprint: impl Ctx + ExtractFootprint,
 	#[implementations(
-		Footprint -> VectorDataTable,
-		Footprint -> ImageFrameTable<Color>,
-		Footprint -> GraphicGroupTable,
+		VectorDataTable,
+		ImageFrameTable<Color>,
+		GraphicGroupTable,
 	)]
-	data: impl Node<Footprint, Output = T>,
+	data: Output,
 	footprint: Footprint,
 	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
 ) -> ImageFrameTable<Color> {
+	use graphene_core::ExtractFootprint;
+
+	let footprint = footprint.footprint();
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");
 		return ImageFrameTable::default();
 	}
 
-	let mut data = data.eval(footprint).await;
 	let mut render = SvgRender::new();
 	let aabb = Bbox::from_transform(footprint.transform).to_axis_aligned_bbox();
 	let size = aabb.size();
@@ -212,29 +214,31 @@ async fn rasterize<T: GraphicElementRendered + graphene_core::transform::Transfo
 #[node_macro::node(category(""))]
 async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	render_config: RenderConfig,
-	editor_api: &'a WasmEditorApi,
+	editor_api: impl Node<Context<'static>, Output = &'a WasmEditorApi>,
 	#[implementations(
-		Footprint -> VectorDataTable,
-		Footprint -> ImageFrameTable<Color>,
-		Footprint -> GraphicGroupTable,
-		Footprint -> graphene_core::Artboard,
-		Footprint -> graphene_core::ArtboardGroup,
-		Footprint -> Option<Color>,
-		Footprint -> Vec<Color>,
-		Footprint -> bool,
-		Footprint -> f32,
-		Footprint -> f64,
-		Footprint -> String,
+		Context -> VectorDataTable,
+		Context -> ImageFrameTable<Color>,
+		Context -> GraphicGroupTable,
+		Context -> graphene_core::Artboard,
+		Context -> graphene_core::ArtboardGroup,
+		Context -> Option<Color>,
+		Context -> Vec<Color>,
+		Context -> bool,
+		Context -> f32,
+		Context -> f64,
+		Context -> String,
 	)]
-	data: impl Node<Footprint, Output = T>,
+	data: impl Node<Context<'static>, Output = T>,
 	_surface_handle: impl Node<(), Output = Option<wgpu_executor::WgpuSurface>>,
 ) -> RenderOutput {
 	let footprint = render_config.viewport;
+	let ctx = OwnedContextImpl::default().with_footprint(footprint).into_context();
 
 	let RenderConfig { hide_artboards, for_export, .. } = render_config;
 	let render_params = RenderParams::new(render_config.view_mode, ImageRenderMode::Base64, None, false, hide_artboards, for_export);
 
-	let data = data.eval(footprint).await;
+	let data = data.eval(ctx.clone()).await;
+	let editor_api = editor_api.eval(ctx).await;
 	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
 	let surface_handle = _surface_handle.eval(()).await;
 	let use_vello = editor_api.editor_preferences.use_vello();

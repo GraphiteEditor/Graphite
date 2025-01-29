@@ -1,5 +1,3 @@
-use crate::transform::Footprint;
-
 use bezier_rs::{ManipulatorGroup, Subpath};
 use graphene_core::vector::misc::BooleanOperation;
 use graphene_core::vector::style::Fill;
@@ -15,8 +13,6 @@ use std::ops::Mul;
 #[node_macro::node(category(""))]
 async fn boolean_operation(_: impl Ctx, group_of_paths: GraphicGroupTable, operation: BooleanOperation) -> VectorDataTable {
 	fn vector_from_image<T: Transform>(image_frame: T) -> VectorData {
-		let group_of_paths = group_of_paths.one_item();
-
 		let corner1 = DVec2::ZERO;
 		let corner2 = DVec2::new(1., 1.);
 
@@ -180,6 +176,7 @@ async fn boolean_operation(_: impl Ctx, group_of_paths: GraphicGroupTable, opera
 		}
 	}
 
+	let group_of_paths = group_of_paths.one_item();
 	// The first index is the bottom of the stack
 	let mut boolean_operation_result = boolean_operation_on_vector_data(&collect_vector_data(group_of_paths), operation);
 

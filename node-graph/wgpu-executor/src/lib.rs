@@ -912,7 +912,7 @@ async fn render_texture<'a: 'n>(
 }
 
 #[node_macro::node(category(""))]
-async fn upload_texture<'a: 'n>(footprint: impl ExtractFootprint + Ctx, input: ImageFrameTable<Color>, executor: &'a WgpuExecutor) -> TextureFrame {
+async fn upload_texture<'a: 'n>(_: impl ExtractFootprint + Ctx, input: ImageFrameTable<Color>, executor: &'a WgpuExecutor) -> TextureFrame {
 	// let new_data: Vec<RGBA16F> = input.image.data.into_iter().map(|c| c.into()).collect();
 
 	let input = input.one_item();

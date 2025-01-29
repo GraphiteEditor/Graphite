@@ -665,9 +665,9 @@ async fn blend<T: Blend<Color> + Send>(
 }
 
 #[node_macro::node(category(""))]
-async fn blend_color_pair(input: (Color, Color), blend_mode: impl Node<Context<'static>, Output = BlendMode>, opacity: impl Node<Context<'static>, Output = Percentage>) -> Color {
-	let blend_mode = blend_mode.eval(None).await;
-	let opacity = opacity.eval(None).await;
+async fn blend_color_pair(input: (Color, Color), blend_mode: impl Node<(), Output = BlendMode>, opacity: impl Node<(), Output = Percentage>) -> Color {
+	let blend_mode = blend_mode.eval(()).await;
+	let opacity = opacity.eval(()).await;
 	blend_colors(input.0, input.1, blend_mode, opacity / 100.)
 }
 
