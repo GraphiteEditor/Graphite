@@ -1,7 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::tool_prelude::*;
-use crate::consts::{DRAG_DIRECTION_THRESHOLD, DRAG_THRESHOLD, ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
+use crate::consts::{DRAG_DIRECTION_THRESHOLD, ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -947,11 +947,15 @@ impl Fsm for SelectToolFsmState {
 					let lasso_polygon = &mut tool_data.lasso_polygon;
 					let current_position = input.mouse.position;
 
-					if !lasso_polygon.is_empty() {
-						if lasso_polygon.last().unwrap().distance_squared(current_position) > SELECTION_TOLERANCE.powi(2) {
-							lasso_polygon.push(current_position);
-						}
+					if lasso_polygon.len() < 2 {
+						lasso_polygon.push(current_position);
 					} else {
+						let last_points = lasso_polygon.last_chunk::<2>().unwrap();
+						let distance = last_points[0].distance_squared(last_points[1]);
+
+						if distance < SELECTION_TOLERANCE.powi(2) {
+							lasso_polygon.pop();
+						}
 						lasso_polygon.push(current_position);
 					}
 				}
