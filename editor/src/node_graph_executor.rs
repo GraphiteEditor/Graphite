@@ -15,14 +15,13 @@ use graphene_core::renderer::{RenderSvgSegmentList, SvgSegment};
 use graphene_core::text::FontCache;
 use graphene_core::transform::Footprint;
 use graphene_core::vector::style::ViewMode;
-use graphene_std::instances::Instances;
 use graphene_std::renderer::{format_transform_matrix, RenderMetadata};
-use graphene_std::vector::VectorData;
+use graphene_std::vector::{VectorData, VectorDataTable};
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
+use interpreted_executor::util::wrap_network_in_scope;
 
 use glam::{DAffine2, DVec2, UVec2};
-use interpreted_executor::util::wrap_network_in_scope;
 use once_cell::sync::Lazy;
 use spin::Mutex;
 use std::sync::mpsc::{Receiver, Sender};
@@ -297,9 +296,9 @@ impl NodeRuntime {
 				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
 			}
 			// Insert the vector modify if we are dealing with vector data
-			else if let Some(record) = introspected_data.downcast_ref::<IORecord<Footprint, Instances<VectorData>>>() {
+			else if let Some(record) = introspected_data.downcast_ref::<IORecord<Footprint, VectorDataTable>>() {
 				self.vector_modify.insert(parent_network_node_id, record.output.one_item().clone());
-			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<(), Instances<VectorData>>>() {
+			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<(), VectorDataTable>>() {
 				self.vector_modify.insert(parent_network_node_id, record.output.one_item().clone());
 			}
 		}
