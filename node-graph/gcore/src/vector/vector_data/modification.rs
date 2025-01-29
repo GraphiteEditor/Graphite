@@ -425,10 +425,9 @@ impl core::hash::Hash for VectorModification {
 
 /// A node that applies a procedural modification to some [`VectorData`].
 #[node_macro::node(category(""))]
-async fn path_modify(_ctx: impl Ctx, vector_data: VectorDataTable, modification: Box<VectorModification>) -> VectorDataTable {
-	let vector_data = vector_data.one_item_mut();
+async fn path_modify(_ctx: impl Ctx, mut vector_data: VectorDataTable, modification: Box<VectorModification>) -> VectorDataTable {
+	let mut vector_data = vector_data.one_item_mut();
 
-	let mut vector_data = vector_data;
 	modification.apply(&mut vector_data);
 
 	VectorDataTable::new(vector_data.clone())

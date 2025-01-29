@@ -12,7 +12,7 @@ fn log_to_console<T: core::fmt::Debug>(_: impl Ctx, #[implementations(String, bo
 }
 
 #[node_macro::node(category("Debug"))]
-fn to_string<T: core::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, VectorData, DAffine2)] value: T) -> String {
+fn to_string<T: core::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, VectorDataTable, DAffine2)] value: T) -> String {
 	format!("{:?}", value)
 }
 

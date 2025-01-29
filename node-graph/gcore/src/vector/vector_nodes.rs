@@ -305,7 +305,7 @@ async fn copy_to_points<I: GraphicElementRendered + TransformMut + Send + 'n>(
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn bounding_box(_: impl Ctx, vector_data: VectorDataTable) -> VectorData {
+async fn bounding_box(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 	let vector_data = vector_data.one_item();
 
 	let bounding_box = vector_data.bounding_box_with_transform(vector_data.transform).unwrap();
@@ -601,7 +601,7 @@ async fn poisson_disk_points(
 	#[min(0.01)]
 	separation_disk_diameter: f64,
 	seed: SeedValue,
-) -> VectorData {
+) -> VectorDataTable {
 	let vector_data = vector_data.one_item();
 
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
@@ -754,7 +754,7 @@ async fn morph(
 	#[default(0.5)]
 	time: Fraction,
 	#[min(0.)] start_index: IntegerCount,
-) -> VectorData {
+) -> VectorDataTable {
 	let source = source.one_item();
 	let target = target.one_item();
 

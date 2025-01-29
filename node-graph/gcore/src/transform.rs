@@ -3,7 +3,7 @@ use crate::raster::bbox::AxisAlignedBbox;
 use crate::raster::image::{ImageFrame, ImageFrameTable};
 use crate::raster::Pixel;
 use crate::vector::{VectorData, VectorDataTable};
-use crate::{Artboard, ArtboardGroup, CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
+use crate::{Artboard, ArtboardGroup, CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroup, GraphicGroupTable, OwnedContextImpl};
 
 use glam::{DAffine2, DVec2};
 

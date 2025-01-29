@@ -5,8 +5,7 @@ use crate::raster::BlendMode;
 use crate::transform::{Transform, TransformMut};
 use crate::uuid::NodeId;
 use crate::vector::{VectorData, VectorDataTable};
-use crate::{CloneVarArgs, Color, Ctx, ExtractAll, OwnedContextImpl};
-use crate::{Color, Context};
+use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 
 use dyn_any::DynAny;
 
@@ -281,11 +280,8 @@ impl ArtboardGroup {
 }
 
 #[node_macro::node(category(""))]
-async fn layer(_: impl Ctx, mut stack: GraphicGroupTable, mut element: GraphicElement, node_path: Vec<NodeId>) -> GraphicGroupTable {
-	let mut element = element.eval(footprint).await;
-	let stack = stack.eval(footprint).await;
-	let stack = stack.one_item();
-	let mut stack = stack.clone();
+async fn layer(_: impl Ctx, stack: GraphicGroupTable, mut element: GraphicElement, node_path: Vec<NodeId>) -> GraphicGroupTable {
+	let mut stack = stack.one_item().clone();
 
 	if stack.transform.matrix2.determinant() != 0. {
 		*element.transform_mut() = stack.transform.inverse() * element.transform();
@@ -331,9 +327,7 @@ async fn to_group<Data: Into<GraphicGroupTable> + 'n>(
 
 #[node_macro::node(category("General"))]
 async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: bool) -> GraphicGroupTable {
-	let nested_group = group.eval(footprint).await;
-	let nested_group = nested_group.one_item();
-	let nested_group = nested_group.clone();
+	let nested_group = group.one_item().clone();
 
 	let mut flat_group = GraphicGroup::default();
 

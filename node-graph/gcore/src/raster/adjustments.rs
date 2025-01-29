@@ -647,14 +647,14 @@ async fn blend<T: Blend<Color> + Send>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		ImageFrameTableTable<Color>,
+		ImageFrameTable<Color>,
 		GradientStops,
 	)]
 	over: T,
 	#[expose]
 	#[implementations(
 		Color,
-		ImageFrame<Color>,
+		ImageFrameTable<Color>,
 		GradientStops,
 	)]
 	under: T,
