@@ -1,4 +1,4 @@
-use crate::application_io::{TextureFrame, TextureFrameTable};
+use crate::application_io::TextureFrameTable;
 use crate::raster::bbox::AxisAlignedBbox;
 use crate::raster::image::{ImageFrame, ImageFrameTable};
 use crate::raster::Pixel;

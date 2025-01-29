@@ -1,10 +1,9 @@
 pub use self::color::{Color, Luma, SRGBA8};
 use crate::raster::image::ImageFrameTable;
 use crate::registry::types::Percentage;
-use crate::transform::Footprint;
 use crate::vector::VectorDataTable;
+use crate::Ctx;
 use crate::GraphicGroupTable;
-use crate::{Ctx, GraphicGroup};
 
 use bytemuck::{Pod, Zeroable};
 use core::fmt::Debug;

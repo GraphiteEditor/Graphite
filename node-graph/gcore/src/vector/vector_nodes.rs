@@ -326,7 +326,7 @@ async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, l
 	result.style.set_stroke_transform(DAffine2::IDENTITY);
 
 	// Perform operation on all subpaths in this shape.
-	for mut subpath in vector_data.stroke_bezier_paths() {
+	for mut subpath in subpaths {
 		subpath.apply_transform(vector_data.transform);
 
 		// Taking the existing stroke data and passing it to Bezier-rs to generate new paths.
@@ -697,7 +697,7 @@ async fn splines_from_points(_: impl Ctx, mut vector_data: VectorDataTable) -> V
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn jitter_points(_: impl Ctx, mut vector_data: VectorDataTable, #[default(5.)] amount: f64, seed: SeedValue) -> VectorDataTable {
+async fn jitter_points(_: impl Ctx, vector_data: VectorDataTable, #[default(5.)] amount: f64, seed: SeedValue) -> VectorDataTable {
 	let mut vector_data = vector_data.one_item().clone();
 
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());

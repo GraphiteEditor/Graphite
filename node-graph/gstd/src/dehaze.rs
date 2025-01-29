@@ -1,7 +1,6 @@
 use graph_craft::proto::types::Percentage;
 use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
 use graphene_core::raster::Image;
-use graphene_core::transform::Footprint;
 use graphene_core::{Color, Ctx};
 
 use image::{DynamicImage, GenericImage, GenericImageView, GrayImage, ImageBuffer, Luma, Rgba, RgbaImage};

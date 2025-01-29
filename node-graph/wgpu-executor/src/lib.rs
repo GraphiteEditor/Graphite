@@ -10,7 +10,7 @@ use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle, Tex
 use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::{Image, SRGBA8};
 use graphene_core::transform::{Footprint, Transform};
-use graphene_core::{Color, Cow, Ctx, ExtractFootprint, Node, OwnedContextImpl, SurfaceFrame, Type};
+use graphene_core::{Color, Cow, Ctx, ExtractFootprint, Node, SurfaceFrame, Type};
 
 use anyhow::{bail, Result};
 use futures::Future;

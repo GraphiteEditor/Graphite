@@ -8,7 +8,7 @@ use crate::raster::{Channel, Color, Pixel};
 use crate::registry::types::{Angle, Percentage, SignedPercentage};
 use crate::vector::style::GradientStops;
 use crate::vector::VectorDataTable;
-use crate::{Context, Ctx, Node};
+use crate::{Ctx, Node};
 use crate::{GraphicElement, GraphicGroupTable};
 
 use dyn_any::DynAny;

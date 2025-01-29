@@ -51,7 +51,7 @@ impl ExtractFootprint for () {
 	}
 }
 
-impl<'n, T: ExtractFootprint + Ctx + Sync + Send> ExtractFootprint for &'n T {
+impl<T: ExtractFootprint + Ctx + Sync + Send> ExtractFootprint for &T {
 	fn try_footprint(&self) -> Option<&Footprint> {
 		(*self).try_footprint()
 	}
@@ -146,7 +146,7 @@ impl ExtractIndex for ContextImpl<'_> {
 		self.index
 	}
 }
-impl<'a> ExtractVarArgs for ContextImpl<'a> {
+impl ExtractVarArgs for ContextImpl<'_> {
 	fn vararg(&self, index: usize) -> Result<DynRef<'_>, VarArgsResult> {
 		let Some(inner) = self.varargs else { return Err(VarArgsResult::NoVarArgs) };
 		inner.get(index).ok_or(VarArgsResult::IndexOutOfBounds).copied()

@@ -179,7 +179,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 			(ParsedField::Regular { ty, .. }, _) => {
 				let all_lifetime_ty = substitute_lifetimes(ty.clone(), "all");
 				quote!(
-					for<'all> #all_lifetime_ty: Send,
+					for<'all> #all_lifetime_ty: #graphene_core::WasmNotSend,
 					// #name: 'n,
 					#name: #graphene_core::Node<'n, #input_type, Output = #ty>
 				)

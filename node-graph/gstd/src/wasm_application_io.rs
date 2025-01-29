@@ -150,19 +150,16 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 #[node_macro::node(category(""))]
 #[cfg(target_arch = "wasm32")]
 async fn rasterize<T: GraphicElementRendered + graphene_core::transform::TransformMut + WasmNotSend + 'n>(
-	footprint: impl Ctx + ExtractFootprint,
+	_: impl Ctx,
 	#[implementations(
 		VectorDataTable,
 		ImageFrameTable<Color>,
 		GraphicGroupTable,
 	)]
-	data: Output,
+	mut data: T,
 	footprint: Footprint,
 	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
 ) -> ImageFrameTable<Color> {
-	use graphene_core::ExtractFootprint;
-
-	let footprint = footprint.footprint();
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");
 		return ImageFrameTable::default();
