@@ -310,7 +310,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::ArtboardGroup(ArtboardGroup::EMPTY), true),
+						NodeInput::value(TaggedValue::ArtboardGroup(ArtboardGroup::default()), true),
 						NodeInput::value(TaggedValue::GraphicGroup(GraphicGroupTable::default()), true),
 						NodeInput::value(TaggedValue::IVec2(glam::IVec2::ZERO), false),
 						NodeInput::value(TaggedValue::IVec2(glam::IVec2::new(1920, 1080)), false),

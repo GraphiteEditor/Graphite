@@ -9,7 +9,7 @@ use crate::transform::{Footprint, Transform};
 use crate::uuid::{generate_uuid, NodeId};
 use crate::vector::style::{Fill, Stroke, ViewMode};
 use crate::vector::{PointId, VectorDataTable};
-use crate::{AlphaBlending, Artboard, ArtboardGroup, Color, GraphicElement, GraphicGroup, GraphicGroupTable, RasterFrame};
+use crate::{Artboard, ArtboardGroup, Color, GraphicElement, GraphicGroup, GraphicGroupTable, RasterFrame};
 
 use bezier_rs::Subpath;
 use dyn_any::DynAny;
@@ -978,7 +978,7 @@ impl GraphicElementRendered for RasterFrame {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
 		use vello::peniko;
 
-		let mut render_stuff = |image: vello::peniko::Image, blend_mode: AlphaBlending| {
+		let mut render_stuff = |image: vello::peniko::Image, blend_mode: crate::AlphaBlending| {
 			let image_transform = transform * self.transform() * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
 			let layer = blend_mode != Default::default();
 

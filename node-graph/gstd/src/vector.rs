@@ -194,7 +194,7 @@ async fn boolean_operation<F: 'n + Send>(
 	}
 
 	// The first index is the bottom of the stack
-	let mut boolean_operation_result = boolean_operation_on_vector_data(&collect_vector_data(&group_of_paths), operation);
+	let mut boolean_operation_result = boolean_operation_on_vector_data(&collect_vector_data(group_of_paths), operation);
 
 	let transform = boolean_operation_result.transform;
 	VectorData::transform(&mut boolean_operation_result, transform);

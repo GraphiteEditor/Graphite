@@ -1503,7 +1503,7 @@ mod test {
 		let mut vector_data = VectorData::from_subpath(source);
 		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(10.), 1., DVec2::new(99., 77.));
 		vector_data.transform = transform;
-		let beveled = super::bevel(Footprint::default(), &FutureWrapperNode(vector_data), 5.).await;
+		let beveled = super::bevel(Footprint::default(), &FutureWrapperNode(VectorDataTable::new(vector_data)), 5.).await;
 		let beveled = beveled.one_item();
 
 		assert_eq!(beveled.point_domain.positions().len(), 4);

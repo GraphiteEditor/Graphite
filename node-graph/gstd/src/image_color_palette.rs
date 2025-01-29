@@ -76,7 +76,10 @@ mod test {
 	use super::*;
 
 	use graph_craft::generic::FnNode;
-	use graphene_core::{raster::Image, value::CopiedNode, Node};
+	use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
+	use graphene_core::raster::Image;
+	use graphene_core::value::CopiedNode;
+	use graphene_core::Node;
 
 	#[test]
 	fn test_image_color_palette() {

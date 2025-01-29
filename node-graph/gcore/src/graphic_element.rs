@@ -350,8 +350,6 @@ pub struct ArtboardGroup {
 }
 
 impl ArtboardGroup {
-	pub const EMPTY: Self = Self { artboards: Vec::new() };
-
 	pub fn new() -> Self {
 		Default::default()
 	}

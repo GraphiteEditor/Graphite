@@ -1698,7 +1698,7 @@ async fn color_overlay<F: 'n + Send, T: Adjust<Color>>(
 
 #[cfg(test)]
 mod test {
-	use crate::raster::image::ImageFrame;
+	use crate::raster::image::{ImageFrame, ImageFrameTable};
 	use crate::raster::{BlendMode, Image};
 	use crate::{Color, Node};
 	use std::pin::Pin;
@@ -1721,8 +1721,6 @@ mod test {
 			image: Image::new(1, 1, image_color),
 			..Default::default()
 		};
-		let expected = result.image.data[0].clone();
-		let image_frame_table = ImageFrameTable::new(image);
 
 		// Color { red: 0., green: 1., blue: 0., alpha: 1. }
 		let overlay_color = Color::GREEN;
@@ -1730,9 +1728,10 @@ mod test {
 		// 100% of the output should come from the multiplied value
 		let opacity = 100_f64;
 
-		let result = super::color_overlay((), &FutureWrapperNode(image), overlay_color, BlendMode::Multiply, opacity).await;
+		let result = super::color_overlay((), &FutureWrapperNode(ImageFrameTable::new(image.clone())), overlay_color, BlendMode::Multiply, opacity).await;
+		let result = result.one_item();
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
-		assert_eq!(expected, Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));
+		assert_eq!(result.image.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));
 	}
 }
