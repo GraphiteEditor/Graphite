@@ -236,7 +236,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 
 pub type ImageFrameTable<P> = Instances<ImageFrame<P>>;
 
-#[derive(Clone, Debug, Default, PartialEq, specta::Type)]
+#[derive(Clone, Debug, PartialEq, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImageFrame<P: Pixel> {
 	pub image: Image<P>,
@@ -251,6 +251,17 @@ pub struct ImageFrame<P: Pixel> {
 	// being an unspecified quantity.
 	pub transform: DAffine2,
 	pub alpha_blending: AlphaBlending,
+}
+
+impl<P: Pixel> Default for ImageFrame<P> {
+	fn default() -> Self {
+		Self {
+			image: Image::empty(),
+			alpha_blending: AlphaBlending::new(),
+			// Different from DAffine2::default() which is IDENTITY
+			transform: DAffine2::ZERO,
+		}
+	}
 }
 
 impl<P: Debug + Copy + Pixel> Sample for ImageFrame<P> {
