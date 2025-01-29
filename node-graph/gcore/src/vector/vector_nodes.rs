@@ -236,7 +236,7 @@ async fn circular_repeat<I: 'n + GraphicElementRendered + Transform + TransformM
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn copy_to_points<I: GraphicElementRendered + ConcatElement + TransformMut + Send + 'n>(
+async fn copy_to_points<I: GraphicElementRendered + TransformMut + Send + 'n>(
 	_: impl Ctx,
 	points: VectorDataTable,
 	#[expose]
