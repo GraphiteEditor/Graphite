@@ -19,8 +19,12 @@ pub trait Transform {
 		)
 	}
 }
-pub trait TransformSet: Transform {
-	fn set_transform(&mut self, value: DAffine2);
+
+pub trait TransformMut: Transform {
+	fn transform_mut(&mut self) -> &mut DAffine2;
+	fn translate(&mut self, offset: DVec2) {
+		*self.transform_mut() = DAffine2::from_translation(offset) * self.transform();
+	}
 }
 
 // Implementation for references to anything that implements Transform
@@ -39,9 +43,9 @@ impl<P: Pixel> Transform for ImageFrame<P> {
 		self.local_pivot(pivot)
 	}
 }
-impl<P: Pixel> TransformSet for ImageFrame<P> {
-	fn set_transform(&mut self, value: DAffine2) {
-		self.transform = value;
+impl<P: Pixel> TransformMut for ImageFrame<P> {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		&mut self.transform
 	}
 }
 
@@ -61,15 +65,15 @@ where
 		image_frame.local_pivot(pivot)
 	}
 }
-impl<P: Pixel> TransformSet for ImageFrameTable<P>
+impl<P: Pixel> TransformMut for ImageFrameTable<P>
 where
 	P: dyn_any::StaticType,
 	P::Static: Pixel,
 	GraphicElement: From<ImageFrame<P>>,
 {
-	fn set_transform(&mut self, value: DAffine2) {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
 		let image_frame = self.one_item_mut();
-		image_frame.transform = value;
+		&mut image_frame.transform
 	}
 }
 
@@ -84,10 +88,10 @@ impl Transform for TextureFrameTable {
 		image_frame.local_pivot(pivot)
 	}
 }
-impl TransformSet for TextureFrameTable {
-	fn set_transform(&mut self, value: DAffine2) {
+impl TransformMut for TextureFrameTable {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
 		let image_frame = self.one_item_mut();
-		image_frame.transform = value;
+		&mut image_frame.transform
 	}
 }
 
@@ -97,9 +101,9 @@ impl Transform for GraphicGroup {
 		self.transform
 	}
 }
-impl TransformSet for GraphicGroup {
-	fn set_transform(&mut self, value: DAffine2) {
-		self.transform = value;
+impl TransformMut for GraphicGroup {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		&mut self.transform
 	}
 }
 
@@ -110,10 +114,10 @@ impl Transform for GraphicGroupTable {
 		graphic_group.transform
 	}
 }
-impl TransformSet for GraphicGroupTable {
-	fn set_transform(&mut self, value: DAffine2) {
+impl TransformMut for GraphicGroupTable {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
 		let graphic_group = self.one_item_mut();
-		graphic_group.transform = value;
+		&mut graphic_group.transform
 	}
 }
 
@@ -134,12 +138,12 @@ impl Transform for GraphicElement {
 		}
 	}
 }
-impl TransformSet for GraphicElement {
-	fn set_transform(&mut self, value: DAffine2) {
+impl TransformMut for GraphicElement {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
 		match self {
-			GraphicElement::VectorData(vector_shape) => vector_shape.set_transform(value),
-			GraphicElement::GraphicGroup(graphic_group) => graphic_group.set_transform(value),
-			GraphicElement::RasterFrame(raster) => raster.set_transform(value),
+			GraphicElement::VectorData(vector_shape) => vector_shape.transform_mut(),
+			GraphicElement::GraphicGroup(graphic_group) => graphic_group.transform_mut(),
+			GraphicElement::RasterFrame(raster) => raster.transform_mut(),
 		}
 	}
 }
@@ -153,9 +157,9 @@ impl Transform for VectorData {
 		self.local_pivot(pivot)
 	}
 }
-impl TransformSet for VectorData {
-	fn set_transform(&mut self, value: DAffine2) {
-		self.transform = value;
+impl TransformMut for VectorData {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		&mut self.transform
 	}
 }
 
@@ -170,10 +174,10 @@ impl Transform for VectorDataTable {
 		vector_data.local_pivot(pivot)
 	}
 }
-impl TransformSet for VectorDataTable {
-	fn set_transform(&mut self, value: DAffine2) {
+impl TransformMut for VectorDataTable {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
 		let vector_data = self.one_item_mut();
-		vector_data.transform = value;
+		&mut vector_data.transform
 	}
 }
 
@@ -193,9 +197,9 @@ impl Transform for DAffine2 {
 		*self
 	}
 }
-impl TransformSet for DAffine2 {
-	fn set_transform(&mut self, value: DAffine2) {
-		*self = value;
+impl TransformMut for DAffine2 {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		self
 	}
 }
 
@@ -205,9 +209,9 @@ impl Transform for Footprint {
 		self.transform
 	}
 }
-impl TransformSet for Footprint {
-	fn set_transform(&mut self, value: DAffine2) {
-		self.transform = value;
+impl TransformMut for Footprint {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		&mut self.transform
 	}
 }
 
@@ -287,9 +291,9 @@ impl core::hash::Hash for Footprint {
 pub trait ApplyTransform {
 	fn apply_transform(&mut self, modification: &DAffine2);
 }
-impl<T: TransformSet> ApplyTransform for T {
+impl<T: TransformMut> ApplyTransform for T {
 	fn apply_transform(&mut self, &modification: &DAffine2) {
-		self.set_transform(self.transform() * modification);
+		*self.transform_mut() = self.transform() * modification
 	}
 }
 impl ApplyTransform for () {
@@ -297,7 +301,7 @@ impl ApplyTransform for () {
 }
 
 #[node_macro::node(category(""))]
-async fn transform<I: Into<Footprint> + 'n + ApplyTransform + Clone + Send + Sync, T: 'n + TransformSet>(
+async fn transform<I: Into<Footprint> + 'n + ApplyTransform + Clone + Send + Sync, T: 'n + TransformMut>(
 	#[implementations(
 		(),
 		(),
@@ -331,17 +335,19 @@ async fn transform<I: Into<Footprint> + 'n + ApplyTransform + Clone + Send + Syn
 
 	let mut data = transform_target.eval(input).await;
 
-	data.set_transform(modification * data.transform());
+	let data_transform = data.transform_mut();
+	*data_transform = modification * (*data_transform);
 
 	data
 }
 
 #[node_macro::node(category(""))]
-fn replace_transform<Data: TransformSet, TransformInput: Transform>(
+fn replace_transform<Data: TransformMut, TransformInput: Transform>(
 	_: (),
 	#[implementations(VectorDataTable, ImageFrameTable<Color>, GraphicGroupTable)] mut data: Data,
 	#[implementations(DAffine2)] transform: TransformInput,
 ) -> Data {
-	data.set_transform(transform.transform());
+	let data_transform = data.transform_mut();
+	*data_transform = transform.transform();
 	data
 }

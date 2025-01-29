@@ -19,8 +19,6 @@ use graphene_core::{Color, WasmNotSend};
 use base64::Engine;
 #[cfg(target_arch = "wasm32")]
 use glam::DAffine2;
-#[cfg(target_arch = "wasm32")]
-use graphene_core::transform::TransformSet;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 #[cfg(target_arch = "wasm32")]
@@ -152,7 +150,7 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 
 #[node_macro::node(category(""))]
 #[cfg(target_arch = "wasm32")]
-async fn rasterize<T: GraphicElementRendered + TransformSet + WasmNotSend + 'n>(
+async fn rasterize<T: GraphicElementRendered + graphene_core::transform::TransformMut + WasmNotSend + 'n>(
 	_: (),
 	#[implementations(
 		Footprint -> VectorDataTable,
@@ -178,7 +176,7 @@ async fn rasterize<T: GraphicElementRendered + TransformSet + WasmNotSend + 'n>(
 		..Default::default()
 	};
 
-	data.set_transform(DAffine2::from_translation(-aabb.start) * data.transform());
+	*data.transform_mut() = DAffine2::from_translation(-aabb.start) * data.transform();
 	data.render_svg(&mut render, &render_params);
 	render.format_svg(glam::DVec2::ZERO, size);
 	let svg_string = render.svg.to_svg_string();

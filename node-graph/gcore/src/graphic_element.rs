@@ -1,7 +1,7 @@
 use crate::application_io::{TextureFrame, TextureFrameTable};
 use crate::raster::image::{ImageFrame, ImageFrameTable};
 use crate::raster::BlendMode;
-use crate::transform::{ApplyTransform, Footprint, Transform, TransformSet};
+use crate::transform::{ApplyTransform, Footprint, Transform, TransformMut};
 use crate::uuid::NodeId;
 use crate::vector::{InstanceId, VectorData, VectorDataTable};
 use crate::Color;
@@ -308,11 +308,11 @@ impl Transform for RasterFrame {
 		}
 	}
 }
-impl TransformSet for RasterFrame {
-	fn set_transform(&mut self, value: DAffine2) {
+impl TransformMut for RasterFrame {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
 		match self {
-			RasterFrame::ImageFrame(frame) => frame.set_transform(value),
-			RasterFrame::TextureFrame(frame) => frame.set_transform(value),
+			RasterFrame::ImageFrame(frame) => frame.transform_mut(),
+			RasterFrame::TextureFrame(frame) => frame.transform_mut(),
 		}
 	}
 }
@@ -386,7 +386,7 @@ async fn layer<F: 'n + Send + Copy>(
 	let mut stack = stack.clone();
 
 	if stack.transform.matrix2.determinant() != 0. {
-		element.set_transform(stack.transform.inverse() * element.transform());
+		*element.transform_mut() = stack.transform.inverse() * element.transform();
 	} else {
 		stack.clear();
 		stack.transform = DAffine2::IDENTITY;
@@ -476,14 +476,14 @@ async fn flatten_group<F: 'n + Send>(
 				let nested_group = nested_group.one_item();
 				let mut nested_group = nested_group.clone();
 
-				nested_group.set_transform(nested_group.transform() * current_group.transform);
+				*nested_group.transform_mut() = nested_group.transform() * current_group.transform;
 
 				let mut sub_group = GraphicGroup::default();
 				if fully_flatten {
 					flatten_group(&mut sub_group, nested_group, fully_flatten);
 				} else {
 					for (collection_element, _) in &mut nested_group.elements {
-						collection_element.set_transform(nested_group.transform * collection_element.transform());
+						*collection_element.transform_mut() = nested_group.transform * collection_element.transform();
 					}
 					sub_group = nested_group;
 				}

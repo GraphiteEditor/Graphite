@@ -1,5 +1,5 @@
 use crate::text::FontCache;
-use crate::transform::{Footprint, Transform, TransformSet};
+use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::style::ViewMode;
 use crate::{AlphaBlending, Instances};
 
@@ -43,9 +43,9 @@ impl Transform for SurfaceFrame {
 		self.transform
 	}
 }
-impl TransformSet for SurfaceFrame {
-	fn set_transform(&mut self, value: DAffine2) {
-		self.transform = value;
+impl TransformMut for SurfaceFrame {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		&mut self.transform
 	}
 }
 
@@ -99,9 +99,9 @@ impl Transform for TextureFrame {
 		self.transform
 	}
 }
-impl TransformSet for TextureFrame {
-	fn set_transform(&mut self, value: DAffine2) {
-		self.transform = value;
+impl TransformMut for TextureFrame {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		&mut self.transform
 	}
 }
 
@@ -163,9 +163,9 @@ impl<T> Transform for SurfaceHandleFrame<T> {
 	}
 }
 
-impl<T> TransformSet for SurfaceHandleFrame<T> {
-	fn set_transform(&mut self, value: DAffine2) {
-		self.transform = value;
+impl<T> TransformMut for SurfaceHandleFrame<T> {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		&mut self.transform
 	}
 }
 

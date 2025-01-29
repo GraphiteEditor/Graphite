@@ -6,7 +6,7 @@ use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::{Alpha, BlendColorPairNode, Color, Image, Pixel, Sample};
-use graphene_core::transform::{Footprint, Transform, TransformSet};
+use graphene_core::transform::{Footprint, Transform, TransformMut};
 use graphene_core::value::{ClonedNode, CopiedNode, ValueNode};
 use graphene_core::vector::brush_stroke::{BrushStroke, BrushStyle};
 use graphene_core::vector::VectorDataTable;
@@ -34,9 +34,9 @@ impl<P: Pixel + Alpha> Transform for BrushStampGenerator<P> {
 	}
 }
 
-impl<P: Pixel + Alpha> TransformSet for BrushStampGenerator<P> {
-	fn set_transform(&mut self, value: DAffine2) {
-		self.transform = value;
+impl<P: Pixel + Alpha> TransformMut for BrushStampGenerator<P> {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		&mut self.transform
 	}
 }
 
