@@ -243,14 +243,12 @@ impl VectorData {
 		self.point_domain.resolve_id(point).map_or(0, |point| self.segment_domain.connected_count(point))
 	}
 
-	/// Points connected to a single segment
-	pub fn single_connected_points(&self) -> impl Iterator<Item = PointId> + '_ {
-		self.point_domain
-			.ids()
-			.iter()
-			.enumerate()
-			.filter(|(index, _)| self.segment_domain.connected_count(*index) == 1)
-			.map(|(_, &id)| id)
+	/// Points that can be extended from.
+	///
+	/// This is usually only points with exactly one connection unless vector meshes are enabled.
+	pub fn extendable_points(&self, vector_meshes: bool) -> impl Iterator<Item = PointId> + '_ {
+		let point_ids = self.point_domain.ids().iter().enumerate();
+		point_ids.filter(move |(index, _)| vector_meshes || self.segment_domain.connected_count(*index) == 1).map(|(_, &id)| id)
 	}
 
 	/// Computes if all the connected handles are colinear for an anchor, or if that handle is colinear for a handle.
@@ -303,6 +301,13 @@ impl ManipulatorPointId {
 			ManipulatorPointId::Anchor(id) => vector_data.point_domain.position_from_id(*id),
 			ManipulatorPointId::PrimaryHandle(id) => vector_data.segment_from_id(*id).and_then(|bezier| bezier.handle_start()),
 			ManipulatorPointId::EndHandle(id) => vector_data.segment_from_id(*id).and_then(|bezier| bezier.handle_end()),
+		}
+	}
+
+	pub fn get_anchor_position(&self, vector_data: &VectorData) -> Option<DVec2> {
+		match self {
+			ManipulatorPointId::EndHandle(_) | ManipulatorPointId::PrimaryHandle(_) => self.get_anchor(vector_data).and_then(|id| vector_data.point_domain.position_from_id(id)),
+			_ => self.get_position(vector_data),
 		}
 	}
 
@@ -394,6 +399,13 @@ impl HandleId {
 			HandleType::Primary => ManipulatorPointId::PrimaryHandle(self.segment),
 			HandleType::End => ManipulatorPointId::EndHandle(self.segment),
 		}
+	}
+
+	/// Calculate the magnitude of the handle from the anchor.
+	pub fn length(self, vector_data: &VectorData) -> f64 {
+		let anchor_position = self.to_manipulator_point().get_anchor_position(vector_data).unwrap();
+		let handle_position = self.to_manipulator_point().get_position(vector_data);
+		handle_position.map(|pos| (pos - anchor_position).length()).unwrap_or(f64::MAX)
 	}
 
 	/// Set the handle's position relative to the anchor which is the start anchor for the primary handle and end anchor for the end handle.

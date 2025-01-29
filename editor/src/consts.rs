@@ -53,6 +53,10 @@ pub const PIVOT_CROSSHAIR_THICKNESS: f64 = 1.;
 pub const PIVOT_CROSSHAIR_LENGTH: f64 = 9.;
 pub const PIVOT_DIAMETER: f64 = 5.;
 
+// Transform overlay
+pub const ANGLE_MEASURE_RADIUS_FACTOR: f64 = 0.04;
+pub const ARC_MEASURE_RADIUS_FACTOR_RANGE: (f64, f64) = (0.05, 0.15);
+
 // Transformation cage
 pub const BOUNDS_SELECT_THRESHOLD: f64 = 10.;
 pub const BOUNDS_ROTATE_THRESHOLD: f64 = 20.;
@@ -66,6 +70,9 @@ pub const HANDLE_ROTATE_SNAP_ANGLE: f64 = 15.;
 
 // Pen tool
 pub const CREATE_CURVE_THRESHOLD: f64 = 5.;
+
+// Spline tool
+pub const PATH_JOIN_THRESHOLD: f64 = 5.;
 
 // Line tool
 pub const LINE_ROTATE_SNAP_ANGLE: f64 = 15.;
@@ -88,6 +95,7 @@ pub const COLOR_OVERLAY_RED: &str = "#ef5454";
 pub const COLOR_OVERLAY_GRAY: &str = "#cccccc";
 pub const COLOR_OVERLAY_WHITE: &str = "#ffffff";
 pub const COLOR_OVERLAY_SNAP_BACKGROUND: &str = "#000000cc";
+pub const COLOR_OVERLAY_TRANSPARENT: &str = "#ffffff00";
 
 // Document
 pub const DEFAULT_DOCUMENT_NAME: &str = "Untitled Document";

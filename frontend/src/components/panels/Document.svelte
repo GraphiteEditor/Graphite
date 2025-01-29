@@ -1,11 +1,7 @@
 <script lang="ts">
 	import { getContext, onMount, tick } from "svelte";
 
-	import type { DocumentState } from "@graphite/state-providers/document";
-	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
-	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
-	import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
-	import type { Editor } from "@graphite/wasm-communication/editor";
+	import type { Editor } from "@graphite/editor";
 	import {
 		type MouseCursorIcon,
 		type XY,
@@ -19,7 +15,11 @@
 		UpdateEyedropperSamplingState,
 		UpdateMouseCursor,
 		isWidgetSpanRow,
-	} from "@graphite/wasm-communication/messages";
+	} from "@graphite/messages";
+	import type { DocumentState } from "@graphite/state-providers/document";
+	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
+	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
+	import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
 
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -75,7 +75,8 @@
 	let canvasSvgWidth: number | undefined = undefined;
 	let canvasSvgHeight: number | undefined = undefined;
 
-	// Used to set the canvas rendering dimensions.
+	let devicePixelRatio: number | undefined;
+
 	// Dimension is rounded up to the nearest even number because resizing is centered, and dividing an odd number by 2 for centering causes antialiasing
 	$: canvasWidthRoundedToEven = canvasSvgWidth && (canvasSvgWidth % 2 === 1 ? canvasSvgWidth + 1 : canvasSvgWidth);
 	$: canvasHeightRoundedToEven = canvasSvgHeight && (canvasSvgHeight % 2 === 1 ? canvasSvgHeight + 1 : canvasSvgHeight);
@@ -83,6 +84,13 @@
 	// The value above in pixels, or if undefined, we fall back to 100% as a non-pixel-perfect backup that's hopefully short-lived
 	$: canvasWidthCSS = canvasWidthRoundedToEven ? `${canvasWidthRoundedToEven}px` : "100%";
 	$: canvasHeightCSS = canvasHeightRoundedToEven ? `${canvasHeightRoundedToEven}px` : "100%";
+
+	$: canvasWidthScaled = canvasSvgWidth && devicePixelRatio && Math.floor(canvasSvgWidth * devicePixelRatio);
+	$: canvasHeightScaled = canvasSvgHeight && devicePixelRatio && Math.floor(canvasSvgHeight * devicePixelRatio);
+
+	// Used to set the canvas rendering dimensions.
+	$: canvasWidthScaledRoundedToEven = canvasWidthScaled && (canvasWidthScaled % 2 === 1 ? canvasWidthScaled + 1 : canvasWidthScaled);
+	$: canvasHeightScaledRoundedToEven = canvasHeightScaled && (canvasHeightScaled % 2 === 1 ? canvasHeightScaled + 1 : canvasHeightScaled);
 
 	$: toolShelfTotalToolsAndSeparators = ((layoutGroup) => {
 		if (!isWidgetSpanRow(layoutGroup)) return undefined;
@@ -275,17 +283,17 @@
 		// This isn't very clean but it's good enough for now until we need more icons, then we can build something more robust (consider blob URLs)
 		if (cursor === "custom-rotate") {
 			const svg = `
-					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20">
-						<path transform="translate(2 2)" fill="black" stroke="black" stroke-width="2px" d="
-						M8,15.2C4,15.2,0.8,12,0.8,8C0.8,4,4,0.8,8,0.8c2,0,3.9,0.8,5.3,2.3l-1,1C11.2,2.9,9.6,2.2,8,2.2C4.8,2.2,2.2,4.8,2.2,8s2.6,5.8,5.8,5.8s5.8-2.6,5.8-5.8h1.4C15.2,12,12,15.2,8,15.2z
-						" />
-						<polygon transform="translate(2 2)" fill="black" stroke="black" stroke-width="2px" points="12.6,0 15.5,5 9.7,5" />
-						<path transform="translate(2 2)" fill="white" d="
-						M8,15.2C4,15.2,0.8,12,0.8,8C0.8,4,4,0.8,8,0.8c2,0,3.9,0.8,5.3,2.3l-1,1C11.2,2.9,9.6,2.2,8,2.2C4.8,2.2,2.2,4.8,2.2,8s2.6,5.8,5.8,5.8s5.8-2.6,5.8-5.8h1.4C15.2,12,12,15.2,8,15.2z
-						" />
-						<polygon transform="translate(2 2)" fill="white" points="12.6,0 15.5,5 9.7,5" />
-					</svg>
-					`
+				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20">
+					<path transform="translate(2 2)" fill="black" stroke="black" stroke-width="2px" d="
+					M8,15.2C4,15.2,0.8,12,0.8,8C0.8,4,4,0.8,8,0.8c2,0,3.9,0.8,5.3,2.3l-1,1C11.2,2.9,9.6,2.2,8,2.2C4.8,2.2,2.2,4.8,2.2,8s2.6,5.8,5.8,5.8s5.8-2.6,5.8-5.8h1.4C15.2,12,12,15.2,8,15.2z
+					" />
+					<polygon transform="translate(2 2)" fill="black" stroke="black" stroke-width="2px" points="12.6,0 15.5,5 9.7,5" />
+					<path transform="translate(2 2)" fill="white" d="
+					M8,15.2C4,15.2,0.8,12,0.8,8C0.8,4,4,0.8,8,0.8c2,0,3.9,0.8,5.3,2.3l-1,1C11.2,2.9,9.6,2.2,8,2.2C4.8,2.2,2.2,4.8,2.2,8s2.6,5.8,5.8,5.8s5.8-2.6,5.8-5.8h1.4C15.2,12,12,15.2,8,15.2z
+					" />
+					<polygon transform="translate(2 2)" fill="white" points="12.6,0 15.5,5 9.7,5" />
+				</svg>
+				`
 				.split("\n")
 				.map((line) => line.trim())
 				.join("");
@@ -362,6 +370,22 @@
 	}
 
 	onMount(() => {
+		// Not compatible with Safari:
+		// <https://developer.mozilla.org/en-US/docs/Web/API/Window/devicePixelRatio#browser_compatibility>
+		// <https://bugs.webkit.org/show_bug.cgi?id=124862>
+		let removeUpdatePixelRatio: (() => void) | undefined = undefined;
+		const updatePixelRatio = () => {
+			removeUpdatePixelRatio?.();
+			const mediaQueryList = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+			// The event is one-time use, so we have to set up a new listener and remove the old one every time
+			mediaQueryList.addEventListener("change", updatePixelRatio);
+			removeUpdatePixelRatio = () => mediaQueryList.removeEventListener("change", updatePixelRatio);
+
+			devicePixelRatio = window.devicePixelRatio;
+			editor.handle.setDevicePixelRatio(devicePixelRatio);
+		};
+		updatePixelRatio();
+
 		// Update rendered SVGs
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentArtwork, async (data) => {
 			await tick();
@@ -508,7 +532,14 @@
 								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" on:scroll={preventTextEditingScroll} />
 							{/if}
 						</div>
-						<canvas class="overlays" width={canvasWidthRoundedToEven} height={canvasHeightRoundedToEven} style:width={canvasWidthCSS} style:height={canvasHeightCSS} data-overlays-canvas>
+						<canvas
+							class="overlays"
+							width={canvasWidthScaledRoundedToEven}
+							height={canvasHeightScaledRoundedToEven}
+							style:width={canvasWidthCSS}
+							style:height={canvasHeightCSS}
+							data-overlays-canvas
+						>
 						</canvas>
 					</div>
 					<div class="graph-view" class:open={$document.graphViewOverlayOpen} style:--fade-artwork={`${$document.fadeArtwork}%`} data-graph>

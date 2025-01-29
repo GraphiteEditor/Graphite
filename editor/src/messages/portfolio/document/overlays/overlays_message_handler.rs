@@ -11,6 +11,7 @@ pub struct OverlaysMessageHandler {
 	pub overlay_providers: HashSet<OverlayProvider>,
 	canvas: Option<web_sys::HtmlCanvasElement>,
 	context: Option<web_sys::CanvasRenderingContext2d>,
+	device_pixel_ratio: Option<f64>,
 }
 
 impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessageHandler {
@@ -22,6 +23,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 			OverlaysMessage::Draw => {
 				use super::utility_functions::overlay_canvas_element;
 				use super::utility_types::OverlayContext;
+				use glam::{DAffine2, DVec2};
 				use wasm_bindgen::JsCast;
 
 				let canvas = match &self.canvas {
@@ -39,17 +41,24 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 
 				let size = ipp.viewport_bounds.size().as_uvec2();
 
+				let device_pixel_ratio = self.device_pixel_ratio.unwrap_or(1.);
+
+				let [a, b, c, d, e, f] = DAffine2::from_scale(DVec2::splat(device_pixel_ratio)).to_cols_array();
+				let _ = context.set_transform(a, b, c, d, e, f);
 				context.clear_rect(0., 0., ipp.viewport_bounds.size().x, ipp.viewport_bounds.size().y);
+				let _ = context.reset_transform();
 
 				if overlays_visible {
 					responses.add(DocumentMessage::GridOverlays(OverlayContext {
 						render_context: context.clone(),
 						size: size.as_dvec2(),
+						device_pixel_ratio,
 					}));
 					for provider in &self.overlay_providers {
 						responses.add(provider(OverlayContext {
 							render_context: context.clone(),
 							size: size.as_dvec2(),
+							device_pixel_ratio,
 						}));
 					}
 				}
@@ -60,6 +69,10 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 					"Cannot render overlays on non-Wasm targets.\n{responses:?} {overlays_visible} {ipp:?} {:?} {:?}",
 					self.canvas, self.context
 				);
+			}
+			OverlaysMessage::SetDevicePixelRatio { ratio } => {
+				self.device_pixel_ratio = Some(ratio);
+				responses.add(OverlaysMessage::Draw);
 			}
 			OverlaysMessage::AddProvider(message) => {
 				self.overlay_providers.insert(message);

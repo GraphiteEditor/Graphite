@@ -431,24 +431,11 @@ generate_imaginate_node! {
 	tiling: Tiling: bool,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct ImageFrameNode<P, Transform> {
-	transform: Transform,
-	_p: PhantomData<P>,
-}
-#[node_macro::old_node_fn(ImageFrameNode<_P>)]
-fn image_frame<_P: Pixel>(image: Image<_P>, transform: DAffine2) -> ImageFrame<_P> {
-	ImageFrame {
-		image,
-		transform,
-		alpha_blending: AlphaBlending::default(),
-	}
-}
-
 #[node_macro::node(category("Raster: Generator"))]
 #[allow(clippy::too_many_arguments)]
 fn noise_pattern(
 	ctx: impl ExtractFootprint,
+	_primary: (),
 	clip: bool,
 	seed: u32,
 	scale: f64,

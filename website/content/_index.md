@@ -30,7 +30,7 @@ meta_description = "Open source free software. A vector graphics creativity suit
 <!-- ▙ TAGLINE ▟ -->
 <!--                -->
 <!-- ▛ QUICK LINKS ▜ -->
-<section id="quick-links">
+<section id="quick-links" data-quick-links>
 
 <div class="call-to-action-buttons">
 	<a href="https://github.com/GraphiteEditor/Graphite" class="button github-stars">
@@ -70,6 +70,8 @@ meta_description = "Open source free software. A vector graphics creativity suit
 		if (!stars) throw new Error();
 		let quantity = stars.toLocaleString("en-US");
 		element.innerText = quantity;
+		// Force repaint to work around Safari bug <https://bugs.webkit.org/show_bug.cgi?id=286403> (remove this and its data attribute when the bug is fixed and widely deployed)
+		document.querySelector("[data-quick-links]").style.transform = "scale(1)";
 	} catch {
 		element.remove();
 	}
@@ -81,15 +83,15 @@ meta_description = "Open source free software. A vector graphics creativity suit
 <section id="screenshots" class="carousel window-size-1" data-carousel data-carousel-jostle-hint>
 
 <div class="carousel-slide" data-carousel-slide>
-	<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__7.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
+	<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__8.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
 	<!-- Above is a copy of the last -->
-	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-demo-painted-dreams__2.avif" />
-	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/magazine-page-layout.avif" />
-	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-demo-node-graph-valley-of-spires__2.avif" />
-	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-demo-fractal__2.avif" />
-	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-mockup-nodes__7.avif" />
+	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-demo-painted-dreams__3.avif" />
+	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/magazine-page-layout__2.avif" />
+	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-demo-node-graph-isometric-fountain.avif" />
+	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-demo-fractal__3.avif" />
+	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-mockup-nodes__8.avif" />
 	<!-- Below is a copy of the first -->
-	<img src="https://static.graphite.rs/content/index/gui-demo-painted-dreams__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
+	<img src="https://static.graphite.rs/content/index/gui-demo-painted-dreams__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
 </div>
 
 <div class="carousel-slide torn left" data-carousel-slide-torn-left></div>
@@ -135,13 +137,13 @@ meta_description = "Open source free software. A vector graphics creativity suit
 	Design for a magazine spread, a preview of the upcoming focus on desktop publishing
 </p>
 <p data-carousel-description>
-	<a href="https://editor.graphite.rs/#demo/valley-of-spires"><em>Valley of Spires</em></a> — All layer stacks are represented, under the hood, by a node graph
+	<a href="https://editor.graphite.rs/#demo/isometric-fountain"><em>Isometric Fountain</em></a> — All layer stacks are represented, under the hood, by a nondestructive node graph
 </p>
 <p data-carousel-description>
 	Mandelbrot fractal filled with a noise pattern, procedurally generated and infinitely scalable
 </p>
 <p data-carousel-description>
-	Coming soon: mockup for the actively in-development raster workflow with new nodes for photo editing
+	Coming soon: this user interface mockup shows the raster image editing features planned for 2025
 </p>
 
 </div>
@@ -259,11 +261,11 @@ Presently, Graphite is a lightweight offline web app with features primarily ori
 
 ## Desktop-first and web-ready
 
-Graphite is designed principally as a professional-grade desktop application that is also accessible in-browser for quick, casual usage.
+Where's the download? Windows, Mac, and Linux apps should be available in early 2025.
 
-Where's the download? Windows, Mac, and Linux apps should be available around the start of 2025. Until then, you can <a href="https://support.google.com/chrome/answer/9658361" target="_blank">install it as a PWA</a>.
+Graphite is designed principally as a professional desktop application that is also accessible in a browser for quick, casual usage. It's built for speed with (nearly) no JavaScript. And regardless of platform, your work runs locally and privately on your own hardware. There is no server.
 
-Developing and maintaining a native app on so many platforms is a big task. A fast, sloppy approach wouldn't cut it, but engineering the right tech takes time. That's why first supporting just web, the one platform that stays up-to-date and reaches all devices, was the initial priority.
+Engineering the tech for a native app distributed across three new platforms takes extra time. That's why supporting the web platform, which keeps up-to-date and reaches all devices, has been the initial target. For now, you can <a href="https://support.google.com/chrome/answer/9658361" target="_blank">install the app as a PWA</a> for a desktop-like experience.
 
 Once it's ready to shine, Graphite's code architecture is structured to deliver native performance for your graphically intensive workloads on desktop platforms and very low overhead on the web thanks to WebAssembly and WebGPU, new high-performance browser technologies.
 
@@ -369,7 +371,7 @@ Graphite's representation of artwork as a node graph lets you customize, compose
 
 If you aren't paying for your free software, someone else is covering your share. Chip in so Graphite can remain sustainable and independent.
 
-<a href="https://github.com/sponsors/GraphiteEditor" class="button arrow">Donate</a>
+<a href="/donate" class="button arrow">Donate</a>
 
 </div>
 

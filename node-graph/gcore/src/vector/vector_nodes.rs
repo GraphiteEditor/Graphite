@@ -39,14 +39,16 @@ impl VectorIterMut for VectorData {
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
 async fn assign_colors<T: VectorIterMut>(
 	_: impl Ctx,
-	#[implementations(GraphicGroup, VectorData)] mut vector_group: T,
+	#[implementations(GraphicGroup, VectorData)]
+	#[widget(ParsedWidgetOverride::Hidden)]
+	mut vector_group: T,
 	#[default(true)] fill: bool,
 	stroke: bool,
-	gradient: GradientStops,
+	#[widget(ParsedWidgetOverride::Custom = "assign_colors_gradient")] gradient: GradientStops,
 	reverse: bool,
-	randomize: bool,
-	seed: SeedValue,
-	repeat_every: u32,
+	#[widget(ParsedWidgetOverride::Custom = "assign_colors_randomize")] randomize: bool,
+	#[widget(ParsedWidgetOverride::Custom = "assign_colors_seed")] seed: SeedValue,
+	#[widget(ParsedWidgetOverride::Custom = "assign_colors_repeat_every")] repeat_every: u32,
 ) -> T {
 	let length = vector_group.vector_iter_mut().count();
 	let gradient = if reverse { gradient.reversed() } else { gradient };
@@ -77,7 +79,7 @@ async fn assign_colors<T: VectorIterMut>(
 	vector_group
 }
 
-#[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
 async fn fill<FillTy: Into<Fill> + 'n + Send, TargetTy: VectorIterMut + 'n + Send>(
 	_: impl Ctx,
 	#[implementations(VectorData, VectorData, VectorData, VectorData, GraphicGroup, GraphicGroup, GraphicGroup, GraphicGroup)] mut vector_data: TargetTy,
@@ -104,7 +106,7 @@ async fn fill<FillTy: Into<Fill> + 'n + Send, TargetTy: VectorIterMut + 'n + Sen
 	vector_data
 }
 
-#[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
 async fn stroke<ColorTy: Into<Option<Color>> + 'n + Send, TargetTy: VectorIterMut + 'n + Send>(
 	_: impl Ctx,
 	#[implementations(VectorData, VectorData, GraphicGroup, GraphicGroup)] mut vector_data: TargetTy,
@@ -292,7 +294,7 @@ async fn bounding_box(_: impl Ctx, vector_data: VectorData) -> VectorData {
 	result
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector"), path(graphene_core::vector), properties("offset_path_properties"))]
 async fn offset_path(_: impl Ctx, vector_data: VectorData, distance: f64, line_join: LineJoin, #[default(4.)] miter_limit: f64) -> VectorData {
 	let subpaths = vector_data.stroke_bezier_paths();
 	let mut result = VectorData::empty();
@@ -408,7 +410,7 @@ impl ConcatElement for GraphicGroup {
 	}
 }
 
-#[node_macro::node(category(""))]
+#[node_macro::node(category(""), path(graphene_core::vector))]
 async fn sample_points(_: impl Ctx, vector_data: VectorData, spacing: f64, start_offset: f64, stop_offset: f64, adaptive_spacing: bool, subpath_segment_lengths: Vec<f64>) -> VectorData {
 	// Create an iterator over the bezier segments with enumeration and peeking capability.
 	let mut bezier = vector_data.segment_bezier_iter().enumerate().peekable();
@@ -601,7 +603,7 @@ async fn poisson_disk_points(
 	result
 }
 
-#[node_macro::node(category(""))]
+#[node_macro::node(category(""), path(graphene_core::vector))]
 async fn subpath_segment_lengths(_: impl Ctx, vector_data: VectorData) -> Vec<f64> {
 	vector_data
 		.segment_bezier_iter()
@@ -707,6 +709,8 @@ async fn morph(
 	#[min(0.)] start_index: IntegerCount,
 ) -> VectorData {
 	let mut result = VectorData::empty();
+
+	let time = time.clamp(0., 1.);
 
 	// Lerp styles
 	result.alpha_blending = if time < 0.5 { source.alpha_blending } else { target.alpha_blending };

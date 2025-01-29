@@ -85,9 +85,24 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 			ParsedField::Regular { ty, .. } => ty.clone(),
 			ParsedField::Node { output_type, input_type, .. } => match parsed.is_async {
 				true => parse_quote!(&'n impl #graphene_core::Node<'n, #input_type, Output = impl core::future::Future<Output=#output_type> > ),
-
 				false => parse_quote!(&'n impl #graphene_core::Node<'n, #input_type, Output = #output_type>),
 			},
+		})
+		.collect();
+
+	let widget_override: Vec<_> = fields
+		.iter()
+		.map(|field| {
+			let parsed_widget_override = match field {
+				ParsedField::Regular { widget_override, .. } => widget_override,
+				ParsedField::Node { widget_override, .. } => widget_override,
+			};
+			match parsed_widget_override {
+				ParsedWidgetOverride::None => quote!(RegistryWidgetOverride::None),
+				ParsedWidgetOverride::Hidden => quote!(RegistryWidgetOverride::Hidden),
+				ParsedWidgetOverride::String(lit_str) => quote!(RegistryWidgetOverride::String(#lit_str)),
+				ParsedWidgetOverride::Custom(lit_str) => quote!(RegistryWidgetOverride::Custom(#lit_str)),
+			}
 		})
 		.collect();
 
@@ -95,11 +110,11 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		.iter()
 		.map(|field| match field {
 			ParsedField::Regular { value_source, .. } => match value_source {
-				ValueSource::Default(data) => quote!(ValueSource::Default(stringify!(#data))),
-				ValueSource::Scope(data) => quote!(ValueSource::Scope(#data)),
-				_ => quote!(ValueSource::None),
+				ParsedValueSource::Default(data) => quote!(RegistryValueSource::Default(stringify!(#data))),
+				ParsedValueSource::Scope(data) => quote!(RegistryValueSource::Scope(#data)),
+				_ => quote!(RegistryValueSource::None),
 			},
-			_ => quote!(ValueSource::None),
+			_ => quote!(RegistryValueSource::None),
 		})
 		.collect();
 
@@ -234,6 +249,8 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	let register_node_impl = generate_register_node_impl(parsed, &field_names, &struct_name, &identifier)?;
 	let import_name = format_ident!("_IMPORT_STUB_{}", mod_name.to_string().to_case(Case::UpperSnake));
 
+	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
+
 	Ok(quote! {
 		/// Underlying implementation for [#struct_name]
 		#[inline]
@@ -256,7 +273,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 			use gcore::{Node, NodeIOTypes, concrete, fn_type, future, ProtoNodeIdentifier, WasmNotSync, NodeIO};
 			use gcore::value::ClonedNode;
 			use gcore::ops::TypeNode;
-			use gcore::registry::{NodeMetadata, FieldMetadata, NODE_REGISTRY, NODE_METADATA, DynAnyNode, DowncastBothNode, DynFuture, TypeErasedBox, PanicNode, ValueSource};
+			use gcore::registry::{NodeMetadata, FieldMetadata, NODE_REGISTRY, NODE_METADATA, DynAnyNode, DowncastBothNode, DynFuture, TypeErasedBox, PanicNode, RegistryValueSource, RegistryWidgetOverride};
 			use gcore::ctor::ctor;
 
 			// Use the types specified in the implementation
@@ -287,10 +304,12 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 					display_name: #display_name,
 					category: #category,
 					description: #description,
+					properties: #properties,
 					fields: vec![
 						#(
 							FieldMetadata {
 								name: #input_names,
+								widget_override: #widget_override,
 								description: #input_descriptions,
 								exposed: #exposed,
 								value_source: #value_sources,

@@ -38,7 +38,7 @@ impl ValueProvider for MathNodeContext {
 }
 
 /// Calculates a mathematical expression with input values "A" and "B"
-#[node_macro::node(category("Math"))]
+#[node_macro::node(category("General"), properties("math_properties"))]
 fn math<U: num_traits::float::Float>(
 	_: impl Ctx,
 	/// The value of "A" when calculating the expression
