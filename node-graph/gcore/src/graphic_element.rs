@@ -379,9 +379,12 @@ async fn to_artboard<Data: Into<GraphicGroupTable> + 'n>(
 	background: Color,
 	clip: bool,
 ) -> Artboard {
-	let mut footprint = *ctx.footprint();
-	footprint.translate(location.as_dvec2());
-	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(footprint);
+	let footprint = ctx.try_footprint().copied();
+	let mut new_ctx = OwnedContextImpl::from(ctx);
+	if let Some(mut footprint) = footprint {
+		footprint.translate(location.as_dvec2());
+		new_ctx = new_ctx.with_footprint(footprint);
+	}
 	let graphic_group = contents.eval(new_ctx.into_context()).await;
 
 	Artboard {
@@ -395,7 +398,16 @@ async fn to_artboard<Data: Into<GraphicGroupTable> + 'n>(
 }
 
 #[node_macro::node(category(""))]
-async fn append_artboard(_: impl Ctx, mut artboards: ArtboardGroup, artboard: Artboard, node_path: Vec<NodeId>) -> ArtboardGroup {
+async fn append_artboard<C: Ctx + Clone + 'n>(
+	#[implementations(Context)] ctx: C,
+	#[implementations(Context -> ArtboardGroup)] artboards: impl Node<C, Output = ArtboardGroup>,
+	#[implementations(Context -> Artboard)] artboard: impl Node<C, Output = Artboard>,
+	node_path: Vec<NodeId>,
+) -> ArtboardGroup {
+	let mut artboards = artboards.eval(ctx.clone()).await;
+	let artboard = artboard.eval(ctx).await;
+	// let foot = ctx.footprint();
+	// log::debug!("{:?}", foot);
 	// Get the penultimate element of the node path, or None if the path is too short
 	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
 	artboards.append_artboard(artboard, encapsulating_node_id);

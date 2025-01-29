@@ -320,12 +320,15 @@ async fn transform<T: 'n + TransformMut + 'static>(
 	_pivot: DVec2,
 ) -> T {
 	let modification = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
-	let mut footprint = *ctx.footprint();
+	let footprint = ctx.try_footprint().copied();
 
-	if !footprint.ignore_modifications {
-		footprint.apply_transform(&modification);
+	let mut ctx = OwnedContextImpl::from(ctx);
+	if let Some(mut footprint) = footprint {
+		if !footprint.ignore_modifications {
+			footprint.apply_transform(&modification);
+		}
+		ctx = ctx.with_footprint(footprint);
 	}
-	let ctx = OwnedContextImpl::from(ctx).with_footprint(footprint);
 
 	let mut transform_target = transform_target.eval(ctx.into_context()).await;
 

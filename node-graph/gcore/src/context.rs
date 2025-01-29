@@ -65,10 +65,14 @@ impl<T: ExtractFootprint + Ctx + Sync + Send> ExtractFootprint for &T {
 
 impl<T: ExtractFootprint + Sync> ExtractFootprint for Option<T> {
 	fn try_footprint(&self) -> Option<&Footprint> {
-		if self.is_none() {
-			log::warn!("trying to extract footprint from context None {} ", Location::caller());
-		}
 		self.as_ref().and_then(|x| x.try_footprint())
+	}
+	#[track_caller]
+	fn footprint(&self) -> &Footprint {
+		self.try_footprint().unwrap_or_else(|| {
+			log::warn!("trying to extract footprint from context None {} ", Location::caller());
+			&const { Footprint::empty() }
+		})
 	}
 }
 impl<T: ExtractTime + Sync> ExtractTime for Option<T> {
@@ -204,9 +208,9 @@ impl ExtractVarArgs for OwnedContextImpl {
 	}
 }
 
-impl CloneVarArgs for OwnedContextImpl {
+impl CloneVarArgs for Arc<OwnedContextImpl> {
 	fn arc_clone(&self) -> Option<Arc<dyn ExtractVarArgs + Send + Sync>> {
-		todo!()
+		Some(self.clone())
 	}
 }
 
@@ -227,7 +231,6 @@ pub struct OwnedContextImpl {
 impl Default for OwnedContextImpl {
 	#[track_caller]
 	fn default() -> Self {
-		log::debug!("creating new context from {}", Location::caller());
 		Self::empty()
 	}
 }
@@ -245,7 +248,6 @@ impl core::hash::Hash for OwnedContextImpl {
 impl OwnedContextImpl {
 	#[track_caller]
 	pub fn from<T: ExtractAll + CloneVarArgs>(value: T) -> Self {
-		log::debug!("converting context called from: {}", Location::caller());
 		let footprint = value.try_footprint().copied();
 		let index = value.try_index();
 		let time = value.try_time();

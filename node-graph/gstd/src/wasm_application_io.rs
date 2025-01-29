@@ -12,7 +12,7 @@ use graphene_core::renderer::RenderMetadata;
 use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
 use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorDataTable;
-use graphene_core::{Color, Context, Ctx, GraphicGroupTable, OwnedContextImpl, WasmNotSend};
+use graphene_core::{Color, Context, Ctx, ExtractFootprint, GraphicGroupTable, OwnedContextImpl, WasmNotSend};
 
 #[cfg(target_arch = "wasm32")]
 use base64::Engine;
@@ -230,6 +230,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 ) -> RenderOutput {
 	let footprint = render_config.viewport;
 	let ctx = OwnedContextImpl::default().with_footprint(footprint).into_context();
+	ctx.footprint();
 
 	let RenderConfig { hide_artboards, for_export, .. } = render_config;
 	let render_params = RenderParams::new(render_config.view_mode, ImageRenderMode::Base64, None, false, hide_artboards, for_export);
