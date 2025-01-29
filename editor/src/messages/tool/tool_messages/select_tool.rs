@@ -1279,7 +1279,10 @@ impl Fsm for SelectToolFsmState {
 						HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
 						HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
 					]),
-					// TODO: add hint for lasso select.
+					HintGroup(vec![
+						HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
+						HintInfo::keys([Key::Control], "Lasso Select").prepend_plus(),
+					]),
 					HintGroup(vec![HintInfo::keys([Key::KeyG, Key::KeyR, Key::KeyS], "Grab/Rotate/Scale Selected")]),
 					HintGroup(vec![
 						HintInfo::arrow_keys("Nudge Selected"),
