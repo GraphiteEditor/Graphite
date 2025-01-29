@@ -406,7 +406,8 @@ impl BoundingBoxManager {
 		let min = self.bounds[0].min(self.bounds[1]);
 		let max = self.bounds[0].max(self.bounds[1]);
 		let [threshold_x, threshold_y] = self.compute_viewport_threshold(BOUNDS_SELECT_THRESHOLD);
-		let [min_x, min_y] = self.compute_viewport_threshold(MIN_LENGTH_FOR_CORNERS_VISIBILITY);
+		let [corner_min_x, corner_min_y] = self.compute_viewport_threshold(MIN_LENGTH_FOR_CORNERS_VISIBILITY);
+		let [edge_min_x, edge_min_y] = self.compute_viewport_threshold(MIN_LENGTH_FOR_MIDPOINT_VISIBILITY);
 
 		if min.x - cursor.x < threshold_x && min.y - cursor.y < threshold_y && cursor.x - max.x < threshold_x && cursor.y - max.y < threshold_y {
 			let mut top = (cursor.y - min.y).abs() < threshold_y;
@@ -414,24 +415,33 @@ impl BoundingBoxManager {
 			let mut left = (cursor.x - min.x).abs() < threshold_x;
 			let mut right = (max.x - cursor.x).abs() < threshold_x;
 
-			// Prioritise single axis transformations on very small bounds
-			if cursor.y - min.y + max.y - cursor.y < min_y && (left || right) {
-				top = false;
-				bottom = false;
-			}
-			if cursor.x - min.x + max.x - cursor.x < min_x && (top || bottom) {
-				left = false;
-				right = false;
-			}
+			let width = max.x - min.x;
+			let height = max.y - min.y;
 
-			// On bounds with no width/height, disallow transformation in the relevant axis
-			if (max.x - min.x) < f64::EPSILON * 1000. {
-				left = false;
-				right = false;
-			}
-			if (max.y - min.y) < f64::EPSILON * 1000. {
-				top = false;
-				bottom = false;
+			if width < edge_min_x || height <= edge_min_y {
+				if min.x < cursor.x && cursor.x < max.x && cursor.y < max.y && cursor.y > min.y {
+					return None;
+				}
+
+				// Prioritise single axis transformations on very small bounds
+				if height < corner_min_y && (left || right) {
+					top = false;
+					bottom = false;
+				}
+				if width < corner_min_x && (top || bottom) {
+					left = false;
+					right = false;
+				}
+
+				// On bounds with no width/height, disallow transformation in the relevant axis
+				if width < f64::EPSILON * 1000. {
+					left = false;
+					right = false;
+				}
+				if height < f64::EPSILON * 1000. {
+					top = false;
+					bottom = false;
+				}
 			}
 
 			if top || bottom || left || right {
@@ -441,7 +451,6 @@ impl BoundingBoxManager {
 
 		None
 	}
-
 	/// Check if the user is rotating with the bounds
 	pub fn check_rotate(&self, cursor: DVec2) -> bool {
 		let cursor = self.transform.inverse().transform_point2(cursor);
