@@ -13,7 +13,6 @@ use graphene_core::vector::style::ViewMode;
 use graphene_core::Color;
 use graphene_std::renderer::ClickTarget;
 use graphene_std::transform::Footprint;
-use graphene_std::vector::VectorData;
 
 use glam::DAffine2;
 
@@ -180,9 +179,6 @@ pub enum DocumentMessage {
 	},
 	UpdateClipTargets {
 		clip_targets: HashSet<NodeId>,
-	},
-	UpdateVectorModify {
-		vector_modify: HashMap<NodeId, VectorData>,
 	},
 	Undo,
 	UngroupSelectedLayers,

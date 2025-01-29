@@ -502,7 +502,7 @@ impl PathToolData {
 					});
 
 					// Make handles colinear if opposite handle is zero length
-					if opposite_handle_length.map_or(false, |l| l == 0.) {
+					if opposite_handle_length == Some(0.) {
 						shape_editor.convert_selected_manipulators_to_colinear_handles(responses, document);
 						return true;
 					}

@@ -1323,7 +1323,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Layers excluding ones that are children of other layers in the list.
-	/// TODO: Cache this
+	// TODO: Cache this
 	pub fn shallowest_unique_layers(&self, network_path: &[NodeId]) -> impl Iterator<Item = LayerNodeIdentifier> {
 		let mut sorted_layers = if let Some(selected_nodes) = self.selected_nodes(network_path) {
 			selected_nodes
@@ -5976,9 +5976,11 @@ pub struct NodeNetworkPersistentMetadata {
 	// Stores the transform and navigation state for the network
 	pub navigation_metadata: NavigationMetadata,
 	/// Stack of selection snapshots for previous history states.
+	// TODO: Use `#[serde(skip)]` here instead? @TrueDoctor claims this isn't valid but hasn't satisfactorily explained how it differs from the situation where `#[serde(default)]` fills in the default value. From brief testing, skip seems to work without issue.
 	#[serde(default)]
 	pub selection_undo_history: VecDeque<SelectedNodes>,
 	/// Stack of selection snapshots for future history states.
+	// TODO: Use `#[serde(skip)]` here instead? See above.
 	#[serde(default)]
 	pub selection_redo_history: VecDeque<SelectedNodes>,
 }
@@ -6015,7 +6017,7 @@ pub struct NodeNetworkTransientMetadata {
 	// node_group_bounding_box: Vec<(Subpath<ManipulatorGroupId>, Vec<Nodes>)>,
 	/// Cache for all outward wire connections
 	pub outward_wires: TransientMetadata<HashMap<OutputConnector, Vec<InputConnector>>>,
-	/// TODO: Cache all wire paths instead of calculating in Graph.svelte
+	// TODO: Cache all wire paths instead of calculating in Graph.svelte
 	// pub wire_paths: Vec<WirePath>
 	/// All export connector click targets
 	pub import_export_ports: TransientMetadata<Ports>,
@@ -6131,7 +6133,7 @@ pub enum WidgetOverride {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PropertiesRow {
 	/// A general datastore than can store key value pairs of any types for any input
-	/// TODO: This could be simplified to just Value, and key value pairs could be stored as the Object variant
+	// TODO: This could be simplified to just Value, and key value pairs could be stored as the Object variant
 	pub input_data: HashMap<String, Value>,
 	// An input can override a widget, which would otherwise be automatically generated from the type
 	// The string is the identifier to the widget override function stored in INPUT_OVERRIDES
@@ -6219,13 +6221,36 @@ impl PropertiesRow {
 	}
 }
 
+// TODO: Eventually remove this migration document upgrade code
+fn migrate_output_names<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
+	use serde::Deserialize;
+
+	const REPLACEMENTS: [(&str, &str); 3] = [
+		("VectorData", "Instances<VectorData>"),
+		("GraphicGroup", "Instances<GraphicGroup>"),
+		("ImageFrame", "Instances<ImageFrame>"),
+	];
+
+	let mut names = Vec::<String>::deserialize(deserializer)?;
+
+	for name in names.iter_mut() {
+		for (old, new) in REPLACEMENTS.iter() {
+			if name == old {
+				*name = new.to_string();
+			}
+		}
+	}
+
+	Ok(names)
+}
+
 /// Persistent metadata for each node in the network, which must be included when creating, serializing, and deserializing saving a node.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocumentNodePersistentMetadata {
 	/// The name of the node definition, as originally set by [`DocumentNodeDefinition`], used to display in the UI and to display the appropriate properties if no display name is set.
-	/// TODO: Used during serialization/deserialization to prevent storing implementation or inputs (and possible other fields) if they are the same as the definition.
-	/// TODO: The reference is removed once the node is modified, since the node now stores its own implementation and inputs.
-	/// TODO: Implement node versioning so that references to old nodes can be updated to the new node definition.
+	// TODO: Used during serialization/deserialization to prevent storing implementation or inputs (and possible other fields) if they are the same as the definition.
+	// TODO: The reference is removed once the node is modified, since the node now stores its own implementation and inputs.
+	// TODO: Implement node versioning so that references to old nodes can be updated to the new node definition.
 	pub reference: Option<String>,
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the reference name is displayed to the user in italics.
 	#[serde(default)]
@@ -6233,6 +6258,7 @@ pub struct DocumentNodePersistentMetadata {
 	/// Stores metadata to override the properties in the properties panel for each input. These can either be generated automatically based on the type, or with a custom function.
 	/// Must match the length of node inputs
 	pub input_properties: Vec<PropertiesRow>,
+	#[serde(deserialize_with = "migrate_output_names")]
 	pub output_names: Vec<String>,
 	/// Indicates to the UI if a primary output should be drawn for this node.
 	/// True for most nodes, but the Split Channels node is an example of a node that has multiple secondary outputs but no primary output.

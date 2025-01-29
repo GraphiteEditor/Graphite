@@ -1,4 +1,5 @@
-use super::HandleId;
+use crate::vector::vector_data::{HandleId, VectorData, VectorDataTable};
+use crate::vector::ConcatElement;
 
 use dyn_any::DynAny;
 
@@ -46,7 +47,7 @@ macro_rules! create_ids {
 	};
 }
 
-create_ids! { PointId, SegmentId, RegionId, StrokeId, FillId }
+create_ids! { InstanceId, PointId, SegmentId, RegionId, StrokeId, FillId }
 
 /// A no-op hasher that allows writing u64s (the id type).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -503,7 +504,7 @@ impl RegionDomain {
 	}
 }
 
-impl super::VectorData {
+impl VectorData {
 	/// Construct a [`bezier_rs::Bezier`] curve spanning from the resolved position of the start and end points with the specified handles.
 	fn segment_to_bezier_with_index(&self, start: usize, end: usize, handles: bezier_rs::BezierHandles) -> bezier_rs::Bezier {
 		let start = self.point_domain.positions()[start];
@@ -698,7 +699,7 @@ impl StrokePathIterPointMetadata {
 
 #[derive(Clone)]
 pub struct StrokePathIter<'a> {
-	vector_data: &'a super::VectorData,
+	vector_data: &'a VectorData,
 	points: Vec<StrokePathIterPointMetadata>,
 	skip: usize,
 	done_one: bool,
@@ -774,7 +775,7 @@ impl bezier_rs::Identifier for PointId {
 	}
 }
 
-impl crate::vector::ConcatElement for super::VectorData {
+impl ConcatElement for VectorData {
 	fn concat(&mut self, other: &Self, transform: glam::DAffine2, node_id: u64) {
 		let new_ids = other
 			.point_domain
@@ -810,6 +811,14 @@ impl crate::vector::ConcatElement for super::VectorData {
 		self.style = other.style.clone();
 		self.colinear_manipulators.extend(other.colinear_manipulators.iter().copied());
 		self.alpha_blending = other.alpha_blending;
+	}
+}
+
+impl ConcatElement for VectorDataTable {
+	fn concat(&mut self, other: &Self, transform: glam::DAffine2, node_id: u64) {
+		for (instance, other_instance) in self.instances_mut().zip(other.instances()) {
+			instance.concat(other_instance, transform, node_id);
+		}
 	}
 }
 
