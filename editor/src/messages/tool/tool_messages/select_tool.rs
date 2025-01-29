@@ -751,8 +751,7 @@ impl Fsm for SelectToolFsmState {
 				// Dragging a selection box
 				else {
 					tool_data.layers_dragging = selected;
-
-					if !input.keyboard.key(extend_selection) {
+					if !(input.keyboard.key(lasso_select) || input.keyboard.key(extend_selection)) {
 						responses.add(DocumentMessage::DeselectAllLayers);
 						tool_data.layers_dragging.clear();
 					}
@@ -770,7 +769,7 @@ impl Fsm for SelectToolFsmState {
 						responses.add(DocumentMessage::StartTransaction);
 						SelectToolFsmState::Dragging
 					} else {
-						if input.keyboard.key(lasso_select) {
+						if !input.keyboard.key(extend_selection) && input.keyboard.key(lasso_select) {
 							SelectToolFsmState::Drawing { selection_type: SelectionType::Lasso }
 						} else {
 							SelectToolFsmState::Drawing { selection_type: SelectionType::Box }
@@ -1161,7 +1160,7 @@ impl Fsm for SelectToolFsmState {
 				let current_selected: HashSet<_> = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
 				if new_selected != current_selected {
 					// Negative selection when both Shift and Ctrl are pressed
-					if input.keyboard.key(remove_from_selection) && input.keyboard.key(negative_box_selection) {
+					if selection_type != SelectionType::Lasso && input.keyboard.key(remove_from_selection) && input.keyboard.key(negative_box_selection) {
 						let updated_selection = current_selected
 							.into_iter()
 							.filter(|layer| !new_selected.iter().any(|selected| layer.starts_with(*selected, document.metadata())))
