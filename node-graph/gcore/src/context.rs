@@ -8,7 +8,10 @@ pub trait Ctx: Clone + Send {}
 pub trait ExtractFootprint {
 	fn try_footprint(&self) -> Option<&Footprint>;
 	fn footprint(&self) -> &Footprint {
-		self.try_footprint().expect("Context did not have a footprint")
+		self.try_footprint().unwrap_or_else(|| {
+			log::error!("Context did not have a footprint");
+			&const { Footprint::empty() }
+		})
 	}
 }
 
@@ -213,6 +216,16 @@ pub struct OwnedContextImpl {
 	// This could be converted into a single enum to save extra bytes
 	pub index: Option<usize>,
 	pub time: Option<f64>,
+}
+
+impl core::hash::Hash for OwnedContextImpl {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.footprint.hash(state);
+		self.index.hash(state);
+		self.time.map(|x| x.to_bits()).hash(state);
+		self.parent.as_ref().map(|x| Arc::as_ptr(x).addr()).hash(state);
+		self.varargs.as_ref().map(|x| Arc::as_ptr(x).addr()).hash(state);
+	}
 }
 
 impl OwnedContextImpl {

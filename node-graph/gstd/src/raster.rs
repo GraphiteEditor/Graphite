@@ -2,7 +2,8 @@ use dyn_any::DynAny;
 use graphene_core::raster::bbox::Bbox;
 use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
 use graphene_core::raster::{
-	Alpha, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, Image, Linear, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, RedGreenBlue, Sample,
+	Alpha, AlphaMut, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, Image, Linear, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, RedGreenBlue,
+	Sample,
 };
 use graphene_core::transform::Transform;
 use graphene_core::{AlphaBlending, Color, Ctx, ExtractFootprint, Node};
@@ -108,15 +109,7 @@ where
 	image
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct InsertChannelNode<P, S, Insertion, TargetChannel> {
-	insertion: Insertion,
-	target_channel: TargetChannel,
-	_p: PhantomData<P>,
-	_s: PhantomData<S>,
-}
-
-#[node_macro::old_node_fn(InsertChannelNode<_P, _S>)]
+#[node_macro::node]
 fn insert_channel<
 	// _P is the color of the input image.
 	_P: RGBMut,
@@ -125,8 +118,9 @@ fn insert_channel<
 	Input: BitmapMut<Pixel = _P>,
 	Insertion: Bitmap<Pixel = _S>,
 >(
-	mut image: Input,
-	insertion: Insertion,
+	_: impl Ctx,
+	#[implementations(ImageFrameTable<Color>)] mut image: Input,
+	#[implementations(ImageFrameTable<Color>)] insertion: Insertion,
 	target_channel: RedGreenBlue,
 ) -> Input
 where
@@ -155,15 +149,60 @@ where
 
 	image
 }
+#[node_macro::node]
+fn combine_channels<
+	// _P is the color of the input image.
+	_P: RGBMut + AlphaMut,
+	_S: Pixel + Luminance,
+	// Input image
+	Input: BitmapMut<Pixel = _P>,
+	Red: Bitmap<Pixel = _S>,
+	Green: Bitmap<Pixel = _S>,
+	Blue: Bitmap<Pixel = _S>,
+	Alpha: Bitmap<Pixel = _S>,
+>(
+	_: impl Ctx,
+	#[implementations(ImageFrameTable<Color>)] mut image: Input,
+	#[implementations(ImageFrameTable<Color>)] red: Red,
+	#[implementations(ImageFrameTable<Color>)] green: Green,
+	#[implementations(ImageFrameTable<Color>)] blue: Blue,
+	#[implementations(ImageFrameTable<Color>)] alpha: Alpha,
+) -> Input
+where
+	_P::ColorChannel: Linear,
+{
+	let dimensions = [red.dim(), green.dim(), blue.dim(), alpha.dim()];
+	if dimensions.iter().all(|&(x, _)| x == 0) {
+		return image;
+	}
 
-#[derive(Debug, Clone, Copy)]
-pub struct MaskImageNode<P, S, Stencil> {
-	stencil: Stencil,
-	_p: PhantomData<P>,
-	_s: PhantomData<S>,
+	if dimensions.iter().any(|&(x, y)| x != image.width() || y != image.height()) {
+		log::warn!("Stencil and image have different sizes. This is not supported.");
+		return image;
+	}
+
+	for y in 0..image.height() {
+		for x in 0..image.width() {
+			let image_pixel = image.get_pixel_mut(x, y).unwrap();
+			if let Some(r) = red.get_pixel(x, y) {
+				image_pixel.set_red(r.l().cast_linear_channel());
+			}
+			if let Some(g) = green.get_pixel(x, y) {
+				image_pixel.set_green(g.l().cast_linear_channel());
+			}
+			if let Some(b) = blue.get_pixel(x, y) {
+				image_pixel.set_blue(b.l().cast_linear_channel());
+			}
+			if let Some(a) = alpha.get_pixel(x, y) {
+				image_pixel.set_alpha(a.l().cast_linear_channel());
+			}
+		}
+	}
+
+	image
 }
 
-#[node_macro::old_node_fn(MaskImageNode<_P, _S>)]
+#[node_macro::node()]
 fn mask_image<
 	// _P is the color of the input image. It must have an alpha channel because that is going to
 	// be modified by the mask
@@ -176,8 +215,9 @@ fn mask_image<
 	// Stencil
 	Stencil: Transform + Sample<Pixel = _S>,
 >(
-	mut image: Input,
-	stencil: Stencil,
+	_: impl Ctx,
+	#[implementations(ImageFrameTable<Color>)] mut image: Input,
+	#[implementations(ImageFrameTable<Color>)] stencil: Stencil,
 ) -> Input {
 	let image_size = DVec2::new(image.width() as f64, image.height() as f64);
 	let mask_size = stencil.transform().decompose_scale();

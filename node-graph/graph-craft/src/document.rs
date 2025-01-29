@@ -304,7 +304,7 @@ impl DocumentNode {
 			match first {
 				NodeInput::Value { tagged_value, .. } => {
 					assert_eq!(self.inputs.len(), 0, "A value node cannot have any inputs. Current inputs: {:?}", self.inputs);
-					(ProtoNodeInput::None, ConstructionArgs::Value(tagged_value))
+					(ProtoNodeInput::ManualComposition(concrete!(graphene_core::Context<'static>)), ConstructionArgs::Value(tagged_value))
 				}
 				NodeInput::Node { node_id, output_index, lambda } => {
 					assert_eq!(output_index, 0, "Outputs should be flattened before converting to proto node");

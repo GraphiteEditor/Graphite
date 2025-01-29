@@ -182,6 +182,9 @@ pub trait Alpha {
 	}
 	fn multiplied_alpha(&self, alpha: Self::AlphaChannel) -> Self;
 }
+pub trait AlphaMut: Alpha {
+	fn set_alpha(&mut self, value: Self::AlphaChannel);
+}
 
 pub trait Depth {
 	type DepthChannel: Channel;
@@ -228,6 +231,12 @@ pub trait Bitmap {
 	type Pixel: Pixel;
 	fn width(&self) -> u32;
 	fn height(&self) -> u32;
+	fn dimensions(&self) -> (u32, u32) {
+		(self.width(), self.height())
+	}
+	fn dim(&self) -> (u32, u32) {
+		self.dimensions()
+	}
 	fn get_pixel(&self, x: u32, y: u32) -> Option<Self::Pixel>;
 }
 

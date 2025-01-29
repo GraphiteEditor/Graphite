@@ -226,7 +226,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 		Context -> String,
 	)]
 	data: impl Node<Context<'static>, Output = T>,
-	_surface_handle: impl Node<(), Output = Option<wgpu_executor::WgpuSurface>>,
+	_surface_handle: impl Node<Context<'static>, Output = Option<wgpu_executor::WgpuSurface>>,
 ) -> RenderOutput {
 	let footprint = render_config.viewport;
 	let ctx = OwnedContextImpl::default().with_footprint(footprint).into_context();
@@ -237,7 +237,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	let data = data.eval(ctx.clone()).await;
 	let editor_api = editor_api.eval(ctx).await;
 	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
-	let surface_handle = _surface_handle.eval(()).await;
+	let surface_handle = _surface_handle.eval(None).await;
 	let use_vello = editor_api.editor_preferences.use_vello();
 	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
 	let use_vello = use_vello && surface_handle.is_some();

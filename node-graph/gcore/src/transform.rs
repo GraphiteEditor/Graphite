@@ -244,6 +244,12 @@ pub struct Footprint {
 
 impl Default for Footprint {
 	fn default() -> Self {
+		Self::empty()
+	}
+}
+
+impl Footprint {
+	pub const fn empty() -> Self {
 		Self {
 			transform: DAffine2::IDENTITY,
 			resolution: glam::UVec2::new(1920, 1080),
@@ -251,9 +257,6 @@ impl Default for Footprint {
 			ignore_modifications: false,
 		}
 	}
-}
-
-impl Footprint {
 	pub fn viewport_bounds_in_local_space(&self) -> AxisAlignedBbox {
 		let inverse = self.transform.inverse();
 		let start = inverse.transform_point2((0., 0.).into());
@@ -317,15 +320,14 @@ async fn transform<T: 'n + TransformMut + 'static>(
 	_pivot: DVec2,
 ) -> T {
 	let modification = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
-	let mut footprint = *ctx.try_footprint().unwrap();
+	let mut footprint = *ctx.footprint();
 
 	if !footprint.ignore_modifications {
 		footprint.apply_transform(&modification);
 	}
-	let mut ctx = OwnedContextImpl::from(ctx);
-	ctx.set_footprint(footprint);
+	let mut ctx = OwnedContextImpl::from(ctx).with_footprint(footprint);
 
-	let mut transform_target = transform_target.eval(Some(ctx.into())).await;
+	let mut transform_target = transform_target.eval(ctx.into_context()).await;
 
 	let data_transform = transform_target.transform_mut();
 	*data_transform = modification * (*data_transform);
