@@ -97,8 +97,8 @@ pub fn input_mappings() -> Mapping {
 		//
 		// SelectToolMessage
 		entry!(PointerMove; refresh_keys=[Control, Alt, Shift], action_dispatch=SelectToolMessage::PointerMove(SelectToolPointerKeys { axis_align: Shift, snap_angle: Control, center: Alt, duplicate: Alt })),
-		entry!(KeyDown(MouseLeft); action_dispatch=SelectToolMessage::DragStart { extend_selection: Shift, select_deepest: Accel, lasso_select: Control }),
-		entry!(KeyUp(MouseLeft); action_dispatch=SelectToolMessage::DragStop { remove_from_selection: Shift, negative_box_selection: Control }),
+		entry!(KeyDown(MouseLeft); action_dispatch=SelectToolMessage::DragStart { extend_selection: Shift, remove_from_selection: Alt, select_deepest: Accel, lasso_select: Control }),
+		entry!(KeyUp(MouseLeft); action_dispatch=SelectToolMessage::DragStop { remove_from_selection: Alt }),
 		entry!(KeyDown(Enter); action_dispatch=SelectToolMessage::Enter),
 		entry!(DoubleClick(MouseButton::Left); action_dispatch=SelectToolMessage::EditLayer),
 		entry!(KeyDown(MouseRight); action_dispatch=SelectToolMessage::Abort),

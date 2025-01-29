@@ -74,14 +74,23 @@ pub enum SelectToolMessage {
 	Overlays(OverlayContext),
 
 	// Tool-specific messages
-	DragStart { extend_selection: Key, select_deepest: Key, lasso_select: Key },
-	DragStop { remove_from_selection: Key, negative_box_selection: Key },
+	DragStart {
+		extend_selection: Key,
+		remove_from_selection: Key,
+		select_deepest: Key,
+		lasso_select: Key,
+	},
+	DragStop {
+		remove_from_selection: Key,
+	},
 	EditLayer,
 	Enter,
 	PointerMove(SelectToolPointerKeys),
 	PointerOutsideViewport(SelectToolPointerKeys),
 	SelectOptions(SelectOptionsUpdate),
-	SetPivot { position: PivotPosition },
+	SetPivot {
+		position: PivotPosition,
+	},
 }
 
 impl ToolMetadata for SelectTool {
@@ -606,6 +615,7 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { .. },
 				SelectToolMessage::DragStart {
 					extend_selection,
+					remove_from_selection,
 					select_deepest,
 					lasso_select,
 				},
@@ -741,7 +751,7 @@ impl Fsm for SelectToolFsmState {
 				// Dragging a selection box
 				else {
 					tool_data.layers_dragging = selected;
-					if !(input.keyboard.key(lasso_select) || input.keyboard.key(extend_selection)) {
+					if !input.keyboard.key(extend_selection) && !input.keyboard.key(remove_from_selection) {
 						responses.add(DocumentMessage::DeselectAllLayers);
 						tool_data.layers_dragging.clear();
 					}
@@ -759,7 +769,7 @@ impl Fsm for SelectToolFsmState {
 						responses.add(DocumentMessage::StartTransaction);
 						SelectToolFsmState::Dragging
 					} else {
-						if !input.keyboard.key(extend_selection) && input.keyboard.key(lasso_select) {
+						if input.keyboard.key(lasso_select) {
 							SelectToolFsmState::Drawing { selection_type: SelectionType::Lasso }
 						} else {
 							SelectToolFsmState::Drawing { selection_type: SelectionType::Box }
@@ -1024,7 +1034,7 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
-			(SelectToolFsmState::Dragging, SelectToolMessage::DragStop { remove_from_selection, .. }) => {
+			(SelectToolFsmState::Dragging, SelectToolMessage::DragStop { remove_from_selection }) => {
 				// Deselect layer if not snap dragging
 				responses.add(DocumentMessage::EndTransaction);
 
@@ -1123,13 +1133,7 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
-			(
-				SelectToolFsmState::Drawing { selection_type },
-				SelectToolMessage::DragStop {
-					remove_from_selection,
-					negative_box_selection,
-				},
-			) => {
+			(SelectToolFsmState::Drawing { selection_type }, SelectToolMessage::DragStop { remove_from_selection }) => {
 				let quad = tool_data.selection_quad();
 
 				let mut selection_direction = tool_action_data.preferences.get_selection_mode();
@@ -1154,7 +1158,7 @@ impl Fsm for SelectToolFsmState {
 				let current_selected: HashSet<_> = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
 				if new_selected != current_selected {
 					// Negative selection when both Shift and Ctrl are pressed
-					if selection_type != SelectionType::Lasso && input.keyboard.key(remove_from_selection) && input.keyboard.key(negative_box_selection) {
+					if input.keyboard.key(remove_from_selection) {
 						let updated_selection = current_selected
 							.into_iter()
 							.filter(|layer| !new_selected.iter().any(|selected| layer.starts_with(*selected, document.metadata())))
@@ -1271,11 +1275,9 @@ impl Fsm for SelectToolFsmState {
 					}),
 					HintGroup(vec![
 						HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
-						HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
-					]),
-					HintGroup(vec![
-						HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
 						HintInfo::keys([Key::Control], "Lasso Select").prepend_plus(),
+						HintInfo::keys([Key::Shift], "Extend Selection / ").prepend_plus(),
+						HintInfo::keys([Key::Alt], "Remove Selection"),
 					]),
 					HintGroup(vec![HintInfo::keys([Key::KeyG, Key::KeyR, Key::KeyS], "Grab/Rotate/Scale Selected")]),
 					HintGroup(vec![
