@@ -1408,7 +1408,7 @@ impl DocumentMessageHandler {
 		self.intersect_quad(viewport_quad, ipp).filter(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
 
-	/// Runs an intersection test with all layers and a viewport space quad
+	/// Runs an intersection test with all layers and a viewport space subpath
 	pub fn intersect_polygon<'a>(&'a self, mut viewport_polygon: Subpath<PointId>, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
 		viewport_polygon.apply_transform(document_to_viewport.inverse());
@@ -1416,7 +1416,7 @@ impl DocumentMessageHandler {
 		ClickXRayIter::new(&self.network_interface, XRayTarget::Polygon(viewport_polygon))
 	}
 
-	/// Runs an intersection test with all layers and a viewport space quad; ignoring artboards
+	/// Runs an intersection test with all layers and a viewport space subpath; ignoring artboards
 	pub fn intersect_polygon_no_artboards<'a>(&'a self, viewport_polygon: Subpath<PointId>, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
 		self.intersect_polygon(viewport_polygon, ipp).filter(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
