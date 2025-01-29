@@ -8,10 +8,10 @@ use core::{
 #[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct IntNode<const N: u32>;
 
-impl<'i, const N: u32> Node<'i, ()> for IntNode<N> {
+impl<'i, const N: u32, I> Node<'i, I> for IntNode<N> {
 	type Output = u32;
 	#[inline(always)]
-	fn eval(&'i self, _input: ()) -> Self::Output {
+	fn eval(&'i self, _input: I) -> Self::Output {
 		N
 	}
 }
@@ -77,10 +77,10 @@ impl<T> RefCellMutNode<T> {
 #[derive(Default)]
 pub struct OnceCellNode<T>(pub Cell<T>);
 
-impl<'i, T: Default + 'i> Node<'i, ()> for OnceCellNode<T> {
+impl<'i, T: Default + 'i, I> Node<'i, I> for OnceCellNode<T> {
 	type Output = T;
 	#[inline(always)]
-	fn eval(&'i self, _input: ()) -> Self::Output {
+	fn eval(&'i self, _input: I) -> Self::Output {
 		self.0.replace(T::default())
 	}
 }
@@ -157,9 +157,9 @@ impl<T: Copy> CopiedNode<T> {
 #[derive(Default)]
 pub struct DefaultNode<T>(PhantomData<T>);
 
-impl<'i, T: Default + 'i> Node<'i, ()> for DefaultNode<T> {
+impl<'i, T: Default + 'i, I> Node<'i, I> for DefaultNode<T> {
 	type Output = T;
-	fn eval(&'i self, _input: ()) -> Self::Output {
+	fn eval(&'i self, _input: I) -> Self::Output {
 		T::default()
 	}
 }
@@ -205,7 +205,7 @@ mod test {
 	#[test]
 	fn test_default_node() {
 		let node = DefaultNode::<u32>::new();
-		assert_eq!(node.eval(()), 0);
+		assert_eq!(node.eval(42), 0);
 	}
 	#[test]
 	#[allow(clippy::unit_cmp)]

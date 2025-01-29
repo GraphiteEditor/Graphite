@@ -8,7 +8,7 @@ use crate::raster::{Channel, Color, Pixel};
 use crate::registry::types::{Angle, Percentage, SignedPercentage};
 use crate::vector::style::GradientStops;
 use crate::vector::VectorDataTable;
-use crate::{Context, Ctx};
+use crate::{Context, Ctx, Node};
 use crate::{GraphicElement, GraphicGroupTable};
 
 use dyn_any::DynAny;
@@ -664,10 +664,14 @@ async fn blend<T: Blend<Color> + Send>(
 	over.blend(&under, |a, b| blend_colors(a, b, blend_mode, opacity / 100.))
 }
 
-#[node_macro::node(category(""))]
-async fn blend_color_pair(input: (Color, Color), blend_mode: impl Node<(), Output = BlendMode>, opacity: impl Node<(), Output = Percentage>) -> Color {
-	let blend_mode = blend_mode.eval(()).await;
-	let opacity = opacity.eval(()).await;
+#[node_macro::node(category(""), skip_impl)]
+fn blend_color_pair<BlendModeNode, OpacityNode>(input: (Color, Color), blend_mode: &'n BlendModeNode, opacity: &'n OpacityNode) -> Color
+where
+	BlendModeNode: Node<'n, (), Output = BlendMode> + 'n,
+	OpacityNode: Node<'n, (), Output = Percentage> + 'n,
+{
+	let blend_mode = blend_mode.eval(());
+	let opacity = opacity.eval(());
 	blend_colors(input.0, input.1, blend_mode, opacity / 100.)
 }
 
