@@ -5,7 +5,8 @@ use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
 use graph_craft::document::NodeId;
-use graphene_core::raster::{BlendMode, ImageFrame};
+use graphene_core::raster::image::ImageFrame;
+use graphene_core::raster::BlendMode;
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};

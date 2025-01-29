@@ -855,7 +855,7 @@ mod tests {
 	fn test_node_with_implementations() {
 		let attr = quote!(category("Raster: Adjustment"));
 		let input = quote!(
-			fn levels<P: Pixel>(image: ImageFrame<P>, #[implementations(f32, f64)] shadows: f64) -> ImageFrame<P> {
+			fn levels<P: Pixel>(image: ImageFrameTable<P>, #[implementations(f32, f64)] shadows: f64) -> ImageFrameTable<P> {
 				// Implementation details...
 			}
 		);
@@ -876,10 +876,10 @@ mod tests {
 			where_clause: None,
 			input: Input {
 				pat_ident: pat_ident("image"),
-				ty: parse_quote!(ImageFrame<P>),
+				ty: parse_quote!(ImageFrameTable<P>),
 				implementations: Punctuated::new(),
 			},
-			output_type: parse_quote!(ImageFrame<P>),
+			output_type: parse_quote!(ImageFrameTable<P>),
 			is_async: false,
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("shadows"),
@@ -969,7 +969,7 @@ mod tests {
 	fn test_async_node() {
 		let attr = quote!(category("IO"));
 		let input = quote!(
-			async fn load_image(api: &WasmEditorApi, #[expose] path: String) -> ImageFrame<Color> {
+			async fn load_image(api: &WasmEditorApi, #[expose] path: String) -> ImageFrameTable<Color> {
 				// Implementation details...
 			}
 		);
@@ -993,7 +993,7 @@ mod tests {
 				ty: parse_quote!(&WasmEditorApi),
 				implementations: Punctuated::new(),
 			},
-			output_type: parse_quote!(ImageFrame<Color>),
+			output_type: parse_quote!(ImageFrameTable<Color>),
 			is_async: true,
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("path"),
@@ -1107,7 +1107,7 @@ mod tests {
 	fn test_invalid_implementation_syntax() {
 		let attr = quote!(category("Test"));
 		let input = quote!(
-			fn test_node(_: (), #[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>) -> T {
+			fn test_node(_: (), #[implementations((Footprint, Color), (Footprint, ImageFrameTable<Color>))] input: impl Node<Footprint, Output = T>) -> T {
 				// Implementation details...
 			}
 		);
@@ -1133,10 +1133,10 @@ mod tests {
 				#[implementations((), #tuples, Footprint)] footprint: F,
 				#[implementations(
 				() -> Color,
-				() -> ImageFrame<Color>,
+				() -> ImageFrameTable<Color>,
 				() -> GradientStops,
 				Footprint -> Color,
-				Footprint -> ImageFrame<Color>,
+				Footprint -> ImageFrameTable<Color>,
 				Footprint -> GradientStops,
 			)]
 				image: impl Node<F, Output = T>,

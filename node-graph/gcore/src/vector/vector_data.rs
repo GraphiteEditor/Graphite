@@ -4,13 +4,34 @@ pub use attributes::*;
 pub use modification::*;
 
 use super::style::{PathStyle, Stroke};
-use crate::{AlphaBlending, Color};
+use crate::instances::Instances;
+use crate::{AlphaBlending, Color, GraphicGroupTable};
 
 use bezier_rs::ManipulatorGroup;
 use dyn_any::DynAny;
 
 use core::borrow::Borrow;
 use glam::{DAffine2, DVec2};
+
+// TODO: Eventually remove this migration document upgrade code
+pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<VectorDataTable, D::Error> {
+	use serde::Deserialize;
+
+	#[derive(serde::Serialize, serde::Deserialize)]
+	#[serde(untagged)]
+	#[allow(clippy::large_enum_variant)]
+	enum EitherFormat {
+		VectorData(VectorData),
+		VectorDataTable(VectorDataTable),
+	}
+
+	Ok(match EitherFormat::deserialize(deserializer)? {
+		EitherFormat::VectorData(vector_data) => VectorDataTable::new(vector_data),
+		EitherFormat::VectorDataTable(vector_data_table) => vector_data_table,
+	})
+}
+
+pub type VectorDataTable = Instances<VectorData>;
 
 /// [VectorData] is passed between nodes.
 /// It contains a list of subpaths (that may be open or closed), a transform, and some style information.
@@ -29,7 +50,7 @@ pub struct VectorData {
 	pub region_domain: RegionDomain,
 
 	// Used to store the upstream graphic group during destructive Boolean Operations (and other nodes with a similar effect) so that click targets can be preserved.
-	pub upstream_graphic_group: Option<crate::GraphicGroup>,
+	pub upstream_graphic_group: Option<GraphicGroupTable>,
 }
 
 impl core::hash::Hash for VectorData {

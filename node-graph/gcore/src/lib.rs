@@ -16,6 +16,7 @@ pub use ctor;
 pub mod consts;
 pub mod context;
 pub mod generic;
+pub mod instances;
 pub mod logic;
 pub mod ops;
 pub mod structural;

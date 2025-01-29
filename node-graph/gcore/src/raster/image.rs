@@ -1,6 +1,7 @@
 use super::discrete_srgb::float_to_srgb_u8;
 use super::Color;
-use crate::AlphaBlending;
+use crate::instances::Instances;
+use crate::{AlphaBlending, GraphicElement};
 use alloc::vec::Vec;
 use core::hash::{Hash, Hasher};
 use dyn_any::StaticType;
@@ -216,7 +217,26 @@ impl<P: Pixel> IntoIterator for Image<P> {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq, Default, specta::Type)]
+// TODO: Eventually remove this migration document upgrade code
+pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<ImageFrameTable<Color>, D::Error> {
+	use serde::Deserialize;
+
+	#[derive(serde::Serialize, serde::Deserialize)]
+	#[serde(untagged)]
+	enum EitherFormat {
+		ImageFrame(ImageFrame<Color>),
+		ImageFrameTable(ImageFrameTable<Color>),
+	}
+
+	Ok(match EitherFormat::deserialize(deserializer)? {
+		EitherFormat::ImageFrame(image_frame) => ImageFrameTable::<Color>::new(image_frame),
+		EitherFormat::ImageFrameTable(image_frame_table) => image_frame_table,
+	})
+}
+
+pub type ImageFrameTable<P> = Instances<ImageFrame<P>>;
+
+#[derive(Clone, Debug, PartialEq, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImageFrame<P: Pixel> {
 	pub image: Image<P>,
@@ -233,6 +253,17 @@ pub struct ImageFrame<P: Pixel> {
 	pub alpha_blending: AlphaBlending,
 }
 
+impl<P: Pixel> Default for ImageFrame<P> {
+	fn default() -> Self {
+		Self {
+			image: Image::empty(),
+			alpha_blending: AlphaBlending::new(),
+			// Different from DAffine2::default() which is IDENTITY
+			transform: DAffine2::ZERO,
+		}
+	}
+}
+
 impl<P: Debug + Copy + Pixel> Sample for ImageFrame<P> {
 	type Pixel = P;
 
@@ -245,6 +276,22 @@ impl<P: Debug + Copy + Pixel> Sample for ImageFrame<P> {
 			return None;
 		}
 		self.image.get_pixel(pos.x as u32, pos.y as u32)
+	}
+}
+
+impl<P: Debug + Copy + Pixel + dyn_any::StaticType> Sample for ImageFrameTable<P>
+where
+	GraphicElement: From<ImageFrame<P>>,
+	P::Static: Pixel,
+{
+	type Pixel = P;
+
+	// TODO: Improve sampling logic
+	#[inline(always)]
+	fn sample(&self, pos: DVec2, area: DVec2) -> Option<Self::Pixel> {
+		let image = self.one_item();
+
+		Sample::sample(image, pos, area)
 	}
 }
 
@@ -264,9 +311,47 @@ impl<P: Copy + Pixel> Bitmap for ImageFrame<P> {
 	}
 }
 
+impl<P: Copy + Pixel + dyn_any::StaticType> Bitmap for ImageFrameTable<P>
+where
+	P::Static: Pixel,
+	GraphicElement: From<ImageFrame<P>>,
+{
+	type Pixel = P;
+
+	fn width(&self) -> u32 {
+		let image = self.one_item();
+
+		image.width()
+	}
+
+	fn height(&self) -> u32 {
+		let image = self.one_item();
+
+		image.height()
+	}
+
+	fn get_pixel(&self, x: u32, y: u32) -> Option<Self::Pixel> {
+		let image = self.one_item();
+
+		image.get_pixel(x, y)
+	}
+}
+
 impl<P: Copy + Pixel> BitmapMut for ImageFrame<P> {
 	fn get_pixel_mut(&mut self, x: u32, y: u32) -> Option<&mut Self::Pixel> {
 		self.image.get_pixel_mut(x, y)
+	}
+}
+
+impl<P: Copy + Pixel + dyn_any::StaticType> BitmapMut for ImageFrameTable<P>
+where
+	GraphicElement: From<ImageFrame<P>>,
+	P::Static: Pixel,
+{
+	fn get_pixel_mut(&mut self, x: u32, y: u32) -> Option<&mut Self::Pixel> {
+		let image = self.one_item_mut();
+
+		BitmapMut::get_pixel_mut(image, x, y)
 	}
 }
 
@@ -278,22 +363,6 @@ where
 }
 
 impl<P: Copy + Pixel> ImageFrame<P> {
-	pub const fn empty() -> Self {
-		Self {
-			image: Image::empty(),
-			transform: DAffine2::ZERO,
-			alpha_blending: AlphaBlending::new(),
-		}
-	}
-
-	pub const fn identity() -> Self {
-		Self {
-			image: Image::empty(),
-			transform: DAffine2::IDENTITY,
-			alpha_blending: AlphaBlending::new(),
-		}
-	}
-
 	pub fn get_mut(&mut self, x: usize, y: usize) -> &mut P {
 		&mut self.image.data[y * (self.image.width as usize) + x]
 	}

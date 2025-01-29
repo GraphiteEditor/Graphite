@@ -1,8 +1,9 @@
-use crate::application_io::TextureFrame;
+use crate::application_io::{TextureFrame, TextureFrameTable};
 use crate::raster::bbox::AxisAlignedBbox;
-use crate::raster::{ImageFrame, Pixel};
-use crate::vector::VectorData;
-use crate::{Artboard, ArtboardGroup, CloneVarArgs, Color, ContextImpl, Ctx, ExtractAll, ExtractFootprint, GraphicElement, GraphicGroup};
+use crate::raster::image::{ImageFrame, ImageFrameTable};
+use crate::raster::Pixel;
+use crate::vector::{VectorData, VectorDataTable};
+use crate::{Artboard, ArtboardGroup, CloneVarArgs, Color, ContextImpl, Ctx, ExtractAll, ExtractFootprint, GraphicElement, GraphicGroupTable};
 use crate::{Context, OwnedContextImpl};
 
 use glam::{DAffine2, DVec2};
@@ -20,12 +21,6 @@ pub trait Transform {
 	}
 }
 
-impl<T: Transform> Transform for &T {
-	fn transform(&self) -> DAffine2 {
-		(*self).transform()
-	}
-}
-
 pub trait TransformMut: Transform {
 	fn transform_mut(&mut self) -> &mut DAffine2;
 	fn translate(&mut self, offset: DVec2) {
@@ -33,6 +28,14 @@ pub trait TransformMut: Transform {
 	}
 }
 
+// Implementation for references to anything that implements Transform
+impl<T: Transform> Transform for &T {
+	fn transform(&self) -> DAffine2 {
+		(*self).transform()
+	}
+}
+
+// Implementations for ImageFrame<P>
 impl<P: Pixel> Transform for ImageFrame<P> {
 	fn transform(&self) -> DAffine2 {
 		self.transform
@@ -46,6 +49,54 @@ impl<P: Pixel> TransformMut for ImageFrame<P> {
 		&mut self.transform
 	}
 }
+
+// Implementations for ImageFrameTable<P>
+impl<P: Pixel> Transform for ImageFrameTable<P>
+where
+	P: dyn_any::StaticType,
+	P::Static: Pixel,
+	GraphicElement: From<ImageFrame<P>>,
+{
+	fn transform(&self) -> DAffine2 {
+		let image_frame = self.one_item();
+		image_frame.transform
+	}
+	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
+		let image_frame = self.one_item();
+		image_frame.local_pivot(pivot)
+	}
+}
+impl<P: Pixel> TransformMut for ImageFrameTable<P>
+where
+	P: dyn_any::StaticType,
+	P::Static: Pixel,
+	GraphicElement: From<ImageFrame<P>>,
+{
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		let image_frame = self.one_item_mut();
+		&mut image_frame.transform
+	}
+}
+
+// Implementations for TextureTable
+impl Transform for TextureFrameTable {
+	fn transform(&self) -> DAffine2 {
+		let image_frame = self.one_item();
+		image_frame.transform
+	}
+	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
+		let image_frame = self.one_item();
+		image_frame.local_pivot(pivot)
+	}
+}
+impl TransformMut for TextureFrameTable {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		let image_frame = self.one_item_mut();
+		&mut image_frame.transform
+	}
+}
+
+// Implementations for GraphicGroup
 impl Transform for GraphicGroup {
 	fn transform(&self) -> DAffine2 {
 		self.transform
@@ -56,19 +107,35 @@ impl TransformMut for GraphicGroup {
 		&mut self.transform
 	}
 }
+
+// Implementations for GraphicGroupTable
+impl Transform for GraphicGroupTable {
+	fn transform(&self) -> DAffine2 {
+		let graphic_group = self.one_item();
+		graphic_group.transform
+	}
+}
+impl TransformMut for GraphicGroupTable {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		let graphic_group = self.one_item_mut();
+		&mut graphic_group.transform
+	}
+}
+
+// Implementations for GraphicElement
 impl Transform for GraphicElement {
 	fn transform(&self) -> DAffine2 {
 		match self {
 			GraphicElement::VectorData(vector_shape) => vector_shape.transform(),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.transform(),
-			GraphicElement::Raster(raster) => raster.transform(),
+			GraphicElement::RasterFrame(raster) => raster.transform(),
 		}
 	}
 	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
 		match self {
 			GraphicElement::VectorData(vector_shape) => vector_shape.local_pivot(pivot),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.local_pivot(pivot),
-			GraphicElement::Raster(raster) => raster.local_pivot(pivot),
+			GraphicElement::RasterFrame(raster) => raster.local_pivot(pivot),
 		}
 	}
 }
@@ -77,11 +144,12 @@ impl TransformMut for GraphicElement {
 		match self {
 			GraphicElement::VectorData(vector_shape) => vector_shape.transform_mut(),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.transform_mut(),
-			GraphicElement::Raster(raster) => raster.transform_mut(),
+			GraphicElement::RasterFrame(raster) => raster.transform_mut(),
 		}
 	}
 }
 
+// Implementations for VectorData
 impl Transform for VectorData {
 	fn transform(&self) -> DAffine2 {
 		self.transform
@@ -96,6 +164,25 @@ impl TransformMut for VectorData {
 	}
 }
 
+// Implementations for VectorDataTable
+impl Transform for VectorDataTable {
+	fn transform(&self) -> DAffine2 {
+		let vector_data = self.one_item();
+		vector_data.transform
+	}
+	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
+		let vector_data = self.one_item();
+		vector_data.local_pivot(pivot)
+	}
+}
+impl TransformMut for VectorDataTable {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		let vector_data = self.one_item_mut();
+		&mut vector_data.transform
+	}
+}
+
+// Implementations for Artboard
 impl Transform for Artboard {
 	fn transform(&self) -> DAffine2 {
 		DAffine2::from_translation(self.location.as_dvec2())
@@ -105,6 +192,7 @@ impl Transform for Artboard {
 	}
 }
 
+// Implementations for DAffine2
 impl Transform for DAffine2 {
 	fn transform(&self) -> DAffine2 {
 		*self
@@ -113,6 +201,18 @@ impl Transform for DAffine2 {
 impl TransformMut for DAffine2 {
 	fn transform_mut(&mut self) -> &mut DAffine2 {
 		self
+	}
+}
+
+// Implementations for Footprint
+impl Transform for Footprint {
+	fn transform(&self) -> DAffine2 {
+		self.transform
+	}
+}
+impl TransformMut for Footprint {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		&mut self.transform
 	}
 }
 
@@ -178,7 +278,7 @@ impl From<()> for Footprint {
 }
 
 #[node_macro::node(category("Debug"))]
-fn cull<T>(_: impl Ctx, #[implementations(VectorData, GraphicGroup, Artboard, ImageFrame<Color>, ArtboardGroup)] data: T) -> T {
+fn cull<T>(_: impl Ctx, #[implementations(VectorDataTable, GraphicGroupTable, Artboard, ImageFrameTable<Color>, ArtboardGroup)] data: T) -> T {
 	data
 }
 
@@ -186,17 +286,6 @@ impl core::hash::Hash for Footprint {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.transform.to_cols_array().iter().for_each(|x| x.to_le_bytes().hash(state));
 		self.resolution.hash(state)
-	}
-}
-
-impl Transform for Footprint {
-	fn transform(&self) -> DAffine2 {
-		self.transform
-	}
-}
-impl TransformMut for Footprint {
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		&mut self.transform
 	}
 }
 
@@ -216,10 +305,10 @@ impl ApplyTransform for () {
 async fn transform<T: 'n + TransformMut + 'static>(
 	input: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
-		Context -> VectorData,
-		Context -> GraphicGroup,
-		Context -> ImageFrame<Color>,
-		Context -> TextureFrame,
+		Context -> VectorDataTable,
+		Context -> GraphicGroupTable,
+		Context -> ImageFrameTable<Color>,
+		Context -> TextureFrameTable,
 	)]
 	transform_target: impl Node<Context<'static>, Output = T>,
 	translate: DVec2,
@@ -250,7 +339,7 @@ where
 #[node_macro::node(category(""))]
 fn replace_transform<Data: TransformMut, TransformInput: Transform>(
 	_: impl Ctx,
-	#[implementations(VectorData, ImageFrame<Color>, GraphicGroup)] mut data: Data,
+	#[implementations(VectorDataTable, ImageFrameTable<Color>, GraphicGroupTable)] mut data: Data,
 	#[implementations(DAffine2)] transform: TransformInput,
 ) -> Data {
 	let data_transform = data.transform_mut();

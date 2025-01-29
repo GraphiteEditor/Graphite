@@ -1,6 +1,9 @@
 pub use self::color::{Color, Luma, SRGBA8};
-use crate::vector::VectorData;
-use crate::{registry::types::Percentage, transform::Footprint};
+use crate::raster::image::ImageFrameTable;
+use crate::registry::types::Percentage;
+use crate::transform::Footprint;
+use crate::vector::VectorDataTable;
+use crate::GraphicGroupTable;
 use crate::{Ctx, GraphicGroup};
 
 use bytemuck::{Pod, Zeroable};
@@ -283,27 +286,33 @@ impl<T: BitmapMut + Bitmap> BitmapMut for &mut T {
 }
 
 #[cfg(feature = "alloc")]
-pub use self::image::{Image, ImageFrame};
+pub use self::image::Image;
 #[cfg(feature = "alloc")]
-pub(crate) mod image;
+pub mod image;
 
 trait SetBlendMode {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode);
 }
 
-impl SetBlendMode for VectorData {
+impl SetBlendMode for VectorDataTable {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		self.alpha_blending.blend_mode = blend_mode;
+		for instance in self.instances_mut() {
+			instance.alpha_blending.blend_mode = blend_mode;
+		}
 	}
 }
-impl SetBlendMode for GraphicGroup {
+impl SetBlendMode for GraphicGroupTable {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		self.alpha_blending.blend_mode = blend_mode;
+		for instance in self.instances_mut() {
+			instance.alpha_blending.blend_mode = blend_mode;
+		}
 	}
 }
-impl SetBlendMode for ImageFrame<Color> {
+impl SetBlendMode for ImageFrameTable<Color> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		self.alpha_blending.blend_mode = blend_mode;
+		for instance in self.instances_mut() {
+			instance.alpha_blending.blend_mode = blend_mode;
+		}
 	}
 }
 
@@ -311,9 +320,9 @@ impl SetBlendMode for ImageFrame<Color> {
 fn blend_mode<T: SetBlendMode>(
 	_: impl Ctx,
 	#[implementations(
-		 GraphicGroup,
-		 VectorData,
-		 ImageFrame<Color>,
+		GraphicGroupTable,
+		VectorDataTable,
+		ImageFrameTable<Color>,
 	)]
 	mut value: T,
 	blend_mode: BlendMode,
@@ -326,9 +335,9 @@ fn blend_mode<T: SetBlendMode>(
 fn opacity<T: MultiplyAlpha>(
 	_: impl Ctx,
 	#[implementations(
-		 GraphicGroup,
-		 VectorData,
-		 ImageFrame<Color>,
+		GraphicGroupTable,
+		VectorDataTable,
+		ImageFrameTable<Color>,
 	)]
 	mut value: T,
 	#[default(100.)] factor: Percentage,

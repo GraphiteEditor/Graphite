@@ -1,5 +1,5 @@
+use crate::raster::image::ImageFrameTable;
 use crate::raster::BlendMode;
-use crate::raster::ImageFrame;
 use crate::registry::types::Percentage;
 use crate::vector::style::GradientStops;
 use crate::Ctx;
@@ -473,7 +473,7 @@ fn unwrap<T: Default>(_: impl Ctx, #[implementations(Option<f64>, Option<f32>, O
 
 /// Meant for debugging purposes, not general use. Clones the input value.
 #[node_macro::node(category("Debug"))]
-fn clone<'i, T: Clone + 'i>(_: impl Ctx, #[implementations(&ImageFrame<Color>)] value: &'i T) -> T {
+fn clone<'i, T: Clone + 'i>(_: impl Ctx, #[implementations(&ImageFrameTable<Color>)] value: &'i T) -> T {
 	value.clone()
 }
 
