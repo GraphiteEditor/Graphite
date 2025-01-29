@@ -235,9 +235,9 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	let render_params = RenderParams::new(render_config.view_mode, ImageRenderMode::Base64, None, false, hide_artboards, for_export);
 
 	let data = data.eval(ctx.clone()).await;
-	let editor_api = editor_api.eval(ctx).await;
+	let editor_api = editor_api.eval(ctx.clone()).await;
 	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
-	let surface_handle = _surface_handle.eval(None).await;
+	let surface_handle = _surface_handle.eval(ctx.clone()).await;
 	let use_vello = editor_api.editor_preferences.use_vello();
 	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
 	let use_vello = use_vello && surface_handle.is_some();

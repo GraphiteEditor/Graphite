@@ -325,7 +325,7 @@ async fn transform<T: 'n + TransformMut + 'static>(
 	if !footprint.ignore_modifications {
 		footprint.apply_transform(&modification);
 	}
-	let mut ctx = OwnedContextImpl::from(ctx).with_footprint(footprint);
+	let ctx = OwnedContextImpl::from(ctx).with_footprint(footprint);
 
 	let mut transform_target = transform_target.eval(ctx.into_context()).await;
 

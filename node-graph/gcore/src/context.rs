@@ -1,4 +1,4 @@
-use core::{any::Any, borrow::Borrow};
+use core::{any::Any, borrow::Borrow, panic::Location};
 use std::sync::Arc;
 
 use crate::transform::Footprint;
@@ -6,10 +6,12 @@ use crate::transform::Footprint;
 pub trait Ctx: Clone + Send {}
 
 pub trait ExtractFootprint {
+	#[track_caller]
 	fn try_footprint(&self) -> Option<&Footprint>;
+	#[track_caller]
 	fn footprint(&self) -> &Footprint {
 		self.try_footprint().unwrap_or_else(|| {
-			log::error!("Context did not have a footprint");
+			log::error!("Context did not have a footprint, called from: {}", Location::caller());
 			&const { Footprint::empty() }
 		})
 	}
@@ -50,6 +52,7 @@ impl Ctx for () {}
 impl Ctx for Footprint {}
 impl ExtractFootprint for () {
 	fn try_footprint(&self) -> Option<&Footprint> {
+		log::error!("tried to extract footprint form (), {}", Location::caller());
 		None
 	}
 }
@@ -62,6 +65,9 @@ impl<T: ExtractFootprint + Ctx + Sync + Send> ExtractFootprint for &T {
 
 impl<T: ExtractFootprint + Sync> ExtractFootprint for Option<T> {
 	fn try_footprint(&self) -> Option<&Footprint> {
+		if self.is_none() {
+			log::warn!("trying to extract footprint from context None {} ", Location::caller());
+		}
 		self.as_ref().and_then(|x| x.try_footprint())
 	}
 }
@@ -208,14 +214,22 @@ pub type Context<'a> = Option<Arc<OwnedContextImpl>>;
 type DynRef<'a> = &'a (dyn Any + Send + Sync);
 type DynBox = Box<dyn Any + Send + Sync>;
 
-#[derive(Default, dyn_any::DynAny)]
+#[derive(dyn_any::DynAny)]
 pub struct OwnedContextImpl {
-	pub footprint: Option<crate::transform::Footprint>,
-	pub varargs: Option<Arc<[DynBox]>>,
-	pub parent: Option<Arc<dyn ExtractVarArgs + Sync + Send>>,
+	footprint: Option<crate::transform::Footprint>,
+	varargs: Option<Arc<[DynBox]>>,
+	parent: Option<Arc<dyn ExtractVarArgs + Sync + Send>>,
 	// This could be converted into a single enum to save extra bytes
-	pub index: Option<usize>,
-	pub time: Option<f64>,
+	index: Option<usize>,
+	time: Option<f64>,
+}
+
+impl Default for OwnedContextImpl {
+	#[track_caller]
+	fn default() -> Self {
+		log::debug!("creating new context from {}", Location::caller());
+		Self::empty()
+	}
 }
 
 impl core::hash::Hash for OwnedContextImpl {
@@ -229,7 +243,9 @@ impl core::hash::Hash for OwnedContextImpl {
 }
 
 impl OwnedContextImpl {
+	#[track_caller]
 	pub fn from<T: ExtractAll + CloneVarArgs>(value: T) -> Self {
+		log::debug!("converting context called from: {}", Location::caller());
 		let footprint = value.try_footprint().copied();
 		let index = value.try_index();
 		let time = value.try_time();
@@ -240,6 +256,15 @@ impl OwnedContextImpl {
 			parent,
 			index,
 			time,
+		}
+	}
+	pub const fn empty() -> Self {
+		OwnedContextImpl {
+			footprint: None,
+			varargs: None,
+			parent: None,
+			index: None,
+			time: None,
 		}
 	}
 }
