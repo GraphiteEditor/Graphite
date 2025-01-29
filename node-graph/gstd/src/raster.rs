@@ -4,7 +4,7 @@ use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
 use graphene_core::raster::{
 	Alpha, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, Image, Linear, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, RedGreenBlue, Sample,
 };
-use graphene_core::transform::{Footprint, Transform};
+use graphene_core::transform::Transform;
 use graphene_core::{AlphaBlending, Color, Ctx, ExtractFootprint, Node};
 
 use fastnoise_lite;

@@ -15,8 +15,8 @@ use graphene_core::{Cow, ProtoNodeIdentifier, Type};
 use graphene_core::{Node, NodeIO, NodeIOTypes};
 use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DynAnyNode, FutureWrapperNode, IntoTypeErasedNode};
 use graphene_std::application_io::TextureFrame;
-use graphene_std::raster::*;
 use graphene_std::wasm_application_io::*;
+use graphene_std::{raster::*, Context};
 use graphene_std::{GraphicElement, GraphicGroup};
 #[cfg(feature = "gpu")]
 use wgpu_executor::{ShaderInputFrame, WgpuExecutor};
@@ -374,7 +374,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Footprint, fn_params: [Footprint => WgpuSurface]),
 		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Footprint, fn_params: [Footprint => Option<WgpuSurface>]),
 		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Footprint, fn_params: [Footprint => TextureFrame]),
-		register_node!(graphene_core::structural::ConsNode<_, _>, input: Image<Color>, params: [&str]),
+		register_node!(graphene_core::structural::ConsNode<(), _>, input: Image<Color>, params: [&str]),
 	];
 	let mut map: HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> = HashMap::new();
 	for (id, entry) in graphene_core::registry::NODE_REGISTRY.lock().unwrap().iter() {
