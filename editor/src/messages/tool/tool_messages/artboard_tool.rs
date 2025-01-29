@@ -372,7 +372,7 @@ impl Fsm for ArtboardToolFsmState {
 					responses.add(GraphOperationMessage::NewArtboard {
 						id,
 						artboard: graphene_core::Artboard {
-							graphic_group: graphene_core::GraphicGroup::EMPTY,
+							graphic_group: graphene_core::GraphicGroupTable::default(),
 							label: String::from("Artboard"),
 							location: start.round().as_ivec2(),
 							dimensions: IVec2::splat(1),

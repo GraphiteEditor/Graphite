@@ -27,7 +27,8 @@ use crate::node_graph_executor::NodeGraphExecutor;
 
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeNetwork, OldNodeNetwork};
-use graphene_core::raster::{BlendMode, ImageFrame};
+use graphene_core::raster::image::ImageFrame;
+use graphene_core::raster::BlendMode;
 use graphene_core::vector::style::ViewMode;
 use graphene_std::renderer::{ClickTarget, Quad};
 use graphene_std::vector::path_bool_lib;
@@ -766,7 +767,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				responses.add(DocumentMessage::AddTransaction);
 
-				let image_frame = ImageFrame { image, ..Default::default() };
+				let image_frame = ImageFrame {
+					image,
+					transform: DAffine2::IDENTITY,
+					alpha_blending: Default::default(),
+				};
 				let layer = graph_modification_utils::new_image_layer(image_frame, layer_node_id, self.new_layer_parent(true), responses);
 
 				if let Some(name) = name {
@@ -1158,9 +1163,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::UpdateClipTargets { clip_targets } => {
 				self.network_interface.update_clip_targets(clip_targets);
-			}
-			DocumentMessage::UpdateVectorModify { vector_modify } => {
-				self.network_interface.update_vector_modify(vector_modify);
 			}
 			DocumentMessage::Undo => {
 				if self.network_interface.transaction_status() != TransactionStatus::Finished {
@@ -2126,7 +2128,7 @@ impl DocumentMessageHandler {
 /// Create a network interface with a single export
 fn default_document_network_interface() -> NodeNetworkInterface {
 	let mut network_interface = NodeNetworkInterface::default();
-	network_interface.add_export(TaggedValue::ArtboardGroup(graphene_core::ArtboardGroup::EMPTY), -1, "", &[]);
+	network_interface.add_export(TaggedValue::ArtboardGroup(graphene_core::ArtboardGroup::default()), -1, "", &[]);
 	network_interface
 }
 
