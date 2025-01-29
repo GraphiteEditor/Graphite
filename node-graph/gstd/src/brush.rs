@@ -138,9 +138,7 @@ pub fn create_brush_texture(brush_style: &BrushStyle) -> Image<Color> {
 	let blank_texture = EmptyImageNode::new(CopiedNode::new(transform), CopiedNode::new(Color::TRANSPARENT)).eval(());
 	let normal_blend = BlendColorPairNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
 	let blend_executor = BlendImageTupleNode::new(ValueNode::new(normal_blend));
-	let image = blend_executor.eval((blank_texture, stamp));
-	let image_frame = image.one_item();
-	image_frame.clone().image
+	blend_executor.eval((blank_texture, stamp)).image
 }
 
 macro_rules! inline_blend_funcs {
@@ -155,7 +153,7 @@ macro_rules! inline_blend_funcs {
 	};
 }
 
-pub fn blend_with_mode(background: ImageFrameTable<Color>, foreground: ImageFrameTable<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrameTable<Color> {
+pub fn blend_with_mode(background: ImageFrame<Color>, foreground: ImageFrame<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrame<Color> {
 	let opacity = opacity / 100.;
 	inline_blend_funcs!(
 		background,
@@ -205,8 +203,7 @@ pub fn blend_with_mode(background: ImageFrameTable<Color>, foreground: ImageFram
 
 #[node_macro::node(category(""))]
 fn brush(_: Footprint, image: ImageFrameTable<Color>, bounds: ImageFrameTable<Color>, strokes: Vec<BrushStroke>, cache: BrushCache) -> ImageFrameTable<Color> {
-	let image = image.one_item();
-	let image = image.clone();
+	let image = image.one_item().clone();
 
 	let stroke_bbox = strokes.iter().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
 	let image_bbox = Bbox::from_transform(image.transform).to_axis_aligned_bbox();
@@ -223,7 +220,7 @@ fn brush(_: Footprint, image: ImageFrameTable<Color>, bounds: ImageFrameTable<Co
 		background_bounds = bounds.transform();
 	}
 
-	let mut actual_image = ExtendImageToBoundsNode::new(ClonedNode::new(background_bounds)).eval(ImageFrameTable::new(brush_plan.background));
+	let mut actual_image = ExtendImageToBoundsNode::new(ClonedNode::new(background_bounds)).eval(brush_plan.background);
 	let final_stroke_idx = brush_plan.strokes.len().saturating_sub(1);
 	for (idx, stroke) in brush_plan.strokes.into_iter().enumerate() {
 		// Create brush texture.
@@ -253,23 +250,20 @@ fn brush(_: Footprint, image: ImageFrameTable<Color>, bounds: ImageFrameTable<Co
 			let blit_node = BlitNode::new(ClonedNode::new(brush_texture), ClonedNode::new(positions), ClonedNode::new(normal_blend));
 			let blit_target = if idx == 0 {
 				let target = core::mem::take(&mut brush_plan.first_stroke_texture);
-				ExtendImageToBoundsNode::new(CopiedNode::new(stroke_to_layer)).eval(ImageFrameTable::new(target))
+				ExtendImageToBoundsNode::new(CopiedNode::new(stroke_to_layer)).eval(target)
 			} else {
 				EmptyImageNode::new(CopiedNode::new(stroke_to_layer), CopiedNode::new(Color::TRANSPARENT)).eval(())
 			};
 
-			let blit_target = blit_target.one_item();
-			blit_node.eval(blit_target.clone())
+			blit_node.eval(blit_target)
 		};
 
 		// Cache image before doing final blend, and store final stroke texture.
 		if idx == final_stroke_idx {
-			let actual_image = actual_image.one_item();
 			cache.cache_results(core::mem::take(&mut draw_strokes), actual_image.clone(), stroke_texture.clone());
 		}
 
 		// TODO: Is this the correct way to do opacity in blending?
-		let stroke_texture = ImageFrameTable::new(stroke_texture);
 		actual_image = blend_with_mode(actual_image, stroke_texture, stroke.style.blend_mode, (stroke.style.color.a() * 100.) as f64);
 	}
 
@@ -312,7 +306,7 @@ fn brush(_: Footprint, image: ImageFrameTable<Color>, bounds: ImageFrameTable<Co
 		let blend_executor = BlendImageTupleNode::new(ValueNode::new(blend_params));
 		actual_image = blend_executor.eval((actual_image, erase_restore_mask));
 	}
-	actual_image
+	ImageFrameTable::new(actual_image)
 }
 
 #[cfg(test)]

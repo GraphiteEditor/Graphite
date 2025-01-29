@@ -40,9 +40,7 @@ pub struct NodePropertiesContext<'a> {
 
 impl NodePropertiesContext<'_> {
 	pub fn call_widget_override(&mut self, node_id: &NodeId, index: usize) -> Option<Vec<LayoutGroup>> {
-		let Some(input_properties_row) = self.network_interface.input_properties_row(node_id, index, self.selection_network_path) else {
-			return None;
-		};
+		let input_properties_row = self.network_interface.input_properties_row(node_id, index, self.selection_network_path)?;
 		if let Some(widget_override) = &input_properties_row.widget_override {
 			let Some(widget_override_lambda) = INPUT_OVERRIDES.get(widget_override) else {
 				log::error!("Could not get widget override lambda in call_widget_override");

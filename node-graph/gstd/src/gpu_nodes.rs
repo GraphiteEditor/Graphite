@@ -79,7 +79,7 @@ async fn map_gpu<'a: 'input>(image: ImageFrameTable<Color>, node: DocumentNode, 
 		self.cache.lock().as_ref().unwrap().get("placeholder").unwrap().clone()
 	} else {
 		let name = "placeholder".to_string();
-		let Ok(compute_pass_descriptor) = create_compute_pass_descriptor(node, &image_frame_table, executor).await else {
+		let Ok(compute_pass_descriptor) = create_compute_pass_descriptor(node, image_frame_table, executor).await else {
 			log::error!("Error creating compute pass descriptor in 'map_gpu()");
 			return ImageFrameTable::default();
 		};

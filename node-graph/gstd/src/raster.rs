@@ -5,7 +5,7 @@ use graphene_core::raster::{
 	Alpha, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, Image, Linear, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, RedGreenBlue, Sample,
 };
 use graphene_core::transform::{Footprint, Transform};
-use graphene_core::{AlphaBlending, Color, GraphicElement, Node};
+use graphene_core::{AlphaBlending, Color, Node};
 
 use fastnoise_lite;
 use glam::{DAffine2, DVec2, Vec2};
@@ -215,12 +215,9 @@ pub struct BlendImageTupleNode<P, Fg, MapFn> {
 }
 
 #[node_macro::old_node_fn(BlendImageTupleNode<_P, _Fg>)]
-fn blend_image_tuple<_P: Alpha + Pixel + Debug + dyn_any::StaticType, MapFn, _Fg: Sample<Pixel = _P> + Transform>(images: (ImageFrameTable<_P>, _Fg), map_fn: &'input MapFn) -> ImageFrameTable<_P>
+fn blend_image_tuple<_P: Alpha + Pixel + Debug, MapFn, _Fg: Sample<Pixel = _P> + Transform>(images: (ImageFrame<_P>, _Fg), map_fn: &'input MapFn) -> ImageFrame<_P>
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input + Clone,
-	GraphicElement: From<ImageFrame<_P>>,
-	_P::Static: Pixel,
-	ImageFrameTable<_P>: BitmapMut<Pixel = _P> + Sample<Pixel = _P> + Transform,
 {
 	let (background, foreground) = images;
 
@@ -281,13 +278,11 @@ pub struct ExtendImageToBoundsNode<Bounds> {
 }
 
 #[node_macro::old_node_fn(ExtendImageToBoundsNode)]
-fn extend_image_to_bounds(image: ImageFrameTable<Color>, bounds: DAffine2) -> ImageFrameTable<Color> {
-	let image = image.one_item();
-
+fn extend_image_to_bounds(image: ImageFrame<Color>, bounds: DAffine2) -> ImageFrame<Color> {
 	let image_aabb = Bbox::unit().affine_transform(image.transform()).to_axis_aligned_bbox();
 	let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();
 	if image_aabb.contains(bounds_aabb.start) && image_aabb.contains(bounds_aabb.end) {
-		return ImageFrameTable::new(image.clone());
+		return image;
 	}
 
 	if image.image.width == 0 || image.image.height == 0 {
@@ -316,29 +311,25 @@ fn extend_image_to_bounds(image: ImageFrameTable<Color>, bounds: DAffine2) -> Im
 	// Compute new transform.
 	// let layer_to_new_texture_space = (DAffine2::from_scale(1. / new_scale) * DAffine2::from_translation(new_start) * layer_to_image_space).inverse();
 	let new_texture_to_layer_space = image.transform * DAffine2::from_scale(1. / orig_image_scale) * DAffine2::from_translation(new_start) * DAffine2::from_scale(new_scale);
-	let result = ImageFrame {
+	ImageFrame {
 		image: new_img,
 		transform: new_texture_to_layer_space,
 		alpha_blending: image.alpha_blending,
-	};
-
-	ImageFrameTable::new(result)
+	}
 }
 
 #[node_macro::node(category("Debug: Raster"))]
-fn empty_image(_: (), transform: DAffine2, color: Color) -> ImageFrameTable<Color> {
+fn empty_image<P: Pixel>(_: (), transform: DAffine2, #[implementations(Color)] color: P) -> ImageFrame<P> {
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
 
 	let image = Image::new(width, height, color);
 
-	let result = ImageFrame {
+	ImageFrame {
 		image,
 		transform,
 		alpha_blending: AlphaBlending::default(),
-	};
-
-	ImageFrameTable::new(result)
+	}
 }
 
 // #[cfg(feature = "serde")]

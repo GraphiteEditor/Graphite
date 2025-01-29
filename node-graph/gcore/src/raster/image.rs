@@ -235,7 +235,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 
 pub type ImageFrameTable<P> = Instances<ImageFrame<P>>;
 
-#[derive(Clone, Debug, PartialEq, Default, specta::Type)]
+#[derive(Clone, Debug, PartialEq, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImageFrame<P: Pixel> {
 	pub image: Image<P>,
@@ -250,6 +250,17 @@ pub struct ImageFrame<P: Pixel> {
 	// being an unspecified quantity.
 	pub transform: DAffine2,
 	pub alpha_blending: AlphaBlending,
+}
+
+impl<P: Pixel> Default for ImageFrame<P> {
+	fn default() -> Self {
+		Self {
+			image: Image::empty(),
+			alpha_blending: AlphaBlending::new(),
+			// Different from DAffine2::default() which is IDENTITY
+			transform: DAffine2::ZERO,
+		}
+	}
 }
 
 impl<P: Debug + Copy + Pixel> Sample for ImageFrame<P> {
@@ -351,22 +362,6 @@ where
 }
 
 impl<P: Copy + Pixel> ImageFrame<P> {
-	pub const fn empty() -> Self {
-		Self {
-			image: Image::empty(),
-			transform: DAffine2::ZERO,
-			alpha_blending: AlphaBlending::new(),
-		}
-	}
-
-	pub const fn identity() -> Self {
-		Self {
-			image: Image::empty(),
-			transform: DAffine2::IDENTITY,
-			alpha_blending: AlphaBlending::new(),
-		}
-	}
-
 	pub fn get_mut(&mut self, x: usize, y: usize) -> &mut P {
 		&mut self.image.data[y * (self.image.width as usize) + x]
 	}
