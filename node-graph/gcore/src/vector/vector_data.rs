@@ -12,6 +12,24 @@ use dyn_any::DynAny;
 use core::borrow::Borrow;
 use glam::{DAffine2, DVec2};
 
+// TODO: Eventually remove this migration document upgrade code
+pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<VectorDataTable, D::Error> {
+	use serde::Deserialize;
+
+	#[derive(serde::Serialize, serde::Deserialize)]
+	#[serde(untagged)]
+	#[allow(clippy::large_enum_variant)]
+	enum EitherFormat {
+		VectorData(VectorData),
+		VectorDataTable(VectorDataTable),
+	}
+
+	Ok(match EitherFormat::deserialize(deserializer)? {
+		EitherFormat::VectorData(vector_data) => VectorDataTable::new(vector_data),
+		EitherFormat::VectorDataTable(vector_data_table) => vector_data_table,
+	})
+}
+
 pub type VectorDataTable = Instances<VectorData>;
 
 /// [VectorData] is passed between nodes.

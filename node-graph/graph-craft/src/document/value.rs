@@ -129,6 +129,7 @@ tagged_value! {
 	DAffine2(DAffine2),
 	Image(graphene_core::raster::Image<Color>),
 	ImaginateCache(ImaginateCache),
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
 	ImageFrame(graphene_core::raster::image::ImageFrameTable<Color>),
 	Color(graphene_core::raster::color::Color),
 	Subpaths(Vec<bezier_rs::Subpath<graphene_core::vector::PointId>>),
@@ -137,6 +138,7 @@ tagged_value! {
 	ImaginateSamplingMethod(ImaginateSamplingMethod),
 	ImaginateMaskStartingFill(ImaginateMaskStartingFill),
 	ImaginateController(ImaginateController),
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::vector::migrate_vector_data"))] // TODO: Eventually remove this migration document upgrade code
 	VectorData(graphene_core::vector::VectorDataTable),
 	Fill(graphene_core::vector::style::Fill),
 	Stroke(graphene_core::vector::style::Stroke),
@@ -170,6 +172,7 @@ tagged_value! {
 	BrushStrokes(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
 	BrushCache(BrushCache),
 	DocumentNode(DocumentNode),
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::migrate_graphic_group"))] // TODO: Eventually remove this migration document upgrade code
 	GraphicGroup(graphene_core::GraphicGroupTable),
 	GraphicElement(graphene_core::GraphicElement),
 	ArtboardGroup(graphene_core::ArtboardGroup),

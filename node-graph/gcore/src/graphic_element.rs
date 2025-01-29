@@ -121,6 +121,23 @@ unsafe impl<T: Into<GraphicElement> + StaticType + 'static> dyn_any::StaticType 
 	type Static = Instances<T>;
 }
 
+// TODO: Eventually remove this migration document upgrade code
+pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<GraphicGroupTable, D::Error> {
+	use serde::Deserialize;
+
+	#[derive(serde::Serialize, serde::Deserialize)]
+	#[serde(untagged)]
+	enum EitherFormat {
+		GraphicGroup(GraphicGroup),
+		GraphicGroupTable(GraphicGroupTable),
+	}
+
+	Ok(match EitherFormat::deserialize(deserializer)? {
+		EitherFormat::GraphicGroup(graphic_group) => GraphicGroupTable::new(graphic_group),
+		EitherFormat::GraphicGroupTable(graphic_group_table) => graphic_group_table,
+	})
+}
+
 pub type GraphicGroupTable = Instances<GraphicGroup>;
 
 /// A list of [`GraphicElement`]s

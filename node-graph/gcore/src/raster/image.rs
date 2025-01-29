@@ -216,6 +216,23 @@ impl<P: Pixel> IntoIterator for Image<P> {
 	}
 }
 
+// TODO: Eventually remove this migration document upgrade code
+pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<ImageFrameTable<Color>, D::Error> {
+	use serde::Deserialize;
+
+	#[derive(serde::Serialize, serde::Deserialize)]
+	#[serde(untagged)]
+	enum EitherFormat {
+		ImageFrame(ImageFrame<Color>),
+		ImageFrameTable(ImageFrameTable<Color>),
+	}
+
+	Ok(match EitherFormat::deserialize(deserializer)? {
+		EitherFormat::ImageFrame(image_frame) => ImageFrameTable::<Color>::new(image_frame),
+		EitherFormat::ImageFrameTable(image_frame_table) => image_frame_table,
+	})
+}
+
 pub type ImageFrameTable<P> = Instances<ImageFrame<P>>;
 
 #[derive(Clone, Debug, PartialEq, Default, specta::Type)]

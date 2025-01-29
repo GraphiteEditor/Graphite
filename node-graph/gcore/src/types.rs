@@ -131,12 +131,15 @@ impl From<String> for ProtoNodeIdentifier {
 fn migrate_type_descriptor_names<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Cow<'static, str>, D::Error> {
 	use serde::Deserialize;
 
-	// Rename "f32" to "f64"
 	let name = String::deserialize(deserializer)?;
 	let name = match name.as_str() {
 		"f32" => "f64".to_string(),
+		"graphene_core::graphic_element::GraphicGroup" => "graphene_core::graphic_element::Instances<graphene_core::graphic_element::GraphicGroup>".to_string(),
+		"graphene_core::vector::vector_data::VectorData" => "graphene_core::graphic_element::Instances<graphene_core::vector::vector_data::VectorData>".to_string(),
+		"graphene_core::raster::image::ImageFrame<Color>" => "graphene_core::graphic_element::Instances<graphene_core::raster::image::ImageFrame<Color>>".to_string(),
 		_ => name,
 	};
+
 	Ok(Cow::Owned(name))
 }
 
@@ -150,9 +153,9 @@ pub struct TypeDescriptor {
 	pub name: Cow<'static, str>,
 	#[serde(default)]
 	pub alias: Option<Cow<'static, str>>,
-	#[serde(default)]
+	#[serde(skip)]
 	pub size: usize,
-	#[serde(default)]
+	#[serde(skip)]
 	pub align: usize,
 }
 
