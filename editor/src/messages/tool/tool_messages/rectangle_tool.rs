@@ -225,7 +225,7 @@ impl Fsm for RectangleToolFsmState {
 				if let Some([start, end]) = shape_data.calculate_points(document, input, center, lock_ratio) {
 					if let Some(layer) = shape_data.layer {
 						// TODO: make the scale impact the rect node
-						let node_id = graph_modification_utils::get_rectangle_id(shape_data.layer.unwrap(), &document.network_interface).unwrap();
+						let node_id = graph_modification_utils::get_rectangle_id(layer, &document.network_interface).unwrap();
 						responses.add(NodeGraphMessage::SetInput {
 							input_connector: InputConnector::node(node_id, 1),
 							input: NodeInput::value(TaggedValue::F64((start.x - end.x).abs()), false),
