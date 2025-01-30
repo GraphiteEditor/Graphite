@@ -1,5 +1,6 @@
 use super::transform_utils;
 use super::utility_types::ModifyInputsContext;
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
@@ -13,6 +14,13 @@ use graphene_core::Color;
 use graphene_std::vector::convert_usvg_path;
 
 use glam::{DAffine2, DVec2};
+
+#[derive(Debug, Clone)]
+struct ArtboardInfo {
+	input_node: NodeInput,
+	output_nodes: Vec<InputConnector>,
+	merge_node: NodeId,
+}
 
 pub struct GraphOperationMessageData<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
@@ -58,7 +66,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			} => {
 				let parent_transform = network_interface.document_metadata().downstream_transform_to_viewport(layer);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.transform_change(transform, transform_in, parent_transform, skip_rerender);
+					modify_inputs.transform_change_with_parent(transform, transform_in, parent_transform, skip_rerender);
 				}
 			}
 			GraphOperationMessage::TransformSet {
@@ -108,7 +116,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				network_interface.move_layer_to_stack(artboard_layer, LayerNodeIdentifier::ROOT_PARENT, 0, &[]);
 
 				// If there is a non artboard feeding into the primary input of the artboard, move it to the secondary input
-				let Some(artboard) = network_interface.network(&[]).unwrap().nodes.get(&id) else {
+				let Some(artboard) = network_interface.network(&[]).and_then(|network| network.nodes.get(&id)) else {
 					log::error!("Artboard not created");
 					return;
 				};
@@ -191,13 +199,87 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 			}
 			GraphOperationMessage::ClearArtboards => {
+				if network_interface.all_artboards().is_empty() {
+					return;
+				}
+
+				responses.add(DocumentMessage::AddTransaction);
+				responses.add(NodeGraphMessage::DeleteNodes {
+					node_ids: network_interface.all_artboards().iter().map(|layer_node| layer_node.to_node()).collect(),
+					delete_children: false,
+				});
+
+				let mut artboard_data: HashMap<NodeId, ArtboardInfo> = HashMap::new();
+
+				// Go through all artboards and create merge nodes
 				for artboard in network_interface.all_artboards() {
-					responses.add(NodeGraphMessage::DeleteNodes {
-						node_ids: vec![artboard.to_node()],
-						delete_children: false,
+					let node_id = NodeId::new();
+					let Some(document_node) = network_interface.network(&[]).and_then(|network| network.nodes.get(&artboard.to_node())) else {
+						log::error!("Artboard not created");
+						responses.add(DocumentMessage::AbortTransaction);
+						return;
+					};
+
+					artboard_data.insert(
+						artboard.to_node(),
+						ArtboardInfo {
+							input_node: NodeInput::node(document_node.inputs[1].as_node().unwrap_or_default(), 0),
+							output_nodes: network_interface
+								.outward_wires(&[])
+								.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(artboard.to_node(), 0)))
+								.cloned()
+								.unwrap_or_default(),
+							merge_node: node_id,
+						},
+					);
+
+					let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
+					modify_inputs.create_layer(node_id);
+
+					responses.add(NodeGraphMessage::SetDisplayName {
+						node_id,
+						alias: network_interface.frontend_display_name(&artboard.to_node(), &[]),
+						skip_adding_history_step: true,
+					});
+
+					// Shift node positions in the graph
+					let (x, y) = network_interface.position(&artboard.to_node(), &[]).unwrap_or_default().into();
+					responses.add(NodeGraphMessage::ShiftNodePosition { node_id, x, y });
+				}
+
+				// Go through all artboards and connect them to the merge nodes
+				for artboard in &artboard_data {
+					// Modify downstream connections
+					responses.add(NodeGraphMessage::SetInput {
+						input_connector: InputConnector::node(artboard.1.merge_node, 1),
+						input: NodeInput::node(artboard.1.input_node.as_node().unwrap_or_default(), 0),
+					});
+
+					// Modify upstream connections
+					for outward_wire in &artboard.1.output_nodes {
+						let input = NodeInput::node(artboard_data[artboard.0].merge_node, 0);
+						let input_connector = if let Some(artboard_info) = artboard_data.get(&outward_wire.node_id().unwrap_or_default()) {
+							InputConnector::node(artboard_info.merge_node, outward_wire.input_index())
+						} else {
+							*outward_wire
+						};
+						responses.add(NodeGraphMessage::SetInput { input_connector, input });
+					}
+
+					// Apply a transformation to the newly created layers to match the original artboard position
+					let offset = network_interface
+						.document_metadata()
+						.bounding_box_document(LayerNodeIdentifier::new_unchecked(*artboard.0))
+						.map(|p| p[0])
+						.unwrap_or_default();
+					responses.add(GraphOperationMessage::TransformChange {
+						layer: LayerNodeIdentifier::new_unchecked(artboard.1.merge_node),
+						transform: DAffine2::from_translation(offset),
+						transform_in: TransformIn::Local,
+						skip_rerender: false,
 					});
 				}
-				// TODO: Replace deleted artboards with merge nodes
+
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
 				responses.add(NodeGraphMessage::SendGraph);
@@ -260,7 +342,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 
 			modify_inputs.insert_vector_data(subpaths, layer, true, path.fill().is_some(), path.stroke().is_some());
 
-			if let Some(transform_node_id) = modify_inputs.existing_node_id("Transform") {
+			if let Some(transform_node_id) = modify_inputs.existing_node_id("Transform", true) {
 				transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, transform * usvg_transform(node.abs_transform()));
 			}
 
