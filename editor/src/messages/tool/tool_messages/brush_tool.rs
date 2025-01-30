@@ -429,7 +429,7 @@ impl Fsm for BrushToolFsmState {
 		let hint_data = match self {
 			BrushToolFsmState::Ready => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw")]),
-				HintGroup(vec![HintInfo::keys([Key::BracketLeft, Key::BracketRight], "Shrink/Grow Brush")]),
+				HintGroup(vec![HintInfo::multi_keys([[Key::BracketLeft], [Key::BracketRight]], "Shrink/Grow Brush")]),
 			]),
 			BrushToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 		};

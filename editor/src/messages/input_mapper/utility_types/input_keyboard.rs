@@ -296,6 +296,8 @@ impl fmt::Display for Key {
 			Self::MouseBack => "Mouse Back",
 			Self::MouseForward => "Mouse Fwd",
 
+			Self::NumKeys => "0-9",
+
 			_ => key_name.as_str(),
 		};
 

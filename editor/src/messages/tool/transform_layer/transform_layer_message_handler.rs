@@ -1,4 +1,4 @@
-use crate::consts::{ANGLE_MEASURE_RADIUS_FACTOR, ARC_MEASURE_RADIUS_FACTOR_RANGE, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_LABEL_BACKGROUND, COLOR_OVERLAY_WHITE, SLOWING_DIVISOR};
+use crate::consts::{ANGLE_MEASURE_RADIUS_FACTOR, ARC_MEASURE_RADIUS_FACTOR_RANGE, COLOR_OVERLAY_BLUE, SLOWING_DIVISOR};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayProvider, Pivot};
 use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, Typing};
@@ -75,6 +75,27 @@ fn calculate_pivot(selected_points: &Vec<&ManipulatorPointId>, vector_data: &Vec
 			let average_position = selected_points.iter().filter_map(|p| get_location(p)).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64;
 			Some((average_position, average_position))
 		}
+	}
+}
+
+fn project_edge_to_quad(edge: DVec2, quad: &Quad, local: bool, axis_constraint: Axis) -> DVec2 {
+	let quad = quad.0;
+	match axis_constraint {
+		Axis::X => {
+			if local {
+				edge.project_onto(quad[1] - quad[0])
+			} else {
+				edge.with_y(0.)
+			}
+		}
+		Axis::Y => {
+			if local {
+				edge.project_onto(quad[3] - quad[0])
+			} else {
+				edge.with_x(0.)
+			}
+		}
+		_ => edge,
 	}
 }
 
@@ -198,13 +219,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 								overlay_context.line(quad[0], end, None);
 								let x_parameter = viewport_translate.x.clamp(-1., 1.);
 								let y_transform = DAffine2::from_translation((quad[0] + end) / 2. + x_parameter * DVec2::X * 0.);
-								let pivot_selection = if x_parameter > 0. {
-									Pivot::Start
-								} else if x_parameter == 0. {
-									Pivot::Middle
-								} else {
-									Pivot::End
-								};
+								let pivot_selection = if x_parameter >= 0. { Pivot::Start } else { Pivot::End };
 								if axis_constraint != Axis::Both || self.typing.digits.is_empty() {
 									overlay_context.text(&format_rounded(translation.y, 2), COLOR_OVERLAY_BLUE, None, y_transform, 3., [pivot_selection, Pivot::Middle]);
 								}
@@ -215,28 +230,16 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							}
 						}
 						TransformOperation::Scaling(scale) => {
-							let scale = scale.to_f64(self.snap);
+							let to_mouse_final = self.mouse_position - self.pivot;
+							let to_mouse_start = self.start_mouse - self.pivot;
+
+							let to_mouse_final = project_edge_to_quad(to_mouse_final, &self.fixed_bbox, self.local, axis_constraint);
+							let to_mouse_start = project_edge_to_quad(to_mouse_start, &self.fixed_bbox, self.local, axis_constraint);
+
+							let scale = scale.to_f64(self.snap) * to_mouse_final.dot(to_mouse_start).signum();
 							let text = format!("{}x", format_rounded(scale, 3));
 							let local_edge = self.start_mouse - self.pivot;
-							let quad = self.fixed_bbox.0;
-							let local_edge = match axis_constraint {
-								Axis::X => {
-									if self.local {
-										local_edge.project_onto(quad[1] - quad[0])
-									} else {
-										local_edge.with_y(0.)
-									}
-								}
-								Axis::Y => {
-									if self.local {
-										local_edge.project_onto(quad[3] - quad[0])
-									} else {
-										local_edge.with_x(0.)
-									}
-								}
-								_ => local_edge,
-							};
-							let scale = scale * (self.mouse_position - self.pivot).dot(self.start_mouse - self.pivot).signum();
+							let local_edge = project_edge_to_quad(local_edge, &self.fixed_bbox, self.local, axis_constraint);
 							let boundary_point = self.pivot + local_edge * scale.min(1.);
 							let end_point = self.pivot + local_edge * scale.max(1.);
 
@@ -514,22 +517,30 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 								.apply_transform_operation(&mut selected, self.snap, self.local, self.fixed_bbox, document_to_viewport);
 						}
 						TransformOperation::Scaling(scale) => {
+							let axis_constraint = scale.constraint;
+							let to_mouse_final = self.mouse_position - *selected.pivot;
+							let to_mouse_final_old = input.mouse.position - *selected.pivot;
+							let to_mouse_start = self.start_mouse - *selected.pivot;
+
+							let to_mouse_final = project_edge_to_quad(to_mouse_final, &self.fixed_bbox, self.local, axis_constraint);
+							let to_mouse_final_old = project_edge_to_quad(to_mouse_final_old, &self.fixed_bbox, self.local, axis_constraint);
+							let to_mouse_start = project_edge_to_quad(to_mouse_start, &self.fixed_bbox, self.local, axis_constraint);
+
 							let change = {
-								let previous_frame_dist = (self.mouse_position - *selected.pivot).length();
-								let current_frame_dist = (input.mouse.position - *selected.pivot).length();
-								let start_transform_dist = (self.start_mouse - *selected.pivot).length();
+								let previous_frame_dist = to_mouse_final.length();
+								let current_frame_dist = to_mouse_final_old.length();
+								let start_transform_dist = to_mouse_start.length();
 
 								(current_frame_dist - previous_frame_dist) / start_transform_dist
 							};
 							let change = if self.slow { change / SLOWING_DIVISOR } else { change };
 
-							let sign = (self.mouse_position - *selected.pivot).dot(self.start_mouse - *selected.pivot).signum();
+							let sign = to_mouse_final.dot(to_mouse_start).signum();
 							let scale = scale.increment_amount(change);
 							self.transform_operation = TransformOperation::Scaling(scale);
 
-							let tmp_op = TransformOperation::Scaling(if sign > 0. { scale } else { scale.negate() });
-
-							tmp_op.apply_transform_operation(&mut selected, self.snap, self.local, self.fixed_bbox, document_to_viewport);
+							let op = TransformOperation::Scaling(if sign > 0. { scale } else { scale.negate() });
+							op.apply_transform_operation(&mut selected, self.snap, self.local, self.fixed_bbox, document_to_viewport);
 						}
 					};
 				}
@@ -540,9 +551,14 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				let target_layers = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
 				shape_editor.set_selected_layers(target_layers);
 			}
-			TransformLayerMessage::TypeBackspace => self
-				.transform_operation
-				.grs_typed(self.typing.type_backspace(), &mut selected, self.snap, self.local, self.fixed_bbox, document_to_viewport),
+			TransformLayerMessage::TypeBackspace => {
+				if self.typing.digits.is_empty() && self.typing.negative {
+					self.transform_operation.negate(&mut selected, self.snap, self.local, self.fixed_bbox, document_to_viewport);
+					self.typing.type_negate();
+				}
+				self.transform_operation
+					.grs_typed(self.typing.type_backspace(), &mut selected, self.snap, self.local, self.fixed_bbox, document_to_viewport);
+			}
 			TransformLayerMessage::TypeDecimalPoint => {
 				if self.typing.digits.is_empty() {
 					self.typing.negative = false;
