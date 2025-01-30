@@ -66,7 +66,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			} => {
 				let parent_transform = network_interface.document_metadata().downstream_transform_to_viewport(layer);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.transform_change(transform, transform_in, parent_transform, skip_rerender);
+					modify_inputs.transform_change_with_parent(transform, transform_in, parent_transform, skip_rerender);
 				}
 			}
 			GraphOperationMessage::TransformSet {
@@ -266,7 +266,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 						responses.add(NodeGraphMessage::SetInput { input_connector, input });
 					}
 
-					// Reposition merge nodes
+					// Apply a transformation to the newly created layers to match the original artboard position
 					let offset = network_interface
 						.document_metadata()
 						.bounding_box_document(LayerNodeIdentifier::new_unchecked(*artboard.0))
@@ -342,7 +342,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 
 			modify_inputs.insert_vector_data(subpaths, layer, true, path.fill().is_some(), path.stroke().is_some());
 
-			if let Some(transform_node_id) = modify_inputs.existing_node_id("Transform") {
+			if let Some(transform_node_id) = modify_inputs.existing_node_id("Transform", true) {
 				transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, transform * usvg_transform(node.abs_transform()));
 			}
 

@@ -242,11 +242,10 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 		})
 	}
-	/// Gets the node id of a node with a specific reference that is upstream from the layer node, and creates it if it does not exist
-	/// The returned node is based on the selection dots in the layer. The right most dot will always insert/access the path that flows directly into the layer
-	/// Each dot after that represents an existing path node
-	/// If there is an existing upstream node, then it will always be returned first.
-	pub fn existing_node_id(&mut self, reference: &'static str) -> Option<NodeId> {
+	/// Gets the node id of a node with a specific reference that is upstream from the layer node, and optionally creates it if it does not exist.
+	/// The returned node is based on the selection dots in the layer. The right most dot will always insert/access the path that flows directly into the layer.
+	/// Each dot after that represents an existing path node. If there is an existing upstream node, then it will always be returned first.
+	pub fn existing_node_id(&mut self, reference: &'static str, create_if_nonexistent: bool) -> Option<NodeId> {
 		// Start from the layer node or export
 		let output_layer = self.get_output_layer()?;
 
@@ -277,7 +276,11 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 
 		// Create a new node if the node does not exist and update its inputs
-		existing_node_id.or_else(|| self.create_node(reference))
+		if create_if_nonexistent {
+			return existing_node_id.or_else(|| self.create_node(reference));
+		}
+
+		existing_node_id
 	}
 
 	/// Create a new node inside the layer
@@ -312,7 +315,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let backup_color_index = 2;
 		let backup_gradient_index = 3;
 
-		let Some(fill_node_id) = self.existing_node_id("Fill") else { return };
+		let Some(fill_node_id) = self.existing_node_id("Fill", true) else { return };
 		match &fill {
 			Fill::None => {
 				let input_connector = InputConnector::node(fill_node_id, backup_color_index);
@@ -332,13 +335,13 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn opacity_set(&mut self, opacity: f64) {
-		let Some(opacity_node_id) = self.existing_node_id("Opacity") else { return };
+		let Some(opacity_node_id) = self.existing_node_id("Opacity", true) else { return };
 		let input_connector = InputConnector::node(opacity_node_id, 1);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(opacity * 100.), false), false);
 	}
 
 	pub fn blend_mode_set(&mut self, blend_mode: BlendMode) {
-		let Some(blend_mode_node_id) = self.existing_node_id("Blend Mode") else {
+		let Some(blend_mode_node_id) = self.existing_node_id("Blend Mode", true) else {
 			return;
 		};
 		let input_connector = InputConnector::node(blend_mode_node_id, 1);
@@ -346,7 +349,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn stroke_set(&mut self, stroke: Stroke) {
-		let Some(stroke_node_id) = self.existing_node_id("Stroke") else { return };
+		let Some(stroke_node_id) = self.existing_node_id("Stroke", true) else { return };
 
 		let input_connector = InputConnector::node(stroke_node_id, 1);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::OptionalColor(stroke.color), false), true);
@@ -364,36 +367,80 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.line_join_miter_limit), false), false);
 	}
 
-	pub fn transform_change(&mut self, transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, skip_rerender: bool) {
-		let Some(transform_node_id) = self.existing_node_id("Transform") else { return };
-		let document_node = self.network_interface.network(&[]).unwrap().nodes.get(&transform_node_id).unwrap();
-		let layer_transform = transform_utils::get_current_transform(&document_node.inputs);
-		let to = match transform_in {
+	/// Update the transform value of the upstream Transform node based a change to its existing value and the given parent transform.
+	/// A new Transform node is created if one does not exist, unless it would be given the identity transform.
+	pub fn transform_change_with_parent(&mut self, transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, skip_rerender: bool) {
+		// Get the existing upstream Transform node and its transform, if present, otherwise use the identity transform
+		let (layer_transform, transform_node_id) = self
+			.existing_node_id("Transform", false)
+			.and_then(|transform_node_id| {
+				let document_node = self.network_interface.network(&[])?.nodes.get(&transform_node_id)?;
+				Some((transform_utils::get_current_transform(&document_node.inputs), transform_node_id))
+			})
+			.unzip();
+		let layer_transform = layer_transform.unwrap_or_default();
+
+		// Get a transform appropriate for the requested space
+		let to_transform = match transform_in {
 			TransformIn::Local => DAffine2::IDENTITY,
 			TransformIn::Scope { scope } => scope * parent_transform,
 			TransformIn::Viewport => parent_transform,
 		};
-		let transform = to.inverse() * transform * to * layer_transform;
-		transform_utils::update_transform(self.network_interface, &transform_node_id, transform);
 
-		self.responses.add(PropertiesPanelMessage::Refresh);
-
-		if !skip_rerender {
-			self.responses.add(NodeGraphMessage::RunDocumentGraph);
-		}
+		// Set the transform value to the Transform node
+		let final_transform = to_transform.inverse() * transform * to_transform * layer_transform;
+		self.transform_set_direct(final_transform, skip_rerender, transform_node_id);
 	}
 
+	/// Set the transform value to the upstream Transform node, replacing the existing value.
+	/// A new Transform node is created if one does not exist, unless it would be given the identity transform.
 	pub fn transform_set(&mut self, transform: DAffine2, transform_in: TransformIn, skip_rerender: bool) {
-		let final_transform = match transform_in {
-			TransformIn::Local => DAffine2::IDENTITY * transform,
-			TransformIn::Scope { scope } => scope * transform,
-			TransformIn::Viewport => self.network_interface.document_metadata().downstream_transform_to_viewport(self.layer_node.unwrap()).inverse() * transform,
+		// Get the existing upstream Transform node, if present
+		let transform_node_id = self.existing_node_id("Transform", false);
+
+		// Get a transform appropriate for the requested space
+		let to_transform = match transform_in {
+			TransformIn::Local => DAffine2::IDENTITY,
+			TransformIn::Scope { scope } => scope,
+			TransformIn::Viewport => self.network_interface.document_metadata().downstream_transform_to_viewport(self.layer_node.unwrap()).inverse(),
 		};
 
-		let Some(transform_node_id) = self.existing_node_id("Transform") else { return };
+		// Set the transform value to the Transform node
+		let final_transform = to_transform * transform;
+		self.transform_set_direct(final_transform, skip_rerender, transform_node_id);
+	}
 
-		transform_utils::update_transform(self.network_interface, &transform_node_id, final_transform);
+	/// Write the given transform value to the upstream Transform node, if one is supplied. If one doesn't exist, it will be created unless the given transform is the identity.
+	pub fn transform_set_direct(&mut self, transform: DAffine2, skip_rerender: bool, transform_node_id: Option<NodeId>) {
+		// If the Transform node didn't exist yet, create it now
+		let Some(transform_node_id) = transform_node_id.or_else(|| {
+			// Check if the transform is the identity transform within an epsilon
+			let is_identity = {
+				let transform = transform.to_scale_angle_translation();
+				let identity = DAffine2::IDENTITY.to_scale_angle_translation();
 
+				(transform.0.x - identity.0.x).abs() < 1e-6
+					&& (transform.0.y - identity.0.y).abs() < 1e-6
+					&& (transform.1 - identity.1).abs() < 1e-6
+					&& (transform.2.x - identity.2.x).abs() < 1e-6
+					&& (transform.2.y - identity.2.y).abs() < 1e-6
+			};
+
+			// We don't want to pollute the graph with an unnecessary Transform node, so we avoid creating and setting it by returning None
+			if is_identity {
+				return None;
+			}
+
+			// Create the Transform node
+			self.existing_node_id("Transform", true)
+		}) else {
+			return;
+		};
+
+		// Update the transform value of the Transform node
+		transform_utils::update_transform(self.network_interface, &transform_node_id, transform);
+
+		// Refresh the render and editor UI
 		self.responses.add(PropertiesPanelMessage::Refresh);
 		if !skip_rerender {
 			self.responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -401,25 +448,25 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn pivot_set(&mut self, new_pivot: DVec2) {
-		let Some(transform_node_id) = self.existing_node_id("Transform") else { return };
+		let Some(transform_node_id) = self.existing_node_id("Transform", true) else { return };
 
 		self.set_input_with_refresh(InputConnector::node(transform_node_id, 5), NodeInput::value(TaggedValue::DVec2(new_pivot), false), false);
 	}
 
 	pub fn vector_modify(&mut self, modification_type: VectorModificationType) {
-		let Some(path_node_id) = self.existing_node_id("Path") else { return };
+		let Some(path_node_id) = self.existing_node_id("Path", true) else { return };
 		self.network_interface.vector_modify(&path_node_id, modification_type);
 		self.responses.add(PropertiesPanelMessage::Refresh);
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
 	pub fn brush_modify(&mut self, strokes: Vec<BrushStroke>) {
-		let Some(brush_node_id) = self.existing_node_id("Brush") else { return };
+		let Some(brush_node_id) = self.existing_node_id("Brush", true) else { return };
 		self.set_input_with_refresh(InputConnector::node(brush_node_id, 2), NodeInput::value(TaggedValue::BrushStrokes(strokes), false), false);
 	}
 
 	pub fn resize_artboard(&mut self, location: IVec2, dimensions: IVec2) {
-		let Some(artboard_node_id) = self.existing_node_id("Artboard") else {
+		let Some(artboard_node_id) = self.existing_node_id("Artboard", true) else {
 			return;
 		};
 
