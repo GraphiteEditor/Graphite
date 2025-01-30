@@ -14,6 +14,13 @@ use graphene_core::vector::{ManipulatorPointId, PointId, VectorData, VectorModif
 use glam::{DAffine2, DVec2};
 use graphene_std::vector::{HandleId, SegmentId};
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum SelectKind {
+	Clear,
+	Extend,
+	Shrink,
+}
+
 #[derive(Debug, PartialEq, Eq, Copy, Clone, Default)]
 pub enum ManipulatorAngle {
 	#[default]
@@ -1283,9 +1290,9 @@ impl ShapeState {
 		false
 	}
 
-	pub fn select_all_in_quad(&mut self, network_interface: &NodeNetworkInterface, quad: [DVec2; 2], clear_selection: bool) {
+	pub fn select_all_in_quad(&mut self, network_interface: &NodeNetworkInterface, quad: [DVec2; 2], select_kind: SelectKind) {
 		for (&layer, state) in &mut self.selected_shape_state {
-			if clear_selection {
+			if select_kind == SelectKind::Clear {
 				state.clear_points()
 			}
 
@@ -1308,7 +1315,10 @@ impl ShapeState {
 					let transformed_position = transform.transform_point2(position);
 
 					if quad[0].min(quad[1]).cmple(transformed_position).all() && quad[0].max(quad[1]).cmpge(transformed_position).all() {
-						state.select_point(id);
+						match select_kind {
+							SelectKind::Shrink => state.deselect_point(id),
+							_ => state.select_point(id),
+						}
 					}
 				}
 			}
@@ -1317,7 +1327,10 @@ impl ShapeState {
 				let transformed_position = transform.transform_point2(position);
 
 				if quad[0].min(quad[1]).cmple(transformed_position).all() && quad[0].max(quad[1]).cmpge(transformed_position).all() {
-					state.select_point(ManipulatorPointId::Anchor(id));
+					match select_kind {
+						SelectKind::Shrink => state.deselect_point(ManipulatorPointId::Anchor(id)),
+						_ => state.select_point(ManipulatorPointId::Anchor(id)),
+					}
 				}
 			}
 		}

@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::shape_editor::{ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedPointsInfo, ShapeState};
+use crate::messages::tool::common_functionality::shape_editor::{ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectKind, SelectedPointsInfo, ShapeState};
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 
 use graphene_core::renderer::Quad;
@@ -35,9 +35,11 @@ pub enum PathToolMessage {
 	DeleteAndBreakPath,
 	DragStop {
 		extend_selection: Key,
+		shrink_selection: Key,
 	},
 	Enter {
 		extend_selection: Key,
+		shrink_selection: Key,
 	},
 	Escape,
 	FlipSmoothSharp,
@@ -686,7 +688,7 @@ impl Fsm for PathToolFsmState {
 			}
 
 			// `Self::InsertPoint` case:
-			(Self::InsertPoint, PathToolMessage::MouseDown { extend_selection, .. } | PathToolMessage::Enter { extend_selection }) => {
+			(Self::InsertPoint, PathToolMessage::MouseDown { extend_selection, .. } | PathToolMessage::Enter { extend_selection, .. }) => {
 				tool_data.double_click_handled = true;
 				let extend_selection = input.keyboard.get(extend_selection as usize);
 				tool_data.end_insertion(shape_editor, responses, InsertEndKind::Add { extend_selection })
@@ -879,13 +881,22 @@ impl Fsm for PathToolFsmState {
 
 				state
 			}
-			(PathToolFsmState::DrawingBox, PathToolMessage::Enter { extend_selection }) => {
+			(PathToolFsmState::DrawingBox, PathToolMessage::Enter { extend_selection, shrink_selection }) => {
 				let extend_selection = input.keyboard.get(extend_selection as usize);
+				let shrink_selection = input.keyboard.get(shrink_selection as usize);
+
+				let select_kind = if shrink_selection {
+					SelectKind::Shrink
+				} else if extend_selection {
+					SelectKind::Extend
+				} else {
+					SelectKind::Clear
+				};
 
 				if tool_data.drag_start_pos == tool_data.previous_mouse_position {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				} else {
-					shape_editor.select_all_in_quad(&document.network_interface, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !extend_selection);
+					shape_editor.select_all_in_quad(&document.network_interface, [tool_data.drag_start_pos, tool_data.previous_mouse_position], select_kind);
 				}
 				responses.add(OverlaysMessage::Draw);
 
@@ -901,20 +912,29 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			// Mouse up
-			(PathToolFsmState::DrawingBox, PathToolMessage::DragStop { extend_selection }) => {
+			(PathToolFsmState::DrawingBox, PathToolMessage::DragStop { extend_selection, shrink_selection }) => {
 				let extend_selection = input.keyboard.get(extend_selection as usize);
+				let shrink_selection = input.keyboard.get(shrink_selection as usize);
+
+				let select_kind = if shrink_selection {
+					SelectKind::Shrink
+				} else if extend_selection {
+					SelectKind::Extend
+				} else {
+					SelectKind::Clear
+				};
 
 				if tool_data.drag_start_pos == tool_data.previous_mouse_position {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				} else {
-					shape_editor.select_all_in_quad(&document.network_interface, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !extend_selection);
+					shape_editor.select_all_in_quad(&document.network_interface, [tool_data.drag_start_pos, tool_data.previous_mouse_position], select_kind);
 				}
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PathToolMessage::SelectedPointUpdated);
 
 				PathToolFsmState::Ready
 			}
-			(_, PathToolMessage::DragStop { extend_selection }) => {
+			(_, PathToolMessage::DragStop { extend_selection, shrink_selection }) => {
 				if tool_data.select_anchor_toggled {
 					shape_editor.deselect_all_points();
 					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_anchor_select_toggle);
