@@ -536,7 +536,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let change = if self.slow { change / SLOWING_DIVISOR } else { change };
 
 							let sign = to_mouse_final.dot(to_mouse_start).signum();
-							let scale = scale.increment_amount(change);
+							let scale = scale.increment_amount(change * scale.to_f64(self.snap).signum());
 							self.transform_operation = TransformOperation::Scaling(scale);
 
 							let op = TransformOperation::Scaling(if sign > 0. { scale } else { scale.negate() });
