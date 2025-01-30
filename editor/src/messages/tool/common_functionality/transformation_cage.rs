@@ -101,30 +101,33 @@ impl SelectedEdges {
 		}
 
 		let mut pivot = self.pivot_from_bounds(min, max);
+		// When dragging the edge of a cage with alt, it centres around the pivot. This requires offsetting the other edge.
 		if let Some(center_around) = center_around {
 			let center_around = transform.inverse().transform_point2(center_around);
 			pivot = center_around;
-			let filter_finite = |stretch: f64| {
-				if stretch.is_finite() {
-					stretch
+
+			let calculate_distance = |moving_opposite_to_drag: f64, centre: f64, dragging: f64, original_dragging: f64| {
+				let new_distance = (moving_opposite_to_drag - centre) * (centre - dragging) / (centre - original_dragging) + centre;
+
+				// A motion of A pixels from the mouse results in (scale_factor)A pixels on the other side
+				let scale_factor = (moving_opposite_to_drag - centre) / (centre - original_dragging);
+
+				if new_distance.is_finite() && scale_factor <= crate::consts::MAXIMUM_ALT_SCALE_FACTOR {
+					new_distance
 				} else {
-					warn!("Invalid stretch");
-					1. // Just use the standard behaviour
+					warn!("Invalid stretch with scale factor of {scale_factor}");
+					moving_opposite_to_drag // Don't offset the edge opposite to the drag
 				}
 			};
 			if self.top {
-				let stretch = filter_finite((center_around.y - min.y) / (center_around.y - self.bounds[0].y));
-				max.y = (max.y - center_around.y) * stretch + center_around.y;
+				max.y = calculate_distance(max.y, center_around.y, min.y, self.bounds[0].y);
 			} else if self.bottom {
-				let stretch = filter_finite((center_around.y - max.y) / (center_around.y - self.bounds[1].y));
-				min.y = (min.y - center_around.y) * stretch + center_around.y;
+				min.y = calculate_distance(min.y, center_around.y, max.y, self.bounds[1].y);
 			}
 			if self.left {
-				let stretch = filter_finite((center_around.x - min.x) / (center_around.x - self.bounds[0].x));
-				max.x = (max.x - center_around.x) * stretch + center_around.x;
+				max.x = calculate_distance(max.x, center_around.x, min.x, self.bounds[0].x);
 			} else if self.right {
-				let stretch = filter_finite((center_around.x - max.x) / (center_around.x - self.bounds[1].x));
-				min.x = (min.x - center_around.x) * stretch + center_around.x;
+				min.x = calculate_distance(min.x, center_around.x, max.x, self.bounds[1].x);
 			}
 		}
 
