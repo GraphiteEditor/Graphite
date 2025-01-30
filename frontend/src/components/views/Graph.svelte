@@ -151,6 +151,13 @@
 		const inConnectorX = Math.round((inX - containerBounds.x) / scale); // Adjust for scale
 		const inConnectorY = Math.round((inY - containerBounds.y) / scale); // Adjust for scale
 
+		function calculateMidX() {
+			return (inConnectorX + outConnectorX) / 2 + (((inConnectorX + outConnectorX) / 2) % gridSpacing);
+		}
+		function calculateMidY() {
+			return (inConnectorY + outConnectorY) / 2 - (((inConnectorY + outConnectorY) / 2) % gridSpacing);
+		}
+
 		// Handle straight lines
 		if ((verticalOut && verticalIn && outConnectorX === inConnectorX) || (!verticalOut && !verticalIn && outConnectorY === inConnectorY)) {
 			if (!verticalOut && !verticalIn && outConnectorY === inConnectorY && outConnectorX > inConnectorX) {
@@ -235,7 +242,6 @@
 						return [
 							{ x: outConnectorX, y: outConnectorY + 4 * lineWidth },
 							{ x: outConnectorX + gridSpacing, y: outConnectorY + 4 * lineWidth },
-
 							{ x: inConnectorX + lineWidth, y: inConnectorY },
 						];
 					} else if (-1 * gridSpacing <= outConnectorY - inConnectorY && outConnectorY - inConnectorY <= 0 * gridSpacing) {
@@ -256,12 +262,11 @@
 						];
 					}
 				} else {
-					const midX = (inConnectorX + outConnectorX) / 2 + (((inConnectorX + outConnectorX) / 2) % gridSpacing);
 					return [
 						{ x: outConnectorX, y: outConnectorY },
 						{ x: outConnectorX, y: outConnectorY - gridSpacing + 5.5 * lineWidth },
-						{ x: midX + lineWidth, y: outConnectorY - gridSpacing + 5.5 * lineWidth },
-						{ x: midX + lineWidth, y: inConnectorY },
+						{ x: calculateMidX() + lineWidth, y: outConnectorY - gridSpacing + 5.5 * lineWidth },
+						{ x: calculateMidX() + lineWidth, y: inConnectorY },
 						{ x: inConnectorX, y: inConnectorY },
 					];
 				}
@@ -278,11 +283,10 @@
 							{ x: inConnectorX, y: inConnectorY },
 						];
 					} else {
-						const midY = (inConnectorY + outConnectorY) / 2 - (((inConnectorY + outConnectorY) / 2) % gridSpacing);
 						return [
 							{ x: outConnectorX, y: outConnectorY },
-							{ x: outConnectorX, y: midY },
-							{ x: inConnectorX - 2 * gridSpacing, y: midY },
+							{ x: outConnectorX, y: calculateMidY() },
+							{ x: inConnectorX - 2 * gridSpacing, y: calculateMidY() },
 							{ x: inConnectorX - 2 * gridSpacing, y: inConnectorY },
 							{ x: inConnectorX, y: inConnectorY },
 						];
@@ -306,7 +310,6 @@
 					return [
 						{ x: outConnectorX, y: outConnectorY },
 						{ x: outConnectorX, y: outConnectorY - gridSpacing + 5.5 * lineWidth },
-
 						{ x: inConnectorX - 2 * gridSpacing + lineWidth, y: outConnectorY - gridSpacing + 5.5 * lineWidth },
 						{ x: inConnectorX - 2 * gridSpacing + lineWidth, y: inConnectorY },
 						{ x: inConnectorX, y: inConnectorY },
@@ -316,7 +319,6 @@
 					return [
 						{ x: outConnectorX, y: outConnectorY },
 						{ x: outConnectorX, y: outConnectorY - 2 * gridSpacing + 5.5 * lineWidth },
-
 						{ x: inConnectorX - 2 * gridSpacing + lineWidth, y: outConnectorY - 2 * gridSpacing + 5.5 * lineWidth },
 						{ x: inConnectorX - 2 * gridSpacing + lineWidth, y: inConnectorY },
 						{ x: inConnectorX, y: inConnectorY },
@@ -333,12 +335,11 @@
 						{ x: inConnectorX, y: inConnectorY },
 					];
 				} else {
-					const midX = (inConnectorX + outConnectorX) / 2 + (((inConnectorX + outConnectorX) / 2) % gridSpacing);
 					return [
 						{ x: outConnectorX, y: outConnectorY },
 						{ x: outConnectorX, y: outConnectorY - gridSpacing + 5.5 * lineWidth },
-						{ x: midX + lineWidth, y: outConnectorY - gridSpacing + 5.5 * lineWidth },
-						{ x: midX + lineWidth, y: inConnectorY - 2 * gridSpacing },
+						{ x: calculateMidX() + lineWidth, y: outConnectorY - gridSpacing + 5.5 * lineWidth },
+						{ x: calculateMidX() + lineWidth, y: inConnectorY - 2 * gridSpacing },
 						{ x: inConnectorX - 2 * gridSpacing + lineWidth, y: inConnectorY - 2 * gridSpacing },
 						{ x: inConnectorX - 2 * gridSpacing + lineWidth, y: inConnectorY },
 						{ x: inConnectorX, y: inConnectorY },
@@ -366,12 +367,11 @@
 							{ x: inConnectorX, y: inConnectorY },
 						];
 					} else {
-						const midX = (inConnectorX + outConnectorX) / 2 + (((inConnectorX + outConnectorX) / 2) % gridSpacing);
 						return [
 							{ x: outConnectorX, y: outConnectorY },
 							{ x: outConnectorX, y: outConnectorY - gridSpacing + 5.5 * lineWidth },
-							{ x: midX, y: outConnectorY - gridSpacing + 5.5 * lineWidth },
-							{ x: midX, y: inConnectorY + 2 * gridSpacing },
+							{ x: calculateMidX(), y: outConnectorY - gridSpacing + 5.5 * lineWidth },
+							{ x: calculateMidX(), y: inConnectorY + 2 * gridSpacing },
 							{ x: inConnectorX - 2 * gridSpacing, y: inConnectorY + 2 * gridSpacing },
 							{ x: inConnectorX - 2 * gridSpacing, y: inConnectorY },
 							{ x: inConnectorX, y: inConnectorY },
@@ -385,7 +385,6 @@
 							{ x: outConnectorX, y: outConnectorY + 5 * lineWidth },
 							{ x: inConnectorX - 2 * gridSpacing + lineWidth, y: outConnectorY + 5 * lineWidth },
 							{ x: inConnectorX - 2 * gridSpacing + lineWidth, y: inConnectorY },
-
 							{ x: inConnectorX, y: inConnectorY },
 						];
 					} else if (13 < outConnectorX - inConnectorX && outConnectorX - inConnectorX <= 18 * gridSpacing) {
@@ -399,12 +398,11 @@
 							{ x: inConnectorX, y: inConnectorY },
 						];
 					} else {
-						const midX = (inConnectorX + outConnectorX) / 2 + (((inConnectorX + outConnectorX) / 2) % gridSpacing);
 						return [
 							{ x: outConnectorX, y: outConnectorY },
 							{ x: outConnectorX, y: outConnectorY - gridSpacing + 5.5 * lineWidth },
-							{ x: midX, y: outConnectorY - gridSpacing + 5.5 * lineWidth },
-							{ x: midX, y: inConnectorY + 2 * gridSpacing },
+							{ x: calculateMidX(), y: outConnectorY - gridSpacing + 5.5 * lineWidth },
+							{ x: calculateMidX(), y: inConnectorY + 2 * gridSpacing },
 							{ x: inConnectorX - 2 * gridSpacing, y: inConnectorY + 2 * gridSpacing },
 							{ x: inConnectorX - 2 * gridSpacing, y: inConnectorY },
 							{ x: inConnectorX, y: inConnectorY },
@@ -422,11 +420,10 @@
 						{ x: inConnectorX, y: inConnectorY },
 					];
 				} else {
-					const midY = (inConnectorY + outConnectorY) / 2 - (((inConnectorY + outConnectorY) / 2) % gridSpacing);
 					return [
 						{ x: outConnectorX, y: outConnectorY },
-						{ x: outConnectorX, y: midY },
-						{ x: inConnectorX - 2 * gridSpacing, y: midY },
+						{ x: outConnectorX, y: calculateMidY() },
+						{ x: inConnectorX - 2 * gridSpacing, y: calculateMidY() },
 						{ x: inConnectorX - 2 * gridSpacing, y: inConnectorY },
 						{ x: inConnectorX, y: inConnectorY },
 					];
@@ -499,17 +496,16 @@
 							{ x: inConnectorX + 8 * gridSpacing, y: outConnectorY },
 							{ x: inConnectorX + 8 * gridSpacing, y: inConnectorY + gridSpacing - 5.5 * lineWidth },
 							{ x: inConnectorX, y: inConnectorY + gridSpacing - 5.5 * lineWidth },
-
 							{ x: inConnectorX, y: inConnectorY },
 						];
 					}
 				} else if (4 * gridSpacing < inConnectorX - outConnectorX) {
 					// left of edge case: outConnector point lying on vertical grid lines more than 4 units to left of inConnector point.
-					const midX = (inConnectorX + outConnectorX) / 2 + (((inConnectorX + outConnectorX) / 2) % gridSpacing);
+
 					return [
 						{ x: outConnectorX, y: outConnectorY },
-						{ x: midX - 2 * lineWidth, y: outConnectorY },
-						{ x: midX - 2 * lineWidth, y: inConnectorY + gridSpacing - 5.5 * lineWidth },
+						{ x: calculateMidX() - 2 * lineWidth, y: outConnectorY },
+						{ x: calculateMidX() - 2 * lineWidth, y: inConnectorY + gridSpacing - 5.5 * lineWidth },
 						{ x: inConnectorX, y: inConnectorY + gridSpacing - 5.5 * lineWidth },
 						{ x: inConnectorX, y: inConnectorY },
 					];
@@ -562,6 +558,7 @@
 			} else if (outConnectorX > inConnectorX - gridSpacing) {
 				// outConnector point to the right of inConnector point
 				const midY = (inConnectorY + outConnectorY) / 2 + (((inConnectorY + outConnectorY) / 2) % gridSpacing);
+
 				return [
 					{ x: outConnectorX, y: outConnectorY },
 					{ x: outConnectorX + gridSpacing - 2 * lineWidth, y: outConnectorY },
@@ -580,12 +577,10 @@
 					{ x: inConnectorX, y: inConnectorY },
 				];
 			} else {
-				const midX = (outConnectorX + inConnectorX) / 2 + (((outConnectorX + inConnectorX) / 2) % gridSpacing);
-
 				return [
 					{ x: outConnectorX, y: outConnectorY },
-					{ x: midX - lineWidth, y: outConnectorY },
-					{ x: midX - lineWidth, y: inConnectorY },
+					{ x: calculateMidX() - lineWidth, y: outConnectorY },
+					{ x: calculateMidX() - lineWidth, y: inConnectorY },
 					{ x: inConnectorX, y: inConnectorY },
 				];
 			}
