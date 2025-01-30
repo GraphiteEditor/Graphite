@@ -1208,9 +1208,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						insert_index: folder_index,
 					});
 
-					let layer_local_transform = self.network_interface.document_metadata().transform_to_viewport(child);
-					let undo_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();
-					let transform = undo_transform * layer_local_transform;
+					let metadata = self.network_interface.document_metadata();
+					let layer_local_transform = metadata.transform_to_viewport(child);
+					let undo_parent_transform = if parent == LayerNodeIdentifier::ROOT_PARENT {
+						// This is functionally the same as transform_to_viewport for the root, however to_node cannot run on the root in debug mode.
+						metadata.document_to_viewport.inverse()
+					} else {
+						metadata.transform_to_viewport(parent).inverse()
+					};
+					let transform = undo_parent_transform * layer_local_transform;
 					responses.add(GraphOperationMessage::TransformSet {
 						layer: child,
 						transform,
