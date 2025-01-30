@@ -22,6 +22,7 @@ use graphene_core::text::load_face;
 use graphene_std::renderer::Rect;
 use graphene_std::vector::misc::BooleanOperation;
 
+use glam::DMat2;
 use std::fmt;
 
 #[derive(Default)]
@@ -456,10 +457,13 @@ impl Fsm for SelectToolFsmState {
 					.selected_visible_and_unlocked_layers(&document.network_interface)
 					.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 					.map(|layer| document.metadata().transform_to_viewport(layer));
-				let transform = transform.unwrap_or(DAffine2::IDENTITY);
+
+				// Check if the matrix is not invertible
+				let mut transform = transform.unwrap_or(DAffine2::IDENTITY);
 				if transform.matrix2.determinant() == 0. {
-					return self;
+					transform.matrix2 += DMat2::IDENTITY * 1e-4; // TODO: Is this the cleanest way to handle this?
 				}
+
 				let bounds = document
 					.network_interface
 					.selected_nodes(&[])

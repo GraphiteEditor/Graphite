@@ -1,3 +1,5 @@
+use crate::vector::{VectorData, VectorDataTable};
+
 use graph_craft::wasm_application_io::WasmEditorApi;
 use graphene_core::text::TypesettingConfig;
 pub use graphene_core::text::{bounding_box, load_face, to_path, Font, FontCache};
@@ -13,7 +15,7 @@ fn text<'i: 'n>(
 	#[default(1.)] character_spacing: f64,
 	#[default(None)] max_width: Option<f64>,
 	#[default(None)] max_height: Option<f64>,
-) -> crate::vector::VectorData {
+) -> VectorDataTable {
 	let buzz_face = editor.font_cache.get(&font_name).map(|data| load_face(data));
 
 	let typesetting = TypesettingConfig {
@@ -23,5 +25,8 @@ fn text<'i: 'n>(
 		max_width,
 		max_height,
 	};
-	crate::vector::VectorData::from_subpaths(to_path(&text, buzz_face, typesetting), false)
+
+	let result = VectorData::from_subpaths(to_path(&text, buzz_face, typesetting), false);
+
+	VectorDataTable::new(result)
 }

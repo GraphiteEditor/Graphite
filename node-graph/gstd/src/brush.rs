@@ -3,18 +3,21 @@ use crate::raster::{blend_image_closure, BlendImageTupleNode, EmptyImageNode, Ex
 use graphene_core::raster::adjustments::blend_colors;
 use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::raster::brush_cache::BrushCache;
+use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
 use graphene_core::raster::BlendMode;
-use graphene_core::raster::{Alpha, BlendColorPairNode, Color, Image, ImageFrame, Pixel, Sample};
+use graphene_core::raster::{Alpha, BlendColorPairNode, Color, Image, Pixel, Sample};
 use graphene_core::transform::{Footprint, Transform, TransformMut};
 use graphene_core::value::{ClonedNode, CopiedNode, ValueNode};
 use graphene_core::vector::brush_stroke::{BrushStroke, BrushStyle};
-use graphene_core::vector::VectorData;
+use graphene_core::vector::VectorDataTable;
 use graphene_core::Node;
 
 use glam::{DAffine2, DVec2};
 
 #[node_macro::node(category("Debug"))]
-fn vector_points(_: (), vector_data: VectorData) -> Vec<DVec2> {
+fn vector_points(_: (), vector_data: VectorDataTable) -> Vec<DVec2> {
+	let vector_data = vector_data.one_item();
+
 	vector_data.point_domain.positions().to_vec()
 }
 
@@ -199,7 +202,9 @@ pub fn blend_with_mode(background: ImageFrame<Color>, foreground: ImageFrame<Col
 }
 
 #[node_macro::node(category(""))]
-fn brush(_footprint: Footprint, image: ImageFrame<Color>, bounds: ImageFrame<Color>, strokes: Vec<BrushStroke>, cache: BrushCache) -> ImageFrame<Color> {
+fn brush(_: Footprint, image: ImageFrameTable<Color>, bounds: ImageFrameTable<Color>, strokes: Vec<BrushStroke>, cache: BrushCache) -> ImageFrameTable<Color> {
+	let image = image.one_item().clone();
+
 	let stroke_bbox = strokes.iter().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
 	let image_bbox = Bbox::from_transform(image.transform).to_axis_aligned_bbox();
 	let bbox = if image_bbox.size().length() < 0.1 { stroke_bbox } else { stroke_bbox.union(&image_bbox) };
@@ -211,8 +216,8 @@ fn brush(_footprint: Footprint, image: ImageFrame<Color>, bounds: ImageFrame<Col
 
 	let mut background_bounds = bbox.to_transform();
 
-	if bounds.transform != DAffine2::ZERO {
-		background_bounds = bounds.transform;
+	if bounds.transform() != DAffine2::ZERO {
+		background_bounds = bounds.transform();
 	}
 
 	let mut actual_image = ExtendImageToBoundsNode::new(ClonedNode::new(background_bounds)).eval(brush_plan.background);
@@ -236,8 +241,7 @@ fn brush(_footprint: Footprint, image: ImageFrame<Color>, bounds: ImageFrame<Col
 			bbox.start = bbox.start.floor();
 			bbox.end = bbox.end.floor();
 			let stroke_size = bbox.size() + DVec2::splat(stroke.style.diameter);
-			// For numerical stability we want to place the first blit point at a stable, integer offset
-			// in layer space.
+			// For numerical stability we want to place the first blit point at a stable, integer offset in layer space.
 			let snap_offset = positions[0].floor() - positions[0];
 			let stroke_origin_in_layer = bbox.start - snap_offset - DVec2::splat(stroke.style.diameter / 2.);
 			let stroke_to_layer = DAffine2::from_translation(stroke_origin_in_layer) * DAffine2::from_scale(stroke_size);
@@ -250,6 +254,7 @@ fn brush(_footprint: Footprint, image: ImageFrame<Color>, bounds: ImageFrame<Col
 			} else {
 				EmptyImageNode::new(CopiedNode::new(stroke_to_layer), CopiedNode::new(Color::TRANSPARENT)).eval(())
 			};
+
 			blit_node.eval(blit_target)
 		};
 
@@ -267,7 +272,7 @@ fn brush(_footprint: Footprint, image: ImageFrame<Color>, bounds: ImageFrame<Col
 		let opaque_image = ImageFrame {
 			image: Image::new(bbox.size().x as u32, bbox.size().y as u32, Color::WHITE),
 			transform: background_bounds,
-			..Default::default()
+			alpha_blending: Default::default(),
 		};
 		let mut erase_restore_mask = opaque_image;
 
@@ -301,7 +306,8 @@ fn brush(_footprint: Footprint, image: ImageFrame<Color>, bounds: ImageFrame<Col
 		let blend_executor = BlendImageTupleNode::new(ValueNode::new(blend_params));
 		actual_image = blend_executor.eval((actual_image, erase_restore_mask));
 	}
-	actual_image
+
+	ImageFrameTable::new(actual_image)
 }
 
 #[cfg(test)]

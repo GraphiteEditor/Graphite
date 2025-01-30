@@ -30,7 +30,7 @@ impl FrontendGraphDataType {
 			| TaggedValue::F64Array4(_)
 			| TaggedValue::VecF64(_)
 			| TaggedValue::VecDVec2(_) => Self::Number,
-			TaggedValue::GraphicGroup(_) | TaggedValue::GraphicElement(_) => Self::Group,
+			TaggedValue::GraphicGroup(_) | TaggedValue::GraphicElement(_) => Self::Group, // TODO: Is GraphicElement supposed to be included here?
 			TaggedValue::ArtboardGroup(_) => Self::Artboard,
 			_ => Self::General,
 		}
