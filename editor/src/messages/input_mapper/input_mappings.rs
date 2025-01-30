@@ -93,7 +93,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Minus); action_dispatch=TransformLayerMessage::TypeNegate),
 		entry!(KeyDown(Comma); action_dispatch=TransformLayerMessage::TypeDecimalPoint),
 		entry!(KeyDown(Period); action_dispatch=TransformLayerMessage::TypeDecimalPoint),
-		entry!(PointerMove; refresh_keys=[Control, Shift], action_dispatch=TransformLayerMessage::PointerMove { slow_key: Shift, snap_key: Control }),
+		entry!(PointerMove; refresh_keys=[Control, Shift], action_dispatch=TransformLayerMessage::PointerMove { slow_key: Shift, increments_key: Control }),
 		//
 		// SelectToolMessage
 		entry!(PointerMove; refresh_keys=[Control, Alt, Shift], action_dispatch=SelectToolMessage::PointerMove(SelectToolPointerKeys { axis_align: Shift, snap_angle: Control, center: Alt, duplicate: Alt })),
