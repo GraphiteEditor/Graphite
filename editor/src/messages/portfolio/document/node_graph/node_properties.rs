@@ -11,8 +11,9 @@ use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, No
 use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use graph_craft::Type;
 use graphene_core::raster::curve::Curve;
+use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::{
-	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
+	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
 	SelectiveColorChoice,
 };
 use graphene_core::text::Font;
@@ -22,8 +23,8 @@ use graphene_std::application_io::TextureFrame;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops};
-use graphene_std::vector::VectorData;
-use graphene_std::{GraphicGroup, Raster};
+use graphene_std::vector::VectorDataTable;
+use graphene_std::{GraphicGroupTable, RasterFrame};
 
 use glam::{DAffine2, DVec2, IVec2, UVec2};
 
@@ -152,11 +153,11 @@ pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, numbe
 						}
 						Some(x) if x == TypeId::of::<Curve>() => curves_widget(document_node, node_id, index, name, true),
 						Some(x) if x == TypeId::of::<GradientStops>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(false), true),
-						Some(x) if x == TypeId::of::<VectorData>() => vector_widget(document_node, node_id, index, name, true).into(),
-						Some(x) if x == TypeId::of::<Raster>() || x == TypeId::of::<ImageFrame<Color>>() || x == TypeId::of::<TextureFrame>() => {
+						Some(x) if x == TypeId::of::<VectorDataTable>() => vector_widget(document_node, node_id, index, name, true).into(),
+						Some(x) if x == TypeId::of::<RasterFrame>() || x == TypeId::of::<ImageFrameTable<Color>>() || x == TypeId::of::<TextureFrame>() => {
 							raster_widget(document_node, node_id, index, name, true).into()
 						}
-						Some(x) if x == TypeId::of::<GraphicGroup>() => group_widget(document_node, node_id, index, name, true).into(),
+						Some(x) if x == TypeId::of::<GraphicGroupTable>() => group_widget(document_node, node_id, index, name, true).into(),
 						Some(x) if x == TypeId::of::<Footprint>() => {
 							let widgets = footprint_widget(document_node, node_id, index);
 							let (last, rest) = widgets.split_last().expect("Footprint widget should return multiple rows");

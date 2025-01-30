@@ -3,7 +3,8 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Flo
 use crate::messages::prelude::*;
 use bezier_rs::Subpath;
 use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
-use graphene_core::raster::{BlendMode, ImageFrame};
+use graphene_core::raster::image::ImageFrame;
+use graphene_core::raster::BlendMode;
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::style::Gradient;
 use graphene_core::vector::PointId;
@@ -12,7 +13,7 @@ use graphene_core::Color;
 use glam::DVec2;
 use std::collections::VecDeque;
 
-/// Create a new vector layer from a vector of [`bezier_rs::Subpath`].
+/// Create a new vector layer.
 pub fn new_vector_layer(subpaths: Vec<Subpath<PointId>>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
 	let insert_index = 0;
 	responses.add(GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index });
@@ -21,7 +22,7 @@ pub fn new_vector_layer(subpaths: Vec<Subpath<PointId>>, id: NodeId, parent: Lay
 	LayerNodeIdentifier::new_unchecked(id)
 }
 
-/// Create a new bitmap layer from an [`graphene_core::raster::ImageFrame<Color>`]
+/// Create a new bitmap layer.
 pub fn new_image_layer(image_frame: ImageFrame<Color>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
 	let insert_index = 0;
 	responses.add(GraphOperationMessage::NewBitmapLayer {
@@ -33,7 +34,7 @@ pub fn new_image_layer(image_frame: ImageFrame<Color>, id: NodeId, parent: Layer
 	LayerNodeIdentifier::new_unchecked(id)
 }
 
-/// Create a new group layer from an svg
+/// Create a new group layer from an SVG string.
 pub fn new_svg_layer(svg: String, transform: glam::DAffine2, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
 	let insert_index = 0;
 	responses.add(GraphOperationMessage::NewSvg {

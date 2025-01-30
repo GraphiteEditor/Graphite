@@ -358,7 +358,6 @@ impl PenToolData {
 				},
 			});
 		}
-		responses.add(DocumentMessage::EndTransaction);
 		if !close_subpath {
 			self.add_point(LastPoint {
 				id: end,
@@ -367,6 +366,7 @@ impl PenToolData {
 				handle_start: next_handle_start,
 			});
 		}
+		responses.add(DocumentMessage::EndTransaction);
 		Some(if close_subpath { PenToolFsmState::Ready } else { PenToolFsmState::PlacingAnchor })
 	}
 	fn drag_handle(&mut self, snap_data: SnapData, transform: DAffine2, mouse: DVec2, responses: &mut VecDeque<Message>, layer: Option<LayerNodeIdentifier>) -> Option<PenToolFsmState> {
@@ -1038,10 +1038,14 @@ impl Fsm for PenToolFsmState {
 			}
 			(_, PenToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
+				tool_data.handle_end = None;
+				tool_data.latest_points.clear();
+				tool_data.point_index = 0;
+				tool_data.snap_manager.cleanup(responses);
 
 				responses.add(OverlaysMessage::Draw);
 
-				self
+				PenToolFsmState::Ready
 			}
 			(PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor, PenToolMessage::Undo) => {
 				if tool_data.point_index > 0 {

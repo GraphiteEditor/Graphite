@@ -1,13 +1,14 @@
 use crate::transform::Footprint;
-use crate::vector::VectorData;
+use crate::vector::VectorDataTable;
+
 use glam::{DAffine2, DVec2};
 
 #[node_macro::node(category("Debug"))]
 async fn log_to_console<T: core::fmt::Debug, F: Send + 'n>(
 	#[implementations((), (), (), (), (), (), (), (), Footprint)] footprint: F,
 	#[implementations(
-		() -> String, () -> bool, () -> f64, () -> u32, () -> u64, () -> DVec2, () -> VectorData, () -> DAffine2,
-		Footprint -> String, Footprint -> bool, Footprint -> f64, Footprint -> u32, Footprint -> u64, Footprint -> DVec2, Footprint -> VectorData, Footprint -> DAffine2,
+		() -> String, () -> bool, () -> f64, () -> u32, () -> u64, () -> DVec2, () -> VectorDataTable, () -> DAffine2,
+		Footprint -> String, Footprint -> bool, Footprint -> f64, Footprint -> u32, Footprint -> u64, Footprint -> DVec2, Footprint -> VectorDataTable, Footprint -> DAffine2,
 	)]
 	value: impl Node<F, Output = T>,
 ) -> T {
@@ -37,14 +38,14 @@ async fn switch<T, F: Send + 'n>(
 	condition: bool,
 	#[expose]
 	#[implementations(
-		() -> String, () -> bool, () -> f64, () -> u32, () -> u64, () -> DVec2, () -> VectorData, () -> DAffine2,
-		Footprint -> String, Footprint -> bool, Footprint -> f64, Footprint -> u32, Footprint -> u64, Footprint -> DVec2, Footprint -> VectorData, Footprint -> DAffine2
+		() -> String, () -> bool, () -> f64, () -> u32, () -> u64, () -> DVec2, () -> VectorDataTable, () -> DAffine2,
+		Footprint -> String, Footprint -> bool, Footprint -> f64, Footprint -> u32, Footprint -> u64, Footprint -> DVec2, Footprint -> VectorDataTable, Footprint -> DAffine2
 	)]
 	if_true: impl Node<F, Output = T>,
 	#[expose]
 	#[implementations(
-		() -> String, () -> bool, () -> f64, () -> u32, () -> u64, () -> DVec2, () -> VectorData, () -> DAffine2,
-		Footprint -> String, Footprint -> bool, Footprint -> f64, Footprint -> u32, Footprint -> u64, Footprint -> DVec2, Footprint -> VectorData, Footprint -> DAffine2
+		() -> String, () -> bool, () -> f64, () -> u32, () -> u64, () -> DVec2, () -> VectorDataTable, () -> DAffine2,
+		Footprint -> String, Footprint -> bool, Footprint -> f64, Footprint -> u32, Footprint -> u64, Footprint -> DVec2, Footprint -> VectorDataTable, Footprint -> DAffine2
 	)]
 	if_false: impl Node<F, Output = T>,
 ) -> T {
