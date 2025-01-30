@@ -29,7 +29,7 @@ impl From<std::io::Error> for Error {
 }
 
 #[node_macro::node(category("Debug: Raster"))]
-fn sample_image(ctx: impl ExtractFootprint + Clone, image_frame: ImageFrameTable<Color>) -> ImageFrameTable<Color> {
+fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: ImageFrameTable<Color>) -> ImageFrameTable<Color> {
 	let image_frame = image_frame.one_item();
 
 	// Resize the image using the image crate
@@ -248,17 +248,17 @@ fn mask_image<
 	image
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct BlendImageTupleNode<P, Fg, MapFn> {
-	map_fn: MapFn,
-	_p: PhantomData<P>,
-	_fg: PhantomData<Fg>,
-}
+// #[derive(Debug, Clone, Copy)]
+// pub struct BlendImageTupleNode<P, Fg, MapFn> {
+// 	map_fn: MapFn,
+// 	_p: PhantomData<P>,
+// 	_fg: PhantomData<Fg>,
+// }
 
-#[node_macro::old_node_fn(BlendImageTupleNode<_P, _Fg>)]
-fn blend_image_tuple<_P: Alpha + Pixel + Debug, MapFn, _Fg: Sample<Pixel = _P> + Transform>(images: (ImageFrame<_P>, _Fg), map_fn: &'input MapFn) -> ImageFrame<_P>
+#[node_macro::node(skip_impl)]
+async fn blend_image_tuple<_P: Alpha + Pixel + Debug + Send, MapFn, _Fg: Sample<Pixel = _P> + Transform + Clone + Send + 'n>(images: (ImageFrame<_P>, _Fg), map_fn: &'n MapFn) -> ImageFrame<_P>
 where
-	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input + Clone,
+	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'n + Clone,
 {
 	let (background, foreground) = images;
 
@@ -628,7 +628,7 @@ fn noise_pattern(
 }
 
 #[node_macro::node(category("Raster: Generator"))]
-fn mandelbrot(ctx: impl ExtractFootprint) -> ImageFrameTable<Color> {
+fn mandelbrot(ctx: impl ExtractFootprint + Send) -> ImageFrameTable<Color> {
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 

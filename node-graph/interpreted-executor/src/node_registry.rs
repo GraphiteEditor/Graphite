@@ -1,4 +1,4 @@
-use dyn_any::StaticType;
+use dyn_any::{DynFuture, StaticType};
 use graph_craft::document::value::RenderOutput;
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_core::fn_type;
@@ -32,6 +32,7 @@ macro_rules! construct_node {
 		let node = <$path>::new($(
 				{
 					let node = graphene_std::any::downcast_node::<$arg, $type>(args.pop().expect("Not enough arguments provided to construct node"));
+					// let node = graphene_std::any::FutureWrapperNode::new(node);
 					let value = node.eval(None).await;
 					graphene_core::value::ClonedNode::new(value)
 				}
@@ -51,7 +52,6 @@ macro_rules! register_node {
 			|args| {
 				Box::pin(async move {
 				let node = construct_node!(args, $path, [$($arg => $type),*]).await;
-				let node = graphene_std::any::FutureWrapperNode::new(node);
 				let any: DynAnyNode<$input, _, _> = graphene_std::any::DynAnyNode::new(node);
 				Box::new(any) as TypeErasedBox
 				})
@@ -105,11 +105,11 @@ macro_rules! async_node {
 // TODO: turn into hashmap
 fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> {
 	let node_types: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
-		(
-			ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode"),
-			|_| Box::pin(async move { FutureWrapperNode::new(IdentityNode::new()).into_type_erased() }),
-			NodeIOTypes::new(generic!(I), generic!(I), vec![]),
-		),
+		// (
+		// 	ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode"),
+		// 	|_| Box::pin(async move { FutureWrapperNode::new(IdentityNode::new()).into_type_erased() }),
+		// 	NodeIOTypes::new(generic!(I), generic!(I), vec![]),
+		// ),
 		// async_node!(graphene_core::ops::IntoNode<ImageFrameTable<SRGBA8>>, input: ImageFrameTable<Color>, params: []),
 		// async_node!(graphene_core::ops::IntoNode<ImageFrameTable<Color>>, input: ImageFrameTable<SRGBA8>, params: []),
 		async_node!(graphene_core::ops::IntoNode<GraphicGroupTable>, input: ImageFrameTable<Color>, params: []),
@@ -128,7 +128,26 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => GraphicElement]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Artboard]),
 		#[cfg(feature = "gpu")]
-		register_node!(wgpu_executor::CreateGpuSurfaceNode<_>, input: Context, params: [&WasmEditorApi]),
+		(
+			ProtoNodeIdentifier::new(stringify!(wgpu_executor::CreateGpuSurfaceNode<_>)),
+			|args| {
+				Box::pin(async move {
+					let editor_api: DowncastBothNode<Context, &WasmEditorApi> = DowncastBothNode::new(args[1].clone());
+					let node = <wgpu_executor::CreateGpuSurfaceNode<_>>::new(editor_api);
+					// let node = FutureWrapperNode::new(node);
+					let any: DynAnyNode<Context, _, _> = graphene_std::any::DynAnyNode::new(node);
+					Box::new(any) as TypeErasedBox
+				})
+			},
+			{
+				let node = <wgpu_executor::CreateGpuSurfaceNode<_>>::new(graphene_std::any::PanicNode::<Context, DynFuture<'static, &WasmEditorApi>>::new());
+				let params = vec![fn_type!(Context, DynFuture<'static, &WasmEditorApi>)];
+				let mut node_io = <wgpu_executor::CreateGpuSurfaceNode<_> as NodeIO<'_, Context>>::to_async_node_io(&node, params);
+				node_io.call_argument = concrete!(<Context as StaticType>::Static);
+				node_io
+			},
+		),
+		// register_node!(wgpu_executor::CreateGpuSurfaceNode<_>, input: Context, params: [&WasmEditorApi]),
 		#[cfg(feature = "gpu")]
 		(
 			ProtoNodeIdentifier::new("graphene_std::executor::MapGpuSingleImageNode"),
@@ -213,27 +232,27 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		// 	NodeIOTypes::new(concrete!(ImageFrameTable<Luma>), concrete!(ImageFrameTable<Luma>), vec![fn_type!(graphene_core::raster::curve::Curve)]),
 		// ),
 		// TODO: Use channel split and merge for this instead of using LuminanceMut for the whole color.
-		(
-			ProtoNodeIdentifier::new("graphene_core::raster::CurvesNode"),
-			|args| {
-				use graphene_core::raster::{curve::Curve, GenerateCurvesNode};
-				let curve: DowncastBothNode<(), Curve> = DowncastBothNode::new(args[0].clone());
-				Box::pin(async move {
-					let curve = ClonedNode::new(curve.eval(()).await);
+		// (
+		// 	ProtoNodeIdentifier::new("graphene_core::raster::CurvesNode"),
+		// 	|args| {
+		// 		use graphene_core::raster::{curve::Curve, GenerateCurvesNode};
+		// 		let curve: DowncastBothNode<(), Curve> = DowncastBothNode::new(args[0].clone());
+		// 		Box::pin(async move {
+		// 			let curve = ValueNode::new(ClonedNode::new(curve.eval(()).await));
 
-					let generate_curves_node = GenerateCurvesNode::new(curve, ClonedNode::new(0_f32));
-					let map_image_frame_node = graphene_std::raster::MapImageNode::new(ValueNode::new(generate_curves_node.eval(())));
-					let map_image_frame_node = FutureWrapperNode::new(map_image_frame_node);
-					let any: DynAnyNode<ImageFrameTable<Color>, _, _> = graphene_std::any::DynAnyNode::new(map_image_frame_node);
-					any.into_type_erased()
-				})
-			},
-			NodeIOTypes::new(
-				concrete!(ImageFrameTable<Color>),
-				concrete!(ImageFrameTable<Color>),
-				vec![fn_type!(graphene_core::raster::curve::Curve)],
-			),
-		),
+		// 			let generate_curves_node = GenerateCurvesNode::new(FutureWrapperNode::new(curve), FutureWrapperNode::new(ClonedNode::new(0_f32)));
+		// 			let map_image_frame_node = graphene_std::raster::MapImageNode::new(FutureWrapperNode::new(ValueNode::new(generate_curves_node.eval(()))));
+		// 			let map_image_frame_node = FutureWrapperNode::new(map_image_frame_node);
+		// 			let any: DynAnyNode<ImageFrameTable<Color>, _, _> = graphene_std::any::DynAnyNode::new(map_image_frame_node);
+		// 			any.into_type_erased()
+		// 		})
+		// 	},
+		// 	NodeIOTypes::new(
+		// 		concrete!(ImageFrameTable<Color>),
+		// 		concrete!(ImageFrameTable<Color>),
+		// 		vec![fn_type!(graphene_core::raster::curve::Curve)],
+		// 	),
+		// ),
 		// (
 		// 	ProtoNodeIdentifier::new("graphene_std::raster::ImaginateNode"),
 		// 	|args: Vec<graph_craft::proto::SharedNodeContainer>| {
