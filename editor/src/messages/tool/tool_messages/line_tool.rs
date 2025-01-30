@@ -146,6 +146,7 @@ enum LineToolFsmState {
 struct LineToolData {
 	drag_start: DVec2,
 	drag_current: DVec2,
+	angle: f64,
 	weight: f64,
 	layer: Option<LayerNodeIdentifier>,
 	snap_manager: SnapManager,
@@ -199,6 +200,7 @@ impl Fsm for LineToolFsmState {
 				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
 
 				tool_data.layer = Some(layer);
+				tool_data.angle = 0.;
 				tool_data.weight = tool_options.line_weight;
 
 				LineToolFsmState::Drawing
@@ -293,6 +295,25 @@ impl Fsm for LineToolFsmState {
 fn generate_line(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: bool, snap_angle: bool, center: bool, responses: &mut VecDeque<Message>) {
 	let document_to_viewport = snap_data.document.metadata().document_to_viewport;
 	let mut document_points = [tool_data.drag_start, document_to_viewport.inverse().transform_point2(tool_data.drag_current)];
+
+	let mut angle = -(document_points[1] - document_points[0]).angle_to(DVec2::X);
+	let mut line_length = (document_points[1] - document_points[0]).length();
+
+	if lock_angle {
+		angle = tool_data.angle;
+	} else if snap_angle {
+		let snap_resolution = LINE_ROTATE_SNAP_ANGLE.to_radians();
+		angle = (angle / snap_resolution).round() * snap_resolution;
+	}
+
+	tool_data.angle = angle;
+
+	if lock_angle {
+		let angle_vec = DVec2::new(angle.cos(), angle.sin());
+		line_length = (document_points[1] - document_points[0]).dot(angle_vec);
+	}
+
+	document_points[1] = document_points[0] + line_length * DVec2::new(angle.cos(), angle.sin());
 
 	let constrained = snap_angle || lock_angle;
 	let snap = &mut tool_data.snap_manager;
