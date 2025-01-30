@@ -457,10 +457,13 @@ impl Fsm for SelectToolFsmState {
 					.selected_visible_and_unlocked_layers(&document.network_interface)
 					.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 					.map(|layer| document.metadata().transform_to_viewport(layer));
+
+				// Check if the matrix is not invertible
 				let mut transform = transform.unwrap_or(DAffine2::IDENTITY);
 				if transform.matrix2.determinant() == 0. {
-					transform.matrix2 += DMat2::IDENTITY * 1e-4;
+					transform.matrix2 += DMat2::IDENTITY * 1e-4; // TODO: Is this the cleanest way to handle this?
 				}
+
 				let bounds = document
 					.network_interface
 					.selected_nodes(&[])

@@ -1,4 +1,6 @@
-use crate::consts::{BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, MIN_LENGTH_FOR_CORNERS_VISIBILITY, MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_HANDLE, SELECTION_DRAG_ANGLE};
+use crate::consts::{
+	BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, MIN_LENGTH_FOR_CORNERS_VISIBILITY, MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, SELECTION_DRAG_ANGLE,
+};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::transformation::OriginalTransforms;
@@ -30,21 +32,15 @@ pub struct SelectedEdges {
 	aspect_ratio: f64,
 }
 
-#[derive(Clone, Debug, Default)]
-enum Orientation {
-	Horizontal,
-	Vertical,
-	#[default]
-	None,
-}
-
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 enum HandleDisplayCategory {
 	#[default]
-	One,
-	Two(Orientation),
-	Three(Orientation),
-	Four,
+	Full,
+	ReducedLandscape,
+	ReducedPortrait,
+	ReducedBoth,
+	Narrow,
+	Flat,
 }
 
 impl SelectedEdges {
@@ -318,74 +314,64 @@ impl BoundingBoxManager {
 	/// Update the position of the bounding box and transform handles
 	pub fn render_overlays(&mut self, overlay_context: &mut OverlayContext) {
 		let quad = self.transform * Quad::from_box(self.bounds);
+		let category = self.overlay_display_category(quad);
+
+		let horizontal_edges = [quad.top_right().midpoint(quad.bottom_right()), quad.bottom_left().midpoint(quad.top_left())];
+		let vertical_edges = [quad.top_left().midpoint(quad.top_right()), quad.bottom_right().midpoint(quad.bottom_left())];
+
+		// Draw the bounding box rectangle
 		overlay_context.quad(quad, None);
-		let corners = quad.0;
-		let vertical_edges = [corners[0].midpoint(corners[1]), corners[2].midpoint(corners[3])];
-		let horizontal_edges = [corners[1].midpoint(corners[2]), corners[3].midpoint(corners[0])];
 
 		let mut draw_handle = |point: DVec2| overlay_context.square(point, Some(6.), None, None);
-		let category = self.overlay_display_category(None);
-		if matches!(
-			category,
-			HandleDisplayCategory::One | HandleDisplayCategory::Two(Orientation::Horizontal) | HandleDisplayCategory::Three(_)
-		) {
+
+		// Draw the horizontal midpoint drag handles
+		if matches!(category, HandleDisplayCategory::Full | HandleDisplayCategory::Narrow | HandleDisplayCategory::ReducedLandscape) {
 			horizontal_edges.map(&mut draw_handle);
 		}
-		if matches!(
-			category,
-			HandleDisplayCategory::One | HandleDisplayCategory::Two(Orientation::Vertical) | HandleDisplayCategory::Three(_)
-		) {
+
+		// Draw the vertical midpoint drag handles
+		if matches!(category, HandleDisplayCategory::Full | HandleDisplayCategory::Narrow | HandleDisplayCategory::ReducedPortrait) {
 			vertical_edges.map(&mut draw_handle);
 		}
-		if matches!(category, HandleDisplayCategory::One | HandleDisplayCategory::Two(_)) {
-			corners.map(&mut draw_handle);
+
+		// Draw the corner drag handles
+		if matches!(
+			category,
+			HandleDisplayCategory::Full | HandleDisplayCategory::ReducedBoth | HandleDisplayCategory::ReducedLandscape | HandleDisplayCategory::ReducedPortrait
+		) {
+			quad.0.map(&mut draw_handle);
 		}
-		if matches!(category, HandleDisplayCategory::Four) {
+
+		// Draw the flat line endpoint drag handles
+		if category == HandleDisplayCategory::Flat {
 			draw_handle(self.transform.transform_point2(self.bounds[0]));
 			draw_handle(self.transform.transform_point2(self.bounds[1]));
 		}
 	}
 
-	fn overlay_display_category(&self, cursor: Option<DVec2>) -> HandleDisplayCategory {
-		let quad = self.transform * Quad::from_box(self.bounds);
-		let corners = quad.0;
-
-		let vertical_length = (corners[0] - corners[1]).length_squared();
-		let horizontal_length = (corners[3] - corners[0]).length_squared();
-		let vertical_edge_visible = vertical_length > MIN_LENGTH_FOR_MIDPOINT_VISIBILITY.powi(2);
-		let horizontal_edge_visible = horizontal_length > MIN_LENGTH_FOR_MIDPOINT_VISIBILITY.powi(2);
-		let corners_visible = vertical_length >= MIN_LENGTH_FOR_CORNERS_VISIBILITY.powi(2) && horizontal_length >= MIN_LENGTH_FOR_CORNERS_VISIBILITY.powi(2);
-		let narrow = (self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any();
-
-		if !narrow {
-			if corners_visible {
-				match (vertical_edge_visible, horizontal_edge_visible) {
-					(true, true) => HandleDisplayCategory::One,
-					(true, false) => HandleDisplayCategory::Two(Orientation::Vertical),
-					(false, true) => HandleDisplayCategory::Two(Orientation::Horizontal),
-					(false, false) => HandleDisplayCategory::Two(Orientation::None),
-				}
-			} else {
-				use std::f64::INFINITY;
-				cursor.map_or(HandleDisplayCategory::Three(Orientation::None), |cursor| {
-					let cursor = self.transform.inverse().transform_point2(cursor);
-					let min_vertical_distance_square = [corners[0].midpoint(corners[1]), corners[2].midpoint(corners[3])]
-						.iter()
-						.fold(INFINITY, |acc, x| acc.min(x.distance_squared(cursor)));
-					let min_horizontal_distance_square = [corners[1].midpoint(corners[2]), corners[3].midpoint(corners[0])]
-						.iter()
-						.fold(INFINITY, |acc, x| acc.min(x.distance_squared(cursor)));
-					let orientation = if min_vertical_distance_square > min_horizontal_distance_square {
-						Orientation::Horizontal
-					} else {
-						Orientation::Vertical
-					};
-					HandleDisplayCategory::Three(orientation)
-				})
-			}
-		} else {
-			HandleDisplayCategory::Four
+	fn overlay_display_category(&self, quad: Quad) -> HandleDisplayCategory {
+		// Check if the area is essentially zero because either the width or height is smaller than an epsilon
+		if (self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any() {
+			return HandleDisplayCategory::Flat;
 		}
+
+		let vertical_length = (quad.top_left() - quad.top_right()).length_squared();
+		let horizontal_length = (quad.bottom_left() - quad.top_left()).length_squared();
+		let corners_visible = vertical_length >= MIN_LENGTH_FOR_CORNERS_VISIBILITY.powi(2) && horizontal_length >= MIN_LENGTH_FOR_CORNERS_VISIBILITY.powi(2);
+
+		if corners_visible {
+			let vertical_edge_visible = vertical_length > MIN_LENGTH_FOR_MIDPOINT_VISIBILITY.powi(2);
+			let horizontal_edge_visible = horizontal_length > MIN_LENGTH_FOR_MIDPOINT_VISIBILITY.powi(2);
+
+			return match (vertical_edge_visible, horizontal_edge_visible) {
+				(true, true) => HandleDisplayCategory::Full,
+				(true, false) => HandleDisplayCategory::ReducedPortrait,
+				(false, true) => HandleDisplayCategory::ReducedLandscape,
+				(false, false) => HandleDisplayCategory::ReducedBoth,
+			};
+		}
+
+		HandleDisplayCategory::Narrow
 	}
 
 	/// Compute the threshold in viewport space. This only works with affine transforms as it assumes lines remain parallel.
@@ -394,20 +380,27 @@ impl BoundingBoxManager {
 
 		let viewport_x = self.transform.transform_vector2(DVec2::X).normalize_or_zero() * scalar;
 		let viewport_y = self.transform.transform_vector2(DVec2::Y).normalize_or_zero() * scalar;
+
 		let threshold_x = inverse.transform_vector2(viewport_x).length();
 		let threshold_y = inverse.transform_vector2(viewport_y).length();
+
 		[threshold_x, threshold_y]
 	}
 
-	/// Check if the user has selected the edge for dragging (returns which edge in order top, bottom, left, right)
+	/// Check if the user has selected the edge for dragging.
+	///
+	/// Returns which edge in the order:
+	///
+	/// `top, bottom, left, right`
 	pub fn check_selected_edges(&self, cursor: DVec2) -> Option<(bool, bool, bool, bool)> {
 		let cursor = self.transform.inverse().transform_point2(cursor);
 
 		let min = self.bounds[0].min(self.bounds[1]);
 		let max = self.bounds[0].max(self.bounds[1]);
+
 		let [threshold_x, threshold_y] = self.compute_viewport_threshold(BOUNDS_SELECT_THRESHOLD);
 		let [corner_min_x, corner_min_y] = self.compute_viewport_threshold(MIN_LENGTH_FOR_CORNERS_VISIBILITY);
-		let [edge_min_x, edge_min_y] = self.compute_viewport_threshold(MIN_LENGTH_FOR_RESIZE_HANDLE);
+		let [edge_min_x, edge_min_y] = self.compute_viewport_threshold(MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR);
 
 		if min.x - cursor.x < threshold_x && min.y - cursor.y < threshold_y && cursor.x - max.x < threshold_x && cursor.y - max.y < threshold_y {
 			let mut top = (cursor.y - min.y).abs() < threshold_y;
@@ -423,7 +416,7 @@ impl BoundingBoxManager {
 					return None;
 				}
 
-				// Prioritise single axis transformations on very small bounds
+				// Prioritize single axis transformations on very small bounds
 				if height < corner_min_y && (left || right) {
 					top = false;
 					bottom = false;
@@ -451,6 +444,7 @@ impl BoundingBoxManager {
 
 		None
 	}
+
 	/// Check if the user is rotating with the bounds
 	pub fn check_rotate(&self, cursor: DVec2) -> bool {
 		let cursor = self.transform.inverse().transform_point2(cursor);
@@ -458,33 +452,22 @@ impl BoundingBoxManager {
 
 		let narrow = (self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any();
 		let within_square_bounds = |center: &DVec2| center.x - threshold_x < cursor.x && cursor.x < center.x + threshold_x && center.y - threshold_y < cursor.y && cursor.y < center.y + threshold_y;
-		if !narrow {
-			self.evaluate_transform_handle_positions().iter().any(within_square_bounds)
-		} else {
+		if narrow {
 			[self.bounds[0], self.bounds[1]].iter().any(within_square_bounds)
+		} else {
+			self.evaluate_transform_handle_positions().iter().any(within_square_bounds)
 		}
 	}
 
 	/// Gets the required mouse cursor to show resizing bounds or optionally rotation
 	pub fn get_cursor(&self, input: &InputPreprocessorMessageHandler, rotate: bool) -> MouseCursorIcon {
-		if let Some(directions) = self.check_selected_edges(input.mouse.position) {
-			let grab_cursor = match directions {
+		if let Some((top, bottom, left, right)) = self.check_selected_edges(input.mouse.position) {
+			match (top, bottom, left, right) {
 				(true, _, false, false) | (_, true, false, false) => MouseCursorIcon::NSResize,
 				(false, false, true, _) | (false, false, _, true) => MouseCursorIcon::EWResize,
 				(true, _, true, _) | (_, true, _, true) => MouseCursorIcon::NWSEResize,
 				(true, _, _, true) | (_, true, true, _) => MouseCursorIcon::NESWResize,
 				_ => MouseCursorIcon::Default,
-			};
-			match grab_cursor {
-				MouseCursorIcon::NWSEResize | MouseCursorIcon::NESWResize => match self.overlay_display_category(Some(input.mouse.position)) {
-					HandleDisplayCategory::Three(orientation) => match orientation {
-						Orientation::Horizontal => MouseCursorIcon::EWResize,
-						Orientation::Vertical => MouseCursorIcon::NSResize,
-						_ => unreachable!(),
-					},
-					_ => grab_cursor,
-				},
-				other => other,
 			}
 		} else if rotate && self.check_rotate(input.mouse.position) {
 			MouseCursorIcon::Rotate
