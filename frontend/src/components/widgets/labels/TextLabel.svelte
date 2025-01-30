@@ -13,6 +13,23 @@
 	export let multiline = false;
 	export let tooltip: string | undefined = undefined;
 
+	function toggleCheckbox(e: Event) {
+		let target = e.target as HTMLElement;
+
+		let previousSib = target.previousSibling;
+
+		while (previousSib && previousSib.nodeType !== 1) {
+			previousSib = previousSib.previousSibling;
+		}
+		if (previousSib && previousSib instanceof Element) {
+			const input = previousSib.querySelector("input");
+
+			if (input && input?.type == "checkbox" && input instanceof HTMLInputElement) {
+				input.click();
+			}
+		}
+	}
+
 	$: extraClasses = Object.entries(classes)
 		.flatMap(([className, stateName]) => (stateName ? [className] : []))
 		.join(" ");
@@ -31,6 +48,7 @@
 	style:min-width={minWidth > 0 ? `${minWidth}px` : ""}
 	style={`${styleName} ${extraStyles}`.trim() || undefined}
 	title={tooltip}
+	on:click={toggleCheckbox}
 >
 	<slot />
 </span>
