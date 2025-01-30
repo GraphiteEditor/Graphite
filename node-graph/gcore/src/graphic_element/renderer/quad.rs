@@ -1,16 +1,38 @@
 use glam::{DAffine2, DVec2};
 
 #[derive(Debug, Clone, Default, Copy)]
-/// A quad defined by four vertices.
+/// A quad defined by four vertices. Clockwise from the top left:
+///
+/// `top_left`, `top_right`, `bottom_right`, `bottom_left`.
 pub struct Quad(pub [DVec2; 4]);
 
 impl Quad {
-	/// Create a zero sized quad at the point
+	/// Get the top left corner of the quad.
+	pub fn top_left(&self) -> DVec2 {
+		self.0[0]
+	}
+
+	/// Get the top right corner of the quad.
+	pub fn top_right(&self) -> DVec2 {
+		self.0[1]
+	}
+
+	/// Get the bottom right corner of the quad.
+	pub fn bottom_right(&self) -> DVec2 {
+		self.0[2]
+	}
+
+	/// Get the bottom left corner of the quad.
+	pub fn bottom_left(&self) -> DVec2 {
+		self.0[3]
+	}
+
+	/// Create a zero-sized quad at the point.
 	pub fn from_point(point: DVec2) -> Self {
 		Self([point; 4])
 	}
 
-	/// Convert a box defined by two corner points to a quad.
+	/// Convert a box defined by two corner points to a quad. The points must be given as `minimum (top left)` then `maximum (bottom right)`.
 	pub fn from_box(bbox: [DVec2; 2]) -> Self {
 		let size = bbox[1] - bbox[0];
 		Self([bbox[0], bbox[0] + size * DVec2::X, bbox[1], bbox[0] + size * DVec2::Y])
@@ -49,8 +71,8 @@ impl Quad {
 		[a[0].min(b[0]), a[1].max(b[1])]
 	}
 
-	/// "Clip" bounds of 'a' to the limits of 'b'
-	pub fn constraint_bounds(a: [DVec2; 2], b: [DVec2; 2]) -> [DVec2; 2] {
+	/// "Clip" bounds of `a` to the limits of `b`.
+	pub fn clip(a: [DVec2; 2], b: [DVec2; 2]) -> [DVec2; 2] {
 		[
 			a[0].max(b[0]), // Constrain min corner
 			a[1].min(b[1]), // Constrain max corner
@@ -59,7 +81,7 @@ impl Quad {
 
 	/// Expand a quad by a certain amount on all sides.
 	///
-	/// Not currently very optimised
+	/// Not currently very optimized
 	pub fn inflate(&self, offset: f64) -> Quad {
 		let offset = |index_before, index, index_after| {
 			let [point_before, point, point_after]: [DVec2; 3] = [self.0[index_before], self.0[index], self.0[index_after]];

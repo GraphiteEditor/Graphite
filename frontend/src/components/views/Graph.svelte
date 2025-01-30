@@ -1500,8 +1500,10 @@
 	.box-selection {
 		position: absolute;
 		pointer-events: none;
-		background: rgba(var(--color-overlay-blue-rgb), 0.05);
-		border: 1px solid var(--color-overlay-blue);
 		z-index: 2;
+		// TODO: This will be removed after box selection, and all of graph rendering, is moved to the backend and this whole file
+		// is removed, but for now this color needs to stay in sync with `COLOR_OVERLAY_BLUE` set in consts.rs of the editor backend.
+		background: rgba(0, 168, 255, 0.05);
+		border: 1px solid #00a8ff;
 	}
 </style>

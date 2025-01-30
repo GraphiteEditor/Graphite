@@ -161,7 +161,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					let empty_image = ImageFrame {
 						image: Image::new(bounds.x, bounds.y, Color::BLACK),
 						transform,
-						..Default::default()
+						alpha_blending: Default::default(),
 					};
 					let empty_image = ImageFrameTable::new(empty_image);
 					let final_image = ClonedNode::new(empty_image).then(complete_node);

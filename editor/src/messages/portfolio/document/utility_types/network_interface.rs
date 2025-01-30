@@ -1296,7 +1296,7 @@ impl NodeNetworkInterface {
 						let clip_input = artboard.unwrap().inputs.get(5).unwrap();
 						if let NodeInput::Value { tagged_value, .. } = clip_input {
 							if tagged_value.to_primitive_string() == "true" {
-								return Some(Quad::constraint_bounds(
+								return Some(Quad::clip(
 									self.document_metadata.bounding_box_document(layer).unwrap_or_default(),
 									self.document_metadata.bounding_box_document(artboard_node_identifier).unwrap_or_default(),
 								));
