@@ -1,7 +1,7 @@
 use super::tool_prelude::*;
 use crate::consts::DEFAULT_STROKE_WIDTH;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
-use crate::messages::portfolio::document::{graph_operation::utility_types::TransformIn, overlays::utility_types::OverlayContext};
+use crate::messages::portfolio::document::{graph_operation::utility_types::TransformIn, overlays::utility_types::OverlayContext, utility_types::network_interface::InputConnector};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
@@ -225,12 +225,23 @@ impl Fsm for RectangleToolFsmState {
 				if let Some([start, end]) = shape_data.calculate_points(document, input, center, lock_ratio) {
 					if let Some(layer) = shape_data.layer {
 						// TODO: make the scale impact the rect node
+						let node_id = graph_modification_utils::get_rect_id(shape_data.layer.unwrap(), &document.network_interface).unwrap();
+						responses.add(NodeGraphMessage::SetInput {
+							input_connector: InputConnector::node(node_id, 1),
+							input: NodeInput::value(TaggedValue::F64((start.x - end.x).abs()), false),
+						});
+						responses.add(NodeGraphMessage::SetInput {
+							input_connector: InputConnector::node(node_id, 2),
+							input: NodeInput::value(TaggedValue::F64((start.y - end.y).abs()), false),
+						});
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
-							transform: DAffine2::from_scale_angle_translation((end - start).abs(), 0., (start + end) / 2.),
+							transform: DAffine2::from_translation((start + end) / 2.),
 							transform_in: TransformIn::Viewport,
 							skip_rerender: false,
 						});
+
+						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				}
 
