@@ -487,8 +487,12 @@ impl Fsm for SelectToolFsmState {
 					tool_data.bounding_box_manager.take();
 				}
 
+				let angle = bounds
+					.map(|bounds| transform * Quad::from_box(bounds))
+					.map_or(0., |quad| (quad.top_left() - quad.top_right()).to_angle());
+
 				// Update pivot
-				tool_data.pivot.update_pivot(document, &mut overlay_context);
+				tool_data.pivot.update_pivot(document, &mut overlay_context, angle);
 
 				// Check if the tool is in box selection mode
 				if matches!(self, Self::DrawingBox) {

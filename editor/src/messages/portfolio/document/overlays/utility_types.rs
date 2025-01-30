@@ -294,8 +294,9 @@ impl OverlayContext {
 		)
 	}
 
-	pub fn pivot(&mut self, position: DVec2) {
+	pub fn pivot(&mut self, position: DVec2, angle: f64) {
 		let (x, y) = (position.round() - DVec2::splat(0.5)).into();
+		let uv = DVec2::from_angle(angle);
 
 		self.start_dpi_aware_transform();
 
@@ -315,13 +316,13 @@ impl OverlayContext {
 		self.render_context.set_line_cap("round");
 
 		self.render_context.begin_path();
-		self.render_context.move_to(x - crosshair_radius, y);
-		self.render_context.line_to(x + crosshair_radius, y);
+		self.render_context.move_to(x + crosshair_radius * uv.x, y + crosshair_radius * uv.y);
+		self.render_context.line_to(x - crosshair_radius * uv.x, y - crosshair_radius * uv.y);
 		self.render_context.stroke();
 
 		self.render_context.begin_path();
-		self.render_context.move_to(x, y - crosshair_radius);
-		self.render_context.line_to(x, y + crosshair_radius);
+		self.render_context.move_to(x - crosshair_radius * uv.y, y + crosshair_radius * uv.x);
+		self.render_context.line_to(x + crosshair_radius * uv.y, y - crosshair_radius * uv.x);
 		self.render_context.stroke();
 
 		self.render_context.set_line_cap("butt");

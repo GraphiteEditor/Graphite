@@ -322,7 +322,11 @@ impl BoundingBoxManager {
 		// Draw the bounding box rectangle
 		overlay_context.quad(quad, None);
 
-		let mut draw_handle = |point: DVec2| overlay_context.square(point, Some(6.), None, None);
+		let mut draw_handle = |point: DVec2| {
+			use crate::consts::COLOR_OVERLAY_WHITE;
+			let quad = DAffine2::from_angle_translation((quad.top_left() - quad.top_right()).to_angle(), point) * Quad::from_box([DVec2::splat(-3.), DVec2::splat(3.)]);
+			overlay_context.quad(quad, Some(COLOR_OVERLAY_WHITE));
+		};
 
 		// Draw the horizontal midpoint drag handles
 		if matches!(category, HandleDisplayCategory::Full | HandleDisplayCategory::Narrow | HandleDisplayCategory::ReducedLandscape) {
