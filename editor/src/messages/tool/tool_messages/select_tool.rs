@@ -6,7 +6,7 @@ use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
+use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::preferences::SelectionMode;
@@ -158,7 +158,12 @@ impl SelectTool {
 			IconButton::new(icon, 24)
 				.tooltip(operation.to_string())
 				.disabled(selected_count == 0)
-				.on_update(move |_| DocumentMessage::InsertBooleanOperation { operation }.into())
+				.on_update(move |_| {
+					DocumentMessage::GroupSelectedLayers {
+						group_folder_type: GroupFolderType::BooleanOperation(operation),
+					}
+					.into()
+				})
 				.widget_holder()
 		})
 	}
@@ -354,8 +359,7 @@ impl SelectToolData {
 
 			let nodes = document.network_interface.copy_nodes(&copy_ids, &[]).collect::<Vec<(NodeId, NodeTemplate)>>();
 
-			let insert_index = DocumentMessageHandler::get_calculated_insert_index(document.metadata(), document.network_interface.selected_nodes(&[]).unwrap(), parent);
-
+			let insert_index = DocumentMessageHandler::get_calculated_insert_index(document.metadata(), &document.network_interface.selected_nodes(&[]).unwrap(), parent);
 			let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
 
 			let layer_id = *new_ids.get(&NodeId(0)).expect("Node Id 0 should be a layer");

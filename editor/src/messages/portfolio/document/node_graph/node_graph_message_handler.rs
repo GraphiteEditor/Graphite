@@ -8,6 +8,7 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Modify
 use crate::messages::portfolio::document::node_graph::document_node_definitions::NodePropertiesContext;
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{
 	self, InputConnector, NodeNetworkInterface, NodeTemplate, NodeTypePersistentMetadata, OutputConnector, Previewing, TypeSource,
 };
@@ -1815,7 +1816,12 @@ impl NodeGraphMessageHandler {
 			IconButton::new("Folder", 24)
 				.tooltip("Group Selected")
 				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
-				.on_update(|_| DocumentMessage::GroupSelectedLayers.into())
+				.on_update(|_| {
+					DocumentMessage::GroupSelectedLayers {
+						group_folder_type: GroupFolderType::Layer,
+					}
+					.into()
+				})
 				.disabled(!has_selection)
 				.widget_holder(),
 			IconButton::new("Trash", 24)
