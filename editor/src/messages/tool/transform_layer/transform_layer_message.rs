@@ -21,7 +21,7 @@ pub enum TransformLayerMessage {
 	CancelTransformOperation,
 	ConstrainX,
 	ConstrainY,
-	PointerMove { slow_key: Key, snap_key: Key },
+	PointerMove { slow_key: Key, increments_key: Key },
 	SelectionChanged,
 	TypeBackspace,
 	TypeDecimalPoint,

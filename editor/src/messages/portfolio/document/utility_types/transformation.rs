@@ -156,7 +156,7 @@ impl Translation {
 		};
 		let displacement = transform.inverse().transform_vector2(displacement);
 		if snap {
-			(displacement).round()
+			displacement.round()
 		} else {
 			displacement
 		}
@@ -376,33 +376,32 @@ impl TransformOperation {
 			input_hints.push(HintInfo::keys([Key::Minus], "Negate Direction"));
 			input_hints.push(HintInfo::keys([Key::Backspace], "Delete Digit"));
 			input_hints.push(HintInfo::keys([Key::NumKeys], "Enter Number"));
-		} else {
-			if matches!(self, TransformOperation::Grabbing(_) | TransformOperation::Scaling(_)) {
-				let axis_constraint = match self {
-					TransformOperation::Grabbing(grabbing) => grabbing.constraint,
-					TransformOperation::Scaling(scaling) => scaling.constraint,
-					_ => Axis::Both,
-				};
-				match axis_constraint {
-					Axis::Both => {
-						input_hints.push(HintInfo::keys([Key::KeyX], "Along X Axis"));
-						input_hints.push(HintInfo::keys([Key::KeyY], "Along Y Axis"));
+		} else if matches!(self, TransformOperation::Grabbing(_) | TransformOperation::Scaling(_)) {
+			let axis_constraint = match self {
+				TransformOperation::Grabbing(grabbing) => grabbing.constraint,
+				TransformOperation::Scaling(scaling) => scaling.constraint,
+				_ => Axis::Both,
+			};
+			let clear_constraint = "Clear Constraint";
+			match axis_constraint {
+				Axis::Both => {
+					input_hints.push(HintInfo::keys([Key::KeyX], "Along X Axis"));
+					input_hints.push(HintInfo::keys([Key::KeyY], "Along Y Axis"));
+				}
+				Axis::X => {
+					let x_label = if local { clear_constraint } else { "Along Local X Axis" };
+					input_hints.push(HintInfo::keys([Key::KeyX], x_label));
+					input_hints.push(HintInfo::keys([Key::KeyY], "Along Y Axis"));
+					if !local {
+						input_hints.push(HintInfo::keys([Key::KeyX, Key::KeyX], clear_constraint));
 					}
-					Axis::X => {
-						let x_label = if local { "Clear Constraint" } else { "Along Local X Axis" };
-						input_hints.push(HintInfo::keys([Key::KeyX], x_label));
-						input_hints.push(HintInfo::keys([Key::KeyY], "Along Y Axis"));
-						if !local {
-							input_hints.push(HintInfo::keys([Key::KeyX, Key::KeyX], "Clear Constraint"));
-						}
-					}
-					Axis::Y => {
-						let y_label = if local { "Clear Constraint" } else { "Along Local Y Axis" };
-						input_hints.push(HintInfo::keys([Key::KeyX], "Along X Axis"));
-						input_hints.push(HintInfo::keys([Key::KeyY], y_label));
-						if !local {
-							input_hints.push(HintInfo::keys([Key::KeyY, Key::KeyY], "Clear Constraint"));
-						}
+				}
+				Axis::Y => {
+					let y_label = if local { clear_constraint } else { "Along Local Y Axis" };
+					input_hints.push(HintInfo::keys([Key::KeyX], "Along X Axis"));
+					input_hints.push(HintInfo::keys([Key::KeyY], y_label));
+					if !local {
+						input_hints.push(HintInfo::keys([Key::KeyY, Key::KeyY], clear_constraint));
 					}
 				}
 			}
@@ -417,7 +416,7 @@ impl TransformOperation {
 
 		let mut hint_groups = vec![grs_hint_group];
 		if !self.is_typing() {
-			let modifiers = vec![HintInfo::keys([Key::Shift], "Slow Mode"), HintInfo::keys([Key::Control], "Snap")];
+			let modifiers = vec![HintInfo::keys([Key::Shift], "Slow"), HintInfo::keys([Key::Control], "Increments")];
 			hint_groups.push(HintGroup(modifiers));
 		}
 		hint_groups.push(HintGroup(input_hints));
@@ -653,7 +652,7 @@ const DECIMAL_POINT: u8 = 10;
 impl Typing {
 	pub fn type_number(&mut self, number: u8) -> Option<f64> {
 		self.digits.push(number);
-		self.string.push((number as u8 + b'0') as char);
+		self.string.push((b'0' + number) as char);
 
 		self.evaluate()
 	}
