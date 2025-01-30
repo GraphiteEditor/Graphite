@@ -21,6 +21,7 @@ struct ArtboardInfo {
 	output_nodes: Vec<InputConnector>,
 	merge_node: NodeId,
 }
+
 pub struct GraphOperationMessageData<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
 	pub collapsed: &'a mut CollapsedLayers,
@@ -115,7 +116,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				network_interface.move_layer_to_stack(artboard_layer, LayerNodeIdentifier::ROOT_PARENT, 0, &[]);
 
 				// If there is a non artboard feeding into the primary input of the artboard, move it to the secondary input
-				let Some(artboard) = network_interface.network(&[]).unwrap().nodes.get(&id) else {
+				let Some(artboard) = network_interface.network(&[]).and_then(|network| network.nodes.get(&id)) else {
 					log::error!("Artboard not created");
 					return;
 				};
@@ -198,55 +199,57 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 			}
 			GraphOperationMessage::ClearArtboards => {
-				if &network_interface.all_artboards().len() == &0 {
-					responses.add(DocumentMessage::Undo);
+				if network_interface.all_artboards().is_empty() {
 					return;
 				}
 
-				let mut artboard_data: HashMap<NodeId, ArtboardInfo> = HashMap::new();
+				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::DeleteNodes {
-					node_ids: network_interface
-						.all_artboards()
-						.iter()
-						.map(|layer_node| layer_node.to_node())
-						.collect::<Vec<graphene_core::uuid::NodeId>>(),
+					node_ids: network_interface.all_artboards().iter().map(|layer_node| layer_node.to_node()).collect(),
 					delete_children: false,
 				});
 
-				for artboard in &network_interface.all_artboards() {
-					let Some(document_node) = network_interface.network(&[]).unwrap().nodes.get(&artboard.to_node()) else {
+				let mut artboard_data: HashMap<NodeId, ArtboardInfo> = HashMap::new();
+
+				// Go through all artboards and create merge nodes
+				for artboard in network_interface.all_artboards() {
+					let node_id = NodeId::new();
+					let Some(document_node) = network_interface.network(&[]).and_then(|network| network.nodes.get(&artboard.to_node())) else {
 						log::error!("Artboard not created");
 						responses.add(DocumentMessage::AbortTransaction);
 						return;
 					};
 
-					let node_id = NodeId::new();
 					artboard_data.insert(
 						artboard.to_node(),
 						ArtboardInfo {
 							input_node: NodeInput::node(document_node.inputs[1].as_node().unwrap_or_default(), 0),
-							output_nodes: network_interface.outward_wires(&[]).unwrap().get(&OutputConnector::node(artboard.to_node(), 0)).unwrap().clone(),
+							output_nodes: network_interface
+								.outward_wires(&[])
+								.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(artboard.to_node(), 0)))
+								.cloned()
+								.unwrap_or_default(),
 							merge_node: node_id,
 						},
 					);
-					let mut modify_inputs: ModifyInputsContext<'_> = ModifyInputsContext::new(network_interface, responses);
+
+					let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 					modify_inputs.create_layer(node_id);
+
 					responses.add(NodeGraphMessage::SetDisplayName {
 						node_id,
 						alias: network_interface.frontend_display_name(&artboard.to_node(), &[]),
-						with_transaction: false,
+						skip_adding_history_step: true,
 					});
-					// shifting nodes in node graph layout
-					let node_position = network_interface.position(&artboard.to_node(), &[]).unwrap();
-					responses.add(NodeGraphMessage::ShiftNodePosition {
-						node_id,
-						x: node_position.x,
-						y: node_position.y,
-					});
+
+					// Shift node positions in the graph
+					let (x, y) = network_interface.position(&artboard.to_node(), &[]).unwrap_or_default().into();
+					responses.add(NodeGraphMessage::ShiftNodePosition { node_id, x, y });
 				}
 
+				// Go through all artboards and connect them to the merge nodes
 				for artboard in &artboard_data {
-					// modify downstream connections
+					// Modify downstream connections
 					responses.add(NodeGraphMessage::SetInput {
 						input_connector: InputConnector::node(artboard.1.merge_node, 1),
 						input: NodeInput::node(artboard.1.input_node.as_node().unwrap_or_default(), 0),
@@ -254,26 +257,29 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 					// Modify upstream connections
 					for outward_wire in &artboard.1.output_nodes {
-						if let Some(artboard_info) = artboard_data.get(&outward_wire.node_id().unwrap_or_default()) {
-							responses.add(NodeGraphMessage::SetInput {
-								input_connector: InputConnector::node(artboard_info.merge_node, outward_wire.input_index()),
-								input: NodeInput::node(artboard_data[&artboard.0].merge_node, 0),
-							});
+						let input = NodeInput::node(artboard_data[artboard.0].merge_node, 0);
+						let input_connector = if let Some(artboard_info) = artboard_data.get(&outward_wire.node_id().unwrap_or_default()) {
+							InputConnector::node(artboard_info.merge_node, outward_wire.input_index())
 						} else {
-							responses.add(NodeGraphMessage::SetInput {
-								input_connector: *outward_wire,
-								input: NodeInput::node(artboard_data[&artboard.0].merge_node, 0),
-							});
-						}
+							*outward_wire
+						};
+						responses.add(NodeGraphMessage::SetInput { input_connector, input });
 					}
+
 					// Reposition merge nodes
+					let offset = network_interface
+						.document_metadata()
+						.bounding_box_document(LayerNodeIdentifier::new_unchecked(*artboard.0))
+						.map(|p| p[0])
+						.unwrap_or_default();
 					responses.add(GraphOperationMessage::TransformChange {
 						layer: LayerNodeIdentifier::new_unchecked(artboard.1.merge_node),
-						transform: DAffine2::from_translation(network_interface.document_metadata().bounding_box_document(LayerNodeIdentifier::new_unchecked(*artboard.0)).unwrap()[0]),
+						transform: DAffine2::from_translation(offset),
 						transform_in: TransformIn::Local,
 						skip_rerender: false,
 					});
 				}
+
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
 				responses.add(NodeGraphMessage::SendGraph);

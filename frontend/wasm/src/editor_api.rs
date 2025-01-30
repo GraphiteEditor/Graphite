@@ -552,7 +552,7 @@ impl EditorHandle {
 		let message = NodeGraphMessage::SetDisplayName {
 			node_id: layer.to_node(),
 			alias: name,
-			with_transaction: true,
+			skip_adding_history_step: false,
 		};
 		self.dispatch(message);
 	}
