@@ -471,9 +471,9 @@ impl BoundingBoxManager {
 		let cursor = self.transform.inverse().transform_point2(cursor);
 		let [threshold_x, threshold_y] = self.compute_viewport_threshold(BOUNDS_ROTATE_THRESHOLD);
 
-		let narrow = (self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any();
+		let flat = (self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any();
 		let within_square_bounds = |center: &DVec2| center.x - threshold_x < cursor.x && cursor.x < center.x + threshold_x && center.y - threshold_y < cursor.y && cursor.y < center.y + threshold_y;
-		if narrow {
+		if flat {
 			[self.bounds[0], self.bounds[1]].iter().any(within_square_bounds)
 		} else {
 			self.evaluate_transform_handle_positions().iter().any(within_square_bounds)
