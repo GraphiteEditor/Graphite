@@ -377,13 +377,8 @@ impl TransformOperation {
 			input_hints.push(HintInfo::keys([Key::Backspace], "Delete Digit"));
 			input_hints.push(HintInfo::keys([Key::NumKeys], "Enter Number"));
 		} else if matches!(self, TransformOperation::Grabbing(_) | TransformOperation::Scaling(_)) {
-			let axis_constraint = match self {
-				TransformOperation::Grabbing(grabbing) => grabbing.constraint,
-				TransformOperation::Scaling(scaling) => scaling.constraint,
-				_ => Axis::Both,
-			};
 			let clear_constraint = "Clear Constraint";
-			match axis_constraint {
+			match self.axis_constraint() {
 				Axis::Both => {
 					input_hints.push(HintInfo::keys([Key::KeyX], "Along X Axis"));
 					input_hints.push(HintInfo::keys([Key::KeyY], "Along Y Axis"));
@@ -434,6 +429,14 @@ impl TransformOperation {
 				_ => *self,
 			};
 			self.apply_transform_operation(selected, snapping, local, quad, transform);
+		}
+	}
+
+	pub fn axis_constraint(&self) -> Axis {
+		match self {
+			TransformOperation::Grabbing(grabbing) => grabbing.constraint,
+			TransformOperation::Scaling(scaling) => scaling.constraint,
+			_ => Axis::Both,
 		}
 	}
 }

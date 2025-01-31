@@ -177,11 +177,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					};
 
 					let viewport_box = input.viewport_bounds.size();
-					let axis_constraint = match self.transform_operation {
-						TransformOperation::Grabbing(grabbing) => grabbing.constraint,
-						TransformOperation::Scaling(scaling) => scaling.constraint,
-						_ => Axis::Both,
-					};
+					let axis_constraint = self.transform_operation.axis_constraint();
 
 					let format_rounded = |value: f64, precision: usize| {
 						if self.typing.digits.is_empty() {
@@ -575,16 +571,16 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					.grs_typed(self.typing.type_backspace(), &mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport);
 			}
 			TransformLayerMessage::TypeDecimalPoint => {
-				if self.typing.digits.is_empty() {
-					self.typing.negative = false;
-				} else {
+				if !matches!(self.transform_operation.axis_constraint(), Axis::Both) {
 					self.transform_operation
 						.grs_typed(self.typing.type_decimal_point(), &mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport)
 				}
 			}
 			TransformLayerMessage::TypeDigit { digit } => {
-				self.transform_operation
-					.grs_typed(self.typing.type_number(digit), &mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport)
+				if !matches!(self.transform_operation.axis_constraint(), Axis::Both) {
+					self.transform_operation
+						.grs_typed(self.typing.type_number(digit), &mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport)
+				}
 			}
 			TransformLayerMessage::TypeNegate => {
 				if self.typing.digits.is_empty() {
