@@ -1202,7 +1202,7 @@ impl Fsm for SelectToolFsmState {
 						HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
 						HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
 					]),
-					HintGroup(vec![HintInfo::keys([Key::KeyG, Key::KeyR, Key::KeyS], "Grab/Rotate/Scale Selected")]),
+					HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyR], [Key::KeyS]], "Grab/Rotate/Scale Selected")]),
 					HintGroup(vec![
 						HintInfo::arrow_keys("Nudge Selected"),
 						HintInfo::keys([Key::Shift], "10x").prepend_plus(),
