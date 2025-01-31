@@ -86,7 +86,8 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> ImageFrameTable<Color> {
 			height: image.height(),
 			..Default::default()
 		},
-		..Default::default()
+		transform: glam::DAffine2::IDENTITY,
+		alpha_blending: Default::default(),
 	};
 
 	ImageFrameTable::new(image)

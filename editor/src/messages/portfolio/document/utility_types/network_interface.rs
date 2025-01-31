@@ -1296,7 +1296,7 @@ impl NodeNetworkInterface {
 						let clip_input = artboard.unwrap().inputs.get(5).unwrap();
 						if let NodeInput::Value { tagged_value, .. } = clip_input {
 							if tagged_value.to_primitive_string() == "true" {
-								return Some(Quad::constraint_bounds(
+								return Some(Quad::clip(
 									self.document_metadata.bounding_box_document(layer).unwrap_or_default(),
 									self.document_metadata.bounding_box_document(artboard_node_identifier).unwrap_or_default(),
 								));
@@ -1365,15 +1365,11 @@ impl NodeNetworkInterface {
 	}
 
 	/// Ancestor that is shared by all layers and that is deepest (more nested). Default may be the root. Skips selected non-folder, non-artboard layers
-	pub fn deepest_common_ancestor(&self, network_path: &[NodeId], include_self: bool) -> Option<LayerNodeIdentifier> {
+	pub fn deepest_common_ancestor(&self, selected_nodes: &SelectedNodes, network_path: &[NodeId], include_self: bool) -> Option<LayerNodeIdentifier> {
 		if !network_path.is_empty() {
 			log::error!("Currently can only get deepest common ancestor in the document network");
 			return None;
 		}
-		let Some(selected_nodes) = self.selected_nodes(network_path) else {
-			log::error!("Could not get selected nodes in deepest_common_ancestor");
-			return None;
-		};
 		selected_nodes
 			.selected_layers(&self.document_metadata)
 			.map(|layer| {

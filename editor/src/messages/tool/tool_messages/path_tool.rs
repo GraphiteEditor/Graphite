@@ -1,11 +1,17 @@
+use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
-use crate::consts::{COLOR_OVERLAY_BLUE, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
+use crate::consts::{
+	COLOR_OVERLAY_BLUE, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
+};
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
+use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::shape_editor::{ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedPointsInfo, ShapeState};
+use crate::messages::tool::common_functionality::shape_editor::{
+	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
+};
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 
 use graphene_core::renderer::Quad;
@@ -35,11 +41,14 @@ pub enum PathToolMessage {
 	DeleteAndBreakPath,
 	DragStop {
 		extend_selection: Key,
+		shrink_selection: Key,
 	},
 	Enter {
 		extend_selection: Key,
+		shrink_selection: Key,
 	},
 	Escape,
+	ClosePath,
 	FlipSmoothSharp,
 	GRS {
 		// Should be `Key::KeyG` (Grab), `Key::KeyR` (Rotate), or `Key::KeyS` (Scale)
@@ -50,6 +59,7 @@ pub enum PathToolMessage {
 	MouseDown {
 		direct_insert_without_sliding: Key,
 		extend_selection: Key,
+		lasso_select: Key,
 	},
 	NudgeSelectedPoints {
 		delta_x: f64,
@@ -179,6 +189,12 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 		let updating_point = message == ToolMessage::Path(PathToolMessage::SelectedPointUpdated);
 
 		match message {
+			ToolMessage::Path(PathToolMessage::ClosePath) => {
+				responses.add(DocumentMessage::AddTransaction);
+				tool_data.shape_editor.close_selected_path(tool_data.document, responses);
+				responses.add(DocumentMessage::EndTransaction);
+				responses.add(OverlaysMessage::Draw);
+			}
 			ToolMessage::Path(PathToolMessage::SwapSelectedHandles) => {
 				if tool_data.shape_editor.handle_with_pair_selected(&tool_data.document.network_interface) {
 					tool_data.shape_editor.alternate_selected_handles(&tool_data.document.network_interface);
@@ -210,6 +226,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeselectAllPoints,
 				BreakPath,
 				DeleteAndBreakPath,
+				ClosePath,
 			),
 			PathToolFsmState::Dragging(_) => actions!(PathToolMessageDiscriminant;
 				Escape,
@@ -222,7 +239,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeleteAndBreakPath,
 				SwapSelectedHandles,
 			),
-			PathToolFsmState::DrawingBox => actions!(PathToolMessageDiscriminant;
+			PathToolFsmState::Drawing { .. } => actions!(PathToolMessageDiscriminant;
 				FlipSmoothSharp,
 				DragStop,
 				PointerMove,
@@ -275,7 +292,9 @@ enum PathToolFsmState {
 	#[default]
 	Ready,
 	Dragging(DraggingState),
-	DrawingBox,
+	Drawing {
+		selection_shape: SelectionShapeType,
+	},
 	InsertPoint,
 }
 
@@ -287,6 +306,8 @@ enum InsertEndKind {
 #[derive(Default)]
 struct PathToolData {
 	snap_manager: SnapManager,
+	lasso_polygon: Vec<DVec2>,
+	selection_mode: Option<SelectionMode>,
 	drag_start_pos: DVec2,
 	previous_mouse_position: DVec2,
 	toggle_colinear_debounce: bool,
@@ -313,6 +334,37 @@ impl PathToolData {
 
 	fn remove_saved_points(&mut self) {
 		self.saved_points_before_anchor_select_toggle.clear();
+	}
+
+	pub fn selection_quad(&self) -> Quad {
+		let bbox = self.selection_box();
+		Quad::from_box(bbox)
+	}
+
+	pub fn calculate_direction(&mut self) -> SelectionMode {
+		let bbox = self.selection_box();
+		let above_threshold = bbox[1].distance_squared(bbox[0]) > DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD.powi(2);
+
+		if self.selection_mode.is_none() && above_threshold {
+			let mode = if bbox[1].x < bbox[0].x {
+				SelectionMode::Touched
+			} else {
+				// This also covers the case where they're equal: the area is zero, so we use `Enclosed` to ensure the selection ends up empty, as nothing will be enclosed by an empty area
+				SelectionMode::Enclosed
+			};
+			self.selection_mode = Some(mode);
+		}
+
+		self.selection_mode.unwrap_or(SelectionMode::Touched)
+	}
+
+	pub fn selection_box(&self) -> [DVec2; 2] {
+		if self.previous_mouse_position == self.drag_start_pos {
+			let tolerance = DVec2::splat(SELECTION_TOLERANCE);
+			[self.drag_start_pos - tolerance, self.drag_start_pos + tolerance]
+		} else {
+			[self.drag_start_pos, self.previous_mouse_position]
+		}
 	}
 
 	fn start_insertion(&mut self, responses: &mut VecDeque<Message>, segment: ClosestSegment) -> PathToolFsmState {
@@ -362,6 +414,7 @@ impl PathToolData {
 		PathToolFsmState::Ready
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	fn mouse_down(
 		&mut self,
 		shape_editor: &mut ShapeState,
@@ -370,6 +423,7 @@ impl PathToolData {
 		responses: &mut VecDeque<Message>,
 		extend_selection: bool,
 		direct_insert_without_sliding: bool,
+		lasso_select: bool,
 	) -> PathToolFsmState {
 		self.double_click_handled = false;
 		self.opposing_handle_lengths = None;
@@ -411,12 +465,13 @@ impl PathToolData {
 
 			PathToolFsmState::Dragging(self.dragging_state)
 		}
-		// Start drawing a box
+		// Start drawing
 		else {
 			self.drag_start_pos = input.mouse.position;
 			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
 
-			PathToolFsmState::DrawingBox
+			let selection_shape = if lasso_select { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
+			PathToolFsmState::Drawing { selection_shape }
 		}
 	}
 
@@ -651,13 +706,28 @@ impl Fsm for PathToolFsmState {
 				path_overlays(document, shape_editor, &mut overlay_context);
 
 				match self {
-					Self::DrawingBox => {
-						let fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+					Self::Drawing { selection_shape } => {
+						let mut fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
 							.unwrap()
 							.with_alpha(0.05)
 							.rgba_hex();
+						fill_color.insert(0, '#');
+						let fill_color = Some(fill_color.as_str());
 
-						overlay_context.quad(Quad::from_box([tool_data.drag_start_pos, tool_data.previous_mouse_position]), Some(&("#".to_string() + &fill_color)));
+						let mut selection_direction = tool_action_data.preferences.get_selection_mode();
+						if selection_direction == SelectionMode::Directional {
+							selection_direction = tool_data.calculate_direction();
+						}
+
+						let quad = tool_data.selection_quad();
+						let polygon = &tool_data.lasso_polygon;
+
+						match (selection_shape, selection_direction) {
+							(SelectionShapeType::Box, SelectionMode::Enclosed) => overlay_context.dashed_quad(quad, fill_color, Some(4.), Some(4.), Some(0.5)),
+							(SelectionShapeType::Lasso, SelectionMode::Enclosed) => overlay_context.dashed_polygon(polygon, fill_color, Some(4.), Some(4.), Some(0.5)),
+							(SelectionShapeType::Box, _) => overlay_context.quad(quad, fill_color),
+							(SelectionShapeType::Lasso, _) => overlay_context.polygon(polygon, fill_color),
+						}
 					}
 					Self::Dragging(_) => {
 						tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
@@ -686,7 +756,7 @@ impl Fsm for PathToolFsmState {
 			}
 
 			// `Self::InsertPoint` case:
-			(Self::InsertPoint, PathToolMessage::MouseDown { extend_selection, .. } | PathToolMessage::Enter { extend_selection }) => {
+			(Self::InsertPoint, PathToolMessage::MouseDown { extend_selection, .. } | PathToolMessage::Enter { extend_selection, .. }) => {
 				tool_data.double_click_handled = true;
 				let extend_selection = input.keyboard.get(extend_selection as usize);
 				tool_data.end_insertion(shape_editor, responses, InsertEndKind::Add { extend_selection })
@@ -705,15 +775,20 @@ impl Fsm for PathToolFsmState {
 				PathToolMessage::MouseDown {
 					direct_insert_without_sliding,
 					extend_selection,
+					lasso_select,
 				},
 			) => {
 				let extend_selection = input.keyboard.get(extend_selection as usize);
+				let lasso_select = input.keyboard.get(lasso_select as usize);
 				let direct_insert_without_sliding = input.keyboard.get(direct_insert_without_sliding as usize);
 
-				tool_data.mouse_down(shape_editor, document, input, responses, extend_selection, direct_insert_without_sliding)
+				tool_data.selection_mode = None;
+				tool_data.lasso_polygon.clear();
+
+				tool_data.mouse_down(shape_editor, document, input, responses, extend_selection, direct_insert_without_sliding, lasso_select)
 			}
 			(
-				PathToolFsmState::DrawingBox,
+				PathToolFsmState::Drawing { selection_shape },
 				PathToolMessage::PointerMove {
 					equidistant,
 					toggle_colinear,
@@ -723,6 +798,11 @@ impl Fsm for PathToolFsmState {
 				},
 			) => {
 				tool_data.previous_mouse_position = input.mouse.position;
+
+				if selection_shape == SelectionShapeType::Lasso {
+					extend_lasso(&mut tool_data.lasso_polygon, input.mouse.position);
+				}
+
 				responses.add(OverlaysMessage::Draw);
 
 				// Auto-panning
@@ -746,7 +826,7 @@ impl Fsm for PathToolFsmState {
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
-				PathToolFsmState::DrawingBox
+				PathToolFsmState::Drawing { selection_shape }
 			}
 			(
 				PathToolFsmState::Dragging(_),
@@ -821,13 +901,13 @@ impl Fsm for PathToolFsmState {
 
 				PathToolFsmState::Dragging(tool_data.dragging_state)
 			}
-			(PathToolFsmState::DrawingBox, PathToolMessage::PointerOutsideViewport { .. }) => {
+			(PathToolFsmState::Drawing { selection_shape: selection_type }, PathToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
 				if let Some(offset) = tool_data.auto_panning.shift_viewport(input, responses) {
 					tool_data.drag_start_pos += offset;
 				}
 
-				PathToolFsmState::DrawingBox
+				PathToolFsmState::Drawing { selection_shape: selection_type }
 			}
 			(
 				PathToolFsmState::Dragging(dragging_state),
@@ -879,14 +959,30 @@ impl Fsm for PathToolFsmState {
 
 				state
 			}
-			(PathToolFsmState::DrawingBox, PathToolMessage::Enter { extend_selection }) => {
+			(PathToolFsmState::Drawing { selection_shape }, PathToolMessage::Enter { extend_selection, shrink_selection }) => {
 				let extend_selection = input.keyboard.get(extend_selection as usize);
+				let shrink_selection = input.keyboard.get(shrink_selection as usize);
+
+				let selection_change = if shrink_selection {
+					SelectionChange::Shrink
+				} else if extend_selection {
+					SelectionChange::Extend
+				} else {
+					SelectionChange::Clear
+				};
 
 				if tool_data.drag_start_pos == tool_data.previous_mouse_position {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				} else {
-					shape_editor.select_all_in_quad(&document.network_interface, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !extend_selection);
+					match selection_shape {
+						SelectionShapeType::Box => {
+							let bbox = [tool_data.drag_start_pos, tool_data.previous_mouse_position];
+							shape_editor.select_all_in_shape(&document.network_interface, SelectionShape::Box(bbox), selection_change);
+						}
+						SelectionShapeType::Lasso => shape_editor.select_all_in_shape(&document.network_interface, SelectionShape::Lasso(&tool_data.lasso_polygon), selection_change),
+					}
 				}
+
 				responses.add(OverlaysMessage::Draw);
 
 				PathToolFsmState::Ready
@@ -896,25 +992,40 @@ impl Fsm for PathToolFsmState {
 				tool_data.snap_manager.cleanup(responses);
 				PathToolFsmState::Ready
 			}
-			(PathToolFsmState::DrawingBox, PathToolMessage::Escape | PathToolMessage::RightClick) => {
+			(PathToolFsmState::Drawing { .. }, PathToolMessage::Escape | PathToolMessage::RightClick) => {
 				tool_data.snap_manager.cleanup(responses);
 				PathToolFsmState::Ready
 			}
 			// Mouse up
-			(PathToolFsmState::DrawingBox, PathToolMessage::DragStop { extend_selection }) => {
+			(PathToolFsmState::Drawing { selection_shape }, PathToolMessage::DragStop { extend_selection, shrink_selection }) => {
 				let extend_selection = input.keyboard.get(extend_selection as usize);
+				let shrink_selection = input.keyboard.get(shrink_selection as usize);
+
+				let select_kind = if shrink_selection {
+					SelectionChange::Shrink
+				} else if extend_selection {
+					SelectionChange::Extend
+				} else {
+					SelectionChange::Clear
+				};
 
 				if tool_data.drag_start_pos == tool_data.previous_mouse_position {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				} else {
-					shape_editor.select_all_in_quad(&document.network_interface, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !extend_selection);
+					match selection_shape {
+						SelectionShapeType::Box => {
+							let bbox = [tool_data.drag_start_pos, tool_data.previous_mouse_position];
+							shape_editor.select_all_in_shape(&document.network_interface, SelectionShape::Box(bbox), select_kind);
+						}
+						SelectionShapeType::Lasso => shape_editor.select_all_in_shape(&document.network_interface, SelectionShape::Lasso(&tool_data.lasso_polygon), select_kind),
+					}
 				}
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PathToolMessage::SelectedPointUpdated);
 
 				PathToolFsmState::Ready
 			}
-			(_, PathToolMessage::DragStop { extend_selection }) => {
+			(_, PathToolMessage::DragStop { extend_selection, .. }) => {
 				if tool_data.select_anchor_toggled {
 					shape_editor.deselect_all_points();
 					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_anchor_select_toggle);
@@ -1050,12 +1161,13 @@ impl Fsm for PathToolFsmState {
 		let hint_data = match self {
 			PathToolFsmState::Ready => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Point"), HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus()]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"), HintInfo::keys([Key::Control], "Lasso").prepend_plus()]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Insert Point on Segment")]),
 				// TODO: Only show if at least one anchor is selected, and dynamically show either "Smooth" or "Sharp" based on the current state
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDouble, "Make Anchor Smooth/Sharp")]),
 				// TODO: Only show the following hints if at least one point is selected
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
-				HintGroup(vec![HintInfo::keys([Key::KeyG, Key::KeyR, Key::KeyS], "Grab/Rotate/Scale Selected")]),
+				HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyR], [Key::KeyS]], "Grab/Rotate/Scale Selected")]),
 				HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]),
 				HintGroup(vec![
 					HintInfo::keys([Key::Delete], "Delete Selected"),
@@ -1106,11 +1218,12 @@ impl Fsm for PathToolFsmState {
 
 				dragging_hint_data
 			}
-			PathToolFsmState::DrawingBox => HintData(vec![
+			PathToolFsmState::Drawing { .. } => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![
 					HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
-					HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
+					HintInfo::keys([Key::Shift], "Extend").prepend_plus(),
+					HintInfo::keys([Key::Alt], "Subtract").prepend_plus(),
 				]),
 			]),
 			PathToolFsmState::InsertPoint => HintData(vec![

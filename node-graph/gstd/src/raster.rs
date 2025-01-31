@@ -670,7 +670,7 @@ fn mandelbrot(ctx: impl ExtractFootprint) -> ImageFrameTable<Color> {
 			..Default::default()
 		},
 		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
-		..Default::default()
+		alpha_blending: Default::default(),
 	};
 
 	ImageFrameTable::new(result)
