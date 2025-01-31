@@ -605,17 +605,17 @@ impl Blend<Color> for ImageFrameTable<Color> {
 		let mut result = self.clone();
 
 		for (over, under) in result.instances_mut().zip(under.instances()) {
-			let data = over.image.data.iter().zip(under.image.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
+			let data = over.instance.image.data.iter().zip(under.instance.image.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
 
-			*over = ImageFrame {
+			*over.instance = ImageFrame {
 				image: super::Image {
 					data,
-					width: over.image.width,
-					height: over.image.height,
+					width: over.instance.image.width,
+					height: over.instance.image.height,
 					base64_string: None,
 				},
-				transform: over.transform,
-				alpha_blending: over.alpha_blending,
+				transform: over.instance.transform,
+				alpha_blending: over.instance.alpha_blending,
 			};
 		}
 
@@ -744,7 +744,7 @@ where
 {
 	fn adjust(&mut self, map_fn: impl Fn(&P) -> P) {
 		for instance in self.instances_mut() {
-			for c in instance.image.data.iter_mut() {
+			for c in instance.instance.image.data.iter_mut() {
 				*c = map_fn(c);
 			}
 		}
@@ -1373,14 +1373,14 @@ impl MultiplyAlpha for Color {
 impl MultiplyAlpha for VectorDataTable {
 	fn multiply_alpha(&mut self, factor: f64) {
 		for instance in self.instances_mut() {
-			instance.alpha_blending.opacity *= factor as f32;
+			instance.instance.alpha_blending.opacity *= factor as f32;
 		}
 	}
 }
 impl MultiplyAlpha for GraphicGroupTable {
 	fn multiply_alpha(&mut self, factor: f64) {
 		for instance in self.instances_mut() {
-			instance.alpha_blending.opacity *= factor as f32;
+			instance.instance.alpha_blending.opacity *= factor as f32;
 		}
 	}
 }
@@ -1392,7 +1392,7 @@ where
 {
 	fn multiply_alpha(&mut self, factor: f64) {
 		for instance in self.instances_mut() {
-			instance.alpha_blending.opacity *= factor as f32;
+			instance.instance.alpha_blending.opacity *= factor as f32;
 		}
 	}
 }
@@ -1594,7 +1594,7 @@ mod test {
 		let opacity = 100_f64;
 
 		let result = super::color_overlay((), ImageFrameTable::new(image.clone()), overlay_color, BlendMode::Multiply, opacity);
-		let result = result.one_instance();
+		let result = result.one_instance().instance;
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
 		assert_eq!(result.image.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));

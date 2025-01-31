@@ -298,9 +298,9 @@ impl NodeRuntime {
 			}
 			// Insert the vector modify if we are dealing with vector data
 			else if let Some(record) = introspected_data.downcast_ref::<IORecord<Context, VectorDataTable>>() {
-				self.vector_modify.insert(parent_network_node_id, record.output.one_instance().clone());
+				self.vector_modify.insert(parent_network_node_id, record.output.one_instance().instance.clone());
 			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<(), VectorDataTable>>() {
-				self.vector_modify.insert(parent_network_node_id, record.output.one_instance().clone());
+				self.vector_modify.insert(parent_network_node_id, record.output.one_instance().instance.clone());
 			}
 		}
 	}
