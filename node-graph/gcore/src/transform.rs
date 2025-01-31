@@ -57,11 +57,11 @@ where
 	GraphicElement: From<ImageFrame<P>>,
 {
 	fn transform(&self) -> DAffine2 {
-		let image_frame = self.one_instance();
+		let image_frame = self.one_instance().instance;
 		image_frame.transform
 	}
 	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
-		let image_frame = self.one_instance();
+		let image_frame = self.one_instance().instance;
 		image_frame.local_pivot(pivot)
 	}
 }
@@ -72,7 +72,7 @@ where
 	GraphicElement: From<ImageFrame<P>>,
 {
 	fn transform_mut(&mut self) -> &mut DAffine2 {
-		let image_frame = self.one_instance_mut();
+		let image_frame = self.one_instance_mut().instance;
 		&mut image_frame.transform
 	}
 }
@@ -80,17 +80,17 @@ where
 // Implementations for TextureTable
 impl Transform for TextureFrameTable {
 	fn transform(&self) -> DAffine2 {
-		let image_frame = self.one_instance();
+		let image_frame = self.one_instance().instance;
 		image_frame.transform
 	}
 	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
-		let image_frame = self.one_instance();
+		let image_frame = self.one_instance().instance;
 		image_frame.local_pivot(pivot)
 	}
 }
 impl TransformMut for TextureFrameTable {
 	fn transform_mut(&mut self) -> &mut DAffine2 {
-		let image_frame = self.one_instance_mut();
+		let image_frame = self.one_instance_mut().instance;
 		&mut image_frame.transform
 	}
 }
@@ -110,13 +110,13 @@ impl TransformMut for GraphicGroup {
 // Implementations for GraphicGroupTable
 impl Transform for GraphicGroupTable {
 	fn transform(&self) -> DAffine2 {
-		let graphic_group = self.one_instance();
+		let graphic_group = self.one_instance().instance;
 		graphic_group.transform
 	}
 }
 impl TransformMut for GraphicGroupTable {
 	fn transform_mut(&mut self) -> &mut DAffine2 {
-		let graphic_group = self.one_instance_mut();
+		let graphic_group = self.one_instance_mut().instance;
 		&mut graphic_group.transform
 	}
 }
@@ -166,17 +166,17 @@ impl TransformMut for VectorData {
 // Implementations for VectorDataTable
 impl Transform for VectorDataTable {
 	fn transform(&self) -> DAffine2 {
-		let vector_data = self.one_instance();
+		let vector_data = self.one_instance().instance;
 		vector_data.transform
 	}
 	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
-		let vector_data = self.one_instance();
+		let vector_data = self.one_instance().instance;
 		vector_data.local_pivot(pivot)
 	}
 }
 impl TransformMut for VectorDataTable {
 	fn transform_mut(&mut self) -> &mut DAffine2 {
-		let vector_data = self.one_instance_mut();
+		let vector_data = self.one_instance_mut().instance;
 		&mut vector_data.transform
 	}
 }

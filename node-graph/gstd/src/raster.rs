@@ -30,7 +30,7 @@ impl From<std::io::Error> for Error {
 
 #[node_macro::node(category("Debug: Raster"))]
 fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: ImageFrameTable<Color>) -> ImageFrameTable<Color> {
-	let image_frame = image_frame.one_instance();
+	let image_frame = image_frame.one_instance().instance;
 
 	// Resize the image using the image crate
 	let image = &image_frame.image;

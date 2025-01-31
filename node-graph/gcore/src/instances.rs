@@ -2,8 +2,17 @@ use crate::vector::InstanceId;
 use crate::GraphicElement;
 
 use dyn_any::StaticType;
-
 use std::hash::Hash;
+
+#[derive(Copy, Clone, Debug)]
+pub struct Instance<'a, T> {
+	pub id: &'a InstanceId,
+	pub instance: &'a T,
+}
+pub struct InstanceMut<'a, T> {
+	pub id: &'a mut InstanceId,
+	pub instance: &'a mut T,
+}
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Instances<T>
@@ -23,23 +32,33 @@ impl<T: Into<GraphicElement> + StaticType + 'static> Instances<T> {
 		}
 	}
 
-	pub fn one_instance(&self) -> &T {
-		self.instance.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {} (one_instance)", self.instance.len()))
+	pub fn one_instance(&self) -> Instance<T> {
+		Instance {
+			id: self.id.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", self.instance.len())),
+			instance: self.instance.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", self.instance.len())),
+		}
 	}
 
-	pub fn one_instance_mut(&mut self) -> &mut T {
+	pub fn one_instance_mut(&mut self) -> InstanceMut<T> {
+		#[cfg(debug_assertions)]
 		let length = self.instance.len();
-		self.instance.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {} (one_instance_mut)", length))
+		#[cfg(not(debug_assertions))]
+		let length = '?';
+
+		InstanceMut {
+			id: self.id.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", length)),
+			instance: self.instance.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", length)),
+		}
 	}
 
-	pub fn instances(&self) -> impl Iterator<Item = &T> {
+	pub fn instances(&self) -> impl Iterator<Item = Instance<T>> {
 		assert!(self.instance.len() == 1, "ONE INSTANCE EXPECTED, FOUND {} (instances)", self.instance.len());
-		self.instance.iter()
+		self.id.iter().zip(self.instance.iter()).map(|(id, instance)| Instance { id, instance })
 	}
 
-	pub fn instances_mut(&mut self) -> impl Iterator<Item = &mut T> {
+	pub fn instances_mut(&mut self) -> impl Iterator<Item = InstanceMut<T>> {
 		assert!(self.instance.len() == 1, "ONE INSTANCE EXPECTED, FOUND {} (instances_mut)", self.instance.len());
-		self.instance.iter_mut()
+		self.id.iter_mut().zip(self.instance.iter_mut()).map(|(id, instance)| InstanceMut { id, instance })
 	}
 
 	// pub fn id(&self) -> impl Iterator<Item = InstanceId> + '_ {

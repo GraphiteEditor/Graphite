@@ -805,7 +805,7 @@ impl ConcatElement for VectorData {
 impl ConcatElement for VectorDataTable {
 	fn concat(&mut self, other: &Self, transform: glam::DAffine2, node_id: u64) {
 		for (instance, other_instance) in self.instances_mut().zip(other.instances()) {
-			instance.concat(other_instance, transform, node_id);
+			instance.instance.concat(other_instance.instance, transform, node_id);
 		}
 	}
 }

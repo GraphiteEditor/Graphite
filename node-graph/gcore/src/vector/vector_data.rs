@@ -39,8 +39,10 @@ pub type VectorDataTable = Instances<VectorData>;
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VectorData {
 	pub transform: DAffine2,
-	pub style: PathStyle,
 	pub alpha_blending: AlphaBlending,
+
+	pub style: PathStyle,
+
 	/// A list of all manipulator groups (referenced in `subpaths`) that have colinear handles (where they're locked at 180° angles from one another).
 	/// This gets read in `graph_operation_message_handler.rs` by calling `inputs.as_mut_slice()` (search for the string `"Shape does not have both `subpath` and `colinear_manipulators` inputs"` to find it).
 	pub colinear_manipulators: Vec<[HandleId; 2]>,
