@@ -41,8 +41,8 @@ pub const MAX_LAYER_SNAP_POINTS: usize = 100;
 pub const DRAG_THRESHOLD: f64 = 1.;
 
 // TRANSFORMING LAYER
-pub const ROTATE_SNAP_ANGLE: f64 = 15.;
-pub const SCALE_SNAP_INTERVAL: f64 = 0.1;
+pub const ROTATE_INCREMENT: f64 = 15.;
+pub const SCALE_INCREMENT: f64 = 0.1;
 pub const SLOWING_DIVISOR: f64 = 10.;
 pub const NUDGE_AMOUNT: f64 = 1.;
 pub const BIG_NUDGE_AMOUNT: f64 = 10.;

@@ -1,5 +1,5 @@
 use super::network_interface::NodeNetworkInterface;
-use crate::consts::{ROTATE_SNAP_ANGLE, SCALE_SNAP_INTERVAL};
+use crate::consts::{ROTATE_INCREMENT, SCALE_INCREMENT};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::prelude::*;
@@ -143,7 +143,7 @@ pub struct Translation {
 }
 
 impl Translation {
-	pub fn to_dvec(self, transform: DAffine2, snap: bool) -> DVec2 {
+	pub fn to_dvec(self, transform: DAffine2, increment_mode: bool) -> DVec2 {
 		let displacement = if let Some(value) = self.typed_distance {
 			let document_displacement = if self.constraint == Axis::Y { DVec2::new(0., value) } else { DVec2::new(value, 0.) };
 			transform.transform_vector2(document_displacement)
@@ -155,7 +155,7 @@ impl Translation {
 			}
 		};
 		let displacement = transform.inverse().transform_vector2(displacement);
-		if snap {
+		if increment_mode {
 			displacement.round()
 		} else {
 			displacement
@@ -196,12 +196,12 @@ pub struct Rotation {
 }
 
 impl Rotation {
-	pub fn to_f64(self, snap: bool) -> f64 {
+	pub fn to_f64(self, increment_mode: bool) -> f64 {
 		if let Some(value) = self.typed_angle {
 			value.to_radians()
-		} else if snap {
-			let snap_resolution = ROTATE_SNAP_ANGLE.to_radians();
-			(self.dragged_angle / snap_resolution).round() * snap_resolution
+		} else if increment_mode {
+			let increment_resolution = ROTATE_INCREMENT.to_radians();
+			(self.dragged_angle / increment_resolution).round() * increment_resolution
 		} else {
 			self.dragged_angle
 		}
@@ -245,17 +245,17 @@ impl Default for Scale {
 }
 
 impl Scale {
-	pub fn to_f64(self, snap: bool) -> f64 {
+	pub fn to_f64(self, increment: bool) -> f64 {
 		let factor = if let Some(value) = self.typed_factor { value } else { self.dragged_factor };
-		if snap {
-			(factor / SCALE_SNAP_INTERVAL).round() * SCALE_SNAP_INTERVAL
+		if increment {
+			(factor / SCALE_INCREMENT).round() * SCALE_INCREMENT
 		} else {
 			factor
 		}
 	}
 
-	pub fn to_dvec(self, snap: bool) -> DVec2 {
-		let factor = self.to_f64(snap);
+	pub fn to_dvec(self, increment_mode: bool) -> DVec2 {
+		let factor = self.to_f64(increment_mode);
 
 		match self.constraint {
 			Axis::Both => DVec2::splat(factor),
@@ -302,25 +302,25 @@ pub enum TransformOperation {
 }
 
 impl TransformOperation {
-	pub fn apply_transform_operation(&self, selected: &mut Selected, snapping: bool, local: bool, quad: Quad, transform: DAffine2) {
+	pub fn apply_transform_operation(&self, selected: &mut Selected, increment_mode: bool, local: bool, quad: Quad, transform: DAffine2) {
 		let quad = quad.0;
 		let edge = quad[1] - quad[0];
 		if self != &TransformOperation::None {
 			let transformation = match self {
 				TransformOperation::Grabbing(translation) => {
-					let translate = DAffine2::from_translation(transform.transform_vector2(translation.to_dvec(transform, snapping)));
+					let translate = DAffine2::from_translation(transform.transform_vector2(translation.to_dvec(transform, increment_mode)));
 					if local {
 						DAffine2::from_angle(edge.to_angle()) * translate * DAffine2::from_angle(-edge.to_angle())
 					} else {
 						translate
 					}
 				}
-				TransformOperation::Rotating(rotation) => DAffine2::from_angle(rotation.to_f64(snapping)),
+				TransformOperation::Rotating(rotation) => DAffine2::from_angle(rotation.to_f64(increment_mode)),
 				TransformOperation::Scaling(scale) => {
 					if local {
-						DAffine2::from_angle(edge.to_angle()) * DAffine2::from_scale(scale.to_dvec(snapping)) * DAffine2::from_angle(-edge.to_angle())
+						DAffine2::from_angle(edge.to_angle()) * DAffine2::from_scale(scale.to_dvec(increment_mode)) * DAffine2::from_angle(-edge.to_angle())
 					} else {
-						DAffine2::from_scale(scale.to_dvec(snapping))
+						DAffine2::from_scale(scale.to_dvec(increment_mode))
 					}
 				}
 				TransformOperation::None => unreachable!(),
@@ -343,7 +343,7 @@ impl TransformOperation {
 		self.is_constraint_to_axis() || !matches!(self, TransformOperation::Grabbing(_))
 	}
 
-	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, snapping: bool, mut local: bool, quad: Quad, transform: DAffine2) -> bool {
+	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, increment_mode: bool, mut local: bool, quad: Quad, transform: DAffine2) -> bool {
 		(*self, local) = match self {
 			TransformOperation::Grabbing(translation) => {
 				let (translation, local) = translation.with_constraint(axis, local);
@@ -355,11 +355,11 @@ impl TransformOperation {
 			}
 			_ => (*self, false),
 		};
-		self.apply_transform_operation(selected, snapping, local, quad, transform);
+		self.apply_transform_operation(selected, increment_mode, local, quad, transform);
 		local
 	}
 
-	pub fn grs_typed(&mut self, typed: Option<f64>, selected: &mut Selected, snapping: bool, local: bool, quad: Quad, transform: DAffine2) {
+	pub fn grs_typed(&mut self, typed: Option<f64>, selected: &mut Selected, increment_mode: bool, local: bool, quad: Quad, transform: DAffine2) {
 		match self {
 			TransformOperation::None => (),
 			TransformOperation::Grabbing(translation) => translation.typed_distance = typed,
@@ -367,7 +367,7 @@ impl TransformOperation {
 			TransformOperation::Scaling(scale) => scale.typed_factor = typed,
 		};
 
-		self.apply_transform_operation(selected, snapping, local, quad, transform);
+		self.apply_transform_operation(selected, increment_mode, local, quad, transform);
 	}
 
 	pub fn hints(&self, responses: &mut VecDeque<Message>, local: bool) {
@@ -440,7 +440,7 @@ impl TransformOperation {
 		}
 	}
 
-	pub fn negate(&mut self, selected: &mut Selected, snapping: bool, local: bool, quad: Quad, transform: DAffine2) {
+	pub fn negate(&mut self, selected: &mut Selected, increment_mode: bool, local: bool, quad: Quad, transform: DAffine2) {
 		if *self != TransformOperation::None {
 			*self = match self {
 				TransformOperation::Scaling(scale) => TransformOperation::Scaling(scale.negate()),
@@ -448,7 +448,7 @@ impl TransformOperation {
 				TransformOperation::Grabbing(translation) => TransformOperation::Grabbing(translation.negate()),
 				_ => *self,
 			};
-			self.apply_transform_operation(selected, snapping, local, quad, transform);
+			self.apply_transform_operation(selected, increment_mode, local, quad, transform);
 		}
 	}
 }

@@ -1,7 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::tool_prelude::*;
-use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
+use crate::consts::{ROTATE_INCREMENT, SELECTION_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -827,7 +827,7 @@ impl Fsm for SelectToolFsmState {
 					};
 
 					let snapped_angle = if input.keyboard.key(modifier_keys.snap_angle) {
-						let snap_resolution = ROTATE_SNAP_ANGLE.to_radians();
+						let snap_resolution = ROTATE_INCREMENT.to_radians();
 						(angle / snap_resolution).round() * snap_resolution
 					} else {
 						angle
