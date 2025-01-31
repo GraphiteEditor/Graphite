@@ -23,13 +23,13 @@ impl<T: Into<GraphicElement> + StaticType + 'static> Instances<T> {
 		}
 	}
 
-	pub fn one_item(&self) -> &T {
-		self.instance.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {} (one_item)", self.instance.len()))
+	pub fn one_instance(&self) -> &T {
+		self.instance.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {} (one_instance)", self.instance.len()))
 	}
 
-	pub fn one_item_mut(&mut self) -> &mut T {
+	pub fn one_instance_mut(&mut self) -> &mut T {
 		let length = self.instance.len();
-		self.instance.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {} (one_item_mut)", length))
+		self.instance.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {} (one_instance_mut)", length))
 	}
 
 	pub fn instances(&self) -> impl Iterator<Item = &T> {

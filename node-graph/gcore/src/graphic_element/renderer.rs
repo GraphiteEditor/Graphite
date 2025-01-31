@@ -425,7 +425,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
-		let instance = self.one_item();
+		let instance = self.one_instance();
 
 		instance.collect_metadata(metadata, footprint, element_id);
 	}
@@ -514,7 +514,7 @@ impl GraphicElementRendered for VectorDataTable {
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
-		let instance = self.one_item();
+		let instance = self.one_instance();
 
 		if let Some(element_id) = element_id {
 			let stroke_width = instance.style.stroke().as_ref().map_or(0., Stroke::weight);
@@ -681,7 +681,7 @@ impl GraphicElementRendered for VectorDataTable {
 	}
 
 	fn to_graphic_element(&self) -> GraphicElement {
-		let instance = self.one_item();
+		let instance = self.one_instance();
 
 		GraphicElement::VectorData(VectorDataTable::new(instance.clone()))
 	}
@@ -881,7 +881,7 @@ impl GraphicElementRendered for ImageFrameTable<Color> {
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
-		let instance = self.one_item();
+		let instance = self.one_instance();
 
 		let Some(element_id) = element_id else { return };
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);

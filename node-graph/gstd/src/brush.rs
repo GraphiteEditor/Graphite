@@ -18,7 +18,7 @@ use glam::{DAffine2, DVec2};
 
 #[node_macro::node(category("Debug"))]
 fn vector_points(_: impl Ctx, vector_data: VectorDataTable) -> Vec<DVec2> {
-	let vector_data = vector_data.one_item();
+	let vector_data = vector_data.one_instance();
 
 	vector_data.point_domain.positions().to_vec()
 }
@@ -212,7 +212,7 @@ pub fn blend_with_mode(background: ImageFrame<Color>, foreground: ImageFrame<Col
 
 #[node_macro::node(category(""))]
 async fn brush(_: impl Ctx, image: ImageFrameTable<Color>, bounds: ImageFrameTable<Color>, strokes: Vec<BrushStroke>, cache: BrushCache) -> ImageFrameTable<Color> {
-	let image = image.one_item().clone();
+	let image = image.one_instance().clone();
 
 	let stroke_bbox = strokes.iter().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
 	let image_bbox = Bbox::from_transform(image.transform).to_axis_aligned_bbox();

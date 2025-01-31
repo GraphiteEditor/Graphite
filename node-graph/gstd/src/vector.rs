@@ -28,12 +28,12 @@ async fn boolean_operation(_: impl Ctx, group_of_paths: GraphicGroupTable, opera
 	fn union_vector_data(graphic_element: &GraphicElement) -> VectorData {
 		match graphic_element {
 			GraphicElement::VectorData(vector_data) => {
-				let vector_data = vector_data.one_item();
+				let vector_data = vector_data.one_instance();
 				vector_data.clone()
 			}
 			// Union all vector data in the graphic group into a single vector
 			GraphicElement::GraphicGroup(graphic_group) => {
-				let graphic_group = graphic_group.one_item();
+				let graphic_group = graphic_group.one_instance();
 				let vector_data = collect_vector_data(graphic_group);
 
 				boolean_operation_on_vector_data(&vector_data, BooleanOperation::Union)
@@ -176,7 +176,7 @@ async fn boolean_operation(_: impl Ctx, group_of_paths: GraphicGroupTable, opera
 		}
 	}
 
-	let group_of_paths = group_of_paths.one_item();
+	let group_of_paths = group_of_paths.one_instance();
 	// The first index is the bottom of the stack
 	let mut boolean_operation_result = boolean_operation_on_vector_data(&collect_vector_data(group_of_paths), operation);
 
