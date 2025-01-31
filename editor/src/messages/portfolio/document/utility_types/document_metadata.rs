@@ -206,8 +206,8 @@ impl LayerNodeIdentifier {
 	/// Access the node id of this layer
 	pub fn to_node(self) -> NodeId {
 		let id = NodeId(u64::from(self.0) - 1);
-
 		debug_assert!(id != NodeId(0), "LayerNodeIdentifier::ROOT_PARENT cannot be converted to NodeId");
+
 		id
 	}
 

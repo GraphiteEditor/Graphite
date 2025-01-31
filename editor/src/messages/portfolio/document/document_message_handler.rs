@@ -272,7 +272,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				}
 			}
 			DocumentMessage::ClearArtboards => {
-				responses.add(DocumentMessage::AddTransaction);
 				responses.add(GraphOperationMessage::ClearArtboards);
 			}
 			DocumentMessage::ClearLayersPanel => {
@@ -778,6 +777,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(NodeGraphMessage::SetDisplayName {
 						node_id: layer.to_node(),
 						alias: name,
+						skip_adding_history_step: false,
 					});
 				}
 				if let Some((parent, insert_index)) = parent_and_insert_index {
@@ -822,6 +822,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(NodeGraphMessage::SetDisplayName {
 						node_id: layer.to_node(),
 						alias: name,
+						skip_adding_history_step: false,
 					});
 				}
 				if let Some((parent, insert_index)) = parent_and_insert_index {

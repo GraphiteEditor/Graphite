@@ -552,6 +552,7 @@ impl EditorHandle {
 		let message = NodeGraphMessage::SetDisplayName {
 			node_id: layer.to_node(),
 			alias: name,
+			skip_adding_history_step: false,
 		};
 		self.dispatch(message);
 	}
@@ -860,7 +861,7 @@ impl EditorHandle {
 			let mut shape = None;
 
 			if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, &mut document.network_interface, &mut responses) {
-				let Some(transform_node_id) = modify_inputs.existing_node_id("Transform") else {
+				let Some(transform_node_id) = modify_inputs.existing_node_id("Transform", true) else {
 					return;
 				};
 				if !updated_nodes.insert(transform_node_id) {
@@ -877,7 +878,7 @@ impl EditorHandle {
 				update_transform(&mut document.network_interface, &transform_node_id, pivot_transform * transform * pivot_transform.inverse());
 			}
 			if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, &mut document.network_interface, &mut responses) {
-				let Some(shape_node_id) = modify_inputs.existing_node_id("Shape") else {
+				let Some(shape_node_id) = modify_inputs.existing_node_id("Shape", true) else {
 					return;
 				};
 				if !updated_nodes.insert(shape_node_id) {
