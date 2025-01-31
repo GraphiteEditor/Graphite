@@ -186,6 +186,117 @@ impl ClosestSegment {
 
 // TODO Consider keeping a list of selected manipulators to minimize traversals of the layers
 impl ShapeState {
+	pub fn close_selected_path(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		// First collect all selected anchor points across all layers
+		let all_selected_points: Vec<(LayerNodeIdentifier, PointId)> = self
+			.selected_shape_state
+			.iter()
+			.flat_map(|(&layer, state)| {
+				if document.network_interface.compute_modified_vector(layer).is_none() {
+					return Vec::new().into_iter();
+				};
+
+				// Collect selected anchor points from this layer
+				state
+					.selected_points
+					.iter()
+					.filter_map(|&point| if let ManipulatorPointId::Anchor(id) = point { Some((layer, id)) } else { None })
+					.collect::<Vec<_>>()
+					.into_iter()
+			})
+			.collect();
+
+		// If exactly two points are selected (regardless of layer), connect them
+		if all_selected_points.len() == 2 {
+			let (layer1, start_point) = all_selected_points[0];
+			let (layer2, end_point) = all_selected_points[1];
+
+			let Some(vector_data1) = document.network_interface.compute_modified_vector(layer1) else { return };
+			let Some(vector_data2) = document.network_interface.compute_modified_vector(layer2) else { return };
+
+			if vector_data1.all_connected(start_point).count() != 1 || vector_data2.all_connected(end_point).count() != 1 {
+				return;
+			}
+
+			if layer1 == layer2 {
+				if start_point == end_point {
+					return;
+				}
+
+				let segment_id = SegmentId::generate();
+				let modification_type = VectorModificationType::InsertSegment {
+					id: segment_id,
+					points: [end_point, start_point],
+					handles: [None, None],
+				};
+				responses.add(GraphOperationMessage::Vector { layer: layer1, modification_type });
+			}
+			// TODO: Fix the implementation of this case so it actually connects the separate layers, see:
+			// TODO: <https://github.com/GraphiteEditor/Graphite/pull/2227#issuecomment-2626342475>
+			else {
+				// Points are in different layers - find the topmost layer
+				let top_layer = document.metadata().all_layers().find(|&layer| layer == layer1 || layer == layer2).unwrap_or(layer1);
+
+				let bottom_layer = if top_layer == layer1 { layer2 } else { layer1 };
+				let bottom_point = if top_layer == layer1 { end_point } else { start_point };
+
+				// Get position of point in bottom layer
+				let Some(bottom_vector_data) = document.network_interface.compute_modified_vector(bottom_layer) else {
+					return;
+				};
+				let Some(point_pos) = bottom_vector_data.point_domain.position_from_id(bottom_point) else {
+					return;
+				};
+
+				// Create new point in top layer
+				let new_point_id = PointId::generate();
+				let modification_type = VectorModificationType::InsertPoint {
+					id: new_point_id,
+					position: point_pos,
+				};
+				responses.add(GraphOperationMessage::Vector { layer: top_layer, modification_type });
+
+				// Create segment between points in top layer
+				let segment_id = SegmentId::generate();
+				let points = if top_layer == layer1 { [start_point, new_point_id] } else { [new_point_id, end_point] };
+
+				let modification_type = VectorModificationType::InsertSegment {
+					id: segment_id,
+					points,
+					handles: [None, None],
+				};
+				responses.add(GraphOperationMessage::Vector { layer: top_layer, modification_type });
+			}
+			return;
+		}
+
+		// If no points are selected, try to find a single continuous subpath in each layer to connect the endpoints of
+		for &layer in self.selected_shape_state.keys() {
+			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
+
+			let endpoints: Vec<PointId> = vector_data
+				.point_domain
+				.ids()
+				.iter()
+				.copied()
+				.filter(|&point_id| vector_data.all_connected(point_id).count() == 1)
+				.collect();
+
+			if endpoints.len() == 2 {
+				let start_point = endpoints[0];
+				let end_point = endpoints[1];
+
+				let segment_id = SegmentId::generate();
+				let modification_type = VectorModificationType::InsertSegment {
+					id: segment_id,
+					points: [end_point, start_point],
+					handles: [None, None],
+				};
+				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+			}
+		}
+	}
+
 	// Snap, returning a viewport delta
 	pub fn snap(&self, snap_manager: &mut SnapManager, snap_cache: &SnapCache, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, previous_mouse: DVec2) -> DVec2 {
 		let snap_data = SnapData::new_snap_cache(document, input, snap_cache);
