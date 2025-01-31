@@ -571,13 +571,13 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					.grs_typed(self.typing.type_backspace(), &mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport);
 			}
 			TransformLayerMessage::TypeDecimalPoint => {
-                if self.transform_operation.can_begin_typing(){
+				if self.transform_operation.can_begin_typing() {
 					self.transform_operation
 						.grs_typed(self.typing.type_decimal_point(), &mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport)
 				}
 			}
 			TransformLayerMessage::TypeDigit { digit } => {
-                if self.transform_operation.can_begin_typing(){
+				if self.transform_operation.can_begin_typing() {
 					self.transform_operation
 						.grs_typed(self.typing.type_number(digit), &mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport)
 				}

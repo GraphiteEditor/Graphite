@@ -331,13 +331,16 @@ impl TransformOperation {
 		}
 	}
 
-	pub fn is_typing(&self) -> bool {
+	pub fn axis_constraint(&self) -> Axis {
 		match self {
-			TransformOperation::None => false,
-			TransformOperation::Grabbing(translation) => translation.typed_distance.is_some(),
-			TransformOperation::Rotating(rotation) => rotation.typed_angle.is_some(),
-			TransformOperation::Scaling(scale) => scale.typed_factor.is_some(),
+			TransformOperation::Grabbing(grabbing) => grabbing.constraint,
+			TransformOperation::Scaling(scaling) => scaling.constraint,
+			_ => Axis::Both,
 		}
+	}
+
+	pub fn can_begin_typing(&self) -> bool {
+		self.is_constraint_to_axis() || !matches!(self, TransformOperation::Grabbing(_))
 	}
 
 	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, snapping: bool, mut local: bool, quad: Quad, transform: DAffine2) -> bool {
@@ -414,10 +417,25 @@ impl TransformOperation {
 			let modifiers = vec![HintInfo::keys([Key::Shift], "Slow"), HintInfo::keys([Key::Control], "Increments")];
 			hint_groups.push(HintGroup(modifiers));
 		}
-		hint_groups.push(HintGroup(input_hints));
+		if !matches!(self, TransformOperation::Rotating(_)) {
+			hint_groups.push(HintGroup(input_hints));
+		}
 
 		let hint_data = HintData(hint_groups);
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
+	}
+
+	pub fn is_constraint_to_axis(&self) -> bool {
+		self.axis_constraint() != Axis::Both
+	}
+
+	pub fn is_typing(&self) -> bool {
+		match self {
+			TransformOperation::None => false,
+			TransformOperation::Grabbing(translation) => translation.typed_distance.is_some(),
+			TransformOperation::Rotating(rotation) => rotation.typed_angle.is_some(),
+			TransformOperation::Scaling(scale) => scale.typed_factor.is_some(),
+		}
 	}
 
 	pub fn negate(&mut self, selected: &mut Selected, snapping: bool, local: bool, quad: Quad, transform: DAffine2) {
@@ -431,23 +449,6 @@ impl TransformOperation {
 			self.apply_transform_operation(selected, snapping, local, quad, transform);
 		}
 	}
-
-	pub fn axis_constraint(&self) -> Axis {
-		match self {
-			TransformOperation::Grabbing(grabbing) => grabbing.constraint,
-			TransformOperation::Scaling(scaling) => scaling.constraint,
-			_ => Axis::Both,
-		}
-	}
-
-    pub fn is_constraint_to_axis(&self) -> bool{
-        self.axis_constraint() != Axis::Both
-    }
-
-    pub fn can_begin_typing(&self) -> bool{
-        self.is_constraint_to_axis() || !matches!(self, TransformOperation::Grabbing(_))
-    }
-
 }
 
 pub struct Selected<'a> {
