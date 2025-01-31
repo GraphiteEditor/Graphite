@@ -80,18 +80,17 @@ fn calculate_pivot(selected_points: &Vec<&ManipulatorPointId>, vector_data: &Vec
 }
 
 fn project_edge_to_quad(edge: DVec2, quad: &Quad, local: bool, axis_constraint: Axis) -> DVec2 {
-	let quad = quad.0;
 	match axis_constraint {
 		Axis::X => {
 			if local {
-				edge.project_onto(quad[1] - quad[0])
+				edge.project_onto(quad.top_right() - quad.top_left())
 			} else {
 				edge.with_y(0.)
 			}
 		}
 		Axis::Y => {
 			if local {
-				edge.project_onto(quad[3] - quad[0])
+				edge.project_onto(quad.bottom_left() - quad.top_left())
 			} else {
 				edge.with_x(0.)
 			}
@@ -245,13 +244,12 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						}
 						TransformOperation::Rotating(rotation) => {
 							let angle = rotation.to_f64(self.increments);
-							let quad = self.fixed_bbox.0;
 							let offset_angle = if self.grs_pen_handle {
 								self.handle - self.last_point
 							} else if using_path_tool {
 								self.start_mouse - self.pivot
 							} else {
-								quad[1] - quad[0]
+								self.fixed_bbox.top_right() - self.fixed_bbox.top_right()
 							};
 							let offset_angle = offset_angle.to_angle();
 							let width = viewport_box.max_element();

@@ -303,14 +303,13 @@ pub enum TransformOperation {
 
 impl TransformOperation {
 	pub fn apply_transform_operation(&self, selected: &mut Selected, increment_mode: bool, local: bool, quad: Quad, transform: DAffine2) {
-		let quad = quad.0;
-		let edge = quad[1] - quad[0];
+		let local_axis_transform_angle = (quad.top_right() - quad.top_left()).to_angle();
 		if self != &TransformOperation::None {
 			let transformation = match self {
 				TransformOperation::Grabbing(translation) => {
 					let translate = DAffine2::from_translation(transform.transform_vector2(translation.to_dvec(transform, increment_mode)));
 					if local {
-						DAffine2::from_angle(edge.to_angle()) * translate * DAffine2::from_angle(-edge.to_angle())
+						DAffine2::from_angle(local_axis_transform_angle) * translate * DAffine2::from_angle(-local_axis_transform_angle)
 					} else {
 						translate
 					}
@@ -318,7 +317,7 @@ impl TransformOperation {
 				TransformOperation::Rotating(rotation) => DAffine2::from_angle(rotation.to_f64(increment_mode)),
 				TransformOperation::Scaling(scale) => {
 					if local {
-						DAffine2::from_angle(edge.to_angle()) * DAffine2::from_scale(scale.to_dvec(increment_mode)) * DAffine2::from_angle(-edge.to_angle())
+						DAffine2::from_angle(local_axis_transform_angle) * DAffine2::from_scale(scale.to_dvec(increment_mode)) * DAffine2::from_angle(-local_axis_transform_angle)
 					} else {
 						DAffine2::from_scale(scale.to_dvec(increment_mode))
 					}
