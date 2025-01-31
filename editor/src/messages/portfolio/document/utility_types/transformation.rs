@@ -439,6 +439,15 @@ impl TransformOperation {
 			_ => Axis::Both,
 		}
 	}
+
+    pub fn is_constraint_to_axis(&self) -> bool{
+        self.axis_constraint() != Axis::Both
+    }
+
+    pub fn can_begin_typing(&self) -> bool{
+        self.is_constraint_to_axis() || !matches!(self, TransformOperation::Grabbing(_))
+    }
+
 }
 
 pub struct Selected<'a> {
