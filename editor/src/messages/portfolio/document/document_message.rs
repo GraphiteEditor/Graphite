@@ -1,4 +1,4 @@
-use super::utility_types::misc::SnappingState;
+use super::utility_types::misc::{GroupFolderType, SnappingState};
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -39,9 +39,6 @@ pub enum DocumentMessage {
 	},
 	ClearArtboards,
 	ClearLayersPanel,
-	InsertBooleanOperation {
-		operation: graphene_core::vector::misc::BooleanOperation,
-	},
 	CreateEmptyFolder,
 	DebugPrintDocument,
 	DeleteNode {
@@ -71,7 +68,9 @@ pub enum DocumentMessage {
 	GridOptions(GridSnapping),
 	GridOverlays(OverlayContext),
 	GridVisibility(bool),
-	GroupSelectedLayers,
+	GroupSelectedLayers {
+		group_folder_type: GroupFolderType,
+	},
 	ImaginateGenerate {
 		imaginate_node: Vec<NodeId>,
 	},

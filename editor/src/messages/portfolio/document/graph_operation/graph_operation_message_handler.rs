@@ -149,6 +149,10 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				let layer = modify_inputs.create_layer(id);
 				modify_inputs.insert_boolean_data(operation, layer);
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
+				responses.add(NodeGraphMessage::SetDisplayNameImpl {
+					node_id: id,
+					alias: "Boolean Operation".to_string(),
+				});
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index } => {
