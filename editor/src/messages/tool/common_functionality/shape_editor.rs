@@ -15,16 +15,22 @@ use glam::{DAffine2, DVec2};
 use graphene_std::vector::{HandleId, SegmentId};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum SelectKind {
+pub enum SelectionChange {
 	Clear,
 	Extend,
 	Shrink,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum SelectShape<'a> {
+#[derive(Clone, Copy, Debug)]
+pub enum SelectionShape<'a> {
 	Box([DVec2; 2]),
-	Polygon(&'a Vec<DVec2>),
+	Lasso(&'a Vec<DVec2>),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum SelectionShapeType {
+	Box,
+	Lasso,
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, Default)]
@@ -1407,9 +1413,9 @@ impl ShapeState {
 		false
 	}
 
-	pub fn select_all_in_shape<'a>(&mut self, network_interface: &NodeNetworkInterface, select_shape: SelectShape<'a>, select_kind: SelectKind) {
+	pub fn select_all_in_shape(&mut self, network_interface: &NodeNetworkInterface, selection_shape: SelectionShape, selection_change: SelectionChange) {
 		for (&layer, state) in &mut self.selected_shape_state {
-			if select_kind == SelectKind::Clear {
+			if selection_change == SelectionChange::Clear {
 				state.clear_points()
 			}
 
@@ -1426,7 +1432,7 @@ impl ShapeState {
 				assert!(vector_data.point_domain.ids().contains(&end));
 			}
 
-			let polygon_subpath = if let SelectShape::Polygon(polygon) = select_shape {
+			let polygon_subpath = if let SelectionShape::Lasso(polygon) = selection_shape {
 				if polygon.len() < 2 {
 					return;
 				}
@@ -1441,17 +1447,17 @@ impl ShapeState {
 					let Some(position) = position else { continue };
 					let transformed_position = transform.transform_point2(position);
 
-					let select = match select_shape {
-						SelectShape::Box(quad) => quad[0].min(quad[1]).cmple(transformed_position).all() && quad[0].max(quad[1]).cmpge(transformed_position).all(),
-						SelectShape::Polygon(_) => polygon_subpath
+					let select = match selection_shape {
+						SelectionShape::Box(quad) => quad[0].min(quad[1]).cmple(transformed_position).all() && quad[0].max(quad[1]).cmpge(transformed_position).all(),
+						SelectionShape::Lasso(_) => polygon_subpath
 							.as_ref()
-							.expect("If select_shape is a polygon then subpath is constructed beforehand.")
+							.expect("If `selection_shape` is a polygon then subpath is constructed beforehand.")
 							.contains_point(transformed_position),
 					};
 
 					if select {
-						match select_kind {
-							SelectKind::Shrink => state.deselect_point(id),
+						match selection_change {
+							SelectionChange::Shrink => state.deselect_point(id),
 							_ => state.select_point(id),
 						}
 					}
@@ -1461,17 +1467,17 @@ impl ShapeState {
 			for (&id, &position) in vector_data.point_domain.ids().iter().zip(vector_data.point_domain.positions()) {
 				let transformed_position = transform.transform_point2(position);
 
-				let select = match select_shape {
-					SelectShape::Box(quad) => quad[0].min(quad[1]).cmple(transformed_position).all() && quad[0].max(quad[1]).cmpge(transformed_position).all(),
-					SelectShape::Polygon(_) => polygon_subpath
+				let select = match selection_shape {
+					SelectionShape::Box(quad) => quad[0].min(quad[1]).cmple(transformed_position).all() && quad[0].max(quad[1]).cmpge(transformed_position).all(),
+					SelectionShape::Lasso(_) => polygon_subpath
 						.as_ref()
-						.expect("If select_shape is a polygon then subpath is constructed beforehand.")
+						.expect("If `selection_shape` is a polygon then subpath is constructed beforehand.")
 						.contains_point(transformed_position),
 				};
 
 				if select {
-					match select_kind {
-						SelectKind::Shrink => state.deselect_point(ManipulatorPointId::Anchor(id)),
+					match selection_change {
+						SelectionChange::Shrink => state.deselect_point(ManipulatorPointId::Anchor(id)),
 						_ => state.select_point(ManipulatorPointId::Anchor(id)),
 					}
 				}
