@@ -16,7 +16,7 @@ async fn image_color_palette(
 	let mut histogram: Vec<usize> = vec![0; (bins + 1.) as usize];
 	let mut colors: Vec<Vec<Color>> = vec![vec![]; (bins + 1.) as usize];
 
-	let image = image.one_item();
+	let image = image.one_instance();
 
 	for pixel in image.image.data.iter() {
 		let r = pixel.r() * GRID;

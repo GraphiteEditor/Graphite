@@ -281,7 +281,7 @@ impl ArtboardGroup {
 
 #[node_macro::node(category(""))]
 async fn layer(_: impl Ctx, stack: GraphicGroupTable, mut element: GraphicElement, node_path: Vec<NodeId>) -> GraphicGroupTable {
-	let mut stack = stack.one_item().clone();
+	let mut stack = stack.one_instance().clone();
 
 	if stack.transform.matrix2.determinant() != 0. {
 		*element.transform_mut() = stack.transform.inverse() * element.transform();
@@ -327,7 +327,7 @@ async fn to_group<Data: Into<GraphicGroupTable> + 'n>(
 
 #[node_macro::node(category("General"))]
 async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: bool) -> GraphicGroupTable {
-	let nested_group = group.one_item().clone();
+	let nested_group = group.one_instance().clone();
 
 	let mut flat_group = GraphicGroup::default();
 
@@ -335,7 +335,7 @@ async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: boo
 		let mut collection_group = GraphicGroup::default();
 		for (element, reference) in current_group.elements {
 			if let GraphicElement::GraphicGroup(nested_group) = element {
-				let nested_group = nested_group.one_item();
+				let nested_group = nested_group.one_instance();
 				let mut nested_group = nested_group.clone();
 
 				*nested_group.transform_mut() = nested_group.transform() * current_group.transform;

@@ -915,7 +915,7 @@ async fn render_texture<'a: 'n>(
 async fn upload_texture<'a: 'n>(_: impl ExtractFootprint + Ctx, input: ImageFrameTable<Color>, executor: &'a WgpuExecutor) -> TextureFrame {
 	// let new_data: Vec<RGBA16F> = input.image.data.into_iter().map(|c| c.into()).collect();
 
-	let input = input.one_item();
+	let input = input.one_instance();
 	let new_data: Vec<SRGBA8> = input.image.data.iter().map(|x| (*x).into()).collect();
 	let new_image = Image {
 		width: input.image.width,
