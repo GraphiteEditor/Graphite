@@ -714,7 +714,11 @@ impl Fsm for PathToolFsmState {
 						fill_color.insert(0, '#');
 						let fill_color = Some(fill_color.as_str());
 
-						let selection_direction = tool_data.calculate_direction();
+						let mut selection_direction = tool_action_data.preferences.get_selection_mode();
+						if selection_direction == SelectionMode::Directional {
+							selection_direction = tool_data.calculate_direction();
+						}
+
 						let quad = tool_data.selection_quad();
 						let polygon = &tool_data.lasso_polygon;
 
