@@ -1,5 +1,6 @@
 use crate::consts::{
-	BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, MIN_LENGTH_FOR_CORNERS_VISIBILITY, MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, SELECTION_DRAG_ANGLE,
+	BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, MAXIMUM_ALT_SCALE_FACTOR, MIN_LENGTH_FOR_CORNERS_VISIBILITY, MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR,
+	SELECTION_DRAG_ANGLE,
 };
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -8,9 +9,9 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration;
 
 use graphene_core::renderer::Quad;
+use graphene_std::renderer::Rect;
 
 use glam::{DAffine2, DVec2};
-use graphene_std::renderer::Rect;
 
 use super::snapping::{self, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
 
@@ -101,36 +102,43 @@ impl SelectedEdges {
 		}
 
 		let mut pivot = self.pivot_from_bounds(min, max);
-		// When dragging the edge of a cage with alt, it centres around the pivot. This requires offsetting the other edge.
+
+		// Alt: Scaling around the pivot
 		if let Some(center_around) = center_around {
 			let center_around = transform.inverse().transform_point2(center_around);
-			pivot = center_around;
 
-			let calculate_distance = |moving_opposite_to_drag: f64, centre: f64, dragging: f64, original_dragging: f64| {
-				let new_distance = (moving_opposite_to_drag - centre) * (centre - dragging) / (centre - original_dragging) + centre;
-
-				// A motion of A pixels from the mouse results in (scale_factor)A pixels on the other side
-				let scale_factor = (moving_opposite_to_drag - centre) / (centre - original_dragging);
-
-				if new_distance.is_finite() && scale_factor <= crate::consts::MAXIMUM_ALT_SCALE_FACTOR {
-					new_distance
-				} else {
-					warn!("Invalid stretch with scale factor of {scale_factor}");
-					moving_opposite_to_drag // Don't offset the edge opposite to the drag
+			let calculate_distance = |moving_opposite_to_drag: &mut f64, center: f64, dragging: f64, original_dragging: f64, current_side: bool| {
+				if !current_side {
+					return true;
 				}
+
+				// The motion of the user's cursor by an `x` pixel offset results in `x * scale_factor` pixels of offset on the other side
+				let scale_factor = (center - *moving_opposite_to_drag) / (center - original_dragging);
+				let new_distance = center - scale_factor * (center - dragging);
+
+				// Ignore the Alt key press and scale the dragged edge normally
+				if !new_distance.is_finite() || scale_factor.abs() > MAXIMUM_ALT_SCALE_FACTOR {
+					// Don't go on to check the other sides since this side is already invalid, so Alt-dragging is disabled and updating the pivot would be incorrect
+					return false;
+				}
+
+				*moving_opposite_to_drag = new_distance;
+
+				true
 			};
-			if self.top {
-				max.y = calculate_distance(max.y, center_around.y, min.y, self.bounds[0].y);
-			} else if self.bottom {
-				min.y = calculate_distance(min.y, center_around.y, max.y, self.bounds[1].y);
-			}
-			if self.left {
-				max.x = calculate_distance(max.x, center_around.x, min.x, self.bounds[0].x);
-			} else if self.right {
-				min.x = calculate_distance(min.x, center_around.x, max.x, self.bounds[1].x);
+
+			// Update the value of the first argument through mutation, and if we make it through all of them without
+			// encountering a case where the pivot is too near the edge, we also update the pivot so scaling occurs around it
+			if calculate_distance(&mut max.y, center_around.y, min.y, self.bounds[0].y, self.top)
+				&& calculate_distance(&mut min.y, center_around.y, max.y, self.bounds[1].y, self.bottom)
+				&& calculate_distance(&mut max.x, center_around.x, min.x, self.bounds[0].x, self.left)
+				&& calculate_distance(&mut min.x, center_around.x, max.x, self.bounds[1].x, self.right)
+			{
+				pivot = center_around;
 			}
 		}
 
+		// Shift: Aspect ratio constraint
 		if constrain {
 			let size = max - min;
 			let min_pivot = (pivot - min) / size;

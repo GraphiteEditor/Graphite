@@ -68,10 +68,10 @@ pub const MIN_LENGTH_FOR_MIDPOINT_VISIBILITY: f64 = 20.;
 pub const MIN_LENGTH_FOR_CORNERS_VISIBILITY: f64 = 12.;
 /// When the width or height of the transform cage is less than this value, only the exterior of the bounding box will act as a click target for resizing.
 pub const MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR: f64 = 40.;
-/// When dragging the edge of a cage with alt, it centres around the pivot.
-/// However if the pivot is on the same edge you are dragging, we should prevent very large scales.
+/// When dragging the edge of a cage with Alt, it centers around the pivot.
+/// However if the pivot is on or near the same edge you are dragging, we should avoid scaling by a massive factor caused by the small denominator.
 ///
-/// A motion of A pixels from the mouse results in (scale_factor)A pixels on the other side
+/// The motion of the user's cursor by an `x` pixel offset results in `x * scale_factor` pixels of offset on the other side.
 pub const MAXIMUM_ALT_SCALE_FACTOR: f64 = 25.;
 
 // PATH TOOL
