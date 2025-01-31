@@ -941,20 +941,7 @@ impl Fsm for SelectToolFsmState {
 				responses.add(OverlaysMessage::Draw);
 
 				if selection_shape.is_lasso() {
-					let lasso_polygon = &mut tool_data.lasso_polygon;
-					let current_position = input.mouse.position;
-
-					if lasso_polygon.len() < 2 {
-						lasso_polygon.push(current_position);
-					} else {
-						let last_points = lasso_polygon.last_chunk::<2>().unwrap();
-						let distance = last_points[0].distance_squared(last_points[1]);
-
-						if distance < SELECTION_TOLERANCE.powi(2) {
-							lasso_polygon.pop();
-						}
-						lasso_polygon.push(current_position);
-					}
+					extend_lasso(&mut tool_data.lasso_polygon, tool_data.drag_current);
 				}
 
 				// AutoPanning
@@ -1410,5 +1397,19 @@ fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, network_interface
 	if is_layer_fed_by_node_of_name(layer, network_interface, "Text") {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 		responses.add(TextToolMessage::EditSelected);
+	}
+}
+
+pub fn extend_lasso(lasso_polygon: &mut Vec<DVec2>, point: DVec2) {
+	if lasso_polygon.len() < 2 {
+		lasso_polygon.push(point);
+	} else {
+		let last_points = lasso_polygon.last_chunk::<2>().unwrap();
+		let distance = last_points[0].distance_squared(last_points[1]);
+
+		if distance < SELECTION_TOLERANCE.powi(2) {
+			lasso_polygon.pop();
+		}
+		lasso_polygon.push(point);
 	}
 }
