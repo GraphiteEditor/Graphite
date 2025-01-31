@@ -224,11 +224,11 @@ impl Fsm for EllipseToolFsmState {
 						let node_id = graph_modification_utils::get_ellipse_id(layer, &document.network_interface).unwrap();
 						responses.add(NodeGraphMessage::SetInput {
 							input_connector: InputConnector::node(node_id, 1),
-							input: NodeInput::value(TaggedValue::F64((start.x - end.x).abs()), false),
+							input: NodeInput::value(TaggedValue::F64(((start.x - end.x) / 2.).abs()), false),
 						});
 						responses.add(NodeGraphMessage::SetInput {
 							input_connector: InputConnector::node(node_id, 2),
-							input: NodeInput::value(TaggedValue::F64((start.y - end.y).abs()), false),
+							input: NodeInput::value(TaggedValue::F64(((start.y - end.y) / 2.).abs()), false),
 						});
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
