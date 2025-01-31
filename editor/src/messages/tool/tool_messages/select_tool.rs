@@ -1268,9 +1268,9 @@ impl Fsm for SelectToolFsmState {
 					}),
 					HintGroup(vec![
 						HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
-						HintInfo::keys([Key::Control], "Lasso Select").prepend_plus(),
-						HintInfo::keys([Key::Shift], "Extend Selection / ").prepend_plus(),
-						HintInfo::keys([Key::Alt], "Remove Selection"),
+						HintInfo::keys([Key::Control], "Lasso").prepend_plus(),
+						HintInfo::keys([Key::Shift], "/").prepend_plus(),
+						HintInfo::keys([Key::Alt], "Extend/Subtract Selection"),
 					]),
 					HintGroup(vec![HintInfo::keys([Key::KeyG, Key::KeyR, Key::KeyS], "Grab/Rotate/Scale Selected")]),
 					HintGroup(vec![
@@ -1300,7 +1300,7 @@ impl Fsm for SelectToolFsmState {
 			SelectToolFsmState::Drawing { .. } => {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-					HintGroup(vec![HintInfo::keys([Key::Control, Key::Shift], "Remove from Selection").add_mac_keys([Key::Command, Key::Shift])]),
+					HintGroup(vec![HintInfo::keys([Key::Shift], "/"), HintInfo::keys([Key::Alt], "Extend/Subtract Selection")]),
 					// TODO: Re-select deselected layers during drag when Shift is pressed, and re-deselect if Shift is released before drag ends.
 					// TODO: (See https://discord.com/channels/731730685944922173/1216976541947531264/1321360311298818048)
 					// HintGroup(vec![HintInfo::keys([Key::Shift], "Extend Selection")])
