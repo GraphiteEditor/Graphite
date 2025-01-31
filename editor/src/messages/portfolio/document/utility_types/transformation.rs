@@ -272,7 +272,7 @@ impl Scale {
 	#[must_use]
 	pub fn increment_amount(self, delta: f64) -> Self {
 		Self {
-			dragged_factor: self.dragged_factor + delta,
+			dragged_factor: (self.dragged_factor + delta).abs().max(1e-4) * self.dragged_factor.signum(),
 			typed_factor: None,
 			constraint: self.constraint,
 		}
