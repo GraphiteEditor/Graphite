@@ -7,7 +7,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::shape_editor::{ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectKind, SelectedPointsInfo, ShapeState};
+use crate::messages::tool::common_functionality::shape_editor::{ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectKind, SelectShape, SelectedPointsInfo, ShapeState};
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 
 use graphene_core::renderer::Quad;
@@ -961,8 +961,15 @@ impl Fsm for PathToolFsmState {
 				if tool_data.drag_start_pos == tool_data.previous_mouse_position {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				} else {
-					shape_editor.select_all_in_quad(&document.network_interface, [tool_data.drag_start_pos, tool_data.previous_mouse_position], select_kind);
+					match selection_shape {
+						SelectionShape::Box => {
+							let bbox = [tool_data.drag_start_pos, tool_data.previous_mouse_position];
+							shape_editor.select_all_in_quad(&document.network_interface, SelectShape::Box(bbox), select_kind);
+						}
+						SelectionShape::Lasso => shape_editor.select_all_in_quad(&document.network_interface, SelectShape::Polygon(&tool_data.lasso_polygon), select_kind),
+					}
 				}
+				// shape_editor.select_all_in_quad(&document.network_interface, [tool_data.drag_start_pos, tool_data.previous_mouse_position], select_kind)
 				responses.add(OverlaysMessage::Draw);
 
 				PathToolFsmState::Ready
@@ -992,7 +999,13 @@ impl Fsm for PathToolFsmState {
 				if tool_data.drag_start_pos == tool_data.previous_mouse_position {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				} else {
-					shape_editor.select_all_in_quad(&document.network_interface, [tool_data.drag_start_pos, tool_data.previous_mouse_position], select_kind);
+					match selection_shape {
+						SelectionShape::Box => {
+							let bbox = [tool_data.drag_start_pos, tool_data.previous_mouse_position];
+							shape_editor.select_all_in_quad(&document.network_interface, SelectShape::Box(bbox), select_kind);
+						}
+						SelectionShape::Lasso => shape_editor.select_all_in_quad(&document.network_interface, SelectShape::Polygon(&tool_data.lasso_polygon), select_kind),
+					}
 				}
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PathToolMessage::SelectedPointUpdated);
