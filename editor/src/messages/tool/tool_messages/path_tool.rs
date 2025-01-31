@@ -182,7 +182,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 		match message {
 			ToolMessage::Path(PathToolMessage::ClosePath) => {
 				responses.add(DocumentMessage::AddTransaction);
-				tool_data.shape_editor.close_selected_path(&tool_data.document, responses);
+				tool_data.shape_editor.close_selected_path(tool_data.document, responses);
 				responses.add(DocumentMessage::EndTransaction);
 				responses.add(OverlaysMessage::Draw);
 			}
