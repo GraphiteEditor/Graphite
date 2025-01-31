@@ -143,8 +143,8 @@ pub struct Translation {
 }
 
 impl Translation {
-	pub fn to_dvec(self, transform: DAffine2) -> DVec2 {
-		if let Some(value) = self.typed_distance {
+	pub fn to_dvec(self, transform: DAffine2, snap: bool) -> DVec2 {
+		let displacement = if let Some(value) = self.typed_distance {
 			let document_displacement = if self.constraint == Axis::Y { DVec2::new(0., value) } else { DVec2::new(value, 0.) };
 			transform.transform_vector2(document_displacement)
 		} else {
@@ -153,6 +153,12 @@ impl Translation {
 				Axis::X => DVec2::new(self.dragged_distance.x, 0.),
 				Axis::Y => DVec2::new(0., self.dragged_distance.y),
 			}
+		};
+		let displacement = transform.inverse().transform_vector2(displacement);
+		if snap {
+			displacement.round()
+		} else {
+			displacement
 		}
 	}
 
@@ -170,6 +176,11 @@ impl Translation {
 			typed_distance: None,
 			constraint: self.constraint,
 		}
+	}
+
+	pub fn negate(self) -> Self {
+		let dragged_distance = -self.dragged_distance;
+		Self { dragged_distance, ..self }
 	}
 
 	pub fn with_constraint(self, target: Axis, local: bool) -> (Self, bool) {
@@ -297,10 +308,11 @@ impl TransformOperation {
 		if self != &TransformOperation::None {
 			let transformation = match self {
 				TransformOperation::Grabbing(translation) => {
+					let translate = DAffine2::from_translation(transform.transform_vector2(translation.to_dvec(transform, snapping)));
 					if local {
-						DAffine2::from_angle(edge.to_angle()) * DAffine2::from_translation(translation.to_dvec(transform)) * DAffine2::from_angle(-edge.to_angle())
+						DAffine2::from_angle(edge.to_angle()) * translate * DAffine2::from_angle(-edge.to_angle())
 					} else {
-						DAffine2::from_translation(translation.to_dvec(transform))
+						translate
 					}
 				}
 				TransformOperation::Rotating(rotation) => DAffine2::from_angle(rotation.to_f64(snapping)),
@@ -315,7 +327,16 @@ impl TransformOperation {
 			};
 
 			selected.update_transforms(transformation);
-			self.hints(selected.responses);
+			self.hints(selected.responses, local);
+		}
+	}
+
+	pub fn is_typing(&self) -> bool {
+		match self {
+			TransformOperation::None => false,
+			TransformOperation::Grabbing(translation) => translation.typed_distance.is_some(),
+			TransformOperation::Rotating(rotation) => rotation.typed_angle.is_some(),
+			TransformOperation::Scaling(scale) => scale.typed_factor.is_some(),
 		}
 	}
 
@@ -346,21 +367,61 @@ impl TransformOperation {
 		self.apply_transform_operation(selected, snapping, local, quad, transform);
 	}
 
-	pub fn hints(&self, responses: &mut VecDeque<Message>) {
+	pub fn hints(&self, responses: &mut VecDeque<Message>, local: bool) {
 		use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 		use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 		let mut input_hints = Vec::new();
-		input_hints.push(HintInfo::keys([Key::Shift], "Slow Mode"));
-		if matches!(self, TransformOperation::Rotating(_) | TransformOperation::Scaling(_)) {
-			input_hints.push(HintInfo::keys([Key::Control], "Snap"));
-		}
-		if matches!(self, TransformOperation::Grabbing(_) | TransformOperation::Scaling(_)) {
-			input_hints.push(HintInfo::keys([Key::KeyX], "Along X Axis"));
-			input_hints.push(HintInfo::keys([Key::KeyY], "Along Y Axis"));
+		if self.is_typing() {
+			input_hints.push(HintInfo::keys([Key::Minus], "Negate Direction"));
+			input_hints.push(HintInfo::keys([Key::Backspace], "Delete Digit"));
+			input_hints.push(HintInfo::keys([Key::NumKeys], "Enter Number"));
+		} else if matches!(self, TransformOperation::Grabbing(_) | TransformOperation::Scaling(_)) {
+			let axis_constraint = match self {
+				TransformOperation::Grabbing(grabbing) => grabbing.constraint,
+				TransformOperation::Scaling(scaling) => scaling.constraint,
+				_ => Axis::Both,
+			};
+			let clear_constraint = "Clear Constraint";
+			match axis_constraint {
+				Axis::Both => {
+					input_hints.push(HintInfo::keys([Key::KeyX], "Along X Axis"));
+					input_hints.push(HintInfo::keys([Key::KeyY], "Along Y Axis"));
+				}
+				Axis::X => {
+					let x_label = if local { clear_constraint } else { "Along Local X Axis" };
+					input_hints.push(HintInfo::keys([Key::KeyX], x_label));
+					input_hints.push(HintInfo::keys([Key::KeyY], "Along Y Axis"));
+					if !local {
+						input_hints.push(HintInfo::keys([Key::KeyX, Key::KeyX], clear_constraint));
+					}
+				}
+				Axis::Y => {
+					let y_label = if local { clear_constraint } else { "Along Local Y Axis" };
+					input_hints.push(HintInfo::keys([Key::KeyX], "Along X Axis"));
+					input_hints.push(HintInfo::keys([Key::KeyY], y_label));
+					if !local {
+						input_hints.push(HintInfo::keys([Key::KeyY, Key::KeyY], clear_constraint));
+					}
+				}
+			}
 		}
 
-		let hint_data = HintData(vec![HintGroup(input_hints)]);
+		let grs_hint_group = match self {
+			TransformOperation::None => unreachable!(),
+			TransformOperation::Scaling(_) => HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyR]], "Grab/Rotate Selected")]),
+			TransformOperation::Grabbing(_) => HintGroup(vec![HintInfo::multi_keys([[Key::KeyR], [Key::KeyS]], "Rotate/Scale Selected")]),
+			TransformOperation::Rotating(_) => HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyS]], "Grab/Scale Selected")]),
+		};
+
+		let mut hint_groups = vec![grs_hint_group];
+		if !self.is_typing() {
+			let modifiers = vec![HintInfo::keys([Key::Shift], "Slow"), HintInfo::keys([Key::Control], "Increments")];
+			hint_groups.push(HintGroup(modifiers));
+		}
+		hint_groups.push(HintGroup(input_hints));
+
+		let hint_data = HintData(hint_groups);
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
@@ -369,6 +430,7 @@ impl TransformOperation {
 			*self = match self {
 				TransformOperation::Scaling(scale) => TransformOperation::Scaling(scale.negate()),
 				TransformOperation::Rotating(rotation) => TransformOperation::Rotating(rotation.negate()),
+				TransformOperation::Grabbing(translation) => TransformOperation::Grabbing(translation.negate()),
 				_ => *self,
 			};
 			self.apply_transform_operation(selected, snapping, local, quad, transform);
@@ -580,6 +642,7 @@ impl<'a> Selected<'a> {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Typing {
 	pub digits: Vec<u8>,
+	pub string: String,
 	pub contains_decimal: bool,
 	pub negative: bool,
 }
@@ -589,6 +652,7 @@ const DECIMAL_POINT: u8 = 10;
 impl Typing {
 	pub fn type_number(&mut self, number: u8) -> Option<f64> {
 		self.digits.push(number);
+		self.string.push((b'0' + number) as char);
 
 		self.evaluate()
 	}
@@ -603,7 +667,7 @@ impl Typing {
 			Some(_) => (),
 			None => self.negative = false,
 		}
-
+		self.string.pop();
 		self.evaluate()
 	}
 
@@ -611,6 +675,7 @@ impl Typing {
 		if !self.contains_decimal {
 			self.contains_decimal = true;
 			self.digits.push(DECIMAL_POINT);
+			self.string.push('.');
 		}
 
 		self.evaluate()
@@ -618,6 +683,11 @@ impl Typing {
 
 	pub fn type_negate(&mut self) -> Option<f64> {
 		self.negative = !self.negative;
+		if self.negative {
+			self.string.insert(0, '-');
+		} else {
+			self.string.remove(0);
+		}
 
 		self.evaluate()
 	}
@@ -653,6 +723,7 @@ impl Typing {
 
 	pub fn clear(&mut self) {
 		self.digits.clear();
+		self.string.clear();
 		self.contains_decimal = false;
 		self.negative = false;
 	}

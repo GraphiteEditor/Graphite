@@ -44,6 +44,7 @@ pub enum PathToolMessage {
 		shrink_selection: Key,
 	},
 	Escape,
+	ClosePath,
 	FlipSmoothSharp,
 	GRS {
 		// Should be `Key::KeyG` (Grab), `Key::KeyR` (Rotate), or `Key::KeyS` (Scale)
@@ -184,6 +185,12 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 		let updating_point = message == ToolMessage::Path(PathToolMessage::SelectedPointUpdated);
 
 		match message {
+			ToolMessage::Path(PathToolMessage::ClosePath) => {
+				responses.add(DocumentMessage::AddTransaction);
+				tool_data.shape_editor.close_selected_path(tool_data.document, responses);
+				responses.add(DocumentMessage::EndTransaction);
+				responses.add(OverlaysMessage::Draw);
+			}
 			ToolMessage::Path(PathToolMessage::SwapSelectedHandles) => {
 				if tool_data.shape_editor.handle_with_pair_selected(&tool_data.document.network_interface) {
 					tool_data.shape_editor.alternate_selected_handles(&tool_data.document.network_interface);
@@ -215,6 +222,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeselectAllPoints,
 				BreakPath,
 				DeleteAndBreakPath,
+				ClosePath,
 			),
 			PathToolFsmState::Dragging(_) => actions!(PathToolMessageDiscriminant;
 				Escape,
@@ -548,7 +556,7 @@ impl PathToolData {
 					});
 
 					// Make handles colinear if opposite handle is zero length
-					if opposite_handle_length.map_or(false, |l| l == 0.) {
+					if opposite_handle_length == Some(0.) {
 						shape_editor.convert_selected_manipulators_to_colinear_handles(responses, document);
 						return true;
 					}
@@ -1154,7 +1162,7 @@ impl Fsm for PathToolFsmState {
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDouble, "Make Anchor Smooth/Sharp")]),
 				// TODO: Only show the following hints if at least one point is selected
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
-				HintGroup(vec![HintInfo::keys([Key::KeyG, Key::KeyR, Key::KeyS], "Grab/Rotate/Scale Selected")]),
+				HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyR], [Key::KeyS]], "Grab/Rotate/Scale Selected")]),
 				HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]),
 				HintGroup(vec![
 					HintInfo::keys([Key::Delete], "Delete Selected"),

@@ -482,8 +482,12 @@ pub struct HintInfo {
 }
 
 impl HintInfo {
+	/// Used for a hint where a single key or key stroke is used to perform one action.
+	/// Examples:
+	/// - The Escape key can be used to cancel an action
+	/// - The Ctrl+C key stroke can be used to copy
 	pub fn keys(keys: impl IntoIterator<Item = Key>, label: impl Into<Cow<'static, str>>) -> Self {
-		let keys: Vec<_> = keys.into_iter().collect();
+		let keys = keys.into_iter().collect();
 		Self {
 			key_groups: vec![KeysGroup(keys).into()],
 			key_groups_mac: None,
@@ -494,6 +498,10 @@ impl HintInfo {
 		}
 	}
 
+	/// Used for a hint where multiple different individual keys can be used to perform variations of the same action. These keys are represented with a slight separation between them compared to [`Self::keys`].
+	/// Examples:
+	/// - The four arrow keys can be used to nudge a layer in different directions
+	/// - The G, R, and S keys can be used to enter GRS transformation mode
 	pub fn multi_keys(multi_keys: impl IntoIterator<Item = impl IntoIterator<Item = Key>>, label: impl Into<Cow<'static, str>>) -> Self {
 		let key_groups = multi_keys.into_iter().map(|keys| KeysGroup(keys.into_iter().collect()).into()).collect();
 		Self {
@@ -529,7 +537,7 @@ impl HintInfo {
 	}
 
 	pub fn keys_and_mouse(keys: impl IntoIterator<Item = Key>, mouse_motion: MouseMotion, label: impl Into<Cow<'static, str>>) -> Self {
-		let keys: Vec<_> = keys.into_iter().collect();
+		let keys = keys.into_iter().collect();
 		Self {
 			key_groups: vec![KeysGroup(keys).into()],
 			key_groups_mac: None,
@@ -568,7 +576,7 @@ impl HintInfo {
 	}
 
 	pub fn add_mac_keys(mut self, keys: impl IntoIterator<Item = Key>) -> Self {
-		let mac_keys: Vec<_> = keys.into_iter().collect();
+		let mac_keys = keys.into_iter().collect();
 		self.key_groups_mac = Some(vec![KeysGroup(mac_keys).into()]);
 		self
 	}

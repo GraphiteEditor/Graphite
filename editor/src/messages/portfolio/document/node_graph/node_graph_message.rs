@@ -138,6 +138,7 @@ pub enum NodeGraphMessage {
 	SetDisplayName {
 		node_id: NodeId,
 		alias: String,
+		skip_adding_history_step: bool,
 	},
 	SetDisplayNameImpl {
 		node_id: NodeId,

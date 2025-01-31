@@ -6,11 +6,9 @@ pub use executor::GpuExecutor;
 
 use dyn_any::{DynAny, StaticType};
 use gpu_executor::{ComputePassDimensions, GPUConstant, StorageBufferOptions, TextureBufferOptions, TextureBufferType, ToStorageBuffer, ToUniformBuffer};
-use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle, TextureFrame};
-use graphene_core::raster::{Image, ImageFrame, SRGBA8};
+use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle};
 use graphene_core::transform::{Footprint, Transform};
-use graphene_core::Type;
-use graphene_core::{Color, Cow, Node, SurfaceFrame};
+use graphene_core::{Cow, Node, SurfaceFrame, Type};
 
 use anyhow::{bail, Result};
 use futures::Future;
@@ -154,7 +152,7 @@ impl WgpuExecutor {
 		let surface_texture = surface.get_current_texture()?;
 
 		let render_params = RenderParams {
-			// We are using an explicit opaque color here to eliminate the alpha premulitplication step
+			// We are using an explicit opaque color here to eliminate the alpha premultiplication step
 			// which would be required to support a transparent webgpu canvas
 			base_color: vello::peniko::Color::from_rgba8(0x22, 0x22, 0x22, 0xff),
 			width,
@@ -164,7 +162,7 @@ impl WgpuExecutor {
 
 		{
 			let mut renderer = self.vello_renderer.lock().await;
-			for (id, texture) in context.ressource_overrides.iter() {
+			for (id, texture) in context.resource_overrides.iter() {
 				let texture_view = wgpu::ImageCopyTextureBase {
 					texture: texture.clone(),
 					mip_level: 0,
@@ -905,32 +903,34 @@ async fn render_texture<'a: 'n>(_: (), footprint: Footprint, image: impl Node<Fo
 	}
 }
 
-#[node_macro::node(category(""))]
-async fn upload_texture<'a: 'n, F: Copy + Send + Sync + 'n>(
-	#[implementations((), Footprint)] footprint: F,
-	#[implementations(() -> ImageFrame<Color>, Footprint -> ImageFrame<Color>)] input: impl Node<F, Output = ImageFrame<Color>>,
-	executor: &'a WgpuExecutor,
-) -> TextureFrame {
-	// let new_data: Vec<RGBA16F> = input.image.data.into_iter().map(|c| c.into()).collect();
-	let input = input.eval(footprint).await;
-	let new_data = input.image.data.into_iter().map(SRGBA8::from).collect();
-	let new_image = Image {
-		width: input.image.width,
-		height: input.image.height,
-		data: new_data,
-		base64_string: None,
-	};
+// #[node_macro::node(category(""))]
+// async fn upload_texture<'a: 'n, F: Copy + Send + Sync + 'n>(
+// 	#[implementations((), Footprint)] footprint: F,
+// 	#[implementations(() -> ImageFrameTable<Color>, Footprint -> ImageFrameTable<Color>)] input: impl Node<F, Output = ImageFrameTable<Color>>,
+// 	executor: &'a WgpuExecutor,
+// ) -> TextureFrame {
+// 	// let new_data: Vec<RGBA16F> = input.image.data.into_iter().map(|c| c.into()).collect();
+// 	let input = input.eval(footprint).await;
+// 	let input = input.one_item();
 
-	let shader_input = executor.create_texture_buffer(new_image, TextureBufferOptions::Texture).unwrap();
-	let texture = match shader_input {
-		ShaderInput::TextureBuffer(buffer, _) => buffer,
-		ShaderInput::StorageTextureBuffer(buffer, _) => buffer,
-		_ => unreachable!("Unsupported ShaderInput type"),
-	};
+// 	let new_data: Vec<SRGBA8> = input.image.data.iter().map(|x| (*x).into()).collect();
+// 	let new_image = Image {
+// 		width: input.image.width,
+// 		height: input.image.height,
+// 		data: new_data,
+// 		base64_string: None,
+// 	};
 
-	TextureFrame {
-		texture: texture.into(),
-		transform: input.transform,
-		alpha_blend: Default::default(),
-	}
-}
+// 	let shader_input = executor.create_texture_buffer(new_image, TextureBufferOptions::Texture).unwrap();
+// 	let texture = match shader_input {
+// 		ShaderInput::TextureBuffer(buffer, _) => buffer,
+// 		ShaderInput::StorageTextureBuffer(buffer, _) => buffer,
+// 		_ => unreachable!("Unsupported ShaderInput type"),
+// 	};
+
+// 	TextureFrame {
+// 		texture: texture.into(),
+// 		transform: input.transform,
+// 		alpha_blend: Default::default(),
+// 	}
+// }

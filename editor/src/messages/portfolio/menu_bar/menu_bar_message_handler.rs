@@ -1,6 +1,7 @@
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
+use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::prelude::*;
 
 pub struct MenuBarMessageData {
@@ -226,7 +227,12 @@ impl LayoutHolder for MenuBarMessageHandler {
 							label: "Group Selected".into(),
 							icon: Some("Folder".into()),
 							shortcut: action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers),
-							action: MenuBarEntry::create_action(|_| DocumentMessage::GroupSelectedLayers.into()),
+							action: MenuBarEntry::create_action(|_| {
+								DocumentMessage::GroupSelectedLayers {
+									group_folder_type: GroupFolderType::Layer,
+								}
+								.into()
+							}),
 							disabled: no_active_document || !has_selected_layers,
 							..MenuBarEntry::default()
 						},
