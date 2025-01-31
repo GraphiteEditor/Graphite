@@ -25,13 +25,14 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 
+use bezier_rs::Subpath;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeNetwork, OldNodeNetwork};
 use graphene_core::raster::image::ImageFrame;
 use graphene_core::raster::BlendMode;
 use graphene_core::vector::style::ViewMode;
 use graphene_std::renderer::{ClickTarget, Quad};
-use graphene_std::vector::path_bool_lib;
+use graphene_std::vector::{path_bool_lib, PointId};
 
 use glam::{DAffine2, DVec2, IVec2};
 
@@ -1405,6 +1406,19 @@ impl DocumentMessageHandler {
 		self.intersect_quad(viewport_quad, ipp).filter(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
 
+	/// Runs an intersection test with all layers and a viewport space subpath
+	pub fn intersect_polygon<'a>(&'a self, mut viewport_polygon: Subpath<PointId>, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+		let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
+		viewport_polygon.apply_transform(document_to_viewport.inverse());
+
+		ClickXRayIter::new(&self.network_interface, XRayTarget::Polygon(viewport_polygon))
+	}
+
+	/// Runs an intersection test with all layers and a viewport space subpath; ignoring artboards
+	pub fn intersect_polygon_no_artboards<'a>(&'a self, viewport_polygon: Subpath<PointId>, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+		self.intersect_polygon(viewport_polygon, ipp).filter(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
+	}
+
 	pub fn is_layer_fully_inside(&self, layer: &LayerNodeIdentifier, quad: graphene_core::renderer::Quad) -> bool {
 		// Get the bounding box of the layer in document space
 		let Some(bounding_box) = self.metadata().bounding_box_viewport(*layer) else { return false };
@@ -1426,6 +1440,22 @@ impl DocumentMessageHandler {
 		let layer_bottom = top_left.y;
 
 		layer_left >= quad_left && layer_right <= quad_right && layer_top <= quad_top && layer_bottom >= quad_bottom
+	}
+
+	pub fn is_layer_fully_inside_polygon(&self, layer: &LayerNodeIdentifier, ipp: &InputPreprocessorMessageHandler, mut viewport_polygon: Subpath<PointId>) -> bool {
+		let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
+		viewport_polygon.apply_transform(document_to_viewport.inverse());
+
+		let layer_click_targets = self.network_interface.document_metadata().click_targets(*layer);
+		let layer_transform = self.network_interface.document_metadata().transform_to_document(*layer);
+
+		layer_click_targets.is_some_and(|targets| {
+			targets.iter().all(|target| {
+				let mut subpath = target.subpath().clone();
+				subpath.apply_transform(layer_transform);
+				subpath.is_inside_subpath(&viewport_polygon, None, None)
+			})
+		})
 	}
 
 	/// Find all of the layers that were clicked on from a viewport space location
@@ -2172,6 +2202,7 @@ enum XRayTarget {
 	Point(DVec2),
 	Quad(Quad),
 	Path(Vec<path_bool_lib::PathSegment>),
+	Polygon(Subpath<PointId>),
 }
 
 /// The result for the [`ClickXRayIter`] on the layer
@@ -2275,6 +2306,10 @@ impl<'a> ClickXRayIter<'a> {
 			}
 			XRayTarget::Quad(quad) => self.check_layer_area_target(click_targets, clip, layer, quad_to_path_lib_segments(*quad), transform),
 			XRayTarget::Path(path) => self.check_layer_area_target(click_targets, clip, layer, path.clone(), transform),
+			XRayTarget::Polygon(polygon) => {
+				let polygon = polygon.iter_closed().map(|line| path_bool_lib::PathSegment::Line(line.start, line.end)).collect();
+				self.check_layer_area_target(click_targets, clip, layer, polygon, transform)
+			}
 		}
 	}
 }
