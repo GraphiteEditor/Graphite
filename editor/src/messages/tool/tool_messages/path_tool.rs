@@ -972,9 +972,9 @@ impl Fsm for PathToolFsmState {
 					match selection_shape {
 						SelectionShape::Box => {
 							let bbox = [tool_data.drag_start_pos, tool_data.previous_mouse_position];
-							shape_editor.select_all_in_quad(&document.network_interface, SelectShape::Box(bbox), select_kind);
+							shape_editor.select_all_in_shape(&document.network_interface, SelectShape::Box(bbox), select_kind);
 						}
-						SelectionShape::Lasso => shape_editor.select_all_in_quad(&document.network_interface, SelectShape::Polygon(&tool_data.lasso_polygon), select_kind),
+						SelectionShape::Lasso => shape_editor.select_all_in_shape(&document.network_interface, SelectShape::Polygon(&tool_data.lasso_polygon), select_kind),
 					}
 				}
 				// shape_editor.select_all_in_quad(&document.network_interface, [tool_data.drag_start_pos, tool_data.previous_mouse_position], select_kind)
@@ -1010,9 +1010,9 @@ impl Fsm for PathToolFsmState {
 					match selection_shape {
 						SelectionShape::Box => {
 							let bbox = [tool_data.drag_start_pos, tool_data.previous_mouse_position];
-							shape_editor.select_all_in_quad(&document.network_interface, SelectShape::Box(bbox), select_kind);
+							shape_editor.select_all_in_shape(&document.network_interface, SelectShape::Box(bbox), select_kind);
 						}
-						SelectionShape::Lasso => shape_editor.select_all_in_quad(&document.network_interface, SelectShape::Polygon(&tool_data.lasso_polygon), select_kind),
+						SelectionShape::Lasso => shape_editor.select_all_in_shape(&document.network_interface, SelectShape::Polygon(&tool_data.lasso_polygon), select_kind),
 					}
 				}
 				responses.add(OverlaysMessage::Draw);

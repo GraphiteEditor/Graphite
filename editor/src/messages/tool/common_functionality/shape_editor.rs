@@ -1407,7 +1407,7 @@ impl ShapeState {
 		false
 	}
 
-	pub fn select_all_in_quad<'a>(&mut self, network_interface: &NodeNetworkInterface, select_shape: SelectShape<'a>, select_kind: SelectKind) {
+	pub fn select_all_in_shape<'a>(&mut self, network_interface: &NodeNetworkInterface, select_shape: SelectShape<'a>, select_kind: SelectKind) {
 		for (&layer, state) in &mut self.selected_shape_state {
 			if select_kind == SelectKind::Clear {
 				state.clear_points()
@@ -1427,6 +1427,9 @@ impl ShapeState {
 			}
 
 			let polygon_subpath = if let SelectShape::Polygon(polygon) = select_shape {
+				if polygon.len() < 2 {
+					return;
+				}
 				let polygon: Subpath<PointId> = Subpath::from_anchors_linear(polygon.to_vec(), true);
 				Some(polygon)
 			} else {
