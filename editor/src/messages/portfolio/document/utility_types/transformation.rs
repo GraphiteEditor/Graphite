@@ -371,7 +371,7 @@ impl TransformOperation {
 	}
 
 	pub fn hints(&self, responses: &mut VecDeque<Message>, local: bool) {
-		use crate::messages::input_mapper::utility_types::input_keyboard::Key;
+		use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 		use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 		let mut input_hints = Vec::new();
@@ -406,7 +406,9 @@ impl TransformOperation {
 			TransformOperation::Rotating(_) => HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyS]], "Grab/Scale Selected")]),
 		};
 
-		let mut hint_groups = vec![grs_hint_group];
+		let confirm_group = HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, ""), HintInfo::keys([Key::Enter], "Confirm").prepend_slash()]);
+		let cancel_group = HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]);
+		let mut hint_groups = vec![confirm_group, cancel_group, grs_hint_group];
 		if !self.is_typing() {
 			let modifiers = vec![HintInfo::keys([Key::Shift], "Slow"), HintInfo::keys([Key::Control], "Increments")];
 			hint_groups.push(HintGroup(modifiers));
